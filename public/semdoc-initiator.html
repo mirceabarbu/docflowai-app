@@ -6,7 +6,6 @@
 <title>SemDoc Flow – Inițiator</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
 :root{
@@ -163,7 +162,7 @@ button{font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:al
   <div class="steps" id="stepsBar">
     <div class="step-item">
       <div class="step-circle active" id="sc1">1</div>
-      <div class="step-info"><div class="step-label">Pasul 1</div><div class="step-name">EmailJS</div></div>
+      <div class="step-info"><div class="step-label">Pasul 1</div><div class="step-name">Inițiator</div></div>
     </div>
     <div class="step-conn" id="conn1"></div>
     <div class="step-item">
@@ -185,40 +184,11 @@ button{font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:al
   <!-- ══ TAB: SETUP ══ -->
   <div id="tabSetupContent">
 
-    <!-- EmailJS Config -->
-    <div class="card">
-      <div class="card-head">
-        <span class="card-ico">📧</span>
-        <div><div class="card-title">Configurare EmailJS</div><div class="card-sub">Necesar pentru trimiterea automată a email-urilor</div></div>
-      </div>
-      <div class="card-body">
-        <div class="grid2">
-          <div class="field">
-            <label>Public Key</label>
-            <input type="text" id="ejsKey" placeholder="ex: user_xxxxxxxxxx" oninput="saveConfig()">
-          </div>
-          <div class="field">
-            <label>Service ID</label>
-            <input type="text" id="ejsService" placeholder="ex: service_xxxxxxx" oninput="saveConfig()">
-          </div>
-          <div class="field full">
-            <label>Template ID</label>
-            <input type="text" id="ejsTemplate" placeholder="ex: template_xxxxxxx" oninput="saveConfig()">
-          </div>
-        </div>
-        <p class="hint" style="margin-top:10px">
-          Creează cont gratuit pe <a href="https://www.emailjs.com" target="_blank">emailjs.com</a>.
-          În template folosește variabilele: <code>{{to_email}}</code>, <code>{{to_name}}</code>, <code>{{doc_name}}</code>, <code>{{sign_link}}</code>, <code>{{from_name}}</code>.
-        </p>
-        <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="testEmailJS()">✉ Testează conexiunea</button>
-      </div>
-    </div>
-
     <!-- Initiator info -->
     <div class="card">
       <div class="card-head">
         <span class="card-ico">👤</span>
-        <div><div class="card-title">Inițiator document</div><div class="card-sub">Datele tale — apar în email-urile trimise</div></div>
+        <div><div class="card-title">Inițiator document</div><div class="card-sub">Datele tale — apar în notificări</div></div>
       </div>
       <div class="card-body">
         <div class="grid2">
@@ -411,8 +381,9 @@ window.addEventListener('DOMContentLoaded', () => {
 // ── Config persistence ──
 function saveConfig() {
   const cfg = {
-    ejsKey: v('ejsKey'), ejsService: v('ejsService'), ejsTemplate: v('ejsTemplate'),
-    initName: v('initName'), initEmail: v('initEmail'), docName: v('docName')
+    initName: v('initName'),
+    initEmail: v('initEmail'),
+    docName: v('docName')
   };
   localStorage.setItem('semdoc_config', JSON.stringify(cfg));
 }
@@ -551,30 +522,24 @@ function showTab(tab) {
   if (tab === 'dash') refreshDash();
 }
 
-// ── EmailJS ──
-async function testEmailJS() {
-  const key = v('ejsKey');
-  if (!key) { toast('⚠ Introdu Public Key-ul EmailJS!', 'error'); return; }
-  emailjs.init(key);
-  toast('✅ EmailJS inițializat! Cheia pare validă.', 'success');
-}
-
-async function sendEmail(toEmail, toName, docName, signLink, fromName) {
-  const key = v('ejsKey'), service = v('ejsService'), template = v('ejsTemplate');
-  if (!key || !service || !template) throw new Error('EmailJS neconfigurat complet!');
-  emailjs.init(key);
-  return emailjs.send(service, template, {
-    to_email: toEmail,
-    to_name: toName,
-    doc_name: docName,
-    sign_link: signLink,
-    from_name: fromName || 'SemDoc Flow',
+// ── Notificări email (server-side) ──
+async function notifySigner(toEmail, toName, docName, signLink, fromName) {
+  return apiFetch('/api/notify-signer', {
+    method: 'POST',
+    body: JSON.stringify({
+      toEmail,
+      toName,
+      subject: `DocFlowAI – Link de semnare: ${docName || 'Document'}`,
+      signerLink: signLink,
+      fromName: fromName || 'DocFlowAI',
+    })
   });
 }
 
+
 // ── Launch flow ──
 async function launchFlow() {
-  // Validations — EmailJS optional (fallback to manual link mode)
+  // Validări — link manual + notificare server-side (când e activată)
   if (!pdfBytes) { toast('⚠ Încarcă un PDF!', 'error'); return; }
   if (!v('initName')) { toast('⚠ Completează numele inițiatorului!', 'error'); return; }
 
@@ -618,9 +583,6 @@ async function launchFlow() {
       createdAt: new Date().toISOString(),
       signers: sigs,
       pdfB64: pdfB64,
-      ejsKey: v('ejsKey'),
-      ejsService: v('ejsService'),
-      ejsTemplate: v('ejsTemplate'),
       status: 'active',
     };
 
@@ -646,27 +608,25 @@ async function launchFlow() {
     // First signer link
     const first = sigs[0];
     const signerUrl = buildSignerURL(flowId, first.token, 0);
+    // Notificare (server-side). Dacă nu e configurat încă email-ul, rămânem pe link manual.
+    document.getElementById('launchStatus').textContent = `Se pregătește linkul pentru ${first.email}...`;
+    let notified = false;
+    try {
+      document.getElementById('launchStatus').textContent = `Se înregistrează notificarea pentru ${first.email}...`;
+      await notifySigner(first.email, first.name, activeFlow.docName, signerUrl, activeFlow.initName);
+      notified = true;
+    } catch (e) {
+      console.warn('notifySigner failed (fallback manual):', e);
+    }
 
-    const hasEmailJS = v('ejsKey') && v('ejsService') && v('ejsTemplate');
+    // Mereu afișăm linkul, ca să existe fallback sigur.
+    showManualLink(signerUrl, first);
 
-    if (hasEmailJS) {
-      // Try to send email
-      document.getElementById('launchStatus').textContent = `Se trimite email către ${first.email}...`;
-      try {
-        await sendEmail(first.email, first.name, activeFlow.docName, signerUrl, activeFlow.initName);
-        document.getElementById('launchStatus').textContent = '✅ Email trimis!';
-        toast(`✅ Flux lansat! Email trimis către ${first.name || first.email}`, 'success');
-      } catch(emailErr) {
-        console.warn('Email error:', emailErr);
-        // Fallback: show link manually
-        document.getElementById('launchStatus').textContent = '⚠ Email eșuat — copiază linkul manual';
-        showManualLink(signerUrl, first);
-        toast(`⚠ EmailJS error: ${emailErr.text || emailErr.message || 'necunoscut'}. Copiază linkul manual!`, 'error');
-      }
+    if (notified) {
+      document.getElementById('launchStatus').textContent = '✅ Notificare înregistrată + link disponibil';
+      toast(`✅ Flux lansat! Notificare înregistrată pentru ${first.name || first.email}.`, 'success');
     } else {
-      // No EmailJS — manual link mode
       document.getElementById('launchStatus').textContent = '✅ Flux creat! Trimite linkul manual.';
-      showManualLink(signerUrl, first);
       toast('✅ Flux generat! Copiază și trimite linkul primului semnatar.', 'success');
     }
 
@@ -796,14 +756,13 @@ async function resendEmail(idx) {
   const s = activeFlow.signers[idx];
   const url = buildSignerURL(activeFlow.id, s.token, idx);
   try {
-    emailjs.init(activeFlow.ejsKey);
-    await emailjs.send(activeFlow.ejsService, activeFlow.ejsTemplate, {
-      to_email: s.email, to_name: s.name, doc_name: activeFlow.docName,
-      sign_link: url, from_name: activeFlow.initName,
-    });
-    toast(`✅ Email retrimis către ${s.email}`, 'success');
-  } catch(err) {
-    toast(`❌ Eroare: ${err.text || err.message}`, 'error');
+    await notifySigner(s.email, s.name, activeFlow.docName, url, activeFlow.initName);
+    toast(`✅ Notificare înregistrată pentru ${s.email}`, 'success');
+  } catch (err) {
+    console.warn('resend notify failed:', err);
+    toast('⚠ Nu am putut înregistra notificarea. Folosește linkul manual.', 'error');
+    // fallback: arătăm linkul manual
+    showManualLink(url, s);
   }
 }
 

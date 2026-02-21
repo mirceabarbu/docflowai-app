@@ -47,6 +47,31 @@ function flowForSigner(flow, idx) {
 // Health
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// Notify signer (email sending is server-side; currently logs only)
+app.post('/api/notify-signer', async (req, res) => {
+  try {
+    const { toEmail, toName, subject, signerLink, flowId, fromName } = req.body || {};
+    if (!toEmail || !signerLink) return bad(res, 'toEmail sau signerLink lipseste');
+
+    // MVP-clean: no client-side EmailJS. Here we only log the notification.
+    // Later we will integrate Resend / SendGrid using server-side API keys from Railway Variables.
+    console.log('[notify-signer]', {
+      toEmail,
+      toName,
+      subject,
+      signerLink,
+      flowId,
+      fromName,
+      at: nowIso(),
+    });
+
+    return res.json({ ok: true, queued: true });
+  } catch (e) {
+    console.error('notify-signer error:', e);
+    return bad(res, 'Eroare server la notify-signer', 500);
+  }
+});
+
 // Create flow
 app.post('/api/flows', async (req, res) => {
   const { docName, initName, initEmail, signers, pdfB64, meta } = req.body || {};
@@ -167,6 +192,9 @@ app.post('/api/ai/suggest', async (req, res) => {
 
   res.json({ ok: true, text: response.output_text || '' });
 });
+
+// Redirect root to initiator
+app.get('/', (req, res) => res.redirect('/semdoc-initiator.html'));
 
 // Static
 app.use('/', express.static(new URL('../public', import.meta.url).pathname));
