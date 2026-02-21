@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SemDoc Flow – Semnare Document</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+:root{
+  --ink:#0f1923;--ink2:#1a3a5c;--gold:#c8832a;--gold2:#e8a84a;
+  --cream:#f4f1eb;--paper:#fdfcfa;--border:#ddd8ce;
+  --success:#27ae60;--danger:#e74c3c;--muted:#8a8a8a;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);min-height:100vh;}
+
+header{background:var(--ink);border-bottom:3px solid var(--gold);padding:0 32px;height:56px;display:flex;align-items:center;gap:16px;}
+.brand{font-family:'Playfair Display',serif;font-size:18px;color:white;}
+.brand em{color:var(--gold2);font-style:normal;}
+.header-badge{background:var(--gold);color:white;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;margin-left:auto;}
+
+/* States */
+#stateLoading,#stateInvalid,#stateAlreadySigned,#stateSuccess,#stateSign{display:none;}
+
+/* Center states */
+.center-state{max-width:520px;margin:80px auto;text-align:center;padding:24px;}
+.state-icon{font-size:56px;margin-bottom:20px;}
+.state-title{font-family:'Playfair Display',serif;font-size:24px;color:var(--ink2);margin-bottom:10px;}
+.state-sub{font-size:14px;color:var(--muted);line-height:1.7;}
+
+/* Sign layout */
+#stateSign{display:none;}
+.sign-layout{display:flex;height:calc(100vh - 56px);}
+
+/* Doc panel */
+.doc-panel{flex:1;overflow:auto;background:#d8d4ce;display:flex;flex-direction:column;align-items:center;padding:24px 16px 40px;}
+.page-wrap{position:relative;margin-bottom:16px;box-shadow:0 4px 20px rgba(0,0,0,.2);}
+.page-canvas{display:block;}
+.page-num{text-align:center;font-size:11px;color:#aaa;margin-top:6px;}
+
+/* Info panel */
+.info-panel{width:320px;background:var(--paper);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+.ip-head{background:var(--ink);padding:20px 22px;color:white;border-bottom:2px solid var(--gold);}
+.ip-title{font-family:'Playfair Display',serif;font-size:17px;margin-bottom:3px;}
+.ip-sub{font-size:11px;color:rgba(255,255,255,.45);}
+.ip-body{flex:1;overflow-y:auto;padding:20px;}
+
+/* Signer card */
+.signer-card{background:white;border:1.5px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:16px;}
+.sc-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px;}
+.sc-name{font-size:15px;font-weight:600;color:var(--ink2);font-family:'Playfair Display',serif;}
+.sc-role{font-size:12px;color:var(--muted);margin-top:2px;}
+.sc-email{font-size:12px;color:var(--ink2);margin-top:2px;}
+
+/* Signature pad */
+.sig-pad-wrap{background:white;border:1.5px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;}
+.sig-pad-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px;}
+#sigCanvas{width:100%;height:100px;border:1.5px dashed var(--border);border-radius:6px;cursor:crosshair;background:#fafafa;display:block;}
+#sigCanvas.has-sig{border-color:var(--ink2);border-style:solid;}
+.pad-actions{display:flex;gap:8px;margin-top:8px;}
+
+/* Consent */
+.consent-box{background:var(--cream);border:1.5px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start;}
+.consent-box input{margin-top:2px;flex-shrink:0;width:16px;height:16px;accent-color:var(--ink2);}
+.consent-text{font-size:11px;color:var(--muted);line-height:1.6;}
+
+/* Buttons */
+button{font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:all .15s;}
+.btn{padding:10px 18px;border-radius:6px;font-size:13px;font-weight:600;}
+.btn-primary{background:var(--ink2);color:white;}
+.btn-primary:hover{background:var(--ink);}
+.btn-primary:disabled{background:#ccc;cursor:not-allowed;}
+.btn-gold{background:var(--gold);color:white;width:100%;padding:13px;font-size:14px;letter-spacing:.3px;}
+.btn-gold:hover{background:var(--gold2);}
+.btn-gold:disabled{background:#ddd;color:#aaa;cursor:not-allowed;}
+.btn-sm-outline{background:white;color:var(--muted);border:1px solid var(--border);padding:6px 12px;border-radius:5px;font-size:12px;}
+.btn-sm-outline:hover{border-color:var(--danger);color:var(--danger);}
+
+/* Next signer preview */
+.next-signer{background:#fff8ee;border:1.5px solid var(--gold);border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px;}
+.next-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--gold);margin-bottom:4px;}
+
+/* Progress */
+.flow-progress{margin-bottom:16px;}
+.fp-label{font-size:11px;color:var(--muted);margin-bottom:5px;}
+.fp-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+.fp-fill{height:100%;background:linear-gradient(90deg,var(--ink2),var(--gold));border-radius:2px;}
+.fp-dots{display:flex;gap:4px;margin-top:6px;}
+.fp-dot{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;border:2px solid;}
+.fp-dot.signed{background:var(--success);border-color:var(--success);color:white;}
+.fp-dot.current{background:var(--gold);border-color:var(--gold);color:white;}
+.fp-dot.pending{background:var(--cream);border-color:var(--border);color:var(--muted);}
+
+/* Success */
+.success-card{background:white;border-radius:12px;padding:32px;box-shadow:0 4px 24px rgba(0,0,0,.08);border:1px solid var(--border);max-width:480px;margin:0 auto;}
+.success-icon{font-size:52px;margin-bottom:16px;}
+.success-title{font-family:'Playfair Display',serif;font-size:22px;color:var(--ink2);margin-bottom:8px;}
+.success-sub{font-size:13px;color:var(--muted);line-height:1.7;}
+
+/* Toast */
+#toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:white;padding:12px 18px;border-radius:8px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .25s;z-index:999;border-left:4px solid var(--gold);}
+#toast.show{opacity:1;}
+#toast.err{border-left-color:var(--danger);}
+
+/* Spinner */
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">✦ SemDoc <em>Flow</em></div>
+  <div class="header-badge" id="headerBadge">Semnare document</div>
+</header>
+
+<!-- Loading -->
+<div id="stateLoading" class="center-state">
+  <div class="state-icon">⏳</div>
+  <div class="state-title">Se încarcă documentul...</div>
+  <div class="state-sub">Te rugăm să aștepți.</div>
+</div>
+
+<!-- Invalid -->
+<div id="stateInvalid" class="center-state">
+  <div class="state-icon">❌</div>
+  <div class="state-title">Link invalid sau expirat</div>
+  <div class="state-sub">Acest link de semnare nu este valid. Te rugăm să contactezi inițiatorul documentului pentru un nou link.</div>
+</div>
+
+<!-- Already signed -->
+<div id="stateAlreadySigned" class="center-state">
+  <div class="state-icon">✅</div>
+  <div class="state-title">Ai semnat deja!</div>
+  <div class="state-sub" id="alreadySignedMsg">Semnătura ta a fost deja înregistrată. Nu mai este necesară nicio acțiune.</div>
+</div>
+
+<!-- Sign interface -->
+<div id="stateSign">
+  <div class="sign-layout">
+    <!-- Document -->
+    <div class="doc-panel" id="docPanel">
+      <div id="pdfPages"></div>
+    </div>
+
+    <!-- Info panel -->
+    <div class="info-panel">
+      <div class="ip-head">
+        <div class="ip-title" id="ipDocName">Document</div>
+        <div class="ip-sub" id="ipDocMeta">—</div>
+      </div>
+      <div class="ip-body">
+
+        <!-- Progress -->
+        <div class="flow-progress">
+          <div class="fp-label" id="fpLabel">Pasul 1 din 3</div>
+          <div class="fp-bar"><div class="fp-fill" id="fpFill" style="width:0%"></div></div>
+          <div class="fp-dots" id="fpDots"></div>
+        </div>
+
+        <!-- Signer card -->
+        <div class="signer-card">
+          <div class="sc-title">Ești rugat(ă) să semnezi</div>
+          <div class="sc-name" id="signerName">—</div>
+          <div class="sc-role" id="signerRole">—</div>
+          <div class="sc-email" id="signerEmail">—</div>
+        </div>
+
+        <!-- Next signer -->
+        <div class="next-signer" id="nextSignerBox" style="display:none">
+          <div class="next-title">➜ Urmează</div>
+          <div id="nextSignerName" style="font-weight:600;font-size:13px"></div>
+          <div id="nextSignerRole" style="font-size:11px;color:var(--muted)"></div>
+        </div>
+
+        <!-- Signature pad -->
+        <div class="sig-pad-wrap">
+          <div class="sig-pad-title">Semnătura ta</div>
+          <canvas id="sigCanvas" width="272" height="100"></canvas>
+          <div class="pad-actions">
+            <button class="btn-sm-outline" onclick="clearSig()">✕ Șterge</button>
+            <span style="font-size:11px;color:var(--muted);align-self:center;margin-left:4px">Semnează cu mouse-ul sau touch</span>
+          </div>
+        </div>
+
+        <!-- Consent -->
+        <div class="consent-box">
+          <input type="checkbox" id="consent">
+          <div class="consent-text">
+            Confirm că am citit documentul și sunt de acord să aplic semnătura mea electronică, cu valoare juridică conform Reg. UE 910/2014 (eIDAS).
+          </div>
+        </div>
+
+        <!-- Sign button -->
+        <button class="btn btn-gold" id="btnSign" onclick="submitSign()">
+          ✍️ Aplică semnătura
+        </button>
+
+        <p style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;text-align:center">
+          Prin semnare confirmi identitatea și acordul tău.<br>
+          Data și ora vor fi înregistrate automat.
+        </p>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Success -->
+<div id="stateSuccess" class="center-state">
+  <div class="success-card">
+    <div class="success-icon">🎉</div>
+    <div class="success-title" id="successTitle">Documentul a fost semnat!</div>
+    <div class="success-sub" id="successSub">Semnătura ta a fost înregistrată cu succes.</div>
+    <div style="margin-top:20px;padding:14px;background:var(--cream);border-radius:8px;font-size:12px;color:var(--muted)" id="successMeta"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const { PDFDocument, PDFName, PDFString, PDFNumber, rgb, StandardFonts } = PDFLib;
+
+const STORAGE_KEY = 'semdoc_flow';
+const API_BASE = (window.SEMDOC_API_BASE || '').trim();
+
+const INITIATOR_PAGE = 'semdoc-initiator.html';
+
+let flow = null;
+let signerIdx = -1;
+let signerToken = '';
+let signer = null;
+let sigDrawing = false;
+let sigLastX = 0, sigLastY = 0;
+let hasSig = false;
+
+
+// ── Server helpers (opțional) ──
+async function apiFetch(path, opts = {}) {
+  const base = (API_BASE || location.origin).replace(/\/$/, '');
+  const url = base + path;
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+async function serverGetSignerFlow(flowId, idx, token) {
+  return apiFetch(`/api/flows/${encodeURIComponent(flowId)}/signer?idx=${encodeURIComponent(idx)}&token=${encodeURIComponent(token)}`, { method: 'GET' });
+}
+async function serverSubmit(flowId, payload) {
+  return apiFetch(`/api/flows/${encodeURIComponent(flowId)}/sign`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+// ── Boot ──
+window.addEventListener('DOMContentLoaded', async () => {
+  show('stateLoading');
+  const params = new URLSearchParams(window.location.search);
+  const flowId = params.get('flow');
+  const token = params.get('token');
+  signerToken = token || '';
+  const idx = parseInt(params.get('idx') || '-1');
+
+  // 1) Prefer server-backed flow (link works across devices)
+  try {
+    const data = await serverGetSignerFlow(flowId, idx, token);
+    flow = data.flow;
+  } catch (e) {
+    // 2) Fallback demo mode (same device) via localStorage
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) { show('stateInvalid'); return; }
+    flow = JSON.parse(raw);
+    if (flow.id !== flowId) { show('stateInvalid'); return; }
+  }
+
+  signer = flow.signers[idx];
+  if (!signer || signer.token !== token) { show('stateInvalid'); return; }
+  signerIdx = idx;
+
+  if (signer.status === 'signed') {
+    document.getElementById('alreadySignedMsg').textContent = `Ai semnat la ${new Date(signer.signedAt).toLocaleString('ro-RO')}.`;
+    show('stateAlreadySigned'); return;
+  }
+
+  // Check if previous signer has signed (enforce sequence)
+  if (signerIdx > 0 && flow.signers[signerIdx - 1].status !== 'signed') {
+    show('stateInvalid'); return;
+  }
+
+  // Load sign UI
+  loadSignUI();
+});
+
+async function loadSignUI() {
+  show('stateSign');
+  document.getElementById('ipDocName').textContent = flow.docName;
+  document.getElementById('ipDocMeta').textContent = `Inițiat de ${flow.initName}`;
+  document.getElementById('signerName').textContent = signer.name || '—';
+  document.getElementById('signerRole').textContent = signer.rol;
+  document.getElementById('signerEmail').textContent = signer.email;
+
+  // Progress
+  const total = flow.signers.length;
+  const signedCount = flow.signers.filter(s => s.status === 'signed').length;
+  document.getElementById('fpLabel').textContent = `Pasul ${signerIdx + 1} din ${total}`;
+  document.getElementById('fpFill').style.width = ((signerIdx + 1) / total * 100) + '%';
+  document.getElementById('fpDots').innerHTML = flow.signers.map((s, i) => {
+    const cls = s.status === 'signed' ? 'signed' : i === signerIdx ? 'current' : 'pending';
+    const lbl = s.status === 'signed' ? '✓' : i + 1;
+    return `<div class="fp-dot ${cls}" title="${s.name||s.rol}">${lbl}</div>`;
+  }).join('');
+
+  // Next signer
+  const next = flow.signers[signerIdx + 1];
+  if (next) {
+    document.getElementById('nextSignerBox').style.display = 'block';
+    document.getElementById('nextSignerName').textContent = next.name || next.email;
+    document.getElementById('nextSignerRole').textContent = next.rol;
+  }
+
+  // Render PDF
+  await renderPDF();
+
+  // Signature pad
+  initSigPad();
+}
+
+async function renderPDF() {
+  const bytes = Uint8Array.from(atob(flow.pdfB64), c => c.charCodeAt(0));
+  const pdfJsDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const container = document.getElementById('pdfPages');
+  container.innerHTML = '';
+
+  for (let pi = 1; pi <= pdfJsDoc.numPages; pi++) {
+    const page = await pdfJsDoc.getPage(pi);
+    const vp = page.getViewport({ scale: 1.3 });
+    const wrap = document.createElement('div');
+    wrap.className = 'page-wrap';
+    const canvas = document.createElement('canvas');
+    canvas.className = 'page-canvas';
+    canvas.width = vp.width; canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    const lbl = document.createElement('div');
+    lbl.className = 'page-num';
+    lbl.textContent = `Pagina ${pi} din ${pdfJsDoc.numPages}`;
+    wrap.appendChild(canvas); wrap.appendChild(lbl);
+    container.appendChild(wrap);
+  }
+}
+
+// ── Signature pad ──
+function initSigPad() {
+  const canvas = document.getElementById('sigCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.strokeStyle = '#1a3a5c';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / r.width;
+    const scaleY = canvas.height / r.height;
+    if (e.touches) {
+      return { x: (e.touches[0].clientX - r.left) * scaleX, y: (e.touches[0].clientY - r.top) * scaleY };
+    }
+    return { x: (e.clientX - r.left) * scaleX, y: (e.clientY - r.top) * scaleY };
+  }
+
+  function start(e) { e.preventDefault(); sigDrawing = true; const p = getPos(e); sigLastX = p.x; sigLastY = p.y; }
+  function draw(e) {
+    if (!sigDrawing) return; e.preventDefault();
+    const p = getPos(e);
+    ctx.beginPath(); ctx.moveTo(sigLastX, sigLastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+    sigLastX = p.x; sigLastY = p.y;
+    hasSig = true;
+    canvas.classList.add('has-sig');
+  }
+  function stop() { sigDrawing = false; }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('mouseup', stop);
+  canvas.addEventListener('mouseleave', stop);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', draw, { passive: false });
+  canvas.addEventListener('touchend', stop);
+}
+
+function clearSig() {
+  const canvas = document.getElementById('sigCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  hasSig = false;
+  canvas.classList.remove('has-sig');
+}
+
+// ── Submit signature ──
+async function submitSign() {
+  if (!hasSig) { toast('⚠ Desenează semnătura mai întâi!', 'err'); return; }
+  if (!document.getElementById('consent').checked) { toast('⚠ Bifează acordul pentru semnare!', 'err'); return; }
+
+  const btn = document.getElementById('btnSign');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Se procesează...';
+
+  try {
+    // Get signature image
+    const sigCanvas = document.getElementById('sigCanvas');
+    const sigDataUrl = sigCanvas.toDataURL('image/png');
+    const sigBytes = Uint8Array.from(atob(sigDataUrl.split(',')[1]), c => c.charCodeAt(0));
+
+    // Embed signature in PDF
+    const pdfBytes = Uint8Array.from(atob(flow.pdfB64), c => c.charCodeAt(0));
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const pages = pdfDoc.getPages();
+    const lastPage = pages[pages.length - 1];
+    const { width: pW, height: pH } = lastPage.getSize();
+
+    const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const sigImage = await pdfDoc.embedPng(sigBytes);
+    const signedAt = new Date();
+
+    function ro(t) {
+      const m = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
+      return String(t||'').split('').map(c=>m[c]||c).join('');
+    }
+
+    // Find signature slot for this signer (bottom of page, divided by total signers)
+    const n = flow.signers.length;
+    const cols = n <= 3 ? n : n <= 6 ? Math.ceil(n/2) : Math.ceil(n/3);
+    const rows = Math.ceil(n / cols);
+    const MARGIN = 40;
+    const cellW = (pW - MARGIN * 2) / cols;
+    const cellH = 68;
+    const cartusBottom = 28;
+
+    const col = signerIdx % cols;
+    const row = Math.floor(signerIdx / cols);
+    const cx = MARGIN + col * cellW;
+    const cy = cartusBottom + (rows - 1 - row) * cellH;
+
+    // Draw signature image in the cell
+    const sigW = Math.min(cellW - 20, 120);
+    const sigH = 28;
+    const sigX = cx + 5;
+    const sigY = cy + 18;
+
+    lastPage.drawImage(sigImage, { x: sigX, y: sigY, width: sigW, height: sigH, opacity: 0.85 });
+
+    // Stamp: date + name
+    const stampText = ro(signer.name || signer.email);
+    const dateText = signedAt.toLocaleDateString('ro-RO') + ' ' + signedAt.toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'});
+    lastPage.drawText(stampText, { x: cx + 5, y: cy + 14, size: 6.5, font: fontB, color: rgb(0.1, 0.23, 0.36) });
+    lastPage.drawText(dateText, { x: cx + 5, y: cy + 6, size: 5.5, font: fontR, color: rgb(0.5, 0.5, 0.5) });
+
+    // Add metadata page if last signer
+    const updatedPdfBytes = await pdfDoc.save();
+
+    // Update flow state
+    flow.signers[signerIdx].status = 'signed';
+    flow.signers[signerIdx].signedAt = signedAt.toISOString();
+    flow.pdfB64 = btoa(String.fromCharCode(...updatedPdfBytes));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(flow));
+
+    // Persist to server (dacă există)
+    try {
+      const saved = await serverSubmit(flow.id, { idx: signerIdx, token: signerToken, pdfB64: flow.pdfB64, signedAt: flow.signers[signerIdx].signedAt });
+      flow = saved.flow;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(flow));
+    } catch (e) {
+      // dacă nu există server, rămânem în demo mode
+      console.warn('Server submit failed:', e);
+    }
+
+    // Send email to next signer
+    const next = flow.signers[signerIdx + 1];
+    if (next) {
+      try {
+        const nextUrl = `${window.location.href.split('?')[0]}?flow=${flow.id}&token=${next.token}&idx=${signerIdx + 1}`;
+        emailjs.init(flow.ejsKey);
+        await emailjs.send(flow.ejsService, flow.ejsTemplate, {
+          to_email: next.email,
+          to_name: next.name || '',
+          doc_name: flow.docName,
+          sign_link: nextUrl,
+          from_name: flow.initName,
+        });
+      } catch(emailErr) {
+        console.warn('Email error:', emailErr);
+        // Don't block – signing was successful
+      }
+    }
+
+    // Show success
+    const allSigned = flow.signers.every(s => s.status === 'signed');
+    document.getElementById('successTitle').textContent = allSigned
+      ? '🎉 Toți semnatarii au semnat!'
+      : 'Semnătură aplicată cu succes!';
+    document.getElementById('successSub').textContent = allSigned
+      ? `Documentul "${flow.docName}" este complet semnat de toți ${n} semnatarii.`
+      : next
+        ? `Mulțumim! Email-ul a fost trimis automat către ${next.name || next.email} pentru semnare.`
+        : 'Semnătura ta a fost înregistrată cu succes.';
+    document.getElementById('successMeta').innerHTML = `
+      <div style="margin-bottom:4px"><strong>Document:</strong> ${flow.docName}</div>
+      <div style="margin-bottom:4px"><strong>Semnat de:</strong> ${signer.name} (${signer.rol})</div>
+      <div><strong>Data și ora:</strong> ${signedAt.toLocaleString('ro-RO')}</div>
+    `;
+    show('stateSuccess');
+
+  } catch(err) {
+    console.error(err);
+    toast('❌ Eroare la procesare: ' + err.message, 'err');
+    btn.disabled = false;
+    btn.innerHTML = '✍️ Aplică semnătura';
+  }
+}
+
+// ── Utils ──
+function show(id) {
+  ['stateLoading','stateInvalid','stateAlreadySigned','stateSign','stateSuccess']
+    .forEach(s => document.getElementById(s).style.display = s === id ? (s === 'stateSign' ? 'block' : 'flex') : 'none');
+}
+
+let tt;
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = type ? `show ${type}` : 'show';
+  clearTimeout(tt); tt = setTimeout(() => el.classList.remove('show'), 4000);
+}
+</script>
+</body>
+</html>

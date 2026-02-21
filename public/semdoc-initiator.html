@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SemDoc Flow – Inițiator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+:root{
+  --ink:#0f1923;--ink2:#1a3a5c;--gold:#c8832a;--gold2:#e8a84a;
+  --cream:#f4f1eb;--paper:#fdfcfa;--border:#ddd8ce;
+  --success:#27ae60;--warn:#f39c12;--danger:#e74c3c;--muted:#8a8a8a;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);min-height:100vh;}
+
+/* Header */
+header{background:var(--ink);border-bottom:3px solid var(--gold);padding:0 36px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.brand{font-family:'Playfair Display',serif;font-size:19px;color:white;}
+.brand em{color:var(--gold2);font-style:normal;}
+.hlinks{display:flex;gap:8px;}
+.hlink{color:rgba(255,255,255,.5);font-size:12px;text-decoration:none;padding:6px 14px;border-radius:4px;border:1px solid rgba(255,255,255,.1);cursor:pointer;background:none;transition:all .15s;font-family:'DM Sans',sans-serif;}
+.hlink:hover{background:rgba(255,255,255,.08);color:white;}
+.hlink.act{background:var(--gold);color:white;border-color:var(--gold);}
+
+.container{max-width:960px;margin:0 auto;padding:32px 20px 60px;}
+
+/* Steps */
+.steps{display:flex;align-items:center;background:white;border-radius:10px;padding:18px 24px;box-shadow:0 2px 10px rgba(0,0,0,.05);border:1px solid var(--border);margin-bottom:28px;}
+.step-item{display:flex;align-items:center;gap:10px;flex:1;}
+.step-circle{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;border:2px solid var(--border);color:var(--muted);background:var(--cream);transition:all .3s;}
+.step-circle.active{background:var(--ink2);color:white;border-color:var(--ink2);}
+.step-circle.done{background:var(--success);color:white;border-color:var(--success);}
+.step-info{flex:1;min-width:0;}
+.step-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;}
+.step-name{font-size:12px;font-weight:600;color:var(--ink);}
+.step-conn{height:2px;width:32px;background:var(--border);margin:0 6px;flex-shrink:0;transition:background .3s;}
+.step-conn.done{background:var(--success);}
+
+/* Card */
+.card{background:white;border-radius:10px;border:1px solid var(--border);box-shadow:0 2px 10px rgba(0,0,0,.05);margin-bottom:18px;overflow:hidden;}
+.card-head{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
+.card-ico{font-size:18px;}
+.card-title{font-family:'Playfair Display',serif;font-size:16px;color:var(--ink2);}
+.card-sub{font-size:11px;color:var(--muted);margin-top:1px;}
+.card-body{padding:22px;}
+
+/* Form */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.field{display:flex;flex-direction:column;gap:5px;}
+.field.full{grid-column:1/-1;}
+label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);}
+input,select{font-family:'DM Sans',sans-serif;font-size:13px;padding:8px 11px;border:1.5px solid var(--border);border-radius:6px;color:var(--ink);background:var(--cream);transition:all .15s;width:100%;}
+input:focus,select:focus{outline:none;border-color:var(--ink2);background:white;}
+.hint{font-size:11px;color:var(--muted);line-height:1.5;}
+.hint a{color:var(--gold);text-decoration:none;}
+.hint a:hover{text-decoration:underline;}
+
+/* Drop zone */
+.dropzone{border:2px dashed var(--border);border-radius:8px;padding:40px 24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--cream);}
+.dropzone:hover,.dropzone.over{border-color:var(--gold);background:#fdf6ee;}
+.dropzone h3{font-family:'Playfair Display',serif;font-size:17px;color:var(--ink2);margin:10px 0 5px;}
+.dropzone p{font-size:12px;color:var(--muted);}
+.pdf-loaded{display:flex;align-items:center;gap:14px;padding:14px;background:#eef9f1;border-radius:8px;border:1.5px solid var(--success);}
+.pdf-name{font-weight:600;font-size:13px;}
+.pdf-meta{font-size:11px;color:var(--muted);}
+
+/* Signatories */
+.sig-row{display:grid;grid-template-columns:28px 1fr 1fr 1fr auto;gap:8px;align-items:center;background:var(--cream);border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;transition:all .15s;cursor:default;}
+.sig-row:hover{border-color:var(--ink2);}
+.sig-row.dragging{opacity:.4;transform:scale(.97);}
+.sig-row.dragover{border-color:var(--gold);border-style:dashed;background:#fdf6ee;}
+.sig-num{width:26px;height:26px;border-radius:50%;background:var(--ink2);color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.sig-row input{background:white;margin:0;}
+.dh{color:#ccc;cursor:grab;font-size:16px;padding:3px;border-radius:3px;background:none;border:none;}
+.dh:hover{color:var(--ink2);background:white;}
+.delbtn{background:none;border:none;color:#ddd;font-size:15px;padding:3px 7px;border-radius:4px;cursor:pointer;}
+.delbtn:hover{color:var(--danger);background:#feeaea;}
+
+/* Buttons */
+button{font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:all .15s;}
+.btn{padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;}
+.btn-primary{background:var(--ink2);color:white;}
+.btn-primary:hover{background:var(--ink);}
+.btn-primary:disabled{background:#ccc;cursor:not-allowed;}
+.btn-gold{background:var(--gold);color:white;}
+.btn-gold:hover{background:var(--gold2);}
+.btn-gold:disabled{background:#ddd;color:#aaa;cursor:not-allowed;}
+.btn-outline{background:white;color:var(--ink2);border:1.5px solid var(--ink2);}
+.btn-outline:hover{background:var(--ink2);color:white;}
+.btn-dashed{background:white;color:var(--ink2);border:1.5px dashed var(--ink2);}
+.btn-dashed:hover{background:#eef4f9;}
+.btn-sm{padding:7px 13px;font-size:12px;}
+.btn-full{width:100%;}
+
+/* Dashboard */
+.dash-header{background:var(--ink);border-radius:10px;padding:22px 26px;color:white;margin-bottom:18px;}
+.dash-title{font-family:'Playfair Display',serif;font-size:20px;margin-bottom:4px;}
+.dash-meta{font-size:12px;color:rgba(255,255,255,.45);}
+.dash-id{font-family:monospace;color:var(--gold2);font-size:11px;margin-top:4px;}
+
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}
+.stat-card{background:white;border-radius:8px;padding:16px 18px;border:1px solid var(--border);}
+.stat-num{font-family:'Playfair Display',serif;font-size:28px;color:var(--ink2);}
+.stat-label{font-size:11px;color:var(--muted);margin-top:2px;}
+
+.progress-bar{height:6px;background:var(--border);border-radius:3px;margin:10px 0;overflow:hidden;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--ink2),var(--gold));border-radius:3px;transition:width .5s;}
+
+.timeline{display:flex;flex-direction:column;}
+.tl-item{display:flex;gap:14px;padding:14px 18px;background:white;border:1px solid var(--border);border-bottom:none;transition:all .2s;}
+.tl-item:first-child{border-radius:8px 8px 0 0;}
+.tl-item:last-child{border-radius:0 0 8px 8px;border-bottom:1px solid var(--border);}
+.tl-item.signed{background:#f0faf4;}
+.tl-item.current{background:#fffbf0;border-left:3px solid var(--gold);}
+
+.tl-dot{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;border:2px solid;transition:all .3s;}
+.tl-dot.signed{background:var(--success);border-color:var(--success);color:white;}
+.tl-dot.current{background:var(--gold);border-color:var(--gold);color:white;animation:pulse 1.5s ease-in-out infinite;}
+.tl-dot.pending{background:var(--cream);border-color:var(--border);color:var(--muted);}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(200,131,42,.4)}50%{box-shadow:0 0 0 8px rgba(200,131,42,0)}}
+
+.tl-info{flex:1;}
+.tl-name{font-weight:600;font-size:13px;}
+.tl-role{font-size:11px;color:var(--muted);}
+.tl-email{font-size:11px;color:var(--ink2);margin-top:1px;}
+.tl-time{font-size:10px;color:var(--muted);margin-top:2px;}
+
+.badge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;align-self:center;white-space:nowrap;}
+.badge-signed{background:#d4f4e2;color:#1a6e3a;}
+.badge-current{background:#fff0d4;color:#a05c0a;}
+.badge-pending{background:var(--cream);color:var(--muted);}
+
+.resend{background:none;border:1px solid var(--border);color:var(--muted);font-size:10px;padding:3px 9px;border-radius:4px;cursor:pointer;margin-top:4px;}
+.resend:hover{border-color:var(--gold);color:var(--gold);}
+
+/* Link box */
+.link-box{background:var(--cream);border:1.5px solid var(--border);border-radius:6px;padding:10px 14px;font-family:monospace;font-size:12px;color:var(--ink2);word-break:break-all;margin-top:8px;}
+
+/* Toast */
+#toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:white;padding:12px 18px;border-radius:8px;font-size:13px;font-weight:500;pointer-events:none;opacity:0;transition:opacity .25s;z-index:999;max-width:320px;border-left:4px solid var(--gold);}
+#toast.show{opacity:1;}
+#toast.success{border-left-color:var(--success);}
+#toast.error{border-left-color:var(--danger);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">✦ SemDoc <em>Flow</em></div>
+  <div class="hlinks">
+    <button class="hlink act" id="tabSetup" onclick="showTab('setup')">⚙ Configurare</button>
+    <button class="hlink" id="tabDash" onclick="showTab('dash')">📊 Status</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Steps -->
+  <div class="steps" id="stepsBar">
+    <div class="step-item">
+      <div class="step-circle active" id="sc1">1</div>
+      <div class="step-info"><div class="step-label">Pasul 1</div><div class="step-name">EmailJS</div></div>
+    </div>
+    <div class="step-conn" id="conn1"></div>
+    <div class="step-item">
+      <div class="step-circle" id="sc2">2</div>
+      <div class="step-info"><div class="step-label">Pasul 2</div><div class="step-name">Document PDF</div></div>
+    </div>
+    <div class="step-conn" id="conn2"></div>
+    <div class="step-item">
+      <div class="step-circle" id="sc3">3</div>
+      <div class="step-info"><div class="step-label">Pasul 3</div><div class="step-name">Semnatari</div></div>
+    </div>
+    <div class="step-conn" id="conn3"></div>
+    <div class="step-item">
+      <div class="step-circle" id="sc4">4</div>
+      <div class="step-info"><div class="step-label">Pasul 4</div><div class="step-name">Lansare flux</div></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: SETUP ══ -->
+  <div id="tabSetupContent">
+
+    <!-- EmailJS Config -->
+    <div class="card">
+      <div class="card-head">
+        <span class="card-ico">📧</span>
+        <div><div class="card-title">Configurare EmailJS</div><div class="card-sub">Necesar pentru trimiterea automată a email-urilor</div></div>
+      </div>
+      <div class="card-body">
+        <div class="grid2">
+          <div class="field">
+            <label>Public Key</label>
+            <input type="text" id="ejsKey" placeholder="ex: user_xxxxxxxxxx" oninput="saveConfig()">
+          </div>
+          <div class="field">
+            <label>Service ID</label>
+            <input type="text" id="ejsService" placeholder="ex: service_xxxxxxx" oninput="saveConfig()">
+          </div>
+          <div class="field full">
+            <label>Template ID</label>
+            <input type="text" id="ejsTemplate" placeholder="ex: template_xxxxxxx" oninput="saveConfig()">
+          </div>
+        </div>
+        <p class="hint" style="margin-top:10px">
+          Creează cont gratuit pe <a href="https://www.emailjs.com" target="_blank">emailjs.com</a>.
+          În template folosește variabilele: <code>{{to_email}}</code>, <code>{{to_name}}</code>, <code>{{doc_name}}</code>, <code>{{sign_link}}</code>, <code>{{from_name}}</code>.
+        </p>
+        <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="testEmailJS()">✉ Testează conexiunea</button>
+      </div>
+    </div>
+
+    <!-- Initiator info -->
+    <div class="card">
+      <div class="card-head">
+        <span class="card-ico">👤</span>
+        <div><div class="card-title">Inițiator document</div><div class="card-sub">Datele tale — apar în email-urile trimise</div></div>
+      </div>
+      <div class="card-body">
+        <div class="grid2">
+          <div class="field">
+            <label>Nume inițiator</label>
+            <input type="text" id="initName" placeholder="ex: Ion Popescu" oninput="saveConfig()">
+          </div>
+          <div class="field">
+            <label>Email inițiator</label>
+            <input type="email" id="initEmail" placeholder="ex: ion@primarie.ro" oninput="saveConfig()">
+          </div>
+          <div class="field full">
+            <label>Denumire document</label>
+            <div style="display:flex;gap:8px;align-items:center">
+  <input type="text" id="docName" placeholder="ex: Notă de Fundamentare nr. 42/2026" oninput="saveConfig()">
+  <button class="btn btn-outline btn-sm" type="button" onclick="aiSuggestDocName()" title="Sugerează un titlu (AI)">✨</button>
+</div>
+<div class="hint" style="margin-top:4px">Butonul ✨ folosește serverul SemDoc+ (opțional) pentru sugestii AI.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PDF Upload -->
+    <div class="card">
+      <div class="card-head">
+        <span class="card-ico">📄</span>
+        <div><div class="card-title">Document PDF</div><div class="card-sub">Documentul care va fi semnat</div></div>
+      </div>
+      <div class="card-body">
+        <div id="dropzone" class="dropzone" onclick="document.getElementById('fileIn').click()">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect width="48" height="48" rx="10" fill="#f0ece6"/>
+            <path d="M12 8h18l12 12v22H12V8z" stroke="#c8832a" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+            <path d="M30 8v12h12" stroke="#c8832a" stroke-width="1.5" stroke-linejoin="round"/>
+            <text x="24" y="36" font-size="9" fill="#1a3a5c" text-anchor="middle" font-family="sans-serif" font-weight="bold">PDF</text>
+          </svg>
+          <h3>Trage PDF-ul aici sau click pentru selectare</h3>
+          <p>Documentul va fi trimis semnatarilor exact ca atare</p>
+        </div>
+        <div id="pdfLoaded" class="pdf-loaded" style="display:none">
+          <span style="font-size:28px">📄</span>
+          <div>
+            <div class="pdf-name" id="pdfNameDisp"></div>
+            <div class="pdf-meta" id="pdfMetaDisp"></div>
+          </div>
+          <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="clearPDF()">✕ Schimbă</button>
+        </div>
+        <input type="file" id="fileIn" accept=".pdf" style="display:none">
+      </div>
+    </div>
+
+    <!-- Signatories -->
+    <div class="card">
+      <div class="card-head">
+        <span class="card-ico">✍️</span>
+        <div><div class="card-title">Semnatari (în ordine)</div><div class="card-sub">Fiecare semnează după cel de dinainte</div></div>
+      </div>
+      <div class="card-body">
+        <div style="display:grid;grid-template-columns:28px 1fr 1fr 1fr auto;gap:8px;padding:0 14px 8px;margin-bottom:4px;">
+          <span></span>
+          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Rol</span>
+          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Nume și prenume</span>
+          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Email</span>
+          <span></span>
+        </div>
+        <div id="sigRows"></div>
+        <button class="btn btn-dashed btn-full" onclick="addSig()" style="margin-top:4px">+ Adaugă semnatar</button>
+      </div>
+    </div>
+
+    <!-- Launch -->
+    <div class="card">
+      <div class="card-head">
+        <span class="card-ico">🚀</span>
+        <div><div class="card-title">Lansare flux de semnare</div><div class="card-sub">Se va trimite email automat primului semnatar</div></div>
+      </div>
+      <div class="card-body">
+        <p class="hint" style="margin-bottom:16px">
+          Odată lansat, primul semnatar primește un email cu linkul unic de semnare.
+          După ce semnează, emailul se trimite automat următorului, și tot așa.
+        </p>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn btn-gold" id="btnLaunch" onclick="launchFlow()" style="padding:12px 28px;font-size:14px">
+            🚀 Lansează fluxul de semnare
+          </button>
+          <span id="launchStatus" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tabSetupContent -->
+
+  <!-- ══ TAB: DASHBOARD ══ -->
+  <div id="tabDashContent" style="display:none">
+
+    <div id="noDash" style="text-align:center;padding:60px 20px;color:var(--muted)">
+      <div style="font-size:48px;margin-bottom:16px">📊</div>
+      <div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--ink2);margin-bottom:8px">Niciun flux activ</div>
+      <p style="font-size:13px">Lansează un flux din tab-ul Configurare pentru a vedea statusul aici.</p>
+    </div>
+
+    <div id="dashContent" style="display:none">
+      <div class="dash-header">
+        <div class="dash-title" id="dashDocName">—</div>
+        <div class="dash-meta">Inițiat de <span id="dashInitName">—</span></div>
+        <div class="dash-id" id="dashFlowId">—</div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-num" id="statTotal">0</div>
+          <div class="stat-label">Semnatari total</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" style="color:var(--success)" id="statSigned">0</div>
+          <div class="stat-label">Au semnat</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" style="color:var(--warn)" id="statPending">0</div>
+          <div class="stat-label">Așteaptă</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-ico">📈</span>
+          <div><div class="card-title">Progres flux</div></div>
+        </div>
+        <div class="card-body">
+          <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px" id="progressLabel">0 din 0 semnatari</div>
+          <div class="timeline" id="timelineItems" style="margin-top:16px"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button class="btn btn-outline btn-sm" onclick="refreshDash()">↻ Actualizează</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadFinal()" id="btnDownFinal" style="display:none">⬇ Descarcă PDF final semnat</button>
+      </div>
+    </div>
+
+  </div><!-- /tabDashContent -->
+
+</div><!-- /container -->
+
+<div id="toast"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── State ──
+let pdfBytes = null;
+let pdfPageCount = 0;
+let sigIdCnt = 0;
+let dragSrc = null;
+let activeFlow = null;
+
+const STORAGE_KEY = 'semdoc_flow';
+const API_BASE = (window.SEMDOC_API_BASE || '').trim(); // ex: 'http://localhost:8787'
+const SERVER_MODE = !!API_BASE || (location.origin && location.origin.startsWith('http'));
+
+const SIGNER_PAGE = 'semdoc-signer.html'; // same folder
+
+// ── Init ──
+window.addEventListener('DOMContentLoaded', () => {
+  loadConfig();
+  addSig('ÎNTOCMIT', '', '');
+  addSig('ȘEF STRUCTURĂ', '', '');
+  addSig('APROBAT', '', '');
+
+  // File handlers
+  document.getElementById('fileIn').addEventListener('change', e => { if (e.target.files[0]) loadPDF(e.target.files[0]); });
+  const dz = document.getElementById('dropzone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); if (e.dataTransfer.files[0]) loadPDF(e.dataTransfer.files[0]); });
+
+  // Load existing flow
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    activeFlow = JSON.parse(saved);
+    refreshDash();
+  }
+
+  // Auto-refresh dashboard every 5s when active
+  setInterval(() => { if (document.getElementById('tabDash').classList.contains('act')) refreshDash(); }, 5000);
+});
+
+// ── Config persistence ──
+function saveConfig() {
+  const cfg = {
+    ejsKey: v('ejsKey'), ejsService: v('ejsService'), ejsTemplate: v('ejsTemplate'),
+    initName: v('initName'), initEmail: v('initEmail'), docName: v('docName')
+  };
+  localStorage.setItem('semdoc_config', JSON.stringify(cfg));
+}
+function loadConfig() {
+  const raw = localStorage.getItem('semdoc_config');
+  if (!raw) return;
+  const cfg = JSON.parse(raw);
+  Object.entries(cfg).forEach(([k, val]) => { const el = document.getElementById(k); if (el) el.value = val; });
+}
+function v(id) { return document.getElementById(id)?.value.trim() || ''; }
+
+// ── Server helpers (opțional) ──
+async function apiFetch(path, opts = {}) {
+  const base = (API_BASE || location.origin).replace(/\/$/, '');
+  const url = base + path;
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+async function serverCreateFlow(flowPayload) {
+  return apiFetch('/api/flows', { method: 'POST', body: JSON.stringify(flowPayload) });
+}
+async function serverGetFlow(flowId) {
+  return apiFetch(`/api/flows/${encodeURIComponent(flowId)}`, { method: 'GET' });
+}
+
+
+async function aiSuggestDocName() {
+  const current = v('docName');
+  const file = document.getElementById('pdfNameDisp')?.textContent || '';
+  const context = {
+    current_title: current,
+    file_name: file,
+    initiator: v('initName'),
+    institution_hint: 'administratie publica / registratura'
+  };
+  try {
+    const data = await apiFetch('/api/ai/suggest', { method: 'POST', body: JSON.stringify({ task: 'Sugereaza 3 titluri scurte si oficiale pentru document. Alege-l pe cel mai bun pe primul rand.', context }) });
+    const text = (data.text || '').trim();
+    if (text) {
+      // take first line as title
+      const firstLine = text.split(/\r?\n/).find(l => l.trim()) || '';
+      if (firstLine) {
+        document.getElementById('docName').value = firstLine.replace(/^[-•\d.\s]+/, '').trim();
+        saveConfig();
+        toast('✨ Titlu sugerat completat.', 'success');
+      } else {
+        toast('✨ Am primit sugestii, dar nu am putut extrage primul titlu.', 'error');
+      }
+    } else {
+      toast('✨ Nu am primit text de la AI.', 'error');
+    }
+  } catch (e) {
+    toast('✨ AI indisponibil (seteaza OPENAI_API_KEY pe server).', 'error');
+  }
+}
+
+// ── PDF ──
+async function loadPDF(file) {
+  if (!file.name.endsWith('.pdf')) { toast('⚠ Te rog încarcă un fișier PDF!', 'error'); return; }
+  const ab = await file.arrayBuffer();
+  pdfBytes = new Uint8Array(ab);
+  const doc = await pdfjsLib.getDocument({ data: ab }).promise;
+  pdfPageCount = doc.numPages;
+  document.getElementById('dropzone').style.display = 'none';
+  document.getElementById('pdfLoaded').style.display = 'flex';
+  document.getElementById('pdfNameDisp').textContent = file.name;
+  document.getElementById('pdfMetaDisp').textContent = `${pdfPageCount} pagini · ${(file.size / 1024).toFixed(0)} KB`;
+  if (!v('docName')) document.getElementById('docName').value = file.name.replace('.pdf', '');
+  updateSteps();
+  toast('✅ PDF încărcat!', 'success');
+}
+function clearPDF() {
+  pdfBytes = null;
+  document.getElementById('dropzone').style.display = 'block';
+  document.getElementById('pdfLoaded').style.display = 'none';
+  document.getElementById('fileIn').value = '';
+}
+
+// ── Signatories ──
+function addSig(rol = '', name = '', email = '') {
+  sigIdCnt++;
+  const id = sigIdCnt;
+  const row = document.createElement('div');
+  row.className = 'sig-row';
+  row.dataset.id = id;
+  row.setAttribute('draggable', 'true');
+  row.innerHTML = `
+    <div class="sig-num">${id}</div>
+    <input type="text" placeholder="Rol (ex: APROBAT)" value="${rol}">
+    <input type="text" placeholder="Nume și prenume" value="${name}">
+    <input type="email" placeholder="email@exemplu.ro" value="${email}">
+    <button class="delbtn" onclick="delSig(${id})">✕</button>
+  `;
+  row.addEventListener('dragstart', function(e) { dragSrc = this; setTimeout(() => this.classList.add('dragging'), 0); e.dataTransfer.effectAllowed = 'move'; });
+  row.addEventListener('dragend', function() { this.classList.remove('dragging'); document.querySelectorAll('.sig-row').forEach(r => r.classList.remove('dragover')); renumSigs(); });
+  row.addEventListener('dragover', function(e) { e.preventDefault(); if (this !== dragSrc) { document.querySelectorAll('.sig-row').forEach(r => r.classList.remove('dragover')); this.classList.add('dragover'); } });
+  row.addEventListener('dragleave', function() { this.classList.remove('dragover'); });
+  row.addEventListener('drop', function(e) {
+    e.preventDefault();
+    if (dragSrc && this !== dragSrc) {
+      const p = this.parentNode, all = [...p.querySelectorAll('.sig-row')];
+      if (all.indexOf(dragSrc) < all.indexOf(this)) p.insertBefore(dragSrc, this.nextSibling);
+      else p.insertBefore(dragSrc, this);
+      this.classList.remove('dragover');
+      renumSigs();
+    }
+  });
+  document.getElementById('sigRows').appendChild(row);
+  renumSigs();
+}
+function delSig(id) { document.querySelector(`.sig-row[data-id="${id}"]`)?.remove(); renumSigs(); }
+function renumSigs() { document.querySelectorAll('.sig-row').forEach((r, i) => r.querySelector('.sig-num').textContent = i + 1); }
+function getSigs() {
+  return [...document.querySelectorAll('.sig-row')].map((r, i) => {
+    const inp = r.querySelectorAll('input');
+    return { order: i + 1, rol: inp[0].value.trim(), name: inp[1].value.trim(), email: inp[2].value.trim(), status: 'pending', signedAt: null, token: generateToken() };
+  });
+}
+
+// ── Steps UI ──
+function updateSteps() {
+  const hasPDF = !!pdfBytes;
+  document.getElementById('sc2').className = 'step-circle ' + (hasPDF ? 'done' : 'active');
+  document.getElementById('conn2').className = 'step-conn ' + (hasPDF ? 'done' : '');
+  if (hasPDF) { document.getElementById('sc3').className = 'step-circle active'; }
+}
+
+// ── Tabs ──
+function showTab(tab) {
+  document.getElementById('tabSetup').classList.toggle('act', tab === 'setup');
+  document.getElementById('tabDash').classList.toggle('act', tab === 'dash');
+  document.getElementById('tabSetupContent').style.display = tab === 'setup' ? 'block' : 'none';
+  document.getElementById('tabDashContent').style.display = tab === 'dash' ? 'block' : 'none';
+  if (tab === 'dash') refreshDash();
+}
+
+// ── EmailJS ──
+async function testEmailJS() {
+  const key = v('ejsKey');
+  if (!key) { toast('⚠ Introdu Public Key-ul EmailJS!', 'error'); return; }
+  emailjs.init(key);
+  toast('✅ EmailJS inițializat! Cheia pare validă.', 'success');
+}
+
+async function sendEmail(toEmail, toName, docName, signLink, fromName) {
+  const key = v('ejsKey'), service = v('ejsService'), template = v('ejsTemplate');
+  if (!key || !service || !template) throw new Error('EmailJS neconfigurat complet!');
+  emailjs.init(key);
+  return emailjs.send(service, template, {
+    to_email: toEmail,
+    to_name: toName,
+    doc_name: docName,
+    sign_link: signLink,
+    from_name: fromName || 'SemDoc Flow',
+  });
+}
+
+// ── Launch flow ──
+async function launchFlow() {
+  // Validations — EmailJS optional (fallback to manual link mode)
+  if (!pdfBytes) { toast('⚠ Încarcă un PDF!', 'error'); return; }
+  if (!v('initName')) { toast('⚠ Completează numele inițiatorului!', 'error'); return; }
+
+  const sigs = getSigs();
+  if (!sigs.length) { toast('⚠ Adaugă cel puțin un semnatar!', 'error'); return; }
+  const missingEmail = sigs.find(s => !s.email);
+  if (missingEmail) { toast(`⚠ Email lipsă pentru: ${missingEmail.name || 'semnatar #' + missingEmail.order}`, 'error'); return; }
+
+  document.getElementById('btnLaunch').disabled = true;
+  document.getElementById('launchStatus').textContent = 'Se generează fluxul...';
+
+  try {
+    let flowId = 'FLOW-' + Date.now();
+
+    // Server mode: persist flow so link works on other devices
+    const useServer = SERVER_MODE;
+
+
+    // Convert PDF to base64 — handle large files safely
+    let pdfB64;
+    try {
+      const chunks = [];
+      const chunkSize = 8192;
+      for (let i = 0; i < pdfBytes.length; i += chunkSize) {
+        chunks.push(String.fromCharCode(...pdfBytes.slice(i, i + chunkSize)));
+      }
+      pdfB64 = btoa(chunks.join(''));
+    } catch(e) {
+      toast('❌ Fișierul PDF este prea mare pentru procesare în browser. Încearcă un PDF mai mic.', 'error');
+      document.getElementById('btnLaunch').disabled = false;
+      document.getElementById('launchStatus').textContent = '';
+      return;
+    }
+
+    // Build flow object
+    activeFlow = {
+      id: flowId,
+      docName: v('docName') || 'Document',
+      initName: v('initName'),
+      initEmail: v('initEmail'),
+      createdAt: new Date().toISOString(),
+      signers: sigs,
+      pdfB64: pdfB64,
+      ejsKey: v('ejsKey'),
+      ejsService: v('ejsService'),
+      ejsTemplate: v('ejsTemplate'),
+      status: 'active',
+    };
+
+    
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(activeFlow));
+
+    if (useServer) {
+      document.getElementById('launchStatus').textContent = 'Se încarcă fluxul pe server...';
+      const created = await serverCreateFlow({
+        docName: activeFlow.docName,
+        initName: activeFlow.initName,
+        initEmail: activeFlow.initEmail,
+        signers: activeFlow.signers,
+        pdfB64: activeFlow.pdfB64,
+        meta: { client: 'semdoc-plus' }
+      });
+      flowId = created.id;
+      activeFlow.serverId = created.id;
+      activeFlow.id = created.id;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(activeFlow));
+    }
+
+    // First signer link
+    const first = sigs[0];
+    const signerUrl = buildSignerURL(flowId, first.token, 0);
+
+    const hasEmailJS = v('ejsKey') && v('ejsService') && v('ejsTemplate');
+
+    if (hasEmailJS) {
+      // Try to send email
+      document.getElementById('launchStatus').textContent = `Se trimite email către ${first.email}...`;
+      try {
+        await sendEmail(first.email, first.name, activeFlow.docName, signerUrl, activeFlow.initName);
+        document.getElementById('launchStatus').textContent = '✅ Email trimis!';
+        toast(`✅ Flux lansat! Email trimis către ${first.name || first.email}`, 'success');
+      } catch(emailErr) {
+        console.warn('Email error:', emailErr);
+        // Fallback: show link manually
+        document.getElementById('launchStatus').textContent = '⚠ Email eșuat — copiază linkul manual';
+        showManualLink(signerUrl, first);
+        toast(`⚠ EmailJS error: ${emailErr.text || emailErr.message || 'necunoscut'}. Copiază linkul manual!`, 'error');
+      }
+    } else {
+      // No EmailJS — manual link mode
+      document.getElementById('launchStatus').textContent = '✅ Flux creat! Trimite linkul manual.';
+      showManualLink(signerUrl, first);
+      toast('✅ Flux generat! Copiază și trimite linkul primului semnatar.', 'success');
+    }
+
+    // Switch to dashboard after short delay
+    setTimeout(() => { showTab('dash'); refreshDash(); }, 2000);
+
+  } catch(err) {
+    console.error('launchFlow error:', err);
+    toast(`❌ Eroare neașteptată: ${err.message}`, 'error');
+    document.getElementById('launchStatus').textContent = 'Eroare — vezi consola browserului (F12)';
+  }
+
+  document.getElementById('btnLaunch').disabled = false;
+}
+
+function showManualLink(url, signer) {
+  // Show a copyable link in the UI
+  let box = document.getElementById('manualLinkBox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'manualLinkBox';
+    box.style.cssText = 'margin-top:14px;padding:14px;background:#fff8ee;border:1.5px solid var(--gold);border-radius:8px;';
+    document.getElementById('btnLaunch').parentNode.appendChild(box);
+  }
+  box.innerHTML = `
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--gold);margin-bottom:8px">
+      🔗 Trimite acest link către ${signer.name || signer.email}
+    </div>
+    <div style="background:var(--cream);border:1px solid var(--border);border-radius:5px;padding:8px 12px;font-family:monospace;font-size:11px;word-break:break-all;color:var(--ink2);margin-bottom:8px">
+      ${url}
+    </div>
+    <button onclick="navigator.clipboard.writeText('${url}').then(()=>toast('✅ Link copiat!','success'))"
+      style="background:var(--ink2);color:white;padding:7px 16px;border-radius:5px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;border:none">
+      📋 Copiază linkul
+    </button>
+  `;
+}
+
+// ── Signer URL ──
+function buildSignerURL(flowId, token, signerIdx) {
+  const base = (API_BASE || window.location.origin) + '/' + SIGNER_PAGE;
+  return `${base}?flow=${flowId}&token=${token}&idx=${signerIdx}`;
+}
+
+// ── Dashboard ──
+async function refreshDash() {
+  // Reload from storage
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) activeFlow = JSON.parse(saved);
+
+  // If we have a server-backed flow, prefer server state
+  if (activeFlow?.serverId) {
+    try {
+      const data = await serverGetFlow(activeFlow.serverId);
+      activeFlow = data.flow;
+      activeFlow.serverId = data.flow.id;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(activeFlow));
+    } catch (e) {
+      console.warn('Server refresh failed, fallback local:', e);
+    }
+  }
+
+  if (!activeFlow) {
+    document.getElementById('noDash').style.display = 'block';
+    document.getElementById('dashContent').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('noDash').style.display = 'none';
+  document.getElementById('dashContent').style.display = 'block';
+
+  const signers = activeFlow.signers;
+  const signed = signers.filter(s => s.status === 'signed').length;
+  const total = signers.length;
+
+  document.getElementById('dashDocName').textContent = activeFlow.docName;
+  document.getElementById('dashInitName').textContent = activeFlow.initName;
+  document.getElementById('dashFlowId').textContent = activeFlow.id;
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statSigned').textContent = signed;
+  document.getElementById('statPending').textContent = total - signed;
+  document.getElementById('progressFill').style.width = (total ? (signed / total * 100) : 0) + '%';
+  document.getElementById('progressLabel').textContent = `${signed} din ${total} semnatari`;
+
+  // Timeline
+  const currentIdx = signers.findIndex(s => s.status !== 'signed');
+  const tl = document.getElementById('timelineItems');
+  tl.innerHTML = signers.map((s, i) => {
+    const isSigned = s.status === 'signed';
+    const isCurrent = i === currentIdx;
+    const cls = isSigned ? 'signed' : isCurrent ? 'current' : '';
+    const dotCls = isSigned ? 'signed' : isCurrent ? 'current' : 'pending';
+    const dotIcon = isSigned ? '✓' : isCurrent ? '✍' : i + 1;
+    const badge = isSigned
+      ? '<span class="badge badge-signed">✓ Semnat</span>'
+      : isCurrent
+        ? '<span class="badge badge-current">⏳ Așteaptă</span>'
+        : '<span class="badge badge-pending">· În așteptare</span>';
+    const time = s.signedAt ? `<div class="tl-time">Semnat: ${new Date(s.signedAt).toLocaleString('ro-RO')}</div>` : '';
+    const resend = isCurrent && !isSigned
+      ? `<button class="resend" onclick="resendEmail(${i})">↻ Retrimite email</button>`
+      : '';
+    const link = isCurrent && !isSigned
+      ? `<div style="margin-top:4px"><a href="${buildSignerURL(activeFlow.id, s.token, i)}" target="_blank" style="font-size:10px;color:var(--ink2)">🔗 Link semnare</a></div>`
+      : '';
+    return `
+      <div class="tl-item ${cls}">
+        <div class="tl-dot ${dotCls}">${dotIcon}</div>
+        <div class="tl-info">
+          <div class="tl-name">${s.name || '—'}</div>
+          <div class="tl-role">${s.rol}</div>
+          <div class="tl-email">${s.email}</div>
+          ${time}${resend}${link}
+        </div>
+        ${badge}
+      </div>`;
+  }).join('');
+
+  // Show download if all signed
+  if (signed === total && total > 0) {
+    document.getElementById('btnDownFinal').style.display = 'inline-block';
+  }
+}
+
+async function resendEmail(idx) {
+  if (!activeFlow) return;
+  const s = activeFlow.signers[idx];
+  const url = buildSignerURL(activeFlow.id, s.token, idx);
+  try {
+    emailjs.init(activeFlow.ejsKey);
+    await emailjs.send(activeFlow.ejsService, activeFlow.ejsTemplate, {
+      to_email: s.email, to_name: s.name, doc_name: activeFlow.docName,
+      sign_link: url, from_name: activeFlow.initName,
+    });
+    toast(`✅ Email retrimis către ${s.email}`, 'success');
+  } catch(err) {
+    toast(`❌ Eroare: ${err.text || err.message}`, 'error');
+  }
+}
+
+function downloadFinal() {
+  if (!activeFlow?.pdfB64) return;
+  const bytes = Uint8Array.from(atob(activeFlow.pdfB64), c => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${activeFlow.docName}_SEMNAT.pdf`;
+  a.click();
+}
+
+// ── Utils ──
+function generateToken() { return Math.random().toString(36).substr(2, 12) + Date.now().toString(36); }
+
+let toastTimer;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = type ? `show ${type}` : 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+}
+</script>
+</body>
+</html>
