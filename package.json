@@ -1,16 +1,16 @@
 {
-  "name": "semdoc-plus",
-  "version": "1.1.0",
+  "name": "docflowai-app",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "server/index.mjs",
   "scripts": {
     "start": "node server/index.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "express-rate-limit": "^7.5.0",
-    "pg": "^8.12.0",
-    "nodemailer": "^6.9.14"
+    "nodemailer": "^6.9.14",
+    "pg": "^8.12.0"
   }
 }
