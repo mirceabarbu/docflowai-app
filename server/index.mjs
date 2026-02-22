@@ -4,6 +4,7 @@ import pg from "pg";
 import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
+import { sendSignerEmail } from "./mailer.mjs";
 
 const { Pool } = pg;
 
@@ -11,7 +12,6 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));
 
-// Log hard errors (să le vezi în Railway Logs)
 process.on("unhandledRejection", (err) => console.error("❌ unhandledRejection:", err));
 process.on("uncaughtException", (err) => console.error("❌ uncaughtException:", err));
 
@@ -27,11 +27,6 @@ app.get("/", (req, res) => {
 
 // -------------------- Postgres --------------------
 const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  console.error("❌ DATABASE_URL is missing. Add it in Railway Variables.");
-  // NU ieșim: lăsăm serverul să pornească pentru debug / UI
-}
-
 const pool = DATABASE_URL
   ? new Pool({
       connectionString: DATABASE_URL,
@@ -45,11 +40,7 @@ let DB_LAST_ERROR = null;
 
 async function initDbOnce() {
   if (!pool) throw new Error("DATABASE_URL missing (pool not created)");
-
-  // Test connect
   await pool.query("SELECT 1");
-
-  // Ensure schema
   await pool.query(`
     CREATE TABLE IF NOT EXISTS flows (
       id TEXT PRIMARY KEY,
@@ -58,11 +49,9 @@ async function initDbOnce() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
-
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_flows_updated_at ON flows(updated_at DESC);
   `);
-
   DB_READY = true;
   DB_LAST_ERROR = null;
   console.log("✅ DB ready (flows table ensured)");
@@ -85,7 +74,14 @@ async function initDbWithRetry() {
   console.error("❌ DB init failed permanently (after retries). Server stays up for debugging.");
 }
 
-// Helpers
+function requireDb(res) {
+  if (!DB_READY) {
+    res.status(503).json({ error: "db_not_ready", dbLastError: DB_LAST_ERROR });
+    return True
+  }
+  return False
+}
+
 function newFlowId() {
   return "FLOW_" + crypto.randomBytes(8).toString("hex").toUpperCase();
 }
@@ -116,17 +112,9 @@ app.get("/health", (req, res) => {
 });
 
 // -------------------- FLOWS API --------------------
-function requireDb(req, res) {
-  if (!DB_READY) {
-    return res.status(503).json({ error: "db_not_ready", dbLastError: DB_LAST_ERROR });
-  }
-  return null;
-}
-
 app.post("/flows", async (req, res) => {
   try {
-    const blocked = requireDb(req, res);
-    if (blocked) return;
+    if (requireDb(res)) return;
 
     const body = req.body || {};
     const docName = String(body.docName || "").trim();
@@ -170,6 +158,25 @@ app.post("/flows", async (req, res) => {
     };
 
     await saveFlow(flowId, data);
+
+    const first = data.signers.find((s) => s.status === "current");
+    if (first?.email) {
+      const link = `https://app.docflowai.ro/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(first.token)}`;
+      await sendSignerEmail({
+        to: first.email,
+        subject: `Semnare document: ${data.docName}`,
+        html: `
+          <p>Bună ${first.name || ""},</p>
+          <p>Ai un document de semnat:</p>
+          <p><strong>${data.docName}</strong></p>
+          <p>Link semnare:</p>
+          <p><a href="${link}">${link}</a></p>
+          <br/>
+          <p>— DocFlowAI</p>
+        `,
+      });
+    }
+
     return res.json({ ok: true, flowId });
   } catch (e) {
     console.error("POST /flows error:", e);
@@ -179,9 +186,7 @@ app.post("/flows", async (req, res) => {
 
 app.get("/flows/:flowId", async (req, res) => {
   try {
-    const blocked = requireDb(req, res);
-    if (blocked) return;
-
+    if (requireDb(res)) return;
     const data = await getFlow(req.params.flowId);
     if (!data) return res.status(404).json({ error: "not_found" });
     return res.json(data);
@@ -193,9 +198,7 @@ app.get("/flows/:flowId", async (req, res) => {
 
 app.put("/flows/:flowId", async (req, res) => {
   try {
-    const blocked = requireDb(req, res);
-    if (blocked) return;
-
+    if (requireDb(res)) return;
     const { flowId } = req.params;
     const existing = await getFlow(flowId);
     if (!existing) return res.status(404).json({ error: "not_found" });
@@ -214,8 +217,7 @@ app.put("/flows/:flowId", async (req, res) => {
 
 app.post("/flows/:flowId/sign", async (req, res) => {
   try {
-    const blocked = requireDb(req, res);
-    if (blocked) return;
+    if (requireDb(res)) return;
 
     const { flowId } = req.params;
     const { token } = req.body || {};
@@ -248,17 +250,35 @@ app.post("/flows/:flowId/sign", async (req, res) => {
     });
 
     await saveFlow(flowId, data);
-    return res.json({ ok: true, flowId, nextSigner: signers.find((s) => s.status === "current") || null });
+
+    const next = data.signers.find((s) => s.status === "current");
+    if (next?.email) {
+      const link = `https://app.docflowai.ro/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(next.token)}`;
+      await sendSignerEmail({
+        to: next.email,
+        subject: `Urmezi la semnare: ${data.docName}`,
+        html: `
+          <p>Bună ${next.name || ""},</p>
+          <p>Este rândul tău să semnezi documentul:</p>
+          <p><strong>${data.docName}</strong></p>
+          <p>Link semnare:</p>
+          <p><a href="${link}">${link}</a></p>
+          <br/>
+          <p>— DocFlowAI</p>
+        `,
+      });
+    }
+
+    return res.json({ ok: true, flowId, nextSigner: data.signers.find((s) => s.status === "current") || null });
   } catch (e) {
     console.error("POST /flows/:flowId/sign error:", e);
     return res.status(500).json({ error: "server_error" });
   }
 });
 
-// -------------------- Start server FIRST --------------------
+// -------------------- Start --------------------
 const PORT = Number(process.env.PORT || 8080);
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 SemDoc+ server running on port ${PORT}`);
-  // init DB in background (won't kill container)
   initDbWithRetry();
 });
