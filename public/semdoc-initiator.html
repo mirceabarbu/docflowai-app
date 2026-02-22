@@ -523,7 +523,7 @@ async function refreshDash(){
 
   try {
     const data = await apiFetch(`/flows/${encodeURIComponent(flowId)}`, { method:'GET' });
-    const f = data.flow;
+    const f = data.flow || data;
     if (!f) throw new Error('Flux inexistent');
 
     $('noDash').style.display = 'none';
@@ -536,7 +536,7 @@ async function refreshDash(){
 
     $('dashDocName').textContent = f.docName || '—';
     $('dashInitName').textContent = f.initName || '—';
-    $('dashFlowId').textContent = f.id || flowId;
+    $('dashFlowId').textContent = f.flowId || f.id || flowId;
     $('statTotal').textContent = total;
     $('statSigned').textContent = signed;
     $('statPending').textContent = Math.max(0, total - signed);
