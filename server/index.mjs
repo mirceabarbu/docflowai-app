@@ -76,10 +76,13 @@ async function initDbWithRetry() {
 
 function requireDb(res) {
   if (!DB_READY) {
-    res.status(503).json({ error: "db_not_ready", dbLastError: DB_LAST_ERROR });
-    return true
+    res.status(503).json({
+      error: "db_not_ready",
+      dbLastError: DB_LAST_ERROR,
+    });
+    return true;
   }
-  return false
+  return false;
 }
 
 function newFlowId() {
