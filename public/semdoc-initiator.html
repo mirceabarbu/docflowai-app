@@ -61,7 +61,7 @@ input:focus,select:focus{outline:none;border-color:var(--ink2);background:white;
 .pdf-name{font-weight:600;font-size:13px;}
 .pdf-meta{font-size:11px;color:var(--muted);}
 
-.sig-row{display:grid;grid-template-columns:28px 1fr 1fr 1fr auto;gap:8px;align-items:center;background:var(--cream);border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;transition:all .15s;cursor:default;}
+.sig-row{display:grid;grid-template-columns:28px 160px 1fr 1fr 1fr auto;gap:8px;align-items:center;background:var(--cream);border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;transition:all .15s;cursor:default;}
 .sig-row:hover{border-color:var(--ink2);}
 .sig-num{width:26px;height:26px;border-radius:50%;background:var(--ink2);color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .sig-row input{background:white;margin:0;}
@@ -221,9 +221,10 @@ button{font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:al
         <div><div class="card-title">Semnatari (în ordine)</div><div class="card-sub">Fiecare semnează după cel de dinainte</div></div>
       </div>
       <div class="card-body">
-        <div style="display:grid;grid-template-columns:28px 1fr 1fr 1fr auto;gap:8px;padding:0 14px 8px;margin-bottom:4px;">
+        <div style="display:grid;grid-template-columns:28px 160px 1fr 1fr 1fr auto;gap:8px;padding:0 14px 8px;margin-bottom:4px;">
           <span></span>
-          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Rol</span>
+          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Atribut</span>
+          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Funcție</span>
           <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Nume și prenume</span>
           <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Email</span>
           <span></span>
@@ -329,8 +330,9 @@ window.addEventListener('DOMContentLoaded', () => {
   loadConfig();
 
   // Default rows (poți schimba)
-  addSig('ÎNTOCMIT', '', '');
-  addSig('ȘEF STRUCTURĂ', '', '');
+  addSig('ÎNTOCMIT', '', '', '');
+  addSig('VIZAT', '', '', '');
+  addSig('APROBAT', '', '', '');
   // addSig('APROBAT', '', '');
 
   // File handlers
@@ -487,23 +489,66 @@ function updateSteps() {
 }
 
 // --- Signers ---
-function addSig(rol='', name='', email='') {
+function addSig(rol='', functie='', name='', email='') {
   sigIdCnt++;
   const id = sigIdCnt;
+
+  const roles = [
+    'ÎNTOCMIT',
+    'VERIFICAT',
+    'VIZAT',
+    'AVIZAT',
+    'VIZA CFPP',
+    'BUN DE PLATĂ',
+    'APROBAT',
+    'CONTRASEMNAT',
+    'CERTIFICAT',
+    'ALTUL…'
+  ];
+
+  const isOther = rol && !roles.slice(0,-1).includes(rol);
+  const selectValue = isOther ? 'ALTUL…' : (rol || 'ÎNTOCMIT');
 
   const row = document.createElement('div');
   row.className = 'sig-row';
   row.dataset.id = String(id);
+
   row.innerHTML = `
     <div class="sig-num">${id}</div>
-    <input type="text" placeholder="Rol (ex: APROBAT)" value="${escapeHtml(rol)}">
-    <input type="text" placeholder="Nume și prenume" value="${escapeHtml(name)}">
-    <input type="email" placeholder="email@exemplu.ro" value="${escapeHtml(email)}">
+
+    <div style="display:flex;gap:6px;align-items:center;">
+      <select class="sig-role" onchange="onRoleChange(this)">
+        ${roles.map(r => `<option value="${escapeAttr(r)}" ${r===selectValue?'selected':''}>${escapeHtml(r)}</option>`).join('')}
+      </select>
+      <input type="text" class="sig-role-other" placeholder="Atribut personalizat"
+        value="${isOther ? escapeAttr(rol) : ''}"
+        style="display:${isOther?'block':'none'};min-width:140px;">
+    </div>
+
+    <input type="text" class="sig-functie" placeholder="Funcție (ex: Director Economic / Primar)" value="${escapeAttr(functie)}">
+    <input type="text" class="sig-name" placeholder="Nume și prenume" value="${escapeAttr(name)}">
+    <input type="email" class="sig-email" placeholder="email@exemplu.ro" value="${escapeAttr(email)}">
     <button class="delbtn" onclick="delSig(${id})">✕</button>
   `;
+
   document.getElementById('sigRows').appendChild(row);
   renumSigs();
 }
+
+function onRoleChange(sel) {
+  const row = sel.closest('.sig-row');
+  const other = row?.querySelector('.sig-role-other');
+  if (!other) return;
+
+  if (sel.value === 'ALTUL…') {
+    other.style.display = 'block';
+    other.focus();
+  } else {
+    other.style.display = 'none';
+    other.value = '';
+  }
+}
+
 
 function delSig(id) {
   const el = document.querySelector(`.sig-row[data-id="${id}"]`);
@@ -529,18 +574,30 @@ function generateToken(len=24) {
 
 function getSigs() {
   return [...document.querySelectorAll('.sig-row')].map((r, i) => {
-    const inp = r.querySelectorAll('input');
+    const sel = r.querySelector('.sig-role');
+    const other = r.querySelector('.sig-role-other');
+    const functie = (r.querySelector('.sig-functie')?.value || '').trim();
+    const name = (r.querySelector('.sig-name')?.value || '').trim();
+    const email = (r.querySelector('.sig-email')?.value || '').trim();
+
+    let rol = (sel?.value || '').trim();
+    if (rol === 'ALTUL…') {
+      rol = (other?.value || '').trim();
+    }
+
     return {
       order: i+1,
-      rol: (inp[0]?.value || '').trim(),
-      name: (inp[1]?.value || '').trim(),
-      email: (inp[2]?.value || '').trim(),
+      rol,
+      functie,
+      name,
+      email,
       status: 'pending',
       signedAt: null,
       token: generateToken()
     };
   });
 }
+
 
 function buildSignerURL(flowId, token, signerIdx) {
   const base = (API_BASE || window.location.origin).replace(/\/$/, '') + '/' + SIGNER_PAGE;
@@ -699,7 +756,9 @@ async function refreshDash() {
         <div class="tl-dot ${dotCls}">${dotIcon}</div>
         <div style="flex:1">
           <div style="font-weight:600;font-size:13px">${escapeHtml(s.name || '—')}</div>
-          <div style="font-size:11px;color:var(--muted)">${escapeHtml(s.rol || '')}</div>
+          <div style="font-size:11px;color:var(--muted)">
+          ${escapeHtml(s.rol || '')}${s.functie ? ' · ' + escapeHtml(s.functie) : ''}
+          </div>
           <div style="font-size:11px;color:var(--ink2);margin-top:1px">${escapeHtml(s.email || '')}</div>
           ${time}
           ${link}
