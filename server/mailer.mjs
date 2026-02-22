@@ -32,6 +32,30 @@ function ensureTransport() {
   return transporter;
 }
 
+/**
+ * Nodemailer accepta doua formate pentru "from":
+ *   1. simplu:    noreply@docflowai.ro
+ *   2. cu nume:   { name: "DocFlowAI", address: "noreply@docflowai.ro" }
+ *
+ * EBADNAME apare cand MAIL_FROM din .env este un string de tipul:
+ *   DocFlowAI <noreply@docflowai.ro>
+ * si nodemailer primeste obiectul { name, address } gresit formatat.
+ *
+ * Solutia: parsam manual string-ul si construim obiectul corect.
+ */
+function parseFrom(raw) {
+  if (!raw) return null;
+
+  // Format "Nume <email@domeniu.ro>"
+  const match = raw.match(/^(.+?)\s*<([^>]+)>$/);
+  if (match) {
+    return { name: match[1].trim(), address: match[2].trim() };
+  }
+
+  // Format simplu "email@domeniu.ro"
+  return raw.trim();
+}
+
 export async function sendSignerEmail({ to, subject, html }) {
   const tx = ensureTransport();
   if (!tx) {
@@ -39,13 +63,11 @@ export async function sendSignerEmail({ to, subject, html }) {
     return;
   }
 
-  // BUG FIX: in versiunea anterioara "from" era process.env.MAIL_FROM || SMTP_USER
-  // dar SMTP_USER era destructurat doar in ensureTransport(), nu in acest scope
-  // => "from" devenea undefined si nodemailer refuza sa trimita
-  const from = process.env.MAIL_FROM || process.env.SMTP_USER;
+  const rawFrom = process.env.MAIL_FROM || process.env.SMTP_USER;
+  const from    = parseFrom(rawFrom);
 
   if (!from) {
-    console.error("MAIL_FROM si SMTP_USER lipsesc din variabilele de mediu — email anulat");
+    console.error("MAIL_FROM si SMTP_USER lipsesc — email anulat");
     return;
   }
 
@@ -53,7 +75,6 @@ export async function sendSignerEmail({ to, subject, html }) {
     await tx.sendMail({ from, to, subject, html });
     console.log("Email trimis -> " + to + " | " + subject);
   } catch (err) {
-    // Aruncam eroarea sa apara clar in logs Railway/Vercel
     console.error("sendMail esuat catre " + to + " :", err.message);
     throw err;
   }
