@@ -1,419 +1,184 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ro">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SemDoc Flow – Semnare</title>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>DocFlowAI — Semnare</title>
+    <style>
+      body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
+      header { padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); }
+      main { padding: 18px 20px; max-width: 900px; margin: 0 auto; }
+      .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; }
+      .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+      .btn { background: rgba(120,160,255,.22); border:1px solid rgba(120,160,255,.45); color:#e9eefc; padding:10px 12px; border-radius: 12px; cursor:pointer; }
+      .btn.secondary { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .pill { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12px; }
+      .muted { opacity:.85; }
+      .box { background: rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; }
+      textarea { width:100%; min-height: 90px; padding:10px; border-radius: 12px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
+      a { color: #a9c2ff; }
+      .hidden { display:none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div style="font-weight:800">DocFlowAI / SemDoc — Semnare</div>
+      <div class="muted" id="sub">—</div>
+    </header>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <main>
+      <div class="card">
+        <div id="err" class="box hidden" style="border-color: rgba(255,90,120,.35);"></div>
 
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
-    :root{--ink:#0f1923;--ink2:#1a3a5c;--gold:#c8832a;--gold2:#e8a84a;--cream:#f4f1eb;--paper:#fdfcfa;--border:#ddd8ce;--success:#27ae60;--warn:#f39c12;--danger:#e74c3c;--muted:#8a8a8a;}
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);min-height:100vh;}
-    header{background:var(--ink);border-bottom:3px solid var(--gold);padding:0 30px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
-    .brand{font-family:'Playfair Display',serif;font-size:19px;color:white;}
-    .brand em{color:var(--gold2);font-style:normal;}
-
-    .wrap{display:flex;gap:18px;max-width:1400px;margin:0 auto;padding:18px;}
-    .doc{flex:1;background:white;border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.05)}
-    .docbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--paper)}
-    .docname{font-family:'Playfair Display',serif;color:var(--ink2)}
-    .docmeta{font-size:11px;color:var(--muted)}
-    .pages{padding:12px;background:#eee;overflow:auto;max-height:calc(100vh - 110px)}
-    canvas{display:block;margin:0 auto 12px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.15)}
-
-    .side{width:360px;max-width:44vw;}
-    .panel{background:white;border:1px solid var(--border);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.05);overflow:hidden;}
-    .phead{background:var(--ink);color:white;padding:16px 18px;border-bottom:3px solid var(--gold);}
-    .ptitle{font-family:'Playfair Display',serif;font-size:18px;}
-    .psub{font-size:12px;color:rgba(255,255,255,.55);margin-top:2px;}
-    .pbody{padding:16px 18px;}
-
-    .who{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;background:var(--paper)}
-    .who h3{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;}
-    .who .nm{font-weight:800;color:var(--ink2)}
-    .who .role{font-size:12px;color:var(--muted)}
-    .who .em{font-size:12px;color:var(--ink2);word-break:break-all}
-
-    .nextbox{border:1px solid var(--gold);background:#fff8ee;border-radius:8px;padding:10px 12px;margin-bottom:12px;}
-    .nextbox h4{font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;}
-    .nextbox .nextnm{font-weight:800;color:var(--ink2)}
-    .nextbox .nextr{font-size:12px;color:var(--muted)}
-
-    .sigbox{border:1.5px solid var(--border);border-radius:8px;padding:12px;background:var(--paper)}
-    .sigbox h4{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;}
-    #sigCanvas{width:100%;height:120px;border-radius:6px;border:1px solid var(--border);background:white;touch-action:none;}
-    .sig-actions{display:flex;gap:8px;margin-top:10px;}
-    button{font-family:'DM Sans',sans-serif;border:none;cursor:pointer;transition:all .15s;}
-    .btn{padding:10px 14px;border-radius:7px;font-weight:700;font-size:13px;}
-    .btn-gold{background:var(--gold);color:white;}
-    .btn-gold:hover{background:var(--gold2)}
-    .btn-outline{background:white;color:var(--ink2);border:1.5px solid var(--ink2)}
-    .btn-outline:hover{background:var(--ink2);color:white}
-    .btn-danger{background:#feeaea;color:var(--danger);border:1.5px solid #f7b5b5}
-    .btn-danger:hover{background:#fbd2d2}
-    .btn:disabled{background:#ddd;color:#888;border-color:#ddd;cursor:not-allowed}
-
-    .consent{display:flex;gap:8px;margin-top:12px;font-size:12px;color:var(--muted);align-items:flex-start}
-    .consent input{margin-top:2px;flex-shrink:0}
-
-    .msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:12px;display:none;}
-    .msg.ok{background:#eef9f1;border:1.5px solid var(--success);color:#1a6e3a;display:block}
-    .msg.err{background:#feeaea;border:1.5px solid var(--danger);color:#8a1a1a;display:block}
-    .msg.warn{background:#fff8ee;border:1.5px solid var(--warn);color:#8a5a00;display:block}
-
-    .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:white;border-radius:50%;animation:spin .7s linear infinite;margin-right:8px;vertical-align:middle;}
-    @keyframes spin{to{transform:rotate(360deg)}}
-
-    @media (max-width: 980px){
-      .wrap{flex-direction:column}
-      .side{width:100%;max-width:100%}
-      .pages{max-height:none}
-    }
-  </style>
-</head>
-
-<body>
-  <header>
-    <div class="brand">✦ SemDoc <em>Flow</em></div>
-    <div style="color:rgba(255,255,255,.55);font-size:12px" id="headerStatus">Se încarcă…</div>
-  </header>
-
-  <div class="wrap">
-    <div class="doc">
-      <div class="docbar">
-        <div>
-          <div class="docname" id="docName">—</div>
-          <div class="docmeta" id="docMeta">—</div>
-        </div>
-        <div style="margin-left:auto">
-          <button class="btn btn-outline" id="btnDownload" style="padding:7px 10px;font-size:12px;display:none" onclick="downloadCurrent()">⬇ Descarcă PDF</button>
-        </div>
-      </div>
-      <div class="pages" id="pdfPages">
-        <div style="padding:40px;text-align:center;color:var(--muted)" id="loadingMsg">
-          <div style="font-size:32px;margin-bottom:12px">⏳</div>
-          Se verifică accesul și se încarcă documentul…
-        </div>
-      </div>
-    </div>
-
-    <div class="side">
-      <div class="panel">
-        <div class="phead">
-          <div class="ptitle" id="panelTitle">Semnare document</div>
-          <div class="psub" id="panelSub">—</div>
-        </div>
-        <div class="pbody">
-          <div class="who">
-            <h3>Ești rugat(ă) să semnezi</h3>
-            <div class="nm"   id="whoName">—</div>
-            <div class="role" id="whoRole">—</div>
-            <div class="em"   id="whoEmail">—</div>
-          </div>
-
-          <div class="nextbox" id="nextBox" style="display:none">
-            <h4>Urmează</h4>
-            <div class="nextnm" id="nextName">—</div>
-            <div class="nextr"  id="nextRole">—</div>
-          </div>
-
-          <div class="sigbox" id="sigSection" style="display:none">
-            <h4>Semnătura ta</h4>
-            <canvas id="sigCanvas"></canvas>
-            <div class="sig-actions">
-              <button class="btn btn-danger" onclick="clearSig()">Șterge</button>
-              <button class="btn btn-gold"   id="btnSign" onclick="submitSign()">✍ Semnează</button>
+        <div id="content">
+          <div class="row" style="justify-content: space-between;">
+            <div>
+              <div class="muted">Document</div>
+              <div id="docName" style="font-weight:700">—</div>
             </div>
-            <div class="consent">
-              <input type="checkbox" id="consent" />
-              <label for="consent">Confirm că am citit documentul și sunt de acord să aplic semnătura electronică olografă.</label>
+            <div>
+              <div class="muted">Flow</div>
+              <div class="mono" id="flowId">—</div>
             </div>
           </div>
 
-          <div class="msg" id="msg"></div>
+          <div style="height:12px"></div>
+
+          <div class="box">
+            <div class="row">
+              <span class="pill" id="whoPill">—</span>
+              <span class="muted" id="whoText">—</span>
+            </div>
+            <div style="height:10px"></div>
+            <div class="muted">Semnătură (MVP):</div>
+            <textarea id="signature" placeholder="Scrie 'Semnat' / nume / sau orice text (MVP)..."></textarea>
+
+            <div style="height:12px"></div>
+            <div class="row">
+              <button id="btnSign" class="btn" type="button">Semnează</button>
+              <button id="btnRefresh" class="btn secondary" type="button">Refresh</button>
+              <span id="result" class="muted"></span>
+            </div>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="box">
+            <div class="muted">Status rapid:</div>
+            <pre id="quick" style="white-space: pre-wrap; margin: 0;"></pre>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="muted">
+            Dacă ai fost direcționat greșit, trimite inițiatorului link-ul complet din adresă (flow + token).
+          </div>
         </div>
       </div>
-    </div>
-  </div>
+    </main>
 
-<script>
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    <script>
+      const $ = (id) => document.getElementById(id);
 
-  const SIGN_BOX = { width: 180, height: 60, marginRight: 36, marginBottom: 46 };
-
-  let flowId = null;
-  let token  = null;
-  let idx    = null;
-  let flow   = null;
-  let signer = null;
-  let pdfU8  = null;
-
-  function apiBase(){ return (window.SEMDOC_API_BASE || location.origin).replace(/\/$/, ''); }
-
-  async function apiFetch(path, opts = {}){
-    const res  = await fetch(apiBase() + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
-  }
-
-  function qs(name){ return new URLSearchParams(location.search).get(name); }
-
-  function setMsg(text, kind='ok'){
-    const el = document.getElementById('msg');
-    el.className    = 'msg ' + kind;
-    el.textContent  = text;
-    el.style.display = 'block';
-  }
-  function clearMsg(){ document.getElementById('msg').style.display = 'none'; }
-
-  function b64ToU8(b64){
-    const bin = atob(b64);
-    const u8  = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    return u8;
-  }
-  function u8ToB64(u8){
-    const chunk = 0x8000;
-    let out = '';
-    for (let i = 0; i < u8.length; i += chunk)
-      out += String.fromCharCode(...u8.subarray(i, i + chunk));
-    return btoa(out);
-  }
-
-  // ─────────────────────────────────────────────
-  // BOOT — BUG FIX #3: verificarea token-ului e pe server
-  // ─────────────────────────────────────────────
-  async function boot(){
-    flowId = qs('flow');
-    token  = qs('token');
-    idx    = Number(qs('idx') ?? '0');
-
-    if (!flowId || !token || isNaN(idx)){
-      setMsg('Link invalid. Lipsesc parametri (flow / token / idx).', 'err');
-      document.getElementById('headerStatus').textContent = 'Link invalid';
-      return;
-    }
-
-    try {
-      // BUG FIX #3: folosim endpoint-ul /signer care verifică tokenul pe server
-      // Serverul returnează eroare 403 dacă tokenul nu corespunde idx-ului
-      const resp = await apiFetch(
-        `/flows/${encodeURIComponent(flowId)}/signer?token=${encodeURIComponent(token)}&idx=${encodeURIComponent(idx)}`
-      );
-
-      flow   = resp.flow;
-      signer = flow.signers?.[idx];
-
-      if (!signer) throw new Error('Semnatar invalid.');
-
-      // Populăm UI
-      document.getElementById('docName').textContent  = flow.docName || 'Document';
-      document.getElementById('docMeta').textContent  = `Inițiat de ${flow.initName || '—'} · ${new Date(flow.createdAt || Date.now()).toLocaleString('ro-RO')}`;
-      document.getElementById('panelSub').textContent = flow.flowId || flowId;
-      document.getElementById('whoName').textContent  = signer.name  || '—';
-      document.getElementById('whoEmail').textContent = signer.email || '—';
-      document.getElementById('whoRole').textContent  = [signer.atribut, signer.functie].filter(Boolean).join(' · ') || '—';
-      document.getElementById('headerStatus').textContent = 'Document activ';
-      document.getElementById('btnDownload').style.display = 'inline-block';
-
-      // Verificăm starea semnătarului
-      if (signer.status === 'signed'){
-        setMsg('✅ Ai semnat deja acest document. Mulțumim!', 'ok');
-        showNextBox();
-      } else if (signer.status === 'pending'){
-        setMsg('⏳ Încă nu este rândul tău. Vei primi un email când trebuie să semnezi.', 'warn');
-        showNextBox();
-      } else {
-        // status === 'current' → afișăm canvas
-        clearMsg();
-        document.getElementById('sigSection').style.display = 'block';
-        showNextBox();
+      function showError(msg) {
+        $("err").classList.remove("hidden");
+        $("err").textContent = "❌ " + msg;
       }
 
-      // Încărcăm PDF-ul
-      if (!flow.pdfB64) throw new Error('PDF lipsă în flux.');
-      pdfU8 = b64ToU8(flow.pdfB64);
-      await renderPdf(pdfU8);
-      if (signer.status === 'current') setupSignature();
+      const params = new URLSearchParams(location.search);
+      const flow = params.get("flow");
+      const token = params.get("token");
 
-    } catch(err){
-      console.error(err);
-      const msg = err.message === 'token_invalid'
-        ? 'Link invalid sau expirat. Te rugăm contactează inițiatorul documentului.'
-        : (err.message || 'Eroare la încărcarea documentului.');
-      setMsg(msg, 'err');
-      document.getElementById('headerStatus').textContent = 'Eroare';
-      document.getElementById('loadingMsg')?.remove();
-    }
-  }
+      if (!flow || !token) {
+        showError("Link invalid. Lipsesc parametri (flow/token).");
+        $("content").style.display = "none";
+      } else {
+        $("flowId").textContent = flow;
+        $("sub").textContent = `flow=${flow} · token=${token.slice(0, 6)}…`;
+      }
 
-  function showNextBox(){
-    const next = flow.signers?.[idx + 1];
-    if (next){
-      document.getElementById('nextBox').style.display = 'block';
-      document.getElementById('nextName').textContent  = next.name || '—';
-      document.getElementById('nextRole').textContent  = [next.atribut, next.functie].filter(Boolean).join(' · ') || '—';
-    }
-  }
+      let currentFlow = null;
+      let signerIndex = -1;
 
-  // ─── PDF render ───────────────────────────────
-  async function renderPdf(u8){
-    const container = document.getElementById('pdfPages');
-    container.innerHTML = '';
-    const doc  = await pdfjsLib.getDocument({ data: u8 }).promise;
-    for (let p = 1; p <= doc.numPages; p++){
-      const page   = await doc.getPage(p);
-      const vp     = page.getViewport({ scale: 1.35 });
-      const canvas = document.createElement('canvas');
-      const ctx    = canvas.getContext('2d');
-      canvas.width  = vp.width;
-      canvas.height = vp.height;
-      container.appendChild(canvas);
-      await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    }
-  }
+      async function loadFlow() {
+        if (!flow || !token) return;
 
-  function downloadCurrent(){
-    if (!pdfU8) return;
-    const blob = new Blob([pdfU8], { type: 'application/pdf' });
-    const a    = document.createElement('a');
-    a.href     = URL.createObjectURL(blob);
-    a.download = `${(flow?.docName || 'Document').replace(/[^a-z0-9\-_ ]/gi,'_')}.pdf`;
-    a.click();
-  }
+        $("result").textContent = "Se încarcă...";
+        const r = await fetch(`/flows/${encodeURIComponent(flow)}`);
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "server_error");
 
-  // ─── Signature canvas ─────────────────────────
-  let sigCanvas, sigCtx, drawing = false, hasInk = false;
+        currentFlow = j;
+        signerIndex = (j.signers || []).findIndex(s => s.token === token);
+        if (signerIndex === -1) throw new Error("Token invalid (nu corespunde niciunui semnatar).");
 
-  function setupSignature(){
-    sigCanvas = document.getElementById('sigCanvas');
-    const rect = sigCanvas.getBoundingClientRect();
-    sigCanvas.width  = Math.max(280, Math.floor(rect.width));
-    sigCanvas.height = 120;
-    sigCtx = sigCanvas.getContext('2d');
-    sigCtx.lineWidth   = 2.2;
-    sigCtx.lineCap     = 'round';
-    sigCtx.lineJoin    = 'round';
-    sigCtx.strokeStyle = '#0f1923';
+        $("docName").textContent = j.docName || "—";
 
-    const getPos = e => {
-      const r = sigCanvas.getBoundingClientRect();
-      return {
-        x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left,
-        y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top,
-      };
-    };
-    const start = e => { drawing = true; const p = getPos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); e.preventDefault(); };
-    const move  = e => { if (!drawing) return; const p = getPos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); hasInk = true; e.preventDefault(); };
-    const end   = e => { drawing = false; e?.preventDefault?.(); };
+        const s = j.signers[signerIndex];
+        const who = `${s.rol || ""} / ${s.functie || ""}`;
+        $("whoPill").textContent = (s.status || "pending").toUpperCase();
+        $("whoText").textContent = `${who} — ${s.name || ""} <${s.email || ""}>`;
 
-    sigCanvas.addEventListener('mousedown',  start);
-    sigCanvas.addEventListener('mousemove',  move);
-    window.addEventListener('mouseup',       end);
-    sigCanvas.addEventListener('touchstart', start, { passive: false });
-    sigCanvas.addEventListener('touchmove',  move,  { passive: false });
-    sigCanvas.addEventListener('touchend',   end,   { passive: false });
-  }
+        const lines = [];
+        lines.push(`Semnatar curent: ${j.signers.findIndex(x => x.status === "current") + 1}`);
+        (j.signers || []).forEach((x, i) => {
+          lines.push(`${i+1}. ${x.status || "pending"} :: ${x.rol || ""} :: ${x.name || ""}`);
+        });
+        $("quick").textContent = lines.join("\n");
 
-  function clearSig(){
-    if (!sigCtx) return;
-    sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
-    hasInk = false;
-  }
+        if (s.status !== "current") {
+          $("btnSign").disabled = true;
+          $("btnSign").style.opacity = 0.6;
+          $("result").textContent = `Nu e rândul tău (status: ${s.status}).`;
+        } else {
+          $("btnSign").disabled = false;
+          $("btnSign").style.opacity = 1;
+          $("result").textContent = "";
+        }
+      }
 
-  // ─── SIGN — BUG FIX #1: folosim POST /flows/:id/sign ────
-  async function submitSign(){
-    const consent = document.getElementById('consent');
-    if (!consent.checked){ setMsg('Bifează confirmarea înainte de semnare.', 'warn'); return; }
-    if (!hasInk){          setMsg('Te rog semnează în căsuță (cu mouse sau touch).', 'warn'); return; }
-
-    const btn = document.getElementById('btnSign');
-    btn.disabled  = true;
-    btn.innerHTML = '<span class="spinner"></span>Se aplică semnătura…';
-    setMsg('Se aplică semnătura în PDF și se salvează…', 'warn');
-
-    try {
-      // 1) Aplicăm semnătura grafică în PDF (local, în browser)
-      const sigPng      = sigCanvas.toDataURL('image/png');
-      const signedPdfU8 = await embedSignature(pdfU8, sigPng, signer);
-      const signedB64   = u8ToB64(signedPdfU8);
-
-      // BUG FIX #1: trimitem la /flows/:id/sign (nu PUT), care trimite și emailul
-      const result = await apiFetch(`/flows/${encodeURIComponent(flowId)}/sign`, {
-        method: 'POST',
-        body:   JSON.stringify({ token, idx, pdfB64: signedB64 }),
+      $("btnRefresh").addEventListener("click", async () => {
+        try {
+          await loadFlow();
+        } catch (e) {
+          showError(String(e.message || e));
+        }
       });
 
-      // Actualizăm PDF-ul afișat cu versiunea semnată
-      pdfU8 = signedPdfU8;
-      await renderPdf(pdfU8);
+      $("btnSign").addEventListener("click", async () => {
+        try {
+          if (!currentFlow) await loadFlow();
+          const s = currentFlow.signers[signerIndex];
+          if (s.status !== "current") throw new Error("Nu e rândul tău să semnezi.");
 
-      clearSig();
-      document.getElementById('sigSection').style.display = 'none';
-      setMsg('✅ Semnătura a fost aplicată și salvată cu succes. Mulțumim!', 'ok');
+          $("result").textContent = "Se trimite semnarea...";
+          const signature = $("signature").value.trim();
 
-      // Dacă există un următor semnatar, afișăm info
-      if (result.nextSigner){
-        const nb = document.getElementById('nextBox');
-        nb.style.display = 'block';
-        document.getElementById('nextName').textContent = result.nextSigner.name  || '—';
-        document.getElementById('nextRole').textContent = [result.nextSigner.atribut, result.nextSigner.functie].filter(Boolean).join(' · ') || '—';
-        // Adăugăm notă că emailul a fost trimis automat
-        if (!nb.querySelector('.email-sent-note')){
-          const note = document.createElement('div');
-          note.className = 'email-sent-note';
-          note.style.cssText = 'font-size:11px;color:var(--muted);margin-top:6px';
-          note.textContent = '📧 Email de notificare trimis automat.';
-          nb.appendChild(note);
+          const r = await fetch(`/flows/${encodeURIComponent(flow)}/sign`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token, signature }),
+          });
+
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j?.error || "server_error");
+
+          $("result").textContent = "✅ Semnat. Se actualizează status...";
+          await loadFlow();
+
+          if (j.nextLink) {
+            $("result").innerHTML = `✅ Semnat. Următorul a fost notificat (dacă email e activ).<br/>NextLink (debug): <a href="${j.nextLink}" target="_blank">${j.nextLink}</a>`;
+          }
+        } catch (e) {
+          showError(String(e.message || e));
+          $("result").textContent = "";
         }
-      } else {
-        // Flux complet
-        const nb = document.getElementById('nextBox');
-        nb.style.display = 'block';
-        nb.innerHTML = `
-          <h4 style="color:var(--success)">✅ Flux complet</h4>
-          <div style="font-size:13px;color:var(--ink2);margin-top:4px">Toți semnatarii au semnat documentul.</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">📧 Inițiatorul a fost notificat prin email.</div>
-        `;
+      });
+
+      if (flow && token) {
+        loadFlow().catch((e) => showError(String(e.message || e)));
       }
-
-    } catch(err){
-      console.error(err);
-      setMsg(err.message || 'Eroare la semnare. Încearcă din nou.', 'err');
-    } finally {
-      btn.disabled  = false;
-      btn.innerHTML = '✍ Semnează';
-    }
-  }
-
-  async function embedSignature(pdfBytesU8, sigPngDataUrl, signerInfo){
-    const { PDFDocument } = PDFLib;
-    const pdfDoc  = await PDFDocument.load(pdfBytesU8);
-    const pngBytes = await fetch(sigPngDataUrl).then(r => r.arrayBuffer());
-    const png     = await pdfDoc.embedPng(pngBytes);
-    const pages   = pdfDoc.getPages();
-    const last    = pages[pages.length - 1];
-    const { width, height } = last.getSize();
-
-    const w = SIGN_BOX.width;
-    const h = SIGN_BOX.height;
-    const x = Math.max(24, width  - w - SIGN_BOX.marginRight);
-    const y = Math.max(24, SIGN_BOX.marginBottom);
-
-    last.drawImage(png, { x, y, width: w, height: h, opacity: 1 });
-
-    const label = `${(signerInfo?.name || '').trim()}  ·  ${new Date().toLocaleDateString('ro-RO')}`;
-    last.drawText(label, { x, y: y + h + 8, size: 9, color: PDFLib.rgb(0.10, 0.22, 0.36) });
-
-    return await pdfDoc.save();
-  }
-
-  boot();
-</script>
-</body>
+    </script>
+  </body>
 </html>

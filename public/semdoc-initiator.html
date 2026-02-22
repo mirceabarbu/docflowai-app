@@ -1,591 +1,287 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ro">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SemDoc Flow – Inițiator</title>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
-:root{
-  --ink:#0f1923;--ink2:#1a3a5c;--gold:#c8832a;--gold2:#e8a84a;
-  --cream:#f4f1eb;--paper:#fdfcfa;--border:#ddd8ce;
-  --success:#27ae60;--warn:#f39c12;--danger:#e74c3c;--muted:#8a8a8a;
-}
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);min-height:100vh;}
-
-header{background:var(--ink);border-bottom:3px solid var(--gold);padding:0 36px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
-.brand{font-family:'Playfair Display',serif;font-size:19px;color:white;}
-.brand em{color:var(--gold2);font-style:normal;}
-.hlinks{display:flex;gap:8px;}
-.hlink{color:rgba(255,255,255,.5);font-size:12px;text-decoration:none;padding:6px 14px;border-radius:4px;border:1px solid rgba(255,255,255,.1);cursor:pointer;background:none;transition:all .15s;font-family:'DM Sans',sans-serif;}
-.hlink:hover{background:rgba(255,255,255,.08);color:white;}
-.hlink.act{background:var(--gold);color:white;border-color:var(--gold);}
-
-.container{max-width:1060px;margin:0 auto;padding:32px 20px 60px;}
-
-.card{background:white;border-radius:10px;border:1px solid var(--border);box-shadow:0 2px 10px rgba(0,0,0,.05);margin-bottom:18px;overflow:hidden;}
-.card-head{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
-.card-ico{font-size:18px;}
-.card-title{font-family:'Playfair Display',serif;font-size:16px;color:var(--ink2);}
-.card-sub{font-size:11px;color:var(--muted);margin-top:1px;}
-.card-body{padding:22px;}
-
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-.field{display:flex;flex-direction:column;gap:5px;}
-.field.full{grid-column:1/-1;}
-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);}
-input,select{font-family:'DM Sans',sans-serif;font-size:13px;padding:8px 11px;border:1.5px solid var(--border);border-radius:6px;color:var(--ink);background:var(--cream);transition:all .15s;width:100%;}
-input:focus,select:focus{outline:none;border-color:var(--ink2);background:white;}
-.hint{font-size:11px;color:var(--muted);line-height:1.5;}
-
-.dropzone{border:2px dashed var(--border);border-radius:8px;padding:40px 24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--cream);}
-.dropzone:hover,.dropzone.over{border-color:var(--gold);background:#fdf6ee;}
-.dropzone h3{font-family:'Playfair Display',serif;font-size:17px;color:var(--ink2);margin:10px 0 5px;}
-.dropzone p{font-size:12px;color:var(--muted);}
-.pdf-loaded{display:flex;align-items:center;gap:14px;padding:14px;background:#eef9f1;border-radius:8px;border:1.5px solid var(--success);}
-.pdf-name{font-weight:600;font-size:13px;}
-.pdf-meta{font-size:11px;color:var(--muted);}
-
-.sig-row{display:grid;grid-template-columns:28px 1fr 1fr 1fr 1fr auto;gap:8px;align-items:center;background:var(--cream);border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;transition:all .15s;}
-.sig-row:hover{border-color:var(--ink2);}
-.sig-num{width:26px;height:26px;border-radius:50%;background:var(--ink2);color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.sig-row input,.sig-row select{background:white;margin:0;}
-.delbtn{background:none;border:none;color:#ddd;font-size:15px;padding:3px 7px;border-radius:4px;cursor:pointer;}
-.delbtn:hover{color:var(--danger);background:#feeaea;}
-
-button{font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:all .15s;}
-.btn{padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;}
-.btn-gold{background:var(--gold);color:white;}
-.btn-gold:hover{background:var(--gold2);}
-.btn-gold:disabled{background:#ddd;color:#aaa;cursor:not-allowed;}
-.btn-outline{background:white;color:var(--ink2);border:1.5px solid var(--ink2);}
-.btn-outline:hover{background:var(--ink2);color:white;}
-.btn-dashed{background:white;color:var(--ink2);border:1.5px dashed var(--ink2);}
-.btn-dashed:hover{background:#eef4f9;}
-.btn-sm{padding:7px 13px;font-size:12px;}
-.btn-full{width:100%;}
-
-.dash-header{background:var(--ink);border-radius:10px;padding:22px 26px;color:white;margin-bottom:18px;}
-.dash-title{font-family:'Playfair Display',serif;font-size:20px;margin-bottom:4px;}
-.dash-meta{font-size:12px;color:rgba(255,255,255,.45);}
-.dash-id{font-family:monospace;color:var(--gold2);font-size:11px;margin-top:4px;}
-
-.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;}
-.stat-card{background:white;border-radius:8px;padding:16px 18px;border:1px solid var(--border);}
-.stat-num{font-family:'Playfair Display',serif;font-size:28px;color:var(--ink2);}
-.stat-label{font-size:11px;color:var(--muted);margin-top:2px;}
-
-.progress-bar{height:6px;background:var(--border);border-radius:3px;margin:10px 0;overflow:hidden;}
-.progress-fill{height:100%;background:linear-gradient(90deg,var(--ink2),var(--gold));border-radius:3px;transition:width .5s;}
-
-.timeline{display:flex;flex-direction:column;}
-.tl-item{display:flex;gap:14px;padding:14px 18px;background:white;border:1px solid var(--border);border-bottom:none;transition:all .2s;}
-.tl-item:first-child{border-radius:8px 8px 0 0;}
-.tl-item:last-child{border-radius:0 0 8px 8px;border-bottom:1px solid var(--border);}
-.tl-item.signed{background:#f0faf4;}
-.tl-item.current{background:#fffbf0;border-left:3px solid var(--gold);}
-
-.tl-dot{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;border:2px solid;}
-.tl-dot.signed{background:var(--success);border-color:var(--success);color:white;}
-.tl-dot.current{background:var(--gold);border-color:var(--gold);color:white;}
-.tl-dot.pending{background:var(--cream);border-color:var(--border);color:var(--muted);}
-
-.badge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;align-self:center;white-space:nowrap;}
-.badge-signed{background:#d4f4e2;color:#1a6e3a;}
-.badge-current{background:#fff0d4;color:#a05c0a;}
-.badge-pending{background:var(--cream);color:var(--muted);}
-
-#toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:white;padding:12px 18px;border-radius:8px;font-size:13px;font-weight:500;pointer-events:none;opacity:0;transition:opacity .25s;z-index:999;max-width:360px;border-left:4px solid var(--gold);}
-#toast.show{opacity:1;}
-#toast.success{border-left-color:var(--success);}
-#toast.error{border-left-color:var(--danger);}
-
-@media (max-width: 960px){
-  .sig-row{grid-template-columns:28px 1fr 1fr;}
-  .sig-row .col-hide{display:none;}
-}
-</style>
-</head>
-
-<body>
-<header>
-  <div class="brand">✦ SemDoc <em>Flow</em></div>
-  <div class="hlinks">
-    <button class="hlink act" id="tabSetup" onclick="showTab('setup')">⚙ Configurare</button>
-    <button class="hlink" id="tabDash"  onclick="showTab('dash')">📊 Status</button>
-  </div>
-</header>
-
-<div class="container">
-
-  <!-- TAB SETUP -->
-  <div id="tabSetupContent">
-
-    <div class="card">
-      <div class="card-head">
-        <span class="card-ico">👤</span>
-        <div>
-          <div class="card-title">Inițiator document</div>
-          <div class="card-sub">Datele apar în audit &amp; notificări</div>
-        </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>DocFlowAI — Inițiere flux</title>
+    <style>
+      body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
+      header { padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); display:flex; gap:12px; align-items:center; }
+      .brand { font-weight: 800; letter-spacing:.2px; }
+      .tabs { display:flex; gap:8px; margin-left:auto; }
+      button, input, select { font: inherit; }
+      .tabbtn { background: rgba(255,255,255,.06); color:#e9eefc; border:1px solid rgba(255,255,255,.10); padding:8px 12px; border-radius:10px; cursor:pointer; }
+      .tabbtn.active { background: rgba(120,160,255,.22); border-color: rgba(120,160,255,.45); }
+      main { padding: 18px 20px; max-width: 1100px; margin: 0 auto; }
+      .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+      .grid { display:grid; gap:10px; grid-template-columns: repeat(12, 1fr); }
+      .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-6 { grid-column: span 6; } .col-12 { grid-column: span 12; }
+      label { display:block; font-size: 12px; opacity:.85; margin-bottom:6px; }
+      input, select { width:100%; padding:10px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
+      .row { display:flex; gap:10px; align-items:center; }
+      .btn { background: rgba(120,160,255,.22); border:1px solid rgba(120,160,255,.45); color:#e9eefc; padding:10px 12px; border-radius: 12px; cursor:pointer; }
+      .btn.secondary { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
+      .btn.danger { background: rgba(255,90,120,.18); border-color: rgba(255,90,120,.35); }
+      table { width:100%; border-collapse: collapse; }
+      th, td { text-align:left; padding:10px; border-bottom:1px solid rgba(255,255,255,.08); vertical-align: top; }
+      th { font-size: 12px; opacity:.85; }
+      .muted { opacity:.8; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .pill { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12px; }
+      .ok { border-color: rgba(90,255,160,.35); background: rgba(90,255,160,.12); }
+      .warn { border-color: rgba(255,210,90,.35); background: rgba(255,210,90,.12); }
+      .bad { border-color: rgba(255,90,120,.35); background: rgba(255,90,120,.12); }
+      a { color: #a9c2ff; }
+      .hidden { display:none; }
+      .statusBox { white-space: pre-wrap; background: rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08); padding:10px; border-radius:12px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">DocFlowAI / SemDoc</div>
+      <div class="tabs">
+        <button id="tabInit" class="tabbtn active" type="button">Inițiere</button>
+        <button id="tabStatus" class="tabbtn" type="button">Status</button>
       </div>
-      <div class="card-body">
-        <div class="grid2">
-          <div class="field">
-            <label>Nume inițiator</label>
-            <input type="text" id="initName" placeholder="ex: Ion Popescu" oninput="saveConfig()">
-          </div>
-          <div class="field">
-            <label>Email inițiator</label>
-            <input type="email" id="initEmail" placeholder="ex: ion@primarie.ro" oninput="saveConfig()">
-          </div>
-          <div class="field full">
-            <label>Denumire document</label>
-            <input type="text" id="docName" placeholder="ex: Notă / Referat / Contract" oninput="saveConfig()">
-            <div class="hint" style="margin-top:6px">Poți lăsa gol — se completează automat cu numele fișierului PDF.</div>
+    </header>
+
+    <main>
+      <!-- INIT -->
+      <section id="viewInit">
+        <div class="card">
+          <div class="grid">
+            <div class="col-4">
+              <label>Document (denumire)</label>
+              <input id="docName" placeholder="Ex: Referat de necesitate..." />
+            </div>
+            <div class="col-4">
+              <label>Inițiator (nume)</label>
+              <input id="initName" placeholder="Ex: Mircea Barbu" />
+            </div>
+            <div class="col-4">
+              <label>Inițiator (email)</label>
+              <input id="initEmail" placeholder="Ex: mircea@..." />
+            </div>
+
+            <div class="col-12">
+              <div class="row" style="justify-content: space-between;">
+                <div class="muted">Semnatari (în ordine). La creare, primul devine <span class="pill warn">current</span>.</div>
+                <div class="row">
+                  <button id="btnAdd" class="btn secondary" type="button">+ Adaugă rând</button>
+                  <button id="btnDefaults" class="btn secondary" type="button">Roluri implicite</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:140px;">ATRIBUT</th>
+                    <th style="width:200px;">FUNCȚIE</th>
+                    <th>NUME ȘI PRENUME</th>
+                    <th style="width:280px;">EMAIL</th>
+                    <th style="width:110px;"></th>
+                  </tr>
+                </thead>
+                <tbody id="signersTbody"></tbody>
+              </table>
+            </div>
+
+            <div class="col-12">
+              <div class="row">
+                <button id="btnCreate" class="btn" type="button">Pornește flux</button>
+                <button id="btnOpenStatus" class="btn secondary" type="button">Deschide Status</button>
+                <span id="createResult" class="muted"></span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
 
-    <!-- PDF -->
-    <div class="card">
-      <div class="card-head">
-        <span class="card-ico">📄</span>
-        <div>
-          <div class="card-title">Document PDF</div>
-          <div class="card-sub">PDF-ul care intră în flux</div>
-        </div>
-      </div>
-      <div class="card-body">
-        <div id="dropzone" class="dropzone" onclick="document.getElementById('fileIn').click()">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <rect width="48" height="48" rx="10" fill="#f0ece6"/>
-            <path d="M12 8h18l12 12v22H12V8z" stroke="#c8832a" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-            <path d="M30 8v12h12" stroke="#c8832a" stroke-width="1.5" stroke-linejoin="round"/>
-            <text x="24" y="36" font-size="9" fill="#1a3a5c" text-anchor="middle" font-family="sans-serif" font-weight="bold">PDF</text>
-          </svg>
-          <h3>Trage PDF-ul aici sau click pentru selectare</h3>
-          <p>Documentul va fi stocat pe server și folosit în paginile de semnare</p>
-        </div>
-
-        <div id="pdfLoaded" class="pdf-loaded" style="display:none">
-          <span style="font-size:28px">📄</span>
-          <div>
-            <div class="pdf-name" id="pdfNameDisp"></div>
-            <div class="pdf-meta" id="pdfMetaDisp"></div>
+      <!-- STATUS -->
+      <section id="viewStatus" class="hidden">
+        <div class="card">
+          <div class="row" style="justify-content: space-between;">
+            <div>
+              <div class="muted">Flow curent:</div>
+              <div class="mono" id="statusFlowId">—</div>
+            </div>
+            <div class="row">
+              <button id="btnRefresh" class="btn secondary" type="button">Refresh</button>
+              <button id="btnClear" class="btn danger" type="button">Clear flow</button>
+            </div>
           </div>
-          <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="clearPDF()">✕ Schimbă</button>
+          <div style="height:10px"></div>
+          <div id="statusContent" class="statusBox">Niciun flux încă.</div>
         </div>
+      </section>
+    </main>
 
-        <input type="file" id="fileIn" accept=".pdf" style="display:none" />
-      </div>
-    </div>
+    <script>
+      const $ = (id) => document.getElementById(id);
 
-    <!-- Signers -->
-    <div class="card">
-      <div class="card-head">
-        <span class="card-ico">✍️</span>
-        <div>
-          <div class="card-title">Semnatari (în ordine)</div>
-          <div class="card-sub">Atribut · Funcție · Nume · Email</div>
-        </div>
-      </div>
-      <div class="card-body">
-        <div style="display:grid;grid-template-columns:28px 1fr 1fr 1fr 1fr auto;gap:8px;padding:0 14px 8px;margin-bottom:4px;">
-          <span></span>
-          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Atribut</span>
-          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Funcție</span>
-          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Nume și prenume</span>
-          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Email</span>
-          <span></span>
-        </div>
-        <div id="sigRows"></div>
-        <button class="btn btn-dashed btn-full" onclick="addSig()" style="margin-top:4px">+ Adaugă semnatar</button>
-      </div>
-    </div>
+      // Tabs
+      function showTab(name) {
+        const isInit = name === "init";
+        $("viewInit").classList.toggle("hidden", !isInit);
+        $("viewStatus").classList.toggle("hidden", isInit);
+        $("tabInit").classList.toggle("active", isInit);
+        $("tabStatus").classList.toggle("active", !isInit);
+        if (!isInit) refreshStatus();
+      }
+      $("tabInit").addEventListener("click", () => showTab("init"));
+      $("tabStatus").addEventListener("click", () => showTab("status"));
 
-    <!-- Launch -->
-    <div class="card">
-      <div class="card-head">
-        <span class="card-ico">🚀</span>
-        <div>
-          <div class="card-title">Lansare flux de semnare</div>
-          <div class="card-sub">Serverul generează linkurile și trimite emailuri automat</div>
-        </div>
-      </div>
-      <div class="card-body">
-        <p class="hint" style="margin-bottom:16px">
-          La lansare se creează fluxul în baza de date, se generează tokenuri securizate pe server
-          și se trimite automat email primului semnatar.
-        </p>
-        <div style="display:flex;gap:10px;align-items:center">
-          <button class="btn btn-gold" id="btnLaunch" onclick="launchFlow()" style="padding:12px 28px;font-size:14px">
-            🚀 Lansează fluxul
-          </button>
-          <span id="launchStatus" style="font-size:12px;color:var(--muted)"></span>
-        </div>
-        <div id="manualLinkBox" style="display:none;margin-top:14px;padding:14px;background:#fff8ee;border:1.5px solid var(--gold);border-radius:8px;"></div>
-      </div>
-    </div>
+      // Signers table
+      const tbody = $("signersTbody");
 
-  </div>
+      function signerRowTemplate(s = {}) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>
+            <select class="rol">
+              <option value="ÎNTOCMIT">ÎNTOCMIT</option>
+              <option value="VIZAT">VIZAT</option>
+              <option value="APROBAT">APROBAT</option>
+              <option value="AVIZAT">AVIZAT</option>
+            </select>
+          </td>
+          <td><input class="functie" placeholder="Ex: Șef structură" /></td>
+          <td><input class="name" placeholder="Ex: Popescu Ion" /></td>
+          <td><input class="email" placeholder="Ex: nume@institutie.ro" /></td>
+          <td><button class="btn danger btnDel" type="button">Șterge</button></td>
+        `;
+        tr.querySelector(".rol").value = (s.rol || s.atribut || "ÎNTOCMIT");
+        tr.querySelector(".functie").value = (s.functie || "");
+        tr.querySelector(".name").value = (s.name || "");
+        tr.querySelector(".email").value = (s.email || "");
+        tr.querySelector(".btnDel").addEventListener("click", () => tr.remove());
+        return tr;
+      }
 
-  <!-- TAB DASH -->
-  <div id="tabDashContent" style="display:none">
-    <div id="noDash" style="text-align:center;padding:60px 20px;color:var(--muted)">
-      <div style="font-size:48px;margin-bottom:16px">📊</div>
-      <div style="font-family:'Playfair Display',serif;font-size:20px;color:var(--ink2);margin-bottom:8px">Niciun flux activ</div>
-      <p style="font-size:13px">Lansează un flux din tab-ul Configurare pentru a vedea statusul aici.</p>
-    </div>
+      function setDefaults() {
+        tbody.innerHTML = "";
+        const defaults = [
+          { rol: "ÎNTOCMIT", functie: "Întocmit", name: "", email: "" },
+          { rol: "VIZAT", functie: "Șef structură", name: "", email: "" },
+          { rol: "APROBAT", functie: "Conducător", name: "", email: "" },
+        ];
+        defaults.forEach(d => tbody.appendChild(signerRowTemplate(d)));
+      }
 
-    <div id="dashContent" style="display:none">
-      <div class="dash-header">
-        <div class="dash-title" id="dashDocName">—</div>
-        <div class="dash-meta">Inițiat de <span id="dashInitName">—</span></div>
-        <div class="dash-id" id="dashFlowId">—</div>
-      </div>
+      $("btnAdd").addEventListener("click", () => tbody.appendChild(signerRowTemplate()));
+      $("btnDefaults").addEventListener("click", setDefaults);
 
-      <div class="stat-grid">
-        <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Semnatari total</div></div>
-        <div class="stat-card"><div class="stat-num" style="color:var(--success)" id="statSigned">0</div><div class="stat-label">Au semnat</div></div>
-        <div class="stat-card"><div class="stat-num" style="color:var(--warn)" id="statPending">0</div><div class="stat-label">Așteaptă</div></div>
-      </div>
+      // Default load
+      setDefaults();
 
-      <div class="card">
-        <div class="card-head"><span class="card-ico">📈</span><div><div class="card-title">Progres flux</div></div></div>
-        <div class="card-body">
-          <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-          <div style="font-size:12px;color:var(--muted);margin-top:4px" id="progressLabel">0 din 0 semnatari</div>
-          <div class="timeline" id="timelineItems" style="margin-top:16px"></div>
-        </div>
-      </div>
+      function readSigners() {
+        const rows = [...tbody.querySelectorAll("tr")];
+        return rows.map((tr, i) => ({
+          order: i + 1,
+          rol: tr.querySelector(".rol").value,
+          functie: tr.querySelector(".functie").value.trim(),
+          name: tr.querySelector(".name").value.trim(),
+          email: tr.querySelector(".email").value.trim(),
+        })).filter(s => s.rol && (s.name || s.email));
+      }
 
-      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" onclick="refreshDash()">↻ Actualizează</button>
-        <button class="btn btn-outline btn-sm" onclick="downloadFinal()" id="btnDownFinal" style="display:none">⬇ Descarcă PDF semnat</button>
-        <button class="btn btn-outline btn-sm" onclick="clearActiveFlow()">🗑 Închide flux</button>
-      </div>
-    </div>
-  </div>
+      // Create flow
+      $("btnCreate").addEventListener("click", async () => {
+        $("createResult").textContent = "Se creează...";
+        const payload = {
+          docName: $("docName").value.trim(),
+          initName: $("initName").value.trim(),
+          initEmail: $("initEmail").value.trim(),
+          signers: readSigners(),
+        };
 
-</div>
+        try {
+          const r = await fetch("/flows", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j?.error || "server_error");
 
-<div id="toast"></div>
+          localStorage.setItem("lastFlowId", j.flowId);
+          $("createResult").innerHTML = `✅ Flow creat: <span class="mono">${j.flowId}</span>`;
 
-<script>
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          if (j.signerLink) {
+            $("createResult").innerHTML += ` · <a href="${j.signerLink}" target="_blank">Deschide link semnare (primul)</a>`;
+          }
 
-const LS_CFG         = 'semdoc_cfg_v2';
-const LS_ACTIVE_FLOW = 'semdoc_active_flow_id';
+        } catch (e) {
+          $("createResult").textContent = `❌ Eroare: ${String(e.message || e)}`;
+        }
+      });
 
-let pdfBytes    = null;
-let pdfB64Str   = '';     // base64 stocat la încărcarea PDF-ului, via FileReader
-let pdfPageCount = 0;
-let sigIdCnt    = 0;
-let activeFlow  = null;   // { id, signerLink }
+      $("btnOpenStatus").addEventListener("click", () => showTab("status"));
+      $("btnRefresh").addEventListener("click", refreshStatus);
 
-function $(id){ return document.getElementById(id); }
-function v(id){ return $(id)?.value?.trim() || ''; }
+      $("btnClear").addEventListener("click", () => {
+        localStorage.removeItem("lastFlowId");
+        $("statusFlowId").textContent = "—";
+        $("statusContent").textContent = "Niciun flux încă.";
+      });
 
-function apiBase(){ return (window.SEMDOC_API_BASE || location.origin).replace(/\/$/, ''); }
+      function getFlowIdFromQueryOrStorage() {
+        const params = new URLSearchParams(location.search);
+        return params.get("flow") || localStorage.getItem("lastFlowId") || "";
+      }
 
-async function apiFetch(path, opts = {}){
-  const res = await fetch(apiBase() + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return data;
-}
+      async function refreshStatus() {
+        const flowId = getFlowIdFromQueryOrStorage();
+        $("statusFlowId").textContent = flowId || "—";
+        if (!flowId) {
+          $("statusContent").textContent = "Niciun flux activ. Creează unul din tabul Inițiere.";
+          return;
+        }
 
-// ── Init ──────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  loadConfig();
-  addSig('ÎNTOCMIT',     'Funcționar',   '', '');
-  addSig('ȘEF STRUCTURĂ','Șef structură','', '');
-  addSig('APROBAT',      'Primar',       '', '');
+        $("statusContent").textContent = "Se încarcă...";
+        try {
+          const r = await fetch(`/flows/${encodeURIComponent(flowId)}`);
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j?.error || "server_error");
 
-  $('fileIn').addEventListener('change', e => { if (e.target.files?.[0]) loadPDF(e.target.files[0]); });
-  const dz = $('dropzone');
-  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
-  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); if (e.dataTransfer.files?.[0]) loadPDF(e.dataTransfer.files[0]); });
+          const lines = [];
+          lines.push(`Document: ${j.docName}`);
+          lines.push(`Inițiator: ${j.initName} <${j.initEmail}>`);
+          lines.push(`Actualizat: ${j.updatedAt}`);
+          lines.push("");
+          lines.push("Semnatari:");
 
-  const savedId = localStorage.getItem(LS_ACTIVE_FLOW);
-  if (savedId) activeFlow = { id: savedId };
+          (j.signers || []).forEach((s, i) => {
+            const st = s.status || "pending";
+            const pill = st === "signed" ? "signed" : (st === "current" ? "current" : "pending");
+            lines.push(
+              `  ${i+1}. [${pill}] ${s.rol || ""} / ${s.functie || ""} — ${s.name || ""} <${s.email || ""}>` +
+              (s.signedAt ? ` (signedAt: ${s.signedAt})` : "")
+            );
 
-  setInterval(() => { if ($('tabDash').classList.contains('act')) refreshDash(); }, 6000);
-});
+            if (s.token) {
+              const link = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(s.token)}`;
+              lines.push(`      link: ${link}`);
+            }
+          });
 
-function saveConfig(){
-  localStorage.setItem(LS_CFG, JSON.stringify({ initName: v('initName'), initEmail: v('initEmail'), docName: v('docName') }));
-}
-function loadConfig(){
-  try {
-    const cfg = JSON.parse(localStorage.getItem(LS_CFG) || '{}');
-    Object.entries(cfg).forEach(([k, val]) => { if ($(k)) $(k).value = val || ''; });
-  } catch(e){}
-}
+          lines.push("");
+          lines.push("Evenimente:");
+          (j.events || []).slice(-10).forEach(ev => {
+            lines.push(`  - ${ev.at} :: ${ev.type} :: ${ev.by || ""}`);
+          });
 
-// ── PDF ───────────────────────────────────────────────────────
-async function loadPDF(file){
-  if (!file.name.toLowerCase().endsWith('.pdf')) { toast('⚠ Te rog încarcă un fișier PDF!', 'error'); return; }
+          $("statusContent").textContent = lines.join("\n");
+        } catch (e) {
+          $("statusContent").textContent = `❌ Eroare status: ${String(e.message || e)}`;
+        }
+      }
 
-  // Citim base64 via FileReader — singura metodă sigură pentru fișiere mari
-  pdfB64Str = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result.split(',')[1]); // elimină "data:application/pdf;base64,"
-    reader.onerror = () => reject(new Error('Eroare la citirea fișierului'));
-    reader.readAsDataURL(file);
-  });
-
-  // Păstrăm și bytes pentru pdf.js (preview)
-  const ab  = await file.arrayBuffer();
-  pdfBytes  = new Uint8Array(ab);
-  const doc = await pdfjsLib.getDocument({ data: ab }).promise;
-  pdfPageCount = doc.numPages;
-
-  $('dropzone').style.display = 'none';
-  $('pdfLoaded').style.display = 'flex';
-  $('pdfNameDisp').textContent = file.name;
-  $('pdfMetaDisp').textContent = `${pdfPageCount} pagini · ${(file.size/1024).toFixed(0)} KB`;
-  if (!v('docName')) $('docName').value = file.name.replace(/\.pdf$/i, '');
-  saveConfig();
-  toast('✅ PDF încărcat!', 'success');
-}
-function clearPDF(){
-  pdfBytes  = null;
-  pdfB64Str = '';
-  $('dropzone').style.display = 'block';
-  $('pdfLoaded').style.display = 'none';
-  $('fileIn').value = '';
-}
-
-// ── Semnatari ─────────────────────────────────────────────────
-function addSig(atribut='', functie='', name='', email=''){
-  sigIdCnt++;
-  const id  = sigIdCnt;
-  const row = document.createElement('div');
-  row.className  = 'sig-row';
-  row.dataset.id = id;
-  row.innerHTML  = `
-    <div class="sig-num">${id}</div>
-    <select aria-label="Atribut">${renderAtributOptions(atribut)}</select>
-    <input type="text"  placeholder="Funcție (ex: Primar)"   value="${escapeHtml(functie)}">
-    <input type="text"  placeholder="Nume și prenume"         value="${escapeHtml(name)}">
-    <input type="email" placeholder="email@exemplu.ro"        value="${escapeHtml(email)}">
-    <button class="delbtn" onclick="delSig(${id})">✕</button>
-  `;
-  $('sigRows').appendChild(row);
-  renumSigs();
-}
-function delSig(id){ document.querySelector(`.sig-row[data-id="${id}"]`)?.remove(); renumSigs(); }
-function renumSigs(){ document.querySelectorAll('.sig-row').forEach((r,i) => r.querySelector('.sig-num').textContent = i+1); }
-
-function renderAtributOptions(sel){
-  return ['ÎNTOCMIT','VERIFICAT','VIZAT','VIZA CFPP','APROBAT','AVIZAT','CONTROLAT','CERTIFICAT']
-    .map(o => `<option value="${o}" ${o===sel?'selected':''}>${o}</option>`).join('');
-}
-
-function getSigs(){
-  return [...document.querySelectorAll('.sig-row')].map((r, i) => {
-    const sel    = r.querySelector('select');
-    const inputs = r.querySelectorAll('input');
-    return {
-      order:   i + 1,
-      atribut: (sel?.value       || '').trim(),
-      functie: (inputs[0]?.value || '').trim(),
-      name:    (inputs[1]?.value || '').trim(),
-      email:   (inputs[2]?.value || '').trim(),
-      // NU generăm token în browser — serverul îl va genera
-    };
-  });
-}
-
-// ── Tabs ──────────────────────────────────────────────────────
-function showTab(tab){
-  $('tabSetup').classList.toggle('act', tab==='setup');
-  $('tabDash').classList.toggle('act',  tab==='dash');
-  $('tabSetupContent').style.display = tab==='setup' ? 'block' : 'none';
-  $('tabDashContent').style.display  = tab==='dash'  ? 'block' : 'none';
-  if (tab==='dash') refreshDash();
-}
-
-// ── Launch flow ───────────────────────────────────────────────
-async function launchFlow(){
-  if (!pdfBytes || !pdfB64Str) { toast('⚠ Încarcă un PDF!', 'error'); return; }
-  if (!v('initName'))  { toast('⚠ Completează numele inițiatorului!', 'error'); return; }
-  if (!v('initEmail')) { toast('⚠ Completează emailul inițiatorului!', 'error'); return; }
-
-  const sigs = getSigs();
-  if (!sigs.length)                              { toast('⚠ Adaugă cel puțin un semnatar!', 'error'); return; }
-  if (sigs.find(s => !s.email || !s.name))       { toast('⚠ Completează nume + email pentru toți semnatarii.', 'error'); return; }
-
-  $('btnLaunch').disabled = true;
-  $('launchStatus').textContent = 'Se creează fluxul pe server…';
-  $('manualLinkBox').style.display = 'none';
-
-  try {
-    const payload = {
-      docName:   v('docName') || 'Document',
-      initName:  v('initName'),
-      initEmail: v('initEmail'),
-      meta:      { client: 'semdoc-plus', pages: pdfPageCount },
-      pdfB64:    pdfB64Str,
-      signers:   sigs,
-    };
-
-    const created = await apiFetch('/flows', { method: 'POST', body: JSON.stringify(payload) });
-
-    // BUG FIX #2: folosim signerLink returnat de SERVER (cu tokenul generat pe server)
-    const flowId    = created.flowId;
-    const signerLink = created.signerLink;
-
-    activeFlow = { id: flowId, signerLink };
-    localStorage.setItem(LS_ACTIVE_FLOW, flowId);
-
-    $('launchStatus').textContent = created.firstSignerEmail
-      ? `✅ Flux creat. Email trimis automat la ${created.firstSignerEmail}.`
-      : '✅ Flux creat. Trimite manual linkul primului semnatar.';
-
-    showManualLink(signerLink, sigs[0]);
-    toast('✅ Flux lansat!', 'success');
-    setTimeout(() => { showTab('dash'); refreshDash(); }, 700);
-
-  } catch(err){
-    console.error(err);
-    $('launchStatus').textContent = `Eroare: ${err.message}`;
-    toast(`❌ ${err.message}`, 'error');
-  } finally {
-    $('btnLaunch').disabled = false;
-  }
-}
-
-function showManualLink(url, signer){
-  const box = $('manualLinkBox');
-  box.style.display = 'block';
-  box.innerHTML = `
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--gold);margin-bottom:8px">
-      🔗 Link semnare pentru ${escapeHtml(signer?.name || 'primul semnatar')} (${escapeHtml(signer?.atribut || '')})
-    </div>
-    <div style="background:var(--cream);border:1px solid var(--border);border-radius:5px;padding:8px 12px;font-family:monospace;font-size:11px;word-break:break-all;color:var(--ink2);margin-bottom:8px">${escapeHtml(url)}</div>
-    <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText(${JSON.stringify(url)}).then(()=>toast('✅ Link copiat!','success'))">📋 Copiază linkul</button>
-    <p style="font-size:11px;color:var(--muted);margin-top:8px">Emailul a fost trimis automat (dacă SMTP e configurat). Linkul de mai sus e backup.</p>
-  `;
-}
-
-// ── Dashboard ─────────────────────────────────────────────────
-async function refreshDash(){
-  const flowId = activeFlow?.id || localStorage.getItem(LS_ACTIVE_FLOW);
-  if (!flowId){ $('noDash').style.display='block'; $('dashContent').style.display='none'; return; }
-
-  try {
-    // BUG FIX #3: GET /flows/:id returnează datele fără tokenuri (endpoint de dashboard)
-    const f = await apiFetch(`/flows/${encodeURIComponent(flowId)}`);
-    if (!f){ throw new Error('Flux inexistent'); }
-
-    $('noDash').style.display   = 'none';
-    $('dashContent').style.display = 'block';
-
-    const signers  = f.signers || [];
-    const signed   = signers.filter(s => s.status === 'signed').length;
-    const total    = signers.length;
-
-    $('dashDocName').textContent  = f.docName  || '—';
-    $('dashInitName').textContent = f.initName || '—';
-    $('dashFlowId').textContent   = f.flowId   || flowId;
-    $('statTotal').textContent    = total;
-    $('statSigned').textContent   = signed;
-    $('statPending').textContent  = Math.max(0, total - signed);
-    $('progressFill').style.width = total ? ((signed/total)*100).toFixed(0)+'%' : '0%';
-    $('progressLabel').textContent = `${signed} din ${total} semnatari`;
-
-    $('timelineItems').innerHTML = signers.map((s, i) => {
-      const isSigned  = s.status === 'signed';
-      const isCurrent = s.status === 'current';
-      const cls     = isSigned ? 'signed' : isCurrent ? 'current' : '';
-      const dotCls  = isSigned ? 'signed' : isCurrent ? 'current' : 'pending';
-      const dotIcon = isSigned ? '✓' : isCurrent ? '✍' : (i+1);
-      const badge   = isSigned
-        ? '<span class="badge badge-signed">✓ Semnat</span>'
-        : isCurrent
-          ? '<span class="badge badge-current">⏳ Așteaptă</span>'
-          : '<span class="badge badge-pending">· În așteptare</span>';
-      const when    = s.signedAt ? `Semnat: ${new Date(s.signedAt).toLocaleString('ro-RO')}` : '';
-      const roleLine = [s.atribut, s.functie].filter(Boolean).join(' · ');
-      // Linkul de semnare e disponibil doar dacă activeFlow are signerLink pentru idx 0
-      // sau dacă e curentul și avem linkul salvat
-      const signerLinkNote = (isCurrent && i === 0 && activeFlow?.signerLink)
-        ? `<div style="margin-top:4px"><a href="${escapeHtml(activeFlow.signerLink)}" target="_blank" style="font-size:10px;color:var(--ink2)">🔗 Link semnare (copiat la lansare)</a></div>`
-        : '';
-      return `
-        <div class="tl-item ${cls}">
-          <div class="tl-dot ${dotCls}">${dotIcon}</div>
-          <div style="flex:1">
-            <div style="font-weight:700;color:var(--ink2)">${escapeHtml(s.name || '—')}</div>
-            <div style="font-size:12px;color:var(--muted)">${escapeHtml(roleLine || '—')}</div>
-            <div style="font-size:12px;color:var(--ink2)">${escapeHtml(s.email || '')}</div>
-            ${when ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${escapeHtml(when)}</div>` : ''}
-            ${signerLinkNote}
-          </div>
-          ${badge}
-        </div>`;
-    }).join('');
-
-    // Arată butonul de descărcare PDF dacă e complet
-    const isComplete = signed === total && total > 0 && f.status === 'completed';
-    $('btnDownFinal').style.display = isComplete ? 'inline-block' : 'none';
-
-    activeFlow = { ...activeFlow, id: flowId };
-  } catch(err){
-    console.error(err);
-    toast(`❌ ${err.message}`, 'error');
-  }
-}
-
-async function downloadFinal(){
-  const flowId = activeFlow?.id;
-  if (!flowId){ toast('⚠ Niciun flux activ', 'error'); return; }
-  try {
-    // Endpoint separat pentru PDF (nu expus în dashboard)
-    const res = await apiFetch(`/flows/${encodeURIComponent(flowId)}/pdf`);
-    if (!res.pdfB64){ toast('⚠ PDF lipsă pe server', 'error'); return; }
-    const bytes = Uint8Array.from(atob(res.pdfB64), c => c.charCodeAt(0));
-    const blob  = new Blob([bytes], { type: 'application/pdf' });
-    const a     = document.createElement('a');
-    a.href      = URL.createObjectURL(blob);
-    a.download  = `${(res.docName || 'Document').replace(/[^a-z0-9\-_ ]/gi,'_')}_SEMNAT.pdf`;
-    a.click();
-  } catch(err){
-    toast(`❌ ${err.message}`, 'error');
-  }
-}
-
-function clearActiveFlow(){
-  localStorage.removeItem(LS_ACTIVE_FLOW);
-  activeFlow = null;
-  toast('✅ Flux închis (local).', 'success');
-  refreshDash();
-}
-
-// ── Helpers ───────────────────────────────────────────────────
-let toastTimer;
-function toast(msg, type=''){
-  const el = $('toast');
-  el.textContent = msg;
-  el.className   = type ? `show ${type}` : 'show';
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 4500);
-}
-function escapeHtml(s){
-  return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
-</script>
-</body>
+      if (new URLSearchParams(location.search).get("flow")) {
+        showTab("status");
+      }
+    </script>
+  </body>
 </html>
