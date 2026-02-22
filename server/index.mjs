@@ -25,6 +25,20 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
 });
 
+// -------------------- Helpers --------------------
+function publicBaseUrl(req) {
+  // Set in Railway Variables for stable links:
+  // PUBLIC_BASE_URL=https://app.docflowai.ro
+  const envBase = process.env.PUBLIC_BASE_URL;
+  if (envBase) return envBase.replace(/\/$/, "");
+
+  const host = req.get("host");
+  const proto = (req.get("x-forwarded-proto") || req.protocol || "https")
+    .split(",")[0]
+    .trim();
+  return `${proto}://${host}`;
+}
+
 // -------------------- Postgres --------------------
 const DATABASE_URL = process.env.DATABASE_URL;
 const pool = DATABASE_URL
@@ -163,24 +177,34 @@ app.post("/flows", async (req, res) => {
     await saveFlow(flowId, data);
 
     const first = data.signers.find((s) => s.status === "current");
-    if (first?.email) {
-      const link = `https://app.docflowai.ro/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(first.token)}`;
-      await sendSignerEmail({
-        to: first.email,
-        subject: `Semnare document: ${data.docName}`,
-        html: `
-          <p>Bună ${first.name || ""},</p>
-          <p>Ai un document de semnat:</p>
-          <p><strong>${data.docName}</strong></p>
-          <p>Link semnare:</p>
-          <p><a href="${link}">${link}</a></p>
-          <br/>
-          <p>— DocFlowAI</p>
-        `,
-      });
+    const base = publicBaseUrl(req);
+    const signerLink = first
+      ? `${base}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(first.token)}`
+      : null;
+
+    // Email (NON-BLOCKING)
+    if (first?.email && signerLink) {
+      try {
+        await sendSignerEmail({
+          to: first.email,
+          subject: `Semnare document: ${data.docName}`,
+          html: `
+            <p>Bună ${first.name || ""},</p>
+            <p>Ai un document de semnat:</p>
+            <p><strong>${data.docName}</strong></p>
+            <p>Link semnare:</p>
+            <p><a href="${signerLink}">${signerLink}</a></p>
+            <br/>
+            <p>— DocFlowAI</p>
+          `,
+        });
+      } catch (e) {
+        console.error("❌ Email send failed (non-blocking):", e);
+      }
     }
 
-    return res.json({ ok: true, flowId });
+    // Return signerLink so UI can show it
+    return res.json({ ok: true, flowId, signerLink, firstSignerEmail: first?.email || null });
   } catch (e) {
     console.error("POST /flows error:", e);
     return res.status(500).json({ error: "server_error" });
@@ -255,24 +279,37 @@ app.post("/flows/:flowId/sign", async (req, res) => {
     await saveFlow(flowId, data);
 
     const next = data.signers.find((s) => s.status === "current");
-    if (next?.email) {
-      const link = `https://app.docflowai.ro/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(next.token)}`;
-      await sendSignerEmail({
-        to: next.email,
-        subject: `Urmezi la semnare: ${data.docName}`,
-        html: `
-          <p>Bună ${next.name || ""},</p>
-          <p>Este rândul tău să semnezi documentul:</p>
-          <p><strong>${data.docName}</strong></p>
-          <p>Link semnare:</p>
-          <p><a href="${link}">${link}</a></p>
-          <br/>
-          <p>— DocFlowAI</p>
-        `,
-      });
+    const base = publicBaseUrl(req);
+    const nextLink = next
+      ? `${base}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(next.token)}`
+      : null;
+
+    if (next?.email && nextLink) {
+      try {
+        await sendSignerEmail({
+          to: next.email,
+          subject: `Urmezi la semnare: ${data.docName}`,
+          html: `
+            <p>Bună ${next.name || ""},</p>
+            <p>Este rândul tău să semnezi documentul:</p>
+            <p><strong>${data.docName}</strong></p>
+            <p>Link semnare:</p>
+            <p><a href="${nextLink}">${nextLink}</a></p>
+            <br/>
+            <p>— DocFlowAI</p>
+          `,
+        });
+      } catch (e) {
+        console.error("❌ Email send failed (non-blocking):", e);
+      }
     }
 
-    return res.json({ ok: true, flowId, nextSigner: data.signers.find((s) => s.status === "current") || null });
+    return res.json({
+      ok: true,
+      flowId,
+      nextSigner: next || null,
+      nextLink,
+    });
   } catch (e) {
     console.error("POST /flows/:flowId/sign error:", e);
     return res.status(500).json({ error: "server_error" });
