@@ -284,6 +284,7 @@ const LS_CFG         = 'semdoc_cfg_v2';
 const LS_ACTIVE_FLOW = 'semdoc_active_flow_id';
 
 let pdfBytes    = null;
+let pdfB64Str   = '';     // base64 stocat la încărcarea PDF-ului, via FileReader
 let pdfPageCount = 0;
 let sigIdCnt    = 0;
 let activeFlow  = null;   // { id, signerLink }
@@ -335,6 +336,16 @@ function loadConfig(){
 // ── PDF ───────────────────────────────────────────────────────
 async function loadPDF(file){
   if (!file.name.toLowerCase().endsWith('.pdf')) { toast('⚠ Te rog încarcă un fișier PDF!', 'error'); return; }
+
+  // Citim base64 via FileReader — singura metodă sigură pentru fișiere mari
+  pdfB64Str = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result.split(',')[1]); // elimină "data:application/pdf;base64,"
+    reader.onerror = () => reject(new Error('Eroare la citirea fișierului'));
+    reader.readAsDataURL(file);
+  });
+
+  // Păstrăm și bytes pentru pdf.js (preview)
   const ab  = await file.arrayBuffer();
   pdfBytes  = new Uint8Array(ab);
   const doc = await pdfjsLib.getDocument({ data: ab }).promise;
@@ -349,17 +360,11 @@ async function loadPDF(file){
   toast('✅ PDF încărcat!', 'success');
 }
 function clearPDF(){
-  pdfBytes = null;
+  pdfBytes  = null;
+  pdfB64Str = '';
   $('dropzone').style.display = 'block';
   $('pdfLoaded').style.display = 'none';
   $('fileIn').value = '';
-}
-function bytesToB64(u8){
-  const chunk = 0x8000;
-  let out = '';
-  for (let i = 0; i < u8.length; i += chunk)
-    out += String.fromCharCode(...u8.subarray(i, i + chunk));
-  return btoa(out);
 }
 
 // ── Semnatari ─────────────────────────────────────────────────
@@ -414,7 +419,7 @@ function showTab(tab){
 
 // ── Launch flow ───────────────────────────────────────────────
 async function launchFlow(){
-  if (!pdfBytes)       { toast('⚠ Încarcă un PDF!', 'error'); return; }
+  if (!pdfBytes || !pdfB64Str) { toast('⚠ Încarcă un PDF!', 'error'); return; }
   if (!v('initName'))  { toast('⚠ Completează numele inițiatorului!', 'error'); return; }
   if (!v('initEmail')) { toast('⚠ Completează emailul inițiatorului!', 'error'); return; }
 
@@ -432,7 +437,7 @@ async function launchFlow(){
       initName:  v('initName'),
       initEmail: v('initEmail'),
       meta:      { client: 'semdoc-plus', pages: pdfPageCount },
-      pdfB64:    bytesToB64(pdfBytes),
+      pdfB64:    pdfB64Str,
       signers:   sigs,
     };
 
