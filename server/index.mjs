@@ -2,12 +2,22 @@ import express from "express";
 import cors from "cors";
 import pg from "pg";
 import crypto from "crypto";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const { Pool } = pg;
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));
+
+// ==============================
+// Serve static files (public/)
+// ==============================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PUBLIC_DIR = path.join(__dirname, "../public");
+app.use(express.static(PUBLIC_DIR));
 
 // ==============================
 // Postgres
@@ -64,9 +74,14 @@ async function getFlow(id) {
 }
 
 // ==============================
-// Health
+// Health + Root
 // ==============================
-app.get("/", (req, res) => res.json({ status: "ok", service: "SemDoc+" }));
+
+// Root: serve initiator UI (keeps your app URL nice)
+app.get("/", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
+});
+
 app.get("/health", (req, res) => res.status(200).send("healthy"));
 
 // ==============================
@@ -101,7 +116,7 @@ app.post("/flows", async (req, res) => {
       name: String(s.name || "").trim(),
       email: String(s.email || "").trim(),
       token: String(s.token || crypto.randomBytes(16).toString("hex")),
-      status: idx === 0 ? "current" : (String(s.status || "pending")),
+      status: idx === 0 ? "current" : String(s.status || "pending"),
       signedAt: s.signedAt || null,
     }));
 
@@ -176,14 +191,12 @@ app.post("/flows/:flowId/sign", async (req, res) => {
     const idx = signers.findIndex((s) => s.token === token);
     if (idx === -1) return res.status(400).json({ error: "invalid_token" });
 
-    // only allow signing if it's current or pending (MVP)
     signers[idx].status = "signed";
     signers[idx].signedAt = new Date().toISOString();
 
     // advance next signer
     const nextIdx = signers.findIndex((s) => s.status !== "signed");
     if (nextIdx !== -1) {
-      // make the earliest non-signed current
       signers.forEach((s, i) => {
         if (s.status !== "signed") s.status = i === nextIdx ? "current" : "pending";
       });
@@ -201,7 +214,11 @@ app.post("/flows/:flowId/sign", async (req, res) => {
 
     await saveFlow(flowId, data);
 
-    return res.json({ ok: true, flowId, nextSigner: signers.find((s) => s.status === "current") || null });
+    return res.json({
+      ok: true,
+      flowId,
+      nextSigner: signers.find((s) => s.status === "current") || null,
+    });
   } catch (e) {
     console.error("POST /flows/:flowId/sign error:", e);
     return res.status(500).json({ error: "server_error" });
