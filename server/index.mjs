@@ -218,6 +218,26 @@ app.post("/flows", async (req, res) => {
 });
 
 // Get flow
+app.get("/flows/:flowId/pdf", async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const data = await getFlow(req.params.flowId);
+    if (!data) return res.status(404).json({ error: "not_found" });
+    const b64 = data.pdfB64;
+    if (!b64 || typeof b64 !== "string") return res.status(404).json({ error: "pdf_missing" });
+
+    // support both "data:application/pdf;base64,..." and raw base64
+    const raw = b64.includes("base64,") ? b64.split("base64,")[1] : b64;
+    const buf = Buffer.from(raw, "base64");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${(data.docName || "document").replace(/[^\w\-]+/g,"_")}.pdf"`);
+    return res.status(200).send(buf);
+  } catch (e) {
+    console.error("GET /flows/:flowId/pdf error:", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
+
 app.get("/flows/:flowId", async (req, res) => {
   try {
     if (requireDb(res)) return;
