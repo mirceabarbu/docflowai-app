@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DocFlowAI — Semnare</title>
     <style>
-      body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
+      *{box-sizing:border-box;}
+body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
       header { padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); }
       main { padding: 18px 20px; max-width: 900px; margin: 0 auto; }
       .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; }
@@ -17,9 +18,119 @@
       .muted { opacity:.85; }
       .box { background: rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; }
       textarea { width:100%; min-height: 90px; padding:10px; border-radius: 12px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
+      select option{background: var(--card); color: var(--text);} 
+
       a { color: #a9c2ff; }
       .hidden { display:none; }
-    </style>
+    
+
+/* ===== DocFlowAI Theme (from landing index.html) + UI polish ===== */
+:root{
+  --bg:#0b1020;
+  --card:#0f1731;
+  --muted:#9db0ff;
+  --text:#eaf0ff;
+  --sub:#cdd8ff;
+  --line:rgba(255,255,255,.10);
+  --accent:#7c5cff;
+  --accent2:#2dd4bf;
+  --shadow: 0 20px 60px rgba(0,0,0,.35);
+  --radius:18px;
+}
+
+body{
+  background:
+    radial-gradient(900px 500px at 18% 8%, rgba(124,92,255,.35), transparent 60%),
+    radial-gradient(700px 450px at 82% 12%, rgba(45,212,191,.22), transparent 55%),
+    var(--bg) !important;
+  color: var(--text) !important;
+}
+
+header{
+  background: rgba(15,23,49,.55) !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line) !important;
+}
+
+.brand{ color: var(--text) !important; }
+.muted, .card-sub, label{ color: var(--sub) !important; opacity: .9 !important; }
+a{ color: var(--muted) !important; }
+
+/* Cards / panels */
+.card, .statusBox, .box{
+  background: rgba(15,23,49,.72) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow);
+}
+
+/* Inputs */
+input, select, textarea{
+  background: rgba(255,255,255,.04) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px !important;
+}
+input::placeholder, textarea::placeholder{ color: rgba(205,216,255,.65) !important; }
+
+input:focus, select:focus, textarea:focus{
+  outline: none !important;
+  border-color: rgba(124,92,255,.55) !important;
+  box-shadow: 0 0 0 4px rgba(124,92,255,.18);
+}
+
+/* Tabs */
+.tabbtn{
+  background: rgba(255,255,255,.05) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+  border-radius: 999px !important;
+}
+.tabbtn.active{
+  background: rgba(124,92,255,.22) !important;
+  border-color: rgba(124,92,255,.45) !important;
+}
+
+/* Buttons */
+.btn{
+  background: linear-gradient(135deg, var(--accent), var(--accent2)) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 650;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.25);
+}
+.btn.secondary{
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.btn.danger{
+  background: rgba(251,113,133,.15) !important;
+  border: 1px solid rgba(251,113,133,.35) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.btn:hover{ filter: brightness(1.05); transform: translateY(-1px); transition: .12s ease; }
+.btn:active{ transform: translateY(0); }
+
+/* Pills */
+.pill, .kpi{
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--sub) !important;
+}
+
+/* Tables */
+th, td{ border-bottom: 1px solid rgba(255,255,255,.08) !important; }
+th{ color: var(--sub) !important; }
+
+/* Small niceties */
+.mono{ color: var(--text) !important; }
+#err{ border-color: rgba(251,113,133,.35) !important; }
+/* ===== End theme ===== */
+</style>
   </head>
   <body>
     <header>
