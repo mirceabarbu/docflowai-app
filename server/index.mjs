@@ -384,7 +384,13 @@ app.post("/flows/:flowId/resend", async (req, res) => {
 });
 
 // -------------------- Start --------------------
-const PORT = Number(process.env.PORT || 8080);
+const PORT = process.env.PORT;
+
+if (!PORT) {
+  console.error("❌ PORT not defined by Railway!");
+  process.exit(1);
+}
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 SemDoc+ server running on port ${PORT}`);
   initDbWithRetry();
