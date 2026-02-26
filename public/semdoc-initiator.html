@@ -597,7 +597,7 @@ th{ color: var(--sub) !important; }
           if (!r.ok) throw new Error(j?.error || "server_error");
 
           const lines = [];
-          lines.push(`Document: ${j.docName}`);
+          lines.push(`Document: ${j.docName}${j.hasSignedPdf ? " ✅ [PDF semnat calificat disponibil]" : ""}`);
           lines.push(`Inițiator: ${j.initName} <${j.initEmail}>`);
           lines.push(`Actualizat: ${j.updatedAt}`);
           lines.push("");
@@ -624,7 +624,11 @@ th{ color: var(--sub) !important; }
                 const firstSigner = (j.signers||[])[0];
                 if (firstSigner?.token) {
                   const signerLink = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(firstSigner.token)}`;
-                  lnkDiv.innerHTML = `<a href="${signerLink}" target="_blank" class="btn" style="display:inline-block; text-decoration:none; padding:8px 16px;">🔗 Deschide pagina de semnare pentru download PDF</a>`;
+                  let html = `<a href="${signerLink}" target="_blank" class="btn secondary" style="display:inline-block; text-decoration:none; padding:8px 14px; margin-right:8px;">🔗 PDF cu cartuș vizual</a>`;
+                  if (j.hasSignedPdf) {
+                    html += `<a href="/flows/${encodeURIComponent(j.flowId)}/signed-pdf" target="_blank" class="btn" style="display:inline-block; text-decoration:none; padding:8px 14px;">🏅 Descarcă PDF semnat calificat</a>`;
+                  }
+                  lnkDiv.innerHTML = html;
                 }
               }
             }
