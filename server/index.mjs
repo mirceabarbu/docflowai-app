@@ -1,27 +1,8 @@
-
 import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import pkg from "pg";
-
-
-process.on("SIGTERM", () => {
-  console.error("🧨 SIGTERM received from platform (Railway).");
-});
-
-process.on("SIGINT", () => {
-  console.error("🧨 SIGINT received.");
-});
-
-process.on("unhandledRejection", (reason) => {
-  console.error("🧨 unhandledRejection:", reason);
-});
-
-process.on("uncaughtException", (err) => {
-  console.error("🧨 uncaughtException:", err);
-});
-
 
 const { Pool } = pkg;
 
@@ -107,6 +88,3 @@ app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`🚀 SemDoc+ server running on port ${PORT}`);
   initDbWithRetry();
 });
-
-
-setInterval(() => console.log("💓 heartbeat alive"), 5000);
