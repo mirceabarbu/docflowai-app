@@ -203,7 +203,7 @@ th{ color: var(--sub) !important; }
 
             <div class="col-12">
               <div class="row" style="justify-content: space-between;">
-                <div class="muted">Semnatari (în ordine). La creare, primul devine <span class="pill warn">curent</span>.</div>
+
                 <div class="row">
                   <button id="btnAdd" class="btn secondary" type="button">+ Adaugă rând</button>
                   <button id="btnDefaults" class="btn secondary" type="button">Roluri implicite</button>
@@ -265,6 +265,25 @@ th{ color: var(--sub) !important; }
       // PDF (Varianta A): stocăm PDF-ul în flow ca DataURL base64
       let pdfB64 = null;
 
+      function validateForm() {
+        const btn = $("btnCreate");
+        if (!btn) return;
+        const docName = ($("docName")?.value || "").trim();
+        const initName = ($("initName")?.value || "").trim();
+        const initEmail = ($("initEmail")?.value || "").trim();
+        const hasPdf = !!pdfB64;
+        const rows = [...(document.getElementById("signersTbody")?.querySelectorAll("tr") || [])];
+        const hasSigners = rows.length > 0 && rows.every(tr => {
+          const name = tr.querySelector(".name")?.value?.trim();
+          const email = tr.querySelector(".email")?.value?.trim();
+          return name && email;
+        });
+        const valid = hasPdf && docName && initName && initEmail && hasSigners;
+        btn.disabled = !valid;
+        btn.style.opacity = valid ? "1" : "0.4";
+        btn.title = valid ? "" : "Completează toate câmpurile și încarcă un PDF";
+      }
+
       function setPdfInfo(msg){ $("pdfInfo").textContent = msg; }
 
       $("pdfFile").addEventListener("change", () => {
@@ -276,6 +295,7 @@ th{ color: var(--sub) !important; }
         const reader = new FileReader();
         reader.onload = () => {
           pdfB64 = reader.result;
+          validateForm();
           // Auto-fill docName from PDF filename if empty
           const docNameEl = $("docName");
           if (docNameEl && !docNameEl.value.trim()) {
@@ -296,6 +316,7 @@ th{ color: var(--sub) !important; }
       $("btnClearPdf").addEventListener("click", () => {
         $("pdfFile").value = "";
         pdfB64 = null;
+        validateForm();
         setPdfInfo("Nu ai selectat încă un PDF.");
         const box = $("pdfPreviewBox");
         const frame = $("pdfPreviewFrame");
@@ -455,7 +476,7 @@ th{ color: var(--sub) !important; }
       }
 
       // Watch for DOM changes in tbody
-      new MutationObserver(updateIntocmitVisibility).observe(tbody, { childList: true, subtree: false });
+      new MutationObserver(() => { updateIntocmitVisibility(); validateForm(); }).observe(tbody, { childList: true, subtree: true });
 
       // ── Drag & drop reorder ──────────────────────────────────────────────
       let dragSrc = null;
@@ -502,14 +523,14 @@ th{ color: var(--sub) !important; }
         muts.forEach(m => m.addedNodes.forEach(n => { if (n.tagName === "TR") attachDragEvents(n); }));
       }).observe(tbody, { childList: true });
 
-      $("btnAdd").addEventListener("click", () => { tbody.appendChild(signerRowTemplate()); updateIntocmitVisibility(); });
+      $("btnAdd").addEventListener("click", () => { tbody.appendChild(signerRowTemplate()); updateIntocmitVisibility(); validateForm(); });
       $("btnDefaults").addEventListener("click", setDefaults);
 
       // Default load
       setDefaults();
 
       // When initiator fields change, sync into any ÎNTOCMIT row
-      ["initName", "initEmail"].forEach(id => {
+      ["initName", "initEmail", "docName"].forEach(id => {
         const el = $(id);
         if (!el) return;
         el.addEventListener("input", () => {
@@ -520,6 +541,7 @@ th{ color: var(--sub) !important; }
               if (id === "initEmail") { const e = tr.querySelector(".email"); if (e && !e.dataset.userEdited) e.value = el.value; }
             }
           });
+          validateForm();
         });
       });
 
@@ -535,6 +557,8 @@ th{ color: var(--sub) !important; }
       }
 
       // Create flow
+      validateForm(); // inițializare stare buton
+
       $("btnCreate").addEventListener("click", async () => {
         $("createResult").textContent = "Se creează...";
         const payload = {

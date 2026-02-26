@@ -481,9 +481,8 @@ th{ color: var(--sub) !important; }
           a.click();
           document.body.removeChild(a);
 
-          // Try to open in Adobe (works if Adobe is default PDF app)
-          setTimeout(() => { try { window.open(url, "_blank"); } catch(e){} }, 600);
-          setTimeout(() => URL.revokeObjectURL(url), 15000);
+          // Revoke după ce browserul a preluat fișierul
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
 
           btn.textContent = "⬇️ Descarcă din nou";
 
@@ -547,7 +546,12 @@ th{ color: var(--sub) !important; }
         const signers = currentFlow.signers || [];
         if (!signers.length) throw new Error("Niciun semnatar în flux.");
 
-        const activeSignerIdx = signerIndex; // current signer's index
+        // activeSignerIdx = indexul semnătarului care trebuie să semneze ACUM
+        // Folosim status "current" din flow (mai fiabil decât signerIndex care poate fi stale)
+        const signers_raw = currentFlow.signers || [];
+        const currentStatusIdx = signers_raw.findIndex(s => s.status === "current");
+        // Dacă nu găsim "current" (toți au semnat sau e primul), folosim signerIndex
+        const activeSignerIdx = currentStatusIdx !== -1 ? currentStatusIdx : signerIndex;
 
         const MARGIN = 40;
         const n = signers.length;
