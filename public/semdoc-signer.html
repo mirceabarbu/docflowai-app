@@ -156,24 +156,18 @@ th{ color: var(--sub) !important; }
 
           <div style="height:12px"></div>
 
-          <div class="box">
-            <div class="row">
-              <span class="pill" id="whoPill">—</span>
-              <span class="muted" id="whoText">—</span>
+          <div id="pdfBox" class="box hidden">
+            <div class="row" style="justify-content: space-between;">
+              <div class="muted">Document (PDF)</div>
+              <div class="row">
+                <a id="pdfOpen" class="btn secondary" href="#" target="_blank" rel="noopener">Deschide PDF</a>
+              </div>
             </div>
             <div style="height:10px"></div>
-            <div class="muted">Semnătură (MVP):</div>
-            <textarea id="signature" placeholder="Scrie 'Semnat' / nume / sau orice text (MVP)..."></textarea>
-
-            <div style="height:12px"></div>
-            <div class="row">
-              <button id="btnSign" class="btn" type="button">Semnează</button>
-              <button id="btnRefresh" class="btn secondary" type="button">Refresh</button>
-              <span id="result" class="muted"></span>
-            </div>
+            <iframe id="pdfFrame" title="PDF" style="width:100%; height:520px; border:1px solid rgba(255,255,255,.10); border-radius:12px; background: rgba(0,0,0,.15);"></iframe>
           </div>
 
-          <div style="height:12px"></div>
+<div style="height:12px"></div>
 
           <div class="box">
             <div class="muted">Status rapid:</div>
@@ -195,6 +189,7 @@ th{ color: var(--sub) !important; }
       function showError(msg) {
         $("err").classList.remove("hidden");
         $("err").textContent = "❌ " + msg;
+        $("result").textContent = "";
       }
 
       const params = new URLSearchParams(location.search);
@@ -216,36 +211,52 @@ th{ color: var(--sub) !important; }
         if (!flow || !token) return;
 
         $("result").textContent = "Se încarcă...";
-        const r = await fetch(`/flows/${encodeURIComponent(flow)}`);
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j?.error || "server_error");
+        try {
+          const r = await fetch(`/flows/${encodeURIComponent(flow)}`);
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j?.error || "server_error");
 
-        currentFlow = j;
-        signerIndex = (j.signers || []).findIndex(s => s.token === token);
-        if (signerIndex === -1) throw new Error("Token invalid (nu corespunde niciunui semnatar).");
+          currentFlow = j;
+          signerIndex = (j.signers || []).findIndex(s => s.token === token);
+          if (signerIndex === -1) throw new Error("Token invalid (nu corespunde niciunui semnatar).");
 
-        $("docName").textContent = j.docName || "—";
+          $("docName").textContent = j.docName || "—";
 
-        const s = j.signers[signerIndex];
-        const who = `${s.rol || ""} / ${s.functie || ""}`;
-        $("whoPill").textContent = (s.status || "pending").toUpperCase();
-        $("whoText").textContent = `${who} — ${s.name || ""} <${s.email || ""}>`;
+          // PDF viewer
+          if (j.hasPdf) {
+            const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf`;
+            $("pdfFrame").src = pdfUrl;
+            $("pdfOpen").href = pdfUrl;
+            $("pdfBox").classList.remove("hidden");
+          } else {
+            $("pdfBox").classList.add("hidden");
+            $("pdfFrame").src = "";
+          }
 
-        const lines = [];
-        lines.push(`Semnatar curent: ${j.signers.findIndex(x => x.status === "current") + 1}`);
-        (j.signers || []).forEach((x, i) => {
-          lines.push(`${i+1}. ${x.status || "pending"} :: ${x.rol || ""} :: ${x.name || ""}`);
-        });
-        $("quick").textContent = lines.join("\n");
+          const s = j.signers[signerIndex];
+          const who = `${s.rol || ""} / ${s.functie || ""}`;
+          $("whoPill").textContent = (s.status || "pending").toUpperCase();
+          $("whoText").textContent = `${who} — ${s.name || ""} <${s.email || ""}>`;
 
-        if (s.status !== "current") {
-          $("btnSign").disabled = true;
-          $("btnSign").style.opacity = 0.6;
-          $("result").textContent = `Nu e rândul tău (status: ${s.status}).`;
-        } else {
-          $("btnSign").disabled = false;
-          $("btnSign").style.opacity = 1;
+          const lines = [];
+          lines.push(`Semnatar curent: ${j.signers.findIndex(x => x.status === "current") + 1}`);
+          (j.signers || []).forEach((x, i) => {
+            lines.push(`${i+1}. ${x.status || "pending"} :: ${x.rol || ""} :: ${x.name || ""}`);
+          });
+          $("quick").textContent = lines.join("\n");
+
+          if (s.status !== "current") {
+            $("btnSign").disabled = true;
+            $("btnSign").style.opacity = 0.6;
+            $("result").textContent = `Nu e rândul tău (status: ${s.status}).`;
+          } else {
+            $("btnSign").disabled = false;
+            $("btnSign").style.opacity = 1;
+            $("result").textContent = "";
+          }
+        } catch (e) {
           $("result").textContent = "";
+          throw e;
         }
       }
 
@@ -265,6 +276,10 @@ th{ color: var(--sub) !important; }
 
           $("result").textContent = "Se trimite semnarea...";
           const signature = $("signature").value.trim();
+          if (!signature) {
+            $("signature").focus();
+            throw new Error("Semnătura este obligatorie (nu poate fi goală). ");
+          }
 
           const r = await fetch(`/flows/${encodeURIComponent(flow)}/sign`, {
             method: "POST",
@@ -275,6 +290,8 @@ th{ color: var(--sub) !important; }
           const j = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(j?.error || "server_error");
 
+          $("btnSign").disabled = true;
+          $("btnSign").style.opacity = 0.6;
           $("result").textContent = "✅ Semnat. Se actualizează status...";
           await loadFlow();
 
