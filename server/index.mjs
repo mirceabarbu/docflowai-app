@@ -20,20 +20,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "../public");
 
-// ✅ Root servește UI (inițiere flux) și rămâne 200 pentru healthcheck.
-// Dacă (din orice motiv) fișierul nu poate fi servit, răspundem 200 "ok"
-// ca să nu fie oprit containerul de healthcheck.
+// Serve static assets (css/js/images)
+app.use(express.static(PUBLIC_DIR));
+
+// UI on root (no /app, no redirect)
 app.get("/", (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"), (err) => {
-    if (err) return res.status(200).send("ok");
+    if (err) {
+      console.error("Root sendFile error:", err);
+      // Fallback 200 so Railway healthchecks won't kill the service
+      res.status(200).send("ok");
+    }
   });
 });
-
-// Compat: dacă cineva a folosit /app, îl trimitem la root.
-app.get("/app", (req, res) => res.redirect(302, "/"));
-
-// Static assets (HTML/CSS/JS) din public/
-app.use(express.static(PUBLIC_DIR));
 
 // -------------------- Helpers --------------------
 function publicBaseUrl(req) {
@@ -427,8 +426,6 @@ app.post("/flows/:flowId/resend", async (req, res) => {
 });
 
 // -------------------- Start --------------------
-// Railway injectează PORT. Ca să evităm restart-loop dacă PORT lipsește temporar,
-// folosim un fallback sigur.
 const PORT = process.env.PORT || 3000;
 
 app.listen(Number(PORT), "0.0.0.0", () => {
