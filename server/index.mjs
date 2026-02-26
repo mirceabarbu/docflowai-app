@@ -68,8 +68,8 @@ function requireAdmin(req, res) {
 
 function stripPdfB64(data) {
   if (!data || typeof data !== "object") return data;
-  const { pdfB64, ...rest } = data;
-  return { ...rest, hasPdf: !!pdfB64 };
+  const { pdfB64, signedPdfB64, ...rest } = data;
+  return { ...rest, hasPdf: !!pdfB64, hasSignedPdf: !!signedPdfB64 };
 }
 // -------------------- Postgres --------------------
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -271,6 +271,25 @@ const createFlow = async (req, res) => {
 
 app.post("/flows", createFlow);
 app.post("/api/flows", createFlow);
+
+// Get signed PDF (uploaded by signer)
+app.get("/flows/:flowId/signed-pdf", async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const data = await getFlowData(req.params.flowId);
+    if (!data) return res.status(404).json({ error: "not_found" });
+    const b64 = data.signedPdfB64;
+    if (!b64 || typeof b64 !== "string") return res.status(404).json({ error: "signed_pdf_missing" });
+    const raw = b64.includes("base64,") ? b64.split("base64,")[1] : b64;
+    const buf = Buffer.from(raw, "base64");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${(data.docName || "document").replace(/[^\w\-]+/g,"_")}_semnat_calificat.pdf"`);
+    return res.status(200).send(buf);
+  } catch (e) {
+    console.error("GET /flows/:flowId/signed-pdf error:", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
 
 // Get flow
 app.get("/flows/:flowId/pdf", async (req, res) => {
@@ -476,6 +495,61 @@ app.post("/flows/:flowId/resend", async (req, res) => {
   }
 });
 
+
+// Upload signed PDF (qualified e-signature, uploaded by signer)
+app.post("/flows/:flowId/upload-signed-pdf", async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const { flowId } = req.params;
+    const { token, signedPdfB64, signerName } = req.body || {};
+
+    if (!token) return res.status(400).json({ error: "token_missing" });
+    if (!signedPdfB64 || typeof signedPdfB64 !== "string") return res.status(400).json({ error: "signedPdfB64_missing" });
+    if (signedPdfB64.length > 40 * 1024 * 1024) return res.status(413).json({ error: "pdf_too_large_max_30mb" });
+
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: "not_found" });
+
+    const signers = Array.isArray(data.signers) ? data.signers : [];
+    const idx = signers.findIndex((s) => s.token === token);
+    if (idx === -1) return res.status(400).json({ error: "invalid_token" });
+
+    // Store signed PDF — keep all versions with timestamp
+    if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions = [];
+    data.signedPdfVersions.push({
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: signers[idx].email || signers[idx].name || "unknown",
+      signerIndex: idx,
+      signerName: signerName || signers[idx].name || "",
+    });
+
+    // Latest signed PDF (used for download)
+    data.signedPdfB64 = signedPdfB64;
+    data.signedPdfUploadedAt = new Date().toISOString();
+    data.signedPdfUploadedBy = signers[idx].email || signers[idx].name || "unknown";
+    data.updatedAt = new Date().toISOString();
+    data.events = Array.isArray(data.events) ? data.events : [];
+    data.events.push({
+      at: new Date().toISOString(),
+      type: "SIGNED_PDF_UPLOADED",
+      by: signers[idx].email || signers[idx].name || "unknown",
+      order: signers[idx].order,
+    });
+
+    await saveFlow(flowId, data);
+
+    console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
+    return res.json({
+      ok: true,
+      flowId,
+      uploadedAt: data.signedPdfUploadedAt,
+      downloadUrl: `/flows/${flowId}/signed-pdf`,
+    });
+  } catch (e) {
+    console.error("POST /flows/:flowId/upload-signed-pdf error:", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
 
 // -------------------- Graceful shutdown --------------------
 let _server = null;
