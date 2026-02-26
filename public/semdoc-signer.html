@@ -449,8 +449,7 @@ th{ color: var(--sub) !important; }
       async function downloadPdfForSigning() {
         const btn = $("btnDownloadForSigning");
         const status = $("downloadForSigningStatus");
-        btn.disabled = true;
-        btn.textContent = "⏳ Se pregătește...";
+        if (btn) { btn.disabled = true; btn.textContent = "⏳ Se pregătește..."; }
         status.textContent = "";
         try {
           // Try signed PDF first (signed by previous signers)
@@ -474,15 +473,14 @@ th{ color: var(--sub) !important; }
         } catch(e) {
           status.textContent = "❌ Eroare: " + e.message;
         }
-        btn.disabled = false;
-        btn.textContent = "⬇️ Descarcă PDF pentru semnare calificată";
+        if (btn) { btn.disabled = false; btn.textContent = "⬇️ Descarcă PDF pentru semnare calificată"; }
       }
       // ── End Download for signing ────────────────────────────────────────────
 
       // ── PDF Cartuș Generator ────────────────────────────────────────────────
       async function generateAndDownloadPdf() {
-        const btn = $("btnDownloadPdf");
-        const status = $("pdfGenStatus");
+        const btn = $("btnDownloadPdf") || $("btnDownloadForSigning");
+        const status = $("pdfGenStatus") || $("downloadForSigningStatus");
         if (!currentFlow) { status.textContent = "❌ Date flux indisponibile."; return; }
 
         btn.disabled = true;
