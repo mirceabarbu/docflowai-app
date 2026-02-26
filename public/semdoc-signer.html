@@ -589,7 +589,7 @@ th{ color: var(--sub) !important; }
           lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: isActive ? 2 : 1 });
           lastPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
 
-          if (isActive) lastPage.drawText("► DE SEMNAT", { x: cx+8, y: cy+cellH-13, size: 6.5, font: fontB, color: rgb(.48,.25,.92) });
+          if (isActive) lastPage.drawText(">> DE SEMNAT", { x: cx+8, y: cy+cellH-13, size: 6.5, font: fontB, color: rgb(.48,.25,.92) });
 
           const rolColor = isSigned ? rgb(.1,.45,.25) : isActive ? rgb(.35,.15,.75) : accent;
           lastPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy + cellH - (isActive ? 23 : 15), size: 8, font: fontB, color: rolColor });
