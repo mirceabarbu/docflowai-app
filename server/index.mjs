@@ -20,14 +20,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "../public");
 
-// ✅ Root ultra-simplu (pentru healthcheck Railway)
-// Railway verifică adesea implicit "/"; dacă primește 404/redirect poate opri containerul.
-app.get("/", (req, res) => res.status(200).send("ok"));
-
-// UI (inițiere flux) pe /app
-app.get("/app", (req, res) => {
-  return res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
+// ✅ Root servește UI (inițiere flux) și rămâne 200 pentru healthcheck.
+// Dacă (din orice motiv) fișierul nu poate fi servit, răspundem 200 "ok"
+// ca să nu fie oprit containerul de healthcheck.
+app.get("/", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"), (err) => {
+    if (err) return res.status(200).send("ok");
+  });
 });
+
+// Compat: dacă cineva a folosit /app, îl trimitem la root.
+app.get("/app", (req, res) => res.redirect(302, "/"));
 
 // Static assets (HTML/CSS/JS) din public/
 app.use(express.static(PUBLIC_DIR));
