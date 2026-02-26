@@ -1,3 +1,5 @@
+console.log("ENV PORT =", process.env.PORT);
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
