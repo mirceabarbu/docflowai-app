@@ -1,71 +1,47 @@
-import nodemailer from "nodemailer";
-
-const { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, MAIL_FROM } =
-  process.env;
-
-let transporter = null;
-
-function ensureTransport() {
-  if (transporter) return transporter;
-
-  console.log("📬 SMTP config check:", {
-    SMTP_HOST: SMTP_HOST || "❌ MISSING",
-    SMTP_PORT: SMTP_PORT || "❌ MISSING",
-    SMTP_SECURE: SMTP_SECURE || "(false)",
-    SMTP_USER: SMTP_USER ? SMTP_USER.slice(0, 4) + "****" : "❌ MISSING",
-    SMTP_PASS: SMTP_PASS ? "set(****)" : "❌ MISSING",
-    MAIL_FROM: MAIL_FROM || "❌ MISSING",
-  });
-
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !MAIL_FROM) {
-    console.warn("⚠ SMTP not fully configured. Email disabled.");
-    return null;
-  }
-
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT),
-    secure: String(SMTP_SECURE).toLowerCase() === "true",
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-
-  return transporter;
-}
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const MAIL_FROM = process.env.MAIL_FROM || "DocFlowAI <noreply@docflowai.ro>";
 
 export async function verifySmtp() {
-  const tx = ensureTransport();
-  if (!tx) {
-    return {
-      ok: false,
-      error: "SMTP not configured",
-      config: {
-        SMTP_HOST: SMTP_HOST || "missing",
-        SMTP_PORT: SMTP_PORT || "missing",
-        SMTP_USER: SMTP_USER ? "set" : "missing",
-        SMTP_PASS: SMTP_PASS ? "set" : "missing",
-        MAIL_FROM: MAIL_FROM || "missing",
-      },
-    };
+  if (!RESEND_API_KEY) {
+    return { ok: false, error: "RESEND_API_KEY missing" };
   }
   try {
-    await tx.verify();
-    return { ok: true, host: SMTP_HOST, port: SMTP_PORT, user: SMTP_USER };
+    const r = await fetch("https://api.resend.com/domains", {
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}` },
+    });
+    const j = await r.json();
+    if (!r.ok) return { ok: false, error: j?.message || "Resend auth failed", status: r.status };
+    return { ok: true, provider: "resend", from: MAIL_FROM, domains: j?.data?.map(d => d.name) };
   } catch (e) {
-    return { ok: false, error: String(e.message || e), host: SMTP_HOST, port: SMTP_PORT };
+    return { ok: false, error: String(e.message || e) };
   }
 }
 
 export async function sendSignerEmail({ to, subject, html }) {
-  const tx = ensureTransport();
-  if (!tx) {
-    console.warn("⚠ sendSignerEmail skipped — SMTP not configured.");
+  if (!RESEND_API_KEY) {
+    console.warn("⚠ sendSignerEmail skipped — RESEND_API_KEY not set.");
     return;
   }
-  try {
-    const info = await tx.sendMail({ from: MAIL_FROM, to, subject, html });
-    console.log(`📧 Email sent to ${to} | messageId: ${info.messageId}`);
-  } catch (e) {
-    console.error(`❌ sendMail FAILED to ${to}:`, e.message);
-    throw e;
+
+  const payload = { from: MAIL_FROM, to, subject, html };
+
+  console.log(`📬 Sending email via Resend to ${to}...`);
+
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const j = await r.json().catch(() => ({}));
+
+  if (!r.ok) {
+    console.error(`❌ Resend FAILED to ${to}:`, j);
+    throw new Error(j?.message || `Resend error ${r.status}`);
   }
+
+  console.log(`📧 Email sent to ${to} | id: ${j.id}`);
 }
