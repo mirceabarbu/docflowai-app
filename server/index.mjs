@@ -167,7 +167,7 @@ app.get("/health", (req, res) => {
 
 // -------------------- FLOWS API --------------------
 // Create flow
-app.post(["/flows","/api/flows"], async (req, res) => {
+const createFlow = async (req, res) => {
   try {
     if (requireDb(res)) return;
 
@@ -243,10 +243,14 @@ app.post(["/flows","/api/flows"], async (req, res) => {
     console.error("POST /flows error:", e);
     return res.status(500).json({ error: "server_error" });
   }
-});
+};
+
+app.post("/flows", createFlow);
+app.post("/api/flows", createFlow);
+);
 
 // Get flow
-app.get(["/flows/:flowId/pdf","/api/flows/:flowId/pdf"], async (req, res) => {
+app.get("/flows/:flowId/pdf", async (req, res) => {
   try {
     if (requireDb(res)) return;
     const data = await getFlow(req.params.flowId);
@@ -266,7 +270,7 @@ app.get(["/flows/:flowId/pdf","/api/flows/:flowId/pdf"], async (req, res) => {
   }
 });
 
-app.get(["/flows/:flowId","/api/flows/:flowId"], async (req, res) => {
+const getFlow = async (req, res) => {
   try {
     if (requireDb(res)) return;
     const data = await getFlow(req.params.flowId);
@@ -276,10 +280,14 @@ app.get(["/flows/:flowId","/api/flows/:flowId"], async (req, res) => {
     console.error("GET /flows/:flowId error:", e);
     return res.status(500).json({ error: "server_error" });
   }
-});
+};
+
+app.get("/flows/:flowId", getFlow);
+app.get("/api/flows/:flowId", getFlow);
+);
 
 // Update flow (replace)
-app.put(["/flows/:flowId","/api/flows/:flowId"], async (req, res) => {
+app.put("/flows/:flowId", async (req, res) => {
   try {
     if (requireDb(res)) return;
     if (requireAdmin(req, res)) return;
@@ -300,7 +308,7 @@ app.put(["/flows/:flowId","/api/flows/:flowId"], async (req, res) => {
 });
 
 // Sign step
-app.post(["/flows/:flowId/sign","/api/flows/:flowId/sign"], async (req, res) => {
+const signFlow = async (req, res) => {
   try {
     if (requireDb(res)) return;
 
@@ -377,10 +385,14 @@ app.post(["/flows/:flowId/sign","/api/flows/:flowId/sign"], async (req, res) => 
     console.error("POST /flows/:flowId/sign error:", e);
     return res.status(500).json({ error: "server_error" });
   }
-});
+};
+
+app.post("/flows/:flowId/sign", signFlow);
+app.post("/api/flows/:flowId/sign", signFlow);
+);
 
 // Admin: resend email to current signer
-app.post(["/flows/:flowId/resend","/api/flows/:flowId/resend"], async (req, res) => {
+app.post("/flows/:flowId/resend", async (req, res) => {
   try {
     if (requireDb(res)) return;
     if (requireAdmin(req, res)) return;
@@ -416,6 +428,32 @@ app.post(["/flows/:flowId/resend","/api/flows/:flowId/resend"], async (req, res)
   }
 });
 
+
+// -------------------- Graceful shutdown --------------------
+let _server = null;
+
+function shutdown(signal) {
+  console.log(`🧯 ${signal} received. Shutting down...`);
+  try {
+    if (_server) {
+      _server.close(() => {
+        console.log("✅ HTTP server closed.");
+        process.exit(0);
+      });
+      // force exit after 10s
+      setTimeout(() => process.exit(0), 10_000).unref();
+    } else {
+      process.exit(0);
+    }
+  } catch (e) {
+    console.error("Shutdown error:", e);
+    process.exit(1);
+  }
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
 // -------------------- Start --------------------
 const PORT = process.env.PORT;
 
@@ -424,7 +462,7 @@ if (!PORT) {
   process.exit(1);
 }
 
-app.listen(Number(PORT), "0.0.0.0", () => {
+_server = app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`🚀 SemDoc+ server running on port ${PORT}`);
   initDbWithRetry();
 });
