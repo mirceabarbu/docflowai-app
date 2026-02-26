@@ -179,6 +179,34 @@ th{ color: var(--sub) !important; }
           <div class="muted">
             Dacă ai fost direcționat greșit, trimite inițiatorului link-ul complet din adresă (flow + token).
           </div>
+
+          <div style="height:12px"></div>
+
+          <div class="box">
+            <div class="row" style="justify-content: space-between; align-items: center;">
+              <div>
+                <span id="whoPill" style="background: rgba(120,160,255,.22); border:1px solid rgba(120,160,255,.45); border-radius:8px; padding:3px 10px; font-size:.8em; font-weight:700; margin-right:8px;">—</span>
+                <span id="whoText" class="muted"></span>
+              </div>
+              <button id="btnRefresh" class="btn secondary" style="font-size:.85em;">&#8635; Reîncarcă</button>
+            </div>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="box">
+            <div class="muted" style="margin-bottom:8px;">Semnătură (nume complet sau inițiale):</div>
+            <input id="sigInput" type="text" placeholder="ex: Ion Popescu" style="width:100%; box-sizing:border-box; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.18); border-radius:10px; color:#e9eefc; padding:10px 14px; font-size:1em; outline:none;" />
+          </div>
+
+          <div style="height:12px"></div>
+
+          <button id="btnSign" class="btn" style="width:100%; font-size:1em; font-weight:700; padding:13px;">&#9997;&#65039; Semnează documentul</button>
+
+          <div style="height:10px"></div>
+
+          <div id="result" style="min-height:24px; color: #a3e6a3;"></div>
+
         </div>
       </div>
     </main>
@@ -275,9 +303,9 @@ th{ color: var(--sub) !important; }
           if (s.status !== "current") throw new Error("Nu e rândul tău să semnezi.");
 
           $("result").textContent = "Se trimite semnarea...";
-          const signature = $("signature").value.trim();
+          const signature = $("sigInput").value.trim();
           if (!signature) {
-            $("signature").focus();
+            $("sigInput").focus();
             throw new Error("Semnătura este obligatorie (nu poate fi goală). ");
           }
 
