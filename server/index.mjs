@@ -1,3 +1,5 @@
+console.log("🔥 THIS IS THE NEW INDEX FILE 🔥");
+
 import express from "express";
 import cors from "cors";
 import pg from "pg";
