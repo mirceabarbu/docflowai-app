@@ -269,13 +269,18 @@ th{ color: var(--sub) !important; }
 
           const s = j.signers[signerIndex];
           const who = `${s.rol || ""} / ${s.functie || ""}`;
-          $("whoPill").textContent = (s.status || "pending").toUpperCase();
+          const statusLabel = {"signed":"SEMNAT","current":"CURENT","pending":"ÎN AȘTEPTARE"};
+          $("whoPill").textContent = statusLabel[s.status] || (s.status||"pending").toUpperCase();
           $("whoText").textContent = `${who} — ${s.name || ""} <${s.email || ""}>`;
+          // Pre-fill signature input with signer name (editable)
+          const sigIn = $("sigInput");
+          if (sigIn && !sigIn.dataset.userEdited && s.name) sigIn.value = s.name;
 
           const lines = [];
           lines.push(`Semnatar curent: ${j.signers.findIndex(x => x.status === "current") + 1}`);
+          const slMap = {"signed":"semnat","current":"curent","pending":"în așteptare"};
           (j.signers || []).forEach((x, i) => {
-            lines.push(`${i+1}. ${x.status || "pending"} :: ${x.rol || ""} :: ${x.name || ""}`);
+            lines.push(`${i+1}. ${slMap[x.status]||x.status||"pending"} :: ${x.rol || ""} :: ${x.name || ""}`);
           });
           $("quick").textContent = lines.join("\n");
 
@@ -296,7 +301,8 @@ th{ color: var(--sub) !important; }
           } else if (s.status !== "current") {
             $("btnSign").disabled = true;
             $("btnSign").style.opacity = 0.6;
-            $("result").textContent = `Nu e rândul tău (status: ${s.status}).`;
+            const slLabel = {"signed":"semnat","current":"curent","pending":"în așteptare"};
+            $("result").textContent = `Nu e rândul tău (status: ${slLabel[s.status]||s.status}).`;
           } else {
             $("btnSign").disabled = false;
             $("btnSign").style.opacity = 1;
@@ -320,7 +326,7 @@ th{ color: var(--sub) !important; }
         try {
           if (!currentFlow) await loadFlow();
           const s = currentFlow.signers[signerIndex];
-          if (s.status !== "current") throw new Error("Nu e rândul tău să semnezi.");
+          if (s.status !== "current") throw new Error("Nu e rândul tău să semnezi (status: " + ({"signed":"semnat","current":"curent","pending":"în așteptare"}[s.status]||s.status) + ").");
 
           $("result").textContent = "Se trimite semnarea...";
           const signature = $("sigInput").value.trim();
@@ -361,6 +367,8 @@ th{ color: var(--sub) !important; }
           $("result").textContent = "";
         }
       });
+
+      $("sigInput").addEventListener("input", () => { $("sigInput").dataset.userEdited = "1"; });
 
       if (flow && token) {
         loadFlow().catch((e) => showError(String(e.message || e)));

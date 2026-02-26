@@ -38,6 +38,7 @@ body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9ee
       .bad { border-color: rgba(255,90,120,.35); background: rgba(255,90,120,.12); }
       a { color: #a9c2ff; }
       .hidden { display:none; }
+      tr.drag-over td { background: rgba(124,92,255,.18) !important; }
       .statusBox { white-space: pre-wrap; background: rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08); padding:10px; border-radius:12px; }
     
 
@@ -213,6 +214,7 @@ th{ color: var(--sub) !important; }
               <table>
                 <thead>
                   <tr>
+                    <th style="width:32px;"></th>
                     <th style="width:140px;">ATRIBUT</th>
                     <th style="width:200px;">FUNCȚIE</th>
                     <th>NUME ȘI PRENUME</th>
@@ -313,9 +315,21 @@ th{ color: var(--sub) !important; }
       // Signers table
       const tbody = $("signersTbody");
 
+      // Restore initiator fields from last session
+      (function restoreInitiator() {
+        const n = localStorage.getItem("lastInitName");
+        const e = localStorage.getItem("lastInitEmail");
+        const nameEl = $("initName");
+        const emailEl = $("initEmail");
+        if (n && nameEl && !nameEl.value) nameEl.value = n;
+        if (e && emailEl && !emailEl.value) emailEl.value = e;
+      })();
+
       function signerRowTemplate(s = {}) {
         const tr = document.createElement("tr");
+        tr.setAttribute("draggable", "true");
         tr.innerHTML = `
+          <td style="cursor:grab; text-align:center; color:rgba(255,255,255,.35); user-select:none; font-size:18px;" class="dragHandle">⠿</td>
           <td>
             <select class="rol">
               <option value="ÎNTOCMIT">ÎNTOCMIT</option>
@@ -403,6 +417,7 @@ th{ color: var(--sub) !important; }
           rolCustom.value = s.rol;
         }
 
+        attachDragEvents(tr);
         return tr;
       }
 
@@ -440,6 +455,51 @@ th{ color: var(--sub) !important; }
 
       // Watch for DOM changes in tbody
       new MutationObserver(updateIntocmitVisibility).observe(tbody, { childList: true, subtree: false });
+
+      // ── Drag & drop reorder ──────────────────────────────────────────────
+      let dragSrc = null;
+
+      function onDragStart(e) {
+        dragSrc = this;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", "");
+        this.style.opacity = "0.4";
+      }
+      function onDragEnd(e) {
+        this.style.opacity = "";
+        [...tbody.querySelectorAll("tr")].forEach(r => r.classList.remove("drag-over"));
+      }
+      function onDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        [...tbody.querySelectorAll("tr")].forEach(r => r.classList.remove("drag-over"));
+        this.classList.add("drag-over");
+        return false;
+      }
+      function onDrop(e) {
+        e.stopPropagation();
+        if (dragSrc !== this) {
+          const allRows = [...tbody.querySelectorAll("tr")];
+          const srcIdx = allRows.indexOf(dragSrc);
+          const tgtIdx = allRows.indexOf(this);
+          if (srcIdx < tgtIdx) this.after(dragSrc);
+          else this.before(dragSrc);
+          updateIntocmitVisibility();
+        }
+        return false;
+      }
+
+      function attachDragEvents(tr) {
+        tr.addEventListener("dragstart", onDragStart);
+        tr.addEventListener("dragend", onDragEnd);
+        tr.addEventListener("dragover", onDragOver);
+        tr.addEventListener("drop", onDrop);
+      }
+
+      // Patch tbody MutationObserver to also attach drag events
+      new MutationObserver((muts) => {
+        muts.forEach(m => m.addedNodes.forEach(n => { if (n.tagName === "TR") attachDragEvents(n); }));
+      }).observe(tbody, { childList: true });
 
       $("btnAdd").addEventListener("click", () => { tbody.appendChild(signerRowTemplate()); updateIntocmitVisibility(); });
       $("btnDefaults").addEventListener("click", setDefaults);
@@ -494,6 +554,8 @@ th{ color: var(--sub) !important; }
           if (!r.ok) throw new Error(j?.error || "server_error");
 
           localStorage.setItem("lastFlowId", j.flowId);
+          localStorage.setItem("lastInitName", $("initName").value.trim());
+          localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
           $("createResult").innerHTML = `✅ Flow creat: <span class="mono">${j.flowId}</span>`;
 
           if (j.signerLink) {
@@ -543,15 +605,7 @@ th{ color: var(--sub) !important; }
           (j.signers || []).forEach((s, i) => {
             const st = s.status || "pending";
             const pill = st === "signed" ? "semnat" : (st === "current" ? "curent" : "în așteptare");
-            lines.push(
-              `  ${i+1}. [${pill}] ${s.rol || ""} / ${s.functie || ""} — ${s.name || ""} <${s.email || ""}>` +
-              (s.signedAt ? ` (signedAt: ${s.signedAt})` : "")
-            );
-
-            if (s.token) {
-              const link = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(s.token)}`;
-              lines.push(`      link: ${link}`);
-            }
+            lines.push(`  [${pill}] ${s.rol || ""} / ${s.functie || ""} — ${s.name || ""} <${s.email || ""}>`);
           });
 
           // Lock init tab if completed
@@ -575,8 +629,16 @@ th{ color: var(--sub) !important; }
 
           lines.push("");
           lines.push("Evenimente:");
+          // Build email->name map from signers
+          const nameMap = {};
+          if (j.initEmail) nameMap[j.initEmail] = j.initName || j.initEmail;
+          (j.signers || []).forEach(s => { if (s.email) nameMap[s.email] = s.name || s.email; });
           (j.events || []).slice(-10).forEach(ev => {
-            lines.push(`  - ${ev.at} :: ${ev.type} :: ${ev.by || ""}`);
+            const by = ev.by || "";
+            const displayBy = nameMap[by] ? `${nameMap[by]} <${by}>` : by;
+            // Format date nicely
+            const dt = ev.at ? new Date(ev.at).toLocaleString("ro-RO") : "";
+            lines.push(`  - ${dt} :: ${ev.type}${displayBy ? " :: " + displayBy : ""}`);
           });
 
           $("statusContent").textContent = lines.join("\n");
