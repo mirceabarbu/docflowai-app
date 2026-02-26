@@ -449,20 +449,12 @@ th{ color: var(--sub) !important; }
           let pdfBlob;
           let fname = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_de_semnat.pdf";
 
-          // Verifică dacă există PDF semnat de anteriori (semnatar 2+)
-          const signedResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
-
-          if (signedResp.ok) {
-            // Semnatar 2+: descarcă direct PDF-ul semnat calificat de anteriori
-            // NU regenerăm — păstrăm semnăturile calificată ale semnatarilor anteriori
-            status.textContent = "⏳ Se descarcă PDF-ul semnat de semnatarii anteriori...";
-            pdfBlob = await signedResp.blob();
-          } else {
-            // Semnatar 1: generează PDF cu cartuș și câmpuri AcroForm din originalul
-            status.textContent = "⏳ Se generează PDF cu cartuș...";
-            await new Promise(r => setTimeout(r, 30));
-            pdfBlob = await buildCartusBlob();
-          }
+          // Generează întotdeauna cartuș cu câmpuri AcroForm actualizate
+          // buildCartusBlob folosește /signed-pdf ca bază dacă există (semnatar 2+)
+          // sau /pdf original (semnatar 1) — în ambele cazuri adaugă cartuș cu evidențiere corectă
+          status.textContent = "⏳ Se generează PDF cu câmpuri de semnare...";
+          await new Promise(r => setTimeout(r, 30));
+          pdfBlob = await buildCartusBlob();
 
           // Descarcă fișierul
           const url = URL.createObjectURL(pdfBlob);
@@ -511,11 +503,19 @@ th{ color: var(--sub) !important; }
 
         const { PDFDocument, PDFName, PDFString, PDFNumber, rgb, StandardFonts } = PDFLib;
 
-        // buildCartusBlob e apelat DOAR pentru semnatar 1 (originalul fără semnături anterioare)
-        // Semnatar 2+ descarcă direct /signed-pdf din downloadPdfForSigning
-        const pdfResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf`);
-        if (!pdfResp.ok) throw new Error("PDF original indisponibil pe server (cod " + pdfResp.status + ").");
-        const pdfBytes = await pdfResp.arrayBuffer();
+        // Semnatar 2+: folosește PDF-ul semnat de anteriori ca bază → păstrează semnăturile lor
+        // Semnatar 1: folosește PDF-ul original
+        let pdfBytes;
+        const prevSignedResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
+        if (prevSignedResp.ok) {
+          // Baza = PDF semnat calificat de semnatarii anteriori (lanț real de semnături)
+          pdfBytes = await prevSignedResp.arrayBuffer();
+        } else {
+          // Baza = PDF original
+          const pdfResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf`);
+          if (!pdfResp.ok) throw new Error("PDF original indisponibil pe server (cod " + pdfResp.status + ").");
+          pdfBytes = await pdfResp.arrayBuffer();
+        }
 
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const pages = pdfDoc.getPages();

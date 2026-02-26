@@ -645,9 +645,9 @@ th{ color: var(--sub) !important; }
                 const firstSigner = (j.signers||[])[0];
                 if (firstSigner?.token) {
                   const signerLink = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(firstSigner.token)}`;
-                  let html = `<a href="${signerLink}" target="_blank" class="btn secondary" style="display:inline-block; text-decoration:none; padding:8px 14px; margin-right:8px;">🔗 PDF cu cartuș vizual</a>`;
+                  let html = "";
                   if (j.hasSignedPdf) {
-                    html += `<a href="/flows/${encodeURIComponent(j.flowId)}/signed-pdf" target="_blank" class="btn" style="display:inline-block; text-decoration:none; padding:8px 14px;">🏅 Descarcă PDF semnat calificat</a>`;
+                    html = `<a href="/flows/${encodeURIComponent(j.flowId)}/signed-pdf" target="_blank" class="btn" style="display:inline-block; text-decoration:none; padding:8px 14px;">🏅 Descarcă PDF semnat calificat</a>`;
                   }
                   lnkDiv.innerHTML = html;
                 }
