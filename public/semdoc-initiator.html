@@ -360,15 +360,7 @@ th{ color: var(--sub) !important; }
       // Signers table
       const tbody = $("signersTbody");
 
-      // Restore initiator fields from last session
-      (function restoreInitiator() {
-        const n = localStorage.getItem("lastInitName");
-        const e = localStorage.getItem("lastInitEmail");
-        const nameEl = $("initName");
-        const emailEl = $("initEmail");
-        if (n && nameEl && !nameEl.value) nameEl.value = n;
-        if (e && emailEl && !emailEl.value) emailEl.value = e;
-      })();
+
 
       function signerRowTemplate(s = {}) {
         const tr = document.createElement("tr");
