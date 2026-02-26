@@ -240,7 +240,10 @@ const createFlow = async (req, res) => {
     const first = data.signers.find((s) => s.status === "current");
     const signerLink = first ? buildSignerLink(req, flowId, first.token) : null;
 
-    // Email first signer (NON-BLOCKING)
+    // Email first signer (NON-BLOCKING) — mark as notified so upload doesn't re-send
+    if (first) first.emailSent = true;
+    await saveFlow(flowId, data);
+
     if (first?.email && signerLink) {
       sendSignerEmail({
         to: first.email,
@@ -511,6 +514,8 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req, res) => {
       });
     }
     data.signers = signers;
+    // Mark this signer as having triggered the next notification
+    signers[idx].notifiedNext = true;
 
     // Check full completion: all signed AND all PDFs uploaded
     const allSignedAndUploaded = data.signers.every((s) => s.status === "signed" && s.pdfUploaded);
@@ -539,11 +544,13 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req, res) => {
 
     await saveFlow(flowId, data);
 
-    // Send email to next signer (NOW, after PDF upload)
-    const nextSigner = data.signers.find((s) => s.status === "current");
+    // Send email to next signer (NOW, after PDF upload) — only if not already notified
+    const nextSigner = data.signers.find((s) => s.status === "current" && !s.emailSent);
     const nextLink = nextSigner ? buildSignerLink(req, flowId, nextSigner.token) : null;
 
     if (nextSigner?.email && nextLink) {
+      nextSigner.emailSent = true;
+      await saveFlow(flowId, data);
       const signedPdfLink = `${publicBaseUrl(req)}/flows/${encodeURIComponent(flowId)}/signed-pdf`;
       sendSignerEmail({
         to: nextSigner.email,
