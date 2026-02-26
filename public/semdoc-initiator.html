@@ -557,11 +557,8 @@ th{ color: var(--sub) !important; }
           localStorage.setItem("lastFlowId", j.flowId);
           localStorage.setItem("lastInitName", $("initName").value.trim());
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
-          $("createResult").innerHTML = `✅ Flow creat: <span class="mono">${j.flowId}</span>`;
-
-          if (j.signerLink) {
-            $("createResult").innerHTML += ` · <a href="${j.signerLink}" target="_blank">Deschide link semnare (primul)</a>`;
-          }
+          // Show success, hide signerLink (mail already sent to first signer)
+          $("createResult").innerHTML = `✅ Flow creat: <span class="mono">${j.flowId}</span>. Emailul a fost trimis primului semnatar.`;
 
         } catch (e) {
           $("createResult").textContent = `❌ Eroare: ${String(e.message || e)}`;

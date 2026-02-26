@@ -431,10 +431,14 @@ th{ color: var(--sub) !important; }
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_semnat_anterior.pdf";
+            const fname = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_semnat_anterior.pdf";
+            a.download = fname;
+            a.type = "application/pdf";
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            status.textContent = "✅ Descărcat PDF semnat de semnatarii anteriori.";
+            // Open in Adobe: attempt window.open after short delay (browser may open in Adobe if set as default)
+            setTimeout(() => { window.open(url, "_blank"); }, 500);
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            status.textContent = "✅ Descărcat. Deschide fișierul în Adobe Acrobat/Reader pentru a semna calificat.";
           } else {
             // No previous signed PDF — generate cartus from original
             status.textContent = "ℹ️ Niciun PDF anterior — se generează PDF cu cartuș...";
@@ -496,6 +500,7 @@ th{ color: var(--sub) !important; }
             functie: s.functie || "",
             nume: s.name || "",
             status: s.status || "pending",
+            pdfUploaded: !!s.pdfUploaded,
             signedAt: s.signedAt || null,
             signature: s.signature || "",
           }));
@@ -531,28 +536,40 @@ th{ color: var(--sub) !important; }
           const allRefs = [];
 
           // 6. Draw each signer cell (Official style)
+          // activeSignerIdx = index of the signer who should sign this PDF
+          const activeSignerIdx = signerIndex; // passed from outer scope
+
           sigs.forEach((sig, idx) => {
             const row = Math.floor(idx / cols);
             const col = idx % cols;
             const cx = MARGIN + col * cellW;
             const cy = cartusBottom + (rows - 1 - row) * cellH;
 
-            const isSigned = sig.status === "signed";
-            const borderColor = isSigned ? rgb(.1,.55,.3) : accent;
-            const bgColor = isSigned ? rgb(.92,.98,.94) : lightBg;
+            const isSigned = sig.status === "signed" && sig.pdfUploaded;
+            const isActive = idx === activeSignerIdx;
+            const borderColor = isSigned ? rgb(.1,.55,.3) : isActive ? rgb(.48,.25,.92) : accent;
+            const bgColor = isSigned ? rgb(.92,.98,.94) : isActive ? rgb(.95,.92,1) : lightBg;
 
-            // Cell border
-            lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: 1 });
+            // Cell border — active field gets thicker purple border
+            lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: isActive ? 2 : 1 });
             lastPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
 
+            // Active indicator arrow
+            if (isActive) {
+              lastPage.drawText("► DE SEMNAT", { x: cx+8, y: cy+cellH-13, size: 6.5, font: fontB, color: rgb(.48,.25,.92) });
+            }
+
             // Role header
-            lastPage.drawText(ro(sig.rol) || "—", { x: cx+8, y: cy+cellH-15, size: 8, font: fontB, color: isSigned ? rgb(.1,.45,.25) : accent });
+            const roleY = isActive ? cy+cellH-23 : cy+cellH-15;
+            lastPage.drawText(ro(sig.rol) || "—", { x: cx+8, y: roleY, size: 8, font: fontB, color: isSigned ? rgb(.1,.45,.25) : isActive ? rgb(.35,.15,.75) : accent });
 
             // Functie
-            if (sig.functie) lastPage.drawText(ro(sig.functie), { x: cx+8, y: cy+cellH-27, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
+            const functieY = isActive ? cy+cellH-33 : cy+cellH-27;
+            if (sig.functie) lastPage.drawText(ro(sig.functie), { x: cx+8, y: functieY, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
 
             // Nume
-            if (sig.nume) lastPage.drawText(ro(sig.nume), { x: cx+8, y: cy+cellH-39, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
+            const numeY = isActive ? cy+cellH-43 : cy+cellH-39;
+            if (sig.nume) lastPage.drawText(ro(sig.nume), { x: cx+8, y: numeY, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
 
             // Signature value or placeholder
             if (isSigned && sig.signature) {
@@ -561,21 +578,39 @@ th{ color: var(--sub) !important; }
                 const dtSigned = new Date(sig.signedAt).toLocaleString("ro-RO");
                 lastPage.drawText(dtSigned, { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
               }
+            } else if (isActive) {
+              lastPage.drawText("L.S.  Camp semnatura electronica calificata - ACTIV", { x: cx+8, y: cy+8, size: 6, font: fontB, color: rgb(.35,.15,.75) });
             } else {
-              lastPage.drawText("L.S.  Camp semnatura electronica calificata", { x: cx+8, y: cy+8, size: 6, font: fontR, color: rgb(.6,.6,.6) });
+              lastPage.drawText("L.S.  Camp semnatura electronica calificata", { x: cx+8, y: cy+8, size: 6, font: fontR, color: rgb(.75,.75,.75) });
             }
 
             // AcroForm signature field
             const fn = `SIG_${(sig.rol||'SEM').replace(/[^A-Za-z0-9]/g,'_')}_${idx+1}`;
             const fx = cx+4, fy = cy+4, fw = cellW-8, fh = 16;
+
+            // Ff flags: bit 1 (value 1) = ReadOnly
+            // Active field: Ff=0 (editable), others: Ff=1 (read-only)
+            const fieldFlags = isActive ? PDFNumber.of(0) : PDFNumber.of(1);
+
+            // Background color: active=light purple, locked=light grey, signed=light green
+            const bgR = isSigned ? PDFNumber.of(.92) : isActive ? PDFNumber.of(.95) : PDFNumber.of(.93);
+            const bgG = isSigned ? PDFNumber.of(.98) : isActive ? PDFNumber.of(.90) : PDFNumber.of(.93);
+            const bgB = isSigned ? PDFNumber.of(.94) : isActive ? PDFNumber.of(1.0) : PDFNumber.of(.93);
+
             const widget = pdfDoc.context.obj({
               Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
               Rect: pdfDoc.context.obj([fx, fy, fx+fw, fy+fh].map(v => PDFNumber.of(Math.round(v*10)/10))),
               T: PDFString.of(fn),
-              TU: PDFString.of(ro(sig.rol||'') + (sig.nume ? ' - ' + ro(sig.nume) : '')),
-              F: PDFNumber.of(4), P: lastPage.ref, DA: PDFString.of('/Helv 10 Tf 0 g'),
-              MK: pdfDoc.context.obj({ BC: pdfDoc.context.obj([hR,hG,hB].map(v=>PDFNumber.of(v))), BG: pdfDoc.context.obj([PDFNumber.of(.92),PDFNumber.of(.96),PDFNumber.of(1)]) }),
-              BS: pdfDoc.context.obj({ W: PDFNumber.of(1), S: PDFName.of('D') }),
+              TU: PDFString.of(ro(sig.rol||'') + (sig.nume ? ' - ' + ro(sig.nume) : '') + (isActive ? ' [DE SEMNAT]' : isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
+              F: PDFNumber.of(4),
+              Ff: fieldFlags,
+              P: lastPage.ref,
+              DA: PDFString.of('/Helv 10 Tf 0 g'),
+              MK: pdfDoc.context.obj({
+                BC: pdfDoc.context.obj(isActive ? [PDFNumber.of(.48),PDFNumber.of(.25),PDFNumber.of(.92)] : [hR,hG,hB].map(v=>PDFNumber.of(v))),
+                BG: pdfDoc.context.obj([bgR, bgG, bgB])
+              }),
+              BS: pdfDoc.context.obj({ W: PDFNumber.of(isActive ? 2 : 1), S: PDFName.of(isActive ? 'S' : 'D') }),
             });
             const ref = pdfDoc.context.register(widget);
             allRefs.push(ref);
@@ -591,11 +626,14 @@ th{ color: var(--sub) !important; }
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = (currentFlow.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, '_') + '_semnat.pdf';
+          a.type = 'application/pdf';
+          a.download = (currentFlow.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, '_') + '_pentru_semnare.pdf';
           document.body.appendChild(a); a.click(); document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+          // Open in Adobe: attempt window.open after short delay
+          setTimeout(() => { window.open(url, "_blank"); }, 500);
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
 
-          status.textContent = `✅ PDF generat cu ${sigs.length} câmpuri de semnătură electronică.`;
+          status.textContent = `✅ PDF generat. Deschide-l în Adobe Acrobat/Reader pentru a semna calificat.`;
           btn.textContent = "⬇️ Descarcă din nou";
         } catch(err) {
           console.error("PDF gen error:", err);
