@@ -167,7 +167,8 @@ th{ color: var(--sub) !important; }
         </div>
         <div id="dlBanner" style="display:none; background:rgba(45,212,191,.08); border:1px solid rgba(45,212,191,.3); border-radius:14px; padding:14px; margin-bottom:12px;">
           <span style="font-weight:700;">✅ Document semnat complet!</span>
-          <a href="#" download class="btn" style="display:inline-block; text-decoration:none; margin-left:12px; padding:8px 16px;">⬇️ Descarcă PDF semnat</a>
+          <span class="muted" style="margin-left:8px; font-size:.9em;">Deschide link-ul de semnare pentru a descărca PDF-ul cu cartuș.</span>
+          <div id="dlBannerLink" style="margin-top:8px;"></div>
         </div>
         <div class="card">
           <div class="grid">
@@ -618,8 +619,14 @@ th{ color: var(--sub) !important; }
             if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; }
             if (dlBanner) {
               dlBanner.style.display = "block";
-              const a = dlBanner.querySelector("a");
-              if (a) { a.href = `/flows/${encodeURIComponent(j.flowId)}/pdf`; a.download = (j.docName || "document") + ".pdf"; }
+              const lnkDiv = $("dlBannerLink");
+              if (lnkDiv) {
+                const firstSigner = (j.signers||[])[0];
+                if (firstSigner?.token) {
+                  const signerLink = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(firstSigner.token)}`;
+                  lnkDiv.innerHTML = `<a href="${signerLink}" target="_blank" class="btn" style="display:inline-block; text-decoration:none; padding:8px 16px;">🔗 Deschide pagina de semnare pentru download PDF</a>`;
+                }
+              }
             }
           } else {
             if (lockBanner) lockBanner.style.display = "none";
