@@ -210,14 +210,15 @@ th{ color: var(--sub) !important; }
 
           <!-- Upload PDF semnat calificat -->
           <div id="uploadSignedBox" style="display:none; margin-top:16px; background:rgba(124,92,255,.08); border:1px solid rgba(124,92,255,.3); border-radius:14px; padding:16px;">
-            <div style="font-weight:700; margin-bottom:6px;">📎 Pasul 2 — Încarcă PDF-ul semnat calificat</div>
+            <div style="font-weight:700; margin-bottom:6px;">📎 Pasul 2 — Semnătură electronică calificată</div>
             <div class="muted" style="margin-bottom:12px; font-size:.92em; line-height:1.6;">
-              Ai semnat înregistrarea în DocFlowAI. Acum:<br/>
-              <strong>1.</strong> Descarcă PDF-ul cu cartuș de mai jos<br/>
+              Înregistrarea în DocFlowAI a fost salvată. Acum:<br/>
+              <strong>1.</strong> Descarcă PDF-ul de mai jos (conține semnăturile semnatarilor anteriori)<br/>
               <strong>2.</strong> Semnează-l cu <strong>E-SignEncrypt / Adobe Acrobat</strong> folosind certificatul STS<br/>
-              <strong>3.</strong> Încarcă-l înapoi aici
+              <strong>3.</strong> Încarcă PDF-ul semnat înapoi — <em>abia după upload va fi notificat următorul semnatar</em>
             </div>
-            <button class="btn secondary" style="margin-bottom:12px; width:100%;" onclick="generateAndDownloadPdf()">⬇️ Descarcă PDF cu cartuș pentru semnare</button>
+            <button id="btnDownloadForSigning" class="btn secondary" style="margin-bottom:12px; width:100%;" onclick="downloadPdfForSigning()">⬇️ Descarcă PDF pentru semnare calificată</button>
+            <div id="downloadForSigningStatus" class="muted" style="font-size:.85em; margin-bottom:8px;"></div>
             <div style="border-top:1px solid rgba(255,255,255,.1); padding-top:12px; margin-top:4px;">
               <div class="muted" style="margin-bottom:8px; font-size:.9em;">Încarcă PDF-ul semnat calificat:</div>
               <input id="signedPdfFile" type="file" accept="application/pdf" style="display:none;" />
@@ -230,8 +231,8 @@ th{ color: var(--sub) !important; }
 
           <div id="completedBox" style="display:none; margin-top:16px; background:rgba(45,212,191,.08); border:1px solid rgba(45,212,191,.3); border-radius:14px; padding:16px;">
             <div style="font-weight:700; margin-bottom:8px;">✅ Document semnat complet de toți semnatarii!</div>
-            <div class="muted" style="margin-bottom:12px;">PDF-ul va conține cartușul oficial cu toți semnatarii și câmpuri pentru semnătură electronică calificată.</div>
-            <button id="btnDownloadPdf" class="btn" style="display:inline-block;" onclick="generateAndDownloadPdf()">⬇️ Generează și descarcă PDF cu cartuș</button>
+            <div class="muted" style="margin-bottom:12px;">Inițiatorul a fost notificat și poate descărca PDF-ul final semnat calificat.</div>
+            <a id="btnDownloadFinalPdf" href="#" class="btn" style="display:inline-block; text-decoration:none;" target="_blank">🏅 Descarcă PDF final semnat calificat</a>
             <div id="pdfGenStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
           </div>
 
@@ -307,19 +308,15 @@ th{ color: var(--sub) !important; }
           $("quick").textContent = lines.join("\n");
 
           // Check if fully completed
-          const flowCompleted = j.signers && j.signers.every(x => x.status === "signed");
+          const flowCompleted = j.completed || (j.signers && j.signers.every(x => x.status === "signed" && x.pdfUploaded));
           if (flowCompleted) {
             $("btnSign").disabled = true;
             $("btnSign").style.opacity = 0.4;
             $("result").textContent = "";
             const box = $("completedBox");
-            const dlBtn = $("btnDownloadPdf");
             if (box) box.style.display = "block";
-            if (dlBtn) {
-              const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf`;
-              dlBtn.href = pdfUrl;
-              dlBtn.download = (j.docName || "document") + ".pdf";
-            }
+            const dlBtn = $("btnDownloadFinalPdf");
+            if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf`;
           } else if (s.status !== "current") {
             $("btnSign").disabled = true;
             $("btnSign").style.opacity = 0.6;
@@ -428,15 +425,18 @@ th{ color: var(--sub) !important; }
           });
           const j = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(j?.error || "server_error");
-          status.textContent = "✅ PDF semnat calificat încărcat cu succes!";
           btn.textContent = "✅ Trimis";
-          // Show download link for confirmation
-          const dlLink = document.createElement("a");
-          dlLink.href = `/flows/${encodeURIComponent(flow)}/signed-pdf`;
-          dlLink.target = "_blank";
-          dlLink.textContent = "🔗 Verifică PDF-ul semnat calificat";
-          dlLink.style.cssText = "display:block; margin-top:8px; color:#a3e6a3;";
-          status.after(dlLink);
+          if (j.completed) {
+            status.innerHTML = "✅ PDF semnat calificat încărcat! Toți semnatarii au semnat — <strong>procesul este finalizat</strong>. Inițiatorul a fost notificat.";
+            const uploadBox = $("uploadSignedBox");
+            const completedBox = $("completedBox");
+            if (uploadBox) uploadBox.style.borderColor = "rgba(45,212,191,.5)";
+            if (completedBox) completedBox.style.display = "block";
+          } else if (j.nextSigner) {
+            status.innerHTML = `✅ PDF încărcat! <strong>${j.nextSigner.name || j.nextSigner.email}</strong> a fost notificat să semneze.`;
+          } else {
+            status.textContent = "✅ PDF semnat calificat încărcat cu succes!";
+          }
         } catch(e) {
           status.textContent = "❌ Eroare upload: " + e.message;
           btn.disabled = false;
@@ -444,6 +444,40 @@ th{ color: var(--sub) !important; }
         }
       });
       // ── End Upload ──────────────────────────────────────────────────────────
+
+      // ── Download PDF for signing (signed by previous or original with cartus) ─
+      async function downloadPdfForSigning() {
+        const btn = $("btnDownloadForSigning");
+        const status = $("downloadForSigningStatus");
+        btn.disabled = true;
+        btn.textContent = "⏳ Se pregătește...";
+        status.textContent = "";
+        try {
+          // Try signed PDF first (signed by previous signers)
+          const signedResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
+          if (signedResp.ok) {
+            // Has signed PDF from previous signer — download it directly
+            const blob = await signedResp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_semnat_anterior.pdf";
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            status.textContent = "✅ Descărcat PDF semnat de semnatarii anteriori.";
+          } else {
+            // No previous signed PDF — generate cartus from original
+            status.textContent = "ℹ️ Niciun PDF anterior — se generează PDF cu cartuș...";
+            await generateAndDownloadPdf();
+            status.textContent = "✅ Descărcat PDF cu cartuș (ești primul semnatar).";
+          }
+        } catch(e) {
+          status.textContent = "❌ Eroare: " + e.message;
+        }
+        btn.disabled = false;
+        btn.textContent = "⬇️ Descarcă PDF pentru semnare calificată";
+      }
+      // ── End Download for signing ────────────────────────────────────────────
 
       // ── PDF Cartuș Generator ────────────────────────────────────────────────
       async function generateAndDownloadPdf() {
