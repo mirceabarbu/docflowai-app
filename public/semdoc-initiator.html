@@ -161,6 +161,13 @@ th{ color: var(--sub) !important; }
     <main>
       <!-- INIT -->
       <section id="viewInit">
+        <div id="lockBanner" style="display:none; background:rgba(251,113,133,.1); border:1px solid rgba(251,113,133,.3); border-radius:14px; padding:14px; margin-bottom:12px; font-weight:600;">
+          🔒 Acest flux a fost finalizat — toți semnatarii au semnat. Nu mai poți porni un flux nou pentru acest document.
+        </div>
+        <div id="dlBanner" style="display:none; background:rgba(45,212,191,.08); border:1px solid rgba(45,212,191,.3); border-radius:14px; padding:14px; margin-bottom:12px;">
+          <span style="font-weight:700;">✅ Document semnat complet!</span>
+          <a href="#" download class="btn" style="display:inline-block; text-decoration:none; margin-left:12px; padding:8px 16px;">⬇️ Descarcă PDF semnat</a>
+        </div>
         <div class="card">
           <div class="grid">
             <div class="col-4">
@@ -179,7 +186,8 @@ th{ color: var(--sub) !important; }
 
             <div class="col-12">
               <label>PDF (atașament recomandat &lt; 10MB)</label>
-              <input id="pdfFile" type="file" accept="application/pdf" />
+              <input id="pdfFile" type="file" accept="application/pdf" style="display:none;" />
+              <button id="btnChoosePdf" class="btn secondary" type="button" style="width:auto;">📎 Alege fișier PDF</button>
               <div class="row" style="margin-top:10px; justify-content: space-between; gap:12px;">
                 <div class="muted" id="pdfInfo">Nu ai selectat încă un PDF.</div>
                 <button id="btnClearPdf" class="btn btn-outline" type="button">Șterge PDF</button>
@@ -280,6 +288,8 @@ th{ color: var(--sub) !important; }
         reader.readAsDataURL(f);
       });
 
+      $("btnChoosePdf").addEventListener("click", () => $("pdfFile").click());
+
       $("btnClearPdf").addEventListener("click", () => {
         $("pdfFile").value = "";
         pdfB64 = null;
@@ -341,6 +351,18 @@ th{ color: var(--sub) !important; }
         tr.querySelector(".email").value = (s.email || "");
         tr.querySelector(".btnDel").addEventListener("click", () => tr.remove());
 
+        // Auto-fill name/email from initiator fields when ÎNTOCMIT is selected
+        function syncIntocmit(sel) {
+          if (sel.value === "ÎNTOCMIT" || (sel.value === "__alt__" && tr.querySelector(".rolCustom").value.trim().toUpperCase() === "ÎNTOCMIT")) {
+            const nameEl = tr.querySelector(".name");
+            const emailEl = tr.querySelector(".email");
+            const initN = $("initName") ? $("initName").value.trim() : "";
+            const initE = $("initEmail") ? $("initEmail").value.trim() : "";
+            if (initN && !nameEl.value.trim()) nameEl.value = initN;
+            if (initE && !emailEl.value.trim()) emailEl.value = initE;
+          }
+        }
+
         const rolSel = tr.querySelector(".rol");
         const rolCustom = tr.querySelector(".rolCustom");
 
@@ -359,7 +381,12 @@ th{ color: var(--sub) !important; }
           if (rolSel.value === "__alt__") {
             showCustomRol();
           }
+          syncIntocmit(rolSel);
+          updateIntocmitVisibility();
         });
+
+        // On init, sync if pre-set to ÎNTOCMIT
+        setTimeout(() => { syncIntocmit(rolSel); }, 0);
 
         rolCustom.addEventListener("keydown", (e) => {
           if (e.key === "Escape") {
@@ -389,11 +416,51 @@ th{ color: var(--sub) !important; }
         defaults.forEach(d => tbody.appendChild(signerRowTemplate(d)));
       }
 
-      $("btnAdd").addEventListener("click", () => tbody.appendChild(signerRowTemplate()));
+      // Hide ÎNTOCMIT option from rows where a previous row already uses it
+      function updateIntocmitVisibility() {
+        const rows = [...tbody.querySelectorAll("tr")];
+        let intocmitUsed = false;
+        rows.forEach((tr) => {
+          const sel = tr.querySelector(".rol");
+          const opt = sel ? sel.querySelector('option[value="ÎNTOCMIT"]') : null;
+          if (!opt) return;
+          if (intocmitUsed) {
+            opt.style.display = "none";
+            opt.disabled = true;
+            if (sel.value === "ÎNTOCMIT") sel.value = "VIZAT";
+          } else {
+            opt.style.display = "";
+            opt.disabled = false;
+          }
+          if (sel && (sel.value === "ÎNTOCMIT" || (sel.value === "__alt__" && tr.querySelector(".rolCustom") && tr.querySelector(".rolCustom").value.trim().toUpperCase() === "ÎNTOCMIT"))) {
+            intocmitUsed = true;
+          }
+        });
+      }
+
+      // Watch for DOM changes in tbody
+      new MutationObserver(updateIntocmitVisibility).observe(tbody, { childList: true, subtree: false });
+
+      $("btnAdd").addEventListener("click", () => { tbody.appendChild(signerRowTemplate()); updateIntocmitVisibility(); });
       $("btnDefaults").addEventListener("click", setDefaults);
 
       // Default load
       setDefaults();
+
+      // When initiator fields change, sync into any ÎNTOCMIT row
+      ["initName", "initEmail"].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener("input", () => {
+          [...tbody.querySelectorAll("tr")].forEach(tr => {
+            const sel = tr.querySelector(".rol");
+            if (sel && sel.value === "ÎNTOCMIT") {
+              if (id === "initName") { const n = tr.querySelector(".name"); if (n && !n.dataset.userEdited) n.value = el.value; }
+              if (id === "initEmail") { const e = tr.querySelector(".email"); if (e && !e.dataset.userEdited) e.value = el.value; }
+            }
+          });
+        });
+      });
 
       function readSigners() {
         const rows = [...tbody.querySelectorAll("tr")];
@@ -486,6 +553,25 @@ th{ color: var(--sub) !important; }
               lines.push(`      link: ${link}`);
             }
           });
+
+          // Lock init tab if completed
+          const allDone = j.signers && j.signers.every(s => s.status === "signed");
+          const lockBanner = $("lockBanner");
+          const btnCreate = $("btnCreate");
+          const dlBanner = $("dlBanner");
+          if (allDone) {
+            if (lockBanner) lockBanner.style.display = "block";
+            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; }
+            if (dlBanner) {
+              dlBanner.style.display = "block";
+              const a = dlBanner.querySelector("a");
+              if (a) { a.href = `/flows/${encodeURIComponent(j.flowId)}/pdf`; a.download = (j.docName || "document") + ".pdf"; }
+            }
+          } else {
+            if (lockBanner) lockBanner.style.display = "none";
+            if (btnCreate) { btnCreate.disabled = false; btnCreate.style.opacity = 1; }
+            if (dlBanner) dlBanner.style.display = "none";
+          }
 
           lines.push("");
           lines.push("Evenimente:");

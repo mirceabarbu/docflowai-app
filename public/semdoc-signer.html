@@ -207,6 +207,12 @@ th{ color: var(--sub) !important; }
 
           <div id="result" style="min-height:24px; color: #a3e6a3;"></div>
 
+          <div id="completedBox" style="display:none; margin-top:16px; background:rgba(45,212,191,.08); border:1px solid rgba(45,212,191,.3); border-radius:14px; padding:16px;">
+            <div style="font-weight:700; margin-bottom:8px;">✅ Document semnat complet de toți semnatarii!</div>
+            <div class="muted" style="margin-bottom:12px;">Poți descărca PDF-ul cu toate semnăturile înregistrate.</div>
+            <a id="btnDownloadPdf" href="#" download class="btn" style="display:inline-block; text-decoration:none;">⬇️ Descarcă PDF semnat</a>
+          </div>
+
         </div>
       </div>
     </main>
@@ -273,7 +279,21 @@ th{ color: var(--sub) !important; }
           });
           $("quick").textContent = lines.join("\n");
 
-          if (s.status !== "current") {
+          // Check if fully completed
+          const flowCompleted = j.signers && j.signers.every(x => x.status === "signed");
+          if (flowCompleted) {
+            $("btnSign").disabled = true;
+            $("btnSign").style.opacity = 0.4;
+            $("result").textContent = "";
+            const box = $("completedBox");
+            const dlBtn = $("btnDownloadPdf");
+            if (box) box.style.display = "block";
+            if (dlBtn) {
+              const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf`;
+              dlBtn.href = pdfUrl;
+              dlBtn.download = (j.docName || "document") + ".pdf";
+            }
+          } else if (s.status !== "current") {
             $("btnSign").disabled = true;
             $("btnSign").style.opacity = 0.6;
             $("result").textContent = `Nu e rândul tău (status: ${s.status}).`;
@@ -323,8 +343,18 @@ th{ color: var(--sub) !important; }
           $("result").textContent = "✅ Semnat. Se actualizează status...";
           await loadFlow();
 
-          if (j.nextLink) {
-            $("result").innerHTML = `✅ Semnat. Următorul a fost notificat (dacă email e activ).<br/>NextLink (debug): <a href="${j.nextLink}" target="_blank">${j.nextLink}</a>`;
+          if (j.completed) {
+            $("result").textContent = "";
+            const box = $("completedBox");
+            const dlBtn = $("btnDownloadPdf");
+            if (box) box.style.display = "block";
+            if (dlBtn) {
+              const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf`;
+              dlBtn.href = pdfUrl;
+              dlBtn.download = (currentFlow?.docName || "document") + ".pdf";
+            }
+          } else if (j.nextLink) {
+            $("result").textContent = "✅ Semnat. Următorul semnatar a fost notificat.";
           }
         } catch (e) {
           showError(String(e.message || e));
