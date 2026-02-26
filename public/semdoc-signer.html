@@ -449,12 +449,19 @@ th{ color: var(--sub) !important; }
           let pdfBlob;
           let fname = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_de_semnat.pdf";
 
-          // Generează întotdeauna cartuș cu câmpuri AcroForm actualizate
-          // buildCartusBlob folosește /signed-pdf ca bază dacă există (semnatar 2+)
-          // sau /pdf original (semnatar 1) — în ambele cazuri adaugă cartuș cu evidențiere corectă
-          status.textContent = "⏳ Se generează PDF cu câmpuri de semnare...";
-          await new Promise(r => setTimeout(r, 30));
-          pdfBlob = await buildCartusBlob();
+          // Semnatar 1: generează PDF cu cartuș + câmpuri AcroForm din original
+          // Semnatar 2+: descarcă DIRECT /signed-pdf — NU modificăm, păstrăm semnăturile calificate
+          const prevResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
+          if (prevResp.ok) {
+            // Semnatar 2+: descărcare directă, fără nicio procesare
+            status.textContent = "⏳ Se descarcă PDF-ul semnat de semnatarii anteriori...";
+            pdfBlob = await prevResp.blob();
+          } else {
+            // Semnatar 1: generează cartuș pe original
+            status.textContent = "⏳ Se generează PDF cu cartuș...";
+            await new Promise(r => setTimeout(r, 30));
+            pdfBlob = await buildCartusBlob();
+          }
 
           // Descarcă fișierul
           const url = URL.createObjectURL(pdfBlob);
@@ -503,19 +510,11 @@ th{ color: var(--sub) !important; }
 
         const { PDFDocument, PDFName, PDFString, PDFNumber, rgb, StandardFonts } = PDFLib;
 
-        // Semnatar 2+: folosește PDF-ul semnat de anteriori ca bază → păstrează semnăturile lor
-        // Semnatar 1: folosește PDF-ul original
-        let pdfBytes;
-        const prevSignedResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
-        if (prevSignedResp.ok) {
-          // Baza = PDF semnat calificat de semnatarii anteriori (lanț real de semnături)
-          pdfBytes = await prevSignedResp.arrayBuffer();
-        } else {
-          // Baza = PDF original
-          const pdfResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf`);
-          if (!pdfResp.ok) throw new Error("PDF original indisponibil pe server (cod " + pdfResp.status + ").");
-          pdfBytes = await pdfResp.arrayBuffer();
-        }
+        // buildCartusBlob folosește MEREU PDF-ul original ca bază
+        // (semnatar 2+ descarcă direct /signed-pdf din downloadPdfForSigning, fără modificare)
+        const pdfResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf`);
+        if (!pdfResp.ok) throw new Error("PDF original indisponibil pe server (cod " + pdfResp.status + ").");
+        const pdfBytes = await pdfResp.arrayBuffer();
 
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const pages = pdfDoc.getPages();
@@ -540,13 +539,6 @@ th{ color: var(--sub) !important; }
 
         const signers = currentFlow.signers || [];
         if (!signers.length) throw new Error("Niciun semnatar în flux.");
-
-        // activeSignerIdx = indexul semnătarului care trebuie să semneze ACUM
-        // Folosim status "current" din flow (mai fiabil decât signerIndex care poate fi stale)
-        const signers_raw = currentFlow.signers || [];
-        const currentStatusIdx = signers_raw.findIndex(s => s.status === "current");
-        // Dacă nu găsim "current" (toți au semnat sau e primul), folosim signerIndex
-        const activeSignerIdx = currentStatusIdx !== -1 ? currentStatusIdx : signerIndex;
 
         const MARGIN = 40;
         const n = signers.length;
@@ -580,55 +572,43 @@ th{ color: var(--sub) !important; }
           const cy = cartusBottom + (rows - 1 - row) * cellH;
 
           const isSigned = s.status === "signed" && !!s.pdfUploaded;
-          const isActive = idx === activeSignerIdx;
+          const borderColor = isSigned ? rgb(.1,.55,.3) : accent;
+          const bgColor     = isSigned ? rgb(.92,.98,.94) : lightBg;
 
-          const borderColor = isSigned ? rgb(.1,.55,.3) : isActive ? rgb(.48,.25,.92) : accent;
-          const bgColor    = isSigned ? rgb(.92,.98,.94) : isActive ? rgb(.95,.92,1) : lightBg;
-
-          lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: isActive ? 2 : 1 });
+          lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: 1 });
           lastPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
 
-          if (isActive) lastPage.drawText(">> DE SEMNAT", { x: cx+8, y: cy+cellH-13, size: 6.5, font: fontB, color: rgb(.48,.25,.92) });
-
-          const rolColor = isSigned ? rgb(.1,.45,.25) : isActive ? rgb(.35,.15,.75) : accent;
-          lastPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy + cellH - (isActive ? 23 : 15), size: 8, font: fontB, color: rolColor });
-          if (s.functie) lastPage.drawText(ro(s.functie), { x: cx+8, y: cy + cellH - (isActive ? 33 : 27), size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
-          if (s.name)    lastPage.drawText(ro(s.name),    { x: cx+8, y: cy + cellH - (isActive ? 43 : 39), size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
+          lastPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy+cellH-15, size: 8, font: fontB, color: isSigned ? rgb(.1,.45,.25) : accent });
+          if (s.functie) lastPage.drawText(ro(s.functie), { x: cx+8, y: cy+cellH-27, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
+          if (s.name)    lastPage.drawText(ro(s.name),    { x: cx+8, y: cy+cellH-39, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
 
           if (isSigned && s.signature) {
             lastPage.drawText(ro(s.signature), { x: cx+8, y: cy+22, size: 8, font: fontB, color: rgb(.15,.45,.25) });
             if (s.signedAt) lastPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
-          } else if (isActive) {
-            lastPage.drawText("L.S.  Camp semnatura electronica calificata - ACTIV", { x: cx+8, y: cy+8, size: 6, font: fontB, color: rgb(.35,.15,.75) });
           } else {
-            lastPage.drawText("L.S.  Camp semnatura electronica calificata", { x: cx+8, y: cy+8, size: 6, font: fontR, color: rgb(.75,.75,.75) });
+            lastPage.drawText("L.S.  Camp semnatura electronica calificata", { x: cx+8, y: cy+8, size: 6, font: fontR, color: rgb(.6,.6,.6) });
           }
 
-          // AcroForm field — toate câmpurile active (Ff=0), evidențiere vizuală pe cel curent
+          // AcroForm — toate câmpurile active (Ff=0), fără evidențiere per semnatar
           const fn = `SIG_${(s.rol||'SEM').replace(/[^A-Za-z0-9]/g,'_')}_${idx+1}`;
-          // Culori bordură: curent=violet, semnat=verde, așteptare=albastru standard
-          const bcActive  = [PDFNumber.of(.48), PDFNumber.of(.25), PDFNumber.of(.92)];
-          const bcSigned  = [PDFNumber.of(.10), PDFNumber.of(.55), PDFNumber.of(.30)];
-          const bcNormal  = [hR,hG,hB].map(v=>PDFNumber.of(v));
-          const bc = isSigned ? bcSigned : isActive ? bcActive : bcNormal;
-          const bgR2 = isSigned ? PDFNumber.of(.92) : isActive ? PDFNumber.of(.95) : PDFNumber.of(.96);
-          const bgG2 = isSigned ? PDFNumber.of(.98) : isActive ? PDFNumber.of(.90) : PDFNumber.of(.97);
-          const bgB2 = isSigned ? PDFNumber.of(.94) : isActive ? PDFNumber.of(1.0) : PDFNumber.of(1.0);
+          const bgR2 = isSigned ? PDFNumber.of(.92) : PDFNumber.of(.96);
+          const bgG2 = isSigned ? PDFNumber.of(.98) : PDFNumber.of(.97);
+          const bgB2 = isSigned ? PDFNumber.of(.94) : PDFNumber.of(1.0);
 
           const widget = pdfDoc.context.obj({
             Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
             Rect: pdfDoc.context.obj([cx+4, cy+4, cx+cellW-4, cy+20].map(v => PDFNumber.of(Math.round(v*10)/10))),
             T: PDFString.of(fn),
-            TU: PDFString.of(ro(s.rol||'') + (s.name ? ' - '+ro(s.name) : '') + (isActive ? ' [DE SEMNAT ACUM]' : isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
+            TU: PDFString.of(ro(s.rol||'') + (s.name ? ' - '+ro(s.name) : '') + (isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
             F: PDFNumber.of(4),
-            Ff: PDFNumber.of(0), // toate câmpurile active
+            Ff: PDFNumber.of(0),
             P: lastPage.ref,
             DA: PDFString.of('/Helv 10 Tf 0 g'),
             MK: pdfDoc.context.obj({
-              BC: pdfDoc.context.obj(bc),
+              BC: pdfDoc.context.obj([hR,hG,hB].map(v=>PDFNumber.of(v))),
               BG: pdfDoc.context.obj([bgR2, bgG2, bgB2]),
             }),
-            BS: pdfDoc.context.obj({ W: PDFNumber.of(isActive ? 2.5 : 1), S: PDFName.of('S') }),
+            BS: pdfDoc.context.obj({ W: PDFNumber.of(1), S: PDFName.of('S') }),
           });
           const ref = pdfDoc.context.register(widget);
           allRefs.push(ref);

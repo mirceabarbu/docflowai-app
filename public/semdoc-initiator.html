@@ -268,20 +268,22 @@ th{ color: var(--sub) !important; }
       function validateForm() {
         const btn = $("btnCreate");
         if (!btn) return;
-        const docName = ($("docName")?.value || "").trim();
         const initName = ($("initName")?.value || "").trim();
         const initEmail = ($("initEmail")?.value || "").trim();
         const hasPdf = !!pdfB64;
         const rows = [...(document.getElementById("signersTbody")?.querySelectorAll("tr") || [])];
-        const hasSigners = rows.length > 0 && rows.every(tr => {
+        // Cel puțin un rând de semnatar (în afară de ÎNTOCMIT) cu nume și email
+        const extraSigners = rows.filter(tr => {
+          const rol = tr.querySelector(".rol")?.value || "";
           const name = tr.querySelector(".name")?.value?.trim();
           const email = tr.querySelector(".email")?.value?.trim();
-          return name && email;
+          return rol !== "ÎNTOCMIT" && name && email;
         });
-        const valid = hasPdf && docName && initName && initEmail && hasSigners;
+        const hasExtraSigner = extraSigners.length >= 1;
+        const valid = hasPdf && initName && initEmail && hasExtraSigner;
         btn.disabled = !valid;
         btn.style.opacity = valid ? "1" : "0.4";
-        btn.title = valid ? "" : "Completează toate câmpurile și încarcă un PDF";
+        btn.title = valid ? "" : "Încarcă un PDF, completează datele inițiatorului și adaugă cel puțin un semnatar";
       }
 
       function setPdfInfo(msg){ $("pdfInfo").textContent = msg; }
