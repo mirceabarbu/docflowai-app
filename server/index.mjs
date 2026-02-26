@@ -43,6 +43,34 @@ function newFlowId() {
   return "FLOW_" + crypto.randomBytes(8).toString("hex").toUpperCase();
 }
 
+
+
+// -------------------- Admin auth (MVP) --------------------
+const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
+
+function requireAdmin(req, res) {
+  // Use header: x-admin-secret: <ADMIN_SECRET>
+  // or Authorization: Bearer <ADMIN_SECRET>
+  if (!ADMIN_SECRET) {
+    res.status(503).json({ error: "admin_not_configured" });
+    return true;
+  }
+  const headerSecret = req.get("x-admin-secret");
+  const auth = req.get("authorization") || "";
+  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : null;
+  const provided = headerSecret || bearer;
+  if (!provided || provided !== ADMIN_SECRET) {
+    res.status(401).json({ error: "unauthorized" });
+    return true;
+  }
+  return false;
+}
+
+function stripPdfB64(data) {
+  if (!data || typeof data !== "object") return data;
+  const { pdfB64, ...rest } = data;
+  return { ...rest, hasPdf: !!pdfB64 };
+}
 // -------------------- Postgres --------------------
 const DATABASE_URL = process.env.DATABASE_URL;
 const pool = DATABASE_URL
@@ -168,7 +196,7 @@ app.post("/flows", async (req, res) => {
       signature: null, // MVP: store anything (optional) from signer page
     }));
 
-    const flowId = body.flowId ? String(body.flowId) : newFlowId();
+    const flowId = newFlowId();
 
     const data = {
       flowId,
@@ -243,7 +271,7 @@ app.get("/flows/:flowId", async (req, res) => {
     if (requireDb(res)) return;
     const data = await getFlow(req.params.flowId);
     if (!data) return res.status(404).json({ error: "not_found" });
-    return res.json(data);
+    return res.json(stripPdfB64(data));
   } catch (e) {
     console.error("GET /flows/:flowId error:", e);
     return res.status(500).json({ error: "server_error" });
@@ -254,6 +282,7 @@ app.get("/flows/:flowId", async (req, res) => {
 app.put("/flows/:flowId", async (req, res) => {
   try {
     if (requireDb(res)) return;
+    if (requireAdmin(req, res)) return;
     const { flowId } = req.params;
     const existing = await getFlow(flowId);
     if (!existing) return res.status(404).json({ error: "not_found" });
@@ -278,6 +307,9 @@ app.post("/flows/:flowId/sign", async (req, res) => {
     const { flowId } = req.params;
     const { token, signature } = req.body || {};
 
+    const sig = typeof signature === 'string' ? signature.trim() : '';
+    if (!sig) return res.status(400).json({ error: 'signature_required' });
+
     const data = await getFlow(flowId);
     if (!data) return res.status(404).json({ error: "not_found" });
 
@@ -292,7 +324,7 @@ app.post("/flows/:flowId/sign", async (req, res) => {
 
     signers[idx].status = "signed";
     signers[idx].signedAt = new Date().toISOString();
-    signers[idx].signature = signature ?? signers[idx].signature ?? null;
+    signers[idx].signature = sig ?? signers[idx].signature ?? null;
 
     // find next pending
     const nextIdx = signers.findIndex((s) => s.status !== "signed");
@@ -339,7 +371,7 @@ app.post("/flows/:flowId/sign", async (req, res) => {
       flowId,
       nextSigner: next || null,
       nextLink,
-      flow: data,
+      flow: stripPdfB64(data),
     });
   } catch (e) {
     console.error("POST /flows/:flowId/sign error:", e);
@@ -351,6 +383,7 @@ app.post("/flows/:flowId/sign", async (req, res) => {
 app.post("/flows/:flowId/resend", async (req, res) => {
   try {
     if (requireDb(res)) return;
+    if (requireAdmin(req, res)) return;
 
     const { flowId } = req.params;
     const data = await getFlow(flowId);
