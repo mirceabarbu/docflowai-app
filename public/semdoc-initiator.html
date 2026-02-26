@@ -178,13 +178,13 @@ th{ color: var(--sub) !important; }
             </div>
 
             <div class="col-12">
-              <label>PDF (atașament)</label>
+              <label>PDF (atașament recomandat &lt; 10MB)</label>
               <input id="pdfFile" type="file" accept="application/pdf" />
               <div class="row" style="margin-top:10px; justify-content: space-between; gap:12px;">
                 <div class="muted" id="pdfInfo">Nu ai selectat încă un PDF.</div>
                 <button id="btnClearPdf" class="btn btn-outline" type="button">Șterge PDF</button>
               </div>
-              <div class="muted" style="margin-top:8px;">PDF-ul se atașează în flux (Varianta A). Recomandat &lt; 10MB.</div>
+
               <div id="pdfPreviewBox" style="display:none; margin-top:14px;">
                 <div class="muted" style="margin-bottom:6px;">Preview PDF:</div>
                 <iframe id="pdfPreviewFrame" style="width:100%; height:600px; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2);" title="Preview PDF"></iframe>
@@ -193,7 +193,7 @@ th{ color: var(--sub) !important; }
 
             <div class="col-12">
               <div class="row" style="justify-content: space-between;">
-                <div class="muted">Semnatari (în ordine). La creare, primul devine <span class="pill warn">current</span>.</div>
+                <div class="muted">Semnatari (în ordine). La creare, primul devine <span class="pill warn">curent</span>.</div>
                 <div class="row">
                   <button id="btnAdd" class="btn secondary" type="button">+ Adaugă rând</button>
                   <button id="btnDefaults" class="btn secondary" type="button">Roluri implicite</button>
@@ -265,6 +265,11 @@ th{ color: var(--sub) !important; }
         const reader = new FileReader();
         reader.onload = () => {
           pdfB64 = reader.result;
+          // Auto-fill docName from PDF filename if empty
+          const docNameEl = $("docName");
+          if (docNameEl && !docNameEl.value.trim()) {
+            docNameEl.value = f.name.replace(/\.pdf$/i, "");
+          }
           const box = $("pdfPreviewBox");
           const frame = $("pdfPreviewFrame");
           if (box && frame) {
@@ -321,7 +326,9 @@ th{ color: var(--sub) !important; }
               <option value="LUAT LA CUNOȘTINȚĂ">LUAT LA CUNOȘTINȚĂ</option>
               <option value="ÎNREGISTRAT">ÎNREGISTRAT</option>
               <option value="CONFIRMAT">CONFIRMAT</option>
+              <option value="__alt__">Alt atribut...</option>
             </select>
+            <input class="rolCustom" type="text" placeholder="Scrie atributul (ex: AVIZAT SPECIAL)" style="display:none;" />
           </td>
           <td><input class="functie" placeholder="Ex: Șef structură" /></td>
           <td><input class="name" placeholder="Ex: Popescu Ion" /></td>
@@ -333,6 +340,42 @@ th{ color: var(--sub) !important; }
         tr.querySelector(".name").value = (s.name || "");
         tr.querySelector(".email").value = (s.email || "");
         tr.querySelector(".btnDel").addEventListener("click", () => tr.remove());
+
+        const rolSel = tr.querySelector(".rol");
+        const rolCustom = tr.querySelector(".rolCustom");
+
+        function showCustomRol() {
+          rolSel.style.display = "none";
+          rolCustom.style.display = "block";
+          rolCustom.focus();
+        }
+        function hideCustomRol() {
+          rolCustom.style.display = "none";
+          rolCustom.value = "";
+          rolSel.style.display = "block";
+        }
+
+        rolSel.addEventListener("change", () => {
+          if (rolSel.value === "__alt__") {
+            showCustomRol();
+          }
+        });
+
+        rolCustom.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            rolSel.value = "ÎNTOCMIT";
+            hideCustomRol();
+          }
+        });
+
+        // Small "x" to go back to select - handled via placeholder hint
+        // If loading existing custom value
+        if (s.rol && !rolSel.querySelector(`option[value="${s.rol}"]`)) {
+          rolSel.value = "__alt__";
+          showCustomRol();
+          rolCustom.value = s.rol;
+        }
+
         return tr;
       }
 
@@ -356,7 +399,7 @@ th{ color: var(--sub) !important; }
         const rows = [...tbody.querySelectorAll("tr")];
         return rows.map((tr, i) => ({
           order: i + 1,
-          rol: tr.querySelector(".rol").value,
+          rol: (() => { const sel = tr.querySelector(".rol"); if (sel.value === "__alt__") { return tr.querySelector(".rolCustom").value.trim().toUpperCase() || "__alt__"; } return sel.value; })(),
           functie: tr.querySelector(".functie").value.trim(),
           name: tr.querySelector(".name").value.trim(),
           email: tr.querySelector(".email").value.trim(),
@@ -432,7 +475,7 @@ th{ color: var(--sub) !important; }
 
           (j.signers || []).forEach((s, i) => {
             const st = s.status || "pending";
-            const pill = st === "signed" ? "signed" : (st === "current" ? "current" : "pending");
+            const pill = st === "signed" ? "semnat" : (st === "current" ? "curent" : "în așteptare");
             lines.push(
               `  ${i+1}. [${pill}] ${s.rol || ""} / ${s.functie || ""} — ${s.name || ""} <${s.email || ""}>` +
               (s.signedAt ? ` (signedAt: ${s.signedAt})` : "")
