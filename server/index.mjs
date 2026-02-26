@@ -425,10 +425,11 @@ app.post("/flows/:flowId/resend", async (req, res) => {
   }
 });
 
-// -------------------- Start --------------------
-const PORT = process.env.PORT || 3000;
-
 app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`🚀 SemDoc+ server running on port ${PORT}`);
-  initDbWithRetry();
 });
+
+// 🔥 KEEP PROCESS ALIVE TEST
+setInterval(() => {
+  console.log("Heartbeat alive...");
+}, 5000);
