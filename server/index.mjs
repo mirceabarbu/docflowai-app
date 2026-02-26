@@ -19,11 +19,14 @@ process.on("uncaughtException", (err) => console.error("❌ uncaughtException:",
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "../public");
-app.use(express.static(PUBLIC_DIR));
 
+// 🔥 MUTĂ ACEST BLOC SUS
 app.get("/", (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
+  res.status(200).send("ok");
 });
+
+// apoi static
+app.use(express.static(PUBLIC_DIR));
 
 // -------------------- Helpers --------------------
 function publicBaseUrl(req) {
