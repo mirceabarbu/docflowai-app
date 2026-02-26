@@ -424,12 +424,9 @@ app.post("/flows/:flowId/resend", async (req, res) => {
 });
 
 // -------------------- Start --------------------
-const PORT = process.env.PORT;
-
-if (!PORT) {
-  console.error("❌ PORT missing. Railway didn't inject PORT. Check Service Type (must be Web Service).");
-  process.exit(1);
-}
+// Railway injectează PORT. Ca să evităm restart-loop dacă PORT lipsește temporar,
+// folosim un fallback sigur.
+const PORT = process.env.PORT || 3000;
 
 app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`🚀 SemDoc+ server running on port ${PORT}`);
