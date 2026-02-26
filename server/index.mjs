@@ -559,10 +559,9 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req, res) => {
           <p>Bună ${nextSigner.name || ""},</p>
           <p>Este rândul tău să semnezi documentul:</p>
           <p><strong>${data.docName}</strong></p>
-          <p>Documentul conține semnăturile electronice calificate ale semnatarilor anteriori.</p>
-          <p>Descarcă documentul deja semnat de semnatarii anteriori:</p>
-          <p><a href="${signedPdfLink}">${signedPdfLink}</a></p>
-          <p>Link semnare în DocFlowAI:</p>
+          <p>Documentul conține semnăturile electronice calificate ale semnatarilor anteriori.<br/>
+          Descarcă documentul semnat anterior direct din interfața DocFlowAI după ce deschizi linkul de mai jos.</p>
+          <p>Link semnare:</p>
           <p><a href="${nextLink}">${nextLink}</a></p>
           <br/>
           <p>— DocFlowAI</p>
