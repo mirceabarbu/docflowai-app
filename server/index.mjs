@@ -379,6 +379,32 @@ const signFlow = async (req, res) => {
     const next = data.signers.find((s) => s.status === "current");
     const nextLink = next ? buildSignerLink(req, flowId, next.token) : null;
 
+    // Check if all signed
+    const allSigned = data.signers.every((s) => s.status === "signed");
+    if (allSigned) {
+      data.completed = true;
+      data.completedAt = new Date().toISOString();
+      data.events.push({ at: new Date().toISOString(), type: "FLOW_COMPLETED", by: "system" });
+      await saveFlow(flowId, data);
+
+      // Email initiator (NON-BLOCKING)
+      if (data.initEmail) {
+        const pdfLink = `${publicBaseUrl(req)}/flows/${encodeURIComponent(flowId)}/pdf`;
+        sendSignerEmail({
+          to: data.initEmail,
+          subject: `Document semnat complet: ${data.docName}`,
+          html: `
+            <p>Bună ${data.initName || ""},</p>
+            <p>Documentul <strong>${data.docName}</strong> a fost semnat de toți semnatarii.</p>
+            <p>Poți descărca PDF-ul semnat accesând link-ul:</p>
+            <p><a href="${pdfLink}">${pdfLink}</a></p>
+            <br/>
+            <p>— DocFlowAI</p>
+          `,
+        }).catch((e) => console.error("❌ Email completion failed (non-blocking):", e));
+      }
+    }
+
     // Email next signer (NON-BLOCKING)
     if (next?.email && nextLink) {
       sendSignerEmail({
@@ -399,6 +425,7 @@ const signFlow = async (req, res) => {
     return res.json({
       ok: true,
       flowId,
+      completed: allSigned,
       nextSigner: next || null,
       nextLink,
       flow: stripPdfB64(data),
