@@ -4,7 +4,7 @@ import pg from "pg";
 import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
-import { sendSignerEmail } from "./mailer.mjs";
+import { sendSignerEmail, verifySmtp } from "./mailer.mjs";
 
 const { Pool } = pg;
 
@@ -163,6 +163,30 @@ app.get("/health", (req, res) => {
     dbReady: DB_READY,
     dbLastError: DB_LAST_ERROR,
   });
+});
+
+
+// -------------------- SMTP Test --------------------
+app.get("/smtp-test", async (req, res) => {
+  const result = await verifySmtp();
+  res.status(result.ok ? 200 : 500).json(result);
+});
+
+app.post("/smtp-test", async (req, res) => {
+  const { to } = req.body || {};
+  if (!to) return res.status(400).json({ error: "to missing" });
+  try {
+    const verify = await verifySmtp();
+    if (!verify.ok) return res.status(500).json({ error: "smtp_not_ready", detail: verify });
+    await sendSignerEmail({
+      to,
+      subject: "Test SMTP DocFlowAI",
+      html: "<p>Acesta este un email de test de la DocFlowAI.</p><p>SMTP funcționează corect! ✅</p>",
+    });
+    return res.json({ ok: true, to });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
 });
 
 // -------------------- FLOWS API --------------------
