@@ -440,15 +440,18 @@ th{ color: var(--sub) !important; }
             setTimeout(() => URL.revokeObjectURL(url), 10000);
             status.textContent = "✅ Descărcat. Deschide fișierul în Adobe Acrobat/Reader pentru a semna calificat.";
           } else {
-            // No previous signed PDF — generate cartus from original
-            status.textContent = "ℹ️ Niciun PDF anterior — se generează PDF cu cartuș...";
+            // No previous signed PDF — generate cartus from original (first signer)
+            if (status) status.textContent = "ℹ️ Se generează PDF cu cartuș pentru semnare...";
             await generateAndDownloadPdf();
-            status.textContent = "✅ Descărcat PDF cu cartuș (ești primul semnatar).";
+            // status is updated inside generateAndDownloadPdf
           }
         } catch(e) {
           status.textContent = "❌ Eroare: " + e.message;
         }
-        if (btn) { btn.disabled = false; btn.textContent = "⬇️ Descarcă PDF pentru semnare calificată"; }
+        if (btn && btn !== $("btnDownloadPdf")) {
+          btn.disabled = false;
+          btn.textContent = "⬇️ Descarcă PDF pentru semnare calificată";
+        }
       }
       // ── End Download for signing ────────────────────────────────────────────
 
@@ -456,11 +459,12 @@ th{ color: var(--sub) !important; }
       async function generateAndDownloadPdf() {
         const btn = $("btnDownloadPdf") || $("btnDownloadForSigning");
         const status = $("pdfGenStatus") || $("downloadForSigningStatus");
-        if (!currentFlow) { status.textContent = "❌ Date flux indisponibile."; return; }
-
-        btn.disabled = true;
-        btn.textContent = "⏳ Se generează...";
-        status.textContent = "";
+        if (!currentFlow) {
+          if (status) status.textContent = "❌ Date flux indisponibile.";
+          return;
+        }
+        if (btn) { btn.disabled = true; btn.textContent = "⏳ Se generează..."; }
+        if (status) status.textContent = "";
 
         try {
           // 1. Fetch original PDF from server
@@ -633,14 +637,14 @@ th{ color: var(--sub) !important; }
           setTimeout(() => { window.open(url, "_blank"); }, 500);
           setTimeout(() => URL.revokeObjectURL(url), 10000);
 
-          status.textContent = `✅ PDF generat. Deschide-l în Adobe Acrobat/Reader pentru a semna calificat.`;
-          btn.textContent = "⬇️ Descarcă din nou";
+          if (status) status.textContent = `✅ PDF generat. Deschide-l în Adobe Acrobat/Reader pentru a semna calificat.`;
+          if (btn) btn.textContent = "⬇️ Descarcă din nou";
         } catch(err) {
           console.error("PDF gen error:", err);
-          status.textContent = "❌ Eroare: " + err.message;
-          btn.textContent = "⬇️ Generează și descarcă PDF cu cartuș";
+          if (status) status.textContent = "❌ Eroare: " + err.message;
+          if (btn) btn.textContent = "⬇️ Generează și descarcă PDF cu cartuș";
         }
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
       }
       // ── End PDF Generator ──────────────────────────────────────────────────
 
