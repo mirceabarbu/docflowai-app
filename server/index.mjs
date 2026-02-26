@@ -1,92 +1,77 @@
 import express from "express";
 import cors from "cors";
-import pg from "pg";
-import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
-import { sendSignerEmail } from "./mailer.mjs";
+import crypto from "crypto";
+import nodemailer from "nodemailer";
+import pg from "pg";
 
-const { Pool } = pg;
-
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: "25mb" }));
-
-process.on("unhandledRejection", (err) => console.error("❌ unhandledRejection:", err));
-process.on("uncaughtException", (err) => console.error("❌ uncaughtException:", err));
-
-// -------------------- Static public/ --------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PUBLIC_DIR = path.join(__dirname, "../public");
-app.use(express.static(PUBLIC_DIR));
+
+const app = express();
+
+// ---- Basics
+app.disable("x-powered-by");
+app.use(express.json({ limit: "35mb" }));
+app.use(express.urlencoded({ extended: true, limit: "35mb" }));
+
+// CORS: keep permissive for now (you can lock it later)
+app.use(cors());
+
+// ---- Env / config helpers
+const envBool = (v, d = false) => {
+  if (v === undefined || v === null || v === "") return d;
+  if (typeof v === "boolean") return v;
+  return String(v).toLowerCase() === "true" || String(v) === "1";
+};
+const envInt = (v, d) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : d;
+};
+
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "";
+const DATABASE_URL = process.env.DATABASE_URL || "";
+
+// Mail envs: accept both SMTP_* and MAIL_* styles
+const SMTP_HOST = process.env.SMTP_HOST || process.env.MAIL_HOST || "";
+const SMTP_PORT = envInt(process.env.SMTP_PORT ?? process.env.MAIL_PORT, 587);
+const SMTP_SECURE = envBool(process.env.SMTP_SECURE ?? process.env.MAIL_SECURE, false);
+const SMTP_USER = process.env.SMTP_USER || process.env.MAIL_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || process.env.MAIL_PASS || "";
+const MAIL_FROM = process.env.MAIL_FROM || process.env.FROM_EMAIL || process.env.SMTP_FROM || "noreply@docflowai.ro";
+
+// Public base URL (used in links)
+const normalizeBaseUrl = (u) => {
+  if (!u) return "";
+  return String(u).replace(/\/+$/, ""); // remove trailing /
+};
+const PUBLIC_BASE_URL = normalizeBaseUrl(process.env.PUBLIC_BASE_URL || "");
+
+// ---- Static UI
+// IMPORTANT: UI should be at root https://app.docflowai.ro (no /app)
+const publicDir = path.join(__dirname, "..", "public");
+app.use(express.static(publicDir, { maxAge: "1h" }));
 
 app.get("/", (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
+  // Main UI (flow initiate)
+  res.sendFile(path.join(publicDir, "index.html"));
 });
 
-// -------------------- Helpers --------------------
-function publicBaseUrl(req) {
-  // Set in Railway Variables for stable links:
-  // PUBLIC_BASE_URL=https://app.docflowai.ro
-  const envBase = process.env.PUBLIC_BASE_URL;
-  if (envBase) return envBase.replace(/\/$/, "");
+// ---- DB
+let DB_READY = false;
+let DB_LAST_ERROR = null;
 
-  const host = req.get("host");
-  const proto = (req.get("x-forwarded-proto") || req.protocol || "https")
-    .split(",")[0]
-    .trim();
-  return `${proto}://${host}`;
-}
-
-function newFlowId() {
-  return "FLOW_" + crypto.randomBytes(8).toString("hex").toUpperCase();
-}
-
-
-
-// -------------------- Admin auth (MVP) --------------------
-const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
-
-function requireAdmin(req, res) {
-  // Use header: x-admin-secret: <ADMIN_SECRET>
-  // or Authorization: Bearer <ADMIN_SECRET>
-  if (!ADMIN_SECRET) {
-    res.status(503).json({ error: "admin_not_configured" });
-    return true;
-  }
-  const headerSecret = req.get("x-admin-secret");
-  const auth = req.get("authorization") || "";
-  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : null;
-  const provided = headerSecret || bearer;
-  if (!provided || provided !== ADMIN_SECRET) {
-    res.status(401).json({ error: "unauthorized" });
-    return true;
-  }
-  return false;
-}
-
-function stripPdfB64(data) {
-  if (!data || typeof data !== "object") return data;
-  const { pdfB64, ...rest } = data;
-  return { ...rest, hasPdf: !!pdfB64 };
-}
-// -------------------- Postgres --------------------
-const DATABASE_URL = process.env.DATABASE_URL;
 const pool = DATABASE_URL
-  ? new Pool({
+  ? new pg.Pool({
       connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      ssl: DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false },
       max: 5,
     })
   : null;
 
-let DB_READY = false;
-let DB_LAST_ERROR = null;
-
 async function initDbOnce() {
-  if (!pool) throw new Error("DATABASE_URL missing (pool not created)");
-  await pool.query("SELECT 1");
+  if (!pool) throw new Error("DATABASE_URL missing");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS flows (
       id TEXT PRIMARY KEY,
@@ -94,9 +79,6 @@ async function initDbOnce() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_flows_updated_at ON flows(updated_at DESC);
   `);
   DB_READY = true;
   DB_LAST_ERROR = null;
@@ -117,182 +99,222 @@ async function initDbWithRetry() {
       await new Promise((r) => setTimeout(r, delays[i]));
     }
   }
-  console.error("❌ DB init failed permanently (after retries). Server stays up for debugging.");
 }
 
 function requireDb(res) {
-  if (!DB_READY) {
-    res.status(503).json({
-      error: "db_not_ready",
-      dbLastError: DB_LAST_ERROR,
-    });
-    return true;
-  }
-  return false;
+  if (DB_READY) return false;
+  res.status(503).json({ error: "db_not_ready", detail: DB_LAST_ERROR });
+  return true;
 }
 
-async function saveFlow(id, data) {
+async function saveFlow(flowId, data) {
   await pool.query(
-    `
-    INSERT INTO flows (id, data)
-    VALUES ($1, $2::jsonb)
-    ON CONFLICT (id)
-    DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
-  `,
-    [id, JSON.stringify(data)]
+    `INSERT INTO flows (id, data, updated_at)
+     VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+    [flowId, JSON.stringify(data)]
   );
 }
 
-async function getFlow(id) {
-  const r = await pool.query(`SELECT data FROM flows WHERE id=$1`, [id]);
-  return r.rows[0]?.data ?? null;
+async function fetchFlow(flowId) {
+  const r = await pool.query(`SELECT data FROM flows WHERE id=$1`, [flowId]);
+  if (r.rowCount === 0) return null;
+  return r.rows[0].data;
 }
 
-function buildSignerLink(req, flowId, token) {
-  const base = publicBaseUrl(req);
-  return `${base}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(
-    token
-  )}`;
+// ---- Admin auth
+function requireAdmin(req, res) {
+  if (!ADMIN_SECRET) return false; // if not set, allow (MVP)
+  const h = req.headers["x-admin-secret"];
+  if (h && String(h) === String(ADMIN_SECRET)) return false;
+  res.status(401).json({ error: "unauthorized" });
+  return true;
 }
 
-// -------------------- Health --------------------
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    ok: true,
-    service: "SemDoc+",
-    dbReady: DB_READY,
-    dbLastError: DB_LAST_ERROR,
+// ---- Utils
+function stripPdfB64(flowData) {
+  // avoid returning huge base64 for list/get calls (UI can call /pdf endpoint)
+  const copy = JSON.parse(JSON.stringify(flowData || {}));
+  if (copy?.pdfBase64) copy.pdfBase64 = "__omitted__";
+  return copy;
+}
+
+function buildSignerLink(flowId, token) {
+  const base = PUBLIC_BASE_URL || ""; // must be set in Railway
+  const b = base ? base : ""; // fallback empty
+  // signer page is a static file at root: /semdoc-signer.html
+  return `${b}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(token)}`;
+}
+
+function newId(prefix = "FLOW") {
+  return `${prefix}_${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
+}
+function newToken() {
+  return crypto.randomBytes(18).toString("hex");
+}
+
+// ---- Mailer (non-blocking)
+function makeTransport() {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
+  return nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    connectionTimeout: 12_000,
+    greetingTimeout: 12_000,
+    socketTimeout: 12_000,
   });
+}
+
+async function sendEmailNonBlocking({ to, subject, html, text }) {
+  try {
+    const transport = makeTransport();
+    if (!transport) {
+      console.warn("⚠️ Mail not configured (missing SMTP_*). Skipping send.");
+      return;
+    }
+    await transport.sendMail({
+      from: MAIL_FROM,
+      to,
+      subject,
+      text,
+      html,
+    });
+    console.log(`✉️ Email sent to ${to}`);
+  } catch (e) {
+    // DO NOT throw (must not kill request)
+    console.error("✖ Email send failed (non-blocking):", e?.message || e);
+  }
+}
+
+// ---- Health
+app.get("/health", (req, res) => {
+  res.json({ ok: true, service: "SemDoc+", dbReady: DB_READY, dbLastError: DB_LAST_ERROR });
 });
 
-// -------------------- FLOWS API --------------------
-// Create flow
-const createFlow = async (req, res) => {
+// Optional: keepalive log (harmless)
+setInterval(() => {
+  console.log("❤️ heartbeat alive");
+}, 5000).unref?.();
+
+// ---- API: Create flow
+async function handleCreateFlow(req, res) {
   try {
     if (requireDb(res)) return;
+    if (requireAdmin(req, res)) return;
 
     const body = req.body || {};
-    const docName = String(body.docName || "").trim();
-    const initName = String(body.initName || "").trim();
-    const initEmail = String(body.initEmail || "").trim();
-    const signers = Array.isArray(body.signers) ? body.signers : [];
+    const title = String(body.title || "Document");
+    const pdfBase64 = typeof body.pdfBase64 === "string" ? body.pdfBase64 : "";
 
-    if (!docName || !initName || !initEmail) {
-      return res.status(400).json({ error: "docName/initName/initEmail missing" });
-    }
-    if (!signers.length) {
-      return res.status(400).json({ error: "signers missing" });
-    }
-
-    const normalizedSigners = signers.map((s, idx) => ({
-      order: Number(s.order || idx + 1),
-      rol: String(s.rol || s.atribut || "").trim(),
-      functie: String(s.functie || "").trim(),
-      name: String(s.name || "").trim(),
-      email: String(s.email || "").trim(),
-      token: String(s.token || crypto.randomBytes(16).toString("hex")),
-      status: idx === 0 ? "current" : "pending",
+    const rawSigners = Array.isArray(body.signers) ? body.signers : [];
+    const signers = rawSigners.map((s, idx) => ({
+      i: idx,
+      name: String(s?.name || `Semnatar ${idx + 1}`),
+      email: String(s?.email || ""),
+      role: String(s?.role || ""),
+      status: "PENDING", // PENDING | SIGNED
+      token: s?.token ? String(s.token) : newToken(),
       signedAt: null,
-      signature: null, // MVP: store anything (optional) from signer page
+      signature: null,
     }));
 
-    const flowId = newFlowId();
+    const flowId = newId("FLOW");
+    const createdAt = new Date().toISOString();
 
-    const data = {
+    const flow = {
       flowId,
-      docName,
-      initName,
-      initEmail,
-      meta: body.meta || {},
-      pdfB64: body.pdfB64 ?? null,
-      signers: normalizedSigners,
-      createdAt: body.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      events: [{ at: new Date().toISOString(), type: "FLOW_CREATED", by: initEmail }],
+      title,
+      createdAt,
+      updatedAt: createdAt,
+      pdfBase64,
+      signers,
     };
 
-    await saveFlow(flowId, data);
+    await saveFlow(flowId, flow);
 
-    const first = data.signers.find((s) => s.status === "current");
-    const signerLink = first ? buildSignerLink(req, flowId, first.token) : null;
+    // prepare links
+    const links = signers.map((s) => ({
+      name: s.name,
+      email: s.email,
+      role: s.role,
+      token: s.token,
+      url: buildSignerLink(flowId, s.token),
+    }));
 
-    // Email first signer (NON-BLOCKING)
-    if (first?.email && signerLink) {
-      sendSignerEmail({
-        to: first.email,
-        subject: `Semnare document: ${data.docName}`,
-        html: `
-          <p>Bună ${first.name || ""},</p>
-          <p>Ai un document de semnat:</p>
-          <p><strong>${data.docName}</strong></p>
-          <p>Link semnare:</p>
-          <p><a href="${signerLink}">${signerLink}</a></p>
-          <br/>
-          <p>— DocFlowAI</p>
-        `,
-      }).catch((e) => console.error("❌ Email send failed (non-blocking):", e));
+    // send mails (best-effort)
+    for (const l of links) {
+      if (!l.email) continue;
+      const subject = `SemDoc: semnare document – ${title}`;
+      const text = `Ai fost invitat(ă) să semnezi: ${title}\nLink: ${l.url}`;
+      const html = `
+        <div style="font-family:Arial,sans-serif">
+          <h3>SemDoc – Semnare document</h3>
+          <p>Salut, ${escapeHtml(l.name)}!</p>
+          <p>Ai fost invitat(ă) să semnezi documentul: <b>${escapeHtml(title)}</b></p>
+          <p><a href="${l.url}">Deschide link-ul de semnare</a></p>
+        </div>
+      `;
+      sendEmailNonBlocking({ to: l.email, subject, text, html });
     }
 
-    return res.json({
-      ok: true,
-      flowId,
-      signerLink,
-      firstSignerEmail: first?.email || null,
-    });
+    res.json({ ok: true, flowId, links });
   } catch (e) {
     console.error("POST /flows error:", e);
-    return res.status(500).json({ error: "server_error" });
+    res.status(500).json({ error: "server_error" });
   }
-};
+}
 
-app.post("/flows", createFlow);
-app.post("/api/flows", createFlow);
-);
+// escape helper for email HTML
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 
-// Get flow
-app.get("/flows/:flowId/pdf", async (req, res) => {
+// aliases
+app.post("/flows", handleCreateFlow);
+app.post("/api/flows", handleCreateFlow);
+
+// ---- API: Get flow (metadata)
+async function handleGetFlow(req, res) {
   try {
     if (requireDb(res)) return;
-    const data = await getFlow(req.params.flowId);
-    if (!data) return res.status(404).json({ error: "not_found" });
-    const b64 = data.pdfB64;
-    if (!b64 || typeof b64 !== "string") return res.status(404).json({ error: "pdf_missing" });
-
-    // support both "data:application/pdf;base64,..." and raw base64
-    const raw = b64.includes("base64,") ? b64.split("base64,")[1] : b64;
-    const buf = Buffer.from(raw, "base64");
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${(data.docName || "document").replace(/[^\w\-]+/g,"_")}.pdf"`);
-    return res.status(200).send(buf);
-  } catch (e) {
-    console.error("GET /flows/:flowId/pdf error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
-});
-
-const getFlow = async (req, res) => {
-  try {
-    if (requireDb(res)) return;
-    const data = await getFlow(req.params.flowId);
+    const data = await fetchFlow(req.params.flowId);
     if (!data) return res.status(404).json({ error: "not_found" });
     return res.json(stripPdfB64(data));
   } catch (e) {
     console.error("GET /flows/:flowId error:", e);
     return res.status(500).json({ error: "server_error" });
   }
-};
+}
+app.get("/flows/:flowId", handleGetFlow);
+app.get("/api/flows/:flowId", handleGetFlow);
 
-app.get("/flows/:flowId", getFlow);
-app.get("/api/flows/:flowId", getFlow);
-);
+// ---- API: Get PDF (base64)
+async function handleGetPdf(req, res) {
+  try {
+    if (requireDb(res)) return;
+    const data = await fetchFlow(req.params.flowId);
+    if (!data) return res.status(404).json({ error: "not_found" });
+    const b64 = data?.pdfBase64;
+    if (!b64 || b64 === "__omitted__") return res.status(404).json({ error: "pdf_missing" });
+    return res.json({ flowId: req.params.flowId, pdfBase64: b64 });
+  } catch (e) {
+    console.error("GET /flows/:flowId/pdf error:", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+}
+app.get("/flows/:flowId/pdf", handleGetPdf);
+app.get("/api/flows/:flowId/pdf", handleGetPdf);
 
-// Update flow (replace)
-app.put("/flows/:flowId", async (req, res) => {
+// ---- API: Update flow (replace)
+async function handlePutFlow(req, res) {
   try {
     if (requireDb(res)) return;
     if (requireAdmin(req, res)) return;
+
     const { flowId } = req.params;
-    const existing = await getFlow(flowId);
+    const existing = await fetchFlow(flowId);
     if (!existing) return res.status(404).json({ error: "not_found" });
 
     const next = req.body || {};
@@ -305,164 +327,67 @@ app.put("/flows/:flowId", async (req, res) => {
     console.error("PUT /flows/:flowId error:", e);
     return res.status(500).json({ error: "server_error" });
   }
-});
+}
+app.put("/flows/:flowId", handlePutFlow);
+app.put("/api/flows/:flowId", handlePutFlow);
 
-// Sign step
-const signFlow = async (req, res) => {
+// ---- API: Sign
+async function handleSign(req, res) {
   try {
     if (requireDb(res)) return;
 
     const { flowId } = req.params;
     const { token, signature } = req.body || {};
+    const sig = typeof signature === "string" ? signature.trim() : "";
+    if (!sig) return res.status(400).json({ error: "signature_required" });
+    if (!token) return res.status(400).json({ error: "token_required" });
 
-    const sig = typeof signature === 'string' ? signature.trim() : '';
-    if (!sig) return res.status(400).json({ error: 'signature_required' });
-
-    const data = await getFlow(flowId);
+    const data = await fetchFlow(flowId);
     if (!data) return res.status(404).json({ error: "not_found" });
 
     const signers = Array.isArray(data.signers) ? data.signers : [];
-    const idx = signers.findIndex((s) => s.token === token);
-    if (idx === -1) return res.status(400).json({ error: "invalid_token" });
+    const idx = signers.findIndex((s) => String(s.token) === String(token));
+    if (idx === -1) return res.status(403).json({ error: "invalid_token" });
 
-    // enforce "current"
-    if (signers[idx].status !== "current") {
-      return res.status(409).json({ error: "not_current_signer" });
+    // enforce sequential signing: all previous must be SIGNED
+    for (let i = 0; i < idx; i++) {
+      if (String(signers[i].status) !== "SIGNED") {
+        return res.status(409).json({ error: "not_your_turn" });
+      }
     }
 
-    signers[idx].status = "signed";
+    signers[idx].status = "SIGNED";
     signers[idx].signedAt = new Date().toISOString();
-    signers[idx].signature = sig ?? signers[idx].signature ?? null;
-
-    // find next pending
-    const nextIdx = signers.findIndex((s) => s.status !== "signed");
-    if (nextIdx !== -1) {
-      signers.forEach((s, i) => {
-        if (s.status !== "signed") s.status = i === nextIdx ? "current" : "pending";
-      });
-    }
+    signers[idx].signature = sig;
 
     data.signers = signers;
     data.updatedAt = new Date().toISOString();
-    data.events = Array.isArray(data.events) ? data.events : [];
-    data.events.push({
-      at: new Date().toISOString(),
-      type: "SIGNED",
-      by: signers[idx].email || signers[idx].name || "unknown",
-      order: signers[idx].order,
-    });
-
     await saveFlow(flowId, data);
 
-    const next = data.signers.find((s) => s.status === "current");
-    const nextLink = next ? buildSignerLink(req, flowId, next.token) : null;
-
-    // Email next signer (NON-BLOCKING)
-    if (next?.email && nextLink) {
-      sendSignerEmail({
-        to: next.email,
-        subject: `Urmezi la semnare: ${data.docName}`,
-        html: `
-          <p>Bună ${next.name || ""},</p>
-          <p>Este rândul tău să semnezi documentul:</p>
-          <p><strong>${data.docName}</strong></p>
-          <p>Link semnare:</p>
-          <p><a href="${nextLink}">${nextLink}</a></p>
-          <br/>
-          <p>— DocFlowAI</p>
-        `,
-      }).catch((e) => console.error("❌ Email send failed (non-blocking):", e));
-    }
-
-    return res.json({
-      ok: true,
-      flowId,
-      nextSigner: next || null,
-      nextLink,
-      flow: stripPdfB64(data),
-    });
+    return res.json({ ok: true });
   } catch (e) {
     console.error("POST /flows/:flowId/sign error:", e);
     return res.status(500).json({ error: "server_error" });
   }
-};
-
-app.post("/flows/:flowId/sign", signFlow);
-app.post("/api/flows/:flowId/sign", signFlow);
-);
-
-// Admin: resend email to current signer
-app.post("/flows/:flowId/resend", async (req, res) => {
-  try {
-    if (requireDb(res)) return;
-    if (requireAdmin(req, res)) return;
-
-    const { flowId } = req.params;
-    const data = await getFlow(flowId);
-    if (!data) return res.status(404).json({ error: "not_found" });
-
-    const current = (data.signers || []).find((s) => s.status === "current");
-    if (!current) return res.status(409).json({ error: "no_current_signer" });
-    if (!current.email) return res.status(400).json({ error: "current_missing_email" });
-
-    const signerLink = buildSignerLink(req, flowId, current.token);
-
-    await sendSignerEmail({
-      to: current.email,
-      subject: `Re-trimitere link semnare: ${data.docName}`,
-      html: `
-        <p>Bună ${current.name || ""},</p>
-        <p>Revenim cu link-ul de semnare pentru documentul:</p>
-        <p><strong>${data.docName}</strong></p>
-        <p>Link semnare:</p>
-        <p><a href="${signerLink}">${signerLink}</a></p>
-        <br/>
-        <p>— DocFlowAI</p>
-      `,
-    });
-
-    return res.json({ ok: true, to: current.email, signerLink });
-  } catch (e) {
-    console.error("POST /flows/:flowId/resend error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
-});
-
-
-// -------------------- Graceful shutdown --------------------
-let _server = null;
-
-function shutdown(signal) {
-  console.log(`🧯 ${signal} received. Shutting down...`);
-  try {
-    if (_server) {
-      _server.close(() => {
-        console.log("✅ HTTP server closed.");
-        process.exit(0);
-      });
-      // force exit after 10s
-      setTimeout(() => process.exit(0), 10_000).unref();
-    } else {
-      process.exit(0);
-    }
-  } catch (e) {
-    console.error("Shutdown error:", e);
-    process.exit(1);
-  }
 }
+app.post("/flows/:flowId/sign", handleSign);
+app.post("/api/flows/:flowId/sign", handleSign);
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
-
-// -------------------- Start --------------------
+// ---- Start
 const PORT = process.env.PORT;
-
 if (!PORT) {
   console.error("❌ PORT missing. Railway didn't inject PORT. Check Service Type (must be Web Service).");
   process.exit(1);
 }
 
-_server = app.listen(Number(PORT), "0.0.0.0", () => {
+app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`🚀 SemDoc+ server running on port ${PORT}`);
   initDbWithRetry();
+});
+
+// ---- Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, shutting down...");
+  pool?.end?.().catch(() => {});
+  process.exit(0);
 });
