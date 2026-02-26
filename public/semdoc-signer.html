@@ -4,7 +4,30 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DocFlowAI — Semnare</title>
-    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script>
+      // Load pdf-lib with multiple CDN fallbacks
+      (function() {
+        var cdns = [
+          "https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js",
+          "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js",
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
+        ];
+        var idx = 0;
+        function tryNext() {
+          if (idx >= cdns.length) {
+            window._pdfLibFailed = true;
+            console.error("❌ pdf-lib failed to load from all CDNs");
+            return;
+          }
+          var s = document.createElement("script");
+          s.src = cdns[idx++];
+          s.onload = function() { console.log("✅ pdf-lib loaded from", s.src); window._pdfLibLoaded = true; };
+          s.onerror = function() { console.warn("⚠ CDN failed:", s.src); tryNext(); };
+          document.head.appendChild(s);
+        }
+        tryNext();
+      })();
+    </script>
     <style>
       *{box-sizing:border-box;}
 body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
@@ -416,235 +439,204 @@ th{ color: var(--sub) !important; }
       });
       // ── End Upload ──────────────────────────────────────────────────────────
 
-      // ── Download PDF for signing (signed by previous or original with cartus) ─
+      // ── Download PDF for signing ───────────────────────────────────────────
       async function downloadPdfForSigning() {
         const btn = $("btnDownloadForSigning");
         const status = $("downloadForSigningStatus");
-        if (btn) { btn.disabled = true; btn.textContent = "⏳ Se pregătește..."; }
+        if (!btn || !status) return;
+
+        btn.disabled = true;
+        btn.textContent = "⏳ Se pregătește...";
         status.textContent = "";
+
         try {
-          // Try signed PDF first (signed by previous signers)
+          // Check if there's a signed PDF from previous signers
           const signedResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
+
+          let pdfBlob;
+          let fname;
+
           if (signedResp.ok) {
-            // Has signed PDF from previous signer — download it directly
-            const blob = await signedResp.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            const fname = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_semnat_anterior.pdf";
-            a.download = fname;
-            a.type = "application/pdf";
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            // Open in Adobe: attempt window.open after short delay (browser may open in Adobe if set as default)
-            setTimeout(() => { window.open(url, "_blank"); }, 500);
-            setTimeout(() => URL.revokeObjectURL(url), 10000);
-            status.textContent = "✅ Descărcat. Deschide fișierul în Adobe Acrobat/Reader pentru a semna calificat.";
+            // Semnatar 2+: descarcă PDF-ul semnat de anteriori direct
+            pdfBlob = await signedResp.blob();
+            fname = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_de_semnat.pdf";
+            status.textContent = "✅ PDF descărcat. Deschide-l în Adobe Acrobat/Reader și semnează calificat.";
           } else {
-            // No previous signed PDF — generate cartus from original (first signer)
-            if (status) status.textContent = "ℹ️ Se generează PDF cu cartuș pentru semnare...";
-            await generateAndDownloadPdf();
-            // status is updated inside generateAndDownloadPdf
+            // Semnatar 1: generează PDF cu cartuș din original
+            status.textContent = "⏳ Se încarcă librăria PDF...";
+            // Small yield so browser can update the DOM
+            await new Promise(r => setTimeout(r, 50));
+            status.textContent = "⏳ Se generează PDF cu cartuș...";
+            pdfBlob = await buildCartusBlob();
+            fname = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_de_semnat.pdf";
+            status.textContent = "✅ PDF generat. Deschide-l în Adobe Acrobat/Reader și semnează calificat.";
           }
-        } catch(e) {
-          status.textContent = "❌ Eroare: " + e.message;
-        }
-        if (btn && btn !== $("btnDownloadPdf")) {
-          btn.disabled = false;
+
+          // Download
+          const url = URL.createObjectURL(pdfBlob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = fname;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          // Try to open in Adobe (works if Adobe is default PDF app)
+          setTimeout(() => { try { window.open(url, "_blank"); } catch(e){} }, 600);
+          setTimeout(() => URL.revokeObjectURL(url), 15000);
+
+          btn.textContent = "⬇️ Descarcă din nou";
+
+        } catch(err) {
+          console.error("downloadPdfForSigning error:", err);
+          status.textContent = "❌ Eroare: " + (err.message || String(err));
           btn.textContent = "⬇️ Descarcă PDF pentru semnare calificată";
         }
+
+        btn.disabled = false;
       }
       // ── End Download for signing ────────────────────────────────────────────
 
-      // ── PDF Cartuș Generator ────────────────────────────────────────────────
-      async function generateAndDownloadPdf() {
-        const btn = $("btnDownloadPdf") || $("btnDownloadForSigning");
-        const status = $("pdfGenStatus") || $("downloadForSigningStatus");
-        if (!currentFlow) {
-          if (status) status.textContent = "❌ Date flux indisponibile.";
-          return;
+      // ── Build cartus PDF blob (pure function, no side effects) ──────────────
+      async function buildCartusBlob() {
+        if (!currentFlow) throw new Error("Date flux indisponibile — reîncarcă pagina.");
+
+        // Wait up to 10s for PDFLib to load
+        if (!window.PDFLib) {
+          await new Promise((resolve, reject) => {
+            let waited = 0;
+            const iv = setInterval(() => {
+              waited += 200;
+              if (window.PDFLib) { clearInterval(iv); resolve(); }
+              else if (window._pdfLibFailed || waited > 10000) {
+                clearInterval(iv);
+                reject(new Error("Librăria PDF (pdf-lib) nu s-a putut încărca. Verifică conexiunea la internet și reîncarcă pagina."));
+              }
+            }, 200);
+          });
         }
-        if (btn) { btn.disabled = true; btn.textContent = "⏳ Se generează..."; }
-        if (status) status.textContent = "";
 
-        try {
-          // 1. Fetch original PDF from server
-          const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf`;
-          const pdfResp = await fetch(pdfUrl);
-          if (!pdfResp.ok) throw new Error("PDF original indisponibil.");
-          const pdfBytes = await pdfResp.arrayBuffer();
+        const { PDFDocument, PDFName, PDFString, PDFNumber, rgb, StandardFonts } = PDFLib;
 
-          // 2. Load with pdf-lib
-          const { PDFDocument, PDFName, PDFString, PDFNumber, rgb, StandardFonts } = PDFLib;
-          const pdfDoc = await PDFDocument.load(pdfBytes);
-          const pages = pdfDoc.getPages();
-          const lastPage = pages[pages.length - 1];
-          const { width: pW } = lastPage.getSize();
+        // Fetch original PDF
+        const pdfResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf`);
+        if (!pdfResp.ok) throw new Error("PDF original indisponibil pe server (cod " + pdfResp.status + ").");
+        const pdfBytes = await pdfResp.arrayBuffer();
 
-          const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-          const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const pages = pdfDoc.getPages();
+        const lastPage = pages[pages.length - 1];
+        const { width: pW } = lastPage.getSize();
 
-          // Romanian diacritics fallback
-          function ro(t) {
-            const m = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-            return String(t||'').split('').map(c => m[c]||c).join('');
+        const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+        function ro(t) {
+          const m = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
+          return String(t||'').split('').map(c => m[c]||c).join('');
+        }
+
+        const ACCENT_HEX = "#1a3a5c";
+        function hx(h) { return rgb(parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255); }
+        const accent = hx(ACCENT_HEX);
+        const hR = parseInt(ACCENT_HEX.slice(1,3),16)/255;
+        const hG = parseInt(ACCENT_HEX.slice(3,5),16)/255;
+        const hB = parseInt(ACCENT_HEX.slice(5,7),16)/255;
+        const lightBg = rgb(hR*.06+.94, hG*.06+.94, hB*.06+.94);
+
+        const signers = currentFlow.signers || [];
+        if (!signers.length) throw new Error("Niciun semnatar în flux.");
+
+        const activeSignerIdx = signerIndex; // current signer's index
+
+        const MARGIN = 40;
+        const n = signers.length;
+        const cols = n <= 3 ? n : n <= 6 ? Math.ceil(n/2) : Math.ceil(n/3);
+        const rows = Math.ceil(n/cols);
+        const cellW = (pW - MARGIN*2) / cols;
+        const cellH = 80;
+        const titleH = 20;
+        const cartusH = rows * cellH + titleH + 10;
+        const cartusBottom = 28;
+
+        // Title bar
+        lastPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: accent });
+        lastPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: cartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(1,1,1) });
+        lastPage.drawText(`Generat: ${new Date().toLocaleString("ro-RO")}`, { x: pW - MARGIN - 130, y: cartusBottom + cartusH - titleH + 6, size: 7, font: fontR, color: rgb(.9,.9,.9) });
+
+        // AcroForm
+        const acroForm = pdfDoc.context.obj({
+          Type: PDFName.of('AcroForm'),
+          Fields: pdfDoc.context.obj([]),
+          SigFlags: PDFNumber.of(3),
+          DA: PDFString.of('/Helv 10 Tf 0 g'),
+        });
+        pdfDoc.catalog.set(PDFName.of('AcroForm'), pdfDoc.context.register(acroForm));
+        const allRefs = [];
+
+        signers.forEach((s, idx) => {
+          const row = Math.floor(idx / cols);
+          const col = idx % cols;
+          const cx = MARGIN + col * cellW;
+          const cy = cartusBottom + (rows - 1 - row) * cellH;
+
+          const isSigned = s.status === "signed" && !!s.pdfUploaded;
+          const isActive = idx === activeSignerIdx;
+
+          const borderColor = isSigned ? rgb(.1,.55,.3) : isActive ? rgb(.48,.25,.92) : accent;
+          const bgColor    = isSigned ? rgb(.92,.98,.94) : isActive ? rgb(.95,.92,1) : lightBg;
+
+          lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: isActive ? 2 : 1 });
+          lastPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
+
+          if (isActive) lastPage.drawText("► DE SEMNAT", { x: cx+8, y: cy+cellH-13, size: 6.5, font: fontB, color: rgb(.48,.25,.92) });
+
+          const rolColor = isSigned ? rgb(.1,.45,.25) : isActive ? rgb(.35,.15,.75) : accent;
+          lastPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy + cellH - (isActive ? 23 : 15), size: 8, font: fontB, color: rolColor });
+          if (s.functie) lastPage.drawText(ro(s.functie), { x: cx+8, y: cy + cellH - (isActive ? 33 : 27), size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
+          if (s.name)    lastPage.drawText(ro(s.name),    { x: cx+8, y: cy + cellH - (isActive ? 43 : 39), size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
+
+          if (isSigned && s.signature) {
+            lastPage.drawText(ro(s.signature), { x: cx+8, y: cy+22, size: 8, font: fontB, color: rgb(.15,.45,.25) });
+            if (s.signedAt) lastPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
+          } else if (isActive) {
+            lastPage.drawText("L.S.  Camp semnatura electronica calificata - ACTIV", { x: cx+8, y: cy+8, size: 6, font: fontB, color: rgb(.35,.15,.75) });
+          } else {
+            lastPage.drawText("L.S.  Camp semnatura electronica calificata", { x: cx+8, y: cy+8, size: 6, font: fontR, color: rgb(.75,.75,.75) });
           }
 
-          const ACCENT_HEX = "#1a3a5c";
-          function hx(h) { return rgb(parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255); }
-          const accent = hx(ACCENT_HEX);
-          const hR = parseInt(ACCENT_HEX.slice(1,3),16)/255;
-          const hG = parseInt(ACCENT_HEX.slice(3,5),16)/255;
-          const hB = parseInt(ACCENT_HEX.slice(5,7),16)/255;
-          const lightBg = rgb(hR*.06+.94, hG*.06+.94, hB*.06+.94);
+          // AcroForm field
+          const fn = `SIG_${(s.rol||'SEM').replace(/[^A-Za-z0-9]/g,'_')}_${idx+1}`;
+          const isRO = !isActive;
+          const bgR2 = isSigned ? PDFNumber.of(.92) : isActive ? PDFNumber.of(.95) : PDFNumber.of(.93);
+          const bgG2 = isSigned ? PDFNumber.of(.98) : isActive ? PDFNumber.of(.90) : PDFNumber.of(.93);
+          const bgB2 = isSigned ? PDFNumber.of(.94) : isActive ? PDFNumber.of(1.0) : PDFNumber.of(.93);
 
-          // 3. Build sigs from flow signers
-          const signers = currentFlow.signers || [];
-          const sigs = signers.map(s => ({
-            rol: s.rol || "",
-            functie: s.functie || "",
-            nume: s.name || "",
-            status: s.status || "pending",
-            pdfUploaded: !!s.pdfUploaded,
-            signedAt: s.signedAt || null,
-            signature: s.signature || "",
-          }));
-
-          if (!sigs.length) throw new Error("Niciun semnatar în flux.");
-
-          const MARGIN = 40;
-          const n = sigs.length;
-          const cols = n <= 3 ? n : n <= 6 ? Math.ceil(n/2) : Math.ceil(n/3);
-          const rows = Math.ceil(n/cols);
-          const cellW = (pW - MARGIN*2) / cols;
-          const cellH = 80;
-          const titleH = 20;
-          const cartusH = rows * cellH + titleH + 10;
-          const cartusBottom = 28;
-
-          // 4. Draw title bar
-          lastPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: accent });
-          lastPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: cartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(1,1,1) });
-
-          // Timestamp
-          const ts = new Date().toLocaleString("ro-RO");
-          lastPage.drawText(`Generat: ${ts}`, { x: pW - MARGIN - 120, y: cartusBottom + cartusH - titleH + 6, size: 7, font: fontR, color: rgb(.9,.9,.9) });
-
-          // 5. AcroForm setup
-          const acroForm = pdfDoc.context.obj({
-            Type: PDFName.of('AcroForm'),
-            Fields: pdfDoc.context.obj([]),
-            SigFlags: PDFNumber.of(3),
+          const widget = pdfDoc.context.obj({
+            Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
+            Rect: pdfDoc.context.obj([cx+4, cy+4, cx+cellW-4, cy+20].map(v => PDFNumber.of(Math.round(v*10)/10))),
+            T: PDFString.of(fn),
+            TU: PDFString.of(ro(s.rol||'') + (s.name ? ' - '+ro(s.name) : '') + (isActive ? ' [DE SEMNAT]' : isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
+            F: PDFNumber.of(4),
+            Ff: PDFNumber.of(isRO ? 1 : 0),
+            P: lastPage.ref,
             DA: PDFString.of('/Helv 10 Tf 0 g'),
+            MK: pdfDoc.context.obj({
+              BC: pdfDoc.context.obj(isActive ? [PDFNumber.of(.48),PDFNumber.of(.25),PDFNumber.of(.92)] : [hR,hG,hB].map(v=>PDFNumber.of(v))),
+              BG: pdfDoc.context.obj([bgR2, bgG2, bgB2]),
+            }),
+            BS: pdfDoc.context.obj({ W: PDFNumber.of(isActive ? 2 : 1), S: PDFName.of(isActive ? 'S' : 'D') }),
           });
-          pdfDoc.catalog.set(PDFName.of('AcroForm'), pdfDoc.context.register(acroForm));
-          const allRefs = [];
+          const ref = pdfDoc.context.register(widget);
+          allRefs.push(ref);
+          if (!lastPage.node.get(PDFName.of('Annots'))) lastPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([]));
+          lastPage.node.get(PDFName.of('Annots')).push(ref);
+        });
 
-          // 6. Draw each signer cell (Official style)
-          // activeSignerIdx = index of the signer who should sign this PDF
-          const activeSignerIdx = signerIndex; // passed from outer scope
+        acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj(allRefs));
 
-          sigs.forEach((sig, idx) => {
-            const row = Math.floor(idx / cols);
-            const col = idx % cols;
-            const cx = MARGIN + col * cellW;
-            const cy = cartusBottom + (rows - 1 - row) * cellH;
-
-            const isSigned = sig.status === "signed" && sig.pdfUploaded;
-            const isActive = idx === activeSignerIdx;
-            const borderColor = isSigned ? rgb(.1,.55,.3) : isActive ? rgb(.48,.25,.92) : accent;
-            const bgColor = isSigned ? rgb(.92,.98,.94) : isActive ? rgb(.95,.92,1) : lightBg;
-
-            // Cell border — active field gets thicker purple border
-            lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: isActive ? 2 : 1 });
-            lastPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
-
-            // Active indicator arrow
-            if (isActive) {
-              lastPage.drawText("► DE SEMNAT", { x: cx+8, y: cy+cellH-13, size: 6.5, font: fontB, color: rgb(.48,.25,.92) });
-            }
-
-            // Role header
-            const roleY = isActive ? cy+cellH-23 : cy+cellH-15;
-            lastPage.drawText(ro(sig.rol) || "—", { x: cx+8, y: roleY, size: 8, font: fontB, color: isSigned ? rgb(.1,.45,.25) : isActive ? rgb(.35,.15,.75) : accent });
-
-            // Functie
-            const functieY = isActive ? cy+cellH-33 : cy+cellH-27;
-            if (sig.functie) lastPage.drawText(ro(sig.functie), { x: cx+8, y: functieY, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
-
-            // Nume
-            const numeY = isActive ? cy+cellH-43 : cy+cellH-39;
-            if (sig.nume) lastPage.drawText(ro(sig.nume), { x: cx+8, y: numeY, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
-
-            // Signature value or placeholder
-            if (isSigned && sig.signature) {
-              lastPage.drawText(ro(sig.signature), { x: cx+8, y: cy+22, size: 8, font: fontB, color: rgb(.15,.45,.25) });
-              if (sig.signedAt) {
-                const dtSigned = new Date(sig.signedAt).toLocaleString("ro-RO");
-                lastPage.drawText(dtSigned, { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
-              }
-            } else if (isActive) {
-              lastPage.drawText("L.S.  Camp semnatura electronica calificata - ACTIV", { x: cx+8, y: cy+8, size: 6, font: fontB, color: rgb(.35,.15,.75) });
-            } else {
-              lastPage.drawText("L.S.  Camp semnatura electronica calificata", { x: cx+8, y: cy+8, size: 6, font: fontR, color: rgb(.75,.75,.75) });
-            }
-
-            // AcroForm signature field
-            const fn = `SIG_${(sig.rol||'SEM').replace(/[^A-Za-z0-9]/g,'_')}_${idx+1}`;
-            const fx = cx+4, fy = cy+4, fw = cellW-8, fh = 16;
-
-            // Ff flags: bit 1 (value 1) = ReadOnly
-            // Active field: Ff=0 (editable), others: Ff=1 (read-only)
-            const fieldFlags = isActive ? PDFNumber.of(0) : PDFNumber.of(1);
-
-            // Background color: active=light purple, locked=light grey, signed=light green
-            const bgR = isSigned ? PDFNumber.of(.92) : isActive ? PDFNumber.of(.95) : PDFNumber.of(.93);
-            const bgG = isSigned ? PDFNumber.of(.98) : isActive ? PDFNumber.of(.90) : PDFNumber.of(.93);
-            const bgB = isSigned ? PDFNumber.of(.94) : isActive ? PDFNumber.of(1.0) : PDFNumber.of(.93);
-
-            const widget = pdfDoc.context.obj({
-              Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
-              Rect: pdfDoc.context.obj([fx, fy, fx+fw, fy+fh].map(v => PDFNumber.of(Math.round(v*10)/10))),
-              T: PDFString.of(fn),
-              TU: PDFString.of(ro(sig.rol||'') + (sig.nume ? ' - ' + ro(sig.nume) : '') + (isActive ? ' [DE SEMNAT]' : isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
-              F: PDFNumber.of(4),
-              Ff: fieldFlags,
-              P: lastPage.ref,
-              DA: PDFString.of('/Helv 10 Tf 0 g'),
-              MK: pdfDoc.context.obj({
-                BC: pdfDoc.context.obj(isActive ? [PDFNumber.of(.48),PDFNumber.of(.25),PDFNumber.of(.92)] : [hR,hG,hB].map(v=>PDFNumber.of(v))),
-                BG: pdfDoc.context.obj([bgR, bgG, bgB])
-              }),
-              BS: pdfDoc.context.obj({ W: PDFNumber.of(isActive ? 2 : 1), S: PDFName.of(isActive ? 'S' : 'D') }),
-            });
-            const ref = pdfDoc.context.register(widget);
-            allRefs.push(ref);
-            if (!lastPage.node.get(PDFName.of('Annots'))) lastPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([]));
-            lastPage.node.get(PDFName.of('Annots')).push(ref);
-          });
-
-          acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj(allRefs));
-
-          // 7. Save and download
-          const outBytes = await pdfDoc.save();
-          const blob = new Blob([outBytes], { type: 'application/pdf' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.type = 'application/pdf';
-          a.download = (currentFlow.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, '_') + '_pentru_semnare.pdf';
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
-          // Open in Adobe: attempt window.open after short delay
-          setTimeout(() => { window.open(url, "_blank"); }, 500);
-          setTimeout(() => URL.revokeObjectURL(url), 10000);
-
-          if (status) status.textContent = `✅ PDF generat. Deschide-l în Adobe Acrobat/Reader pentru a semna calificat.`;
-          if (btn) btn.textContent = "⬇️ Descarcă din nou";
-        } catch(err) {
-          console.error("PDF gen error:", err);
-          if (status) status.textContent = "❌ Eroare: " + err.message;
-          if (btn) btn.textContent = "⬇️ Generează și descarcă PDF cu cartuș";
-        }
-        if (btn) btn.disabled = false;
+        const outBytes = await pdfDoc.save();
+        return new Blob([outBytes], { type: 'application/pdf' });
       }
       // ── End PDF Generator ──────────────────────────────────────────────────
 
