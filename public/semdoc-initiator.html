@@ -201,7 +201,10 @@ th{ color: var(--sub) !important; }
               </div>
             </div>
 
-            <div class="col-12">
+            <div class="col-12" id="signersSection" style="position:relative;">
+              <div id="signersMask" style="display:none; position:absolute; inset:0; background:rgba(10,14,30,.55); border-radius:12px; z-index:10; display:flex; align-items:center; justify-content:center;">
+                <span style="color:#a0b0d0; font-size:.95em; background:rgba(20,28,50,.9); padding:10px 20px; border-radius:8px; border:1px solid rgba(120,160,255,.3);">📎 Încarcă mai întâi PDF-ul</span>
+              </div>
               <div class="row" style="justify-content: space-between;">
 
                 <div class="row">
@@ -271,8 +274,19 @@ th{ color: var(--sub) !important; }
         const initName = ($("initName")?.value || "").trim();
         const initEmail = ($("initEmail")?.value || "").trim();
         const hasPdf = !!pdfB64;
+
+        // Pas 1: dacă nu e PDF, maschează zona semnatarilor
+        const mask = $("signersMask");
+        if (mask) mask.style.display = hasPdf ? "none" : "flex";
+
+        // Dezactivează butoanele Add/Defaults când nu e PDF
+        const btnAdd = $("btnAdd");
+        const btnDef = $("btnDefaults");
+        if (btnAdd) { btnAdd.disabled = !hasPdf; btnAdd.style.opacity = hasPdf ? "1" : "0.4"; }
+        if (btnDef) { btnDef.disabled = !hasPdf; btnDef.style.opacity = hasPdf ? "1" : "0.4"; }
+
+        // Pas 2: verifică semnatarii
         const rows = [...(document.getElementById("signersTbody")?.querySelectorAll("tr") || [])];
-        // Cel puțin un rând de semnatar (în afară de ÎNTOCMIT) cu nume și email
         const extraSigners = rows.filter(tr => {
           const rol = tr.querySelector(".rol")?.value || "";
           const name = tr.querySelector(".name")?.value?.trim();
@@ -280,10 +294,17 @@ th{ color: var(--sub) !important; }
           return rol !== "ÎNTOCMIT" && name && email;
         });
         const hasExtraSigner = extraSigners.length >= 1;
+
+        // Tooltip cu pasul următor
+        let title = "";
+        if (!hasPdf) title = "Pas 1: Încarcă PDF-ul documentului";
+        else if (!initName || !initEmail) title = "Pas 2: Completează numele și emailul inițiatorului";
+        else if (!hasExtraSigner) title = "Pas 3: Adaugă cel puțin un semnatar cu nume și email";
+
         const valid = hasPdf && initName && initEmail && hasExtraSigner;
         btn.disabled = !valid;
         btn.style.opacity = valid ? "1" : "0.4";
-        btn.title = valid ? "" : "Încarcă un PDF, completează datele inițiatorului și adaugă cel puțin un semnatar";
+        btn.title = title;
       }
 
       function setPdfInfo(msg){ $("pdfInfo").textContent = msg; }

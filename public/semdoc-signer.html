@@ -36,6 +36,7 @@ body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9ee
       .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; }
       .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
       .btn { background: rgba(120,160,255,.22); border:1px solid rgba(120,160,255,.45); color:#e9eefc; padding:10px 12px; border-radius: 12px; cursor:pointer; }
+      .btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
       .btn.secondary { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
       .pill { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12px; }
@@ -364,7 +365,10 @@ th{ color: var(--sub) !important; }
         const reader = new FileReader();
         reader.onload = () => {
           signedPdfB64Data = reader.result;
-          $("btnUploadSignedPdf").disabled = false;
+          // Activează butonul doar dacă semnătarul e current (nu a semnat/uploadat deja)
+          const s = currentFlow?.signers?.[signerIndex];
+          const canUpload = s && (s.status === "current" || (s.status === "signed" && !s.pdfUploaded));
+          $("btnUploadSignedPdf").disabled = !canUpload;
         };
         reader.readAsDataURL(f);
       });
