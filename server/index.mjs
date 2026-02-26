@@ -374,14 +374,10 @@ const signFlow = async (req, res) => {
     signers[idx].status = "signed";
     signers[idx].signedAt = new Date().toISOString();
     signers[idx].signature = sig ?? signers[idx].signature ?? null;
+    signers[idx].pdfUploaded = false; // waiting for qualified PDF upload
 
-    // find next pending
-    const nextIdx = signers.findIndex((s) => s.status !== "signed");
-    if (nextIdx !== -1) {
-      signers.forEach((s, i) => {
-        if (s.status !== "signed") s.status = i === nextIdx ? "current" : "pending";
-      });
-    }
+    // Keep next signers as "pending" until PDF is uploaded
+    // (status advancement happens in upload-signed-pdf endpoint)
 
     data.signers = signers;
     data.updatedAt = new Date().toISOString();
@@ -398,55 +394,20 @@ const signFlow = async (req, res) => {
     const next = data.signers.find((s) => s.status === "current");
     const nextLink = next ? buildSignerLink(req, flowId, next.token) : null;
 
-    // Check if all signed
+    // allSigned in signFlow means everyone pressed sign button
+    // Full completion (with PDFs) is checked in upload-signed-pdf
     const allSigned = data.signers.every((s) => s.status === "signed");
-    if (allSigned) {
-      data.completed = true;
-      data.completedAt = new Date().toISOString();
-      data.events.push({ at: new Date().toISOString(), type: "FLOW_COMPLETED", by: "system" });
-      await saveFlow(flowId, data);
 
-      // Email initiator (NON-BLOCKING)
-      if (data.initEmail) {
-        const pdfLink = `${publicBaseUrl(req)}/flows/${encodeURIComponent(flowId)}/pdf`;
-        sendSignerEmail({
-          to: data.initEmail,
-          subject: `Document semnat complet: ${data.docName}`,
-          html: `
-            <p>Bună ${data.initName || ""},</p>
-            <p>Documentul <strong>${data.docName}</strong> a fost semnat de toți semnatarii.</p>
-            <p>Poți descărca PDF-ul semnat accesând link-ul:</p>
-            <p><a href="${pdfLink}">${pdfLink}</a></p>
-            <br/>
-            <p>— DocFlowAI</p>
-          `,
-        }).catch((e) => console.error("❌ Email completion failed (non-blocking):", e));
-      }
-    }
-
-    // Email next signer (NON-BLOCKING)
-    if (next?.email && nextLink) {
-      sendSignerEmail({
-        to: next.email,
-        subject: `Urmezi la semnare: ${data.docName}`,
-        html: `
-          <p>Bună ${next.name || ""},</p>
-          <p>Este rândul tău să semnezi documentul:</p>
-          <p><strong>${data.docName}</strong></p>
-          <p>Link semnare:</p>
-          <p><a href="${nextLink}">${nextLink}</a></p>
-          <br/>
-          <p>— DocFlowAI</p>
-        `,
-      }).catch((e) => console.error("❌ Email send failed (non-blocking):", e));
-    }
+    // NOTE: Email to next signer is sent only after signed PDF is uploaded
+    // (see POST /flows/:flowId/upload-signed-pdf)
 
     return res.json({
       ok: true,
       flowId,
       completed: allSigned,
       nextSigner: next || null,
-      nextLink,
+      nextLink: null, // withheld until PDF upload
+      awaitingUpload: !allSigned,
       flow: stripPdfB64(data),
     });
   } catch (e) {
@@ -514,6 +475,11 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req, res) => {
     const idx = signers.findIndex((s) => s.token === token);
     if (idx === -1) return res.status(400).json({ error: "invalid_token" });
 
+    // Verify signer has signed (status = "signed") and hasn't uploaded yet
+    if (signers[idx].status !== "signed") {
+      return res.status(409).json({ error: "signer_not_signed_yet" });
+    }
+
     // Store signed PDF — keep all versions with timestamp
     if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions = [];
     data.signedPdfVersions.push({
@@ -523,10 +489,11 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req, res) => {
       signerName: signerName || signers[idx].name || "",
     });
 
-    // Latest signed PDF (used for download)
+    // Latest signed PDF = what next signer will download
     data.signedPdfB64 = signedPdfB64;
     data.signedPdfUploadedAt = new Date().toISOString();
     data.signedPdfUploadedBy = signers[idx].email || signers[idx].name || "unknown";
+    signers[idx].pdfUploaded = true;
     data.updatedAt = new Date().toISOString();
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({
@@ -536,14 +503,74 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req, res) => {
       order: signers[idx].order,
     });
 
+    // NOW advance next signer to "current"
+    const nextIdx = signers.findIndex((s, i) => i > idx && s.status !== "signed");
+    if (nextIdx !== -1) {
+      signers.forEach((s, i) => {
+        if (s.status !== "signed") s.status = i === nextIdx ? "current" : "pending";
+      });
+    }
+    data.signers = signers;
+
+    // Check full completion: all signed AND all PDFs uploaded
+    const allSignedAndUploaded = data.signers.every((s) => s.status === "signed" && s.pdfUploaded);
+    if (allSignedAndUploaded) {
+      data.completed = true;
+      data.completedAt = new Date().toISOString();
+      data.events.push({ at: new Date().toISOString(), type: "FLOW_COMPLETED", by: "system" });
+
+      // Email initiator with link to final signed PDF
+      if (data.initEmail) {
+        const signedPdfLink = `${publicBaseUrl(req)}/flows/${encodeURIComponent(flowId)}/signed-pdf`;
+        sendSignerEmail({
+          to: data.initEmail,
+          subject: `Document semnat complet: ${data.docName}`,
+          html: `
+            <p>Bună ${data.initName || ""},</p>
+            <p>Documentul <strong>${data.docName}</strong> a fost semnat calificat de toți semnatarii.</p>
+            <p>Poți descărca PDF-ul final semnat calificat accesând link-ul:</p>
+            <p><a href="${signedPdfLink}">${signedPdfLink}</a></p>
+            <br/>
+            <p>— DocFlowAI</p>
+          `,
+        }).catch((e) => console.error("❌ Email completion failed (non-blocking):", e));
+      }
+    }
+
     await saveFlow(flowId, data);
+
+    // Send email to next signer (NOW, after PDF upload)
+    const nextSigner = data.signers.find((s) => s.status === "current");
+    const nextLink = nextSigner ? buildSignerLink(req, flowId, nextSigner.token) : null;
+
+    if (nextSigner?.email && nextLink) {
+      const signedPdfLink = `${publicBaseUrl(req)}/flows/${encodeURIComponent(flowId)}/signed-pdf`;
+      sendSignerEmail({
+        to: nextSigner.email,
+        subject: `Urmezi la semnare: ${data.docName}`,
+        html: `
+          <p>Bună ${nextSigner.name || ""},</p>
+          <p>Este rândul tău să semnezi documentul:</p>
+          <p><strong>${data.docName}</strong></p>
+          <p>Documentul conține semnăturile electronice calificate ale semnatarilor anteriori.</p>
+          <p>Descarcă documentul deja semnat de semnatarii anteriori:</p>
+          <p><a href="${signedPdfLink}">${signedPdfLink}</a></p>
+          <p>Link semnare în DocFlowAI:</p>
+          <p><a href="${nextLink}">${nextLink}</a></p>
+          <br/>
+          <p>— DocFlowAI</p>
+        `,
+      }).catch((e) => console.error("❌ Email send failed (non-blocking):", e));
+    }
 
     console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
     return res.json({
       ok: true,
       flowId,
+      completed: allSignedAndUploaded,
       uploadedAt: data.signedPdfUploadedAt,
       downloadUrl: `/flows/${flowId}/signed-pdf`,
+      nextSigner: nextSigner || null,
     });
   } catch (e) {
     console.error("POST /flows/:flowId/upload-signed-pdf error:", e);
