@@ -1,5 +1,3 @@
-console.log("ENV PORT =", process.env.PORT);
-
 import express from "express";
 import cors from "cors";
 import pg from "pg";
@@ -22,12 +20,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "../public");
 
-// 🔥 MUTĂ ACEST BLOC SUS
-app.get("/", (req, res) => {
-  res.status(200).send("ok");
+// ✅ Root ultra-simplu (pentru healthcheck Railway)
+// Railway verifică adesea implicit "/"; dacă primește 404/redirect poate opri containerul.
+app.get("/", (req, res) => res.status(200).send("ok"));
+
+// UI (inițiere flux) pe /app
+app.get("/app", (req, res) => {
+  return res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
 });
 
-// apoi static
+// Static assets (HTML/CSS/JS) din public/
 app.use(express.static(PUBLIC_DIR));
 
 // -------------------- Helpers --------------------
