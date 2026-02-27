@@ -21,7 +21,7 @@
     .btn-logout{background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;
       padding:6px 13px;border-radius:8px;cursor:pointer;font-size:.8rem;}
     .btn-logout:hover{opacity:.8;}
-    main{max-width:1020px;margin:32px auto;padding:0 20px 60px;}
+    main{max-width:1200px;margin:32px auto;padding:0 20px 60px;}
     h2{font-size:1.2rem;font-weight:700;margin-bottom:20px;}
     .card{background:rgba(15,23,49,.8);border:1px solid var(--line);border-radius:var(--radius);
       box-shadow:0 16px 48px rgba(0,0,0,.35);padding:26px;margin-bottom:24px;}
@@ -50,10 +50,19 @@
     .msg{font-size:.82rem;padding:7px 12px;border-radius:8px;}
     .msg.ok{background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.28);color:#7cf0e0;}
     .msg.err{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.28);color:#ffb3b3;}
-    .tbl-wrap{overflow-x:auto;}
-    table{width:100%;border-collapse:collapse;font-size:.84rem;}
-    th{text-align:left;font-size:.72rem;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);font-weight:500;white-space:nowrap;}
-    td{padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+    .tbl-wrap{overflow-x:hidden;}
+    table{width:100%;border-collapse:collapse;font-size:.82rem;table-layout:fixed;}
+    th{text-align:left;font-size:.70rem;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    /* Lățimi fixe coloane */
+    table colgroup col:nth-child(1){width:17%;} /* Nume */
+    table colgroup col:nth-child(2){width:12%;} /* Functie */
+    table colgroup col:nth-child(3){width:13%;} /* Institutie */
+    table colgroup col:nth-child(4){width:15%;} /* Email */
+    table colgroup col:nth-child(5){width:10%;} /* Parola */
+    table colgroup col:nth-child(6){width:7%;}  /* Rol */
+    table colgroup col:nth-child(7){width:8%;}  /* Creat */
+    table colgroup col:nth-child(8){width:18%;} /* Actiuni */
     tr:last-child td{border-bottom:none;}
     tr:hover td{background:rgba(255,255,255,.015);}
     .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.71rem;font-weight:700;}
@@ -163,7 +172,7 @@ async function loadUsers(){
     $("cnt").textContent="("+users.length+")";
     const el=$("tbl");
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
-    el.innerHTML=`<table><thead><tr>
+    el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead><tr>
       <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Email</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
     </tr></thead><tbody id="tb"></tbody></table>`;
     const tb=$("tb");
@@ -180,11 +189,11 @@ async function loadUsers(){
         <td><span class="pwd">${esc(u.plain_password||"—")}</span></td>
         <td><span class="pill ${u.role}">${u.role}</span></td>
         <td style="color:var(--muted);font-size:.79rem">${dt}</td>
-        <td style="text-align:right">
-          <div style="display:flex;gap:6px;justify-content:flex-end">
-            <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})'>Editează</button>
-            <button class="btn btn-sm btn-w" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)">✉ Trimite</button>
-            ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')">Șterge</button>`:''}
+        <td style="text-align:right;white-space:nowrap">
+          <div style="display:flex;gap:3px;justify-content:flex-end;">
+            <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})' title="Editează" style="padding:4px 8px">✏</button>
+            <button class="btn btn-sm btn-w" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale" style="padding:4px 8px">✉</button>
+            ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Șterge" style="padding:4px 8px">✕</button>`:''}
           </div>
         </td>`;
       tb.appendChild(tr);
