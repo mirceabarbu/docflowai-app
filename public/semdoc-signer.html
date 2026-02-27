@@ -478,13 +478,20 @@ th{ color: var(--sub) !important; }
 
           // Semnatar 1: generează PDF cu cartuș + câmpuri AcroForm din original
           // Semnatar 2+: descarcă DIRECT /signed-pdf — NU modificăm, păstrăm semnăturile calificate
+          // flowType "ancore": PDF-ul are deja ancore, nu generăm cartuș
           const prevResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
           if (prevResp.ok) {
             // Semnatar 2+: descărcare directă, fără nicio procesare
             status.textContent = "⏳ Se descarcă PDF-ul semnat de semnatarii anteriori...";
             pdfBlob = await prevResp.blob();
+          } else if (currentFlow?.flowType === "ancore") {
+            // Tip 2: ancore existente — descărcăm PDF-ul original fără modificări
+            status.textContent = "⏳ Se descarcă PDF-ul original (ancore existente)...";
+            const origResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf`);
+            if (!origResp.ok) throw new Error("PDF original indisponibil (cod " + origResp.status + ").");
+            pdfBlob = await origResp.blob();
           } else {
-            // Semnatar 1: generează cartuș pe original
+            // Semnatar 1, tip tabel: generează cartuș pe original
             status.textContent = "⏳ Se generează PDF cu cartuș...";
             await new Promise(r => setTimeout(r, 30));
             pdfBlob = await buildCartusBlob();
