@@ -280,6 +280,50 @@ app.get("/auth/me", async (req, res) => {
 
 // -------------------- Admin User Management --------------------
 
+// POST /admin/users/:id/send-credentials — trimite email cu credențiale
+app.post("/admin/users/:id/send-credentials", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const targetId = parseInt(req.params.id);
+  try {
+    const { rows } = await pool.query(
+      "SELECT email, nume, functie, plain_password FROM users WHERE id=$1",
+      [targetId]
+    );
+    const u = rows[0];
+    if (!u) return res.status(404).json({ error: "user_not_found" });
+    if (!u.plain_password) return res.status(400).json({ error: "no_password_available" });
+
+    const appUrl = process.env.PUBLIC_BASE_URL || "https://app.docflowai.ro";
+    await sendSignerEmail({
+      to: u.email,
+      subject: "Cont DocFlowAI — credențiale de acces",
+      html: `
+        <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
+          <div style="text-align:center;margin-bottom:28px;">
+            <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;letter-spacing:-.02em;">📋 DocFlowAI</div>
+          </div>
+          <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${u.nume ? ', ' + u.nume : ''},</h2>
+          <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Contul tău în sistemul de semnare electronică <strong style="color:#eaf0ff;">DocFlowAI</strong> a fost creat. Folosește credențialele de mai jos pentru a te autentifica.</p>
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+            <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL (utilizator)</span><strong style="font-size:1rem;color:#eaf0ff;">${u.email}</strong></div>
+            <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ</span><strong style="font-size:1.1rem;color:#ffd580;font-family:monospace;letter-spacing:.08em;">${u.plain_password}</strong></div>
+          </div>
+          <div style="text-align:center;margin-bottom:24px;">
+            <a href="${appUrl}/login" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:700;font-size:.95rem;">Intră în cont →</a>
+          </div>
+          <p style="color:#9db0ff;font-size:.8rem;text-align:center;margin:0;">Dacă nu ai solicitat acest cont, ignoră acest mesaj.</p>
+        </div>`,
+    });
+    res.json({ ok: true });
+  } catch(e) {
+    console.error("send-credentials error:", e);
+    res.status(500).json({ error: "email_failed", detail: String(e.message || e) });
+  }
+});
+
 // GET /users — lista useri pentru dropdown (orice user autentificat, fără parole)
 app.get("/users", async (req, res) => {
   if (requireDb(res)) return;
