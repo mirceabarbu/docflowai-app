@@ -973,14 +973,15 @@ th{ color: var(--sub) !important; }
             lines.push(`  [${pill}] ${s.rol || ""} / ${s.functie || ""} — ${s.name || ""} <${s.email || ""}>${refuzInfo}`);
           });
 
-          // Lock init tab if completed
+          // Lock init tab if completed sau dacă cel puțin un semnatar a semnat
           const allDone = j.signers && j.signers.every(s => s.status === "signed");
+          const anySignedOrRefused = j.signers && j.signers.some(s => s.status === "signed" || s.status === "refused");
           const lockBanner = $("lockBanner");
           const btnCreate = $("btnCreate");
           const dlBanner = $("dlBanner");
           if (allDone) {
             if (lockBanner) lockBanner.style.display = "block";
-            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; }
+            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; btnCreate.title = "Fluxul este finalizat"; }
             if (dlBanner) {
               dlBanner.style.display = "block";
               const lnkDiv = $("dlBannerLink");
@@ -996,9 +997,14 @@ th{ color: var(--sub) !important; }
                 }
               }
             }
+          } else if (anySignedOrRefused) {
+            // Cel puțin un semnatar a semnat sau a refuzat — blocăm modificarea fluxului
+            if (lockBanner) lockBanner.style.display = "none";
+            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; btnCreate.title = "Fluxul este în curs de semnare — nu se mai poate modifica"; }
+            if (dlBanner) dlBanner.style.display = "none";
           } else {
             if (lockBanner) lockBanner.style.display = "none";
-            if (btnCreate) { btnCreate.disabled = false; btnCreate.style.opacity = 1; }
+            if (btnCreate) { btnCreate.disabled = false; btnCreate.style.opacity = 1; btnCreate.title = ""; }
             if (dlBanner) dlBanner.style.display = "none";
           }
 
