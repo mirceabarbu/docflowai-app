@@ -383,6 +383,15 @@ th{ color: var(--sub) !important; }
           const s = currentFlow?.signers?.[signerIndex];
           const canUpload = s && (s.status === "current" || (s.status === "signed" && !s.pdfUploaded));
           $("btnUploadSignedPdf").disabled = !canUpload;
+          // Dezactivează butonul de refuz când PDF-ul e încărcat
+          const refuzBtn = $("btnRefuz");
+          if (refuzBtn) {
+            refuzBtn.disabled = true;
+            refuzBtn.style.opacity = ".3";
+            refuzBtn.style.pointerEvents = "none";
+            refuzBtn.style.cursor = "default";
+            refuzBtn.title = "Nu poți refuza după ce ai încărcat un PDF semnat";
+          }
         };
         reader.readAsDataURL(f);
       });
