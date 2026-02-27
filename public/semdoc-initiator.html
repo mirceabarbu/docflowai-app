@@ -191,7 +191,7 @@ th{ color: var(--sub) !important; }
         </div>
         <div class="card">
           <div class="grid">
-            <div class="col-4">
+            <div class="col-4" style="grid-row: span 2;">
               <label>Document (denumire)</label>
               <input id="docName" placeholder="Ex: Referat de necesitate..." />
             </div>
@@ -203,12 +203,13 @@ th{ color: var(--sub) !important; }
               <label>Inițiator (email)</label>
               <input id="initEmail" placeholder="Ex: mircea@..." readonly style="opacity:.7; cursor:default;" />
             </div>
-            <div class="col-6">
+
+            <div class="col-4">
               <label>Inițiator (instituție)</label>
               <input id="initInstitutie" placeholder="—" readonly style="opacity:.7; cursor:default;" />
             </div>
 
-            <div class="col-6">
+            <div class="col-4">
               <label>PDF (atașament recomandat &lt; 10MB)</label>
               <input id="pdfFile" type="file" accept="application/pdf" style="display:none;" />
               <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap; margin-top:2px;">
@@ -221,7 +222,7 @@ th{ color: var(--sub) !important; }
             <div class="col-12">
               <div id="pdfPreviewBox" style="display:none; margin-top:4px;">
                 <div class="muted" style="margin-bottom:6px; font-size:.83rem;">Preview PDF:</div>
-                <iframe id="pdfPreviewFrame" style="width:100%; height:300px; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2);" title="Preview PDF"></iframe>
+                <iframe id="pdfPreviewFrame" style="width:100%; height:600px; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2);" title="Preview PDF"></iframe>
               </div>
             </div>
 
