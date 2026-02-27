@@ -308,8 +308,7 @@ async function sendCredsNew(){
 
 async function cleanOldFlows(){
   const days=parseInt($("delDays").value)||30;
-  if(!confirm(`Ștergi toate fluxurile mai vechi de ${days} zile?
-Acțiunea este ireversibilă.`))return;
+  if(!confirm(`Ștergi toate fluxurile mai vechi de ${days} zile?\nAcțiunea este ireversibilă.`))return;
   const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify({olderThanDays:days})});
   const d=await r.json();
   const el=$("msgOldFlows");
@@ -318,8 +317,7 @@ Acțiunea este ireversibilă.`))return;
 }
 
 async function cleanAllFlows(){
-  if(!confirm("Ștergi TOATE fluxurile?
-Această acțiune este IREVERSIBILĂ și nu poate fi anulată!"))return;
+  if(!confirm("Ștergi TOATE fluxurile?\nAceastă acțiune este IREVERSIBILĂ și nu poate fi anulată!"))return;
   if(!confirm("Ești absolut sigur? Se vor șterge TOATE datele din fluxuri."))return;
   const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify({all:true})});
   const d=await r.json();
