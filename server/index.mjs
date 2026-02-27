@@ -5,6 +5,7 @@ import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
 import { sendSignerEmail, verifySmtp } from "./mailer.mjs";
+import jwt from "jsonwebtoken";
 
 const { Pool } = pg;
 
@@ -25,6 +26,16 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
 });
 
+// Serve login page
+app.get("/login", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "login.html"));
+});
+
+// Serve admin page
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
+});
+
 // -------------------- Helpers --------------------
 function publicBaseUrl(req) {
   // Set in Railway Variables for stable links:
@@ -43,7 +54,46 @@ function newFlowId() {
   return "FLOW_" + crypto.randomBytes(8).toString("hex").toUpperCase();
 }
 
+function generatePassword() {
+  // Parolă ușor de citit: 3 grupe de 3 caractere alfanumerice
+  const chars = "abcdefghjkmnpqrstuvwxyz23456789";
+  let p = "";
+  for (let i = 0; i < 9; i++) {
+    if (i === 3 || i === 6) p += "-";
+    p += chars[crypto.randomInt(chars.length)];
+  }
+  return p;
+}
 
+
+
+// -------------------- JWT + User Auth --------------------
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
+const JWT_EXPIRES = "8h";
+
+// Password hashing with Node built-in crypto (PBKDF2 - no extra deps)
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha256").toString("hex");
+  return `${salt}:${hash}`;
+}
+function verifyPassword(password, stored) {
+  const [salt, hash] = stored.split(":");
+  const check = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha256").toString("hex");
+  return check === hash;
+}
+
+function requireAuth(req, res) {
+  const auth = req.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : null;
+  if (!token) { res.status(401).json({ error: "unauthorized" }); return null; }
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch(e) {
+    res.status(401).json({ error: "token_invalid_or_expired" });
+    return null;
+  }
+}
 
 // -------------------- Admin auth (MVP) --------------------
 const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
@@ -98,9 +148,42 @@ async function initDbOnce() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_flows_updated_at ON flows(updated_at DESC);
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      plain_password TEXT,
+      nume TEXT NOT NULL DEFAULT '',
+      functie TEXT NOT NULL DEFAULT '',
+      role TEXT NOT NULL DEFAULT 'user',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  // Migrare: adaugă coloane noi dacă tabela există deja fără ele
+  const alterCols = [
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS nume TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS functie TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users DROP COLUMN IF EXISTS username",
+  ];
+  for (const sql of alterCols) {
+    await pool.query(sql).catch(() => {});
+  }
+  // Create default admin if no users exist and ADMIN_INIT_PASSWORD is set
+  const { rows: userCount } = await pool.query("SELECT COUNT(*) FROM users");
+  if (parseInt(userCount[0].count) === 0 && process.env.ADMIN_INIT_PASSWORD) {
+    const pwd = process.env.ADMIN_INIT_PASSWORD;
+    const hash = hashPassword(pwd);
+    await pool.query(
+      "INSERT INTO users (email, password_hash, plain_password, nume, functie, role) VALUES ($1,$2,$3,$4,$5,'admin') ON CONFLICT DO NOTHING",
+      ["admin@docflowai.ro", hash, pwd, "Administrator", "Administrator sistem"]
+    );
+    console.log("✅ Admin user created (email: admin@docflowai.ro)");
+  }
   DB_READY = true;
   DB_LAST_ERROR = null;
-  console.log("✅ DB ready (flows table ensured)");
+  console.log("✅ DB ready (flows + users tables ensured)");
 }
 
 async function initDbWithRetry() {
@@ -154,6 +237,147 @@ function buildSignerLink(req, flowId, token) {
     token
   )}`;
 }
+
+// -------------------- Auth Routes --------------------
+
+// POST /auth/login — autentificare cu email + parolă
+app.post("/auth/login", async (req, res) => {
+  if (requireDb(res)) return;
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: "email_and_password_required" });
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM users WHERE email = $1",
+      [email.trim().toLowerCase()]
+    );
+    const user = rows[0];
+    if (!user || !verifyPassword(password, user.password_hash)) {
+      return res.status(401).json({ error: "invalid_credentials" });
+    }
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role, nume: user.nume, functie: user.functie },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES }
+    );
+    res.json({ token, email: user.email, role: user.role, nume: user.nume, functie: user.functie });
+  } catch(e) {
+    console.error("login error:", e);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// GET /auth/me — verifică token și returnează profilul
+app.get("/auth/me", async (req, res) => {
+  const decoded = requireAuth(req, res);
+  if (!decoded) return;
+  if (!pool || !DB_READY) return res.json(decoded);
+  try {
+    const { rows } = await pool.query("SELECT id, email, nume, functie, role FROM users WHERE id=$1", [decoded.userId]);
+    if (!rows[0]) return res.status(401).json({ error: "user_not_found" });
+    res.json({ userId: rows[0].id, email: rows[0].email, nume: rows[0].nume, functie: rows[0].functie, role: rows[0].role });
+  } catch(e) { res.json(decoded); }
+});
+
+// -------------------- Admin User Management --------------------
+
+// GET /admin/users — listă useri cu parolă plain (doar admin)
+app.get("/admin/users", async (req, res) => {
+  if (requireDb(res)) return;
+  const user = requireAuth(req, res);
+  if (!user) return;
+  if (user.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const { rows } = await pool.query(
+    "SELECT id, email, nume, functie, plain_password, role, created_at FROM users ORDER BY created_at DESC"
+  );
+  res.json(rows);
+});
+
+// POST /admin/users — crează user (doar admin)
+app.post("/admin/users", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const { email, password, nume, functie, role } = req.body || {};
+  if (!email || !nume) {
+    return res.status(400).json({ error: "email_and_nume_required" });
+  }
+  const validRole = ["admin", "user"].includes(role) ? role : "user";
+  const plainPwd = password && password.length >= 4 ? password : generatePassword();
+  try {
+    const hash = hashPassword(plainPwd);
+    const { rows } = await pool.query(
+      `INSERT INTO users (email, password_hash, plain_password, nume, functie, role)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id, email, nume, functie, plain_password, role`,
+      [email.trim().toLowerCase(), hash, plainPwd, (nume||"").trim(), (functie||"").trim(), validRole]
+    );
+    res.status(201).json(rows[0]);
+  } catch(e) {
+    if (e.code === "23505") return res.status(409).json({ error: "email_exists" });
+    console.error("create user error:", e);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// PUT /admin/users/:id — editează user complet (doar admin)
+app.put("/admin/users/:id", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const targetId = parseInt(req.params.id);
+  const { email, nume, functie, password, role } = req.body || {};
+  const updates = [];
+  const vals = [];
+  let i = 1;
+  if (email) { updates.push(`email=$${i++}`); vals.push(email.trim().toLowerCase()); }
+  if (nume !== undefined) { updates.push(`nume=$${i++}`); vals.push((nume||"").trim()); }
+  if (functie !== undefined) { updates.push(`functie=$${i++}`); vals.push((functie||"").trim()); }
+  if (role && ["admin","user"].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
+  if (password && password.length >= 4) {
+    const hash = hashPassword(password);
+    updates.push(`password_hash=$${i++}`); vals.push(hash);
+    updates.push(`plain_password=$${i++}`); vals.push(password);
+  }
+  if (!updates.length) return res.status(400).json({ error: "nothing_to_update" });
+  vals.push(targetId);
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users SET ${updates.join(",")} WHERE id=$${i} RETURNING id, email, nume, functie, plain_password, role`,
+      vals
+    );
+    res.json(rows[0]);
+  } catch(e) {
+    if (e.code === "23505") return res.status(409).json({ error: "email_exists" });
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// POST /admin/users/:id/reset-password — generează parolă nouă automată
+app.post("/admin/users/:id/reset-password", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const targetId = parseInt(req.params.id);
+  const newPwd = generatePassword();
+  const hash = hashPassword(newPwd);
+  await pool.query("UPDATE users SET password_hash=$1, plain_password=$2 WHERE id=$3", [hash, newPwd, targetId]);
+  res.json({ plain_password: newPwd });
+});
+
+// DELETE /admin/users/:id — șterge user (doar admin, nu se poate șterge pe sine)
+app.delete("/admin/users/:id", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const targetId = parseInt(req.params.id);
+  if (actor.userId === targetId) return res.status(400).json({ error: "cannot_delete_self" });
+  await pool.query("DELETE FROM users WHERE id=$1", [targetId]);
+  res.json({ ok: true });
+});
 
 // -------------------- Health --------------------
 app.get("/health", (req, res) => {
