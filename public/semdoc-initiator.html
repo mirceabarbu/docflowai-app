@@ -727,11 +727,12 @@ th{ color: var(--sub) !important; }
           const signerRows = f.signers.map(s => {
             const icon = s.status === "signed" ? "✅" : s.status === "refused" ? "⛔" : s.status === "current" ? "✍" : "⏳";
             const dt2 = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">(' + new Date(s.signedAt).toLocaleDateString("ro-RO") + ')</span>' : "";
+            const refuzLabel = s.status === "refused" ? ` <span style="color:#ffaaaa;font-size:.75rem;font-weight:700;">REFUZAT${s.refuseReason ? ': ' + s.refuseReason : ''}</span>` : "";
             return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
               <span style="font-size:.9rem;">${icon}</span>
               <span style="font-size:.82rem;color:var(--sub);">${s.rol || ""}</span>
               <span style="font-size:.82rem;">${s.name || "—"}</span>
-              ${dt2}
+              ${dt2}${refuzLabel}
             </div>`;
           }).join("");
           const dlBtn = f.hasSignedPdf
@@ -933,8 +934,9 @@ th{ color: var(--sub) !important; }
 
           (j.signers || []).forEach((s, i) => {
             const st = s.status || "pending";
-            const pill = st === "signed" ? "semnat" : (st === "current" ? "curent" : "în așteptare");
-            lines.push(`  [${pill}] ${s.rol || ""} / ${s.functie || ""} — ${s.name || ""} <${s.email || ""}>`);
+            const pill = st === "signed" ? "✅ semnat" : st === "refused" ? "⛔ REFUZAT" : (st === "current" ? "✍ curent" : "⏳ în așteptare");
+            const refuzInfo = st === "refused" && s.refuseReason ? ` — Motiv: ${s.refuseReason}` : "";
+            lines.push(`  [${pill}] ${s.rol || ""} / ${s.functie || ""} — ${s.name || ""} <${s.email || ""}>${refuzInfo}`);
           });
 
           // Lock init tab if completed
