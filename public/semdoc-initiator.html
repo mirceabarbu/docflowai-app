@@ -167,6 +167,7 @@ th{ color: var(--sub) !important; }
         <button id="tabInit" class="tabbtn active" type="button">Inițiere</button>
         <button id="tabStatus" class="tabbtn" type="button">Status</button>
       </div>
+      <div id="userBar" style="margin-left:auto; display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
     </header>
 
     <main>
@@ -568,15 +569,12 @@ th{ color: var(--sub) !important; }
       // Show logged-in user + logout button
       (function() {
         const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
-        const hdr = document.querySelector("header");
-        if (!hdr) return;
-        const div = document.createElement("div");
-        div.style.cssText = "display:flex;align-items:center;gap:10px;font-size:.82rem;color:var(--muted,#9db0ff);margin-left:auto;";
+        const bar = document.getElementById("userBar");
+        if (!bar) return;
         const label = u.nume || u.email || "";
-        div.innerHTML = (label ? `<span style="color:var(--sub,#cdd8ff);">${label}</span>` : "") +
-          (u.role === "admin" ? `<a href="/admin" style="color:inherit;opacity:.75;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
+        bar.innerHTML = (label ? `<span style="color:#cdd8ff;">${label}</span>` : "") +
+          (u.role === "admin" ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
           `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
-        hdr.appendChild(div);
       })();
 
       // When initiator fields change, sync into any ÎNTOCMIT row
