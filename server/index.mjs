@@ -156,6 +156,7 @@ async function initDbOnce() {
       plain_password TEXT,
       nume TEXT NOT NULL DEFAULT '',
       functie TEXT NOT NULL DEFAULT '',
+      institutie TEXT NOT NULL DEFAULT '',
       role TEXT NOT NULL DEFAULT 'user',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -165,6 +166,7 @@ async function initDbOnce() {
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS nume TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS functie TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS institutie TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE users DROP COLUMN IF EXISTS username",
   ];
   for (const sql of alterCols) {
@@ -255,11 +257,11 @@ app.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "invalid_credentials" });
     }
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role, nume: user.nume, functie: user.functie },
+      { userId: user.id, email: user.email, role: user.role, nume: user.nume, functie: user.functie, institutie: user.institutie },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES }
     );
-    res.json({ token, email: user.email, role: user.role, nume: user.nume, functie: user.functie });
+    res.json({ token, email: user.email, role: user.role, nume: user.nume, functie: user.functie, institutie: user.institutie });
   } catch(e) {
     console.error("login error:", e);
     res.status(500).json({ error: "server_error" });
@@ -272,9 +274,9 @@ app.get("/auth/me", async (req, res) => {
   if (!decoded) return;
   if (!pool || !DB_READY) return res.json(decoded);
   try {
-    const { rows } = await pool.query("SELECT id, email, nume, functie, role FROM users WHERE id=$1", [decoded.userId]);
+    const { rows } = await pool.query("SELECT id, email, nume, functie, institutie, role FROM users WHERE id=$1", [decoded.userId]);
     if (!rows[0]) return res.status(401).json({ error: "user_not_found" });
-    res.json({ userId: rows[0].id, email: rows[0].email, nume: rows[0].nume, functie: rows[0].functie, role: rows[0].role });
+    res.json({ userId: rows[0].id, email: rows[0].email, nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, role: rows[0].role });
   } catch(e) { res.json(decoded); }
 });
 
@@ -329,8 +331,11 @@ app.get("/users", async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res);
   if (!actor) return;
+  const actor2 = await pool.query("SELECT institutie FROM users WHERE id=$1", [actor.userId]);
+  const inst = actor2.rows[0]?.institutie || "";
   const { rows } = await pool.query(
-    "SELECT id, email, nume, functie FROM users WHERE role != 'admin' OR role = 'admin' ORDER BY nume ASC"
+    "SELECT id, email, nume, functie, institutie FROM users WHERE institutie = $1 ORDER BY nume ASC",
+    [inst]
   );
   res.json(rows);
 });
@@ -342,7 +347,7 @@ app.get("/admin/users", async (req, res) => {
   if (!user) return;
   if (user.role !== "admin") return res.status(403).json({ error: "forbidden" });
   const { rows } = await pool.query(
-    "SELECT id, email, nume, functie, plain_password, role, created_at FROM users ORDER BY created_at DESC"
+    "SELECT id, email, nume, functie, institutie, plain_password, role, created_at FROM users ORDER BY institutie ASC, nume ASC"
   );
   res.json(rows);
 });
@@ -353,7 +358,7 @@ app.post("/admin/users", async (req, res) => {
   const actor = requireAuth(req, res);
   if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
-  const { email, password, nume, functie, role } = req.body || {};
+  const { email, password, nume, functie, institutie, role } = req.body || {};
   if (!email || !nume) {
     return res.status(400).json({ error: "email_and_nume_required" });
   }
@@ -362,10 +367,10 @@ app.post("/admin/users", async (req, res) => {
   try {
     const hash = hashPassword(plainPwd);
     const { rows } = await pool.query(
-      `INSERT INTO users (email, password_hash, plain_password, nume, functie, role)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, email, nume, functie, plain_password, role`,
-      [email.trim().toLowerCase(), hash, plainPwd, (nume||"").trim(), (functie||"").trim(), validRole]
+      `INSERT INTO users (email, password_hash, plain_password, nume, functie, institutie, role)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id, email, nume, functie, institutie, plain_password, role`,
+      [email.trim().toLowerCase(), hash, plainPwd, (nume||"").trim(), (functie||"").trim(), (institutie||"").trim(), validRole]
     );
     res.status(201).json(rows[0]);
   } catch(e) {
@@ -382,13 +387,14 @@ app.put("/admin/users/:id", async (req, res) => {
   if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
   const targetId = parseInt(req.params.id);
-  const { email, nume, functie, password, role } = req.body || {};
+  const { email, nume, functie, institutie, password, role } = req.body || {};
   const updates = [];
   const vals = [];
   let i = 1;
   if (email) { updates.push(`email=$${i++}`); vals.push(email.trim().toLowerCase()); }
   if (nume !== undefined) { updates.push(`nume=$${i++}`); vals.push((nume||"").trim()); }
   if (functie !== undefined) { updates.push(`functie=$${i++}`); vals.push((functie||"").trim()); }
+  if (institutie !== undefined) { updates.push(`institutie=$${i++}`); vals.push((institutie||"").trim()); }
   if (role && ["admin","user"].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
   if (password && password.length >= 4) {
     const hash = hashPassword(password);
@@ -399,7 +405,7 @@ app.put("/admin/users/:id", async (req, res) => {
   vals.push(targetId);
   try {
     const { rows } = await pool.query(
-      `UPDATE users SET ${updates.join(",")} WHERE id=$${i} RETURNING id, email, nume, functie, plain_password, role`,
+      `UPDATE users SET ${updates.join(",")} WHERE id=$${i} RETURNING id, email, nume, functie, institutie, plain_password, role`,
       vals
     );
     res.json(rows[0]);
