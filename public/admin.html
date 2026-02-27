@@ -75,6 +75,11 @@
     .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.2);
       border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;}
     @keyframes sp{to{transform:rotate(360deg);}}
+    .th-filter{width:100%;margin-top:5px;padding:4px 7px;background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);
+      font-size:.72rem;outline:none;box-sizing:border-box;}
+    .th-filter:focus{border-color:rgba(124,92,255,.5);}
+    .th-filter::placeholder{color:rgba(157,176,255,.4);}
     .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;}
     .modal-bg.open{display:flex;}
     .modal{background:#0f1731;border:1px solid var(--line);border-radius:var(--radius);padding:28px;width:100%;max-width:460px;box-shadow:0 24px 64px rgba(0,0,0,.55);}
@@ -205,6 +210,52 @@ function showMsg(id,txt,err){
   setTimeout(()=>{el.textContent="";el.className="";},5000);
 }
 
+function renderUsers(users){
+  const tb=$("tb");
+  if(!tb)return;
+  if(!users.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted);">Niciun rezultat.</td></tr>';return;}
+  tb.innerHTML="";
+  users.forEach(u=>{
+    const tr=document.createElement("tr");
+    tr.id="row_"+u.id;
+    const dt=u.created_at?new Date(u.created_at).toLocaleDateString("ro-RO"):"—";
+    const isMe=u.email===me.email;
+    tr.innerHTML=`
+      <td><strong>${esc(u.nume||"—")}</strong>${isMe?' <span style="font-size:.71rem;color:var(--muted)">(tu)</span>':''}</td>
+      <td style="color:var(--sub)">${esc(u.functie||"—")}</td>
+      <td style="color:var(--muted);font-size:.82rem">${esc(u.institutie||"—")}</td>
+      <td style="color:var(--muted);font-size:.82rem">${esc(u.email)}</td>
+      <td style="overflow:visible;white-space:nowrap;"><span class="pwd">${esc(u.plain_password||"—")}</span></td>
+      <td><span class="pill ${u.role}">${u.role}</span></td>
+      <td style="color:var(--muted);font-size:.79rem">${dt}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <div style="display:flex;gap:3px;justify-content:flex-end;">
+          <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})' title="Editează" style="padding:4px 8px">✏</button>
+          <button class="btn btn-sm btn-w" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale" style="padding:4px 8px">✉</button>
+          ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Șterge" style="padding:4px 8px">✕</button>`:""}
+        </div>
+      </td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function filterUsers(){
+  if(!window._allUsers)return;
+  const fN=($('fNume')||{value:''}).value.toLowerCase();
+  const fF=($('fFunctie')||{value:''}).value.toLowerCase();
+  const fI=($('fInstitutie')||{value:''}).value.toLowerCase();
+  const fE=($('fEmail')||{value:''}).value.toLowerCase();
+  const fR=($('fRol')||{value:''}).value.toLowerCase();
+  const filtered=window._allUsers.filter(u=>
+    (!fN||( u.nume||'').toLowerCase().includes(fN))&&
+    (!fF||(u.functie||'').toLowerCase().includes(fF))&&
+    (!fI||(u.institutie||'').toLowerCase().includes(fI))&&
+    (!fE||(u.email||'').toLowerCase().includes(fE))&&
+    (!fR||(u.role||'').toLowerCase()===fR)
+  );
+  renderUsers(filtered);
+}
+
 async function loadUsers(){
   try{
     const r=await fetch("/admin/users",{headers:hdrs()});
@@ -218,9 +269,25 @@ async function loadUsers(){
     $("cnt").textContent="("+users.length+")";
     const el=$("tbl");
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
-    el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead><tr>
-      <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Email</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
-    </tr></thead><tbody id="tb"></tbody></table>`;
+    el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead>
+      <tr>
+        <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Email</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
+      </tr>
+      <tr id="filterRow">
+        <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fNume"/></th>
+        <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fFunctie"/></th>
+        <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fInstitutie"/></th>
+        <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fEmail"/></th>
+        <th></th>
+        <th><select class="th-filter" onchange="filterUsers()" id="fRol" style="padding:4px 6px;">
+          <option value="">Toate</option>
+          <option value="admin">Admin</option>
+          <option value="user">User</option>
+        </select></th>
+        <th></th><th></th>
+      </tr>
+    </thead><tbody id="tb"></tbody></table>`;
+    window._allUsers = users;
     const tb=$("tb");
     // Populează datalist instituții cu valori unice din useri existenți
     const dl=$("institutieList");
@@ -233,28 +300,7 @@ async function loadUsers(){
       const uniqueF=[...new Set(users.map(u=>u.functie||"").filter(Boolean))].sort();
       dlF.innerHTML=uniqueF.map(f=>`<option value="${esc(f)}">`).join("");
     }
-    users.forEach(u=>{
-      const tr=document.createElement("tr");
-      tr.id="row_"+u.id;
-      const dt=new Date(u.created_at).toLocaleDateString("ro-RO");
-      const isMe=u.email===me.email;
-      tr.innerHTML=`
-        <td><strong>${esc(u.nume||"—")}</strong>${isMe?' <span style="font-size:.71rem;color:var(--muted)">(tu)</span>':''}</td>
-        <td style="color:var(--sub)">${esc(u.functie||"—")}</td>
-        <td style="color:var(--muted);font-size:.82rem">${esc(u.institutie||"—")}</td>
-        <td style="color:var(--muted);font-size:.82rem">${esc(u.email)}</td>
-        <td style="overflow:visible;white-space:nowrap;"><span class="pwd">${esc(u.plain_password||"—")}</span></td>
-        <td><span class="pill ${u.role}">${u.role}</span></td>
-        <td style="color:var(--muted);font-size:.79rem">${dt}</td>
-        <td style="text-align:right;white-space:nowrap">
-          <div style="display:flex;gap:3px;justify-content:flex-end;">
-            <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})' title="Editează" style="padding:4px 8px">✏</button>
-            <button class="btn btn-sm btn-w" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale" style="padding:4px 8px">✉</button>
-            ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Șterge" style="padding:4px 8px">✕</button>`:''}
-          </div>
-        </td>`;
-      tb.appendChild(tr);
-    });
+    renderUsers(users);
   }catch(e){$("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare: ${e.message}</div>`;}
 }
 
