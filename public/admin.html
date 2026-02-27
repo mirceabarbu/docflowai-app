@@ -107,7 +107,10 @@
       <div class="frow"><label>Email (login) *</label><input id="nEmail" type="email" placeholder="ion@primarie.ro"/></div>
     </div>
     <div class="grid3" style="margin-top:12px;">
-      <div class="frow"><label>Instituție *</label><input id="nInstitutie" placeholder="Ex: Primăria Cluj"/></div>
+      <div class="frow"><label>Instituție *</label>
+        <input id="nInstitutie" list="institutieList" placeholder="Ex: Primăria Cluj" autocomplete="off"/>
+        <datalist id="institutieList"></datalist>
+      </div>
       <div class="frow">
         <label>Parolă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = auto</span></label>
         <input id="nPwd" type="text" placeholder="generată automat dacă e gol"/>
@@ -118,7 +121,6 @@
     </div>
     <div class="actions">
       <button class="btn btn-p" id="btnCreate" onclick="createUser()">Crează utilizatorul</button>
-      <button class="btn btn-w" id="btnSendNew" style="display:none" onclick="sendCredsNew()">✉ Trimite credențiale</button>
       <div id="createMsg"></div>
     </div>
   </div>
@@ -162,7 +164,9 @@
     <input type="hidden" id="eId"/>
     <div class="frow"><label>Nume și prenume</label><input id="eNume"/></div>
     <div class="frow"><label>Funcție</label><input id="eFunctie"/></div>
-    <div class="frow"><label>Instituție</label><input id="eInstitutie"/></div>
+    <div class="frow"><label>Instituție</label>
+        <input id="eInstitutie" list="institutieList" autocomplete="off"/>
+      </div>
     <div class="frow"><label>Email</label><input id="eEmail" type="email"/></div>
     <div class="frow"><label>Rol</label>
       <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
@@ -213,6 +217,12 @@ async function loadUsers(){
       <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Email</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
     </tr></thead><tbody id="tb"></tbody></table>`;
     const tb=$("tb");
+    // Populează datalist instituții cu valori unice din useri existenți
+    const dl=$("institutieList");
+    if(dl){
+      const unique=[...new Set(users.map(u=>u.institutie||"").filter(Boolean))].sort();
+      dl.innerHTML=unique.map(i=>`<option value="${esc(i)}">`).join("");
+    }
     users.forEach(u=>{
       const tr=document.createElement("tr");
       tr.id="row_"+u.id;
@@ -250,9 +260,13 @@ async function createUser(){
   if(r.ok){
     showMsg("createMsg","✅ Creat! Parolă: "+d.plain_password,false);
     window._lastCreatedId=d.id;
-    $("btnSendNew").style.display="inline-block";
     $("nNume").value=$("nFunctie").value=$("nEmail").value=$("nPwd").value=$("nInstitutie").value="";
     loadUsers();
+    // Întreabă dacă trimite credențiale pe email
+    if(confirm("Utilizatorul a fost creat.\nTrimitem credențialele (email + parolă) pe adresa: "+email+"?")){
+      await sendCreds(d.id, null);
+      showMsg("createMsg","✅ Creat și credențiale trimise pe email!",false);
+    }
   }else{
     const m={email_exists:"Emailul există deja.",email_and_nume_required:"Completează numele și emailul."};
     showMsg("createMsg",m[d.error]||"Eroare.",true);
@@ -288,17 +302,19 @@ async function saveEdit(){
 }
 
 async function sendCreds(id,btn){
-  const orig=btn.textContent;
-  btn.disabled=true;btn.textContent="Se trimite...";
+  const orig=btn?btn.textContent:"";
+  if(btn){btn.disabled=true;btn.textContent="Se trimite...";}
   try{
     const r=await fetch("/admin/users/"+id+"/send-credentials",{method:"POST",headers:hdrs()});
     const d=await r.json();
-    if(r.ok){btn.textContent="✅ Trimis!";setTimeout(()=>{btn.disabled=false;btn.textContent=orig;},4000);}
-    else{
+    if(r.ok){
+      if(btn){btn.textContent="✅ Trimis!";setTimeout(()=>{btn.disabled=false;btn.textContent=orig;},4000);}
+    }else{
       const m={no_password_available:"Nu există parolă salvată.",email_failed:"Eroare la trimitere email."};
-      btn.disabled=false;btn.textContent=orig;alert(m[d.error]||"Eroare: "+d.error);
+      if(btn){btn.disabled=false;btn.textContent=orig;}
+      alert(m[d.error]||"Eroare: "+d.error);
     }
-  }catch(e){btn.disabled=false;btn.textContent=orig;alert("Eroare de rețea.");}
+  }catch(e){if(btn){btn.disabled=false;btn.textContent=orig;}alert("Eroare de rețea.");}
 }
 
 async function sendCredsNew(){
@@ -308,7 +324,8 @@ async function sendCredsNew(){
 
 async function cleanOldFlows(){
   const days=parseInt($("delDays").value)||30;
-  if(!confirm(`Ștergi toate fluxurile mai vechi de ${days} zile?\nAcțiunea este ireversibilă.`))return;
+  if(!confirm(`Ștergi toate fluxurile mai vechi de ${days} zile?
+Acțiunea este ireversibilă.`))return;
   const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify({olderThanDays:days})});
   const d=await r.json();
   const el=$("msgOldFlows");
@@ -317,7 +334,8 @@ async function cleanOldFlows(){
 }
 
 async function cleanAllFlows(){
-  if(!confirm("Ștergi TOATE fluxurile?\nAceastă acțiune este IREVERSIBILĂ și nu poate fi anulată!"))return;
+  if(!confirm("Ștergi TOATE fluxurile?
+Această acțiune este IREVERSIBILĂ și nu poate fi anulată!"))return;
   if(!confirm("Ești absolut sigur? Se vor șterge TOATE datele din fluxuri."))return;
   const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify({all:true})});
   const d=await r.json();
