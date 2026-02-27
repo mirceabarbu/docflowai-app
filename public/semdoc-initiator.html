@@ -7,9 +7,9 @@
     <style>
       *{box-sizing:border-box;}
 body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
-      header { padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); display:flex; gap:12px; align-items:center; }
+      header { padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); display:flex; gap:12px; align-items:center; justify-content:space-between; }
       .brand { font-weight: 800; letter-spacing:.2px; }
-      .tabs { display:flex; gap:8px; margin-left:auto; }
+      .tabs { display:flex; gap:8px; }
       button, input, select { font: inherit; }
       select option{background: var(--card); color: var(--text);} 
 
@@ -167,7 +167,7 @@ th{ color: var(--sub) !important; }
         <button id="tabInit" class="tabbtn active" type="button">Inițiere</button>
         <button id="tabStatus" class="tabbtn" type="button">Status</button>
       </div>
-      <div id="userBar" style="margin-left:auto; display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
+      <div id="userBar" style="display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
     </header>
 
     <main>
@@ -385,8 +385,13 @@ th{ color: var(--sub) !important; }
             <input class="rolCustom" type="text" placeholder="Scrie atributul (ex: AVIZAT SPECIAL)" style="display:none;" />
           </td>
           <td><input class="functie" placeholder="Ex: Șef structură" /></td>
-          <td><input class="name" placeholder="Ex: Popescu Ion" /></td>
-          <td><input class="email" placeholder="Ex: nume@institutie.ro" /></td>
+          <td>
+            <select class="name-select" style="width:100%;">
+              <option value="">— Alege sau scrie —</option>
+            </select>
+            <input class="name" placeholder="Ex: Popescu Ion" style="margin-top:4px;" />
+          </td>
+          <td><input class="email" placeholder="Ex: nume@institutie.ro" readonly style="opacity:.7;cursor:default;" /></td>
           <td><button class="btn danger btnDel" type="button">Șterge</button></td>
         `;
         tr.querySelector(".rol").value = (s.rol || s.atribut || "ÎNTOCMIT");
@@ -445,6 +450,52 @@ th{ color: var(--sub) !important; }
           rolSel.value = "__alt__";
           showCustomRol();
           rolCustom.value = s.rol;
+        }
+
+        // Dropdown useri din DB
+        const nameSelect = tr.querySelector(".name-select");
+        const nameInput  = tr.querySelector(".name");
+        const emailInput = tr.querySelector(".email");
+        const functieInput = tr.querySelector(".functie");
+
+        // Populează dropdown cu userii din DB
+        if (nameSelect && window._dbUsers) {
+          window._dbUsers.forEach(u => {
+            const opt = document.createElement("option");
+            opt.value = u.nume || "";
+            opt.dataset.email = u.email || "";
+            opt.dataset.functie = u.functie || "";
+            opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
+            nameSelect.appendChild(opt);
+          });
+        }
+
+        // La selectare din dropdown: completează automat name, email, functie
+        if (nameSelect) {
+          nameSelect.addEventListener("change", () => {
+            const opt = nameSelect.options[nameSelect.selectedIndex];
+            if (opt && opt.value) {
+              nameInput.value = opt.value;
+              if (emailInput) { emailInput.value = opt.dataset.email || ""; emailInput.readOnly = true; emailInput.style.opacity = ".7"; }
+              if (functieInput && opt.dataset.functie) { functieInput.value = opt.dataset.functie; functieInput.readOnly = true; functieInput.style.opacity = ".7"; }
+            } else {
+              // Opțiunea goală = reset, permite editare manuală
+              nameInput.value = "";
+              if (emailInput) { emailInput.value = ""; emailInput.readOnly = false; emailInput.style.opacity = "1"; }
+              if (functieInput) { functieInput.readOnly = false; functieInput.style.opacity = "1"; }
+            }
+            validateForm();
+          });
+        }
+
+        // Pre-populează dacă s are valoare (ex: ÎNTOCMIT din profil)
+        if (s.email && nameSelect && window._dbUsers) {
+          const match = window._dbUsers.find(u => u.email === s.email);
+          if (match) {
+            nameSelect.value = match.nume || "";
+            if (emailInput) { emailInput.readOnly = true; emailInput.style.opacity = ".7"; }
+            if (functieInput && match.functie) { functieInput.readOnly = true; functieInput.style.opacity = ".7"; }
+          }
         }
 
         attachDragEvents(tr);
@@ -533,6 +584,32 @@ th{ color: var(--sub) !important; }
 
       $("btnAdd").addEventListener("click", () => { tbody.appendChild(signerRowTemplate()); updateIntocmitVisibility(); validateForm(); });
       $("btnDefaults").addEventListener("click", setDefaults);
+
+      // Încarcă userii din DB pentru dropdown-ul de semnatari
+      window._dbUsers = [];
+      (async function loadDbUsers() {
+        const token = localStorage.getItem("docflow_token");
+        if (!token) return;
+        try {
+          const r = await fetch("/users", { headers: { "Authorization": "Bearer " + token } });
+          if (r.ok) {
+            window._dbUsers = await r.json();
+            // Repopulează dropdown-urile existente dacă există deja rânduri
+            document.querySelectorAll("#signersTbody tr").forEach(tr => {
+              const sel = tr.querySelector(".name-select");
+              if (!sel || sel.options.length > 1) return;
+              window._dbUsers.forEach(u => {
+                const opt = document.createElement("option");
+                opt.value = u.nume || "";
+                opt.dataset.email = u.email || "";
+                opt.dataset.functie = u.functie || "";
+                opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
+                sel.appendChild(opt);
+              });
+            });
+          }
+        } catch(e) { console.warn("Nu s-au putut încărca userii:", e); }
+      })();
 
       // Default load
       setDefaults();
