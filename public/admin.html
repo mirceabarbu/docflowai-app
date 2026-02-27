@@ -55,21 +55,22 @@
     th{text-align:left;font-size:.70rem;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     /* Lățimi fixe coloane */
-    table colgroup col:nth-child(1){width:17%;} /* Nume */
-    table colgroup col:nth-child(2){width:12%;} /* Functie */
-    table colgroup col:nth-child(3){width:13%;} /* Institutie */
-    table colgroup col:nth-child(4){width:15%;} /* Email */
-    table colgroup col:nth-child(5){width:10%;} /* Parola */
+    table colgroup col:nth-child(1){width:18%;} /* Nume */
+    table colgroup col:nth-child(2){width:13%;} /* Functie */
+    table colgroup col:nth-child(3){width:14%;} /* Institutie */
+    table colgroup col:nth-child(4){width:17%;} /* Email */
+    table colgroup col:nth-child(5){width:14%;} /* Parola */
     table colgroup col:nth-child(6){width:7%;}  /* Rol */
     table colgroup col:nth-child(7){width:8%;}  /* Creat */
-    table colgroup col:nth-child(8){width:18%;} /* Actiuni */
+    table colgroup col:nth-child(8){width:9%;}  /* Actiuni */
     tr:last-child td{border-bottom:none;}
     tr:hover td{background:rgba(255,255,255,.015);}
     .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.71rem;font-weight:700;}
     .pill.admin{background:rgba(124,92,255,.25);color:#c4b0ff;}
     .pill.user{background:rgba(45,212,191,.18);color:#7cf0e0;}
     .pwd{font-family:monospace;background:rgba(255,180,50,.1);border:1px solid rgba(255,180,50,.22);
-      padding:2px 8px;border-radius:6px;color:#ffd580;font-size:.84rem;letter-spacing:.03em;}
+      padding:2px 8px;border-radius:6px;color:#ffd580;font-size:.84rem;letter-spacing:.03em;
+      white-space:nowrap;display:inline-block;max-width:100%;}
     .empty{text-align:center;color:var(--muted);padding:32px;}
     .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.2);
       border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;}
@@ -186,7 +187,7 @@ async function loadUsers(){
         <td style="color:var(--sub)">${esc(u.functie||"—")}</td>
         <td style="color:var(--muted);font-size:.82rem">${esc(u.institutie||"—")}</td>
         <td style="color:var(--muted);font-size:.82rem">${esc(u.email)}</td>
-        <td><span class="pwd">${esc(u.plain_password||"—")}</span></td>
+        <td style="overflow:visible;white-space:nowrap;"><span class="pwd">${esc(u.plain_password||"—")}</span></td>
         <td><span class="pill ${u.role}">${u.role}</span></td>
         <td style="color:var(--muted);font-size:.79rem">${dt}</td>
         <td style="text-align:right;white-space:nowrap">
