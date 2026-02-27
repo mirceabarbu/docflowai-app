@@ -389,13 +389,13 @@ th{ color: var(--sub) !important; }
             </select>
             <input class="rolCustom" type="text" placeholder="Scrie atributul (ex: AVIZAT SPECIAL)" style="display:none;" />
           </td>
-          <td><input class="functie" placeholder="Ex: Șef structură" /></td>
+          <td><input class="functie" placeholder="—" readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);" /></td>
           <td>
             <select class="name-select name" style="width:100%;">
               <option value="">— Alege utilizator —</option>
             </select>
           </td>
-          <td><input class="email" placeholder="Ex: nume@institutie.ro" readonly style="opacity:.7;cursor:default;" /></td>
+          <td><input class="email" placeholder="—" readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);" /></td>
           <td><button class="btn danger btnDel" type="button">Șterge</button></td>
         `;
         tr.querySelector(".rol").value = (s.rol || s.atribut || "ÎNTOCMIT");

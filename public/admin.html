@@ -104,6 +104,7 @@
     </div>
     <div class="actions">
       <button class="btn btn-p" id="btnCreate" onclick="createUser()">Crează utilizatorul</button>
+      <button class="btn btn-w" id="btnSendNew" style="display:none" onclick="sendCredsNew()">✉ Trimite credențiale</button>
       <div id="createMsg"></div>
     </div>
   </div>
@@ -179,6 +180,7 @@ async function loadUsers(){
         <td style="text-align:right">
           <div style="display:flex;gap:6px;justify-content:flex-end">
             <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})'>Editează</button>
+            <button class="btn btn-sm btn-w" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)">✉ Trimite</button>
             ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')">Șterge</button>`:''}
           </div>
         </td>`;
@@ -197,6 +199,8 @@ async function createUser(){
   btn.disabled=false;btn.textContent="Crează utilizatorul";
   if(r.ok){
     showMsg("createMsg","✅ Creat! Parolă: "+d.plain_password,false);
+    window._lastCreatedId=d.id;
+    $("btnSendNew").style.display="inline-block";
     $("nNume").value=$("nFunctie").value=$("nEmail").value=$("nPwd").value="";
     loadUsers();
   }else{
@@ -230,6 +234,25 @@ async function saveEdit(){
   const d=await r.json();
   if(r.ok){closeMod();loadUsers();}
   else{$("eMsg").className="msg err";$("eMsg").textContent=d.error==="email_exists"?"Emailul există deja.":"Eroare.";}
+}
+
+async function sendCreds(id,btn){
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent="Se trimite...";
+  try{
+    const r=await fetch("/admin/users/"+id+"/send-credentials",{method:"POST",headers:hdrs()});
+    const d=await r.json();
+    if(r.ok){btn.textContent="✅ Trimis!";setTimeout(()=>{btn.disabled=false;btn.textContent=orig;},4000);}
+    else{
+      const m={no_password_available:"Nu există parolă salvată.",email_failed:"Eroare la trimitere email."};
+      btn.disabled=false;btn.textContent=orig;alert(m[d.error]||"Eroare: "+d.error);
+    }
+  }catch(e){btn.disabled=false;btn.textContent=orig;alert("Eroare de rețea.");}
+}
+
+async function sendCredsNew(){
+  if(!window._lastCreatedId)return;
+  await sendCreds(window._lastCreatedId,$("btnSendNew"));
 }
 
 async function delUser(id,name){
