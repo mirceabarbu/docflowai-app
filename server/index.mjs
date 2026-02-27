@@ -361,7 +361,7 @@ app.post("/flows/:flowId/refuse", async (req, res) => {
         .map(s => ({ name: s.name, email: s.email, role: s.rol }))
     ];
 
-    const emailHtml = `
+    const buildRefuzHtml1 = (isInitiator) => `
       <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#7c5cff,#ff5050);padding:28px 32px;">
           <h2 style="margin:0;font-size:1.4rem;color:#fff;">❌ Document refuzat</h2>
@@ -372,18 +372,25 @@ app.post("/flows/:flowId/refuse", async (req, res) => {
             <div><strong>${signer.name || signer.email}</strong> — ${signer.rol}</div>
             <div style="color:#ffaaaa;margin-top:6px;">Motiv: ${refuseReason}</div>
           </div>
-          <p style="color:#9db0ff;font-size:.9rem;">Fluxul de semnare a fost închis. Contactați inițiatorul pentru a relua procesul.</p>
+          <p style="color:#9db0ff;font-size:.9rem;">${isInitiator
+            ? "Documentul a fost refuzat. Puteți relua procesul creând un flux nou."
+            : "Fluxul de semnare a fost închis. Contactați inițiatorul pentru a relua procesul."
+          }</p>
         </div>
       </div>`;
 
+    // Evităm duplicarea: dacă ÎNTOCMIT are același email ca inițiatorul, nu trimitem de două ori
+    const sentEmails1 = new Set();
     for (const recipient of toNotify) {
+      if (sentEmails1.has(recipient.email)) continue;
+      sentEmails1.add(recipient.email);
       try {
         const { sendSignerEmail } = await import("./mailer.mjs");
-        // Trimitem email de refuz folosind direct nodemailer/resend
+        const isInitiator = recipient.email === data.initEmail;
         await sendSignerEmail({
           to: recipient.email,
           subject: `❌ Document refuzat: ${data.docName}`,
-          html: emailHtml,
+          html: buildRefuzHtml1(isInitiator),
         });
       } catch(e) {
         console.error("Refuz email error:", recipient.email, e.message);
@@ -917,7 +924,7 @@ app.post("/flows/:flowId/refuse", async (req, res) => {
 
     // Email inițiator
     const appUrl = process.env.PUBLIC_BASE_URL || "https://app.docflowai.ro";
-    const refuseHtml = (to, name) => `
+    const refuseHtml = (to, name, isInit = false) => `
       <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
         <div style="text-align:center;margin-bottom:24px;">
           <span style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:10px 18px;font-size:1.1rem;font-weight:800;">📋 DocFlowAI</span>
@@ -932,28 +939,29 @@ app.post("/flows/:flowId/refuse", async (req, res) => {
           <div style="color:#ffaaaa;font-size:.8rem;margin-bottom:6px;">MOTIV REFUZ:</div>
           <div style="color:#eaf0ff;font-style:italic;">"${signers[idx].refuseReason}"</div>
         </div>
-        <p style="color:#9db0ff;font-size:.85rem;">Lucrarea a fost închisă. Dacă este necesară o nouă circulație, inițiatorul va trebui să creeze un flux nou.</p>
+        <p style="color:#9db0ff;font-size:.85rem;">${isInit
+          ? "Documentul a fost refuzat. Puteți relua procesul creând un flux nou."
+          : "Fluxul de semnare a fost închis. Contactați inițiatorul pentru a relua procesul."
+        }</p>
       </div>`;
 
-    // Notifică inițiatorul
-    try {
-      await sendSignerEmail({
-        to: data.initEmail,
-        subject: `⛔ Document refuzat: ${data.docName || flowId}`,
-        html: refuseHtml(data.initEmail, data.initName),
-      });
-    } catch(e) { console.error("refuse email to init failed:", e); }
-
-    // Notifică semnatarii anteriori (cei care au semnat deja)
-    const prevSigners = signers.filter((s, i) => i < idx && s.status === "signed" && s.email);
-    for (const ps of prevSigners) {
+    // Notifică inițiatorul + semnatarii care au semnat, fără duplicare
+    const sentEmails2 = new Set();
+    const notifyList2 = [
+      { email: data.initEmail, name: data.initName, isInit: true },
+      ...signers.filter((s, i) => i < idx && s.status === "signed" && s.email)
+               .map(s => ({ email: s.email, name: s.name, isInit: s.email === data.initEmail }))
+    ];
+    for (const r of notifyList2) {
+      if (sentEmails2.has(r.email)) continue;
+      sentEmails2.add(r.email);
       try {
         await sendSignerEmail({
-          to: ps.email,
+          to: r.email,
           subject: `⛔ Document refuzat: ${data.docName || flowId}`,
-          html: refuseHtml(ps.email, ps.name),
+          html: refuseHtml(r.email, r.name, r.isInit),
         });
-      } catch(e) { console.error("refuse email to prev signer failed:", e); }
+      } catch(e) { console.error("refuse email failed:", r.email, e); }
     }
 
     return res.json({ ok: true, refused: true });
