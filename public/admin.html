@@ -85,10 +85,13 @@
 </head>
 <body>
 <header>
-  <div class="logo"><img src="/Logo.png" alt="DocFlowAI" style="height:120px;width:auto;object-fit:contain; display:block;" /><span style="margin-left:10px;opacity:.55;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:#9db0ff;align-self:flex-end;padding-bottom:6px;">Admin</span></div>
+  <div class="logo">
+    <img src="/Logo.png" alt="DocFlowAI" style="height:44px;width:auto;object-fit:contain;" />
+    <span style="margin-left:10px;opacity:.55;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:#9db0ff;">Admin</span>
+  </div>
   <div class="hdr-right">
-    <span>Conectat: <strong id="hdrUser"></strong></span>
-    <a href="/" style="color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:5px 12px;border-radius:8px;font-size:.8rem;">↩ Aplicație</a>
+    <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
+    <a href="/" style="color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:6px 13px;border-radius:8px;font-size:.82rem;">↩ Aplicație</a>
     <button class="btn-logout" onclick="logout()">Ieși</button>
   </div>
 </header>
@@ -180,8 +183,10 @@
 const $=id=>document.getElementById(id);
 const token=localStorage.getItem("docflow_token");
 const me=JSON.parse(localStorage.getItem("docflow_user")||"{}");
-if(!token||me.role!=="admin"){location.href="/login?next=/admin";}
-$("hdrUser").textContent=me.nume||me.email||"—";
+// Nu redirecționa dacă token există — lasă serverul să verifice rolul
+if(!token){location.href="/login?next=/admin";}
+const hdrEl=$("hdrUser");
+if(hdrEl) hdrEl.textContent=me.nume||me.email||"—";
 function logout(){localStorage.removeItem("docflow_token");localStorage.removeItem("docflow_user");location.href="/login";}
 function hdrs(){return{"Authorization":"Bearer "+token,"Content-Type":"application/json"};}
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
@@ -194,10 +199,10 @@ function showMsg(id,txt,err){
 async function loadUsers(){
   try{
     const r=await fetch("/admin/users",{headers:hdrs()});
-    if(r.status===401){logout();return;}
+    if(r.status===401||r.status===403){logout();return;}
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
-      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare ${r.status}: ${err.error||"unknown"}. <br><small>Token: ${token?token.slice(0,20)+"...":"LIPSĂ"}</small></div>`;
+      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare ${r.status}: ${err.error||"unknown"}</div>`;
       return;
     }
     const users=await r.json();
@@ -331,7 +336,18 @@ async function delUser(id,name){
 }
 
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMod();});
-fetch("/auth/me",{headers:hdrs()}).then(r=>r.ok?loadUsers():logout()).catch(()=>logout());
+fetch("/auth/me",{headers:hdrs()})
+  .then(async r=>{
+    if(!r.ok){logout();return;}
+    const u=await r.json();
+    if(u.role!=="admin"){logout();return;}
+    // Actualizează profilul din server
+    localStorage.setItem("docflow_user",JSON.stringify({email:u.email,role:u.role,nume:u.nume||"",functie:u.functie||"",institutie:u.institutie||""}));
+    const hEl=$("hdrUser");
+    if(hEl) hEl.textContent=u.nume||u.email||"—";
+    loadUsers();
+  })
+  .catch(()=>logout());
 </script>
 </body>
 </html>
