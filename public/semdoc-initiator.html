@@ -222,7 +222,7 @@ th{ color: var(--sub) !important; }
             <div class="col-12">
               <div id="pdfPreviewBox" style="display:none; margin-top:4px;">
                 <div class="muted" style="margin-bottom:6px; font-size:.83rem;">Preview PDF:</div>
-                <iframe id="pdfPreviewFrame" style="width:100%; height:600px; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2);" title="Preview PDF"></iframe>
+                <iframe id="pdfPreviewFrame" style="width:100%; height:700px; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2);" title="Preview PDF"></iframe>
               </div>
             </div>
 
@@ -354,7 +354,9 @@ th{ color: var(--sub) !important; }
           const box = $("pdfPreviewBox");
           const frame = $("pdfPreviewFrame");
           if (box && frame) {
-            frame.src = pdfB64;
+            // Adaugă parametri pentru a ascunde bara de navigare PDF
+          const b64url = pdfB64.includes("#") ? pdfB64 : pdfB64 + "#toolbar=0&navpanes=0&scrollbar=0";
+          frame.src = b64url;
             box.style.display = "block";
           }
         };
@@ -828,7 +830,7 @@ th{ color: var(--sub) !important; }
         if (!bar) return;
         const label = u.nume || u.email || "";
         bar.innerHTML = (label ? `<span style="color:#cdd8ff;font-size:.82rem;">${label}</span>` : "") +
-          `<button onclick="fluxNou()" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;">+ Flux nou</button>` +
+          `<button onclick="location.reload()" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;">+ Flux nou</button>` +
           (u.role === "admin" ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
           `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
       })();
