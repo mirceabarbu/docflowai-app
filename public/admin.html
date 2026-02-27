@@ -103,7 +103,10 @@
     <div class="card-title">➕ Utilizator nou</div>
     <div class="grid3">
       <div class="frow"><label>Nume și prenume *</label><input id="nNume" placeholder="Popescu Ion"/></div>
-      <div class="frow"><label>Funcție</label><input id="nFunctie" placeholder="Șef serviciu"/></div>
+      <div class="frow"><label>Funcție</label>
+        <input id="nFunctie" list="functieList" placeholder="Șef serviciu" autocomplete="off"/>
+        <datalist id="functieList"></datalist>
+      </div>
       <div class="frow"><label>Email (login) *</label><input id="nEmail" type="email" placeholder="ion@primarie.ro"/></div>
     </div>
     <div class="grid3" style="margin-top:12px;">
@@ -163,7 +166,9 @@
     <h3>✏️ Editează utilizator</h3>
     <input type="hidden" id="eId"/>
     <div class="frow"><label>Nume și prenume</label><input id="eNume"/></div>
-    <div class="frow"><label>Funcție</label><input id="eFunctie"/></div>
+    <div class="frow"><label>Funcție</label>
+        <input id="eFunctie" list="functieList" autocomplete="off"/>
+      </div>
     <div class="frow"><label>Instituție</label>
         <input id="eInstitutie" list="institutieList" autocomplete="off"/>
       </div>
@@ -222,6 +227,11 @@ async function loadUsers(){
     if(dl){
       const unique=[...new Set(users.map(u=>u.institutie||"").filter(Boolean))].sort();
       dl.innerHTML=unique.map(i=>`<option value="${esc(i)}">`).join("");
+    }
+    const dlF=$("functieList");
+    if(dlF){
+      const uniqueF=[...new Set(users.map(u=>u.functie||"").filter(Boolean))].sort();
+      dlF.innerHTML=uniqueF.map(f=>`<option value="${esc(f)}">`).join("");
     }
     users.forEach(u=>{
       const tr=document.createElement("tr");
