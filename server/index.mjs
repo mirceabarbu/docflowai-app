@@ -334,7 +334,7 @@ app.get("/users", async (req, res) => {
   const actor2 = await pool.query("SELECT institutie FROM users WHERE id=$1", [actor.userId]);
   const inst = actor2.rows[0]?.institutie || "";
   const { rows } = await pool.query(
-    "SELECT id, email, nume, functie, institutie FROM users WHERE institutie = $1 ORDER BY nume ASC",
+    "SELECT id, email, nume, functie, institutie FROM users WHERE institutie = $1 AND role != 'admin' ORDER BY nume ASC",
     [inst]
   );
   res.json(rows);
