@@ -280,6 +280,17 @@ app.get("/auth/me", async (req, res) => {
 
 // -------------------- Admin User Management --------------------
 
+// GET /users — lista useri pentru dropdown (orice user autentificat, fără parole)
+app.get("/users", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  const { rows } = await pool.query(
+    "SELECT id, email, nume, functie FROM users WHERE role != 'admin' OR role = 'admin' ORDER BY nume ASC"
+  );
+  res.json(rows);
+});
+
 // GET /admin/users — listă useri cu parolă plain (doar admin)
 app.get("/admin/users", async (req, res) => {
   if (requireDb(res)) return;
