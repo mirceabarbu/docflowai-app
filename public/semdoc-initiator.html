@@ -288,6 +288,11 @@ th{ color: var(--sub) !important; }
             <div style="font-weight:700; font-size:1rem; color:var(--sub);">📂 Fluxurile mele</div>
             <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows()">🔄 Actualizează</button>
           </div>
+          <div style="margin-bottom:14px;">
+            <input id="fluxSearch" type="text" placeholder="🔍 Caută după nume document, inițiator, ID flux..."
+              oninput="filterFluxuri(this.value)"
+              style="width:100%;padding:10px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.88rem;outline:none;" />
+          </div>
           <div id="fluxuriContent">
             <div style="text-align:center; color:var(--muted); padding:32px;">Se încarcă...</div>
           </div>
@@ -660,6 +665,66 @@ th{ color: var(--sub) !important; }
         validateForm();
       }
 
+      let _allFlows = [];
+
+      function renderFluxuri(flows) {
+        const el = $("fluxuriContent");
+        if (!el) return;
+        if (!flows.length) {
+          el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
+          return;
+        }
+        const dlToken = encodeURIComponent(localStorage.getItem("docflow_token") || "");
+        el.innerHTML = flows.map(f => {
+          const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
+          const allSigned = f.allSigned;
+          const statusBadge = allSigned
+            ? '<span style="background:rgba(45,212,191,.2);color:#7cf0e0;border:1px solid rgba(45,212,191,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">✓ Finalizat</span>'
+            : '<span style="background:rgba(255,180,50,.15);color:#ffd580;border:1px solid rgba(255,180,50,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⏳ În curs</span>';
+          const signerRows = f.signers.map(s => {
+            const icon = s.status === "signed" ? "✅" : s.status === "current" ? "✍" : "⏳";
+            const dt2 = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">(' + new Date(s.signedAt).toLocaleDateString("ro-RO") + ')</span>' : "";
+            return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+              <span style="font-size:.9rem;">${icon}</span>
+              <span style="font-size:.82rem;color:var(--sub);">${s.rol || ""}</span>
+              <span style="font-size:.82rem;">${s.name || "—"}</span>
+              ${dt2}
+            </div>`;
+          }).join("");
+          const dlBtn = f.hasSignedPdf
+            ? `<a href="/my-flows/${f.flowId}/download?token=${dlToken}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
+            : `<span style="color:var(--muted);font-size:.8rem;">PDF final indisponibil încă</span>`;
+          return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
+              <div>
+                <div style="font-weight:700;font-size:.95rem;margin-bottom:4px;">${f.docName}</div>
+                <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; Inițiator: ${f.initName || f.initEmail} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                ${statusBadge}
+                ${dlBtn}
+              </div>
+            </div>
+            <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
+              ${signerRows}
+            </div>
+          </div>`;
+        }).join("");
+      }
+
+      function filterFluxuri(q) {
+        const term = (q || "").toLowerCase().trim();
+        if (!term) { renderFluxuri(_allFlows); return; }
+        const filtered = _allFlows.filter(f =>
+          (f.docName || "").toLowerCase().includes(term) ||
+          (f.flowId || "").toLowerCase().includes(term) ||
+          (f.initName || "").toLowerCase().includes(term) ||
+          (f.initEmail || "").toLowerCase().includes(term) ||
+          (f.signers || []).some(s => (s.name || "").toLowerCase().includes(term) || (s.email || "").toLowerCase().includes(term))
+        );
+        renderFluxuri(filtered);
+      }
+
       async function loadMyFlows() {
         const el = $("fluxuriContent");
         if (!el) return;
@@ -673,41 +738,9 @@ th{ color: var(--sub) !important; }
             el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Nu ai niciun flux creat sau în care ești implicat.</div>';
             return;
           }
-          el.innerHTML = flows.map(f => {
-            const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
-            const allSigned = f.allSigned;
-            const statusBadge = allSigned
-              ? '<span style="background:rgba(45,212,191,.2);color:#7cf0e0;border:1px solid rgba(45,212,191,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">✓ Finalizat</span>'
-              : '<span style="background:rgba(255,180,50,.15);color:#ffd580;border:1px solid rgba(255,180,50,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⏳ În curs</span>';
-            const signerRows = f.signers.map(s => {
-              const icon = s.status === "signed" ? "✅" : s.status === "current" ? "✍" : "⏳";
-              const dt2 = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">(' + new Date(s.signedAt).toLocaleDateString("ro-RO") + ')</span>' : "";
-              return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
-                <span style="font-size:.9rem;">${icon}</span>
-                <span style="font-size:.82rem;color:var(--sub);">${s.rol || ""}</span>
-                <span style="font-size:.82rem;">${s.name || "—"}</span>
-                ${dt2}
-              </div>`;
-            }).join("");
-            const dlBtn = f.hasSignedPdf
-              ? `<a href="/my-flows/${f.flowId}/download" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
-              : `<span style="color:var(--muted);font-size:.8rem;">PDF final indisponibil încă</span>`;
-            return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:12px;">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
-                <div>
-                  <div style="font-weight:700;font-size:.95rem;margin-bottom:4px;">${f.docName}</div>
-                  <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span></div>
-                </div>
-                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                  ${statusBadge}
-                  ${dlBtn}
-                </div>
-              </div>
-              <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
-                ${signerRows}
-              </div>
-            </div>`;
-          }).join("");
+          _allFlows = flows;
+          const searchVal = $("fluxSearch") ? $("fluxSearch").value : "";
+          filterFluxuri(searchVal);
         } catch(e) {
           el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare de rețea.</div>';
         }
