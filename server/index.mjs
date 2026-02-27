@@ -366,10 +366,16 @@ app.get("/my-flows", async (req, res) => {
   }
 });
 
-// GET /my-flows/:flowId/download — descarcă PDF final (doar dacă ești implicat)
+// GET /my-flows/:flowId/download — descarcă PDF final (token din query sau header)
 app.get("/my-flows/:flowId/download", async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res);
+  // Acceptă token din query param (pentru <a href> direct din browser)
+  const qToken = req.query.token;
+  let actor = null;
+  if (qToken) {
+    try { actor = jwt.verify(qToken, JWT_SECRET); } catch(e) {}
+  }
+  if (!actor) actor = requireAuth(req, res);
   if (!actor) return;
   try {
     const { rows } = await pool.query("SELECT data FROM flows WHERE id=$1", [req.params.flowId]);
