@@ -156,11 +156,21 @@ th{ color: var(--sub) !important; }
 #err{ border-color: rgba(251,113,133,.35) !important; }
 /* ===== End theme ===== */
 </style>
-  </head>
+    <script>
+    // Auth guard — semnatar 2+ poate accesa cu token de flow fără cont
+    // Dar redirecționăm la login dacă nu are nici token de flow nici JWT
+    (function() {
+      const params = new URLSearchParams(location.search);
+      const hasFlowToken = params.get("token");
+      if (hasFlowToken) return; // flow token = acces legitim fără login
+      const jwt = localStorage.getItem("docflow_token");
+      if (!jwt) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); }
+    })();
+  </script>
+</head>
   <body>
     <header>
-      <div style="font-weight:800">DocFlowAI / SemDoc — Semnare</div>
-      <div class="muted" id="sub">—</div>
+      <img src="/Logo.png" alt="DocFlowAI" style="height:110px;width:auto;object-fit:contain;" />
     </header>
 
     <main>
@@ -189,7 +199,7 @@ th{ color: var(--sub) !important; }
               </div>
             </div>
             <div style="height:10px"></div>
-            <iframe id="pdfFrame" title="PDF" style="width:100%; height:520px; border:1px solid rgba(255,255,255,.10); border-radius:12px; background: rgba(0,0,0,.15);"></iframe>
+            <iframe id="pdfFrame" title="PDF" style="width:100%; height:300px; border:1px solid rgba(255,255,255,.10); border-radius:12px; background: rgba(0,0,0,.15);"></iframe>
           </div>
 
 <div style="height:12px"></div>
@@ -230,6 +240,10 @@ th{ color: var(--sub) !important; }
               <button id="btnUploadSignedPdf" class="btn" type="button" style="width:100%; font-weight:700; padding:13px;" disabled>⬆️ Trimite PDF semnat calificat</button>
               <div id="uploadStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
             </div>
+            <div style="border-top:1px solid rgba(255,255,255,.08); margin-top:14px; padding-top:14px;">
+              <button id="btnRefuz" class="btn" type="button" style="width:100%; font-weight:700; padding:12px; background:rgba(255,80,80,.12); border:1px solid rgba(255,80,80,.3); color:#ffaaaa;">✕ Refuz semnarea acestui document</button>
+              <div id="refuzStatus" style="margin-top:8px; font-size:.88em; color:#ffaaaa;"></div>
+            </div>
           </div>
 
           <div id="result" style="min-height:24px; margin-top:10px; color: #a3e6a3;"></div>
@@ -263,7 +277,7 @@ th{ color: var(--sub) !important; }
         $("content").style.display = "none";
       } else {
         $("flowId").textContent = flow;
-        $("sub").textContent = `flow=${flow} · token=${token.slice(0, 6)}…`;
+        // flow/token nu se afișează în header
       }
 
       let currentFlow = null;
@@ -629,6 +643,45 @@ th{ color: var(--sub) !important; }
 
       if (flow && token) {
         loadFlow().catch((e) => showError(String(e.message || e)));
+      }
+
+      // ── Refuz semnare ──────────────────────────────────────────────────────
+      const btnRefuz = $("btnRefuz");
+      if (btnRefuz) {
+        btnRefuz.addEventListener("click", async () => {
+          const reason = prompt("Motivul refuzului (opțional):");
+          if (reason === null) return; // anulat
+          if (!confirm("Ești sigur că refuzi semnarea?\nToți semnatarii anteriori și inițiatorul vor fi notificați prin email, iar lucrarea va fi ÎNCHISĂ.")) return;
+
+          btnRefuz.disabled = true;
+          btnRefuz.textContent = "Se procesează...";
+          const refuzStatus = $("refuzStatus");
+
+          try {
+            const r = await fetch(`/flows/${flow}/refuse`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token, reason: reason || "Fără motiv specificat" })
+            });
+            const d = await r.json();
+            if (r.ok) {
+              btnRefuz.style.background = "rgba(255,80,80,.3)";
+              btnRefuz.textContent = "✓ Refuz înregistrat";
+              if (refuzStatus) refuzStatus.innerHTML = "❌ Ai refuzat semnarea. Inițiatorul și semnatarii anteriori au fost notificați prin email. Lucrarea este <strong>ÎNCHISĂ</strong>.";
+              // Ascunde zona de semnare
+              const signBox = $("signBox");
+              if (signBox) signBox.style.display = "none";
+            } else {
+              btnRefuz.disabled = false;
+              btnRefuz.textContent = "✕ Refuz semnarea acestui document";
+              if (refuzStatus) refuzStatus.textContent = "Eroare: " + (d.error || "unknown");
+            }
+          } catch(e) {
+            btnRefuz.disabled = false;
+            btnRefuz.textContent = "✕ Refuz semnarea acestui document";
+            if (refuzStatus) refuzStatus.textContent = "Eroare de rețea.";
+          }
+        });
       }
     </script>
   </body>

@@ -203,23 +203,25 @@ th{ color: var(--sub) !important; }
               <label>Inițiator (email)</label>
               <input id="initEmail" placeholder="Ex: mircea@..." readonly style="opacity:.7; cursor:default;" />
             </div>
-            <div class="col-4">
+            <div class="col-6">
               <label>Inițiator (instituție)</label>
               <input id="initInstitutie" placeholder="—" readonly style="opacity:.7; cursor:default;" />
             </div>
 
-            <div class="col-12">
+            <div class="col-6">
               <label>PDF (atașament recomandat &lt; 10MB)</label>
               <input id="pdfFile" type="file" accept="application/pdf" style="display:none;" />
-              <button id="btnChoosePdf" class="btn secondary" type="button" style="width:auto;">📎 Alege fișier PDF</button>
-              <div class="row" style="margin-top:10px; justify-content: space-between; gap:12px;">
-                <div class="muted" id="pdfInfo">Nu ai selectat încă un PDF.</div>
-                <button id="btnClearPdf" class="btn btn-outline" type="button">Șterge PDF</button>
+              <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap; margin-top:2px;">
+                <button id="btnChoosePdf" class="btn secondary" type="button" style="width:auto; flex-shrink:0;">📎 Alege</button>
+                <div class="muted" id="pdfInfo" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.84rem;">Nu ai selectat încă un PDF.</div>
+                <button id="btnClearPdf" class="btn btn-outline" type="button" disabled style="flex-shrink:0; opacity:.3; pointer-events:none; cursor:default;">✕ Șterge</button>
               </div>
+            </div>
 
-              <div id="pdfPreviewBox" style="display:none; margin-top:14px;">
-                <div class="muted" style="margin-bottom:6px;">Preview PDF:</div>
-                <iframe id="pdfPreviewFrame" style="width:100%; height:600px; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2);" title="Preview PDF"></iframe>
+            <div class="col-12">
+              <div id="pdfPreviewBox" style="display:none; margin-top:4px;">
+                <div class="muted" style="margin-bottom:6px; font-size:.83rem;">Preview PDF:</div>
+                <iframe id="pdfPreviewFrame" style="width:100%; height:300px; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2);" title="Preview PDF"></iframe>
               </div>
             </div>
 
@@ -332,6 +334,7 @@ th{ color: var(--sub) !important; }
       function setPdfInfo(msg){ $("pdfInfo").textContent = msg; }
 
       $("pdfFile").addEventListener("change", () => {
+        const clearBtn = $("btnClearPdf");
         const f = $("pdfFile").files && $("pdfFile").files[0];
         if (!f){ pdfB64=null; setPdfInfo("Nu ai selectat încă un PDF."); return; }
         if (f.type !== "application/pdf"){ pdfB64=null; setPdfInfo("❌ Te rog selectează un fișier PDF."); return; }
@@ -340,6 +343,7 @@ th{ color: var(--sub) !important; }
         const reader = new FileReader();
         reader.onload = () => {
           pdfB64 = reader.result;
+          if (clearBtn) { clearBtn.style.opacity = "1"; clearBtn.style.pointerEvents = "auto"; clearBtn.style.cursor = "pointer"; clearBtn.disabled = false; clearBtn.style.background = "rgba(255,80,80,.15)"; clearBtn.style.borderColor = "rgba(255,80,80,.3)"; clearBtn.style.color = "#ffaaaa"; }
           validateForm();
           // Auto-fill docName from PDF filename if empty
           const docNameEl = $("docName");
@@ -359,6 +363,13 @@ th{ color: var(--sub) !important; }
       $("btnChoosePdf").addEventListener("click", () => $("pdfFile").click());
 
       $("btnClearPdf").addEventListener("click", () => {
+        $("btnClearPdf").disabled = true;
+        $("btnClearPdf").style.opacity = ".3";
+        $("btnClearPdf").style.pointerEvents = "none";
+        $("btnClearPdf").style.cursor = "default";
+        $("btnClearPdf").style.background = "";
+        $("btnClearPdf").style.borderColor = "";
+        $("btnClearPdf").style.color = "";
         $("pdfFile").value = "";
         pdfB64 = null;
         validateForm();
@@ -619,9 +630,13 @@ th{ color: var(--sub) !important; }
 
       // -------------------- Fluxuri mele --------------------
       function fluxNou() {
-        // Reset form complet
+        // Reset form complet + clear flow curent
         pdfB64 = null;
         localStorage.removeItem("activeFlowId");
+        localStorage.removeItem("docflow_current_flow");
+        // Reset btnClearPdf
+        const cb = $("btnClearPdf");
+        if (cb) { cb.disabled = true; cb.style.opacity = ".35"; cb.style.cursor = "not-allowed"; }
         setPdfInfo("Nu ai selectat încă un PDF.");
         $("docName").value = "";
         // initName/initEmail rămân (din profil)
@@ -632,9 +647,13 @@ th{ color: var(--sub) !important; }
         autoFillFromProfile();
         validateForm();
         showTab("init");
-        // Reset status
+        // Reset status + clear activeFlowId
+        localStorage.removeItem("activeFlowId");
         $("statusContent") && ($("statusContent").textContent = "Niciun flux activ. Creează unul din tabul Inițiere.");
         $("statusFlowId") && ($("statusFlowId").textContent = "—");
+        // Reset btnClearPdf
+        const cpBtn = $("btnClearPdf");
+        if (cpBtn) { cpBtn.style.opacity = ".3"; cpBtn.style.pointerEvents = "none"; cpBtn.disabled = true; }
       }
 
       function autoFillFromProfile() {
@@ -696,11 +715,14 @@ th{ color: var(--sub) !important; }
         el.innerHTML = flows.map(f => {
           const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
           const allSigned = f.allSigned;
-          const statusBadge = allSigned
+          const isRefused = (f.signers || []).some(s => s.status === "refused");
+          const statusBadge = isRefused
+            ? '<span style="background:rgba(255,80,80,.15);color:#ffaaaa;border:1px solid rgba(255,80,80,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⛔ Refuzat</span>'
+            : allSigned
             ? '<span style="background:rgba(45,212,191,.2);color:#7cf0e0;border:1px solid rgba(45,212,191,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">✓ Finalizat</span>'
             : '<span style="background:rgba(255,180,50,.15);color:#ffd580;border:1px solid rgba(255,180,50,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⏳ În curs</span>';
           const signerRows = f.signers.map(s => {
-            const icon = s.status === "signed" ? "✅" : s.status === "current" ? "✍" : "⏳";
+            const icon = s.status === "signed" ? "✅" : s.status === "refused" ? "⛔" : s.status === "current" ? "✍" : "⏳";
             const dt2 = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">(' + new Date(s.signedAt).toLocaleDateString("ro-RO") + ')</span>' : "";
             return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
               <span style="font-size:.9rem;">${icon}</span>
