@@ -124,6 +124,32 @@
     <div class="card-title">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span></div>
     <div class="tbl-wrap"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
   </div>
+
+  <div style="margin-top:40px;border-top:1px solid rgba(255,255,255,.08);padding-top:32px;">
+    <h2 style="color:#ffaaaa;">⚠ Administrare fluxuri</h2>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
+        <div style="font-weight:700;margin-bottom:6px;color:var(--sub);">Șterge fluxurile vechi</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px;">Elimină fluxurile mai vechi de numărul de zile specificat.</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="delDays" type="number" value="30" min="1" style="width:80px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;" />
+          <span style="color:var(--muted);font-size:.85rem;">zile</span>
+          <button class="btn btn-d" onclick="cleanOldFlows()" style="padding:8px 16px;font-size:.85rem;">Șterge</button>
+        </div>
+        <div id="msgOldFlows" style="margin-top:10px;font-size:.82rem;"></div>
+      </div>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,80,80,.15);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
+        <div style="font-weight:700;margin-bottom:6px;color:#ffaaaa;">Șterge TOATE fluxurile</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px;">Acțiune ireversibilă — elimină complet toate fluxurile din baza de date.</div>
+        <button class="btn btn-d" onclick="cleanAllFlows()" style="padding:8px 16px;font-size:.85rem;">Șterge tot</button>
+        <div id="msgAllFlows" style="margin-top:10px;font-size:.82rem;"></div>
+      </div>
+
+    </div>
+  </div>
+
 </main>
 
 <!-- Modal editare -->
@@ -268,6 +294,28 @@ async function sendCreds(id,btn){
 async function sendCredsNew(){
   if(!window._lastCreatedId)return;
   await sendCreds(window._lastCreatedId,$("btnSendNew"));
+}
+
+async function cleanOldFlows(){
+  const days=parseInt($("delDays").value)||30;
+  if(!confirm(`Ștergi toate fluxurile mai vechi de ${days} zile?
+Acțiunea este ireversibilă.`))return;
+  const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify({olderThanDays:days})});
+  const d=await r.json();
+  const el=$("msgOldFlows");
+  if(r.ok) el.innerHTML=`<span style="color:#7cf0e0;">✅ ${d.deleted} flux(uri) șterse.</span>`;
+  else el.innerHTML=`<span style="color:#ffaaaa;">Eroare: ${d.error}</span>`;
+}
+
+async function cleanAllFlows(){
+  if(!confirm("Ștergi TOATE fluxurile?
+Această acțiune este IREVERSIBILĂ și nu poate fi anulată!"))return;
+  if(!confirm("Ești absolut sigur? Se vor șterge TOATE datele din fluxuri."))return;
+  const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify({all:true})});
+  const d=await r.json();
+  const el=$("msgAllFlows");
+  if(r.ok) el.innerHTML=`<span style="color:#7cf0e0;">✅ ${d.deleted} flux(uri) șterse.</span>`;
+  else el.innerHTML=`<span style="color:#ffaaaa;">Eroare: ${d.error}</span>`;
 }
 
 async function delUser(id,name){
