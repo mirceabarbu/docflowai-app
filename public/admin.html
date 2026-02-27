@@ -334,8 +334,7 @@ Acțiunea este ireversibilă.`))return;
 }
 
 async function cleanAllFlows(){
-  if(!confirm("Ștergi TOATE fluxurile?
-Această acțiune este IREVERSIBILĂ și nu poate fi anulată!"))return;
+  if(!confirm("Ștergi TOATE fluxurile?\nAceastă acțiune este IREVERSIBILĂ și nu poate fi anulată!"))return;
   if(!confirm("Ești absolut sigur? Se vor șterge TOATE datele din fluxuri."))return;
   const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify({all:true})});
   const d=await r.json();
