@@ -195,6 +195,11 @@ async function loadUsers(){
   try{
     const r=await fetch("/admin/users",{headers:hdrs()});
     if(r.status===401){logout();return;}
+    if(!r.ok){
+      const err=await r.json().catch(()=>({}));
+      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare ${r.status}: ${err.error||"unknown"}. <br><small>Token: ${token?token.slice(0,20)+"...":"LIPSĂ"}</small></div>`;
+      return;
+    }
     const users=await r.json();
     $("cnt").textContent="("+users.length+")";
     const el=$("tbl");
@@ -225,7 +230,7 @@ async function loadUsers(){
         </td>`;
       tb.appendChild(tr);
     });
-  }catch(e){$("tbl").innerHTML='<div class="empty">Eroare la încărcare.</div>';}
+  }catch(e){$("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare: ${e.message}</div>`;}
 }
 
 async function createUser(){
