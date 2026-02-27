@@ -534,8 +534,9 @@ th{ color: var(--sub) !important; }
 
       function setDefaults() {
         tbody.innerHTML = "";
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
         const defaults = [
-          { rol: "ÎNTOCMIT", functie: "Întocmit", name: "", email: "" },
+          { rol: "ÎNTOCMIT", functie: u.functie || "Întocmit", name: u.nume || "", email: u.email || "" },
           { rol: "VIZAT", functie: "Șef structură", name: "", email: "" },
           { rol: "APROBAT", functie: "Conducător", name: "", email: "" },
         ];
@@ -654,12 +655,29 @@ th{ color: var(--sub) !important; }
             ? (tr.querySelector(".rolCustom")?.value || "").trim().toUpperCase()
             : rol.value;
           if (rolVal === "ÎNTOCMIT") {
-            const n = tr.querySelector(".name-select") || tr.querySelector(".name");
+            const sel = tr.querySelector(".name-select");
             const e = tr.querySelector(".email");
             const f = tr.querySelector(".functie");
-            if (n && !n.value && u.nume) n.value = u.nume;
-            if (e && !e.value && u.email) e.value = u.email;
-            if (f && !f.value && u.functie) f.value = u.functie;
+            if (sel && u.nume) {
+              // Selectează userul logat dacă există în dropdown
+              const matchOpt = [...sel.options].find(o => o.value === u.nume);
+              if (matchOpt) {
+                sel.value = u.nume;
+                if (e && u.email) { e.value = u.email; e.readOnly = true; e.style.opacity = ".7"; e.style.cursor = "default"; }
+                if (f && u.functie) { f.value = u.functie; f.readOnly = true; f.style.opacity = ".7"; f.style.cursor = "default"; }
+              } else if (!sel.value) {
+                // Dacă userul nu e în dropdown (admin sau altă institutie), adaugă-l temporar
+                const tempOpt = document.createElement("option");
+                tempOpt.value = u.nume;
+                tempOpt.dataset.email = u.email || "";
+                tempOpt.dataset.functie = u.functie || "";
+                tempOpt.textContent = u.nume + (u.functie ? " — " + u.functie : "");
+                sel.insertBefore(tempOpt, sel.options[1]);
+                sel.value = u.nume;
+                if (e && u.email) { e.value = u.email; e.readOnly = true; e.style.opacity = ".7"; e.style.cursor = "default"; }
+                if (f && u.functie) { f.value = u.functie; f.readOnly = true; f.style.opacity = ".7"; f.style.cursor = "default"; }
+              }
+            }
           }
         });
         validateForm();
@@ -755,7 +773,7 @@ th{ color: var(--sub) !important; }
           const r = await fetch("/users", { headers: { "Authorization": "Bearer " + token } });
           if (r.ok) {
             window._dbUsers = await r.json();
-            // Repopulează dropdown-urile existente dacă există deja rânduri
+            // Repopulează dropdown-urile existente și re-selectează userul logat
             document.querySelectorAll("#signersTbody tr").forEach(tr => {
               const sel = tr.querySelector(".name-select");
               if (!sel || sel.options.length > 1) return;
@@ -768,6 +786,8 @@ th{ color: var(--sub) !important; }
                 sel.appendChild(opt);
               });
             });
+            // Re-sincronizează ÎNTOCMIT după ce dropdown-urile sunt populate
+            autoFillFromProfile();
           }
         } catch(e) { console.warn("Nu s-au putut încărca userii:", e); }
       })();
