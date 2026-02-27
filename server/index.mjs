@@ -326,6 +326,77 @@ app.post("/admin/users/:id/send-credentials", async (req, res) => {
   }
 });
 
+// POST /flows/:flowId/refuse — semnatar refuză semnarea
+app.post("/flows/:flowId/refuse", async (req, res) => {
+  if (requireDb(res)) return;
+  const { flowId } = req.params;
+  const { token: signerToken, reason } = req.body || {};
+  try {
+    const { rows } = await pool.query("SELECT data FROM flows WHERE id=$1", [flowId]);
+    const data = rows[0]?.data;
+    if (!data) return res.status(404).json({ error: "flow_not_found" });
+
+    const signer = (data.signers || []).find(s => s.token === signerToken);
+    if (!signer) return res.status(403).json({ error: "invalid_token" });
+    if (signer.status !== "current") return res.status(400).json({ error: "not_your_turn" });
+
+    // Marchează fluxul ca refuzat
+    signer.status = "refused";
+    signer.refusedAt = new Date().toISOString();
+    signer.refuseReason = reason || "Fără motiv specificat";
+    data.status = "refused";
+    data.refusedBy = { name: signer.name, email: signer.email, rol: signer.rol };
+    data.refusedAt = new Date().toISOString();
+    data.events = data.events || [];
+    data.events.push({ at: new Date().toISOString(), type: "FLOW_REFUSED", by: signer.email, reason });
+
+    await saveFlow(flowId, data);
+
+    // Notifică prin email: inițiator + semnatarii anteriori (care au semnat deja)
+    const refuseReason = reason || "Fără motiv specificat";
+    const toNotify = [
+      { name: data.initName, email: data.initEmail, role: "Inițiator" },
+      ...(data.signers || [])
+        .filter(s => s.status === "signed" && s.email !== signer.email)
+        .map(s => ({ name: s.name, email: s.email, role: s.rol }))
+    ];
+
+    const emailHtml = `
+      <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#7c5cff,#ff5050);padding:28px 32px;">
+          <h2 style="margin:0;font-size:1.4rem;color:#fff;">❌ Document refuzat</h2>
+        </div>
+        <div style="padding:28px 32px;">
+          <p style="color:#cdd8ff;margin-bottom:16px;">Documentul <strong style="color:#fff;">${data.docName}</strong> a fost <strong style="color:#ffaaaa;">REFUZAT</strong> de către:</p>
+          <div style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);border-radius:10px;padding:14px 18px;margin-bottom:16px;">
+            <div><strong>${signer.name || signer.email}</strong> — ${signer.rol}</div>
+            <div style="color:#ffaaaa;margin-top:6px;">Motiv: ${refuseReason}</div>
+          </div>
+          <p style="color:#9db0ff;font-size:.9rem;">Fluxul de semnare a fost închis. Contactați inițiatorul pentru a relua procesul.</p>
+        </div>
+      </div>`;
+
+    for (const recipient of toNotify) {
+      try {
+        const { sendSignerEmail } = await import("./mailer.mjs");
+        // Trimitem email de refuz folosind direct nodemailer/resend
+        await sendSignerEmail({
+          to: recipient.email,
+          subject: `❌ Document refuzat: ${data.docName}`,
+          html: emailHtml,
+        });
+      } catch(e) {
+        console.error("Refuz email error:", recipient.email, e.message);
+      }
+    }
+
+    res.json({ ok: true, message: "flow_refused" });
+  } catch(e) {
+    console.error("refuse error:", e);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 // POST /admin/flows/clean — șterge fluxuri vechi sau toate (doar admin)
 app.post("/admin/flows/clean", async (req, res) => {
   if (requireDb(res)) return;
@@ -801,6 +872,96 @@ const signFlow = async (req, res) => {
 
 app.post("/flows/:flowId/sign", signFlow);
 app.post("/api/flows/:flowId/sign", signFlow);
+
+// Refuse signing
+app.post("/flows/:flowId/refuse", async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const { flowId } = req.params;
+    const { token, reason } = req.body || {};
+
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ error: "reason_required" });
+    }
+
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: "not_found" });
+
+    const signers = Array.isArray(data.signers) ? data.signers : [];
+    const idx = signers.findIndex(s => s.token === token);
+    if (idx === -1) return res.status(400).json({ error: "invalid_token" });
+    if (signers[idx].status !== "current") {
+      return res.status(409).json({ error: "not_current_signer" });
+    }
+
+    const refuserName = signers[idx].name || signers[idx].email || "Semnatar";
+    const refuserRol = signers[idx].rol || "";
+
+    // Marchează fluxul ca refuzat
+    signers[idx].status = "refused";
+    signers[idx].refusedAt = new Date().toISOString();
+    signers[idx].refuseReason = String(reason).trim();
+    data.signers = signers;
+    data.status = "refused";
+    data.refusedAt = new Date().toISOString();
+    data.updatedAt = new Date().toISOString();
+    data.events = Array.isArray(data.events) ? data.events : [];
+    data.events.push({
+      at: new Date().toISOString(),
+      type: "REFUSED",
+      by: signers[idx].email,
+      reason: String(reason).trim(),
+    });
+
+    await saveFlow(flowId, data);
+
+    // Email inițiator
+    const appUrl = process.env.PUBLIC_BASE_URL || "https://app.docflowai.ro";
+    const refuseHtml = (to, name) => `
+      <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
+        <div style="text-align:center;margin-bottom:24px;">
+          <span style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:10px 18px;font-size:1.1rem;font-weight:800;">📋 DocFlowAI</span>
+        </div>
+        <h2 style="margin:0 0 8px;color:#ffaaaa;">⛔ Document refuzat</h2>
+        <p style="color:#9db0ff;margin:0 0 20px;line-height:1.6;">Bună${name ? ' ' + name : ''},</p>
+        <p style="color:#cdd8ff;margin:0 0 20px;line-height:1.6;">
+          Documentul <strong style="color:#eaf0ff;">${data.docName || flowId}</strong> a fost <strong style="color:#ffaaaa;">refuzat</strong> de către
+          <strong style="color:#eaf0ff;">${refuserName}</strong>${refuserRol ? ' (' + refuserRol + ')' : ''}.
+        </p>
+        <div style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);border-radius:12px;padding:16px 20px;margin-bottom:24px;">
+          <div style="color:#ffaaaa;font-size:.8rem;margin-bottom:6px;">MOTIV REFUZ:</div>
+          <div style="color:#eaf0ff;font-style:italic;">"${signers[idx].refuseReason}"</div>
+        </div>
+        <p style="color:#9db0ff;font-size:.85rem;">Lucrarea a fost închisă. Dacă este necesară o nouă circulație, inițiatorul va trebui să creeze un flux nou.</p>
+      </div>`;
+
+    // Notifică inițiatorul
+    try {
+      await sendSignerEmail({
+        to: data.initEmail,
+        subject: `⛔ Document refuzat: ${data.docName || flowId}`,
+        html: refuseHtml(data.initEmail, data.initName),
+      });
+    } catch(e) { console.error("refuse email to init failed:", e); }
+
+    // Notifică semnatarii anteriori (cei care au semnat deja)
+    const prevSigners = signers.filter((s, i) => i < idx && s.status === "signed" && s.email);
+    for (const ps of prevSigners) {
+      try {
+        await sendSignerEmail({
+          to: ps.email,
+          subject: `⛔ Document refuzat: ${data.docName || flowId}`,
+          html: refuseHtml(ps.email, ps.name),
+        });
+      } catch(e) { console.error("refuse email to prev signer failed:", e); }
+    }
+
+    return res.json({ ok: true, refused: true });
+  } catch(e) {
+    console.error("refuse error:", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
 
 // Admin: resend email to current signer
 app.post("/flows/:flowId/resend", async (req, res) => {
