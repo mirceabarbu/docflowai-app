@@ -188,11 +188,11 @@ th{ color: var(--sub) !important; }
             </div>
             <div class="col-4">
               <label>Inițiator (nume)</label>
-              <input id="initName" placeholder="Ex: Mircea Barbu" />
+              <input id="initName" placeholder="Ex: Mircea Barbu" readonly style="opacity:.7; cursor:default;" />
             </div>
             <div class="col-4">
               <label>Inițiator (email)</label>
-              <input id="initEmail" placeholder="Ex: mircea@..." />
+              <input id="initEmail" placeholder="Ex: mircea@..." readonly style="opacity:.7; cursor:default;" />
             
             </div>
 
@@ -542,8 +542,8 @@ th{ color: var(--sub) !important; }
         if (!u.email) return;
         const nameEl = $("initName");
         const emailEl = $("initEmail");
-        if (nameEl && !nameEl.value.trim() && u.nume) nameEl.value = u.nume;
-        if (emailEl && !emailEl.value.trim() && u.email) emailEl.value = u.email;
+        if (nameEl && u.nume) { nameEl.value = u.nume; nameEl.readOnly = true; nameEl.style.opacity = ".7"; nameEl.style.cursor = "default"; }
+        if (emailEl && u.email) { emailEl.value = u.email; emailEl.readOnly = true; emailEl.style.opacity = ".7"; emailEl.style.cursor = "default"; }
         // Dacă există un rând ÎNTOCMIT generat de setDefaults, completăm și acolo
         const tbody = document.getElementById("signersTbody");
         if (!tbody) return;
@@ -569,12 +569,13 @@ th{ color: var(--sub) !important; }
       (function() {
         const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
         const hdr = document.querySelector("header");
-        if (!hdr || !u.username) return;
+        if (!hdr) return;
         const div = document.createElement("div");
-        div.style.cssText = "display:flex;align-items:center;gap:10px;font-size:.82rem;color:var(--muted,#9db0ff);";
-        div.innerHTML = `<span>${u.username}</span>` +
-          (u.role === "admin" ? `<a href="/admin" style="color:inherit;opacity:.75;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;">Admin</a>` : '') +
-          `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;">Ieși</button>`;
+        div.style.cssText = "display:flex;align-items:center;gap:10px;font-size:.82rem;color:var(--muted,#9db0ff);margin-left:auto;";
+        const label = u.nume || u.email || "";
+        div.innerHTML = (label ? `<span style="color:var(--sub,#cdd8ff);">${label}</span>` : "") +
+          (u.role === "admin" ? `<a href="/admin" style="color:inherit;opacity:.75;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
+          `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
         hdr.appendChild(div);
       })();
 
