@@ -4,30 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DocFlowAI — Semnare</title>
-    <script>
-      // Load pdf-lib with multiple CDN fallbacks
-      (function() {
-        var cdns = [
-          "https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js",
-          "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js",
-          "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
-        ];
-        var idx = 0;
-        function tryNext() {
-          if (idx >= cdns.length) {
-            window._pdfLibFailed = true;
-            console.error("❌ pdf-lib failed to load from all CDNs");
-            return;
-          }
-          var s = document.createElement("script");
-          s.src = cdns[idx++];
-          s.onload = function() { console.log("✅ pdf-lib loaded from", s.src); window._pdfLibLoaded = true; };
-          s.onerror = function() { console.warn("⚠ CDN failed:", s.src); tryNext(); };
-          document.head.appendChild(s);
-        }
-        tryNext();
-      })();
-    </script>
     <style>
       *{box-sizing:border-box;}
 body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
@@ -36,7 +12,6 @@ body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9ee
       .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; }
       .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
       .btn { background: rgba(120,160,255,.22); border:1px solid rgba(120,160,255,.45); color:#e9eefc; padding:10px 12px; border-radius: 12px; cursor:pointer; }
-      .btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
       .btn.secondary { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
       .pill { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12px; }
@@ -156,21 +131,10 @@ th{ color: var(--sub) !important; }
 #err{ border-color: rgba(251,113,133,.35) !important; }
 /* ===== End theme ===== */
 </style>
-    <script>
-    // Auth guard — semnatar 2+ poate accesa cu token de flow fără cont
-    // Dar redirecționăm la login dacă nu are nici token de flow nici JWT
-    (function() {
-      const params = new URLSearchParams(location.search);
-      const hasFlowToken = params.get("token");
-      if (hasFlowToken) return; // flow token = acces legitim fără login
-      const jwt = localStorage.getItem("docflow_token");
-      if (!jwt) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); }
-    })();
-  </script>
-</head>
+  </head>
   <body>
     <header>
-      <div style="font-weight:800">DocFlowAI / SemDoc — Semnare</div>
+      <img src="/Logo.png" alt="DocFlowAI" style="height:56px;width:auto;object-fit:contain;" />
       <div class="muted" id="sub">—</div>
     </header>
 
@@ -212,6 +176,12 @@ th{ color: var(--sub) !important; }
 
           <div style="height:12px"></div>
 
+          <div class="muted">
+            Dacă ai fost direcționat greșit, trimite inițiatorului link-ul complet din adresă (flow + token).
+          </div>
+
+          <div style="height:12px"></div>
+
           <div class="box">
             <div class="row" style="justify-content: space-between; align-items: center;">
               <div>
@@ -224,33 +194,18 @@ th{ color: var(--sub) !important; }
 
           <div style="height:12px"></div>
 
-          <!-- Semnătură electronică calificată — flux unic -->
-          <div id="signBox" style="background:rgba(124,92,255,.08); border:1px solid rgba(124,92,255,.3); border-radius:14px; padding:16px;">
-            <div style="font-weight:700; margin-bottom:10px;">✍️ Semnătură electronică calificată</div>
-            <div class="muted" style="margin-bottom:14px; font-size:.92em; line-height:1.7;">
-              <strong>1.</strong> Descarcă PDF-ul de mai jos (conține semnăturile semnatarilor anteriori)<br/>
-              <strong>2.</strong> Semnează-l cu <strong>E-SignEncrypt / Adobe Acrobat</strong> folosind certificatul STS<br/>
-              <strong>3.</strong> Încarcă PDF-ul semnat și apasă <strong>Trimite</strong> — abia atunci va fi notificat următorul semnatar
-            </div>
-            <button id="btnDownloadForSigning" class="btn secondary" style="margin-bottom:8px; width:100%;" onclick="downloadPdfForSigning()">⬇️ Descarcă PDF pentru semnare calificată</button>
-            <div id="downloadForSigningStatus" class="muted" style="font-size:.85em; margin-bottom:12px;"></div>
-            <div style="border-top:1px solid rgba(255,255,255,.1); padding-top:14px;">
-              <input id="signedPdfFile" type="file" accept="application/pdf" style="display:none;" />
-              <button id="btnChooseSignedPdf" class="btn secondary" type="button" style="width:100%; margin-bottom:8px;">📂 Alege fișier PDF semnat</button>
-              <div id="signedPdfInfo" class="muted" style="font-size:.9em; margin-bottom:10px;">Niciun fișier selectat.</div>
-              <button id="btnUploadSignedPdf" class="btn" type="button" style="width:100%; font-weight:700; padding:13px;" disabled>⬆️ Trimite PDF semnat calificat</button>
-              <div id="uploadStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
-            </div>
+          <div class="box">
+            <div class="muted" style="margin-bottom:8px;">Semnătură (nume complet sau inițiale):</div>
+            <input id="sigInput" type="text" placeholder="ex: Ion Popescu" style="width:100%; box-sizing:border-box; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.18); border-radius:10px; color:#e9eefc; padding:10px 14px; font-size:1em; outline:none;" />
           </div>
 
-          <div id="result" style="min-height:24px; margin-top:10px; color: #a3e6a3;"></div>
+          <div style="height:12px"></div>
 
-          <div id="completedBox" style="display:none; margin-top:16px; background:rgba(45,212,191,.08); border:1px solid rgba(45,212,191,.3); border-radius:14px; padding:16px;">
-            <div style="font-weight:700; margin-bottom:8px;">✅ Document semnat complet de toți semnatarii!</div>
-            <div class="muted" style="margin-bottom:12px;">Inițiatorul a fost notificat și poate descărca PDF-ul final semnat calificat.</div>
-            <a id="btnDownloadFinalPdf" href="#" class="btn" style="display:inline-block; text-decoration:none;" target="_blank">🏅 Descarcă PDF final semnat calificat</a>
-            <div id="pdfGenStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
-          </div>
+          <button id="btnSign" class="btn" style="width:100%; font-size:1em; font-weight:700; padding:13px;">&#9997;&#65039; Semnează documentul</button>
+
+          <div style="height:10px"></div>
+
+          <div id="result" style="min-height:24px; color: #a3e6a3;"></div>
 
         </div>
       </div>
@@ -308,44 +263,23 @@ th{ color: var(--sub) !important; }
 
           const s = j.signers[signerIndex];
           const who = `${s.rol || ""} / ${s.functie || ""}`;
-          const statusLabel = {"signed":"SEMNAT","current":"CURENT","pending":"ÎN AȘTEPTARE"};
-          $("whoPill").textContent = statusLabel[s.status] || (s.status||"pending").toUpperCase();
+          $("whoPill").textContent = (s.status || "pending").toUpperCase();
           $("whoText").textContent = `${who} — ${s.name || ""} <${s.email || ""}>`;
 
           const lines = [];
           lines.push(`Semnatar curent: ${j.signers.findIndex(x => x.status === "current") + 1}`);
-          const slMap = {"signed":"semnat","current":"curent","pending":"în așteptare"};
           (j.signers || []).forEach((x, i) => {
-            // show "semnat" in status rapid only after PDF was uploaded
-            const displayStatus = (x.status === "signed" && !x.pdfUploaded) ? "curent" : (slMap[x.status] || x.status || "pending");
-            lines.push(`${i+1}. ${displayStatus} :: ${x.rol || ""} :: ${x.name || ""}`);
+            lines.push(`${i+1}. ${x.status || "pending"} :: ${x.rol || ""} :: ${x.name || ""}`);
           });
           $("quick").textContent = lines.join("\n");
 
-          // Check if fully completed (all signed + all PDFs uploaded)
-          const flowCompleted = j.completed || (j.signers && j.signers.every(x => x.status === "signed" && x.pdfUploaded));
-          const thisSigned = s.status === "signed" && s.pdfUploaded;
-          const signBox = $("signBox");
-
-          if (flowCompleted) {
-            if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-            $("result").textContent = "";
-            const box = $("completedBox");
-            if (box) box.style.display = "block";
-            const dlBtn = $("btnDownloadFinalPdf");
-            if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf`;
-          } else if (thisSigned) {
-            // This signer already uploaded — lock box, show waiting message
-            if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-            $("result").textContent = "✅ Ai trimis documentul semnat. Se așteaptă ceilalți semnatari.";
-          } else if (s.status !== "current") {
-            // Not their turn yet
-            if (signBox) { signBox.style.opacity = "0.4"; signBox.style.pointerEvents = "none"; }
-            const slLabel = {"signed":"semnat","current":"curent","pending":"în așteptare"};
-            $("result").textContent = `Nu e rândul tău încă (status: ${slLabel[s.status]||s.status}).`;
+          if (s.status !== "current") {
+            $("btnSign").disabled = true;
+            $("btnSign").style.opacity = 0.6;
+            $("result").textContent = `Nu e rândul tău (status: ${s.status}).`;
           } else {
-            // Their turn — enable signBox
-            if (signBox) { signBox.style.opacity = "1"; signBox.style.pointerEvents = "auto"; }
+            $("btnSign").disabled = false;
+            $("btnSign").style.opacity = 1;
             $("result").textContent = "";
           }
         } catch (e) {
@@ -362,281 +296,41 @@ th{ color: var(--sub) !important; }
         }
       });
 
-      // ── Upload PDF Semnat Calificat ─────────────────────────────────────────
-      let signedPdfB64Data = null;
-
-      $("btnChooseSignedPdf").addEventListener("click", () => $("signedPdfFile").click());
-
-      $("signedPdfFile").addEventListener("change", () => {
-        const f = $("signedPdfFile").files && $("signedPdfFile").files[0];
-        if (!f) { signedPdfB64Data = null; $("signedPdfInfo").textContent = "Niciun fișier selectat."; $("btnUploadSignedPdf").disabled = true; return; }
-        if (f.type !== "application/pdf") { signedPdfB64Data = null; $("signedPdfInfo").textContent = "❌ Te rog selectează un fișier PDF."; $("btnUploadSignedPdf").disabled = true; return; }
-        if (f.size > 30 * 1024 * 1024) { signedPdfB64Data = null; $("signedPdfInfo").textContent = "❌ Fișier prea mare (max 30MB)."; $("btnUploadSignedPdf").disabled = true; return; }
-        $("signedPdfInfo").textContent = `✅ ${f.name} (${Math.round(f.size/1024)} KB) — gata de upload`;
-        const reader = new FileReader();
-        reader.onload = () => {
-          signedPdfB64Data = reader.result;
-          // Activează butonul doar dacă semnătarul e current (nu a semnat/uploadat deja)
-          const s = currentFlow?.signers?.[signerIndex];
-          const canUpload = s && (s.status === "current" || (s.status === "signed" && !s.pdfUploaded));
-          $("btnUploadSignedPdf").disabled = !canUpload;
-        };
-        reader.readAsDataURL(f);
-      });
-
-      $("btnUploadSignedPdf").addEventListener("click", async () => {
-        if (!signedPdfB64Data) return;
-        const btn = $("btnUploadSignedPdf");
-        const status = $("uploadStatus");
-        btn.disabled = true;
-        btn.textContent = "⏳ Se înregistrează și trimite...";
-        status.textContent = "";
+      $("btnSign").addEventListener("click", async () => {
         try {
-          // Step 1: register signature in DocFlowAI (/sign)
           if (!currentFlow) await loadFlow();
           const s = currentFlow.signers[signerIndex];
-          if (s.status === "current") {
-            const signerName = s.name || "semnatar";
-            const rSign = await fetch(`/flows/${encodeURIComponent(flow)}/sign`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ token, signature: signerName }),
-            });
-            const jSign = await rSign.json().catch(() => ({}));
-            if (!rSign.ok) throw new Error(jSign?.error || "sign_error");
+          if (s.status !== "current") throw new Error("Nu e rândul tău să semnezi.");
+
+          $("result").textContent = "Se trimite semnarea...";
+          const signature = $("sigInput").value.trim();
+          if (!signature) {
+            $("sigInput").focus();
+            throw new Error("Semnătura este obligatorie (nu poate fi goală). ");
           }
 
-          // Step 2: upload signed PDF
-          const r = await fetch(`/flows/${encodeURIComponent(flow)}/upload-signed-pdf`, {
+          const r = await fetch(`/flows/${encodeURIComponent(flow)}/sign`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              token,
-              signedPdfB64: signedPdfB64Data,
-              signerName: currentFlow?.signers?.[signerIndex]?.name || "",
-            }),
+            body: JSON.stringify({ token, signature }),
           });
+
           const j = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(j?.error || "server_error");
 
-          // Step 3: reload flow to update status rapid
+          $("btnSign").disabled = true;
+          $("btnSign").style.opacity = 0.6;
+          $("result").textContent = "✅ Semnat. Se actualizează status...";
           await loadFlow();
 
-          btn.textContent = "✅ Trimis";
-          if (j.completed) {
-            status.textContent = "";
-            const completedBox = $("completedBox");
-            if (completedBox) {
-              completedBox.style.display = "block";
-              const dlBtn = $("btnDownloadFinalPdf");
-              if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf`;
-            }
-            const signBox = $("signBox");
-            if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-          } else if (j.nextSigner) {
-            status.innerHTML = `✅ Trimis! <strong>${j.nextSigner.name || j.nextSigner.email}</strong> a fost notificat să semneze.`;
-            const signBox = $("signBox");
-            if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-          } else {
-            status.textContent = "✅ PDF semnat calificat trimis cu succes!";
+          if (j.nextLink) {
+            $("result").innerHTML = `✅ Semnat. Următorul a fost notificat (dacă email e activ).<br/>NextLink (debug): <a href="${j.nextLink}" target="_blank">${j.nextLink}</a>`;
           }
-        } catch(e) {
-          status.textContent = "❌ Eroare: " + e.message;
-          btn.disabled = false;
-          btn.textContent = "⬆️ Trimite PDF semnat calificat";
+        } catch (e) {
+          showError(String(e.message || e));
+          $("result").textContent = "";
         }
       });
-      // ── End Upload ──────────────────────────────────────────────────────────
-
-      // ── Download PDF for signing ───────────────────────────────────────────
-      async function downloadPdfForSigning() {
-        const btn = $("btnDownloadForSigning");
-        const status = $("downloadForSigningStatus");
-        if (!btn || !status) return;
-
-        btn.disabled = true;
-        btn.textContent = "⏳ Se pregătește...";
-        status.textContent = "";
-
-        try {
-          await new Promise(r => setTimeout(r, 30));
-
-          let pdfBlob;
-          let fname = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_de_semnat.pdf";
-
-          // Semnatar 1: generează PDF cu cartuș + câmpuri AcroForm din original
-          // Semnatar 2+: descarcă DIRECT /signed-pdf — NU modificăm, păstrăm semnăturile calificate
-          const prevResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
-          if (prevResp.ok) {
-            // Semnatar 2+: descărcare directă, fără nicio procesare
-            status.textContent = "⏳ Se descarcă PDF-ul semnat de semnatarii anteriori...";
-            pdfBlob = await prevResp.blob();
-          } else {
-            // Semnatar 1: generează cartuș pe original
-            status.textContent = "⏳ Se generează PDF cu cartuș...";
-            await new Promise(r => setTimeout(r, 30));
-            pdfBlob = await buildCartusBlob();
-          }
-
-          // Descarcă fișierul
-          const url = URL.createObjectURL(pdfBlob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = fname;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-
-          // Încearcă deschidere în Adobe (funcționează dacă Adobe e aplicația implicită)
-          setTimeout(() => { try { window.open(url, "_blank"); } catch(e) {} }, 800);
-          setTimeout(() => URL.revokeObjectURL(url), 15000);
-
-          status.textContent = "✅ PDF descărcat. Dacă nu s-a deschis automat, deschide fișierul din folderul Downloads în Adobe Acrobat/Reader.";
-          btn.textContent = "⬇️ Descarcă din nou";
-
-        } catch(err) {
-          console.error("downloadPdfForSigning error:", err);
-          status.textContent = "❌ Eroare: " + (err.message || String(err));
-          btn.textContent = "⬇️ Descarcă PDF pentru semnare calificată";
-        }
-
-        btn.disabled = false;
-      }
-      // ── End Download for signing ────────────────────────────────────────────
-
-      // ── Build cartus PDF blob (pure function, no side effects) ──────────────
-      async function buildCartusBlob() {
-        if (!currentFlow) throw new Error("Date flux indisponibile — reîncarcă pagina.");
-
-        // Wait up to 10s for PDFLib to load
-        if (!window.PDFLib) {
-          await new Promise((resolve, reject) => {
-            let waited = 0;
-            const iv = setInterval(() => {
-              waited += 200;
-              if (window.PDFLib) { clearInterval(iv); resolve(); }
-              else if (window._pdfLibFailed || waited > 10000) {
-                clearInterval(iv);
-                reject(new Error("Librăria PDF (pdf-lib) nu s-a putut încărca. Verifică conexiunea la internet și reîncarcă pagina."));
-              }
-            }, 200);
-          });
-        }
-
-        const { PDFDocument, PDFName, PDFString, PDFNumber, rgb, StandardFonts } = PDFLib;
-
-        // buildCartusBlob folosește MEREU PDF-ul original ca bază
-        // (semnatar 2+ descarcă direct /signed-pdf din downloadPdfForSigning, fără modificare)
-        const pdfResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf`);
-        if (!pdfResp.ok) throw new Error("PDF original indisponibil pe server (cod " + pdfResp.status + ").");
-        const pdfBytes = await pdfResp.arrayBuffer();
-
-        const pdfDoc = await PDFDocument.load(pdfBytes);
-        const pages = pdfDoc.getPages();
-        const lastPage = pages[pages.length - 1];
-        const { width: pW } = lastPage.getSize();
-
-        const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-        function ro(t) {
-          const m = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-          return String(t||'').split('').map(c => m[c]||c).join('');
-        }
-
-        const ACCENT_HEX = "#1a3a5c";
-        function hx(h) { return rgb(parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255); }
-        const accent = hx(ACCENT_HEX);
-        const hR = parseInt(ACCENT_HEX.slice(1,3),16)/255;
-        const hG = parseInt(ACCENT_HEX.slice(3,5),16)/255;
-        const hB = parseInt(ACCENT_HEX.slice(5,7),16)/255;
-        const lightBg = rgb(hR*.06+.94, hG*.06+.94, hB*.06+.94);
-
-        const signers = currentFlow.signers || [];
-        if (!signers.length) throw new Error("Niciun semnatar în flux.");
-
-        const MARGIN = 40;
-        const n = signers.length;
-        const cols = n <= 3 ? n : n <= 6 ? Math.ceil(n/2) : Math.ceil(n/3);
-        const rows = Math.ceil(n/cols);
-        const cellW = (pW - MARGIN*2) / cols;
-        const cellH = 80;
-        const titleH = 20;
-        const cartusH = rows * cellH + titleH + 10;
-        const cartusBottom = 28;
-
-        // Title bar
-        lastPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: accent });
-        lastPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: cartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(1,1,1) });
-        lastPage.drawText(`Generat: ${new Date().toLocaleString("ro-RO")}`, { x: pW - MARGIN - 130, y: cartusBottom + cartusH - titleH + 6, size: 7, font: fontR, color: rgb(.9,.9,.9) });
-
-        // AcroForm
-        const acroForm = pdfDoc.context.obj({
-          Type: PDFName.of('AcroForm'),
-          Fields: pdfDoc.context.obj([]),
-          SigFlags: PDFNumber.of(3),
-          DA: PDFString.of('/Helv 10 Tf 0 g'),
-        });
-        pdfDoc.catalog.set(PDFName.of('AcroForm'), pdfDoc.context.register(acroForm));
-        const allRefs = [];
-
-        signers.forEach((s, idx) => {
-          const row = Math.floor(idx / cols);
-          const col = idx % cols;
-          const cx = MARGIN + col * cellW;
-          const cy = cartusBottom + (rows - 1 - row) * cellH;
-
-          const isSigned = s.status === "signed" && !!s.pdfUploaded;
-          const borderColor = isSigned ? rgb(.1,.55,.3) : accent;
-          const bgColor     = isSigned ? rgb(.92,.98,.94) : lightBg;
-
-          lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: 1 });
-          lastPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
-
-          lastPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy+cellH-15, size: 8, font: fontB, color: isSigned ? rgb(.1,.45,.25) : accent });
-          if (s.functie) lastPage.drawText(ro(s.functie), { x: cx+8, y: cy+cellH-27, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
-          if (s.name)    lastPage.drawText(ro(s.name),    { x: cx+8, y: cy+cellH-39, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
-
-          if (isSigned && s.signature) {
-            lastPage.drawText(ro(s.signature), { x: cx+8, y: cy+22, size: 8, font: fontB, color: rgb(.15,.45,.25) });
-            if (s.signedAt) lastPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
-          } else {
-            lastPage.drawText("L.S.  Camp semnatura electronica calificata", { x: cx+8, y: cy+8, size: 6, font: fontR, color: rgb(.6,.6,.6) });
-          }
-
-          // AcroForm — toate câmpurile active (Ff=0), fără evidențiere per semnatar
-          const fn = `SIG_${(s.rol||'SEM').replace(/[^A-Za-z0-9]/g,'_')}_${idx+1}`;
-          const bgR2 = isSigned ? PDFNumber.of(.92) : PDFNumber.of(.96);
-          const bgG2 = isSigned ? PDFNumber.of(.98) : PDFNumber.of(.97);
-          const bgB2 = isSigned ? PDFNumber.of(.94) : PDFNumber.of(1.0);
-
-          const widget = pdfDoc.context.obj({
-            Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
-            Rect: pdfDoc.context.obj([cx+4, cy+4, cx+cellW-4, cy+20].map(v => PDFNumber.of(Math.round(v*10)/10))),
-            T: PDFString.of(fn),
-            TU: PDFString.of(ro(s.rol||'') + (s.name ? ' - '+ro(s.name) : '') + (isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
-            F: PDFNumber.of(4),
-            Ff: PDFNumber.of(0),
-            P: lastPage.ref,
-            DA: PDFString.of('/Helv 10 Tf 0 g'),
-            MK: pdfDoc.context.obj({
-              BC: pdfDoc.context.obj([hR,hG,hB].map(v=>PDFNumber.of(v))),
-              BG: pdfDoc.context.obj([bgR2, bgG2, bgB2]),
-            }),
-            BS: pdfDoc.context.obj({ W: PDFNumber.of(1), S: PDFName.of('S') }),
-          });
-          const ref = pdfDoc.context.register(widget);
-          allRefs.push(ref);
-          if (!lastPage.node.get(PDFName.of('Annots'))) lastPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([]));
-          lastPage.node.get(PDFName.of('Annots')).push(ref);
-        });
-
-        acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj(allRefs));
-
-        const outBytes = await pdfDoc.save();
-        return new Blob([outBytes], { type: 'application/pdf' });
-      }
-      // ── End PDF Generator ──────────────────────────────────────────────────
 
       if (flow && token) {
         loadFlow().catch((e) => showError(String(e.message || e)));
