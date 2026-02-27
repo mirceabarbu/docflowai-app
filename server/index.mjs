@@ -686,6 +686,7 @@ const createFlow = async (req, res) => {
       initName,
       initEmail,
       meta: body.meta || {},
+      flowType: body.flowType || "tabel",
       pdfB64: body.pdfB64 ?? null,
       signers: normalizedSigners,
       createdAt: body.createdAt || new Date().toISOString(),
