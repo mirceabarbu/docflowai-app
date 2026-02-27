@@ -93,9 +93,10 @@
       <div class="frow"><label>Funcție</label><input id="nFunctie" placeholder="Șef serviciu"/></div>
       <div class="frow"><label>Email (login) *</label><input id="nEmail" type="email" placeholder="ion@primarie.ro"/></div>
     </div>
-    <div class="grid2" style="margin-top:12px;">
+    <div class="grid3" style="margin-top:12px;">
+      <div class="frow"><label>Instituție *</label><input id="nInstitutie" placeholder="Ex: Primăria Cluj"/></div>
       <div class="frow">
-        <label>Parolă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol pentru generare automată</span></label>
+        <label>Parolă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = auto</span></label>
         <input id="nPwd" type="text" placeholder="generată automat dacă e gol"/>
       </div>
       <div class="frow"><label>Rol</label>
@@ -122,6 +123,7 @@
     <input type="hidden" id="eId"/>
     <div class="frow"><label>Nume și prenume</label><input id="eNume"/></div>
     <div class="frow"><label>Funcție</label><input id="eFunctie"/></div>
+    <div class="frow"><label>Instituție</label><input id="eInstitutie"/></div>
     <div class="frow"><label>Email</label><input id="eEmail" type="email"/></div>
     <div class="frow"><label>Rol</label>
       <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
@@ -162,7 +164,7 @@ async function loadUsers(){
     const el=$("tbl");
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
     el.innerHTML=`<table><thead><tr>
-      <th>Nume și prenume</th><th>Funcție</th><th>Email</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
+      <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Email</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
     </tr></thead><tbody id="tb"></tbody></table>`;
     const tb=$("tb");
     users.forEach(u=>{
@@ -173,6 +175,7 @@ async function loadUsers(){
       tr.innerHTML=`
         <td><strong>${esc(u.nume||"—")}</strong>${isMe?' <span style="font-size:.71rem;color:var(--muted)">(tu)</span>':''}</td>
         <td style="color:var(--sub)">${esc(u.functie||"—")}</td>
+        <td style="color:var(--muted);font-size:.82rem">${esc(u.institutie||"—")}</td>
         <td style="color:var(--muted);font-size:.82rem">${esc(u.email)}</td>
         <td><span class="pwd">${esc(u.plain_password||"—")}</span></td>
         <td><span class="pill ${u.role}">${u.role}</span></td>
@@ -194,14 +197,15 @@ async function createUser(){
   const email=$("nEmail").value.trim(),pwd=$("nPwd").value.trim(),role=$("nRole").value;
   if(!nume||!email){showMsg("createMsg","Numele și emailul sunt obligatorii.",true);return;}
   const btn=$("btnCreate");btn.disabled=true;btn.textContent="Se creează...";
-  const r=await fetch("/admin/users",{method:"POST",headers:hdrs(),body:JSON.stringify({email,password:pwd,nume,functie,role})});
+  const institutie=$("nInstitutie").value.trim();
+  const r=await fetch("/admin/users",{method:"POST",headers:hdrs(),body:JSON.stringify({email,password:pwd,nume,functie,institutie,role})});
   const d=await r.json();
   btn.disabled=false;btn.textContent="Crează utilizatorul";
   if(r.ok){
     showMsg("createMsg","✅ Creat! Parolă: "+d.plain_password,false);
     window._lastCreatedId=d.id;
     $("btnSendNew").style.display="inline-block";
-    $("nNume").value=$("nFunctie").value=$("nEmail").value=$("nPwd").value="";
+    $("nNume").value=$("nFunctie").value=$("nEmail").value=$("nPwd").value=$("nInstitutie").value="";
     loadUsers();
   }else{
     const m={email_exists:"Emailul există deja.",email_and_nume_required:"Completează numele și emailul."};
@@ -212,6 +216,7 @@ async function createUser(){
 let editU=null;
 function openEdit(u){
   editU=u;$("eId").value=u.id;$("eNume").value=u.nume||"";$("eFunctie").value=u.functie||"";
+  $("eInstitutie").value=u.institutie||"";
   $("eEmail").value=u.email;$("eRole").value=u.role;$("ePwd").value="";
   $("eMsg").textContent="";$("eMsg").className="";
   $("mBg").classList.add("open");$("eNume").focus();
@@ -228,7 +233,7 @@ async function genPwd(){
 async function saveEdit(){
   const id=$("eId").value;
   const body={email:$("eEmail").value.trim(),nume:$("eNume").value.trim(),
-    functie:$("eFunctie").value.trim(),role:$("eRole").value};
+    functie:$("eFunctie").value.trim(),institutie:$("eInstitutie").value.trim(),role:$("eRole").value};
   const p=$("ePwd").value.trim();if(p)body.password=p;
   const r=await fetch("/admin/users/"+id,{method:"PUT",headers:hdrs(),body:JSON.stringify(body)});
   const d=await r.json();

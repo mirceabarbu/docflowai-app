@@ -76,7 +76,7 @@
         showErr(m[d.error]||"Eroare de autentificare.");return;
       }
       localStorage.setItem("docflow_token",d.token);
-      localStorage.setItem("docflow_user",JSON.stringify({email:d.email,role:d.role,nume:d.nume,functie:d.functie}));
+      localStorage.setItem("docflow_user",JSON.stringify({email:d.email,role:d.role,nume:d.nume,functie:d.functie,institutie:d.institutie||""}));
       const next=new URLSearchParams(location.search).get("next");
       location.href=d.role==="admin"?(next&&next.startsWith("/admin")?next:"/admin"):(next||"/");
     }catch(e){showErr("Eroare de rețea.");}

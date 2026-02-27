@@ -199,7 +199,10 @@ th{ color: var(--sub) !important; }
             <div class="col-4">
               <label>Inițiator (email)</label>
               <input id="initEmail" placeholder="Ex: mircea@..." readonly style="opacity:.7; cursor:default;" />
-            
+            </div>
+            <div class="col-4">
+              <label>Inițiator (instituție)</label>
+              <input id="initInstitutie" placeholder="—" readonly style="opacity:.7; cursor:default;" />
             </div>
 
             <div class="col-12">
@@ -625,6 +628,8 @@ th{ color: var(--sub) !important; }
         const emailEl = $("initEmail");
         if (nameEl && u.nume) { nameEl.value = u.nume; nameEl.readOnly = true; nameEl.style.opacity = ".7"; nameEl.style.cursor = "default"; }
         if (emailEl && u.email) { emailEl.value = u.email; emailEl.readOnly = true; emailEl.style.opacity = ".7"; emailEl.style.cursor = "default"; }
+        const instEl = $("initInstitutie");
+        if (instEl && u.institutie) { instEl.value = u.institutie; }
         // Dacă există un rând ÎNTOCMIT generat de setDefaults, completăm și acolo
         const tbody = document.getElementById("signersTbody");
         if (!tbody) return;
@@ -693,6 +698,7 @@ th{ color: var(--sub) !important; }
           docName: $("docName").value.trim(),
           initName: $("initName").value.trim(),
           initEmail: $("initEmail").value.trim(),
+          initInstitutie: $("initInstitutie")?.value?.trim() || "",
           signers: readSigners(),
           pdfB64,
         };
