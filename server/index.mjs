@@ -326,6 +326,31 @@ app.post("/admin/users/:id/send-credentials", async (req, res) => {
   }
 });
 
+// POST /admin/flows/clean — șterge fluxuri vechi sau toate (doar admin)
+app.post("/admin/flows/clean", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const { olderThanDays, all } = req.body || {};
+  try {
+    let result;
+    if (all) {
+      result = await pool.query("DELETE FROM flows");
+    } else {
+      const days = parseInt(olderThanDays) || 30;
+      result = await pool.query(
+        "DELETE FROM flows WHERE created_at < NOW() - ($1 || ' days')::INTERVAL",
+        [days]
+      );
+    }
+    res.json({ ok: true, deleted: result.rowCount });
+  } catch(e) {
+    console.error("flows/clean error:", e);
+    res.status(500).json({ error: "server_error", detail: String(e.message) });
+  }
+});
+
 // GET /my-flows — fluxurile userului curent (inițiator sau semnatar)
 app.get("/my-flows", async (req, res) => {
   if (requireDb(res)) return;
