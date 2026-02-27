@@ -149,7 +149,17 @@ th{ color: var(--sub) !important; }
 #err{ border-color: rgba(251,113,133,.35) !important; }
 /* ===== End theme ===== */
 </style>
-  </head>
+    <script>
+    // Auth guard — redirect to login if no valid JWT
+    (function() {
+      const token = localStorage.getItem("docflow_token");
+      if (!token) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); return; }
+      fetch("/auth/me", { headers: { "Authorization": "Bearer " + token } })
+        .then(r => { if (!r.ok) { localStorage.removeItem("docflow_token"); location.href = "/login"; } })
+        .catch(() => {});
+    })();
+  </script>
+</head>
   <body>
     <header>
       <div class="brand">DocFlowAI / SemDoc</div>
@@ -271,37 +281,19 @@ th{ color: var(--sub) !important; }
       function validateForm() {
         const btn = $("btnCreate");
         if (!btn) return;
-        const initName = ($("initName")?.value || "").trim();
-        const initEmail = ($("initEmail")?.value || "").trim();
         const hasPdf = !!pdfB64;
 
-        // Pas 1: dacă nu e PDF, maschează zona semnatarilor
+        // Maschează zona semnatarilor până la încărcarea PDF-ului
         const mask = $("signersMask");
         if (mask) mask.style.display = hasPdf ? "none" : "flex";
 
-        // Dezactivează butoanele Add/Defaults când nu e PDF
         const btnAdd = $("btnAdd");
         const btnDef = $("btnDefaults");
         if (btnAdd) { btnAdd.disabled = !hasPdf; btnAdd.style.opacity = hasPdf ? "1" : "0.4"; }
         if (btnDef) { btnDef.disabled = !hasPdf; btnDef.style.opacity = hasPdf ? "1" : "0.4"; }
 
-        // Pas 2: verifică semnatarii
-        const rows = [...(document.getElementById("signersTbody")?.querySelectorAll("tr") || [])];
-        const extraSigners = rows.filter(tr => {
-          const rol = tr.querySelector(".rol")?.value || "";
-          const name = tr.querySelector(".name")?.value?.trim();
-          const email = tr.querySelector(".email")?.value?.trim();
-          return rol !== "ÎNTOCMIT" && name && email;
-        });
-        const hasExtraSigner = extraSigners.length >= 1;
-
-        // Tooltip cu pasul următor
-        let title = "";
-        if (!hasPdf) title = "Pas 1: Încarcă PDF-ul documentului";
-        else if (!initName || !initEmail) title = "Pas 2: Completează numele și emailul inițiatorului";
-        else if (!hasExtraSigner) title = "Pas 3: Adaugă cel puțin un semnatar cu nume și email";
-
-        const valid = hasPdf && initName && initEmail && hasExtraSigner;
+        // Singura condiție: PDF încărcat
+        const valid = hasPdf;
         btn.disabled = !valid;
         btn.style.opacity = valid ? "1" : "0.4";
         btn.title = title;
@@ -543,6 +535,48 @@ th{ color: var(--sub) !important; }
 
       // Default load
       setDefaults();
+
+      // Completare automată câmpuri inițiator din profilul utilizatorului autentificat
+      (function autoFillFromProfile() {
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        if (!u.email) return;
+        const nameEl = $("initName");
+        const emailEl = $("initEmail");
+        if (nameEl && !nameEl.value.trim() && u.nume) nameEl.value = u.nume;
+        if (emailEl && !emailEl.value.trim() && u.email) emailEl.value = u.email;
+        // Dacă există un rând ÎNTOCMIT generat de setDefaults, completăm și acolo
+        const tbody = document.getElementById("signersTbody");
+        if (!tbody) return;
+        tbody.querySelectorAll("tr").forEach(tr => {
+          const rol = tr.querySelector(".rol");
+          if (!rol) return;
+          const rolVal = rol.value === "__alt__"
+            ? (tr.querySelector(".rolCustom")?.value || "").trim().toUpperCase()
+            : rol.value;
+          if (rolVal === "ÎNTOCMIT") {
+            const n = tr.querySelector(".name");
+            const e = tr.querySelector(".email");
+            const f = tr.querySelector(".functie");
+            if (n && !n.value.trim() && u.nume) n.value = u.nume;
+            if (e && !e.value.trim() && u.email) e.value = u.email;
+            if (f && !f.value.trim() && u.functie) f.value = u.functie;
+          }
+        });
+        validateForm();
+      })();
+
+      // Show logged-in user + logout button
+      (function() {
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        const hdr = document.querySelector("header");
+        if (!hdr || !u.username) return;
+        const div = document.createElement("div");
+        div.style.cssText = "display:flex;align-items:center;gap:10px;font-size:.82rem;color:var(--muted,#9db0ff);";
+        div.innerHTML = `<span>${u.username}</span>` +
+          (u.role === "admin" ? `<a href="/admin" style="color:inherit;opacity:.75;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;">Admin</a>` : '') +
+          `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;">Ieși</button>`;
+        hdr.appendChild(div);
+      })();
 
       // When initiator fields change, sync into any ÎNTOCMIT row
       ["initName", "initEmail", "docName"].forEach(id => {

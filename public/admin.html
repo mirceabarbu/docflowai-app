@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>DocFlowAI — Admin</title>
+  <style>
+    :root{--bg:#0b1020;--card:#0f1731;--muted:#9db0ff;--text:#eaf0ff;--sub:#cdd8ff;
+      --line:rgba(255,255,255,.10);--accent:#7c5cff;--accent2:#2dd4bf;--radius:16px;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:system-ui,sans-serif;min-height:100vh;
+      background:radial-gradient(900px 500px at 18% 8%,rgba(124,92,255,.3),transparent 60%),
+        radial-gradient(700px 450px at 82% 80%,rgba(45,212,191,.18),transparent 55%),var(--bg);
+      color:var(--text);}
+    header{background:rgba(15,23,49,.8);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+      padding:14px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+    .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.1rem;}
+    .logo-icon{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+      display:flex;align-items:center;justify-content:center;font-size:17px;}
+    .hdr-right{display:flex;align-items:center;gap:10px;font-size:.83rem;color:var(--muted);}
+    .btn-logout{background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;
+      padding:6px 13px;border-radius:8px;cursor:pointer;font-size:.8rem;}
+    .btn-logout:hover{opacity:.8;}
+    main{max-width:1020px;margin:32px auto;padding:0 20px 60px;}
+    h2{font-size:1.2rem;font-weight:700;margin-bottom:20px;}
+    .card{background:rgba(15,23,49,.8);border:1px solid var(--line);border-radius:var(--radius);
+      box-shadow:0 16px 48px rgba(0,0,0,.35);padding:26px;margin-bottom:24px;}
+    .card-title{font-size:.92rem;font-weight:700;color:var(--sub);margin-bottom:18px;}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+    .frow{margin-bottom:0;}
+    label{display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;}
+    input,select{width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);
+      border-radius:10px;color:var(--text);font-size:.88rem;outline:none;transition:border-color .2s;}
+    input:focus,select:focus{border-color:rgba(124,92,255,.55);box-shadow:0 0 0 3px rgba(124,92,255,.13);}
+    input::placeholder{color:rgba(205,216,255,.35);}
+    select option{background:var(--card);}
+    .actions{margin-top:16px;display:flex;align-items:center;gap:10px;}
+    .btn{padding:9px 18px;border:none;border-radius:10px;font-size:.85rem;font-weight:600;cursor:pointer;transition:opacity .2s,transform .1s;}
+    .btn:active{transform:scale(.97);}
+    .btn-p{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;}
+    .btn-p:hover{opacity:.88;}
+    .btn-s{background:rgba(255,255,255,.08);border:1px solid var(--line);color:var(--sub);}
+    .btn-s:hover{background:rgba(255,255,255,.13);}
+    .btn-d{background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.28);color:#ffaaaa;}
+    .btn-d:hover{background:rgba(255,80,80,.25);}
+    .btn-w{background:rgba(255,180,50,.15);border:1px solid rgba(255,180,50,.3);color:#ffd580;}
+    .btn-w:hover{background:rgba(255,180,50,.25);}
+    .btn-sm{padding:5px 10px;font-size:.76rem;}
+    .msg{font-size:.82rem;padding:7px 12px;border-radius:8px;}
+    .msg.ok{background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.28);color:#7cf0e0;}
+    .msg.err{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.28);color:#ffb3b3;}
+    .tbl-wrap{overflow-x:auto;}
+    table{width:100%;border-collapse:collapse;font-size:.84rem;}
+    th{text-align:left;font-size:.72rem;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);font-weight:500;white-space:nowrap;}
+    td{padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+    tr:last-child td{border-bottom:none;}
+    tr:hover td{background:rgba(255,255,255,.015);}
+    .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.71rem;font-weight:700;}
+    .pill.admin{background:rgba(124,92,255,.25);color:#c4b0ff;}
+    .pill.user{background:rgba(45,212,191,.18);color:#7cf0e0;}
+    .pwd{font-family:monospace;background:rgba(255,180,50,.1);border:1px solid rgba(255,180,50,.22);
+      padding:2px 8px;border-radius:6px;color:#ffd580;font-size:.84rem;letter-spacing:.03em;}
+    .empty{text-align:center;color:var(--muted);padding:32px;}
+    .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.2);
+      border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;}
+    @keyframes sp{to{transform:rotate(360deg);}}
+    .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;}
+    .modal-bg.open{display:flex;}
+    .modal{background:#0f1731;border:1px solid var(--line);border-radius:var(--radius);padding:28px;width:100%;max-width:460px;box-shadow:0 24px 64px rgba(0,0,0,.55);}
+    .modal h3{font-size:.95rem;font-weight:700;color:var(--sub);margin-bottom:18px;}
+    .modal .frow{margin-bottom:12px;}
+    .modal-acts{margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo"><div class="logo-icon">📋</div>DocFlowAI — Admin</div>
+  <div class="hdr-right">
+    <span>Conectat: <strong id="hdrUser"></strong></span>
+    <a href="/" style="color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:5px 12px;border-radius:8px;font-size:.8rem;">↩ Aplicație</a>
+    <button class="btn-logout" onclick="logout()">Ieși</button>
+  </div>
+</header>
+
+<main>
+  <h2>Gestionare utilizatori</h2>
+
+  <div class="card">
+    <div class="card-title">➕ Utilizator nou</div>
+    <div class="grid3">
+      <div class="frow"><label>Nume și prenume *</label><input id="nNume" placeholder="Popescu Ion"/></div>
+      <div class="frow"><label>Funcție</label><input id="nFunctie" placeholder="Șef serviciu"/></div>
+      <div class="frow"><label>Email (login) *</label><input id="nEmail" type="email" placeholder="ion@primarie.ro"/></div>
+    </div>
+    <div class="grid2" style="margin-top:12px;">
+      <div class="frow">
+        <label>Parolă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol pentru generare automată</span></label>
+        <input id="nPwd" type="text" placeholder="generată automat dacă e gol"/>
+      </div>
+      <div class="frow"><label>Rol</label>
+        <select id="nRole"><option value="user">User</option><option value="admin">Admin</option></select>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-p" id="btnCreate" onclick="createUser()">Crează utilizatorul</button>
+      <div id="createMsg"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span></div>
+    <div class="tbl-wrap"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
+  </div>
+</main>
+
+<!-- Modal editare -->
+<div class="modal-bg" id="mBg" onclick="if(event.target===this)closeMod()">
+  <div class="modal">
+    <h3>✏️ Editează utilizator</h3>
+    <input type="hidden" id="eId"/>
+    <div class="frow"><label>Nume și prenume</label><input id="eNume"/></div>
+    <div class="frow"><label>Funcție</label><input id="eFunctie"/></div>
+    <div class="frow"><label>Email</label><input id="eEmail" type="email"/></div>
+    <div class="frow"><label>Rol</label>
+      <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
+    <div class="frow">
+      <label>Parolă nouă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = păstrează actuala</span></label>
+      <input id="ePwd" type="text" placeholder=""/>
+    </div>
+    <div id="eMsg" style="margin-top:8px;"></div>
+    <div class="modal-acts">
+      <button class="btn btn-s" onclick="closeMod()">Anulează</button>
+      <button class="btn btn-w btn-sm" onclick="genPwd()">🔄 Generează parolă</button>
+      <button class="btn btn-p" onclick="saveEdit()">Salvează</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const token=localStorage.getItem("docflow_token");
+const me=JSON.parse(localStorage.getItem("docflow_user")||"{}");
+if(!token||me.role!=="admin"){location.href="/login?next=/admin";}
+$("hdrUser").textContent=me.nume||me.email||"—";
+function logout(){localStorage.removeItem("docflow_token");localStorage.removeItem("docflow_user");location.href="/login";}
+function hdrs(){return{"Authorization":"Bearer "+token,"Content-Type":"application/json"};}
+function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+function showMsg(id,txt,err){
+  const el=$(id);el.className="msg "+(err?"err":"ok");el.textContent=txt;
+  setTimeout(()=>{el.textContent="";el.className="";},5000);
+}
+
+async function loadUsers(){
+  try{
+    const r=await fetch("/admin/users",{headers:hdrs()});
+    if(r.status===401){logout();return;}
+    const users=await r.json();
+    $("cnt").textContent="("+users.length+")";
+    const el=$("tbl");
+    if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
+    el.innerHTML=`<table><thead><tr>
+      <th>Nume și prenume</th><th>Funcție</th><th>Email</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
+    </tr></thead><tbody id="tb"></tbody></table>`;
+    const tb=$("tb");
+    users.forEach(u=>{
+      const tr=document.createElement("tr");
+      tr.id="row_"+u.id;
+      const dt=new Date(u.created_at).toLocaleDateString("ro-RO");
+      const isMe=u.email===me.email;
+      tr.innerHTML=`
+        <td><strong>${esc(u.nume||"—")}</strong>${isMe?' <span style="font-size:.71rem;color:var(--muted)">(tu)</span>':''}</td>
+        <td style="color:var(--sub)">${esc(u.functie||"—")}</td>
+        <td style="color:var(--muted);font-size:.82rem">${esc(u.email)}</td>
+        <td><span class="pwd">${esc(u.plain_password||"—")}</span></td>
+        <td><span class="pill ${u.role}">${u.role}</span></td>
+        <td style="color:var(--muted);font-size:.79rem">${dt}</td>
+        <td style="text-align:right">
+          <div style="display:flex;gap:6px;justify-content:flex-end">
+            <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})'>Editează</button>
+            ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')">Șterge</button>`:''}
+          </div>
+        </td>`;
+      tb.appendChild(tr);
+    });
+  }catch(e){$("tbl").innerHTML='<div class="empty">Eroare la încărcare.</div>';}
+}
+
+async function createUser(){
+  const nume=$("nNume").value.trim(),functie=$("nFunctie").value.trim();
+  const email=$("nEmail").value.trim(),pwd=$("nPwd").value.trim(),role=$("nRole").value;
+  if(!nume||!email){showMsg("createMsg","Numele și emailul sunt obligatorii.",true);return;}
+  const btn=$("btnCreate");btn.disabled=true;btn.textContent="Se creează...";
+  const r=await fetch("/admin/users",{method:"POST",headers:hdrs(),body:JSON.stringify({email,password:pwd,nume,functie,role})});
+  const d=await r.json();
+  btn.disabled=false;btn.textContent="Crează utilizatorul";
+  if(r.ok){
+    showMsg("createMsg","✅ Creat! Parolă: "+d.plain_password,false);
+    $("nNume").value=$("nFunctie").value=$("nEmail").value=$("nPwd").value="";
+    loadUsers();
+  }else{
+    const m={email_exists:"Emailul există deja.",email_and_nume_required:"Completează numele și emailul."};
+    showMsg("createMsg",m[d.error]||"Eroare.",true);
+  }
+}
+
+let editU=null;
+function openEdit(u){
+  editU=u;$("eId").value=u.id;$("eNume").value=u.nume||"";$("eFunctie").value=u.functie||"";
+  $("eEmail").value=u.email;$("eRole").value=u.role;$("ePwd").value="";
+  $("eMsg").textContent="";$("eMsg").className="";
+  $("mBg").classList.add("open");$("eNume").focus();
+}
+function closeMod(){$("mBg").classList.remove("open");editU=null;}
+
+async function genPwd(){
+  if(!editU)return;
+  const r=await fetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
+  const d=await r.json();
+  if(r.ok){$("ePwd").value=d.plain_password;$("eMsg").className="msg ok";$("eMsg").textContent="Generată: "+d.plain_password;}
+}
+
+async function saveEdit(){
+  const id=$("eId").value;
+  const body={email:$("eEmail").value.trim(),nume:$("eNume").value.trim(),
+    functie:$("eFunctie").value.trim(),role:$("eRole").value};
+  const p=$("ePwd").value.trim();if(p)body.password=p;
+  const r=await fetch("/admin/users/"+id,{method:"PUT",headers:hdrs(),body:JSON.stringify(body)});
+  const d=await r.json();
+  if(r.ok){closeMod();loadUsers();}
+  else{$("eMsg").className="msg err";$("eMsg").textContent=d.error==="email_exists"?"Emailul există deja.":"Eroare.";}
+}
+
+async function delUser(id,name){
+  if(!confirm('Ștergi utilizatorul "'+name+'"?\nAcțiunea este ireversibilă.'))return;
+  const r=await fetch("/admin/users/"+id,{method:"DELETE",headers:hdrs()});
+  if(r.ok){const row=$("row_"+id);if(row)row.remove();}
+  else alert("Eroare la ștergere.");
+}
+
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMod();});
+fetch("/auth/me",{headers:hdrs()}).then(r=>r.ok?loadUsers():logout()).catch(()=>logout());
+</script>
+</body>
+</html>

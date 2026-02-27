@@ -156,7 +156,18 @@ th{ color: var(--sub) !important; }
 #err{ border-color: rgba(251,113,133,.35) !important; }
 /* ===== End theme ===== */
 </style>
-  </head>
+    <script>
+    // Auth guard — semnatar 2+ poate accesa cu token de flow fără cont
+    // Dar redirecționăm la login dacă nu are nici token de flow nici JWT
+    (function() {
+      const params = new URLSearchParams(location.search);
+      const hasFlowToken = params.get("token");
+      if (hasFlowToken) return; // flow token = acces legitim fără login
+      const jwt = localStorage.getItem("docflow_token");
+      if (!jwt) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); }
+    })();
+  </script>
+</head>
   <body>
     <header>
       <div style="font-weight:800">DocFlowAI / SemDoc — Semnare</div>
