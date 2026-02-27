@@ -326,6 +326,70 @@ app.post("/admin/users/:id/send-credentials", async (req, res) => {
   }
 });
 
+// GET /my-flows — fluxurile userului curent (inițiator sau semnatar)
+app.get("/my-flows", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, data, created_at, updated_at FROM flows ORDER BY updated_at DESC LIMIT 200`
+    );
+    // Filtrăm în JS: fluxurile unde userul e inițiator SAU semnatar
+    const email = actor.email.toLowerCase();
+    const myFlows = rows
+      .map(r => r.data)
+      .filter(d => {
+        if (!d) return false;
+        const isInit = (d.initEmail || "").toLowerCase() === email;
+        const isSigner = (d.signers || []).some(s => (s.email || "").toLowerCase() === email);
+        return isInit || isSigner;
+      })
+      .map(d => ({
+        flowId: d.flowId,
+        docName: d.docName || "—",
+        initName: d.initName,
+        initEmail: d.initEmail,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+        signers: (d.signers || []).map(s => ({
+          name: s.name, email: s.email, rol: s.rol,
+          status: s.status, signedAt: s.signedAt,
+        })),
+        hasSignedPdf: !!d.signedPdfB64,
+        allSigned: (d.signers || []).every(s => s.status === "signed"),
+      }));
+    res.json(myFlows);
+  } catch(e) {
+    console.error("my-flows error:", e);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// GET /my-flows/:flowId/download — descarcă PDF final (doar dacă ești implicat)
+app.get("/my-flows/:flowId/download", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  try {
+    const { rows } = await pool.query("SELECT data FROM flows WHERE id=$1", [req.params.flowId]);
+    const d = rows[0]?.data;
+    if (!d) return res.status(404).json({ error: "not_found" });
+    const email = actor.email.toLowerCase();
+    const isInit = (d.initEmail || "").toLowerCase() === email;
+    const isSigner = (d.signers || []).some(s => (s.email || "").toLowerCase() === email);
+    if (!isInit && !isSigner) return res.status(403).json({ error: "forbidden" });
+    if (!d.signedPdfB64) return res.status(404).json({ error: "no_signed_pdf" });
+    const buf = Buffer.from(d.signedPdfB64.split(",")[1] || d.signedPdfB64, "base64");
+    const safeName = (d.docName || "document").replace(/[^a-zA-Z0-9_\-\.]/g, "_");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}_semnat.pdf"`);
+    res.send(buf);
+  } catch(e) {
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 // GET /users — lista useri pentru dropdown (orice user autentificat, fără parole)
 app.get("/users", async (req, res) => {
   if (requireDb(res)) return;
