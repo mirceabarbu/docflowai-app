@@ -167,10 +167,13 @@ th{ color: var(--sub) !important; }
 </head>
   <body>
     <header>
-      <div class="brand">DocFlowAI / SemDoc</div>
+      <div class="brand">
+        <img src="/Logo.png" alt="DocFlowAI" style="height:36px; width:auto; object-fit:contain;" />
+      </div>
       <div class="tabs">
         <button id="tabInit" class="tabbtn active" type="button">Inițiere</button>
         <button id="tabStatus" class="tabbtn" type="button">Status</button>
+        <button id="tabFluxuri" class="tabbtn" type="button">📂 Fluxuri mele</button>
       </div>
       <div id="userBar" style="display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
     </header>
@@ -277,6 +280,19 @@ th{ color: var(--sub) !important; }
           <div id="statusContent" class="statusBox">Niciun flux încă.</div>
         </div>
       </section>
+
+      <!-- FLUXURI MELE -->
+      <section id="viewFluxuri" class="hidden">
+        <div class="card">
+          <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div style="font-weight:700; font-size:1rem; color:var(--sub);">📂 Fluxurile mele</div>
+            <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows()">🔄 Actualizează</button>
+          </div>
+          <div id="fluxuriContent">
+            <div style="text-align:center; color:var(--muted); padding:32px;">Se încarcă...</div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <script>
@@ -348,15 +364,18 @@ th{ color: var(--sub) !important; }
       });
       // Tabs
       function showTab(name) {
-        const isInit = name === "init";
-        $("viewInit").classList.toggle("hidden", !isInit);
-        $("viewStatus").classList.toggle("hidden", isInit);
-        $("tabInit").classList.toggle("active", isInit);
-        $("tabStatus").classList.toggle("active", !isInit);
-        if (!isInit) refreshStatus();
+        $("viewInit").classList.toggle("hidden", name !== "init");
+        $("viewStatus").classList.toggle("hidden", name !== "status");
+        $("viewFluxuri").classList.toggle("hidden", name !== "fluxuri");
+        $("tabInit").classList.toggle("active", name === "init");
+        $("tabStatus").classList.toggle("active", name === "status");
+        $("tabFluxuri").classList.toggle("active", name === "fluxuri");
+        if (name === "status") refreshStatus();
+        if (name === "fluxuri") loadMyFlows();
       }
       $("tabInit").addEventListener("click", () => showTab("init"));
       $("tabStatus").addEventListener("click", () => showTab("status"));
+      $("tabFluxuri").addEventListener("click", () => showTab("fluxuri"));
 
       // Signers table
       const tbody = $("signersTbody");
@@ -591,7 +610,110 @@ th{ color: var(--sub) !important; }
       $("btnAdd").addEventListener("click", () => { tbody.appendChild(signerRowTemplate()); updateIntocmitVisibility(); validateForm(); });
       $("btnDefaults").addEventListener("click", setDefaults);
 
-      // Încarcă userii din DB pentru dropdown-ul de semnatari
+
+      // -------------------- Fluxuri mele --------------------
+      function fluxNou() {
+        // Reset form complet
+        pdfB64 = null;
+        localStorage.removeItem("activeFlowId");
+        setPdfInfo("Nu ai selectat încă un PDF.");
+        $("docName").value = "";
+        // initName/initEmail rămân (din profil)
+        // Reset signers
+        const tb = document.getElementById("signersTbody");
+        if (tb) tb.innerHTML = "";
+        setDefaults();
+        autoFillFromProfile();
+        validateForm();
+        showTab("init");
+        // Reset status
+        $("statusContent") && ($("statusContent").textContent = "Niciun flux activ. Creează unul din tabul Inițiere.");
+        $("statusFlowId") && ($("statusFlowId").textContent = "—");
+      }
+
+      function autoFillFromProfile() {
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        if (!u.email) return;
+        const nameEl = $("initName");
+        const emailEl = $("initEmail");
+        const instEl = $("initInstitutie");
+        if (nameEl && u.nume) { nameEl.value = u.nume; nameEl.readOnly = true; nameEl.style.opacity = ".7"; nameEl.style.cursor = "default"; }
+        if (emailEl && u.email) { emailEl.value = u.email; emailEl.readOnly = true; emailEl.style.opacity = ".7"; emailEl.style.cursor = "default"; }
+        if (instEl && u.institutie) { instEl.value = u.institutie; }
+        const tbody2 = document.getElementById("signersTbody");
+        if (!tbody2) return;
+        tbody2.querySelectorAll("tr").forEach(tr => {
+          const rol = tr.querySelector(".rol");
+          if (!rol) return;
+          const rolVal = rol.value === "__alt__"
+            ? (tr.querySelector(".rolCustom")?.value || "").trim().toUpperCase()
+            : rol.value;
+          if (rolVal === "ÎNTOCMIT") {
+            const n = tr.querySelector(".name-select") || tr.querySelector(".name");
+            const e = tr.querySelector(".email");
+            const f = tr.querySelector(".functie");
+            if (n && !n.value && u.nume) n.value = u.nume;
+            if (e && !e.value && u.email) e.value = u.email;
+            if (f && !f.value && u.functie) f.value = u.functie;
+          }
+        });
+        validateForm();
+      }
+
+      async function loadMyFlows() {
+        const el = $("fluxuriContent");
+        if (!el) return;
+        el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:32px;"><span style="display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;"></span> Se încarcă...</div>';
+        const token = localStorage.getItem("docflow_token");
+        try {
+          const r = await fetch("/my-flows", { headers: { "Authorization": "Bearer " + token } });
+          if (!r.ok) { el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare la încărcare.</div>'; return; }
+          const flows = await r.json();
+          if (!flows.length) {
+            el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Nu ai niciun flux creat sau în care ești implicat.</div>';
+            return;
+          }
+          el.innerHTML = flows.map(f => {
+            const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
+            const allSigned = f.allSigned;
+            const statusBadge = allSigned
+              ? '<span style="background:rgba(45,212,191,.2);color:#7cf0e0;border:1px solid rgba(45,212,191,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">✓ Finalizat</span>'
+              : '<span style="background:rgba(255,180,50,.15);color:#ffd580;border:1px solid rgba(255,180,50,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⏳ În curs</span>';
+            const signerRows = f.signers.map(s => {
+              const icon = s.status === "signed" ? "✅" : s.status === "current" ? "✍" : "⏳";
+              const dt2 = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">(' + new Date(s.signedAt).toLocaleDateString("ro-RO") + ')</span>' : "";
+              return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+                <span style="font-size:.9rem;">${icon}</span>
+                <span style="font-size:.82rem;color:var(--sub);">${s.rol || ""}</span>
+                <span style="font-size:.82rem;">${s.name || "—"}</span>
+                ${dt2}
+              </div>`;
+            }).join("");
+            const dlBtn = f.hasSignedPdf
+              ? `<a href="/my-flows/${f.flowId}/download" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
+              : `<span style="color:var(--muted);font-size:.8rem;">PDF final indisponibil încă</span>`;
+            return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:12px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
+                <div>
+                  <div style="font-weight:700;font-size:.95rem;margin-bottom:4px;">${f.docName}</div>
+                  <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span></div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                  ${statusBadge}
+                  ${dlBtn}
+                </div>
+              </div>
+              <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
+                ${signerRows}
+              </div>
+            </div>`;
+          }).join("");
+        } catch(e) {
+          el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare de rețea.</div>';
+        }
+      }
+
+            // Încarcă userii din DB pentru dropdown-ul de semnatari
       window._dbUsers = [];
       (async function loadDbUsers() {
         const token = localStorage.getItem("docflow_token");
@@ -621,35 +743,7 @@ th{ color: var(--sub) !important; }
       setDefaults();
 
       // Completare automată câmpuri inițiator din profilul utilizatorului autentificat
-      (function autoFillFromProfile() {
-        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
-        if (!u.email) return;
-        const nameEl = $("initName");
-        const emailEl = $("initEmail");
-        if (nameEl && u.nume) { nameEl.value = u.nume; nameEl.readOnly = true; nameEl.style.opacity = ".7"; nameEl.style.cursor = "default"; }
-        if (emailEl && u.email) { emailEl.value = u.email; emailEl.readOnly = true; emailEl.style.opacity = ".7"; emailEl.style.cursor = "default"; }
-        const instEl = $("initInstitutie");
-        if (instEl && u.institutie) { instEl.value = u.institutie; }
-        // Dacă există un rând ÎNTOCMIT generat de setDefaults, completăm și acolo
-        const tbody = document.getElementById("signersTbody");
-        if (!tbody) return;
-        tbody.querySelectorAll("tr").forEach(tr => {
-          const rol = tr.querySelector(".rol");
-          if (!rol) return;
-          const rolVal = rol.value === "__alt__"
-            ? (tr.querySelector(".rolCustom")?.value || "").trim().toUpperCase()
-            : rol.value;
-          if (rolVal === "ÎNTOCMIT") {
-            const n = tr.querySelector(".name-select") || tr.querySelector(".name");
-            const e = tr.querySelector(".email");
-            const f = tr.querySelector(".functie");
-            if (n && !n.value.trim() && u.nume) n.value = u.nume;
-            if (e && !e.value.trim() && u.email) e.value = u.email;
-            if (f && !f.value.trim() && u.functie) f.value = u.functie;
-          }
-        });
-        validateForm();
-      })();
+      autoFillFromProfile();
 
       // Show logged-in user + logout button
       (function() {
@@ -657,7 +751,8 @@ th{ color: var(--sub) !important; }
         const bar = document.getElementById("userBar");
         if (!bar) return;
         const label = u.nume || u.email || "";
-        bar.innerHTML = (label ? `<span style="color:#cdd8ff;">${label}</span>` : "") +
+        bar.innerHTML = (label ? `<span style="color:#cdd8ff;font-size:.82rem;">${label}</span>` : "") +
+          `<button onclick="fluxNou()" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;">+ Flux nou</button>` +
           (u.role === "admin" ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
           `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
       })();
