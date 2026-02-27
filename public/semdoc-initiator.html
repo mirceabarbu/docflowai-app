@@ -68,7 +68,12 @@ header{
   background: rgba(15,23,49,.55) !important;
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
 }
+#userBar { display:flex !important; align-items:center !important; gap:10px !important; font-size:.82rem; }
+#userBar button { background:rgba(255,80,80,.18) !important; border:1px solid rgba(255,80,80,.35) !important; color:#ffaaaa !important; padding:6px 14px !important; border-radius:8px !important; cursor:pointer !important; font-size:.82rem !important; font-weight:600 !important; }
 
 .brand{ color: var(--text) !important; }
 .muted, .card-sub, label{ color: var(--sub) !important; opacity: .9 !important; }
@@ -297,7 +302,7 @@ th{ color: var(--sub) !important; }
         const valid = hasPdf;
         btn.disabled = !valid;
         btn.style.opacity = valid ? "1" : "0.4";
-        btn.title = title;
+        btn.title = valid ? "" : "Încarcă mai întâi PDF-ul";
       }
 
       function setPdfInfo(msg){ $("pdfInfo").textContent = msg; }
@@ -386,17 +391,17 @@ th{ color: var(--sub) !important; }
           </td>
           <td><input class="functie" placeholder="Ex: Șef structură" /></td>
           <td>
-            <select class="name-select" style="width:100%;">
-              <option value="">— Alege sau scrie —</option>
+            <select class="name-select name" style="width:100%;">
+              <option value="">— Alege utilizator —</option>
             </select>
-            <input class="name" placeholder="Ex: Popescu Ion" style="margin-top:4px;" />
           </td>
           <td><input class="email" placeholder="Ex: nume@institutie.ro" readonly style="opacity:.7;cursor:default;" /></td>
           <td><button class="btn danger btnDel" type="button">Șterge</button></td>
         `;
         tr.querySelector(".rol").value = (s.rol || s.atribut || "ÎNTOCMIT");
         tr.querySelector(".functie").value = (s.functie || "");
-        tr.querySelector(".name").value = (s.name || "");
+        const nameSel = tr.querySelector(".name-select");
+        if (nameSel) { nameSel.value = s.name || ""; } else { tr.querySelector(".name").value = (s.name || ""); }
         tr.querySelector(".email").value = (s.email || "");
         tr.querySelector(".btnDel").addEventListener("click", () => tr.remove());
 
@@ -453,48 +458,46 @@ th{ color: var(--sub) !important; }
         }
 
         // Dropdown useri din DB
-        const nameSelect = tr.querySelector(".name-select");
-        const nameInput  = tr.querySelector(".name");
-        const emailInput = tr.querySelector(".email");
+        const nameSelect   = tr.querySelector(".name-select");
+        const emailInput   = tr.querySelector(".email");
         const functieInput = tr.querySelector(".functie");
 
-        // Populează dropdown cu userii din DB
-        if (nameSelect && window._dbUsers) {
-          window._dbUsers.forEach(u => {
+        function populateSelect(sel) {
+          // Șterge opțiunile vechi (păstrează prima)
+          while (sel.options.length > 1) sel.remove(1);
+          (window._dbUsers || []).forEach(u => {
             const opt = document.createElement("option");
             opt.value = u.nume || "";
             opt.dataset.email = u.email || "";
             opt.dataset.functie = u.functie || "";
             opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
-            nameSelect.appendChild(opt);
+            sel.appendChild(opt);
           });
         }
 
-        // La selectare din dropdown: completează automat name, email, functie
         if (nameSelect) {
+          populateSelect(nameSelect);
+
           nameSelect.addEventListener("change", () => {
             const opt = nameSelect.options[nameSelect.selectedIndex];
             if (opt && opt.value) {
-              nameInput.value = opt.value;
-              if (emailInput) { emailInput.value = opt.dataset.email || ""; emailInput.readOnly = true; emailInput.style.opacity = ".7"; }
-              if (functieInput && opt.dataset.functie) { functieInput.value = opt.dataset.functie; functieInput.readOnly = true; functieInput.style.opacity = ".7"; }
+              if (emailInput)   { emailInput.value   = opt.dataset.email   || ""; emailInput.readOnly   = true; emailInput.style.opacity   = ".7"; emailInput.style.cursor   = "default"; }
+              if (functieInput) { functieInput.value = opt.dataset.functie || ""; functieInput.readOnly = true; functieInput.style.opacity = ".7"; functieInput.style.cursor = "default"; }
             } else {
-              // Opțiunea goală = reset, permite editare manuală
-              nameInput.value = "";
-              if (emailInput) { emailInput.value = ""; emailInput.readOnly = false; emailInput.style.opacity = "1"; }
-              if (functieInput) { functieInput.readOnly = false; functieInput.style.opacity = "1"; }
+              if (emailInput)   { emailInput.value   = ""; emailInput.readOnly   = false; emailInput.style.opacity   = "1"; emailInput.style.cursor = ""; }
+              if (functieInput) { functieInput.value = ""; functieInput.readOnly = false; functieInput.style.opacity = "1"; functieInput.style.cursor = ""; }
             }
             validateForm();
           });
         }
 
-        // Pre-populează dacă s are valoare (ex: ÎNTOCMIT din profil)
+        // Pre-selectează dacă s are email (ex: ÎNTOCMIT din profil)
         if (s.email && nameSelect && window._dbUsers) {
           const match = window._dbUsers.find(u => u.email === s.email);
           if (match) {
             nameSelect.value = match.nume || "";
-            if (emailInput) { emailInput.readOnly = true; emailInput.style.opacity = ".7"; }
-            if (functieInput && match.functie) { functieInput.readOnly = true; functieInput.style.opacity = ".7"; }
+            if (emailInput)   { emailInput.readOnly   = true; emailInput.style.opacity   = ".7"; emailInput.style.cursor = "default"; }
+            if (functieInput && match.functie) { functieInput.readOnly = true; functieInput.style.opacity = ".7"; functieInput.style.cursor = "default"; }
           }
         }
 
@@ -632,7 +635,7 @@ th{ color: var(--sub) !important; }
             ? (tr.querySelector(".rolCustom")?.value || "").trim().toUpperCase()
             : rol.value;
           if (rolVal === "ÎNTOCMIT") {
-            const n = tr.querySelector(".name");
+            const n = tr.querySelector(".name-select") || tr.querySelector(".name");
             const e = tr.querySelector(".email");
             const f = tr.querySelector(".functie");
             if (n && !n.value.trim() && u.nume) n.value = u.nume;
@@ -676,7 +679,7 @@ th{ color: var(--sub) !important; }
           order: i + 1,
           rol: (() => { const sel = tr.querySelector(".rol"); if (sel.value === "__alt__") { return tr.querySelector(".rolCustom").value.trim().toUpperCase() || "__alt__"; } return sel.value; })(),
           functie: tr.querySelector(".functie").value.trim(),
-          name: tr.querySelector(".name").value.trim(),
+          name: (tr.querySelector(".name-select") || tr.querySelector(".name"))?.value?.trim() || "",
           email: tr.querySelector(".email").value.trim(),
         })).filter(s => s.rol && (s.name || s.email));
       }
