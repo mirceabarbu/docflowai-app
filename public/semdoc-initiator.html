@@ -1115,18 +1115,14 @@ th{ color: var(--sub) !important; }
             const signedDate = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">· '+new Date(s.signedAt).toLocaleDateString('ro-RO')+'</span>' : '';
             const refuzLabel = st==='refused'&&s.refuseReason ? `<div style="color:#ffaaaa;font-size:.75rem;margin-top:2px;">Motiv: ${esc2(s.refuseReason)}</div>` : '';
             const extra = [s.functie, s.compartiment].filter(Boolean).join(' · ');
-            return `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);">
-              <span style="font-size:1rem;margin-top:2px;">${icon}</span>
-              <div style="flex:1;">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                  <span style="font-size:.8rem;color:var(--muted);min-width:110px;">${esc2(s.rol||'')}</span>
-                  <span style="font-weight:600;font-size:.88rem;">${esc2(s.name||'—')}</span>
-                  <span style="font-size:.72rem;padding:1px 8px;border-radius:12px;background:${badgeColor};color:${textColor};font-weight:700;">${badgeText}</span>
-                  ${signedDate}
-                </div>
-                ${extra ? `<div style="font-size:.76rem;color:var(--muted);margin-top:2px;margin-left:118px;">${esc2(extra)}</div>` : ''}
-                ${refuzLabel}
-              </div>
+            return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+              <span>${icon}</span>
+              <span style="font-size:.82rem;color:var(--muted);min-width:100px;">${esc2(s.rol||'')}</span>
+              <span style="font-size:.83rem;font-weight:600;">${esc2(s.name||'—')}</span>
+              ${extra ? `<span style="font-size:.78rem;color:var(--muted);">— ${esc2(extra)}</span>` : ''}
+              <span style="font-size:.72rem;padding:1px 7px;border-radius:10px;background:${badgeColor};color:${textColor};font-weight:700;">${badgeText}</span>
+              ${signedDate}
+              ${refuzLabel}
             </div>`;
           }).join('');
 
