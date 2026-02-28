@@ -423,13 +423,26 @@ app.get("/my-flows", async (req,res) => {
   try {
     const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows ORDER BY updated_at DESC LIMIT 200`);
     const email = actor.email.toLowerCase();
+    // Fetch user details for functie+compartiment lookup
+    const { rows: userRows } = await pool.query("SELECT email,functie,compartiment FROM users");
+    const userMap = {};
+    userRows.forEach(u => { userMap[(u.email||"").toLowerCase()] = u; });
+
     const myFlows = rows.map(r=>r.data).filter(d => {
       if (!d) return false;
       return (d.initEmail||"").toLowerCase()===email || (d.signers||[]).some(s=>(s.email||"").toLowerCase()===email);
     }).map(d => ({
       flowId:d.flowId, docName:d.docName||"—", initName:d.initName, initEmail:d.initEmail,
       createdAt:d.createdAt, updatedAt:d.updatedAt,
-      signers:(d.signers||[]).map(s=>({name:s.name,email:s.email,rol:s.rol,status:s.status,signedAt:s.signedAt})),
+      signers:(d.signers||[]).map(s=>{
+        const u = userMap[(s.email||"").toLowerCase()] || {};
+        return {
+          name:s.name, email:s.email, rol:s.rol,
+          functie: s.functie || u.functie || "",
+          compartiment: s.compartiment || u.compartiment || "",
+          status:s.status, signedAt:s.signedAt, refuseReason:s.refuseReason
+        };
+      }),
       hasSignedPdf:!!d.signedPdfB64, allSigned:(d.signers||[]).every(s=>s.status==="signed"),
     }));
     res.json(myFlows);
