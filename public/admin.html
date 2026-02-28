@@ -50,19 +50,10 @@
     .msg{font-size:.82rem;padding:7px 12px;border-radius:8px;}
     .msg.ok{background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.28);color:#7cf0e0;}
     .msg.err{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.28);color:#ffb3b3;}
-    .tbl-wrap{overflow-x:hidden;}
-    table{width:100%;border-collapse:collapse;font-size:.82rem;table-layout:fixed;}
-    th{text-align:left;font-size:.70rem;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    /* Lățimi fixe coloane */
-    table colgroup col:nth-child(1){width:18%;} /* Nume */
-    table colgroup col:nth-child(2){width:13%;} /* Functie */
-    table colgroup col:nth-child(3){width:14%;} /* Institutie */
-    table colgroup col:nth-child(4){width:17%;} /* Email */
-    table colgroup col:nth-child(5){width:14%;} /* Parola */
-    table colgroup col:nth-child(6){width:7%;}  /* Rol */
-    table colgroup col:nth-child(7){width:8%;}  /* Creat */
-    table colgroup col:nth-child(8){width:9%;}  /* Actiuni */
+    .tbl-wrap{overflow-x:auto;}
+    table{width:100%;border-collapse:collapse;font-size:.82rem;table-layout:auto;min-width:900px;}
+    th{text-align:left;font-size:.70rem;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);font-weight:500;white-space:nowrap;}
+    td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;white-space:nowrap;}
     tr:last-child td{border-bottom:none;}
     tr:hover td{background:rgba(255,255,255,.015);}
     .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.71rem;font-weight:700;}
@@ -132,12 +123,12 @@
         <input id="nPhone" type="tel" placeholder="0712345678"/></div>
       <div class="frow"><label>Notificări</label>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
-          <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
-            <input type="checkbox" id="nNotifInapp" checked style="accent-color:var(--accent);"> 🔔 În aplicație</label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
-            <input type="checkbox" id="nNotifEmail" style="accent-color:var(--accent);"> ✉️ Email</label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
-            <input type="checkbox" id="nNotifWa" style="accent-color:#25D366;"> 📱 WhatsApp</label>
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <span>🔔 În aplicație</span><input type="checkbox" id="nNotifInapp" checked style="accent-color:var(--accent);flex-shrink:0;"></label>
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <span>✉️ Email</span><input type="checkbox" id="nNotifEmail" style="accent-color:var(--accent);flex-shrink:0;"></label>
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <span>📱 WhatsApp</span><input type="checkbox" id="nNotifWa" style="accent-color:#25D366;flex-shrink:0;"></label>
         </div>
       </div>
     </div>
@@ -201,13 +192,13 @@
     <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
       <input id="ePhone" type="tel" placeholder="0712345678"/></div>
     <div class="frow"><label>Notificări preferate</label>
-      <div style="display:flex;gap:16px;margin-top:6px;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
-          <input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);"> 🔔 În aplicație</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
-          <input type="checkbox" id="eNotifEmail" style="accent-color:var(--accent);"> ✉️ Email</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
-          <input type="checkbox" id="eNotifWa" style="accent-color:#25D366;"> 📱 WhatsApp</label>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+          <span>🔔 În aplicație</span><input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);flex-shrink:0;"></label>
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+          <span>✉️ Email</span><input type="checkbox" id="eNotifEmail" style="accent-color:var(--accent);flex-shrink:0;"></label>
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+          <span>📱 WhatsApp</span><input type="checkbox" id="eNotifWa" style="accent-color:#25D366;flex-shrink:0;"></label>
       </div>
     </div>
     <div id="eMsg" style="margin-top:8px;"></div>
@@ -302,7 +293,7 @@ async function loadUsers(){
     $("cnt").textContent="("+users.length+")";
     const el=$("tbl");
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
-    el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col style="width:80px"/><col style="width:80px"/><col/><col/><col/><col/></colgroup><thead>
+    el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead>
       <tr>
         <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Email</th><th>Tel.</th><th>Notif.</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
       </tr>
