@@ -3,75 +3,46 @@ import cors from "cors";
 import pg from "pg";
 import crypto from "crypto";
 import path from "path";
+import http from "http";
 import { fileURLToPath } from "url";
 import { sendSignerEmail, verifySmtp } from "./mailer.mjs";
 import jwt from "jsonwebtoken";
+import { WebSocketServer } from "ws";
 
 const { Pool } = pg;
-
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));
-
 process.on("unhandledRejection", (err) => console.error("❌ unhandledRejection:", err));
 process.on("uncaughtException", (err) => console.error("❌ uncaughtException:", err));
 
-// -------------------- Static public/ --------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "../public");
 app.use(express.static(PUBLIC_DIR));
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
-});
+app.get("/", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html")));
+app.get("/login", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "login.html")));
+app.get("/admin", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "admin.html")));
+app.get("/notifications", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "notifications.html")));
 
-// Serve login page
-app.get("/login", (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "login.html"));
-});
-
-// Serve admin page
-app.get("/admin", (req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
-});
-
-// -------------------- Helpers --------------------
 function publicBaseUrl(req) {
-  // Set in Railway Variables for stable links:
-  // PUBLIC_BASE_URL=https://app.docflowai.ro
   const envBase = process.env.PUBLIC_BASE_URL;
   if (envBase) return envBase.replace(/\/$/, "");
-
   const host = req.get("host");
-  const proto = (req.get("x-forwarded-proto") || req.protocol || "https")
-    .split(",")[0]
-    .trim();
+  const proto = (req.get("x-forwarded-proto") || req.protocol || "https").split(",")[0].trim();
   return `${proto}://${host}`;
 }
-
-function newFlowId() {
-  return "FLOW_" + crypto.randomBytes(8).toString("hex").toUpperCase();
-}
-
+function newFlowId() { return "FLOW_" + crypto.randomBytes(8).toString("hex").toUpperCase(); }
 function generatePassword() {
-  // Parolă ușor de citit: 3 grupe de 3 caractere alfanumerice
   const chars = "abcdefghjkmnpqrstuvwxyz23456789";
   let p = "";
-  for (let i = 0; i < 9; i++) {
-    if (i === 3 || i === 6) p += "-";
-    p += chars[crypto.randomInt(chars.length)];
-  }
+  for (let i = 0; i < 9; i++) { if (i===3||i===6) p+="-"; p+=chars[crypto.randomInt(chars.length)]; }
   return p;
 }
 
-
-
-// -------------------- JWT + User Auth --------------------
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
 const JWT_EXPIRES = "8h";
-
-// Password hashing with Node built-in crypto (PBKDF2 - no extra deps)
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha256").toString("hex");
@@ -82,86 +53,39 @@ function verifyPassword(password, stored) {
   const check = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha256").toString("hex");
   return check === hash;
 }
-
 function requireAuth(req, res) {
   const auth = req.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : null;
   if (!token) { res.status(401).json({ error: "unauthorized" }); return null; }
-  try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch(e) {
-    res.status(401).json({ error: "token_invalid_or_expired" });
-    return null;
-  }
+  try { return jwt.verify(token, JWT_SECRET); }
+  catch(e) { res.status(401).json({ error: "token_invalid_or_expired" }); return null; }
 }
-
-// -------------------- Admin auth (MVP) --------------------
 const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
-
 function requireAdmin(req, res) {
-  // Use header: x-admin-secret: <ADMIN_SECRET>
-  // or Authorization: Bearer <ADMIN_SECRET>
-  if (!ADMIN_SECRET) {
-    res.status(503).json({ error: "admin_not_configured" });
-    return true;
-  }
-  const headerSecret = req.get("x-admin-secret");
-  const auth = req.get("authorization") || "";
-  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : null;
-  const provided = headerSecret || bearer;
-  if (!provided || provided !== ADMIN_SECRET) {
-    res.status(401).json({ error: "unauthorized" });
-    return true;
-  }
+  if (!ADMIN_SECRET) { res.status(503).json({ error: "admin_not_configured" }); return true; }
+  const provided = req.get("x-admin-secret") || (req.get("authorization")||"").slice(7).trim();
+  if (!provided || provided !== ADMIN_SECRET) { res.status(401).json({ error: "unauthorized" }); return true; }
   return false;
 }
-
 function stripPdfB64(data) {
   if (!data || typeof data !== "object") return data;
   const { pdfB64, signedPdfB64, ...rest } = data;
   return { ...rest, hasPdf: !!pdfB64, hasSignedPdf: !!signedPdfB64 };
 }
-// -------------------- Postgres --------------------
-const DATABASE_URL = process.env.DATABASE_URL;
-const pool = DATABASE_URL
-  ? new Pool({
-      connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 5,
-    })
-  : null;
 
-let DB_READY = false;
-let DB_LAST_ERROR = null;
+const DATABASE_URL = process.env.DATABASE_URL;
+const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5 }) : null;
+let DB_READY = false, DB_LAST_ERROR = null;
 
 async function initDbOnce() {
-  if (!pool) throw new Error("DATABASE_URL missing (pool not created)");
+  if (!pool) throw new Error("DATABASE_URL missing");
   await pool.query("SELECT 1");
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS flows (
-      id TEXT PRIMARY KEY,
-      data JSONB NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_flows_updated_at ON flows(updated_at DESC);
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      plain_password TEXT,
-      nume TEXT NOT NULL DEFAULT '',
-      functie TEXT NOT NULL DEFAULT '',
-      institutie TEXT NOT NULL DEFAULT '',
-      role TEXT NOT NULL DEFAULT 'user',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  // Migrare: adaugă coloane noi dacă tabela există deja fără ele
+  await pool.query(`CREATE TABLE IF NOT EXISTS flows (id TEXT PRIMARY KEY, data JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_flows_updated_at ON flows(updated_at DESC);`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, plain_password TEXT, nume TEXT NOT NULL DEFAULT '', functie TEXT NOT NULL DEFAULT '', institutie TEXT NOT NULL DEFAULT '', role TEXT NOT NULL DEFAULT 'user', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+  // Tabel notificari in-app (nou - nu modifica flows sau users)
+  await pool.query(`CREATE TABLE IF NOT EXISTS notifications (id SERIAL PRIMARY KEY, user_email TEXT NOT NULL, flow_id TEXT, type TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, read BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_notif_email ON notifications(user_email, read, created_at DESC);`);
   const alterCols = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password TEXT",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS nume TEXT NOT NULL DEFAULT ''",
@@ -169,1005 +93,581 @@ async function initDbOnce() {
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS institutie TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE users DROP COLUMN IF EXISTS username",
   ];
-  for (const sql of alterCols) {
-    await pool.query(sql).catch(() => {});
-  }
-  // Create default admin if no users exist and ADMIN_INIT_PASSWORD is set
-  const { rows: userCount } = await pool.query("SELECT COUNT(*) FROM users");
-  if (parseInt(userCount[0].count) === 0 && process.env.ADMIN_INIT_PASSWORD) {
+  for (const sql of alterCols) await pool.query(sql).catch(() => {});
+  const { rows: uc } = await pool.query("SELECT COUNT(*) FROM users");
+  if (parseInt(uc[0].count) === 0 && process.env.ADMIN_INIT_PASSWORD) {
     const pwd = process.env.ADMIN_INIT_PASSWORD;
-    const hash = hashPassword(pwd);
-    await pool.query(
-      "INSERT INTO users (email, password_hash, plain_password, nume, functie, role) VALUES ($1,$2,$3,$4,$5,'admin') ON CONFLICT DO NOTHING",
-      ["admin@docflowai.ro", hash, pwd, "Administrator", "Administrator sistem"]
-    );
-    console.log("✅ Admin user created (email: admin@docflowai.ro)");
+    await pool.query("INSERT INTO users (email, password_hash, plain_password, nume, functie, role) VALUES ($1,$2,$3,$4,$5,'admin') ON CONFLICT DO NOTHING",
+      ["admin@docflowai.ro", hashPassword(pwd), pwd, "Administrator", "Administrator sistem"]);
+    console.log("✅ Admin user created");
   }
-  DB_READY = true;
-  DB_LAST_ERROR = null;
-  console.log("✅ DB ready (flows + users tables ensured)");
+  DB_READY = true; DB_LAST_ERROR = null;
+  console.log("✅ DB ready (flows + users + notifications)");
 }
-
 async function initDbWithRetry() {
-  const delays = [1000, 2000, 4000, 8000, 15000];
-  for (let i = 0; i < delays.length; i++) {
-    try {
-      console.log(`⏳ DB init attempt ${i + 1}/${delays.length}...`);
-      await initDbOnce();
-      return;
-    } catch (e) {
-      DB_READY = false;
-      DB_LAST_ERROR = String(e?.message || e);
-      console.error("❌ DB init failed:", e);
-      await new Promise((r) => setTimeout(r, delays[i]));
-    }
+  const delays = [1000,2000,4000,8000,15000];
+  for (let i=0; i<delays.length; i++) {
+    try { console.log(`⏳ DB init attempt ${i+1}/${delays.length}...`); await initDbOnce(); return; }
+    catch(e) { DB_READY=false; DB_LAST_ERROR=String(e?.message||e); console.error("❌ DB init failed:",e); await new Promise(r=>setTimeout(r,delays[i])); }
   }
-  console.error("❌ DB init failed permanently (after retries). Server stays up for debugging.");
+  console.error("❌ DB init failed permanently.");
 }
-
 function requireDb(res) {
-  if (!DB_READY) {
-    res.status(503).json({
-      error: "db_not_ready",
-      dbLastError: DB_LAST_ERROR,
-    });
-    return true;
-  }
+  if (!DB_READY) { res.status(503).json({ error:"db_not_ready", dbLastError:DB_LAST_ERROR }); return true; }
   return false;
 }
-
 async function saveFlow(id, data) {
-  await pool.query(
-    `
-    INSERT INTO flows (id, data)
-    VALUES ($1, $2::jsonb)
-    ON CONFLICT (id)
-    DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
-  `,
-    [id, JSON.stringify(data)]
-  );
+  await pool.query(`INSERT INTO flows (id,data) VALUES ($1,$2::jsonb) ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`, [id, JSON.stringify(data)]);
 }
-
 async function getFlowData(id) {
   const r = await pool.query(`SELECT data FROM flows WHERE id=$1`, [id]);
   return r.rows[0]?.data ?? null;
 }
-
 function buildSignerLink(req, flowId, token) {
-  const base = publicBaseUrl(req);
-  return `${base}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(
-    token
-  )}`;
+  return `${publicBaseUrl(req)}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(token)}`;
 }
 
-// -------------------- Auth Routes --------------------
+// ==================== WEBSOCKET ====================
+const wsClients = new Map();
+function wsRegister(email, ws) {
+  if (!wsClients.has(email)) wsClients.set(email, new Set());
+  wsClients.get(email).add(ws);
+}
+function wsUnregister(email, ws) {
+  wsClients.get(email)?.delete(ws);
+  if (wsClients.get(email)?.size === 0) wsClients.delete(email);
+}
+function wsPush(email, payload) {
+  const conns = wsClients.get(email.toLowerCase());
+  if (!conns) return;
+  const msg = JSON.stringify(payload);
+  for (const ws of conns) { try { if (ws.readyState===1) ws.send(msg); } catch(e) {} }
+}
 
-// POST /auth/login — autentificare cu email + parolă
-app.post("/auth/login", async (req, res) => {
-  if (requireDb(res)) return;
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: "email_and_password_required" });
+async function notify({ userEmail, flowId=null, type, title, message }) {
+  if (!pool || !DB_READY) return;
   try {
     const { rows } = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
-      [email.trim().toLowerCase()]
+      `INSERT INTO notifications (user_email,flow_id,type,title,message) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [userEmail.toLowerCase(), flowId, type, title, message]
     );
-    const user = rows[0];
-    if (!user || !verifyPassword(password, user.password_hash)) {
-      return res.status(401).json({ error: "invalid_credentials" });
-    }
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role, nume: user.nume, functie: user.functie, institutie: user.institutie },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES }
-    );
-    res.json({ token, email: user.email, role: user.role, nume: user.nume, functie: user.functie, institutie: user.institutie });
-  } catch(e) {
-    console.error("login error:", e);
-    res.status(500).json({ error: "server_error" });
-  }
-});
+    wsPush(userEmail, { event:"notification", data:rows[0] });
+    const { rows:cnt } = await pool.query("SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE", [userEmail.toLowerCase()]);
+    wsPush(userEmail, { event:"unread_count", count:parseInt(cnt[0].count) });
+  } catch(e) { console.error("notify() error:", e.message); }
+}
 
-// GET /auth/me — verifică token și returnează profilul
-app.get("/auth/me", async (req, res) => {
-  const decoded = requireAuth(req, res);
-  if (!decoded) return;
-  if (!pool || !DB_READY) return res.json(decoded);
+// ==================== AUTH ====================
+app.post("/auth/login", async (req,res) => {
+  if (requireDb(res)) return;
+  const { email, password } = req.body||{};
+  if (!email||!password) return res.status(400).json({error:"email_and_password_required"});
   try {
-    const { rows } = await pool.query("SELECT id, email, nume, functie, institutie, role FROM users WHERE id=$1", [decoded.userId]);
-    if (!rows[0]) return res.status(401).json({ error: "user_not_found" });
-    res.json({ userId: rows[0].id, email: rows[0].email, nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, role: rows[0].role });
+    const { rows } = await pool.query("SELECT * FROM users WHERE email=$1", [email.trim().toLowerCase()]);
+    const user = rows[0];
+    if (!user || !verifyPassword(password, user.password_hash)) return res.status(401).json({error:"invalid_credentials"});
+    const token = jwt.sign({userId:user.id, email:user.email, role:user.role, nume:user.nume, functie:user.functie, institutie:user.institutie}, JWT_SECRET, {expiresIn:JWT_EXPIRES});
+    res.json({token, email:user.email, role:user.role, nume:user.nume, functie:user.functie, institutie:user.institutie});
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+app.get("/auth/me", async (req,res) => {
+  const decoded = requireAuth(req,res);
+  if (!decoded) return;
+  if (!pool||!DB_READY) return res.json(decoded);
+  try {
+    const { rows } = await pool.query("SELECT id,email,nume,functie,institutie,role FROM users WHERE id=$1", [decoded.userId]);
+    if (!rows[0]) return res.status(401).json({error:"user_not_found"});
+    res.json({userId:rows[0].id, email:rows[0].email, nume:rows[0].nume, functie:rows[0].functie, institutie:rows[0].institutie, role:rows[0].role});
   } catch(e) { res.json(decoded); }
 });
 
-// -------------------- Admin User Management --------------------
-
-// POST /admin/users/:id/send-credentials — trimite email cu credențiale
-app.post("/admin/users/:id/send-credentials", async (req, res) => {
+// ==================== NOTIFICATIONS API ====================
+app.get("/api/notifications", async (req,res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res);
+  const actor = requireAuth(req,res);
   if (!actor) return;
-  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  try {
+    const { rows } = await pool.query(`SELECT * FROM notifications WHERE user_email=$1 ORDER BY created_at DESC LIMIT 100`, [actor.email.toLowerCase()]);
+    res.json(rows);
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+app.get("/api/notifications/unread-count", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res);
+  if (!actor) return;
+  try {
+    const { rows } = await pool.query("SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE", [actor.email.toLowerCase()]);
+    res.json({count:parseInt(rows[0].count)});
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+app.post("/api/notifications/:id/read", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res);
+  if (!actor) return;
+  try {
+    await pool.query("UPDATE notifications SET read=TRUE WHERE id=$1 AND user_email=$2", [parseInt(req.params.id), actor.email.toLowerCase()]);
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+app.post("/api/notifications/read-all", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res);
+  if (!actor) return;
+  try {
+    await pool.query("UPDATE notifications SET read=TRUE WHERE user_email=$1 AND read=FALSE", [actor.email.toLowerCase()]);
+    wsPush(actor.email, {event:"unread_count", count:0});
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+app.delete("/api/notifications/:id", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res);
+  if (!actor) return;
+  try {
+    await pool.query("DELETE FROM notifications WHERE id=$1 AND user_email=$2", [parseInt(req.params.id), actor.email.toLowerCase()]);
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
+// ==================== ADMIN ====================
+app.post("/admin/users/:id/send-credentials", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const targetId = parseInt(req.params.id);
   try {
-    const { rows } = await pool.query(
-      "SELECT email, nume, functie, plain_password FROM users WHERE id=$1",
-      [targetId]
-    );
+    const { rows } = await pool.query("SELECT email,nume,functie,plain_password FROM users WHERE id=$1", [targetId]);
     const u = rows[0];
-    if (!u) return res.status(404).json({ error: "user_not_found" });
-    if (!u.plain_password) return res.status(400).json({ error: "no_password_available" });
-
+    if (!u) return res.status(404).json({error:"user_not_found"});
+    if (!u.plain_password) return res.status(400).json({error:"no_password_available"});
     const appUrl = process.env.PUBLIC_BASE_URL || "https://app.docflowai.ro";
-    await sendSignerEmail({
-      to: u.email,
-      subject: "Cont DocFlowAI — credențiale de acces",
-      html: `
-        <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-          <div style="text-align:center;margin-bottom:28px;">
-            <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;letter-spacing:-.02em;">📋 DocFlowAI</div>
-          </div>
-          <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${u.nume ? ', ' + u.nume : ''},</h2>
-          <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Contul tău în sistemul de semnare electronică <strong style="color:#eaf0ff;">DocFlowAI</strong> a fost creat. Folosește credențialele de mai jos pentru a te autentifica.</p>
-          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-            <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL (utilizator)</span><strong style="font-size:1rem;color:#eaf0ff;">${u.email}</strong></div>
-            <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ</span><strong style="font-size:1.1rem;color:#ffd580;font-family:monospace;letter-spacing:.08em;">${u.plain_password}</strong></div>
-          </div>
-          <div style="text-align:center;margin-bottom:24px;">
-            <a href="${appUrl}/login" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:700;font-size:.95rem;">Intră în cont →</a>
-          </div>
-          <p style="color:#9db0ff;font-size:.8rem;text-align:center;margin:0;">Dacă nu ai solicitat acest cont, ignoră acest mesaj.</p>
-        </div>`,
-    });
-    res.json({ ok: true });
-  } catch(e) {
-    console.error("send-credentials error:", e);
-    res.status(500).json({ error: "email_failed", detail: String(e.message || e) });
-  }
-});
-
-// POST /flows/:flowId/refuse — semnatar refuză semnarea
-app.post("/flows/:flowId/refuse", async (req, res) => {
-  if (requireDb(res)) return;
-  const { flowId } = req.params;
-  const { token: signerToken, reason } = req.body || {};
-  try {
-    const { rows } = await pool.query("SELECT data FROM flows WHERE id=$1", [flowId]);
-    const data = rows[0]?.data;
-    if (!data) return res.status(404).json({ error: "flow_not_found" });
-
-    const signer = (data.signers || []).find(s => s.token === signerToken);
-    if (!signer) return res.status(403).json({ error: "invalid_token" });
-    if (signer.status !== "current") return res.status(400).json({ error: "not_your_turn" });
-
-    // Marchează fluxul ca refuzat
-    signer.status = "refused";
-    signer.refusedAt = new Date().toISOString();
-    signer.refuseReason = reason || "Fără motiv specificat";
-    data.status = "refused";
-    data.refusedBy = { name: signer.name, email: signer.email, rol: signer.rol };
-    data.refusedAt = new Date().toISOString();
-    data.events = data.events || [];
-    data.events.push({ at: new Date().toISOString(), type: "FLOW_REFUSED", by: signer.email, reason });
-
-    await saveFlow(flowId, data);
-
-    // Notifică prin email: inițiator + semnatarii anteriori (care au semnat deja)
-    const refuseReason = reason || "Fără motiv specificat";
-    const toNotify = [
-      { name: data.initName, email: data.initEmail, role: "Inițiator" },
-      ...(data.signers || [])
-        .filter(s => s.status === "signed" && s.email !== signer.email)
-        .map(s => ({ name: s.name, email: s.email, role: s.rol }))
-    ];
-
-    const buildRefuzHtml1 = (isInitiator) => `
-      <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;overflow:hidden;">
-        <div style="background:linear-gradient(135deg,#7c5cff,#ff5050);padding:28px 32px;">
-          <h2 style="margin:0;font-size:1.4rem;color:#fff;">❌ Document refuzat</h2>
+    await sendSignerEmail({ to:u.email, subject:"Cont DocFlowAI — credențiale de acces",
+      html:`<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
+        <div style="text-align:center;margin-bottom:28px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
+        <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${u.nume?', '+u.nume:''},</h2>
+        <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Contul tău în <strong style="color:#eaf0ff;">DocFlowAI</strong> a fost creat.</p>
+        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+          <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${u.email}</strong></div>
+          <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ</span><strong style="color:#ffd580;font-family:monospace;">${u.plain_password}</strong></div>
         </div>
-        <div style="padding:28px 32px;">
-          <p style="color:#cdd8ff;margin-bottom:16px;">Documentul <strong style="color:#fff;">${data.docName}</strong> a fost <strong style="color:#ffaaaa;">REFUZAT</strong> de către:</p>
-          <div style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);border-radius:10px;padding:14px 18px;margin-bottom:16px;">
-            <div><strong>${signer.name || signer.email}</strong> — ${signer.rol}</div>
-            <div style="color:#ffaaaa;margin-top:6px;">Motiv: ${refuseReason}</div>
-          </div>
-          <p style="color:#9db0ff;font-size:.9rem;">${isInitiator
-            ? "Documentul a fost refuzat. Puteți relua procesul creând un flux nou."
-            : "Fluxul de semnare a fost închis. Contactați inițiatorul pentru a relua procesul."
-          }</p>
-        </div>
-      </div>`;
-
-    // Evităm duplicarea: dacă ÎNTOCMIT are același email ca inițiatorul, nu trimitem de două ori
-    const sentEmails1 = new Set();
-    for (const recipient of toNotify) {
-      if (sentEmails1.has(recipient.email)) continue;
-      sentEmails1.add(recipient.email);
-      try {
-        const { sendSignerEmail } = await import("./mailer.mjs");
-        const isInitiator = recipient.email === data.initEmail;
-        await sendSignerEmail({
-          to: recipient.email,
-          subject: `❌ Document refuzat: ${data.docName}`,
-          html: buildRefuzHtml1(isInitiator),
-        });
-      } catch(e) {
-        console.error("Refuz email error:", recipient.email, e.message);
-      }
-    }
-
-    res.json({ ok: true, message: "flow_refused" });
-  } catch(e) {
-    console.error("refuse error:", e);
-    res.status(500).json({ error: "server_error" });
-  }
+        <div style="text-align:center;"><a href="${appUrl}/login" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:700;">Intră în cont →</a></div>
+      </div>` });
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:"email_failed", detail:String(e.message||e)}); }
 });
-
-// POST /admin/flows/clean — șterge fluxuri vechi sau toate (doar admin)
-app.post("/admin/flows/clean", async (req, res) => {
+app.post("/admin/flows/clean", async (req,res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res);
-  if (!actor) return;
-  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
-  const { olderThanDays, all } = req.body || {};
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
+  const { olderThanDays, all } = req.body||{};
   try {
     let result;
-    if (all) {
-      result = await pool.query("DELETE FROM flows");
-    } else {
-      const days = parseInt(olderThanDays) || 30;
-      result = await pool.query(
-        "DELETE FROM flows WHERE created_at < NOW() - ($1 || ' days')::INTERVAL",
-        [days]
-      );
-    }
-    res.json({ ok: true, deleted: result.rowCount });
-  } catch(e) {
-    console.error("flows/clean error:", e);
-    res.status(500).json({ error: "server_error", detail: String(e.message) });
-  }
+    if (all) result = await pool.query("DELETE FROM flows");
+    else result = await pool.query("DELETE FROM flows WHERE created_at < NOW() - ($1 || ' days')::INTERVAL", [parseInt(olderThanDays)||30]);
+    res.json({ok:true, deleted:result.rowCount});
+  } catch(e) { res.status(500).json({error:"server_error"}); }
 });
-
-// GET /my-flows — fluxurile userului curent (inițiator sau semnatar)
-app.get("/my-flows", async (req, res) => {
+app.get("/my-flows", async (req,res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res);
-  if (!actor) return;
+  const actor = requireAuth(req,res); if (!actor) return;
   try {
-    const { rows } = await pool.query(
-      `SELECT id, data, created_at, updated_at FROM flows ORDER BY updated_at DESC LIMIT 200`
-    );
-    // Filtrăm în JS: fluxurile unde userul e inițiator SAU semnatar
+    const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows ORDER BY updated_at DESC LIMIT 200`);
     const email = actor.email.toLowerCase();
-    const myFlows = rows
-      .map(r => r.data)
-      .filter(d => {
-        if (!d) return false;
-        const isInit = (d.initEmail || "").toLowerCase() === email;
-        const isSigner = (d.signers || []).some(s => (s.email || "").toLowerCase() === email);
-        return isInit || isSigner;
-      })
-      .map(d => ({
-        flowId: d.flowId,
-        docName: d.docName || "—",
-        initName: d.initName,
-        initEmail: d.initEmail,
-        createdAt: d.createdAt,
-        updatedAt: d.updatedAt,
-        signers: (d.signers || []).map(s => ({
-          name: s.name, email: s.email, rol: s.rol,
-          status: s.status, signedAt: s.signedAt,
-        })),
-        hasSignedPdf: !!d.signedPdfB64,
-        allSigned: (d.signers || []).every(s => s.status === "signed"),
-      }));
+    const myFlows = rows.map(r=>r.data).filter(d => {
+      if (!d) return false;
+      return (d.initEmail||"").toLowerCase()===email || (d.signers||[]).some(s=>(s.email||"").toLowerCase()===email);
+    }).map(d => ({
+      flowId:d.flowId, docName:d.docName||"—", initName:d.initName, initEmail:d.initEmail,
+      createdAt:d.createdAt, updatedAt:d.updatedAt,
+      signers:(d.signers||[]).map(s=>({name:s.name,email:s.email,rol:s.rol,status:s.status,signedAt:s.signedAt})),
+      hasSignedPdf:!!d.signedPdfB64, allSigned:(d.signers||[]).every(s=>s.status==="signed"),
+    }));
     res.json(myFlows);
-  } catch(e) {
-    console.error("my-flows error:", e);
-    res.status(500).json({ error: "server_error" });
-  }
+  } catch(e) { res.status(500).json({error:"server_error"}); }
 });
-
-// GET /my-flows/:flowId/download — descarcă PDF final (token din query sau header)
-app.get("/my-flows/:flowId/download", async (req, res) => {
+app.get("/my-flows/:flowId/download", async (req,res) => {
   if (requireDb(res)) return;
-  // Acceptă token din query param (pentru <a href> direct din browser)
   const qToken = req.query.token;
   let actor = null;
-  if (qToken) {
-    try { actor = jwt.verify(qToken, JWT_SECRET); } catch(e) {}
-  }
-  if (!actor) actor = requireAuth(req, res);
+  if (qToken) { try { actor = jwt.verify(qToken, JWT_SECRET); } catch(e) {} }
+  if (!actor) actor = requireAuth(req,res);
   if (!actor) return;
   try {
     const { rows } = await pool.query("SELECT data FROM flows WHERE id=$1", [req.params.flowId]);
     const d = rows[0]?.data;
-    if (!d) return res.status(404).json({ error: "not_found" });
+    if (!d) return res.status(404).json({error:"not_found"});
     const email = actor.email.toLowerCase();
-    const isInit = (d.initEmail || "").toLowerCase() === email;
-    const isSigner = (d.signers || []).some(s => (s.email || "").toLowerCase() === email);
-    if (!isInit && !isSigner) return res.status(403).json({ error: "forbidden" });
-    if (!d.signedPdfB64) return res.status(404).json({ error: "no_signed_pdf" });
-    const buf = Buffer.from(d.signedPdfB64.split(",")[1] || d.signedPdfB64, "base64");
-    const safeName = (d.docName || "document").replace(/[^a-zA-Z0-9_\-\.]/g, "_");
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeName}_semnat.pdf"`);
+    const isInit = (d.initEmail||"").toLowerCase()===email;
+    const isSigner = (d.signers||[]).some(s=>(s.email||"").toLowerCase()===email);
+    if (!isInit&&!isSigner) return res.status(403).json({error:"forbidden"});
+    if (!d.signedPdfB64) return res.status(404).json({error:"no_signed_pdf"});
+    const buf = Buffer.from(d.signedPdfB64.split(",")[1]||d.signedPdfB64, "base64");
+    const safeName = (d.docName||"document").replace(/[^a-zA-Z0-9_\-\.]/g,"_");
+    res.setHeader("Content-Type","application/pdf");
+    res.setHeader("Content-Disposition",`attachment; filename="${safeName}_semnat.pdf"`);
     res.send(buf);
-  } catch(e) {
-    res.status(500).json({ error: "server_error" });
-  }
+  } catch(e) { res.status(500).json({error:"server_error"}); }
 });
-
-// GET /users — lista useri pentru dropdown (orice user autentificat, fără parole)
-app.get("/users", async (req, res) => {
+app.get("/users", async (req,res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res);
-  if (!actor) return;
-  const actor2 = await pool.query("SELECT institutie FROM users WHERE id=$1", [actor.userId]);
-  const inst = actor2.rows[0]?.institutie || "";
-  const { rows } = await pool.query(
-    "SELECT id, email, nume, functie, institutie FROM users WHERE institutie = $1 AND role != 'admin' ORDER BY nume ASC",
-    [inst]
-  );
+  const actor = requireAuth(req,res); if (!actor) return;
+  const r2 = await pool.query("SELECT institutie FROM users WHERE id=$1", [actor.userId]);
+  const inst = r2.rows[0]?.institutie||"";
+  const { rows } = await pool.query("SELECT id,email,nume,functie,institutie FROM users WHERE institutie=$1 AND role!='admin' ORDER BY nume ASC", [inst]);
   res.json(rows);
 });
-
-// GET /admin/users — listă useri cu parolă plain (doar admin)
-app.get("/admin/users", async (req, res) => {
+app.get("/admin/users", async (req,res) => {
   if (requireDb(res)) return;
-  const user = requireAuth(req, res);
-  if (!user) return;
-  if (user.role !== "admin") return res.status(403).json({ error: "forbidden" });
-  const { rows } = await pool.query(
-    "SELECT id, email, nume, functie, institutie, plain_password, role, created_at FROM users ORDER BY institutie ASC, nume ASC"
-  );
+  const user = requireAuth(req,res); if (!user) return;
+  if (user.role !== "admin") return res.status(403).json({error:"forbidden"});
+  const { rows } = await pool.query("SELECT id,email,nume,functie,institutie,plain_password,role,created_at FROM users ORDER BY institutie ASC, nume ASC");
   res.json(rows);
 });
-
-// POST /admin/users — crează user (doar admin)
-app.post("/admin/users", async (req, res) => {
+app.post("/admin/users", async (req,res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res);
-  if (!actor) return;
-  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
-  const { email, password, nume, functie, institutie, role } = req.body || {};
-  if (!email || !nume) {
-    return res.status(400).json({ error: "email_and_nume_required" });
-  }
-  const validRole = ["admin", "user"].includes(role) ? role : "user";
-  const plainPwd = password && password.length >= 4 ? password : generatePassword();
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
+  const { email,password,nume,functie,institutie,role } = req.body||{};
+  if (!email||!nume) return res.status(400).json({error:"email_and_nume_required"});
+  const validRole = ["admin","user"].includes(role)?role:"user";
+  const plainPwd = password&&password.length>=4?password:generatePassword();
   try {
-    const hash = hashPassword(plainPwd);
-    const { rows } = await pool.query(
-      `INSERT INTO users (email, password_hash, plain_password, nume, functie, institutie, role)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       RETURNING id, email, nume, functie, institutie, plain_password, role`,
-      [email.trim().toLowerCase(), hash, plainPwd, (nume||"").trim(), (functie||"").trim(), (institutie||"").trim(), validRole]
-    );
+    const { rows } = await pool.query(`INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,role) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,email,nume,functie,institutie,plain_password,role`,
+      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume||"").trim(), (functie||"").trim(), (institutie||"").trim(), validRole]);
     res.status(201).json(rows[0]);
   } catch(e) {
-    if (e.code === "23505") return res.status(409).json({ error: "email_exists" });
-    console.error("create user error:", e);
-    res.status(500).json({ error: "server_error" });
+    if (e.code==="23505") return res.status(409).json({error:"email_exists"});
+    res.status(500).json({error:"server_error"});
   }
 });
-
-// PUT /admin/users/:id — editează user complet (doar admin)
-app.put("/admin/users/:id", async (req, res) => {
+app.put("/admin/users/:id", async (req,res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res);
-  if (!actor) return;
-  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const targetId = parseInt(req.params.id);
-  const { email, nume, functie, institutie, password, role } = req.body || {};
-  const updates = [];
-  const vals = [];
-  let i = 1;
+  const { email,nume,functie,institutie,password,role } = req.body||{};
+  const updates=[], vals=[]; let i=1;
   if (email) { updates.push(`email=$${i++}`); vals.push(email.trim().toLowerCase()); }
-  if (nume !== undefined) { updates.push(`nume=$${i++}`); vals.push((nume||"").trim()); }
-  if (functie !== undefined) { updates.push(`functie=$${i++}`); vals.push((functie||"").trim()); }
-  if (institutie !== undefined) { updates.push(`institutie=$${i++}`); vals.push((institutie||"").trim()); }
-  if (role && ["admin","user"].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
-  if (password && password.length >= 4) {
-    const hash = hashPassword(password);
-    updates.push(`password_hash=$${i++}`); vals.push(hash);
-    updates.push(`plain_password=$${i++}`); vals.push(password);
-  }
-  if (!updates.length) return res.status(400).json({ error: "nothing_to_update" });
+  if (nume!==undefined) { updates.push(`nume=$${i++}`); vals.push((nume||"").trim()); }
+  if (functie!==undefined) { updates.push(`functie=$${i++}`); vals.push((functie||"").trim()); }
+  if (institutie!==undefined) { updates.push(`institutie=$${i++}`); vals.push((institutie||"").trim()); }
+  if (role&&["admin","user"].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
+  if (password&&password.length>=4) { updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password)); updates.push(`plain_password=$${i++}`); vals.push(password); }
+  if (!updates.length) return res.status(400).json({error:"nothing_to_update"});
   vals.push(targetId);
   try {
-    const { rows } = await pool.query(
-      `UPDATE users SET ${updates.join(",")} WHERE id=$${i} RETURNING id, email, nume, functie, institutie, plain_password, role`,
-      vals
-    );
+    const { rows } = await pool.query(`UPDATE users SET ${updates.join(",")} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,plain_password,role`, vals);
     res.json(rows[0]);
   } catch(e) {
-    if (e.code === "23505") return res.status(409).json({ error: "email_exists" });
-    res.status(500).json({ error: "server_error" });
+    if (e.code==="23505") return res.status(409).json({error:"email_exists"});
+    res.status(500).json({error:"server_error"});
   }
 });
-
-// POST /admin/users/:id/reset-password — generează parolă nouă automată
-app.post("/admin/users/:id/reset-password", async (req, res) => {
+app.post("/admin/users/:id/reset-password", async (req,res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res);
-  if (!actor) return;
-  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
-  const targetId = parseInt(req.params.id);
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const newPwd = generatePassword();
-  const hash = hashPassword(newPwd);
-  await pool.query("UPDATE users SET password_hash=$1, plain_password=$2 WHERE id=$3", [hash, newPwd, targetId]);
-  res.json({ plain_password: newPwd });
+  await pool.query("UPDATE users SET password_hash=$1, plain_password=$2 WHERE id=$3", [hashPassword(newPwd), newPwd, parseInt(req.params.id)]);
+  res.json({plain_password:newPwd});
 });
-
-// DELETE /admin/users/:id — șterge user (doar admin, nu se poate șterge pe sine)
-app.delete("/admin/users/:id", async (req, res) => {
+app.delete("/admin/users/:id", async (req,res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res);
-  if (!actor) return;
-  if (actor.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const targetId = parseInt(req.params.id);
-  if (actor.userId === targetId) return res.status(400).json({ error: "cannot_delete_self" });
+  if (actor.userId===targetId) return res.status(400).json({error:"cannot_delete_self"});
   await pool.query("DELETE FROM users WHERE id=$1", [targetId]);
-  res.json({ ok: true });
+  res.json({ok:true});
 });
 
-// -------------------- Health --------------------
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    ok: true,
-    service: "SemDoc+",
-    dbReady: DB_READY,
-    dbLastError: DB_LAST_ERROR,
-  });
-});
-
-
-// -------------------- SMTP Test --------------------
-app.get("/smtp-test", async (req, res) => {
-  const result = await verifySmtp();
-  res.status(result.ok ? 200 : 500).json(result);
-});
-
-app.post("/smtp-test", async (req, res) => {
-  const { to } = req.body || {};
-  if (!to) return res.status(400).json({ error: "to missing" });
+// ==================== HEALTH / SMTP ====================
+app.get("/health", (req,res) => res.json({ok:true, service:"DocFlowAI", dbReady:DB_READY, dbLastError:DB_LAST_ERROR, wsClients:wsClients.size}));
+app.get("/smtp-test", async (req,res) => { const r=await verifySmtp(); res.status(r.ok?200:500).json(r); });
+app.post("/smtp-test", async (req,res) => {
+  const { to } = req.body||{};
+  if (!to) return res.status(400).json({error:"to missing"});
   try {
-    const verify = await verifySmtp();
-    if (!verify.ok) return res.status(500).json({ error: "smtp_not_ready", detail: verify });
-    await sendSignerEmail({
-      to,
-      subject: "Test SMTP DocFlowAI",
-      html: "<p>Acesta este un email de test de la DocFlowAI.</p><p>SMTP funcționează corect! ✅</p>",
-    });
-    return res.json({ ok: true, to });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e.message || e) });
-  }
+    const v=await verifySmtp(); if (!v.ok) return res.status(500).json({error:"smtp_not_ready",detail:v});
+    await sendSignerEmail({to, subject:"Test SMTP DocFlowAI", html:"<p>SMTP funcționează! ✅</p>"});
+    res.json({ok:true,to});
+  } catch(e) { res.status(500).json({ok:false,error:String(e.message||e)}); }
 });
 
-// -------------------- FLOWS API --------------------
-// Create flow
-const createFlow = async (req, res) => {
+// ==================== FLOWS ====================
+const createFlow = async (req,res) => {
   try {
     if (requireDb(res)) return;
+    const body = req.body||{};
+    const docName = String(body.docName||"").trim();
+    const initName = String(body.initName||"").trim();
+    const initEmail = String(body.initEmail||"").trim();
+    const signers = Array.isArray(body.signers)?body.signers:[];
+    if (!docName||!initName||!initEmail) return res.status(400).json({error:"docName/initName/initEmail missing"});
+    if (!signers.length) return res.status(400).json({error:"signers missing"});
 
-    const body = req.body || {};
-    const docName = String(body.docName || "").trim();
-    const initName = String(body.initName || "").trim();
-    const initEmail = String(body.initEmail || "").trim();
-    const signers = Array.isArray(body.signers) ? body.signers : [];
-
-    if (!docName || !initName || !initEmail) {
-      return res.status(400).json({ error: "docName/initName/initEmail missing" });
-    }
-    if (!signers.length) {
-      return res.status(400).json({ error: "signers missing" });
-    }
-
-    const normalizedSigners = signers.map((s, idx) => ({
-      order: Number(s.order || idx + 1),
-      rol: String(s.rol || s.atribut || "").trim(),
-      functie: String(s.functie || "").trim(),
-      name: String(s.name || "").trim(),
-      email: String(s.email || "").trim(),
-      token: String(s.token || crypto.randomBytes(16).toString("hex")),
-      status: idx === 0 ? "current" : "pending",
-      signedAt: null,
-      signature: null, // MVP: store anything (optional) from signer page
+    const normalizedSigners = signers.map((s,idx) => ({
+      order: Number(s.order||idx+1),
+      rol: String(s.rol||s.atribut||"").trim(),
+      functie: String(s.functie||"").trim(),
+      name: String(s.name||"").trim(),
+      email: String(s.email||"").trim(),
+      token: String(s.token||crypto.randomBytes(16).toString("hex")),
+      status: idx===0?"current":"pending",
+      signedAt: null, signature: null,
     }));
 
     const flowId = newFlowId();
-
     const data = {
-      flowId,
-      docName,
-      initName,
-      initEmail,
-      meta: body.meta || {},
-      flowType: body.flowType || "tabel",
-      pdfB64: body.pdfB64 ?? null,
+      flowId, docName, initName, initEmail,
+      meta: body.meta||{}, flowType: body.flowType||"tabel",
+      pdfB64: body.pdfB64??null,
       signers: normalizedSigners,
-      createdAt: body.createdAt || new Date().toISOString(),
+      createdAt: body.createdAt||new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      events: [{ at: new Date().toISOString(), type: "FLOW_CREATED", by: initEmail }],
+      events: [{at:new Date().toISOString(), type:"FLOW_CREATED", by:initEmail}],
     };
-
     await saveFlow(flowId, data);
 
-    const first = data.signers.find((s) => s.status === "current");
-    const signerLink = first ? buildSignerLink(req, flowId, first.token) : null;
-
-    // Email first signer (NON-BLOCKING) — mark as notified so upload doesn't re-send
-    if (first) first.emailSent = true;
-    await saveFlow(flowId, data);
-
-    if (first?.email && signerLink) {
-      sendSignerEmail({
-        to: first.email,
-        subject: `Semnare document: ${data.docName}`,
-        html: `
-          <p>Bună ${first.name || ""},</p>
-          <p>Ai un document de semnat:</p>
-          <p><strong>${data.docName}</strong></p>
-          <p>Link semnare:</p>
-          <p><a href="${signerLink}">${signerLink}</a></p>
-          <br/>
-          <p>— DocFlowAI</p>
-        `,
-      }).catch((e) => console.error("❌ Email send failed (non-blocking):", e));
+    // Notificare in-app pentru primul semnatar
+    const first = data.signers.find(s=>s.status==="current");
+    if (first?.email) {
+      await notify({ userEmail:first.email, flowId, type:"YOUR_TURN",
+        title:"Document de semnat",
+        message:`${initName} te-a adăugat ca semnatar pe documentul „${docName}". Intră în aplicație pentru a semna.` });
     }
-
-    return res.json({
-      ok: true,
-      flowId,
-      signerLink,
-      firstSignerEmail: first?.email || null,
-    });
-  } catch (e) {
-    console.error("POST /flows error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
+    return res.json({ok:true, flowId, firstSignerEmail:first?.email||null});
+  } catch(e) { console.error("POST /flows error:",e); return res.status(500).json({error:"server_error"}); }
 };
-
 app.post("/flows", createFlow);
 app.post("/api/flows", createFlow);
 
-// Get signed PDF (uploaded by signer)
-app.get("/flows/:flowId/signed-pdf", async (req, res) => {
+app.get("/flows/:flowId/signed-pdf", async (req,res) => {
   try {
     if (requireDb(res)) return;
     const data = await getFlowData(req.params.flowId);
-    if (!data) return res.status(404).json({ error: "not_found" });
+    if (!data) return res.status(404).json({error:"not_found"});
     const b64 = data.signedPdfB64;
-    if (!b64 || typeof b64 !== "string") return res.status(404).json({ error: "signed_pdf_missing" });
-    const raw = b64.includes("base64,") ? b64.split("base64,")[1] : b64;
-    const buf = Buffer.from(raw, "base64");
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${(data.docName || "document").replace(/[^\w\-]+/g,"_")}_semnat_calificat.pdf"`);
-    return res.status(200).send(buf);
-  } catch (e) {
-    console.error("GET /flows/:flowId/signed-pdf error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
+    if (!b64||typeof b64!=="string") return res.status(404).json({error:"signed_pdf_missing"});
+    const raw = b64.includes("base64,")?b64.split("base64,")[1]:b64;
+    res.setHeader("Content-Type","application/pdf");
+    res.setHeader("Content-Disposition",`attachment; filename="${(data.docName||"document").replace(/[^\w\-]+/g,"_")}_semnat.pdf"`);
+    return res.status(200).send(Buffer.from(raw,"base64"));
+  } catch(e) { return res.status(500).json({error:"server_error"}); }
 });
-
-// Get flow
-app.get("/flows/:flowId/pdf", async (req, res) => {
+app.get("/flows/:flowId/pdf", async (req,res) => {
   try {
     if (requireDb(res)) return;
     const data = await getFlowData(req.params.flowId);
-    if (!data) return res.status(404).json({ error: "not_found" });
+    if (!data) return res.status(404).json({error:"not_found"});
     const b64 = data.pdfB64;
-    if (!b64 || typeof b64 !== "string") return res.status(404).json({ error: "pdf_missing" });
-
-    // support both "data:application/pdf;base64,..." and raw base64
-    const raw = b64.includes("base64,") ? b64.split("base64,")[1] : b64;
-    const buf = Buffer.from(raw, "base64");
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${(data.docName || "document").replace(/[^\w\-]+/g,"_")}.pdf"`);
-    return res.status(200).send(buf);
-  } catch (e) {
-    console.error("GET /flows/:flowId/pdf error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
+    if (!b64||typeof b64!=="string") return res.status(404).json({error:"pdf_missing"});
+    const raw = b64.includes("base64,")?b64.split("base64,")[1]:b64;
+    res.setHeader("Content-Type","application/pdf");
+    res.setHeader("Content-Disposition",`inline; filename="${(data.docName||"document").replace(/[^\w\-]+/g,"_")}.pdf"`);
+    return res.status(200).send(Buffer.from(raw,"base64"));
+  } catch(e) { return res.status(500).json({error:"server_error"}); }
 });
-
-const getFlowHandler = async (req, res) => {
+const getFlowHandler = async (req,res) => {
   try {
     if (requireDb(res)) return;
     const data = await getFlowData(req.params.flowId);
-    if (!data) return res.status(404).json({ error: "not_found" });
+    if (!data) return res.status(404).json({error:"not_found"});
     return res.json(stripPdfB64(data));
-  } catch (e) {
-    console.error("GET /flows/:flowId error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
+  } catch(e) { return res.status(500).json({error:"server_error"}); }
 };
-
 app.get("/flows/:flowId", getFlowHandler);
 app.get("/api/flows/:flowId", getFlowHandler);
 
-// Update flow (replace)
-app.put("/flows/:flowId", async (req, res) => {
+app.put("/flows/:flowId", async (req,res) => {
   try {
     if (requireDb(res)) return;
-    if (requireAdmin(req, res)) return;
+    if (requireAdmin(req,res)) return;
     const { flowId } = req.params;
     const existing = await getFlowData(flowId);
-    if (!existing) return res.status(404).json({ error: "not_found" });
-
-    const next = req.body || {};
-    next.flowId = flowId;
-    next.updatedAt = new Date().toISOString();
-
+    if (!existing) return res.status(404).json({error:"not_found"});
+    const next = req.body||{};
+    next.flowId = flowId; next.updatedAt = new Date().toISOString();
     await saveFlow(flowId, next);
-    return res.json({ ok: true });
-  } catch (e) {
-    console.error("PUT /flows/:flowId error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
+    return res.json({ok:true});
+  } catch(e) { return res.status(500).json({error:"server_error"}); }
 });
 
-// Sign step
-const signFlow = async (req, res) => {
+const signFlow = async (req,res) => {
   try {
     if (requireDb(res)) return;
-
     const { flowId } = req.params;
-    const { token, signature } = req.body || {};
-
-    const sig = typeof signature === 'string' ? signature.trim() : '';
-    if (!sig) return res.status(400).json({ error: 'signature_required' });
-
+    const { token, signature } = req.body||{};
+    const sig = typeof signature==="string"?signature.trim():"";
+    if (!sig) return res.status(400).json({error:"signature_required"});
     const data = await getFlowData(flowId);
-    if (!data) return res.status(404).json({ error: "not_found" });
-
-    const signers = Array.isArray(data.signers) ? data.signers : [];
-    const idx = signers.findIndex((s) => s.token === token);
-    if (idx === -1) return res.status(400).json({ error: "invalid_token" });
-
-    // enforce "current"
-    if (signers[idx].status !== "current") {
-      return res.status(409).json({ error: "not_current_signer" });
-    }
-
-    signers[idx].status = "signed";
-    signers[idx].signedAt = new Date().toISOString();
-    signers[idx].signature = sig ?? signers[idx].signature ?? null;
-    signers[idx].pdfUploaded = false; // waiting for qualified PDF upload
-
-    // Keep next signers as "pending" until PDF is uploaded
-    // (status advancement happens in upload-signed-pdf endpoint)
-
-    data.signers = signers;
-    data.updatedAt = new Date().toISOString();
-    data.events = Array.isArray(data.events) ? data.events : [];
-    data.events.push({
-      at: new Date().toISOString(),
-      type: "SIGNED",
-      by: signers[idx].email || signers[idx].name || "unknown",
-      order: signers[idx].order,
-    });
-
+    if (!data) return res.status(404).json({error:"not_found"});
+    const signers = Array.isArray(data.signers)?data.signers:[];
+    const idx = signers.findIndex(s=>s.token===token);
+    if (idx===-1) return res.status(400).json({error:"invalid_token"});
+    if (signers[idx].status!=="current") return res.status(409).json({error:"not_current_signer"});
+    signers[idx].status="signed"; signers[idx].signedAt=new Date().toISOString();
+    signers[idx].signature=sig; signers[idx].pdfUploaded=false;
+    data.signers=signers; data.updatedAt=new Date().toISOString();
+    data.events=Array.isArray(data.events)?data.events:[];
+    data.events.push({at:new Date().toISOString(), type:"SIGNED", by:signers[idx].email||signers[idx].name||"unknown", order:signers[idx].order});
     await saveFlow(flowId, data);
-
-    const next = data.signers.find((s) => s.status === "current");
-    const nextLink = next ? buildSignerLink(req, flowId, next.token) : null;
-
-    // allSigned in signFlow means everyone pressed sign button
-    // Full completion (with PDFs) is checked in upload-signed-pdf
-    const allSigned = data.signers.every((s) => s.status === "signed");
-
-    // NOTE: Email to next signer is sent only after signed PDF is uploaded
-    // (see POST /flows/:flowId/upload-signed-pdf)
-
-    return res.json({
-      ok: true,
-      flowId,
-      completed: allSigned,
-      nextSigner: next || null,
-      nextLink: null, // withheld until PDF upload
-      awaitingUpload: !allSigned,
-      flow: stripPdfB64(data),
-    });
-  } catch (e) {
-    console.error("POST /flows/:flowId/sign error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
+    return res.json({ok:true, flowId, completed:data.signers.every(s=>s.status==="signed"), nextSigner:null, nextLink:null, awaitingUpload:true, flow:stripPdfB64(data)});
+  } catch(e) { return res.status(500).json({error:"server_error"}); }
 };
-
 app.post("/flows/:flowId/sign", signFlow);
 app.post("/api/flows/:flowId/sign", signFlow);
 
-// Refuse signing
-app.post("/flows/:flowId/refuse", async (req, res) => {
+app.post("/flows/:flowId/refuse", async (req,res) => {
   try {
     if (requireDb(res)) return;
     const { flowId } = req.params;
-    const { token, reason } = req.body || {};
-
-    if (!reason || !String(reason).trim()) {
-      return res.status(400).json({ error: "reason_required" });
-    }
-
+    const { token, reason } = req.body||{};
+    if (!reason||!String(reason).trim()) return res.status(400).json({error:"reason_required"});
     const data = await getFlowData(flowId);
-    if (!data) return res.status(404).json({ error: "not_found" });
-
-    const signers = Array.isArray(data.signers) ? data.signers : [];
-    const idx = signers.findIndex(s => s.token === token);
-    if (idx === -1) return res.status(400).json({ error: "invalid_token" });
-    if (signers[idx].status !== "current") {
-      return res.status(409).json({ error: "not_current_signer" });
-    }
-
-    const refuserName = signers[idx].name || signers[idx].email || "Semnatar";
-    const refuserRol = signers[idx].rol || "";
-
-    // Marchează fluxul ca refuzat
-    signers[idx].status = "refused";
-    signers[idx].refusedAt = new Date().toISOString();
-    signers[idx].refuseReason = String(reason).trim();
-    data.signers = signers;
-    data.status = "refused";
-    data.refusedAt = new Date().toISOString();
-    data.updatedAt = new Date().toISOString();
-    data.events = Array.isArray(data.events) ? data.events : [];
-    data.events.push({
-      at: new Date().toISOString(),
-      type: "REFUSED",
-      by: signers[idx].email,
-      reason: String(reason).trim(),
-    });
-
+    if (!data) return res.status(404).json({error:"not_found"});
+    const signers = Array.isArray(data.signers)?data.signers:[];
+    const idx = signers.findIndex(s=>s.token===token);
+    if (idx===-1) return res.status(400).json({error:"invalid_token"});
+    if (signers[idx].status!=="current") return res.status(409).json({error:"not_current_signer"});
+    const refuserName = signers[idx].name||signers[idx].email||"Semnatar";
+    const refuserRol = signers[idx].rol||"";
+    const refuseReason = String(reason).trim();
+    signers[idx].status="refused"; signers[idx].refusedAt=new Date().toISOString(); signers[idx].refuseReason=refuseReason;
+    data.signers=signers; data.status="refused"; data.refusedAt=new Date().toISOString(); data.updatedAt=new Date().toISOString();
+    data.events=Array.isArray(data.events)?data.events:[];
+    data.events.push({at:new Date().toISOString(), type:"REFUSED", by:signers[idx].email, reason:refuseReason});
     await saveFlow(flowId, data);
 
-    // Email inițiator
-    const appUrl = process.env.PUBLIC_BASE_URL || "https://app.docflowai.ro";
-    const refuseHtml = (to, name, isInit = false) => `
-      <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-        <div style="text-align:center;margin-bottom:24px;">
-          <span style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:10px 18px;font-size:1.1rem;font-weight:800;">📋 DocFlowAI</span>
-        </div>
-        <h2 style="margin:0 0 8px;color:#ffaaaa;">⛔ Document refuzat</h2>
-        <p style="color:#9db0ff;margin:0 0 20px;line-height:1.6;">Bună${name ? ' ' + name : ''},</p>
-        <p style="color:#cdd8ff;margin:0 0 20px;line-height:1.6;">
-          Documentul <strong style="color:#eaf0ff;">${data.docName || flowId}</strong> a fost <strong style="color:#ffaaaa;">refuzat</strong> de către
-          <strong style="color:#eaf0ff;">${refuserName}</strong>${refuserRol ? ' (' + refuserRol + ')' : ''}.
-        </p>
-        <div style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);border-radius:12px;padding:16px 20px;margin-bottom:24px;">
-          <div style="color:#ffaaaa;font-size:.8rem;margin-bottom:6px;">MOTIV REFUZ:</div>
-          <div style="color:#eaf0ff;font-style:italic;">"${signers[idx].refuseReason}"</div>
-        </div>
-        <p style="color:#9db0ff;font-size:.85rem;">${isInit
-          ? "Documentul a fost refuzat. Puteți relua procesul creând un flux nou."
-          : "Fluxul de semnare a fost închis. Contactați inițiatorul pentru a relua procesul."
-        }</p>
-      </div>`;
-
-    // Notifică inițiatorul + semnatarii care au semnat, fără duplicare
-    const sentEmails2 = new Set();
-    const notifyList2 = [
-      { email: data.initEmail, name: data.initName, isInit: true },
-      ...signers.filter((s, i) => i < idx && s.status === "signed" && s.email)
-               .map(s => ({ email: s.email, name: s.name, isInit: s.email === data.initEmail }))
+    // Notificari in-app pentru initiator + semnatarii anteriori
+    const refuseMsg = `${refuserName}${refuserRol?" ("+refuserRol+")":""} a refuzat semnarea documentului „${data.docName}". Motiv: ${refuseReason}`;
+    const toNotify = [
+      {email:data.initEmail},
+      ...signers.filter((s,i)=>i<idx&&s.status==="signed"&&s.email).map(s=>({email:s.email}))
     ];
-    for (const r of notifyList2) {
-      if (sentEmails2.has(r.email)) continue;
-      sentEmails2.add(r.email);
-      try {
-        await sendSignerEmail({
-          to: r.email,
-          subject: `⛔ Document refuzat: ${data.docName || flowId}`,
-          html: refuseHtml(r.email, r.name, r.isInit),
-        });
-      } catch(e) { console.error("refuse email failed:", r.email, e); }
+    const sent = new Set();
+    for (const r of toNotify) {
+      if (!r.email||sent.has(r.email)) continue;
+      sent.add(r.email);
+      await notify({userEmail:r.email, flowId, type:"REFUSED", title:"⛔ Document refuzat", message:refuseMsg});
     }
-
-    return res.json({ ok: true, refused: true });
-  } catch(e) {
-    console.error("refuse error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
+    return res.json({ok:true, refused:true});
+  } catch(e) { console.error("refuse error:",e); return res.status(500).json({error:"server_error"}); }
 });
 
-// Admin: resend email to current signer
-app.post("/flows/:flowId/resend", async (req, res) => {
+app.post("/flows/:flowId/resend", async (req,res) => {
   try {
     if (requireDb(res)) return;
-    if (requireAdmin(req, res)) return;
-
+    if (requireAdmin(req,res)) return;
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
-    if (!data) return res.status(404).json({ error: "not_found" });
-
-    const current = (data.signers || []).find((s) => s.status === "current");
-    if (!current) return res.status(409).json({ error: "no_current_signer" });
-    if (!current.email) return res.status(400).json({ error: "current_missing_email" });
-
-    const signerLink = buildSignerLink(req, flowId, current.token);
-
-    await sendSignerEmail({
-      to: current.email,
-      subject: `Re-trimitere link semnare: ${data.docName}`,
-      html: `
-        <p>Bună ${current.name || ""},</p>
-        <p>Revenim cu link-ul de semnare pentru documentul:</p>
-        <p><strong>${data.docName}</strong></p>
-        <p>Link semnare:</p>
-        <p><a href="${signerLink}">${signerLink}</a></p>
-        <br/>
-        <p>— DocFlowAI</p>
-      `,
-    });
-
-    return res.json({ ok: true, to: current.email, signerLink });
-  } catch (e) {
-    console.error("POST /flows/:flowId/resend error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
+    if (!data) return res.status(404).json({error:"not_found"});
+    const current = (data.signers||[]).find(s=>s.status==="current");
+    if (!current) return res.status(409).json({error:"no_current_signer"});
+    if (!current.email) return res.status(400).json({error:"current_missing_email"});
+    await notify({userEmail:current.email, flowId, type:"YOUR_TURN", title:"Reminder: Document de semnat",
+      message:`Ai un document în așteptare pentru semnare: „${data.docName}". Te rugăm să accesezi aplicația.`});
+    return res.json({ok:true, to:current.email});
+  } catch(e) { return res.status(500).json({error:"server_error"}); }
 });
 
-
-// Upload signed PDF (qualified e-signature, uploaded by signer)
-app.post("/flows/:flowId/upload-signed-pdf", async (req, res) => {
+app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
   try {
     if (requireDb(res)) return;
     const { flowId } = req.params;
-    const { token, signedPdfB64, signerName } = req.body || {};
-
-    if (!token) return res.status(400).json({ error: "token_missing" });
-    if (!signedPdfB64 || typeof signedPdfB64 !== "string") return res.status(400).json({ error: "signedPdfB64_missing" });
-    if (signedPdfB64.length > 40 * 1024 * 1024) return res.status(413).json({ error: "pdf_too_large_max_30mb" });
-
+    const { token, signedPdfB64, signerName } = req.body||{};
+    if (!token) return res.status(400).json({error:"token_missing"});
+    if (!signedPdfB64||typeof signedPdfB64!=="string") return res.status(400).json({error:"signedPdfB64_missing"});
+    if (signedPdfB64.length>40*1024*1024) return res.status(413).json({error:"pdf_too_large_max_30mb"});
     const data = await getFlowData(flowId);
-    if (!data) return res.status(404).json({ error: "not_found" });
+    if (!data) return res.status(404).json({error:"not_found"});
+    const signers = Array.isArray(data.signers)?data.signers:[];
+    const idx = signers.findIndex(s=>s.token===token);
+    if (idx===-1) return res.status(400).json({error:"invalid_token"});
+    if (signers[idx].status!=="signed") return res.status(409).json({error:"signer_not_signed_yet"});
+    if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions=[];
+    data.signedPdfVersions.push({uploadedAt:new Date().toISOString(), uploadedBy:signers[idx].email||signers[idx].name||"unknown", signerIndex:idx, signerName:signerName||signers[idx].name||""});
+    data.signedPdfB64=signedPdfB64;
+    data.signedPdfUploadedAt=new Date().toISOString();
+    data.signedPdfUploadedBy=signers[idx].email||signers[idx].name||"unknown";
+    signers[idx].pdfUploaded=true;
+    data.updatedAt=new Date().toISOString();
+    data.events=Array.isArray(data.events)?data.events:[];
+    data.events.push({at:new Date().toISOString(), type:"SIGNED_PDF_UPLOADED", by:signers[idx].email||signers[idx].name||"unknown", order:signers[idx].order});
 
-    const signers = Array.isArray(data.signers) ? data.signers : [];
-    const idx = signers.findIndex((s) => s.token === token);
-    if (idx === -1) return res.status(400).json({ error: "invalid_token" });
-
-    // Verify signer has signed (status = "signed") and hasn't uploaded yet
-    if (signers[idx].status !== "signed") {
-      return res.status(409).json({ error: "signer_not_signed_yet" });
+    const nextIdx = signers.findIndex((s,i)=>i>idx&&s.status!=="signed");
+    if (nextIdx!==-1) {
+      signers.forEach((s,i)=>{ if (s.status!=="signed") s.status = i===nextIdx?"current":"pending"; });
     }
+    data.signers=signers; signers[idx].notifiedNext=true;
 
-    // Store signed PDF — keep all versions with timestamp
-    if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions = [];
-    data.signedPdfVersions.push({
-      uploadedAt: new Date().toISOString(),
-      uploadedBy: signers[idx].email || signers[idx].name || "unknown",
-      signerIndex: idx,
-      signerName: signerName || signers[idx].name || "",
-    });
-
-    // Latest signed PDF = what next signer will download
-    data.signedPdfB64 = signedPdfB64;
-    data.signedPdfUploadedAt = new Date().toISOString();
-    data.signedPdfUploadedBy = signers[idx].email || signers[idx].name || "unknown";
-    signers[idx].pdfUploaded = true;
-    data.updatedAt = new Date().toISOString();
-    data.events = Array.isArray(data.events) ? data.events : [];
-    data.events.push({
-      at: new Date().toISOString(),
-      type: "SIGNED_PDF_UPLOADED",
-      by: signers[idx].email || signers[idx].name || "unknown",
-      order: signers[idx].order,
-    });
-
-    // NOW advance next signer to "current"
-    const nextIdx = signers.findIndex((s, i) => i > idx && s.status !== "signed");
-    if (nextIdx !== -1) {
-      signers.forEach((s, i) => {
-        if (s.status !== "signed") s.status = i === nextIdx ? "current" : "pending";
-      });
-    }
-    data.signers = signers;
-    // Mark this signer as having triggered the next notification
-    signers[idx].notifiedNext = true;
-
-    // Check full completion: all signed AND all PDFs uploaded
-    const allSignedAndUploaded = data.signers.every((s) => s.status === "signed" && s.pdfUploaded);
-    if (allSignedAndUploaded) {
-      data.completed = true;
-      data.completedAt = new Date().toISOString();
-      data.events.push({ at: new Date().toISOString(), type: "FLOW_COMPLETED", by: "system" });
-
-      // Email initiator with link to final signed PDF
+    const allDone = data.signers.every(s=>s.status==="signed"&&s.pdfUploaded);
+    if (allDone) {
+      data.completed=true; data.completedAt=new Date().toISOString();
+      data.events.push({at:new Date().toISOString(), type:"FLOW_COMPLETED", by:"system"});
+      // Notificare completare pentru initiator
       if (data.initEmail) {
-        const signedPdfLink = `${publicBaseUrl(req)}/flows/${encodeURIComponent(flowId)}/signed-pdf`;
-        sendSignerEmail({
-          to: data.initEmail,
-          subject: `Document semnat complet: ${data.docName}`,
-          html: `
-            <p>Bună ${data.initName || ""},</p>
-            <p>Documentul <strong>${data.docName}</strong> a fost semnat calificat de toți semnatarii.</p>
-            <p>Poți descărca PDF-ul final semnat calificat accesând link-ul:</p>
-            <p><a href="${signedPdfLink}">${signedPdfLink}</a></p>
-            <br/>
-            <p>— DocFlowAI</p>
-          `,
-        }).catch((e) => console.error("❌ Email completion failed (non-blocking):", e));
+        await notify({userEmail:data.initEmail, flowId, type:"COMPLETED", title:"✅ Document semnat complet",
+          message:`Documentul „${data.docName}" a fost semnat de toți semnatarii. Îl poți descărca din secțiunea Fluxuri mele.`});
       }
     }
-
     await saveFlow(flowId, data);
 
-    // Send email to next signer (NOW, after PDF upload) — only if not already notified
-    const nextSigner = data.signers.find((s) => s.status === "current" && !s.emailSent);
-    const nextLink = nextSigner ? buildSignerLink(req, flowId, nextSigner.token) : null;
-
-    if (nextSigner?.email && nextLink) {
-      nextSigner.emailSent = true;
-      await saveFlow(flowId, data);
-      const signedPdfLink = `${publicBaseUrl(req)}/flows/${encodeURIComponent(flowId)}/signed-pdf`;
-      sendSignerEmail({
-        to: nextSigner.email,
-        subject: `Urmezi la semnare: ${data.docName}`,
-        html: `
-          <p>Bună ${nextSigner.name || ""},</p>
-          <p>Este rândul tău să semnezi documentul:</p>
-          <p><strong>${data.docName}</strong></p>
-          <p>Documentul conține semnăturile electronice calificate ale semnatarilor anteriori.<br/>
-          Descarcă documentul semnat anterior direct din interfața DocFlowAI după ce deschizi linkul de mai jos.</p>
-          <p>Link semnare:</p>
-          <p><a href="${nextLink}">${nextLink}</a></p>
-          <br/>
-          <p>— DocFlowAI</p>
-        `,
-      }).catch((e) => console.error("❌ Email send failed (non-blocking):", e));
+    // Notificare pentru urmatorul semnatar
+    const nextSigner = data.signers.find(s=>s.status==="current"&&!s.emailSent);
+    if (nextSigner?.email) {
+      nextSigner.emailSent=true; await saveFlow(flowId, data);
+      await notify({userEmail:nextSigner.email, flowId, type:"YOUR_TURN", title:"Document de semnat",
+        message:`Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`});
     }
-
-    console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
-    return res.json({
-      ok: true,
-      flowId,
-      completed: allSignedAndUploaded,
-      uploadedAt: data.signedPdfUploadedAt,
-      downloadUrl: `/flows/${flowId}/signed-pdf`,
-      nextSigner: nextSigner || null,
-    });
-  } catch (e) {
-    console.error("POST /flows/:flowId/upload-signed-pdf error:", e);
-    return res.status(500).json({ error: "server_error" });
-  }
+    console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email||signers[idx].name}`);
+    return res.json({ok:true, flowId, completed:allDone, uploadedAt:data.signedPdfUploadedAt, downloadUrl:`/flows/${flowId}/signed-pdf`, nextSigner:nextSigner||null});
+  } catch(e) { console.error("upload-signed-pdf error:",e); return res.status(500).json({error:"server_error"}); }
 });
 
-// -------------------- Graceful shutdown --------------------
-let _server = null;
+// ==================== HTTP SERVER + WEBSOCKET ====================
+const httpServer = http.createServer(app);
+const wss = new WebSocketServer({ server:httpServer, path:"/ws" });
 
+wss.on("connection", (ws, req) => {
+  let clientEmail = null;
+  ws.on("message", (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type==="auth"&&msg.token) {
+        try {
+          const decoded = jwt.verify(msg.token, JWT_SECRET);
+          clientEmail = decoded.email.toLowerCase();
+          wsRegister(clientEmail, ws);
+          ws.send(JSON.stringify({event:"auth_ok", email:clientEmail}));
+          if (pool&&DB_READY) {
+            pool.query("SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE", [clientEmail])
+              .then(r=>ws.send(JSON.stringify({event:"unread_count", count:parseInt(r.rows[0].count)})))
+              .catch(()=>{});
+          }
+          console.log(`🔌 WS auth: ${clientEmail}`);
+        } catch(e) { ws.send(JSON.stringify({event:"auth_error", message:"invalid_token"})); }
+      }
+      if (msg.type==="ping") ws.send(JSON.stringify({event:"pong"}));
+    } catch(e) {}
+  });
+  ws.on("close", () => { if (clientEmail) { wsUnregister(clientEmail, ws); console.log(`🔌 WS closed: ${clientEmail}`); } });
+  ws.on("error", (e) => console.error("WS error:", e.message));
+});
+
+// ==================== GRACEFUL SHUTDOWN ====================
 function shutdown(signal) {
-  console.log(`🧯 ${signal} received. Shutting down...`);
-  try {
-    if (_server) {
-      _server.close(() => {
-        console.log("✅ HTTP server closed.");
-        process.exit(0);
-      });
-      // force exit after 10s
-      setTimeout(() => process.exit(0), 10_000).unref();
-    } else {
-      process.exit(0);
-    }
-  } catch (e) {
-    console.error("Shutdown error:", e);
-    process.exit(1);
-  }
+  console.log(`🧯 ${signal} received.`);
+  httpServer.close(()=>{ console.log("✅ Server closed."); process.exit(0); });
+  setTimeout(()=>process.exit(0), 10_000).unref();
 }
+process.on("SIGTERM", ()=>shutdown("SIGTERM"));
+process.on("SIGINT", ()=>shutdown("SIGINT"));
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
-
-// -------------------- Start --------------------
 const PORT = process.env.PORT;
-
-if (!PORT) {
-  console.error("❌ PORT missing. Railway didn't inject PORT. Check Service Type (must be Web Service).");
-  process.exit(1);
-}
-
-_server = app.listen(Number(PORT), "0.0.0.0", () => {
-  console.log(`🚀 SemDoc+ server running on port ${PORT}`);
+if (!PORT) { console.error("❌ PORT missing."); process.exit(1); }
+httpServer.listen(Number(PORT), "0.0.0.0", () => {
+  console.log(`🚀 DocFlowAI server on port ${PORT}`);
+  console.log(`🔌 WebSocket ready at ws://0.0.0.0:${PORT}/ws`);
   initDbWithRetry();
 });
