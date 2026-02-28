@@ -80,12 +80,13 @@
       font-size:.72rem;outline:none;box-sizing:border-box;}
     .th-filter:focus{border-color:rgba(124,92,255,.5);}
     .th-filter::placeholder{color:rgba(157,176,255,.4);}
-    .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;}
+    .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;padding:16px;}
     .modal-bg.open{display:flex;}
-    .modal{background:#0f1731;border:1px solid var(--line);border-radius:var(--radius);padding:28px;width:100%;max-width:460px;box-shadow:0 24px 64px rgba(0,0,0,.55);}
-    .modal h3{font-size:.95rem;font-weight:700;color:var(--sub);margin-bottom:18px;}
+    .modal{background:#0f1731;border:1px solid var(--line);border-radius:var(--radius);padding:28px 32px;width:100%;max-width:820px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.55);}
+    .modal h3{font-size:.95rem;font-weight:700;color:var(--sub);margin-bottom:20px;}
     .modal .frow{margin-bottom:12px;}
-    .modal-acts{margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
+    .modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;}
+    .modal-acts{margin-top:20px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:16px;}
   </style>
 </head>
 <body>
@@ -131,7 +132,7 @@
       <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
         <input id="nPhone" type="tel" placeholder="0712345678"/></div>
       <div class="frow"><label>Notificări</label>
-        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 12px;margin-top:4px;">
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:5px 12px;margin-top:4px;">
           <span style="font-size:.83rem;color:var(--sub);">🔔 În aplicație</span>
           <input type="checkbox" id="nNotifInapp" checked style="accent-color:var(--accent);justify-self:end;">
           <span style="font-size:.83rem;color:var(--sub);">✉️ Email</span>
@@ -184,30 +185,37 @@
   <div class="modal">
     <h3>✏️ Editează utilizator</h3>
     <input type="hidden" id="eId"/>
-    <div class="frow"><label>Nume și prenume</label><input id="eNume"/></div>
-    <div class="frow"><label>Funcție</label>
-        <input id="eFunctie" list="functieList" autocomplete="off"/>
+    <div class="modal-grid">
+      <!-- Coloana stânga -->
+      <div>
+        <div class="frow"><label>Nume și prenume</label><input id="eNume"/></div>
+        <div class="frow"><label>Funcție</label><input id="eFunctie" list="functieList" autocomplete="off"/></div>
+        <div class="frow"><label>Instituție</label><input id="eInstitutie" list="institutieList" autocomplete="off"/></div>
+        <div class="frow"><label>Email</label><input id="eEmail" type="email"/></div>
       </div>
-    <div class="frow"><label>Instituție</label>
-        <input id="eInstitutie" list="institutieList" autocomplete="off"/>
-      </div>
-    <div class="frow"><label>Email</label><input id="eEmail" type="email"/></div>
-    <div class="frow"><label>Rol</label>
-      <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
-    <div class="frow">
-      <label>Parolă nouă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = păstrează actuala</span></label>
-      <input id="ePwd" type="text" placeholder=""/>
-    </div>
-    <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
-      <input id="ePhone" type="tel" placeholder="0712345678"/></div>
-    <div class="frow"><label>Notificări preferate</label>
-      <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 12px;margin-top:6px;">
-        <span style="font-size:.83rem;color:var(--sub);">🔔 În aplicație</span>
-        <input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);justify-self:end;">
-        <span style="font-size:.83rem;color:var(--sub);">✉️ Email</span>
-        <input type="checkbox" id="eNotifEmail" style="accent-color:var(--accent);justify-self:end;">
-        <span style="font-size:.83rem;color:var(--sub);">📱 WhatsApp</span>
-        <input type="checkbox" id="eNotifWa" style="accent-color:#25D366;justify-self:end;">
+      <!-- Coloana dreapta -->
+      <div>
+        <div class="frow"><label>Rol</label>
+          <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select>
+        </div>
+        <div class="frow">
+          <label>Parolă nouă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = păstrează actuala</span></label>
+          <input id="ePwd" type="text" placeholder=""/>
+        </div>
+        <div class="frow">
+          <label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
+          <input id="ePhone" type="tel" placeholder="0712345678"/>
+        </div>
+        <div class="frow"><label>Notificări preferate</label>
+          <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:5px 12px;margin-top:6px;">
+            <span style="font-size:.83rem;color:var(--sub);">🔔 În aplicație</span>
+            <input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);justify-self:end;">
+            <span style="font-size:.83rem;color:var(--sub);">✉️ Email</span>
+            <input type="checkbox" id="eNotifEmail" style="accent-color:var(--accent);justify-self:end;">
+            <span style="font-size:.83rem;color:var(--sub);">📱 WhatsApp</span>
+            <input type="checkbox" id="eNotifWa" style="accent-color:#25D366;justify-self:end;">
+          </div>
+        </div>
       </div>
     </div>
     <div id="eMsg" style="margin-top:8px;"></div>
