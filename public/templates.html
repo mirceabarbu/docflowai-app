@@ -132,7 +132,7 @@
 </header>
 
 <main>
-  <h1>📋 Șabloanele <span>mele</span></h1>
+  <h1>📋 Șabloanele <span style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">mele</span></h1>
   <p class="subtitle">Configurează seturi de semnatari reutilizabili pentru fluxuri rapide.</p>
 
   <div class="create-card">
@@ -487,22 +487,27 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
 (async function loadUsers() {
   try {
     const r = await fetch('/users', {headers:{'Authorization':'Bearer '+token}});
-    if (r.ok) {
-      window._tmplUsers = await r.json();
-      // Re-populate any existing rows
-      document.querySelectorAll('.signer-row').forEach(row => {
-        const sel = row.querySelector('.s-name-sel');
-        if (sel) populateUserDropdown(sel, {});
-      });
-      // Auto-fill ÎNTOCMIT cu userul logat pe primul rand
-      const firstRow = document.querySelector('#signersBuilder .signer-row');
-      if (firstRow) {
-        const sel = firstRow.querySelector('.s-name-sel');
-        const atrib = firstRow.querySelector('.s-atrib');
-        if (sel && atrib && atrib.value === 'ÎNTOCMIT') {
-          const meUser = JSON.parse(localStorage.getItem('docflow_user')||'{}');
-          const found = window._tmplUsers.find(u=>u.email===meUser.email);
-          if (found) {
+    if (!r.ok) { console.warn('fetch /users failed:', r.status); return; }
+    window._tmplUsers = await r.json();
+    console.log('Users loaded:', window._tmplUsers.length);
+
+    // Populate existing rows
+    document.querySelectorAll('.signer-row').forEach(row => {
+      const sel = row.querySelector('.s-name-sel');
+      if (sel) populateUserDropdown(sel, {});
+    });
+
+    // Auto-fill ÎNTOCMIT pe primul rând cu userul logat
+    const firstRow = document.querySelector('#signersBuilder .signer-row');
+    if (firstRow) {
+      const atrib = firstRow.querySelector('.s-atrib');
+      if (atrib && atrib.value === 'ÎNTOCMIT') {
+        const meUser = JSON.parse(localStorage.getItem('docflow_user')||'{}');
+        const found = window._tmplUsers.find(u => u.email && meUser.email &&
+          u.email.toLowerCase() === meUser.email.toLowerCase());
+        if (found) {
+          const sel = firstRow.querySelector('.s-name-sel');
+          if (sel) {
             sel.value = found.nume||'';
             firstRow.querySelector('.s-functie').value = found.functie||'';
             firstRow.querySelector('.s-email').value = found.email||'';
