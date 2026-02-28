@@ -199,7 +199,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 // Load notifications
 async function loadNotifs() {
   try {
-    const r = await fetch('/api/notifications', { headers: { 'Authorization': 'Bearer ' + token } });
+    const r = await fetch('/api/notifications/with-status', { headers: { 'Authorization': 'Bearer ' + token } });
     if (r.status === 401 || r.status === 403) { location.href = '/login'; return; }
     if (!r.ok) throw new Error('fetch_failed');
     allNotifs = await r.json();
@@ -232,6 +232,10 @@ function timeAgo(iso) {
 function filtered() {
   if (currentFilter === 'all') return allNotifs;
   if (currentFilter === 'unread') return allNotifs.filter(n => !n.read);
+  if (currentFilter === 'YOUR_TURN') {
+    // Arata doar notificarile de semnat unde userul inca nu a semnat (status === 'current')
+    return allNotifs.filter(n => n.type === 'YOUR_TURN' && n.signer_status === 'current');
+  }
   return allNotifs.filter(n => n.type === currentFilter);
 }
 
