@@ -496,22 +496,22 @@ app.put("/admin/users/:id", async (req,res) => {
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const targetId = parseInt(req.params.id);
-  const { email,nume,functie,institutie,password,role } = req.body||{};
+  const { email,nume,functie,institutie,password,role,phone,notif_inapp,notif_email,notif_whatsapp } = req.body||{};
   const updates=[], vals=[]; let i=1;
   if (email) { updates.push(`email=$${i++}`); vals.push(email.trim().toLowerCase()); }
   if (nume!==undefined) { updates.push(`nume=$${i++}`); vals.push((nume||"").trim()); }
   if (functie!==undefined) { updates.push(`functie=$${i++}`); vals.push((functie||"").trim()); }
   if (institutie!==undefined) { updates.push(`institutie=$${i++}`); vals.push((institutie||"").trim()); }
   if (role&&["admin","user"].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
-  if (body.phone !== undefined) { updates.push(`phone=$${i++}`); vals.push((body.phone||"").trim()); }
-  if (body.notif_inapp !== undefined) { updates.push(`notif_inapp=$${i++}`); vals.push(!!body.notif_inapp); }
-  if (body.notif_email !== undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!body.notif_email); }
-  if (body.notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!body.notif_whatsapp); }
+  if (phone !== undefined) { updates.push(`phone=$${i++}`); vals.push((phone||"").trim()); }
+  if (notif_inapp !== undefined) { updates.push(`notif_inapp=$${i++}`); vals.push(!!notif_inapp); }
+  if (notif_email !== undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!notif_email); }
+  if (notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!notif_whatsapp); }
   if (password&&password.length>=4) { updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password)); updates.push(`plain_password=$${i++}`); vals.push(password); }
   if (!updates.length) return res.status(400).json({error:"nothing_to_update"});
   vals.push(targetId);
   try {
-    const { rows } = await pool.query(`UPDATE users SET ${updates.join(",")} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,plain_password,role`, vals);
+    const { rows } = await pool.query(`UPDATE users SET ${updates.join(",")} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp`, vals);
     res.json(rows[0]);
   } catch(e) {
     if (e.code==="23505") return res.status(409).json({error:"email_exists"});
