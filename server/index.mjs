@@ -493,8 +493,9 @@ app.post("/admin/users", async (req,res) => {
   const phoneVal = (phone||"").trim();
   const ni = notif_inapp!==false; const ne = !!notif_email; const nw = !!notif_whatsapp;
   try {
-    const { rows } = await pool.query(`INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,role,phone,notif_inapp,notif_email,notif_whatsapp) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp`,
-      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume||"").trim(), (functie||"").trim(), (institutie||"").trim(), compartimentVal, validRole, phoneVal, ni, ne, nw]);
+    const compartimentVal2 = (compartiment||"").trim();
+    const { rows } = await pool.query(`INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp`,
+      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume||"").trim(), (functie||"").trim(), (institutie||"").trim(), compartimentVal2, validRole, phoneVal, ni, ne, nw]);
     res.status(201).json(rows[0]);
   } catch(e) {
     if (e.code==="23505") return res.status(409).json({error:"email_exists"});
