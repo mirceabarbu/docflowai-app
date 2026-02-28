@@ -437,6 +437,11 @@ th{ color: var(--sub) !important; }
           const urlParams = new URLSearchParams(location.search);
           const fromInit = urlParams.get('fromInit') === '1';
 
+          const redirectToStatus = () => {
+            status.innerHTML = `<span style="color:#2dd4bf;">✅ Document semnat cu succes! Redirecționăm către Status...</span>`;
+            setTimeout(() => { location.href = `/?tab=status&flow=${encodeURIComponent(flow)}`; }, 2500);
+          };
+
           if (j.completed) {
             status.textContent = "";
             const completedBox = $("completedBox");
@@ -447,22 +452,13 @@ th{ color: var(--sub) !important; }
             }
             const signBox = $("signBox");
             if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-            if (fromInit) {
-              status.innerHTML = "✅ Semnat! Te redirecționăm la Status...";
-              setTimeout(() => { location.href = `/?tab=status&flow=${encodeURIComponent(flow)}`; }, 1500);
-            }
+            redirectToStatus();
           } else if (j.nextSigner) {
-            status.innerHTML = `✅ Trimis! <strong>${j.nextSigner.name || j.nextSigner.email}</strong> a fost notificat să semneze.`;
             const signBox = $("signBox");
             if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-            if (fromInit) {
-              setTimeout(() => { location.href = `/?tab=status&flow=${encodeURIComponent(flow)}`; }, 1800);
-            }
+            redirectToStatus();
           } else {
-            status.textContent = "✅ PDF semnat calificat trimis cu succes!";
-            if (fromInit) {
-              setTimeout(() => { location.href = `/?tab=status&flow=${encodeURIComponent(flow)}`; }, 1500);
-            }
+            redirectToStatus();
           }
         } catch(e) {
           status.textContent = "❌ Eroare: " + e.message;
