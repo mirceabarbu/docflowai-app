@@ -51,10 +51,9 @@
     .msg.ok{background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.28);color:#7cf0e0;}
     .msg.err{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.28);color:#ffb3b3;}
     .tbl-wrap{overflow-x:auto;}
-    table{width:100%;border-collapse:collapse;font-size:.82rem;table-layout:auto;min-width:1200px;}
-    th{text-align:left;font-size:.70rem;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    /* Lățimi coloane: auto (scroll orizontal când e nevoie) */
+    table{width:100%;border-collapse:collapse;font-size:.82rem;table-layout:auto;min-width:900px;}
+    th{text-align:left;font-size:.70rem;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);font-weight:500;white-space:nowrap;}
+    td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;white-space:nowrap;}
     tr:last-child td{border-bottom:none;}
     tr:hover td{background:rgba(255,255,255,.015);}
     .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.71rem;font-weight:700;}
@@ -78,16 +77,6 @@
     .modal h3{font-size:.95rem;font-weight:700;color:var(--sub);margin-bottom:18px;}
     .modal .frow{margin-bottom:12px;}
     .modal-acts{margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
-
-    /* Checkbox rows: text left, checkbox right */
-    .chkcol{display:flex;flex-direction:column;gap:6px;margin-top:4px;}
-    .chkrow{display:flex;align-items:center;justify-content:space-between;gap:12px;
-      font-size:.83rem;color:var(--sub);cursor:pointer;padding:4px 6px;border-radius:10px;}
-    .chkrow:hover{background:rgba(255,255,255,.04);}
-    .chkrow .left{display:flex;align-items:center;gap:8px;min-width:0;}
-    .chkrow .left .txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .chkrow input[type="checkbox"]{flex:0 0 auto;}
-
   </style>
 </head>
 <body>
@@ -133,19 +122,13 @@
       <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
         <input id="nPhone" type="tel" placeholder="0712345678"/></div>
       <div class="frow"><label>Notificări</label>
-        <div class="chkcol">
-          <label class="chkrow">
-            <span class="left"><span>🔔</span><span class="txt">În aplicație</span></span>
-            <input type="checkbox" id="nNotifInapp" checked style="accent-color:var(--accent);">
-          </label>
-          <label class="chkrow">
-            <span class="left"><span>✉️</span><span class="txt">Email</span></span>
-            <input type="checkbox" id="nNotifEmail" style="accent-color:var(--accent);">
-          </label>
-          <label class="chkrow">
-            <span class="left"><span>📱</span><span class="txt">WhatsApp</span></span>
-            <input type="checkbox" id="nNotifWa" style="accent-color:#25D366;">
-          </label>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <span>🔔 În aplicație</span><input type="checkbox" id="nNotifInapp" checked style="accent-color:var(--accent);flex-shrink:0;"></label>
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <span>✉️ Email</span><input type="checkbox" id="nNotifEmail" style="accent-color:var(--accent);flex-shrink:0;"></label>
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <span>📱 WhatsApp</span><input type="checkbox" id="nNotifWa" style="accent-color:#25D366;flex-shrink:0;"></label>
         </div>
       </div>
     </div>
@@ -209,19 +192,13 @@
     <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
       <input id="ePhone" type="tel" placeholder="0712345678"/></div>
     <div class="frow"><label>Notificări preferate</label>
-      <div class="chkcol" style="margin-top:6px;">
-        <label class="chkrow">
-          <span class="left"><span>🔔</span><span class="txt">În aplicație</span></span>
-          <input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);">
-        </label>
-        <label class="chkrow">
-          <span class="left"><span>✉️</span><span class="txt">Email</span></span>
-          <input type="checkbox" id="eNotifEmail" style="accent-color:var(--accent);">
-        </label>
-        <label class="chkrow">
-          <span class="left"><span>📱</span><span class="txt">WhatsApp</span></span>
-          <input type="checkbox" id="eNotifWa" style="accent-color:#25D366;">
-        </label>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+          <span>🔔 În aplicație</span><input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);flex-shrink:0;"></label>
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+          <span>✉️ Email</span><input type="checkbox" id="eNotifEmail" style="accent-color:var(--accent);flex-shrink:0;"></label>
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+          <span>📱 WhatsApp</span><input type="checkbox" id="eNotifWa" style="accent-color:#25D366;flex-shrink:0;"></label>
       </div>
     </div>
     <div id="eMsg" style="margin-top:8px;"></div>
@@ -316,7 +293,7 @@ async function loadUsers(){
     $("cnt").textContent="("+users.length+")";
     const el=$("tbl");
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
-    el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col style="width:80px"/><col style="width:80px"/><col/><col/><col/><col/></colgroup><thead>
+    el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead>
       <tr>
         <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Email</th><th>Tel.</th><th>Notif.</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
       </tr>
