@@ -76,7 +76,7 @@
     .th-filter::placeholder{color:rgba(157,176,255,.4);}
     .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;}
     .modal-bg.open{display:flex;}
-    .modal{background:#0f1731;border:1px solid var(--line);border-radius:var(--radius);padding:28px;width:100%;max-width:460px;box-shadow:0 24px 64px rgba(0,0,0,.55);}
+    .modal{background:#0f1731;border:1px solid var(--line);border-radius:var(--radius);padding:32px;width:100%;max-width:920px;box-shadow:0 24px 64px rgba(0,0,0,.55);}
     .modal h3{font-size:.95rem;font-weight:700;color:var(--sub);margin-bottom:18px;}
     .modal .frow{margin-bottom:12px;}
     .modal-acts{margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
@@ -316,8 +316,8 @@ async function loadUsers(){
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fNume"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fFunctie"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fInstitutie"/></th>
-        <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fEmail"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fCompartiment"/></th>
+        <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fEmail"/></th>
         <th></th><th></th>
         <th></th>
         <th><select class="th-filter" onchange="filterUsers()" id="fRol" style="padding:4px 6px;">
