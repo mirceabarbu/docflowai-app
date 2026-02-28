@@ -165,6 +165,7 @@ async function initDbOnce() {
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_inapp BOOLEAN NOT NULL DEFAULT TRUE",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_email BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_whatsapp BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS compartiment TEXT NOT NULL DEFAULT ''",  // nou
   ];
   for (const sql of alterCols) await pool.query(sql).catch(() => {});
   const { rows: uc } = await pool.query("SELECT COUNT(*) FROM users");
@@ -469,7 +470,7 @@ app.get("/users", async (req,res) => {
     rows = q.rows;
   } else {
     // Institutie goala — returneaza toti userii (fallback pentru admin fara institutie)
-    const q = await pool.query("SELECT id,email,nume,functie,institutie FROM users ORDER BY nume ASC");
+    const q = await pool.query("SELECT id,email,nume,functie,institutie,compartiment FROM users ORDER BY nume ASC");
     rows = q.rows;
   }
   res.json(rows);
@@ -478,22 +479,22 @@ app.get("/admin/users", async (req,res) => {
   if (requireDb(res)) return;
   const user = requireAuth(req,res); if (!user) return;
   if (user.role !== "admin") return res.status(403).json({error:"forbidden"});
-  const { rows } = await pool.query("SELECT id,email,nume,functie,institutie,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at FROM users ORDER BY institutie ASC, nume ASC");
+  const { rows } = await pool.query("SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC");
   res.json(rows);
 });
 app.post("/admin/users", async (req,res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
-  const { email,password,nume,functie,institutie,role,phone,notif_inapp,notif_email,notif_whatsapp } = req.body||{};
+  const { email,password,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp } = req.body||{};
   if (!email||!nume) return res.status(400).json({error:"email_and_nume_required"});
   const validRole = ["admin","user"].includes(role)?role:"user";
   const plainPwd = password&&password.length>=4?password:generatePassword();
   const phoneVal = (phone||"").trim();
   const ni = notif_inapp!==false; const ne = !!notif_email; const nw = !!notif_whatsapp;
   try {
-    const { rows } = await pool.query(`INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,role,phone,notif_inapp,notif_email,notif_whatsapp) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id,email,nume,functie,institutie,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp`,
-      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume||"").trim(), (functie||"").trim(), (institutie||"").trim(), validRole, phoneVal, ni, ne, nw]);
+    const { rows } = await pool.query(`INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,role,phone,notif_inapp,notif_email,notif_whatsapp) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp`,
+      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume||"").trim(), (functie||"").trim(), (institutie||"").trim(), compartimentVal, validRole, phoneVal, ni, ne, nw]);
     res.status(201).json(rows[0]);
   } catch(e) {
     if (e.code==="23505") return res.status(409).json({error:"email_exists"});
@@ -505,7 +506,7 @@ app.put("/admin/users/:id", async (req,res) => {
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const targetId = parseInt(req.params.id);
-  const { email,nume,functie,institutie,password,role,phone,notif_inapp,notif_email,notif_whatsapp } = req.body||{};
+  const { email,nume,functie,institutie,compartiment,password,role,phone,notif_inapp,notif_email,notif_whatsapp } = req.body||{};
   const updates=[], vals=[]; let i=1;
   if (email) { updates.push(`email=$${i++}`); vals.push(email.trim().toLowerCase()); }
   if (nume!==undefined) { updates.push(`nume=$${i++}`); vals.push((nume||"").trim()); }
@@ -516,6 +517,7 @@ app.put("/admin/users/:id", async (req,res) => {
   if (notif_inapp !== undefined) { updates.push(`notif_inapp=$${i++}`); vals.push(!!notif_inapp); }
   if (notif_email !== undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!notif_email); }
   if (notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!notif_whatsapp); }
+  if (compartiment !== undefined) { updates.push(`compartiment=$${i++}`); vals.push((compartiment||"").trim()); }
   if (password&&password.length>=4) { updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password)); updates.push(`plain_password=$${i++}`); vals.push(password); }
   if (!updates.length) return res.status(400).json({error:"nothing_to_update"});
   vals.push(targetId);
