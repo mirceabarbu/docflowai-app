@@ -420,7 +420,9 @@ function buildCard(t,idx) {
   const actions = t.isOwner ? `
     <button class="btn-sm" onclick='openEdit(${JSON.stringify(t)})'>✏️ Editează</button>
     <button class="btn-sm" onclick="toggleShared(${t.id},${t.shared})">${t.shared?'🔒 Fă privat':'🏢 Share'}</button>
-    <button class="btn-sm danger" onclick="deleteTemplate(${t.id},'${esc(t.name)}')">🗑 Șterge</button>` : '';
+    <button class="btn-sm danger" onclick="deleteTemplate(${t.id},'${esc(t.name)}')">🗑 Șterge</button>
+    <button class="btn-sm" onclick="copyTemplate(${t.id})">📋 Copiază</button>`
+  : `<button class="btn-sm success" onclick="copyTemplate(${t.id})">📋 Copiază ca al meu</button>`;
   div.innerHTML=`
     <div class="tmpl-name">${esc(t.name)} ${badge}</div>
     <div class="tmpl-meta">${(t.signers||[]).length} semnatari · ${dt}</div>
@@ -475,6 +477,25 @@ async function deleteTemplate(id,name) {
     const r=await fetch('/api/templates/'+id,{method:'DELETE',headers:hdrs()});
     if(!r.ok) throw new Error(); loadTemplates();
   } catch(e){alert('Eroare la ștergere.');}
+}
+
+async function copyTemplate(id) {
+  const t = allTemplates.find(x=>x.id===id);
+  if (!t) return;
+  const newName = t.isOwner
+    ? (prompt('Nume pentru copie:', t.name + ' (copie)') || null)
+    : (prompt('Salvează ca șablon privat al tău. Nume:', t.name) || null);
+  if (!newName) return;
+  try {
+    const r = await fetch('/api/templates', {method:'POST', headers:hdrs(), body:JSON.stringify({
+      name: newName.trim(),
+      signers: t.signers,
+      shared: false  // întotdeauna privat
+    })});
+    if (!r.ok) throw new Error();
+    showMsg('createMsg', '✅ Șablon copiat ca privat!', false);
+    loadTemplates();
+  } catch(e) { alert('Eroare la copiere.'); }
 }
 
 function showMsg(id,txt,err) {
