@@ -219,6 +219,20 @@ app.post("/api/notifications/read-all", async (req,res) => {
     res.json({ok:true});
   } catch(e) { res.status(500).json({error:"server_error"}); }
 });
+// GET /api/my-signer-token/:flowId — returneaza token-ul de semnare pentru userul curent
+app.get("/api/my-signer-token/:flowId", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res);
+  if (!actor) return;
+  try {
+    const data = await getFlowData(req.params.flowId);
+    if (!data) return res.status(404).json({error:"not_found"});
+    const signer = (data.signers||[]).find(s=>(s.email||"").toLowerCase()===actor.email.toLowerCase());
+    if (!signer) return res.status(403).json({error:"not_a_signer"});
+    res.json({ token: signer.token, flowId: req.params.flowId, status: signer.status });
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
 app.delete("/api/notifications/:id", async (req,res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req,res);
@@ -429,14 +443,15 @@ const createFlow = async (req,res) => {
     };
     await saveFlow(flowId, data);
 
-    // Notificare in-app pentru primul semnatar
     const first = data.signers.find(s=>s.status==="current");
-    if (first?.email) {
+    // Daca initiatorul e primul semnatar (INTOCMIT), nu trimite notificare - il redirectionam direct
+    const initIsSigner = first && first.email.toLowerCase() === initEmail.toLowerCase();
+    if (first?.email && !initIsSigner) {
       await notify({ userEmail:first.email, flowId, type:"YOUR_TURN",
         title:"Document de semnat",
-        message:`${initName} te-a adăugat ca semnatar pe documentul „${docName}". Intră în aplicație pentru a semna.` });
+        message:`${initName} te-a adăugat ca semnatar pe documentul „${data.docName}". Intră în aplicație pentru a semna.` });
     }
-    return res.json({ok:true, flowId, firstSignerEmail:first?.email||null});
+    return res.json({ok:true, flowId, firstSignerEmail:first?.email||null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null});
   } catch(e) { console.error("POST /flows error:",e); return res.status(500).json({error:"server_error"}); }
 };
 app.post("/flows", createFlow);
