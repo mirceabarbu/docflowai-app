@@ -678,6 +678,7 @@ const createFlow = async (req,res) => {
       order: Number(s.order||idx+1),
       rol: String(s.rol||s.atribut||"").trim(),
       functie: String(s.functie||"").trim(),
+      compartiment: String(s.compartiment||"").trim(),
       name: String(s.name||"").trim(),
       email: String(s.email||"").trim(),
       token: String(s.token||crypto.randomBytes(16).toString("hex")),
@@ -743,7 +744,15 @@ const getFlowHandler = async (req,res) => {
     if (requireDb(res)) return;
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({error:"not_found"});
-    return res.json(stripPdfB64(data));
+    // Enrich signers with functie+compartiment from DB if missing
+    const { rows: uRows } = await pool.query("SELECT email,functie,compartiment FROM users");
+    const uMap = {};
+    uRows.forEach(u => { uMap[(u.email||"").toLowerCase()] = u; });
+    const enriched = {...data, signers:(data.signers||[]).map(s=>{
+      const u = uMap[(s.email||"").toLowerCase()]||{};
+      return {...s, functie:s.functie||u.functie||"", compartiment:s.compartiment||u.compartiment||""};
+    })};
+    return res.json(stripPdfB64(enriched));
   } catch(e) { return res.status(500).json({error:"server_error"}); }
 };
 app.get("/flows/:flowId", getFlowHandler);
