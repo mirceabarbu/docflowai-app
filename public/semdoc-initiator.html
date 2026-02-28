@@ -39,7 +39,7 @@ body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9ee
       a { color: #a9c2ff; }
       .hidden { display:none; }
       tr.drag-over td { background: rgba(124,92,255,.18) !important; }
-      .statusBox { white-space: pre-wrap; background: rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08); padding:10px; border-radius:12px; }
+      .statusBox { background: rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08); padding:14px 16px; border-radius:12px; }
     
 
 /* ===== DocFlowAI Theme (from landing index.html) + UI polish ===== */
@@ -1176,12 +1176,12 @@ th{ color: var(--sub) !important; }
           })();
 
           $("statusContent").innerHTML = `
-            <div style="margin-bottom:10px;">
+            <div style="margin-bottom:8px;">
               <div style="font-weight:700;font-size:.95rem;margin-bottom:3px;">${esc2(j.docName)}${j.hasSignedPdf?' <span style="color:#7cf0e0;font-size:.8rem;">✅ PDF semnat disponibil</span>':''}</div>
               <div style="font-size:.78rem;color:var(--muted);">Inițiator: <strong style="color:var(--sub);">${esc2(j.initName||j.initEmail)}</strong> &nbsp;·&nbsp; Actualizat: ${updatedNice}</div>
             </div>
-            <div style="margin-bottom:14px;">
-              <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Semnatari</div>
+            <div style="margin-bottom:8px;">
+              <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Semnatari</div>
               ${signerHtml}
             </div>
             <div>
