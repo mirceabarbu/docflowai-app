@@ -243,16 +243,16 @@ th{ color: var(--sub) !important; }
             </div>
 
             <div class="col-12" id="signersSection" style="position:relative;">
-              <div id="signersMask" style="display:none; position:absolute; inset:0; background:rgba(10,14,30,.55); border-radius:12px; z-index:10; display:flex; align-items:center; justify-content:center;">
+              <div id="signersMask" style="display:none; position:absolute; inset:0; background:rgba(10,14,30,.55); border-radius:12px; z-index:10; align-items:center; justify-content:center;">
                 <span style="color:#a0b0d0; font-size:.95em; background:rgba(20,28,50,.9); padding:10px 20px; border-radius:8px; border:1px solid rgba(120,160,255,.3);">📎 Încarcă mai întâi PDF-ul</span>
               </div>
-              <div class="row" style="justify-content: space-between;">
-
+              <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
                 <div class="row">
                   <button id="btnAdd" class="btn secondary" type="button">+ Adaugă rând</button>
                   <button id="btnDefaults" class="btn secondary" type="button">Roluri implicite</button>
                   <button id="btnFromTemplate" class="btn secondary" type="button" style="background:rgba(45,212,191,.1);border-color:rgba(45,212,191,.3);color:#2dd4bf;">📋 Din șablon</button>
                 </div>
+                <span id="pdfRequiredHint" style="display:none; color:#a0b0d0; font-size:.85em; background:rgba(20,28,50,.9); padding:7px 16px; border-radius:8px; border:1px solid rgba(120,160,255,.3);">📎 Încarcă mai întâi PDF-ul</span>
               </div>
             </div>
 
@@ -354,6 +354,7 @@ th{ color: var(--sub) !important; }
         // Maschează zona semnatarilor până la încărcarea PDF-ului
         const mask = $("signersMask");
         if (mask) mask.style.display = hasPdf ? "none" : "flex";
+        const pdfHint = $("pdfRequiredHint"); if (pdfHint) pdfHint.style.display = hasPdf ? "none" : "inline-block";
 
         const btnAdd = $("btnAdd");
         const btnDef = $("btnDefaults");

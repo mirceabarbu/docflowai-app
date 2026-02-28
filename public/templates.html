@@ -132,7 +132,7 @@
 </header>
 
 <main>
-  <h1>📋 Șabloane <span>mele</span></h1>
+  <h1>📋 Șabloanele <span>mele</span></h1>
   <p class="subtitle">Configurează seturi de semnatari reutilizabili pentru fluxuri rapide.</p>
 
   <div class="create-card">
@@ -211,8 +211,20 @@ function logout() { localStorage.removeItem('docflow_token'); localStorage.remov
 function hdrs() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-const ATRIBUTE = ['ÎNTOCMIT','VERIFICAT','AVIZAT','APROBAT','LUAT LA CUNOȘTINȚĂ','SEMNAT'];
+const ATRIBUTE = [
+  'ÎNTOCMIT','VERIFICAT','VIZAT','AVIZAT','APROBAT',
+  'VIZĂ CFPP','VIZĂ JURIDICĂ','VIZĂ TEHNICĂ','VIZĂ ECONOMICĂ',
+  'CONTROLAT','CERTIFICAT','CONTRASEMNAT','ÎNSUȘIT','ASUMAT',
+  'SEMNAT','LUAT LA CUNOȘTINȚĂ','ÎNREGISTRAT','CONFIRMAT','__alt__'
+];
 let signerCounter = 0;
+
+function buildAtribOptions(selected) {
+  return ATRIBUTE.map(a => {
+    const label = a === '__alt__' ? 'Alt atribut...' : a;
+    return `<option value="${a}"${a===selected?' selected':''}>${label}</option>`;
+  }).join('');
+}
 
 function addSignerRow(target='create', data={}) {
   const cid = target === 'edit' ? 'editSignersBuilder' : 'signersBuilder';
@@ -220,11 +232,18 @@ function addSignerRow(target='create', data={}) {
   const id = ++signerCounter;
   const div = document.createElement('div');
   div.className = 'signer-row'; div.dataset.id = id; div.draggable = true;
+  const selectedAtrib = data.atribut || 'ÎNTOCMIT';
   div.innerHTML = `
-    <select class="s-atrib">${ATRIBUTE.map(a=>`<option value="${a}"${a===(data.atribut||'ÎNTOCMIT')?' selected':''}>${a}</option>`).join('')}</select>
-    <input type="text" class="s-functie" placeholder="Funcție" value="${esc(data.functie||'')}"/>
-    <input type="text" class="s-name" placeholder="Nume și prenume" value="${esc(data.name||'')}"/>
-    <input type="email" class="s-email" placeholder="Email" value="${esc(data.email||'')}"/>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <select class="s-atrib">${buildAtribOptions(selectedAtrib)}</select>
+      <input class="s-atrib-custom" type="text" placeholder="Scrie atributul..." style="display:${selectedAtrib==='__alt__'?'block':'none'};font-size:.8rem;padding:6px 8px;" value="${selectedAtrib==='__alt__'?esc(data.atributCustom||''):''}"/>
+    </div>
+    <input type="text" class="s-functie" placeholder="Funcție (auto)" value="${esc(data.functie||'')}" readonly style="opacity:.75;cursor:default;background:rgba(255,255,255,.02);"/>
+    <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
+      <select class="s-name-sel" style="width:100%;"><option value="">— Alege utilizator —</option></select>
+      <input type="text" class="s-name-custom" placeholder="Sau scrie manual" value="${esc(data.name||'')}" style="font-size:.8rem;padding:6px 8px;display:none;"/>
+    </div>
+    <input type="email" class="s-email" placeholder="Email (auto)" value="${esc(data.email||'')}" readonly style="opacity:.75;cursor:default;background:rgba(255,255,255,.02);"/>
     <button class="btn-del-row" onclick="this.closest('.signer-row').remove()" title="Șterge">✕</button>`;
   div.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain',id); div.classList.add('dragging'); });
   div.addEventListener('dragend', ()=>div.classList.remove('dragging'));
@@ -233,16 +252,104 @@ function addSignerRow(target='create', data={}) {
   div.addEventListener('drop', e=>{ e.preventDefault(); div.classList.remove('drag-over');
     const from = container.querySelector(`[data-id="${e.dataTransfer.getData('text/plain')}"]`);
     if (from && from!==div) container.insertBefore(from, div); });
+
+  // Atrib custom toggle
+  const atribSel = div.querySelector('.s-atrib');
+  const atribCustom = div.querySelector('.s-atrib-custom');
+  atribSel.addEventListener('change', () => {
+    atribCustom.style.display = atribSel.value === '__alt__' ? 'block' : 'none';
+  });
+
+  // User dropdown → autofill functie + email
+  const nameSel = div.querySelector('.s-name-sel');
+  const nameCustom = div.querySelector('.s-name-custom');
+  const functieIn = div.querySelector('.s-functie');
+  const emailIn = div.querySelector('.s-email');
+
+  // Populate with users
+  if (window._tmplUsers) populateUserDropdown(nameSel, data);
+
+  nameSel.addEventListener('change', () => {
+    if (nameSel.value === '__manual__') {
+      nameCustom.style.display = 'block'; nameSel.style.display = 'none';
+      functieIn.value = ''; emailIn.value = '';
+      functieIn.removeAttribute('readonly'); emailIn.removeAttribute('readonly');
+      functieIn.style.opacity='1'; functieIn.style.cursor='text';
+      emailIn.style.opacity='1'; emailIn.style.cursor='text';
+      return;
+    }
+    const user = (window._tmplUsers||[]).find(u=>u.nume===nameSel.value);
+    if (user) {
+      functieIn.value = user.functie || '';
+      emailIn.value = user.email || '';
+    } else {
+      functieIn.value=''; emailIn.value='';
+    }
+  });
+
+  // Auto-select ÎNTOCMIT cu userul logat
+  if ((selectedAtrib === 'ÎNTOCMIT') && !data.name) {
+    const me = JSON.parse(localStorage.getItem('docflow_user')||'{}');
+    if (me.email && window._tmplUsers) {
+      const myUser = window._tmplUsers.find(u=>u.email===me.email);
+      if (myUser) {
+        nameSel.value = myUser.nume;
+        functieIn.value = myUser.functie||'';
+        emailIn.value = myUser.email||'';
+      }
+    }
+  }
+
   container.appendChild(div);
 }
 
+function populateUserDropdown(sel, data={}) {
+  // Pastreaza optiunile existente, adauga userii
+  const existing = sel.options[0];
+  while (sel.options.length > 1) sel.remove(1);
+  (window._tmplUsers||[]).forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.nume||'';
+    opt.dataset.email = u.email||'';
+    opt.dataset.functie = u.functie||'';
+    opt.textContent = (u.nume||u.email)+(u.functie?' — '+u.functie:'');
+    sel.appendChild(opt);
+  });
+  // Optiune scriere manuala
+  const manualOpt = document.createElement('option');
+  manualOpt.value = '__manual__'; manualOpt.textContent = '✏️ Scrie manual...';
+  sel.appendChild(manualOpt);
+  // Pre-selectare
+  if (data.name) {
+    const found = Array.from(sel.options).find(o=>o.value===data.name);
+    if (found) { sel.value = data.name; }
+    else {
+      // Manual mode
+      sel.style.display='none';
+      const nameCustom = sel.closest('.signer-row')?.querySelector('.s-name-custom');
+      if (nameCustom) { nameCustom.style.display='block'; nameCustom.value=data.name||''; }
+    }
+  }
+}
+
 function getSigners(cid) {
-  return Array.from($(cid).querySelectorAll('.signer-row')).map(r=>({
-    atribut: r.querySelector('.s-atrib').value,
-    functie: r.querySelector('.s-functie').value.trim(),
-    name: r.querySelector('.s-name').value.trim(),
-    email: r.querySelector('.s-email').value.trim().toLowerCase(),
-  }));
+  return Array.from($(cid).querySelectorAll('.signer-row')).map(r=>{
+    const atribSel = r.querySelector('.s-atrib');
+    const atrib = atribSel.value === '__alt__'
+      ? (r.querySelector('.s-atrib-custom')?.value?.trim() || 'ALT ATRIBUT')
+      : atribSel.value;
+    const nameSel = r.querySelector('.s-name-sel');
+    const nameCustom = r.querySelector('.s-name-custom');
+    const name = (nameSel && nameSel.style.display!=='none')
+      ? nameSel.value.trim()
+      : (nameCustom?.value?.trim() || '');
+    return {
+      atribut: atrib,
+      functie: r.querySelector('.s-functie').value.trim(),
+      name,
+      email: r.querySelector('.s-email').value.trim().toLowerCase(),
+    };
+  });
 }
 
 addSignerRow(); // start with one row
@@ -376,6 +483,36 @@ function showMsg(id,txt,err) {
 }
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
+// Fetch users for dropdowns
+(async function loadUsers() {
+  try {
+    const r = await fetch('/users', {headers:{'Authorization':'Bearer '+token}});
+    if (r.ok) {
+      window._tmplUsers = await r.json();
+      // Re-populate any existing rows
+      document.querySelectorAll('.signer-row').forEach(row => {
+        const sel = row.querySelector('.s-name-sel');
+        if (sel) populateUserDropdown(sel, {});
+      });
+      // Auto-fill ÎNTOCMIT cu userul logat pe primul rand
+      const firstRow = document.querySelector('#signersBuilder .signer-row');
+      if (firstRow) {
+        const sel = firstRow.querySelector('.s-name-sel');
+        const atrib = firstRow.querySelector('.s-atrib');
+        if (sel && atrib && atrib.value === 'ÎNTOCMIT') {
+          const meUser = JSON.parse(localStorage.getItem('docflow_user')||'{}');
+          const found = window._tmplUsers.find(u=>u.email===meUser.email);
+          if (found) {
+            sel.value = found.nume||'';
+            firstRow.querySelector('.s-functie').value = found.functie||'';
+            firstRow.querySelector('.s-email').value = found.email||'';
+          }
+        }
+      }
+    }
+  } catch(e) { console.warn('Nu s-au putut incarca userii:', e); }
+})();
+
 loadTemplates();
 </script>
 <script src="/notif-widget.js"></script>
