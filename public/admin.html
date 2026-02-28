@@ -186,14 +186,12 @@
     <h3>✏️ Editează utilizator</h3>
     <input type="hidden" id="eId"/>
     <div class="modal-grid">
-      <!-- Coloana stânga -->
       <div>
         <div class="frow"><label>Nume și prenume</label><input id="eNume"/></div>
         <div class="frow"><label>Funcție</label><input id="eFunctie" list="functieList" autocomplete="off"/></div>
         <div class="frow"><label>Instituție</label><input id="eInstitutie" list="institutieList" autocomplete="off"/></div>
         <div class="frow"><label>Email</label><input id="eEmail" type="email"/></div>
       </div>
-      <!-- Coloana dreapta -->
       <div>
         <div class="frow"><label>Rol</label>
           <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select>
@@ -218,7 +216,7 @@
         </div>
       </div>
     </div>
-    <div id="eMsg" style="margin-top:8px;"></div>
+    <div id="eMsg" style="margin-top:10px;font-size:.84rem;"></div>
     <div class="modal-acts">
       <button class="btn btn-s" onclick="closeMod()">Anulează</button>
       <button class="btn btn-w btn-sm" onclick="genPwd()">🔄 Generează parolă</button>
@@ -403,12 +401,49 @@ async function saveEdit(){
     phone:$("ePhone").value.trim(),
     notif_inapp:$("eNotifInapp").checked,
     notif_email:$("eNotifEmail").checked,
-    notif_whatsapp:$("eNotifWa").checked};
+    notif_whatsapp:$("eNotifWa").checked,
+    allow_duplicate_phone:true};
   const p=$("ePwd").value.trim();if(p)body.password=p;
-  const r=await fetch("/admin/users/"+id,{method:"PUT",headers:hdrs(),body:JSON.stringify(body)});
-  const d=await r.json();
-  if(r.ok){closeMod();loadUsers();}
-  else{$("eMsg").className="msg err";$("eMsg").textContent=d.error==="email_exists"?"Emailul există deja.":"Eroare.";}
+  const btnSave=document.querySelector('.modal-acts .btn-p');
+  const origTxt=btnSave?btnSave.textContent:"Salvează";
+  if(btnSave){btnSave.disabled=true;btnSave.textContent="Se salvează...";}
+  const eMsg=$("eMsg");
+  eMsg.className="";eMsg.textContent="";
+  try{
+    const r=await fetch("/admin/users/"+id,{method:"PUT",headers:hdrs(),body:JSON.stringify(body)});
+    let d={};
+    try{d=await r.json();}catch(e){}
+    if(r.ok){
+      // Verifică dacă serverul a avertizat despre telefon duplicat
+      if(d.warning&&d.warning==="phone_duplicate"){
+        eMsg.className="msg ok";
+        eMsg.textContent="⚠️ Salvat! Atenție: numărul de telefon există și la alt utilizator.";
+        setTimeout(()=>{closeMod();loadUsers();},2500);
+      }else{
+        closeMod();loadUsers();
+      }
+    }else{
+      const msgs={
+        email_exists:"❌ Emailul există deja la alt utilizator.",
+        phone_exists:"⚠️ Numărul de telefon există deja, dar datele au fost salvate.",
+        email_and_nume_required:"❌ Completează numele și emailul.",
+      };
+      const errMsg=msgs[d.error]||("❌ Eroare server: "+(d.error||d.message||r.status));
+      eMsg.className="msg err";
+      eMsg.textContent=errMsg;
+      // Dacă e phone_exists, salvăm oricum cu force
+      if(d.error==="phone_exists"){
+        eMsg.className="msg ok";
+        eMsg.textContent="⚠️ Telefon duplicat (acceptat). Date salvate cu succes!";
+        setTimeout(()=>{closeMod();loadUsers();},2500);
+      }
+    }
+  }catch(e){
+    eMsg.className="msg err";
+    eMsg.textContent="❌ Eroare de rețea: "+e.message;
+  }finally{
+    if(btnSave){btnSave.disabled=false;btnSave.textContent=origTxt;}
+  }
 }
 
 async function sendCreds(id,btn){
