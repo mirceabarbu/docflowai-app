@@ -26,6 +26,73 @@ app.get("/", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.
 app.get("/login", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "login.html")));
 app.get("/admin", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "admin.html")));
 app.get("/notifications", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "notifications.html")));
+app.get("/templates", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "templates.html")));
+
+// ==================== TEMPLATE API ====================
+
+// GET /api/templates — sabloanele userului + cele shared din institutie
+app.get("/api/templates", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  try {
+    const { rows: uRows } = await pool.query("SELECT institutie FROM users WHERE email=$1", [actor.email.toLowerCase()]);
+    const institutie = uRows[0]?.institutie || "";
+    const { rows } = await pool.query(
+      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='')
+       ORDER BY user_email=$1 DESC, name ASC`,
+      [actor.email.toLowerCase(), institutie]
+    );
+    res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
+// POST /api/templates — creeaza sablon nou
+app.post("/api/templates", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  const { name, signers, shared } = req.body||{};
+  if (!name||!name.trim()) return res.status(400).json({error:"name_required"});
+  if (!Array.isArray(signers)||signers.length===0) return res.status(400).json({error:"signers_required"});
+  try {
+    const { rows: uRows } = await pool.query("SELECT institutie FROM users WHERE email=$1", [actor.email.toLowerCase()]);
+    const institutie = uRows[0]?.institutie || "";
+    const { rows } = await pool.query(
+      `INSERT INTO templates (user_email,institutie,name,signers,shared) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared]
+    );
+    res.status(201).json({ ...rows[0], isOwner: true });
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
+// PUT /api/templates/:id — actualizeaza sablon
+app.put("/api/templates/:id", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  const { name, signers, shared } = req.body||{};
+  try {
+    const { rows } = await pool.query(
+      `UPDATE templates SET name=$1,signers=$2,shared=$3,updated_at=NOW()
+       WHERE id=$4 AND user_email=$5 RETURNING *`,
+      [name?.trim(), JSON.stringify(signers), !!shared, parseInt(req.params.id), actor.email.toLowerCase()]
+    );
+    if (!rows.length) return res.status(404).json({error:"not_found_or_not_owner"});
+    res.json({ ...rows[0], isOwner: true });
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
+// DELETE /api/templates/:id — sterge sablon (doar owner)
+app.delete("/api/templates/:id", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  try {
+    const { rowCount } = await pool.query(
+      "DELETE FROM templates WHERE id=$1 AND user_email=$2",
+      [parseInt(req.params.id), actor.email.toLowerCase()]
+    );
+    if (!rowCount) return res.status(404).json({error:"not_found_or_not_owner"});
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
 
 function publicBaseUrl(req) {
   const envBase = process.env.PUBLIC_BASE_URL;
@@ -107,6 +174,20 @@ async function initDbOnce() {
       ["admin@docflowai.ro", hashPassword(pwd), pwd, "Administrator", "Administrator sistem"]);
     console.log("✅ Admin user created");
   }
+  // Tabel sabloane
+  await pool.query(`CREATE TABLE IF NOT EXISTS templates (
+    id SERIAL PRIMARY KEY,
+    user_email TEXT NOT NULL,
+    institutie TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    signers JSONB NOT NULL DEFAULT '[]',
+    shared BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tmpl_user ON templates(user_email, created_at DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tmpl_inst ON templates(institutie, shared) WHERE shared=TRUE;`);
+
   DB_READY = true; DB_LAST_ERROR = null;
   console.log("✅ DB ready (flows + users + notifications)");
 }
@@ -456,6 +537,81 @@ app.delete("/admin/users/:id", async (req,res) => {
 });
 
 // ==================== HEALTH / SMTP ====================
+// ==================== TEMPLATES API ====================
+
+app.get("/templates", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "templates.html")));
+
+// GET /api/templates — sabloanele userului + shared din institutie
+app.get("/api/templates", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows: uRows } = await pool.query("SELECT institutie FROM users WHERE id=$1", [actor.userId]);
+    const inst = uRows[0]?.institutie || "";
+    const { rows } = await pool.query(
+      `SELECT * FROM templates
+       WHERE user_email=$1 OR (shared=TRUE AND institutie=$2)
+       ORDER BY user_email=$1 DESC, name ASC`,
+      [actor.email.toLowerCase(), inst]
+    );
+    res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
+// POST /api/templates — creeaza sablon nou
+app.post("/api/templates", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { name, signers, shared } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({error:"name_required"});
+  if (!Array.isArray(signers) || !signers.length) return res.status(400).json({error:"signers_required"});
+  try {
+    const { rows: uRows } = await pool.query("SELECT institutie FROM users WHERE id=$1", [actor.userId]);
+    const inst = uRows[0]?.institutie || "";
+    const { rows } = await pool.query(
+      `INSERT INTO templates (user_email, institutie, name, signers, shared)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [actor.email.toLowerCase(), inst, name.trim(), JSON.stringify(signers), !!shared]
+    );
+    res.status(201).json({ ...rows[0], isOwner: true });
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
+// PUT /api/templates/:id — actualizeaza sablon (doar owner)
+app.put("/api/templates/:id", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { name, signers, shared } = req.body || {};
+  try {
+    const { rows: existing } = await pool.query("SELECT * FROM templates WHERE id=$1", [req.params.id]);
+    if (!existing[0]) return res.status(404).json({error:"not_found"});
+    if (existing[0].user_email !== actor.email.toLowerCase()) return res.status(403).json({error:"forbidden"});
+    const updates = [], vals = []; let i = 1;
+    if (name) { updates.push(`name=$${i++}`); vals.push(name.trim()); }
+    if (signers) { updates.push(`signers=$${i++}`); vals.push(JSON.stringify(signers)); }
+    if (shared !== undefined) { updates.push(`shared=$${i++}`); vals.push(!!shared); }
+    updates.push(`updated_at=NOW()`);
+    vals.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE templates SET ${updates.join(",")} WHERE id=$${i} RETURNING *`, vals
+    );
+    res.json({ ...rows[0], isOwner: true });
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
+// DELETE /api/templates/:id — sterge sablon (doar owner)
+app.delete("/api/templates/:id", async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows } = await pool.query("SELECT user_email FROM templates WHERE id=$1", [req.params.id]);
+    if (!rows[0]) return res.status(404).json({error:"not_found"});
+    if (rows[0].user_email !== actor.email.toLowerCase()) return res.status(403).json({error:"forbidden"});
+    await pool.query("DELETE FROM templates WHERE id=$1", [req.params.id]);
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
 // WhatsApp test endpoints
 app.get("/wa-test", async (req,res) => {
   const result = await verifyWhatsApp();
