@@ -460,9 +460,18 @@ app.get("/my-flows/:flowId/download", async (req,res) => {
 app.get("/users", async (req,res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req,res); if (!actor) return;
-  const r2 = await pool.query("SELECT institutie FROM users WHERE id=$1", [actor.userId]);
-  const inst = r2.rows[0]?.institutie||"";
-  const { rows } = await pool.query("SELECT id,email,nume,functie,institutie FROM users WHERE institutie=$1 AND role!='admin' ORDER BY nume ASC", [inst]);
+  const r2 = await pool.query("SELECT institutie FROM users WHERE email=$1", [actor.email.toLowerCase()]);
+  const inst = (r2.rows[0]?.institutie||"").trim();
+  let rows;
+  if (inst) {
+    // Returneaza toti userii din aceeasi institutie (inclusiv admini)
+    const q = await pool.query("SELECT id,email,nume,functie,institutie FROM users WHERE institutie=$1 ORDER BY nume ASC", [inst]);
+    rows = q.rows;
+  } else {
+    // Institutie goala — returneaza toti userii (fallback pentru admin fara institutie)
+    const q = await pool.query("SELECT id,email,nume,functie,institutie FROM users ORDER BY nume ASC");
+    rows = q.rows;
+  }
   res.json(rows);
 });
 app.get("/admin/users", async (req,res) => {
