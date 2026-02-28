@@ -893,13 +893,11 @@ th{ color: var(--sub) !important; }
             const dt2 = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">(' + new Date(s.signedAt).toLocaleDateString("ro-RO") + ')</span>' : "";
             const refuzLabel = s.status === "refused" ? ` <span style="color:#ffaaaa;font-size:.75rem;font-weight:700;">REFUZAT${s.refuseReason ? ': ' + s.refuseReason : ''}</span>` : "";
             const infoExtra = [s.functie, s.compartiment].filter(Boolean).join(' · ');
-            return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">
-              <span style="font-size:.9rem;">${icon}</span>
-              <span style="font-size:.82rem;color:var(--sub);min-width:100px;">${s.rol || ""}</span>
-              <div style="display:flex;flex-direction:column;gap:1px;">
-                <span style="font-size:.84rem;font-weight:600;">${s.name || "—"}</span>
-                ${infoExtra ? `<span style="font-size:.75rem;color:var(--muted);">${infoExtra}</span>` : ''}
-              </div>
+            return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+              <span>${icon}</span>
+              <span style="font-size:.82rem;color:var(--muted);min-width:100px;">${s.rol || ""}</span>
+              <span style="font-size:.83rem;font-weight:600;">${s.name || "—"}</span>
+              ${infoExtra ? `<span style="font-size:.78rem;color:var(--muted);">— ${infoExtra}</span>` : ''}
               ${dt2}${refuzLabel}
             </div>`;
           }).join("");
