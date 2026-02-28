@@ -275,11 +275,21 @@ function renderList() {
       if (e.target.classList.contains('notif-del')) return;
       markRead(n.id);
       if (n.flow_id) {
-        const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
-        // Dacă e YOUR_TURN și avem un flow_id, mergi la semnare
-        // altfel mergi la initiator cu fluxurile mele
         if (n.type === 'YOUR_TURN') {
-          location.href = '/?highlight=' + encodeURIComponent(n.flow_id);
+          // Fetch token de semnare si redirectioneaza direct la pagina de semnare
+          try {
+            const r = await fetch(`/api/my-signer-token/${encodeURIComponent(n.flow_id)}`, {
+              headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (r.ok) {
+              const d = await r.json();
+              location.href = `/semdoc-signer.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
+            } else {
+              location.href = '/';
+            }
+          } catch(e) {
+            location.href = '/';
+          }
         } else {
           location.href = '/';
         }

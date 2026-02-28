@@ -923,8 +923,16 @@ th{ color: var(--sub) !important; }
           localStorage.setItem("lastFlowId", j.flowId);
           localStorage.setItem("lastInitName", $("initName").value.trim());
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
-          // Show success, hide signerLink (mail already sent to first signer)
-          $("createResult").innerHTML = `✅ Emailul a fost trimis primului semnatar.`;
+
+          // Daca initiatorul e primul semnatar (INTOCMIT) → redirect instant la semnare
+          if (j.initIsSigner && j.signerToken) {
+            $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar — te redirecționăm la semnare...</strong>`;
+            setTimeout(() => {
+              location.href = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(j.signerToken)}&fromInit=1`;
+            }, 1200);
+          } else {
+            $("createResult").innerHTML = `✅ Notificare trimisă primului semnatar.`;
+          }
 
         } catch (e) {
           $("createResult").textContent = `❌ Eroare: ${String(e.message || e)}`;
