@@ -174,6 +174,7 @@ th{ color: var(--sub) !important; }
         <button id="tabInit" class="tabbtn active" type="button">Inițiere</button>
         <button id="tabStatus" class="tabbtn" type="button">Status</button>
         <button id="tabFluxuri" class="tabbtn" type="button">📂 Fluxuri mele</button>
+        <a href="/templates" class="tabbtn" style="text-decoration:none;">📋 Șabloane</a>
       </div>
       <div id="userBar" style="display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
     </header>
@@ -250,6 +251,7 @@ th{ color: var(--sub) !important; }
                 <div class="row">
                   <button id="btnAdd" class="btn secondary" type="button">+ Adaugă rând</button>
                   <button id="btnDefaults" class="btn secondary" type="button">Roluri implicite</button>
+                  <button id="btnFromTemplate" class="btn secondary" type="button" style="background:rgba(45,212,191,.1);border-color:rgba(45,212,191,.3);color:#2dd4bf;">📋 Din șablon</button>
                 </div>
               </div>
             </div>
@@ -663,6 +665,101 @@ th{ color: var(--sub) !important; }
       $("btnAdd").addEventListener("click", () => { tbody.appendChild(signerRowTemplate()); updateIntocmitVisibility(); validateForm(); });
       $("btnDefaults").addEventListener("click", setDefaults);
 
+      // ── Sablon: aplica din sessionStorage sau deschide picker ──────────────
+      function applyTemplate(t) {
+        tbody.innerHTML = "";
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        (t.signers || []).forEach(s => {
+          // Daca semnatarul din sablon este userul curent (match pe nume), pre-completeaza cu datele lui
+          const isMe = u.nume && s.name && s.name.toLowerCase().includes(u.nume.toLowerCase().split(" ")[0].toLowerCase());
+          tbody.appendChild(signerRowTemplate({
+            rol: s.rol || "",
+            functie: s.functie || "",
+            name: s.name || "",
+            email: isMe ? (u.email || s.email || "") : (s.email || ""),
+          }));
+        });
+        updateIntocmitVisibility();
+        validateForm();
+      }
+
+      // Verifica daca exista sablon din /templates via sessionStorage (ambele chei suportate)
+      const pendingTemplate = sessionStorage.getItem("applyTemplate") || sessionStorage.getItem("docflow_template");
+      if (pendingTemplate) {
+        try {
+          const t = JSON.parse(pendingTemplate);
+          sessionStorage.removeItem("applyTemplate");
+          sessionStorage.removeItem("docflow_template");
+          setTimeout(() => applyTemplate(t), 300);
+        } catch(e) {}
+      }
+
+      // Buton "Din sablon" — deschide picker inline
+      const btnFromTmpl = $("btnFromTemplate");
+      if (btnFromTmpl) {
+        btnFromTmpl.addEventListener("click", async () => {
+          // Fetch sabloane disponibile
+          btnFromTmpl.disabled = true;
+          btnFromTmpl.textContent = "⏳ Se încarcă...";
+          try {
+            const r = await fetch("/api/templates", { headers: { "Authorization": "Bearer " + localStorage.getItem("docflow_token") } });
+            if (!r.ok) throw new Error("fetch_failed");
+            const templates = await r.json();
+            btnFromTmpl.disabled = false;
+            btnFromTmpl.textContent = "📋 Din șablon";
+            if (!templates.length) {
+              alert("Nu ai șabloane salvate. Accesează pagina Șabloane pentru a crea unul.");
+              return;
+            }
+            showTemplatePicker(templates);
+          } catch(e) {
+            btnFromTmpl.disabled = false;
+            btnFromTmpl.textContent = "📋 Din șablon";
+            alert("Eroare la încărcarea șabloanelor.");
+          }
+        });
+      }
+
+      function showTemplatePicker(templates) {
+        // Creaza picker modal simplu
+        const existing = document.getElementById("tmplPickerOverlay");
+        if (existing) existing.remove();
+        const overlay = document.createElement("div");
+        overlay.id = "tmplPickerOverlay";
+        overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px;";
+        const box = document.createElement("div");
+        box.style.cssText = "background:#0d1628;border:1px solid rgba(124,92,255,.3);border-radius:16px;padding:24px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.6);";
+        box.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <strong style="font-size:1rem;color:#eaf0ff;">📋 Alege un șablon</strong>
+            <button onclick="document.getElementById('tmplPickerOverlay').remove()" style="background:none;border:none;color:#9db0ff;cursor:pointer;font-size:1.2rem;">✕</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${templates.map(t => `
+              <div onclick="applyPickedTemplate(${t.id})" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .15s;"
+                onmouseover="this.style.borderColor='rgba(124,92,255,.4)';this.style.background='rgba(124,92,255,.08)'"
+                onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.background='rgba(255,255,255,.04)'">
+                <div style="font-weight:700;color:#eaf0ff;margin-bottom:4px;">${t.name}</div>
+                <div style="font-size:.78rem;color:#9db0ff;">${(t.signers||[]).map(s => s.rol || s.name).filter(Boolean).join(' → ')}</div>
+                ${!t.isOwner ? '<div style="font-size:.72rem;color:#2dd4bf;margin-top:3px;">🏛️ Partajat în instituție</div>' : ''}
+              </div>`).join("")}
+          </div>
+          <div style="margin-top:14px;text-align:right;">
+            <a href="/templates" style="font-size:.8rem;color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.1);padding:6px 12px;border-radius:8px;">⚙ Gestionează șabloane</a>
+          </div>`;
+        overlay.appendChild(box);
+        overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+        document.body.appendChild(overlay);
+        // Expune functia global
+        window._pickerTemplates = templates;
+      }
+
+      window.applyPickedTemplate = function(id) {
+        const t = (window._pickerTemplates || []).find(x => x.id === id);
+        if (t) applyTemplate(t);
+        const overlay = document.getElementById("tmplPickerOverlay");
+        if (overlay) overlay.remove();
+      };
 
       // -------------------- Fluxuri mele --------------------
       function fluxNou() {
