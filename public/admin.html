@@ -127,6 +127,20 @@
         <select id="nRole"><option value="user">User</option><option value="admin">Admin</option></select>
       </div>
     </div>
+    <div class="grid3" style="margin-top:12px;">
+      <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
+        <input id="nPhone" type="tel" placeholder="0712345678"/></div>
+      <div class="frow"><label>Notificări</label>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <input type="checkbox" id="nNotifInapp" checked style="accent-color:var(--accent);"> 🔔 În aplicație</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <input type="checkbox" id="nNotifEmail" style="accent-color:var(--accent);"> ✉️ Email</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <input type="checkbox" id="nNotifWa" style="accent-color:#25D366;"> 📱 WhatsApp</label>
+        </div>
+      </div>
+    </div>
     <div class="actions">
       <button class="btn btn-p" id="btnCreate" onclick="createUser()">Crează utilizatorul</button>
       <div id="createMsg"></div>
@@ -184,6 +198,18 @@
       <label>Parolă nouă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = păstrează actuala</span></label>
       <input id="ePwd" type="text" placeholder=""/>
     </div>
+    <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
+      <input id="ePhone" type="tel" placeholder="0712345678"/></div>
+    <div class="frow"><label>Notificări preferate</label>
+      <div style="display:flex;gap:16px;margin-top:6px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+          <input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);"> 🔔 În aplicație</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+          <input type="checkbox" id="eNotifEmail" style="accent-color:var(--accent);"> ✉️ Email</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+          <input type="checkbox" id="eNotifWa" style="accent-color:#25D366;"> 📱 WhatsApp</label>
+      </div>
+    </div>
     <div id="eMsg" style="margin-top:8px;"></div>
     <div class="modal-acts">
       <button class="btn btn-s" onclick="closeMod()">Anulează</button>
@@ -220,11 +246,18 @@ function renderUsers(users){
     tr.id="row_"+u.id;
     const dt=u.created_at?new Date(u.created_at).toLocaleDateString("ro-RO"):"—";
     const isMe=u.email===me.email;
+    const notifIcons = [
+      u.notif_inapp!==false ? '🔔' : '',
+      u.notif_email ? '✉️' : '',
+      u.notif_whatsapp ? '📱' : ''
+    ].filter(Boolean).join(' ');
     tr.innerHTML=`
       <td><strong>${esc(u.nume||"—")}</strong>${isMe?' <span style="font-size:.71rem;color:var(--muted)">(tu)</span>':''}</td>
       <td style="color:var(--sub)">${esc(u.functie||"—")}</td>
       <td style="color:var(--muted);font-size:.82rem">${esc(u.institutie||"—")}</td>
       <td style="color:var(--muted);font-size:.82rem">${esc(u.email)}</td>
+      <td style="color:var(--muted);font-size:.82rem">${esc(u.phone||"—")}</td>
+      <td style="font-size:.9rem;text-align:center">${notifIcons||'—'}</td>
       <td style="overflow:visible;white-space:nowrap;"><span class="pwd">${esc(u.plain_password||"—")}</span></td>
       <td><span class="pill ${u.role}">${u.role}</span></td>
       <td style="color:var(--muted);font-size:.79rem">${dt}</td>
@@ -269,15 +302,16 @@ async function loadUsers(){
     $("cnt").textContent="("+users.length+")";
     const el=$("tbl");
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
-    el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead>
+    el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col style="width:80px"/><col style="width:80px"/><col/><col/><col/><col/></colgroup><thead>
       <tr>
-        <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Email</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
+        <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Email</th><th>Tel.</th><th>Notif.</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
       </tr>
       <tr id="filterRow">
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fNume"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fFunctie"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fInstitutie"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fEmail"/></th>
+        <th></th><th></th>
         <th></th>
         <th><select class="th-filter" onchange="filterUsers()" id="fRol" style="padding:4px 6px;">
           <option value="">Toate</option>
@@ -310,7 +344,11 @@ async function createUser(){
   if(!nume||!email){showMsg("createMsg","Numele și emailul sunt obligatorii.",true);return;}
   const btn=$("btnCreate");btn.disabled=true;btn.textContent="Se creează...";
   const institutie=$("nInstitutie").value.trim();
-  const r=await fetch("/admin/users",{method:"POST",headers:hdrs(),body:JSON.stringify({email,password:pwd,nume,functie,institutie,role})});
+  const phone=$("nPhone").value.trim();
+  const notif_inapp=$("nNotifInapp").checked;
+  const notif_email=$("nNotifEmail").checked;
+  const notif_whatsapp=$("nNotifWa").checked;
+  const r=await fetch("/admin/users",{method:"POST",headers:hdrs(),body:JSON.stringify({email,password:pwd,nume,functie,institutie,role,phone,notif_inapp,notif_email,notif_whatsapp})});
   const d=await r.json();
   btn.disabled=false;btn.textContent="Crează utilizatorul";
   if(r.ok){
@@ -334,6 +372,10 @@ function openEdit(u){
   editU=u;$("eId").value=u.id;$("eNume").value=u.nume||"";$("eFunctie").value=u.functie||"";
   $("eInstitutie").value=u.institutie||"";
   $("eEmail").value=u.email;$("eRole").value=u.role;$("ePwd").value="";
+  $("ePhone").value=u.phone||"";
+  $("eNotifInapp").checked=u.notif_inapp!==false;
+  $("eNotifEmail").checked=!!u.notif_email;
+  $("eNotifWa").checked=!!u.notif_whatsapp;
   $("eMsg").textContent="";$("eMsg").className="";
   $("mBg").classList.add("open");$("eNume").focus();
 }
@@ -349,7 +391,11 @@ async function genPwd(){
 async function saveEdit(){
   const id=$("eId").value;
   const body={email:$("eEmail").value.trim(),nume:$("eNume").value.trim(),
-    functie:$("eFunctie").value.trim(),institutie:$("eInstitutie").value.trim(),role:$("eRole").value};
+    functie:$("eFunctie").value.trim(),institutie:$("eInstitutie").value.trim(),role:$("eRole").value,
+    phone:$("ePhone").value.trim(),
+    notif_inapp:$("eNotifInapp").checked,
+    notif_email:$("eNotifEmail").checked,
+    notif_whatsapp:$("eNotifWa").checked};
   const p=$("ePwd").value.trim();if(p)body.password=p;
   const r=await fetch("/admin/users/"+id,{method:"PUT",headers:hdrs(),body:JSON.stringify(body)});
   const d=await r.json();
