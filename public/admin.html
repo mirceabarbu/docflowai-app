@@ -271,6 +271,8 @@ function renderPage(){
   pageUsers.forEach(u=>{
     const tr=document.createElement("tr");
     tr.id="row_"+u.id;
+    tr.style.cursor="pointer";
+    tr.addEventListener("dblclick", ()=>openEdit(u));
     const dt=u.created_at?new Date(u.created_at).toLocaleDateString("ro-RO"):"—";
     const isMe=u.email===me.email;
     const notifIcons = [
