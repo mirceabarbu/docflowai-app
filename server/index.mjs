@@ -102,6 +102,7 @@ function publicBaseUrl(req) {
   return `${proto}://${host}`;
 }
 function newFlowId() { return "FLOW_" + crypto.randomBytes(8).toString("hex").toUpperCase(); }
+function sha256Hex(buffer) { return crypto.createHash("sha256").update(buffer).digest("hex"); }
 function generatePassword() {
   const chars = "abcdefghjkmnpqrstuvwxyz23456789";
   let p = "";
@@ -729,14 +730,35 @@ app.get("/flows/:flowId/signed-pdf", async (req,res) => {
 app.get("/flows/:flowId/pdf", async (req,res) => {
   try {
     if (requireDb(res)) return;
+    // Verifică token semnatar
+    const signerToken = req.query.token;
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({error:"not_found"});
     const b64 = data.pdfB64;
     if (!b64||typeof b64!=="string") return res.status(404).json({error:"pdf_missing"});
     const raw = b64.includes("base64,")?b64.split("base64,")[1]:b64;
+    const pdfBuf = Buffer.from(raw,"base64");
+    const preHash = sha256Hex(pdfBuf);
+
+    // Emite uploadToken JWT dacă există signer token valid
+    if (signerToken) {
+      const signers = Array.isArray(data.signers)?data.signers:[];
+      const signer = signers.find(s=>s.token===signerToken);
+      if (signer) {
+        const uploadToken = jwt.sign(
+          { flowId: req.params.flowId, signerToken, preHash },
+          JWT_SECRET,
+          { expiresIn: "4h" }
+        );
+        res.setHeader("X-Docflow-Prehash", preHash);
+        res.setHeader("X-Docflow-UploadToken", uploadToken);
+        res.setHeader("Access-Control-Expose-Headers", "X-Docflow-Prehash, X-Docflow-UploadToken");
+      }
+    }
+
     res.setHeader("Content-Type","application/pdf");
     res.setHeader("Content-Disposition",`inline; filename="${(data.docName||"document").replace(/[^\w\-]+/g,"_")}.pdf"`);
-    return res.status(200).send(Buffer.from(raw,"base64"));
+    return res.status(200).send(pdfBuf);
   } catch(e) { return res.status(500).json({error:"server_error"}); }
 });
 const getFlowHandler = async (req,res) => {
@@ -856,7 +878,7 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
   try {
     if (requireDb(res)) return;
     const { flowId } = req.params;
-    const { token, signedPdfB64, signerName } = req.body||{};
+    const { token, signedPdfB64, signerName, uploadToken } = req.body||{};
     if (!token) return res.status(400).json({error:"token_missing"});
     if (!signedPdfB64||typeof signedPdfB64!=="string") return res.status(400).json({error:"signedPdfB64_missing"});
     if (signedPdfB64.length>40*1024*1024) return res.status(413).json({error:"pdf_too_large_max_30mb"});
@@ -865,6 +887,26 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
     const signers = Array.isArray(data.signers)?data.signers:[];
     const idx = signers.findIndex(s=>s.token===token);
     if (idx===-1) return res.status(400).json({error:"invalid_token"});
+
+    // Verificare uploadToken (Nivel 1 securitate)
+    if (uploadToken) {
+      try {
+        const payload = jwt.verify(uploadToken, JWT_SECRET);
+        if (payload.flowId !== flowId) return res.status(403).json({error:"upload_token_flow_mismatch"});
+        if (payload.signerToken !== token) return res.status(403).json({error:"upload_token_signer_mismatch"});
+        // Verifică că PDF-ul curent din flow corespunde cu ce a descărcat semnatarul
+        const b64curr = data.pdfB64||"";
+        const rawCurr = b64curr.includes("base64,")?b64curr.split("base64,")[1]:b64curr;
+        const currentHash = rawCurr ? sha256Hex(Buffer.from(rawCurr,"base64")) : null;
+        if (currentHash && payload.preHash !== currentHash) {
+          console.warn(`⚠️  preHash mismatch for flow ${flowId} signer ${signers[idx].email} — expected ${currentHash} got ${payload.preHash}`);
+          return res.status(409).json({error:"pdf_version_mismatch", message:"PDF-ul semnat nu corespunde versiunii descărcate din sistem."});
+        }
+        signers[idx].uploadVerified = true;
+      } catch(jwtErr) {
+        return res.status(403).json({error:"upload_token_invalid", message:"Token de upload invalid sau expirat."});
+      }
+    }
     if (signers[idx].status!=="signed") return res.status(409).json({error:"signer_not_signed_yet"});
     if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions=[];
     data.signedPdfVersions.push({uploadedAt:new Date().toISOString(), uploadedBy:signers[idx].email||signers[idx].name||"unknown", signerIndex:idx, signerName:signerName||signers[idx].name||""});
