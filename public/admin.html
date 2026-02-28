@@ -182,26 +182,26 @@
   <div class="modal">
     <h3>✏️ Editează utilizator</h3>
     <input type="hidden" id="eId"/>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
       <div>
         <div class="frow"><label>Nume și prenume</label><input id="eNume"/></div>
         <div class="frow"><label>Funcție</label><input id="eFunctie" list="functieList" autocomplete="off"/></div>
         <div class="frow"><label>Instituție</label><input id="eInstitutie" list="institutieList" autocomplete="off"/></div>
-        <div class="frow"><label>Compartiment</label>
-          <input id="eCompartiment" list="compartimentList" autocomplete="off"/>
-        </div>
+      </div>
+      <div>
+        <div class="frow"><label>Compartiment</label><input id="eCompartiment" list="compartimentList" autocomplete="off"/></div>
         <div class="frow"><label>Email</label><input id="eEmail" type="email"/></div>
         <div class="frow"><label>Rol</label>
           <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
-        <div class="frow">
-          <label>Parolă nouă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = păstrează actuala</span></label>
-          <input id="ePwd" type="text" placeholder=""/>
-        </div>
       </div>
       <div>
+        <div class="frow">
+          <label>Parolă nouă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = păstrează</span></label>
+          <input id="ePwd" type="text" placeholder=""/>
+        </div>
         <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
           <input id="ePhone" type="tel" placeholder="0712345678"/></div>
-        <div class="frow" style="margin-top:8px;"><label>Notificări preferate</label>
+        <div class="frow"><label>Notificări preferate</label>
           <div style="display:flex;flex-direction:column;gap:7px;margin-top:6px;">
             <label style="display:flex;align-items:center;justify-content:space-between;font-size:.83rem;color:var(--sub);cursor:pointer;">
               🔔 În aplicație <input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);width:15px;height:15px;"></label>
