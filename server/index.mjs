@@ -217,6 +217,34 @@ app.get("/api/notifications", async (req,res) => {
     res.json(rows);
   } catch(e) { res.status(500).json({error:"server_error"}); }
 });
+// GET /api/notifications/with-status — notificari imbogatite cu statusul curent al semnatorului
+app.get("/api/notifications/with-status", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res);
+  if (!actor) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM notifications WHERE user_email=$1 ORDER BY created_at DESC LIMIT 100`,
+      [actor.email.toLowerCase()]
+    );
+    // Pentru notificarile YOUR_TURN, verifica daca userul a semnat deja in flow
+    const enriched = await Promise.all(rows.map(async (n) => {
+      if (n.type === 'YOUR_TURN' && n.flow_id) {
+        try {
+          const fRow = await pool.query("SELECT data FROM flows WHERE id=$1", [n.flow_id]);
+          const flowData = fRow.rows[0]?.data;
+          if (flowData) {
+            const signer = (flowData.signers||[]).find(s=>(s.email||"").toLowerCase()===actor.email.toLowerCase());
+            return { ...n, signer_status: signer?.status || null };
+          }
+        } catch(e) {}
+      }
+      return { ...n, signer_status: null };
+    }));
+    res.json(enriched);
+  } catch(e) { res.status(500).json({error:"server_error"}); }
+});
+
 app.get("/api/notifications/unread-count", async (req,res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req,res);
@@ -387,17 +415,17 @@ app.put("/admin/users/:id", async (req,res) => {
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const targetId = parseInt(req.params.id);
-  const { email,nume,functie,institutie,password,role,phone,notif_inapp,notif_email,notif_whatsapp } = req.body||{};
+  const { email,nume,functie,institutie,password,role } = req.body||{};
   const updates=[], vals=[]; let i=1;
   if (email) { updates.push(`email=$${i++}`); vals.push(email.trim().toLowerCase()); }
   if (nume!==undefined) { updates.push(`nume=$${i++}`); vals.push((nume||"").trim()); }
   if (functie!==undefined) { updates.push(`functie=$${i++}`); vals.push((functie||"").trim()); }
   if (institutie!==undefined) { updates.push(`institutie=$${i++}`); vals.push((institutie||"").trim()); }
   if (role&&["admin","user"].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
-  if (phone !== undefined) { updates.push(`phone=$${i++}`); vals.push((phone||"").trim()); }
-  if (notif_inapp !== undefined) { updates.push(`notif_inapp=$${i++}`); vals.push(!!notif_inapp); }
-  if (notif_email !== undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!notif_email); }
-  if (notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!notif_whatsapp); }
+  if (body.phone !== undefined) { updates.push(`phone=$${i++}`); vals.push((body.phone||"").trim()); }
+  if (body.notif_inapp !== undefined) { updates.push(`notif_inapp=$${i++}`); vals.push(!!body.notif_inapp); }
+  if (body.notif_email !== undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!body.notif_email); }
+  if (body.notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!body.notif_whatsapp); }
   if (password&&password.length>=4) { updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password)); updates.push(`plain_password=$${i++}`); vals.push(password); }
   if (!updates.length) return res.status(400).json({error:"nothing_to_update"});
   vals.push(targetId);
