@@ -106,7 +106,7 @@
 
   <div class="card">
     <div class="card-title">➕ Utilizator nou</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+    <div class="grid3">
       <div class="frow"><label>Nume și prenume *</label><input id="nNume" placeholder="Popescu Ion"/></div>
       <div class="frow"><label>Funcție</label>
         <input id="nFunctie" list="functieList" placeholder="Șef serviciu" autocomplete="off"/>
@@ -114,14 +114,10 @@
       </div>
       <div class="frow"><label>Email (login) *</label><input id="nEmail" type="email" placeholder="ion@primarie.ro"/></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-top:12px;">
+    <div class="grid3" style="margin-top:12px;">
       <div class="frow"><label>Instituție *</label>
         <input id="nInstitutie" list="institutieList" placeholder="Ex: Primăria Cluj" autocomplete="off"/>
         <datalist id="institutieList"></datalist>
-      </div>
-      <div class="frow"><label>Compartiment</label>
-        <input id="nCompartiment" list="compartimentList" placeholder="Ex: Serviciul Financiar" autocomplete="off"/>
-        <datalist id="compartimentList"></datalist>
       </div>
       <div class="frow">
         <label>Parolă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = auto</span></label>
@@ -131,20 +127,21 @@
         <select id="nRole"><option value="user">User</option><option value="admin">Admin</option></select>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
-      <div></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
-          <input id="nPhone" type="tel" placeholder="0712345678"/></div>
-        <div class="frow"><label>Notificări</label>
-          <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
-            <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
-              <input type="checkbox" id="nNotifInapp" checked style="accent-color:var(--accent);"> 🔔 În aplicație</label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
-              <input type="checkbox" id="nNotifEmail" style="accent-color:var(--accent);"> ✉️ Email</label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
-              <input type="checkbox" id="nNotifWa" style="accent-color:#25D366;"> 📱 WhatsApp</label>
-          </div>
+    <div class="grid3" style="margin-top:12px;">
+      <div class="frow"><label>Compartiment</label>
+        <input id="nCompartiment" list="compartimentList" placeholder="Ex: Serviciul Financiar" autocomplete="off"/>
+        <datalist id="compartimentList"></datalist>
+      </div>
+      <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
+        <input id="nPhone" type="tel" placeholder="0712345678"/></div>
+      <div class="frow"><label>Notificări</label>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <input type="checkbox" id="nNotifInapp" checked style="accent-color:var(--accent);"> 🔔 În aplicație</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <input type="checkbox" id="nNotifEmail" style="accent-color:var(--accent);"> ✉️ Email</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <input type="checkbox" id="nNotifWa" style="accent-color:#25D366;"> 📱 WhatsApp</label>
         </div>
       </div>
     </div>
