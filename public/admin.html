@@ -51,6 +51,12 @@
     .msg.ok{background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.28);color:#7cf0e0;}
     .msg.err{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.28);color:#ffb3b3;}
     .tbl-wrap{overflow-x:auto;}
+    .pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;flex-wrap:wrap;}
+    .pg-btn{padding:5px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--sub);font-size:.82rem;cursor:pointer;}
+    .pg-btn:hover{background:rgba(124,92,255,.2);border-color:var(--accent);}
+    .pg-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700;}
+    .pg-btn:disabled{opacity:.35;cursor:default;}
+    .pg-info{font-size:.8rem;color:var(--muted);margin:0 6px;}
     table{width:100%;border-collapse:collapse;font-size:.82rem;table-layout:fixed;}
     th{text-align:left;font-size:.70rem;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -239,12 +245,30 @@ function showMsg(id,txt,err){
   setTimeout(()=>{el.textContent="";el.className="";},5000);
 }
 
+const PAGE_SIZE = 10;
+let _currentPage = 1;
+let _filteredUsers = [];
+
 function renderUsers(users){
+  _filteredUsers = users;
+  _currentPage = 1;
+  renderPage();
+}
+
+function renderPage(){
   const tb=$("tb");
   if(!tb)return;
-  if(!users.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted);">Niciun rezultat.</td></tr>';return;}
+  const users = _filteredUsers;
+  const total = users.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if(_currentPage > totalPages) _currentPage = totalPages;
+  const start = (_currentPage-1)*PAGE_SIZE;
+  const pageUsers = users.slice(start, start+PAGE_SIZE);
+
+  if(!pageUsers.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--muted);">Niciun rezultat.</td></tr>';
+    renderPagination(0,1,1);return;}
   tb.innerHTML="";
-  users.forEach(u=>{
+  pageUsers.forEach(u=>{
     const tr=document.createElement("tr");
     tr.id="row_"+u.id;
     const dt=u.created_at?new Date(u.created_at).toLocaleDateString("ro-RO"):"—";
@@ -274,6 +298,32 @@ function renderUsers(users){
       </td>`;
     tb.appendChild(tr);
   });
+  renderPagination(total, _currentPage, totalPages);
+}
+
+function renderPagination(total, current, totalPages){
+  let pg = $('pgBar');
+  if(!pg){ pg=document.createElement('div'); pg.id='pgBar'; pg.className='pagination';
+    const wrap=$('tbl'); if(wrap) wrap.appendChild(pg); }
+  pg.innerHTML='';
+  if(totalPages<=1 && total<=PAGE_SIZE){return;}
+  const info=document.createElement('span'); info.className='pg-info';
+  info.textContent=`${Math.min((current-1)*PAGE_SIZE+1,total)}–${Math.min(current*PAGE_SIZE,total)} din ${total}`;
+  const prev=document.createElement('button'); prev.className='pg-btn'; prev.textContent='◀';
+  prev.disabled=current<=1; prev.onclick=()=>{_currentPage--;renderPage();};
+  pg.appendChild(prev); pg.appendChild(info);
+  for(let p=1;p<=totalPages;p++){
+    if(totalPages>7&&Math.abs(p-current)>2&&p!==1&&p!==totalPages){
+      if(p===2||p===totalPages-1){const d=document.createElement('span');d.className='pg-info';d.textContent='…';pg.appendChild(d);}
+      continue;
+    }
+    const b=document.createElement('button'); b.className='pg-btn'+(p===current?' active':'');
+    b.textContent=p; b.onclick=(pp=>()=>{_currentPage=pp;renderPage();})(p);
+    pg.appendChild(b);
+  }
+  const next=document.createElement('button'); next.className='pg-btn'; next.textContent='▶';
+  next.disabled=current>=totalPages; next.onclick=()=>{_currentPage++;renderPage();};
+  pg.appendChild(next);
 }
 
 function filterUsers(){
@@ -292,6 +342,7 @@ function filterUsers(){
     (!fC||(u.compartiment||'').toLowerCase().includes(fC))&&
     (!fR||(u.role||'').toLowerCase()===fR)
   );
+  _currentPage=1;
   renderUsers(filtered);
 }
 
