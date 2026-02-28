@@ -423,6 +423,7 @@ th{ color: var(--sub) !important; }
               token,
               signedPdfB64: signedPdfB64Data,
               signerName: currentFlow?.signers?.[signerIndex]?.name || "",
+              uploadToken: _uploadToken || undefined,
             }),
           });
           const j = await r.json().catch(() => ({}));
@@ -469,6 +470,8 @@ th{ color: var(--sub) !important; }
       // ── End Upload ──────────────────────────────────────────────────────────
 
       // ── Download PDF for signing ───────────────────────────────────────────
+      let _uploadToken = null; // Nivel 1 securitate: token emis la descărcare PDF
+
       async function downloadPdfForSigning() {
         const btn = $("btnDownloadForSigning");
         const status = $("downloadForSigningStatus");
@@ -490,13 +493,17 @@ th{ color: var(--sub) !important; }
           const prevResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
           if (prevResp.ok) {
             // Semnatar 2+: descărcare directă, fără nicio procesare
+            // Captăm uploadToken din /pdf (pentru versiunea originală)
             status.textContent = "⏳ Se descarcă PDF-ul semnat de semnatarii anteriori...";
+            const origForHash = await fetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
+            _uploadToken = origForHash.headers.get("X-Docflow-UploadToken") || null;
             pdfBlob = await prevResp.blob();
           } else if (currentFlow?.flowType === "ancore") {
             // Tip 2: ancore existente — descărcăm PDF-ul original fără modificări
             status.textContent = "⏳ Se descarcă PDF-ul original (ancore existente)...";
-            const origResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf`);
+            const origResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
             if (!origResp.ok) throw new Error("PDF original indisponibil (cod " + origResp.status + ").");
+            _uploadToken = origResp.headers.get("X-Docflow-UploadToken") || null;
             pdfBlob = await origResp.blob();
           } else {
             // Semnatar 1, tip tabel: generează cartuș pe original
