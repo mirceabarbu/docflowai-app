@@ -420,7 +420,7 @@ async function createUser(){
   if(r.ok){
     showMsg("createMsg","✅ Creat! Parolă: "+d.plain_password,false);
     window._lastCreatedId=d.id;
-    $("nNume").value=$("nFunctie").value=$("nEmail").value=$("nPwd").value=$("nInstitutie").value="";
+    $("nNume").value=$("nFunctie").value=$("nEmail").value=$("nPwd").value=$("nInstitutie").value=$("nCompartiment").value=$("nPhone").value="";
     loadUsers();
     // Întreabă dacă trimite credențiale pe email
     if(confirm("Utilizatorul a fost creat.\nTrimitem credențialele (email + parolă) pe adresa: "+email+"?")){
