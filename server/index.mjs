@@ -42,7 +42,7 @@ function generatePassword() {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
-const JWT_EXPIRES = "8h";
+const JWT_EXPIRES = "2h";
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha256").toString("hex");
