@@ -667,16 +667,51 @@ th{ color: var(--sub) !important; }
       // ── Sablon: aplica din sessionStorage sau deschide picker ──────────────
       function applyTemplate(t) {
         tbody.innerHTML = "";
-        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
         (t.signers || []).forEach(s => {
-          // Daca semnatarul din sablon este userul curent (match pe nume), pre-completeaza cu datele lui
-          const isMe = u.nume && s.name && s.name.toLowerCase().includes(u.nume.toLowerCase().split(" ")[0].toLowerCase());
-          tbody.appendChild(signerRowTemplate({
-            rol: s.rol || "",
+          const tr = signerRowTemplate({
+            rol: s.atribut || s.rol || "ÎNTOCMIT",
+            atribut: s.atribut || s.rol || "ÎNTOCMIT",
             functie: s.functie || "",
             name: s.name || "",
-            email: isMe ? (u.email || s.email || "") : (s.email || ""),
-          }));
+            email: s.email || "",
+          });
+          tbody.appendChild(tr);
+
+          // Seteaza atributul corect
+          const rolSel = tr.querySelector(".rol");
+          if (rolSel) {
+            const atrib = s.atribut || s.rol || "ÎNTOCMIT";
+            if ([...rolSel.options].some(o => o.value === atrib)) {
+              rolSel.value = atrib;
+            } else {
+              rolSel.value = "__alt__";
+              const rolCustom = tr.querySelector(".rolCustom");
+              if (rolCustom) { rolCustom.value = atrib; rolCustom.style.display = "block"; rolSel.style.display = "none"; }
+            }
+          }
+
+          // Seteaza numele in dropdown dupa ce userii sunt incarcati
+          const nameSel = tr.querySelector(".name-select");
+          const emailIn = tr.querySelector(".email");
+          const functieIn = tr.querySelector(".functie");
+          if (nameSel && s.name) {
+            // Incearca imediat
+            if ([...nameSel.options].some(o => o.value === s.name)) {
+              nameSel.value = s.name;
+            } else {
+              // Asteapta popularea dropdown-ului (max 3s)
+              const interval = setInterval(() => {
+                if ([...nameSel.options].some(o => o.value === s.name)) {
+                  nameSel.value = s.name;
+                  clearInterval(interval);
+                }
+              }, 100);
+              setTimeout(() => clearInterval(interval), 3000);
+            }
+          }
+          // Asigura functie + email
+          if (functieIn && s.functie) functieIn.value = s.functie;
+          if (emailIn && s.email) emailIn.value = s.email;
         });
         updateIntocmitVisibility();
         validateForm();
