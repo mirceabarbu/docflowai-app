@@ -94,7 +94,7 @@
     <img src="/Logo.png" alt="DocFlowAI" style="height:44px;width:auto;object-fit:contain;" />
     <span style="margin-left:10px;opacity:.55;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:#9db0ff;">Admin</span>
   </div>
-  <div class="hdr-right">
+  <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
     <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
     <a href="/" style="color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:6px 13px;border-radius:8px;font-size:.82rem;">↩ Aplicație</a>
     <button class="btn-logout" onclick="logout()">Ieși</button>
@@ -420,5 +420,6 @@ fetch("/auth/me",{headers:hdrs()})
   })
   .catch(()=>logout());
 </script>
+<script src="/notif-widget.js"></script>
 </body>
 </html>

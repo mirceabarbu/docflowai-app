@@ -169,8 +169,9 @@ th{ color: var(--sub) !important; }
   </script>
 </head>
   <body>
-    <header>
-      <img src="/Logo.png" alt="DocFlowAI" style="height:110px;width:auto;object-fit:contain;" />
+    <header style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;">
+      <img src="/Logo.png" alt="DocFlowAI" style="height:80px;width:auto;object-fit:contain;" />
+      <div id="userBar" style="display:flex;align-items:center;gap:10px;"></div>
     </header>
 
     <main>
@@ -696,5 +697,6 @@ th{ color: var(--sub) !important; }
         });
       }
     </script>
-  </body>
+  <script src="/notif-widget.js"></script>
+</body>
 </html>
