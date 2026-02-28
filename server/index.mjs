@@ -6,6 +6,7 @@ import path from "path";
 import http from "http";
 import { fileURLToPath } from "url";
 import { sendSignerEmail, verifySmtp } from "./mailer.mjs";
+import { sendWaSignRequest, sendWaCompleted, sendWaRefused, verifyWhatsApp, isWhatsAppConfigured } from "./whatsapp.mjs";
 import jwt from "jsonwebtoken";
 import { WebSocketServer } from "ws";
 
@@ -92,6 +93,11 @@ async function initDbOnce() {
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS functie TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS institutie TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE users DROP COLUMN IF EXISTS username",
+    // Campuri noi: telefon + preferinte notificari
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_inapp BOOLEAN NOT NULL DEFAULT TRUE",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_email BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_whatsapp BOOLEAN NOT NULL DEFAULT FALSE",
   ];
   for (const sql of alterCols) await pool.query(sql).catch(() => {});
   const { rows: uc } = await pool.query("SELECT COUNT(*) FROM users");
@@ -144,9 +150,10 @@ function wsPush(email, payload) {
   for (const ws of conns) { try { if (ws.readyState===1) ws.send(msg); } catch(e) {} }
 }
 
-async function notify({ userEmail, flowId=null, type, title, message }) {
+async function notify({ userEmail, flowId=null, type, title, message, waParams=null }) {
   if (!pool || !DB_READY) return;
   try {
+    // 1. Notificare in-app (intotdeauna, daca userul are notif_inapp=true sau ca fallback)
     const { rows } = await pool.query(
       `INSERT INTO notifications (user_email,flow_id,type,title,message) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
       [userEmail.toLowerCase(), flowId, type, title, message]
@@ -154,6 +161,25 @@ async function notify({ userEmail, flowId=null, type, title, message }) {
     wsPush(userEmail, { event:"notification", data:rows[0] });
     const { rows:cnt } = await pool.query("SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE", [userEmail.toLowerCase()]);
     wsPush(userEmail, { event:"unread_count", count:parseInt(cnt[0].count) });
+
+    // 2. WhatsApp — daca userul are notif_whatsapp=true si telefon completat
+    if (isWhatsAppConfigured() && waParams) {
+      try {
+        const { rows: uRows } = await pool.query(
+          "SELECT phone, notif_whatsapp FROM users WHERE email=$1", [userEmail.toLowerCase()]
+        );
+        const u = uRows[0];
+        if (u?.notif_whatsapp && u?.phone) {
+          if (type === "YOUR_TURN") {
+            await sendWaSignRequest({ phone: u.phone, signerName: waParams.signerName||"", docName: waParams.docName||"" });
+          } else if (type === "COMPLETED") {
+            await sendWaCompleted({ phone: u.phone, docName: waParams.docName||"" });
+          } else if (type === "REFUSED") {
+            await sendWaRefused({ phone: u.phone, docName: waParams.docName||"", refuserName: waParams.refuserName||"", reason: waParams.reason||"" });
+          }
+        }
+      } catch(e) { console.error("WhatsApp notify error:", e.message); }
+    }
   } catch(e) { console.error("notify() error:", e.message); }
 }
 
@@ -334,20 +360,22 @@ app.get("/admin/users", async (req,res) => {
   if (requireDb(res)) return;
   const user = requireAuth(req,res); if (!user) return;
   if (user.role !== "admin") return res.status(403).json({error:"forbidden"});
-  const { rows } = await pool.query("SELECT id,email,nume,functie,institutie,plain_password,role,created_at FROM users ORDER BY institutie ASC, nume ASC");
+  const { rows } = await pool.query("SELECT id,email,nume,functie,institutie,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at FROM users ORDER BY institutie ASC, nume ASC");
   res.json(rows);
 });
 app.post("/admin/users", async (req,res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
-  const { email,password,nume,functie,institutie,role } = req.body||{};
+  const { email,password,nume,functie,institutie,role,phone,notif_inapp,notif_email,notif_whatsapp } = req.body||{};
   if (!email||!nume) return res.status(400).json({error:"email_and_nume_required"});
   const validRole = ["admin","user"].includes(role)?role:"user";
   const plainPwd = password&&password.length>=4?password:generatePassword();
+  const phoneVal = (phone||"").trim();
+  const ni = notif_inapp!==false; const ne = !!notif_email; const nw = !!notif_whatsapp;
   try {
-    const { rows } = await pool.query(`INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,role) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,email,nume,functie,institutie,plain_password,role`,
-      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume||"").trim(), (functie||"").trim(), (institutie||"").trim(), validRole]);
+    const { rows } = await pool.query(`INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,role,phone,notif_inapp,notif_email,notif_whatsapp) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id,email,nume,functie,institutie,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp`,
+      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume||"").trim(), (functie||"").trim(), (institutie||"").trim(), validRole, phoneVal, ni, ne, nw]);
     res.status(201).json(rows[0]);
   } catch(e) {
     if (e.code==="23505") return res.status(409).json({error:"email_exists"});
@@ -366,6 +394,10 @@ app.put("/admin/users/:id", async (req,res) => {
   if (functie!==undefined) { updates.push(`functie=$${i++}`); vals.push((functie||"").trim()); }
   if (institutie!==undefined) { updates.push(`institutie=$${i++}`); vals.push((institutie||"").trim()); }
   if (role&&["admin","user"].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
+  if (body.phone !== undefined) { updates.push(`phone=$${i++}`); vals.push((body.phone||"").trim()); }
+  if (body.notif_inapp !== undefined) { updates.push(`notif_inapp=$${i++}`); vals.push(!!body.notif_inapp); }
+  if (body.notif_email !== undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!body.notif_email); }
+  if (body.notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!body.notif_whatsapp); }
   if (password&&password.length>=4) { updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password)); updates.push(`plain_password=$${i++}`); vals.push(password); }
   if (!updates.length) return res.status(400).json({error:"nothing_to_update"});
   vals.push(targetId);
@@ -396,6 +428,19 @@ app.delete("/admin/users/:id", async (req,res) => {
 });
 
 // ==================== HEALTH / SMTP ====================
+// WhatsApp test endpoints
+app.get("/wa-test", async (req,res) => {
+  const result = await verifyWhatsApp();
+  res.status(result.ok ? 200 : 500).json(result);
+});
+app.post("/wa-test", async (req,res) => {
+  const { to } = req.body||{};
+  if (!to) return res.status(400).json({error:"to (phone) missing"});
+  const { sendWaSignRequest: waTest } = await import("./whatsapp.mjs");
+  const r = await waTest({ phone:to, signerName:"Test", docName:"Document test DocFlowAI" });
+  res.status(r.ok ? 200 : 500).json(r);
+});
+
 app.get("/health", (req,res) => res.json({ok:true, service:"DocFlowAI", dbReady:DB_READY, dbLastError:DB_LAST_ERROR, wsClients:wsClients.size}));
 app.get("/smtp-test", async (req,res) => { const r=await verifySmtp(); res.status(r.ok?200:500).json(r); });
 app.post("/smtp-test", async (req,res) => {
@@ -449,7 +494,8 @@ const createFlow = async (req,res) => {
     if (first?.email && !initIsSigner) {
       await notify({ userEmail:first.email, flowId, type:"YOUR_TURN",
         title:"Document de semnat",
-        message:`${initName} te-a adăugat ca semnatar pe documentul „${data.docName}". Intră în aplicație pentru a semna.` });
+        message:`${initName} te-a adăugat ca semnatar pe documentul „${data.docName}". Intră în aplicație pentru a semna.`,
+        waParams:{ signerName:first.name||first.email, docName:data.docName } });
     }
     return res.json({ok:true, flowId, firstSignerEmail:first?.email||null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null});
   } catch(e) { console.error("POST /flows error:",e); return res.status(500).json({error:"server_error"}); }
@@ -564,7 +610,8 @@ app.post("/flows/:flowId/refuse", async (req,res) => {
     for (const r of toNotify) {
       if (!r.email||sent.has(r.email)) continue;
       sent.add(r.email);
-      await notify({userEmail:r.email, flowId, type:"REFUSED", title:"⛔ Document refuzat", message:refuseMsg});
+      await notify({userEmail:r.email, flowId, type:"REFUSED", title:"⛔ Document refuzat", message:refuseMsg,
+        waParams:{ docName:data.docName, refuserName:refuserName, reason:refuseReason }});
     }
     return res.json({ok:true, refused:true});
   } catch(e) { console.error("refuse error:",e); return res.status(500).json({error:"server_error"}); }
@@ -581,7 +628,8 @@ app.post("/flows/:flowId/resend", async (req,res) => {
     if (!current) return res.status(409).json({error:"no_current_signer"});
     if (!current.email) return res.status(400).json({error:"current_missing_email"});
     await notify({userEmail:current.email, flowId, type:"YOUR_TURN", title:"Reminder: Document de semnat",
-      message:`Ai un document în așteptare pentru semnare: „${data.docName}". Te rugăm să accesezi aplicația.`});
+      message:`Ai un document în așteptare pentru semnare: „${data.docName}". Te rugăm să accesezi aplicația.`,
+      waParams:{ signerName:current.name||current.email, docName:data.docName }});
     return res.json({ok:true, to:current.email});
   } catch(e) { return res.status(500).json({error:"server_error"}); }
 });
@@ -623,7 +671,8 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
       // Notificare completare pentru initiator
       if (data.initEmail) {
         await notify({userEmail:data.initEmail, flowId, type:"COMPLETED", title:"✅ Document semnat complet",
-          message:`Documentul „${data.docName}" a fost semnat de toți semnatarii. Îl poți descărca din secțiunea Fluxuri mele.`});
+          message:`Documentul „${data.docName}" a fost semnat de toți semnatarii. Îl poți descărca din secțiunea Fluxuri mele.`,
+          waParams:{ docName:data.docName }});
       }
     }
     await saveFlow(flowId, data);
@@ -633,7 +682,8 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
     if (nextSigner?.email) {
       nextSigner.emailSent=true; await saveFlow(flowId, data);
       await notify({userEmail:nextSigner.email, flowId, type:"YOUR_TURN", title:"Document de semnat",
-        message:`Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`});
+        message:`Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`,
+        waParams:{ signerName:nextSigner.name||nextSigner.email, docName:data.docName }});
     }
     console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email||signers[idx].name}`);
     return res.json({ok:true, flowId, completed:allDone, uploadedAt:data.signedPdfUploadedAt, downloadUrl:`/flows/${flowId}/signed-pdf`, nextSigner:nextSigner||null});
