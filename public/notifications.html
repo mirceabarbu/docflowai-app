@@ -200,13 +200,14 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 async function loadNotifs() {
   try {
     const r = await fetch('/api/notifications', { headers: { 'Authorization': 'Bearer ' + token } });
-    if (!r.ok) throw new Error('unauthorized');
+    if (r.status === 401 || r.status === 403) { location.href = '/login'; return; }
+    if (!r.ok) throw new Error('fetch_failed');
     allNotifs = await r.json();
     renderList();
     updateReadAllBtn();
   } catch(e) {
     if (e.message === 'unauthorized') { location.href = '/login'; return; }
-    $('listArea').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Eroare la încărcare</div></div>`;
+    $('listArea').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Eroare la încărcare</div><div>Încearcă să te <a href="/login" style="color:var(--accent)">reloghezi</a>.</div></div>`;
   }
 }
 
@@ -271,7 +272,7 @@ function renderList() {
       <button class="notif-del" title="Șterge" onclick="deleteNotif(event,${n.id})">✕</button>
     `;
     // Click → marchează citit + navighează (dacă e flux)
-    card.onclick = (e) => {
+    card.onclick = async (e) => {
       if (e.target.classList.contains('notif-del')) return;
       markRead(n.id);
       if (n.flow_id) {
