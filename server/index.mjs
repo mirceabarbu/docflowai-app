@@ -445,7 +445,7 @@ app.get("/my-flows", async (req,res) => {
           status:s.status, signedAt:s.signedAt, refuseReason:s.refuseReason
         };
       }),
-      hasSignedPdf:!!d.signedPdfB64, allSigned:(d.signers||[]).every(s=>s.status==="signed"),
+      hasSignedPdf:!!(d.signedPdfB64||(d.storage==="drive"&&d.driveFileLinkFinal)), allSigned:(d.signers||[]).every(s=>s.status==="signed"),
     }));
     res.json(myFlows);
   } catch(e) { res.status(500).json({error:"server_error"}); }
@@ -465,7 +465,13 @@ app.get("/my-flows/:flowId/download", async (req,res) => {
     const isInit = (d.initEmail||"").toLowerCase()===email;
     const isSigner = (d.signers||[]).some(s=>(s.email||"").toLowerCase()===email);
     if (!isInit&&!isSigner) return res.status(403).json({error:"forbidden"});
-    if (!d.signedPdfB64) return res.status(404).json({error:"no_signed_pdf"});
+    if (!d.signedPdfB64) {
+      // Arhivat în Drive — redirecționează
+      if (d.storage==="drive" && d.driveFileLinkFinal) {
+        return res.redirect(d.driveFileLinkFinal);
+      }
+      return res.status(404).json({error:"no_signed_pdf"});
+    }
     const buf = Buffer.from(d.signedPdfB64.split(",")[1]||d.signedPdfB64, "base64");
     const safeName = (d.docName||"document").replace(/[^a-zA-Z0-9_\-\.]/g,"_");
     res.setHeader("Content-Type","application/pdf");
@@ -805,7 +811,13 @@ app.get("/flows/:flowId/signed-pdf", async (req,res) => {
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({error:"not_found"});
     const b64 = data.signedPdfB64;
-    if (!b64||typeof b64!=="string") return res.status(404).json({error:"signed_pdf_missing"});
+    if (!b64||typeof b64!=="string") {
+      // Arhivat în Drive — redirecționează
+      if (data.storage==="drive" && data.driveFileLinkFinal) {
+        return res.redirect(data.driveFileLinkFinal);
+      }
+      return res.status(404).json({error:"signed_pdf_missing"});
+    }
     const raw = b64.includes("base64,")?b64.split("base64,")[1]:b64;
     res.setHeader("Content-Type","application/pdf");
     res.setHeader("Content-Disposition",`attachment; filename="${(data.docName||"document").replace(/[^\w\-]+/g,"_")}_semnat.pdf"`);
