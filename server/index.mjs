@@ -1173,6 +1173,69 @@ app.post("/flows/:flowId/refuse", async (req,res) => {
   } catch(e) { console.error("refuse error:",e); return res.status(500).json({error:"server_error"}); }
 });
 
+// Lista fluxuri pentru admin
+app.get("/admin/flows/list", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
+  try {
+    const { rows } = await pool.query("SELECT id,data,created_at FROM flows ORDER BY created_at DESC LIMIT 200");
+    const flows = rows.map(r => {
+      const d = r.data||{};
+      return {
+        flowId: d.flowId,
+        docName: d.docName,
+        initEmail: d.initEmail,
+        initName: d.initName,
+        status: d.status||"active",
+        completed: !!d.completed,
+        storage: d.storage||"db",
+        createdAt: d.createdAt||r.created_at,
+        signers: (d.signers||[]).map(s => ({
+          name: s.name, email: s.email, rol: s.rol,
+          status: s.status, tokenCreatedAt: s.tokenCreatedAt||null,
+        })),
+      };
+    });
+    return res.json(flows);
+  } catch(e) { return res.status(500).json({error:String(e.message||e)}); }
+});
+
+// Regenerare token semnatar expirat (admin only)
+app.post("/flows/:flowId/regenerate-token", async (req,res) => {
+  try {
+    if (requireDb(res)) return;
+    if (requireAdmin(req,res)) return;
+    const { flowId } = req.params;
+    const { signerEmail } = req.body||{};
+    if (!signerEmail) return res.status(400).json({error:"signerEmail_required"});
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({error:"not_found"});
+    const signers = Array.isArray(data.signers)?data.signers:[];
+    const idx = signers.findIndex(s=>(s.email||"").toLowerCase()===signerEmail.toLowerCase());
+    if (idx===-1) return res.status(404).json({error:"signer_not_found"});
+    if (signers[idx].status==="signed") return res.status(409).json({error:"already_signed", message:"Semnatarul a semnat deja, nu e nevoie de token nou."});
+    // Generează token nou
+    const newToken = crypto.randomBytes(16).toString("hex");
+    signers[idx].token = newToken;
+    signers[idx].tokenCreatedAt = new Date().toISOString();
+    data.signers = signers;
+    data.updatedAt = new Date().toISOString();
+    data.events = data.events||[];
+    data.events.push({at:new Date().toISOString(), type:"TOKEN_REGENERATED", by:"admin", signerEmail, order:signers[idx].order});
+    await saveFlow(flowId, data);
+    // Trimite notificare cu noul link
+    const newLink = makeSignerLink({params:{flowId}}, newToken);
+    await notify({userEmail:signers[idx].email, flowId, type:"YOUR_TURN",
+      title:"Link de semnare reînnoit",
+      message:`Link-ul tău de semnare pentru documentul „${data.docName}" a fost reînnoit. Accesează noul link pentru a semna.`,
+      waParams:{signerName:signers[idx].name||signers[idx].email, docName:data.docName}
+    });
+    console.log(`🔑 Token regenerat pentru ${signerEmail} pe flow ${flowId}`);
+    return res.json({ok:true, signerEmail, newLink, message:"Token regenerat și notificare trimisă."});
+  } catch(e) { console.error("regenerate-token error:", e); return res.status(500).json({error:"server_error"}); }
+});
+
 app.post("/flows/:flowId/resend", async (req,res) => {
   try {
     if (requireDb(res)) return;
