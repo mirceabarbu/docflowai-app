@@ -1162,11 +1162,20 @@ th{ color: var(--sub) !important; }
           }
 
           const nameMap = {};
+          const infoMap = {};
           if (j.initEmail) nameMap[j.initEmail] = j.initName || j.initEmail;
-          (j.signers || []).forEach(s => { if (s.email) nameMap[s.email] = s.name || s.email; });
+          (j.signers || []).forEach(s => {
+            if (s.email) {
+              nameMap[s.email] = s.name || s.email;
+              const extra = [s.functie, s.compartiment].filter(Boolean).join(' · ');
+              if (extra) infoMap[s.email] = extra;
+            }
+          });
           const evLines = (j.events || []).slice(-10).map(ev => {
             const by = ev.by || '';
-            const displayBy = nameMap[by] ? `${nameMap[by]} &lt;${by}&gt;` : esc2(by);
+            const name = nameMap[by] || esc2(by);
+            const extra = infoMap[by] ? ` <span style="color:var(--muted);font-size:.73rem;">— ${esc2(infoMap[by])}</span>` : '';
+            const displayBy = name ? `${name}${extra}` : '';
             const dt = ev.at ? new Date(ev.at).toLocaleString('ro-RO') : '';
             return `<div style="font-size:.76rem;color:var(--muted);padding:2px 0;">${dt} &nbsp;·&nbsp; <span style="color:#9db0ff;">${esc2(ev.type)}</span>${displayBy?' &nbsp;·&nbsp; '+displayBy:''}</div>`;
           }).join('');
