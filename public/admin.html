@@ -557,17 +557,23 @@ async function doArchive() {
   const msg = document.getElementById("archiveMsg");
   if (!confirm(`Arhivezi ${_archiveFlowIds.length} fluxuri în Google Drive și ștergi PDF-urile din DB? Acțiunea nu poate fi anulată.`)) return;
   btn.disabled = true;
-  btn.textContent = "⏳ Se arhivează...";
   msg.textContent = "";
+  let totalOk = 0, totalFail = 0, batchIndex = 0;
   try {
-    const r = await fetch("/admin/flows/archive", {
-      method: "POST", headers: hdrs(),
-      body: JSON.stringify({flowIds: _archiveFlowIds})
-    });
-    const j = await r.json();
-    const ok = (j.results||[]).filter(x=>x.ok).length;
-    const fail = (j.results||[]).filter(x=>!x.ok).length;
-    msg.innerHTML = `✅ Arhivate: <strong>${ok}</strong> fluxuri${fail?` &nbsp;·&nbsp; ❌ Eșuate: ${fail}`:""}`;
+    while (true) {
+      btn.textContent = `⏳ Se arhivează... (${Math.min((batchIndex+1)*10, _archiveFlowIds.length)}/${_archiveFlowIds.length})`;
+      const r = await fetch("/admin/flows/archive", {
+        method: "POST", headers: hdrs(),
+        body: JSON.stringify({flowIds: _archiveFlowIds, batchIndex})
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error||"Eroare server");
+      totalOk += (j.results||[]).filter(x=>x.ok).length;
+      totalFail += (j.results||[]).filter(x=>!x.ok).length;
+      if (!j.hasMore) break;
+      batchIndex++;
+    }
+    msg.innerHTML = `✅ Arhivate: <strong>${totalOk}</strong> fluxuri${totalFail?` &nbsp;·&nbsp; ❌ Eșuate: ${totalFail}`:""}`;
     document.getElementById("archivePreview").style.display = "none";
     _archiveFlowIds = [];
   } catch(e) { msg.textContent = "❌ " + e.message; }
