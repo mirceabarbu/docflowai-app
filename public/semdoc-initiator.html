@@ -1061,17 +1061,29 @@ th{ color: var(--sub) !important; }
           localStorage.setItem("lastInitName", $("initName").value.trim());
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
 
-          // Daca initiatorul e primul semnatar (INTOCMIT) → redirect instant la semnare
-          if (j.initIsSigner && j.signerToken) {
-            $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar — te redirecționăm la semnare...</strong>`;
-            setTimeout(() => {
-              location.href = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(j.signerToken)}&fromInit=1`;
-            }, 1200);
+          // Redirect UX:
+          // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
+          // - altfel -> mergi la pagina dedicată flow (status/timeline)
+          if (j.initIsSigner) {
+            if (j.signerToken) {
+              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar — te redirecționăm la semnare...</strong>`;
+              setTimeout(() => {
+                location.href = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(j.signerToken)}&fromInit=1`;
+              }, 900);
+            } else {
+              // Fallback safe: fără token nu putem deschide semnarea direct
+              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar</strong>, dar lipsește token-ul de semnare. Te ducem la statusul fluxului.`;
+              setTimeout(() => {
+                location.href = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
+              }, 900);
+            }
           } else {
-            $("createResult").innerHTML = `✅ Notificare trimisă primului semnatar.`;
+            $("createResult").innerHTML = `✅ Flux creat. Notificare trimisă primului semnatar. Te ducem la statusul fluxului.`;
+            setTimeout(() => {
+              location.href = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
+            }, 900);
           }
-
-        } catch (e) {
+} catch (e) {
           $("createResult").textContent = `❌ Eroare: ${String(e.message || e)}`;
         }
       });
