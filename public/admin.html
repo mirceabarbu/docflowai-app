@@ -184,24 +184,42 @@
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
 
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
-        <div style="font-weight:700;margin-bottom:6px;color:var(--sub);">Șterge fluxurile vechi</div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px;">Elimină fluxurile mai vechi de numărul de zile specificat.</div>
+        <div style="font-weight:700;margin-bottom:6px;color:var(--sub);">🗑 Șterge definitiv fluxurile vechi</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Elimină complet fluxurile mai vechi de X zile. <strong style="color:#ffaaaa;">Ireversibil</strong> — folosește arhivarea în Drive în primul rând.</div>
+        <div style="font-size:.78rem;color:rgba(255,170,100,.7);margin-bottom:12px;">⚠ Dacă fluxul nu e arhivat în Drive, PDF-urile se pierd definitiv.</div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input id="delDays" type="number" value="30" min="1" style="width:80px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;" />
           <span style="color:var(--muted);font-size:.85rem;">zile</span>
-          <button class="btn btn-d" onclick="cleanOldFlows()" style="padding:8px 16px;font-size:.85rem;">Șterge</button>
+          <button class="btn btn-d" onclick="cleanOldFlows()" style="padding:8px 16px;font-size:.85rem;">Șterge definitiv</button>
         </div>
         <div id="msgOldFlows" style="margin-top:10px;font-size:.82rem;"></div>
       </div>
 
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,80,80,.15);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
-        <div style="font-weight:700;margin-bottom:6px;color:#ffaaaa;">Șterge TOATE fluxurile</div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px;">Acțiune ireversibilă — elimină complet toate fluxurile din baza de date.</div>
+        <div style="font-weight:700;margin-bottom:6px;color:#ffaaaa;">💣 Șterge TOATE fluxurile</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px;">Acțiune <strong style="color:#ffaaaa;">ireversibilă</strong> — elimină complet toate fluxurile din baza de date, inclusiv PDF-urile nearkhivate.</div>
         <button class="btn btn-d" onclick="cleanAllFlows()" style="padding:8px 16px;font-size:.85rem;">Șterge tot</button>
         <div id="msgAllFlows" style="margin-top:10px;font-size:.82rem;"></div>
       </div>
 
     </div>
+
+    <!-- VACUUM section -->
+    <div style="margin-top:20px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-weight:700;margin-bottom:4px;color:var(--sub);">🧹 Eliberare spațiu DB (VACUUM)</div>
+          <div style="font-size:.8rem;color:var(--muted);">După arhivare sau ștergere masivă, rulează VACUUM ANALYZE pentru a recupera spațiul fizic din PostgreSQL.</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="btn secondary" onclick="runVacuum()" style="padding:8px 18px;font-size:.85rem;">🧹 Rulează VACUUM</button>
+          <button class="btn secondary" onclick="loadDbStats()" style="padding:8px 18px;font-size:.85rem;">📊 Stats DB</button>
+        </div>
+      </div>
+      <div id="msgVacuum" style="margin-top:10px;font-size:.82rem;"></div>
+      <div id="dbStats" style="margin-top:8px;font-size:.8rem;color:var(--muted);display:none;"></div>
+    </div>
+
   </div>
 
 </main>
@@ -579,6 +597,36 @@ async function doArchive() {
   } catch(e) { msg.textContent = "❌ " + e.message; }
   btn.disabled = false;
   btn.textContent = "📦 Arhivează în Drive și eliberează DB";
+}
+
+async function runVacuum() {
+  const msg = document.getElementById("msgVacuum");
+  msg.textContent = "⏳ Se execută VACUUM ANALYZE...";
+  try {
+    const r = await fetch("/admin/db/vacuum", {method:"POST", headers:hdrs()});
+    const j = await r.json();
+    if (j.ok) msg.innerHTML = `✅ VACUUM complet. Dimensiune DB: <strong>${j.dbSize}</strong>`;
+    else msg.textContent = "❌ " + (j.error||"Eroare");
+  } catch(e) { msg.textContent = "❌ " + e.message; }
+}
+
+async function loadDbStats() {
+  const el = document.getElementById("dbStats");
+  const msg = document.getElementById("msgVacuum");
+  try {
+    const r = await fetch("/health", {headers: hdrs()});
+    const j = await r.json();
+    const s = j.stats||{};
+    el.style.display = "block";
+    el.innerHTML = `
+      <span style="margin-right:16px;">📁 Fluxuri: <strong>${s.flows||0}</strong></span>
+      <span style="margin-right:16px;">🗂 Arhivate: <strong>${s.flowsArchived||0}</strong></span>
+      <span style="margin-right:16px;">👥 Utilizatori: <strong>${s.users||0}</strong></span>
+      <span style="margin-right:16px;">🔔 Notificări necitite: <strong>${s.unreadNotifications||0}</strong></span>
+      <span style="color:#2dd4bf;font-weight:700;">💾 DB: ${s.dbSize||"—"}</span>
+    `;
+    msg.textContent = "";
+  } catch(e) { msg.textContent = "❌ " + e.message; }
 }
 
 async function cleanOldFlows(){
