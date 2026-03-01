@@ -431,7 +431,11 @@ th{ color: var(--sub) !important; }
         if (name === "fluxuri") loadMyFlows();
       }
       $("tabInit").addEventListener("click", () => showTab("init"));
-      $("tabStatus").addEventListener("click", () => showTab("status"));
+      $("tabStatus").addEventListener("click", () => {
+        const fId = getFlowIdFromQueryOrStorage();
+        if (fId) { location.href = `/flow.html?flow=${encodeURIComponent(fId)}`; }
+        else showTab("status");
+      });
       $("tabFluxuri").addEventListener("click", () => showTab("fluxuri"));
 
       // Signers table
@@ -1089,7 +1093,11 @@ th{ color: var(--sub) !important; }
         }
       });
 
-      $("btnOpenStatus").addEventListener("click", () => showTab("status"));
+      $("btnOpenStatus").addEventListener("click", () => {
+        const fId = getFlowIdFromQueryOrStorage();
+        if (fId) { location.href = `/flow.html?flow=${encodeURIComponent(fId)}`; }
+        else showTab("status");
+      });
       $("btnRefresh").addEventListener("click", refreshStatus);
 
       $("btnClear").addEventListener("click", () => {

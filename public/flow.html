@@ -327,13 +327,26 @@
       return;
     }
 
+    // Construieste nameMap: email -> "Nume — Functie · Compartiment"
+    const nameMap = {};
+    const data = flow.data || flow;
+    if (data.initEmail) nameMap[data.initEmail] = data.initName || data.initEmail;
+    (data.signers || []).forEach(s => {
+      if (s.email) {
+        const extra = [s.functie, s.compartiment].filter(Boolean).join(' · ');
+        nameMap[s.email] = (s.name || s.email) + (extra ? ` — ${extra}` : '');
+      }
+    });
+
+    const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     for(const e of evs){
       const ts = prettyTs(e.at || e.ts || e.time || e.createdAt);
-      const who = e.who || e.actor || e.by || "";
+      const byRaw = e.who || e.actor || e.by || "";
+      const who = nameMap[byRaw] ? esc(nameMap[byRaw]) : esc(byRaw);
       const kind = (e.type || e.kind || e.event || "EVENT").toString();
       const extra = e.msg || e.message || e.detail || "";
-      const line = [kind, who].filter(Boolean).join(" · ");
-      const txt = extra ? `${line} — ${extra}` : line;
+      const line = [kind, who].filter(Boolean).join(' · ');
+      const txt = extra ? `${line} — ${esc(extra)}` : line;
 
       const d = document.createElement("div");
       d.className = "ev";
