@@ -263,40 +263,67 @@ async function notify({ userEmail, flowId=null, type, title, message, waParams=n
     const { rows:cnt } = await pool.query("SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE", [userEmail.toLowerCase()]);
     wsPush(userEmail, { event:"unread_count", count:parseInt(cnt[0].count) });
 
-    // 2. WhatsApp — daca userul are notif_whatsapp=true si telefon completat
-    if (isWhatsAppConfigured() && waParams) {
-      try {
-        const { rows: uRows } = await pool.query(
-          "SELECT phone, notif_whatsapp, notif_email FROM users WHERE email=$1", [userEmail.toLowerCase()]
-        );
-        const u = uRows[0];
-        // Log WA
-        if (u?.notif_whatsapp && u?.phone) {
-          let waSent = false, waErr = null;
-          try {
-            if (type === "YOUR_TURN") await sendWaSignRequest({ phone: u.phone, signerName: waParams.signerName||"", docName: waParams.docName||"" });
-            else if (type === "COMPLETED") await sendWaCompleted({ phone: u.phone, docName: waParams.docName||"" });
-            else if (type === "REFUSED") await sendWaRefused({ phone: u.phone, docName: waParams.docName||"", refuserName: waParams.refuserName||"", reason: waParams.reason||"" });
-            waSent = true;
-          } catch(e) { waErr = e.message; console.error("WhatsApp notify error:", e.message); }
-          // Loghează în events flow dacă avem flowId
-          if (flowId) {
-            try {
-              const fd = await getFlowData(flowId);
-              if (fd) {
-                fd.events = fd.events || [];
-                fd.events.push({at:new Date().toISOString(), type:"NOTIFY", channel:"whatsapp", to:userEmail, notifType:type, ok:waSent, err:waErr||undefined});
-                await saveFlow(flowId, fd);
-              }
-            } catch(logErr) { /* nu blocăm pentru log */ }
+    // 2. Email + WhatsApp — fetch user preferences o singură dată
+    try {
+      const { rows: uRows } = await pool.query(
+        "SELECT phone, notif_whatsapp, notif_email FROM users WHERE email=$1", [userEmail.toLowerCase()]
+      );
+      const u = uRows[0];
+
+      // 2a. Email — dacă userul are notif_email=true
+      if (u?.notif_email && waParams) {
+        let emailSent = false, emailErr = null;
+        try {
+          let emailSubject = title;
+          let emailHtml = `<p>${message}</p>`;
+          if (type === "YOUR_TURN") {
+            emailSubject = `📄 Document de semnat: ${waParams.docName||""}`;
+            emailHtml = `<p>Bună ziua,</p><p>${message}</p><p>Intră în <a href="${process.env.PUBLIC_BASE_URL||"https://app.docflowai.ro"}">DocFlowAI</a> pentru a semna documentul.</p>`;
+          } else if (type === "COMPLETED") {
+            emailSubject = `✅ Document semnat complet: ${waParams.docName||""}`;
+            emailHtml = `<p>Bună ziua,</p><p>${message}</p><p>Poți descărca documentul din <a href="${process.env.PUBLIC_BASE_URL||"https://app.docflowai.ro"}">DocFlowAI</a>.</p>`;
+          } else if (type === "REFUSED") {
+            emailSubject = `⛔ Document refuzat: ${waParams.docName||""}`;
+            emailHtml = `<p>Bună ziua,</p><p>${message}</p>`;
           }
+          await sendSignerEmail({ to: userEmail, subject: emailSubject, html: emailHtml });
+          emailSent = true;
+        } catch(e) { emailErr = e.message; console.error("Email notify error:", e.message); }
+        // Log în events
+        if (flowId) {
+          try {
+            const fd = await getFlowData(flowId);
+            if (fd) {
+              fd.events = fd.events || [];
+              fd.events.push({at:new Date().toISOString(), type:"NOTIFY", channel:"email", to:userEmail, notifType:type, ok:emailSent, err:emailErr||undefined});
+              await saveFlow(flowId, fd);
+            }
+          } catch(logErr) { /* nu blocăm pentru log */ }
         }
-        // Log email
-        if (u?.notif_email) {
-          // email se trimite separat în fluxul de semnare — doar loghăm că e activat
+      }
+
+      // 2b. WhatsApp — dacă userul are notif_whatsapp=true și telefon
+      if (isWhatsAppConfigured() && waParams && u?.notif_whatsapp && u?.phone) {
+        let waSent = false, waErr = null;
+        try {
+          if (type === "YOUR_TURN") await sendWaSignRequest({ phone: u.phone, signerName: waParams.signerName||"", docName: waParams.docName||"" });
+          else if (type === "COMPLETED") await sendWaCompleted({ phone: u.phone, docName: waParams.docName||"" });
+          else if (type === "REFUSED") await sendWaRefused({ phone: u.phone, docName: waParams.docName||"", refuserName: waParams.refuserName||"", reason: waParams.reason||"" });
+          waSent = true;
+        } catch(e) { waErr = e.message; console.error("WhatsApp notify error:", e.message); }
+        // Log în events
+        if (flowId) {
+          try {
+            const fd = await getFlowData(flowId);
+            if (fd) {
+              fd.events = fd.events || [];
+              fd.events.push({at:new Date().toISOString(), type:"NOTIFY", channel:"whatsapp", to:userEmail, notifType:type, ok:waSent, err:waErr||undefined});
+              await saveFlow(flowId, fd);
+            }
+          } catch(logErr) { /* nu blocăm pentru log */ }
         }
-      } catch(e) { console.error("WhatsApp notify error:", e.message); }
-    }
+      }
+    } catch(e) { console.error("notify() channels error:", e.message); }
   } catch(e) { console.error("notify() error:", e.message); }
 }
 
@@ -709,7 +736,30 @@ app.post("/wa-test", async (req,res) => {
   res.status(r.ok ? 200 : 500).json(r);
 });
 
-app.get("/health", (req,res) => res.json({ok:true, service:"DocFlowAI", dbReady:DB_READY, dbLastError:DB_LAST_ERROR, wsClients:wsClients.size}));
+app.get("/health", async (req,res) => {
+  const base = {ok:true, service:"DocFlowAI", version:"2.0", dbReady:DB_READY, dbLastError:DB_LAST_ERROR, wsClients:wsClients.size, ts:new Date().toISOString()};
+  if (!pool || !DB_READY) return res.json(base);
+  try {
+    const [flowsR, usersR, notifsR, archR] = await Promise.all([
+      pool.query("SELECT COUNT(*) FROM flows"),
+      pool.query("SELECT COUNT(*) FROM users"),
+      pool.query("SELECT COUNT(*) FROM notifications WHERE read=FALSE"),
+      pool.query("SELECT COUNT(*) FROM flows WHERE data->>'storage'='drive'"),
+    ]);
+    const sizeR = await pool.query("SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size, pg_database_size(current_database()) AS db_bytes");
+    return res.json({
+      ...base,
+      stats: {
+        flows: parseInt(flowsR.rows[0].count),
+        flowsArchived: parseInt(archR.rows[0].count),
+        users: parseInt(usersR.rows[0].count),
+        unreadNotifications: parseInt(notifsR.rows[0].count),
+        dbSize: sizeR.rows[0].db_size,
+        dbBytes: parseInt(sizeR.rows[0].db_bytes),
+      }
+    });
+  } catch(e) { return res.json({...base, statsError: e.message}); }
+});
 app.get("/smtp-test", async (req,res) => { const r=await verifySmtp(); res.status(r.ok?200:500).json(r); });
 app.post("/smtp-test", async (req,res) => {
   const { to } = req.body||{};
@@ -809,6 +859,18 @@ app.post("/admin/flows/archive", async (req,res) => {
       }
     }
     return res.json({ok:true, results, hasMore, nextBatchIndex: batchIndex + 1, totalProcessed: start + batch.length, total: flowIds.length});
+  } catch(e) { return res.status(500).json({error:String(e.message||e)}); }
+});
+
+// Sugestie VACUUM după arhivare masivă (doar hint — VACUUM FULL e periculos pe producție)
+app.post("/admin/db/vacuum", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
+  try {
+    await pool.query("VACUUM ANALYZE flows");
+    const sizeR = await pool.query("SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size");
+    return res.json({ok:true, message:"VACUUM ANALYZE flows executat.", dbSize: sizeR.rows[0].db_size});
   } catch(e) { return res.status(500).json({error:String(e.message||e)}); }
 });
 
