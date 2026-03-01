@@ -305,7 +305,7 @@ function renderList() {
             });
             if (r.ok) {
               const d = await r.json();
-              location.href = `/semdoc-signer.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
+              location.href = `/flow.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
             } else {
               location.href = '/';
             }

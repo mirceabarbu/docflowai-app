@@ -492,7 +492,7 @@ th{ color: var(--sub) !important; }
 
           const redirectToStatus = () => {
             status.innerHTML = `<span style="color:#2dd4bf;">✅ Document semnat cu succes! Redirecționăm către Status...</span>`;
-            setTimeout(() => { location.href = `/?tab=status&flow=${encodeURIComponent(flow)}`; }, 2500);
+            setTimeout(() => { location.href = `/flow.html?flow=${encodeURIComponent(flow)}`; }, 2500);
           };
 
           if (j.completed) {
