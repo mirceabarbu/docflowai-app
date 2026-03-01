@@ -888,24 +888,25 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
     const idx = signers.findIndex(s=>s.token===token);
     if (idx===-1) return res.status(400).json({error:"invalid_token"});
 
-    // Verificare uploadToken (Nivel 1 securitate)
-    if (uploadToken) {
-      try {
-        const payload = jwt.verify(uploadToken, JWT_SECRET);
-        if (payload.flowId !== flowId) return res.status(403).json({error:"upload_token_flow_mismatch"});
-        if (payload.signerToken !== token) return res.status(403).json({error:"upload_token_signer_mismatch"});
-        // Verifică că PDF-ul curent din flow corespunde cu ce a descărcat semnatarul
-        const b64curr = data.pdfB64||"";
-        const rawCurr = b64curr.includes("base64,")?b64curr.split("base64,")[1]:b64curr;
-        const currentHash = rawCurr ? sha256Hex(Buffer.from(rawCurr,"base64")) : null;
-        if (currentHash && payload.preHash !== currentHash) {
-          console.warn(`⚠️  preHash mismatch for flow ${flowId} signer ${signers[idx].email} — expected ${currentHash} got ${payload.preHash}`);
-          return res.status(409).json({error:"pdf_version_mismatch", message:"PDF-ul semnat nu corespunde versiunii descărcate din sistem."});
-        }
-        signers[idx].uploadVerified = true;
-      } catch(jwtErr) {
-        return res.status(403).json({error:"upload_token_invalid", message:"Token de upload invalid sau expirat."});
+    // Verificare uploadToken (Nivel 1 securitate) — OBLIGATORIE
+    if (!uploadToken) {
+      return res.status(403).json({error:"upload_token_missing", message:"Lipsește tokenul de verificare. Descarcă documentul din sistem înainte de a-l încărca."});
+    }
+    try {
+      const payload = jwt.verify(uploadToken, JWT_SECRET);
+      if (payload.flowId !== flowId) return res.status(403).json({error:"upload_token_flow_mismatch", message:"Token invalid pentru acest flux."});
+      if (payload.signerToken !== token) return res.status(403).json({error:"upload_token_signer_mismatch", message:"Token invalid pentru acest semnatar."});
+      // Verifică hash-ul PDF-ului de bază (originalul descărcat de semnatar)
+      const b64curr = data.pdfB64||"";
+      const rawCurr = b64curr.includes("base64,")?b64curr.split("base64,")[1]:b64curr;
+      const currentHash = rawCurr ? sha256Hex(Buffer.from(rawCurr,"base64")) : null;
+      if (currentHash && payload.preHash !== currentHash) {
+        console.warn(`⚠️  preHash mismatch flow ${flowId} signer ${signers[idx].email}`);
+        return res.status(409).json({error:"pdf_version_mismatch", message:"PDF-ul semnat nu corespunde versiunii descărcate din sistem. Descarcă documentul din nou și semnează-l."});
       }
+      signers[idx].uploadVerified = true;
+    } catch(jwtErr) {
+      return res.status(403).json({error:"upload_token_invalid", message:"Token de upload invalid sau expirat. Descarcă documentul din nou."});
     }
     if (signers[idx].status!=="signed") return res.status(409).json({error:"signer_not_signed_yet"});
     if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions=[];
