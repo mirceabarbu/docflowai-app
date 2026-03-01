@@ -278,20 +278,75 @@ th{ color: var(--sub) !important; }
       let currentFlow = null;
       let signerIndex = -1;
 
+      function showBlockedState(title, message) {
+        const signBox = $("signBox");
+        if (signBox) { signBox.style.opacity = "0.15"; signBox.style.pointerEvents = "none"; }
+        const completedBox = $("completedBox");
+        if (completedBox) completedBox.style.display = "none";
+        $("result").innerHTML = `
+          <div style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);border-radius:12px;padding:16px 20px;margin-top:12px;">
+            <div style="font-size:1.05rem;font-weight:700;margin-bottom:6px;">${title}</div>
+            <div style="font-size:.88rem;color:var(--muted);">${message}</div>
+          </div>`;
+      }
+
+      function renderSignersList(j) {
+        const whoEl = $("whoSigners");
+        if (!whoEl) return;
+        const esc3 = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        whoEl.innerHTML = (j.signers||[]).map(x => {
+          const st = x.status==='signed'&&!x.pdfUploaded?'current':x.status;
+          const icon = st==='signed'?'✅':st==='refused'?'⛔':st==='current'?'✍':'⏳';
+          const badgeColor = st==='signed'?'rgba(45,212,191,.2)':st==='refused'?'rgba(255,80,80,.2)':st==='current'?'rgba(124,92,255,.25)':'rgba(255,255,255,.06)';
+          const badgeText = st==='signed'?'semnat':st==='refused'?'refuzat':st==='current'?'curent':'în așteptare';
+          const textColor = st==='signed'?'#7cf0e0':st==='refused'?'#ffaaaa':st==='current'?'#b39dff':'#9db0ff';
+          const extra = [x.functie, x.compartiment].filter(Boolean).join(' · ');
+          const isMe = x.token === token;
+          return `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;${isMe?'font-weight:700;':'opacity:.75;'}">
+            <span>${icon}</span>
+            <span style="font-size:.8rem;color:var(--muted);min-width:90px;">${esc3(x.rol||'')}</span>
+            <span style="font-size:.83rem;">${esc3(x.name||'—')}</span>
+            ${extra?`<span style="font-size:.77rem;color:var(--muted);">— ${esc3(extra)}</span>`:''}
+            <span style="font-size:.71rem;padding:1px 7px;border-radius:10px;background:${badgeColor};color:${textColor};font-weight:700;">${badgeText}</span>
+          </div>`;
+        }).join('');
+      }
+
       async function loadFlow() {
         if (!flow || !token) return;
 
         $("result").textContent = "Se încarcă...";
         try {
-          const r = await fetch(`/flows/${encodeURIComponent(flow)}`);
+          const r = await fetch(`/flows/${encodeURIComponent(flow)}?token=${encodeURIComponent(token)}`);
           const j = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(j?.error || "server_error");
+          if (!r.ok) {
+            if (j?.error === "token_expired") {
+              showBlockedState("⏳ Link expirat", "Link-ul de semnare a expirat (90 de zile). Contactează inițiatorul documentului pentru a primi un nou link.");
+              return;
+            }
+            if (j?.error === "forbidden" || j?.error === "auth_required") {
+              showBlockedState("🔒 Acces refuzat", "Token invalid sau lipsă. Verifică link-ul primit pe email.");
+              return;
+            }
+            throw new Error(j?.error || "server_error");
+          }
 
           currentFlow = j;
           signerIndex = (j.signers || []).findIndex(s => s.token === token);
           if (signerIndex === -1) throw new Error("Token invalid (nu corespunde niciunui semnatar).");
 
           $("docName").textContent = j.docName || "—";
+
+          // Flux refuzat — afișează mesaj clar și blochează tot
+          if (j.status === "refused" || (j.signers||[]).some(s => s.status === "refused")) {
+            const refuser = (j.signers||[]).find(s => s.status === "refused");
+            const refuserInfo = refuser ? `${refuser.name||refuser.email} (${refuser.rol||""})` : "un semnatar";
+            const reason = refuser?.refuseReason ? ` — Motiv: "${refuser.refuseReason}"` : "";
+            showBlockedState("⛔ Document refuzat", `Documentul a fost refuzat de ${refuserInfo}${reason}. Fluxul este închis.`);
+            $("docName").textContent = j.docName || "—";
+            renderSignersList(j);
+            return;
+          }
 
           // PDF viewer
           if (j.hasPdf) {
@@ -304,27 +359,7 @@ th{ color: var(--sub) !important; }
           }
 
           const s = j.signers[signerIndex];
-          // Render all signers compact
-          const whoEl = $("whoSigners");
-          if (whoEl) {
-            const esc3 = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            whoEl.innerHTML = (j.signers||[]).map(x => {
-              const st = x.status==='signed'&&!x.pdfUploaded?'current':x.status;
-              const icon = st==='signed'?'✅':st==='current'?'✍':'⏳';
-              const badgeColor = st==='signed'?'rgba(45,212,191,.2)':st==='current'?'rgba(124,92,255,.25)':'rgba(255,255,255,.06)';
-              const badgeText = st==='signed'?'semnat':st==='current'?'curent':'în așteptare';
-              const textColor = st==='signed'?'#7cf0e0':st==='current'?'#b39dff':'#9db0ff';
-              const extra = [x.functie, x.compartiment].filter(Boolean).join(' · ');
-              const isMe = x.token === token;
-              return `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;${isMe?'font-weight:700;':'opacity:.75;'}">
-                <span>${icon}</span>
-                <span style="font-size:.8rem;color:var(--muted);min-width:90px;">${esc3(x.rol||'')}</span>
-                <span style="font-size:.83rem;">${esc3(x.name||'—')}</span>
-                ${extra?`<span style="font-size:.77rem;color:var(--muted);">— ${esc3(extra)}</span>`:''}
-                <span style="font-size:.71rem;padding:1px 7px;border-radius:10px;background:${badgeColor};color:${textColor};font-weight:700;">${badgeText}</span>
-              </div>`;
-            }).join('');
-          }
+          renderSignersList(j);
 
           const lines = [];
           lines.push(`Semnatar curent: ${j.signers.findIndex(x => x.status === "current") + 1}`);
