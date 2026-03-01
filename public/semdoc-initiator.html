@@ -39,7 +39,6 @@ body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9ee
       a { color: #a9c2ff; }
       .hidden { display:none; }
       tr.drag-over td { background: rgba(124,92,255,.18) !important; }
-      .statusBox { background: rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08); padding:14px 16px; border-radius:12px; }
     
 
 /* ===== DocFlowAI Theme (from landing index.html) + UI polish ===== */
@@ -80,7 +79,7 @@ header{
 a{ color: var(--muted) !important; }
 
 /* Cards / panels */
-.card, .statusBox, .box{
+.card, .box{
   background: rgba(15,23,49,.72) !important;
   border: 1px solid var(--line) !important;
   border-radius: var(--radius) !important;
@@ -172,7 +171,6 @@ th{ color: var(--sub) !important; }
       </div>
       <div class="tabs">
         <button id="tabInit" class="tabbtn active" type="button">Inițiere</button>
-        <button id="tabStatus" class="tabbtn" type="button">Status</button>
         <button id="tabFluxuri" class="tabbtn" type="button">📂 Fluxuri mele</button>
         <a href="/templates" class="tabbtn" style="text-decoration:none;">📋 Șabloane</a>
       </div>
@@ -273,29 +271,10 @@ th{ color: var(--sub) !important; }
             <div class="col-12">
               <div class="row">
                 <button id="btnCreate" class="btn" type="button">Pornește flux</button>
-                <button id="btnOpenStatus" class="btn secondary" type="button">Deschide Status</button>
                 <span id="createResult" class="muted"></span>
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- STATUS -->
-      <section id="viewStatus" class="hidden">
-        <div class="card">
-          <div class="row" style="justify-content: space-between;">
-            <div>
-              <div class="muted">Flow curent:</div>
-              <div class="mono" id="statusFlowId">—</div>
-            </div>
-            <div class="row">
-              <button id="btnRefresh" class="btn secondary" type="button">Refresh</button>
-              <button id="btnClear" class="btn danger" type="button">Clear flow</button>
-            </div>
-          </div>
-          <div style="height:10px"></div>
-          <div id="statusContent" class="statusBox">Niciun flux încă.</div>
         </div>
       </section>
 
@@ -422,20 +401,12 @@ th{ color: var(--sub) !important; }
       // Tabs
       function showTab(name) {
         $("viewInit").classList.toggle("hidden", name !== "init");
-        $("viewStatus").classList.toggle("hidden", name !== "status");
         $("viewFluxuri").classList.toggle("hidden", name !== "fluxuri");
         $("tabInit").classList.toggle("active", name === "init");
-        $("tabStatus").classList.toggle("active", name === "status");
         $("tabFluxuri").classList.toggle("active", name === "fluxuri");
-        if (name === "status") refreshStatus();
         if (name === "fluxuri") loadMyFlows();
       }
       $("tabInit").addEventListener("click", () => showTab("init"));
-      $("tabStatus").addEventListener("click", () => {
-        const fId = getFlowIdFromQueryOrStorage();
-        if (fId) { location.href = `/flow.html?flow=${encodeURIComponent(fId)}`; }
-        else showTab("status");
-      });
       $("tabFluxuri").addEventListener("click", () => showTab("fluxuri"));
 
       // Signers table
@@ -824,8 +795,6 @@ th{ color: var(--sub) !important; }
         showTab("init");
         // Reset status + clear activeFlowId
         localStorage.removeItem("activeFlowId");
-        $("statusContent") && ($("statusContent").textContent = "Niciun flux activ. Creează unul din tabul Inițiere.");
-        $("statusFlowId") && ($("statusFlowId").textContent = "—");
         // Reset btnClearPdf
         const cpBtn = $("btnClearPdf");
         if (cpBtn) { cpBtn.style.opacity = ".3"; cpBtn.style.pointerEvents = "none"; cpBtn.disabled = true; }
@@ -1093,140 +1062,49 @@ th{ color: var(--sub) !important; }
         }
       });
 
-      $("btnOpenStatus").addEventListener("click", () => {
-        const fId = getFlowIdFromQueryOrStorage();
-        if (fId) { location.href = `/flow.html?flow=${encodeURIComponent(fId)}`; }
-        else showTab("status");
-      });
-      $("btnRefresh").addEventListener("click", refreshStatus);
 
-      $("btnClear").addEventListener("click", () => {
-        localStorage.removeItem("lastFlowId");
-        $("statusFlowId").textContent = "—";
-        $("statusContent").textContent = "Niciun flux încă.";
-      });
-
+      async function checkFlowLock() {
+        const flowId = getFlowIdFromQueryOrStorage();
+        const lockBanner = $("lockBanner");
+        const dlBanner = $("dlBanner");
+        const btnCreate = $("btnCreate");
+        if (!flowId) return;
+        try {
+          const r = await fetch(`/flows/${encodeURIComponent(flowId)}`, { headers: authHeaders() });
+          if (!r.ok) return;
+          const j = await r.json().catch(() => ({}));
+          const allDone = j.signers && j.signers.every(s => s.status === "signed");
+          const anySignedOrRefused = j.signers && j.signers.some(s => s.status === "signed" || s.status === "refused");
+          if (allDone) {
+            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; btnCreate.title = "Fluxul este finalizat"; }
+            if (lockBanner) lockBanner.style.display = "block";
+            if (dlBanner) {
+              dlBanner.style.display = "block";
+              const lnkDiv = $("dlBannerLink");
+              if (lnkDiv && j.hasSignedPdf) {
+                lnkDiv.innerHTML = `<a href="/flows/${encodeURIComponent(j.flowId)}/signed-pdf" target="_blank" class="btn" style="display:inline-block; text-decoration:none; padding:8px 14px;">🏅 Descarcă PDF semnat calificat</a>`;
+              }
+            }
+          } else if (anySignedOrRefused) {
+            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; btnCreate.title = "Fluxul este în curs de semnare — nu se mai poate modifica"; }
+            if (lockBanner) lockBanner.style.display = "none";
+            if (dlBanner) dlBanner.style.display = "none";
+          } else {
+            if (btnCreate) { btnCreate.disabled = false; btnCreate.style.opacity = 1; btnCreate.title = ""; }
+            if (lockBanner) lockBanner.style.display = "none";
+            if (dlBanner) dlBanner.style.display = "none";
+          }
+        } catch(e) {}
+      }
       function getFlowIdFromQueryOrStorage() {
         const params = new URLSearchParams(location.search);
         return params.get("flow") || localStorage.getItem("lastFlowId") || "";
       }
 
-      async function refreshStatus() {
-        const flowId = getFlowIdFromQueryOrStorage();
-        $("statusFlowId").textContent = flowId || "—";
-        if (!flowId) {
-          $("statusContent").textContent = "Niciun flux activ. Creează unul din tabul Inițiere.";
-          return;
-        }
 
-        $("statusContent").textContent = "Se încarcă...";
-        try {
-          const r = await fetch(`/flows/${encodeURIComponent(flowId)}`, {
-            headers: authHeaders()
-          });
-          const j = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(j?.error || "server_error");
 
-          // Build HTML status
-          const esc2 = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          const updatedNice = j.updatedAt ? new Date(j.updatedAt).toLocaleString('ro-RO') : '—';
 
-          const signerHtml = (j.signers||[]).map(s => {
-            const st = s.status || 'pending';
-            const icon = st==='signed'?'✅':st==='refused'?'⛔':st==='current'?'✍':'⏳';
-            const badgeColor = st==='signed'?'rgba(45,212,191,.2)':st==='refused'?'rgba(255,80,80,.2)':st==='current'?'rgba(124,92,255,.25)':'rgba(255,255,255,.06)';
-            const badgeText = st==='signed'?'semnat':st==='refused'?'REFUZAT':st==='current'?'curent':'în așteptare';
-            const textColor = st==='signed'?'#7cf0e0':st==='refused'?'#ffaaaa':st==='current'?'#b39dff':'#9db0ff';
-            const signedDate = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">· '+new Date(s.signedAt).toLocaleDateString('ro-RO')+'</span>' : '';
-            const refuzLabel = st==='refused'&&s.refuseReason ? `<div style="color:#ffaaaa;font-size:.75rem;margin-top:2px;">Motiv: ${esc2(s.refuseReason)}</div>` : '';
-            const extra = [s.functie, s.compartiment].filter(Boolean).join(' · ');
-            return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
-              <span>${icon}</span>
-              <span style="font-size:.82rem;color:var(--muted);min-width:100px;">${esc2(s.rol||'')}</span>
-              <span style="font-size:.83rem;font-weight:600;">${esc2(s.name||'—')}</span>
-              ${extra ? `<span style="font-size:.78rem;color:var(--muted);">— ${esc2(extra)}</span>` : ''}
-              <span style="font-size:.72rem;padding:1px 7px;border-radius:10px;background:${badgeColor};color:${textColor};font-weight:700;">${badgeText}</span>
-              ${signedDate}
-              ${refuzLabel}
-            </div>`;
-          }).join('');
-
-          const evHtml = (() => {
-
-          // Lock init tab if completed sau dacă cel puțin un semnatar a semnat
-          const allDone = j.signers && j.signers.every(s => s.status === "signed");
-          const anySignedOrRefused = j.signers && j.signers.some(s => s.status === "signed" || s.status === "refused");
-          const lockBanner = $("lockBanner");
-          const btnCreate = $("btnCreate");
-          const dlBanner = $("dlBanner");
-          if (allDone) {
-            if (lockBanner) lockBanner.style.display = "block";
-            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; btnCreate.title = "Fluxul este finalizat"; }
-            if (dlBanner) {
-              dlBanner.style.display = "block";
-              const lnkDiv = $("dlBannerLink");
-              if (lnkDiv) {
-                const firstSigner = (j.signers||[])[0];
-                if (firstSigner?.token) {
-                  const signerLink = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(firstSigner.token)}`;
-                  let html = "";
-                  if (j.hasSignedPdf) {
-                    html = `<a href="/flows/${encodeURIComponent(j.flowId)}/signed-pdf" target="_blank" class="btn" style="display:inline-block; text-decoration:none; padding:8px 14px;">🏅 Descarcă PDF semnat calificat</a>`;
-                  }
-                  lnkDiv.innerHTML = html;
-                }
-              }
-            }
-          } else if (anySignedOrRefused) {
-            // Cel puțin un semnatar a semnat sau a refuzat — blocăm modificarea fluxului
-            if (lockBanner) lockBanner.style.display = "none";
-            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; btnCreate.title = "Fluxul este în curs de semnare — nu se mai poate modifica"; }
-            if (dlBanner) dlBanner.style.display = "none";
-          } else {
-            if (lockBanner) lockBanner.style.display = "none";
-            if (btnCreate) { btnCreate.disabled = false; btnCreate.style.opacity = 1; btnCreate.title = ""; }
-            if (dlBanner) dlBanner.style.display = "none";
-          }
-
-          const nameMap = {};
-          const infoMap = {};
-          if (j.initEmail) nameMap[j.initEmail] = j.initName || j.initEmail;
-          (j.signers || []).forEach(s => {
-            if (s.email) {
-              nameMap[s.email] = s.name || s.email;
-              const extra = [s.functie, s.compartiment].filter(Boolean).join(' · ');
-              if (extra) infoMap[s.email] = extra;
-            }
-          });
-          const evLines = (j.events || []).slice(-10).map(ev => {
-            const by = ev.by || '';
-            const name = nameMap[by] || esc2(by);
-            const extra = infoMap[by] ? ` <span style="color:var(--muted);font-size:.73rem;">— ${esc2(infoMap[by])}</span>` : '';
-            const displayBy = name ? `${name}${extra}` : '';
-            const dt = ev.at ? new Date(ev.at).toLocaleString('ro-RO') : '';
-            return `<div style="font-size:.76rem;color:var(--muted);padding:2px 0;">${dt} &nbsp;·&nbsp; <span style="color:#9db0ff;">${esc2(ev.type)}</span>${displayBy?' &nbsp;·&nbsp; '+displayBy:''}</div>`;
-          }).join('');
-          return evLines;
-          })();
-
-          $("statusContent").innerHTML = `
-            <div style="margin-bottom:8px;">
-              <div style="font-weight:700;font-size:.95rem;margin-bottom:3px;">${esc2(j.docName)}${j.hasSignedPdf?' <span style="color:#7cf0e0;font-size:.8rem;">✅ PDF semnat disponibil</span>':''}</div>
-              <div style="font-size:.78rem;color:var(--muted);">Inițiator: <strong style="color:var(--sub);">${esc2(j.initName||j.initEmail)}</strong> &nbsp;·&nbsp; Actualizat: ${updatedNice}</div>
-            </div>
-            <div style="margin-bottom:8px;">
-              <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Semnatari</div>
-              ${signerHtml}
-            </div>
-            <div>
-              <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Evenimente</div>
-              ${evHtml}
-            </div>`;
-        } catch (e) {
-          $("statusContent").textContent = `❌ Eroare status: ${String(e.message || e)}`;
-        }
-      }
-
+      checkFlowLock();
       const _flowParam = new URLSearchParams(location.search).get("flow");
       if (_flowParam) {
         location.replace(`/flow.html?flow=${encodeURIComponent(_flowParam)}`);
