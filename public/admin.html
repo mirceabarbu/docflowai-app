@@ -157,6 +157,21 @@
   </div>
 
   <div style="margin-top:40px;border-top:1px solid rgba(255,255,255,.08);padding-top:32px;">
+    <h2 style="color:#9db0ff;margin-bottom:16px;">📋 Fluxuri active</h2>
+    <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:18px 20px;margin-bottom:28px;">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+        <input id="flowSearch" placeholder="Caută după ID, document sau email..." style="flex:1;min-width:220px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;"/>
+        <select id="flowStatusFilter" style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
+          <option value="">Toate statusurile</option>
+          <option value="active">Active</option>
+          <option value="done">Finalizate</option>
+          <option value="refused">Refuzate</option>
+        </select>
+        <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
+      </div>
+      <div id="flowsListArea" style="font-size:.83rem;color:var(--muted);">Apasă „Încarcă" pentru a vedea fluxurile.</div>
+    </div>
+
     <h2 style="color:#2dd4bf;">🗂 Arhivare fluxuri în Google Drive</h2>
     <div style="background:rgba(45,212,191,.05);border:1px solid rgba(45,212,191,.2);border-radius:14px;padding:22px 24px;margin-top:16px;">
       <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
@@ -531,6 +546,93 @@ async function sendCreds(id,btn){
 async function sendCredsNew(){
   if(!window._lastCreatedId)return;
   await sendCreds(window._lastCreatedId,$("btnSendNew"));
+}
+
+async function loadFlowsList() {
+  const area = document.getElementById("flowsListArea");
+  const search = (document.getElementById("flowSearch").value||"").toLowerCase();
+  const statusF = document.getElementById("flowStatusFilter").value;
+  area.innerHTML = '<span style="color:var(--muted);">⏳ Se încarcă...</span>';
+  try {
+    const r = await fetch("/admin/flows/list", {headers: hdrs()});
+    if (!r.ok) throw new Error("Eroare server");
+    let flows = await r.json();
+    // Filtrare client-side
+    if (search) flows = flows.filter(f => 
+      (f.flowId||"").toLowerCase().includes(search) ||
+      (f.docName||"").toLowerCase().includes(search) ||
+      (f.initEmail||"").toLowerCase().includes(search)
+    );
+    if (statusF === "active") flows = flows.filter(f => !f.completed && f.status !== "refused");
+    else if (statusF === "done") flows = flows.filter(f => f.completed);
+    else if (statusF === "refused") flows = flows.filter(f => f.status === "refused");
+    if (!flows.length) { area.innerHTML = '<span style="color:var(--muted);">Niciun flux găsit.</span>'; return; }
+    area.innerHTML = `
+      <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:.8rem;">
+        <thead><tr style="color:var(--muted);border-bottom:1px solid rgba(255,255,255,.08);">
+          <th style="text-align:left;padding:6px 8px;">Document</th>
+          <th style="text-align:left;padding:6px 8px;">Inițiator</th>
+          <th style="text-align:left;padding:6px 8px;">Status</th>
+          <th style="text-align:left;padding:6px 8px;">Semnatar curent</th>
+          <th style="text-align:left;padding:6px 8px;">Creat</th>
+          <th style="text-align:left;padding:6px 8px;">Acțiuni</th>
+        </tr></thead>
+        <tbody>${flows.map(f => {
+          const current = (f.signers||[]).find(s=>s.status==="current");
+          const tokenAge = current?.tokenCreatedAt ? Math.floor((Date.now()-new Date(current.tokenCreatedAt).getTime())/(24*3600*1000)) : null;
+          const expired = tokenAge !== null && tokenAge >= 90;
+          const statusBadge = f.completed
+            ? '<span style="color:#7cf0e0;font-size:.75rem;">✅ finalizat</span>'
+            : f.status==="refused"
+            ? '<span style="color:#ffaaaa;font-size:.75rem;">⛔ refuzat</span>'
+            : '<span style="color:#b39dff;font-size:.75rem;">✍ activ</span>';
+          return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+            <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.flowId}">${f.docName||"—"}</td>
+            <td style="padding:7px 8px;color:var(--muted);">${f.initEmail||"—"}</td>
+            <td style="padding:7px 8px;">${statusBadge}</td>
+            <td style="padding:7px 8px;">
+              ${current ? `<span style="color:${expired?'#ffaaaa':'var(--sub)'};">${current.name||current.email||"—"}</span>
+              ${expired?'<span style="font-size:.72rem;color:#ffaaaa;margin-left:4px;">⚠ link expirat</span>':''}
+              ${tokenAge!==null?`<span style="font-size:.7rem;color:var(--muted);margin-left:4px;">${tokenAge}z</span>`:''}` : '<span style="color:var(--muted);">—</span>'}
+            </td>
+            <td style="padding:7px 8px;color:var(--muted);">${f.createdAt?new Date(f.createdAt).toLocaleDateString("ro-RO"):"—"}</td>
+            <td style="padding:7px 8px;">
+              ${current&&!f.completed&&f.status!=="refused" ? `
+                <button onclick="resendNotif('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-right:4px;">📨 Retrimite</button>
+                ${expired?`<button onclick="regenerateToken('${f.flowId}','${current.email}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;">🔑 Token nou</button>`:''}
+              ` : ''}
+            </td>
+          </tr>`;
+        }).join("")}
+        </tbody>
+      </table></div>
+      <div style="margin-top:8px;font-size:.76rem;color:var(--muted);">${flows.length} flux${flows.length!==1?"uri":""} afișate</div>`;
+  } catch(e) { area.innerHTML = `<span style="color:#ffaaaa;">❌ ${e.message}</span>`; }
+}
+
+async function resendNotif(flowId) {
+  try {
+    const r = await fetch(`/flows/${encodeURIComponent(flowId)}/resend`, {method:"POST", headers:hdrs()});
+    const j = await r.json();
+    if (j.ok) alert(`✅ Notificare retrimisă către ${j.to}`);
+    else alert("❌ " + (j.error||"Eroare"));
+  } catch(e) { alert("❌ " + e.message); }
+}
+
+async function regenerateToken(flowId, signerEmail) {
+  if (!confirm(`Generezi un token nou pentru ${signerEmail}?\nVechiul link va fi invalid. Semnatarul va primi un email cu noul link.`)) return;
+  try {
+    const r = await fetch(`/flows/${encodeURIComponent(flowId)}/regenerate-token`, {
+      method:"POST", headers:hdrs(),
+      body: JSON.stringify({signerEmail})
+    });
+    const j = await r.json();
+    if (j.ok) {
+      alert(`✅ Token nou generat și email trimis către ${signerEmail}.`);
+      loadFlowsList(); // refresh
+    } else alert("❌ " + (j.message||j.error||"Eroare"));
+  } catch(e) { alert("❌ " + e.message); }
 }
 
 async function verifyDriveConn() {
