@@ -430,6 +430,9 @@ th{ color: var(--sub) !important; }
           }
 
           // Step 2: upload signed PDF
+          if (!_uploadToken) {
+            throw new Error("Lipsește tokenul de verificare. Descarcă documentul din sistem folosind butonul de descărcare, semnează-l și încarcă-l înapoi.");
+          }
           const r = await fetch(`/flows/${encodeURIComponent(flow)}/upload-signed-pdf`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -575,8 +578,9 @@ th{ color: var(--sub) !important; }
 
         // buildCartusBlob folosește MEREU PDF-ul original ca bază
         // (semnatar 2+ descarcă direct /signed-pdf din downloadPdfForSigning, fără modificare)
-        const pdfResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf`);
+        const pdfResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
         if (!pdfResp.ok) throw new Error("PDF original indisponibil pe server (cod " + pdfResp.status + ").");
+        _uploadToken = pdfResp.headers.get("X-Docflow-UploadToken") || _uploadToken;
         const pdfBytes = await pdfResp.arrayBuffer();
 
         const pdfDoc = await PDFDocument.load(pdfBytes);
