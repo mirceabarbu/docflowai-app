@@ -768,30 +768,6 @@ th{ color: var(--sub) !important; }
       };
 
       // -------------------- Fluxuri mele --------------------
-      function fluxNou() {
-        // Reset form complet + clear flow curent
-        pdfB64 = null;
-        localStorage.removeItem("activeFlowId");
-        localStorage.removeItem("docflow_current_flow");
-        // Reset btnClearPdf
-        const cb = $("btnClearPdf");
-        if (cb) { cb.disabled = true; cb.style.opacity = ".35"; cb.style.cursor = "not-allowed"; }
-        setPdfInfo("Nu ai selectat încă un PDF.");
-        $("docName").value = "";
-        // initName/initEmail rămân (din profil)
-        // Reset signers
-        const tb = document.getElementById("signersTbody");
-        if (tb) tb.innerHTML = "";
-        setDefaults();
-        autoFillFromProfile();
-        validateForm();
-        showTab("init");
-        // Reset status + clear activeFlowId
-        localStorage.removeItem("activeFlowId");
-        // Reset btnClearPdf
-        const cpBtn = $("btnClearPdf");
-        if (cpBtn) { cpBtn.style.opacity = ".3"; cpBtn.style.pointerEvents = "none"; cpBtn.disabled = true; }
-      }
 
       function autoFillFromProfile() {
         const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
@@ -989,7 +965,6 @@ th{ color: var(--sub) !important; }
         if (!bar) return;
         const label = u.nume || u.email || "";
         bar.innerHTML = (label ? `<span style="color:#cdd8ff;font-size:.82rem;">${label}</span>` : "") +
-          `<button onclick="localStorage.removeItem('activeFlowId');localStorage.removeItem('docflow_current_flow');location.reload();" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;">+ Flux nou</button>` +
           (u.role === "admin" ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
           `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
       })();
