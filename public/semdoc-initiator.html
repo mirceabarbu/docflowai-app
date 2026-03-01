@@ -881,9 +881,11 @@ th{ color: var(--sub) !important; }
               ${dt2}${refuzLabel}
             </div>`;
           }).join("");
-          const dlBtn = f.hasSignedPdf
+          const dlBtn = (f.allSigned && f.hasSignedPdf)
             ? `<a href="/my-flows/${f.flowId}/download?token=${dlToken}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
-            : `<span style="color:var(--muted);font-size:.8rem;">PDF final indisponibil încă</span>`;
+            : f.allSigned
+            ? `<span style="color:var(--warn);font-size:.8rem;">⏳ Se procesează PDF...</span>`
+            : `<span style="color:var(--muted);font-size:.8rem;">Nesemnat complet</span>`;
           return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:12px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
               <div>

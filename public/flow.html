@@ -289,10 +289,13 @@
 
       const when = s.signedAt || s.at || s.updatedAt || s.date;
       const metaBits = [];
-      if(s.function) metaBits.push(s.function);
-      if(s.department) metaBits.push(s.department);
-      if(s.institution) metaBits.push(s.institution);
-      if(s.role || s.attr) metaBits.unshift(roleLabel(s.role || s.attr));
+      const functieSigner = s.functie || s.function || "";
+      const compartimentSigner = s.compartiment || s.department || "";
+      const instSigner = s.institutie || s.institution || "";
+      if(functieSigner) metaBits.push(functieSigner);
+      if(compartimentSigner) metaBits.push(compartimentSigner);
+      if(instSigner) metaBits.push(instSigner);
+      if(s.rol || s.role || s.attr) metaBits.unshift(roleLabel(s.rol || s.role || s.attr));
       const meta = metaBits.filter(Boolean).join(" · ");
 
       const el = document.createElement("div");
@@ -390,18 +393,30 @@
 
       $("docName").textContent = (data.docName || data.documentName || data.name || data.title || "—");
       $("initName").textContent = (data.initName || data.initiatorName || "—");
-      $("inst").textContent = (data.institutie || data.institution || "—");
+      const instVal = data.institutie || data.institution ||
+        (data.signers || []).map(s => s.institutie || s.institution).find(Boolean) || "—";
+      $("inst").textContent = instVal;
       $("updatedAt").textContent = prettyTs(data.updatedAt || data.updated_at || data.createdAt || data.created_at);
 
-      const b = statusBadge(data.status || j.status);
+      // Calculeaza status real din semnatari
+      const signers = data.signers || [];
+      let computedStatus = data.status || j.status || "";
+      if (!computedStatus || computedStatus === "active") {
+        if (signers.length && signers.every(s => s.status === "signed")) computedStatus = "completed";
+        else if (signers.some(s => s.status === "refused")) computedStatus = "refused";
+        else if (signers.some(s => s.status === "signed" || s.status === "current")) computedStatus = "active";
+        else computedStatus = "active";
+      }
+      const b = statusBadge(computedStatus);
       const badge = $("badgeStatus");
       badge.className = "badge " + b.cls;
       badge.textContent = b.txt;
 
-      const hasSigned = !!(j.hasSignedPdf || data.hasSignedPdf);
+      const allSignedDone = signers.length > 0 && signers.every(s => s.status === "signed");
+      const hasSigned = allSignedDone && !!(j.hasSignedPdf || data.hasSignedPdf);
       $("btnDownloadSigned").disabled = !hasSigned;
-      $("btnDownloadSigned").title = hasSigned ? "Descarcă PDF semnat" : "PDF semnat nu este încă disponibil";
-      $("signHint").textContent = hasSigned ? "PDF semnat disponibil." : "PDF semnat nu este încă disponibil.";
+      $("btnDownloadSigned").title = hasSigned ? "Descarcă PDF semnat" : allSignedDone ? "Se procesează PDF-ul semnat..." : "Documentul nu a fost semnat de toți semnatarii";
+      $("signHint").textContent = hasSigned ? "PDF semnat disponibil." : allSignedDone ? "Se procesează..." : "În așteptarea tuturor semnăturilor.";
 
       const hasPdf = !!(j.hasPdf || data.hasPdf);
       $("btnDownloadOriginal").disabled = !hasPdf;
