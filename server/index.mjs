@@ -251,6 +251,14 @@ function wsPush(email, payload) {
   for (const ws of conns) { try { if (ws.readyState===1) ws.send(msg); } catch(e) {} }
 }
 
+// Verifica token semnatar cu expiry (90 zile)
+const SIGNER_TOKEN_EXPIRY_DAYS = 90;
+function isSignerTokenExpired(signer) {
+  if (!signer.tokenCreatedAt) return false; // token vechi fără dată — permitem
+  const created = new Date(signer.tokenCreatedAt).getTime();
+  return Date.now() - created > SIGNER_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+}
+
 async function notify({ userEmail, flowId=null, type, title, message, waParams=null }) {
   if (!pool || !DB_READY) return;
   try {
@@ -328,17 +336,60 @@ async function notify({ userEmail, flowId=null, type, title, message, waParams=n
 }
 
 // ==================== AUTH ====================
+// Rate limiter in-memory pentru login (fără dependențe externe)
+const loginAttempts = new Map(); // key: ip+email -> {count, firstAt, blockedUntil}
+const LOGIN_MAX = 10;          // max încercări
+const LOGIN_WINDOW = 15*60*1000; // 15 minute fereastră
+const LOGIN_BLOCK = 15*60*1000;  // 15 minute blocare
+function loginRateKey(req, email) { return `${req.ip||""}:${(email||"").toLowerCase()}`; }
+function checkLoginRate(req, email) {
+  const key = loginRateKey(req, email);
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (entry?.blockedUntil && now < entry.blockedUntil) {
+    const remainSec = Math.ceil((entry.blockedUntil - now) / 1000);
+    return { blocked: true, remainSec };
+  }
+  return { blocked: false };
+}
+function recordLoginFail(req, email) {
+  const key = loginRateKey(req, email);
+  const now = Date.now();
+  const entry = loginAttempts.get(key) || { count:0, firstAt:now };
+  if (now - entry.firstAt > LOGIN_WINDOW) { entry.count = 0; entry.firstAt = now; delete entry.blockedUntil; }
+  entry.count++;
+  if (entry.count >= LOGIN_MAX) entry.blockedUntil = now + LOGIN_BLOCK;
+  loginAttempts.set(key, entry);
+}
+function clearLoginRate(req, email) { loginAttempts.delete(loginRateKey(req, email)); }
+// Curăță periodic intrările vechi
+setInterval(() => {
+  const now = Date.now();
+  for (const [k,v] of loginAttempts.entries()) {
+    if (now - v.firstAt > LOGIN_WINDOW*2 && (!v.blockedUntil || now > v.blockedUntil)) loginAttempts.delete(k);
+  }
+}, 5*60*1000);
+
 app.post("/auth/login", async (req,res) => {
   if (requireDb(res)) return;
   const { email, password } = req.body||{};
   if (!email||!password) return res.status(400).json({error:"email_and_password_required"});
+  // Rate limit check
+  const rateCheck = checkLoginRate(req, email);
+  if (rateCheck.blocked) {
+    return res.status(429).json({error:"too_many_attempts", message:`Prea multe încercări. Încearcă din nou în ${Math.ceil(rateCheck.remainSec/60)} minute.`, remainSec: rateCheck.remainSec});
+  }
   try {
     const { rows } = await pool.query("SELECT * FROM users WHERE email=$1", [email.trim().toLowerCase()]);
     const user = rows[0];
-    if (!user || !verifyPassword(password, user.password_hash)) return res.status(401).json({error:"invalid_credentials"});
+    if (!user || !verifyPassword(password, user.password_hash)) {
+      recordLoginFail(req, email);
+      return res.status(401).json({error:"invalid_credentials"});
+    }
+    clearLoginRate(req, email); // reset la login reușit
     const token = jwt.sign({userId:user.id, email:user.email, role:user.role, nume:user.nume, functie:user.functie, institutie:user.institutie}, JWT_SECRET, {expiresIn:JWT_EXPIRES});
-    res.json({token, email:user.email, role:user.role, nume:user.nume, functie:user.functie, institutie:user.institutie});
-  } catch(e) { res.status(500).json({error:"server_error"}); }
+    return res.json({token, email:user.email, role:user.role, nume:user.nume, functie:user.functie, institutie:user.institutie});
+  } catch(e) { return res.status(500).json({error:"server_error"}); }
 });
 app.get("/auth/me", async (req,res) => {
   const decoded = requireAuth(req,res);
@@ -894,6 +945,7 @@ const createFlow = async (req,res) => {
       name: String(s.name||"").trim(),
       email: String(s.email||"").trim(),
       token: String(s.token||crypto.randomBytes(16).toString("hex")),
+      tokenCreatedAt: new Date().toISOString(),
       status: idx===0?"current":"pending",
       signedAt: null, signature: null,
     }));
@@ -1068,6 +1120,7 @@ const signFlow = async (req,res) => {
     const signers = Array.isArray(data.signers)?data.signers:[];
     const idx = signers.findIndex(s=>s.token===token);
     if (idx===-1) return res.status(400).json({error:"invalid_token"});
+    if (isSignerTokenExpired(signers[idx])) return res.status(403).json({error:"token_expired", message:"Link-ul de semnare a expirat (90 zile). Contactează inițiatorul pentru un nou link."});
     if (signers[idx].status!=="current") return res.status(409).json({error:"not_current_signer"});
     signers[idx].status="signed"; signers[idx].signedAt=new Date().toISOString();
     signers[idx].signature=sig; signers[idx].pdfUploaded=false;
@@ -1092,6 +1145,7 @@ app.post("/flows/:flowId/refuse", async (req,res) => {
     const signers = Array.isArray(data.signers)?data.signers:[];
     const idx = signers.findIndex(s=>s.token===token);
     if (idx===-1) return res.status(400).json({error:"invalid_token"});
+    if (isSignerTokenExpired(signers[idx])) return res.status(403).json({error:"token_expired", message:"Link-ul de semnare a expirat (90 zile). Contactează inițiatorul pentru un nou link."});
     if (signers[idx].status!=="current") return res.status(409).json({error:"not_current_signer"});
     const refuserName = signers[idx].name||signers[idx].email||"Semnatar";
     const refuserRol = signers[idx].rol||"";
@@ -1149,6 +1203,7 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
     const signers = Array.isArray(data.signers)?data.signers:[];
     const idx = signers.findIndex(s=>s.token===token);
     if (idx===-1) return res.status(400).json({error:"invalid_token"});
+    if (isSignerTokenExpired(signers[idx])) return res.status(403).json({error:"token_expired", message:"Link-ul de semnare a expirat (90 zile). Contactează inițiatorul pentru un nou link."});
 
     // Verificare uploadToken (Nivel 1 securitate) — OBLIGATORIE
     if (!uploadToken) {
