@@ -1,14 +1,46 @@
-# DocFlowAI — MVP (README actualizat)
+# DocFlowAI
 
-## Descriere
-Platformă de circulație și semnare electronică a documentelor.  
-Suportă două tipuri de fluxuri:
-- **Cu tabel generat** — DocFlowAI adaugă cartuș + ancoră pentru semnătură calificată
-- **Ancore existente** — PDF-ul are deja ancore, merge pe flux fără modificări
+**Platformă de circulație și semnare electronică calificată a documentelor pentru administrația publică.**
+
+Suportă fluxuri multi-semnatar secvențiale cu notificări în timp real, arhivare în Google Drive și securitate la upload prin token verificat.
 
 ---
 
-## Variabile de mediu (Railway)
+## Cuprins
+- [Arhitectură](#arhitectură)
+- [Variabile de mediu](#variabile-de-mediu)
+- [Fișiere principale](#fișiere-principale)
+- [Endpoints API](#endpoints-api)
+- [Funcționalități](#funcționalități)
+- [Note tehnice](#note-tehnice)
+
+---
+
+## Arhitectură
+
+```
+Railway (Node.js)
+├── server/
+│   ├── index.mjs        — Express server, toate endpoint-urile
+│   ├── mailer.mjs       — Email via Resend API
+│   ├── whatsapp.mjs     — WhatsApp via Meta Graph API
+│   └── drive.mjs        — Arhivare Google Drive via Service Account
+└── public/
+    ├── login.html
+    ├── semdoc-initiator.html
+    ├── semdoc-signer.html
+    ├── admin.html
+    ├── notifications.html
+    ├── templates.html
+    └── notif-widget.js
+
+PostgreSQL (Railway)
+└── Tabele: flows, users, notifications, templates
+```
+
+---
+
+## Variabile de mediu
 
 ### Aplicație
 ```
@@ -28,14 +60,26 @@ ADMIN_SECRET=your-long-random-secret
 ADMIN_INIT_PASSWORD=parola-initiala-admin
 ```
 
-### Email (SMTP)
+### Email (Resend)
 ```
+RESEND_API_KEY=re_xxxxxxxxxxxx
 MAIL_FROM=DocFlowAI <noreply@docflowai.ro>
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
-SMTP_SECURE=true
-SMTP_USER=noreply@docflowai.ro
-SMTP_PASS=APP_PASSWORD
+```
+
+### WhatsApp (opțional — Meta Business API)
+```
+WA_PHONE_NUMBER_ID=your_phone_number_id
+WA_ACCESS_TOKEN=your_access_token
+WA_TEMPLATE_SIGN=nume_template_semnare
+WA_TEMPLATE_COMPLETE=nume_template_finalizat
+WA_TEMPLATE_REFUSED=nume_template_refuzat
+WA_TEMPLATE_LANG=ro
+```
+
+### Google Drive (arhivare)
+```
+GOOGLE_DRIVE_FOLDER_ID=id_folder_arhiva_drive
+GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
 ```
 
 ---
@@ -44,12 +88,17 @@ SMTP_PASS=APP_PASSWORD
 
 | Fișier | Rol |
 |---|---|
-| `index.mjs` | Server Express — toate endpoint-urile |
-| `mailer.mjs` | Trimitere email via SMTP (nodemailer) |
-| `semdoc-initiator.html` | Pagina inițiatorului (creare flux, status, fluxuri mele) |
-| `semdoc-signer.html` | Pagina semnătarului (vizualizare, descărcare, upload PDF semnat, refuz) |
-| `admin.html` | Panou administrare utilizatori și fluxuri |
-| `login.html` | Pagina de autentificare |
+| `server/index.mjs` | Server Express — toate endpoint-urile |
+| `server/mailer.mjs` | Trimitere email via Resend |
+| `server/whatsapp.mjs` | Notificări WhatsApp via Meta Graph API |
+| `server/drive.mjs` | Arhivare PDF-uri în Google Drive |
+| `public/login.html` | Autentificare |
+| `public/semdoc-initiator.html` | Inițiere flux, Status, Fluxuri mele, Șabloane |
+| `public/semdoc-signer.html` | Semnare calificată, upload PDF, refuz |
+| `public/admin.html` | Administrare utilizatori, fluxuri, arhivare Drive |
+| `public/notifications.html` | Centru notificări cu tabs și badge-uri |
+| `public/templates.html` | Șabloane reutilizabile de semnatari |
+| `public/notif-widget.js` | Widget notificări în timp real (WebSocket) |
 
 ---
 
@@ -58,82 +107,153 @@ SMTP_PASS=APP_PASSWORD
 ### Autentificare
 | Metodă | Endpoint | Descriere |
 |---|---|---|
-| POST | `/auth/login` | Login cu email + parolă → JWT |
+| POST | `/auth/login` | Login email + parolă → JWT |
 | GET | `/auth/me` | Verificare token curent |
 
 ### Fluxuri
-| Metodă | Endpoint | Descriere | Auth |
-|---|---|---|---|
-| POST | `/flows` | Creare flux nou (cu PDF, semnatari, flowType) | JWT |
-| GET | `/flows/:flowId` | Date flux (fără PDF brut) | token semnatar |
-| PUT | `/flows/:flowId` | Actualizare flux | Admin |
-| GET | `/flows/:flowId/pdf` | Descărcare PDF original | token semnatar |
-| GET | `/flows/:flowId/signed-pdf` | Descărcare PDF semnat (ultimul upload) | token semnatar |
-| POST | `/flows/:flowId/sign` | Marcare semnat (fără upload PDF) | token semnatar |
-| POST | `/flows/:flowId/upload-signed-pdf` | Upload PDF semnat calificat | token semnatar |
-| POST | `/flows/:flowId/refuse` | Refuz semnare + notificare email | token semnatar |
-| POST | `/flows/:flowId/resend` | Retrimite email semnatar curent | Admin |
-
-### Fluxuri utilizator autentificat
 | Metodă | Endpoint | Descriere |
 |---|---|---|
-| GET | `/my-flows` | Lista fluxurilor inițiate de utilizatorul curent |
-| GET | `/my-flows/:flowId/download` | Descărcare PDF final din fluxurile proprii |
+| POST | `/flows` | Creare flux nou |
+| GET | `/flows/:flowId` | Date flux + semnatari îmbogățiți (fără PDF) |
+| GET | `/flows/:flowId/pdf` | PDF original (emite uploadToken în header) |
+| GET | `/flows/:flowId/signed-pdf` | PDF semnat final (sau redirect Drive dacă arhivat) |
+| POST | `/flows/:flowId/sign` | Marcare semnat |
+| POST | `/flows/:flowId/upload-signed-pdf` | Upload PDF semnat calificat (verificare uploadToken) |
+| POST | `/flows/:flowId/refuse` | Refuz semnare |
+| POST | `/flows/:flowId/resend` | Retrimitere notificare semnatar curent |
+
+### Fluxuri utilizator
+| Metodă | Endpoint | Descriere |
+|---|---|---|
+| GET | `/my-flows` | Fluxurile proprii (inițiat sau semnatar) |
+| GET | `/my-flows/:flowId/download` | Descărcare PDF semnat (sau redirect Drive) |
+| GET | `/api/my-signer-token/:flowId` | Token semnare pentru flow curent |
+
+### Notificări
+| Metodă | Endpoint | Descriere |
+|---|---|---|
+| GET | `/api/notifications` | Lista notificărilor |
+| GET | `/api/notifications/with-status` | Notificări + status semnatar (pentru filtrare) |
+| POST | `/api/notifications/:id/read` | Marchează citit |
+| POST | `/api/notifications/read-all` | Marchează toate citite |
+| DELETE | `/api/notifications/:id` | Șterge notificare |
+
+### Șabloane
+| Metodă | Endpoint | Descriere |
+|---|---|---|
+| GET | `/api/templates` | Șabloanele proprii + cele shared din instituție |
+| POST | `/api/templates` | Creare șablon |
+| PUT | `/api/templates/:id` | Editare șablon (doar owner) |
+| DELETE | `/api/templates/:id` | Ștergere șablon (doar owner) |
 
 ### Admin — Utilizatori
 | Metodă | Endpoint | Descriere |
 |---|---|---|
-| GET | `/admin/users` | Lista tuturor utilizatorilor |
-| POST | `/admin/users` | Creare utilizator nou |
+| GET | `/admin/users` | Lista utilizatorilor |
+| POST | `/admin/users` | Creare utilizator |
 | PUT | `/admin/users/:id` | Editare utilizator |
 | DELETE | `/admin/users/:id` | Ștergere utilizator |
 | POST | `/admin/users/:id/reset-password` | Resetare parolă |
-| POST | `/admin/users/:id/send-credentials` | Trimitere credențiale pe email |
+| POST | `/admin/users/:id/send-credentials` | Trimitere credențiale email |
 
 ### Admin — Fluxuri
 | Metodă | Endpoint | Descriere |
 |---|---|---|
-| POST | `/admin/flows/clean` | Ștergere fluxuri vechi sau toate |
+| POST | `/admin/flows/clean` | Ștergere fluxuri vechi / toate |
+
+### Admin — Arhivare Drive
+| Metodă | Endpoint | Descriere |
+|---|---|---|
+| GET | `/admin/drive/verify` | Test conexiune Google Drive |
+| GET | `/admin/flows/archive-preview` | Preview fluxuri eligibile + MB estimat |
+| POST | `/admin/flows/archive` | Arhivare în Drive + eliberare DB |
+
+### WebSocket
+| Endpoint | Descriere |
+|---|---|
+| `ws://app/ws` | Notificări în timp real (autentificare via JWT în query) |
 
 ### Utilitar
 | Metodă | Endpoint | Descriere |
 |---|---|---|
 | GET | `/health` | Status server |
-| GET | `/smtp-test` | Verificare configurație SMTP |
+| GET | `/smtp-test` | Verificare configurație email |
 | POST | `/smtp-test` | Trimitere email de test |
+| GET | `/wa-test` | Verificare configurație WhatsApp |
+| POST | `/wa-test` | Trimitere mesaj WhatsApp de test |
 
 ---
 
-## Autentificare endpoints admin
-Endpoint-urile admin acceptă:
-- Header: `x-admin-secret: <ADMIN_SECRET>`
-- Header: `Authorization: Bearer <ADMIN_SECRET>`
-- sau JWT cu rol `admin`
+## Funcționalități
+
+### Fluxuri de semnare
+- **flowType `tabel`** — DocFlowAI generează cartuș cu semnatari + ancoră AcroForm pe PDF original
+- **flowType `ancore`** — PDF-ul are deja ancore, merge pe flux fără modificări
+- Semnare secvențială: fiecare semnatar primește PDF-ul cu semnăturile anterioare
+- Refuz cu motiv: blochează fluxul și notifică toți participanții
+
+### Securitate upload (Nivel 1)
+La descărcarea PDF-ului, serverul emite un `uploadToken` JWT care conține:
+- `flowId`, `signerToken`, `preHash` (sha256 al PDF-ului livrat), `exp: 4h`
+
+La upload, serverul verifică:
+- Token valid și neexpirat
+- `flowId` și `signerToken` corespund
+- `preHash` = hash-ul PDF-ului curent din sistem
+
+Dacă verificarea eșuează → `409 pdf_version_mismatch`.
+
+### Notificări
+- **In-app** — WebSocket în timp real, badge pe clopoțel, tabs cu număr (Toate / Necitite / De semnat / Finalizate / Refuzate)
+- **Email** — via Resend API (activat per user cu `notif_email = true`)
+- **WhatsApp** — via Meta Graph API cu template messages (activat per user cu `notif_whatsapp = true`)
+
+Evenimentele care declanșează notificări:
+- `YOUR_TURN` — rândul semnătarului să semneze
+- `COMPLETED` — documentul a fost semnat de toți
+- `REFUSED` — un semnatar a refuzat
+
+### Șabloane
+- Creare și reutilizare șabloane de semnatari
+- Partajare cu colegii din aceeași instituție (`shared = true`)
+- Aplicare automată la inițierea unui flux nou
+
+### Administrare utilizatori
+- Câmpuri: Nume, Funcție, Instituție, Compartiment, Email, Rol, Telefon
+- Notificări configurabile per user (in-app / email / WhatsApp)
+- Formular 3 coloane, tabel cu paginare 10 rânduri, modal editare, dublu-click pe rând
+- Dropdown autocompletat pentru Funcție, Instituție, Compartiment
+
+### Arhivare Google Drive
+- Arhivare manuală din panoul admin pentru fluxuri finalizate/refuzate
+- Structură foldere: `DocFlowAI/Arhiva/Institutie/An/Luna/`
+- Per flow: `_semnat.pdf` + `_original.pdf` + `_audit.json`
+- După arhivare: `pdfB64` și `signedPdfB64` șterse din DB
+- Download-urile redirecționează automat către Drive dacă flow-ul e arhivat
+- Preview înainte de arhivare: număr fluxuri + MB eliberat
 
 ---
 
-## Note arhitecturale
+## Note tehnice
 
-### Link semnare
-Format: `/semdoc-signer.html?flow=<flowId>&token=<token>`  
-Indexul semnătarului se derivă din token (server lookup), nu din URL.
+### Autentificare endpoints admin
+Endpoint-urile `/admin/*` acceptă:
+- Header `Authorization: Bearer <JWT>` cu rol `admin`
+- Header `x-admin-secret: <ADMIN_SECRET>`
 
-### PDF
-- `GET /flows/:flowId` **nu** returnează `pdfB64` — returnează `hasPdf: true/false`
-- PDF-ul brut se obține separat via `GET /flows/:flowId/pdf`
-- PDF-ul semnat (ultimul upload) via `GET /flows/:flowId/signed-pdf`
+### Îmbogățire semnatari
+`GET /flows/:flowId` și `GET /my-flows` returnează semnatarii îmbogățiți cu `functie` și `compartiment` din tabelul `users` (lookup după email), util pentru afișare în Status și Fluxuri mele.
 
-### flowType
-- `"tabel"` (default) — DocFlowAI generează cartuș + ancoră pe PDF original
-- `"ancore"` — PDF-ul are deja ancore, se trimite pe flux fără modificări
+### Migrări DB automate la pornire
+La fiecare pornire, serverul verifică și adaugă automat coloanele lipsă:
+- `users`: `phone`, `notif_inapp`, `notif_email`, `notif_whatsapp`, `compartiment`
+- Tabel `notifications`: creat automat dacă nu există
+- Tabel `templates`: creat automat dacă nu există
 
-### Logica semnare
-1. Semnatar 1 → descarcă PDF cu cartuș generat (sau original dacă `flowType=ancore`) → semnează calificat în Adobe → uploadează PDF semnat
-2. Semnatar 2+ → descarcă PDF-ul semnat de predecesori → adaugă semnătura → uploadează
-3. La refuz → flow `status: "refused"`, email trimis inițiatorului + semnatarilor care au semnat deja
+### Redirect după semnare
+După upload PDF semnat, semnatarul este redirecționat automat la pagina Status după 2.5 secunde.
 
-### Email notificări
-- **Creare flux** — email trimis primului semnatar cu link de semnare
-- **Semnare completă** — email trimis inițiatorului
-- **Refuz** — email trimis inițiatorului + semnatarilor care au semnat anterior (text diferit per destinatar)
-- **Credențiale** — email cu email + parolă trimis la crearea utilizatorului (opțional, la confirmare)
+### PDF livrat semnătarului
+- **Semnatar 1, flowType `tabel`**: PDF original + cartuș generat de DocFlowAI
+- **Semnatar 1, flowType `ancore`**: PDF original nemodificat
+- **Semnatar 2+**: PDF semnat de predecesori (descărcat direct din `/signed-pdf`)
