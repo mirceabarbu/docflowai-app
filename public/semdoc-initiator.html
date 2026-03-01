@@ -180,14 +180,7 @@ th{ color: var(--sub) !important; }
     <main>
       <!-- INIT -->
       <section id="viewInit">
-        <div id="lockBanner" style="display:none; background:rgba(251,113,133,.1); border:1px solid rgba(251,113,133,.3); border-radius:14px; padding:14px; margin-bottom:12px; font-weight:600;">
-          🔒 Acest flux a fost finalizat — toți semnatarii au semnat. Nu mai poți porni un flux nou pentru acest document.
-        </div>
-        <div id="dlBanner" style="display:none; background:rgba(45,212,191,.08); border:1px solid rgba(45,212,191,.3); border-radius:14px; padding:14px; margin-bottom:12px;">
-          <span style="font-weight:700;">✅ Document semnat complet!</span>
-          <span class="muted" style="margin-left:8px; font-size:.9em;">Deschide link-ul de semnare pentru a descărca PDF-ul cu cartuș.</span>
-          <div id="dlBannerLink" style="margin-top:8px;"></div>
-        </div>
+
         <div class="card">
           <div class="grid">
             <div class="col-5">
@@ -996,7 +989,7 @@ th{ color: var(--sub) !important; }
         if (!bar) return;
         const label = u.nume || u.email || "";
         bar.innerHTML = (label ? `<span style="color:#cdd8ff;font-size:.82rem;">${label}</span>` : "") +
-          `<button onclick="localStorage.removeItem('activeFlowId');localStorage.removeItem('docflow_current_flow');localStorage.removeItem('lastFlowId');location.reload();" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;">+ Flux nou</button>` +
+          `<button onclick="localStorage.removeItem('activeFlowId');localStorage.removeItem('docflow_current_flow');location.reload();" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;">+ Flux nou</button>` +
           (u.role === "admin" ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
           `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
       })();
@@ -1052,7 +1045,6 @@ th{ color: var(--sub) !important; }
           const j = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(j?.error || "server_error");
 
-          localStorage.setItem("lastFlowId", j.flowId);
           localStorage.setItem("lastInitName", $("initName").value.trim());
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
 
@@ -1084,48 +1076,8 @@ th{ color: var(--sub) !important; }
       });
 
 
-      async function checkFlowLock() {
-        const flowId = getFlowIdFromQueryOrStorage();
-        const lockBanner = $("lockBanner");
-        const dlBanner = $("dlBanner");
-        const btnCreate = $("btnCreate");
-        if (!flowId) return;
-        try {
-          const r = await fetch(`/flows/${encodeURIComponent(flowId)}`, { headers: authHeaders() });
-          if (!r.ok) return;
-          const j = await r.json().catch(() => ({}));
-          const allDone = j.signers && j.signers.every(s => s.status === "signed");
-          const anySignedOrRefused = j.signers && j.signers.some(s => s.status === "signed" || s.status === "refused");
-          if (allDone) {
-            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; btnCreate.title = "Fluxul este finalizat"; }
-            if (lockBanner) lockBanner.style.display = "block";
-            if (dlBanner) {
-              dlBanner.style.display = "block";
-              const lnkDiv = $("dlBannerLink");
-              if (lnkDiv && j.hasSignedPdf) {
-                lnkDiv.innerHTML = `<a href="/flows/${encodeURIComponent(j.flowId)}/signed-pdf" target="_blank" class="btn" style="display:inline-block; text-decoration:none; padding:8px 14px;">🏅 Descarcă PDF semnat calificat</a>`;
-              }
-            }
-          } else if (anySignedOrRefused) {
-            if (btnCreate) { btnCreate.disabled = true; btnCreate.style.opacity = 0.4; btnCreate.title = "Fluxul este în curs de semnare — nu se mai poate modifica"; }
-            if (lockBanner) lockBanner.style.display = "none";
-            if (dlBanner) dlBanner.style.display = "none";
-          } else {
-            if (btnCreate) { btnCreate.disabled = false; btnCreate.style.opacity = 1; btnCreate.title = ""; }
-            if (lockBanner) lockBanner.style.display = "none";
-            if (dlBanner) dlBanner.style.display = "none";
-          }
-        } catch(e) {}
-      }
-      function getFlowIdFromQueryOrStorage() {
-        const params = new URLSearchParams(location.search);
-        return params.get("flow") || localStorage.getItem("lastFlowId") || "";
-      }
 
 
-
-
-      checkFlowLock();
       const _flowParam = new URLSearchParams(location.search).get("flow");
       if (_flowParam) {
         location.replace(`/flow.html?flow=${encodeURIComponent(_flowParam)}`);
