@@ -11,6 +11,8 @@
   let ws = null;
   let wsReady = false;
   let reconnectTimer = null;
+  let keepaliveTimer = null;
+  let reconnectDelay = 2000;
   let unreadCount = 0;
   let badgeEl = null;
   let bellBtn = null;
@@ -118,13 +120,41 @@
     }
   }
 
+
+  function buildActionUrl(notif) {
+    // Prefer explicit actionUrl sent by backend
+    if (notif && notif.actionUrl) return notif.actionUrl;
+
+    const flowId = notif && (notif.flowId || notif.flow || (notif.data && (notif.data.flowId || notif.data.flow)));
+    const token = notif && (notif.token || (notif.data && notif.data.token));
+
+    if (!flowId) return '/notifications';
+
+    const t = (notif.type || '').toUpperCase();
+
+    // If it's your turn and we have signer token -> open signer page
+    if (t === 'YOUR_TURN' || t === 'ASSIGNED' || t === 'SIGN' || t === 'SIGNER_TURN') {
+      if (token) return `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(token)}`;
+      // Fallback: show flow status
+      return `/flow.html?flow=${encodeURIComponent(flowId)}`;
+    }
+
+    // Completed / refused -> open flow view
+    if (t === 'COMPLETED' || t === 'REFUSED' || t === 'DONE' || t === 'FINISHED') {
+      return `/flow.html?flow=${encodeURIComponent(flowId)}`;
+    }
+
+    // Default: flow view
+    return `/flow.html?flow=${encodeURIComponent(flowId)}`;
+  }
+
   function showToast(notif) {
     const area = document.getElementById('nw-toast-area');
     if (!area) return;
     const t = document.createElement('div');
     t.className = `nw-toast nw-toast-type-${notif.type||''}`;
     t.innerHTML = `<div class="nw-toast-title">${notif.title||'Notificare'}</div><div class="nw-toast-msg">${notif.message||''}</div>`;
-    t.onclick = () => { window.location.href = '/notifications'; };
+    t.onclick = () => { window.location.href = buildActionUrl(notif); };
     area.appendChild(t);
     setTimeout(() => {
       t.classList.add('nw-exit');
@@ -144,9 +174,13 @@
     ws.onopen = () => {
       wsReady = true;
       ws.send(JSON.stringify({ type: 'auth', token }));
-      // ping keepalive la 25s
-      setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 25000);
-    };
+      // ping keepalive la 25s (evită duplicate la reconnect)
+      if (keepaliveTimer) clearInterval(keepaliveTimer);
+      keepaliveTimer = setInterval(() => {
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' }));
+      }, 25000);
+      reconnectDelay = 2000;
+};
 
     ws.onmessage = (ev) => {
       try {
@@ -158,9 +192,11 @@
 
     ws.onclose = () => {
       wsReady = false;
-      // Reconectare exponențială
+      if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; }
+      // Reconectare cu backoff (max 30s)
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(connectWS, 5000);
+      reconnectTimer = setTimeout(connectWS, reconnectDelay);
+      reconnectDelay = Math.min(30000, Math.round(reconnectDelay * 1.7));
     };
 
     ws.onerror = () => { ws.close(); };
