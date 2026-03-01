@@ -292,10 +292,8 @@
       const metaBits = [];
       const functieSigner = s.functie || s.function || "";
       const compartimentSigner = s.compartiment || s.department || "";
-      const instSigner = s.institutie || s.institution || "";
       if(functieSigner) metaBits.push(functieSigner);
       if(compartimentSigner) metaBits.push(compartimentSigner);
-      if(instSigner) metaBits.push(instSigner);
       if(s.rol || s.role || s.attr) metaBits.unshift(roleLabel(s.rol || s.role || s.attr));
       const meta = metaBits.filter(Boolean).join(" · ");
 
@@ -384,7 +382,6 @@
     }
 
     $("pillFlow").innerHTML = `<strong>Flow</strong> ${flowId}`;
-    $("subtitle").textContent = "Flow " + flowId;
 
     setMsg("", "");
 
