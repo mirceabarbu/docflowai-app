@@ -154,6 +154,7 @@
           <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
           <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
           <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
+          <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
           <span class="pill"><strong>Actualizat</strong> <span id="updatedAt">—</span></span>
         </div>
 
@@ -396,6 +397,9 @@
       const instVal = data.institutie || data.institution ||
         (data.signers || []).map(s => s.institutie || s.institution).find(Boolean) || "—";
       $("inst").textContent = instVal;
+      const compartVal = data.compartiment || data.compartiment ||
+        (data.signers || []).map(s => s.compartiment).find(Boolean) || "—";
+      $("compartiment").textContent = compartVal;
       $("updatedAt").textContent = prettyTs(data.updatedAt || data.updated_at || data.createdAt || data.created_at);
 
       // Calculeaza status real din semnatari
