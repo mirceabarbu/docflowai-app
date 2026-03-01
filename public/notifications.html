@@ -263,6 +263,7 @@ function updateTabCounts() {
 function renderList() {
   const list = filtered();
   const area = $('listArea');
+  updateTabCounts();
   if (!list.length) {
     area.innerHTML = `<div class="empty-state">
       <div class="empty-icon">🔕</div>
@@ -329,19 +330,20 @@ async function markRead(id) {
   const n = allNotifs.find(x => x.id === id);
   if (!n || n.read) return;
   n.read = true;
-  renderList(); updateReadAllBtn();
+  renderList(); updateReadAllBtn(); updateTabCounts();
   await fetch(`/api/notifications/${id}/read`, { method:'POST', headers:{'Authorization':'Bearer '+token} }).catch(()=>{});
 }
 
 window.deleteNotif = async (e, id) => {
   e.stopPropagation();
   allNotifs = allNotifs.filter(n => n.id !== id);
-  renderList(); updateReadAllBtn();
+  renderList(); updateReadAllBtn(); updateTabCounts();
   await fetch(`/api/notifications/${id}`, { method:'DELETE', headers:{'Authorization':'Bearer '+token} }).catch(()=>{});
 };
 
 $('btnReadAll').onclick = async () => {
   allNotifs.forEach(n => n.read = true);
+  updateTabCounts();
   renderList(); updateReadAllBtn();
   await fetch('/api/notifications/read-all', { method:'POST', headers:{'Authorization':'Bearer '+token} }).catch(()=>{});
 };
