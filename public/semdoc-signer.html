@@ -350,8 +350,8 @@ th{ color: var(--sub) !important; }
 
           // PDF viewer
           if (j.hasPdf) {
-            const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf`;
-            $("pdfFrame").src = pdfUrl + (pdfUrl.includes("#") ? "" : "#toolbar=0&navpanes=0&scrollbar=0");
+            const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token)}`;
+      $("pdfFrame").src = pdfUrl + "#toolbar=0&navpanes=0&scrollbar=0";
             $("pdfBox").classList.remove("hidden");
           } else {
             $("pdfBox").classList.add("hidden");
@@ -382,7 +382,7 @@ th{ color: var(--sub) !important; }
             const box = $("completedBox");
             if (box) box.style.display = "block";
             const dlBtn = $("btnDownloadFinalPdf");
-            if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf`;
+            if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`;
           } else if (thisSigned) {
             // This signer already uploaded — lock box, show waiting message
             if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
@@ -501,7 +501,7 @@ th{ color: var(--sub) !important; }
             if (completedBox) {
               completedBox.style.display = "block";
               const dlBtn = $("btnDownloadFinalPdf");
-              if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf`;
+              if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`;
             }
             const signBox = $("signBox");
             if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
@@ -542,7 +542,7 @@ th{ color: var(--sub) !important; }
           // Semnatar 1: generează PDF cu cartuș + câmpuri AcroForm din original
           // Semnatar 2+: descarcă DIRECT /signed-pdf — NU modificăm, păstrăm semnăturile calificate
           // flowType "ancore": PDF-ul are deja ancore, nu generăm cartuș
-          const prevResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf`);
+          const prevResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`);
           if (prevResp.ok) {
             // Semnatar 2+: descărcare directă, fără nicio procesare
             // Captăm uploadToken din /pdf (pentru versiunea originală)
