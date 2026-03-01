@@ -1194,7 +1194,7 @@ app.get("/admin/flows/list", async (req,res) => {
         initEmail: d.initEmail,
         initName: d.initName,
         status: d.status||"active",
-        completed: !!d.completed,
+        completed: !!(d.completed || (d.signers||[]).every(s=>s.status==="signed")),
         storage: d.storage||"db",
         createdAt: d.createdAt||r.created_at,
         signers: (d.signers||[]).map(s => ({
