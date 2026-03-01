@@ -223,7 +223,7 @@ th{ color: var(--sub) !important; }
             <div id="downloadForSigningStatus" class="muted" style="font-size:.85em; margin-bottom:12px;"></div>
             <div style="border-top:1px solid rgba(255,255,255,.1); padding-top:14px;">
               <input id="signedPdfFile" type="file" accept="application/pdf" style="display:none;" />
-              <button id="btnChooseSignedPdf" class="btn secondary" type="button" style="width:100%; margin-bottom:8px;">📂 Alege fișier PDF semnat</button>
+              <button id="btnChooseSignedPdf" class="btn secondary" type="button" style="width:100%; margin-bottom:8px;" disabled title="Descarcă mai întâi PDF-ul pentru semnare">📂 Alege fișier PDF semnat</button>
               <div id="signedPdfInfo" class="muted" style="font-size:.9em; margin-bottom:10px;">Niciun fișier selectat.</div>
               <button id="btnUploadSignedPdf" class="btn" type="button" style="width:100%; font-weight:700; padding:13px;" disabled>⬆️ Trimite PDF semnat calificat</button>
               <div id="uploadStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
@@ -569,6 +569,9 @@ th{ color: var(--sub) !important; }
 
           status.textContent = "✅ PDF descărcat. Dacă nu s-a deschis automat, deschide fișierul din folderul Downloads în Adobe Acrobat/Reader.";
           btn.textContent = "⬇️ Descarcă din nou";
+          // Activeaza upload-ul dupa descarcare reusita
+          const chooseBtn = $("btnChooseSignedPdf");
+          if (chooseBtn) { chooseBtn.disabled = false; chooseBtn.title = ""; }
 
         } catch(err) {
           console.error("downloadPdfForSigning error:", err);
