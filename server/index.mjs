@@ -267,17 +267,33 @@ async function notify({ userEmail, flowId=null, type, title, message, waParams=n
     if (isWhatsAppConfigured() && waParams) {
       try {
         const { rows: uRows } = await pool.query(
-          "SELECT phone, notif_whatsapp FROM users WHERE email=$1", [userEmail.toLowerCase()]
+          "SELECT phone, notif_whatsapp, notif_email FROM users WHERE email=$1", [userEmail.toLowerCase()]
         );
         const u = uRows[0];
+        // Log WA
         if (u?.notif_whatsapp && u?.phone) {
-          if (type === "YOUR_TURN") {
-            await sendWaSignRequest({ phone: u.phone, signerName: waParams.signerName||"", docName: waParams.docName||"" });
-          } else if (type === "COMPLETED") {
-            await sendWaCompleted({ phone: u.phone, docName: waParams.docName||"" });
-          } else if (type === "REFUSED") {
-            await sendWaRefused({ phone: u.phone, docName: waParams.docName||"", refuserName: waParams.refuserName||"", reason: waParams.reason||"" });
+          let waSent = false, waErr = null;
+          try {
+            if (type === "YOUR_TURN") await sendWaSignRequest({ phone: u.phone, signerName: waParams.signerName||"", docName: waParams.docName||"" });
+            else if (type === "COMPLETED") await sendWaCompleted({ phone: u.phone, docName: waParams.docName||"" });
+            else if (type === "REFUSED") await sendWaRefused({ phone: u.phone, docName: waParams.docName||"", refuserName: waParams.refuserName||"", reason: waParams.reason||"" });
+            waSent = true;
+          } catch(e) { waErr = e.message; console.error("WhatsApp notify error:", e.message); }
+          // Loghează în events flow dacă avem flowId
+          if (flowId) {
+            try {
+              const fd = await getFlowData(flowId);
+              if (fd) {
+                fd.events = fd.events || [];
+                fd.events.push({at:new Date().toISOString(), type:"NOTIFY", channel:"whatsapp", to:userEmail, notifType:type, ok:waSent, err:waErr||undefined});
+                await saveFlow(flowId, fd);
+              }
+            } catch(logErr) { /* nu blocăm pentru log */ }
           }
+        }
+        // Log email
+        if (u?.notif_email) {
+          // email se trimite separat în fluxul de semnare — doar loghăm că e activat
         }
       } catch(e) { console.error("WhatsApp notify error:", e.message); }
     }
@@ -551,31 +567,39 @@ app.post("/admin/users", async (req,res) => {
   }
 });
 app.put("/admin/users/:id", async (req,res) => {
+  console.log(`PUT /admin/users/${req.params.id} START`);
   if (requireDb(res)) return;
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const targetId = parseInt(req.params.id);
+  if (isNaN(targetId)) return res.status(400).json({error:"invalid_id"});
   const { email,nume,functie,institutie,compartiment,password,role,phone,notif_inapp,notif_email,notif_whatsapp } = req.body||{};
   const updates=[], vals=[]; let i=1;
   if (email) { updates.push(`email=$${i++}`); vals.push(email.trim().toLowerCase()); }
   if (nume!==undefined) { updates.push(`nume=$${i++}`); vals.push((nume||"").trim()); }
   if (functie!==undefined) { updates.push(`functie=$${i++}`); vals.push((functie||"").trim()); }
   if (institutie!==undefined) { updates.push(`institutie=$${i++}`); vals.push((institutie||"").trim()); }
+  if (compartiment!==undefined) { updates.push(`compartiment=$${i++}`); vals.push((compartiment||"").trim()); }
   if (role&&["admin","user"].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
-  if (phone !== undefined) { updates.push(`phone=$${i++}`); vals.push((phone||"").trim()); }
-  if (notif_inapp !== undefined) { updates.push(`notif_inapp=$${i++}`); vals.push(!!notif_inapp); }
-  if (notif_email !== undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!notif_email); }
-  if (notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!notif_whatsapp); }
-  if (compartiment !== undefined) { updates.push(`compartiment=$${i++}`); vals.push((compartiment||"").trim()); }
+  if (phone!==undefined) { updates.push(`phone=$${i++}`); vals.push((phone||"").trim()); }
+  if (notif_inapp!==undefined) { updates.push(`notif_inapp=$${i++}`); vals.push(!!notif_inapp); }
+  if (notif_email!==undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!notif_email); }
+  if (notif_whatsapp!==undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!notif_whatsapp); }
   if (password&&password.length>=4) { updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password)); updates.push(`plain_password=$${i++}`); vals.push(password); }
   if (!updates.length) return res.status(400).json({error:"nothing_to_update"});
   vals.push(targetId);
   try {
-    const { rows } = await pool.query(`UPDATE users SET ${updates.join(",")} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp`, vals);
-    res.json(rows[0]);
+    const { rows } = await pool.query(
+      `UPDATE users SET ${updates.join(",")} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp`,
+      vals
+    );
+    if (!rows.length) return res.status(404).json({error:"user_not_found"});
+    console.log(`PUT /admin/users/${targetId} OK`);
+    return res.json(rows[0]);
   } catch(e) {
+    console.error(`PUT /admin/users/${targetId} ERROR:`, e.message);
     if (e.code==="23505") return res.status(409).json({error:"email_exists"});
-    res.status(500).json({error:"server_error"});
+    return res.status(500).json({error:"server_error", detail: e.message});
   }
 });
 app.post("/admin/users/:id/reset-password", async (req,res) => {
@@ -715,15 +739,18 @@ app.get("/admin/flows/archive-preview", async (req,res) => {
   try {
     const days = parseInt(req.query.days||"30");
     const cutoff = new Date(Date.now() - days*24*60*60*1000).toISOString();
-    const { rows } = await pool.query("SELECT id,data,created_at FROM flows ORDER BY created_at ASC");
+    // Filtrare în SQL după data — nu mai încărcăm toate fluxurile în memorie
+    const { rows } = await pool.query(
+      "SELECT id,data,created_at FROM flows WHERE created_at < $1 ORDER BY created_at ASC",
+      [cutoff]
+    );
     const eligible = rows.filter(r => {
       const d = r.data;
       if (!d) return false;
       const done = d.completed || (d.signers||[]).every(s=>s.status==="signed");
       const refused = (d.signers||[]).some(s=>s.status==="refused");
-      const old = (d.createdAt||r.created_at) < cutoff;
       const notArchived = d.storage !== "drive";
-      return (done||refused) && old && notArchived;
+      return (done||refused) && notArchived;
     });
     const totalBytes = eligible.reduce((acc,r) => {
       const d = r.data;
@@ -731,7 +758,7 @@ app.get("/admin/flows/archive-preview", async (req,res) => {
       const b2 = d.signedPdfB64 ? Math.round(d.signedPdfB64.length*0.75) : 0;
       return acc + b1 + b2;
     }, 0);
-    res.json({
+    return res.json({
       count: eligible.length,
       totalMB: Math.round(totalBytes/1024/1024*100)/100,
       flows: eligible.map(r => ({
@@ -742,7 +769,7 @@ app.get("/admin/flows/archive-preview", async (req,res) => {
         sizeMB: Math.round(((r.data.pdfB64?.length||0)+(r.data.signedPdfB64?.length||0))*0.75/1024/1024*100)/100,
       }))
     });
-  } catch(e) { res.status(500).json({error:String(e.message||e)}); }
+  } catch(e) { return res.status(500).json({error:String(e.message||e)}); }
 });
 
 app.post("/admin/flows/archive", async (req,res) => {
@@ -750,16 +777,19 @@ app.post("/admin/flows/archive", async (req,res) => {
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   try {
-    const { flowIds } = req.body||{};
+    const { flowIds, batchIndex = 0 } = req.body||{};
     if (!Array.isArray(flowIds)||!flowIds.length) return res.status(400).json({error:"flowIds_required"});
+    // Procesare în batch de 10 — evită timeout pe request
+    const BATCH_SIZE = 10;
+    const start = batchIndex * BATCH_SIZE;
+    const batch = flowIds.slice(start, start + BATCH_SIZE);
+    const hasMore = start + BATCH_SIZE < flowIds.length;
     const results = [];
-    for (const flowId of flowIds) {
+    for (const flowId of batch) {
       try {
         const data = await getFlowData(flowId);
         if (!data) { results.push({flowId, ok:false, error:"not_found"}); continue; }
-        // Upload to Drive
         const driveResult = await archiveFlow(data);
-        // Clear blobs from DB
         data.pdfB64 = null;
         data.signedPdfB64 = null;
         data.storage = "drive";
@@ -771,14 +801,15 @@ app.post("/admin/flows/archive", async (req,res) => {
         data.driveFileLinkFinal = driveResult.driveFileLinkFinal||null;
         data.driveFileLinkOriginal = driveResult.driveFileLinkOriginal||null;
         await saveFlow(flowId, data);
-        results.push({flowId, ok:true, driveFileLinkFinal:driveResult.driveFileLinkFinal});
+        results.push({flowId, ok:true});
         console.log(`📦 Archived flow ${flowId} to Drive`);
       } catch(e) {
+        console.error(`📦 Archive error ${flowId}:`, e.message);
         results.push({flowId, ok:false, error:String(e.message||e)});
       }
     }
-    res.json({ok:true, results});
-  } catch(e) { res.status(500).json({error:String(e.message||e)}); }
+    return res.json({ok:true, results, hasMore, nextBatchIndex: batchIndex + 1, totalProcessed: start + batch.length, total: flowIds.length});
+  } catch(e) { return res.status(500).json({error:String(e.message||e)}); }
 });
 
 // ==================== FLOWS ====================
