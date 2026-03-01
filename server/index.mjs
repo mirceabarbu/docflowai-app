@@ -23,17 +23,7 @@ const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "../public");
 app.use(express.static(PUBLIC_DIR));
 
-app.get("/", (req, res) => {
-  const tab = req.query?.tab;
-  const flow = req.query?.flow;
-
-  // Compat: URL vechi /?tab=status&flow=... -> pagina dedicată flow-ului
-  if (tab === "status" && flow) {
-    return res.redirect(`/flow.html?flow=${encodeURIComponent(flow)}`);
-  }
-
-  return res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
-});
+app.get("/", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html")));
 app.get("/login", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "login.html")));
 app.get("/admin", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "admin.html")));
 app.get("/notifications", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "notifications.html")));
@@ -1089,14 +1079,20 @@ const getFlowHandler = async (req,res) => {
     } else if (!actor) {
       return res.status(401).json({error:"auth_required"});
     }
-    // Enrich signers with functie+compartiment from DB if missing
-    const { rows: uRows } = await pool.query("SELECT email,functie,compartiment FROM users");
+    // Enrich signers + flow cu institutie/compartiment din DB
+    const { rows: uRows } = await pool.query("SELECT email,functie,compartiment,institutie FROM users");
     const uMap = {};
     uRows.forEach(u => { uMap[(u.email||"").toLowerCase()] = u; });
-    const enriched = {...data, signers:(data.signers||[]).map(s=>{
-      const u = uMap[(s.email||"").toLowerCase()]||{};
-      return {...s, functie:s.functie||u.functie||"", compartiment:s.compartiment||u.compartiment||""};
-    })};
+    const initUser = uMap[(data.initEmail||"").toLowerCase()] || {};
+    const enriched = {
+      ...data,
+      institutie: data.institutie || initUser.institutie || (data.signers||[]).map(s=>uMap[(s.email||"").toLowerCase()]?.institutie).find(Boolean) || "",
+      compartiment: data.compartiment || initUser.compartiment || "",
+      signers:(data.signers||[]).map(s=>{
+        const u = uMap[(s.email||"").toLowerCase()]||{};
+        return {...s, functie:s.functie||u.functie||"", compartiment:s.compartiment||u.compartiment||"", institutie:s.institutie||u.institutie||""};
+      })
+    };
     // Returnează token DOAR semnatarului care face cererea (nu tuturor)
     return res.json(stripSensitive(enriched, signerToken));
   } catch(e) { return res.status(500).json({error:"server_error"}); }
