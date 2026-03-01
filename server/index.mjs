@@ -7,6 +7,7 @@ import http from "http";
 import { fileURLToPath } from "url";
 import { sendSignerEmail, verifySmtp } from "./mailer.mjs";
 import { sendWaSignRequest, sendWaCompleted, sendWaRefused, verifyWhatsApp, isWhatsAppConfigured } from "./whatsapp.mjs";
+import { archiveFlow, verifyDrive } from "./drive.mjs";
 import jwt from "jsonwebtoken";
 import { WebSocketServer } from "ws";
 
@@ -661,6 +662,90 @@ app.post("/smtp-test", async (req,res) => {
     await sendSignerEmail({to, subject:"Test SMTP DocFlowAI", html:"<p>SMTP funcționează! ✅</p>"});
     res.json({ok:true,to});
   } catch(e) { res.status(500).json({ok:false,error:String(e.message||e)}); }
+});
+
+// ==================== DRIVE ARCHIVE ====================
+app.get("/admin/drive/verify", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
+  try {
+    const result = await verifyDrive();
+    res.json(result);
+  } catch(e) { res.status(500).json({ok:false, error:String(e.message||e)}); }
+});
+
+app.get("/admin/flows/archive-preview", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
+  try {
+    const days = parseInt(req.query.days||"30");
+    const cutoff = new Date(Date.now() - days*24*60*60*1000).toISOString();
+    const { rows } = await pool.query("SELECT id,data,created_at FROM flows ORDER BY created_at ASC");
+    const eligible = rows.filter(r => {
+      const d = r.data;
+      if (!d) return false;
+      const done = d.completed || (d.signers||[]).every(s=>s.status==="signed");
+      const refused = (d.signers||[]).some(s=>s.status==="refused");
+      const old = (d.createdAt||r.created_at) < cutoff;
+      const notArchived = d.storage !== "drive";
+      return (done||refused) && old && notArchived;
+    });
+    const totalBytes = eligible.reduce((acc,r) => {
+      const d = r.data;
+      const b1 = d.pdfB64 ? Math.round(d.pdfB64.length*0.75) : 0;
+      const b2 = d.signedPdfB64 ? Math.round(d.signedPdfB64.length*0.75) : 0;
+      return acc + b1 + b2;
+    }, 0);
+    res.json({
+      count: eligible.length,
+      totalMB: Math.round(totalBytes/1024/1024*100)/100,
+      flows: eligible.map(r => ({
+        flowId: r.data.flowId,
+        docName: r.data.docName,
+        createdAt: r.data.createdAt||r.created_at,
+        status: r.data.completed?"finalizat":(r.data.signers||[]).some(s=>s.status==="refused")?"refuzat":"necunoscut",
+        sizeMB: Math.round(((r.data.pdfB64?.length||0)+(r.data.signedPdfB64?.length||0))*0.75/1024/1024*100)/100,
+      }))
+    });
+  } catch(e) { res.status(500).json({error:String(e.message||e)}); }
+});
+
+app.post("/admin/flows/archive", async (req,res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
+  try {
+    const { flowIds } = req.body||{};
+    if (!Array.isArray(flowIds)||!flowIds.length) return res.status(400).json({error:"flowIds_required"});
+    const results = [];
+    for (const flowId of flowIds) {
+      try {
+        const data = await getFlowData(flowId);
+        if (!data) { results.push({flowId, ok:false, error:"not_found"}); continue; }
+        // Upload to Drive
+        const driveResult = await archiveFlow(data);
+        // Clear blobs from DB
+        data.pdfB64 = null;
+        data.signedPdfB64 = null;
+        data.storage = "drive";
+        data.archivedAt = new Date().toISOString();
+        data.driveFileIdFinal = driveResult.driveFileIdFinal||null;
+        data.driveFileIdOriginal = driveResult.driveFileIdOriginal||null;
+        data.driveFileIdAudit = driveResult.driveFileIdAudit||null;
+        data.driveFolderId = driveResult.driveFolderId||null;
+        data.driveFileLinkFinal = driveResult.driveFileLinkFinal||null;
+        data.driveFileLinkOriginal = driveResult.driveFileLinkOriginal||null;
+        await saveFlow(flowId, data);
+        results.push({flowId, ok:true, driveFileLinkFinal:driveResult.driveFileLinkFinal});
+        console.log(`📦 Archived flow ${flowId} to Drive`);
+      } catch(e) {
+        results.push({flowId, ok:false, error:String(e.message||e)});
+      }
+    }
+    res.json({ok:true, results});
+  } catch(e) { res.status(500).json({error:String(e.message||e)}); }
 });
 
 // ==================== FLOWS ====================
