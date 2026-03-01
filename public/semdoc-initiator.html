@@ -916,6 +916,7 @@ th{ color: var(--sub) !important; }
               </div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 ${statusBadge}
+                <a href="/flow.html?flow=${f.flowId}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">🔍 Vezi flow</a>
                 ${dlBtn}
               </div>
             </div>
@@ -1218,8 +1219,9 @@ th{ color: var(--sub) !important; }
         }
       }
 
-      if (new URLSearchParams(location.search).get("flow")) {
-        showTab("status");
+      const _flowParam = new URLSearchParams(location.search).get("flow");
+      if (_flowParam) {
+        location.replace(`/flow.html?flow=${encodeURIComponent(_flowParam)}`);
       }
     </script>
   <script src="/notif-widget.js"></script>
