@@ -209,13 +209,10 @@ th{ color: var(--sub) !important; }
 
           <div style="height:12px"></div>
 
-          <div class="box">
-            <div class="row" style="justify-content: space-between; align-items: center;">
-              <div>
-                <span id="whoPill" style="background: rgba(120,160,255,.22); border:1px solid rgba(120,160,255,.45); border-radius:8px; padding:3px 10px; font-size:.8em; font-weight:700; margin-right:8px;">—</span>
-                <span id="whoText" class="muted"></span>
-              </div>
-              <button id="btnRefresh" class="btn secondary" style="font-size:.85em;">&#8635; Reîncarcă</button>
+          <div class="box" id="whoBox">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <div id="whoSigners" style="display:flex;flex-direction:column;gap:4px;flex:1;"></div>
+              <button id="btnRefresh" class="btn secondary" style="font-size:.85em;flex-shrink:0;">&#8635; Reîncarcă</button>
             </div>
           </div>
 
@@ -307,10 +304,27 @@ th{ color: var(--sub) !important; }
           }
 
           const s = j.signers[signerIndex];
-          const who = `${s.rol || ""} / ${s.functie || ""}`;
-          const statusLabel = {"signed":"SEMNAT","current":"CURENT","pending":"ÎN AȘTEPTARE"};
-          $("whoPill").textContent = statusLabel[s.status] || (s.status||"pending").toUpperCase();
-          $("whoText").textContent = `${who} — ${s.name || ""} <${s.email || ""}>`;
+          // Render all signers compact
+          const whoEl = $("whoSigners");
+          if (whoEl) {
+            const esc3 = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            whoEl.innerHTML = (j.signers||[]).map(x => {
+              const st = x.status==='signed'&&!x.pdfUploaded?'current':x.status;
+              const icon = st==='signed'?'✅':st==='current'?'✍':'⏳';
+              const badgeColor = st==='signed'?'rgba(45,212,191,.2)':st==='current'?'rgba(124,92,255,.25)':'rgba(255,255,255,.06)';
+              const badgeText = st==='signed'?'semnat':st==='current'?'curent':'în așteptare';
+              const textColor = st==='signed'?'#7cf0e0':st==='current'?'#b39dff':'#9db0ff';
+              const extra = [x.functie, x.compartiment].filter(Boolean).join(' · ');
+              const isMe = x.token === token;
+              return `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;${isMe?'font-weight:700;':'opacity:.75;'}">
+                <span>${icon}</span>
+                <span style="font-size:.8rem;color:var(--muted);min-width:90px;">${esc3(x.rol||'')}</span>
+                <span style="font-size:.83rem;">${esc3(x.name||'—')}</span>
+                ${extra?`<span style="font-size:.77rem;color:var(--muted);">— ${esc3(extra)}</span>`:''}
+                <span style="font-size:.71rem;padding:1px 7px;border-radius:10px;background:${badgeColor};color:${textColor};font-weight:700;">${badgeText}</span>
+              </div>`;
+            }).join('');
+          }
 
           const lines = [];
           lines.push(`Semnatar curent: ${j.signers.findIndex(x => x.status === "current") + 1}`);
