@@ -856,10 +856,13 @@ th{ color: var(--sub) !important; }
           return;
         }
         const dlToken = encodeURIComponent(localStorage.getItem("docflow_token") || "");
+        const currentUserEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
         el.innerHTML = flows.map(f => {
           const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
           const allSigned = f.allSigned;
           const isRefused = (f.signers || []).some(s => s.status === "refused");
+          // Verifica daca userul curent trebuie sa semneze
+          const mySignerEntry = (f.signers || []).find(s => (s.email || "").toLowerCase() === currentUserEmail && s.status === "current");
           const statusBadge = isRefused
             ? '<span style="background:rgba(255,80,80,.15);color:#ffaaaa;border:1px solid rgba(255,80,80,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⛔ Refuzat</span>'
             : allSigned
@@ -889,6 +892,7 @@ th{ color: var(--sub) !important; }
               </div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 ${statusBadge}
+                ${mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#ff6b6b);border:none;color:#fff;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">✍ Semnează</button>` : ''}
                 <a href="/flow.html?flow=${f.flowId}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">🔍 Vezi flow</a>
                 ${dlBtn}
               </div>
@@ -898,6 +902,21 @@ th{ color: var(--sub) !important; }
             </div>
           </div>`;
         }).join("");
+      }
+
+      async function signFromFluxuri(flowId) {
+        const token = localStorage.getItem("docflow_token");
+        try {
+          const r = await fetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
+            headers: { "Authorization": "Bearer " + token }
+          });
+          if (!r.ok) { alert("Nu s-a putut obține token-ul de semnare. Încearcă din nou."); return; }
+          const j = await r.json();
+          if (!j.token) { alert("Token de semnare indisponibil."); return; }
+          location.href = `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(j.token)}`;
+        } catch(e) {
+          alert("Eroare la obținerea token-ului: " + e.message);
+        }
       }
 
       function filterFluxuri(q) {

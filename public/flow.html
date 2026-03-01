@@ -314,7 +314,25 @@
       $("hintSigner").style.display = "";
       $("signLink").href = `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(linkToken)}`;
     } else {
-      $("hintSigner").style.display = "none";
+      // Verifica daca userul autentificat e semnatarul curent — fara token in URL
+      const myEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
+      const data2 = flow.data || flow;
+      const mySigner = (data2.signers || []).find(s => (s.email || "").toLowerCase() === myEmail && s.status === "current");
+      if (mySigner) {
+        // Obtine token-ul de semnare de la server
+        const jwtToken = localStorage.getItem("docflow_token");
+        fetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
+          headers: { "Authorization": "Bearer " + jwtToken }
+        }).then(r => r.json()).then(j => {
+          if (j.token) {
+            $("hintSigner").style.display = "";
+            $("signLink").href = `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(j.token)}`;
+            $("signLink").textContent = "✍ Semnează acum";
+          }
+        }).catch(() => {});
+      } else {
+        $("hintSigner").style.display = "none";
+      }
     }
   }
 
