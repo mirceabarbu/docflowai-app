@@ -23,7 +23,17 @@ const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "../public");
 app.use(express.static(PUBLIC_DIR));
 
-app.get("/", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html")));
+app.get("/", (req, res) => {
+  const tab = req.query?.tab;
+  const flow = req.query?.flow;
+
+  // Compat: URL vechi /?tab=status&flow=... -> pagina dedicată flow-ului
+  if (tab === "status" && flow) {
+    return res.redirect(`/flow.html?flow=${encodeURIComponent(flow)}`);
+  }
+
+  return res.sendFile(path.join(PUBLIC_DIR, "semdoc-initiator.html"));
+});
 app.get("/login", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "login.html")));
 app.get("/admin", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "admin.html")));
 app.get("/notifications", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "notifications.html")));
