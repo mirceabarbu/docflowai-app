@@ -18,8 +18,9 @@ function getDrive() {
 
 // Creează folder dacă nu există, returnează ID
 async function ensureFolder(drive, name, parentId) {
+  const escapedName = name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const res = await drive.files.list({
-    q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
+    q: `name='${escapedName}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
     fields: "files(id,name)",
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
@@ -68,7 +69,7 @@ export async function archiveFlow(flowData) {
   if (!ROOT_FOLDER_ID) throw new Error("GOOGLE_DRIVE_FOLDER_ID lipsește.");
   const drive = getDrive();
 
-  const institutie = flowData.initEmail?.split("@")[1]?.split(".")[0] || flowData.institutie || "Necunoscut";
+  const institutie = flowData.institutie || flowData.initEmail?.split("@")[1]?.split(".")[0] || "Necunoscut";
   const folderId = await ensureFlowFolder(drive, institutie, flowData.createdAt);
 
   const safeName = (flowData.docName || "document").replace(/[^\w\s\-]/g, "").trim().substring(0, 60);
@@ -119,6 +120,21 @@ export async function archiveFlow(flowData) {
   result.driveFolderId = folderId;
 
   return result;
+}
+
+// Stream PDF din Drive direct către response (proxy — fără redirect public)
+export async function streamFromDrive(fileId, res) {
+  const drive = getDrive();
+  const response = await drive.files.get(
+    { fileId, alt: "media", supportsAllDrives: true },
+    { responseType: "stream" }
+  );
+  await new Promise((resolve, reject) => {
+    response.data
+      .on("error", reject)
+      .on("end", resolve)
+      .pipe(res, { end: true });
+  });
 }
 
 // Verifică conexiunea Drive

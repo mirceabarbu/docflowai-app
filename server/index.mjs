@@ -142,6 +142,23 @@ function stripPdfB64(data) {
   const { pdfB64, signedPdfB64, ...rest } = data;
   return { ...rest, hasPdf: !!pdfB64, hasSignedPdf: !!signedPdfB64 };
 }
+// Elimină token-urile semnatarilor și pdfB64 din răspunsuri publice
+function stripSensitive(data, callerSignerToken = null) {
+  if (!data || typeof data !== "object") return data;
+  const { pdfB64, signedPdfB64, ...rest } = data;
+  return {
+    ...rest,
+    hasPdf: !!pdfB64,
+    hasSignedPdf: !!(signedPdfB64 || (data.storage === "drive" && data.driveFileLinkFinal)),
+    signers: (data.signers || []).map(s => {
+      const { token, ...signerRest } = s;
+      // Returnează token DOAR pentru semnatarul care face cererea
+      return callerSignerToken && s.token === callerSignerToken
+        ? { ...signerRest, token }
+        : signerRest;
+    }),
+  };
+}
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5 }) : null;
@@ -466,9 +483,19 @@ app.get("/my-flows/:flowId/download", async (req,res) => {
     const isSigner = (d.signers||[]).some(s=>(s.email||"").toLowerCase()===email);
     if (!isInit&&!isSigner) return res.status(403).json({error:"forbidden"});
     if (!d.signedPdfB64) {
-      // Arhivat în Drive — redirecționează
-      if (d.storage==="drive" && d.driveFileLinkFinal) {
-        return res.redirect(d.driveFileLinkFinal);
+      // Arhivat în Drive — proxy stream (nu redirect public)
+      if (d.storage==="drive" && d.driveFileIdFinal) {
+        try {
+          const { streamFromDrive } = await import("./drive.mjs");
+          const safeName2 = (d.docName||"document").replace(/[^\w\-]+/g,"_");
+          res.setHeader("Content-Type","application/pdf");
+          res.setHeader("Content-Disposition",`attachment; filename="${safeName2}_semnat.pdf"`);
+          await streamFromDrive(d.driveFileIdFinal, res);
+          return;
+        } catch(driveErr) {
+          console.error("Drive stream error:", driveErr);
+          return res.status(502).json({error:"drive_unavailable"});
+        }
       }
       return res.status(404).json({error:"no_signed_pdf"});
     }
@@ -808,39 +835,70 @@ app.post("/api/flows", createFlow);
 app.get("/flows/:flowId/signed-pdf", async (req,res) => {
   try {
     if (requireDb(res)) return;
+    // Auth obligatorie: token semnatar SAU JWT
+    const signerToken = req.query.token;
+    let actor = null;
+    const authHeader = req.headers["authorization"] || "";
+    if (authHeader.startsWith("Bearer ")) {
+      try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); } catch(e) {}
+    }
+    if (!actor && !signerToken) return res.status(403).json({error:"forbidden", message:"Token de acces obligatoriu."});
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({error:"not_found"});
+    if (!actor && signerToken) {
+      const valid = (data.signers||[]).some(s => s.token === signerToken);
+      if (!valid) return res.status(403).json({error:"forbidden"});
+    }
+    const safeName = (data.docName||"document").replace(/[^\w\-]+/g,"_");
     const b64 = data.signedPdfB64;
     if (!b64||typeof b64!=="string") {
-      // Arhivat în Drive — redirecționează
-      if (data.storage==="drive" && data.driveFileLinkFinal) {
-        return res.redirect(data.driveFileLinkFinal);
+      // Arhivat în Drive — proxy stream (nu redirect public)
+      if (data.storage==="drive" && data.driveFileIdFinal) {
+        try {
+          const { streamFromDrive } = await import("./drive.mjs");
+          res.setHeader("Content-Type","application/pdf");
+          res.setHeader("Content-Disposition",`attachment; filename="${safeName}_semnat.pdf"`);
+          await streamFromDrive(data.driveFileIdFinal, res);
+          return;
+        } catch(driveErr) {
+          console.error("Drive stream error:", driveErr);
+          return res.status(502).json({error:"drive_unavailable"});
+        }
       }
       return res.status(404).json({error:"signed_pdf_missing"});
     }
     const raw = b64.includes("base64,")?b64.split("base64,")[1]:b64;
     res.setHeader("Content-Type","application/pdf");
-    res.setHeader("Content-Disposition",`attachment; filename="${(data.docName||"document").replace(/[^\w\-]+/g,"_")}_semnat.pdf"`);
+    res.setHeader("Content-Disposition",`attachment; filename="${safeName}_semnat.pdf"`);
     return res.status(200).send(Buffer.from(raw,"base64"));
   } catch(e) { return res.status(500).json({error:"server_error"}); }
 });
 app.get("/flows/:flowId/pdf", async (req,res) => {
   try {
     if (requireDb(res)) return;
-    // Verifică token semnatar
     const signerToken = req.query.token;
+    // Auth obligatorie: token semnatar SAU JWT
+    let actor = null;
+    const authHeader = req.headers["authorization"] || "";
+    if (authHeader.startsWith("Bearer ")) {
+      try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); } catch(e) {}
+    }
+    if (!actor && !signerToken) return res.status(403).json({error:"forbidden", message:"Token de acces obligatoriu."});
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({error:"not_found"});
+    // Verifică că token-ul semnatar e valid pentru acest flow
+    if (!actor && signerToken) {
+      const valid = (data.signers||[]).some(s => s.token === signerToken);
+      if (!valid) return res.status(403).json({error:"forbidden"});
+    }
     const b64 = data.pdfB64;
     if (!b64||typeof b64!=="string") return res.status(404).json({error:"pdf_missing"});
     const raw = b64.includes("base64,")?b64.split("base64,")[1]:b64;
     const pdfBuf = Buffer.from(raw,"base64");
     const preHash = sha256Hex(pdfBuf);
-
-    // Emite uploadToken JWT dacă există signer token valid
+    // Emite uploadToken JWT doar pentru semnatarul valid
     if (signerToken) {
-      const signers = Array.isArray(data.signers)?data.signers:[];
-      const signer = signers.find(s=>s.token===signerToken);
+      const signer = (data.signers||[]).find(s=>s.token===signerToken);
       if (signer) {
         const uploadToken = jwt.sign(
           { flowId: req.params.flowId, signerToken, preHash },
@@ -852,7 +910,6 @@ app.get("/flows/:flowId/pdf", async (req,res) => {
         res.setHeader("Access-Control-Expose-Headers", "X-Docflow-Prehash, X-Docflow-UploadToken");
       }
     }
-
     res.setHeader("Content-Type","application/pdf");
     res.setHeader("Content-Disposition",`inline; filename="${(data.docName||"document").replace(/[^\w\-]+/g,"_")}.pdf"`);
     return res.status(200).send(pdfBuf);
@@ -861,8 +918,22 @@ app.get("/flows/:flowId/pdf", async (req,res) => {
 const getFlowHandler = async (req,res) => {
   try {
     if (requireDb(res)) return;
+    // Auth: acceptă JWT (inițiator/admin) SAU token semnatar în query
+    const signerToken = req.query.token || null;
+    let actor = null;
+    const authHeader = req.headers["authorization"] || "";
+    if (authHeader.startsWith("Bearer ")) {
+      try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); } catch(e) {}
+    }
+    // Verifică token semnatar dacă nu avem JWT
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({error:"not_found"});
+    if (!actor && signerToken) {
+      const valid = (data.signers||[]).some(s => s.token === signerToken);
+      if (!valid) return res.status(403).json({error:"forbidden"});
+    } else if (!actor) {
+      return res.status(401).json({error:"auth_required"});
+    }
     // Enrich signers with functie+compartiment from DB if missing
     const { rows: uRows } = await pool.query("SELECT email,functie,compartiment FROM users");
     const uMap = {};
@@ -871,7 +942,8 @@ const getFlowHandler = async (req,res) => {
       const u = uMap[(s.email||"").toLowerCase()]||{};
       return {...s, functie:s.functie||u.functie||"", compartiment:s.compartiment||u.compartiment||""};
     })};
-    return res.json(stripPdfB64(enriched));
+    // Returnează token DOAR semnatarului care face cererea (nu tuturor)
+    return res.json(stripSensitive(enriched, signerToken));
   } catch(e) { return res.status(500).json({error:"server_error"}); }
 };
 app.get("/flows/:flowId", getFlowHandler);
