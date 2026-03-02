@@ -295,7 +295,7 @@
       else if(st==="refused") right = `<span class="badge bad">⛔ refuz</span>`;
       else if(isCurrent) right = `<span class="badge warn">⏱️ curent</span>`;
 
-      const when = s.signedAt || s.at || s.updatedAt || s.date;
+      const when = st==="refused" ? (s.refusedAt || s.at) : (s.signedAt || s.at || s.updatedAt || s.date);
       const metaBits = [];
       const functieSigner = s.functie || s.function || "";
       const compartimentSigner = s.compartiment || s.department || "";
@@ -308,10 +308,14 @@
       el.className = "item";
       el.innerHTML = `
         <div class="top">
-          <div>
+          <div style="flex:1">
             <div class="name">${(s.name||s.fullName||"—")}</div>
             <div class="meta">${meta || '<span class="muted">—</span>'}</div>
             ${when ? `<div class="meta">📅 ${prettyTs(when)}</div>` : ``}
+            ${st==="refused" && s.refuseReason ? `
+              <div style="margin-top:6px; padding:6px 10px; background:rgba(255,77,90,.10); border-left:3px solid var(--bad); border-radius:0 8px 8px 0; font-size:.83rem; color:#ffaaaa;">
+                <span style="font-weight:650; color:#ff8a94;">Motiv refuz:</span> ${s.refuseReason}
+              </div>` : ``}
           </div>
           <div class="right">${right}</div>
         </div>
