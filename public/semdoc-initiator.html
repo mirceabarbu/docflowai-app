@@ -1261,41 +1261,34 @@ th{ color: var(--sub) !important; }
 
           const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
           const { width: pW } = lastPage.getSize();
-          const accent = rgb(26/255, 58/255, 92/255);
-          const lightBg = rgb(0.96, 0.97, 0.98);
-          const mutedClr = rgb(0.35, 0.35, 0.35);
-
+          const mutedClr = rgb(0.45, 0.45, 0.45);
           const MARGIN = 40;
-          const boxH = 88;
-          const boxY = 20;
-          const boxW = pW - MARGIN * 2;
 
-          // Fundal + border
-          lastPage.drawRectangle({ x: MARGIN, y: boxY, width: boxW, height: boxH, color: lightBg, borderColor: accent, borderWidth: 0.8 });
-          // Bara titlu
-          lastPage.drawRectangle({ x: MARGIN, y: boxY + boxH - 18, width: boxW, height: 18, color: accent });
-          lastPage.drawText("INFORMATII FLUX DOCFLOWAI", {
-            x: MARGIN + 8, y: boxY + boxH - 13, size: 8, font: fontB, color: rgb(1,1,1)
-          });
-          // ID flux in bara
-          lastPage.drawText(ro("Nr: " + (flowInfo.flowId || "—")), {
-            x: pW - MARGIN - 170, y: boxY + boxH - 13, size: 7, font: fontR, color: rgb(0.85,0.85,0.85)
-          });
-
+          // Footer discret — un singur rand cursiv
           const now = new Date().toLocaleString("ro-RO");
-          const lines = [
-            "Data initierii: " + now,
-            "Initiat de: " + ro(flowInfo.initName||"—")
-              + (flowInfo.functie ? " — " + ro(flowInfo.functie) : "")
-              + (flowInfo.compartiment ? " · " + ro(flowInfo.compartiment) : ""),
-            flowInfo.institutie ? "Institutie: " + ro(flowInfo.institutie) : null,
-          ].filter(Boolean);
+          const parts = [
+            ro(flowInfo.initName || "—"),
+            flowInfo.functie ? ro(flowInfo.functie) : null,
+            flowInfo.compartiment ? ro(flowInfo.compartiment) : null,
+            flowInfo.institutie ? ro(flowInfo.institutie) : null,
+          ].filter(Boolean).join(", ");
+          const footerText = now + "  |  " + parts;
 
-          lines.forEach((line, i) => {
-            lastPage.drawText(line, {
-              x: MARGIN + 10, y: boxY + boxH - 34 - i * 16,
-              size: 8, font: fontR, color: mutedClr
-            });
+          // Linie separatoare subtire
+          lastPage.drawLine({
+            start: { x: MARGIN, y: 28 },
+            end: { x: pW - MARGIN, y: 28 },
+            thickness: 0.4,
+            color: rgb(0.7, 0.7, 0.7),
+          });
+
+          // Text cursiv
+          lastPage.drawText(footerText, {
+            x: MARGIN, y: 14,
+            size: 7.5,
+            font: fontR,
+            color: mutedClr,
+            opacity: 0.75,
           });
 
           const outBytes = await pdfDoc.save();
@@ -1320,14 +1313,18 @@ th{ color: var(--sub) !important; }
         const institutieVal = $("initInstitutie")?.value?.trim() || "";
         // Obtine functie/compartiment din profilul userului
         const _u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
-        // flowId-ul real va fi atasat de server; stampila contine datele initiatormului
-        const stampedPdf = await addFlowStampToB64(pdfB64, {
-          flowId: "",  // completat de server dupa creare
-          initName: initNameVal,
-          functie: _u.functie || "",
-          compartiment: _u.compartiment || "",
-          institutie: institutieVal || _u.institutie || "",
-        });
+        // Footer/stampila se aplica DOAR pentru fluxul fara tabel generat (ancore/simplu)
+        // Pentru "tabel", footer-ul e adaugat de buildCartusBlob din semdoc-signer.html
+        const _flowType = getDocType();
+        const stampedPdf = (_flowType !== "tabel")
+          ? await addFlowStampToB64(pdfB64, {
+              flowId: "",  // completat de server dupa creare
+              initName: initNameVal,
+              functie: _u.functie || "",
+              compartiment: _u.compartiment || "",
+              institutie: institutieVal || _u.institutie || "",
+            })
+          : pdfB64;
         $("createResult").textContent = "Se creează...";
         const payload = {
           docName: $("docName").value.trim(),
