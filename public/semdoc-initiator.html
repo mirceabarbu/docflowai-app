@@ -192,7 +192,7 @@ th{ color: var(--sub) !important; }
       <div class="tabs">
         <button id="tabInit" class="tabbtn active" type="button">📝 Flux nou</button>
         <button id="tabFluxuri" class="tabbtn" type="button">📂 Fluxuri mele</button>
-        <a href="/templates" class="tabbtn" style="text-decoration:none;">📋 Șabloane</a>
+        <a href="/templates" class="tabbtn" style="text-decoration:none;" target="_blank" rel="noopener">📋 Șabloane</a>
       </div>
       <div id="userBar" style="display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
     </header>
@@ -284,6 +284,7 @@ th{ color: var(--sub) !important; }
             <div class="col-12">
               <div class="row">
                 <button id="btnCreate" class="btn" type="button">Pornește flux</button>
+                <button id="btnRenunta" class="btn danger" type="button" style="display:none;">✕ Renunță la flux</button>
                 <span id="createResult" class="muted"></span>
               </div>
             </div>
@@ -375,7 +376,9 @@ th{ color: var(--sub) !important; }
         reader.onload = () => {
           pdfB64 = reader.result;
           if (clearBtn) { clearBtn.style.opacity = "1"; clearBtn.style.pointerEvents = "auto"; clearBtn.style.cursor = "pointer"; clearBtn.disabled = false; clearBtn.style.background = "rgba(255,80,80,.15)"; clearBtn.style.borderColor = "rgba(255,80,80,.3)"; clearBtn.style.color = "#ffaaaa"; }
+          $("btnRenunta").style.display = "";
           validateForm();
+          saveFormState();
           // Auto-fill docName from PDF filename if empty
           const docNameEl = $("docName");
           if (docNameEl && !docNameEl.value.trim()) {
@@ -419,8 +422,8 @@ th{ color: var(--sub) !important; }
         $("tabFluxuri").classList.toggle("active", name === "fluxuri");
         if (name === "fluxuri") loadMyFlows();
       }
-      $("tabInit").addEventListener("click", () => showTab("init"));
-      $("tabFluxuri").addEventListener("click", () => showTab("fluxuri"));
+      $("tabInit").addEventListener("click", () => { showTab("init"); sessionStorage.setItem("docflow_tab", "init"); });
+      $("tabFluxuri").addEventListener("click", () => { showTab("fluxuri"); sessionStorage.setItem("docflow_tab", "fluxuri"); });
 
       // Signers table
       const tbody = $("signersTbody");
@@ -972,8 +975,120 @@ th{ color: var(--sub) !important; }
         } catch(e) { console.warn("Nu s-au putut încărca userii:", e); }
       })();
 
-      // Default load
-      setDefaults();
+      // ── Persistenta formular in sessionStorage ────────────────────────────
+      const FORM_KEY = "docflow_draft";
+
+      function saveFormState() {
+        try {
+          const signers = [...tbody.querySelectorAll("tr")].map(tr => {
+            const sel = tr.querySelector(".rol");
+            const rolCustomEl = tr.querySelector(".rolCustom");
+            const nameEl = tr.querySelector(".name-select") || tr.querySelector(".name");
+            return {
+              rol: sel?.value || "",
+              rolCustom: rolCustomEl?.value || "",
+              functie: tr.querySelector(".functie")?.value || "",
+              name: nameEl?.value || "",
+              email: tr.querySelector(".email")?.value || "",
+            };
+          });
+          const state = {
+            docName: $("docName")?.value || "",
+            pdfName: $("pdfInfo")?.textContent || "",
+            flowType: getDocType(),
+            signers,
+          };
+          sessionStorage.setItem(FORM_KEY, JSON.stringify(state));
+        } catch(e) {}
+      }
+
+      function clearFormState() {
+        sessionStorage.removeItem(FORM_KEY);
+      }
+
+      function restoreFormState() {
+        try {
+          const raw = sessionStorage.getItem(FORM_KEY);
+          if (!raw) return false;
+          const state = JSON.parse(raw);
+          if (!state || !state.signers?.length) return false;
+
+          // Restore docName
+          if (state.docName) $("docName").value = state.docName;
+
+          // Restore flowType
+          if (state.flowType) {
+            const radios = document.querySelectorAll("input[name='flowType']");
+            radios.forEach(r => { r.checked = (r.value === state.flowType); });
+            // Trigger change event pt UI
+            const checked = document.querySelector("input[name='flowType']:checked");
+            if (checked) checked.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+
+          // Restore signers
+          tbody.innerHTML = "";
+          state.signers.forEach(s => {
+            const tr = signerRowTemplate(s);
+            tbody.appendChild(tr);
+            // Seteaza rolCustom daca e cazul
+            if (s.rol === "__alt__" && s.rolCustom) {
+              const rc = tr.querySelector(".rolCustom");
+              if (rc) rc.value = s.rolCustom;
+            }
+          });
+          updateIntocmitVisibility();
+          validateForm();
+          $("btnRenunta").style.display = "";
+          return true;
+        } catch(e) { return false; }
+      }
+
+      // Auto-save la orice modificare in formular
+      document.addEventListener("input", (e) => {
+        if (e.target.closest("#viewInit")) saveFormState();
+      });
+      document.addEventListener("change", (e) => {
+        if (e.target.closest("#viewInit")) saveFormState();
+      });
+      // MutationObserver pe tbody pt add/remove randuri
+      new MutationObserver(() => saveFormState()).observe(tbody, { childList: true });
+
+      // Buton Renunta: reseteaza formularul si sterge starea
+      $("btnRenunta").addEventListener("click", () => {
+        if (!confirm("Renunți la fluxul curent? PDF-ul și semnătarii configurați vor fi șterși.")) return;
+        clearFormState();
+        pdfB64 = null;
+        setPdfInfo("Nu ai selectat încă un PDF.");
+        const clearBtn = $("btnClearPdf");
+        if (clearBtn) {
+          clearBtn.disabled = true;
+          clearBtn.style.opacity = ".3";
+          clearBtn.style.pointerEvents = "none";
+          clearBtn.style.background = "";
+          clearBtn.style.borderColor = "";
+          clearBtn.style.color = "";
+        }
+        const box = $("pdfPreviewBox");
+        const frame = $("pdfPreviewFrame");
+        if (box && frame) { frame.src = ""; box.style.display = "none"; }
+        $("docName").value = "";
+        $("pdfFile").value = "";
+        setDefaults();
+        autoFillFromProfile();
+        $("btnRenunta").style.display = "none";
+        $("createResult").textContent = "";
+        validateForm();
+      });
+
+      // Default load: restaureaza tab-ul si starea sau initializeaza implicit
+      const _savedTab = sessionStorage.getItem("docflow_tab");
+      if (_savedTab === "fluxuri") {
+        showTab("fluxuri");
+      }
+      const _restored = restoreFormState();
+      if (!_restored) {
+        setDefaults();
+      }
 
       // Completare automată câmpuri inițiator din profilul utilizatorului autentificat
       autoFillFromProfile();
@@ -1139,6 +1254,7 @@ th{ color: var(--sub) !important; }
 
           localStorage.setItem("lastInitName", $("initName").value.trim());
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
+          clearFormState(); // flux creat cu succes — sterge draft-ul
 
           // Redirect UX:
           // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
