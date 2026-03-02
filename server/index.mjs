@@ -1354,6 +1354,29 @@ app.post("/flows/:flowId/resend", async (req,res) => {
   } catch(e) { return res.status(500).json({error:"server_error"}); }
 });
 
+// POST /flows/:flowId/register-download
+// Clientul trimite hash-ul PDF-ului generat local (buildCartusBlob) -> server emite uploadToken
+app.post("/flows/:flowId/register-download", async (req,res) => {
+  try {
+    const { flowId } = req.params;
+    const { signerToken, pdfHash } = req.body||{};
+    if (!signerToken||!pdfHash) return res.status(400).json({error:"missing_params"});
+    if (!/^[a-f0-9]{64}$/.test(pdfHash)) return res.status(400).json({error:"invalid_hash_format"});
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({error:"not_found"});
+    const signer = (data.signers||[]).find(s=>s.token===signerToken);
+    if (!signer) return res.status(403).json({error:"invalid_signer_token"});
+    if (isSignerTokenExpired(signer)) return res.status(403).json({error:"token_expired"});
+    // Emite uploadToken cu hash-ul PDF-ului efectiv descărcat/generat de client
+    const uploadToken = jwt.sign(
+      { flowId, signerToken, preHash: pdfHash },
+      JWT_SECRET,
+      { expiresIn: "4h" }
+    );
+    return res.json({ uploadToken });
+  } catch(e) { return res.status(500).json({error:"server_error"}); }
+});
+
 app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
   try {
     if (requireDb(res)) return;
@@ -1377,15 +1400,20 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
       const payload = jwt.verify(uploadToken, JWT_SECRET);
       if (payload.flowId !== flowId) return res.status(403).json({error:"upload_token_flow_mismatch", message:"Token invalid pentru acest flux."});
       if (payload.signerToken !== token) return res.status(403).json({error:"upload_token_signer_mismatch", message:"Token invalid pentru acest semnatar."});
-      // Verifică hash-ul PDF-ului de bază (originalul descărcat de semnatar)
-      const b64curr = data.pdfB64||"";
-      const rawCurr = b64curr.includes("base64,")?b64curr.split("base64,")[1]:b64curr;
-      const currentHash = rawCurr ? sha256Hex(Buffer.from(rawCurr,"base64")) : null;
-      if (currentHash && payload.preHash !== currentHash) {
-        console.warn(`⚠️  preHash mismatch flow ${flowId} signer ${signers[idx].email}`);
-        return res.status(409).json({error:"pdf_version_mismatch", message:"PDF-ul semnat nu corespunde versiunii descărcate din sistem. Descarcă documentul din nou și semnează-l."});
+      // Verifică că PDF-ul uploadat este diferit de cel descărcat (preHash)
+      // preHash = hash-ul PDF-ului descărcat/generat de semnatar
+      // Dacă uploadedHash === preHash => semnatarul a uploadat exact același document nesemnat
+      const rawUploaded = signedPdfB64.includes("base64,") ? signedPdfB64.split("base64,")[1] : signedPdfB64;
+      const uploadedHash = sha256Hex(Buffer.from(rawUploaded, "base64"));
+      if (uploadedHash === payload.preHash) {
+        console.warn(`⚠️  PDF nemodificat uploadat de ${signers[idx].email} pe flow ${flowId}`);
+        return res.status(422).json({
+          error: "pdf_not_signed",
+          message: "Documentul uploadat este identic cu cel descărcat — nu conține semnătură. Semnează documentul înainte de a-l încărca."
+        });
       }
       signers[idx].uploadVerified = true;
+      signers[idx].uploadedHash = uploadedHash;
     } catch(jwtErr) {
       return res.status(403).json({error:"upload_token_invalid", message:"Token de upload invalid sau expirat. Descarcă documentul din nou."});
     }
