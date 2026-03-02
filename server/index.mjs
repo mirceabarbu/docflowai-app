@@ -1023,15 +1023,32 @@ const createFlow = async (req,res) => {
         initInstitutie = initInstitutie || uRes.rows[0].institutie||"";
       }
     } catch(e) {}
-    // Adauga pagina cu info flux pe PDF
-    const stampedPdf = await addFlowStampToPdf(body.pdfB64??null, {
-      flowId, createdAt, initName, initFunctie, initCompartiment, initInstitutie
-    });
+    // Actualizeaza stampila PDF cu flowId-ul real (stampila a fost creata de client fara ID)
+    let finalPdfB64 = body.pdfB64??null;
+    if (finalPdfB64 && PDFLib) {
+      try {
+        const { PDFDocument, rgb, StandardFonts } = PDFLib;
+        const pdfBytes = Buffer.from(finalPdfB64, "base64");
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
+        const { width: pW } = lastPage.getSize();
+        const MARGIN = 40;
+        const boxH = 88;
+        const boxY = 20;
+        // Suprascrie zona "Nr:" cu flowId real (in bara de titlu, dreapta)
+        lastPage.drawRectangle({ x: pW - MARGIN - 175, y: boxY + boxH - 17, width: 172, height: 16, color: rgb(26/255,58/255,92/255) });
+        function ro2(t){const m={"ă":"a","â":"a","î":"i","ș":"s","ț":"t","Ă":"A","Â":"A","Î":"I","Ș":"S","Ț":"T","ş":"s","ţ":"t","Ş":"S","Ţ":"T"};return String(t||"").split("").map(c=>m[c]||c).join("");}
+        lastPage.drawText(ro2("Nr: " + flowId), { x: pW - MARGIN - 172, y: boxY + boxH - 13, size: 7, font: fontR, color: rgb(0.85,0.85,0.85) });
+        const outBytes = await pdfDoc.save();
+        finalPdfB64 = Buffer.from(outBytes).toString("base64");
+      } catch(e) { console.warn("flowId stamp error:", e.message); }
+    }
     const data = {
       flowId, docName, initName, initEmail,
       institutie: initInstitutie, compartiment: initCompartiment,
       meta: body.meta||{}, flowType: body.flowType||"tabel",
-      pdfB64: stampedPdf,
+      pdfB64: finalPdfB64,
       signers: normalizedSigners,
       createdAt, updatedAt: new Date().toISOString(),
       events: [{at:new Date().toISOString(), type:"FLOW_CREATED", by:initEmail}],
