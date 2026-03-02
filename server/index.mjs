@@ -1028,7 +1028,8 @@ const createFlow = async (req,res) => {
     if (finalPdfB64 && PDFLib) {
       try {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
-        const pdfBytes = Buffer.from(finalPdfB64, "base64");
+        const cleanB64 = finalPdfB64.includes(",") ? finalPdfB64.split(",")[1] : finalPdfB64;
+        const pdfBytes = Buffer.from(cleanB64, "base64");
         const pdfDoc = await PDFDocument.load(pdfBytes);
         const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
         const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
