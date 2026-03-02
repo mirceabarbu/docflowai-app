@@ -552,6 +552,27 @@ th{ color: var(--sub) !important; }
             status.textContent = "⏳ Se generează PDF cu cartuș...";
             await new Promise(r => setTimeout(r, 30));
             pdfBlob = await buildCartusBlob();
+            // _uploadToken e setat in buildCartusBlob via /pdf endpoint
+            // Dar hash-ul PDF-ului generat (cu cartus) e diferit de originalul din DB
+            // -> inregistram hash-ul local la server pentru verificare corecta
+            if (_uploadToken) {
+              try {
+                // Calculeaza hash-ul PDF-ului generat cu cartus
+                const cartusBytes = await pdfBlob.arrayBuffer();
+                const hashBuf = await crypto.subtle.digest("SHA-256", cartusBytes);
+                const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,"0")).join("");
+                // Inregistreaza hash-ul la server -> primeste uploadToken pe baza lui
+                const regResp = await fetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ signerToken: token, pdfHash: hashHex }),
+                });
+                if (regResp.ok) {
+                  const regJson = await regResp.json();
+                  if (regJson.uploadToken) _uploadToken = regJson.uploadToken;
+                }
+              } catch(e) { console.warn("register-download error:", e.message); }
+            }
           }
 
           // Descarcă fișierul
