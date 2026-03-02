@@ -10,6 +10,13 @@ import { sendWaSignRequest, sendWaCompleted, sendWaRefused, verifyWhatsApp, isWh
 import { archiveFlow, verifyDrive } from "./drive.mjs";
 import jwt from "jsonwebtoken";
 import { WebSocketServer } from "ws";
+// pdf-lib pentru stamping info flux pe PDF la creare
+let PDFLib = null;
+try {
+  PDFLib = await import("pdf-lib");
+} catch(e) {
+  console.warn("⚠️ pdf-lib not available — flow stamp disabled:", e.message);
+}
 
 const { Pool } = pg;
 const app = express();
@@ -926,6 +933,60 @@ app.post("/admin/db/vacuum", async (req,res) => {
 });
 
 // ==================== FLOWS ====================
+
+// Adauga pagina cu info flux la sfarsitul PDF-ului
+async function addFlowStampToPdf(pdfB64, flowInfo) {
+  if (!PDFLib || !pdfB64) return pdfB64;
+  try {
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const pdfBytes = Buffer.from(pdfB64, "base64");
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    function ro(t) {
+      const m = {"ă":"a","â":"a","î":"i","ș":"s","ț":"t","Ă":"A","Â":"A","Î":"I","Ș":"S","Ț":"T","ş":"s","ţ":"t","Ş":"S","Ţ":"T"};
+      return String(t||"").split("").map(c => m[c]||c).join("");
+    }
+
+    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+    const { width: pW, height: pH } = lastPage.getSize();
+
+    const accent = rgb(26/255, 58/255, 92/255);
+    const lightGray = rgb(0.96, 0.97, 0.98);
+    const mutedText = rgb(0.4, 0.4, 0.4);
+
+    const boxH = 90;
+    const boxY = 20;
+    const MARGIN = 40;
+    const boxW = pW - MARGIN * 2;
+
+    // Background box
+    lastPage.drawRectangle({ x: MARGIN, y: boxY, width: boxW, height: boxH, color: lightGray, borderColor: accent, borderWidth: 1 });
+    // Title bar
+    lastPage.drawRectangle({ x: MARGIN, y: boxY + boxH - 18, width: boxW, height: 18, color: accent });
+    lastPage.drawText("INFORMATII FLUX DOCFLOWAI", { x: MARGIN + 8, y: boxY + boxH - 13, size: 8, font: fontB, color: rgb(1,1,1) });
+    lastPage.drawText(ro(`Nr. flux: ${flowInfo.flowId}`), { x: pW - MARGIN - 160, y: boxY + boxH - 13, size: 7, font: fontR, color: rgb(0.85,0.85,0.85) });
+
+    // Content
+    const lines = [
+      `Data initierii: ${new Date(flowInfo.createdAt).toLocaleString("ro-RO")}`,
+      `Initiat de: ${ro(flowInfo.initName)}${flowInfo.initFunctie ? " — " + ro(flowInfo.initFunctie) : ""}${flowInfo.initCompartiment ? " · " + ro(flowInfo.initCompartiment) : ""}`,
+      flowInfo.initInstitutie ? `Institutie: ${ro(flowInfo.initInstitutie)}` : null,
+    ].filter(Boolean);
+
+    lines.forEach((line, i) => {
+      lastPage.drawText(line, { x: MARGIN + 10, y: boxY + boxH - 34 - i * 16, size: 8, font: fontR, color: mutedText });
+    });
+
+    const outBytes = await pdfDoc.save();
+    return Buffer.from(outBytes).toString("base64");
+  } catch(e) {
+    console.warn("addFlowStampToPdf error:", e.message);
+    return pdfB64;
+  }
+}
+
 const createFlow = async (req,res) => {
   try {
     if (requireDb(res)) return;
@@ -951,13 +1012,28 @@ const createFlow = async (req,res) => {
     }));
 
     const flowId = newFlowId();
+    const createdAt = body.createdAt||new Date().toISOString();
+    // Lookup initiatorul din DB pentru functie/compartiment/institutie
+    let initFunctie = "", initCompartiment = "", initInstitutie = body.institutie||"";
+    try {
+      const uRes = await pool.query("SELECT functie,compartiment,institutie FROM users WHERE email=$1", [initEmail.toLowerCase()]);
+      if (uRes.rows[0]) {
+        initFunctie = uRes.rows[0].functie||"";
+        initCompartiment = uRes.rows[0].compartiment||"";
+        initInstitutie = initInstitutie || uRes.rows[0].institutie||"";
+      }
+    } catch(e) {}
+    // Adauga pagina cu info flux pe PDF
+    const stampedPdf = await addFlowStampToPdf(body.pdfB64??null, {
+      flowId, createdAt, initName, initFunctie, initCompartiment, initInstitutie
+    });
     const data = {
       flowId, docName, initName, initEmail,
+      institutie: initInstitutie, compartiment: initCompartiment,
       meta: body.meta||{}, flowType: body.flowType||"tabel",
-      pdfB64: body.pdfB64??null,
+      pdfB64: stampedPdf,
       signers: normalizedSigners,
-      createdAt: body.createdAt||new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt, updatedAt: new Date().toISOString(),
       events: [{at:new Date().toISOString(), type:"FLOW_CREATED", by:initEmail}],
     };
     await saveFlow(flowId, data);
