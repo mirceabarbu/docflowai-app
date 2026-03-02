@@ -164,6 +164,26 @@ th{ color: var(--sub) !important; }
     })();
   </script>
 </head>
+<script>
+  // Incarca pdf-lib pentru stampilare PDF la creare flux
+  (function() {
+    const cdns = [
+      "https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js",
+      "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
+    ];
+    let idx = 0;
+    function tryNext() {
+      if (idx >= cdns.length) { window._pdfLibFailed = true; return; }
+      const s = document.createElement("script");
+      s.src = cdns[idx++];
+      s.onerror = tryNext;
+      s.onload = () => { window._pdfLibLoaded = true; };
+      document.head.appendChild(s);
+    }
+    tryNext();
+  })();
+</script>
   <body>
     <header>
       <div class="brand">
@@ -999,15 +1019,108 @@ th{ color: var(--sub) !important; }
       // Create flow
       validateForm(); // inițializare stare buton
 
+
+      // ── Stampila flux pe ultima pagina PDF ─────────────────────────────────
+      async function addFlowStampToB64(b64, flowInfo) {
+        if (!b64) return b64;
+        try {
+          // Asteapta pdf-lib max 8s
+          if (!window.PDFLib) {
+            await new Promise((res, rej) => {
+              let w = 0;
+              const iv = setInterval(() => {
+                w += 200;
+                if (window.PDFLib) { clearInterval(iv); res(); }
+                else if (window._pdfLibFailed || w > 8000) { clearInterval(iv); rej(new Error("pdf-lib indisponibil")); }
+              }, 200);
+            });
+          }
+          const { PDFDocument, rgb, StandardFonts } = PDFLib;
+          const pdfBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const pdfDoc = await PDFDocument.load(pdfBytes);
+          const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+          const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+          function ro(t) {
+            const m = {"ă":"a","â":"a","î":"i","ș":"s","ț":"t","Ă":"A","Â":"A","Î":"I","Ș":"S","Ț":"T","ş":"s","ţ":"t","Ş":"S","Ţ":"T"};
+            return String(t||"").split("").map(c => m[c]||c).join("");
+          }
+
+          const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+          const { width: pW } = lastPage.getSize();
+          const accent = rgb(26/255, 58/255, 92/255);
+          const lightBg = rgb(0.96, 0.97, 0.98);
+          const mutedClr = rgb(0.35, 0.35, 0.35);
+
+          const MARGIN = 40;
+          const boxH = 88;
+          const boxY = 20;
+          const boxW = pW - MARGIN * 2;
+
+          // Fundal + border
+          lastPage.drawRectangle({ x: MARGIN, y: boxY, width: boxW, height: boxH, color: lightBg, borderColor: accent, borderWidth: 0.8 });
+          // Bara titlu
+          lastPage.drawRectangle({ x: MARGIN, y: boxY + boxH - 18, width: boxW, height: 18, color: accent });
+          lastPage.drawText("INFORMATII FLUX DOCFLOWAI", {
+            x: MARGIN + 8, y: boxY + boxH - 13, size: 8, font: fontB, color: rgb(1,1,1)
+          });
+          // ID flux in bara
+          lastPage.drawText(ro("Nr: " + (flowInfo.flowId || "—")), {
+            x: pW - MARGIN - 170, y: boxY + boxH - 13, size: 7, font: fontR, color: rgb(0.85,0.85,0.85)
+          });
+
+          const now = new Date().toLocaleString("ro-RO");
+          const lines = [
+            "Data initierii: " + now,
+            "Initiat de: " + ro(flowInfo.initName||"—")
+              + (flowInfo.functie ? " — " + ro(flowInfo.functie) : "")
+              + (flowInfo.compartiment ? " · " + ro(flowInfo.compartiment) : ""),
+            flowInfo.institutie ? "Institutie: " + ro(flowInfo.institutie) : null,
+          ].filter(Boolean);
+
+          lines.forEach((line, i) => {
+            lastPage.drawText(line, {
+              x: MARGIN + 10, y: boxY + boxH - 34 - i * 16,
+              size: 8, font: fontR, color: mutedClr
+            });
+          });
+
+          const outBytes = await pdfDoc.save();
+          // Converete Uint8Array -> base64
+          let binary = "";
+          const bytes = new Uint8Array(outBytes);
+          for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+          return btoa(binary);
+        } catch(e) {
+          console.warn("addFlowStampToB64 error:", e.message);
+          return b64; // Fallback: trimite PDF original fara stampila
+        }
+      }
+      // ── End stampila ───────────────────────────────────────────────────────
+
       $("btnCreate").addEventListener("click", async () => {
+        $("createResult").textContent = "Se pregătește documentul...";
+        const initNameVal = $("initName").value.trim();
+        const initEmailVal = $("initEmail").value.trim();
+        const institutieVal = $("initInstitutie")?.value?.trim() || "";
+        // Obtine functie/compartiment din profilul userului
+        const _u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        // flowId-ul real va fi atasat de server; stampila contine datele initiatormului
+        const stampedPdf = await addFlowStampToB64(pdfB64, {
+          flowId: "",  // completat de server dupa creare
+          initName: initNameVal,
+          functie: _u.functie || "",
+          compartiment: _u.compartiment || "",
+          institutie: institutieVal || _u.institutie || "",
+        });
         $("createResult").textContent = "Se creează...";
         const payload = {
           docName: $("docName").value.trim(),
-          initName: $("initName").value.trim(),
-          initEmail: $("initEmail").value.trim(),
-          initInstitutie: $("initInstitutie")?.value?.trim() || "",
+          initName: initNameVal,
+          initEmail: initEmailVal,
+          initInstitutie: institutieVal,
           signers: readSigners(),
-          pdfB64,
+          pdfB64: stampedPdf,
           flowType: getDocType(),
         };
 

@@ -313,7 +313,8 @@ function renderList() {
             location.href = '/';
           }
         } else {
-          location.href = '/';
+          // COMPLETED, REFUSED, SIGNED etc. → deschide flow.html
+          location.href = `/flow.html?flow=${encodeURIComponent(n.flow_id)}`;
         }
       }
     };
