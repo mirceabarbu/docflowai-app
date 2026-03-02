@@ -192,7 +192,7 @@ th{ color: var(--sub) !important; }
       <div class="tabs">
         <button id="tabInit" class="tabbtn active" type="button">📝 Flux nou</button>
         <button id="tabFluxuri" class="tabbtn" type="button">📂 Fluxuri mele</button>
-        <a href="/templates" class="tabbtn" style="text-decoration:none;" target="_blank" rel="noopener">📋 Șabloane</a>
+        <a href="/templates" class="tabbtn" style="text-decoration:none;" id="linkSabloane">📋 Șabloane</a>
       </div>
       <div id="userBar" style="display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
     </header>
@@ -217,7 +217,7 @@ th{ color: var(--sub) !important; }
             </div>
 
             <div class="col-5">
-              <label>PDF (atașament recomandat &lt; 10MB)</label>
+              <label>PDF (atașament maxim 5MB)</label>
               <input id="pdfFile" type="file" accept="application/pdf" style="display:none;" />
               <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap; margin-top:2px;">
                 <button id="btnChoosePdf" class="btn secondary" type="button" style="width:auto; flex-shrink:0;">📎 Alege</button>
@@ -370,7 +370,7 @@ th{ color: var(--sub) !important; }
         const f = $("pdfFile").files && $("pdfFile").files[0];
         if (!f){ pdfB64=null; setPdfInfo("Nu ai selectat încă un PDF."); return; }
         if (f.type !== "application/pdf"){ pdfB64=null; setPdfInfo("❌ Te rog selectează un fișier PDF."); return; }
-        if (f.size > 25*1024*1024){ pdfB64=null; setPdfInfo("❌ PDF prea mare (max ~25MB)."); return; }
+        if (f.size > 5*1024*1024){ pdfB64=null; setPdfInfo("❌ PDF prea mare — dimensiunea maximă acceptată este 5MB. Comprimă documentul și încearcă din nou."); $("pdfFile").value=""; return; }
         setPdfInfo(`Selectat: ${f.name} (${Math.round(f.size/1024)} KB).`);
         const reader = new FileReader();
         reader.onload = () => {
@@ -423,6 +423,20 @@ th{ color: var(--sub) !important; }
         if (name === "fluxuri") loadMyFlows();
       }
       $("tabInit").addEventListener("click", () => { showTab("init"); sessionStorage.setItem("docflow_tab", "init"); });
+      // Sabloane: salveaza starea inainte de navigare
+      document.getElementById("linkSabloane")?.addEventListener("click", (e) => {
+        if (pdfB64) {
+          e.preventDefault();
+          if (confirm("Dacă navighezi la Șabloane, PDF-ul încărcat se va pierde (semnătarii și datele se păstrează).\nContinui?")) {
+            sessionStorage.setItem("docflow_tab", "init");
+            saveFormState();
+            location.href = "/templates";
+          }
+        } else {
+          sessionStorage.setItem("docflow_tab", "init");
+          saveFormState();
+        }
+      });
       $("tabFluxuri").addEventListener("click", () => { showTab("fluxuri"); sessionStorage.setItem("docflow_tab", "fluxuri"); });
 
       // Signers table
@@ -1038,6 +1052,10 @@ th{ color: var(--sub) !important; }
           });
           updateIntocmitVisibility();
           validateForm();
+          // PDF-ul nu se poate salva in sessionStorage - informeaza userul
+          if (state.pdfName && state.pdfName !== "Nu ai selectat încă un PDF.") {
+            setPdfInfo("⚠️ Reîncarcă PDF-ul: " + state.pdfName.replace(/^Selectat: /, "").replace(/ \(.*\)\.$/, "") + " (pierdut la navigare)");
+          }
           $("btnRenunta").style.display = "";
           return true;
         } catch(e) { return false; }
