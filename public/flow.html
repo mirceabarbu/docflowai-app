@@ -69,15 +69,7 @@
       max-width:100%;
     }
     .pill strong{color:var(--txt);font-weight:750}
-    /*
-      Premium layout:
-      - Desktop: Detalii + Semnatari side-by-side (full width)
-      - Evenimente below, full width
-      - Mobile: stacked
-    */
     .grid{display:flex;flex-direction:column;gap:16px;margin-top:16px}
-    .topGrid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}
-    @media (max-width: 980px){.topGrid{grid-template-columns:1fr}}
     .card{
       border:1px solid var(--stroke);
       background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
@@ -109,8 +101,7 @@
     .item .name{font-weight:750}
     .item .meta{color:var(--sub);font-size:.86rem;margin-top:3px}
     .item .right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-    /* Events is now full-width below; allow more room */
-    .events{max-height:520px;overflow:auto;padding-right:4px}
+    .events{max-height:360px;overflow:auto;padding-right:4px}
     .events::-webkit-scrollbar{height:10px;width:10px}
     .events::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:10px}
     .events .ev{display:flex;gap:10px;padding:8px 10px;border-radius:12px}
@@ -153,43 +144,37 @@
     <div id="msg"></div>
 
     <div class="grid">
-      <div class="topGrid">
-        <!-- Detalii (left) -->
-        <div class="card" id="cardDetails">
-          <div class="row">
-            <h3 style="margin:0">Detalii</h3>
-            <span class="badge" id="badgeStatus">—</span>
-          </div>
-          <div class="kv">
-            <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
-            <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
-            <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
-            <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
-            <span class="pill"><strong>Actualizat</strong> <span id="updatedAt">—</span></span>
-          </div>
-          <div class="sep"></div>
-          <div class="muted small">
-            ℹ️ Recomandare: semnarea calificată se face în mediul de semnare al instituției, apoi PDF-ul semnat se încarcă înapoi în flux.
-          </div>
+
+      <!-- Detalii — full width -->
+      <div class="card">
+        <div class="row">
+          <h3 style="margin:0">Detalii</h3>
+          <span class="badge" id="badgeStatus">—</span>
         </div>
-
-        <!-- Semnatari (right) -->
-        <div class="card" id="cardSigners">
-          <div class="row">
-            <h3 style="margin:0">Semnatari</h3>
-            <span class="muted small" id="signHint"></span>
-          </div>
-          <div class="list" id="signers"></div>
-
-          <div class="alert small" id="hintSigner" style="display:none">
-            💡 Ești semnatar și ai token în link. Poți semna din pagina dedicată:
-            <a id="signLink" href="#" style="text-decoration:underline">Deschide semnarea</a>.
-          </div>
+        <div class="kv">
+          <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
+          <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
+          <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
+          <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
+          <span class="pill"><strong>Actualizat</strong> <span id="updatedAt">—</span></span>
         </div>
       </div>
 
-      <!-- Evenimente (full width) -->
-      <div class="card" id="cardEvents">
+      <!-- Semnatari — full width -->
+      <div class="card">
+        <div class="row">
+          <h3 style="margin:0">Semnatari</h3>
+          <span class="muted small" id="signHint"></span>
+        </div>
+        <div class="list" id="signers"></div>
+        <div class="alert small" id="hintSigner" style="display:none">
+          💡 Ești semnatar și ai token în link. Poți semna din pagina dedicată:
+          <a id="signLink" href="#" style="text-decoration:underline">Deschide semnarea</a>.
+        </div>
+      </div>
+
+      <!-- Evenimente — full width -->
+      <div class="card">
         <div class="row">
           <h3 style="margin:0">Evenimente</h3>
           <span class="muted small">timeline & audit</span>
