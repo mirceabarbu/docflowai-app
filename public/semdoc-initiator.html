@@ -1053,10 +1053,15 @@ th{ color: var(--sub) !important; }
 
 
 
-      const _flowParam = new URLSearchParams(location.search).get("flow");
-      if (_flowParam) {
-        location.replace(`/flow.html?flow=${encodeURIComponent(_flowParam)}`);
-      }
+      // Gestioneaza parametri URL la load
+      (function handleUrlParams() {
+        const params = new URLSearchParams(location.search);
+        const flowParam = params.get("flow");
+        const tabParam = params.get("tab");
+        if (flowParam) { location.replace(`/flow.html?flow=${encodeURIComponent(flowParam)}`); return; }
+        if (tabParam === "flows" || tabParam === "fluxuri") { showTab("fluxuri"); return; }
+        if (tabParam === "init") { showTab("init"); return; }
+      })();
     </script>
   <script src="/notif-widget.js"></script>
 </body>

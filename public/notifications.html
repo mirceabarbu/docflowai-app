@@ -305,7 +305,7 @@ function renderList() {
             });
             if (r.ok) {
               const d = await r.json();
-              location.href = `/flow.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
+              location.href = `/semdoc-signer.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
             } else {
               location.href = '/';
             }
@@ -385,6 +385,20 @@ function connectWS() {
 }
 
 connectWS();
+// Aplica tab din URL daca exista (?tab=sign / done / refused / unread)
+(function applyTabFromUrl() {
+  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', unread: 'unread', all: 'all' };
+  const urlTab = new URLSearchParams(location.search).get('tab');
+  const filter = tabMap[urlTab] || null;
+  if (filter && filter !== 'all') {
+    const btn = document.querySelector(`.filter-btn[data-filter="${filter}"]`);
+    if (btn) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = filter;
+    }
+  }
+})();
 loadNotifs();
 </script>
 

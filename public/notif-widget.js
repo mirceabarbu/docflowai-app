@@ -95,6 +95,26 @@
     bellBtn.href = '/notifications';
     bellBtn.title = 'Notificări';
     bellBtn.innerHTML = `🔔<span id="nw-badge"></span>`;
+    bellBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      // Daca exista notificari necitite, deschide tabul celei mai recente
+      const tok = localStorage.getItem('docflow_token');
+      if (!tok || unreadCount === 0) { window.location.href = '/notifications'; return; }
+      try {
+        const r = await fetch('/api/notifications', { headers: { 'Authorization': 'Bearer ' + tok } });
+        const notifs = await r.json();
+        const latest = notifs.find(n => !n.read) || notifs[0];
+        if (!latest) { window.location.href = '/notifications'; return; }
+        const t = (latest.type || '').toUpperCase();
+        let tab = 'all';
+        if (t === 'YOUR_TURN' || t === 'ASSIGNED' || t === 'SIGNER_TURN') tab = 'sign';
+        else if (t === 'COMPLETED' || t === 'DONE' || t === 'FINISHED') tab = 'done';
+        else if (t === 'REFUSED') tab = 'refused';
+        window.location.href = '/notifications?tab=' + tab;
+      } catch(e) {
+        window.location.href = '/notifications';
+      }
+    });
 
     // Inserează înainte de primul copil al userBar
     userBar.insertBefore(bellBtn, userBar.firstChild);
