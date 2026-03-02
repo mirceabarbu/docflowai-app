@@ -145,32 +145,37 @@
 
     <div class="grid">
 
-      <!-- Detalii — full width -->
-      <div class="card">
-        <div class="row">
-          <h3 style="margin:0">Detalii</h3>
-          <span class="badge" id="badgeStatus">—</span>
-        </div>
-        <div class="kv">
-          <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
-          <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
-          <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
-          <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
-          <span class="pill"><strong>Actualizat</strong> <span id="updatedAt">—</span></span>
-        </div>
-      </div>
+      <!-- Detalii + Semnatari — 2 coloane -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start;">
 
-      <!-- Semnatari — full width -->
-      <div class="card">
-        <div class="row">
-          <h3 style="margin:0">Semnatari</h3>
-          <span class="muted small" id="signHint"></span>
+        <!-- Coloana stanga: Detalii -->
+        <div class="card" style="height:100%">
+          <div class="row">
+            <h3 style="margin:0">Detalii</h3>
+            <span class="badge" id="badgeStatus">—</span>
+          </div>
+          <div class="kv">
+            <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
+            <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
+            <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
+            <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
+            <span class="pill"><strong>Actualizat</strong> <span id="updatedAt">—</span></span>
+          </div>
         </div>
-        <div class="list" id="signers"></div>
-        <div class="alert small" id="hintSigner" style="display:none">
-          💡 Ești semnatar și ai token în link. Poți semna din pagina dedicată:
-          <a id="signLink" href="#" style="text-decoration:underline">Deschide semnarea</a>.
+
+        <!-- Coloana dreapta: Semnatari -->
+        <div class="card" style="height:100%">
+          <div class="row">
+            <h3 style="margin:0">Semnatari</h3>
+            <span class="muted small" id="signHint"></span>
+          </div>
+          <div class="list" id="signers"></div>
+          <div class="alert small" id="hintSigner" style="display:none">
+            💡 Ești semnatar și ai token în link. Poți semna din pagina dedicată:
+            <a id="signLink" href="#" style="text-decoration:underline">Deschide semnarea</a>.
+          </div>
         </div>
+
       </div>
 
       <!-- Evenimente — full width -->
