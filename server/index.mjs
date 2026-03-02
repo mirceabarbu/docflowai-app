@@ -1023,9 +1023,9 @@ const createFlow = async (req,res) => {
         initInstitutie = initInstitutie || uRes.rows[0].institutie||"";
       }
     } catch(e) {}
-    // Actualizeaza stampila PDF cu flowId-ul real (stampila a fost creata de client fara ID)
+    // Adauga flowId la footer-ul PDF doar pentru flux cu ancore (tabelul are footer din signer)
     let finalPdfB64 = body.pdfB64??null;
-    if (finalPdfB64 && PDFLib) {
+    if (finalPdfB64 && PDFLib && (body.flowType||"tabel") !== "tabel") {
       try {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
         const cleanB64 = finalPdfB64.includes(",") ? finalPdfB64.split(",")[1] : finalPdfB64;
@@ -1035,12 +1035,13 @@ const createFlow = async (req,res) => {
         const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
         const { width: pW } = lastPage.getSize();
         const MARGIN = 40;
-        const boxH = 88;
-        const boxY = 20;
-        // Suprascrie zona "Nr:" cu flowId real (in bara de titlu, dreapta)
-        lastPage.drawRectangle({ x: pW - MARGIN - 175, y: boxY + boxH - 17, width: 172, height: 16, color: rgb(26/255,58/255,92/255) });
-        function ro2(t){const m={"ă":"a","â":"a","î":"i","ș":"s","ț":"t","Ă":"A","Â":"A","Î":"I","Ș":"S","Ț":"T","ş":"s","ţ":"t","Ş":"S","Ţ":"T"};return String(t||"").split("").map(c=>m[c]||c).join("");}
-        lastPage.drawText(ro2("Nr: " + flowId), { x: pW - MARGIN - 172, y: boxY + boxH - 13, size: 7, font: fontR, color: rgb(0.85,0.85,0.85) });
+        // Adauga flowId la dreapta pe aceeasi linie cu footer-ul
+        lastPage.drawText(flowId, {
+          x: pW - MARGIN - 180, y: 14,
+          size: 7.5, font: fontR,
+          color: rgb(0.45, 0.45, 0.45),
+          opacity: 0.75,
+        });
         const outBytes = await pdfDoc.save();
         finalPdfB64 = Buffer.from(outBytes).toString("base64");
       } catch(e) { console.warn("flowId stamp error:", e.message); }
