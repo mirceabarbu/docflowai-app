@@ -363,14 +363,28 @@ th{ color: var(--sub) !important; }
         btn.title = valid ? "" : "Încarcă mai întâi PDF-ul";
       }
 
-      function setPdfInfo(msg){ $("pdfInfo").textContent = msg; }
+      function setPdfInfo(msg, isError=false) {
+        const el = $("pdfInfo");
+        el.textContent = msg;
+        if (isError) {
+          el.style.color = "#ff6b6b";
+          el.style.fontWeight = "600";
+          el.style.whiteSpace = "normal";
+          el.style.overflow = "visible";
+        } else {
+          el.style.color = "";
+          el.style.fontWeight = "";
+          el.style.whiteSpace = "nowrap";
+          el.style.overflow = "hidden";
+        }
+      }
 
       $("pdfFile").addEventListener("change", () => {
         const clearBtn = $("btnClearPdf");
         const f = $("pdfFile").files && $("pdfFile").files[0];
         if (!f){ pdfB64=null; setPdfInfo("Nu ai selectat încă un PDF."); return; }
-        if (f.type !== "application/pdf"){ pdfB64=null; setPdfInfo("❌ Te rog selectează un fișier PDF."); return; }
-        if (f.size > 5*1024*1024){ pdfB64=null; setPdfInfo("❌ PDF prea mare — dimensiunea maximă acceptată este 5MB. Comprimă documentul și încearcă din nou."); $("pdfFile").value=""; return; }
+        if (f.type !== "application/pdf"){ pdfB64=null; setPdfInfo("❌ Te rog selectează un fișier PDF.", true); return; }
+        if (f.size > 5*1024*1024){ pdfB64=null; setPdfInfo("❌ PDF prea mare — max 5MB. Comprimă documentul și încearcă din nou.", true); $("pdfFile").value=""; return; }
         setPdfInfo(`Selectat: ${f.name} (${Math.round(f.size/1024)} KB).`);
         const reader = new FileReader();
         reader.onload = () => {
@@ -379,6 +393,7 @@ th{ color: var(--sub) !important; }
           $("btnRenunta").style.display = "";
           validateForm();
           saveFormState();
+          idb.save(pdfB64);
           // Auto-fill docName from PDF filename if empty
           const docNameEl = $("docName");
           if (docNameEl && !docNameEl.value.trim()) {
@@ -408,6 +423,7 @@ th{ color: var(--sub) !important; }
         $("btnClearPdf").style.color = "";
         $("pdfFile").value = "";
         pdfB64 = null;
+        idb.clear();
         validateForm();
         setPdfInfo("Nu ai selectat încă un PDF.");
         const box = $("pdfPreviewBox");
@@ -423,19 +439,11 @@ th{ color: var(--sub) !important; }
         if (name === "fluxuri") loadMyFlows();
       }
       $("tabInit").addEventListener("click", () => { showTab("init"); sessionStorage.setItem("docflow_tab", "init"); });
-      // Sabloane: salveaza starea inainte de navigare
+      // Sabloane: salveaza starea + PDF inainte de navigare
       document.getElementById("linkSabloane")?.addEventListener("click", (e) => {
-        if (pdfB64) {
-          e.preventDefault();
-          if (confirm("Dacă navighezi la Șabloane, PDF-ul încărcat se va pierde (semnătarii și datele se păstrează).\nContinui?")) {
-            sessionStorage.setItem("docflow_tab", "init");
-            saveFormState();
-            location.href = "/templates";
-          }
-        } else {
-          sessionStorage.setItem("docflow_tab", "init");
-          saveFormState();
-        }
+        sessionStorage.setItem("docflow_tab", "init");
+        saveFormState();
+        if (pdfB64) idb.save(pdfB64);
       });
       $("tabFluxuri").addEventListener("click", () => { showTab("fluxuri"); sessionStorage.setItem("docflow_tab", "fluxuri"); });
 
@@ -990,42 +998,93 @@ th{ color: var(--sub) !important; }
       })();
 
       // ── Persistenta formular in sessionStorage ────────────────────────────
+      // ══════════════════════════════════════════════════════════════════════
+      // DRAFT STORE — Solutia C + IndexedDB
+      // Tab-urile raman in DOM (nu se demmonteaza), deci PDF ramane in memorie
+      // la switch intre taburi. IndexedDB pastreaza PDF-ul si la navigare
+      // externa (flow.html, templates etc.) pentru ca browserul reincarca pagina.
+      // ══════════════════════════════════════════════════════════════════════
       const FORM_KEY = "docflow_draft";
+      const IDB_NAME = "docflowai_v1", IDB_STORE = "drafts", IDB_KEY = "pdf";
+
+      // ── IndexedDB helpers ─────────────────────────────────────────────────
+      const idb = {
+        _db: null,
+        open() {
+          if (this._db) return Promise.resolve(this._db);
+          return new Promise((res, rej) => {
+            const req = indexedDB.open(IDB_NAME, 1);
+            req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
+            req.onsuccess = e => { this._db = e.target.result; res(this._db); };
+            req.onerror = () => rej(req.error);
+          });
+        },
+        async save(val) {
+          try {
+            const db = await this.open();
+            await new Promise((r,j) => {
+              const tx = db.transaction(IDB_STORE, "readwrite");
+              tx.objectStore(IDB_STORE).put(val, IDB_KEY);
+              tx.oncomplete = r; tx.onerror = j;
+            });
+          } catch(e) { console.warn("idb.save:", e.message); }
+        },
+        async load() {
+          try {
+            const db = await this.open();
+            return await new Promise((r,j) => {
+              const tx = db.transaction(IDB_STORE, "readonly");
+              const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+              req.onsuccess = () => r(req.result ?? null);
+              req.onerror = j;
+            });
+          } catch(e) { return null; }
+        },
+        async clear() {
+          try {
+            const db = await this.open();
+            await new Promise((r,j) => {
+              const tx = db.transaction(IDB_STORE, "readwrite");
+              tx.objectStore(IDB_STORE).delete(IDB_KEY);
+              tx.oncomplete = r; tx.onerror = j;
+            });
+          } catch(e) {}
+        }
+      };
 
       function saveFormState() {
         try {
           const signers = [...tbody.querySelectorAll("tr")].map(tr => {
             const sel = tr.querySelector(".rol");
-            const rolCustomEl = tr.querySelector(".rolCustom");
-            const nameEl = tr.querySelector(".name-select") || tr.querySelector(".name");
             return {
               rol: sel?.value || "",
-              rolCustom: rolCustomEl?.value || "",
+              rolCustom: tr.querySelector(".rolCustom")?.value || "",
               functie: tr.querySelector(".functie")?.value || "",
-              name: nameEl?.value || "",
+              name: (tr.querySelector(".name-select") || tr.querySelector(".name"))?.value || "",
               email: tr.querySelector(".email")?.value || "",
             };
           });
-          const state = {
+          sessionStorage.setItem(FORM_KEY, JSON.stringify({
             docName: $("docName")?.value || "",
             pdfName: $("pdfInfo")?.textContent || "",
             flowType: getDocType(),
             signers,
-          };
-          sessionStorage.setItem(FORM_KEY, JSON.stringify(state));
+            hasPdf: !!pdfB64,
+          }));
         } catch(e) {}
       }
 
       function clearFormState() {
         sessionStorage.removeItem(FORM_KEY);
+        idb.clear();
       }
 
-      function restoreFormState() {
+      async function restoreFormState() {
         try {
           const raw = sessionStorage.getItem(FORM_KEY);
           if (!raw) return false;
           const state = JSON.parse(raw);
-          if (!state || !state.signers?.length) return false;
+          if (!state) return false;
 
           // Restore docName
           if (state.docName) $("docName").value = state.docName;
@@ -1034,31 +1093,48 @@ th{ color: var(--sub) !important; }
           if (state.flowType) {
             const radios = document.querySelectorAll("input[name='flowType']");
             radios.forEach(r => { r.checked = (r.value === state.flowType); });
-            // Trigger change event pt UI
             const checked = document.querySelector("input[name='flowType']:checked");
             if (checked) checked.dispatchEvent(new Event("change", { bubbles: true }));
           }
 
-          // Restore signers
-          tbody.innerHTML = "";
-          state.signers.forEach(s => {
-            const tr = signerRowTemplate(s);
-            tbody.appendChild(tr);
-            // Seteaza rolCustom daca e cazul
-            if (s.rol === "__alt__" && s.rolCustom) {
-              const rc = tr.querySelector(".rolCustom");
-              if (rc) rc.value = s.rolCustom;
-            }
-          });
-          updateIntocmitVisibility();
-          validateForm();
-          // PDF-ul nu se poate salva in sessionStorage - informeaza userul
-          if (state.pdfName && state.pdfName !== "Nu ai selectat încă un PDF.") {
-            setPdfInfo("⚠️ Reîncarcă PDF-ul: " + state.pdfName.replace(/^Selectat: /, "").replace(/ \(.*\)\.$/, "") + " (pierdut la navigare)");
+          // Restore signers (daca exista)
+          if (state.signers?.length) {
+            tbody.innerHTML = "";
+            state.signers.forEach(s => {
+              const tr = signerRowTemplate(s);
+              tbody.appendChild(tr);
+              if (s.rol === "__alt__" && s.rolCustom) {
+                const rc = tr.querySelector(".rolCustom");
+                if (rc) rc.value = s.rolCustom;
+              }
+            });
+            updateIntocmitVisibility();
           }
+
+          // Restaureaza PDF din IndexedDB
+          if (state.hasPdf) {
+            const savedPdf = await idb.load();
+            if (savedPdf) {
+              pdfB64 = savedPdf;
+              const fname = (state.pdfName || "").replace(/^Selectat: /, "").replace(/ \(\d+ KB\)\.?$/, "");
+              setPdfInfo("✅ " + (fname || "document.pdf") + " (restaurat)");
+              const cb = $("btnClearPdf");
+              if (cb) {
+                cb.disabled = false; cb.style.opacity = "1"; cb.style.pointerEvents = "auto";
+                cb.style.cursor = "pointer"; cb.style.background = "rgba(255,80,80,.15)";
+                cb.style.borderColor = "rgba(255,80,80,.3)"; cb.style.color = "#ffaaaa";
+              }
+            } else {
+              // IDB golit (alt device, browser curatat) — cere reincarcarea
+              const fname = (state.pdfName || "").replace(/^Selectat: /, "").replace(/ \(\d+ KB\)\.?$/, "");
+              setPdfInfo("⚠️ Reîncarcă PDF-ul: " + (fname || "documentul"), true);
+            }
+          }
+
+          validateForm();
           $("btnRenunta").style.display = "";
           return true;
-        } catch(e) { return false; }
+        } catch(e) { console.warn("restoreFormState:", e); return false; }
       }
 
       // Auto-save la orice modificare in formular
@@ -1099,14 +1175,16 @@ th{ color: var(--sub) !important; }
       });
 
       // Default load: restaureaza tab-ul si starea sau initializeaza implicit
-      const _savedTab = sessionStorage.getItem("docflow_tab");
-      if (_savedTab === "fluxuri") {
-        showTab("fluxuri");
-      }
-      const _restored = restoreFormState();
-      if (!_restored) {
-        setDefaults();
-      }
+      (async () => {
+        const _savedTab = sessionStorage.getItem("docflow_tab");
+        if (_savedTab === "fluxuri") {
+          showTab("fluxuri");
+        }
+        const _restored = await restoreFormState();
+        if (!_restored) {
+          setDefaults();
+        }
+      })();
 
       // Completare automată câmpuri inițiator din profilul utilizatorului autentificat
       autoFillFromProfile();
@@ -1272,7 +1350,7 @@ th{ color: var(--sub) !important; }
 
           localStorage.setItem("lastInitName", $("initName").value.trim());
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
-          clearFormState(); // flux creat cu succes — sterge draft-ul
+          clearFormState(); // flux creat cu succes — sterge draft + IDB
 
           // Redirect UX:
           // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
