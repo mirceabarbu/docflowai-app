@@ -55,7 +55,6 @@
     }
     .btn:hover{background:rgba(255,255,255,.08)}
     .btn:active{transform:translateY(1px)}
-    .btn:disabled{opacity:.55; cursor:not-allowed}
     .btn.primary{
       background:linear-gradient(90deg, rgba(124,92,255,.95), rgba(0,214,255,.55));
       border-color:rgba(124,92,255,.35);
@@ -69,14 +68,47 @@
       max-width:100%;
     }
     .pill strong{color:var(--txt);font-weight:750}
-    .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;margin-top:16px}
-    @media (max-width: 980px){.grid{grid-template-columns:1fr}}
-    .card{
-      border:1px solid var(--stroke);
-      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      border-radius:var(--r); box-shadow: var(--shadow);
-      padding:16px;
+    
+    /* MODIFICĂRI LAYOUT FULL-WIDTH */
+    .grid {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      margin-top: 24px;
     }
+    .card {
+      width: 100%;
+      border: 1px solid var(--stroke);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border-radius: var(--r); 
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+    .details-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+    @media (max-width: 900px) {
+      .details-layout { grid-template-columns: 1fr; }
+      .signers-border-mobile { border-left: none !important; padding-left: 0 !important; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px; }
+    }
+    .events-card { margin-top: 8px; }
+    .events { max-height: 400px; overflow: auto; padding-right: 4px; }
+    /* FINISAJE ENTERPRISE */
+    .sep { height: 1px; background: rgba(255,255,255,.08); margin: 20px 0; }
+    .list { display:flex; flex-direction:column; gap: 12px; margin-top: 10px; }
+    .item {
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+      border-radius: 14px;
+      padding: 14px 18px;
+    }
+    h3 {
+      font-size: 1.1rem; letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--sub); margin: 0 0 16px 0 !important;
+    }
+    /* Restul stilurilor existente */
     .row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
     .muted{color:var(--sub)}
     .small{font-size:.86rem}
@@ -89,20 +121,11 @@
     .badge.ok{border-color:rgba(38,208,124,.45); background:rgba(38,208,124,.10)}
     .badge.warn{border-color:rgba(255,176,32,.45); background:rgba(255,176,32,.10)}
     .badge.bad{border-color:rgba(255,77,90,.45); background:rgba(255,77,90,.10)}
-    .sep{height:1px;background:rgba(255,255,255,.10);margin:12px 0}
     .kv{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    .list{display:flex;flex-direction:column;gap:10px;margin-top:10px}
-    .item{
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(0,0,0,.12);
-      border-radius:14px;
-      padding:10px 12px;
-    }
     .item .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
     .item .name{font-weight:750}
     .item .meta{color:var(--sub);font-size:.86rem;margin-top:3px}
     .item .right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-    .events{max-height:360px;overflow:auto;padding-right:4px}
     .events::-webkit-scrollbar{height:10px;width:10px}
     .events::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:10px}
     .events .ev{display:flex;gap:10px;padding:8px 10px;border-radius:12px}
@@ -146,314 +169,20 @@
 
     <div class="grid">
       <div class="card">
-        <div class="row">
-          <h3 style="margin:0">Detalii</h3>
-          <span class="badge" id="badgeStatus">—</span>
-        </div>
-        <div class="kv">
-          <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
-          <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
-          <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
-          <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
-          <span class="pill"><strong>Actualizat</strong> <span id="updatedAt">—</span></span>
-        </div>
-
-        <div class="sep"></div>
-
-        <div class="row">
-          <h3 style="margin:0">Semnatari</h3>
-          <span class="muted small" id="signHint"></span>
-        </div>
-        <div class="list" id="signers"></div>
-
-        <div class="alert small" id="hintSigner" style="display:none">
-          💡 Ești semnatar și ai token în link. Poți semna din pagina dedicată:
-          <a id="signLink" href="#" style="text-decoration:underline">Deschide semnarea</a>.
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="row">
-          <h3 style="margin:0">Evenimente</h3>
-          <span class="muted small">timeline & audit</span>
-        </div>
-        <div class="events" id="events"></div>
-      </div>
-    </div>
-  </div>
-
-<script>
-  const $ = (id) => document.getElementById(id);
-  const qs = new URLSearchParams(location.search);
-  const flowId = qs.get("flow") || qs.get("id") || "";
-  const linkToken = qs.get("token") || "";
-  const jwt = localStorage.getItem("docflow_token") || "";
-
-  function setMsg(kind, text){
-    const el = $("msg");
-    if(!text){ el.innerHTML=""; return; }
-    const cls = kind==="error" ? "alert err" : "alert";
-    el.innerHTML = `<div class="${cls}">${text}</div>`;
-  }
-
-  function statusBadge(status){
-    const s = (status||"").toLowerCase();
-    if(["done","finalizat","completed","complete","finished"].includes(s)) return {cls:"ok", txt:"✅ Finalizat"};
-    if(["refused","rejected","respins"].includes(s)) return {cls:"bad", txt:"⛔ Refuzat"};
-    if(["draft","init","new"].includes(s)) return {cls:"warn", txt:"📝 Draft"};
-    if(["active","in_progress","inprogress","in curs","running"].includes(s)) return {cls:"warn", txt:"⏳ În curs"};
-    return {cls:"", txt:"ℹ️ " + (status||"necunoscut")};
-  }
-
-  function prettyTs(v){
-    try{
-      if(!v) return "—";
-      const d = new Date(v);
-      if(isNaN(d)) return String(v);
-      return d.toLocaleString("ro-RO");
-    }catch(e){ return String(v||"—"); }
-  }
-
-  async function apiFetchJson(url){
-    // Prefer JWT (initiator/admin). If forbidden and we have linkToken, retry with token param.
-    const hdrs = {};
-    if(jwt) hdrs["Authorization"] = "Bearer " + jwt;
-
-    let r = await fetch(url, { headers: hdrs });
-    if((r.status===401 || r.status===403) && linkToken){
-      const u = new URL(url, location.origin);
-      if(!u.searchParams.get("token")) u.searchParams.set("token", linkToken);
-      r = await fetch(u.toString());
-    }
-
-    const j = await r.json().catch(()=>({}));
-    if(!r.ok){
-      const msg = (j && (j.message || j.error)) || (r.status + " " + r.statusText);
-      throw new Error(msg);
-    }
-    return j;
-  }
-
-  async function apiFetchBlob(url){
-    const hdrs = {};
-    if(jwt) hdrs["Authorization"] = "Bearer " + jwt;
-
-    let r = await fetch(url, { headers: hdrs });
-    if((r.status===401 || r.status===403) && linkToken){
-      const u = new URL(url, location.origin);
-      if(!u.searchParams.get("token")) u.searchParams.set("token", linkToken);
-      r = await fetch(u.toString());
-    }
-
-    if(!r.ok){
-      let t = "";
-      try{ t = await r.text(); }catch(e){}
-      throw new Error(t || (r.status + " " + r.statusText));
-    }
-    return await r.blob();
-  }
-
-  function downloadBlob(blob, filename){
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename || "document.pdf";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 1500);
-  }
-
-  function roleLabel(s){
-    return (s||"").toString().toUpperCase();
-  }
-
-  function renderSigners(flow){
-    const list = $("signers");
-    list.innerHTML = "";
-    const signers = (flow.signers || flow.data?.signers || []);
-    if(!signers.length){
-      list.innerHTML = `<div class="muted">Nu există semnatari.</div>`;
-      return;
-    }
-
-    const currentId = flow.currentSignerId || flow.data?.currentSignerId || flow.currentSigner || flow.data?.currentSigner;
-
-    for(const s of signers){
-      const isCurrent = currentId && (s.id===currentId || s.signerId===currentId || s.token===currentId);
-      const st = (s.status || "").toLowerCase();
-
-      let right = `<span class="badge">⏳ în așteptare</span>`;
-      if(st==="signed" || st==="done") right = `<span class="badge ok">✅ semnat</span>`;
-      else if(st==="refused") right = `<span class="badge bad">⛔ refuz</span>`;
-      else if(isCurrent) right = `<span class="badge warn">⏱️ curent</span>`;
-
-      const when = s.signedAt || s.at || s.updatedAt || s.date;
-      const metaBits = [];
-      const functieSigner = s.functie || s.function || "";
-      const compartimentSigner = s.compartiment || s.department || "";
-      if(functieSigner) metaBits.push(functieSigner);
-      if(compartimentSigner) metaBits.push(compartimentSigner);
-      if(s.rol || s.role || s.attr) metaBits.unshift(roleLabel(s.rol || s.role || s.attr));
-      const meta = metaBits.filter(Boolean).join(" · ");
-
-      const el = document.createElement("div");
-      el.className = "item";
-      el.innerHTML = `
-        <div class="top">
+        <div class="details-layout">
+          
           <div>
-            <div class="name">${(s.name||s.fullName||"—")}</div>
-            <div class="meta">${meta || '<span class="muted">—</span>'}</div>
-            ${when ? `<div class="meta">📅 ${prettyTs(when)}</div>` : ``}
-          </div>
-          <div class="right">${right}</div>
-        </div>
-      `;
-      list.appendChild(el);
-    }
+            <div class="row">
+              <h3>Informații Document</h3>
+              <span class="badge" id="badgeStatus">—</span>
+            </div>
+            <div class="kv">
+              <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
+              <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
+              <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
+              <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
+              <span class="pill"><strong>Actualizat</strong> <span id="updatedAt">—</span></span>
+            </div>
 
-    if(linkToken){
-      $("hintSigner").style.display = "";
-      $("signLink").href = `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(linkToken)}`;
-    } else {
-      // Verifica daca userul autentificat e semnatarul curent — fara token in URL
-      const myEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
-      const data2 = flow.data || flow;
-      const mySigner = (data2.signers || []).find(s => (s.email || "").toLowerCase() === myEmail && s.status === "current");
-      if (mySigner) {
-        // Obtine token-ul de semnare de la server
-        const jwtToken = localStorage.getItem("docflow_token");
-        fetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
-          headers: { "Authorization": "Bearer " + jwtToken }
-        }).then(r => r.json()).then(j => {
-          if (j.token) {
-            $("hintSigner").style.display = "";
-            $("signLink").href = `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(j.token)}`;
-            $("signLink").textContent = "✍ Semnează acum";
-          }
-        }).catch(() => {});
-      } else {
-        $("hintSigner").style.display = "none";
-      }
-    }
-  }
-
-  function renderEvents(flow){
-    const evBox = $("events");
-    evBox.innerHTML = "";
-    const evs = flow.events || flow.data?.events || [];
-    if(!evs.length){
-      evBox.innerHTML = `<div class="muted">Nu există evenimente.</div>`;
-      return;
-    }
-
-    // Construieste nameMap: email -> "Nume — Functie · Compartiment"
-    const nameMap = {};
-    const data = flow.data || flow;
-    if (data.initEmail) nameMap[data.initEmail] = data.initName || data.initEmail;
-    (data.signers || []).forEach(s => {
-      if (s.email) {
-        const extra = [s.functie, s.compartiment].filter(Boolean).join(' · ');
-        nameMap[s.email] = (s.name || s.email) + (extra ? ` — ${extra}` : '');
-      }
-    });
-
-    const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    for(const e of evs){
-      const ts = prettyTs(e.at || e.ts || e.time || e.createdAt);
-      const byRaw = e.who || e.actor || e.by || "";
-      const who = nameMap[byRaw] ? esc(nameMap[byRaw]) : esc(byRaw);
-      const kind = (e.type || e.kind || e.event || "EVENT").toString();
-      const extra = e.msg || e.message || e.detail || "";
-      const line = [kind, who].filter(Boolean).join(' · ');
-      const txt = extra ? `${line} — ${esc(extra)}` : line;
-
-      const d = document.createElement("div");
-      d.className = "ev";
-      d.innerHTML = `<div class="ts">${ts}</div><div class="txt">${txt}</div>`;
-      evBox.appendChild(d);
-    }
-  }
-
-  async function loadFlow(){
-    if(!flowId){
-      setMsg("error", `Lipsește parametrul <b>flow</b> în URL. Exemplu: <code>/flow.html?flow=FLOW_...</code>`);
-      return;
-    }
-
-    $("pillFlow").innerHTML = `<strong>Flow</strong> ${flowId}`;
-
-    setMsg("", "");
-
-    try{
-      const j = await apiFetchJson(`/flows/${encodeURIComponent(flowId)}`);
-      const data = j.data || j;
-
-      $("docName").textContent = (data.docName || data.documentName || data.name || data.title || "—");
-      $("initName").textContent = (data.initName || data.initiatorName || "—");
-      const instVal = data.institutie || data.institution ||
-        (data.signers || []).map(s => s.institutie || s.institution).find(Boolean) || "—";
-      $("inst").textContent = instVal;
-      const compartVal = data.compartiment || data.compartiment ||
-        (data.signers || []).map(s => s.compartiment).find(Boolean) || "—";
-      $("compartiment").textContent = compartVal;
-      $("updatedAt").textContent = prettyTs(data.updatedAt || data.updated_at || data.createdAt || data.created_at);
-
-      // Calculeaza status real din semnatari
-      const signers = data.signers || [];
-      let computedStatus = data.status || j.status || "";
-      if (!computedStatus || computedStatus === "active") {
-        if (signers.length && signers.every(s => s.status === "signed")) computedStatus = "completed";
-        else if (signers.some(s => s.status === "refused")) computedStatus = "refused";
-        else if (signers.some(s => s.status === "signed" || s.status === "current")) computedStatus = "active";
-        else computedStatus = "active";
-      }
-      const b = statusBadge(computedStatus);
-      const badge = $("badgeStatus");
-      badge.className = "badge " + b.cls;
-      badge.textContent = b.txt;
-
-      const allSignedDone = signers.length > 0 && signers.every(s => s.status === "signed");
-      const hasSigned = allSignedDone && !!(j.hasSignedPdf || data.hasSignedPdf);
-      $("btnDownloadSigned").disabled = !hasSigned;
-      $("btnDownloadSigned").title = hasSigned ? "Descarcă PDF semnat" : allSignedDone ? "Se procesează PDF-ul semnat..." : "Documentul nu a fost semnat de toți semnatarii";
-      $("signHint").textContent = hasSigned ? "PDF semnat disponibil." : allSignedDone ? "Se procesează..." : "În așteptarea tuturor semnăturilor.";
-
-      const hasPdf = !!(j.hasPdf || data.hasPdf);
-      $("btnDownloadOriginal").disabled = !hasPdf;
-
-      renderSigners(j);
-      renderEvents(j);
-
-    }catch(e){
-      setMsg("error", "❌ " + (e.message || e));
-    }
-  }
-
-  async function downloadSigned(){
-    try{
-      const blob = await apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/signed-pdf`);
-      downloadBlob(blob, `DocFlowAI_${flowId}_signed.pdf`);
-    }catch(e){
-      setMsg("error", "❌ Nu am putut descărca PDF-ul semnat: " + (e.message || e));
-    }
-  }
-
-  async function downloadOriginal(){
-    try{
-      const blob = await apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/pdf`);
-      downloadBlob(blob, `DocFlowAI_${flowId}.pdf`);
-    }catch(e){
-      setMsg("error", "❌ Nu am putut descărca PDF-ul original: " + (e.message || e));
-    }
-  }
-
-  $("btnRefresh").addEventListener("click", loadFlow);
-  $("btnDownloadSigned").addEventListener("click", downloadSigned);
-  $("btnDownloadOriginal").addEventListener("click", downloadOriginal);
-  $("btnBack").addEventListener("click", ()=>{ window.location.href = "/?tab=flows"; });
-
-  loadFlow();
-</script>
-</body>
-</html>
+            <div class="alert small" id="hintSigner" style="display:none; margin-top:20px;">
+              💡 E
