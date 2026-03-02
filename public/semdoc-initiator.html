@@ -1036,7 +1036,9 @@ th{ color: var(--sub) !important; }
             });
           }
           const { PDFDocument, rgb, StandardFonts } = PDFLib;
-          const pdfBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          // Extrage base64 pur din data URL (data:application/pdf;base64,XXXX)
+          const rawB64 = b64.includes(",") ? b64.split(",")[1] : b64;
+          const pdfBytes = Uint8Array.from(atob(rawB64), c => c.charCodeAt(0));
           const pdfDoc = await PDFDocument.load(pdfBytes);
           const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
           const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -1090,7 +1092,9 @@ th{ color: var(--sub) !important; }
           let binary = "";
           const bytes = new Uint8Array(outBytes);
           for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-          return btoa(binary);
+          const newB64 = btoa(binary);
+          // Pastreaza formatul original (data URL sau base64 pur)
+          return b64.includes(",") ? "data:application/pdf;base64," + newB64 : newB64;
         } catch(e) {
           console.warn("addFlowStampToB64 error:", e.message);
           return b64; // Fallback: trimite PDF original fara stampila
@@ -1120,7 +1124,7 @@ th{ color: var(--sub) !important; }
           initEmail: initEmailVal,
           initInstitutie: institutieVal,
           signers: readSigners(),
-          pdfB64: stampedPdf,
+          pdfB64: stampedPdf ? (stampedPdf.includes(",") ? stampedPdf.split(",")[1] : stampedPdf) : null,
           flowType: getDocType(),
         };
 
