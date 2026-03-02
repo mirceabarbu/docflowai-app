@@ -725,11 +725,11 @@ th{ color: var(--sub) !important; }
         const footerDate = cf.createdAt ? new Date(cf.createdAt).toLocaleString("ro-RO") : new Date().toLocaleString("ro-RO");
         const footerLeft = footerDate + (footerParts ? "  |  " + footerParts : "");
         const footerRight = ro2(cf.flowId || "");
-        const footerY = cartusBottom - 12;
+        const footerY = 14;
 
         lastPage.drawLine({
-          start: { x: MARGIN, y: cartusBottom - 2 },
-          end: { x: pW - MARGIN, y: cartusBottom - 2 },
+          start: { x: MARGIN, y: 28 },
+          end: { x: pW - MARGIN, y: 28 },
           thickness: 0.4,
           color: rgb(0.75, 0.75, 0.75),
         });
