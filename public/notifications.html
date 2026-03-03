@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>DocFlowAI — Notificări</title>
+  <style>
+    :root {
+      --bg: #0b1020; --card: #0f1731; --muted: #9db0ff; --text: #eaf0ff;
+      --sub: #cdd8ff; --line: rgba(255,255,255,.10); --accent: #7c5cff; --accent2: #2dd4bf;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif; min-height: 100vh; color: var(--text);
+      background: radial-gradient(900px 600px at 20% 10%, rgba(124,92,255,.28), transparent 60%),
+        radial-gradient(700px 500px at 80% 85%, rgba(45,212,191,.18), transparent 55%), var(--bg);
+    }
+    header {
+      position: sticky; top: 0; z-index: 100;
+      padding: 12px 24px;
+      background: rgba(11,16,32,.8); backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand img { height: 52px; width: auto; object-fit: contain; }
+    .brand-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; }
+    .header-right { display: flex; align-items: center; gap: 10px; font-size: .82rem; }
+    .btn-ghost {
+      background: rgba(255,255,255,.06); border: 1px solid var(--line);
+      color: var(--sub); padding: 6px 14px; border-radius: 8px; cursor: pointer;
+      font-size: .82rem; font-weight: 600; text-decoration: none;
+      transition: background .18s;
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,.1); }
+    .btn-danger { background: rgba(255,80,80,.15); border: 1px solid rgba(255,80,80,.3); color: #ffaaaa; }
+    .btn-danger:hover { background: rgba(255,80,80,.25); }
+    .btn-accent {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; color: #fff; padding: 6px 14px; border-radius: 8px;
+      cursor: pointer; font-size: .82rem; font-weight: 700; text-decoration: none;
+      transition: opacity .18s;
+    }
+    .btn-accent:hover { opacity: .88; }
+
+    main { max-width: 720px; margin: 0 auto; padding: 32px 20px 60px; }
+    .page-header { margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .page-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em; }
+    .page-title span { color: var(--accent); }
+    .page-actions { display: flex; gap: 8px; }
+
+    /* Filter tabs */
+    .filters { display: flex; gap: 6px; margin-bottom: 20px; }
+    .filter-btn {
+      padding: 6px 16px; border-radius: 20px; border: 1px solid var(--line);
+      background: transparent; color: var(--muted); cursor: pointer; font-size: .82rem;
+      font-weight: 600; transition: all .18s;
+    }
+    .filter-btn.active {
+      background: rgba(124,92,255,.18); border-color: rgba(124,92,255,.4);
+      color: var(--accent);
+    }
+
+    /* Notification cards */
+    .notif-list { display: flex; flex-direction: column; gap: 8px; }
+    .notif-card {
+      background: rgba(15,23,49,.7); border: 1px solid var(--line);
+      border-radius: 14px; padding: 16px 18px;
+      display: flex; gap: 14px; align-items: flex-start;
+      transition: background .18s, border-color .18s;
+      cursor: pointer; text-decoration: none; color: inherit;
+      position: relative;
+      animation: card-in .3s ease both;
+    }
+    @keyframes card-in { from { opacity:0; transform: translateY(8px); } }
+    .notif-card:hover { background: rgba(124,92,255,.08); border-color: rgba(124,92,255,.25); }
+    .notif-card.unread { border-left: 3px solid var(--accent); }
+    .notif-card.type-REFUSED { border-left-color: #ff5050; }
+    .notif-card.type-COMPLETED { border-left-color: var(--accent2); }
+    .notif-card.type-YOUR_TURN { border-left-color: var(--accent); }
+
+    .notif-icon {
+      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 20px;
+      background: rgba(124,92,255,.14);
+    }
+    .notif-icon.type-REFUSED { background: rgba(255,80,80,.14); }
+    .notif-icon.type-COMPLETED { background: rgba(45,212,191,.12); }
+
+    .notif-body { flex: 1; min-width: 0; }
+    .notif-title { font-size: .88rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .notif-msg { font-size: .8rem; color: var(--sub); line-height: 1.5; }
+    .notif-meta { display: flex; gap: 10px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
+    .notif-time { font-size: .73rem; color: var(--muted); }
+    .notif-flow { font-size: .73rem; color: var(--accent); }
+    .notif-unread-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent); flex-shrink: 0; margin-top: 6px;
+    }
+    .notif-del {
+      position: absolute; top: 10px; right: 12px;
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-size: 16px; opacity: 0;
+      transition: opacity .18s; padding: 4px;
+    }
+    .notif-card:hover .notif-del { opacity: 1; }
+    .notif-del:hover { color: #ff8888; }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px;
+      color: var(--muted); font-size: .95rem;
+    }
+    .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: .5; }
+    .empty-title { font-size: 1.1rem; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
+
+    .loading { text-align: center; padding: 48px; color: var(--muted); }
+    .spin { display: inline-block; width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp .7s linear infinite; }
+    @keyframes sp { to { transform: rotate(360deg); } }
+
+    /* WS status dot */
+    .ws-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #555; display: inline-block; margin-right: 5px;
+      transition: background .4s;
+    }
+    .ws-dot.connected { background: #2dd4bf; }
+    .ws-dot.error { background: #ff5050; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <img src="/Logo.png" alt="DocFlowAI"/>
+  </div>
+  <div id="userBar" class="header-right">
+    <!-- bell widget injected here by notif-widget.js -->
+    <a href="/" class="btn-ghost">← Înapoi</a>
+    <span id="wsStatus" title="Conexiune live" style="display:flex;align-items:center;font-size:.75rem;color:var(--muted);">
+      <span class="ws-dot" id="wsDot"></span><span id="wsLabel">Connecting...</span>
+    </span>
+    <span id="userLabel" style="color:var(--sub);"></span>
+    <button class="btn-danger btn-ghost" id="btnLogout">Ieșire</button>
+  </div>
+</header>
+
+<main>
+  <div class="page-header">
+    <div class="page-title">🔔 Notificările <span>mele</span></div>
+    <div class="page-actions">
+      <button class="btn-ghost" id="btnReadAll" style="display:none;">✓ Marchează toate citite</button>
+    </div>
+  </div>
+
+  <div class="filters">
+    <button class="filter-btn active" data-filter="all">Toate</button>
+    <button class="filter-btn" data-filter="unread">Necitite</button>
+    <button class="filter-btn" data-filter="YOUR_TURN">De semnat</button>
+    <button class="filter-btn" data-filter="COMPLETED">Finalizate</button>
+    <button class="filter-btn" data-filter="REFUSED">Refuzate</button>
+  </div>
+
+  <div id="listArea">
+    <div class="loading"><div class="spin"></div></div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const token = localStorage.getItem('docflow_token');
+if (!token) { location.href = '/login'; }
+
+let allNotifs = [];
+let currentFilter = 'all';
+
+// Auth check + user label
+(function() {
+  const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
+  const label = u.nume || u.email || '';
+  if (label) $('userLabel').textContent = label;
+})();
+
+$('btnLogout').onclick = () => {
+  localStorage.removeItem('docflow_token');
+  localStorage.removeItem('docflow_user');
+  location.href = '/login';
+};
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderList();
+  };
+});
+
+// Load notifications
+async function loadNotifs() {
+  try {
+    const r = await fetch('/api/notifications/with-status', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (r.status === 401 || r.status === 403) { location.href = '/login'; return; }
+    if (!r.ok) throw new Error('fetch_failed');
+    allNotifs = await r.json();
+    renderList();
+    updateReadAllBtn();
+  } catch(e) {
+    if (e.message === 'unauthorized') { location.href = '/login'; return; }
+    $('listArea').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Eroare la încărcare</div><div>Încearcă să te <a href="/login" style="color:var(--accent)">reloghezi</a>.</div></div>`;
+  }
+}
+
+function typeIcon(type) {
+  if (type === 'YOUR_TURN') return '✍️';
+  if (type === 'COMPLETED') return '✅';
+  if (type === 'REFUSED') return '⛔';
+  return '🔔';
+}
+
+function timeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'acum câteva secunde';
+  if (m < 60) return `acum ${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `acum ${h}h`;
+  const d = Math.floor(h / 24);
+  return `acum ${d} ${d===1?'zi':'zile'}`;
+}
+
+function filtered() {
+  if (currentFilter === 'all') return allNotifs;
+  if (currentFilter === 'unread') return allNotifs.filter(n => !n.read);
+  if (currentFilter === 'YOUR_TURN') {
+    // Arata doar notificarile de semnat unde userul inca nu a semnat (status === 'current')
+    return allNotifs.filter(n => n.type === 'YOUR_TURN' && n.signer_status === 'current');
+  }
+  return allNotifs.filter(n => n.type === currentFilter);
+}
+
+function updateReadAllBtn() {
+  const hasUnread = allNotifs.some(n => !n.read);
+  $('btnReadAll').style.display = hasUnread ? '' : 'none';
+}
+
+function updateTabCounts() {
+  const counts = {
+    all: allNotifs.length,
+    unread: allNotifs.filter(n => !n.read).length,
+    YOUR_TURN: allNotifs.filter(n => n.type === 'YOUR_TURN' && n.signer_status === 'current').length,
+    COMPLETED: allNotifs.filter(n => n.type === 'COMPLETED').length,
+    REFUSED: allNotifs.filter(n => n.type === 'REFUSED').length,
+  };
+  const labels = { all:'Toate', unread:'Necitite', YOUR_TURN:'De semnat', COMPLETED:'Finalizate', REFUSED:'Refuzate' };
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    const f = btn.dataset.filter;
+    const c = counts[f] || 0;
+    btn.innerHTML = `${labels[f]} ${c > 0 ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:.7rem;font-weight:800;margin-left:4px;background:${f==='unread'?'rgba(255,180,50,.3)':f==='YOUR_TURN'?'rgba(124,92,255,.4)':f==='REFUSED'?'rgba(255,80,80,.3)':'rgba(255,255,255,.15)'};color:${f==='unread'?'#ffd580':f==='YOUR_TURN'?'#c4b5fd':f==='REFUSED'?'#ffaaaa':'#ccc'};">${c}</span>` : ''}`;
+  });
+}
+
+function renderList() {
+  const list = filtered();
+  const area = $('listArea');
+  updateTabCounts();
+  if (!list.length) {
+    area.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">🔕</div>
+      <div class="empty-title">Nicio notificare</div>
+      <div>Vei fi notificat când ai documente de semnat sau statusuri noi.</div>
+    </div>`;
+    return;
+  }
+  area.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'notif-list';
+  list.forEach((n, i) => {
+    const card = document.createElement('div');
+    card.className = `notif-card type-${n.type||''} ${!n.read?'unread':''}`;
+    card.style.animationDelay = `${i * 40}ms`;
+    card.innerHTML = `
+      <div class="notif-icon type-${n.type||''}">${typeIcon(n.type)}</div>
+      <div class="notif-body">
+        <div class="notif-title">${escHtml(n.title||'Notificare')}</div>
+        <div class="notif-msg">${escHtml(n.message||'')}</div>
+        <div class="notif-meta">
+          <span class="notif-time">${timeAgo(n.created_at)}</span>
+          ${n.flow_id ? `<span class="notif-flow">${n.flow_id}</span>` : ''}
+        </div>
+      </div>
+      ${!n.read ? '<div class="notif-unread-dot"></div>' : ''}
+      <button class="notif-del" title="Șterge" onclick="deleteNotif(event,${n.id})">✕</button>
+    `;
+    // Click → marchează citit + navighează (dacă e flux)
+    card.onclick = async (e) => {
+      if (e.target.classList.contains('notif-del')) return;
+      markRead(n.id);
+      if (n.flow_id) {
+        if (n.type === 'YOUR_TURN') {
+          // Fetch token de semnare si redirectioneaza direct la pagina de semnare
+          try {
+            const r = await fetch(`/api/my-signer-token/${encodeURIComponent(n.flow_id)}`, {
+              headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (r.ok) {
+              const d = await r.json();
+              location.href = `/semdoc-signer.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
+            } else {
+              location.href = '/';
+            }
+          } catch(e) {
+            location.href = '/';
+          }
+        } else {
+          // COMPLETED, REFUSED, SIGNED etc. → deschide flow.html
+          location.href = `/flow.html?flow=${encodeURIComponent(n.flow_id)}`;
+        }
+      }
+    };
+    div.appendChild(card);
+  });
+  area.appendChild(div);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function markRead(id) {
+  const n = allNotifs.find(x => x.id === id);
+  if (!n || n.read) return;
+  n.read = true;
+  renderList(); updateReadAllBtn(); updateTabCounts();
+  await fetch(`/api/notifications/${id}/read`, { method:'POST', headers:{'Authorization':'Bearer '+token} }).catch(()=>{});
+}
+
+window.deleteNotif = async (e, id) => {
+  e.stopPropagation();
+  allNotifs = allNotifs.filter(n => n.id !== id);
+  renderList(); updateReadAllBtn(); updateTabCounts();
+  await fetch(`/api/notifications/${id}`, { method:'DELETE', headers:{'Authorization':'Bearer '+token} }).catch(()=>{});
+};
+
+$('btnReadAll').onclick = async () => {
+  allNotifs.forEach(n => n.read = true);
+  updateTabCounts();
+  renderList(); updateReadAllBtn();
+  await fetch('/api/notifications/read-all', { method:'POST', headers:{'Authorization':'Bearer '+token} }).catch(()=>{});
+};
+
+// ── WebSocket ──────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${proto}//${location.host}/ws`;
+  const ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'auth', token }));
+    setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 25000);
+  };
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.event === 'auth_ok') {
+        $('wsDot').className = 'ws-dot connected';
+        $('wsLabel').textContent = 'Live';
+      }
+      if (msg.event === 'notification') {
+        // Adaugă la începutul listei
+        allNotifs.unshift(msg.data);
+        renderList(); updateReadAllBtn();
+      }
+      if (msg.event === 'unread_count') {
+        // Actualizează badge-ul din widget (dacă e injectat)
+        // Widgetul gestionează asta, nu facem nimic extra
+      }
+    } catch(e) {}
+  };
+  ws.onclose = () => {
+    $('wsDot').className = 'ws-dot error';
+    $('wsLabel').textContent = 'Deconectat';
+    setTimeout(connectWS, 5000);
+  };
+  ws.onerror = () => { ws.close(); };
+}
+
+connectWS();
+// Aplica tab din URL daca exista (?tab=sign / done / refused / unread)
+(function applyTabFromUrl() {
+  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', unread: 'unread', all: 'all' };
+  const urlTab = new URLSearchParams(location.search).get('tab');
+  const filter = tabMap[urlTab] || null;
+  if (filter && filter !== 'all') {
+    const btn = document.querySelector(`.filter-btn[data-filter="${filter}"]`);
+    if (btn) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = filter;
+    }
+  }
+})();
+loadNotifs();
+</script>
+
+<!-- Widget notificări (pentru bell icon în alte pagini) -->
+<script src="/notif-widget.js"></script>
+
+</body>
+</html>
