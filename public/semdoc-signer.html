@@ -28,6 +28,12 @@
         tryNext();
       })();
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      }
+    </script>
     <style>
       *{box-sizing:border-box;}
 body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
@@ -193,7 +199,7 @@ th{ color: var(--sub) !important; }
               <div class="muted">Document (PDF)</div>
             </div>
             <div style="height:10px"></div>
-            <iframe id="pdfFrame" title="PDF" style="width:100%; height:700px; border:1px solid rgba(255,255,255,.10); border-radius:12px; background: rgba(0,0,0,.15);"></iframe>
+            <div id="pdfPagesContainer" style="width:100%; border:1px solid rgba(255,255,255,.10); border-radius:12px; background:rgba(0,0,0,.15); min-height:200px; padding:8px; overflow-y:auto;"><p style="color:rgba(255,255,255,.4); text-align:center; padding:40px 0;">Se incarca documentul...</p></div>
           </div>
 
 <div style="height:12px"></div>
@@ -338,14 +344,13 @@ th{ color: var(--sub) !important; }
             return;
           }
 
-          // PDF viewer
+          // PDF viewer cu PDF.js (evita "Please wait..." din Chrome pe AcroForm PDFs)
           if (j.hasPdf) {
             const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token)}`;
-      $("pdfFrame").src = pdfUrl + "#toolbar=0&navpanes=0&scrollbar=0";
             $("pdfBox").classList.remove("hidden");
+            renderPdfJs(pdfUrl);
           } else {
             $("pdfBox").classList.add("hidden");
-            $("pdfFrame").src = "";
           }
 
           const s = j.signers[signerIndex];
@@ -833,6 +838,43 @@ th{ color: var(--sub) !important; }
           }
         });
       }
+
+      // ── PDF.js renderer (evita iframe + Chrome AcroForm bug) ──────────────
+      async function renderPdfJs(url) {
+        const container = $("pdfPagesContainer");
+        if (!container) return;
+        container.innerHTML = '<p style="color:rgba(255,255,255,.4);text-align:center;padding:40px 0;">Se incarca documentul...</p>';
+        try {
+          // Asteapta pdfjsLib max 6s
+          await new Promise((res, rej) => {
+            if (window.pdfjsLib) return res();
+            let w = 0;
+            const iv = setInterval(() => {
+              w += 150;
+              if (window.pdfjsLib) { clearInterval(iv); res(); }
+              else if (w > 6000) { clearInterval(iv); rej(new Error("PDF.js indisponibil")); }
+            }, 150);
+          });
+          const resp = await fetch(url);
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          const arrBuf = await resp.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrBuf) }).promise;
+          container.innerHTML = "";
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const vp = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement("canvas");
+            canvas.width = vp.width;
+            canvas.height = vp.height;
+            canvas.style.cssText = "display:block;width:100%;margin-bottom:8px;border-radius:6px;";
+            container.appendChild(canvas);
+            await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+          }
+        } catch(e) {
+          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + e.message + '</p>';
+        }
+      }
+      // ── End PDF.js renderer ────────────────────────────────────────────────
     </script>
   <script src="/notif-widget.js"></script>
 </body>

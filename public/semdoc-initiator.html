@@ -184,6 +184,12 @@ th{ color: var(--sub) !important; }
     tryNext();
   })();
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+</script>
   <body>
     <header>
       <div class="brand">
@@ -234,7 +240,7 @@ th{ color: var(--sub) !important; }
             <div class="col-12">
               <div id="pdfPreviewBox" style="display:none; margin-top:4px;">
                 <div class="muted" style="margin-bottom:6px; font-size:.83rem;">Preview PDF:</div>
-                <iframe id="pdfPreviewFrame" style="width:100%; height:700px; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2);" title="Preview PDF"></iframe>
+                <div id="pdfPagesContainer" style="width:100%; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2); min-height:200px; padding:8px;"><p style="color:rgba(255,255,255,.4);text-align:center;padding:40px 0;">Se incarca documentul...</p></div>
               </div>
             </div>
 
@@ -401,12 +407,9 @@ th{ color: var(--sub) !important; }
             docNameEl.value = f.name.replace(/\.pdf$/i, "");
           }
           const box = $("pdfPreviewBox");
-          const frame = $("pdfPreviewFrame");
-          if (box && frame) {
-            // Adaugă parametri pentru a ascunde bara de navigare PDF
-          const b64url = pdfB64.includes("#") ? pdfB64 : pdfB64 + "#toolbar=0&navpanes=0&scrollbar=0";
-          frame.src = b64url;
+          if (box) {
             box.style.display = "block";
+            renderPdfJsInit(pdfB64);
           }
         };
         reader.readAsDataURL(f);
@@ -428,8 +431,8 @@ th{ color: var(--sub) !important; }
         validateForm();
         setPdfInfo("Nu ai selectat încă un PDF.");
         const box = $("pdfPreviewBox");
-        const frame = $("pdfPreviewFrame");
-        if (box && frame) { frame.src = ""; box.style.display = "none"; }
+        const cont = $("pdfPagesContainer");
+        if (box) { if(cont) cont.innerHTML = ""; box.style.display = "none"; }
       });
       // Tabs
       function showTab(name) {
@@ -1164,8 +1167,8 @@ th{ color: var(--sub) !important; }
           clearBtn.style.color = "";
         }
         const box = $("pdfPreviewBox");
-        const frame = $("pdfPreviewFrame");
-        if (box && frame) { frame.src = ""; box.style.display = "none"; }
+        const cont = $("pdfPagesContainer");
+        if (box) { if(cont) cont.innerHTML = ""; box.style.display = "none"; }
         $("docName").value = "";
         $("pdfFile").value = "";
         setDefaults();
@@ -1233,79 +1236,7 @@ th{ color: var(--sub) !important; }
 
 
       // ── Stampila flux pe ultima pagina PDF ─────────────────────────────────
-      async function addFlowStampToB64(b64, flowInfo) {
-        if (!b64) return b64;
-        try {
-          // Asteapta pdf-lib max 8s
-          if (!window.PDFLib) {
-            await new Promise((res, rej) => {
-              let w = 0;
-              const iv = setInterval(() => {
-                w += 200;
-                if (window.PDFLib) { clearInterval(iv); res(); }
-                else if (window._pdfLibFailed || w > 8000) { clearInterval(iv); rej(new Error("pdf-lib indisponibil")); }
-              }, 200);
-            });
-          }
-          const { PDFDocument, rgb, StandardFonts } = PDFLib;
-          // Extrage base64 pur din data URL (data:application/pdf;base64,XXXX)
-          const rawB64 = b64.includes(",") ? b64.split(",")[1] : b64;
-          const pdfBytes = Uint8Array.from(atob(rawB64), c => c.charCodeAt(0));
-          const pdfDoc = await PDFDocument.load(pdfBytes);
-          const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-          const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-          function ro(t) {
-            const m = {"ă":"a","â":"a","î":"i","ș":"s","ț":"t","Ă":"A","Â":"A","Î":"I","Ș":"S","Ț":"T","ş":"s","ţ":"t","Ş":"S","Ţ":"T"};
-            return String(t||"").split("").map(c => m[c]||c).join("");
-          }
-
-          const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
-          const { width: pW } = lastPage.getSize();
-          const mutedClr = rgb(0.45, 0.45, 0.45);
-          const MARGIN = 40;
-
-          // Footer discret — un singur rand cursiv
-          const now = new Date().toLocaleString("ro-RO");
-          const parts = [
-            ro(flowInfo.initName || "—"),
-            flowInfo.functie ? ro(flowInfo.functie) : null,
-            flowInfo.compartiment ? ro(flowInfo.compartiment) : null,
-            flowInfo.institutie ? ro(flowInfo.institutie) : null,
-          ].filter(Boolean).join(", ");
-          const footerText = now + "  |  " + parts;
-
-          // Linie separatoare subtire
-          lastPage.drawLine({
-            start: { x: MARGIN, y: 28 },
-            end: { x: pW - MARGIN, y: 28 },
-            thickness: 0.4,
-            color: rgb(0.7, 0.7, 0.7),
-          });
-
-          // Text cursiv
-          lastPage.drawText(footerText, {
-            x: MARGIN, y: 14,
-            size: 7.5,
-            font: fontR,
-            color: mutedClr,
-            opacity: 0.75,
-          });
-
-          const outBytes = await pdfDoc.save();
-          // Converete Uint8Array -> base64
-          let binary = "";
-          const bytes = new Uint8Array(outBytes);
-          for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-          const newB64 = btoa(binary);
-          // Pastreaza formatul original (data URL sau base64 pur)
-          return b64.includes(",") ? "data:application/pdf;base64," + newB64 : newB64;
-        } catch(e) {
-          console.warn("addFlowStampToB64 error:", e.message);
-          return b64; // Fallback: trimite PDF original fara stampila
-        }
-      }
-      // ── End stampila ───────────────────────────────────────────────────────
+      // Footer aplicat de server la finalizare, nu la creare flux
 
       $("btnCreate").addEventListener("click", async () => {
         $("createResult").textContent = "Se pregătește documentul...";
@@ -1314,18 +1245,6 @@ th{ color: var(--sub) !important; }
         const institutieVal = $("initInstitutie")?.value?.trim() || "";
         // Obtine functie/compartiment din profilul userului
         const _u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
-        // Footer/stampila se aplica DOAR pentru fluxul fara tabel generat (ancore/simplu)
-        // Pentru "tabel", footer-ul e adaugat de buildCartusBlob din semdoc-signer.html
-        const _flowType = getDocType();
-        const stampedPdf = (_flowType !== "tabel")
-          ? await addFlowStampToB64(pdfB64, {
-              flowId: "",  // completat de server dupa creare
-              initName: initNameVal,
-              functie: _u.functie || "",
-              compartiment: _u.compartiment || "",
-              institutie: institutieVal || _u.institutie || "",
-            })
-          : pdfB64;
         $("createResult").textContent = "Se creează...";
         const payload = {
           docName: $("docName").value.trim(),
@@ -1333,7 +1252,7 @@ th{ color: var(--sub) !important; }
           initEmail: initEmailVal,
           initInstitutie: institutieVal,
           signers: readSigners(),
-          pdfB64: stampedPdf ? (stampedPdf.includes(",") ? stampedPdf.split(",")[1] : stampedPdf) : null,
+          pdfB64: pdfB64 ? (pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64) : null,
           flowType: getDocType(),
         };
 
@@ -1389,6 +1308,41 @@ th{ color: var(--sub) !important; }
         if (tabParam === "flows" || tabParam === "fluxuri") { showTab("fluxuri"); return; }
         if (tabParam === "init") { showTab("init"); return; }
       })();
+
+      // ── PDF.js renderer pentru initiator (base64 input) ───────────────────
+      async function renderPdfJsInit(b64) {
+        const container = $("pdfPagesContainer");
+        if (!container) return;
+        container.innerHTML = '<p style="color:rgba(255,255,255,.4);text-align:center;padding:40px 0;">Se incarca documentul...</p>';
+        try {
+          await new Promise((res, rej) => {
+            if (window.pdfjsLib) return res();
+            let w = 0;
+            const iv = setInterval(() => {
+              w += 150;
+              if (window.pdfjsLib) { clearInterval(iv); res(); }
+              else if (w > 6000) { clearInterval(iv); rej(new Error("PDF.js indisponibil")); }
+            }, 150);
+          });
+          const raw = b64.includes(",") ? b64.split(",")[1] : b64;
+          const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+          const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+          container.innerHTML = "";
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const vp = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement("canvas");
+            canvas.width = vp.width;
+            canvas.height = vp.height;
+            canvas.style.cssText = "display:block;width:100%;margin-bottom:8px;border-radius:6px;";
+            container.appendChild(canvas);
+            await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+          }
+        } catch(e) {
+          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + e.message + '</p>';
+        }
+      }
+      // ── End PDF.js renderer ────────────────────────────────────────────────
     </script>
   <script src="/notif-widget.js"></script>
 </body>
