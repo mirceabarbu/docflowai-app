@@ -38,12 +38,22 @@ async function ensureFolder(drive, name, parentId) {
   return created.data.id;
 }
 
+// Normalizează diacritice pentru nume foldere Drive (ă→a, î→i, ș→s etc.)
+function normalizeForFolder(str) {
+  return (str || "Necunoscut")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // elimină diacritice
+    .replace(/[^\w\s\-]/g, "")                        // elimină caractere speciale
+    .replace(/\s+/g, " ")
+    .trim()
+    .substring(0, 50);
+}
+
 // Structură: DocFlowAI/Institutie/An/Luna/
 async function ensureFlowFolder(drive, institutie, createdAt) {
   const date = new Date(createdAt || Date.now());
   const an = String(date.getFullYear());
   const luna = String(date.getMonth() + 1).padStart(2, "0");
-  const instClean = (institutie || "Necunoscut").replace(/[^\w\s\-]/g, "").trim().substring(0, 50);
+  const instClean = normalizeForFolder(institutie);
 
   const instFolder = await ensureFolder(drive, instClean, ROOT_FOLDER_ID);
   const anFolder = await ensureFolder(drive, an, instFolder);
@@ -69,7 +79,8 @@ export async function archiveFlow(flowData) {
   if (!ROOT_FOLDER_ID) throw new Error("GOOGLE_DRIVE_FOLDER_ID lipsește.");
   const drive = getDrive();
 
-  const institutie = flowData.institutie || flowData.initEmail?.split("@")[1]?.split(".")[0] || "Necunoscut";
+  // Multi-tenant: folosim flowData.institutie setat la creare, NU derivăm din email
+  const institutie = (flowData.institutie || "").trim() || "Necunoscut";
   const folderId = await ensureFlowFolder(drive, institutie, flowData.createdAt);
 
   const safeName = (flowData.docName || "document").replace(/[^\w\s\-]/g, "").trim().substring(0, 60);
