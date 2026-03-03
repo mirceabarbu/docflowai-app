@@ -157,12 +157,8 @@ th{ color: var(--sub) !important; }
 /* ===== End theme ===== */
 </style>
     <script>
-    // Auth guard — semnatar 2+ poate accesa cu token de flow fără cont
-    // Dar redirecționăm la login dacă nu are nici token de flow nici JWT
+    // Auth guard — semnarea strict in-app, JWT obligatoriu
     (function() {
-      const params = new URLSearchParams(location.search);
-      const hasFlowToken = params.get("token");
-      if (hasFlowToken) return; // flow token = acces legitim fără login
       const jwt = localStorage.getItem("docflow_token");
       if (!jwt) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); }
     })();
@@ -446,9 +442,10 @@ th{ color: var(--sub) !important; }
           const s = currentFlow.signers[signerIndex];
           if (s.status === "current") {
             const signerName = s.name || "semnatar";
+            const jwtToken = localStorage.getItem("docflow_token") || "";
             const rSign = await fetch(`/flows/${encodeURIComponent(flow)}/sign`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwtToken}` },
               body: JSON.stringify({ token, signature: signerName }),
             });
             const jSign = await rSign.json().catch(() => ({}));
@@ -792,9 +789,10 @@ th{ color: var(--sub) !important; }
           const refuzStatus = $("refuzStatus");
 
           try {
+            const jwtTokenRefuse = localStorage.getItem("docflow_token") || "";
             const r = await fetch(`/flows/${flow}/refuse`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwtTokenRefuse}` },
               body: JSON.stringify({ token, reason: reason || "Fără motiv specificat" })
             });
             const d = await r.json();
