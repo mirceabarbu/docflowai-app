@@ -660,7 +660,7 @@ th{ color: var(--sub) !important; }
         const cellH = 80;
         const titleH = 20;
         const cartusH = rows * cellH + titleH + 10;
-        const cartusBottom = 36; // footer server e la y=14, separator la y=28 → cartus începe de la 36
+        const cartusBottom = 30; // footer se aplica la finalizare pe signedPdf, dupa cartus
 
         // Title bar
         lastPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: accent });
