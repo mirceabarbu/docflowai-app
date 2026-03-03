@@ -20,7 +20,9 @@ try {
 
 const { Pool } = pg;
 const app = express();
-app.use(cors());
+// SECURITATE: trust proxy pentru Railway — altfel req.ip e IP-ul proxy-ului
+app.set("trust proxy", 1);
+app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : true, credentials: true }));
 app.use(express.json({ limit: "25mb" }));
 process.on("unhandledRejection", (err) => console.error("❌ unhandledRejection:", err));
 process.on("uncaughtException", (err) => console.error("❌ uncaughtException:", err));
@@ -118,6 +120,10 @@ function generatePassword() {
   return p;
 }
 
+// SECURITATE: JWT_SECRET TREBUIE setat în env. Fără el, token-urile devin invalide la restart.
+if (!process.env.JWT_SECRET) {
+  console.error("❌ FATAL: JWT_SECRET nu este setat în variabilele de mediu! Setează-l în Railway/env.");
+}
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
 const JWT_EXPIRES = "2h";
 function hashPassword(password) {
@@ -269,22 +275,25 @@ function isSignerTokenExpired(signer) {
 async function notify({ userEmail, flowId=null, type, title, message, waParams=null }) {
   if (!pool || !DB_READY) return;
   try {
-    // 1. Notificare in-app (intotdeauna, daca userul are notif_inapp=true sau ca fallback)
-    const { rows } = await pool.query(
-      `INSERT INTO notifications (user_email,flow_id,type,title,message) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [userEmail.toLowerCase(), flowId, type, title, message]
+    // Fetch user preferences o singură dată
+    const { rows: uRows } = await pool.query(
+      "SELECT phone, notif_inapp, notif_whatsapp, notif_email FROM users WHERE email=$1", [userEmail.toLowerCase()]
     );
-    wsPush(userEmail, { event:"notification", data:rows[0] });
-    const { rows:cnt } = await pool.query("SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE", [userEmail.toLowerCase()]);
-    wsPush(userEmail, { event:"unread_count", count:parseInt(cnt[0].count) });
+    const u = uRows[0];
 
-    // 2. Email + WhatsApp — fetch user preferences o singură dată
-    try {
-      const { rows: uRows } = await pool.query(
-        "SELECT phone, notif_whatsapp, notif_email FROM users WHERE email=$1", [userEmail.toLowerCase()]
+    // 1. Notificare in-app — doar dacă notif_inapp=true (default true)
+    if (u?.notif_inapp !== false) {
+      const { rows } = await pool.query(
+        `INSERT INTO notifications (user_email,flow_id,type,title,message) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [userEmail.toLowerCase(), flowId, type, title, message]
       );
-      const u = uRows[0];
+      wsPush(userEmail, { event:"notification", data:rows[0] });
+      const { rows:cnt } = await pool.query("SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE", [userEmail.toLowerCase()]);
+      wsPush(userEmail, { event:"unread_count", count:parseInt(cnt[0].count) });
+    }
 
+    // 2. Email + WhatsApp
+    try {
       // 2a. Email — dacă userul are notif_email=true
       if (u?.notif_email && waParams) {
         let emailSent = false, emailErr = null;
@@ -293,13 +302,13 @@ async function notify({ userEmail, flowId=null, type, title, message, waParams=n
           let emailHtml = `<p>${message}</p>`;
           if (type === "YOUR_TURN") {
             emailSubject = `📄 Document de semnat: ${waParams.docName||""}`;
-            emailHtml = `<p>Bună ziua,</p><p>${message}</p><p>Intră în <a href="${process.env.PUBLIC_BASE_URL||"https://app.docflowai.ro"}">DocFlowAI</a> pentru a semna documentul.</p>`;
+            emailHtml = `<p>Bună ziua,</p><p>${message}</p><p>Pentru a semna documentul, urmați pașii:</p><ol><li>Autentificați-vă în aplicație</li><li>Accesați secțiunea <strong>Notificări 🔔</strong> din meniu</li><li>Găsiți documentul <strong>${waParams.docName||""}</strong> și apăsați pe el pentru a semna</li></ol><p style="color:#888;font-size:12px;">Mesaj automat DocFlowAI.</p>`;
           } else if (type === "COMPLETED") {
             emailSubject = `✅ Document semnat complet: ${waParams.docName||""}`;
-            emailHtml = `<p>Bună ziua,</p><p>${message}</p><p>Poți descărca documentul din <a href="${process.env.PUBLIC_BASE_URL||"https://app.docflowai.ro"}">DocFlowAI</a>.</p>`;
+            emailHtml = `<p>Bună ziua,</p><p>${message}</p><p>Documentul <strong>${waParams.docName||""}</strong> a fost semnat de toți semnatarii. Îl puteți descărca din aplicație din secțiunea <strong>Notificări 🔔</strong>.</p><p style="color:#888;font-size:12px;">Mesaj automat DocFlowAI.</p>`;
           } else if (type === "REFUSED") {
             emailSubject = `⛔ Document refuzat: ${waParams.docName||""}`;
-            emailHtml = `<p>Bună ziua,</p><p>${message}</p>`;
+            emailHtml = `<p>Bună ziua,</p><p>${message}</p><p style="color:#888;font-size:12px;">Mesaj automat DocFlowAI.</p>`;
           }
           await sendSignerEmail({ to: userEmail, subject: emailSubject, html: emailHtml });
           emailSent = true;
@@ -1067,7 +1076,7 @@ const createFlow = async (req,res) => {
     } catch(e) {}
     // Adauga flowId la footer-ul PDF doar pentru flux cu ancore (tabelul are footer din signer)
     let finalPdfB64 = body.pdfB64??null;
-    if (finalPdfB64 && PDFLib && (body.flowType||"tabel") !== "tabel") {
+    if (finalPdfB64 && PDFLib) { // stamp flowId pe toate tipurile de flux
       try {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
         const cleanB64 = finalPdfB64.includes(",") ? finalPdfB64.split(",")[1] : finalPdfB64;
@@ -1258,11 +1267,29 @@ const signFlow = async (req,res) => {
     const { token, signature } = req.body||{};
     const sig = typeof signature==="string"?signature.trim():"";
     if (!sig) return res.status(400).json({error:"signature_required"});
+
+    // FIX #4: JWT obligatoriu — semnarea strict in-app, doar useri autentificați
+    const authHeader = req.headers["authorization"]||"";
+    if (!authHeader.startsWith("Bearer "))
+      return res.status(401).json({error:"unauthorized", message:"Autentificare obligatorie pentru semnare."});
+    let actor;
+    try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); }
+    catch(e) { return res.status(401).json({error:"token_invalid", message:"Sesiune expirată. Autentifică-te din nou."}); }
+
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({error:"not_found"});
     const signers = Array.isArray(data.signers)?data.signers:[];
+
+    // Token-ul rămâne ca identificator al slotului, dar validăm și că JWT-ul corespunde
     const idx = signers.findIndex(s=>s.token===token);
     if (idx===-1) return res.status(400).json({error:"invalid_token"});
+
+    // Validare: userul autentificat trebuie să fie exact semnatarul curent
+    const signerEmail = (signers[idx].email||"").toLowerCase();
+    const actorEmail = (actor.email||"").toLowerCase();
+    if (signerEmail !== actorEmail)
+      return res.status(403).json({error:"forbidden", message:"Nu ești semnatarul acestui slot."});
+
     if (isSignerTokenExpired(signers[idx])) return res.status(403).json({error:"token_expired", message:"Link-ul de semnare a expirat (90 zile). Contactează inițiatorul pentru un nou link."});
     if (signers[idx].status!=="current") return res.status(409).json({error:"not_current_signer"});
     signers[idx].status="signed"; signers[idx].signedAt=new Date().toISOString();
@@ -1283,11 +1310,25 @@ app.post("/flows/:flowId/refuse", async (req,res) => {
     const { flowId } = req.params;
     const { token, reason } = req.body||{};
     if (!reason||!String(reason).trim()) return res.status(400).json({error:"reason_required"});
+
+    // FIX #4: JWT obligatoriu pentru refuz
+    const authHeader2 = req.headers["authorization"]||"";
+    if (!authHeader2.startsWith("Bearer "))
+      return res.status(401).json({error:"unauthorized", message:"Autentificare obligatorie."});
+    let actorRefuse;
+    try { actorRefuse = jwt.verify(authHeader2.slice(7), JWT_SECRET); }
+    catch(e) { return res.status(401).json({error:"token_invalid", message:"Sesiune expirată. Autentifică-te din nou."}); }
+
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({error:"not_found"});
     const signers = Array.isArray(data.signers)?data.signers:[];
     const idx = signers.findIndex(s=>s.token===token);
     if (idx===-1) return res.status(400).json({error:"invalid_token"});
+
+    // Validare email
+    if ((signers[idx].email||"").toLowerCase() !== (actorRefuse.email||"").toLowerCase())
+      return res.status(403).json({error:"forbidden", message:"Nu ești semnatarul acestui slot."});
+
     if (isSignerTokenExpired(signers[idx])) return res.status(403).json({error:"token_expired", message:"Link-ul de semnare a expirat (90 zile). Contactează inițiatorul pentru un nou link."});
     if (signers[idx].status!=="current") return res.status(409).json({error:"not_current_signer"});
     const refuserName = signers[idx].name||signers[idx].email||"Semnatar";
