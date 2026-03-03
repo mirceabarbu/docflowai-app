@@ -24,6 +24,36 @@ const app = express();
 app.set("trust proxy", 1);
 app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : true, credentials: true }));
 app.use(express.json({ limit: "25mb" }));
+
+// ========== REQUEST ID + SAFE JSON ERROR ENVELOPE ==========
+app.use((req, res, next) => {
+  // Unique request id for easier debugging in production logs
+  req.requestId = crypto.randomUUID();
+  res.setHeader("x-request-id", req.requestId);
+
+  // Auto-append requestId on error JSON responses
+  const _json = res.json.bind(res);
+  res.json = (body) => {
+    try {
+      if (body && typeof body === "object" && body.error && !body.requestId) {
+        return _json({ ...body, requestId: req.requestId });
+      }
+    } catch (e) {}
+    return _json(body);
+  };
+  next();
+});
+
+// ========== REQUEST LOG (compact) ==========
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const ms = Date.now() - start;
+    // Keep logs short: method url status time requestId
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms rid=${req.requestId}`);
+  });
+  next();
+});
 process.on("unhandledRejection", (err) => console.error("❌ unhandledRejection:", err));
 process.on("uncaughtException", (err) => console.error("❌ uncaughtException:", err));
 
@@ -238,6 +268,7 @@ async function initDbOnce() {
   await pool.query("SELECT 1");
   await pool.query(`CREATE TABLE IF NOT EXISTS flows (id TEXT PRIMARY KEY, data JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_flows_updated_at ON flows(updated_at DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_flows_init_email ON flows((data->>'initEmail'));`);
   await pool.query(`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, plain_password TEXT, nume TEXT NOT NULL DEFAULT '', functie TEXT NOT NULL DEFAULT '', institutie TEXT NOT NULL DEFAULT '', role TEXT NOT NULL DEFAULT 'user', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
   // Tabel notificari in-app (nou - nu modifica flows sau users)
   await pool.query(`CREATE TABLE IF NOT EXISTS notifications (id SERIAL PRIMARY KEY, user_email TEXT NOT NULL, flow_id TEXT, type TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, read BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
@@ -631,17 +662,24 @@ app.get("/my-flows", async (req,res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req,res); if (!actor) return;
   try {
-    const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows ORDER BY updated_at DESC LIMIT 200`);
     const email = actor.email.toLowerCase();
+    // Filtrare direct în SQL pe câmpul JSONB — mult mai eficient decât a descărca toate fluxurile
+    const { rows } = await pool.query(
+      `SELECT id,data,created_at,updated_at FROM flows
+       WHERE data->>'initEmail' = $1
+          OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements(data->'signers') s
+            WHERE lower(s->>'email') = $1
+          )
+       ORDER BY updated_at DESC LIMIT 200`,
+      [email]
+    );
     // Fetch user details for functie+compartiment lookup
     const { rows: userRows } = await pool.query("SELECT email,functie,compartiment FROM users");
     const userMap = {};
     userRows.forEach(u => { userMap[(u.email||"").toLowerCase()] = u; });
 
-    const myFlows = rows.map(r=>r.data).filter(d => {
-      if (!d) return false;
-      return (d.initEmail||"").toLowerCase()===email || (d.signers||[]).some(s=>(s.email||"").toLowerCase()===email);
-    }).map(d => ({
+    const myFlows = rows.map(r=>r.data).filter(Boolean).map(d => ({
       flowId:d.flowId, docName:d.docName||"—", initName:d.initName, initEmail:d.initEmail,
       createdAt:d.createdAt, updatedAt:d.updatedAt,
       signers:(d.signers||[]).map(s=>{
@@ -653,7 +691,8 @@ app.get("/my-flows", async (req,res) => {
           status:s.status, signedAt:s.signedAt, refuseReason:s.refuseReason
         };
       }),
-      hasSignedPdf:!!(d.signedPdfB64||(d.storage==="drive"&&d.driveFileLinkFinal)), allSigned:(d.signers||[]).every(s=>s.status==="signed"),
+      hasSignedPdf:!!(d.signedPdfB64||(d.storage==="drive"&&d.driveFileLinkFinal)),
+      allSigned:(d.signers||[]).every(s=>s.status==="signed"),
     }));
     res.json(myFlows);
   } catch(e) { res.status(500).json({error:"server_error"}); }
@@ -742,7 +781,6 @@ app.post("/admin/users", async (req,res) => {
   }
 });
 app.put("/admin/users/:id", async (req,res) => {
-  console.log(`PUT /admin/users/${req.params.id} START`);
   if (requireDb(res)) return;
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
@@ -769,12 +807,11 @@ app.put("/admin/users/:id", async (req,res) => {
       vals
     );
     if (!rows.length) return res.status(404).json({error:"user_not_found"});
-    console.log(`PUT /admin/users/${targetId} OK`);
     return res.json(rows[0]);
   } catch(e) {
-    console.error(`PUT /admin/users/${targetId} ERROR:`, e.message);
+    console.error(`PUT /admin/users error:`, e.message);
     if (e.code==="23505") return res.status(409).json({error:"email_exists"});
-    return res.status(500).json({error:"server_error", detail: e.message});
+    return res.status(500).json({error:"server_error"});
   }
 });
 app.post("/admin/users/:id/reset-password", async (req,res) => {
@@ -782,8 +819,10 @@ app.post("/admin/users/:id/reset-password", async (req,res) => {
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const newPwd = generatePassword();
-  await pool.query("UPDATE users SET password_hash=$1, plain_password=$2 WHERE id=$3", [hashPassword(newPwd), newPwd, parseInt(req.params.id)]);
-  res.json({plain_password:newPwd});
+  try {
+    await pool.query("UPDATE users SET password_hash=$1, plain_password=$2 WHERE id=$3", [hashPassword(newPwd), newPwd, parseInt(req.params.id)]);
+    res.json({plain_password:newPwd});
+  } catch(e) { res.status(500).json({error:"server_error"}); }
 });
 app.delete("/admin/users/:id", async (req,res) => {
   if (requireDb(res)) return;
@@ -791,92 +830,22 @@ app.delete("/admin/users/:id", async (req,res) => {
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const targetId = parseInt(req.params.id);
   if (actor.userId===targetId) return res.status(400).json({error:"cannot_delete_self"});
-  await pool.query("DELETE FROM users WHERE id=$1", [targetId]);
-  res.json({ok:true});
-});
-
-// ==================== HEALTH / SMTP ====================
-// ==================== TEMPLATES API ====================
-
-app.get("/templates", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "templates.html")));
-
-// GET /api/templates — sabloanele userului + shared din institutie
-app.get("/api/templates", async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { rows: uRows } = await pool.query("SELECT institutie FROM users WHERE id=$1", [actor.userId]);
-    const inst = uRows[0]?.institutie || "";
-    const { rows } = await pool.query(
-      `SELECT * FROM templates
-       WHERE user_email=$1 OR (shared=TRUE AND institutie=$2)
-       ORDER BY user_email=$1 DESC, name ASC`,
-      [actor.email.toLowerCase(), inst]
-    );
-    res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
-  } catch(e) { res.status(500).json({error:"server_error"}); }
-});
-
-// POST /api/templates — creeaza sablon nou
-app.post("/api/templates", async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  const { name, signers, shared } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({error:"name_required"});
-  if (!Array.isArray(signers) || !signers.length) return res.status(400).json({error:"signers_required"});
-  try {
-    const { rows: uRows } = await pool.query("SELECT institutie FROM users WHERE id=$1", [actor.userId]);
-    const inst = uRows[0]?.institutie || "";
-    const { rows } = await pool.query(
-      `INSERT INTO templates (user_email, institutie, name, signers, shared)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [actor.email.toLowerCase(), inst, name.trim(), JSON.stringify(signers), !!shared]
-    );
-    res.status(201).json({ ...rows[0], isOwner: true });
-  } catch(e) { res.status(500).json({error:"server_error"}); }
-});
-
-// PUT /api/templates/:id — actualizeaza sablon (doar owner)
-app.put("/api/templates/:id", async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  const { name, signers, shared } = req.body || {};
-  try {
-    const { rows: existing } = await pool.query("SELECT * FROM templates WHERE id=$1", [req.params.id]);
-    if (!existing[0]) return res.status(404).json({error:"not_found"});
-    if (existing[0].user_email !== actor.email.toLowerCase()) return res.status(403).json({error:"forbidden"});
-    const updates = [], vals = []; let i = 1;
-    if (name) { updates.push(`name=$${i++}`); vals.push(name.trim()); }
-    if (signers) { updates.push(`signers=$${i++}`); vals.push(JSON.stringify(signers)); }
-    if (shared !== undefined) { updates.push(`shared=$${i++}`); vals.push(!!shared); }
-    updates.push(`updated_at=NOW()`);
-    vals.push(req.params.id);
-    const { rows } = await pool.query(
-      `UPDATE templates SET ${updates.join(",")} WHERE id=$${i} RETURNING *`, vals
-    );
-    res.json({ ...rows[0], isOwner: true });
-  } catch(e) { res.status(500).json({error:"server_error"}); }
-});
-
-// DELETE /api/templates/:id — sterge sablon (doar owner)
-app.delete("/api/templates/:id", async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rows } = await pool.query("SELECT user_email FROM templates WHERE id=$1", [req.params.id]);
-    if (!rows[0]) return res.status(404).json({error:"not_found"});
-    if (rows[0].user_email !== actor.email.toLowerCase()) return res.status(403).json({error:"forbidden"});
-    await pool.query("DELETE FROM templates WHERE id=$1", [req.params.id]);
+    await pool.query("DELETE FROM users WHERE id=$1", [targetId]);
     res.json({ok:true});
   } catch(e) { res.status(500).json({error:"server_error"}); }
 });
 
-// WhatsApp test endpoints
+// WhatsApp test endpoints — protejate cu auth admin
 app.get("/wa-test", async (req,res) => {
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const result = await verifyWhatsApp();
   res.status(result.ok ? 200 : 500).json(result);
 });
 app.post("/wa-test", async (req,res) => {
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const { to } = req.body||{};
   if (!to) return res.status(400).json({error:"to (phone) missing"});
   const { sendWaSignRequest: waTest } = await import("./whatsapp.mjs");
@@ -908,8 +877,14 @@ app.get("/health", async (req,res) => {
     });
   } catch(e) { return res.json({...base, statsError: e.message}); }
 });
-app.get("/smtp-test", async (req,res) => { const r=await verifySmtp(); res.status(r.ok?200:500).json(r); });
+app.get("/smtp-test", async (req,res) => {
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
+  const r=await verifySmtp(); res.status(r.ok?200:500).json(r);
+});
 app.post("/smtp-test", async (req,res) => {
+  const actor = requireAuth(req,res); if (!actor) return;
+  if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   const { to } = req.body||{};
   if (!to) return res.status(400).json({error:"to missing"});
   try {
@@ -1101,9 +1076,22 @@ const createFlow = async (req,res) => {
     const docName = String(body.docName||"").trim();
     const initName = String(body.initName||"").trim();
     const initEmail = String(body.initEmail||"").trim();
-    const signers = Array.isArray(body.signers)?body.signers:[];
-    if (!docName||!initName||!initEmail) return res.status(400).json({error:"docName/initName/initEmail missing"});
-    if (!signers.length) return res.status(400).json({error:"signers missing"});
+    const signers = Array.isArray(body.signers) ? body.signers : [];
+
+    // --- Validări input (mai clare, mai "beton") ---
+    if (!docName || docName.length < 2) return res.status(400).json({ error: "docName_required" });
+    if (!initName || initName.length < 2) return res.status(400).json({ error: "initName_required" });
+    if (!initEmail || !/^\S+@\S+\.\S+$/.test(initEmail)) return res.status(400).json({ error: "initEmail_invalid" });
+    if (!signers.length) return res.status(400).json({ error: "signers_required" });
+
+    // Normalizează semnatarii + verifică minimul necesar
+    for (let i = 0; i < signers.length; i++) {
+      const s = signers[i] || {};
+      const email = String(s.email || "").trim();
+      const name = String(s.name || "").trim();
+      if (!email || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: "signer_email_invalid", index: i });
+      if (!name || name.length < 2) return res.status(400).json({ error: "signer_name_required", index: i });
+    }
 
     const normalizedSigners = signers.map((s,idx) => ({
       order: Number(s.order||idx+1),
@@ -1114,14 +1102,13 @@ const createFlow = async (req,res) => {
       email: String(s.email||"").trim(),
       token: String(s.token||crypto.randomBytes(16).toString("hex")),
       tokenCreatedAt: new Date().toISOString(),
-      status: idx===0?"current":"pending",
+      status: "pending",
       signedAt: null, signature: null,
     }));
     // Ensure signing order is deterministic (UI may send signers in any order)
     normalizedSigners.sort((a,b) => (Number(a.order)||0) - (Number(b.order)||0));
     // Reset statuses based on sorted order
     normalizedSigners.forEach((s,i) => { s.status = (i===0) ? "current" : "pending"; });
-
 
     const createdAt = body.createdAt||new Date().toISOString();
     // Lookup initiatorul din DB pentru functie/compartiment/institutie
@@ -1168,7 +1155,7 @@ const createFlow = async (req,res) => {
         console.warn("Footer la creare error:", e.message);
       }
     }
-        const data = {
+    const data = {
       flowId, docName, initName, initEmail,
       initFunctie: initFunctie,
       institutie: initInstitutie, compartiment: initCompartiment,
@@ -1632,7 +1619,7 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
     data.events=Array.isArray(data.events)?data.events:[];
     data.events.push({at:new Date().toISOString(), type:"SIGNED_PDF_UPLOADED", by:signers[idx].email||signers[idx].name||"unknown", order:signers[idx].order});
 
-        const currentOrder = Number(signers[idx]?.order)||0;
+    const currentOrder = Number(signers[idx]?.order)||0;
     let nextIdx = -1;
     let bestOrder = Infinity;
     for (let i=0;i<signers.length;i++) {
