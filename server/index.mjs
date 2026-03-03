@@ -188,11 +188,24 @@ function requireAuth(req, res) {
 }
 const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 function requireAdmin(req, res) {
-  if (!ADMIN_SECRET) { res.status(503).json({ error: "admin_not_configured" }); return true; }
-  const provided = req.get("x-admin-secret") || (req.get("authorization")||"").slice(7).trim();
-  if (!provided || provided !== ADMIN_SECRET) { res.status(401).json({ error: "unauthorized" }); return true; }
+  // Optional break-glass: accept x-admin-secret if configured
+  if (ADMIN_SECRET) {
+    const providedSecret = req.get("x-admin-secret");
+    if (providedSecret && providedSecret === ADMIN_SECRET) return false;
+  }
+
+  // Normal path: JWT auth + role check
+  const actor = requireAuth(req, res);
+  if (!actor) return true;
+
+  if (actor.role !== "admin") {
+    res.status(403).json({ error: "forbidden" });
+    return true;
+  }
+
   return false;
 }
+
 function stripPdfB64(data) {
   if (!data || typeof data !== "object") return data;
   const { pdfB64, signedPdfB64, ...rest } = data;
@@ -1104,6 +1117,11 @@ const createFlow = async (req,res) => {
       status: idx===0?"current":"pending",
       signedAt: null, signature: null,
     }));
+    // Ensure signing order is deterministic (UI may send signers in any order)
+    normalizedSigners.sort((a,b) => (Number(a.order)||0) - (Number(b.order)||0));
+    // Reset statuses based on sorted order
+    normalizedSigners.forEach((s,i) => { s.status = (i===0) ? "current" : "pending"; });
+
 
     const createdAt = body.createdAt||new Date().toISOString();
     // Lookup initiatorul din DB pentru functie/compartiment/institutie
@@ -1495,7 +1513,7 @@ app.post("/flows/:flowId/regenerate-token", async (req,res) => {
     data.events.push({at:new Date().toISOString(), type:"TOKEN_REGENERATED", by:"admin", signerEmail, order:signers[idx].order});
     await saveFlow(flowId, data);
     // Trimite notificare cu noul link
-    const newLink = makeSignerLink({params:{flowId}}, newToken);
+    const newLink = buildSignerLink(req, flowId, newToken);
     await notify({userEmail:signers[idx].email, flowId, type:"YOUR_TURN",
       title:"Link de semnare reînnoit",
       message:`Link-ul tău de semnare pentru documentul „${data.docName}" a fost reînnoit. Accesează noul link pentru a semna.`,
@@ -1614,7 +1632,17 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
     data.events=Array.isArray(data.events)?data.events:[];
     data.events.push({at:new Date().toISOString(), type:"SIGNED_PDF_UPLOADED", by:signers[idx].email||signers[idx].name||"unknown", order:signers[idx].order});
 
-    const nextIdx = signers.findIndex((s,i)=>i>idx&&s.status!=="signed");
+        const currentOrder = Number(signers[idx]?.order)||0;
+    let nextIdx = -1;
+    let bestOrder = Infinity;
+    for (let i=0;i<signers.length;i++) {
+      const s = signers[i];
+      const o = Number(s.order)||0;
+      if (s.status !== "signed" && o > currentOrder && o < bestOrder) {
+        bestOrder = o;
+        nextIdx = i;
+      }
+    }
     if (nextIdx!==-1) {
       signers.forEach((s,i)=>{ if (s.status!=="signed") s.status = i===nextIdx?"current":"pending"; });
     }
