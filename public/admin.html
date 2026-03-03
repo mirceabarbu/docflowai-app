@@ -182,15 +182,21 @@
 
     <h2 style="color:#2dd4bf;">🗂 Arhivare fluxuri în Google Drive</h2>
     <div style="background:rgba(45,212,191,.05);border:1px solid rgba(45,212,191,.2);border-radius:14px;padding:22px 24px;margin-top:16px;">
-      <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
-        <div>
-          <div style="font-size:.8rem;color:var(--muted);margin-bottom:4px;">Arhivează fluxuri finalizate/refuzate mai vechi de</div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <input id="archiveDays" type="number" value="30" min="1" style="width:80px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;" />
-            <span style="color:var(--muted);font-size:.85rem;">zile</span>
-            <button class="btn secondary" onclick="previewArchive()" style="padding:8px 16px;font-size:.85rem;">🔍 Previzualizare</button>
-            <button class="btn" onclick="verifyDriveConn()" style="padding:8px 16px;font-size:.85rem;background:rgba(255,255,255,.08);">🔗 Test Drive</button>
-          </div>
+      <div style="margin-bottom:16px;">
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:6px;">Arhivează fluxuri finalizate/refuzate mai vechi de</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+          <input id="archiveDays" type="number" value="30" min="1" style="width:80px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;" />
+          <span style="color:var(--muted);font-size:.85rem;">zile</span>
+          <button class="btn secondary" onclick="previewArchive()" style="padding:8px 16px;font-size:.85rem;">🔍 Previzualizare</button>
+          <button class="btn" onclick="verifyDriveConn()" style="padding:8px 16px;font-size:.85rem;background:rgba(255,255,255,.08);">🔗 Test Drive</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <select id="archiveInstFilter" onchange="onArchiveInstChange()" style="flex:1;min-width:180px;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.82rem;outline:none;">
+            <option value="">Toate instituțiile</option>
+          </select>
+          <select id="archiveDeptFilter" style="flex:1;min-width:180px;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.82rem;outline:none;" disabled>
+            <option value="">Toate compartimentele</option>
+          </select>
         </div>
       </div>
       <div id="archivePreview" style="display:none;">
@@ -210,10 +216,18 @@
         <div style="font-weight:700;margin-bottom:6px;color:var(--sub);">🗑 Șterge definitiv fluxurile vechi</div>
         <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Elimină complet fluxurile mai vechi de X zile. <strong style="color:#ffaaaa;">Ireversibil</strong> — folosește arhivarea în Drive în primul rând.</div>
         <div style="font-size:.78rem;color:rgba(255,170,100,.7);margin-bottom:12px;">⚠ Dacă fluxul nu e arhivat în Drive, PDF-urile se pierd definitiv.</div>
-        <div style="display:flex;gap:8px;align-items:center;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
           <input id="delDays" type="number" value="30" min="1" style="width:80px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;" />
           <span style="color:var(--muted);font-size:.85rem;">zile</span>
           <button class="btn btn-d" onclick="cleanOldFlows()" style="padding:8px 16px;font-size:.85rem;">Șterge definitiv</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+          <select id="delInstFilter" onchange="onDelInstChange()" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;">
+            <option value="">Toate instituțiile</option>
+          </select>
+          <select id="delDeptFilter" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;" disabled>
+            <option value="">Toate compartimentele</option>
+          </select>
         </div>
         <div id="msgOldFlows" style="margin-top:10px;font-size:.82rem;"></div>
       </div>
@@ -706,24 +720,86 @@ async function verifyDriveConn() {
   } catch(e) { msg.textContent = "❌ Eroare: " + e.message; }
 }
 
+// --- Helpers filtre arhivare ---
+let _archiveInstData = null; // {inst: [dept,...], ...}
+
+async function loadArchiveInstData() {
+  if (_archiveInstData) return;
+  if (!_allFlows) {
+    const r = await fetch("/admin/flows/list", {headers: hdrs()});
+    _allFlows = await r.json();
+  }
+  const map = {};
+  _allFlows.forEach(f => {
+    const inst = f.institutie||"";
+    const dept = f.compartiment||"";
+    if (!inst) return;
+    if (!map[inst]) map[inst] = new Set();
+    if (dept) map[inst].add(dept);
+  });
+  _archiveInstData = map;
+  // Populează instituții arhivare
+  const s = document.getElementById("archiveInstFilter");
+  const cur = s.value;
+  s.innerHTML = '<option value="">Toate instituțiile</option>';
+  Object.keys(map).sort().forEach(inst => {
+    const o = document.createElement("option"); o.value = inst; o.textContent = inst; s.appendChild(o);
+  });
+  if (cur) s.value = cur;
+  // Populează instituții ștergere
+  const s2 = document.getElementById("delInstFilter");
+  const cur2 = s2.value;
+  s2.innerHTML = '<option value="">Toate instituțiile</option>';
+  Object.keys(map).sort().forEach(inst => {
+    const o = document.createElement("option"); o.value = inst; o.textContent = inst; s2.appendChild(o);
+  });
+  if (cur2) s2.value = cur2;
+}
+
+function _populateDeptFilter(instVal, deptSelId) {
+  const deptSel = document.getElementById(deptSelId);
+  deptSel.innerHTML = '<option value="">Toate compartimentele</option>';
+  if (instVal && _archiveInstData && _archiveInstData[instVal]) {
+    const depts = [..._archiveInstData[instVal]].sort();
+    depts.forEach(d => { const o = document.createElement("option"); o.value = d; o.textContent = d; deptSel.appendChild(o); });
+    deptSel.disabled = depts.length === 0;
+  } else { deptSel.disabled = true; }
+}
+
+function onArchiveInstChange() {
+  _populateDeptFilter(document.getElementById("archiveInstFilter").value, "archiveDeptFilter");
+}
+function onDelInstChange() {
+  _populateDeptFilter(document.getElementById("delInstFilter").value, "delDeptFilter");
+}
+
 let _archiveFlowIds = [];
 async function previewArchive() {
   const days = document.getElementById("archiveDays").value || 30;
+  const inst = document.getElementById("archiveInstFilter").value;
+  const dept = document.getElementById("archiveDeptFilter").value;
   const msg = document.getElementById("archiveMsg");
   const preview = document.getElementById("archivePreview");
   msg.textContent = "⏳ Se calculează...";
   preview.style.display = "none";
+  // Asigurăm că avem date pentru dropdown-uri
+  await loadArchiveInstData();
   try {
-    const r = await fetch(`/admin/flows/archive-preview?days=${days}`, {headers: hdrs()});
+    let url = `/admin/flows/archive-preview?days=${days}`;
+    if (inst) url += `&institutie=${encodeURIComponent(inst)}`;
+    if (dept) url += `&compartiment=${encodeURIComponent(dept)}`;
+    const r = await fetch(url, {headers: hdrs()});
     const j = await r.json();
     if (!r.ok) throw new Error(j.error||"Eroare server");
     _archiveFlowIds = (j.flows||[]).map(f => f.flowId);
     const summary = document.getElementById("archivePreviewSummary");
     const list = document.getElementById("archivePreviewList");
-    summary.innerHTML = `<span style="color:#2dd4bf;">${j.count} fluxuri</span> eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${j.totalMB} MB</span> din baza de date`;
+    const filterLabel = inst ? ` · <span style="color:#9db0ff;">${inst}${dept?" / "+dept:""}</span>` : "";
+    summary.innerHTML = `<span style="color:#2dd4bf;">${j.count} fluxuri</span>${filterLabel} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${j.totalMB} MB</span> din baza de date`;
     list.innerHTML = (j.flows||[]).map(f =>
       `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
         📄 ${f.docName} &nbsp;·&nbsp; ${f.status} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
+        ${f.institutie?`<span style="color:var(--muted);margin-left:6px;font-size:.75rem;">${f.institutie}${f.compartiment?" / "+f.compartiment:""}</span>`:""}
       </div>`
     ).join("") || "<div style='color:var(--muted)'>Niciun flux eligibil.</div>";
     preview.style.display = j.count > 0 ? "block" : "none";
@@ -793,9 +869,15 @@ async function loadDbStats() {
 
 async function cleanOldFlows(){
   const days=parseInt($("delDays").value)||30;
-  if(!confirm(`Ștergi toate fluxurile mai vechi de ${days} zile?
+  const inst=document.getElementById("delInstFilter").value;
+  const dept=document.getElementById("delDeptFilter").value;
+  const filterDesc = inst ? ` din ${inst}${dept?" / "+dept:""}` : "";
+  if(!confirm(`Ștergi fluxurile mai vechi de ${days} zile${filterDesc}?
 Acțiunea este ireversibilă.`))return;
-  const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify({olderThanDays:days})});
+  const body = {olderThanDays:days};
+  if (inst) body.institutie = inst;
+  if (dept) body.compartiment = dept;
+  const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify(body)});
   const d=await r.json();
   const el=$("msgOldFlows");
   if(r.ok) el.innerHTML=`<span style="color:#7cf0e0;">✅ ${d.deleted} flux(uri) șterse.</span>`;
@@ -830,6 +912,7 @@ fetch("/auth/me",{headers:hdrs()})
     const hEl=$("hdrUser");
     if(hEl) hEl.textContent=u.nume||u.email||"—";
     loadUsers();
+    loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
   })
   .catch(()=>logout());
 </script>
