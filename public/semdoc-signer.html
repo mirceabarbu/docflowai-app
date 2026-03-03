@@ -581,11 +581,10 @@ th{ color: var(--sub) !important; }
           a.click();
           document.body.removeChild(a);
 
-          // Încearcă deschidere în Adobe (funcționează dacă Adobe e aplicația implicită)
-          setTimeout(() => { try { window.open(url, "_blank"); } catch(e) {} }, 800);
-          setTimeout(() => URL.revokeObjectURL(url), 15000);
+          // Nu deschidem în browser — lăsăm OS să deschidă cu aplicația implicită (Adobe)
+          setTimeout(() => URL.revokeObjectURL(url), 30000);
 
-          status.textContent = "✅ PDF descărcat. Dacă nu s-a deschis automat, deschide fișierul din folderul Downloads în Adobe Acrobat/Reader.";
+          status.textContent = "✅ PDF descărcat în folderul Downloads. Deschide fișierul în Adobe Acrobat/Reader pentru a aplica semnătura electronică calificată.";
           btn.textContent = "⬇️ Descarcă din nou";
           // Activeaza upload-ul dupa descarcare reusita
           const chooseBtn = $("btnChooseSignedPdf");
@@ -691,6 +690,10 @@ th{ color: var(--sub) !important; }
           lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: 1 });
           lastPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
 
+          // Dimensiunile câmpului de semnătură — declarate o singură dată per celulă
+          const sigFieldTop = cy + cellH - 42;
+          const sigFieldBot = cy + 4;
+
           lastPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy+cellH-15, size: 8, font: fontB, color: isSigned ? rgb(.1,.45,.25) : accent });
           if (s.functie) lastPage.drawText(ro(s.functie), { x: cx+8, y: cy+cellH-27, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
           if (s.name)    lastPage.drawText(ro(s.name),    { x: cx+8, y: cy+cellH-39, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
@@ -711,9 +714,6 @@ th{ color: var(--sub) !important; }
           const bgG2 = isSigned ? PDFNumber.of(.98) : PDFNumber.of(.97);
           const bgB2 = isSigned ? PDFNumber.of(.94) : PDFNumber.of(1.0);
 
-          // Câmpul de semnătură ocupă zona de jos a celulei (sub rol/funcție/nume)
-          const sigFieldTop = cy + cellH - 42; // sub ultimul text (nume la cy+cellH-39)
-          const sigFieldBot = cy + 4;
           const widget = pdfDoc.context.obj({
             Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
             Rect: pdfDoc.context.obj([cx+4, sigFieldBot, cx+cellW-4, sigFieldTop].map(v => PDFNumber.of(Math.round(v*10)/10))),
@@ -743,6 +743,7 @@ th{ color: var(--sub) !important; }
         const initSigner = (cf.signers||[]).find(s => s.rol === "ÎNTOCMIT" || s.rol === "INTOCMIT") || {};
         const footerParts = [
           ro2(cf.initName || initSigner.name || ""),
+          cf.initFunctie ? ro2(cf.initFunctie) : (initSigner.functie ? ro2(initSigner.functie) : null),
           cf.institutie ? ro2(cf.institutie) : null,
           cf.compartiment ? ro2(cf.compartiment) : null,
         ].filter(Boolean).join(", ");
