@@ -737,42 +737,7 @@ th{ color: var(--sub) !important; }
 
         acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj(allRefs));
 
-        // ── Footer discret sub cartus ─────────────────────────────────────
-        function ro2(t){const m={"ă":"a","â":"a","î":"i","ș":"s","ț":"t","Ă":"A","Â":"A","Î":"I","Ș":"S","Ț":"T","ş":"s","ţ":"t","Ş":"S","Ţ":"T"};return String(t||"").split("").map(c=>m[c]||c).join("");}
-        const cf = currentFlow || {};
-        const initSigner = (cf.signers||[]).find(s => s.rol === "ÎNTOCMIT" || s.rol === "INTOCMIT") || {};
-        const footerParts = [
-          ro2(cf.initName || initSigner.name || ""),
-          cf.initFunctie ? ro2(cf.initFunctie) : (initSigner.functie ? ro2(initSigner.functie) : null),
-          cf.institutie ? ro2(cf.institutie) : null,
-          cf.compartiment ? ro2(cf.compartiment) : null,
-        ].filter(Boolean).join(", ");
-        const footerDate = cf.createdAt ? new Date(cf.createdAt).toLocaleString("ro-RO") : new Date().toLocaleString("ro-RO");
-        const footerLeft = footerDate + (footerParts ? "  |  " + footerParts : "");
-        const footerRight = ro2(cf.flowId || "");
-        const footerY = 14;
-
-        lastPage.drawLine({
-          start: { x: MARGIN, y: cartusBottom - 4 },
-          end: { x: pW - MARGIN, y: cartusBottom - 4 },
-          thickness: 0.4,
-          color: rgb(0.75, 0.75, 0.75),
-        });
-        lastPage.drawText(footerLeft, {
-          x: MARGIN, y: footerY,
-          size: 7, font: fontR,
-          color: rgb(0.5, 0.5, 0.5),
-          opacity: 0.8,
-        });
-        if (footerRight) {
-          lastPage.drawText(footerRight, {
-            x: pW - MARGIN - (footerRight.length * 4.2), y: footerY,
-            size: 7, font: fontR,
-            color: rgb(0.5, 0.5, 0.5),
-            opacity: 0.8,
-          });
-        }
-        // ── End footer ────────────────────────────────────────────────────
+        // ── Footer: NU se redesenează de signer — e stamped o singură dată de server la creare flux ──
 
         const outBytes = await pdfDoc.save();
         return new Blob([outBytes], { type: 'application/pdf' });
