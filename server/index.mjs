@@ -1118,7 +1118,6 @@ const createFlow = async (req,res) => {
     } catch(e) {}
     // flowId generat DUPĂ ce avem institutia — conține inițialele ei
     const flowId = newFlowId(initInstitutie);
-    // Footer NU se aplica la creare — stampFooterOnPdf() se apeleaza la allDone pe signedPdfB64
     let finalPdfB64 = body.pdfB64 ?? null;
     // Pentru flux cu ancore existente (Forexebug etc.) — reîncărcăm PDF-ul cu ignoreEncryption
     // ca să eliminăm permisiunile restrictive care blochează completarea câmpurilor
@@ -1127,12 +1126,28 @@ const createFlow = async (req,res) => {
         const { PDFDocument } = PDFLib;
         const clean = finalPdfB64.includes(",") ? finalPdfB64.split(",")[1] : finalPdfB64;
         const pdfDoc = await PDFDocument.load(Buffer.from(clean, "base64"), { ignoreEncryption: true });
-        // Re-salvăm fără dicționarul de criptare/permisiuni — câmpurile devin editabile
         finalPdfB64 = Buffer.from(await pdfDoc.save()).toString("base64");
         console.log(`PDF ancore re-salvat fara restrictii pentru flow ${flowId}`);
       } catch(e) {
         console.warn("PDF permissions strip error:", e.message);
-        // Continuăm cu PDF-ul original dacă re-salvarea eșuează
+      }
+    }
+    // Footer aplicat la CREARE flux — inainte de orice semnatura, deci nu le invalideaza
+    // flowId e deja generat, createdAt va fi setat mai jos — il construim acum
+    if (finalPdfB64 && PDFLib) {
+      try {
+        const footerData = {
+          flowId,
+          createdAt,
+          initName,
+          initFunctie,
+          institutie: initInstitutie,
+          compartiment: initCompartiment,
+        };
+        finalPdfB64 = await stampFooterOnPdf(finalPdfB64, footerData);
+        console.log(`Footer aplicat la creare flux ${flowId}`);
+      } catch(e) {
+        console.warn("Footer la creare error:", e.message);
       }
     }
         const data = {
@@ -1611,11 +1626,7 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
       // Redenumire automată la finalizare: <flowId>_<docName original>
       data.docName = `${flowId}_${data.docName}`;
       data.events.push({at:new Date().toISOString(), type:"FLOW_COMPLETED", by:"system"});
-      // Aplica footer pe PDF-ul semnat complet (dupa toate semnaturile calificate)
-      if (data.signedPdfB64) {
-        data.signedPdfB64 = await stampFooterOnPdf(data.signedPdfB64, data);
-        console.log(`Footer aplicat pe PDF final al fluxului ${flowId}`);
-      }
+      // Footer deja aplicat la creare flux — NU se mai aplica aici (ar invalida semnaturile calificate)
       // Notificare completare pentru initiator
       if (data.initEmail) {
         await notify({userEmail:data.initEmail, flowId, type:"COMPLETED", title:"✅ Document semnat complet",
