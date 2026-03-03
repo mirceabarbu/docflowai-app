@@ -234,7 +234,15 @@
 
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,80,80,.15);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
         <div style="font-weight:700;margin-bottom:6px;color:#ffaaaa;">💣 Șterge TOATE fluxurile</div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px;">Acțiune <strong style="color:#ffaaaa;">ireversibilă</strong> — elimină complet toate fluxurile din baza de date, inclusiv PDF-urile nearkhivate.</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px;">Acțiune <strong style="color:#ffaaaa;">ireversibilă</strong> — elimină complet toate fluxurile din baza de date, inclusiv PDF-urile nearkhivate.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <select id="allInstFilter" onchange="onAllInstChange()" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,80,80,.2);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;">
+            <option value="">Toate instituțiile</option>
+          </select>
+          <select id="allDeptFilter" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,80,80,.2);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;" disabled>
+            <option value="">Toate compartimentele</option>
+          </select>
+        </div>
         <button class="btn btn-d" onclick="cleanAllFlows()" style="padding:8px 16px;font-size:.85rem;">Șterge tot</button>
         <div id="msgAllFlows" style="margin-top:10px;font-size:.82rem;"></div>
       </div>
@@ -754,6 +762,14 @@ async function loadArchiveInstData() {
     const o = document.createElement("option"); o.value = inst; o.textContent = inst; s2.appendChild(o);
   });
   if (cur2) s2.value = cur2;
+  // Populează instituții ștergere totală
+  const s3 = document.getElementById("allInstFilter");
+  const cur3 = s3.value;
+  s3.innerHTML = '<option value="">Toate instituțiile</option>';
+  Object.keys(map).sort().forEach(inst => {
+    const o = document.createElement("option"); o.value = inst; o.textContent = inst; s3.appendChild(o);
+  });
+  if (cur3) s3.value = cur3;
 }
 
 function _populateDeptFilter(instVal, deptSelId) {
@@ -884,10 +900,25 @@ Acțiunea este ireversibilă.`))return;
   else el.innerHTML=`<span style="color:#ffaaaa;">Eroare: ${d.error}</span>`;
 }
 
+function onAllInstChange() {
+  _populateDeptFilter(document.getElementById("allInstFilter").value, "allDeptFilter");
+}
+
 async function cleanAllFlows(){
-  if(!confirm("Ștergi TOATE fluxurile?\nAceastă acțiune este IREVERSIBILĂ și nu poate fi anulată!"))return;
-  if(!confirm("Ești absolut sigur? Se vor șterge TOATE datele din fluxuri."))return;
-  const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify({all:true})});
+  const inst=document.getElementById("allInstFilter").value;
+  const dept=document.getElementById("allDeptFilter").value;
+  const filterDesc = inst ? ` din ${inst}${dept?" / "+dept:""}` : "";
+  const globalDel = !inst && !dept;
+  if(globalDel){
+    if(!confirm("Ștergi TOATE fluxurile?\nAceastă acțiune este IREVERSIBILĂ și nu poate fi anulată!"))return;
+    if(!confirm("Ești absolut sigur? Se vor șterge TOATE datele din fluxuri."))return;
+  } else {
+    if(!confirm(`Ștergi TOATE fluxurile${filterDesc}?\nAcțiunea este ireversibilă.`))return;
+  }
+  const body = {all:true};
+  if (inst) body.institutie = inst;
+  if (dept) body.compartiment = dept;
+  const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify(body)});
   const d=await r.json();
   const el=$("msgAllFlows");
   if(r.ok) el.innerHTML=`<span style="color:#7cf0e0;">✅ ${d.deleted} flux(uri) șterse.</span>`;
