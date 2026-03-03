@@ -24,7 +24,7 @@
     main{max-width:1200px;margin:32px auto;padding:0 20px 60px;}
     h2{font-size:1.2rem;font-weight:700;margin-bottom:20px;}
     .card{background:rgba(15,23,49,.8);border:1px solid var(--line);border-radius:var(--radius);
-      box-shadow:0 16px 48px rgba(0,0,0,.35);padding:26px;margin-bottom:24px;}
+      box-shadow:0 16px 48px rgba(0,0,0,.35);padding:26px 26px 20px 26px;margin-bottom:24px;}
     .card-title{font-size:.92rem;font-weight:700;color:var(--sub);margin-bottom:18px;}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
     .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
@@ -50,7 +50,7 @@
     .msg{font-size:.82rem;padding:7px 12px;border-radius:8px;}
     .msg.ok{background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.28);color:#7cf0e0;}
     .msg.err{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.28);color:#ffb3b3;}
-    .tbl-wrap{overflow-x:auto;}
+    .tbl-wrap{overflow-x:auto; padding-bottom:8px; margin-bottom:0;}
     .pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;flex-wrap:wrap;}
     .pg-btn{padding:5px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--sub);font-size:.82rem;cursor:pointer;}
     .pg-btn:hover{background:rgba(124,92,255,.2);border-color:var(--accent);}
@@ -153,7 +153,8 @@
 
   <div class="card">
     <div class="card-title">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span></div>
-    <div class="tbl-wrap"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
+    <div class="tbl-wrap" id="tblScroll"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
+    <div id="pgBarWrapper"></div>
   </div>
 
   <div style="margin-top:40px;border-top:1px solid rgba(255,255,255,.08);padding-top:32px;">
@@ -392,7 +393,7 @@ function renderPage(){
 function renderPagination(total, current, totalPages){
   let pg = $('pgBar');
   if(!pg){ pg=document.createElement('div'); pg.id='pgBar'; pg.className='pagination';
-    const wrap=$('tbl'); if(wrap) wrap.appendChild(pg); }
+    const wrap=$('pgBarWrapper') || $('tbl'); if(wrap) wrap.appendChild(pg); }
   pg.innerHTML='';
   if(totalPages<=1 && total<=PAGE_SIZE){return;}
   const info=document.createElement('span'); info.className='pg-info';
