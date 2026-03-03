@@ -1571,6 +1571,8 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
     const allDone = data.signers.every(s=>s.status==="signed"&&s.pdfUploaded);
     if (allDone) {
       data.completed=true; data.completedAt=new Date().toISOString();
+      // Redenumire automată la finalizare: <flowId>_<docName original>
+      data.docName = `${flowId}_${data.docName}`;
       data.events.push({at:new Date().toISOString(), type:"FLOW_COMPLETED", by:"system"});
       // Notificare completare pentru initiator
       if (data.initEmail) {
