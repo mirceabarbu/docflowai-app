@@ -1281,8 +1281,14 @@ app.get("/admin/flows/list", async (req,res) => {
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   try {
     const { rows } = await pool.query("SELECT id,data,created_at FROM flows ORDER BY created_at DESC LIMIT 200");
+    // Fetch all users once for institutie/compartiment lookup
+    const { rows: userRows } = await pool.query("SELECT email,institutie,compartiment FROM users");
+    const userMap = {};
+    userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
     const flows = rows.map(r => {
       const d = r.data||{};
+      const initEmail = (d.initEmail||"").toLowerCase();
+      const u = userMap[initEmail] || {};
       return {
         flowId: d.flowId,
         docName: d.docName,
@@ -1292,6 +1298,8 @@ app.get("/admin/flows/list", async (req,res) => {
         completed: !!(d.completed || (d.signers||[]).every(s=>s.status==="signed")),
         storage: d.storage||"db",
         createdAt: d.createdAt||r.created_at,
+        institutie: u.institutie||d.institutie||"",
+        compartiment: u.compartiment||d.compartiment||"",
         signers: (d.signers||[]).map(s => ({
           name: s.name, email: s.email, rol: s.rol,
           status: s.status, tokenCreatedAt: s.tokenCreatedAt||null,
