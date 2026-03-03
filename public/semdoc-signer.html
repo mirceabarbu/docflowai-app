@@ -660,38 +660,22 @@ th{ color: var(--sub) !important; }
         const cellH = 80;
         const titleH = 20;
         const cartusH = rows * cellH + titleH + 10;
-        const cartusBottom = 36; // footer server e la y=14, separator la y=28 → cartus începe de la 36
+        const cartusBottom = 30; // footer se aplica la finalizare pe signedPdf, dupa cartus
 
         // Title bar
         lastPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: accent });
         lastPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: cartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(1,1,1) });
         lastPage.drawText(`Generat: ${new Date().toLocaleString("ro-RO")}`, { x: pW - MARGIN - 130, y: cartusBottom + cartusH - titleH + 6, size: 7, font: fontR, color: rgb(.9,.9,.9) });
 
-        // AcroForm — comportament diferit dupa tipul fluxului:
-        // - flux 'ancore': PDF are campuri editabile Forexebug → merge cu AcroForm existent, SigFlags=1
-        // - flux 'tabel': PDF nu are campuri editabile → AcroForm nou, SigFlags=1
-        const isAncoreFlux = currentFlow?.flowType === 'ancore';
-        const existingAcroFormRef = isAncoreFlux ? pdfDoc.catalog.get(PDFName.of('AcroForm')) : null;
-        let acroForm;
-        let existingFields = [];
-        if (existingAcroFormRef) {
-          // Flux ancore — pastram campurile editabile Forexebug
-          acroForm = pdfDoc.context.lookup(existingAcroFormRef);
-          const ef = acroForm.get(PDFName.of('Fields'));
-          if (ef) existingFields = ef.asArray ? ef.asArray() : [];
-          // SigFlags = 1 (SignaturesExist) — NU 3, ca sa nu blocheze editarea campurilor existente
-          acroForm.set(PDFName.of('SigFlags'), PDFNumber.of(1));
-        } else {
-          // Flux tabel sau ancore fara AcroForm — cream AcroForm nou
-          acroForm = pdfDoc.context.obj({
-            Type: PDFName.of('AcroForm'),
-            Fields: pdfDoc.context.obj([]),
-            SigFlags: PDFNumber.of(1),
-            DA: PDFString.of('/Helv 10 Tf 0 g'),
-          });
-          pdfDoc.catalog.set(PDFName.of('AcroForm'), pdfDoc.context.register(acroForm));
-        }
-        const allRefs = [...existingFields];
+        // AcroForm
+        const acroForm = pdfDoc.context.obj({
+          Type: PDFName.of('AcroForm'),
+          Fields: pdfDoc.context.obj([]),
+          SigFlags: PDFNumber.of(3),
+          DA: PDFString.of('/Helv 10 Tf 0 g'),
+        });
+        pdfDoc.catalog.set(PDFName.of('AcroForm'), pdfDoc.context.register(acroForm));
+        const allRefs = [];
 
         signers.forEach((s, idx) => {
           const row = Math.floor(idx / cols);
