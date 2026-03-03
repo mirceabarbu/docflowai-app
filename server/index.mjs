@@ -111,7 +111,16 @@ function publicBaseUrl(req) {
   const proto = (req.get("x-forwarded-proto") || req.protocol || "https").split(",")[0].trim();
   return `${proto}://${host}`;
 }
-function newFlowId() { return "FLOW_" + crypto.randomBytes(8).toString("hex").toUpperCase(); }
+function makeFlowId(institutie) {
+  // Inițiale din cuvintele instituției (ex. "Primaria Zarnesti" -> "PZ")
+  const words = (institutie||"").trim().split(/\s+/).filter(Boolean);
+  const initials = words.length >= 2
+    ? words.slice(0, 4).map(w => w[0].toUpperCase()).join("")
+    : (words[0] ? words[0].slice(0,3).toUpperCase() : "DOC");
+  const rand = crypto.randomBytes(5).toString("hex").toUpperCase(); // 10 chars
+  return `${initials}_${rand}`;
+}
+function newFlowId(institutie) { return makeFlowId(institutie); }
 function sha256Hex(buffer) { return crypto.createHash("sha256").update(buffer).digest("hex"); }
 function generatePassword() {
   const chars = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -1062,7 +1071,6 @@ const createFlow = async (req,res) => {
       signedAt: null, signature: null,
     }));
 
-    const flowId = newFlowId();
     const createdAt = body.createdAt||new Date().toISOString();
     // Lookup initiatorul din DB pentru functie/compartiment/institutie
     let initFunctie = "", initCompartiment = "", initInstitutie = body.institutie||"";
@@ -1074,6 +1082,8 @@ const createFlow = async (req,res) => {
         initInstitutie = initInstitutie || uRes.rows[0].institutie||"";
       }
     } catch(e) {}
+    // flowId generat DUPĂ ce avem institutia — conține inițialele ei
+    const flowId = newFlowId(initInstitutie);
     // Stamp footer complet pe PDF la creare flux (data, initiator, institutie, compartiment, flowId)
     let finalPdfB64 = body.pdfB64??null;
     if (finalPdfB64 && PDFLib) {
@@ -1093,6 +1103,7 @@ const createFlow = async (req,res) => {
         const footerDateStr = new Date().toLocaleString("ro-RO");
         const footerParts = [
           ro(initName||""),
+          initFunctie ? ro(initFunctie) : null,
           initInstitutie ? ro(initInstitutie) : null,
           initCompartiment ? ro(initCompartiment) : null,
         ].filter(Boolean).join(", ");
@@ -1127,6 +1138,7 @@ const createFlow = async (req,res) => {
     }
     const data = {
       flowId, docName, initName, initEmail,
+      initFunctie: initFunctie,
       institutie: initInstitutie, compartiment: initCompartiment,
       meta: body.meta||{}, flowType: body.flowType||"tabel",
       pdfB64: finalPdfB64,
