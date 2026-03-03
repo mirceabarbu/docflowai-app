@@ -122,6 +122,40 @@ function makeFlowId(institutie) {
 }
 function newFlowId(institutie) { return makeFlowId(institutie); }
 function sha256Hex(buffer) { return crypto.createHash("sha256").update(buffer).digest("hex"); }
+
+// stampeaza footer pe ultima pagina a PDF-ului la finalizarea fluxului
+async function stampFooterOnPdf(pdfB64, flowData) {
+  if (!pdfB64 || !PDFLib) return pdfB64;
+  try {
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const diacr = {"ă":"a","â":"a","î":"i","ș":"s","ț":"t","Ă":"A","Â":"A","Î":"I","Ș":"S","Ț":"T","ş":"s","ţ":"t","Ş":"S","Ţ":"T"};
+    function ro(t){return String(t||"").split("").map(ch=>diacr[ch]||ch).join("");}
+    const clean = pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64;
+    const pdfDoc = await PDFDocument.load(Buffer.from(clean,"base64"),{ignoreEncryption:true});
+    const fontR  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
+    const { width: pW } = lastPage.getSize();
+    const MARGIN=40, footerY=14;
+    const createdDate = flowData.createdAt
+      ? new Date(flowData.createdAt).toLocaleString("ro-RO")
+      : new Date().toLocaleString("ro-RO");
+    const parts = [
+      ro(flowData.initName||""),
+      flowData.initFunctie  ? ro(flowData.initFunctie)  : null,
+      flowData.institutie   ? ro(flowData.institutie)   : null,
+      flowData.compartiment ? ro(flowData.compartiment) : null,
+    ].filter(Boolean).join(", ");
+    const footerLeft  = createdDate + (parts ? "  |  " + parts : "");
+    const footerRight = ro(flowData.flowId||"");
+    lastPage.drawLine({start:{x:MARGIN,y:footerY+10},end:{x:pW-MARGIN,y:footerY+10},thickness:0.4,color:rgb(0.75,0.75,0.75)});
+    lastPage.drawText(footerLeft,{x:MARGIN,y:footerY,size:7,font:fontR,color:rgb(0.5,0.5,0.5),opacity:0.8,maxWidth:pW-MARGIN*2-(footerRight.length*4.5)-16});
+    if(footerRight) lastPage.drawText(footerRight,{x:pW-MARGIN-(footerRight.length*4.5),y:footerY,size:7,font:fontR,color:rgb(0.5,0.5,0.5),opacity:0.8});
+    return Buffer.from(await pdfDoc.save()).toString("base64");
+  } catch(e) {
+    console.warn("stampFooterOnPdf error:", e.message);
+    return pdfB64;
+  }
+}
 function generatePassword() {
   const chars = "abcdefghjkmnpqrstuvwxyz23456789";
   let p = "";
@@ -1084,59 +1118,9 @@ const createFlow = async (req,res) => {
     } catch(e) {}
     // flowId generat DUPĂ ce avem institutia — conține inițialele ei
     const flowId = newFlowId(initInstitutie);
-    // Stamp footer complet pe PDF la creare flux (data, initiator, institutie, compartiment, flowId)
-    let finalPdfB64 = body.pdfB64??null;
-    if (finalPdfB64 && PDFLib) {
-      try {
-        const { PDFDocument, rgb, StandardFonts } = PDFLib;
-        const cleanB64 = finalPdfB64.includes(",") ? finalPdfB64.split(",")[1] : finalPdfB64;
-        const pdfBytes = Buffer.from(cleanB64, "base64");
-        const pdfDoc = await PDFDocument.load(pdfBytes);
-        const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
-        const { width: pW } = lastPage.getSize();
-        const MARGIN = 40;
-        const footerY = 14;
-        // Normalizare diacritice (PDF standard fonts nu suportă UTF-8)
-        function ro(t){const m={"ă":"a","â":"a","î":"i","ș":"s","ț":"t","Ă":"A","Â":"A","Î":"I","Ș":"S","Ț":"T","ş":"s","ţ":"t","Ş":"S","Ţ":"T"};return String(t||"").split("").map(c=>m[c]||c).join("");}
-        // Footer stânga: data creare | initName, institutie, compartiment
-        const footerDateStr = new Date().toLocaleString("ro-RO");
-        const footerParts = [
-          ro(initName||""),
-          initFunctie ? ro(initFunctie) : null,
-          initInstitutie ? ro(initInstitutie) : null,
-          initCompartiment ? ro(initCompartiment) : null,
-        ].filter(Boolean).join(", ");
-        const footerLeft = footerDateStr + (footerParts ? "  |  " + footerParts : "");
-        const footerRight = flowId;
-        // Linie separator
-        lastPage.drawLine({
-          start: { x: MARGIN, y: footerY + 10 },
-          end: { x: pW - MARGIN, y: footerY + 10 },
-          thickness: 0.4,
-          color: rgb(0.75, 0.75, 0.75),
-        });
-        // Text stânga — trunchiaz dacă e prea lung
-        const maxLeftW = pW - MARGIN*2 - (footerRight.length * 4.5) - 16;
-        lastPage.drawText(footerLeft, {
-          x: MARGIN, y: footerY,
-          size: 7, font: fontR,
-          color: rgb(0.5, 0.5, 0.5),
-          opacity: 0.8,
-          maxWidth: maxLeftW,
-        });
-        // Text dreapta — flowId
-        lastPage.drawText(footerRight, {
-          x: pW - MARGIN - (footerRight.length * 4.5), y: footerY,
-          size: 7, font: fontR,
-          color: rgb(0.5, 0.5, 0.5),
-          opacity: 0.8,
-        });
-        const outBytes = await pdfDoc.save();
-        finalPdfB64 = Buffer.from(outBytes).toString("base64");
-      } catch(e) { console.warn("footer stamp error:", e.message); }
-    }
-    const data = {
+    // Footer aplicat la finalizare flux, nu la creare
+    let finalPdfB64 = body.pdfB64 ?? null;
+        const data = {
       flowId, docName, initName, initEmail,
       initFunctie: initFunctie,
       institutie: initInstitutie, compartiment: initCompartiment,
@@ -1574,6 +1558,11 @@ app.post("/flows/:flowId/upload-signed-pdf", async (req,res) => {
       // Redenumire automată la finalizare: <flowId>_<docName original>
       data.docName = `${flowId}_${data.docName}`;
       data.events.push({at:new Date().toISOString(), type:"FLOW_COMPLETED", by:"system"});
+      // Aplica footer pe PDF-ul semnat complet (dupa toate semnaturile calificate)
+      if (data.signedPdfB64) {
+        data.signedPdfB64 = await stampFooterOnPdf(data.signedPdfB64, data);
+        console.log(`Footer aplicat pe PDF final al fluxului ${flowId}`);
+      }
       // Notificare completare pentru initiator
       if (data.initEmail) {
         await notify({userEmail:data.initEmail, flowId, type:"COMPLETED", title:"✅ Document semnat complet",
