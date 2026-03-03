@@ -529,12 +529,37 @@ app.post("/admin/flows/clean", async (req,res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req,res); if (!actor) return;
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
-  const { olderThanDays, all } = req.body||{};
+  const { olderThanDays, all, institutie, compartiment } = req.body||{};
   try {
     let result;
-    if (all) result = await pool.query("DELETE FROM flows");
-    else result = await pool.query("DELETE FROM flows WHERE created_at < NOW() - ($1 || ' days')::INTERVAL", [parseInt(olderThanDays)||30]);
-    res.json({ok:true, deleted:result.rowCount});
+    // Dacă nu e filtrare pe instituție/compartiment, folosim SQL direct
+    if (!institutie && !compartiment) {
+      if (all) result = await pool.query("DELETE FROM flows");
+      else result = await pool.query("DELETE FROM flows WHERE created_at < NOW() - ($1 || ' days')::INTERVAL", [parseInt(olderThanDays)||30]);
+      return res.json({ok:true, deleted:result.rowCount});
+    }
+    // Cu filtrare pe instituție/compartiment — trebuie să facem lookup în users
+    const { rows: userRows } = await pool.query("SELECT email,institutie,compartiment FROM users");
+    const userMap = {};
+    userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
+    const { rows } = await pool.query(
+      all
+        ? "SELECT id,data FROM flows"
+        : "SELECT id,data FROM flows WHERE created_at < NOW() - ($1 || ' days')::INTERVAL",
+      all ? [] : [parseInt(olderThanDays)||30]
+    );
+    const idsToDelete = rows.filter(r => {
+      const d = r.data||{};
+      const u = userMap[(d.initEmail||"").toLowerCase()] || {};
+      const inst = u.institutie||d.institutie||"";
+      const dept = u.compartiment||d.compartiment||"";
+      if (institutie && inst !== institutie) return false;
+      if (compartiment && dept !== compartiment) return false;
+      return true;
+    }).map(r => r.id);
+    if (!idsToDelete.length) return res.json({ok:true, deleted:0});
+    result = await pool.query("DELETE FROM flows WHERE id = ANY($1)", [idsToDelete]);
+    return res.json({ok:true, deleted:result.rowCount});
   } catch(e) { res.status(500).json({error:"server_error"}); }
 });
 app.get("/my-flows", async (req,res) => {
@@ -846,19 +871,31 @@ app.get("/admin/flows/archive-preview", async (req,res) => {
   if (actor.role !== "admin") return res.status(403).json({error:"forbidden"});
   try {
     const days = parseInt(req.query.days||"30");
+    const filterInst = (req.query.institutie||"").trim();
+    const filterDept = (req.query.compartiment||"").trim();
     const cutoff = new Date(Date.now() - days*24*60*60*1000).toISOString();
-    // Filtrare în SQL după data — nu mai încărcăm toate fluxurile în memorie
     const { rows } = await pool.query(
       "SELECT id,data,created_at FROM flows WHERE created_at < $1 ORDER BY created_at ASC",
       [cutoff]
     );
+    // Fetch userMap pentru institutie/compartiment
+    const { rows: userRows } = await pool.query("SELECT email,institutie,compartiment FROM users");
+    const userMap = {};
+    userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
     const eligible = rows.filter(r => {
       const d = r.data;
       if (!d) return false;
       const done = d.completed || (d.signers||[]).every(s=>s.status==="signed");
       const refused = (d.signers||[]).some(s=>s.status==="refused");
       const notArchived = d.storage !== "drive";
-      return (done||refused) && notArchived;
+      if (!(done||refused) || !notArchived) return false;
+      // Filtrare pe institutie/compartiment
+      const u = userMap[(d.initEmail||"").toLowerCase()] || {};
+      const inst = u.institutie||d.institutie||"";
+      const dept = u.compartiment||d.compartiment||"";
+      if (filterInst && inst !== filterInst) return false;
+      if (filterDept && dept !== filterDept) return false;
+      return true;
     });
     const totalBytes = eligible.reduce((acc,r) => {
       const d = r.data;
@@ -869,13 +906,18 @@ app.get("/admin/flows/archive-preview", async (req,res) => {
     return res.json({
       count: eligible.length,
       totalMB: Math.round(totalBytes/1024/1024*100)/100,
-      flows: eligible.map(r => ({
-        flowId: r.data.flowId,
-        docName: r.data.docName,
-        createdAt: r.data.createdAt||r.created_at,
-        status: r.data.completed?"finalizat":(r.data.signers||[]).some(s=>s.status==="refused")?"refuzat":"necunoscut",
-        sizeMB: Math.round(((r.data.pdfB64?.length||0)+(r.data.signedPdfB64?.length||0))*0.75/1024/1024*100)/100,
-      }))
+      flows: eligible.map(r => {
+        const u = userMap[(r.data.initEmail||"").toLowerCase()] || {};
+        return {
+          flowId: r.data.flowId,
+          docName: r.data.docName,
+          createdAt: r.data.createdAt||r.created_at,
+          status: r.data.completed?"finalizat":(r.data.signers||[]).some(s=>s.status==="refused")?"refuzat":"necunoscut",
+          sizeMB: Math.round(((r.data.pdfB64?.length||0)+(r.data.signedPdfB64?.length||0))*0.75/1024/1024*100)/100,
+          institutie: u.institutie||r.data.institutie||"",
+          compartiment: u.compartiment||r.data.compartiment||"",
+        };
+      })
     });
   } catch(e) { return res.status(500).json({error:String(e.message||e)}); }
 });
