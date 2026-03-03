@@ -562,7 +562,7 @@ th{ color: var(--sub) !important; }
                 const regResp = await fetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ signerToken: token, pdfHash: hashHex }),
+                  body: JSON.stringify({ signerToken: token }),
                 });
                 if (regResp.ok) {
                   const regJson = await regResp.json();
@@ -661,7 +661,7 @@ th{ color: var(--sub) !important; }
         const cellH = 80;
         const titleH = 20;
         const cartusH = rows * cellH + titleH + 10;
-        const cartusBottom = 28;
+        const cartusBottom = 36; // footer server e la y=14, separator la y=28 → cartus începe de la 36
 
         // Title bar
         lastPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: accent });
@@ -699,7 +699,10 @@ th{ color: var(--sub) !important; }
             lastPage.drawText(ro(s.signature), { x: cx+8, y: cy+22, size: 8, font: fontB, color: rgb(.15,.45,.25) });
             if (s.signedAt) lastPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
           } else {
-            lastPage.drawText("L.S.  Camp semnatura electronica calificata", { x: cx+8, y: cy+8, size: 6, font: fontR, color: rgb(.6,.6,.6) });
+            // Label centrat în câmpul de semnătură extins
+            const midSigY = sigFieldBot + (sigFieldTop - sigFieldBot) / 2 - 3;
+            lastPage.drawText("L.S.", { x: cx+8, y: midSigY + 8, size: 7, font: fontB, color: rgb(.5,.5,.6) });
+            lastPage.drawText("Camp semnatura electronica calificata", { x: cx+8, y: midSigY - 4, size: 6, font: fontR, color: rgb(.6,.6,.6) });
           }
 
           // AcroForm — toate câmpurile active (Ff=0), fără evidențiere per semnatar
@@ -708,9 +711,12 @@ th{ color: var(--sub) !important; }
           const bgG2 = isSigned ? PDFNumber.of(.98) : PDFNumber.of(.97);
           const bgB2 = isSigned ? PDFNumber.of(.94) : PDFNumber.of(1.0);
 
+          // Câmpul de semnătură ocupă zona de jos a celulei (sub rol/funcție/nume)
+          const sigFieldTop = cy + cellH - 42; // sub ultimul text (nume la cy+cellH-39)
+          const sigFieldBot = cy + 4;
           const widget = pdfDoc.context.obj({
             Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
-            Rect: pdfDoc.context.obj([cx+4, cy+4, cx+cellW-4, cy+20].map(v => PDFNumber.of(Math.round(v*10)/10))),
+            Rect: pdfDoc.context.obj([cx+4, sigFieldBot, cx+cellW-4, sigFieldTop].map(v => PDFNumber.of(Math.round(v*10)/10))),
             T: PDFString.of(fn),
             TU: PDFString.of(ro(s.rol||'') + (s.name ? ' - '+ro(s.name) : '') + (isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
             F: PDFNumber.of(4),
@@ -746,8 +752,8 @@ th{ color: var(--sub) !important; }
         const footerY = 14;
 
         lastPage.drawLine({
-          start: { x: MARGIN, y: 28 },
-          end: { x: pW - MARGIN, y: 28 },
+          start: { x: MARGIN, y: cartusBottom - 4 },
+          end: { x: pW - MARGIN, y: cartusBottom - 4 },
           thickness: 0.4,
           color: rgb(0.75, 0.75, 0.75),
         });
