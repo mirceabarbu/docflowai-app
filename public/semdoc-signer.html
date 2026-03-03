@@ -21,8 +21,7 @@
           }
           var s = document.createElement("script");
           s.src = cdns[idx++];
-          s.onload = function() { console.log("OK pdf-lib loaded"); window._pdfLibLoaded = true; };
-    const _pdfjs=document.createElement("script"); _pdfjs.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; _pdfjs.onload=function(){pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}; document.head.appendChild(_pdfjs);
+          s.onload = function() { console.log("✅ pdf-lib loaded from", s.src); window._pdfLibLoaded = true; };
           s.onerror = function() { console.warn("⚠ CDN failed:", s.src); tryNext(); };
           document.head.appendChild(s);
         }
@@ -194,10 +193,7 @@ th{ color: var(--sub) !important; }
               <div class="muted">Document (PDF)</div>
             </div>
             <div style="height:10px"></div>
-            <div id="pdfViewerWrap" style="width:100%; border:1px solid rgba(255,255,255,.10); border-radius:12px; background:#fff; overflow-y:auto; max-height:700px; min-height:120px;">
-              <div id="pdfPagesContainer" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 0;"></div>
-              <div id="pdfLoadMsg" style="color:#888;font-size:.85rem;text-align:center;padding:40px;">Se incarca documentul...</div>
-            </div>
+            <iframe id="pdfFrame" title="PDF" style="width:100%; height:700px; border:1px solid rgba(255,255,255,.10); border-radius:12px; background: rgba(0,0,0,.15);"></iframe>
           </div>
 
 <div style="height:12px"></div>
@@ -344,11 +340,11 @@ th{ color: var(--sub) !important; }
           // PDF viewer
           if (j.hasPdf) {
             const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token)}`;
-      renderPdfJs(pdfUrl);
+      $("pdfFrame").src = pdfUrl + "#toolbar=0&navpanes=0&scrollbar=0";
             $("pdfBox").classList.remove("hidden");
           } else {
             $("pdfBox").classList.add("hidden");
-            const _pc=$("pdfPagesContainer"); if(_pc)_pc.innerHTML=""; const _lm=$("pdfLoadMsg"); if(_lm){_lm.style.display="block";_lm.textContent="Se incarca...";}
+            $("pdfFrame").src = "";
           }
 
           const s = j.signers[signerIndex];
@@ -664,7 +660,7 @@ th{ color: var(--sub) !important; }
         const cellH = 80;
         const titleH = 20;
         const cartusH = rows * cellH + titleH + 10;
-        const cartusBottom = 36; // footer server e la y=14, separator la y=28 → cartus începe de la 36
+        const cartusBottom = 30; // footer se aplica la finalizare pe signedPdf, dupa cartus
 
         // Title bar
         lastPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: accent });
@@ -747,38 +743,6 @@ th{ color: var(--sub) !important; }
         return new Blob([outBytes], { type: 'application/pdf' });
       }
       // ── End PDF Generator ──────────────────────────────────────────────────
-
-      // ── PDF.js renderer (evită "Please wait..." din Chrome cu AcroForm) ───
-      async function renderPdfJs(url) {
-        const container = $("pdfPagesContainer");
-        const loadMsg = $("pdfLoadMsg");
-        if (!container) return;
-        container.innerHTML = "";
-        if (loadMsg) { loadMsg.style.display = "block"; loadMsg.textContent = "Se incarca documentul..."; }
-        try {
-          let tries = 0;
-          while (typeof pdfjsLib === "undefined" && tries++ < 40) await new Promise(r => setTimeout(r, 150));
-          if (typeof pdfjsLib === "undefined") throw new Error("PDF.js nu s-a incarcat.");
-          const resp = await fetch(url);
-          if (!resp.ok) throw new Error("PDF indisponibil (cod " + resp.status + ")");
-          const data = await resp.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data }).promise;
-          if (loadMsg) loadMsg.style.display = "none";
-          for (let p = 1; p <= pdf.numPages; p++) {
-            const page = await pdf.getPage(p);
-            const viewport = page.getViewport({ scale: 1.5 });
-            const canvas = document.createElement("canvas");
-            canvas.width = viewport.width; canvas.height = viewport.height;
-            canvas.style.cssText = "max-width:100%;box-shadow:0 2px 8px rgba(0,0,0,.15);border-radius:4px;display:block;";
-            await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-            container.appendChild(canvas);
-          }
-        } catch(e) {
-          if (loadMsg) { loadMsg.style.display="block"; loadMsg.textContent="Eroare la incarcarea PDF: "+(e.message||e); }
-          console.error("PDF.js render error:", e);
-        }
-      }
-      // ── End PDF.js renderer ────────────────────────────────────────────────
 
       if (flow && token) {
         loadFlow().catch((e) => showError(String(e.message || e)));
