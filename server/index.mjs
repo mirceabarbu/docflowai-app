@@ -1074,9 +1074,9 @@ const createFlow = async (req,res) => {
         initInstitutie = initInstitutie || uRes.rows[0].institutie||"";
       }
     } catch(e) {}
-    // Adauga flowId la footer-ul PDF doar pentru flux cu ancore (tabelul are footer din signer)
+    // Stamp footer complet pe PDF la creare flux (data, initiator, institutie, compartiment, flowId)
     let finalPdfB64 = body.pdfB64??null;
-    if (finalPdfB64 && PDFLib) { // stamp flowId pe toate tipurile de flux
+    if (finalPdfB64 && PDFLib) {
       try {
         const { PDFDocument, rgb, StandardFonts } = PDFLib;
         const cleanB64 = finalPdfB64.includes(",") ? finalPdfB64.split(",")[1] : finalPdfB64;
@@ -1086,16 +1086,44 @@ const createFlow = async (req,res) => {
         const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
         const { width: pW } = lastPage.getSize();
         const MARGIN = 40;
-        // Adauga flowId la dreapta pe aceeasi linie cu footer-ul
-        lastPage.drawText(flowId, {
-          x: pW - MARGIN - 180, y: 14,
-          size: 7.5, font: fontR,
-          color: rgb(0.45, 0.45, 0.45),
-          opacity: 0.75,
+        const footerY = 14;
+        // Normalizare diacritice (PDF standard fonts nu suportă UTF-8)
+        function ro(t){const m={"ă":"a","â":"a","î":"i","ș":"s","ț":"t","Ă":"A","Â":"A","Î":"I","Ș":"S","Ț":"T","ş":"s","ţ":"t","Ş":"S","Ţ":"T"};return String(t||"").split("").map(c=>m[c]||c).join("");}
+        // Footer stânga: data creare | initName, institutie, compartiment
+        const footerDateStr = new Date().toLocaleString("ro-RO");
+        const footerParts = [
+          ro(initName||""),
+          initInstitutie ? ro(initInstitutie) : null,
+          initCompartiment ? ro(initCompartiment) : null,
+        ].filter(Boolean).join(", ");
+        const footerLeft = footerDateStr + (footerParts ? "  |  " + footerParts : "");
+        const footerRight = flowId;
+        // Linie separator
+        lastPage.drawLine({
+          start: { x: MARGIN, y: footerY + 10 },
+          end: { x: pW - MARGIN, y: footerY + 10 },
+          thickness: 0.4,
+          color: rgb(0.75, 0.75, 0.75),
+        });
+        // Text stânga — trunchiaz dacă e prea lung
+        const maxLeftW = pW - MARGIN*2 - (footerRight.length * 4.5) - 16;
+        lastPage.drawText(footerLeft, {
+          x: MARGIN, y: footerY,
+          size: 7, font: fontR,
+          color: rgb(0.5, 0.5, 0.5),
+          opacity: 0.8,
+          maxWidth: maxLeftW,
+        });
+        // Text dreapta — flowId
+        lastPage.drawText(footerRight, {
+          x: pW - MARGIN - (footerRight.length * 4.5), y: footerY,
+          size: 7, font: fontR,
+          color: rgb(0.5, 0.5, 0.5),
+          opacity: 0.8,
         });
         const outBytes = await pdfDoc.save();
         finalPdfB64 = Buffer.from(outBytes).toString("base64");
-      } catch(e) { console.warn("flowId stamp error:", e.message); }
+      } catch(e) { console.warn("footer stamp error:", e.message); }
     }
     const data = {
       flowId, docName, initName, initEmail,
@@ -1450,17 +1478,20 @@ app.post("/flows/:flowId/resend", async (req,res) => {
 app.post("/flows/:flowId/register-download", async (req,res) => {
   try {
     const { flowId } = req.params;
-    const { signerToken, pdfHash } = req.body||{};
-    if (!signerToken||!pdfHash) return res.status(400).json({error:"missing_params"});
-    if (!/^[a-f0-9]{64}$/.test(pdfHash)) return res.status(400).json({error:"invalid_hash_format"});
+    const { signerToken } = req.body||{};
+    if (!signerToken) return res.status(400).json({error:"missing_params"});
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({error:"not_found"});
     const signer = (data.signers||[]).find(s=>s.token===signerToken);
     if (!signer) return res.status(403).json({error:"invalid_signer_token"});
     if (isSignerTokenExpired(signer)) return res.status(403).json({error:"token_expired"});
-    // Emite uploadToken cu hash-ul PDF-ului efectiv descărcat/generat de client
+    // SECURITATE FIX #4: preHash calculat de SERVER pe PDF-ul original din DB
+    // Nu acceptăm hash de la client — ar putea fi falsificat
+    const rawPdf = (data.pdfB64||"").includes(",") ? (data.pdfB64||"").split(",")[1] : (data.pdfB64||"");
+    const serverPreHash = rawPdf ? sha256Hex(Buffer.from(rawPdf, "base64")) : null;
+    if (!serverPreHash) return res.status(500).json({error:"pdf_missing_cannot_issue_token"});
     const uploadToken = jwt.sign(
-      { flowId, signerToken, preHash: pdfHash },
+      { flowId, signerToken, preHash: serverPreHash },
       JWT_SECRET,
       { expiresIn: "4h" }
     );
