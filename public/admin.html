@@ -159,13 +159,21 @@
   <div style="margin-top:40px;border-top:1px solid rgba(255,255,255,.08);padding-top:32px;">
     <h2 style="color:#9db0ff;margin-bottom:16px;">📋 Fluxuri active</h2>
     <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:18px 20px;margin-bottom:28px;">
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
         <input id="flowSearch" placeholder="Caută după ID, document sau email..." style="flex:1;min-width:220px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;"/>
         <select id="flowStatusFilter" style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
           <option value="">Toate statusurile</option>
           <option value="active">Active</option>
           <option value="done">Finalizate</option>
           <option value="refused">Refuzate</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+        <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
+          <option value="">Toate instituțiile</option>
+        </select>
+        <select id="flowDeptFilter" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;" disabled>
+          <option value="">Toate compartimentele</option>
         </select>
         <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
       </div>
@@ -548,15 +556,65 @@ async function sendCredsNew(){
   await sendCreds(window._lastCreatedId,$("btnSendNew"));
 }
 
-async function loadFlowsList() {
+// Cache global pentru fluxuri (pentru filtrare ierarhică)
+let _allFlows = null;
+
+function populateFlowInstDropdown(flows) {
+  const sel = document.getElementById("flowInstFilter");
+  const currentVal = sel.value;
+  // Colectează instituții unice
+  const institutions = [...new Set(flows.map(f => f.institutie||"").filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">Toate instituțiile</option>';
+  institutions.forEach(inst => {
+    const opt = document.createElement("option");
+    opt.value = inst;
+    opt.textContent = inst;
+    sel.appendChild(opt);
+  });
+  if (currentVal) sel.value = currentVal;
+}
+
+function onFlowInstChange() {
+  const instF = document.getElementById("flowInstFilter").value;
+  const deptSel = document.getElementById("flowDeptFilter");
+  deptSel.innerHTML = '<option value="">Toate compartimentele</option>';
+  if (instF && _allFlows) {
+    const depts = [...new Set(
+      _allFlows
+        .filter(f => (f.institutie||"") === instF)
+        .map(f => f.compartiment||"")
+        .filter(Boolean)
+    )].sort();
+    depts.forEach(d => {
+      const opt = document.createElement("option");
+      opt.value = d;
+      opt.textContent = d;
+      deptSel.appendChild(opt);
+    });
+    deptSel.disabled = depts.length === 0;
+  } else {
+    deptSel.disabled = true;
+  }
+  // Re-filtrează fără reload din server
+  loadFlowsList(false);
+}
+
+async function loadFlowsList(forceReload = true) {
   const area = document.getElementById("flowsListArea");
   const search = (document.getElementById("flowSearch").value||"").toLowerCase();
   const statusF = document.getElementById("flowStatusFilter").value;
+  const instF = document.getElementById("flowInstFilter").value;
+  const deptF = document.getElementById("flowDeptFilter").value;
   area.innerHTML = '<span style="color:var(--muted);">⏳ Se încarcă...</span>';
   try {
-    const r = await fetch("/admin/flows/list", {headers: hdrs()});
-    if (!r.ok) throw new Error("Eroare server");
-    let flows = await r.json();
+    // Reîncarcă din server dacă nu avem cache sau forceReload
+    if (forceReload || !_allFlows) {
+      const r = await fetch("/admin/flows/list", {headers: hdrs()});
+      if (!r.ok) throw new Error("Eroare server");
+      _allFlows = await r.json();
+      populateFlowInstDropdown(_allFlows);
+    }
+    let flows = [..._allFlows];
     // Filtrare client-side
     if (search) flows = flows.filter(f => 
       (f.flowId||"").toLowerCase().includes(search) ||
@@ -566,6 +624,8 @@ async function loadFlowsList() {
     if (statusF === "active") flows = flows.filter(f => !f.completed && f.status !== "refused");
     else if (statusF === "done") flows = flows.filter(f => f.completed);
     else if (statusF === "refused") flows = flows.filter(f => f.status === "refused");
+    if (instF) flows = flows.filter(f => (f.institutie||"") === instF);
+    if (deptF) flows = flows.filter(f => (f.compartiment||"") === deptF);
     if (!flows.length) { area.innerHTML = '<span style="color:var(--muted);">Niciun flux găsit.</span>'; return; }
     area.innerHTML = `
       <div style="overflow-x:auto;">
@@ -630,7 +690,7 @@ async function regenerateToken(flowId, signerEmail) {
     const j = await r.json();
     if (j.ok) {
       alert(`✅ Token nou generat și email trimis către ${signerEmail}.`);
-      loadFlowsList(); // refresh
+      _allFlows = null; loadFlowsList(true); // refresh
     } else alert("❌ " + (j.message||j.error||"Eroare"));
   } catch(e) { alert("❌ " + e.message); }
 }
