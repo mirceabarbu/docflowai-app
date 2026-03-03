@@ -123,7 +123,7 @@ function makeFlowId(institutie) {
 function newFlowId(institutie) { return makeFlowId(institutie); }
 function sha256Hex(buffer) { return crypto.createHash("sha256").update(buffer).digest("hex"); }
 
-// stampeaza footer pe ultima pagina a PDF-ului la finalizarea fluxului
+// Aplica footer pe ultima pagina a PDF-ului semnat — apelat la finalizarea fluxului
 async function stampFooterOnPdf(pdfB64, flowData) {
   if (!pdfB64 || !PDFLib) return pdfB64;
   try {
@@ -1118,8 +1118,23 @@ const createFlow = async (req,res) => {
     } catch(e) {}
     // flowId generat DUPĂ ce avem institutia — conține inițialele ei
     const flowId = newFlowId(initInstitutie);
-    // Footer aplicat la finalizare flux, nu la creare
+    // Footer NU se aplica la creare — stampFooterOnPdf() se apeleaza la allDone pe signedPdfB64
     let finalPdfB64 = body.pdfB64 ?? null;
+    // Pentru flux cu ancore existente (Forexebug etc.) — reîncărcăm PDF-ul cu ignoreEncryption
+    // ca să eliminăm permisiunile restrictive care blochează completarea câmpurilor
+    if (finalPdfB64 && PDFLib && body.flowType === "ancore") {
+      try {
+        const { PDFDocument } = PDFLib;
+        const clean = finalPdfB64.includes(",") ? finalPdfB64.split(",")[1] : finalPdfB64;
+        const pdfDoc = await PDFDocument.load(Buffer.from(clean, "base64"), { ignoreEncryption: true });
+        // Re-salvăm fără dicționarul de criptare/permisiuni — câmpurile devin editabile
+        finalPdfB64 = Buffer.from(await pdfDoc.save()).toString("base64");
+        console.log(`PDF ancore re-salvat fara restrictii pentru flow ${flowId}`);
+      } catch(e) {
+        console.warn("PDF permissions strip error:", e.message);
+        // Continuăm cu PDF-ul original dacă re-salvarea eșuează
+      }
+    }
         const data = {
       flowId, docName, initName, initEmail,
       initFunctie: initFunctie,
@@ -1209,9 +1224,33 @@ app.get("/flows/:flowId/pdf", async (req,res) => {
     const b64 = data.pdfB64;
     if (!b64||typeof b64!=="string") return res.status(404).json({error:"pdf_missing"});
     const raw = b64.includes("base64,")?b64.split("base64,")[1]:b64;
-    const pdfBuf = Buffer.from(raw,"base64");
+    let pdfBuf = Buffer.from(raw,"base64");
+
+    // Flux ancore: deblocam restrictiile PDF INAINTE de preHash
+    // preHash trebuie sa corespunda cu PDF-ul efectiv descarcat de semnatar
+    if (data.flowType === "ancore" && PDFLib) {
+      try {
+        const { PDFDocument, PDFName, PDFNumber } = PDFLib;
+        const pdfDoc = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
+        try { delete pdfDoc.context.trailerInfo.Encrypt; } catch(e2) {}
+        try { pdfDoc.catalog.delete(PDFName.of("Perms")); } catch(e2) {}
+        try {
+          const af = pdfDoc.catalog.get(PDFName.of("AcroForm"));
+          if (af) {
+            const afObj = pdfDoc.context.lookup(af);
+            if (afObj && afObj.set) afObj.set(PDFName.of("SigFlags"), PDFNumber.of(1));
+          }
+        } catch(e2) {}
+        const unlockedBytes = await pdfDoc.save({ useObjectStreams: false });
+        pdfBuf = Buffer.from(unlockedBytes);
+        console.log("PDF ancore deblocat pentru flow", req.params.flowId);
+      } catch(unlockErr) {
+        console.warn("PDF unlock failed, serving original:", unlockErr.message);
+      }
+    }
+
+    // preHash din PDF-ul EFECTIV servit (deblocat sau original) — sincronizat cu ce descarca semnatarul
     const preHash = sha256Hex(pdfBuf);
-    // Emite uploadToken JWT doar pentru semnatarul valid
     if (signerToken) {
       const signer = (data.signers||[]).find(s=>s.token===signerToken);
       if (signer) {
@@ -1481,11 +1520,25 @@ app.post("/flows/:flowId/register-download", async (req,res) => {
     const signer = (data.signers||[]).find(s=>s.token===signerToken);
     if (!signer) return res.status(403).json({error:"invalid_signer_token"});
     if (isSignerTokenExpired(signer)) return res.status(403).json({error:"token_expired"});
-    // SECURITATE FIX #4: preHash calculat de SERVER pe PDF-ul original din DB
-    // Nu acceptăm hash de la client — ar putea fi falsificat
+    // SECURITATE FIX #4: preHash calculat de SERVER — nu acceptam hash de la client
+    // Pentru flux ancore: preHash din PDF-ul deblocat (identic cu ce primeste semnatarul de la /pdf)
     const rawPdf = (data.pdfB64||"").includes(",") ? (data.pdfB64||"").split(",")[1] : (data.pdfB64||"");
-    const serverPreHash = rawPdf ? sha256Hex(Buffer.from(rawPdf, "base64")) : null;
-    if (!serverPreHash) return res.status(500).json({error:"pdf_missing_cannot_issue_token"});
+    if (!rawPdf) return res.status(500).json({error:"pdf_missing_cannot_issue_token"});
+    let pdfBufRD = Buffer.from(rawPdf, "base64");
+    if (data.flowType === "ancore" && PDFLib) {
+      try {
+        const { PDFDocument, PDFName, PDFNumber } = PDFLib;
+        const pdfDoc = await PDFDocument.load(pdfBufRD, { ignoreEncryption: true });
+        try { delete pdfDoc.context.trailerInfo.Encrypt; } catch(e2) {}
+        try { pdfDoc.catalog.delete(PDFName.of("Perms")); } catch(e2) {}
+        try {
+          const af = pdfDoc.catalog.get(PDFName.of("AcroForm"));
+          if (af) { const afObj = pdfDoc.context.lookup(af); if (afObj && afObj.set) afObj.set(PDFName.of("SigFlags"), PDFNumber.of(1)); }
+        } catch(e2) {}
+        pdfBufRD = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
+      } catch(e2) { console.warn("register-download unlock error:", e2.message); }
+    }
+    const serverPreHash = sha256Hex(pdfBufRD);
     const uploadToken = jwt.sign(
       { flowId, signerToken, preHash: serverPreHash },
       JWT_SECRET,
