@@ -5,11 +5,12 @@
 
 import { Router } from 'express';
 import { requireAuth, requireAdmin, hashPassword, generatePassword } from '../middleware/auth.mjs';
-import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData } from '../db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData, insertFlowEvent } from '../db/index.mjs';
 import { validatePhone } from '../whatsapp.mjs';
 import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
 import { archiveFlow, verifyDrive } from '../drive.mjs';
 import { verifyWhatsApp, sendWaSignRequest } from '../whatsapp.mjs';
+import { rateLimitHeavy } from '../middleware/rateLimit.mjs';
 
 // pdf-lib opțional — pentru audit PDF export
 let PDFLibAdmin = null;
@@ -229,7 +230,7 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
   } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
 });
 
-router.post('/admin/flows/archive', async (req, res) => {
+router.post('/admin/flows/archive', rateLimitHeavy, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
@@ -255,6 +256,7 @@ router.post('/admin/flows/archive', async (req, res) => {
         data.driveFileLinkFinal = driveResult.driveFileLinkFinal || null;
         data.driveFileLinkOriginal = driveResult.driveFileLinkOriginal || null;
         await saveFlow(flowId, data);
+        await insertFlowEvent({ flow_id: flowId, type: 'ARCHIVED', actor: actor.email || 'admin', meta: { driveFileId: driveResult.driveFileIdFinal || null } });
         results.push({ flowId, ok: true });
         console.log(`📦 Archived flow ${flowId} to Drive`);
       } catch(e) {
@@ -403,15 +405,20 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         delegatedFrom: s.delegatedFrom || null,
         tokenCreatedAt: s.tokenCreatedAt || null,
       })),
-      events: Array.isArray(data.events) ? data.events : [],
       signedPdfVersions: Array.isArray(data.signedPdfVersions) ? data.signedPdfVersions : [],
     };
+    // Citește evenimentele din flow_events (append-only table)
+    const { rows: evRows } = await pool.query(
+      'SELECT id, at, type, actor, channel, ok, meta FROM flow_events WHERE flow_id=$1 ORDER BY at ASC',
+      [flowId]
+    );
+    audit.events = evRows.map(r => ({ id: r.id, at: r.at, type: r.type, actor: r.actor, channel: r.channel, ok: r.ok, ...( r.meta || {}) }));
+
     if (format === 'csv') {
-      // CSV simplu al evenimentelor
-      const lines = ['timestamp,type,by,channel,details'];
+      const lines = ['timestamp,type,actor,channel,ok,meta'];
       for (const e of audit.events) {
-        const details = JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => !['at','type'].includes(k)))).replace(/"/g, '""');
-        lines.push(`"${e.at}","${e.type}","${e.by || ''}","${e.channel || ''}","${details}"`);
+        const meta = JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => !['id','at','type','actor','channel','ok'].includes(k)))).replace(/"/g, '""');
+        lines.push(`"${e.at}","${e.type}","${e.actor || ''}","${e.channel || ''}","${e.ok ?? ''}","${meta}"`);
       }
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="audit_${flowId}.csv"`);
@@ -432,7 +439,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       }
       txt += `\n--- EVENIMENTE (${audit.events.length}) ---\n`;
       for (const e of audit.events) {
-        txt += `[${e.at}] ${e.type}${e.by ? ' BY ' + e.by : ''}${e.channel ? ' via ' + e.channel : ''}${e.reason ? ' REASON: ' + e.reason : ''}\n`;
+        txt += `[${e.at}] ${e.type}${e.actor ? ' BY ' + e.actor : ''}${e.channel ? ' via ' + e.channel : ''}${e.ok !== null && e.ok !== undefined ? (e.ok ? ' OK' : ' FAILED') : ''}${e.reason ? ' REASON: ' + e.reason : ''}\n`;
       }
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="audit_${flowId}.txt"`);
@@ -558,4 +565,108 @@ router.get('/admin/flows/audit-export', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="audit_export_${new Date().toISOString().slice(0,10)}.csv"`);
     return res.send(lines.join('\n'));
   } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ── GET /admin/analytics/summary ──────────────────────────────────────────
+router.get('/admin/analytics/summary', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const from = req.query.from || new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const to   = req.query.to   || new Date().toISOString().slice(0, 10);
+
+    // ── 1. Fluxuri create / zi ────────────────────────────────────────────
+    const { rows: createdPerDay } = await pool.query(`
+      SELECT DATE(at) AS day, COUNT(*) AS count
+      FROM flow_events
+      WHERE type = 'FLOW_CREATED'
+        AND at >= $1::date AND at < ($2::date + INTERVAL '1 day')
+      GROUP BY DATE(at) ORDER BY day ASC
+    `, [from, to]);
+
+    // ── 2. Fluxuri finalizate / zi ────────────────────────────────────────
+    const { rows: completedPerDay } = await pool.query(`
+      SELECT DATE(at) AS day, COUNT(*) AS count
+      FROM flow_events
+      WHERE type = 'FLOW_COMPLETED'
+        AND at >= $1::date AND at < ($2::date + INTERVAL '1 day')
+      GROUP BY DATE(at) ORDER BY day ASC
+    `, [from, to]);
+
+    // ── 3. Timp mediu semnare (FLOW_CREATED → FLOW_COMPLETED, același flow_id) ──
+    const { rows: avgRows } = await pool.query(`
+      SELECT AVG(EXTRACT(EPOCH FROM (fc.at - fc2.at))) AS avg_seconds
+      FROM flow_events fc
+      JOIN flow_events fc2 ON fc.flow_id = fc2.flow_id
+      WHERE fc.type  = 'FLOW_COMPLETED'
+        AND fc2.type = 'FLOW_CREATED'
+        AND fc.at  >= $1::date AND fc.at  < ($2::date + INTERVAL '1 day')
+    `, [from, to]);
+    const avgSeconds = avgRows[0]?.avg_seconds ? Math.round(parseFloat(avgRows[0].avg_seconds)) : null;
+
+    // ── 4. Total fluxuri create + finalizate + refuzate în perioadă ───────
+    const { rows: totals } = await pool.query(`
+      SELECT type, COUNT(*) AS count
+      FROM flow_events
+      WHERE type IN ('FLOW_CREATED', 'FLOW_COMPLETED', 'REFUSED')
+        AND at >= $1::date AND at < ($2::date + INTERVAL '1 day')
+      GROUP BY type
+    `, [from, to]);
+    const totalsMap = {};
+    totals.forEach(r => { totalsMap[r.type] = parseInt(r.count); });
+
+    // ── 5. % refuzuri (REFUSED / FLOW_CREATED) ───────────────────────────
+    const totalCreated  = totalsMap['FLOW_CREATED']   || 0;
+    const totalCompleted = totalsMap['FLOW_COMPLETED'] || 0;
+    const totalRefused  = totalsMap['REFUSED']        || 0;
+    const refuseRate    = totalCreated > 0 ? Math.round((totalRefused / totalCreated) * 100 * 10) / 10 : 0;
+
+    // ── 6. Top inițiatori ─────────────────────────────────────────────────
+    const { rows: topInitiatori } = await pool.query(`
+      SELECT actor AS email, COUNT(*) AS count
+      FROM flow_events
+      WHERE type = 'FLOW_CREATED'
+        AND at >= $1::date AND at < ($2::date + INTERVAL '1 day')
+        AND actor IS NOT NULL
+      GROUP BY actor ORDER BY count DESC LIMIT 10
+    `, [from, to]);
+
+    // ── 7. Top compartimente ──────────────────────────────────────────────
+    const { rows: topCompartimente } = await pool.query(`
+      SELECT u.compartiment, COUNT(*) AS count
+      FROM flow_events fe
+      JOIN users u ON lower(u.email) = lower(fe.actor)
+      WHERE fe.type = 'FLOW_CREATED'
+        AND fe.at >= $1::date AND fe.at < ($2::date + INTERVAL '1 day')
+        AND u.compartiment IS NOT NULL AND u.compartiment != ''
+      GROUP BY u.compartiment ORDER BY count DESC LIMIT 10
+    `, [from, to]);
+
+    // ── 8. Notificări reușite / eșuate ───────────────────────────────────
+    const { rows: notifStats } = await pool.query(`
+      SELECT channel, ok, COUNT(*) AS count
+      FROM flow_events
+      WHERE type = 'NOTIFY'
+        AND at >= $1::date AND at < ($2::date + INTERVAL '1 day')
+        AND channel IS NOT NULL
+      GROUP BY channel, ok
+    `, [from, to]);
+
+    return res.json({
+      period: { from, to },
+      totals: { created: totalCreated, completed: totalCompleted, refused: totalRefused, refuseRate },
+      avgSigningSeconds: avgSeconds,
+      avgSigningHuman: avgSeconds ? (avgSeconds < 3600
+        ? `${Math.round(avgSeconds / 60)} min`
+        : avgSeconds < 86400
+          ? `${Math.round(avgSeconds / 3600)} ore`
+          : `${Math.round(avgSeconds / 86400)} zile`) : null,
+      createdPerDay:   createdPerDay.map(r   => ({ day: r.day.toISOString().slice(0,10), count: parseInt(r.count) })),
+      completedPerDay: completedPerDay.map(r => ({ day: r.day.toISOString().slice(0,10), count: parseInt(r.count) })),
+      topInitiatori:   topInitiatori.map(r   => ({ email: r.email, count: parseInt(r.count) })),
+      topCompartimente: topCompartimente.map(r => ({ compartiment: r.compartiment, count: parseInt(r.count) })),
+      notifStats:      notifStats.map(r       => ({ channel: r.channel, ok: r.ok, count: parseInt(r.count) })),
+    });
+  } catch(e) { console.error('analytics error:', e); return res.status(500).json({ error: String(e.message || e) }); }
 });

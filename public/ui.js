@@ -30,10 +30,7 @@ const DocFlowUI = (() => {
       --topbar-h: 60px;
     }
 
-    *, *::before, *::after { box-sizing: border-box; }
-    /* Nu resetăm margin/padding global — ar sparge tabele și formulare native */
-    h1,h2,h3,h4,h5,h6,p,figure,blockquote,dl,dd { margin: 0; }
-    #df-topbar *, #df-toasts * { margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: system-ui, -apple-system, sans-serif;

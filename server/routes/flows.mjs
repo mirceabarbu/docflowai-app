@@ -9,7 +9,8 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, requireAuth, requireAdmin, sha256Hex } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData } from '../db/index.mjs';
+import { rateLimitHeavy } from '../middleware/rateLimit.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, insertFlowEvent } from '../db/index.mjs';
 
 const router = Router();
 
@@ -98,7 +99,7 @@ const createFlow = async (req, res) => {
       pdfB64: finalPdfB64,
       signers: normalizedSigners,
       createdAt, updatedAt: new Date().toISOString(),
-      events: [{ at: new Date().toISOString(), type: 'FLOW_CREATED', by: initEmail }],
+      events: [],  // legacy compat — evenimente reale în flow_events
     };
     await saveFlow(flowId, data);
 
@@ -284,8 +285,7 @@ const signFlow = async (req, res) => {
     signers[idx].status = 'signed'; signers[idx].signedAt = new Date().toISOString();
     signers[idx].signature = sig; signers[idx].pdfUploaded = false;
     data.signers = signers; data.updatedAt = new Date().toISOString();
-    data.events = Array.isArray(data.events) ? data.events : [];
-    data.events.push({ at: new Date().toISOString(), type: 'SIGNED', by: signers[idx].email || signers[idx].name || 'unknown', order: signers[idx].order });
+    await insertFlowEvent({ flow_id: flowId, type: 'SIGNED', actor: signers[idx].email || null, meta: { order: signers[idx].order, name: signers[idx].name, rol: signers[idx].rol } });
     await saveFlow(flowId, data);
     return res.json({ ok: true, flowId, completed: data.signers.every(s => s.status === 'signed'), nextSigner: null, nextLink: null, awaitingUpload: true, flow: _stripPdfB64(data) });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
@@ -318,8 +318,7 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
     const refuseReason = String(reason).trim();
     signers[idx].status = 'refused'; signers[idx].refusedAt = new Date().toISOString(); signers[idx].refuseReason = refuseReason;
     data.signers = signers; data.status = 'refused'; data.refusedAt = new Date().toISOString(); data.updatedAt = new Date().toISOString();
-    data.events = Array.isArray(data.events) ? data.events : [];
-    data.events.push({ at: new Date().toISOString(), type: 'REFUSED', by: signers[idx].email, reason: refuseReason });
+    await insertFlowEvent({ flow_id: flowId, type: 'REFUSED', actor: signers[idx].email || null, meta: { reason: refuseReason, order: signers[idx].order, name: signers[idx].name } });
     await saveFlow(flowId, data);
     const refuseMsg = `${refuserName}${refuserRol ? ' (' + refuserRol + ')' : ''} a refuzat semnarea documentului „${data.docName}". Motiv: ${refuseReason}`;
     const toNotify = [{ email: data.initEmail }, ...signers.filter((s, i) => i < idx && s.status === 'signed' && s.email).map(s => ({ email: s.email }))];
@@ -364,7 +363,7 @@ router.post('/flows/:flowId/register-download', async (req, res) => {
 });
 
 // ── POST /flows/:flowId/upload-signed-pdf ─────────────────────────────────
-router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
+router.post('/flows/:flowId/upload-signed-pdf', rateLimitHeavy, async (req, res) => {
   try {
     if (requireDb(res)) return;
     const { flowId } = req.params;
@@ -397,15 +396,14 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     data.signedPdfVersions.push({ uploadedAt: new Date().toISOString(), uploadedBy: signers[idx].email || signers[idx].name || 'unknown', signerIndex: idx, signerName: signerName || signers[idx].name || '' });
     data.signedPdfB64 = signedPdfB64; data.signedPdfUploadedAt = new Date().toISOString(); data.signedPdfUploadedBy = signers[idx].email || signers[idx].name || 'unknown';
     data.updatedAt = new Date().toISOString();
-    data.events = Array.isArray(data.events) ? data.events : [];
-    data.events.push({ at: new Date().toISOString(), type: 'SIGNED_PDF_UPLOADED', by: signers[idx].email || signers[idx].name || 'unknown', order: signers[idx].order });
+    await insertFlowEvent({ flow_id: flowId, type: 'SIGNED_PDF_UPLOADED', actor: signers[idx].email || null, meta: { order: signers[idx].order } });
     const currentOrder = Number(signers[idx]?.order) || 0;
     let nextIdx = -1, bestOrder = Infinity;
     for (let i = 0; i < signers.length; i++) { const o = Number(signers[i].order) || 0; if (signers[i].status !== 'signed' && o > currentOrder && o < bestOrder) { bestOrder = o; nextIdx = i; } }
     if (nextIdx !== -1) signers.forEach((s, i) => { if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending'; });
     data.signers = signers;
     const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
-    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); data.docName = `${flowId}_${data.docName}`; data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
+    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); data.docName = `${flowId}_${data.docName}`; await insertFlowEvent({ flow_id: flowId, type: 'FLOW_COMPLETED', actor: 'system', meta: { docName: data.docName } }); }
     const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
     if (nextSigner) nextSigner.emailSent = true;
     await saveFlow(flowId, data);
@@ -453,8 +451,7 @@ router.post('/flows/:flowId/regenerate-token', async (req, res) => {
     const newToken = crypto.randomBytes(16).toString('hex');
     signers[idx].token = newToken; signers[idx].tokenCreatedAt = new Date().toISOString();
     data.signers = signers; data.updatedAt = new Date().toISOString();
-    data.events = data.events || [];
-    data.events.push({ at: new Date().toISOString(), type: 'TOKEN_REGENERATED', by: 'admin', signerEmail, order: signers[idx].order });
+    await insertFlowEvent({ flow_id: flowId, type: 'TOKEN_REGENERATED', actor: actor.email || 'admin', meta: { signerEmail, order: signers[idx].order } });
     await saveFlow(flowId, data);
     const newLink = _buildSignerLink(req, flowId, newToken);
     await _notify({ userEmail: signers[idx].email, flowId, type: 'YOUR_TURN', title: 'Link de semnare reînnoit', message: `Link-ul tău de semnare pentru documentul „${data.docName}" a fost reînnoit.`, waParams: { signerName: signers[idx].name || signers[idx].email, docName: data.docName } });
@@ -566,11 +563,13 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       parentFlowId: flowId,
-      events: [{ at: new Date().toISOString(), type: 'FLOW_REINITIATED', by: actor.email, fromFlowId: flowId }],
+      events: [],  // legacy compat
     };
     // Resetează pdfB64 la cel original (fără semnaturi)
     newData.signedPdfB64 = null; newData.signedPdfUploadedAt = null; newData.signedPdfUploadedBy = null; newData.signedPdfVersions = [];
     await saveFlow(newFlowId2, newData);
+    await insertFlowEvent({ flow_id: flowId, type: 'FLOW_REINITIATED', actor: actor.email, meta: { newFlowId: newFlowId2 } });
+    await insertFlowEvent({ flow_id: newFlowId2, type: 'FLOW_CREATED', actor: actor.email, meta: { fromFlowId: flowId, reinitiated: true, docName: newData.docName } });
     // Notifică primul semnatar
     const first = remainingSigners[0];
     if (first?.email) {
@@ -625,8 +624,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     };
     data.signers = signers;
     data.updatedAt = new Date().toISOString();
-    data.events = Array.isArray(data.events) ? data.events : [];
-    data.events.push({ at: new Date().toISOString(), type: 'DELEGATED', from: originalEmail, to: toEmail, reason: String(reason).trim(), by: actor.email });
+    await insertFlowEvent({ flow_id: flowId, type: 'DELEGATED', actor: actor.email, meta: { from: originalEmail, to: toEmail, reason: String(reason).trim() } });
     await saveFlow(flowId, data);
 
     // Notificare delegat + original
