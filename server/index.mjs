@@ -19,12 +19,13 @@ import jwt from 'jsonwebtoken';
 import { WebSocketServer } from 'ws';
 
 import { pushToUser } from './push.mjs';
+import { rateLimitGlobal, rateLimitHeavy, rateLimitAuth } from './middleware/rateLimit.mjs';
 // ── PDF-lib opțional ───────────────────────────────────────────────────────
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available — flow stamp disabled:', e.message); }
 
 // ── DB layer ───────────────────────────────────────────────────────────────
-import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, insertFlowEvent } from './db/index.mjs';
 
 // ── Auth middleware ────────────────────────────────────────────────────────
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex } from './middleware/auth.mjs';
@@ -67,6 +68,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, '../public');
 app.use(express.static(PUBLIC_DIR));
+
+// ── Rate limiting ─────────────────────────────────────────────────────────
+// Global: 120 req/min per IP pe toate rutele non-statice
+app.use(['/auth', '/flows', '/admin', '/api', '/my-flows'], rateLimitGlobal);
+// Auth: 20 req/min suplimentar pe login/refresh
+app.use(['/auth/login', '/auth/refresh'], rateLimitAuth);
 
 app.get('/', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
 app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
@@ -270,7 +277,6 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {} }
   // Web Push (daca e configurat)
   pushToUser(pool, email, { title, body: message, icon: '/icon-192.png', badge: '/icon-72.png', data: { flowId, type } }).catch(() => {});
 
-  const eventsToAdd = [];
   const [emailResult, waResult] = await Promise.allSettled([
     needsEmail ? sendSignerEmail({ to: email, subject: title, html: `<div style="font-family:sans-serif;padding:20px;"><h2>${title}</h2><p>${message}</p></div>` }) : Promise.resolve({ ok: false, reason: 'disabled' }),
     needsWa ? (async () => {
@@ -281,17 +287,14 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {} }
     })() : Promise.resolve({ ok: false, reason: 'disabled' }),
   ]);
 
-  if (emailResult.status === 'fulfilled' && emailResult.value?.ok) eventsToAdd.push({ at: new Date().toISOString(), type: 'NOTIFY', channel: 'email', to: email, notifType: type });
-  else if (needsEmail) eventsToAdd.push({ at: new Date().toISOString(), type: 'NOTIFY_FAILED', channel: 'email', to: email, reason: String(emailResult.reason || emailResult.value?.error || 'failed') });
-
-  if (waResult.status === 'fulfilled' && waResult.value?.ok) eventsToAdd.push({ at: new Date().toISOString(), type: 'NOTIFY', channel: 'whatsapp', to: uRow?.phone || email, notifType: type });
-  else if (needsWa) eventsToAdd.push({ at: new Date().toISOString(), type: 'NOTIFY_FAILED', channel: 'whatsapp', to: uRow?.phone || email, reason: String(waResult.reason || waResult.value?.reason || 'failed') });
-
-  if (eventsToAdd.length && flowId) {
-    try {
-      const fd = await getFlowData(flowId);
-      if (fd) { fd.events = [...(Array.isArray(fd.events) ? fd.events : []), ...eventsToAdd]; await saveFlow(flowId, fd); }
-    } catch(e) { console.error('notify event save error:', e.message); }
+  // Loghează rezultatele în flow_events (append-only, fără saveFlow)
+  if (flowId) {
+    const emailOk = emailResult.status === 'fulfilled' && emailResult.value?.ok;
+    const waOk = waResult.status === 'fulfilled' && waResult.value?.ok;
+    if (needsEmail) await insertFlowEvent({ flow_id: flowId, type: 'NOTIFY', actor: email, channel: 'email', ok: emailOk,
+      meta: { notifType: type, to: email, ...(emailOk ? {} : { reason: String(emailResult.reason || emailResult.value?.error || 'failed') }) } });
+    if (needsWa) await insertFlowEvent({ flow_id: flowId, type: 'NOTIFY', actor: email, channel: 'whatsapp', ok: waOk,
+      meta: { notifType: type, to: uRow?.phone || email, ...(waOk ? {} : { reason: String(waResult.reason || waResult.value?.reason || 'failed') }) } });
   }
 }
 
