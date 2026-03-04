@@ -9,7 +9,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, requireAuth, requireAdmin, sha256Hex } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData, withFlowLock } from '../db/index.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData } from '../db/index.mjs';
 
 const router = Router();
 
@@ -369,152 +369,55 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     if (requireDb(res)) return;
     const { flowId } = req.params;
     const { token, signedPdfB64, signerName, uploadToken } = req.body || {};
-
-    // Validări preliminare (înainte de a intra în lock)
     if (!token) return res.status(400).json({ error: 'token_missing' });
-    if (!signedPdfB64 || typeof signedPdfB64 !== 'string')
-      return res.status(400).json({ error: 'signedPdfB64_missing' });
-    if (signedPdfB64.length > 40 * 1024 * 1024)
-      return res.status(413).json({ error: 'pdf_too_large_max_30mb' });
-    if (!uploadToken)
-      return res.status(403).json({ error: 'upload_token_missing', message: 'Lipsește tokenul de verificare.' });
-
+    if (!signedPdfB64 || typeof signedPdfB64 !== 'string') return res.status(400).json({ error: 'signedPdfB64_missing' });
+    if (signedPdfB64.length > 40 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_30mb' });
+    if (!uploadToken) return res.status(403).json({ error: 'upload_token_missing', message: 'Lipsește tokenul de verificare.' });
     let uploadPayload;
     try { uploadPayload = jwt.verify(uploadToken, JWT_SECRET); }
-    catch(jwtErr) {
-      return res.status(403).json({ error: 'upload_token_invalid', message: 'Token de upload invalid sau expirat.' });
-    }
+    catch(jwtErr) { return res.status(403).json({ error: 'upload_token_invalid', message: 'Token de upload invalid sau expirat.' }); }
     if (uploadPayload.flowId !== flowId) return res.status(403).json({ error: 'upload_token_flow_mismatch' });
     if (uploadPayload.signerToken !== token) return res.status(403).json({ error: 'upload_token_signer_mismatch' });
-
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    const signers = Array.isArray(data.signers) ? data.signers : [];
+    const idx = signers.findIndex(s => s.token === token);
+    if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
+    if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired', message: 'Link-ul de semnare a expirat (90 zile).' });
+    if (signers[idx].status !== 'signed') return res.status(409).json({ error: 'signer_not_signed_yet' });
     const rawUploaded = signedPdfB64.includes('base64,') ? signedPdfB64.split('base64,')[1] : signedPdfB64;
     const uploadedHash = sha256Hex(Buffer.from(rawUploaded, 'base64'));
-
-    if (uploadedHash === uploadPayload.preHash)
-      return res.status(422).json({ error: 'pdf_not_signed', message: 'Documentul uploadat este identic cu cel descărcat — nu conține semnătură.' });
-
-    // ── SELECT FOR UPDATE — protecție race condition ────────────────────────
-    let resultData = null;
-    try {
-      resultData = await withFlowLock(flowId, async (data) => {
-        if (!data) throw Object.assign(new Error('not_found'), { statusCode: 404 });
-
-        const signers = Array.isArray(data.signers) ? data.signers : [];
-        const idx = signers.findIndex(s => s.token === token);
-        if (idx === -1) throw Object.assign(new Error('invalid_token'), { statusCode: 400 });
-        if (_isSignerTokenExpired(signers[idx]))
-          throw Object.assign(new Error('token_expired'), { statusCode: 403 });
-        if (signers[idx].status !== 'signed')
-          throw Object.assign(new Error('signer_not_signed_yet'), { statusCode: 409 });
-
-        // Idempotență: același PDF deja uploadat → returnăm succes fără a scrie din nou
-        if (signers[idx].pdfUploaded && signers[idx].uploadedHash === uploadedHash) {
-          const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
-          return { __idempotent: true, data, allDone, signerIdx: idx, signers };
-        }
-
-        // Actualizare date
-        signers[idx].uploadVerified = true;
-        signers[idx].uploadedHash = uploadedHash;
-        signers[idx].pdfUploaded = true;
-
-        if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions = [];
-        data.signedPdfVersions.push({
-          uploadedAt: new Date().toISOString(),
-          uploadedBy: signers[idx].email || signers[idx].name || 'unknown',
-          signerIndex: idx,
-          signerName: signerName || signers[idx].name || '',
-        });
-
-        data.signedPdfB64 = signedPdfB64;
-        data.signedPdfUploadedAt = new Date().toISOString();
-        data.signedPdfUploadedBy = signers[idx].email || signers[idx].name || 'unknown';
-        data.updatedAt = new Date().toISOString();
-        data.events = Array.isArray(data.events) ? data.events : [];
-        data.events.push({
-          at: new Date().toISOString(), type: 'SIGNED_PDF_UPLOADED',
-          by: signers[idx].email || signers[idx].name || 'unknown',
-          order: signers[idx].order,
-        });
-
-        const currentOrder = Number(signers[idx]?.order) || 0;
-        let nextIdx = -1, bestOrder = Infinity;
-        for (let i = 0; i < signers.length; i++) {
-          const o = Number(signers[i].order) || 0;
-          if (signers[i].status !== 'signed' && o > currentOrder && o < bestOrder) {
-            bestOrder = o; nextIdx = i;
-          }
-        }
-        if (nextIdx !== -1) {
-          signers.forEach((s, i) => {
-            if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending';
-          });
-        }
-        data.signers = signers;
-
-        const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
-        if (allDone) {
-          data.completed = true;
-          data.completedAt = new Date().toISOString();
-          data.docName = `${flowId}_${data.docName}`;
-          data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' });
-        }
-
-        const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
-        if (nextSigner) nextSigner.emailSent = true;
-
-        return { data, allDone, signerIdx: idx, signers, nextSigner };
-      });
-    } catch(lockErr) {
-      const sc = lockErr.statusCode || 500;
-      return res.status(sc).json({ error: lockErr.message });
+    if (signers[idx].pdfUploaded && signers[idx].uploadedHash === uploadedHash) {
+      const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
+      return res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, idempotent: true });
     }
-
-    // Răspuns idempotent (același upload repetat)
-    if (resultData?.__idempotent) {
-      return res.json({
-        ok: true, flowId, completed: resultData.allDone,
-        uploadedAt: resultData.data.signedPdfUploadedAt,
-        downloadUrl: `/flows/${flowId}/signed-pdf`, idempotent: true,
-      });
-    }
-
-    const { data, allDone, signerIdx: idx, signers, nextSigner } = resultData;
+    if (uploadedHash === uploadPayload.preHash) return res.status(422).json({ error: 'pdf_not_signed', message: 'Documentul uploadat este identic cu cel descărcat — nu conține semnătură.' });
+    signers[idx].uploadVerified = true; signers[idx].uploadedHash = uploadedHash; signers[idx].pdfUploaded = true;
+    if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions = [];
+    data.signedPdfVersions.push({ uploadedAt: new Date().toISOString(), uploadedBy: signers[idx].email || signers[idx].name || 'unknown', signerIndex: idx, signerName: signerName || signers[idx].name || '' });
+    data.signedPdfB64 = signedPdfB64; data.signedPdfUploadedAt = new Date().toISOString(); data.signedPdfUploadedBy = signers[idx].email || signers[idx].name || 'unknown';
+    data.updatedAt = new Date().toISOString();
+    data.events = Array.isArray(data.events) ? data.events : [];
+    data.events.push({ at: new Date().toISOString(), type: 'SIGNED_PDF_UPLOADED', by: signers[idx].email || signers[idx].name || 'unknown', order: signers[idx].order });
+    const currentOrder = Number(signers[idx]?.order) || 0;
+    let nextIdx = -1, bestOrder = Infinity;
+    for (let i = 0; i < signers.length; i++) { const o = Number(signers[i].order) || 0; if (signers[i].status !== 'signed' && o > currentOrder && o < bestOrder) { bestOrder = o; nextIdx = i; } }
+    if (nextIdx !== -1) signers.forEach((s, i) => { if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending'; });
+    data.signers = signers;
+    const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
+    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); data.docName = `${flowId}_${data.docName}`; data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
+    const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
+    if (nextSigner) nextSigner.emailSent = true;
+    await saveFlow(flowId, data);
     console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
-    res.json({
-      ok: true, flowId, completed: allDone,
-      uploadedAt: data.signedPdfUploadedAt,
-      downloadUrl: `/flows/${flowId}/signed-pdf`,
-      nextSigner: nextSigner || null,
-    });
-
-    // Notificări async — după ce răspunsul a fost trimis
+    res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, nextSigner: nextSigner || null });
     setImmediate(async () => {
       try {
-        if (allDone && data.initEmail) {
-          await _notify({
-            userEmail: data.initEmail, flowId, type: 'COMPLETED',
-            title: '✅ Document semnat complet',
-            message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`,
-            waParams: { docName: data.docName },
-          });
-        }
-        if (nextSigner?.email) {
-          await _notify({
-            userEmail: nextSigner.email, flowId, type: 'YOUR_TURN',
-            title: 'Document de semnat',
-            message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`,
-            waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName },
-          });
-        }
-      } catch(notifErr) {
-        console.error(`❌ Notificare async eșuată pentru flow ${flowId}:`, notifErr.message);
-      }
+        if (allDone && data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: '✅ Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName } });
+        if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName } });
+      } catch(notifErr) { console.error(`❌ Notificare async eșuată pentru flow ${flowId}:`, notifErr.message); }
     });
-  } catch(e) {
-    console.error('upload-signed-pdf error:', e);
-    return res.status(500).json({ error: 'server_error' });
-  }
+  } catch(e) { console.error('upload-signed-pdf error:', e); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/resend ─────────────────────────────────────────────

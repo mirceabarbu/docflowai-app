@@ -229,32 +229,3 @@ export async function getFlowData(id) {
   const r = await pool.query('SELECT data FROM flows WHERE id=$1', [id]);
   return r.rows[0]?.data ?? null;
 }
-
-/**
- * Execută callback(data, client) în cadrul unui transaction cu SELECT FOR UPDATE.
- * Previne race conditions pe operații read-modify-write.
- * callback trebuie să returneze data modificată (sau null ca să nu salveze).
- */
-export async function withFlowLock(flowId, callback) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const r = await client.query('SELECT data FROM flows WHERE id=$1 FOR UPDATE', [flowId]);
-    const data = r.rows[0]?.data ?? null;
-    const updated = await callback(data, client);
-    if (updated !== null && updated !== undefined) {
-      await client.query(
-        `INSERT INTO flows (id,data) VALUES ($1,$2::jsonb)
-         ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
-        [flowId, JSON.stringify(updated)]
-      );
-    }
-    await client.query('COMMIT');
-    return updated;
-  } catch(e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
-  }
-}

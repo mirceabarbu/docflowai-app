@@ -22,19 +22,14 @@ import { pushToUser } from './push.mjs';
 // ── PDF-lib opțional ───────────────────────────────────────────────────────
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available — flow stamp disabled:', e.message); }
-injectPDFLib(PDFLib);
 
 // ── DB layer ───────────────────────────────────────────────────────────────
-import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, withFlowLock, requireDb } from './db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
 
 // ── Auth middleware ────────────────────────────────────────────────────────
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex } from './middleware/auth.mjs';
 
 // ── Routers ────────────────────────────────────────────────────────────────
-import { newFlowId, buildSignerLink, stripSensitive, stripPdfB64, isSignerTokenExpired } from './utils/helpers.mjs';
-import { stampFooterOnPdf, injectPDFLib } from './utils/pdf.mjs';
-import templatesRouter from './routes/templates.mjs';
-
 import authRouter from './routes/auth.mjs';
 import { injectRateLimiter } from './routes/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
@@ -79,7 +74,128 @@ app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')
 app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'notifications.html')));
 app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
 
+// ── Template API ──────────────────────────────────────────────────────────
+app.get('/api/templates', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    const institutie = uRows[0]?.institutie || '';
+    const { rows } = await pool.query(
+      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='')\n       ORDER BY user_email=$1 DESC, name ASC`,
+      [actor.email.toLowerCase(), institutie]
+    );
+    res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
 
+app.post('/api/templates', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { name, signers, shared } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
+  if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
+  try {
+    const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    const institutie = uRows[0]?.institutie || '';
+    const { rows } = await pool.query(
+      'INSERT INTO templates (user_email,institutie,name,signers,shared) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared]
+    );
+    res.status(201).json({ ...rows[0], isOwner: true });
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+app.put('/api/templates/:id', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { name, signers, shared } = req.body || {};
+  try {
+    const { rows } = await pool.query(
+      'UPDATE templates SET name=$1,signers=$2,shared=$3,updated_at=NOW() WHERE id=$4 AND user_email=$5 RETURNING *',
+      [name?.trim(), JSON.stringify(signers), !!shared, parseInt(req.params.id), actor.email.toLowerCase()]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not_found_or_not_owner' });
+    res.json({ ...rows[0], isOwner: true });
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+app.delete('/api/templates/:id', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rowCount } = await pool.query('DELETE FROM templates WHERE id=$1 AND user_email=$2', [parseInt(req.params.id), actor.email.toLowerCase()]);
+    if (!rowCount) return res.status(404).json({ error: 'not_found_or_not_owner' });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+// ── Helpers (shared across routes) ────────────────────────────────────────
+function publicBaseUrl(req) {
+  const envBase = process.env.PUBLIC_BASE_URL;
+  if (envBase) return envBase.replace(/\/$/, '');
+  const host = req.get('host');
+  const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+  return `${proto}://${host}`;
+}
+function makeFlowId(institutie) {
+  const words = (institutie || '').trim().split(/\s+/).filter(Boolean);
+  const initials = words.length >= 2 ? words.slice(0, 4).map(w => w[0].toUpperCase()).join('') : (words[0] ? words[0].slice(0, 3).toUpperCase() : 'DOC');
+  const rand = crypto.randomBytes(5).toString('hex').toUpperCase();
+  return `${initials}_${rand}`;
+}
+function newFlowId(institutie) { return makeFlowId(institutie); }
+function buildSignerLink(req, flowId, token) {
+  return `${publicBaseUrl(req)}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(token)}`;
+}
+function stripPdfB64(data) {
+  if (!data || typeof data !== 'object') return data;
+  const { pdfB64, signedPdfB64, ...rest } = data;
+  return { ...rest, hasPdf: !!pdfB64, hasSignedPdf: !!signedPdfB64 };
+}
+function stripSensitive(data, callerSignerToken = null) {
+  if (!data || typeof data !== 'object') return data;
+  const { pdfB64, signedPdfB64, ...rest } = data;
+  return {
+    ...rest, hasPdf: !!pdfB64,
+    hasSignedPdf: !!(signedPdfB64 || (data.storage === 'drive' && data.driveFileLinkFinal)),
+    signers: (data.signers || []).map(s => {
+      const { token, ...signerRest } = s;
+      return callerSignerToken && s.token === callerSignerToken ? { ...signerRest, token } : signerRest;
+    }),
+  };
+}
+
+const SIGNER_TOKEN_EXPIRY_DAYS = 90;
+function isSignerTokenExpired(signer) {
+  if (!signer.tokenCreatedAt) return false;
+  const created = new Date(signer.tokenCreatedAt).getTime();
+  return (Date.now() - created) > SIGNER_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+}
+
+// ── Stamp footer helper ────────────────────────────────────────────────────
+async function stampFooterOnPdf(pdfB64, flowData) {
+  if (!pdfB64 || !PDFLib) return pdfB64;
+  try {
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
+    function ro(t) { return String(t || '').split('').map(ch => diacr[ch] || ch).join(''); }
+    const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
+    const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+    const { width: pW } = lastPage.getSize();
+    const MARGIN = 40, footerY = 14;
+    const createdDate = flowData.createdAt ? new Date(flowData.createdAt).toLocaleString('ro-RO') : new Date().toLocaleString('ro-RO');
+    const parts = [ro(flowData.initName || ''), flowData.initFunctie ? ro(flowData.initFunctie) : null, flowData.institutie ? ro(flowData.institutie) : null, flowData.compartiment ? ro(flowData.compartiment) : null].filter(Boolean).join(', ');
+    const footerLeft = createdDate + (parts ? '  |  ' + parts : '');
+    const footerRight = ro(flowData.flowId || '');
+    lastPage.drawLine({ start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 }, thickness: 0.4, color: rgb(0.75, 0.75, 0.75) });
+    lastPage.drawText(footerLeft, { x: MARGIN, y: footerY, size: 7, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: pW - MARGIN * 2 - (footerRight.length * 4.5) - 16 });
+    if (footerRight) lastPage.drawText(footerRight, { x: pW - MARGIN - (footerRight.length * 4.5), y: footerY, size: 7, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
+    return Buffer.from(await pdfDoc.save()).toString('base64');
+  } catch(e) { console.warn('stampFooterOnPdf error:', e.message); return pdfB64; }
+}
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 const wsClients = new Map();
@@ -173,13 +289,8 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {} }
 
   if (eventsToAdd.length && flowId) {
     try {
-      // withFlowLock previne race condition când notify() e apelat simultan
-      // de mai mulți semnatari sau canale (email + WhatsApp)
-      await withFlowLock(flowId, async (fd) => {
-        if (!fd) return null; // flux nu există, nu salvăm
-        fd.events = [...(Array.isArray(fd.events) ? fd.events : []), ...eventsToAdd];
-        return fd;
-      });
+      const fd = await getFlowData(flowId);
+      if (fd) { fd.events = [...(Array.isArray(fd.events) ? fd.events : []), ...eventsToAdd]; await saveFlow(flowId, fd); }
     } catch(e) { console.error('notify event save error:', e.message); }
   }
 }
@@ -194,7 +305,6 @@ injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired,
 app.use('/', authRouter);
 app.use('/', notifRouter);
 app.use('/', adminRouter);
-app.use('/', templatesRouter);
 app.use('/', flowsRouter);
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
