@@ -5,34 +5,154 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DocFlowAI — Inițiere flux</title>
     <style>
-    body{display:flex;flex-direction:column;min-height:100vh;}
-    main{flex:1;max-width:1100px;margin:0 auto;padding:20px 16px 60px;width:100%;}
-    header{background:rgba(15,23,49,.85);backdrop-filter:blur(12px);
-      border-bottom:1px solid var(--line);padding:13px 20px;
-      display:flex;align-items:center;justify-content:space-between;
-      position:sticky;top:0;z-index:200;}
-    .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1rem;text-decoration:none;color:var(--text);}
-    .logo-icon{width:32px;height:32px;border-radius:9px;
-      background:linear-gradient(135deg,var(--accent),var(--accent2));
-      display:flex;align-items:center;justify-content:center;font-size:14px;}
-    .row{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;margin-bottom:12px;}
-    .col-12{grid-column:span 12;}.col-5{grid-column:span 5;}.col-4{grid-column:span 4;}
-    .col-3{grid-column:span 3;}.col-7{grid-column:span 7;}.col-6{grid-column:span 6;}
-    @media(max-width:700px){.col-5,.col-4,.col-3,.col-7,.col-6{grid-column:span 12;}}
-    .muted{color:var(--muted);font-size:.82rem;}
-    .tabbtn{padding:7px 16px;border-radius:8px 8px 0 0;border:1px solid var(--line);
-      background:transparent;color:var(--muted);font-size:.83rem;cursor:pointer;transition:.15s;}
-    .tabbtn.active{background:var(--card);color:var(--sub);border-bottom-color:var(--card);}
-    .badge-notif{display:inline-flex;align-items:center;justify-content:center;
-      min-width:18px;height:18px;padding:0 5px;border-radius:9px;
-      font-size:.65rem;font-weight:700;background:var(--accent);color:#fff;
-      margin-left:4px;vertical-align:middle;}
-    .signer-row-ui{display:flex;gap:8px;align-items:flex-start;
-      background:rgba(255,255,255,.03);border:1px solid var(--line);
-      border-radius:10px;padding:10px 12px;margin-bottom:8px;flex-wrap:wrap;}
-    .drag-handle{cursor:grab;color:var(--muted);font-size:1.1rem;padding-top:10px;}
-    .drag-handle:active{cursor:grabbing;}
-  </style>
+      *{box-sizing:border-box;}
+body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
+      header { padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); display:flex; gap:12px; align-items:center; justify-content:space-between; }
+      .brand { font-weight: 800; letter-spacing:.2px; }
+      .tabs { display:flex; gap:8px; }
+      button, input, select { font: inherit; }
+      select option{background: var(--card); color: var(--text);} 
+
+      .tabbtn { background: rgba(255,255,255,.06); color:#e9eefc; border:1px solid rgba(255,255,255,.10); padding:8px 12px; border-radius:10px; cursor:pointer; }
+      .tabbtn.active { background: rgba(120,160,255,.22); border-color: rgba(120,160,255,.45); }
+      main { padding: 18px 20px; max-width: 1100px; margin: 0 auto; }
+      .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+      .grid { display:grid; gap:10px; grid-template-columns: repeat(12, 1fr); }
+      .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; } .col-6 { grid-column: span 6; } .col-12 { grid-column: span 12; }
+      label { display:block; font-size: 12px; opacity:.85; margin-bottom:6px; }
+      input, select { width:100%; padding:10px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
+      .row { display:flex; gap:10px; align-items:center; }
+      .btn { background: rgba(120,160,255,.22); border:1px solid rgba(120,160,255,.45); color:#e9eefc; padding:10px 12px; border-radius: 12px; cursor:pointer; }
+      .btn.secondary { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
+      .btn.danger { background: rgba(255,90,120,.18); border-color: rgba(255,90,120,.35); }
+      table { width:100%; border-collapse: collapse;  table-layout: fixed;}
+      th, td { text-align:left; padding:10px; border-bottom:1px solid rgba(255,255,255,.08); vertical-align: top; }
+      td input, td select{width:100%; min-width:0;}
+
+      th { font-size: 12px; opacity:.85; }
+      .muted { opacity:.8; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .pill { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12px; }
+      .ok { border-color: rgba(90,255,160,.35); background: rgba(90,255,160,.12); }
+      .warn { border-color: rgba(255,210,90,.35); background: rgba(255,210,90,.12); }
+      .bad { border-color: rgba(255,90,120,.35); background: rgba(255,90,120,.12); }
+      a { color: #a9c2ff; }
+      .hidden { display:none; }
+      tr.drag-over td { background: rgba(124,92,255,.18) !important; }
+    
+
+/* ===== DocFlowAI Theme (from landing index.html) + UI polish ===== */
+:root{
+  --bg:#0b1020;
+  --card:#0f1731;
+  --muted:#9db0ff;
+  --text:#eaf0ff;
+  --sub:#cdd8ff;
+  --line:rgba(255,255,255,.10);
+  --accent:#7c5cff;
+  --accent2:#2dd4bf;
+  --shadow: 0 20px 60px rgba(0,0,0,.35);
+  --radius:18px;
+}
+
+body{
+  background:
+    radial-gradient(900px 500px at 18% 8%, rgba(124,92,255,.35), transparent 60%),
+    radial-gradient(700px 450px at 82% 12%, rgba(45,212,191,.22), transparent 55%),
+    var(--bg) !important;
+  color: var(--text) !important;
+}
+
+header{
+  background: rgba(15,23,49,.55) !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+#userBar { display:flex !important; align-items:center !important; gap:10px !important; font-size:.82rem; }
+#userBar button { background:rgba(255,80,80,.18) !important; border:1px solid rgba(255,80,80,.35) !important; color:#ffaaaa !important; padding:6px 14px !important; border-radius:8px !important; cursor:pointer !important; font-size:.82rem !important; font-weight:600 !important; }
+
+.brand{ color: var(--text) !important; }
+.muted, .card-sub, label{ color: var(--sub) !important; opacity: .9 !important; }
+a{ color: var(--muted) !important; }
+
+/* Cards / panels */
+.card, .box{
+  background: rgba(15,23,49,.72) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow);
+}
+
+/* Inputs */
+input, select, textarea{
+  background: rgba(255,255,255,.04) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px !important;
+}
+input::placeholder, textarea::placeholder{ color: rgba(205,216,255,.65) !important; }
+
+input:focus, select:focus, textarea:focus{
+  outline: none !important;
+  border-color: rgba(124,92,255,.55) !important;
+  box-shadow: 0 0 0 4px rgba(124,92,255,.18);
+}
+
+/* Tabs */
+.tabbtn{
+  background: rgba(255,255,255,.05) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+  border-radius: 999px !important;
+}
+.tabbtn.active{
+  background: rgba(124,92,255,.22) !important;
+  border-color: rgba(124,92,255,.45) !important;
+}
+
+/* Buttons */
+.btn{
+  background: linear-gradient(135deg, var(--accent), var(--accent2)) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 650;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.25);
+}
+.btn.secondary{
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.btn.danger{
+  background: rgba(251,113,133,.15) !important;
+  border: 1px solid rgba(251,113,133,.35) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.btn:hover{ filter: brightness(1.05); transform: translateY(-1px); transition: .12s ease; }
+.btn:active{ transform: translateY(0); }
+
+/* Pills */
+.pill, .kpi{
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--sub) !important;
+}
+
+/* Tables */
+th, td{ border-bottom: 1px solid rgba(255,255,255,.08) !important; }
+th{ color: var(--sub) !important; }
+
+/* Small niceties */
+.mono{ color: var(--text) !important; }
+#err{ border-color: rgba(251,113,133,.35) !important; }
+/* ===== End theme ===== */
+</style>
     <script>
     // Auth guard — redirect to login if no valid JWT
     (function() {
@@ -55,7 +175,6 @@
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
-  <link rel="stylesheet" href="/styles.css"/>
 </head>
 <script>
   // Incarca pdf-lib pentru stampilare PDF la creare flux
@@ -1307,7 +1426,6 @@ async function signFromFluxuri(flowId) {
       }
       // ── End PDF.js renderer ────────────────────────────────────────────────
     </script>
-  <script src="/ui.js"></script>
-<script src="/notif-widget.js"></script>
+  <script src="/notif-widget.js"></script>
 </body>
 </html>

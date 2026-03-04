@@ -25,7 +25,7 @@ try { PDFLib = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-li
 injectPDFLib(PDFLib);
 
 // ── DB layer ───────────────────────────────────────────────────────────────
-import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, withFlowLock, requireDb, appendFlowEvent, migrateEventsToTable } from './db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, withFlowLock, requireDb } from './db/index.mjs';
 
 // ── Auth middleware ────────────────────────────────────────────────────────
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex } from './middleware/auth.mjs';
@@ -35,7 +35,6 @@ import { newFlowId, buildSignerLink, stripSensitive, stripPdfB64, isSignerTokenE
 import { stampFooterOnPdf, injectPDFLib } from './utils/pdf.mjs';
 import templatesRouter from './routes/templates.mjs';
 
-import { globalRateLimit, strictRateLimit, downloadRateLimit, adminRateLimit, injectRateLimitPool, startRateLimitCleanup } from './middleware/rateLimit.mjs';
 import authRouter from './routes/auth.mjs';
 import { injectRateLimiter } from './routes/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
@@ -65,10 +64,6 @@ app.use((req, res, next) => {
   res.on('finish', () => { console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now()-start}ms rid=${req.requestId}`); });
   next();
 });
-
-// ── Rate limiting global ───────────────────────────────────────────────────
-app.use(['/auth', '/api', '/flows', '/users'], globalRateLimit);
-app.use(['/admin'], adminRateLimit);
 
 process.on('unhandledRejection', (err) => console.error('❌ unhandledRejection:', err));
 process.on('uncaughtException', (err) => console.error('❌ uncaughtException:', err));
@@ -178,16 +173,19 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {} }
 
   if (eventsToAdd.length && flowId) {
     try {
-      // appendFlowEvent e atomic per-rând — nu necesită lock pentru notificări
-      for (const ev of eventsToAdd) { await appendFlowEvent(flowId, ev); }
+      // withFlowLock previne race condition când notify() e apelat simultan
+      // de mai mulți semnatari sau canale (email + WhatsApp)
+      await withFlowLock(flowId, async (fd) => {
+        if (!fd) return null; // flux nu există, nu salvăm
+        fd.events = [...(Array.isArray(fd.events) ? fd.events : []), ...eventsToAdd];
+        return fd;
+      });
     } catch(e) { console.error('notify event save error:', e.message); }
   }
 }
 
 // ── Inject dependencies into routers ─────────────────────────────────────
 injectRateLimiter(checkLoginRate, recordLoginFail, clearLoginRate);
-injectRateLimitPool(pool);
-startRateLimitCleanup();
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
 injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64 });
@@ -243,5 +241,5 @@ if (!PORT) { console.error('❌ PORT missing.'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`🚀 DocFlowAI server on port ${PORT}`);
   console.log(`🔌 WebSocket ready at ws://0.0.0.0:${PORT}/ws`);
-  initDbWithRetry().then(() => migrateEventsToTable());
+  initDbWithRetry();
 });

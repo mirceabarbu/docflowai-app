@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import { requireAuth, requireAdmin, hashPassword, generatePassword } from '../middleware/auth.mjs';
-import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData, getFlowEvents, appendFlowEvent } from '../db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData } from '../db/index.mjs';
 import { validatePhone } from '../whatsapp.mjs';
 import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
 import { archiveFlow, verifyDrive } from '../drive.mjs';
@@ -369,112 +369,6 @@ router.get('/health', async (req, res) => {
   } catch(e) { return res.json({ ...base, statsError: e.message }); }
 });
 
-// ── GET /admin/analytics — date pentru dashboard ──────────────────────────
-router.get('/admin/analytics', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  try {
-    const days = Math.min(parseInt(req.query.days || '30'), 365);
-    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-
-    // ── Counts generale ───────────────────────────────────────────────────
-    const [totalR, completedR, refusedR, activeR, usersR] = await Promise.all([
-      pool.query("SELECT COUNT(*) FROM flows WHERE created_at > $1", [cutoff]),
-      pool.query("SELECT COUNT(*) FROM flows WHERE created_at > $1 AND (data->>'completed')='true'", [cutoff]),
-      pool.query("SELECT COUNT(*) FROM flows WHERE created_at > $1 AND (data->>'status')='refused'", [cutoff]),
-      pool.query("SELECT COUNT(*) FROM flows WHERE created_at > $1 AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused'", [cutoff]),
-      pool.query("SELECT COUNT(*) FROM users"),
-    ]);
-
-    // ── Timp mediu de finalizare (ore) ────────────────────────────────────
-    const avgTimeR = await pool.query(`
-      SELECT AVG(
-        EXTRACT(EPOCH FROM (
-          COALESCE((data->>'completedAt')::timestamptz, updated_at) - created_at
-        )) / 3600
-      ) AS avg_hours
-      FROM flows
-      WHERE created_at > $1 AND (data->>'completed')='true'
-    `, [cutoff]);
-
-    // ── Fluxuri per zi (ultimele N zile) ─────────────────────────────────
-    const perDayR = await pool.query(`
-      SELECT DATE(created_at) AS day,
-             COUNT(*) AS total,
-             COUNT(*) FILTER (WHERE (data->>'completed')='true') AS completed,
-             COUNT(*) FILTER (WHERE (data->>'status')='refused') AS refused
-      FROM flows
-      WHERE created_at > $1
-      GROUP BY DATE(created_at)
-      ORDER BY day ASC
-    `, [cutoff]);
-
-    // ── Top instituții ────────────────────────────────────────────────────
-    const topInstR = await pool.query(`
-      SELECT data->>'institutie' AS institutie, COUNT(*) AS total
-      FROM flows WHERE created_at > $1 AND data->>'institutie' != ''
-      GROUP BY data->>'institutie'
-      ORDER BY total DESC LIMIT 10
-    `, [cutoff]);
-
-    // ── Distribuție semnatari per flux ────────────────────────────────────
-    const signersDistR = await pool.query(`
-      SELECT jsonb_array_length(data->'signers') AS signer_count, COUNT(*) AS flows
-      FROM flows WHERE created_at > $1
-      GROUP BY signer_count ORDER BY signer_count
-    `, [cutoff]);
-
-    // ── Activitate pe ore (0-23) ──────────────────────────────────────────
-    const hourlyR = await pool.query(`
-      SELECT EXTRACT(HOUR FROM at) AS hour, COUNT(*) AS events
-      FROM flow_events WHERE at > $1 AND type IN ('SIGNED','REFUSED','SIGNED_PDF_UPLOADED')
-      GROUP BY hour ORDER BY hour
-    `, [cutoff]);
-
-    // ── Top tipuri de evenimente ──────────────────────────────────────────
-    const eventTypesR = await pool.query(`
-      SELECT type, COUNT(*) AS count
-      FROM flow_events WHERE at > $1
-      GROUP BY type ORDER BY count DESC LIMIT 15
-    `, [cutoff]);
-
-    // ── Timp mediu până la prima semnătură (ore) ──────────────────────────
-    const firstSignR = await pool.query(`
-      SELECT AVG(
-        EXTRACT(EPOCH FROM (fe.at - f.created_at)) / 3600
-      ) AS avg_hours
-      FROM flow_events fe
-      JOIN flows f ON fe.flow_id = f.id
-      WHERE fe.type = 'SIGNED' AND fe.at > $1
-        AND fe.at = (SELECT MIN(at) FROM flow_events WHERE flow_id = fe.flow_id AND type = 'SIGNED')
-    `, [cutoff]);
-
-    res.json({
-      period: { days, from: cutoff, to: new Date().toISOString() },
-      summary: {
-        total:      parseInt(totalR.rows[0].count),
-        completed:  parseInt(completedR.rows[0].count),
-        refused:    parseInt(refusedR.rows[0].count),
-        active:     parseInt(activeR.rows[0].count),
-        users:      parseInt(usersR.rows[0].count),
-        completionRate: totalR.rows[0].count > 0
-          ? Math.round(completedR.rows[0].count / totalR.rows[0].count * 100) : 0,
-        avgCompletionHours: avgTimeR.rows[0].avg_hours
-          ? Math.round(parseFloat(avgTimeR.rows[0].avg_hours) * 10) / 10 : null,
-        avgFirstSignHours: firstSignR.rows[0].avg_hours
-          ? Math.round(parseFloat(firstSignR.rows[0].avg_hours) * 10) / 10 : null,
-      },
-      perDay:        perDayR.rows.map(r => ({ day: r.day, total: parseInt(r.total), completed: parseInt(r.completed), refused: parseInt(r.refused) })),
-      topInstitutii: topInstR.rows.map(r => ({ institutie: r.institutie, total: parseInt(r.total) })),
-      signersDist:   signersDistR.rows.map(r => ({ signerCount: parseInt(r.signer_count), flows: parseInt(r.flows) })),
-      hourlyActivity:hourlyR.rows.map(r => ({ hour: parseInt(r.hour), events: parseInt(r.events) })),
-      eventTypes:    eventTypesR.rows.map(r => ({ type: r.type, count: parseInt(r.count) })),
-    });
-  } catch(e) { console.error('analytics error:', e); return res.status(500).json({ error: String(e.message) }); }
-});
-
-
 export default router;
 
 // ── GET /admin/flows/:flowId/audit — export audit log ──────────────────────
@@ -509,7 +403,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         delegatedFrom: s.delegatedFrom || null,
         tokenCreatedAt: s.tokenCreatedAt || null,
       })),
-      events: await getFlowEvents(flowId),
+      events: Array.isArray(data.events) ? data.events : [],
       signedPdfVersions: Array.isArray(data.signedPdfVersions) ? data.signedPdfVersions : [],
     };
     if (format === 'csv') {
