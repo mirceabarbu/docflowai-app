@@ -169,6 +169,18 @@ th{ color: var(--sub) !important; }
       if (!jwt) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); }
     })();
   </script>
+
+  <script>
+    // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
+    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    window._apiFetch = async function(url, options) {
+      if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
+      const tok = localStorage.getItem('docflow_token');
+      const headers = Object.assign({}, (options||{}).headers || {});
+      if (tok) headers['Authorization'] = 'Bearer ' + tok;
+      return fetch(url, Object.assign({}, options||{}, { headers }));
+    };
+  </script>
 </head>
   <body>
     <header style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;">
@@ -232,8 +244,23 @@ th{ color: var(--sub) !important; }
               <div id="uploadStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
             </div>
             <div style="border-top:1px solid rgba(255,255,255,.08); margin-top:14px; padding-top:14px;">
-              <button id="btnRefuz" class="btn" type="button" style="width:100%; font-weight:700; padding:12px; background:rgba(255,80,80,.12); border:1px solid rgba(255,80,80,.3); color:#ffaaaa;">✕ Refuz semnarea acestui document</button>
+              <div style="display:flex;gap:10px;margin-bottom:0;">
+                <button id="btnRefuz" class="btn" type="button" style="flex:1; font-weight:700; padding:12px; background:rgba(255,80,80,.12); border:1px solid rgba(255,80,80,.3); color:#ffaaaa;">✕ Refuz semnarea</button>
+                <button id="btnDelegheaza" class="btn" type="button" style="flex:1; font-weight:700; padding:12px; background:rgba(255,200,50,.1); border:1px solid rgba(255,200,50,.3); color:#ffd580;">👥 Delege semnarea</button>
+              </div>
               <div id="refuzStatus" style="margin-top:8px; font-size:.88em; color:#ffaaaa;"></div>
+              <!-- Modal delegare -->
+              <div id="delegateModal" style="display:none; margin-top:14px; background:rgba(255,200,50,.06); border:1px solid rgba(255,200,50,.25); border-radius:12px; padding:16px;">
+                <div style="font-weight:700; margin-bottom:10px; color:#ffd580;">👥 Delegare semnătură</div>
+                <input id="delegateEmail" type="email" placeholder="Email delegat*" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:8px;box-sizing:border-box;" />
+                <input id="delegateName" type="text" placeholder="Nume delegat (optional)" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:8px;box-sizing:border-box;" />
+                <textarea id="delegateReason" placeholder="Motiv delegare*" rows="2" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:10px;box-sizing:border-box;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;">
+                  <button id="btnDelegateConfirm" type="button" style="flex:1;padding:10px;background:rgba(255,200,50,.2);border:1px solid rgba(255,200,50,.4);border-radius:8px;color:#ffd580;font-weight:700;cursor:pointer;">✓ Confirmă delegarea</button>
+                  <button onclick="document.getElementById('delegateModal').style.display='none'" type="button" style="padding:10px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+                </div>
+                <div id="delegateStatus" style="margin-top:8px;font-size:.85rem;"></div>
+              </div>
             </div>
           </div>
 
@@ -313,7 +340,7 @@ th{ color: var(--sub) !important; }
 
         $("result").textContent = "Se încarcă...";
         try {
-          const r = await fetch(`/flows/${encodeURIComponent(flow)}?token=${encodeURIComponent(token)}`);
+          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}?token=${encodeURIComponent(token)}`);
           const j = await r.json().catch(() => ({}));
           if (!r.ok) {
             if (j?.error === "token_expired") {
@@ -470,7 +497,7 @@ th{ color: var(--sub) !important; }
           if (s.status === "current") {
             const signerName = s.name || "semnatar";
             const jwtToken = localStorage.getItem("docflow_token") || "";
-            const rSign = await fetch(`/flows/${encodeURIComponent(flow)}/sign`, {
+            const rSign = await _apiFetch(`/flows/${encodeURIComponent(flow)}/sign`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwtToken}` },
               body: JSON.stringify({ token, signature: signerName }),
@@ -483,7 +510,7 @@ th{ color: var(--sub) !important; }
           if (!_uploadToken) {
             throw new Error("Lipsește tokenul de verificare. Descarcă documentul din sistem folosind butonul de descărcare, semnează-l și încarcă-l înapoi.");
           }
-          const r = await fetch(`/flows/${encodeURIComponent(flow)}/upload-signed-pdf`, {
+          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/upload-signed-pdf`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -557,18 +584,18 @@ th{ color: var(--sub) !important; }
           // Semnatar 1: generează PDF cu cartuș + câmpuri AcroForm din original
           // Semnatar 2+: descarcă DIRECT /signed-pdf — NU modificăm, păstrăm semnăturile calificate
           // flowType "ancore": PDF-ul are deja ancore, nu generăm cartuș
-          const prevResp = await fetch(`/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`);
+          const prevResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`);
           if (prevResp.ok) {
             // Semnatar 2+: descărcare directă, fără nicio procesare
             // Captăm uploadToken din /pdf (pentru versiunea originală)
             status.textContent = "⏳ Se descarcă PDF-ul semnat de semnatarii anteriori...";
-            const origForHash = await fetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
+            const origForHash = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
             _uploadToken = origForHash.headers.get("X-Docflow-UploadToken") || null;
             pdfBlob = await prevResp.blob();
           } else if (currentFlow?.flowType === "ancore") {
             // Tip 2: ancore existente — descărcăm PDF-ul original fără modificări
             status.textContent = "⏳ Se descarcă PDF-ul original (ancore existente)...";
-            const origResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
+            const origResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
             if (!origResp.ok) throw new Error("PDF original indisponibil (cod " + origResp.status + ").");
             _uploadToken = origResp.headers.get("X-Docflow-UploadToken") || null;
             pdfBlob = await origResp.blob();
@@ -587,7 +614,7 @@ th{ color: var(--sub) !important; }
                 const hashBuf = await crypto.subtle.digest("SHA-256", cartusBytes);
                 const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,"0")).join("");
                 // Inregistreaza hash-ul la server -> primeste uploadToken pe baza lui
-                const regResp = await fetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
+                const regResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ signerToken: token }),
@@ -657,7 +684,7 @@ th{ color: var(--sub) !important; }
 
         // buildCartusBlob folosește MEREU PDF-ul original ca bază
         // (semnatar 2+ descarcă direct /signed-pdf din downloadPdfForSigning, fără modificare)
-        const pdfResp = await fetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
+        const pdfResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
         if (!pdfResp.ok) throw new Error("PDF original indisponibil pe server (cod " + pdfResp.status + ").");
         _uploadToken = pdfResp.headers.get("X-Docflow-UploadToken") || _uploadToken;
         const pdfBytes = await pdfResp.arrayBuffer();
@@ -812,7 +839,7 @@ th{ color: var(--sub) !important; }
 
           try {
             const jwtTokenRefuse = localStorage.getItem("docflow_token") || "";
-            const r = await fetch(`/flows/${flow}/refuse`, {
+            const r = await _apiFetch(`/flows/${flow}/refuse`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwtTokenRefuse}` },
               body: JSON.stringify({ token, reason: reason || "Fără motiv specificat" })
@@ -855,7 +882,7 @@ th{ color: var(--sub) !important; }
               else if (w > 6000) { clearInterval(iv); rej(new Error("PDF.js indisponibil")); }
             }, 150);
           });
-          const resp = await fetch(url);
+          const resp = await _apiFetch(url);
           if (!resp.ok) throw new Error("HTTP " + resp.status);
           const arrBuf = await resp.arrayBuffer();
           const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrBuf) }).promise;
@@ -876,6 +903,50 @@ th{ color: var(--sub) !important; }
       }
       // ── End PDF.js renderer ────────────────────────────────────────────────
     </script>
-  <script src="/notif-widget.js"></script>
+  <script src="/notif-widget.js">
+      // ── Delegare semnatura ────────────────────────────────────────────────
+      const btnDelegate = $("btnDelegheaza");
+      if (btnDelegate) {
+        btnDelegate.addEventListener("click", () => {
+          const modal = $("delegateModal");
+          if (modal) modal.style.display = modal.style.display === "none" ? "block" : "none";
+        });
+      }
+      const btnDelegConfirm = $("btnDelegateConfirm");
+      if (btnDelegConfirm) {
+        btnDelegConfirm.addEventListener("click", async () => {
+          const toEmail = ($("delegateEmail")?.value||"").trim();
+          const toName = ($("delegateName")?.value||"").trim();
+          const reason = ($("delegateReason")?.value||"").trim();
+          const statusEl = $("delegateStatus");
+          if (!toEmail || !/\S+@\S+\.\S+/.test(toEmail)) { if(statusEl) statusEl.textContent = "❌ Email invalid."; return; }
+          if (!reason) { if(statusEl) statusEl.textContent = "❌ Motivul este obligatoriu."; return; }
+          btnDelegConfirm.disabled = true; btnDelegConfirm.textContent = "Se procesează...";
+          if(statusEl) statusEl.textContent = "";
+          try {
+            const r = await _apiFetch("/flows/" + encodeURIComponent(flowId) + "/delegate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fromToken: signerToken, toEmail, toName, reason })
+            });
+            const j = await r.json();
+            if (j.ok) {
+              if(statusEl) statusEl.textContent = "✅ Delegare înregistrată. " + toEmail + " a primit notificare.";
+              btnDelegConfirm.textContent = "✓ Delegat";
+              btnDelegate.disabled = true;
+              setTimeout(() => location.reload(), 2000);
+            } else {
+              if(statusEl) statusEl.textContent = "❌ " + (j.message || j.error || "Eroare");
+              btnDelegConfirm.disabled = false;
+              btnDelegConfirm.textContent = "✓ Confirmă delegarea";
+            }
+          } catch(e) {
+            if(statusEl) statusEl.textContent = "❌ Eroare rețea: " + e.message;
+            btnDelegConfirm.disabled = false;
+            btnDelegConfirm.textContent = "✓ Confirmă delegarea";
+          }
+        });
+      }
+</script>
 </body>
 </html>

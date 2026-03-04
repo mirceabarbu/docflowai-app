@@ -163,6 +163,18 @@ th{ color: var(--sub) !important; }
         .catch(() => {});
     })();
   </script>
+
+  <script>
+    // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
+    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    window._apiFetch = async function(url, options) {
+      if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
+      const tok = localStorage.getItem('docflow_token');
+      const headers = Object.assign({}, (options||{}).headers || {});
+      if (tok) headers['Authorization'] = 'Bearer ' + tok;
+      return fetch(url, Object.assign({}, options||{}, { headers }));
+    };
+  </script>
 </head>
 <script>
   // Incarca pdf-lib pentru stampilare PDF la creare flux
@@ -303,15 +315,29 @@ th{ color: var(--sub) !important; }
         <div class="card">
           <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:14px;">
             <div style="font-weight:700; font-size:1rem; color:var(--sub);">📂 Fluxurile mele</div>
-            <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows()">🔄 Actualizează</button>
+            <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows(1)">🔄 Actualizează</button>
           </div>
-          <div style="margin-bottom:14px;">
+          <!-- Filtre + search -->
+          <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
             <input id="fluxSearch" type="text" placeholder="🔍 Caută după nume document, inițiator, ID flux..."
-              oninput="filterFluxuri(this.value)"
-              style="width:100%;padding:10px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.88rem;outline:none;" />
+              oninput="debounceLoadFlows()"
+              style="flex:1;min-width:200px;padding:9px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.88rem;outline:none;" />
+            <select id="fluxStatusFilter" onchange="loadMyFlows(1)"
+              style="padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.85rem;cursor:pointer;">
+              <option value="all">Toate statusurile</option>
+              <option value="pending">⏳ În curs</option>
+              <option value="completed">✅ Finalizate</option>
+              <option value="refused">⛔ Refuzate</option>
+            </select>
           </div>
           <div id="fluxuriContent">
             <div style="text-align:center; color:var(--muted); padding:32px;">Se încarcă...</div>
+          </div>
+          <!-- Paginare -->
+          <div id="fluxPagination" style="display:none;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap;gap:8px;">
+            <button id="fluxPrevBtn" class="btn secondary" onclick="loadMyFlows(_fluxPage - 1)" style="padding:7px 18px;font-size:.85rem;">← Anterior</button>
+            <span id="fluxPageInfo" style="color:var(--muted);font-size:.85rem;"></span>
+            <button id="fluxNextBtn" class="btn secondary" onclick="loadMyFlows(_fluxPage + 1)" style="padding:7px 18px;font-size:.85rem;">Următor →</button>
           </div>
         </div>
       </section>
@@ -757,7 +783,7 @@ th{ color: var(--sub) !important; }
           btnFromTmpl.disabled = true;
           btnFromTmpl.textContent = "⏳ Se încarcă...";
           try {
-            const r = await fetch("/api/templates", { headers: { "Authorization": "Bearer " + localStorage.getItem("docflow_token") } });
+            const r = await _apiFetch("/api/templates", { headers: { "Authorization": "Bearer " + localStorage.getItem("docflow_token") } });
             if (!r.ok) throw new Error("fetch_failed");
             const templates = await r.json();
             btnFromTmpl.disabled = false;
@@ -915,6 +941,8 @@ th{ color: var(--sub) !important; }
                 ${mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#ff6b6b);border:none;color:#fff;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">✍ Semnează</button>` : ''}
                 <a href="/flow.html?flow=${f.flowId}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">🔍 Vezi flow</a>
                 ${dlBtn}
+                ${isRefused && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,200,50,.12);border:1px solid rgba(255,200,50,.35);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">🔄 Reinițiază</button>` : ''}
+                ${(f.initEmail||'').toLowerCase() === currentUserEmail && !f.allSigned && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Sterge flux">🗑</button>` : ''}
               </div>
             </div>
             <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
@@ -924,10 +952,48 @@ th{ color: var(--sub) !important; }
         }).join("");
       }
 
-      async function signFromFluxuri(flowId) {
+
+      async function deleteFlow(flowId) {
+        if (!confirm("Ești sigur că vrei să ștergi acest flux?\nAcțiunea este ireversibilă.")) return;
+        try {
+          const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}`, { method: "DELETE" });
+          const j = await r.json();
+          if (j.ok) { loadMyFlows(_fluxPage); }
+          else alert("❌ " + (j.message || j.error || "Eroare la ștergere."));
+        } catch(e) { alert("❌ Eroare: " + e.message); }
+      }
+
+      async function reinitiateFlow(flowId, docName) {
+  if (!confirm("Reiniciezi fluxul de semnare pentru:\n" + docName + "\n\nSemnatarul care a refuzat va fi eliminat iar semnatarii ramasi vor fi notificati.")) return;
+  try {
+    const r = await _apiFetch("/flows/" + encodeURIComponent(flowId) + "/reinitiate", { method: "POST" });
+    const j = await r.json();
+    if (j.ok) {
+      alert("✅ Flux reinitiat! ID nou: " + j.newFlowId + "\nSemnatarii ramasi (" + j.signers + ") au fost notificati.");
+      loadMyFlows(_fluxPage);
+    } else {
+      alert("❌ " + (j.message || j.error || "Eroare la reinitiere"));
+    }
+  } catch(e) { alert("❌ " + e.message); }
+}
+
+async function deleteFlow(flowId, docName) {
+  if (!confirm("Stergi definitiv fluxul:\n" + docName + "\n\nAceasta actiune este ireversibila.")) return;
+  try {
+    const r = await _apiFetch("/flows/" + encodeURIComponent(flowId), { method: "DELETE" });
+    const j = await r.json();
+    if (j.ok) {
+      loadMyFlows(_fluxPage);
+    } else {
+      alert("❌ " + (j.message || j.error || "Eroare la stergere"));
+    }
+  } catch(e) { alert("❌ " + e.message); }
+}
+
+async function signFromFluxuri(flowId) {
         const token = localStorage.getItem("docflow_token");
         try {
-          const r = await fetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
+          const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
             headers: { "Authorization": "Bearer " + token }
           });
           if (!r.ok) { alert("Nu s-a putut obține token-ul de semnare. Încearcă din nou."); return; }
@@ -939,37 +1005,53 @@ th{ color: var(--sub) !important; }
         }
       }
 
-      function filterFluxuri(q) {
-        const term = (q || "").toLowerCase().trim();
-        if (!term) { renderFluxuri(_allFlows); return; }
-        const filtered = _allFlows.filter(f =>
-          (f.docName || "").toLowerCase().includes(term) ||
-          (f.flowId || "").toLowerCase().includes(term) ||
-          (f.initName || "").toLowerCase().includes(term) ||
-          (f.initEmail || "").toLowerCase().includes(term) ||
-          (f.signers || []).some(s => (s.name || "").toLowerCase().includes(term) || (s.email || "").toLowerCase().includes(term))
-        );
-        renderFluxuri(filtered);
+      let _fluxPage = 1;
+      let _fluxDebounce = null;
+
+      function debounceLoadFlows() {
+        clearTimeout(_fluxDebounce);
+        _fluxDebounce = setTimeout(() => loadMyFlows(1), 350);
       }
 
-      async function loadMyFlows() {
+      // filterFluxuri pastrat pentru compatibilitate dar nu mai face filtrare locala
+      function filterFluxuri(q) { debounceLoadFlows(); }
+
+      async function loadMyFlows(page) {
+        page = Math.max(1, parseInt(page) || 1);
+        _fluxPage = page;
         const el = $("fluxuriContent");
         if (!el) return;
-        el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:32px;"><span style="display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;"></span> Se încarcă...</div>';
-        const token = localStorage.getItem("docflow_token");
+        el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:32px;"><span style="display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;"></span> Se incarca...</div>';
+        const search = ($("fluxSearch") ? $("fluxSearch").value.trim() : "");
+        const status = ($("fluxStatusFilter") ? $("fluxStatusFilter").value : "all");
+        const params = new URLSearchParams({ page, limit: 50, status });
+        if (search) params.set("search", search);
         try {
-          const r = await fetch("/my-flows", { headers: { "Authorization": "Bearer " + token } });
-          if (!r.ok) { el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare la încărcare.</div>'; return; }
-          const flows = await r.json();
+          const r = await _apiFetch("/my-flows?" + params.toString());
+          if (!r.ok) { el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare la incarcare.</div>'; return; }
+          const resp = await r.json();
+          // Suport raspuns paginat { flows, total, page, pages } si legacy array
+          const flows = Array.isArray(resp) ? resp : (resp.flows || []);
+          const total = resp.total || flows.length;
+          const pages = resp.pages || 1;
+          _allFlows = flows;
           if (!flows.length) {
-            el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Nu ai niciun flux creat sau în care ești implicat.</div>';
+            el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux gasit.</div>';
+            const pg = $("fluxPagination"); if (pg) pg.style.display = "none";
             return;
           }
-          _allFlows = flows;
-          const searchVal = $("fluxSearch") ? $("fluxSearch").value : "";
-          filterFluxuri(searchVal);
+          renderFluxuri(flows);
+          // Actualizeaza paginarea
+          const pg = $("fluxPagination");
+          if (pg) {
+            pg.style.display = pages > 1 ? "flex" : "none";
+            const info = $("fluxPageInfo");
+            if (info) info.textContent = "Pagina " + page + " din " + pages + " (" + total + " fluxuri)";
+            const prev = $("fluxPrevBtn"); if (prev) prev.disabled = page <= 1;
+            const next = $("fluxNextBtn"); if (next) next.disabled = page >= pages;
+          }
         } catch(e) {
-          el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare de rețea.</div>';
+          el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare de retea.</div>';
         }
       }
 
@@ -979,7 +1061,7 @@ th{ color: var(--sub) !important; }
         const token = localStorage.getItem("docflow_token");
         if (!token) return;
         try {
-          const r = await fetch("/users", { headers: { "Authorization": "Bearer " + token } });
+          const r = await _apiFetch("/users", { headers: { "Authorization": "Bearer " + token } });
           if (r.ok) {
             window._dbUsers = await r.json();
             // Repopulează dropdown-urile existente și re-selectează userul logat
@@ -1257,7 +1339,7 @@ th{ color: var(--sub) !important; }
         };
 
         try {
-          const r = await fetch("/flows", {
+          const r = await _apiFetch("/flows", {
             method: "POST",
             headers: authHeaders({ "Content-Type": "application/json" }),
             body: JSON.stringify(payload),

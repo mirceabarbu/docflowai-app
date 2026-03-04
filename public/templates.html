@@ -121,6 +121,18 @@
     .tmpl-grid{grid-template-columns:1fr;}
   }
 </style>
+
+  <script>
+    // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
+    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    window._apiFetch = async function(url, options) {
+      if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
+      const tok = localStorage.getItem('docflow_token');
+      const headers = Object.assign({}, (options||{}).headers || {});
+      if (tok) headers['Authorization'] = 'Bearer ' + tok;
+      return fetch(url, Object.assign({}, options||{}, { headers }));
+    };
+  </script>
 </head>
 <body>
 <header>
@@ -362,7 +374,7 @@ async function saveTemplate() {
   if (signers.some(s=>!s.name||!s.email)) { showMsg('createMsg','Completează numele și emailul pentru toți semnatarii.',true); return; }
   const btn=$('btnSave'); btn.disabled=true; btn.textContent='⏳ Se salvează...';
   try {
-    const r = await fetch('/api/templates',{method:'POST',headers:hdrs(),body:JSON.stringify({name,signers,shared:$('tShared').checked})});
+    const r = await _apiFetch('/api/templates',{method:'POST',headers:hdrs(),body:JSON.stringify({name,signers,shared:$('tShared').checked})});
     const d = await r.json();
     if (!r.ok) throw new Error(d.error);
     showMsg('createMsg','✅ Șablon salvat!',false);
@@ -377,7 +389,7 @@ let allTemplates = [];
 
 async function loadTemplates() {
   try {
-    const r = await fetch('/api/templates',{headers:{'Authorization':'Bearer '+token}});
+    const r = await _apiFetch('/api/templates',{headers:{'Authorization':'Bearer '+token}});
     if (r.status===401){location.href='/login';return;}
     allTemplates = await r.json();
     renderTemplates();
@@ -457,7 +469,7 @@ async function saveEdit() {
   const signers=getSigners('editSignersBuilder');
   if (signers.some(s=>!s.name||!s.email)){showMsg('editMsg','Completează toți semnatarii.',true);return;}
   try {
-    const r=await fetch('/api/templates/'+id,{method:'PUT',headers:hdrs(),body:JSON.stringify({name,signers,shared:$('eShared').checked})});
+    const r=await _apiFetch('/api/templates/'+id,{method:'PUT',headers:hdrs(),body:JSON.stringify({name,signers,shared:$('eShared').checked})});
     if (!r.ok) throw new Error((await r.json()).error);
     closeEdit(); loadTemplates();
   } catch(e){showMsg('editMsg','❌ '+e.message,true);}
@@ -466,7 +478,7 @@ async function saveEdit() {
 async function toggleShared(id,currentShared) {
   const t=allTemplates.find(x=>x.id===id); if(!t)return;
   try {
-    const r=await fetch('/api/templates/'+id,{method:'PUT',headers:hdrs(),body:JSON.stringify({name:t.name,signers:t.signers,shared:!currentShared})});
+    const r=await _apiFetch('/api/templates/'+id,{method:'PUT',headers:hdrs(),body:JSON.stringify({name:t.name,signers:t.signers,shared:!currentShared})});
     if(!r.ok) throw new Error(); loadTemplates();
   } catch(e){alert('Eroare la actualizare.');}
 }
@@ -474,7 +486,7 @@ async function toggleShared(id,currentShared) {
 async function deleteTemplate(id,name) {
   if(!confirm(`Ștergi șablonul "${name}"?`))return;
   try {
-    const r=await fetch('/api/templates/'+id,{method:'DELETE',headers:hdrs()});
+    const r=await _apiFetch('/api/templates/'+id,{method:'DELETE',headers:hdrs()});
     if(!r.ok) throw new Error(); loadTemplates();
   } catch(e){alert('Eroare la ștergere.');}
 }
@@ -487,7 +499,7 @@ async function copyTemplate(id) {
     : (prompt('Salvează ca șablon privat al tău. Nume:', t.name) || null);
   if (!newName) return;
   try {
-    const r = await fetch('/api/templates', {method:'POST', headers:hdrs(), body:JSON.stringify({
+    const r = await _apiFetch('/api/templates', {method:'POST', headers:hdrs(), body:JSON.stringify({
       name: newName.trim(),
       signers: t.signers,
       shared: false  // întotdeauna privat
@@ -507,7 +519,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
 // Fetch users for dropdowns
 (async function loadUsers() {
   try {
-    const r = await fetch('/users', {headers:{'Authorization':'Bearer '+token}});
+    const r = await _apiFetch('/users', {headers:{'Authorization':'Bearer '+token}});
     if (!r.ok) { console.warn('fetch /users failed:', r.status); return; }
     window._tmplUsers = await r.json();
     console.log('Users loaded:', window._tmplUsers.length);

@@ -121,6 +121,19 @@
       color:rgba(255,240,242,.95);
     }
   </style>
+<script src="/notif-widget.js"></script>
+
+  <script>
+    // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
+    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    window._apiFetch = async function(url, options) {
+      if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
+      const tok = localStorage.getItem('docflow_token');
+      const headers = Object.assign({}, (options||{}).headers || {});
+      if (tok) headers['Authorization'] = 'Bearer ' + tok;
+      return fetch(url, Object.assign({}, options||{}, { headers }));
+    };
+  </script>
 </head>
 <body>
   <div class="wrap">
@@ -138,6 +151,8 @@
         <button class="btn" id="btnRefresh">🔄 Refresh</button>
         <button class="btn primary" id="btnDownloadSigned">⬇️ PDF semnat</button>
         <button class="btn" id="btnDownloadOriginal" title="Descarcă PDF original (dacă există)">📎 PDF original</button>
+        <button class="btn" id="btnReinitiate" style="display:none;background:rgba(255,200,50,.12);border-color:rgba(255,200,50,.35);color:#ffd580;" title="Reinițiază fluxul după refuz">🔄 Reinițiază</button>
+        <a id="btnAuditPdf" href="#" target="_blank" class="btn" style="display:none;text-decoration:none;" title="Export Audit PDF">📄 Audit PDF</a>
       </div>
     </div>
 
@@ -226,11 +241,11 @@
     const hdrs = {};
     if(jwt) hdrs["Authorization"] = "Bearer " + jwt;
 
-    let r = await fetch(url, { headers: hdrs });
+    let r = await _apiFetch(url, { headers: hdrs });
     if((r.status===401 || r.status===403) && linkToken){
       const u = new URL(url, location.origin);
       if(!u.searchParams.get("token")) u.searchParams.set("token", linkToken);
-      r = await fetch(u.toString());
+      r = await _apiFetch(u.toString());
     }
 
     const j = await r.json().catch(()=>({}));
@@ -245,11 +260,11 @@
     const hdrs = {};
     if(jwt) hdrs["Authorization"] = "Bearer " + jwt;
 
-    let r = await fetch(url, { headers: hdrs });
+    let r = await _apiFetch(url, { headers: hdrs });
     if((r.status===401 || r.status===403) && linkToken){
       const u = new URL(url, location.origin);
       if(!u.searchParams.get("token")) u.searchParams.set("token", linkToken);
-      r = await fetch(u.toString());
+      r = await _apiFetch(u.toString());
     }
 
     if(!r.ok){
@@ -433,6 +448,22 @@
       const hasPdf = !!(j.hasPdf || data.hasPdf);
       $("btnDownloadOriginal").disabled = !hasPdf;
 
+      // Buton Reinitiere — vizibil dacă fluxul e refuzat și userul e inițiator sau admin
+      const currentUser = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+      const isRefused = computedStatus === "refused";
+      const isInitiator = (data.initEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
+      const isAdmin = currentUser.role === "admin";
+      const btnRei = $("btnReinitiate");
+      if (btnRei) btnRei.style.display = (isRefused && (isInitiator || isAdmin)) ? "" : "none";
+      btnRei._flowId = flowId;
+
+      // Buton Audit PDF — vizibil pentru admin
+      const btnAudit = $("btnAuditPdf");
+      if (btnAudit) {
+        btnAudit.style.display = isAdmin ? "" : "none";
+        btnAudit.href = `/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`;
+      }
+
       renderSigners(j);
       renderEvents(j);
 
@@ -463,6 +494,18 @@
   $("btnDownloadSigned").addEventListener("click", downloadSigned);
   $("btnDownloadOriginal").addEventListener("click", downloadOriginal);
   $("btnBack").addEventListener("click", ()=>{ window.location.href = "/?tab=flows"; });
+  $("btnReinitiate").addEventListener("click", async () => {
+    if (!confirm("Reinițiezi fluxul de semnare?\nSe va crea un flux nou fără semnatarul care a refuzat. Semnatarii rămași vor fi notificați.")) return;
+    try {
+      const r = await _apiFetch("/flows/" + encodeURIComponent(flowId) + "/reinitiate", { method: "POST" });
+      const j = await r.json();
+      if (j.ok) {
+        setMsg("ok", `✅ Flux reinițiat! ID nou: <strong>${j.newFlowId}</strong> — <a href="/flow.html?flow=${j.newFlowId}" style="color:#7cf0e0;">Deschide noul flux</a>`);
+      } else {
+        setMsg("error", "❌ " + (j.message || j.error || "Eroare la reinițiere"));
+      }
+    } catch(e) { setMsg("error", "❌ " + e.message); }
+  });
 
   loadFlow();
 </script>

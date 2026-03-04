@@ -87,6 +87,18 @@
     .modal .frow{margin-bottom:12px;}
     .modal-acts{margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
   </style>
+
+  <script>
+    // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
+    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    window._apiFetch = async function(url, options) {
+      if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
+      const tok = localStorage.getItem('docflow_token');
+      const headers = Object.assign({}, (options||{}).headers || {});
+      if (tok) headers['Authorization'] = 'Bearer ' + tok;
+      return fetch(url, Object.assign({}, options||{}, { headers }));
+    };
+  </script>
 </head>
 <body>
 <header>
@@ -133,7 +145,7 @@
         <datalist id="compartimentList"></datalist>
       </div>
       <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
-        <input id="nPhone" type="tel" placeholder="0712345678"/></div>
+        <input id="nPhone" type="tel" placeholder="0712345678 sau +40712345678" oninput="phoneInputFeedback(this)"/></div>
       <div class="frow"><label>Notificări</label>
         <div style="margin-top:6px;display:flex;flex-direction:column;gap:7px;">
           <label style="display:flex;align-items:center;justify-content:space-between;font-size:.83rem;color:var(--sub);cursor:pointer;">
@@ -177,8 +189,15 @@
           <option value="">Toate compartimentele</option>
         </select>
         <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
+        <a href="/admin/flows/audit-export?days=30" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;text-decoration:none;display:inline-flex;align-items:center;">📊 Export CSV 30z</a>
       </div>
       <div id="flowsListArea" style="font-size:.83rem;color:var(--muted);">Apasă „Încarcă" pentru a vedea fluxurile.</div>
+      <!-- Paginare fluxuri -->
+      <div id="flowsListPagination" style="display:none;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:8px;">
+        <button class="btn secondary" id="flowsPrevBtn" onclick="loadFlowsList(false, _adminFluxPage - 1)" style="padding:6px 16px;font-size:.82rem;">← Anterior</button>
+        <span id="flowsPageInfo" style="color:var(--muted);font-size:.82rem;"></span>
+        <button class="btn secondary" id="flowsNextBtn" onclick="loadFlowsList(false, _adminFluxPage + 1)" style="padding:6px 16px;font-size:.82rem;">Următor →</button>
+      </div>
     </div>
 
     <h2 style="color:#2dd4bf;">🗂 Arhivare fluxuri în Google Drive</h2>
@@ -293,7 +312,7 @@
           <input id="ePwd" type="text" placeholder=""/>
         </div>
         <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
-          <input id="ePhone" type="tel" placeholder="0712345678"/></div>
+          <input id="ePhone" type="tel" placeholder="0712345678 sau +40712345678" oninput="phoneInputFeedback(this)"/></div>
         <div class="frow"><label>Notificări preferate</label>
           <div style="display:flex;flex-direction:column;gap:7px;margin-top:6px;">
             <label style="display:flex;align-items:center;justify-content:space-between;font-size:.83rem;color:var(--sub);cursor:pointer;">
@@ -437,7 +456,7 @@ function filterUsers(){
 
 async function loadUsers(){
   try{
-    const r=await fetch("/admin/users",{headers:hdrs()});
+    const r=await _apiFetch("/admin/users",{headers:hdrs()});
     if(r.status===401||r.status===403){logout();return;}
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
@@ -498,10 +517,11 @@ async function createUser(){
   const institutie=$("nInstitutie").value.trim();
   const compartiment=$("nCompartiment").value.trim();
   const phone=$("nPhone").value.trim();
+  if (!validatePhoneClient(phone).valid) { alert("Număr de telefon invalid pentru WhatsApp.\nEx: 0712345678 sau +40712345678"); $("nPhone").focus(); return; }
   const notif_inapp=$("nNotifInapp").checked;
   const notif_email=$("nNotifEmail").checked;
   const notif_whatsapp=$("nNotifWa").checked;
-  const r=await fetch("/admin/users",{method:"POST",headers:hdrs(),body:JSON.stringify({email,password:pwd,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp})});
+  const r=await _apiFetch("/admin/users",{method:"POST",headers:hdrs(),body:JSON.stringify({email,password:pwd,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp})});
   const d=await r.json();
   btn.disabled=false;btn.textContent="Crează utilizatorul";
   if(r.ok){
@@ -537,7 +557,7 @@ function closeMod(){$("mBg").classList.remove("open");editU=null;}
 
 async function genPwd(){
   if(!editU)return;
-  const r=await fetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
+  const r=await _apiFetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
   const d=await r.json();
   if(r.ok){$("ePwd").value=d.plain_password;$("eMsg").className="msg ok";$("eMsg").textContent="Generată: "+d.plain_password;}
 }
@@ -552,7 +572,7 @@ async function saveEdit(){
     notif_email:$("eNotifEmail").checked,
     notif_whatsapp:$("eNotifWa").checked};
   const p=$("ePwd").value.trim();if(p)body.password=p;
-  const r=await fetch("/admin/users/"+id,{method:"PUT",headers:hdrs(),body:JSON.stringify(body)});
+  const r=await _apiFetch("/admin/users/"+id,{method:"PUT",headers:hdrs(),body:JSON.stringify(body)});
   const d=await r.json();
   if(r.ok){closeMod();loadUsers();}
   else{$("eMsg").className="msg err";$("eMsg").textContent=d.error==="email_exists"?"Emailul există deja.":"Eroare.";}
@@ -562,7 +582,7 @@ async function sendCreds(id,btn){
   const orig=btn?btn.textContent:"";
   if(btn){btn.disabled=true;btn.textContent="Se trimite...";}
   try{
-    const r=await fetch("/admin/users/"+id+"/send-credentials",{method:"POST",headers:hdrs()});
+    const r=await _apiFetch("/admin/users/"+id+"/send-credentials",{method:"POST",headers:hdrs()});
     const d=await r.json();
     if(r.ok){
       if(btn){btn.textContent="✅ Trimis!";setTimeout(()=>{btn.disabled=false;btn.textContent=orig;},4000);}
@@ -622,44 +642,62 @@ function onFlowInstChange() {
   loadFlowsList(false);
 }
 
-async function loadFlowsList(forceReload = true) {
+let _adminFluxPage = 1;
+let _adminFluxDebounce = null;
+
+function debounceAdminFlows() {
+  clearTimeout(_adminFluxDebounce);
+  _adminFluxDebounce = setTimeout(() => loadFlowsList(false, 1), 350);
+}
+
+async function loadFlowsList(forceReload = true, page) {
+  page = Math.max(1, parseInt(page) || _adminFluxPage);
+  _adminFluxPage = page;
   const area = document.getElementById("flowsListArea");
-  const search = (document.getElementById("flowSearch").value||"").toLowerCase();
+  const search = (document.getElementById("flowSearch").value||"").trim();
   const statusF = document.getElementById("flowStatusFilter").value;
   const instF = document.getElementById("flowInstFilter").value;
   const deptF = document.getElementById("flowDeptFilter").value;
-  area.innerHTML = '<span style="color:var(--muted);">⏳ Se încarcă...</span>';
+  area.innerHTML = '<span style="color:var(--muted);">⏳ Se incarca...</span>';
+
+  // Mapeaza valorile locale la parametrii server
+  const statusMap = { active: "pending", done: "completed", refused: "refused", "": "all" };
+  const statusParam = statusMap[statusF] || "all";
+
+  const params = new URLSearchParams({ page, limit: 50, status: statusParam });
+  if (search) params.set("search", search);
+  if (instF) params.set("institutie", instF);
+  if (deptF) params.set("compartiment", deptF);
+
   try {
-    // Reîncarcă din server dacă nu avem cache sau forceReload
+    const r = await _apiFetch("/admin/flows/list?" + params.toString(), {headers: hdrs()});
+    if (!r.ok) throw new Error("Eroare server");
+    const resp = await r.json();
+    const flows = Array.isArray(resp) ? resp : (resp.flows || []);
+    const total = resp.total || flows.length;
+    const pages = resp.pages || 1;
+
+    // Populeaza dropdown institutii (prima incarcare)
     if (forceReload || !_allFlows) {
-      const r = await fetch("/admin/flows/list", {headers: hdrs()});
-      if (!r.ok) throw new Error("Eroare server");
-      _allFlows = await r.json();
-      populateFlowInstDropdown(_allFlows);
+      _allFlows = flows; // pastram pentru populateFlowInstDropdown
+      populateFlowInstDropdown(flows);
     }
-    let flows = [..._allFlows];
-    // Filtrare client-side
-    if (search) flows = flows.filter(f => 
-      (f.flowId||"").toLowerCase().includes(search) ||
-      (f.docName||"").toLowerCase().includes(search) ||
-      (f.initEmail||"").toLowerCase().includes(search)
-    );
-    if (statusF === "active") flows = flows.filter(f => !f.completed && f.status !== "refused");
-    else if (statusF === "done") flows = flows.filter(f => f.completed);
-    else if (statusF === "refused") flows = flows.filter(f => f.status === "refused");
-    if (instF) flows = flows.filter(f => (f.institutie||"") === instF);
-    if (deptF) flows = flows.filter(f => (f.compartiment||"") === deptF);
-    if (!flows.length) { area.innerHTML = '<span style="color:var(--muted);">Niciun flux găsit.</span>'; return; }
+
+    if (!flows.length) {
+      area.innerHTML = '<span style="color:var(--muted);">Niciun flux gasit.</span>';
+      const pg = document.getElementById("flowsListPagination"); if (pg) pg.style.display = "none";
+      return;
+    }
     area.innerHTML = `
       <div style="overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:.8rem;">
         <thead><tr style="color:var(--muted);border-bottom:1px solid rgba(255,255,255,.08);">
           <th style="text-align:left;padding:6px 8px;">Document</th>
-          <th style="text-align:left;padding:6px 8px;">Inițiator</th>
+          <th style="text-align:left;padding:6px 8px;">Initiator</th>
           <th style="text-align:left;padding:6px 8px;">Status</th>
           <th style="text-align:left;padding:6px 8px;">Semnatar curent</th>
           <th style="text-align:left;padding:6px 8px;">Creat</th>
-          <th style="text-align:left;padding:6px 8px;">Acțiuni</th>
+          <th style="text-align:left;padding:6px 8px;">Actiuni</th>
         </tr></thead>
         <tbody>${flows.map(f => {
           const current = (f.signers||[]).find(s=>s.status==="current");
@@ -683,20 +721,56 @@ async function loadFlowsList(forceReload = true) {
             <td style="padding:7px 8px;">
               ${current&&!f.completed&&f.status!=="refused" ? `
                 <button onclick="resendNotif('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-right:4px;">📨 Retrimite</button>
-                ${expired?`<button onclick="regenerateToken('${f.flowId}','${current.email}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;">🔑 Token nou</button>`:''}
+                ${expired?`<button onclick="regenerateToken('${f.flowId}','${current.email}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;">🔑 Token nou</button>`:''}
               ` : ''}
+              <button onclick="adminDeleteFlow('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:6px;color:#ffaaaa;cursor:pointer;">🗑</button>
+              <a href="/admin/flows/${f.flowId}/audit?format=txt" target="_blank" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;" title="Export audit TXT">📋</a><a href="/admin/flows/${f.flowId}/audit?format=pdf" target="_blank" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</a>
             </td>
           </tr>`;
         }).join("")}
         </tbody>
       </table></div>
-      <div style="margin-top:8px;font-size:.76rem;color:var(--muted);">${flows.length} flux${flows.length!==1?"uri":""} afișate</div>`;
+      <div style="margin-top:8px;font-size:.76rem;color:var(--muted);">Pagina ${page} din ${pages} · ${total} flux${total!==1?"uri":""} total</div>`;
+
+    // Paginare
+    const pg = document.getElementById("flowsListPagination");
+    if (pg) {
+      pg.style.display = pages > 1 ? "flex" : "none";
+      const info = document.getElementById("flowsPageInfo");
+      if (info) info.textContent = "Pagina " + page + " din " + pages + " (" + total + " total)";
+      const prev = document.getElementById("flowsPrevBtn"); if (prev) prev.disabled = page <= 1;
+      const next = document.getElementById("flowsNextBtn"); if (next) next.disabled = page >= pages;
+    }
   } catch(e) { area.innerHTML = `<span style="color:#ffaaaa;">❌ ${e.message}</span>`; }
+}
+
+
+async function adminDeleteFlow(flowId) {
+  if (!confirm(`Ești sigur că vrei să ștergi fluxul ${flowId}?\nToate datele asociate (PDF, notificări) vor fi șterse ireversibil.`)) return;
+  try {
+    const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}`, { method: "DELETE", headers: hdrs() });
+    const j = await r.json();
+    if (j.ok) { loadFlowsList(false, _adminFluxPage); }
+    else alert("❌ " + (j.message || j.error || "Eroare la ștergere."));
+  } catch(e) { alert("❌ " + e.message); }
+}
+
+async function deleteFlow(flowId, docName) {
+  if (!confirm("Stergi definitiv fluxul:\n" + docName + "\n\nAceasta actiune este ireversibila.")) return;
+  try {
+    const r = await _apiFetch("/flows/" + encodeURIComponent(flowId), { method: "DELETE", headers: hdrs() });
+    const j = await r.json();
+    if (j.ok) {
+      loadFlowsList(true, _adminFluxPage);
+    } else {
+      alert("❌ " + (j.message || j.error || "Eroare la stergere"));
+    }
+  } catch(e) { alert("❌ " + e.message); }
 }
 
 async function resendNotif(flowId) {
   try {
-    const r = await fetch(`/flows/${encodeURIComponent(flowId)}/resend`, {method:"POST", headers:hdrs()});
+    const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}/resend`, {method:"POST", headers:hdrs()});
     const j = await r.json();
     if (j.ok) alert(`✅ Notificare retrimisă către ${j.to}`);
     else alert("❌ " + (j.error||"Eroare"));
@@ -706,14 +780,14 @@ async function resendNotif(flowId) {
 async function regenerateToken(flowId, signerEmail) {
   if (!confirm(`Generezi un token nou pentru ${signerEmail}?\nVechiul link va fi invalid. Semnatarul va primi un email cu noul link.`)) return;
   try {
-    const r = await fetch(`/flows/${encodeURIComponent(flowId)}/regenerate-token`, {
+    const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}/regenerate-token`, {
       method:"POST", headers:hdrs(),
       body: JSON.stringify({signerEmail})
     });
     const j = await r.json();
     if (j.ok) {
       alert(`✅ Token nou generat și email trimis către ${signerEmail}.`);
-      _allFlows = null; loadFlowsList(true); // refresh
+      loadFlowsList(true, 1); // refresh
     } else alert("❌ " + (j.message||j.error||"Eroare"));
   } catch(e) { alert("❌ " + e.message); }
 }
@@ -722,7 +796,7 @@ async function verifyDriveConn() {
   const msg = document.getElementById("archiveMsg");
   msg.textContent = "⏳ Verificare conexiune Drive...";
   try {
-    const r = await fetch("/admin/drive/verify", {headers: hdrs()});
+    const r = await _apiFetch("/admin/drive/verify", {headers: hdrs()});
     const j = await r.json();
     if (j.ok) msg.innerHTML = `✅ Conexiune OK — folder: <strong>${j.folder}</strong>`;
     else msg.innerHTML = `❌ Eroare: ${j.error}`;
@@ -735,7 +809,7 @@ let _archiveInstData = null; // {inst: [dept,...], ...}
 async function loadArchiveInstData() {
   if (_archiveInstData) return;
   if (!_allFlows) {
-    const r = await fetch("/admin/flows/list", {headers: hdrs()});
+    const r = await _apiFetch("/admin/flows/list", {headers: hdrs()});
     _allFlows = await r.json();
   }
   const map = {};
@@ -805,7 +879,7 @@ async function previewArchive() {
     let url = `/admin/flows/archive-preview?days=${days}`;
     if (inst) url += `&institutie=${encodeURIComponent(inst)}`;
     if (dept) url += `&compartiment=${encodeURIComponent(dept)}`;
-    const r = await fetch(url, {headers: hdrs()});
+    const r = await _apiFetch(url, {headers: hdrs()});
     const j = await r.json();
     if (!r.ok) throw new Error(j.error||"Eroare server");
     _archiveFlowIds = (j.flows||[]).map(f => f.flowId);
@@ -835,7 +909,7 @@ async function doArchive() {
   try {
     while (true) {
       btn.textContent = `⏳ Se arhivează... (${Math.min((batchIndex+1)*10, _archiveFlowIds.length)}/${_archiveFlowIds.length})`;
-      const r = await fetch("/admin/flows/archive", {
+      const r = await _apiFetch("/admin/flows/archive", {
         method: "POST", headers: hdrs(),
         body: JSON.stringify({flowIds: _archiveFlowIds, batchIndex})
       });
@@ -858,7 +932,7 @@ async function runVacuum() {
   const msg = document.getElementById("msgVacuum");
   msg.textContent = "⏳ Se execută VACUUM ANALYZE...";
   try {
-    const r = await fetch("/admin/db/vacuum", {method:"POST", headers:hdrs()});
+    const r = await _apiFetch("/admin/db/vacuum", {method:"POST", headers:hdrs()});
     const j = await r.json();
     if (j.ok) msg.innerHTML = `✅ VACUUM complet. Dimensiune DB: <strong>${j.dbSize}</strong>`;
     else msg.textContent = "❌ " + (j.error||"Eroare");
@@ -869,7 +943,7 @@ async function loadDbStats() {
   const el = document.getElementById("dbStats");
   const msg = document.getElementById("msgVacuum");
   try {
-    const r = await fetch("/health", {headers: hdrs()});
+    const r = await _apiFetch("/health", {headers: hdrs()});
     const j = await r.json();
     const s = j.stats||{};
     el.style.display = "block";
@@ -894,7 +968,7 @@ Acțiunea este ireversibilă.`))return;
   const body = {olderThanDays:days};
   if (inst) body.institutie = inst;
   if (dept) body.compartiment = dept;
-  const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify(body)});
+  const r=await _apiFetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify(body)});
   const d=await r.json();
   const el=$("msgOldFlows");
   if(r.ok) el.innerHTML=`<span style="color:#7cf0e0;">✅ ${d.deleted} flux(uri) șterse.</span>`;
@@ -919,7 +993,7 @@ async function cleanAllFlows(){
   const body = {all:true};
   if (inst) body.institutie = inst;
   if (dept) body.compartiment = dept;
-  const r=await fetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify(body)});
+  const r=await _apiFetch("/admin/flows/clean",{method:"POST",headers:hdrs(),body:JSON.stringify(body)});
   const d=await r.json();
   const el=$("msgAllFlows");
   if(r.ok) el.innerHTML=`<span style="color:#7cf0e0;">✅ ${d.deleted} flux(uri) șterse.</span>`;
@@ -928,7 +1002,7 @@ async function cleanAllFlows(){
 
 async function delUser(id,name){
   if(!confirm('Ștergi utilizatorul "'+name+'"?\nAcțiunea este ireversibilă.'))return;
-  const r=await fetch("/admin/users/"+id,{method:"DELETE",headers:hdrs()});
+  const r=await _apiFetch("/admin/users/"+id,{method:"DELETE",headers:hdrs()});
   if(r.ok){const row=$("row_"+id);if(row)row.remove();}
   else alert("Eroare la ștergere.");
 }

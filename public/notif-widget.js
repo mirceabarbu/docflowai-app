@@ -1,6 +1,7 @@
 /**
  * DocFlowAI — Notification Widget
  * Injectează iconița 🔔 în header și gestionează conexiunea WebSocket.
+ * Include și logica de refresh automat JWT (token refresh transparent).
  * Usage: <script src="/notif-widget.js"></script>
  * Se inițializează automat la DOMContentLoaded.
  */
@@ -16,6 +17,7 @@
   let unreadCount = 0;
   let badgeEl = null;
   let bellBtn = null;
+  let _refreshPromise = null; // deduplică cererile simultane de refresh
 
   // ── CSS injectat ──────────────────────────────────────────
   const STYLE = `
@@ -85,8 +87,135 @@
     document.head.appendChild(s);
   }
 
+  // ══════════════════════════════════════════════════════════
+  // TOKEN REFRESH — logic centralizată
+  // ══════════════════════════════════════════════════════════
+
+  /** Parsează payload JWT fără verificare criptografică (client-side only) */
+  function parseJwtPayload(token) {
+    try {
+      return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    } catch(e) { return null; }
+  }
+
+  /** Returnează ms până la expirarea tokenului (negativ = deja expirat) */
+  function msUntilExpiry(token) {
+    const p = parseJwtPayload(token);
+    if (!p || !p.exp) return -1;
+    return (p.exp * 1000) - Date.now();
+  }
+
+  /**
+   * Încearcă refresh token. Dacă reușește, salvează noul token și returnează true.
+   * Dacă eșuează → șterge sesiunea și redirectează la login.
+   * Apelurile simultane sunt deduplicate (un singur request în zbor).
+   */
+  async function refreshToken() {
+    if (_refreshPromise) return _refreshPromise;
+    _refreshPromise = (async () => {
+      const token = localStorage.getItem('docflow_token');
+      if (!token) { redirectLogin(); return false; }
+      try {
+        const r = await fetch('/auth/refresh', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (r.ok) {
+          const d = await r.json();
+          localStorage.setItem('docflow_token', d.token);
+          // Actualizează și datele user dacă s-au schimbat
+          const existing = JSON.parse(localStorage.getItem('docflow_user') || '{}');
+          localStorage.setItem('docflow_user', JSON.stringify({
+            ...existing,
+            email: d.email, role: d.role, nume: d.nume,
+            functie: d.functie, institutie: d.institutie || existing.institutie || ''
+          }));
+          console.log('[DocFlowAI] Token reînnoit cu succes.');
+          // Reconectează WebSocket cu noul token
+          if (ws) { ws.close(); }
+          return true;
+        } else {
+          redirectLogin();
+          return false;
+        }
+      } catch(e) {
+        console.warn('[DocFlowAI] Refresh eșuat:', e.message);
+        return false;
+      } finally {
+        _refreshPromise = null;
+      }
+    })();
+    return _refreshPromise;
+  }
+
+  function redirectLogin() {
+    localStorage.removeItem('docflow_token');
+    localStorage.removeItem('docflow_user');
+    const next = encodeURIComponent(location.pathname + location.search);
+    location.href = '/login?next=' + next;
+  }
+
+  /**
+   * apiFetch — înlocuitor pentru fetch() cu refresh automat la 401.
+   * Folosit intern de widget; expus pe window.docflow.apiFetch pentru pagini.
+   *
+   * La 401 token_invalid_or_expired: încearcă refresh, repetă request-ul o dată.
+   * La 401 după refresh eșuat: redirect login.
+   */
+  async function apiFetch(url, options = {}) {
+    const token = localStorage.getItem('docflow_token');
+    const headers = { ...(options.headers || {}) };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+
+    // Refresh proactiv dacă tokenul expiră în < 20 minute
+    if (token) {
+      const remaining = msUntilExpiry(token);
+      if (remaining > 0 && remaining < 20 * 60 * 1000) {
+        await refreshToken();
+        const newToken = localStorage.getItem('docflow_token');
+        if (newToken) headers['Authorization'] = 'Bearer ' + newToken;
+      }
+    }
+
+    let res = await fetch(url, { ...options, headers });
+
+    // Refresh reactiv la 401
+    if (res.status === 401) {
+      let body = {};
+      try { body = await res.clone().json(); } catch(e) {}
+      const err = body?.error || '';
+      // Încearcă refresh dacă e token expirat (nu credențiale invalide)
+      if (err === 'token_invalid_or_expired' || err === 'unauthorized' || err === 'token_invalid') {
+        const ok = await refreshToken();
+        if (ok) {
+          const retryToken = localStorage.getItem('docflow_token');
+          const retryHeaders = { ...headers, 'Authorization': 'Bearer ' + retryToken };
+          res = await fetch(url, { ...options, headers: retryHeaders });
+        }
+        // Dacă retry-ul tot 401 → redirectLogin se va face în refreshToken()
+      }
+    }
+
+    return res;
+  }
+
+  // ── Refresh proactiv periodic (la fiecare 10 minute verifică dacă mai are < 20 min) ──
+  function scheduleProactiveRefresh() {
+    setInterval(async () => {
+      const token = localStorage.getItem('docflow_token');
+      if (!token) return;
+      const remaining = msUntilExpiry(token);
+      if (remaining > 0 && remaining < 20 * 60 * 1000) {
+        await refreshToken();
+      }
+    }, 10 * 60 * 1000); // verifică la fiecare 10 minute
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // BELL + TOAST
+  // ══════════════════════════════════════════════════════════
+
   function injectBell() {
-    // Găsim containerul userBar sau creăm unul
     const userBar = document.getElementById('userBar') || document.getElementById('nw-bell-anchor');
     if (!userBar) return;
 
@@ -97,11 +226,10 @@
     bellBtn.innerHTML = `🔔<span id="nw-badge"></span>`;
     bellBtn.addEventListener('click', async (e) => {
       e.preventDefault();
-      // Daca exista notificari necitite, deschide tabul celei mai recente
       const tok = localStorage.getItem('docflow_token');
       if (!tok || unreadCount === 0) { window.location.href = '/notifications'; return; }
       try {
-        const r = await fetch('/api/notifications', { headers: { 'Authorization': 'Bearer ' + tok } });
+        const r = await apiFetch('/api/notifications');
         const notifs = await r.json();
         const latest = notifs.find(n => !n.read) || notifs[0];
         if (!latest) { window.location.href = '/notifications'; return; }
@@ -116,7 +244,6 @@
       }
     });
 
-    // Inserează înainte de primul copil al userBar
     userBar.insertBefore(bellBtn, userBar.firstChild);
     badgeEl = document.getElementById('nw-badge');
   }
@@ -140,31 +267,16 @@
     }
   }
 
-
   function buildActionUrl(notif) {
-    // Prefer explicit actionUrl sent by backend
     if (notif && notif.actionUrl) return notif.actionUrl;
-
     const flowId = notif && (notif.flowId || notif.flow || (notif.data && (notif.data.flowId || notif.data.flow)));
     const token = notif && (notif.token || (notif.data && notif.data.token));
-
     if (!flowId) return '/notifications';
-
     const t = (notif.type || '').toUpperCase();
-
-    // If it's your turn and we have signer token -> open signer page
     if (t === 'YOUR_TURN' || t === 'ASSIGNED' || t === 'SIGN' || t === 'SIGNER_TURN') {
       if (token) return `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(token)}`;
-      // Fallback: show flow status
       return `/flow.html?flow=${encodeURIComponent(flowId)}`;
     }
-
-    // Completed / refused -> open flow view
-    if (t === 'COMPLETED' || t === 'REFUSED' || t === 'DONE' || t === 'FINISHED') {
-      return `/flow.html?flow=${encodeURIComponent(flowId)}`;
-    }
-
-    // Default: flow view
     return `/flow.html?flow=${encodeURIComponent(flowId)}`;
   }
 
@@ -182,38 +294,42 @@
     }, 5000);
   }
 
+  // ══════════════════════════════════════════════════════════
+  // WEBSOCKET
+  // ══════════════════════════════════════════════════════════
+
   function connectWS() {
     const token = localStorage.getItem('docflow_token');
-    if (!token) return; // nu conectăm dacă nu e logat
+    if (!token) return;
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${location.host}/ws`;
-
-    ws = new WebSocket(url);
+    ws = new WebSocket(`${proto}//${location.host}/ws`);
 
     ws.onopen = () => {
       wsReady = true;
-      ws.send(JSON.stringify({ type: 'auth', token }));
-      // ping keepalive la 25s (evită duplicate la reconnect)
+      ws.send(JSON.stringify({ type: 'auth', token: localStorage.getItem('docflow_token') }));
       if (keepaliveTimer) clearInterval(keepaliveTimer);
       keepaliveTimer = setInterval(() => {
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' }));
       }, 25000);
       reconnectDelay = 2000;
-};
+    };
 
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
         if (msg.event === 'unread_count') updateBadge(msg.count);
         if (msg.event === 'notification') showToast(msg.data);
+        // Serverul poate trimite auth_error dacă tokenul WS a expirat → refresh + reconect
+        if (msg.event === 'auth_error') {
+          refreshToken().then(ok => { if (ok) connectWS(); });
+        }
       } catch(e) {}
     };
 
     ws.onclose = () => {
       wsReady = false;
       if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; }
-      // Reconectare cu backoff (max 30s)
       if (reconnectTimer) clearTimeout(reconnectTimer);
       reconnectTimer = setTimeout(connectWS, reconnectDelay);
       reconnectDelay = Math.min(30000, Math.round(reconnectDelay * 1.7));
@@ -222,34 +338,124 @@
     ws.onerror = () => { ws.close(); };
   }
 
-  // Fetch unread count via HTTP (fallback sau la load)
   async function fetchUnreadCount() {
     const token = localStorage.getItem('docflow_token');
     if (!token) return;
     try {
-      const r = await fetch('/api/notifications/unread-count', { headers: { 'Authorization': 'Bearer ' + token } });
+      const r = await apiFetch('/api/notifications/unread-count');
       if (r.ok) { const d = await r.json(); updateBadge(d.count); }
     } catch(e) {}
   }
 
+  // ══════════════════════════════════════════════════════════
+  // INIT
+  // ══════════════════════════════════════════════════════════
+
   function init() {
     const token = localStorage.getItem('docflow_token');
-    if (!token) return; // nu injectăm nimic dacă nu e logat
+    if (!token) return;
 
     injectStyles();
     injectBell();
     injectToastArea();
     fetchUnreadCount();
     connectWS();
+    scheduleProactiveRefresh();
   }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
-    // Mic delay ca userBar să fie deja în DOM
     setTimeout(init, 100);
   }
 
-  // Expune global pentru debugging
+  // ── API global expus paginilor ────────────────────────────
+  // Paginile pot folosi window.docflow.apiFetch() în loc de fetch()
+  // pentru refresh automat transparent.
+  window.docflow = window.docflow || {};
+  window.docflow.apiFetch = apiFetch;
+  window.docflow.refreshToken = refreshToken;
+
+  // Compatibilitate debugging
   window._nwWidget = { getUnread: () => unreadCount, ws: () => ws };
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// PUSH NOTIFICATIONS — Service Worker + VAPID subscription
+// ═══════════════════════════════════════════════════════════════════
+(async function initPushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  try {
+    // Înregistrează Service Worker
+    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+
+    // Verifică dacă push e configurat pe server
+    const vapidRes = await fetch('/api/push/vapid-public-key').catch(() => null);
+    if (!vapidRes || !vapidRes.ok) return; // Push nu e configurat
+    const { key: vapidPublicKey } = await vapidRes.json();
+    if (!vapidPublicKey) return;
+
+    // Verifică permisiunile actuale
+    const permission = await Notification.permission;
+    if (permission === 'denied') return;
+
+    // Dacă nu avem permisiune încă, oferă butonul de activare
+    if (permission === 'default') {
+      exposePushActivate(reg, vapidPublicKey);
+      return;
+    }
+
+    // Avem permisiune — subscribe imediat
+    await subscribePush(reg, vapidPublicKey);
+  } catch(e) {
+    console.warn('Push init error:', e.message);
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+  }
+
+  async function subscribePush(reg, vapidKey) {
+    try {
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
+      }
+      // Trimite abonamentul la server
+      const token = localStorage.getItem('docflow_token');
+      if (!token) return;
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')))), auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')))) } })
+      });
+      console.log('✅ Push notifications activate.');
+      window.docflow = window.docflow || {};
+      window.docflow.pushActive = true;
+    } catch(e) {
+      console.warn('Push subscribe error:', e.message);
+    }
+  }
+
+  function exposePushActivate(reg, vapidKey) {
+    // Expune o funcție pe care paginile o pot chema (ex: la click pe un buton)
+    window.docflow = window.docflow || {};
+    window.docflow.enablePush = async () => {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm === 'granted') {
+          await subscribePush(reg, vapidKey);
+          return true;
+        }
+        return false;
+      } catch(e) { return false; }
+    };
+  }
 })();
