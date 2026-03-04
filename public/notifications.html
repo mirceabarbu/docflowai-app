@@ -5,126 +5,32 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Notificări</title>
   <style>
-    :root {
-      --bg: #0b1020; --card: #0f1731; --muted: #9db0ff; --text: #eaf0ff;
-      --sub: #cdd8ff; --line: rgba(255,255,255,.10); --accent: #7c5cff; --accent2: #2dd4bf;
-    }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, sans-serif; min-height: 100vh; color: var(--text);
-      background: radial-gradient(900px 600px at 20% 10%, rgba(124,92,255,.28), transparent 60%),
-        radial-gradient(700px 500px at 80% 85%, rgba(45,212,191,.18), transparent 55%), var(--bg);
-    }
-    header {
-      position: sticky; top: 0; z-index: 100;
-      padding: 12px 24px;
-      background: rgba(11,16,32,.8); backdrop-filter: blur(14px);
-      border-bottom: 1px solid var(--line);
-      display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    }
-    .brand { display: flex; align-items: center; gap: 10px; }
-    .brand img { height: 52px; width: auto; object-fit: contain; }
-    .brand-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; }
-    .header-right { display: flex; align-items: center; gap: 10px; font-size: .82rem; }
-    .btn-ghost {
-      background: rgba(255,255,255,.06); border: 1px solid var(--line);
-      color: var(--sub); padding: 6px 14px; border-radius: 8px; cursor: pointer;
-      font-size: .82rem; font-weight: 600; text-decoration: none;
-      transition: background .18s;
-    }
-    .btn-ghost:hover { background: rgba(255,255,255,.1); }
-    .btn-danger { background: rgba(255,80,80,.15); border: 1px solid rgba(255,80,80,.3); color: #ffaaaa; }
-    .btn-danger:hover { background: rgba(255,80,80,.25); }
-    .btn-accent {
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border: none; color: #fff; padding: 6px 14px; border-radius: 8px;
-      cursor: pointer; font-size: .82rem; font-weight: 700; text-decoration: none;
-      transition: opacity .18s;
-    }
-    .btn-accent:hover { opacity: .88; }
-
-    main { max-width: 720px; margin: 0 auto; padding: 32px 20px 60px; }
-    .page-header { margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    .page-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em; }
-    .page-title span { color: var(--accent); }
-    .page-actions { display: flex; gap: 8px; }
-
-    /* Filter tabs */
-    .filters { display: flex; gap: 6px; margin-bottom: 20px; }
-    .filter-btn {
-      padding: 6px 16px; border-radius: 20px; border: 1px solid var(--line);
-      background: transparent; color: var(--muted); cursor: pointer; font-size: .82rem;
-      font-weight: 600; transition: all .18s;
-    }
-    .filter-btn.active {
-      background: rgba(124,92,255,.18); border-color: rgba(124,92,255,.4);
-      color: var(--accent);
-    }
-
-    /* Notification cards */
-    .notif-list { display: flex; flex-direction: column; gap: 8px; }
-    .notif-card {
-      background: rgba(15,23,49,.7); border: 1px solid var(--line);
-      border-radius: 14px; padding: 16px 18px;
-      display: flex; gap: 14px; align-items: flex-start;
-      transition: background .18s, border-color .18s;
-      cursor: pointer; text-decoration: none; color: inherit;
-      position: relative;
-      animation: card-in .3s ease both;
-    }
-    @keyframes card-in { from { opacity:0; transform: translateY(8px); } }
-    .notif-card:hover { background: rgba(124,92,255,.08); border-color: rgba(124,92,255,.25); }
-    .notif-card.unread { border-left: 3px solid var(--accent); }
-    .notif-card.type-REFUSED { border-left-color: #ff5050; }
-    .notif-card.type-COMPLETED { border-left-color: var(--accent2); }
-    .notif-card.type-YOUR_TURN { border-left-color: var(--accent); }
-
-    .notif-icon {
-      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center; font-size: 20px;
-      background: rgba(124,92,255,.14);
-    }
-    .notif-icon.type-REFUSED { background: rgba(255,80,80,.14); }
-    .notif-icon.type-COMPLETED { background: rgba(45,212,191,.12); }
-
-    .notif-body { flex: 1; min-width: 0; }
-    .notif-title { font-size: .88rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
-    .notif-msg { font-size: .8rem; color: var(--sub); line-height: 1.5; }
-    .notif-meta { display: flex; gap: 10px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
-    .notif-time { font-size: .73rem; color: var(--muted); }
-    .notif-flow { font-size: .73rem; color: var(--accent); }
-    .notif-unread-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--accent); flex-shrink: 0; margin-top: 6px;
-    }
-    .notif-del {
-      position: absolute; top: 10px; right: 12px;
-      background: none; border: none; cursor: pointer;
-      color: var(--muted); font-size: 16px; opacity: 0;
-      transition: opacity .18s; padding: 4px;
-    }
-    .notif-card:hover .notif-del { opacity: 1; }
-    .notif-del:hover { color: #ff8888; }
-
-    .empty-state {
-      text-align: center; padding: 60px 20px;
-      color: var(--muted); font-size: .95rem;
-    }
-    .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: .5; }
-    .empty-title { font-size: 1.1rem; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
-
-    .loading { text-align: center; padding: 48px; color: var(--muted); }
-    .spin { display: inline-block; width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp .7s linear infinite; }
-    @keyframes sp { to { transform: rotate(360deg); } }
-
-    /* WS status dot */
-    .ws-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: #555; display: inline-block; margin-right: 5px;
-      transition: background .4s;
-    }
-    .ws-dot.connected { background: #2dd4bf; }
-    .ws-dot.error { background: #ff5050; }
+    header{background:rgba(15,23,49,.85);backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--line);padding:13px 24px;
+      display:flex;align-items:center;justify-content:space-between;
+      position:sticky;top:0;z-index:200;}
+    main{max-width:700px;margin:28px auto;padding:0 16px 60px;}
+    .page-title{font-size:1.15rem;font-weight:800;margin-bottom:18px;}
+    .ws-dot{width:8px;height:8px;border-radius:50%;background:#888;
+      display:inline-block;margin-right:6px;transition:background .3s;}
+    .ws-dot.on{background:var(--ok);}
+    .filter-btn{padding:6px 14px;border-radius:8px;border:1px solid var(--line);
+      background:transparent;color:var(--muted);font-size:.8rem;cursor:pointer;transition:.15s;}
+    .filter-btn.active,.filter-btn:hover{background:rgba(124,92,255,.2);
+      border-color:var(--accent);color:var(--sub);}
+    .notif-item{padding:14px 16px;border-radius:12px;border:1px solid var(--line);
+      background:rgba(15,23,49,.6);margin-bottom:8px;cursor:pointer;transition:.15s;}
+    .notif-item.unread{border-color:rgba(124,92,255,.35);background:rgba(124,92,255,.07);}
+    .notif-item:hover{border-color:rgba(255,255,255,.2);}
+    .notif-title{font-size:.88rem;font-weight:700;margin-bottom:4px;}
+    .notif-msg{font-size:.82rem;color:var(--sub);}
+    .notif-meta{font-size:.74rem;color:var(--muted);margin-top:6px;}
+    .notif-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
+      display:inline-block;margin-right:6px;flex-shrink:0;}
+    .btn-ghost{background:transparent;border:1px solid var(--line);
+      color:var(--muted);padding:6px 13px;border-radius:8px;
+      font-size:.8rem;cursor:pointer;transition:.15s;}
+    .btn-ghost:hover{background:rgba(255,255,255,.05);color:var(--sub);}
   </style>
 
   <script>
@@ -138,6 +44,7 @@
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
+  <link rel="stylesheet" href="/styles.css"/>
 </head>
 <body>
 
@@ -416,6 +323,7 @@ loadNotifs();
 </script>
 
 <!-- Widget notificări (pentru bell icon în alte pagini) -->
+<script src="/ui.js"></script>
 <script src="/notif-widget.js"></script>
 
 </body>

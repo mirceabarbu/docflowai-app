@@ -99,6 +99,7 @@
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
+  <link rel="stylesheet" href="/styles.css"/>
 </head>
 <body>
 <header>
@@ -431,7 +432,7 @@ const me=JSON.parse(localStorage.getItem("docflow_user")||"{}");
 if(!token){location.href="/login?next=/admin";}
 const hdrEl=$("hdrUser");
 if(hdrEl) hdrEl.textContent=me.nume||me.email||"—";
-function logout(){localStorage.removeItem("docflow_token");localStorage.removeItem("docflow_user");location.href="/login";}
+// logout() provided by ui.js
 function hdrs(){return{"Authorization":"Bearer "+token,"Content-Type":"application/json"};}
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 
@@ -1287,6 +1288,7 @@ function drawBarChart(id, labels, data, color) {
 }
 
 </script>
+<script src="/ui.js"></script>
 <script src="/notif-widget.js"></script>
 </body>
 </html>
