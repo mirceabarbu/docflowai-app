@@ -123,6 +123,40 @@ const MIGRATIONS = [
     `
   },
   {
+    id: '009_flow_events',
+    sql: `
+      CREATE TABLE IF NOT EXISTS flow_events (
+        id          BIGSERIAL PRIMARY KEY,
+        flow_id     TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+        at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        type        TEXT NOT NULL,
+        by          TEXT,
+        channel     TEXT,
+        to_addr     TEXT,
+        reason      TEXT,
+        notif_type  TEXT,
+        order_idx   INTEGER,
+        extra       JSONB
+      );
+      CREATE INDEX IF NOT EXISTS idx_fevt_flow  ON flow_events(flow_id, at DESC);
+      CREATE INDEX IF NOT EXISTS idx_fevt_type  ON flow_events(type, at DESC);
+      CREATE INDEX IF NOT EXISTS idx_fevt_at    ON flow_events(at DESC);
+    `
+  },
+  {
+    id: '010_rate_limits',
+    sql: `
+      CREATE TABLE IF NOT EXISTS rate_limits (
+        key         TEXT NOT NULL,
+        bucket      TEXT NOT NULL DEFAULT 'global',
+        count       INTEGER NOT NULL DEFAULT 0,
+        window_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (key, bucket)
+      );
+      CREATE INDEX IF NOT EXISTS idx_rl_window ON rate_limits(window_start);
+    `
+  },
+  {
     id: '008_push_subscriptions',
     sql: `
       CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -256,5 +290,99 @@ export async function withFlowLock(flowId, callback) {
     throw e;
   } finally {
     client.release();
+  }
+}
+
+// ── flow_events helpers ────────────────────────────────────────────────────
+
+/**
+ * Scrie un eveniment în flow_events.
+ * Folosit în loc de data.events.push() pretutindeni în cod.
+ */
+export async function appendFlowEvent(flowId, event, clientOrPool) {
+  const db = clientOrPool || pool;
+  const {
+    at, type, by = null, channel = null,
+    to: to_addr = null, reason = null,
+    notifType: notif_type = null,
+    order: order_idx = null,
+    ...rest
+  } = event;
+  const extra = Object.keys(rest).length ? rest : null;
+  await db.query(
+    `INSERT INTO flow_events (flow_id, at, type, by, channel, to_addr, reason, notif_type, order_idx, extra)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [flowId, at || new Date().toISOString(), type, by, channel, to_addr, reason, notif_type,
+     order_idx != null ? Number(order_idx) : null, extra ? JSON.stringify(extra) : null]
+  );
+}
+
+/** Citește toate evenimentele unui flux, ordonate cronologic. */
+export async function getFlowEvents(flowId) {
+  const { rows } = await pool.query(
+    `SELECT id, flow_id, at, type, by, channel, to_addr AS "to", reason,
+            notif_type AS "notifType", order_idx AS "order", extra
+     FROM flow_events WHERE flow_id=$1 ORDER BY at ASC, id ASC`,
+    [flowId]
+  );
+  return rows.map(r => {
+    const e = { at: r.at, type: r.type };
+    if (r.by)        e.by = r.by;
+    if (r.channel)   e.channel = r.channel;
+    if (r.to)        e.to = r.to;
+    if (r.reason)    e.reason = r.reason;
+    if (r.notifType) e.notifType = r.notifType;
+    if (r.order != null) e.order = r.order;
+    if (r.extra)     Object.assign(e, r.extra);
+    return e;
+  });
+}
+
+/** Migrare one-shot: mută data.events[] în flow_events pentru toate fluxurile existente. */
+export async function migrateEventsToTable() {
+  if (!pool || !DB_READY) return;
+  try {
+    // Verifică dacă migrarea a mai rulat
+    const { rows: check } = await pool.query(
+      "SELECT id FROM schema_migrations WHERE id='migrate_events_to_table'"
+    );
+    if (check.length) { console.log('✅ Migrare events: deja efectuată.'); return; }
+
+    console.log('⏳ Migrare events: citesc fluxuri cu data.events[]...');
+    const { rows: flows } = await pool.query(
+      "SELECT id, data FROM flows WHERE jsonb_array_length(data->'events') > 0"
+    );
+    console.log(`⏳ Migrare events: ${flows.length} fluxuri de procesat...`);
+
+    let total = 0;
+    for (const row of flows) {
+      const events = row.data?.events || [];
+      if (!events.length) continue;
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const ev of events) {
+          await appendFlowEvent(row.id, ev, client);
+        }
+        // Șterge data.events din JSONB
+        await client.query(
+          "UPDATE flows SET data = data - 'events', updated_at=NOW() WHERE id=$1",
+          [row.id]
+        );
+        await client.query('COMMIT');
+        total += events.length;
+      } catch(e) {
+        await client.query('ROLLBACK');
+        console.error(`❌ Migrare events eșuată pentru flow ${row.id}:`, e.message);
+      } finally { client.release(); }
+    }
+
+    // Marchează migrarea ca efectuată
+    await pool.query(
+      "INSERT INTO schema_migrations (id) VALUES ('migrate_events_to_table') ON CONFLICT DO NOTHING"
+    );
+    console.log(`✅ Migrare events: ${total} evenimente mutate din ${flows.length} fluxuri.`);
+  } catch(e) {
+    console.error('❌ migrateEventsToTable error:', e.message);
   }
 }

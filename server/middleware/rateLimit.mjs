@@ -1,99 +1,101 @@
 /**
- * DocFlowAI — Rate limiting global in-memory
- * Fereastră glisantă per IP.
+ * DocFlowAI — Rate limiting DB-backed
  *
- * Reguli:
- *   global   — 120 req/min per IP (toate rutele /api, /flows, /admin, /auth)
- *   heavy    — 10 req/min per IP  (upload PDF, archive)
- *   auth     — 20 req/min per IP  (login, refresh — ca fallback față de login_blocks DB)
+ * Două niveluri:
+ *  - global:  120 req / min / IP   (toate endpoint-urile API)
+ *  - strict:  20 req / min / IP    (sign, refuse, upload, regenerate-token)
+ *  - download: 10 req / min / IP   (pdf, signed-pdf)
+ *  - admin:   60 req / min / IP    (admin panel)
  *
- * Notă: in-memory → se resetează la restart și nu e distribuit.
- * OK pentru o singură instanță Railway.
+ * Stochează în tabelul rate_limits (creat de migration 010).
+ * Funcționează corect pe Railway cu mai multe instanțe.
  */
 
-// Structura: Map<key, number[]> — timestamps ale request-urilor în fereastră
-const _windows = new Map();
+let _pool = null;
+export function injectRateLimitPool(pool) { _pool = pool; }
 
-// Curăță intrările expirate la fiecare 5 minute
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, timestamps] of _windows.entries()) {
-    // Păstrăm cel mai lung window posibil (60s)
-    const fresh = timestamps.filter(t => now - t < 60_000);
-    if (fresh.length === 0) _windows.delete(key);
-    else _windows.set(key, fresh);
-  }
-}, 5 * 60_000);
+const BUCKETS = {
+  global:   { window: 60, max: 120 },
+  strict:   { window: 60, max: 20  },
+  download: { window: 60, max: 10  },
+  admin:    { window: 60, max: 60  },
+};
 
-/**
- * Verifică și înregistrează un request.
- * @param {string} key       — cheie unică (ex: `global:1.2.3.4`)
- * @param {number} maxReqs   — număr maxim de request-uri
- * @param {number} windowMs  — fereastra în ms
- * @returns {{ allowed: boolean, remaining: number, retryAfter: number }}
- */
-function check(key, maxReqs, windowMs) {
-  const now = Date.now();
-  const cutoff = now - windowMs;
-  let timestamps = _windows.get(key) || [];
-  timestamps = timestamps.filter(t => t > cutoff);
-  const allowed = timestamps.length < maxReqs;
-  if (allowed) {
-    timestamps.push(now);
-    _windows.set(key, timestamps);
-  }
-  const remaining = Math.max(0, maxReqs - timestamps.length);
-  // Timp până se eliberează un slot (primul timestamp + windowMs - now)
-  const retryAfter = allowed ? 0 : Math.ceil((timestamps[0] + windowMs - now) / 1000);
-  return { allowed, remaining, retryAfter };
+function getClientIp(req) {
+  const forwarded = req.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return req.ip || req.connection?.remoteAddress || 'unknown';
 }
 
-function getIp(req) {
-  return (req.headers['x-forwarded-for'] || req.ip || 'unknown').toString().split(',')[0].trim();
+async function checkRateLimit(ip, bucket) {
+  if (!_pool) return { allowed: true };
+  const { window: windowSec, max } = BUCKETS[bucket] || BUCKETS.global;
+  const key = `${ip}:${bucket}`;
+  try {
+    const { rows } = await _pool.query(
+      `INSERT INTO rate_limits (key, bucket, count, window_start)
+       VALUES ($1, $2, 1, NOW())
+       ON CONFLICT (key, bucket) DO UPDATE SET
+         count = CASE
+           WHEN rate_limits.window_start < NOW() - ($3 || ' seconds')::INTERVAL
+           THEN 1
+           ELSE rate_limits.count + 1
+         END,
+         window_start = CASE
+           WHEN rate_limits.window_start < NOW() - ($3 || ' seconds')::INTERVAL
+           THEN NOW()
+           ELSE rate_limits.window_start
+         END
+       RETURNING count, window_start`,
+      [key, bucket, windowSec]
+    );
+    const { count, window_start } = rows[0];
+    if (count > max) {
+      const resetAt = new Date(new Date(window_start).getTime() + windowSec * 1000);
+      const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+      return { allowed: false, count, max, retryAfter };
+    }
+    return { allowed: true, count, max };
+  } catch(e) {
+    // DB error → fail open (nu blocăm traficul legitim)
+    console.error('rateLimit DB error:', e.message);
+    return { allowed: true };
+  }
 }
 
-/**
- * Middleware global — 120 req/min per IP
- * Aplicat pe toate rutele API (exclude static)
- */
-export function rateLimitGlobal(req, res, next) {
-  const ip = getIp(req);
-  const { allowed, remaining, retryAfter } = check(`global:${ip}`, 120, 60_000);
-  res.setHeader('X-RateLimit-Limit', '120');
-  res.setHeader('X-RateLimit-Remaining', String(remaining));
-  if (!allowed) {
-    res.setHeader('Retry-After', String(retryAfter));
-    return res.status(429).json({ error: 'rate_limit_exceeded', message: `Prea multe request-uri. Încearcă din nou în ${retryAfter}s.`, retryAfter });
-  }
-  next();
+function makeMiddleware(bucket) {
+  return async (req, res, next) => {
+    const ip = getClientIp(req);
+    const result = await checkRateLimit(ip, bucket);
+    res.setHeader('X-RateLimit-Limit', result.max || BUCKETS[bucket].max);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, (result.max || BUCKETS[bucket].max) - (result.count || 0)));
+    if (!result.allowed) {
+      res.setHeader('Retry-After', result.retryAfter || 60);
+      return res.status(429).json({
+        error: 'rate_limit_exceeded',
+        message: `Prea multe cereri. Încearcă din nou în ${result.retryAfter || 60} secunde.`,
+        retryAfter: result.retryAfter || 60,
+      });
+    }
+    next();
+  };
 }
 
-/**
- * Middleware heavy — 10 req/min per IP
- * Aplicat pe upload PDF și archive
- */
-export function rateLimitHeavy(req, res, next) {
-  const ip = getIp(req);
-  const { allowed, remaining, retryAfter } = check(`heavy:${ip}`, 10, 60_000);
-  res.setHeader('X-RateLimit-Limit', '10');
-  res.setHeader('X-RateLimit-Remaining', String(remaining));
-  if (!allowed) {
-    res.setHeader('Retry-After', String(retryAfter));
-    return res.status(429).json({ error: 'rate_limit_exceeded', message: `Prea multe upload-uri. Încearcă din nou în ${retryAfter}s.`, retryAfter });
-  }
-  next();
+// Cleanup periodic — șterge intrări mai vechi de 5 minute
+let _cleanupTimer = null;
+export function startRateLimitCleanup() {
+  if (_cleanupTimer) return;
+  _cleanupTimer = setInterval(async () => {
+    if (!_pool) return;
+    try {
+      await _pool.query(
+        "DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '5 minutes'"
+      );
+    } catch(e) {}
+  }, 5 * 60 * 1000);
 }
 
-/**
- * Middleware auth — 20 req/min per IP
- * Aplicat pe /auth/login și /auth/refresh ca strat suplimentar
- */
-export function rateLimitAuth(req, res, next) {
-  const ip = getIp(req);
-  const { allowed, remaining, retryAfter } = check(`auth:${ip}`, 20, 60_000);
-  if (!allowed) {
-    res.setHeader('Retry-After', String(retryAfter));
-    return res.status(429).json({ error: 'rate_limit_exceeded', message: `Prea multe încercări de autentificare. Încearcă din nou în ${retryAfter}s.`, retryAfter });
-  }
-  next();
-}
+export const globalRateLimit   = makeMiddleware('global');
+export const strictRateLimit   = makeMiddleware('strict');
+export const downloadRateLimit = makeMiddleware('download');
+export const adminRateLimit    = makeMiddleware('admin');
