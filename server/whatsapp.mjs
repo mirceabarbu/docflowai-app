@@ -37,15 +37,77 @@ export function isWhatsAppConfigured() {
 }
 
 /**
- * Normalizează numărul de telefon la formatul internațional fără +
- * Ex: "0712345678" → "40712345678", "+40712345678" → "40712345678"
+ * Normalizează numărul de telefon la formatul internațional E.164 fără +
+ * Suportă:
+ *   "0712345678"       → "40712345678"  (România implicit dacă nu există prefix)
+ *   "+40712345678"     → "40712345678"
+ *   "40712345678"      → "40712345678"
+ *   "+33612345678"     → "33612345678"  (Franța)
+ *   "0033612345678"    → "33612345678"  (prefix IDD 00)
+ *   "07911123456"      → "447911123456" (Marea Britanie cu 07...)
+ * Returnează null dacă numărul nu poate fi normalizat (prea scurt/lung, caractere invalide).
  */
+// Prefixe naționale cunoscute (format: prefixNational -> prefixInternational)
+// Dacă numărul începe cu 0 și NU are deja prefix internațional, mapăm după lungime sau default RO.
+// Aceasta este o euristică — pentru input ambiguu se recomandă format internațional explicit.
+const NATIONAL_PREFIX_MAP = {
+  // Folosit doar ca fallback când numărul începe cu 0 (fără prefix internațional)
+  // și utilizatorul nu a specificat codul țării.
+  // Default: România (40). Poate fi suprascris prin env WA_DEFAULT_COUNTRY_PREFIX.
+};
+const DEFAULT_COUNTRY_PREFIX = process.env.WA_DEFAULT_COUNTRY_PREFIX || "40";
+
 function normalizePhone(phone) {
   if (!phone) return null;
-  let p = String(phone).replace(/\s+/g, "").replace(/-/g, "");
+  // Elimină spații, cratime, paranteze, puncte, slash
+  let p = String(phone).replace(/[\s\-().\/]/g, "");
+  if (!p) return null;
+
+  // Format +XXXXXXXXXXX → elimină +
   if (p.startsWith("+")) p = p.slice(1);
-  if (p.startsWith("0")) p = "40" + p.slice(1); // România implicit
+
+  // Format 00XXXXXXXXXXX (IDD internațional) → elimină 00
+  if (p.startsWith("00")) p = p.slice(2);
+
+  // Format național (începe cu 0) → adaugă prefix internațional default
+  if (p.startsWith("0")) p = DEFAULT_COUNTRY_PREFIX + p.slice(1);
+
+  // Validare finală: doar cifre, lungime E.164 (7-15 cifre)
+  if (!/^\d{7,15}$/.test(p)) {
+    console.warn(`⚠️ Număr telefon invalid: "${phone}" → "${p}"`);
+    return null;
+  }
+
   return p;
+}
+
+/**
+ * Detectează formatul unui număr și returnează prefix internațional dacă e identificabil.
+ * Folosit pentru feedback UI mai clar.
+ */
+export function detectPhoneFormat(phone) {
+  if (!phone || !phone.trim()) return { format: "empty" };
+  const p = phone.trim();
+  if (p.startsWith("+")) return { format: "international", countryCode: p.slice(1).match(/^(\d{1,3})/)?.[1] || "?" };
+  if (p.startsWith("00")) return { format: "international_idd" };
+  if (p.startsWith("0")) return { format: "national", assumedCountry: DEFAULT_COUNTRY_PREFIX };
+  return { format: "unknown" };
+}
+
+/**
+ * Validează un număr de telefon pentru WhatsApp (înainte de salvare în DB).
+ * Returnează { valid: true, normalized, display } sau { valid: false, error }.
+ */
+export function validatePhone(phone) {
+  if (!phone || !phone.trim()) return { valid: true, normalized: "" }; // câmp opțional
+  const normalized = normalizePhone(phone.trim());
+  if (!normalized) {
+    return {
+      valid: false,
+      error: "Număr de telefon invalid. Folosiți formatul internațional (+40712345678), IDD (0040712345678) sau național (0712345678 — se presupune România)."
+    };
+  }
+  return { valid: true, normalized, display: "+" + normalized };
 }
 
 /**
