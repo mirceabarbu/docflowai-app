@@ -809,8 +809,9 @@ let _archiveInstData = null; // {inst: [dept,...], ...}
 async function loadArchiveInstData() {
   if (_archiveInstData) return;
   if (!_allFlows) {
-    const r = await _apiFetch("/admin/flows/list", {headers: hdrs()});
-    _allFlows = await r.json();
+    const r = await _apiFetch("/admin/flows/list?limit=500", {headers: hdrs()});
+    const resp = await r.json();
+    _allFlows = Array.isArray(resp) ? resp : (resp.flows || []);
   }
   const map = {};
   _allFlows.forEach(f => {
