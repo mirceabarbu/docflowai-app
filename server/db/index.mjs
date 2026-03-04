@@ -1,7 +1,7 @@
 /**
  * DocFlowAI — DB layer
- * Pool PostgreSQL, migrări schema, helpers saveFlow / getFlowData.
- * Import: import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
+ * Pool PostgreSQL, migrări schema, helpers saveFlow / getFlowData / insertFlowEvent.
+ * Import: import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, insertFlowEvent } from './db/index.mjs';
  */
 
 import pg from 'pg';
@@ -136,6 +136,25 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_push_sub_email ON push_subscriptions(user_email);
     `
+  },
+  {
+    id: '009_flow_events',
+    sql: `
+      CREATE TABLE IF NOT EXISTS flow_events (
+        id        BIGSERIAL PRIMARY KEY,
+        flow_id   TEXT        NOT NULL,
+        at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        type      TEXT        NOT NULL,
+        actor     TEXT,
+        channel   TEXT,
+        ok        BOOLEAN,
+        meta      JSONB       NOT NULL DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS idx_fe_flow_id  ON flow_events(flow_id, at DESC);
+      CREATE INDEX IF NOT EXISTS idx_fe_type     ON flow_events(type);
+      CREATE INDEX IF NOT EXISTS idx_fe_at       ON flow_events(at DESC);
+      CREATE INDEX IF NOT EXISTS idx_fe_actor    ON flow_events(actor);
+    `
   }
 ];
 
@@ -228,4 +247,28 @@ export async function saveFlow(id, data) {
 export async function getFlowData(id) {
   const r = await pool.query('SELECT data FROM flows WHERE id=$1', [id]);
   return r.rows[0]?.data ?? null;
+}
+
+/**
+ * Inserează un eveniment în tabelul flow_events (append-only).
+ * @param {object} evt
+ *   flow_id  {string}  — ID-ul fluxului
+ *   type     {string}  — tipul evenimentului (FLOW_CREATED, SIGNED, REFUSED, NOTIFY, ...)
+ *   actor    {string?} — emailul actorului (utilizator sau 'system')
+ *   channel  {string?} — canal notificare (email, whatsapp, inapp)
+ *   ok       {boolean?}— succes/eșec pentru NOTIFY
+ *   meta     {object?} — date suplimentare (reason, order, docName, etc.)
+ */
+export async function insertFlowEvent({ flow_id, type, actor = null, channel = null, ok = null, meta = {} }) {
+  if (!pool || !DB_READY) return;
+  try {
+    await pool.query(
+      `INSERT INTO flow_events (flow_id, at, type, actor, channel, ok, meta)
+       VALUES ($1, NOW(), $2, $3, $4, $5, $6::jsonb)`,
+      [flow_id, type, actor || null, channel || null, ok, JSON.stringify(meta || {})]
+    );
+  } catch(e) {
+    // Event log nu trebuie să blocheze fluxul principal
+    console.error('insertFlowEvent error:', e.message);
+  }
 }
