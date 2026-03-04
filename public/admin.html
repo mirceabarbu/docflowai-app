@@ -99,21 +99,24 @@
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
+  <script src="/ui.js"></script>
+  <script src="/notif-widget.js"></script>
 </head>
 <body>
-<header>
-  <div class="logo">
-    <img src="/Logo.png" alt="DocFlowAI" style="height:44px;width:auto;object-fit:contain;" />
-    <span style="margin-left:10px;opacity:.55;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:#9db0ff;">Admin</span>
-  </div>
-  <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
-    <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
-    <a href="/" style="color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:6px 13px;border-radius:8px;font-size:.82rem;">↩ Aplicație</a>
-    <button class="btn-logout" onclick="logout()">Ieși</button>
-  </div>
-</header>
+<!-- Topbar injectat de ui.js -->
+<script>document.addEventListener('DOMContentLoaded',()=>DocFlowUI.initTopbar({page:'admin'}));</script>
 
-<main>
+<main class="df-main">
+  <!-- ── Tabs navigare admin ── -->
+  <div class="df-tabs" style="margin-bottom:24px;">
+    <button class="df-tab active" id="tabUtilizatori" onclick="showAdminTab('utilizatori')">👥 Utilizatori</button>
+    <button class="df-tab" id="tabFluxuri" onclick="showAdminTab('fluxuri')">📂 Fluxuri</button>
+    <button class="df-tab" id="tabAnalytics" onclick="showAdminTab('analytics')">📊 Analytics</button>
+    <button class="df-tab" id="tabSistema" onclick="showAdminTab('sistema')">⚙️ Sistem</button>
+  </div>
+
+  <!-- ── Tab: Utilizatori ── -->
+  <div id="sectionUtilizatori">
   <h2>Gestionare utilizatori</h2>
 
   <div class="card">
@@ -170,6 +173,10 @@
   </div>
 
   <div style="margin-top:40px;border-top:1px solid rgba(255,255,255,.08);padding-top:32px;">
+  </div><!-- /sectionUtilizatori -->
+
+  <!-- ── Tab: Fluxuri ── -->
+  <div id="sectionFluxuri" style="display:none;">
     <h2 style="color:#9db0ff;margin-bottom:16px;">📋 Fluxuri active</h2>
     <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:18px 20px;margin-bottom:28px;">
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
@@ -200,6 +207,27 @@
       </div>
     </div>
 
+  </div><!-- /sectionFluxuri -->
+
+  <!-- ── Tab: Analytics ── -->
+  <div id="sectionAnalytics" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+      <h2 style="margin:0;">📊 Analytics fluxuri</h2>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <label style="color:var(--muted);font-size:.82rem;">Perioadă:</label>
+        <input type="date" id="analyticsFrom" class="df-input" style="width:150px;" />
+        <span style="color:var(--muted);">—</span>
+        <input type="date" id="analyticsTo" class="df-input" style="width:150px;" />
+        <button class="df-btn primary" onclick="loadAnalytics()">🔄 Actualizează</button>
+      </div>
+    </div>
+    <div id="analyticsContent">
+      <div style="text-align:center;color:var(--muted);padding:48px;">Selectează perioada și apasă Actualizează.</div>
+    </div>
+  </div><!-- /sectionAnalytics -->
+
+  <!-- ── Tab: Sistem ── -->
+  <div id="sectionSistema" style="display:none;">
     <h2 style="color:#2dd4bf;">🗂 Arhivare fluxuri în Google Drive</h2>
     <div style="background:rgba(45,212,191,.05);border:1px solid rgba(45,212,191,.2);border-radius:14px;padding:22px 24px;margin-top:16px;">
       <div style="margin-bottom:16px;">
@@ -338,17 +366,145 @@
 const $=id=>document.getElementById(id);
 const token=localStorage.getItem("docflow_token");
 const me=JSON.parse(localStorage.getItem("docflow_user")||"{}");
-// Nu redirecționa dacă token există — lasă serverul să verifice rolul
 if(!token){location.href="/login?next=/admin";}
-const hdrEl=$("hdrUser");
-if(hdrEl) hdrEl.textContent=me.nume||me.email||"—";
-function logout(){localStorage.removeItem("docflow_token");localStorage.removeItem("docflow_user");location.href="/login";}
+function logout(){ DocFlowUI.logout(); }
 function hdrs(){return{"Authorization":"Bearer "+token,"Content-Type":"application/json"};}
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 
 function showMsg(id,txt,err){
   const el=$(id);el.className="msg "+(err?"err":"ok");el.textContent=txt;
   setTimeout(()=>{el.textContent="";el.className="";},5000);
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+const ADMIN_TABS = ['utilizatori','fluxuri','analytics','sistema'];
+function showAdminTab(name) {
+  ADMIN_TABS.forEach(t => {
+    const sec = $('section' + t.charAt(0).toUpperCase() + t.slice(1));
+    const tab = $('tab'    + t.charAt(0).toUpperCase() + t.slice(1));
+    if (sec) sec.style.display = t === name ? '' : 'none';
+    if (tab) tab.classList.toggle('active', t === name);
+  });
+  if (name === 'fluxuri' && !_adminFluxPage) loadFlowsList(true, 1);
+  if (name === 'analytics') initAnalyticsDates();
+  sessionStorage.setItem('docflow_admin_tab', name);
+}
+
+// ── Analytics ──────────────────────────────────────────────────────────────
+function initAnalyticsDates() {
+  const toEl = $('analyticsTo'), fromEl = $('analyticsFrom');
+  if (!toEl || !fromEl) return;
+  if (!toEl.value) {
+    const now = new Date();
+    toEl.value = now.toISOString().slice(0,10);
+    fromEl.value = new Date(now - 30*24*3600*1000).toISOString().slice(0,10);
+  }
+}
+
+async function loadAnalytics() {
+  const from = $('analyticsFrom')?.value;
+  const to   = $('analyticsTo')?.value;
+  const el   = $('analyticsContent');
+  if (!from || !to || !el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px;"><span class="df-spin"></span></div>';
+  try {
+    const r = await _apiFetch(`/admin/analytics/summary?from=${from}&to=${to}`, { headers: hdrs() });
+    if (!r.ok) throw new Error('Eroare server');
+    const d = await r.json();
+    const refuseColor = d.totals.refuseRate > 20 ? '#fca5a5' : d.totals.refuseRate > 10 ? '#fcd34d' : '#86efac';
+    const avgHuman = d.avgSigningHuman || '—';
+
+    // Sparkline data
+    const allDays = [];
+    { const f = new Date(from), t = new Date(to);
+      for (let d2 = new Date(f); d2 <= t; d2.setDate(d2.getDate()+1))
+        allDays.push(d2.toISOString().slice(0,10)); }
+    const createdMap  = Object.fromEntries(d.createdPerDay.map(r  => [r.day, r.count]));
+    const completedMap= Object.fromEntries(d.completedPerDay.map(r=> [r.day, r.count]));
+    const createdVals  = allDays.map(day => createdMap[day]  || 0);
+    const completedVals= allDays.map(day => completedMap[day]|| 0);
+
+    el.innerHTML = `
+      <!-- Stat tiles -->
+      <div class="df-stats">
+        <div class="df-stat df-stat-accent">
+          <span class="df-stat-val">${d.totals.created}</span>
+          <span class="df-stat-label">Fluxuri create</span>
+        </div>
+        <div class="df-stat df-stat-success">
+          <span class="df-stat-val">${d.totals.completed}</span>
+          <span class="df-stat-label">Finalizate</span>
+        </div>
+        <div class="df-stat df-stat-danger">
+          <span class="df-stat-val">${d.totals.refused}</span>
+          <span class="df-stat-label">Refuzate</span>
+        </div>
+        <div class="df-stat" style="border-top:3px solid ${refuseColor}">
+          <span class="df-stat-val" style="color:${refuseColor}">${d.totals.refuseRate}%</span>
+          <span class="df-stat-label">Rată refuz</span>
+        </div>
+        <div class="df-stat" style="border-top:3px solid #a78fff">
+          <span class="df-stat-val" style="font-size:1.4rem">${avgHuman}</span>
+          <span class="df-stat-label">Timp mediu semnare</span>
+        </div>
+      </div>
+
+      <!-- Sparklines -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+        <div class="df-card">
+          <div class="df-card-title">📈 Fluxuri create / zi</div>
+          <canvas id="sparkCreated" width="400" height="80" style="width:100%;height:80px;"></canvas>
+          <div id="sparkCreatedLegend" style="margin-top:8px;font-size:.75rem;color:var(--muted);text-align:right;"></div>
+        </div>
+        <div class="df-card">
+          <div class="df-card-title">✅ Fluxuri finalizate / zi</div>
+          <canvas id="sparkCompleted" width="400" height="80" style="width:100%;height:80px;"></canvas>
+          <div id="sparkCompletedLegend" style="margin-top:8px;font-size:.75rem;color:var(--muted);text-align:right;"></div>
+        </div>
+      </div>
+
+      <!-- Top charts -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+        <div class="df-card">
+          <div class="df-card-title">👤 Top inițiatori</div>
+          <div id="chartInitiatori"></div>
+        </div>
+        <div class="df-card">
+          <div class="df-card-title">🏢 Top compartimente</div>
+          <div id="chartCompartimente"></div>
+        </div>
+      </div>
+
+      <!-- Notif stats -->
+      <div class="df-card">
+        <div class="df-card-title">📬 Notificări trimise (${from} → ${to})</div>
+        <div class="df-table-wrap">
+          <table class="df-table">
+            <thead><tr><th>Canal</th><th>Status</th><th>Nr.</th></tr></thead>
+            <tbody>
+              ${d.notifStats.length ? d.notifStats.map(n =>
+                `<tr><td>${n.channel}</td><td>${n.ok ? '<span class="df-badge ok">✓ trimis</span>' : '<span class="df-badge bad">✗ eșuat</span>'}</td><td>${n.count}</td></tr>`
+              ).join('') : '<tr><td colspan="3" style="color:var(--muted);">Fără date</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    // Render sparklines după ce DOM e gata
+    requestAnimationFrame(() => {
+      const c1 = $('sparkCreated'), c2 = $('sparkCompleted');
+      if (c1) { c1.width = c1.offsetWidth * devicePixelRatio || 400; DocFlowUI.renderSparkline(c1, createdVals, '#6c4ff6'); }
+      if (c2) { c2.width = c2.offsetWidth * devicePixelRatio || 400; DocFlowUI.renderSparkline(c2, completedVals, '#22c8a8'); }
+      const l1 = $('sparkCreatedLegend');   if (l1) l1.textContent = `Max: ${Math.max(...createdVals,0)} · Total: ${d.totals.created}`;
+      const l2 = $('sparkCompletedLegend'); if (l2) l2.textContent = `Max: ${Math.max(...completedVals,0)} · Total: ${d.totals.completed}`;
+      DocFlowUI.renderBarChart($('chartInitiatori'),   d.topInitiatori.map(r   => ({ label: r.email.split('@')[0], value: r.count })));
+      DocFlowUI.renderBarChart($('chartCompartimente'), d.topCompartimente.map(r => ({ label: r.compartiment,      value: r.count })));
+    });
+
+  } catch(e) {
+    el.innerHTML = `<div class="df-alert error">❌ ${e.message}</div>`;
+  }
 }
 
 const PAGE_SIZE = 10;

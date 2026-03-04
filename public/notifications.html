@@ -138,23 +138,12 @@
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
+  <script src="/ui.js"></script>
 </head>
 <body>
 
-<header>
-  <div class="brand">
-    <img src="/Logo.png" alt="DocFlowAI"/>
-  </div>
-  <div id="userBar" class="header-right">
-    <!-- bell widget injected here by notif-widget.js -->
-    <a href="/" class="btn-ghost">← Înapoi</a>
-    <span id="wsStatus" title="Conexiune live" style="display:flex;align-items:center;font-size:.75rem;color:var(--muted);">
-      <span class="ws-dot" id="wsDot"></span><span id="wsLabel">Connecting...</span>
-    </span>
-    <span id="userLabel" style="color:var(--sub);"></span>
-    <button class="btn-danger btn-ghost" id="btnLogout">Ieșire</button>
-  </div>
-</header>
+<!-- Topbar injectat de ui.js -->
+<script>document.addEventListener('DOMContentLoaded',()=>DocFlowUI.initTopbar({page:'notif'}));</script>
 
 <main>
   <div class="page-header">

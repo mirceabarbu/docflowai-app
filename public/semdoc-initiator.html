@@ -175,7 +175,8 @@ th{ color: var(--sub) !important; }
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
-</head>
+    <script src="/ui.js"></script>
+  </head>
 <script>
   // Incarca pdf-lib pentru stampilare PDF la creare flux
   (function() {
@@ -203,17 +204,8 @@ th{ color: var(--sub) !important; }
   }
 </script>
   <body>
-    <header>
-      <div class="brand">
-        <img src="/Logo.png" alt="DocFlowAI" style="height:130px; width:auto; object-fit:contain; display:block;" />
-      </div>
-      <div class="tabs">
-        <button id="tabInit" class="tabbtn active" type="button">📝 Flux nou</button>
-        <button id="tabFluxuri" class="tabbtn" type="button">📂 Fluxuri mele</button>
-        <a href="/templates" class="tabbtn" style="text-decoration:none;" id="linkSabloane">📋 Șabloane</a>
-      </div>
-      <div id="userBar" style="display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
-    </header>
+    <!-- Topbar injectat de ui.js -->
+  <script>document.addEventListener('DOMContentLoaded',()=>DocFlowUI.initTopbar({page:'flows'}));</script>
 
     <main>
       <!-- INIT -->
