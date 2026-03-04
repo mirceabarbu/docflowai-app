@@ -194,98 +194,39 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-
   try {
-    const days = Math.max(1, Math.min(3650, parseInt(req.query.days || '30', 10) || 30));
+    const days = parseInt(req.query.days || '30');
     const filterInst = (req.query.institutie || '').trim();
     const filterDept = (req.query.compartiment || '').trim();
-    const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit || '500', 10) || 500));
-
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-
-    // IMPORTANT: nu selectăm data completă (conține pdfB64/signedPdfB64 = foarte mare).
-    // Calculăm eligibilitatea + mărimile direct în SQL, pentru viteză.
-    const q = `
-      SELECT
-        f.id,
-        f.created_at,
-        COALESCE(f.data->>'flowId', '') AS flowId,
-        COALESCE(f.data->>'docName', '') AS docName,
-        COALESCE(f.data->>'createdAt', f.created_at::text) AS createdAt,
-        COALESCE((f.data->>'completed')::boolean, false) AS completed,
-        COALESCE(f.data->>'institutie', '') AS institutie_flow,
-        COALESCE(f.data->>'compartiment', '') AS compartiment_flow,
-        LOWER(COALESCE(f.data->>'initEmail','')) AS init_email,
-        COALESCE(u.institutie, '') AS institutie_user,
-        COALESCE(u.compartiment, '') AS compartiment_user,
-
-        -- finalizat/refuzat
-        EXISTS (
-          SELECT 1
-          FROM jsonb_array_elements(COALESCE(f.data->'signers','[]'::jsonb)) s
-          WHERE (s->>'status') = 'refused'
-        ) AS has_refused,
-
-        NOT EXISTS (
-          SELECT 1
-          FROM jsonb_array_elements(COALESCE(f.data->'signers','[]'::jsonb)) s
-          WHERE COALESCE(s->>'status','') <> 'signed'
-        ) AS all_signed,
-
-        COALESCE(f.data->>'storage','') AS storage,
-
-        -- aproximare mărime (base64 length * 0.75)
-        (LENGTH(COALESCE(f.data->>'pdfB64','')) + LENGTH(COALESCE(f.data->>'signedPdfB64',''))) AS b64_len
-      FROM flows f
-      LEFT JOIN users u ON LOWER(u.email) = LOWER(COALESCE(f.data->>'initEmail',''))
-      WHERE f.created_at < $1
-      ORDER BY f.created_at ASC
-      LIMIT $2
-    `;
-
-    const { rows } = await pool.query(q, [cutoff, limit]);
-
+    const { rows } = await pool.query('SELECT id,data,created_at FROM flows WHERE created_at < $1 ORDER BY created_at ASC', [cutoff]);
+    const { rows: userRows } = await pool.query('SELECT email,institutie,compartiment FROM users');
+    const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
     const eligible = rows.filter(r => {
-      const done = r.completed || r.all_signed;
-      const refused = r.has_refused;
-      if (!(done || refused) || r.storage === 'drive') return false;
-
-      const inst = (r.institutie_user || r.institutie_flow || '').trim();
-      const dept = (r.compartiment_user || r.compartiment_flow || '').trim();
-
-      if (filterInst && inst !== filterInst) return false;
-      if (filterDept && dept !== filterDept) return false;
-
+      const d = r.data; if (!d) return false;
+      const done = d.completed || (d.signers || []).every(s => s.status === 'signed');
+      const refused = (d.signers || []).some(s => s.status === 'refused');
+      if (!(done || refused) || d.storage === 'drive') return false;
+      const u = userMap[(d.initEmail || '').toLowerCase()] || {};
+      if (filterInst && (u.institutie || d.institutie || '') !== filterInst) return false;
+      if (filterDept && (u.compartiment || d.compartiment || '') !== filterDept) return false;
       return true;
     });
-
-    const totalBytes = eligible.reduce((acc, r) => acc + Math.round((r.b64_len || 0) * 0.75), 0);
-
+    const totalBytes = eligible.reduce((acc, r) => {
+      const d = r.data;
+      return acc + (d.pdfB64 ? Math.round(d.pdfB64.length * 0.75) : 0) + (d.signedPdfB64 ? Math.round(d.signedPdfB64.length * 0.75) : 0);
+    }, 0);
     return res.json({
-      ok: true,
-      cutoff,
-      limit,
-      count: eligible.length,
-      totalMB: Math.round(totalBytes / 1024 / 1024 * 100) / 100,
+      count: eligible.length, totalMB: Math.round(totalBytes / 1024 / 1024 * 100) / 100,
       flows: eligible.map(r => {
-        const inst = (r.institutie_user || r.institutie_flow || '').trim();
-        const dept = (r.compartiment_user || r.compartiment_flow || '').trim();
-        const sizeMB = Math.round(((r.b64_len || 0) * 0.75) / 1024 / 1024 * 100) / 100;
-
-        return {
-          flowId: r.flowid,
-          docName: r.docname,
-          createdAt: r.createdat || r.created_at,
-          status: r.completed ? 'finalizat' : (r.has_refused ? 'refuzat' : 'necunoscut'),
-          sizeMB,
-          institutie: inst,
-          compartiment: dept
-        };
+        const u = userMap[(r.data.initEmail || '').toLowerCase()] || {};
+        return { flowId: r.data.flowId, docName: r.data.docName, createdAt: r.data.createdAt || r.created_at,
+          status: r.data.completed ? 'finalizat' : (r.data.signers || []).some(s => s.status === 'refused') ? 'refuzat' : 'necunoscut',
+          sizeMB: Math.round(((r.data.pdfB64?.length || 0) + (r.data.signedPdfB64?.length || 0)) * 0.75 / 1024 / 1024 * 100) / 100,
+          institutie: u.institutie || r.data.institutie || '', compartiment: u.compartiment || r.data.compartiment || '' };
       })
     });
-  } catch (e) {
-    return res.status(500).json({ error: String(e.message || e) });
-  }
+  } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
 });
 
 router.post('/admin/flows/archive', async (req, res) => {
