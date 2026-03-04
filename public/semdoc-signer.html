@@ -726,7 +726,7 @@ th{ color: var(--sub) !important; }
         // Title bar
         lastPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: accent });
         lastPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: cartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(1,1,1) });
-        lastPage.drawText(`Generat: ${new Date().toLocaleString("ro-RO")}`, { x: pW - MARGIN - 130, y: cartusBottom + cartusH - titleH + 6, size: 7, font: fontR, color: rgb(.9,.9,.9) });
+        // (Removed) Generat timestamp in header bar — kept footer timestamp as single source of truth
 
         // AcroForm — comportament diferit dupa tipul fluxului:
         // - flux 'ancore': PDF are campuri editabile Forexebug → merge cu AcroForm existent, SigFlags=1
