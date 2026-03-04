@@ -207,6 +207,7 @@
   </div>
 
 <script>
+  document.addEventListener("DOMContentLoaded", function() {
   const $ = (id) => document.getElementById(id);
   const qs = new URLSearchParams(location.search);
   const flowId = qs.get("flow") || qs.get("id") || "";
@@ -510,6 +511,7 @@
   });
 
   loadFlow();
+  }); // DOMContentLoaded
 </script>
 </body>
 </html>
