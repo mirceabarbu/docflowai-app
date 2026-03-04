@@ -398,13 +398,12 @@ th{ color: var(--sub) !important; }
 
         // Maschează zona semnatarilor până la încărcarea PDF-ului
         const mask = $("signersMask");
-        if (mask) mask.style.display = hasPdf ? "none" : "flex";
-        const pdfHint = $("pdfRequiredHint"); if (pdfHint) pdfHint.style.display = hasPdf ? "none" : "inline-block";
+        if (mask) mask.style.display = "none";
+        const pdfHint = $("pdfRequiredHint"); if (pdfHint) pdfHint.style.display = "none";
 
         const btnAdd = $("btnAdd");
         const btnDef = $("btnDefaults");
-        if (btnAdd) { btnAdd.disabled = !hasPdf; btnAdd.style.opacity = hasPdf ? "1" : "0.4"; }
-        if (btnDef) { btnDef.disabled = !hasPdf; btnDef.style.opacity = hasPdf ? "1" : "0.4"; }
+        // btnAdd si btnDefaults raman active indiferent de PDF
 
         // Singura condiție: PDF încărcat
         const valid = hasPdf;
