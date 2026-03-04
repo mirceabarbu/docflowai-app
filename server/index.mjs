@@ -189,7 +189,7 @@ async function stampFooterOnPdf(pdfB64, flowData) {
     const createdDate = flowData.createdAt ? new Date(flowData.createdAt).toLocaleString('ro-RO') : new Date().toLocaleString('ro-RO');
     const parts = [ro(flowData.initName || ''), flowData.initFunctie ? ro(flowData.initFunctie) : null, flowData.institutie ? ro(flowData.institutie) : null, flowData.compartiment ? ro(flowData.compartiment) : null].filter(Boolean).join(', ');
     const footerLeft = createdDate + (parts ? '  |  ' + parts : '');
-    const footerRight = ro(flowData.flowId || '');
+    const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
     lastPage.drawLine({ start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 }, thickness: 0.4, color: rgb(0.75, 0.75, 0.75) });
     lastPage.drawText(footerLeft, { x: MARGIN, y: footerY, size: 7, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: pW - MARGIN * 2 - (footerRight.length * 4.5) - 16 });
     if (footerRight) lastPage.drawText(footerRight, { x: pW - MARGIN - (footerRight.length * 4.5), y: footerY, size: 7, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
