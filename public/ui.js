@@ -321,6 +321,27 @@ const DocFlowUI = (() => {
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); }
+
+    /* ── Protecție elemente native — nu suprascriem tabele și formulare ── */
+    /* Resetul din ui.js nu trebuie să afecteze tabele și inputuri native */
+    table { border-collapse: collapse; width: 100%; }
+    table th, table td {
+      padding: 10px !important;
+      vertical-align: top !important;
+      border-bottom: 1px solid rgba(255,255,255,.08) !important;
+      text-align: left !important;
+    }
+    table thead th { font-size: 12px !important; opacity: .85 !important; }
+    table td input, table td select {
+      width: 100% !important; min-width: 0 !important;
+      padding: 10px !important;
+      border-radius: 10px !important;
+      border: 1px solid rgba(255,255,255,.12) !important;
+      background: rgba(0,0,0,.2) !important;
+      color: #e9eefc !important;
+    }
+    table td button { padding: 5px 10px !important; }
+    table tr.drag-over td { background: rgba(124,92,255,.18) !important; }
   `;
 
   function injectCSS() {
