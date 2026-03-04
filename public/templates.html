@@ -133,11 +133,15 @@
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
-  <script src="/ui.js"></script>
 </head>
 <body>
-<!-- Topbar injectat de ui.js -->
-<script>document.addEventListener('DOMContentLoaded',()=>DocFlowUI.initTopbar({page:'templates'}));</script>
+<header>
+  <div class="logo"><img src="/Logo.png" alt="DocFlowAI"/></div>
+  <div class="hdr-right" id="userBar">
+    <a href="/" class="btn-back">← Înapoi</a>
+    <button class="btn-logout" onclick="logout()">Ieșire</button>
+  </div>
+</header>
 
 <main>
   <h1>📋 Șabloanele <span style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">mele</span></h1>
@@ -215,7 +219,7 @@ const $ = id => document.getElementById(id);
 const token = localStorage.getItem('docflow_token');
 const me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
 if (!token) { location.href = '/login?next=/templates'; }
-function logout() { DocFlowUI.logout(); }
+function logout() { localStorage.removeItem('docflow_token'); localStorage.removeItem('docflow_user'); location.href = '/login'; }
 function hdrs() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 

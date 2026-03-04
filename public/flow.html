@@ -134,10 +134,8 @@
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
-  <script src="/ui.js"></script>
 </head>
 <body>
-<script>document.addEventListener('DOMContentLoaded',()=>DocFlowUI.initTopbar({page:'flows'}));</script>
   <div class="wrap">
     <div class="topbar">
       <div class="brand">
@@ -207,7 +205,6 @@
   </div>
 
 <script>
-  document.addEventListener("DOMContentLoaded", function() {
   const $ = (id) => document.getElementById(id);
   const qs = new URLSearchParams(location.search);
   const flowId = qs.get("flow") || qs.get("id") || "";
@@ -511,7 +508,6 @@
   });
 
   loadFlow();
-  }); // DOMContentLoaded
 </script>
 </body>
 </html>
