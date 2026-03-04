@@ -186,8 +186,7 @@ async function stampFooterOnPdf(pdfB64, flowData) {
     const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
     const { width: pW } = lastPage.getSize();
     const MARGIN = 40, footerY = 14;
-    const RO_TZ = { timeZone: 'Europe/Bucharest', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
-    const createdDate = flowData.createdAt ? new Date(flowData.createdAt).toLocaleString('ro-RO', RO_TZ) : new Date().toLocaleString('ro-RO', RO_TZ);
+    const createdDate = flowData.createdAt ? new Date(flowData.createdAt).toLocaleString('ro-RO') : new Date().toLocaleString('ro-RO');
     const parts = [ro(flowData.initName || ''), flowData.initFunctie ? ro(flowData.initFunctie) : null, flowData.institutie ? ro(flowData.institutie) : null, flowData.compartiment ? ro(flowData.compartiment) : null].filter(Boolean).join(', ');
     const footerLeft = createdDate + (parts ? '  |  ' + parts : '');
     const footerRight = ro(flowData.flowId || '');
