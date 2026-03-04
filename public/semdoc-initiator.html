@@ -152,6 +152,31 @@ th{ color: var(--sub) !important; }
 .mono{ color: var(--text) !important; }
 #err{ border-color: rgba(251,113,133,.35) !important; }
 /* ===== End theme ===== */
+
+    /* ── Protecție tabel semnatari față de reset-ul global din ui.js ── */
+    table { border-collapse: collapse; width: 100%; }
+    table th, table td {
+      padding: 8px 10px !important;
+      vertical-align: middle !important;
+      border-bottom: 1px solid rgba(255,255,255,.08) !important;
+    }
+    table thead th {
+      font-size: .72rem !important;
+      font-weight: 700 !important;
+      letter-spacing: .06em !important;
+      color: #9db0ff !important;
+      padding: 6px 10px !important;
+      border-bottom: 1px solid rgba(255,255,255,.15) !important;
+    }
+    table tr td select,
+    table tr td input {
+      width: 100% !important;
+      padding: 6px 8px !important;
+    }
+    table tr td .btn,
+    table tr td button {
+      padding: 5px 10px !important;
+    }
 </style>
     <script>
     // Auth guard — redirect to login if no valid JWT
