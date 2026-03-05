@@ -215,6 +215,67 @@ const MIGRATIONS = [
     CREATE INDEX IF NOT EXISTS idx_delegations_org ON delegations(org_id);
     CREATE INDEX IF NOT EXISTS idx_flows_org ON flows(org_id);
 
+
+    -- Ensure org_id columns are INTEGER and populated before adding FKs (auto-heal)
+    DO $$
+    DECLARE
+      def_id integer;
+      col_type text;
+    BEGIN
+      SELECT id INTO def_id FROM organizations WHERE name='Default Organization' ORDER BY id LIMIT 1;
+      IF def_id IS NULL THEN
+        INSERT INTO organizations(name) VALUES ('Default Organization') RETURNING id INTO def_id;
+      END IF;
+
+      -- USERS
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='org_id') THEN
+        UPDATE users
+          SET org_id = def_id::text
+          WHERE org_id IS NULL OR org_id::text = '' OR org_id::text !~ '^\d+$';
+        SELECT data_type INTO col_type FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='users' AND column_name='org_id';
+        IF col_type <> 'integer' THEN
+          EXECUTE 'ALTER TABLE users ALTER COLUMN org_id TYPE integer USING org_id::integer';
+        END IF;
+      END IF;
+
+      -- FLOWS
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='flows' AND column_name='org_id') THEN
+        UPDATE flows
+          SET org_id = def_id::text
+          WHERE org_id IS NULL OR org_id::text = '' OR org_id::text !~ '^\d+$';
+        SELECT data_type INTO col_type FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='flows' AND column_name='org_id';
+        IF col_type <> 'integer' THEN
+          EXECUTE 'ALTER TABLE flows ALTER COLUMN org_id TYPE integer USING org_id::integer';
+        END IF;
+      END IF;
+
+      -- DELEGATIONS
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='delegations' AND column_name='org_id') THEN
+        UPDATE delegations
+          SET org_id = def_id::text
+          WHERE org_id IS NULL OR org_id::text = '' OR org_id::text !~ '^\d+$';
+        SELECT data_type INTO col_type FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='delegations' AND column_name='org_id';
+        IF col_type <> 'integer' THEN
+          EXECUTE 'ALTER TABLE delegations ALTER COLUMN org_id TYPE integer USING org_id::integer';
+        END IF;
+      END IF;
+
+      -- TEMPLATES
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='templates' AND column_name='org_id') THEN
+        UPDATE templates
+          SET org_id = def_id::text
+          WHERE org_id IS NULL OR org_id::text = '' OR org_id::text !~ '^\d+$';
+        SELECT data_type INTO col_type FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='templates' AND column_name='org_id';
+        IF col_type <> 'integer' THEN
+          EXECUTE 'ALTER TABLE templates ALTER COLUMN org_id TYPE integer USING org_id::integer';
+        END IF;
+      END IF;
+    END $$;
+
     -- Foreign keys (deferred, idempotent)
     DO $$
     BEGIN
