@@ -74,6 +74,24 @@ app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')
 app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'notifications.html')));
 app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
 
+// ── Health endpoints (public + admin) ──────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({ ok: true, service: 'DocFlowAI', ts: new Date().toISOString() });
+});
+
+app.get('/admin/health', (req, res) => {
+  const actor = requireAdmin(req, res);
+  if (!actor) return;
+  res.json({
+    ok: true,
+    service: 'DocFlowAI',
+    dbReady: !!DB_READY,
+    dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null,
+    ts: new Date().toISOString()
+  });
+});
+
+
 // ── Template API ──────────────────────────────────────────────────────────
 app.get('/api/templates', async (req, res) => {
   if (requireDb(res)) return;

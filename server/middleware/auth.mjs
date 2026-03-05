@@ -7,10 +7,9 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
 if (!process.env.JWT_SECRET) {
-  console.error('❌ FATAL: JWT_SECRET nu este setat în variabilele de mediu! Refuz să pornesc pentru a evita invalidarea token-urilor la restart.');
-  process.exit(1);
+  console.error('❌ FATAL: JWT_SECRET nu este setat în variabilele de mediu!');
 }
-export const JWT_SECRET  = process.env.JWT_SECRET;
+export const JWT_SECRET  = process.env.JWT_SECRET  || crypto.randomBytes(32).toString('hex');
 export const JWT_EXPIRES = '2h';
 export const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 

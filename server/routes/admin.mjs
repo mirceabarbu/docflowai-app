@@ -22,6 +22,22 @@ export function injectWsSize(fn) { _wsClientsSize = fn; }
 const router = Router();
 
 // ── Users ──────────────────────────────────────────────────────────────────
+router.get('/users', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const r2 = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+  const inst = (r2.rows[0]?.institutie || '').trim();
+  let rows;
+  if (inst) {
+    const q = await pool.query('SELECT id,email,nume,functie,institutie FROM users WHERE institutie=$1 ORDER BY nume ASC', [inst]);
+    rows = q.rows;
+  } else {
+    const q = await pool.query('SELECT id,email,nume,functie,institutie,compartiment FROM users ORDER BY nume ASC');
+    rows = q.rows;
+  }
+  res.json(rows);
+});
+
 router.get('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
   const user = requireAuth(req, res); if (!user) return;

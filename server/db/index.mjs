@@ -136,30 +136,6 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_push_sub_email ON push_subscriptions(user_email);
     `
-  },
-  {
-    id: '009_organizations_foundation',
-    sql: `
-      -- v3 foundation (tenancy): organizations + org_id columns (non-breaking)
-      CREATE TABLE IF NOT EXISTS organizations (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        slug TEXT UNIQUE NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT '';
-      CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id);
-
-      ALTER TABLE templates ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT '';
-      CREATE INDEX IF NOT EXISTS idx_templates_org ON templates(org_id);
-
-      ALTER TABLE delegations ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT '';
-      CREATE INDEX IF NOT EXISTS idx_delegations_org ON delegations(org_id, valid_until);
-
-      ALTER TABLE flows ADD COLUMN IF NOT EXISTS org_id TEXT NOT NULL DEFAULT '';
-      CREATE INDEX IF NOT EXISTS idx_flows_org ON flows(org_id, updated_at DESC);
-    `
   }
 ];
 
@@ -243,11 +219,9 @@ export function requireDb(res) {
 }
 
 export async function saveFlow(id, data) {
-  const orgId = (data && (data.orgId || data.org_id)) ? String(data.orgId || data.org_id) : '';
   await pool.query(
-    `INSERT INTO flows (id, org_id, data) VALUES ($1, $2, $3::jsonb)
-     ON CONFLICT (id) DO UPDATE SET org_id=EXCLUDED.org_id, data=EXCLUDED.data, updated_at=NOW()`,
-    [id, orgId, JSON.stringify(data)]
+    `INSERT INTO flows (id,data) VALUES ($1,$2::jsonb) ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
+    [id, JSON.stringify(data)]
   );
 }
 
