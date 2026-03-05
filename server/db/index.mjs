@@ -136,8 +136,8 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_push_sub_email ON push_subscriptions(user_email);
     `
-  ,
-{
+  },
+  {
   id: '009_organizations_tenancy',
   sql: `
     CREATE TABLE IF NOT EXISTS organizations (
@@ -186,7 +186,6 @@ const MIGRATIONS = [
       END IF;
     END$$;
   `
-}
 }
 ];
 
