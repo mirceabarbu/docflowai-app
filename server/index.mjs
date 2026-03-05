@@ -80,8 +80,9 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/admin/health', (req, res) => {
-  const actor = requireAdmin(req, res);
-  if (!actor) return;
+  // requireAdmin() din middleware/auth.mjs returnează TRUE când a refuzat deja (401/403)
+  if (requireAdmin(req, res)) return;
+
   res.json({
     ok: true,
     service: 'DocFlowAI',
