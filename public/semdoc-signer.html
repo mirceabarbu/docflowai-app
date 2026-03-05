@@ -982,8 +982,19 @@ th{ color: var(--sub) !important; }
             if (j.ok) {
               if(statusEl) statusEl.textContent = "✅ Delegare înregistrată. " + toEmail + " a primit notificare.";
               btnDelegConfirm.textContent = "✓ Delegat";
-              btnDelegate.disabled = true;
-              setTimeout(() => location.reload(), 2000);
+              if (btnDelegate) btnDelegate.disabled = true;
+              // Redirect la notificari: tab 'sign' daca mai are de semnat, altfel 'all'
+              setTimeout(async () => {
+                try {
+                  const jwtTok = localStorage.getItem("docflow_token") || "";
+                  const rFlows = await _apiFetch("/my-flows", { headers: { "Authorization": "Bearer " + jwtTok } });
+                  const jFlows = rFlows.ok ? await rFlows.json() : {};
+                  const pending = (jFlows.flows || []).some(f =>
+                    (f.signers || []).some(s => s.status === "current" && (s.email||"").toLowerCase() === (localStorage.getItem("docflow_email")||"").toLowerCase())
+                  );
+                  location.href = "/notifications.html?tab=" + (pending ? "sign" : "all");
+                } catch(e) { location.href = "/notifications.html?tab=all"; }
+              }, 1500);
             } else {
               if(statusEl) statusEl.textContent = "❌ " + (j.message || j.error || "Eroare");
               btnDelegConfirm.disabled = false;

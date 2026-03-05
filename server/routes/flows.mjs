@@ -724,6 +724,16 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
       waParams: { signerName: resolvedName, docName: data.docName }
     });
 
+    // ── Notificare initiator despre delegare ──
+    if (data.initEmail && data.initEmail.toLowerCase() !== originalEmail.toLowerCase()) {
+      await _notify({
+        userEmail: data.initEmail, flowId, type: 'DELEGATED',
+        title: '👥 Semnătură delegată',
+        message: `${originalName} a delegat semnarea documentului „${data.docName}" către ${resolvedName}. Motiv: ${String(reason).trim()}`,
+        waParams: { docName: data.docName }
+      });
+    }
+
     // ── Email cu link direct (intotdeauna — delegarea necesita link) ──
     if (_sendSignerEmail) {
       const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';

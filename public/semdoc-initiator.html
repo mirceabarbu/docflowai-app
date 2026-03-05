@@ -205,7 +205,7 @@ th{ color: var(--sub) !important; }
   <body>
     <header>
       <div class="brand">
-        <img src="/Logo.png" alt="DocFlowAI" style="height:130px; width:auto; object-fit:contain; display:block;" />
+        <img src="/Logo.png" alt="DocFlowAI" style="height:87px; width:auto; object-fit:contain; display:block;" />
       </div>
       <div class="tabs">
         <button id="tabInit" class="tabbtn active" type="button">📝 Flux nou</button>
@@ -917,12 +917,15 @@ th{ color: var(--sub) !important; }
             const dt2 = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">(' + new Date(s.signedAt).toLocaleDateString("ro-RO") + ')</span>' : "";
             const refuzLabel = s.status === "refused" ? ` <span style="color:#ffaaaa;font-size:.75rem;font-weight:700;">REFUZAT${s.refuseReason ? ': ' + s.refuseReason : ''}</span>` : "";
             const infoExtra = [s.functie, s.compartiment].filter(Boolean).join(' · ');
+            const delegBadge = s.delegatedFrom
+              ? ` <span title="Delegat de ${(s.delegatedFrom.name||s.delegatedFrom.email||'').replace(/"/g,'&quot;')} — ${(s.delegatedFrom.reason||'').replace(/"/g,'&quot;')}" style="font-size:.69rem;padding:1px 7px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);cursor:help;">👥 delegat</span>`
+              : "";
             return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
               <span>${icon}</span>
               <span style="font-size:.82rem;color:var(--muted);min-width:100px;">${s.rol || ""}</span>
               <span style="font-size:.83rem;font-weight:600;">${s.name || "—"}</span>
               ${infoExtra ? `<span style="font-size:.78rem;color:var(--muted);">— ${infoExtra}</span>` : ''}
-              ${dt2}${refuzLabel}
+              ${dt2}${refuzLabel}${delegBadge}
             </div>`;
           }).join("");
           const dlBtn = (f.allSigned && f.hasSignedPdf)
