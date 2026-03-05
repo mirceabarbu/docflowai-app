@@ -19,7 +19,7 @@ import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getU
 
 const router = Router();
 
-let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired, _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64;
+let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired, _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64, _sendSignerEmail;
 export function injectFlowDeps(deps) {
   _notify = deps.notify;
   _wsPush = deps.wsPush;
@@ -30,6 +30,7 @@ export function injectFlowDeps(deps) {
   _buildSignerLink = deps.buildSignerLink;
   _stripSensitive = deps.stripSensitive;
   _stripPdfB64 = deps.stripPdfB64;
+  _sendSignerEmail = deps.sendSignerEmail;
 }
 
 // ── POST /flows — creare flux ──────────────────────────────────────────────
@@ -684,16 +685,29 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     if (!isAdmin && !isCurrentSigner) return res.status(403).json({ error: 'forbidden', message: 'Doar semnatarul curent sau un admin poate delega.' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer', message: 'Se poate delega doar semnatarul curent.' });
     if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired' });
+
     const originalName = signers[idx].name;
     const originalEmail = signers[idx].email;
+
+    // Cautam datele delegatului in DB
+    const { rows: delegatDbRows } = await pool.query(
+      'SELECT nume, functie, compartiment, institutie FROM users WHERE email=$1',
+      [toEmail.trim().toLowerCase()]
+    );
+    const delegatDb = delegatDbRows[0] || {};
+    let resolvedName = (toName || '').trim() || delegatDb.nume || toEmail.trim();
+
     const newToken = crypto.randomBytes(16).toString('hex');
     signers[idx] = {
       ...signers[idx],
-      name: toName || toEmail,
+      name: resolvedName,
       email: toEmail.trim().toLowerCase(),
       token: newToken,
       tokenCreatedAt: new Date().toISOString(),
       status: 'current',
+      functie: delegatDb.functie || signers[idx].functie || '',
+      compartiment: delegatDb.compartiment || signers[idx].compartiment || '',
+      institutie: delegatDb.institutie || signers[idx].institutie || '',
       delegatedFrom: { name: originalName, email: originalEmail, reason: String(reason).trim(), at: new Date().toISOString(), by: actor.email },
     };
     data.signers = signers;
@@ -701,13 +715,51 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({ at: new Date().toISOString(), type: 'DELEGATED', from: originalEmail, to: toEmail, reason: String(reason).trim(), by: actor.email });
     await saveFlow(flowId, data);
-    await _notify({ userEmail: toEmail, flowId, type: 'YOUR_TURN', title: 'Ai primit o delegare de semnătură',
+
+    // ── Notificare: in-app + WhatsApp conform preferintelor din DB ──
+    await _notify({
+      userEmail: toEmail, flowId, type: 'YOUR_TURN',
+      title: '👥 Ai primit o delegare de semnătură',
       message: `${originalName} ți-a delegat semnarea documentului „${data.docName}". Motiv: ${String(reason).trim()}`,
-      waParams: { signerName: toName || toEmail, docName: data.docName } });
+      waParams: { signerName: resolvedName, docName: data.docName }
+    });
+
+    // ── Email cu link direct (intotdeauna — delegarea necesita link) ──
+    if (_sendSignerEmail) {
+      const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
+      const signerLink = _buildSignerLink ? _buildSignerLink(req, flowId, newToken) : `${appUrl}/semdoc-signer.html?flow=${flowId}&token=${newToken}`;
+      try {
+        await _sendSignerEmail({
+          to: toEmail,
+          subject: `👥 Delegare semnătură — ${data.docName}`,
+          html: `
+<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
+  <div style="text-align:center;margin-bottom:28px;">
+    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div>
+  </div>
+  <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${resolvedName ? ', ' + resolvedName : ''},</h2>
+  <p style="color:#9db0ff;margin:0 0 6px;line-height:1.6;">
+    <strong style="color:#ffd580;">${originalName}</strong> ți-a delegat semnarea electronică a documentului:
+  </p>
+  <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:16px 20px;margin:16px 0 20px;">
+    <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:6px;">📄 ${data.docName || flowId}</div>
+    <div style="font-size:.85rem;color:#9db0ff;margin-bottom:4px;">Inițiat de: ${data.initName || data.initEmail || ''}</div>
+    <div style="font-size:.85rem;color:#ffd580;">Motiv delegare: ${String(reason).trim()}</div>
+  </div>
+  <div style="background:rgba(255,100,100,.08);border:1px solid rgba(255,100,100,.2);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:.85rem;color:#ffb3b3;">
+    ⚠️ Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi.
+  </div>
+  <div style="text-align:center;">
+    <a href="${signerLink}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:1rem;">✍️ Deschide documentul pentru semnare</a>
+  </div>
+  <p style="margin-top:20px;font-size:.78rem;color:rgba(255,255,255,.3);text-align:center;">Link valid 90 de zile · DocFlowAI · ${data.institutie || ''}</p>
+</div>`
+        });
+      } catch(emailErr) { console.error('Delegare email error:', emailErr.message); }
+    }
+
     console.log(`👥 Delegare ${originalEmail} → ${toEmail} pentru flow ${flowId} de ${actor.email}`);
-    return res.json({ ok: true, flowId, from: originalEmail, to: toEmail });
+    return res.json({ ok: true, flowId, from: originalEmail, to: toEmail, delegateName: resolvedName });
   } catch(e) { console.error('delegate error:', e); return res.status(500).json({ error: 'server_error' }); }
 });
-
-// FIX: export default DUPA toate rutele
 export default router;

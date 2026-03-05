@@ -291,6 +291,7 @@
   }
 
   function renderSigners(flow){
+    const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const list = $("signers");
     list.innerHTML = "";
     const signers = (flow.signers || flow.data?.signers || []);
@@ -321,12 +322,17 @@
 
       const el = document.createElement("div");
       el.className = "item";
+      // Badge delegare
+      const delegBadge = s.delegatedFrom
+        ? `<div style="margin-top:5px;"><span title="Delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)} — ${esc(s.delegatedFrom.reason||'')}" style="display:inline-block;font-size:.72rem;padding:2px 8px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);cursor:help;">👥 delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)}</span></div>`
+        : '';
       el.innerHTML = `
         <div class="top">
           <div style="flex:1">
             <div class="name">${(s.name||s.fullName||"—")}</div>
             <div class="meta">${meta || '<span class="muted">—</span>'}</div>
             ${when ? `<div class="meta">📅 ${prettyTs(when)}</div>` : ``}
+            ${delegBadge}
             ${st==="refused" && s.refuseReason ? `
               <div style="margin-top:6px; padding:6px 10px; background:rgba(255,77,90,.10); border-left:3px solid var(--bad); border-radius:0 8px 8px 0; font-size:.83rem; color:#ffaaaa;">
                 <span style="font-weight:650; color:#ff8a94;">Motiv refuz:</span> ${s.refuseReason}

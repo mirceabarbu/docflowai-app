@@ -340,7 +340,7 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {} }
 injectRateLimiter(checkLoginRate, recordLoginFail, clearLoginRate);
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
-injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64 });
+injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail });
 
 // ── Mount routers ─────────────────────────────────────────────────────────
 app.use('/', authRouter);

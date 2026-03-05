@@ -211,7 +211,7 @@ th{ color: var(--sub) !important; }
               <div class="muted">Document (PDF)</div>
             </div>
             <div style="height:10px"></div>
-            <div id="pdfPagesContainer" style="width:100%; border:1px solid rgba(255,255,255,.10); border-radius:12px; background:rgba(0,0,0,.15); min-height:200px; max-height:45vh; padding:8px; overflow-y:auto;"><p style="color:rgba(255,255,255,.4); text-align:center; padding:40px 0;">Se incarca documentul...</p></div>
+            <div id="pdfPagesContainer" style="width:100%; border:1px solid rgba(255,255,255,.10); border-radius:12px; background:rgba(0,0,0,.15); min-height:200px; max-height:90vh; padding:8px; overflow-y:auto;"><p style="color:rgba(255,255,255,.4); text-align:center; padding:40px 0;">Se incarca documentul...</p></div>
           </div>
 
 <div style="height:12px"></div>
@@ -228,7 +228,6 @@ th{ color: var(--sub) !important; }
           <!-- Semnătură electronică calificată — flux unic -->
           <div id="signBox" style="background:rgba(124,92,255,.08); border:1px solid rgba(124,92,255,.3); border-radius:14px; padding:16px;">
             <div style="font-weight:700; margin-bottom:10px;">✍️ Semnătură electronică calificată</div>
-            <div id="ancoreEditWarning" style="display:none; background:rgba(255,193,7,.12); border:1px solid rgba(255,193,7,.4); border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:.88em; line-height:1.6;">⚠️ <strong>Atenție:</strong> Acest document conține câmpuri de completat (ex. valori, date).<br/><strong>Completează câmpurile ÎNAINTE de a aplica semnătura calificată</strong> — după semnare Adobe blochează editarea (standard PDF).</div>
             <div class="muted" style="margin-bottom:14px; font-size:.92em; line-height:1.7;">
               <strong>1.</strong> Descarcă PDF-ul de mai jos (conține semnăturile semnatarilor anteriori)<br/>
               <strong>2.</strong> Semnează-l cu <strong>E-SignEncrypt / Adobe Acrobat</strong> folosind certificatul STS<br/>
@@ -253,8 +252,11 @@ th{ color: var(--sub) !important; }
               <!-- Modal delegare -->
               <div id="delegateModal" style="display:none; margin-top:14px; background:rgba(255,200,50,.06); border:1px solid rgba(255,200,50,.25); border-radius:12px; padding:16px;">
                 <div style="font-weight:700; margin-bottom:10px; color:#ffd580;">👥 Delegare semnătură</div>
+                <select id="delegateUserSelect" style="width:100%;padding:9px 12px;background:rgba(20,20,40,.8);border:1px solid rgba(255,255,255,.18);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:8px;box-sizing:border-box;appearance:none;-webkit-appearance:none;">
+                  <option value="">— Alege delegat —</option>
+                </select>
                 <input id="delegateEmail" type="email" placeholder="Email delegat*" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:8px;box-sizing:border-box;" />
-                <input id="delegateName" type="text" placeholder="Nume delegat (optional)" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:8px;box-sizing:border-box;" />
+                <input id="delegateName" type="text" placeholder="Nume delegat" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:8px;box-sizing:border-box;" />
                 <textarea id="delegateReason" placeholder="Motiv delegare*" rows="2" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:10px;box-sizing:border-box;resize:none;"></textarea>
                 <div style="display:flex;gap:8px;">
                   <button id="btnDelegateConfirm" type="button" style="flex:1;padding:10px;background:rgba(255,200,50,.2);border:1px solid rgba(255,200,50,.4);border-radius:8px;color:#ffd580;font-weight:700;cursor:pointer;">✓ Confirmă delegarea</button>
@@ -326,12 +328,17 @@ th{ color: var(--sub) !important; }
           const textColor = st==='signed'?'#7cf0e0':st==='refused'?'#ffaaaa':st==='current'?'#b39dff':'#9db0ff';
           const extra = [x.functie, x.compartiment].filter(Boolean).join(' · ');
           const isMe = x.token === token;
+          // Badge delegare — vizibil daca semnatarul e delegat
+          const delegBadge = x.delegatedFrom
+            ? `<span title="Delegat de ${esc3(x.delegatedFrom.name||x.delegatedFrom.email)} — ${esc3(x.delegatedFrom.reason||'')}" style="font-size:.69rem;padding:1px 7px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);cursor:help;">👥 delegat</span>`
+            : '';
           return `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;${isMe?'font-weight:700;':'opacity:.75;'}">
             <span>${icon}</span>
             <span style="font-size:.8rem;color:var(--muted);min-width:90px;">${esc3(x.rol||'')}</span>
             <span style="font-size:.83rem;">${esc3(x.name||'—')}</span>
             ${extra?`<span style="font-size:.77rem;color:var(--muted);">— ${esc3(extra)}</span>`:''}
             <span style="font-size:.71rem;padding:1px 7px;border-radius:10px;background:${badgeColor};color:${textColor};font-weight:700;">${badgeText}</span>
+            ${delegBadge}
           </div>`;
         }).join('');
       }
@@ -416,9 +423,6 @@ th{ color: var(--sub) !important; }
           } else {
             // Their turn — enable signBox
             if (signBox) { signBox.style.opacity = "1"; signBox.style.pointerEvents = "auto"; }
-            // Avertisment câmpuri editabile — vizibil doar pentru flux ancore
-            const warn = $("ancoreEditWarning");
-            if (warn && currentFlow?.flowType === "ancore") warn.style.display = "block";
             $("result").textContent = "";
           }
         } catch (e) {
@@ -509,7 +513,9 @@ th{ color: var(--sub) !important; }
           }
 
           // Step 2: upload signed PDF
-          if (!_uploadToken) {
+          // Flux 'ancore': nu se verifica uploadToken (PDF semnat cu certificat calificat local)
+          const isAncoreUpload = currentFlow?.flowType === 'ancore';
+          if (!isAncoreUpload && !_uploadToken) {
             throw new Error("Lipsește tokenul de verificare. Descarcă documentul din sistem folosind butonul de descărcare, semnează-l și încarcă-l înapoi.");
           }
           const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/upload-signed-pdf`, {
@@ -519,7 +525,7 @@ th{ color: var(--sub) !important; }
               token,
               signedPdfB64: signedPdfB64Data,
               signerName: currentFlow?.signers?.[signerIndex]?.name || "",
-              uploadToken: _uploadToken || undefined,
+              uploadToken: isAncoreUpload ? undefined : (_uploadToken || undefined),
             }),
           });
           const j = await r.json().catch(() => ({}));
@@ -910,9 +916,49 @@ th{ color: var(--sub) !important; }
 // ── Delegare semnatura ────────────────────────────────────────────────
       const btnDelegate = $("btnDelegheaza");
       if (btnDelegate) {
-        btnDelegate.addEventListener("click", () => {
+        btnDelegate.addEventListener("click", async () => {
           const modal = $("delegateModal");
-          if (modal) modal.style.display = modal.style.display === "none" ? "block" : "none";
+          if (!modal) return;
+          const isOpen = modal.style.display !== "none";
+          if (isOpen) { modal.style.display = "none"; return; }
+          modal.style.display = "block";
+          // Incarca userii din institutie daca nu sunt deja incarcati
+          const sel = $("delegateUserSelect");
+          if (sel && sel.options.length <= 1) {
+            try {
+              const jwtToken = localStorage.getItem("docflow_token") || "";
+              const r = await _apiFetch("/users", { headers: { "Authorization": "Bearer " + jwtToken } });
+              if (r.ok) {
+                const users = await r.json();
+                // Exclude semnatarul curent din lista
+                const myEmail = currentFlow?.signers?.[signerIndex]?.email || "";
+                users.forEach(u => {
+                  if ((u.email || "").toLowerCase() === myEmail.toLowerCase()) return;
+                  const opt = document.createElement("option");
+                  opt.value = u.email || "";
+                  opt.dataset.name = u.nume || "";
+                  opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
+                  sel.appendChild(opt);
+                });
+              }
+            } catch(e) { console.warn("Nu s-au putut incarca userii pentru delegare:", e); }
+          }
+        });
+      }
+      // Auto-fill email+name din dropdown
+      const delegSel = $("delegateUserSelect");
+      if (delegSel) {
+        delegSel.addEventListener("change", () => {
+          const opt = delegSel.options[delegSel.selectedIndex];
+          const emailInp = $("delegateEmail");
+          const nameInp = $("delegateName");
+          if (opt && opt.value) {
+            if (emailInp) { emailInp.value = opt.value; emailInp.readOnly = true; emailInp.style.opacity = ".6"; }
+            if (nameInp) { nameInp.value = opt.dataset.name || ""; nameInp.readOnly = true; nameInp.style.opacity = ".6"; }
+          } else {
+            if (emailInp) { emailInp.value = ""; emailInp.readOnly = false; emailInp.style.opacity = "1"; }
+            if (nameInp) { nameInp.value = ""; nameInp.readOnly = false; nameInp.style.opacity = "1"; }
+          }
         });
       }
       const btnDelegConfirm = $("btnDelegateConfirm");
