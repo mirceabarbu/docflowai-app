@@ -235,6 +235,7 @@ const MIGRATIONS = [
         SELECT data_type INTO col_type FROM information_schema.columns
           WHERE table_schema='public' AND table_name='users' AND column_name='org_id';
         IF col_type <> 'integer' THEN
+          EXECUTE 'ALTER TABLE users ALTER COLUMN org_id DROP DEFAULT';
           EXECUTE 'ALTER TABLE users ALTER COLUMN org_id TYPE integer USING org_id::integer';
         END IF;
       END IF;
@@ -247,6 +248,7 @@ const MIGRATIONS = [
         SELECT data_type INTO col_type FROM information_schema.columns
           WHERE table_schema='public' AND table_name='flows' AND column_name='org_id';
         IF col_type <> 'integer' THEN
+          EXECUTE 'ALTER TABLE flows ALTER COLUMN org_id DROP DEFAULT';
           EXECUTE 'ALTER TABLE flows ALTER COLUMN org_id TYPE integer USING org_id::integer';
         END IF;
       END IF;
@@ -259,6 +261,7 @@ const MIGRATIONS = [
         SELECT data_type INTO col_type FROM information_schema.columns
           WHERE table_schema='public' AND table_name='delegations' AND column_name='org_id';
         IF col_type <> 'integer' THEN
+          EXECUTE 'ALTER TABLE delegations ALTER COLUMN org_id DROP DEFAULT';
           EXECUTE 'ALTER TABLE delegations ALTER COLUMN org_id TYPE integer USING org_id::integer';
         END IF;
       END IF;
@@ -271,6 +274,7 @@ const MIGRATIONS = [
         SELECT data_type INTO col_type FROM information_schema.columns
           WHERE table_schema='public' AND table_name='templates' AND column_name='org_id';
         IF col_type <> 'integer' THEN
+          EXECUTE 'ALTER TABLE templates ALTER COLUMN org_id DROP DEFAULT';
           EXECUTE 'ALTER TABLE templates ALTER COLUMN org_id TYPE integer USING org_id::integer';
         END IF;
       END IF;
