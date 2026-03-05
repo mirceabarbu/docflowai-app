@@ -246,7 +246,7 @@ th{ color: var(--sub) !important; }
             <div style="border-top:1px solid rgba(255,255,255,.08); margin-top:14px; padding-top:14px;">
               <div style="display:flex;gap:10px;margin-bottom:0;">
                 <button id="btnRefuz" class="btn" type="button" style="flex:1; font-weight:700; padding:12px; background:rgba(255,80,80,.12); border:1px solid rgba(255,80,80,.3); color:#ffaaaa;">✕ Refuz semnarea</button>
-                <button id="btnDelegheaza" class="btn" type="button" style="flex:1; font-weight:700; padding:12px; background:rgba(255,200,50,.1); border:1px solid rgba(255,200,50,.3); color:#ffd580;">👥 Delega semnarea</button>
+                <button id="btnDelegheaza" class="btn" type="button" style="flex:1; font-weight:700; padding:12px; background:rgba(255,200,50,.1); border:1px solid rgba(255,200,50,.3); color:#ffd580;">👥 Delegă semnarea</button>
               </div>
               <div id="refuzStatus" style="margin-top:8px; font-size:.88em; color:#ffaaaa;"></div>
               <!-- Modal delegare -->
@@ -903,8 +903,9 @@ th{ color: var(--sub) !important; }
       }
       // ── End PDF.js renderer ────────────────────────────────────────────────
     </script>
-  <script src="/notif-widget.js">
-      // ── Delegare semnatura ────────────────────────────────────────────────
+  <script src="/notif-widget.js"></script>
+<script>
+// ── Delegare semnatura ────────────────────────────────────────────────
       const btnDelegate = $("btnDelegheaza");
       if (btnDelegate) {
         btnDelegate.addEventListener("click", () => {
@@ -924,10 +925,10 @@ th{ color: var(--sub) !important; }
           btnDelegConfirm.disabled = true; btnDelegConfirm.textContent = "Se procesează...";
           if(statusEl) statusEl.textContent = "";
           try {
-            const r = await _apiFetch("/flows/" + encodeURIComponent(flowId) + "/delegate", {
+            const r = await _apiFetch("/flows/" + encodeURIComponent(flow) + "/delegate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ fromToken: signerToken, toEmail, toName, reason })
+              body: JSON.stringify({ fromToken: token, toEmail, toName, reason })
             });
             const j = await r.json();
             if (j.ok) {
@@ -947,6 +948,7 @@ th{ color: var(--sub) !important; }
           }
         });
       }
+
 </script>
 </body>
 </html>
