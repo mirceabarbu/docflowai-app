@@ -58,9 +58,9 @@
   .shared-row{display:flex;align-items:center;gap:10px;margin-top:14px;}
   .shared-row label{margin:0;text-transform:none;font-size:.85rem;color:var(--sub);cursor:pointer;}
   input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer;}
-  .btn-primary{background:linear-gradient(135deg,var(--accent),#5b3fd4);color:#fff;border:none;
-    padding:11px 24px;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;transition:opacity .2s;}
-  .btn-primary:hover{opacity:.88;}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),#2dd4bf);color:#fff;border:none;
+    padding:11px 24px;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;transition:all .15s;}
+  .btn-primary:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
   .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
   .create-actions{display:flex;align-items:center;gap:14px;margin-top:18px;}
   .msg{font-size:.83rem;padding:8px 14px;border-radius:8px;}
@@ -93,10 +93,10 @@
   .atrib-pill{font-size:.65rem;padding:2px 7px;border-radius:6px;font-weight:700;
     background:rgba(124,92,255,.15);color:var(--accent);border:1px solid rgba(124,92,255,.2);}
   .tmpl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
-  .btn-use{background:linear-gradient(135deg,var(--accent),#5b3fd4);color:#fff;border:none;
+  .btn-use{background:linear-gradient(135deg,var(--accent),#2dd4bf);color:#fff;border:none;
     padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;
-    transition:opacity .2s;text-decoration:none;display:inline-flex;align-items:center;gap:4px;}
-  .btn-use:hover{opacity:.85;}
+    transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:4px;}
+  .btn-use:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
   .btn-sm{background:transparent;border:1px solid var(--line);color:var(--muted);
     padding:6px 12px;border-radius:8px;font-size:.75rem;cursor:pointer;transition:all .2s;}
   .btn-sm:hover{border-color:var(--sub);color:var(--sub);}
@@ -148,7 +148,7 @@
 </header>
 
 <main>
-  <h1>📋 Șabloanele <span style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">mele</span></h1>
+  <h1>📋 <span style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">Șabloane</span></h1>
   <p class="subtitle">Configurează seturi de semnatari reutilizabili pentru fluxuri rapide.</p>
 
   <div class="create-card">

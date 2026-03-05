@@ -103,12 +103,16 @@
 <body>
 <header>
   <div class="logo">
-    <img src="/Logo.png" alt="DocFlowAI" style="height:44px;width:auto;object-fit:contain;" />
-    <span style="margin-left:10px;opacity:.55;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:#9db0ff;">Admin</span>
+    <img src="/Logo.png" alt="DocFlowAI" style="height:87px;width:auto;object-fit:contain;" />
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <a href="/" style="background:rgba(255,255,255,.06);color:#e9eefc;border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;text-decoration:none;font-size:.88rem;">📝 Flux nou</a>
+    <a href="/?tab=flows" style="background:rgba(255,255,255,.06);color:#e9eefc;border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;text-decoration:none;font-size:.88rem;">📂 Fluxuri mele</a>
+    <a href="/templates" style="background:rgba(255,255,255,.06);color:#e9eefc;border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;text-decoration:none;font-size:.88rem;">📋 Șabloane</a>
+    <span style="padding:8px 12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:10px;font-size:.85rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
   </div>
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
     <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
-    <a href="/" style="color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:6px 13px;border-radius:8px;font-size:.82rem;">↩ Aplicație</a>
     <button class="btn-logout" onclick="logout()">Ieși</button>
   </div>
 </header>
@@ -664,7 +668,7 @@ async function loadFlowsList(forceReload = true, page) {
   const statusMap = { active: "pending", done: "completed", refused: "refused", "": "all" };
   const statusParam = statusMap[statusF] || "all";
 
-  const params = new URLSearchParams({ page, limit: 50, status: statusParam });
+  const params = new URLSearchParams({ page, limit: 10, status: statusParam });
   if (search) params.set("search", search);
   if (instF) params.set("institutie", instF);
   if (deptF) params.set("compartiment", deptF);
@@ -719,11 +723,12 @@ async function loadFlowsList(forceReload = true, page) {
             </td>
             <td style="padding:7px 8px;color:var(--muted);">${f.createdAt?new Date(f.createdAt).toLocaleDateString("ro-RO"):"—"}</td>
             <td style="padding:7px 8px;">
+              <a href="/flow.html?flow=${f.flowId}" target="_blank" style="padding:3px 10px;font-size:.75rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-right:4px;" title="Vizualizează flux">🔍</a>
               ${current&&!f.completed&&f.status!=="refused" ? `
-                <button onclick="resendNotif('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-right:4px;">📨 Retrimite</button>
-                ${expired?`<button onclick="regenerateToken('${f.flowId}','${current.email}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;">🔑 Token nou</button>`:''}
+                <button onclick="resendNotif('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-right:4px;" title="Retrimite notificare">📨</button>
+                ${expired?`<button onclick="regenerateToken('${f.flowId}','${current.email}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;" title="Generează token nou">🔑</button>`:''}
               ` : ''}
-              <button onclick="adminDeleteFlow('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:6px;color:#ffaaaa;cursor:pointer;">🗑</button>
+              <button onclick="adminDeleteFlow('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:6px;color:#ffaaaa;cursor:pointer;" title="Șterge flux definitiv (ireversibil)">🗑</button>
               <a href="/admin/flows/${f.flowId}/audit?format=txt" target="_blank" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;" title="Export audit TXT">📋</a><a href="/admin/flows/${f.flowId}/audit?format=pdf" target="_blank" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</a>
             </td>
           </tr>`;
