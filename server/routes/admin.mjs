@@ -23,20 +23,31 @@ export function injectWsSize(fn) { _wsClientsSize = fn; }
 const router = Router();
 
 // ── Users ──────────────────────────────────────────────────────────────────
-// FIX: GET /users — acum returneaza doar useri din aceeasi organizatie
+// GET /users — returneaza useri din aceeasi institutie ca utilizatorul logat
+// Folosit de initiator pentru dropdown semnatari
 router.get('/users', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  const orgId = actor.orgId || null;
   try {
+    // Citim institutia din DB (nu din JWT care poate fi vechi)
+    const { rows: selfRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    const institutie = (selfRows[0]?.institutie || actor.institutie || '').trim();
+
     let query, params;
-    if (orgId) {
-      query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 ORDER BY nume ASC';
-      params = [orgId];
+    if (institutie) {
+      // Filtreaza pe institutie — userii din aceeasi institutie
+      query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE institutie=$1 ORDER BY nume ASC';
+      params = [institutie];
     } else {
-      // Fallback — admin fara org vede tot (backward compat)
-      query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users ORDER BY nume ASC';
-      params = [];
+      // User fara institutie (ex: admin global) — vede toti userii din org
+      const orgId = actor.orgId || null;
+      if (orgId) {
+        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 ORDER BY nume ASC';
+        params = [orgId];
+      } else {
+        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users ORDER BY nume ASC';
+        params = [];
+      }
     }
     const { rows } = await pool.query(query, params);
     res.json(rows);
@@ -47,13 +58,22 @@ router.get('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
   const user = requireAuth(req, res); if (!user) return;
   if (user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  const orgId = user.orgId || 0;
-  const { rows } = await pool.query(
-    // plain_password inclus intentionat pentru workflow admin actual
-    'SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id FROM users WHERE (org_id=$1 OR $1=0) ORDER BY institutie ASC, compartiment ASC, nume ASC',
-    [orgId]
-  );
-  res.json(rows.map(safeUser));
+  try {
+    // Citim orgId din DB pentru a fi siguri ca avem valoarea corecta (nu din JWT vechi)
+    const { rows: selfRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [user.email.toLowerCase()]);
+    const orgId = selfRows[0]?.org_id || null;
+    let query, params;
+    if (orgId) {
+      query = 'SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
+      params = [orgId];
+    } else {
+      // Admin fara org (fallback) — vede toti userii
+      query = 'SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
+      params = [];
+    }
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch(e) { console.error('GET /admin/users error:', e); res.status(500).json({ error: 'server_error', detail: e.message }); }
 });
 
 router.post('/admin/users', async (req, res) => {
