@@ -37,10 +37,10 @@ router.post('/auth/login', async (req, res) => {
     }
     await _clearLoginRate(req, email);
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role, nume: user.nume, functie: user.functie, institutie: user.institutie },
+      { userId: user.id, email: user.email, role: user.role, orgId: user.org_id, nume: user.nume, functie: user.functie, institutie: user.institutie },
       JWT_SECRET, { expiresIn: JWT_EXPIRES }
     );
-    return res.json({ token, email: user.email, role: user.role, nume: user.nume, functie: user.functie, institutie: user.institutie });
+    return res.json({ token, email: user.email, role: user.role, orgId: user.org_id, nume: user.nume, functie: user.functie, institutie: user.institutie });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -49,9 +49,9 @@ router.get('/auth/me', async (req, res) => {
   if (!decoded) return;
   if (!pool || !DB_READY) return res.json(decoded);
   try {
-    const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role FROM users WHERE id=$1', [decoded.userId]);
+    const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id FROM users WHERE id=$1', [decoded.userId]);
     if (!rows[0]) return res.status(401).json({ error: 'user_not_found' });
-    res.json({ userId: rows[0].id, email: rows[0].email, nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, role: rows[0].role });
+    res.json({ userId: rows[0].id, email: rows[0].email, orgId: rows[0].org_id, nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, role: rows[0].role });
   } catch(e) { res.json(decoded); }
 });
 
@@ -76,15 +76,15 @@ router.post('/auth/refresh', async (req, res) => {
   if (!decoded?.userId) return res.status(401).json({ error: 'token_invalid' });
   try {
     if (pool && DB_READY) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role FROM users WHERE id=$1', [decoded.userId]);
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id FROM users WHERE id=$1', [decoded.userId]);
       if (!rows[0]) return res.status(401).json({ error: 'user_not_found' });
-      decoded = { userId: rows[0].id, email: rows[0].email, nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, role: rows[0].role };
+      decoded = { userId: rows[0].id, email: rows[0].email, orgId: rows[0].org_id, nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, role: rows[0].role };
     }
     const newToken = jwt.sign(
-      { userId: decoded.userId, email: decoded.email, role: decoded.role, nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie },
+      { userId: decoded.userId, email: decoded.email, role: decoded.role, orgId: decoded.orgId, nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie },
       JWT_SECRET, { expiresIn: JWT_EXPIRES }
     );
-    return res.json({ token: newToken, email: decoded.email, role: decoded.role, nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie });
+    return res.json({ token: newToken, email: decoded.email, role: decoded.role, orgId: decoded.orgId, nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
 

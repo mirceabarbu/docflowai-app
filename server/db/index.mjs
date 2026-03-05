@@ -136,7 +136,58 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_push_sub_email ON push_subscriptions(user_email);
     `
-  }
+  ,
+{
+  id: '009_organizations_tenancy',
+  sql: `
+    CREATE TABLE IF NOT EXISTS organizations (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- Seed: Default Organization (idempotent)
+    INSERT INTO organizations (name)
+    SELECT 'Default Organization'
+    WHERE NOT EXISTS (SELECT 1 FROM organizations);
+
+    -- Tenancy columns
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id INTEGER;
+    ALTER TABLE templates ADD COLUMN IF NOT EXISTS org_id INTEGER;
+    ALTER TABLE delegations ADD COLUMN IF NOT EXISTS org_id INTEGER;
+    ALTER TABLE flows ADD COLUMN IF NOT EXISTS org_id INTEGER;
+
+    -- Set default org_id where missing
+    UPDATE users SET org_id = (SELECT id FROM organizations ORDER BY id ASC LIMIT 1) WHERE org_id IS NULL;
+    UPDATE templates SET org_id = (SELECT id FROM organizations ORDER BY id ASC LIMIT 1) WHERE org_id IS NULL;
+    UPDATE delegations SET org_id = (SELECT id FROM organizations ORDER BY id ASC LIMIT 1) WHERE org_id IS NULL;
+    UPDATE flows SET org_id = (SELECT id FROM organizations ORDER BY id ASC LIMIT 1) WHERE org_id IS NULL;
+
+    -- Indexes
+    CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id);
+    CREATE INDEX IF NOT EXISTS idx_templates_org ON templates(org_id);
+    CREATE INDEX IF NOT EXISTS idx_delegations_org ON delegations(org_id);
+    CREATE INDEX IF NOT EXISTS idx_flows_org ON flows(org_id);
+
+    -- Foreign keys (deferrable to avoid migration issues)
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_users_org') THEN
+        ALTER TABLE users ADD CONSTRAINT fk_users_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_templates_org') THEN
+        ALTER TABLE templates ADD CONSTRAINT fk_templates_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_delegations_org') THEN
+        ALTER TABLE delegations ADD CONSTRAINT fk_delegations_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_flows_org') THEN
+        ALTER TABLE flows ADD CONSTRAINT fk_flows_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+      END IF;
+    END$$;
+  `
+}
+}
 ];
 
 async function runMigrations(client) {
@@ -213,15 +264,25 @@ export async function initDbWithRetry() {
   console.error('❌ DB init failed permanently.');
 }
 
+let _defaultOrgIdCache = null;
+export async function getDefaultOrgId() {
+  if (_defaultOrgIdCache) return _defaultOrgIdCache;
+  const r = await pool.query('SELECT id FROM organizations ORDER BY id ASC LIMIT 1');
+  _defaultOrgIdCache = r.rows[0]?.id || null;
+  return _defaultOrgIdCache;
+}
+
 export function requireDb(res) {
   if (!DB_READY) { res.status(503).json({ error: 'db_not_ready', dbLastError: DB_LAST_ERROR }); return true; }
   return false;
 }
 
 export async function saveFlow(id, data) {
+  const orgId = data?.orgId || data?.org_id || null;
   await pool.query(
-    `INSERT INTO flows (id,data) VALUES ($1,$2::jsonb) ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
-    [id, JSON.stringify(data)]
+    `INSERT INTO flows (id,data,org_id) VALUES ($1,$2::jsonb,$3) 
+     ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, org_id=EXCLUDED.org_id, updated_at=NOW()`,
+    [id, JSON.stringify(data), orgId]
   );
 }
 

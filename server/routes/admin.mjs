@@ -25,16 +25,11 @@ const router = Router();
 router.get('/users', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  const r2 = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-  const inst = (r2.rows[0]?.institutie || '').trim();
-  let rows;
-  if (inst) {
-    const q = await pool.query('SELECT id,email,nume,functie,institutie FROM users WHERE institutie=$1 ORDER BY nume ASC', [inst]);
-    rows = q.rows;
-  } else {
-    const q = await pool.query('SELECT id,email,nume,functie,institutie,compartiment FROM users ORDER BY nume ASC');
-    rows = q.rows;
-  }
+  const orgId = actor.orgId || 0;
+  const { rows } = await pool.query(
+    'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE (org_id=$1 OR $1=0) ORDER BY nume ASC',
+    [orgId]
+  );
   res.json(rows);
 });
 
@@ -42,7 +37,8 @@ router.get('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
   const user = requireAuth(req, res); if (!user) return;
   if (user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC');
+  const orgId = user.orgId || 0;
+  const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id FROM users WHERE (org_id=$1 OR $1=0) ORDER BY institutie ASC, compartiment ASC, nume ASC', [orgId]);
   res.json(rows);
 });
 
@@ -60,8 +56,8 @@ router.post('/admin/users', async (req, res) => {
   const ni = notif_inapp !== false; const ne = !!notif_email; const nw = !!notif_whatsapp;
   try {
     const { rows } = await pool.query(
-      'INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp',
-      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume || '').trim(), (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(), validRole, phoneVal, ni, ne, nw]
+      'INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,org_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,org_id',
+      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume || '').trim(), (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(), validRole, phoneVal, ni, ne, nw, actor.orgId || null]
     );
     res.status(201).json(rows[0]);
   } catch(e) {
@@ -97,7 +93,7 @@ router.put('/admin/users/:id', async (req, res) => {
   vals.push(targetId);
   try {
     const { rows } = await pool.query(
-      `UPDATE users SET ${updates.join(',')} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp`,
+      `UPDATE users SET ${updates.join(',')} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,org_id`,
       vals
     );
     if (!rows.length) return res.status(404).json({ error: 'user_not_found' });

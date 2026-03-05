@@ -9,7 +9,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, requireAuth, requireAdmin, sha256Hex } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData } from '../db/index.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId } from '../db/index.mjs';
 
 const router = Router();
 
@@ -36,6 +36,16 @@ const createFlow = async (req, res) => {
     const initName = String(body.initName || '').trim();
     const initEmail = String(body.initEmail || '').trim();
     const signers = Array.isArray(body.signers) ? body.signers : [];
+
+    // ── v3 tenancy: resolve orgId by initiator (fallback: Default Organization)
+    let orgId = null;
+    try {
+      const ru = await pool.query('SELECT org_id FROM users WHERE email=$1', [initEmail.trim().toLowerCase()]);
+      orgId = ru.rows[0]?.org_id || null;
+    } catch(e) {}
+    if (!orgId) {
+      try { orgId = await getDefaultOrgId(); } catch(e) { orgId = null; }
+    }
 
     if (!docName || docName.length < 2) return res.status(400).json({ error: 'docName_required' });
     if (!initName || initName.length < 2) return res.status(400).json({ error: 'initName_required' });
@@ -92,6 +102,7 @@ const createFlow = async (req, res) => {
     }
 
     const data = {
+      orgId,
       flowId, docName, initName, initEmail,
       initFunctie, institutie: initInstitutie, compartiment: initCompartiment,
       meta: body.meta || {}, flowType: body.flowType || 'tabel',
@@ -469,18 +480,19 @@ router.get('/my-flows', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const email = actor.email.toLowerCase();
+    const orgId = actor.orgId || 0;
     const page = Math.max(1, parseInt(req.query.page || '1'));
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || '50')));
     const offset = (page - 1) * limit;
     const statusFilter = (req.query.status || 'all').toLowerCase();
     const search = (req.query.search || '').trim().toLowerCase();
-    const baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1))`;
+    const baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND (org_id = $2 OR $2 = 0)`;
     let statusWhere = '';
     if (statusFilter === 'pending') statusWhere = " AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused'";
     else if (statusFilter === 'completed') statusWhere = " AND (data->>'completed') = 'true'";
     else if (statusFilter === 'refused') statusWhere = " AND (data->>'status') = 'refused'";
     let searchWhere = '';
-    const params = [email];
+    const params = [email, orgId];
     if (search) { params.push(`%${search}%`); searchWhere = ` AND (lower(data->>'docName') LIKE $${params.length} OR lower(data->>'initName') LIKE $${params.length})`; }
     const whereClause = baseWhere + statusWhere + searchWhere;
     const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
@@ -512,6 +524,7 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
     const d = rows[0]?.data;
     if (!d) return res.status(404).json({ error: 'not_found' });
     const email = actor.email.toLowerCase();
+    const orgId = actor.orgId || 0;
     const isInit = (d.initEmail || '').toLowerCase() === email;
     const isSigner = (d.signers || []).some(s => (s.email || '').toLowerCase() === email);
     if (!isInit && !isSigner) return res.status(403).json({ error: 'forbidden' });
