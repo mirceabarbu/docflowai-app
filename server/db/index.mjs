@@ -140,16 +140,58 @@ const MIGRATIONS = [
   {
   id: '009_organizations_tenancy',
   sql: `
+    -- v3.1.1 Tenancy foundation (organizations + org_id)
+    -- If an old/incorrect organizations table exists, rename it away (keeps data for inspection)
+    DO $$
+    DECLARE
+      id_data_type TEXT;
+      legacy_name TEXT;
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema='public' AND table_name='organizations'
+      ) THEN
+        SELECT data_type INTO id_data_type
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
+
+        -- If id isn't integer, we can't safely FK from org_id INTEGER -> organizations.id.
+        IF id_data_type IS DISTINCT FROM 'integer' THEN
+          legacy_name := 'organizations_legacy_' || to_char(now(), 'YYYYMMDD_HH24MISS');
+          EXECUTE format('ALTER TABLE public.organizations RENAME TO %I', legacy_name);
+        END IF;
+      END IF;
+    END $$;
+
+    -- Canonical organizations table (INTEGER id)
     CREATE TABLE IF NOT EXISTS organizations (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    -- Ensure SERIAL default exists even if table pre-existed without it
+    DO $$
+    DECLARE
+      id_default TEXT;
+    BEGIN
+      SELECT pg_get_expr(d.adbin, d.adrelid) INTO id_default
+      FROM pg_attrdef d
+      JOIN pg_class c ON c.oid = d.adrelid
+      JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.adnum
+      WHERE c.relname = 'organizations' AND a.attname = 'id';
+
+      IF id_default IS NULL THEN
+        EXECUTE 'CREATE SEQUENCE IF NOT EXISTS organizations_id_seq';
+        EXECUTE 'ALTER TABLE organizations ALTER COLUMN id SET DEFAULT nextval(''organizations_id_seq'')';
+        EXECUTE 'SELECT setval(''organizations_id_seq'', COALESCE((SELECT MAX(id) FROM organizations),0)+1, false)';
+      END IF;
+    END $$;
+
     -- Seed: Default Organization (idempotent)
     INSERT INTO organizations (name)
     SELECT 'Default Organization'
-    WHERE NOT EXISTS (SELECT 1 FROM organizations);
+    WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE name='Default Organization');
 
     -- Tenancy columns
     ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id INTEGER;
@@ -157,11 +199,15 @@ const MIGRATIONS = [
     ALTER TABLE delegations ADD COLUMN IF NOT EXISTS org_id INTEGER;
     ALTER TABLE flows ADD COLUMN IF NOT EXISTS org_id INTEGER;
 
-    -- Set default org_id where missing
-    UPDATE users SET org_id = (SELECT id FROM organizations ORDER BY id ASC LIMIT 1) WHERE org_id IS NULL;
-    UPDATE templates SET org_id = (SELECT id FROM organizations ORDER BY id ASC LIMIT 1) WHERE org_id IS NULL;
-    UPDATE delegations SET org_id = (SELECT id FROM organizations ORDER BY id ASC LIMIT 1) WHERE org_id IS NULL;
-    UPDATE flows SET org_id = (SELECT id FROM organizations ORDER BY id ASC LIMIT 1) WHERE org_id IS NULL;
+    -- Backfill org_id for existing rows
+    WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
+    UPDATE users u SET org_id = (SELECT id FROM def) WHERE u.org_id IS NULL;
+    WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
+    UPDATE templates t SET org_id = (SELECT id FROM def) WHERE t.org_id IS NULL;
+    WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
+    UPDATE delegations d SET org_id = (SELECT id FROM def) WHERE d.org_id IS NULL;
+    WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
+    UPDATE flows f SET org_id = (SELECT id FROM def) WHERE f.org_id IS NULL;
 
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id);
@@ -169,23 +215,38 @@ const MIGRATIONS = [
     CREATE INDEX IF NOT EXISTS idx_delegations_org ON delegations(org_id);
     CREATE INDEX IF NOT EXISTS idx_flows_org ON flows(org_id);
 
-    -- Foreign keys (deferrable to avoid migration issues)
+    -- Foreign keys (deferred, idempotent)
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_users_org') THEN
-        ALTER TABLE users ADD CONSTRAINT fk_users_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+        ALTER TABLE users
+          ADD CONSTRAINT fk_users_org
+          FOREIGN KEY (org_id) REFERENCES organizations(id)
+          DEFERRABLE INITIALLY DEFERRED;
       END IF;
+
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_templates_org') THEN
-        ALTER TABLE templates ADD CONSTRAINT fk_templates_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+        ALTER TABLE templates
+          ADD CONSTRAINT fk_templates_org
+          FOREIGN KEY (org_id) REFERENCES organizations(id)
+          DEFERRABLE INITIALLY DEFERRED;
       END IF;
+
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_delegations_org') THEN
-        ALTER TABLE delegations ADD CONSTRAINT fk_delegations_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+        ALTER TABLE delegations
+          ADD CONSTRAINT fk_delegations_org
+          FOREIGN KEY (org_id) REFERENCES organizations(id)
+          DEFERRABLE INITIALLY DEFERRED;
       END IF;
+
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_flows_org') THEN
-        ALTER TABLE flows ADD CONSTRAINT fk_flows_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+        ALTER TABLE flows
+          ADD CONSTRAINT fk_flows_org
+          FOREIGN KEY (org_id) REFERENCES organizations(id)
+          DEFERRABLE INITIALLY DEFERRED;
       END IF;
-    END$$;
-  `
+    END $$;
+`
 }
 ];
 
