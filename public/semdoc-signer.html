@@ -211,7 +211,7 @@ th{ color: var(--sub) !important; }
               <div class="muted">Document (PDF)</div>
             </div>
             <div style="height:10px"></div>
-            <div id="pdfPagesContainer" style="width:100%; border:1px solid rgba(255,255,255,.10); border-radius:12px; background:rgba(0,0,0,.15); min-height:200px; padding:8px; overflow-y:auto;"><p style="color:rgba(255,255,255,.4); text-align:center; padding:40px 0;">Se incarca documentul...</p></div>
+            <div id="pdfPagesContainer" style="width:100%; border:1px solid rgba(255,255,255,.10); border-radius:12px; background:rgba(0,0,0,.15); min-height:200px; max-height:45vh; padding:8px; overflow-y:auto;"><p style="color:rgba(255,255,255,.4); text-align:center; padding:40px 0;">Se incarca documentul...</p></div>
           </div>
 
 <div style="height:12px"></div>
@@ -232,7 +232,8 @@ th{ color: var(--sub) !important; }
             <div class="muted" style="margin-bottom:14px; font-size:.92em; line-height:1.7;">
               <strong>1.</strong> Descarcă PDF-ul de mai jos (conține semnăturile semnatarilor anteriori)<br/>
               <strong>2.</strong> Semnează-l cu <strong>E-SignEncrypt / Adobe Acrobat</strong> folosind certificatul STS<br/>
-              <strong>3.</strong> Încarcă PDF-ul semnat și apasă <strong>Trimite</strong> — abia atunci va fi notificat următorul semnatar
+              <strong>3.</strong> Încarcă PDF-ul semnat și apasă <strong>Trimite</strong> — abia atunci va fi notificat următorul semnatar<br/>
+              <span style="color:#ffd580; font-size:.87em;">⚠️ Asigură-te că încarci PDF-ul <strong>semnat</strong> — aplicația nu verifică dacă documentul conține semnătură.</span>
             </div>
             <button id="btnDownloadForSigning" class="btn secondary" style="margin-bottom:8px; width:100%;" onclick="downloadPdfForSigning()">⬇️ Descarcă PDF pentru semnare calificată</button>
             <div id="downloadForSigningStatus" class="muted" style="font-size:.85em; margin-bottom:12px;"></div>
@@ -449,15 +450,16 @@ th{ color: var(--sub) !important; }
         reader.onload = async () => {
           signedPdfB64Data = reader.result;
 
-          // Verificare hash local — documentul uploadat trebuie sa fie cel descarcat din sistem
-          if (_downloadedHash) {
+          // Verificare hash local — doar pentru flux 'tabel' (nu ancore)
+          // Flux ancore: PDF-ul poate fi identic daca semnatarul il re-incarca, nu blocam
+          const isAncoreFlow = currentFlow?.flowType === 'ancore';
+          if (_downloadedHash && !isAncoreFlow) {
             try {
               const raw = signedPdfB64Data.includes(",") ? signedPdfB64Data.split(",")[1] : signedPdfB64Data;
               const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
               const hashBuf = await crypto.subtle.digest("SHA-256", bytes);
               const uploadedHash = Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,"0")).join("");
               if (uploadedHash === _downloadedHash) {
-                // Hash identic = document nesemnat
                 signedPdfB64Data = null;
                 $("signedPdfInfo").innerHTML = "<span style='color:#ff6b6b;font-weight:600;'>❌ Documentul nu conține semnătură — este identic cu cel descărcat. Semnează-l în Adobe Acrobat înainte de a-l încărca.</span>";
                 $("btnUploadSignedPdf").disabled = true;
