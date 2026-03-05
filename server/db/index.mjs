@@ -1,7 +1,8 @@
 /**
- * DocFlowAI — DB layer
- * Pool PostgreSQL, migrări schema, helpers saveFlow / getFlowData.
- * Import: import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
+ * DocFlowAI — DB layer v3.2.1
+ * Pool PostgreSQL, migrări schema, helpers saveFlow / getFlowData / getUserMapForOrg.
+ * NOTA: plain_password pastrat intentionat pentru workflow admin actual.
+ *       Migrarea la securitate fara plain_password se face intr-o versiune viitoare.
  */
 
 import pg from 'pg';
@@ -11,15 +12,12 @@ const { Pool } = pg;
 
 export const DATABASE_URL = process.env.DATABASE_URL;
 export const pool = DATABASE_URL
-  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5 })
+  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 10 })
   : null;
 
 export let DB_READY = false;
 export let DB_LAST_ERROR = null;
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SCHEMA MIGRATIONS
-// ══════════════════════════════════════════════════════════════════════════════
 const MIGRATIONS = [
   {
     id: '001_initial_schema',
@@ -138,181 +136,151 @@ const MIGRATIONS = [
     `
   },
   {
-  id: '009_organizations_tenancy',
-  sql: `
-    -- v3.1.1 Tenancy foundation (organizations + org_id)
-    -- If an old/incorrect organizations table exists, rename it away (keeps data for inspection)
-    DO $$
-    DECLARE
-      id_data_type TEXT;
-      legacy_name TEXT;
-    BEGIN
-      IF EXISTS (
-        SELECT 1 FROM information_schema.tables
-        WHERE table_schema='public' AND table_name='organizations'
-      ) THEN
-        SELECT data_type INTO id_data_type
-        FROM information_schema.columns
-        WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
-
-        -- If id isn't integer, we can't safely FK from org_id INTEGER -> organizations.id.
-        IF id_data_type IS DISTINCT FROM 'integer' THEN
-          legacy_name := 'organizations_legacy_' || to_char(now(), 'YYYYMMDD_HH24MISS');
-          EXECUTE format('ALTER TABLE public.organizations RENAME TO %I', legacy_name);
+    id: '009_organizations_tenancy',
+    sql: `
+      DO $$
+      DECLARE
+        id_data_type TEXT;
+        legacy_name TEXT;
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='organizations'
+        ) THEN
+          SELECT data_type INTO id_data_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='organizations' AND column_name='id';
+          IF id_data_type IS DISTINCT FROM 'integer' THEN
+            legacy_name := 'organizations_legacy_' || to_char(now(), 'YYYYMMDD_HH24MISS');
+            EXECUTE format('ALTER TABLE public.organizations RENAME TO %I', legacy_name);
+          END IF;
         END IF;
-      END IF;
-    END $$;
+      END $$;
 
-    -- Canonical organizations table (INTEGER id)
-    CREATE TABLE IF NOT EXISTS organizations (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
+      CREATE TABLE IF NOT EXISTS organizations (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
 
-    -- Ensure SERIAL default exists even if table pre-existed without it
-    DO $$
-    DECLARE
-      id_default TEXT;
-    BEGIN
-      SELECT pg_get_expr(d.adbin, d.adrelid) INTO id_default
-      FROM pg_attrdef d
-      JOIN pg_class c ON c.oid = d.adrelid
-      JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.adnum
-      WHERE c.relname = 'organizations' AND a.attname = 'id';
-
-      IF id_default IS NULL THEN
-        EXECUTE 'CREATE SEQUENCE IF NOT EXISTS organizations_id_seq';
-        EXECUTE 'ALTER TABLE organizations ALTER COLUMN id SET DEFAULT nextval(''organizations_id_seq'')';
-        EXECUTE 'SELECT setval(''organizations_id_seq'', COALESCE((SELECT MAX(id) FROM organizations),0)+1, false)';
-      END IF;
-    END $$;
-
-    -- Seed: Default Organization (idempotent)
-    INSERT INTO organizations (name)
-    SELECT 'Default Organization'
-    WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE name='Default Organization');
-
-    -- Tenancy columns
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id INTEGER;
-    ALTER TABLE templates ADD COLUMN IF NOT EXISTS org_id INTEGER;
-    ALTER TABLE delegations ADD COLUMN IF NOT EXISTS org_id INTEGER;
-    ALTER TABLE flows ADD COLUMN IF NOT EXISTS org_id INTEGER;
-
-    -- Backfill org_id for existing rows
-    WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
-    UPDATE users u SET org_id = (SELECT id FROM def) WHERE u.org_id IS NULL;
-    WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
-    UPDATE templates t SET org_id = (SELECT id FROM def) WHERE t.org_id IS NULL;
-    WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
-    UPDATE delegations d SET org_id = (SELECT id FROM def) WHERE d.org_id IS NULL;
-    WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
-    UPDATE flows f SET org_id = (SELECT id FROM def) WHERE f.org_id IS NULL;
-
-    -- Indexes
-    CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id);
-    CREATE INDEX IF NOT EXISTS idx_templates_org ON templates(org_id);
-    CREATE INDEX IF NOT EXISTS idx_delegations_org ON delegations(org_id);
-    CREATE INDEX IF NOT EXISTS idx_flows_org ON flows(org_id);
-
-
-    -- Ensure org_id columns are INTEGER and populated before adding FKs (auto-heal)
-    DO $$
-    DECLARE
-      def_id integer;
-      col_type text;
-    BEGIN
-      SELECT id INTO def_id FROM organizations WHERE name='Default Organization' ORDER BY id LIMIT 1;
-      IF def_id IS NULL THEN
-        INSERT INTO organizations(name) VALUES ('Default Organization') RETURNING id INTO def_id;
-      END IF;
-
-      -- USERS
-      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='org_id') THEN
-        UPDATE users
-          SET org_id = def_id::text
-          WHERE org_id IS NULL OR org_id::text = '' OR org_id::text !~ '^\d+$';
-        SELECT data_type INTO col_type FROM information_schema.columns
-          WHERE table_schema='public' AND table_name='users' AND column_name='org_id';
-        IF col_type <> 'integer' THEN
-          EXECUTE 'ALTER TABLE users ALTER COLUMN org_id DROP DEFAULT';
-          EXECUTE 'ALTER TABLE users ALTER COLUMN org_id TYPE integer USING org_id::integer';
+      DO $$
+      DECLARE
+        id_default TEXT;
+      BEGIN
+        SELECT pg_get_expr(d.adbin, d.adrelid) INTO id_default
+        FROM pg_attrdef d
+        JOIN pg_class c ON c.oid = d.adrelid
+        JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.adnum
+        WHERE c.relname = 'organizations' AND a.attname = 'id';
+        IF id_default IS NULL THEN
+          EXECUTE 'CREATE SEQUENCE IF NOT EXISTS organizations_id_seq';
+          EXECUTE 'ALTER TABLE organizations ALTER COLUMN id SET DEFAULT nextval(''organizations_id_seq'')';
+          EXECUTE 'SELECT setval(''organizations_id_seq'', COALESCE((SELECT MAX(id) FROM organizations),0)+1, false)';
         END IF;
-      END IF;
+      END $$;
 
-      -- FLOWS
-      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='flows' AND column_name='org_id') THEN
-        UPDATE flows
-          SET org_id = def_id::text
-          WHERE org_id IS NULL OR org_id::text = '' OR org_id::text !~ '^\d+$';
-        SELECT data_type INTO col_type FROM information_schema.columns
-          WHERE table_schema='public' AND table_name='flows' AND column_name='org_id';
-        IF col_type <> 'integer' THEN
-          EXECUTE 'ALTER TABLE flows ALTER COLUMN org_id DROP DEFAULT';
-          EXECUTE 'ALTER TABLE flows ALTER COLUMN org_id TYPE integer USING org_id::integer';
+      INSERT INTO organizations (name)
+      SELECT 'Default Organization'
+      WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE name='Default Organization');
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS org_id INTEGER;
+      ALTER TABLE templates ADD COLUMN IF NOT EXISTS org_id INTEGER;
+      ALTER TABLE delegations ADD COLUMN IF NOT EXISTS org_id INTEGER;
+      ALTER TABLE flows ADD COLUMN IF NOT EXISTS org_id INTEGER;
+
+      WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
+      UPDATE users u SET org_id = (SELECT id FROM def) WHERE u.org_id IS NULL;
+      WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
+      UPDATE templates t SET org_id = (SELECT id FROM def) WHERE t.org_id IS NULL;
+      WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
+      UPDATE delegations d SET org_id = (SELECT id FROM def) WHERE d.org_id IS NULL;
+      WITH def AS (SELECT id FROM organizations WHERE name='Default Organization' LIMIT 1)
+      UPDATE flows f SET org_id = (SELECT id FROM def) WHERE f.org_id IS NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id);
+      CREATE INDEX IF NOT EXISTS idx_templates_org ON templates(org_id);
+      CREATE INDEX IF NOT EXISTS idx_delegations_org ON delegations(org_id);
+      CREATE INDEX IF NOT EXISTS idx_flows_org ON flows(org_id);
+
+      DO $$
+      DECLARE
+        def_id integer;
+        col_type text;
+      BEGIN
+        SELECT id INTO def_id FROM organizations WHERE name='Default Organization' ORDER BY id LIMIT 1;
+        IF def_id IS NULL THEN
+          INSERT INTO organizations(name) VALUES ('Default Organization') RETURNING id INTO def_id;
         END IF;
-      END IF;
 
-      -- DELEGATIONS
-      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='delegations' AND column_name='org_id') THEN
-        UPDATE delegations
-          SET org_id = def_id::text
-          WHERE org_id IS NULL OR org_id::text = '' OR org_id::text !~ '^\d+$';
-        SELECT data_type INTO col_type FROM information_schema.columns
-          WHERE table_schema='public' AND table_name='delegations' AND column_name='org_id';
-        IF col_type <> 'integer' THEN
-          EXECUTE 'ALTER TABLE delegations ALTER COLUMN org_id DROP DEFAULT';
-          EXECUTE 'ALTER TABLE delegations ALTER COLUMN org_id TYPE integer USING org_id::integer';
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='org_id') THEN
+          UPDATE users SET org_id = def_id WHERE org_id IS NULL;
+          SELECT data_type INTO col_type FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='org_id';
+          IF col_type <> 'integer' THEN
+            EXECUTE 'ALTER TABLE users ALTER COLUMN org_id DROP DEFAULT';
+            EXECUTE 'ALTER TABLE users ALTER COLUMN org_id TYPE integer USING org_id::integer';
+          END IF;
         END IF;
-      END IF;
 
-      -- TEMPLATES
-      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='templates' AND column_name='org_id') THEN
-        UPDATE templates
-          SET org_id = def_id::text
-          WHERE org_id IS NULL OR org_id::text = '' OR org_id::text !~ '^\d+$';
-        SELECT data_type INTO col_type FROM information_schema.columns
-          WHERE table_schema='public' AND table_name='templates' AND column_name='org_id';
-        IF col_type <> 'integer' THEN
-          EXECUTE 'ALTER TABLE templates ALTER COLUMN org_id DROP DEFAULT';
-          EXECUTE 'ALTER TABLE templates ALTER COLUMN org_id TYPE integer USING org_id::integer';
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='flows' AND column_name='org_id') THEN
+          UPDATE flows SET org_id = def_id WHERE org_id IS NULL;
+          SELECT data_type INTO col_type FROM information_schema.columns WHERE table_schema='public' AND table_name='flows' AND column_name='org_id';
+          IF col_type <> 'integer' THEN
+            EXECUTE 'ALTER TABLE flows ALTER COLUMN org_id DROP DEFAULT';
+            EXECUTE 'ALTER TABLE flows ALTER COLUMN org_id TYPE integer USING org_id::integer';
+          END IF;
         END IF;
-      END IF;
-    END $$;
 
-    -- Foreign keys (deferred, idempotent)
-    DO $$
-    BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_users_org') THEN
-        ALTER TABLE users
-          ADD CONSTRAINT fk_users_org
-          FOREIGN KEY (org_id) REFERENCES organizations(id)
-          DEFERRABLE INITIALLY DEFERRED;
-      END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='delegations' AND column_name='org_id') THEN
+          UPDATE delegations SET org_id = def_id WHERE org_id IS NULL;
+          SELECT data_type INTO col_type FROM information_schema.columns WHERE table_schema='public' AND table_name='delegations' AND column_name='org_id';
+          IF col_type <> 'integer' THEN
+            EXECUTE 'ALTER TABLE delegations ALTER COLUMN org_id DROP DEFAULT';
+            EXECUTE 'ALTER TABLE delegations ALTER COLUMN org_id TYPE integer USING org_id::integer';
+          END IF;
+        END IF;
 
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_templates_org') THEN
-        ALTER TABLE templates
-          ADD CONSTRAINT fk_templates_org
-          FOREIGN KEY (org_id) REFERENCES organizations(id)
-          DEFERRABLE INITIALLY DEFERRED;
-      END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='templates' AND column_name='org_id') THEN
+          UPDATE templates SET org_id = def_id WHERE org_id IS NULL;
+          SELECT data_type INTO col_type FROM information_schema.columns WHERE table_schema='public' AND table_name='templates' AND column_name='org_id';
+          IF col_type <> 'integer' THEN
+            EXECUTE 'ALTER TABLE templates ALTER COLUMN org_id DROP DEFAULT';
+            EXECUTE 'ALTER TABLE templates ALTER COLUMN org_id TYPE integer USING org_id::integer';
+          END IF;
+        END IF;
+      END $$;
 
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_delegations_org') THEN
-        ALTER TABLE delegations
-          ADD CONSTRAINT fk_delegations_org
-          FOREIGN KEY (org_id) REFERENCES organizations(id)
-          DEFERRABLE INITIALLY DEFERRED;
-      END IF;
-
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_flows_org') THEN
-        ALTER TABLE flows
-          ADD CONSTRAINT fk_flows_org
-          FOREIGN KEY (org_id) REFERENCES organizations(id)
-          DEFERRABLE INITIALLY DEFERRED;
-      END IF;
-    END $$;
-`
-}
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_users_org') THEN
+          ALTER TABLE users ADD CONSTRAINT fk_users_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_templates_org') THEN
+          ALTER TABLE templates ADD CONSTRAINT fk_templates_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_delegations_org') THEN
+          ALTER TABLE delegations ADD CONSTRAINT fk_delegations_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_flows_org') THEN
+          ALTER TABLE flows ADD CONSTRAINT fk_flows_org FOREIGN KEY (org_id) REFERENCES organizations(id) DEFERRABLE INITIALLY DEFERRED;
+        END IF;
+      END $$;
+    `
+  },
+  {
+    // FIX v3.2.1: index compus pentru my-flows multi-tenant (performance)
+    id: '010_flows_org_updated_index',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_flows_org_updated ON flows(org_id, updated_at DESC);
+    `
+  },
+  {
+    // FIX v3.2.1: notificari — index pentru cleanup automat
+    id: '011_notifications_cleanup_index',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_notif_cleanup ON notifications(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_notif_user_created ON notifications(user_email, created_at DESC);
+    `
+  }
 ];
 
 async function runMigrations(client) {
@@ -337,8 +305,6 @@ async function runMigrations(client) {
   else console.log(`✅ ${ranCount} migrare(i) aplicate.`);
 }
 
-// hashPassword e necesar pentru admin init — importat din middleware/auth.mjs
-// dar pentru a evita dependenta circulara, il definim local here
 function _hashPasswordLocal(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
@@ -359,7 +325,6 @@ async function initDbOnce() {
   } finally {
     client.release();
   }
-  // Admin user implicit
   const { rows: uc } = await pool.query('SELECT COUNT(*) FROM users');
   if (parseInt(uc[0].count) === 0 && process.env.ADMIN_INIT_PASSWORD) {
     const pwd = process.env.ADMIN_INIT_PASSWORD;
@@ -386,15 +351,27 @@ export async function initDbWithRetry() {
       await new Promise(r => setTimeout(r, delays[i]));
     }
   }
-  console.error('❌ DB init failed permanently.');
+  console.error('❌ DB init failed permanent.');
 }
 
+// Cache org default cu TTL 5 minute (nu infinit)
 let _defaultOrgIdCache = null;
+let _defaultOrgIdCachedAt = 0;
+const DEFAULT_ORG_CACHE_TTL = 5 * 60 * 1000;
+
 export async function getDefaultOrgId() {
-  if (_defaultOrgIdCache) return _defaultOrgIdCache;
+  if (_defaultOrgIdCache && (Date.now() - _defaultOrgIdCachedAt) < DEFAULT_ORG_CACHE_TTL) {
+    return _defaultOrgIdCache;
+  }
   const r = await pool.query('SELECT id FROM organizations ORDER BY id ASC LIMIT 1');
   _defaultOrgIdCache = r.rows[0]?.id || null;
+  _defaultOrgIdCachedAt = Date.now();
   return _defaultOrgIdCache;
+}
+
+export function invalidateDefaultOrgCache() {
+  _defaultOrgIdCache = null;
+  _defaultOrgIdCachedAt = 0;
 }
 
 export function requireDb(res) {
@@ -405,7 +382,7 @@ export function requireDb(res) {
 export async function saveFlow(id, data) {
   const orgId = data?.orgId || data?.org_id || null;
   await pool.query(
-    `INSERT INTO flows (id,data,org_id) VALUES ($1,$2::jsonb,$3) 
+    `INSERT INTO flows (id,data,org_id) VALUES ($1,$2::jsonb,$3)
      ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, org_id=EXCLUDED.org_id, updated_at=NOW()`,
     [id, JSON.stringify(data), orgId]
   );
@@ -414,4 +391,23 @@ export async function saveFlow(id, data) {
 export async function getFlowData(id) {
   const r = await pool.query('SELECT data FROM flows WHERE id=$1', [id]);
   return r.rows[0]?.data ?? null;
+}
+
+/**
+ * Construieste un map de useri filtrat pe org_id (anti-leak multi-tenant).
+ * Daca orgId e null/0, returneaza toti userii (backward compat pentru admini fara org).
+ */
+export async function getUserMapForOrg(orgId) {
+  let query, params;
+  if (orgId && orgId > 0) {
+    query = 'SELECT email,functie,compartiment,institutie FROM users WHERE org_id=$1';
+    params = [orgId];
+  } else {
+    query = 'SELECT email,functie,compartiment,institutie FROM users';
+    params = [];
+  }
+  const { rows } = await pool.query(query, params);
+  const map = {};
+  rows.forEach(u => { map[(u.email || '').toLowerCase()] = u; });
+  return map;
 }

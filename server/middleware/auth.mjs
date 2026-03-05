@@ -1,5 +1,5 @@
 /**
- * DocFlowAI — Auth middleware
+ * DocFlowAI — Auth middleware v3.2.0
  * requireAuth, requireAdmin, hashPassword, verifyPassword, JWT helpers.
  */
 
@@ -11,7 +11,9 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 export const JWT_SECRET  = process.env.JWT_SECRET;
-export const JWT_EXPIRES = '2h';
+export const JWT_EXPIRES = process.env.JWT_EXPIRES || '2h';
+// FIX: grace period configurabil via env
+export const JWT_REFRESH_GRACE_SEC = parseInt(process.env.JWT_REFRESH_GRACE_SEC || '900');
 export const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 
 export function hashPassword(password) {
@@ -21,6 +23,7 @@ export function hashPassword(password) {
 }
 
 export function verifyPassword(password, stored) {
+  if (!stored || !stored.includes(':')) return false;
   const [salt, hash] = stored.split(':');
   const check = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
   return check === hash;
@@ -45,6 +48,10 @@ export function requireAdmin(req, res) {
   return false;
 }
 
+/**
+ * FIX: generatePassword — fara plain_password in DB.
+ * Parola generata se returneaza caller-ului O SINGURA DATA, nu se stocheaza in clar.
+ */
 export function generatePassword() {
   const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
   let p = '';

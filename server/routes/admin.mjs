@@ -1,6 +1,9 @@
 /**
- * DocFlowAI — Admin routes
- * Users CRUD, flows list/clean/archive/vacuum, drive, smtp, wa-test, health
+ * DocFlowAI — Admin routes v3.2.1
+ * FIX: export default mutat la sfarsit (toate rutele inainte de export)
+ * FIX: /admin/flows/audit mutat inainte de export default
+ * FIX: /health => versiune 3.2.1
+ * NOTE: plain_password pastrat intentionat (migrare viitoare)
  */
 
 import { Router } from 'express';
@@ -11,26 +14,33 @@ import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
 import { archiveFlow, verifyDrive } from '../drive.mjs';
 import { verifyWhatsApp, sendWaSignRequest } from '../whatsapp.mjs';
 
-// pdf-lib opțional — pentru audit PDF export
 let PDFLibAdmin = null;
 try { PDFLibAdmin = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available for audit PDF export'); }
 
-// wsClients.size injected at mount time
 let _wsClientsSize = () => 0;
 export function injectWsSize(fn) { _wsClientsSize = fn; }
 
 const router = Router();
 
 // ── Users ──────────────────────────────────────────────────────────────────
+// FIX: GET /users — acum returneaza doar useri din aceeasi organizatie
 router.get('/users', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  const orgId = actor.orgId || 0;
-  const { rows } = await pool.query(
-    'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE (org_id=$1 OR $1=0) ORDER BY nume ASC',
-    [orgId]
-  );
-  res.json(rows);
+  const orgId = actor.orgId || null;
+  try {
+    let query, params;
+    if (orgId) {
+      query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 ORDER BY nume ASC';
+      params = [orgId];
+    } else {
+      // Fallback — admin fara org vede tot (backward compat)
+      query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users ORDER BY nume ASC';
+      params = [];
+    }
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
 router.get('/admin/users', async (req, res) => {
@@ -38,8 +48,12 @@ router.get('/admin/users', async (req, res) => {
   const user = requireAuth(req, res); if (!user) return;
   if (user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const orgId = user.orgId || 0;
-  const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id FROM users WHERE (org_id=$1 OR $1=0) ORDER BY institutie ASC, compartiment ASC, nume ASC', [orgId]);
-  res.json(rows);
+  const { rows } = await pool.query(
+    // plain_password inclus intentionat pentru workflow admin actual
+    'SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id FROM users WHERE (org_id=$1 OR $1=0) ORDER BY institutie ASC, compartiment ASC, nume ASC',
+    [orgId]
+  );
+  res.json(rows.map(safeUser));
 });
 
 router.post('/admin/users', async (req, res) => {
@@ -88,7 +102,12 @@ router.put('/admin/users/:id', async (req, res) => {
   if (notif_inapp !== undefined) { updates.push(`notif_inapp=$${i++}`); vals.push(!!notif_inapp); }
   if (notif_email !== undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!notif_email); }
   if (notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!notif_whatsapp); }
-  if (password && password.length >= 4) { updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password)); updates.push(`plain_password=$${i++}`); vals.push(password); }
+  let newPlainPwd = null;
+  if (password && password.length >= 4) {
+    updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password));
+    updates.push(`plain_password=$${i++}`); vals.push(password);
+    newPlainPwd = password;
+  }
   if (!updates.length) return res.status(400).json({ error: 'nothing_to_update' });
   vals.push(targetId);
   try {
@@ -110,6 +129,7 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const newPwd = generatePassword();
   try {
+    // Updatam si plain_password pentru workflow admin
     await pool.query('UPDATE users SET password_hash=$1, plain_password=$2 WHERE id=$3', [hashPassword(newPwd), newPwd, parseInt(req.params.id)]);
     res.json({ plain_password: newPwd });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
@@ -133,6 +153,7 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   try {
+    // Citim plain_password din DB (pastrat intentionat pentru workflow admin)
     const { rows } = await pool.query('SELECT email,nume,functie,plain_password FROM users WHERE id=$1', [targetId]);
     const u = rows[0];
     if (!u) return res.status(404).json({ error: 'user_not_found' });
@@ -148,11 +169,11 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
           <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${u.email}</strong></div>
           <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ</span><strong style="color:#ffd580;font-family:monospace;">${u.plain_password}</strong></div>
         </div>
-        <div style="text-align:center;"><a href="${appUrl}/login" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:700;">Intră în cont →</a></div>
+        <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
       </div>`
     });
     res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: 'email_failed', detail: String(e.message || e) }); }
+  } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
 // ── Flows admin ────────────────────────────────────────────────────────────
@@ -280,7 +301,6 @@ router.get('/admin/drive/verify', async (req, res) => {
   try { res.json(await verifyDrive()); } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
-// ── Admin flows list (paginated) — kept in admin router ───────────────────
 router.get('/admin/flows/list', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -352,7 +372,7 @@ router.post('/smtp-test', async (req, res) => {
 });
 
 router.get('/health', async (req, res) => {
-  const base = { ok: true, service: 'DocFlowAI', version: '2.0', dbReady: DB_READY, dbLastError: DB_LAST_ERROR, wsClients: _wsClientsSize(), ts: new Date().toISOString() };
+  const base = { ok: true, service: 'DocFlowAI', version: '3.2.1', dbReady: DB_READY, dbLastError: DB_LAST_ERROR, wsClients: _wsClientsSize(), ts: new Date().toISOString() };
   if (!pool || !DB_READY) return res.json(base);
   try {
     const [flowsR, usersR, notifsR, archR] = await Promise.all([
@@ -365,9 +385,8 @@ router.get('/health', async (req, res) => {
   } catch(e) { return res.json({ ...base, statsError: e.message }); }
 });
 
-export default router;
-
-// ── GET /admin/flows/:flowId/audit — export audit log ──────────────────────
+// ── GET /admin/flows/:flowId/audit — export audit log ─────────────────────
+// FIX: mutat INAINTE de export default
 router.get('/admin/flows/:flowId/audit', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -378,32 +397,24 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
     const format = (req.query.format || 'json').toLowerCase();
     const audit = {
-      flowId: data.flowId,
-      docName: data.docName,
-      initName: data.initName,
-      initEmail: data.initEmail,
-      institutie: data.institutie || '',
-      compartiment: data.compartiment || '',
-      createdAt: data.createdAt,
-      updatedAt: data.updatedAt,
-      completed: !!data.completed,
-      completedAt: data.completedAt || null,
-      status: data.status || 'active',
-      storage: data.storage || 'db',
+      flowId: data.flowId, docName: data.docName,
+      initName: data.initName, initEmail: data.initEmail,
+      institutie: data.institutie || '', compartiment: data.compartiment || '',
+      createdAt: data.createdAt, updatedAt: data.updatedAt,
+      completed: !!data.completed, completedAt: data.completedAt || null,
+      status: data.status || 'active', storage: data.storage || 'db',
       signers: (data.signers || []).map(s => ({
         order: s.order, name: s.name, email: s.email, rol: s.rol,
         functie: s.functie || '', compartiment: s.compartiment || '',
         status: s.status, signedAt: s.signedAt || null,
         refuseReason: s.refuseReason || null, refusedAt: s.refusedAt || null,
         pdfUploaded: !!s.pdfUploaded, uploadedHash: s.uploadedHash || null,
-        delegatedFrom: s.delegatedFrom || null,
-        tokenCreatedAt: s.tokenCreatedAt || null,
+        delegatedFrom: s.delegatedFrom || null, tokenCreatedAt: s.tokenCreatedAt || null,
       })),
       events: Array.isArray(data.events) ? data.events : [],
       signedPdfVersions: Array.isArray(data.signedPdfVersions) ? data.signedPdfVersions : [],
     };
     if (format === 'csv') {
-      // CSV simplu al evenimentelor
       const lines = ['timestamp,type,by,channel,details'];
       for (const e of audit.events) {
         const details = JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => !['at','type'].includes(k)))).replace(/"/g, '""');
@@ -458,15 +469,11 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         page.drawLine({ start:{x:MARGIN,y:y+4}, end:{x:PAGE_W-MARGIN,y:y+4}, thickness:0.5, color:rgb(0.75,0.75,0.75) });
         y -= 6;
       };
-
-      // Header
       page.drawRectangle({ x:0, y:PAGE_H-70, width:PAGE_W, height:70, color:rgb(0.1,0.1,0.25) });
       page.drawText('AUDIT LOG', { x:MARGIN, y:PAGE_H-35, size:20, font:fontB, color:rgb(1,1,1) });
       page.drawText(ro('DocFlowAI — document de trasabilitate'), { x:MARGIN, y:PAGE_H-52, size:9, font:fontR, color:rgb(0.7,0.8,1) });
       page.drawText(ro(`Generat: ${new Date().toLocaleString('ro-RO')}`), { x:PAGE_W-200, y:PAGE_H-35, size:9, font:fontR, color:rgb(0.7,0.8,1) });
       y = PAGE_H - 85;
-
-      // Info flow
       drawText('INFORMATII FLUX', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
       const infoRows = [
@@ -483,8 +490,6 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         y -= 14;
       }
       y -= SECTION_GAP;
-
-      // Semnatari
       drawText('SEMNATARI', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
       for (const s of audit.signers) {
@@ -502,8 +507,6 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         y -= 4;
       }
       y -= SECTION_GAP;
-
-      // Evenimente
       drawText(`JURNAL EVENIMENTE (${audit.events.length})`, MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
       for (const e of audit.events) {
@@ -515,8 +518,6 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         if (detail) page.drawText(ro(detail), { x:MARGIN+200, y, size:7.5, font:fontR, color:rgb(0.4,0.4,0.4), maxWidth:PAGE_W-MARGIN-210 });
         y -= LINE_H;
       }
-
-      // Footer pe fiecare pagina
       const pageCount = pdfDoc.getPageCount();
       for (let i = 0; i < pageCount; i++) {
         const pg = pdfDoc.getPage(i);
@@ -524,13 +525,11 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         pg.drawText(ro(`DocFlowAI — Audit Log — ${audit.flowId}`), { x:MARGIN, y:18, size:7, font:fontR, color:rgb(0.6,0.6,0.6) });
         pg.drawText(ro(`Pagina ${i+1} din ${pageCount}`), { x:PAGE_W-MARGIN-60, y:18, size:7, font:fontR, color:rgb(0.6,0.6,0.6) });
       }
-
       const pdfBytes = await pdfDoc.save();
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="audit_${flowId}.pdf"`);
       return res.send(Buffer.from(pdfBytes));
     }
-    // Default: JSON
     res.json(audit);
   } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
 });
@@ -555,3 +554,6 @@ router.get('/admin/flows/audit-export', async (req, res) => {
     return res.send(lines.join('\n'));
   } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
 });
+
+// FIX: export default DUPA toate rutele
+export default router;

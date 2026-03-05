@@ -1,8 +1,8 @@
 /**
- * DocFlowAI v2 — Main entry point (orchestrator)
- * Toate rutele sunt extrase în server/routes/
- * Toată logica DB în server/db/
- * Middleware în server/middleware/
+ * DocFlowAI v3.2.0 — Main entry point (orchestrator)
+ * FIX: notify — notif_email independent de notif_inapp
+ * FIX: stampFooterOnPdf — latimea textului calculata corect cu font.widthOfTextAtSize
+ * FIX: LOGIN_MAX/WINDOW/BLOCK exportate ca constante configurabile via ENV
  */
 
 import express from 'express';
@@ -12,24 +12,19 @@ import crypto from 'crypto';
 import path from 'path';
 import http from 'http';
 import { fileURLToPath } from 'url';
-import { sendSignerEmail, verifySmtp } from './mailer.mjs';
-import { sendWaSignRequest, sendWaCompleted, sendWaRefused, verifyWhatsApp, isWhatsAppConfigured, validatePhone } from './whatsapp.mjs';
+import { sendSignerEmail } from './mailer.mjs';
+import { sendWaSignRequest, sendWaCompleted, sendWaRefused, isWhatsAppConfigured } from './whatsapp.mjs';
 import { archiveFlow, verifyDrive } from './drive.mjs';
 import jwt from 'jsonwebtoken';
 import { WebSocketServer } from 'ws';
-
 import { pushToUser } from './push.mjs';
-// ── PDF-lib opțional ───────────────────────────────────────────────────────
+
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available — flow stamp disabled:', e.message); }
 
-// ── DB layer ───────────────────────────────────────────────────────────────
 import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
-
-// ── Auth middleware ────────────────────────────────────────────────────────
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex } from './middleware/auth.mjs';
 
-// ── Routers ────────────────────────────────────────────────────────────────
 import authRouter from './routes/auth.mjs';
 import { injectRateLimiter } from './routes/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
@@ -39,7 +34,7 @@ import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
 const app = express();
 app.set('trust proxy', 1);
 app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : true, credentials: true }));
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 // ── Request ID + safe JSON error envelope ─────────────────────────────────
 app.use((req, res, next) => {
@@ -74,24 +69,15 @@ app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')
 app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'notifications.html')));
 app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
 
-// ── Health endpoints (public + admin) ──────────────────────────────────────
+// ── Health public ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'DocFlowAI', ts: new Date().toISOString() });
+  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.1', ts: new Date().toISOString() });
 });
 
 app.get('/admin/health', (req, res) => {
-  // requireAdmin() din middleware/auth.mjs returnează TRUE când a refuzat deja (401/403)
   if (requireAdmin(req, res)) return;
-
-  res.json({
-    ok: true,
-    service: 'DocFlowAI',
-    dbReady: !!DB_READY,
-    dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null,
-    ts: new Date().toISOString()
-  });
+  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.1', dbReady: !!DB_READY, dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null, ts: new Date().toISOString() });
 });
-
 
 // ── Template API ──────────────────────────────────────────────────────────
 app.get('/api/templates', async (req, res) => {
@@ -101,7 +87,8 @@ app.get('/api/templates', async (req, res) => {
     const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     const institutie = uRows[0]?.institutie || '';
     const { rows } = await pool.query(
-      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='')\n       ORDER BY user_email=$1 DESC, name ASC`,
+      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='')
+       ORDER BY user_email=$1 DESC, name ASC`,
       [actor.email.toLowerCase(), institutie]
     );
     res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
@@ -149,7 +136,7 @@ app.delete('/api/templates/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
-// ── Helpers (shared across routes) ────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 function publicBaseUrl(req) {
   const envBase = process.env.PUBLIC_BASE_URL;
   if (envBase) return envBase.replace(/\/$/, '');
@@ -193,6 +180,9 @@ function isSignerTokenExpired(signer) {
 }
 
 // ── Stamp footer helper ────────────────────────────────────────────────────
+// Footer stamp — linia de identificare pe ultima pagina.
+// Pentru flowType 'ancore': salvare cu useObjectStreams:false pentru a nu degrada AcroForm/campuri semnatura.
+// Pentru flowType 'tabel': comportament implicit (useObjectStreams:true).
 async function stampFooterOnPdf(pdfB64, flowData) {
   if (!pdfB64 || !PDFLib) return pdfB64;
   try {
@@ -204,15 +194,23 @@ async function stampFooterOnPdf(pdfB64, flowData) {
     const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
     const { width: pW } = lastPage.getSize();
-    const MARGIN = 40, footerY = 14;
+    const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
     const createdDate = flowData.createdAt ? new Date(flowData.createdAt).toLocaleString('ro-RO') : new Date().toLocaleString('ro-RO');
     const parts = [ro(flowData.initName || ''), flowData.initFunctie ? ro(flowData.initFunctie) : null, flowData.institutie ? ro(flowData.institutie) : null, flowData.compartiment ? ro(flowData.compartiment) : null].filter(Boolean).join(', ');
     const footerLeft = createdDate + (parts ? '  |  ' + parts : '');
     const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
+
+    const rightWidth = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
+    const rightX = pW - MARGIN - rightWidth;
+    const leftMaxWidth = rightX - MARGIN - 8;
+
     lastPage.drawLine({ start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 }, thickness: 0.4, color: rgb(0.75, 0.75, 0.75) });
-    lastPage.drawText(footerLeft, { x: MARGIN, y: footerY, size: 7, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: pW - MARGIN * 2 - (footerRight.length * 4.5) - 16 });
-    if (footerRight) lastPage.drawText(footerRight, { x: pW - MARGIN - (footerRight.length * 4.5), y: footerY, size: 7, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
-    return Buffer.from(await pdfDoc.save()).toString('base64');
+    lastPage.drawText(footerLeft, { x: MARGIN, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth });
+    lastPage.drawText(footerRight, { x: rightX, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
+
+    // ancore: useObjectStreams:false pastreaza structura AcroForm intacta pentru aplicatiile de semnare calificata
+    const isAncore = flowData.flowType === 'ancore';
+    return Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
   } catch(e) { console.warn('stampFooterOnPdf error:', e.message); return pdfB64; }
 }
 
@@ -227,7 +225,10 @@ function wsPush(email, payload) {
 }
 
 // ── Rate limiter (auth) ────────────────────────────────────────────────────
-const LOGIN_MAX = 10, LOGIN_WINDOW = 15 * 60, LOGIN_BLOCK = 15 * 60;
+const LOGIN_MAX = parseInt(process.env.LOGIN_MAX || '10');
+const LOGIN_WINDOW = parseInt(process.env.LOGIN_WINDOW_SEC || String(15 * 60));
+const LOGIN_BLOCK = parseInt(process.env.LOGIN_BLOCK_SEC || String(15 * 60));
+
 function loginRateKey(req, email) { return `${req.ip || ''}:${(email || '').toLowerCase()}`; }
 async function checkLoginRate(req, email) {
   if (!pool || !DB_READY) return { blocked: false };
@@ -266,14 +267,36 @@ setInterval(async () => {
   } catch(e) {}
 }, 30 * 60 * 1000);
 
+// ── Cleanup notificari vechi (max 500/user) ────────────────────────────────
+// Rulat o data la 6 ore pentru a preveni cresterea nelimitata
+setInterval(async () => {
+  if (!pool || !DB_READY) return;
+  try {
+    const { rowCount } = await pool.query(`
+      DELETE FROM notifications
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY user_email ORDER BY created_at DESC) AS rn
+          FROM notifications
+        ) ranked
+        WHERE rn > 500
+      )
+    `);
+    if (rowCount > 0) console.log(`🧹 notifications: ${rowCount} notificări vechi șterse (limita 500/user).`);
+  } catch(e) { console.error('Cleanup notificări error:', e.message); }
+}, 6 * 60 * 60 * 1000);
+
 // ── Notify helper ──────────────────────────────────────────────────────────
+// FIX: notif_email si notif_inapp sunt independente
 async function notify({ userEmail, flowId, type, title, message, waParams = {} }) {
   if (!pool || !DB_READY) return;
   const email = (userEmail || '').toLowerCase();
   if (!email) return;
   const [uRow] = (await pool.query('SELECT phone, notif_inapp, notif_whatsapp, notif_email FROM users WHERE email=$1', [email])).rows;
-  const needsInApp = !!(uRow?.notif_inapp !== false);
-  const needsEmail = !!(uRow?.notif_email && uRow?.notif_inapp !== false);
+
+  // FIX: fiecare canal evaluat independent
+  const needsInApp = uRow?.notif_inapp !== false; // default TRUE
+  const needsEmail = !!(uRow?.notif_email);       // FIX: independent de notif_inapp
   const needsWa = !!(isWhatsAppConfigured() && uRow?.notif_whatsapp && uRow?.phone);
 
   if (needsInApp) {
@@ -286,7 +309,6 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {} }
     wsPush(email, { event: 'unread_count', count: parseInt(cntRows[0].count) });
   }
 
-  // Web Push (daca e configurat)
   pushToUser(pool, email, { title, body: message, icon: '/icon-192.png', badge: '/icon-72.png', data: { flowId, type } }).catch(() => {});
 
   const eventsToAdd = [];
@@ -314,7 +336,7 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {} }
   }
 }
 
-// ── Inject dependencies into routers ─────────────────────────────────────
+// ── Inject dependencies ───────────────────────────────────────────────────
 injectRateLimiter(checkLoginRate, recordLoginFail, clearLoginRate);
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
@@ -368,7 +390,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { console.error('❌ PORT missing.'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`🚀 DocFlowAI server on port ${PORT}`);
+  console.log(`🚀 DocFlowAI v3.2.0 server on port ${PORT}`);
   console.log(`🔌 WebSocket ready at ws://0.0.0.0:${PORT}/ws`);
   initDbWithRetry();
 });

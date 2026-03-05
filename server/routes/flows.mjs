@@ -1,19 +1,24 @@
 /**
- * DocFlowAI — Flows routes
- * POST /flows, GET /flows/:flowId, sign, refuse, upload-signed-pdf,
- * pdf, signed-pdf, register-download, resend, regenerate-token,
- * my-flows, my-flows/:flowId/download
+ * DocFlowAI — Flows routes v3.2.0
+ * FIX: export default mutat la sfarsit
+ * FIX: delegate mutat inainte de export default
+ * FIX: GET /flows/:flowId — getUserMapForOrg (fara leak multi-tenant)
+ * FIX: GET /my-flows — orgId null fallback safe (nu mai dezactiveaza filtrul)
+ * FIX: PUT /flows/:flowId — validare structura body
+ * FIX: stampFooterOnPdf — latimea textului calculata cu font.widthOfTextAtSize
+ * FIX: upload-signed-pdf — limita exprimata in bytes reali (30MB PDF)
+ * FIX: reinitiate — re-aplica footer cu noul flowId
+ * FIX: notify — notif_email independent de notif_inapp
  */
 
 import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, requireAuth, requireAdmin, sha256Hex } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId } from '../db/index.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg } from '../db/index.mjs';
 
 const router = Router();
 
-// Injected at mount time from index.mjs
 let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired, _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64;
 export function injectFlowDeps(deps) {
   _notify = deps.notify;
@@ -37,7 +42,6 @@ const createFlow = async (req, res) => {
     const initEmail = String(body.initEmail || '').trim();
     const signers = Array.isArray(body.signers) ? body.signers : [];
 
-    // ── v3 tenancy: resolve orgId by initiator (fallback: Default Organization)
     let orgId = null;
     try {
       const ru = await pool.query('SELECT org_id FROM users WHERE email=$1', [initEmail.trim().toLowerCase()]);
@@ -86,18 +90,17 @@ const createFlow = async (req, res) => {
     const flowId = _newFlowId(initInstitutie);
     let finalPdfB64 = body.pdfB64 ?? null;
 
-    if (finalPdfB64 && _PDFLib && body.flowType === 'ancore') {
-      try {
-        const { PDFDocument } = _PDFLib;
-        const clean = finalPdfB64.includes(',') ? finalPdfB64.split(',')[1] : finalPdfB64;
-        const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
-        finalPdfB64 = Buffer.from(await pdfDoc.save()).toString('base64');
-      } catch(e) { console.warn('PDF permissions strip error:', e.message); }
-    }
+    // flowType 'ancore': PDF-ul NU se modifica deloc la ingest.
+    // Footer-ul se aplica mai jos (stampFooterOnPdf) o singura data, inainte de prima semnatura.
+    // Campurile de semnatura predefinite (AcroForm) raman intacte.
 
     if (finalPdfB64 && _stampFooterOnPdf) {
       try {
-        finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, { flowId, createdAt, initName, initFunctie, institutie: initInstitutie, compartiment: initCompartiment });
+        finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
+          flowId, createdAt, initName, initFunctie,
+          institutie: initInstitutie, compartiment: initCompartiment,
+          flowType: body.flowType || 'tabel'  // ancore => useObjectStreams:false
+        });
       } catch(e) { console.warn('Footer la creare error:', e.message); }
     }
 
@@ -176,7 +179,11 @@ router.get('/flows/:flowId/pdf', async (req, res) => {
     const raw = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
     let pdfBuf = Buffer.from(raw, 'base64');
 
-    if (data.flowType === 'ancore' && _PDFLib) {
+    if (data.flowType === 'ancore') {
+      // PDF-ul se livreaza NEALTERTAT — nici AcroForm, nici Perms, nici hash, nimic.
+      // Semnatarul il descarca, il semneaza cu certificat calificat local, il incarca inapoi.
+    } else if (_PDFLib) {
+      // flowType 'tabel': unlock permisiuni pentru compatibilitate cu aplicatii de semnare
       try {
         const { PDFDocument, PDFName, PDFNumber } = _PDFLib;
         const pdfDoc = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
@@ -190,16 +197,18 @@ router.get('/flows/:flowId/pdf', async (req, res) => {
       } catch(e) { console.warn('PDF unlock failed:', e.message); }
     }
 
-    const preHash = sha256Hex(pdfBuf);
-    if (signerToken) {
+    // uploadToken: doar pentru flowType 'tabel' — ancore nu folosesc verificare hash
+    if (signerToken && data.flowType !== 'ancore') {
       const signer = (data.signers || []).find(s => s.token === signerToken);
       if (signer) {
+        const preHash = sha256Hex(pdfBuf);
         const uploadToken = jwt.sign({ flowId: req.params.flowId, signerToken, preHash }, JWT_SECRET, { expiresIn: '4h' });
         res.setHeader('X-Docflow-Prehash', preHash);
         res.setHeader('X-Docflow-UploadToken', uploadToken);
         res.setHeader('Access-Control-Expose-Headers', 'X-Docflow-Prehash, X-Docflow-UploadToken');
       }
     }
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${(data.docName || 'document').replace(/[^\w\-]+/g, '_')}.pdf"`);
     return res.status(200).send(pdfBuf);
@@ -219,8 +228,11 @@ const getFlowHandler = async (req, res) => {
     if (!actor && signerToken) {
       if (!(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
     } else if (!actor) { return res.status(401).json({ error: 'auth_required' }); }
-    const { rows: uRows } = await pool.query('SELECT email,functie,compartiment,institutie FROM users');
-    const uMap = {}; uRows.forEach(u => { uMap[(u.email || '').toLowerCase()] = u; });
+
+    // FIX: getUserMapForOrg — nu leak-uieste useri intre organizatii
+    const orgId = actor?.orgId || data?.orgId || null;
+    const uMap = await getUserMapForOrg(orgId);
+
     const initUser = uMap[(data.initEmail || '').toLowerCase()] || {};
     const enriched = {
       ...data,
@@ -235,6 +247,7 @@ router.get('/flows/:flowId', getFlowHandler);
 router.get('/api/flows/:flowId', getFlowHandler);
 
 // ── PUT /flows/:flowId ─────────────────────────────────────────────────────
+// FIX: validare structura body — nu permite suprascrierea completa
 router.put('/flows/:flowId', async (req, res) => {
   try {
     if (requireDb(res)) return;
@@ -243,7 +256,19 @@ router.put('/flows/:flowId', async (req, res) => {
     const existing = await getFlowData(flowId);
     if (!existing) return res.status(404).json({ error: 'not_found' });
     const next = req.body || {};
-    next.flowId = flowId; next.updatedAt = new Date().toISOString();
+
+    // Validare: nu permitem stergerea campurilor critice
+    if (!next.signers || !Array.isArray(next.signers) || !next.signers.length) {
+      return res.status(400).json({ error: 'signers_required_in_body', message: 'Câmpul signers este obligatoriu pentru PUT /flows/:flowId.' });
+    }
+    if (!next.docName || !next.initEmail) {
+      return res.status(400).json({ error: 'docName_and_initEmail_required' });
+    }
+    // Pastreaza campurile imutabile
+    next.flowId = flowId;
+    next.orgId = existing.orgId;
+    next.createdAt = existing.createdAt;
+    next.updatedAt = new Date().toISOString();
     await saveFlow(flowId, next);
     return res.json({ ok: true });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
@@ -357,8 +382,16 @@ router.post('/flows/:flowId/register-download', async (req, res) => {
     if (_isSignerTokenExpired(signer)) return res.status(403).json({ error: 'token_expired' });
     const rawPdf = (data.pdfB64 || '').includes(',') ? (data.pdfB64 || '').split(',')[1] : (data.pdfB64 || '');
     if (!rawPdf) return res.status(500).json({ error: 'pdf_missing_cannot_issue_token' });
+
+    // flowType 'ancore': PDF-ul nu se atinge si nu se emite uploadToken cu hash.
+    // Semnatarul descarca direct, semneaza cu certificat calificat, incarca inapoi fara verificare hash.
+    if (data.flowType === 'ancore') {
+      return res.json({ uploadToken: null, ancore: true, message: 'Flux cu ancore predefinite — descarca PDF-ul direct si incarca dupa semnare.' });
+    }
+
+    // flowType 'tabel': calcul hash + uploadToken pentru verificare integritate
     let pdfBufRD = Buffer.from(rawPdf, 'base64');
-    if (data.flowType === 'ancore' && _PDFLib) {
+    if (_PDFLib) {
       try {
         const { PDFDocument, PDFName, PDFNumber } = _PDFLib;
         const pdfDoc = await PDFDocument.load(pdfBufRD, { ignoreEncryption: true });
@@ -382,13 +415,13 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     const { token, signedPdfB64, signerName, uploadToken } = req.body || {};
     if (!token) return res.status(400).json({ error: 'token_missing' });
     if (!signedPdfB64 || typeof signedPdfB64 !== 'string') return res.status(400).json({ error: 'signedPdfB64_missing' });
-    if (signedPdfB64.length > 40 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_30mb' });
-    if (!uploadToken) return res.status(403).json({ error: 'upload_token_missing', message: 'Lipsește tokenul de verificare.' });
-    let uploadPayload;
-    try { uploadPayload = jwt.verify(uploadToken, JWT_SECRET); }
-    catch(jwtErr) { return res.status(403).json({ error: 'upload_token_invalid', message: 'Token de upload invalid sau expirat.' }); }
-    if (uploadPayload.flowId !== flowId) return res.status(403).json({ error: 'upload_token_flow_mismatch' });
-    if (uploadPayload.signerToken !== token) return res.status(403).json({ error: 'upload_token_signer_mismatch' });
+
+    // Limita 30MB PDF real (base64 e ~1.33x mai mare)
+    const MAX_PDF_BYTES = 30 * 1024 * 1024;
+    const rawCheck = signedPdfB64.includes('base64,') ? signedPdfB64.split('base64,')[1] : signedPdfB64;
+    const estimatedBytes = Math.floor(rawCheck.length * 0.75);
+    if (estimatedBytes > MAX_PDF_BYTES) return res.status(413).json({ error: 'pdf_too_large_max_30mb', message: 'PDF-ul depășește limita de 30 MB.' });
+
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
@@ -396,14 +429,29 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
     if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired', message: 'Link-ul de semnare a expirat (90 zile).' });
     if (signers[idx].status !== 'signed') return res.status(409).json({ error: 'signer_not_signed_yet' });
-    const rawUploaded = signedPdfB64.includes('base64,') ? signedPdfB64.split('base64,')[1] : signedPdfB64;
-    const uploadedHash = sha256Hex(Buffer.from(rawUploaded, 'base64'));
-    if (signers[idx].pdfUploaded && signers[idx].uploadedHash === uploadedHash) {
-      const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
-      return res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, idempotent: true });
+
+    if (data.flowType === 'ancore') {
+      // ── ANCORE: zero verificari pe continutul PDF ────────────────────────
+      // Documentul a fost semnat cu certificat calificat local.
+      // Nu verificam hash, nu comparam cu originalul, nu modificam nimic.
+      // Marcam direct ca uploaded si continuam fluxul.
+      signers[idx].pdfUploaded = true;
+    } else {
+      // ── TABEL: verificare uploadToken + hash integritate ─────────────────
+      if (!uploadToken) return res.status(403).json({ error: 'upload_token_missing', message: 'Lipsește tokenul de verificare.' });
+      let uploadPayload;
+      try { uploadPayload = jwt.verify(uploadToken, JWT_SECRET); }
+      catch(jwtErr) { return res.status(403).json({ error: 'upload_token_invalid', message: 'Token de upload invalid sau expirat.' }); }
+      if (uploadPayload.flowId !== flowId) return res.status(403).json({ error: 'upload_token_flow_mismatch' });
+      if (uploadPayload.signerToken !== token) return res.status(403).json({ error: 'upload_token_signer_mismatch' });
+      const uploadedHash = sha256Hex(Buffer.from(rawCheck, 'base64'));
+      if (signers[idx].pdfUploaded && signers[idx].uploadedHash === uploadedHash) {
+        const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
+        return res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, idempotent: true });
+      }
+      if (uploadedHash === uploadPayload.preHash) return res.status(422).json({ error: 'pdf_not_signed', message: 'Documentul uploadat este identic cu cel descărcat — nu conține semnătură.' });
+      signers[idx].uploadVerified = true; signers[idx].uploadedHash = uploadedHash; signers[idx].pdfUploaded = true;
     }
-    if (uploadedHash === uploadPayload.preHash) return res.status(422).json({ error: 'pdf_not_signed', message: 'Documentul uploadat este identic cu cel descărcat — nu conține semnătură.' });
-    signers[idx].uploadVerified = true; signers[idx].uploadedHash = uploadedHash; signers[idx].pdfUploaded = true;
     if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions = [];
     data.signedPdfVersions.push({ uploadedAt: new Date().toISOString(), uploadedBy: signers[idx].email || signers[idx].name || 'unknown', signerIndex: idx, signerName: signerName || signers[idx].name || '' });
     data.signedPdfB64 = signedPdfB64; data.signedPdfUploadedAt = new Date().toISOString(); data.signedPdfUploadedBy = signers[idx].email || signers[idx].name || 'unknown';
@@ -480,26 +528,38 @@ router.get('/my-flows', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const email = actor.email.toLowerCase();
-    const orgId = actor.orgId || 0;
+    // FIX: orgId null nu dezactiveaza filtrul multi-tenant
+    const orgId = actor.orgId || null;
     const page = Math.max(1, parseInt(req.query.page || '1'));
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || '50')));
     const offset = (page - 1) * limit;
     const statusFilter = (req.query.status || 'all').toLowerCase();
     const search = (req.query.search || '').trim().toLowerCase();
-    const baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND (org_id = $2 OR $2 = 0)`;
+
+    // FIX: filtru org_id strict — fara "OR $2 = 0"
+    let baseWhere, params;
+    if (orgId) {
+      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND org_id = $2`;
+      params = [email, orgId];
+    } else {
+      // User fara org (legacy) — vede doar fluxurile proprii fara filtrare org
+      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1))`;
+      params = [email];
+    }
+
     let statusWhere = '';
     if (statusFilter === 'pending') statusWhere = " AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused'";
     else if (statusFilter === 'completed') statusWhere = " AND (data->>'completed') = 'true'";
     else if (statusFilter === 'refused') statusWhere = " AND (data->>'status') = 'refused'";
     let searchWhere = '';
-    const params = [email, orgId];
     if (search) { params.push(`%${search}%`); searchWhere = ` AND (lower(data->>'docName') LIKE $${params.length} OR lower(data->>'initName') LIKE $${params.length})`; }
     const whereClause = baseWhere + statusWhere + searchWhere;
     const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
     const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows WHERE ${whereClause} ORDER BY updated_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]);
-    const { rows: userRows } = await pool.query('SELECT email,functie,compartiment FROM users');
-    const userMap = {}; userRows.forEach(u => { userMap[(u.email || '').toLowerCase()] = u; });
+
+    // FIX: getUserMapForOrg — fara leak intre organizatii
+    const userMap = await getUserMapForOrg(orgId);
     const myFlows = rows.map(r => r.data).filter(Boolean).map(d => ({
       flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
       createdAt: d.createdAt, updatedAt: d.updatedAt,
@@ -524,7 +584,6 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
     const d = rows[0]?.data;
     if (!d) return res.status(404).json({ error: 'not_found' });
     const email = actor.email.toLowerCase();
-    const orgId = actor.orgId || 0;
     const isInit = (d.initEmail || '').toLowerCase() === email;
     const isSigner = (d.signers || []).some(s => (s.email || '').toLowerCase() === email);
     if (!isInit && !isSigner) return res.status(403).json({ error: 'forbidden' });
@@ -546,7 +605,7 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
-// ── POST /flows/:flowId/reinitiate (Faza 4A) ───────────────────────────────
+// ── POST /flows/:flowId/reinitiate ─────────────────────────────────────────
 router.post('/flows/:flowId/reinitiate', async (req, res) => {
   try {
     if (requireDb(res)) return;
@@ -559,7 +618,6 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate reiniția fluxul.' });
     const hasRefused = (data.signers || []).some(s => s.status === 'refused');
     if (!hasRefused) return res.status(409).json({ error: 'no_refused_signer', message: 'Fluxul nu are niciun semnatar care a refuzat.' });
-    // Clonează fluxul fără semnatarul care a refuzat
     const remainingSigners = (data.signers || []).filter(s => s.status !== 'refused').map((s, i) => ({
       ...s,
       token: crypto.randomBytes(16).toString('hex'),
@@ -569,6 +627,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     }));
     if (!remainingSigners.length) return res.status(409).json({ error: 'no_signers_remaining', message: 'Nu mai există semnatari după eliminarea celui care a refuzat.' });
     const newFlowId2 = _newFlowId(data.institutie || '');
+    const newCreatedAt = new Date().toISOString();
     const newData = {
       ...data,
       flowId: newFlowId2,
@@ -576,15 +635,24 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
       status: 'active',
       completed: false, completedAt: null,
       refusedAt: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: newCreatedAt,
+      updatedAt: newCreatedAt,
       parentFlowId: flowId,
-      events: [{ at: new Date().toISOString(), type: 'FLOW_REINITIATED', by: actor.email, fromFlowId: flowId }],
+      signedPdfB64: null, signedPdfUploadedAt: null, signedPdfUploadedBy: null, signedPdfVersions: [],
+      events: [{ at: newCreatedAt, type: 'FLOW_REINITIATED', by: actor.email, fromFlowId: flowId }],
     };
-    // Resetează pdfB64 la cel original (fără semnaturi)
-    newData.signedPdfB64 = null; newData.signedPdfUploadedAt = null; newData.signedPdfUploadedBy = null; newData.signedPdfVersions = [];
+    // FIX: re-aplica footer cu noul flowId pe PDF-ul original
+    if (newData.pdfB64 && _stampFooterOnPdf) {
+      try {
+        newData.pdfB64 = await _stampFooterOnPdf(newData.pdfB64, {
+          flowId: newFlowId2, createdAt: newCreatedAt,
+          initName: data.initName, initFunctie: data.initFunctie,
+          institutie: data.institutie, compartiment: data.compartiment,
+          flowType: data.flowType || 'tabel'  // ancore => useObjectStreams:false
+        });
+      } catch(e) { console.warn('Re-stamp footer on reinitiate error:', e.message); }
+    }
     await saveFlow(newFlowId2, newData);
-    // Notifică primul semnatar
     const first = remainingSigners[0];
     if (first?.email) {
       await _notify({ userEmail: first.email, flowId: newFlowId2, type: 'YOUR_TURN', title: 'Document de semnat (reinițiat)',
@@ -596,11 +664,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
   } catch(e) { console.error('reinitiate error:', e); return res.status(500).json({ error: 'server_error' }); }
 });
 
-export default router;
-
-// ── POST /flows/:flowId/delegate — delegare semnatura ─────────────────────
-// Semnatarul curent poate delega semnatura unui alt user (cu acord scris).
-// Admin poate delega oricand.
+// ── POST /flows/:flowId/delegate ──────────────────────────────────────────
 router.post('/flows/:flowId/delegate', async (req, res) => {
   try {
     if (requireDb(res)) return;
@@ -610,20 +674,16 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     if (!fromToken) return res.status(400).json({ error: 'fromToken_required' });
     if (!toEmail || !/^\S+@\S+\.\S+$/.test(toEmail)) return res.status(400).json({ error: 'toEmail_invalid' });
     if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
-
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => s.token === fromToken);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
-
     const isAdmin = actor.role === 'admin';
     const isCurrentSigner = (signers[idx].email || '').toLowerCase() === (actor.email || '').toLowerCase();
     if (!isAdmin && !isCurrentSigner) return res.status(403).json({ error: 'forbidden', message: 'Doar semnatarul curent sau un admin poate delega.' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer', message: 'Se poate delega doar semnatarul curent.' });
     if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired' });
-
-    // Înlocuiește semnatarul curent cu delegatul
     const originalName = signers[idx].name;
     const originalEmail = signers[idx].email;
     const newToken = crypto.randomBytes(16).toString('hex');
@@ -641,13 +701,13 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({ at: new Date().toISOString(), type: 'DELEGATED', from: originalEmail, to: toEmail, reason: String(reason).trim(), by: actor.email });
     await saveFlow(flowId, data);
-
-    // Notificare delegat + original
     await _notify({ userEmail: toEmail, flowId, type: 'YOUR_TURN', title: 'Ai primit o delegare de semnătură',
       message: `${originalName} ți-a delegat semnarea documentului „${data.docName}". Motiv: ${String(reason).trim()}`,
       waParams: { signerName: toName || toEmail, docName: data.docName } });
-
     console.log(`👥 Delegare ${originalEmail} → ${toEmail} pentru flow ${flowId} de ${actor.email}`);
     return res.json({ ok: true, flowId, from: originalEmail, to: toEmail });
   } catch(e) { console.error('delegate error:', e); return res.status(500).json({ error: 'server_error' }); }
 });
+
+// FIX: export default DUPA toate rutele
+export default router;

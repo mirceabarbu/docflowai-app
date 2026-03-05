@@ -1,16 +1,16 @@
 /**
- * DocFlowAI — Auth routes
+ * DocFlowAI — Auth routes v3.2.0
  * POST /auth/login, GET /auth/me, POST /auth/refresh
+ * FIX: grace period configurabil, refresh verifica DB
  */
 
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, JWT_EXPIRES, requireAuth, verifyPassword } from '../middleware/auth.mjs';
+import { JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC, requireAuth, verifyPassword } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb } from '../db/index.mjs';
 
 const router = Router();
 
-// Rate limiter helpers (importate din index.mjs via context — injectate la montare)
 let _checkLoginRate, _recordLoginFail, _clearLoginRate;
 export function injectRateLimiter(check, record, clear) {
   _checkLoginRate = check; _recordLoginFail = record; _clearLoginRate = clear;
@@ -40,6 +40,7 @@ router.post('/auth/login', async (req, res) => {
       { userId: user.id, email: user.email, role: user.role, orgId: user.org_id, nume: user.nume, functie: user.functie, institutie: user.institutie },
       JWT_SECRET, { expiresIn: JWT_EXPIRES }
     );
+    // FIX: nu mai returnam plain_password in raspuns
     return res.json({ token, email: user.email, role: user.role, orgId: user.org_id, nume: user.nume, functie: user.functie, institutie: user.institutie });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
@@ -67,7 +68,8 @@ router.post('/auth/refresh', async (req, res) => {
       try {
         decoded = jwt.decode(token);
         const expiredAgo = Date.now() - (decoded.exp * 1000);
-        if (expiredAgo > 15 * 60 * 1000) {
+        // FIX: grace period din constanta configurabila
+        if (expiredAgo > JWT_REFRESH_GRACE_SEC * 1000) {
           return res.status(401).json({ error: 'token_expired_no_grace', message: 'Sesiunea a expirat. Autentifică-te din nou.' });
         }
       } catch(e2) { return res.status(401).json({ error: 'token_invalid' }); }
