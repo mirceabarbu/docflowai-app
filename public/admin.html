@@ -376,32 +376,25 @@
       </div>
       <div>
         <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Compartiment</label>
-        <select id="rptDept" disabled
+        <select id="rptDept" disabled onchange="onRptDeptChange()"
           style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.82rem;">
           <option value="">— Toate compartimentele —</option>
         </select>
       </div>
       <div>
-        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Nume utilizator</label>
-        <input type="text" id="rptName" placeholder="Caută după nume..."
-          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;" />
-      </div>
-    </div>
-
-    <!-- Rândul 3: utilizator specific + butoane -->
-    <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;">
-      <div>
-        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Utilizator specific (opțional)</label>
-        <select id="rptUser"
-          style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;">
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Utilizator</label>
+        <select id="rptUser" onchange="onRptUserChange()"
+          style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.82rem;">
           <option value="">— Toți utilizatorii —</option>
         </select>
       </div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-p" onclick="loadActivityReport()" style="padding:9px 20px;font-size:.85rem;">🔍 Generează</button>
-        <button class="btn secondary" onclick="exportActivityCSV()" style="padding:9px 14px;font-size:.85rem;" title="Export CSV Excel">📊 CSV</button>
-        <button class="btn secondary" onclick="exportActivityPDF()" style="padding:9px 14px;font-size:.85rem;" title="Export PDF raport complet">📄 PDF</button>
-      </div>
+    </div>
+
+    <!-- Rândul 3: butoane -->
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+      <button class="btn btn-p" onclick="loadActivityReport()" style="padding:9px 20px;font-size:.85rem;">🔍 Generează</button>
+      <button class="btn secondary" onclick="exportActivityCSV()" style="padding:9px 14px;font-size:.85rem;" title="Export CSV Excel">📊 CSV</button>
+      <button class="btn secondary" onclick="exportActivityPDF()" style="padding:9px 14px;font-size:.85rem;" title="Export PDF raport complet">📄 PDF</button>
     </div>
 
     <div id="activityReport" style="margin-top:18px;"></div>
@@ -1370,7 +1363,6 @@ function onDatePickerChange(pickerEl, displayId) {
 function initActivityReport() {
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  // Setăm textbox-urile vizibile (zz.ll.aaaa) și hidden inputs (YYYY-MM-DD)
   const todayISO = dateToISO(today);
   const fromISO  = dateToISO(firstOfMonth);
   $('rptFrom').value        = fromISO;
@@ -1378,38 +1370,87 @@ function initActivityReport() {
   $('rptFromDisplay').value = isoToDMY(fromISO);
   $('rptToDisplay').value   = isoToDMY(todayISO);
 
-  // Populăm dropdown-ul cu utilizatori + inst/dept
+  // Încarcă toți utilizatorii pentru cascadare
   _apiFetch('/admin/users', { headers: hdrs() }).then(r => r.json()).then(data => {
-    const users = data.users || data || [];
-    const sel = $('rptUser');
-    users.forEach(u => {
-      const opt = document.createElement('option');
-      opt.value = u.email;
-      opt.textContent = `${u.nume || u.email}${u.functie ? ' — ' + u.functie : ''}`;
-      sel.appendChild(opt);
-    });
-    const insts = [...new Set(users.map(u => u.institutie).filter(Boolean))].sort();
-    const rptInst = $('rptInst');
-    insts.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i; rptInst.appendChild(o); });
-    window._rptUsers = users;
+    window._rptUsers = data.users || data || [];
+    _rebuildRptInst();
   }).catch(() => {});
 }
 
+function _rebuildRptInst() {
+  const users = window._rptUsers || [];
+  const rptInst = $('rptInst');
+  // Salvează selecția curentă
+  const prevInst = rptInst.value;
+  rptInst.innerHTML = '<option value="">— Toate instituțiile —</option>';
+  const insts = [...new Set(users.map(u => u.institutie).filter(Boolean))].sort();
+  insts.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i; rptInst.appendChild(o); });
+  if (prevInst) rptInst.value = prevInst;
+  _rebuildRptDept();
+}
+
 function onRptInstChange() {
+  _rebuildRptDept();
+  _rebuildRptUser();
+}
+
+function _rebuildRptDept() {
   const inst = $('rptInst').value;
   const deptSel = $('rptDept');
+  const prevDept = deptSel.value;
   deptSel.innerHTML = '<option value="">— Toate compartimentele —</option>';
   if (inst && window._rptUsers) {
-    const depts = [...new Set(window._rptUsers.filter(u => u.institutie === inst).map(u => u.compartiment).filter(Boolean))].sort();
+    const depts = [...new Set(window._rptUsers
+      .filter(u => u.institutie === inst)
+      .map(u => u.compartiment).filter(Boolean))].sort();
     depts.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = d; deptSel.appendChild(o); });
     deptSel.disabled = depts.length === 0;
-  } else { deptSel.disabled = true; }
+    if (prevDept) deptSel.value = prevDept;
+  } else {
+    deptSel.disabled = true;
+  }
+  _rebuildRptUser();
+}
+
+function onRptDeptChange() { _rebuildRptUser(); }
+
+function _rebuildRptUser() {
+  const inst = $('rptInst').value;
+  const dept = $('rptDept').value;
+  const userSel = $('rptUser');
+  const prevEmail = userSel.value;
+  userSel.innerHTML = '<option value="">— Toți utilizatorii —</option>';
+  let filtered = window._rptUsers || [];
+  if (inst) filtered = filtered.filter(u => u.institutie === inst);
+  if (dept) filtered = filtered.filter(u => u.compartiment === dept);
+  filtered.sort((a,b) => (a.nume||'').localeCompare(b.nume||''));
+  filtered.forEach(u => {
+    const o = document.createElement('option');
+    o.value = u.email;
+    o.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
+    userSel.appendChild(o);
+  });
+  if (prevEmail) userSel.value = prevEmail;
+}
+
+function onRptUserChange() {
+  // Sincronizează filtrele invers dacă utilizatorul selectat e dintr-o instituție specifică
+  const email = $('rptUser').value;
+  if (!email || !window._rptUsers) return;
+  const u = window._rptUsers.find(x => x.email === email);
+  if (!u) return;
+  // Dacă nu e deja filtrată pe instituția lui, filtrăm automat
+  if (u.institutie && !$('rptInst').value) {
+    $('rptInst').value = u.institutie;
+    _rebuildRptDept();
+    // Re-setăm userul după rebuild
+    $('rptUser').value = email;
+  }
 }
 
 async function loadActivityReport() {
   const area = $('activityReport');
-  // Citim din hidden inputs (YYYY-MM-DD garantat corect)
-  // Dacă userul a tastat manual în display, sincronizăm înainte
+  // Sincronizăm hidden inputs din display dacă userul a tastat manual
   const fromDisp = ($('rptFromDisplay').value||'').trim();
   const toDisp   = ($('rptToDisplay').value||'').trim();
   if (fromDisp.length === 10) { const iso = parseDMYtoISO(fromDisp); if (iso) $('rptFrom').value = iso; }
@@ -1430,14 +1471,12 @@ async function loadActivityReport() {
   area.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);">⏳ Se generează raportul...</div>';
   try {
     const params = new URLSearchParams({ from: fromISO, to: toISO });
-    const email = $('rptUser').value;
+    const email = $('rptUser').value;   // email direct
     const inst  = $('rptInst').value;
     const dept  = $('rptDept').value;
-    const name  = ($('rptName').value||'').trim();
     if (email) params.set('email', email);
-    if (inst)  params.set('institutie', inst);
+    else if (inst) params.set('institutie', inst);
     if (dept)  params.set('compartiment', dept);
-    if (name)  params.set('name', name);
     const r = await _apiFetch(`/admin/user-activity?${params}`, { headers: hdrs() });
     if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error || `HTTP ${r.status}`); }
     const data = await r.json();

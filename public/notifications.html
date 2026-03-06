@@ -309,7 +309,7 @@ function renderList() {
     card.innerHTML = `
       <div class="notif-icon type-${n.type||''}">${typeIcon(n.type)}</div>
       <div class="notif-body">
-        <div class="notif-title">${isUrgentNotif ? '<span style="color:#ff6666;font-weight:800;margin-right:6px;">🚨 URGENT</span>' : ''}${escHtml((n.title||'Notificare').replace(/^\s*🚨\s*\[URGENT\]\s*/i,''))}</div>
+        <div class="notif-title">${isUrgentNotif ? '<span style="color:#ff6666;font-weight:800;margin-right:6px;">🚨 Prioritate</span>' : ''}${escHtml((n.title||'Notificare').replace(/^\s*🚨\s*\[URGENT\]\s*/i,''))}</div>
         <div class="notif-msg">${escHtml(n.message||'')}</div>
         <div class="notif-meta">
           <span class="notif-time">${timeAgo(n.created_at)}</span>
