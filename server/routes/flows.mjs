@@ -358,6 +358,11 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({ at: new Date().toISOString(), type: 'REFUSED', by: signers[idx].email, reason: refuseReason });
     await saveFlow(flowId, data);
+    // Issue 5: Sterge notif YOUR_TURN ale celui care a refuzat
+    const refuserEmail5 = (signers[idx].email || '').toLowerCase();
+    if (refuserEmail5) {
+      await pool.query("DELETE FROM notifications WHERE user_email=$1 AND flow_id=$2 AND type IN ('YOUR_TURN','REMINDER')", [refuserEmail5, flowId]).catch(() => {});
+    }
     const refuseMsg = `${refuserName}${refuserRol ? ' (' + refuserRol + ')' : ''} a refuzat semnarea documentului „${data.docName}". Motiv: ${refuseReason}`;
     const toNotify = [{ email: data.initEmail }, ...signers.filter((s, i) => i < idx && s.status === 'signed' && s.email).map(s => ({ email: s.email }))];
     const sent = new Set();
@@ -473,7 +478,16 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, nextSigner: nextSigner || null });
     setImmediate(async () => {
       try {
-        if (allDone && data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: '✅ Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName } });
+        // Issue 5: Sterge notificarile YOUR_TURN ale semnatarului care tocmai a semnat
+        const signerEmail5 = (signers[idx].email || '').toLowerCase();
+        if (signerEmail5) {
+          await pool.query("DELETE FROM notifications WHERE user_email=$1 AND flow_id=$2 AND type IN ('YOUR_TURN','REMINDER')", [signerEmail5, flowId]).catch(() => {});
+        }
+        if (allDone) {
+          // Issue 5: Sterge TOATE notif YOUR_TURN ramase pentru acest flux
+          await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
+          if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: '✅ Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName } });
+        }
         if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName } });
       } catch(notifErr) { console.error(`❌ Notificare async eșuată pentru flow ${flowId}:`, notifErr.message); }
     });
@@ -699,6 +713,11 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({ at: new Date().toISOString(), type: 'REVIEW_REQUESTED', by: signers[idx].email, reason: reviewReason });
     await saveFlow(flowId, data);
+    // Issue 5: Sterge notif YOUR_TURN ale celui care a cerut revizuire
+    const reviewerEmail5 = (signers[idx].email || '').toLowerCase();
+    if (reviewerEmail5) {
+      await pool.query("DELETE FROM notifications WHERE user_email=$1 AND flow_id=$2 AND type IN ('YOUR_TURN','REMINDER')", [reviewerEmail5, flowId]).catch(() => {});
+    }
 
     const reviewMsg = `${reviewerName} a trimis documentul „${data.docName}" spre revizuire. Motiv: ${reviewReason}`;
 
@@ -720,7 +739,7 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
 });
 
 // ── POST /flows/:flowId/reinitiate-review ─────────────────────────────────
-// Permite initiatorului sa re-uploadeze un document si sa restarteze fluxul cu toti semnatarii originali
+// Issue 4: Reinitializeaza fluxul IN ACELASI ID — nu creeaza un flow nou
 router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
   try {
     if (requireDb(res)) return;
@@ -728,53 +747,52 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     const { flowId } = req.params;
     const { pdfB64 } = req.body || {};
     if (!pdfB64 || typeof pdfB64 !== 'string') return res.status(400).json({ error: 'pdfB64_required' });
-    
+
     // Calculăm hash-ul documentului uploadat
     const rawPdf = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
     const uploadedHash = sha256Hex(rawPdf);
-    
+
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    
-    // Verificăm că nu se uploadează același document semnat deja
-    const existingHashes = new Set();
-    // Hash-ul PDF-ului original al fluxului curent
-    if (data.pdfB64) { const raw = data.pdfB64.includes(',') ? data.pdfB64.split(',')[1] : data.pdfB64; existingHashes.add(sha256Hex(raw)); }
-    // Hash-urile PDF-urilor semnate deja
-    if (data.signedPdfB64) { const raw = data.signedPdfB64.includes(',') ? data.signedPdfB64.split(',')[1] : data.signedPdfB64; existingHashes.add(sha256Hex(raw)); }
-    (data.signedPdfVersions || []).forEach(v => { if (v.pdfB64 || v.hash) existingHashes.add(v.hash || sha256Hex((v.pdfB64||'').includes(',') ? (v.pdfB64||'').split(',')[1] : (v.pdfB64||''))); });
-    (data.signers || []).forEach(s => { if (s.uploadedHash) existingHashes.add(s.uploadedHash); });
-    
-    if (existingHashes.has(uploadedHash)) {
-      return res.status(409).json({ error: 'same_document', message: 'Nu poți încărca același document care a fost semnat anterior. Uploadează documentul revizuit.' });
-    }
-    if (!data) return res.status(404).json({ error: 'not_found' });
+
     const isAdmin = actor.role === 'admin';
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul poate reiniția după revizuire.' });
     if (data.status !== 'review_requested') return res.status(409).json({ error: 'not_in_review', message: 'Fluxul nu este în starea de revizuire.' });
 
-    // Resetăm toți semnatarii originali
-    const resetSigners = (data.signers || []).map((s, i) => ({
-      ...s,
-      token: crypto.randomBytes(16).toString('hex'),
-      tokenCreatedAt: new Date().toISOString(),
-      status: i === 0 ? 'current' : 'pending',
-      signedAt: null, signature: null, pdfUploaded: false, emailSent: false,
-      refuseReason: undefined, refusedAt: undefined,
-    }));
-    resetSigners.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
-    resetSigners.forEach((s, i) => { s.status = i === 0 ? 'current' : 'pending'; });
+    // Verificăm că nu se uploadează același document semnat deja
+    const existingHashes = new Set();
+    if (data.pdfB64) { const raw = data.pdfB64.includes(',') ? data.pdfB64.split(',')[1] : data.pdfB64; existingHashes.add(sha256Hex(raw)); }
+    if (data.signedPdfB64) { const raw = data.signedPdfB64.includes(',') ? data.signedPdfB64.split(',')[1] : data.signedPdfB64; existingHashes.add(sha256Hex(raw)); }
+    (data.signedPdfVersions || []).forEach(v => { if (v.hash) existingHashes.add(v.hash); });
+    (data.signers || []).forEach(s => { if (s.uploadedHash) existingHashes.add(s.uploadedHash); });
+    if (existingHashes.has(uploadedHash)) {
+      return res.status(409).json({ error: 'same_document', message: 'Nu poți încărca același document care a fost semnat anterior. Uploadează documentul revizuit.' });
+    }
 
-    const newFlowId2 = _newFlowId(data.institutie || '');
-    const newCreatedAt = new Date().toISOString();
+    const now = new Date().toISOString();
+
+    // Salvăm istoricul rundei de revizuire curente
+    if (!Array.isArray(data.reviewHistory)) data.reviewHistory = [];
+    data.reviewHistory.push({
+      round: (data.reviewHistory.length + 1),
+      reviewRequestedAt: data.reviewRequestedAt,
+      reviewRequestedBy: data.reviewRequestedBy,
+      reviewReason: data.reviewReason,
+      signers: (data.signers || []).map(s => ({
+        email: s.email, name: s.name, rol: s.rol, status: s.status,
+        signedAt: s.signedAt || null, refusedAt: s.refusedAt || null, refuseReason: s.refuseReason || null
+      })),
+      pdfHash: existingHashes.size > 0 ? [...existingHashes][0] : null,
+      reinitiatedAt: now, reinitiatedBy: actor.email
+    });
+
+    // Aplică footer pe noul PDF (pastrează ACELASI flowId în footer)
     let finalPdfB64 = pdfB64;
-
-    // Aplică footer pe noul PDF
     if (finalPdfB64 && _stampFooterOnPdf) {
       try {
         finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
-          flowId: newFlowId2, createdAt: newCreatedAt,
+          flowId, createdAt: now,
           initName: data.initName, initFunctie: data.initFunctie,
           institutie: data.institutie, compartiment: data.compartiment,
           flowType: data.flowType || 'tabel'
@@ -782,41 +800,48 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
       } catch(e) { console.warn('Re-stamp footer on reinitiate-review error:', e.message); }
     }
 
-    const newData = {
-      ...data,
-      flowId: newFlowId2,
-      pdfB64: finalPdfB64,
-      signers: resetSigners,
-      status: 'active',
-      completed: false, completedAt: null,
-      reviewRequestedAt: null, reviewRequestedBy: null, reviewReason: null,
-      createdAt: newCreatedAt,
-      updatedAt: newCreatedAt,
-      parentFlowId: flowId,
-      signedPdfB64: null, signedPdfUploadedAt: null, signedPdfUploadedBy: null, signedPdfVersions: [],
-      // Pastreaza istoricul complet al fluxului parinte + evenimentul de reinitiere
-      events: [
-        ...(data.events || []).map(e => ({ ...e, _inheritedFrom: flowId })),
-        { at: newCreatedAt, type: 'FLOW_REINITIATED_AFTER_REVIEW', by: actor.email, fromFlowId: flowId, reviewReason: data.reviewReason }
-      ],
-    };
-    await saveFlow(newFlowId2, newData);
+    // Resetăm toți semnatarii cu token nou — ACELASI flowId
+    const resetSigners = (data.signers || [])
+      .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+      .map((s, i) => ({
+        ...s,
+        token: crypto.randomBytes(16).toString('hex'),
+        tokenCreatedAt: now,
+        status: i === 0 ? 'current' : 'pending',
+        signedAt: null, signature: null, pdfUploaded: false, emailSent: false,
+        refuseReason: undefined, refusedAt: undefined, uploadedHash: undefined,
+      }));
 
-    // Marchează fluxul original ca reinitiat
-    data.status = 'reinitiated_after_review';
-    data.updatedAt = newCreatedAt;
-    data.events.push({ at: newCreatedAt, type: 'REINITIATED_AFTER_REVIEW', by: actor.email, newFlowId: newFlowId2 });
+    // Actualizăm fluxul IN-PLACE — aceleași ID
+    data.pdfB64 = finalPdfB64;
+    data.signers = resetSigners;
+    data.status = 'active';
+    data.completed = false; data.completedAt = null;
+    data.reviewRequestedAt = null; data.reviewRequestedBy = null; data.reviewReason = null;
+    data.updatedAt = now;
+    data.signedPdfB64 = null; data.signedPdfUploadedAt = null; data.signedPdfUploadedBy = null;
+    data.signedPdfVersions = [];
+    // Adaugă evenimentul de reinitiere — FARA să marcheze evenimentele vechi (istoricul rămâne nativ în aceeași listă)
+    if (!Array.isArray(data.events)) data.events = [];
+    data.events.push({ at: now, type: 'FLOW_REINITIATED_AFTER_REVIEW', by: actor.email, round: data.reviewHistory.length, reviewReason: data.reviewHistory[data.reviewHistory.length - 1]?.reviewReason });
+
     await saveFlow(flowId, data);
 
-    // Notifică primul semnatar
+    // Issue 5: Sterge notif REVIEW_REQUESTED existente pentru acest flux
+    await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type='REVIEW_REQUESTED'", [flowId]).catch(() => {});
+
+    // Notifică primul semnatar (același flowId)
     const first = resetSigners[0];
     if (first?.email) {
-      await _notify({ userEmail: first.email, flowId: newFlowId2, type: 'YOUR_TURN', title: 'Document revizuit de semnat',
+      await _notify({ userEmail: first.email, flowId, type: 'YOUR_TURN',
+        title: 'Document revizuit de semnat',
         message: `${data.initName} a revizuit documentul „${data.docName}" și l-a retrimis spre semnare. Este rândul tău.`,
-        waParams: { signerName: first.name || first.email, docName: data.docName } });
+        waParams: { signerName: first.name || first.email, docName: data.docName }
+      });
     }
-    console.log(`🔄 Review reinitiate: ${flowId} → ${newFlowId2} de ${actor.email}`);
-    return res.json({ ok: true, newFlowId: newFlowId2, signers: resetSigners.length });
+
+    console.log(`🔄 Review reinitiate in-place: ${flowId} runda ${data.reviewHistory.length} de ${actor.email}`);
+    return res.json({ ok: true, flowId, signers: resetSigners.length, round: data.reviewHistory.length });
   } catch(e) { console.error('reinitiate-review error:', e); return res.status(500).json({ error: 'server_error' }); }
 });
 

@@ -539,10 +539,10 @@
                 });
                 const j2 = await r.json();
                 if (j2.ok) {
-                  setMsg("ok", `✅ Flux reînceput! ID nou: <strong>${j2.newFlowId}</strong> — <a href="/flow.html?flow=${j2.newFlowId}" style="color:#7cf0e0;">Deschide noul flux</a>`);
+                  // Issue 4: Acelasi flowId — reîncarcă pagina curentă
+                  setMsg("ok", `✅ Document revizuit trimis! Fluxul a fost repornit (runda ${j2.round || 1}). Semnatarii au fost notificați.`);
                   if(statusEl) statusEl.textContent = "";
-                  if(reviewCard) reviewCard.style.display = "none";
-                  if(btnReiReview) btnReiReview.style.display = "none";
+                  setTimeout(() => loadFlow(), 1200);
                 } else {
                   if(statusEl) statusEl.textContent = "❌ " + (j2.message || j2.error || "Eroare");
                   btnUploadRev.disabled = false; btnUploadRev.textContent = "⬆️ Trimite documentul revizuit și repornește fluxul";
@@ -612,7 +612,15 @@
   if (_btnReiReview) {
     _btnReiReview.addEventListener("click", () => {
       const card = $("reviewInfoCard");
-      if (card) { card.style.display = ""; card.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      if (card) {
+        card.style.display = "";
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Focus pe input-ul de fisier dupa scroll
+        setTimeout(() => {
+          const inp = $("reviewPdfInput");
+          if (inp) inp.click();
+        }, 400);
+      }
     });
   }
 

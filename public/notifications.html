@@ -406,7 +406,7 @@ function connectWS() {
 connectWS();
 // Aplica tab din URL daca exista (?tab=sign / done / refused / unread)
 (function applyTabFromUrl() {
-  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', unread: 'unread', all: 'all' };
+  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', review: 'REVIEW_REQUESTED', unread: 'unread', all: 'all' };
   const urlTab = new URLSearchParams(location.search).get('tab');
   const filter = tabMap[urlTab] || null;
   if (filter && filter !== 'all') {

@@ -238,6 +238,7 @@
         if (t === 'YOUR_TURN' || t === 'ASSIGNED' || t === 'SIGNER_TURN') tab = 'sign';
         else if (t === 'COMPLETED' || t === 'DONE' || t === 'FINISHED') tab = 'done';
         else if (t === 'REFUSED') tab = 'refused';
+        else if (t === 'REVIEW_REQUESTED') tab = 'review';
         window.location.href = '/notifications?tab=' + tab;
       } catch(e) {
         window.location.href = '/notifications';

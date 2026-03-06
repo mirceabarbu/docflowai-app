@@ -1012,7 +1012,7 @@ async function submitReviewUpload() {
     const j = await resp.json();
     if (j.ok) {
       closeReviewUploadModal();
-      alert("✅ Document revizuit încărcat! Fluxul a fost reinițiat (ID nou: " + j.newFlowId + ").");
+      alert("✅ Document revizuit trimis! Fluxul a fost repornit (runda " + (j.round||1) + "). Semnatarii au fost notificați.");
       loadMyFlows(_fluxPage);
     } else {
       msgEl.textContent = "❌ " + (j.message || j.error || "Eroare");

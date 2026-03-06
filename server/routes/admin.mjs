@@ -460,6 +460,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       status: data.status || 'active', storage: data.storage || 'db',
       parentFlowId: data.parentFlowId || null,
       reviewReason: data.reviewReason || null,
+      reviewHistory: Array.isArray(data.reviewHistory) ? data.reviewHistory : [],
       signers: (data.signers || []).map(s => ({
         order: s.order, name: s.name, email: s.email, rol: s.rol,
         functie: s.functie || '', compartiment: s.compartiment || '',
@@ -566,20 +567,47 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         y -= 6;
       }
       y -= SECTION_GAP;
-      // Calcul timp de procesare per semnatar
+      // Issue 3: Calcul timp de procesare per semnatar — pentru ORICE actiune (semnat/refuzat/revizuire)
       const timeRows = [];
+      const allEvents = audit.events || [];
       for (let i = 0; i < audit.signers.length; i++) {
         const s = audit.signers[i];
-        const notifEv = (audit.events || []).find(e => e.type === 'YOUR_TURN' && e.to === s.email || (e.type === 'FLOW_CREATED' && i === 0));
-        // Gaseste evenimentul de notificare YOUR_TURN pentru semnatarul curent
-        const yourTurnEv = (audit.events || []).filter(e => e.type === 'YOUR_TURN' && (e.signerEmail === s.email || (i === 0 && e.type === 'FLOW_CREATED')));
-        const sentAt = yourTurnEv.length ? yourTurnEv[0].at : (i === 0 ? audit.createdAt : null);
-        if (sentAt && s.signedAt) {
-          const diffMs = new Date(s.signedAt) - new Date(sentAt);
-          const diffH = Math.floor(diffMs / 3600000);
+        // Gasim momentul in care semnatarul a primit sarcina:
+        // - pentru primul semnatar: la crearea fluxului sau primul FLOW_REINITIATED_AFTER_REVIEW
+        // - pentru ceilalti: evenimentul SIGNED_PDF_UPLOADED al predecesorului (sau FLOW_CREATED/reinitiate)
+        let sentAt = null;
+        if (i === 0) {
+          // Cel mai recent eveniment de reinitiere sau creare
+          const reinitiateEvs = allEvents.filter(e => e.type === 'FLOW_REINITIATED_AFTER_REVIEW' && !e._inheritedFrom);
+          sentAt = reinitiateEvs.length ? reinitiateEvs[reinitiateEvs.length - 1].at : audit.createdAt;
+        } else {
+          // Cand predecesorul (order mai mic) a uploadat PDF-ul semnat
+          const prevOrder = Number(audit.signers[i-1]?.order) || 0;
+          const uploadEv = allEvents.filter(e => e.type === 'SIGNED_PDF_UPLOADED' && !e._inheritedFrom && (Number(e.order) === prevOrder || (Number(e.order) === 0 && i === 1)));
+          sentAt = uploadEv.length ? uploadEv[uploadEv.length - 1].at : null;
+          if (!sentAt) {
+            // Fallback: cand predecesorul a semnat
+            sentAt = audit.signers[i-1]?.signedAt || null;
+          }
+        }
+        // Determinam momentul actiunii si tipul actiunii
+        let actionAt = null, actionLabel = null;
+        if (s.signedAt) { actionAt = s.signedAt; actionLabel = 'semnat'; }
+        else if (s.refusedAt) { actionAt = s.refusedAt; actionLabel = 'refuzat'; }
+        else {
+          // Cerere de revizuire
+          const reviewEv = allEvents.find(e => e.type === 'REVIEW_REQUESTED' && e.by === s.email && !e._inheritedFrom);
+          if (reviewEv) { actionAt = reviewEv.at; actionLabel = 'trimis spre revizuire'; }
+        }
+        if (sentAt && actionAt) {
+          const diffMs = Math.max(0, new Date(actionAt) - new Date(sentAt));
+          const diffD = Math.floor(diffMs / 86400000);
+          const diffH = Math.floor((diffMs % 86400000) / 3600000);
           const diffM = Math.floor((diffMs % 3600000) / 60000);
-          const durStr = diffH > 0 ? `${diffH}h ${diffM}min` : `${diffM}min`;
-          timeRows.push(`${s.order}. ${ro(s.name||s.email)} [${ro(s.rol||'')}]: semnat in ${durStr} de la trimitere`);
+          const durStr = diffD > 0 ? `${diffD}z ${diffH}h ${diffM}min` : diffH > 0 ? `${diffH}h ${diffM}min` : `${diffM}min`;
+          timeRows.push(`${s.order}. ${ro(s.name||s.email)} [${ro(s.rol||'')}]: ${actionLabel} in ${durStr} de la primire`);
+        } else if (!actionAt) {
+          timeRows.push(`${s.order}. ${ro(s.name||s.email)} [${ro(s.rol||'')}]: in asteptare`);
         }
       }
       if (timeRows.length) {
