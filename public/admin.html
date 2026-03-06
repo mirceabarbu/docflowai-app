@@ -1304,6 +1304,8 @@ function switchTab(tab) {
 let _fluxuriLoaded = false;
 
 // ── Date helpers ─────────────────────────────────────────────────────────
+/** Escape HTML pentru output sigur în innerHTML */
+function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 /** Parsează zz.ll.aaaa → YYYY-MM-DD string sau null */
 function parseDMYtoISO(s) {
   if (!s || s.length !== 10) return null;
