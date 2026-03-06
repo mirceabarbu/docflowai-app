@@ -316,6 +316,21 @@
     </div>
   </div>
 
+  <div style="margin-top:24px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;color:var(--sub);">🧹 Eliberare spațiu DB (VACUUM)</div>
+        <div style="font-size:.8rem;color:var(--muted);">După arhivare sau ștergere masivă, rulează VACUUM ANALYZE pentru a recupera spațiul fizic din PostgreSQL.</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="btn secondary" onclick="runVacuum()" style="padding:8px 18px;font-size:.85rem;">🧹 Rulează VACUUM</button>
+        <button class="btn secondary" onclick="loadDbStats()" style="padding:8px 18px;font-size:.85rem;">📊 Stats DB</button>
+      </div>
+    </div>
+    <div id="msgVacuum" style="margin-top:10px;font-size:.82rem;"></div>
+    <div id="dbStats" style="margin-top:8px;font-size:.8rem;color:var(--muted);display:none;"></div>
+  </div>
+
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -329,16 +344,14 @@
     <!-- Rândul 1: interval date -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
       <div>
-        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">De la data (zz.ll.aaaa)</label>
-        <input type="text" id="rptFrom" placeholder="01.03.2026" maxlength="10"
-          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;"
-          oninput="formatDateInput(this)" />
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">De la data</label>
+        <input type="date" id="rptFrom"
+          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;color-scheme:dark;" />
       </div>
       <div>
-        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Până la data (zz.ll.aaaa)</label>
-        <input type="text" id="rptTo" placeholder="31.03.2026" maxlength="10"
-          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;"
-          oninput="formatDateInput(this)" />
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Până la data</label>
+        <input type="date" id="rptTo"
+          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;color-scheme:dark;" />
       </div>
     </div>
 
@@ -376,27 +389,12 @@
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-p" onclick="loadActivityReport()" style="padding:9px 20px;font-size:.85rem;">🔍 Generează</button>
-        <button class="btn secondary" onclick="exportActivityCSV()" style="padding:9px 14px;font-size:.85rem;" title="Export CSV">📥</button>
+        <button class="btn secondary" onclick="exportActivityCSV()" style="padding:9px 14px;font-size:.85rem;" title="Export CSV Excel">📊 CSV</button>
+        <button class="btn secondary" onclick="exportActivityPDF()" style="padding:9px 14px;font-size:.85rem;" title="Export PDF raport complet">📄 PDF</button>
       </div>
     </div>
 
     <div id="activityReport" style="margin-top:18px;"></div>
-  </div>
-
-  <!-- VACUUM -->
-  <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-      <div>
-        <div style="font-weight:700;margin-bottom:4px;color:var(--sub);">🧹 Eliberare spațiu DB (VACUUM)</div>
-        <div style="font-size:.8rem;color:var(--muted);">După arhivare sau ștergere masivă, rulează VACUUM ANALYZE pentru a recupera spațiul fizic din PostgreSQL.</div>
-      </div>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <button class="btn secondary" onclick="runVacuum()" style="padding:8px 18px;font-size:.85rem;">🧹 Rulează VACUUM</button>
-        <button class="btn secondary" onclick="loadDbStats()" style="padding:8px 18px;font-size:.85rem;">📊 Stats DB</button>
-      </div>
-    </div>
-    <div id="msgVacuum" style="margin-top:10px;font-size:.82rem;"></div>
-    <div id="dbStats" style="margin-top:8px;font-size:.8rem;color:var(--muted);display:none;"></div>
   </div>
 
 </div>
@@ -1303,60 +1301,37 @@ function switchTab(tab) {
 let _fluxuriLoaded = false;
 
 // ── Date helpers ─────────────────────────────────────────────────────────
-/** Formatează automat input text ca zz.ll.aaaa în timp ce utilizatorul scrie */
-function formatDateInput(el) {
-  let v = el.value.replace(/[^0-9]/g,'');
-  if (v.length > 2) v = v.slice(0,2) + '.' + v.slice(2);
-  if (v.length > 5) v = v.slice(0,5) + '.' + v.slice(5,9);
-  el.value = v;
-  el.style.borderColor = v.length === 10 && parseDMY(v) ? 'rgba(45,212,191,.5)' : v.length < 10 ? '' : 'rgba(255,80,80,.5)';
-}
-
-/** Parsează zz.ll.aaaa → Date object sau null */
-function parseDMY(s) {
-  if (!s || s.length !== 10) return null;
-  const [d,m,y] = s.split('.').map(Number);
-  if (!d||!m||!y||m>12||d>31) return null;
-  const dt = new Date(y, m-1, d);
-  return isNaN(dt.getTime()) ? null : dt;
-}
-
-/** Formatează Date → zz.ll.aaaa */
-function fmtDMY(d) {
-  if (!d || isNaN(d.getTime())) return '—';
-  return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
-}
-
 /** Conversie dată ISO (din server) → zz.ll.aaaa */
 function isoToDMY(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : fmtDMY(d);
+  if (isNaN(d.getTime())) return iso;
+  return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
 }
 
 // ── Raport activitate ────────────────────────────────────────────────────
 function initActivityReport() {
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  // Setăm valorile ca zz.ll.aaaa (format fix, fără probleme de timezone)
-  $('rptTo').value = fmtDMY(today);
-  $('rptFrom').value = fmtDMY(firstOfMonth);
+  // type="date" folosește format YYYY-MM-DD intern
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  $('rptTo').value   = fmt(today);
+  $('rptFrom').value = fmt(firstOfMonth);
 
   // Populăm dropdown-ul cu utilizatori + inst/dept
-  _apiFetch('/admin/users').then(r => r.json()).then(data => {
+  _apiFetch('/admin/users', { headers: hdrs() }).then(r => r.json()).then(data => {
     const users = data.users || data || [];
     const sel = $('rptUser');
     users.forEach(u => {
       const opt = document.createElement('option');
       opt.value = u.email;
-      opt.textContent = `${u.nume || u.email} — ${u.email}`;
+      opt.textContent = `${u.nume || u.email}${u.functie ? ' — ' + u.functie : ''}`;
       sel.appendChild(opt);
     });
     // Populăm instituții
     const insts = [...new Set(users.map(u => u.institutie).filter(Boolean))].sort();
     const rptInst = $('rptInst');
     insts.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i; rptInst.appendChild(o); });
-    // Stocăm pentru compartiment cascadat
     window._rptUsers = users;
   }).catch(() => {});
 }
@@ -1374,23 +1349,17 @@ function onRptInstChange() {
 
 async function loadActivityReport() {
   const area = $('activityReport');
-  const fromStr = $('rptFrom').value.trim();
-  const toStr   = $('rptTo').value.trim();
-  const fromDt  = parseDMY(fromStr);
-  const toDt    = parseDMY(toStr);
+  const fromISO = $('rptFrom').value;
+  const toISO   = $('rptTo').value;
 
-  if (!fromDt || !toDt) {
-    area.innerHTML = '<p style="color:#ffaaaa;font-size:.85rem;">⚠️ Introdu datele în formatul zz.ll.aaaa (ex: 01.03.2026).</p>';
+  if (!fromISO || !toISO) {
+    area.innerHTML = '<p style="color:#ffaaaa;font-size:.85rem;">⚠️ Selectează intervalul de date.</p>';
     return;
   }
-  if (fromDt > toDt) {
+  if (fromISO > toISO) {
     area.innerHTML = '<p style="color:#ffaaaa;font-size:.85rem;">⚠️ Data de început trebuie să fie înainte de data de sfârșit.</p>';
     return;
   }
-
-  // Conversie la YYYY-MM-DD pentru API
-  const fromISO = `${fromDt.getFullYear()}-${String(fromDt.getMonth()+1).padStart(2,'0')}-${String(fromDt.getDate()).padStart(2,'0')}`;
-  const toISO   = `${toDt.getFullYear()}-${String(toDt.getMonth()+1).padStart(2,'0')}-${String(toDt.getDate()).padStart(2,'0')}`;
 
   area.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);">⏳ Se generează raportul...</div>';
   try {
@@ -1413,6 +1382,18 @@ async function loadActivityReport() {
   }
 }
 
+// Etichete în română pentru tipurile de operațiuni
+const OP_LABELS_RO = {
+  FLOW_CREATED:                   'Flux inițiat',
+  SIGNED_PDF_UPLOADED:            'PDF semnat încărcat',
+  REFUSED:                        'Refuzat',
+  REVIEW_REQUESTED:               'Trimis la revizuire',
+  FLOW_REINITIATED_AFTER_REVIEW:  'Reinițiat după revizuire',
+  REINITIATED_AFTER_REVIEW:       'Reinițiere marcată',
+  FLOW_COMPLETED:                 'Flux finalizat',
+  DELEGATE:                       'Delegat',
+  YOUR_TURN:                      'Notificat',
+};
 
 const OP_COLORS = {
   FLOW_CREATED: '#7c5cff', SIGNED_PDF_UPLOADED: '#2dd4bf', REFUSED: '#ff5050',
@@ -1440,37 +1421,46 @@ function renderActivityReport(data) {
 
   let html = `<div style="margin-bottom:16px;font-size:.83rem;color:var(--muted);">Interval: <strong style="color:var(--sub);">${from} — ${to}</strong> &nbsp;·&nbsp; ${users.length} utilizator(i) cu activitate</div>`;
 
-  // Summary cards per user
-  html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-bottom:24px;">`;
+  // 2 coloane fixe
+  html += `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:24px;">`;
   for (const u of users) {
     if (!u.totalOps && !$('rptUser').value) continue;
     const summaryChips = Object.entries(u.counts)
       .sort((a,b) => b[1]-a[1])
       .map(([type, cnt]) => {
         const color = OP_COLORS[type] || '#9db0ff';
-        const icon = OP_ICONS[type] || '•';
-        const label = type.replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase());
+        const icon  = OP_ICONS[type]  || '•';
+        const label = OP_LABELS_RO[type] || type.replace(/_/g,' ');
         return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:.72rem;background:${color}22;border:1px solid ${color}44;color:${color};margin:2px;">${icon} ${cnt}× ${label}</span>`;
       }).join('');
 
-    html += `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;cursor:pointer;transition:border-color .15s;"
-      onclick="toggleUserDetail('${u.email.replace(/'/g,"\\'")}')">
+    const emailKey = u.email.replace(/[^a-z0-9]/gi,'_');
+    // Rândul 2: funcție în loc de email
+    const sub2 = [u.functie||u.email, u.institutie, u.compartiment].filter(Boolean).join(' · ');
+
+    html += `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;transition:border-color .15s;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-        <div>
+        <div style="flex:1;min-width:0;">
           <div style="font-weight:700;font-size:.92rem;margin-bottom:2px;">${escH(u.name)}</div>
-          <div style="font-size:.76rem;color:var(--muted);">${escH(u.email)} &nbsp;·&nbsp; ${escH(u.institutie||'')} ${u.compartiment?'· '+escH(u.compartiment):''}</div>
+          <div style="font-size:.76rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escH(u.email)}">${escH(sub2)}</div>
         </div>
-        <div style="font-size:1.4rem;font-weight:800;color:var(--accent);">${u.totalOps}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:10px;">
+          <div style="font-size:1.4rem;font-weight:800;color:var(--accent);">${u.totalOps}</div>
+          <button onclick="exportUserPDF('${u.email.replace(/'/g,"\\'")}')"
+            style="padding:4px 10px;font-size:.72rem;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.3);border-radius:7px;color:#9db0ff;cursor:pointer;white-space:nowrap;"
+            title="Export PDF audit utilizator">📄 PDF</button>
+        </div>
       </div>
-      <div>${summaryChips || '<span style="font-size:.75rem;color:var(--muted);">Nicio operațiune</span>'}</div>
-      <div id="detail_${u.email.replace(/[^a-z0-9]/gi,'_')}" style="display:none;margin-top:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;max-height:320px;overflow-y:auto;"></div>
+      <div style="cursor:pointer;" onclick="toggleUserDetail('${u.email.replace(/'/g,"\\'")}')">
+        <div>${summaryChips || '<span style="font-size:.75rem;color:var(--muted);">Nicio operațiune</span>'}</div>
+        <div style="font-size:.71rem;color:var(--muted);margin-top:8px;text-align:right;">▼ click pentru detalii</div>
+      </div>
+      <div id="detail_${emailKey}" style="display:none;margin-top:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;max-height:320px;overflow-y:auto;"></div>
     </div>`;
   }
   html += '</div>';
   area.innerHTML = html;
 }
-
-function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function toggleUserDetail(email) {
   const key = email.replace(/[^a-z0-9]/gi,'_');
@@ -1481,15 +1471,19 @@ function toggleUserDetail(email) {
   const u = (_activityData?.users||[]).find(x => x.email === email);
   if (!u) return;
 
-  if (!u.ops.length) { el.innerHTML = '<div style="font-size:.8rem;color:var(--muted);">Nicio operațiune în acest interval.</div>'; el.style.display = ''; return; }
+  if (!u.ops.length) {
+    el.innerHTML = '<div style="font-size:.8rem;color:var(--muted);">Nicio operațiune în acest interval.</div>';
+    el.style.display = ''; return;
+  }
 
-  let rows = u.ops.map(op => {
+  const rows = u.ops.map(op => {
     const color = OP_COLORS[op.type] || '#9db0ff';
     const icon  = OP_ICONS[op.type]  || '•';
+    const labelRO = OP_LABELS_RO[op.type] || escH(op.label);
     const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    return `<div style="display:grid;grid-template-columns:110px 160px 1fr;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+    return `<div style="display:grid;grid-template-columns:110px 180px 1fr;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
       <span style="font-size:.74rem;color:var(--muted);">${dt}</span>
-      <span style="font-size:.76rem;padding:2px 8px;border-radius:12px;background:${color}22;border:1px solid ${color}44;color:${color};">${icon} ${escH(op.label)}</span>
+      <span style="font-size:.76rem;padding:2px 8px;border-radius:12px;background:${color}22;border:1px solid ${color}44;color:${color};">${icon} ${labelRO}</span>
       <span style="font-size:.76rem;color:var(--sub);" title="${escH(op.flowId)}">${escH(op.docName)}${op.reason ? ` <span style="color:var(--muted);">— ${escH(op.reason)}</span>` : ''}</span>
     </div>`;
   }).join('');
@@ -1498,21 +1492,132 @@ function toggleUserDetail(email) {
   el.style.display = '';
 }
 
+// ── Export PDF per utilizator ─────────────────────────────────────────────
+function exportUserPDF(email) {
+  const u = (_activityData?.users||[]).find(x => x.email === email);
+  if (!u) return;
+  const from = isoToDMY(_activityData?.from);
+  const to   = isoToDMY(_activityData?.to);
+
+  let rows = (u.ops||[]).map(op => {
+    const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    const labelRO = OP_LABELS_RO[op.type] || op.label;
+    return `<tr><td>${dt}</td><td>${escH(labelRO)}</td><td>${escH(op.docName||'—')}</td><td>${escH(op.reason||'—')}</td></tr>`;
+  }).join('');
+
+  const chips = Object.entries(u.counts).map(([type,cnt]) =>
+    `<span style="display:inline-block;padding:2px 10px;margin:2px;border-radius:12px;background:#e8eaff;color:#333;font-size:11px;">${OP_ICONS[type]||''} ${cnt}× ${OP_LABELS_RO[type]||type}</span>`
+  ).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Raport activitate — ${u.name}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 32px; color: #111; font-size: 13px; }
+    h1 { font-size: 18px; color: #1a237e; margin-bottom: 4px; }
+    .sub { color: #555; font-size: 12px; margin-bottom: 16px; }
+    .chips { margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th { background: #1a237e; color: #fff; padding: 7px 10px; text-align: left; font-size: 12px; }
+    td { padding: 6px 10px; border-bottom: 1px solid #e0e0e0; font-size: 12px; }
+    tr:nth-child(even) td { background: #f5f6ff; }
+    .footer { margin-top: 24px; font-size: 10px; color: #999; border-top: 1px solid #eee; padding-top: 8px; }
+    @media print { body { margin: 16px; } }
+  </style></head><body>
+  <h1>📋 Raport activitate — ${escH(u.name)}</h1>
+  <div class="sub">
+    ${escH(u.functie||'')}${u.institutie ? ' · ' + escH(u.institutie) : ''}${u.compartiment ? ' / ' + escH(u.compartiment) : ''}<br>
+    Email: ${escH(u.email)} &nbsp;|&nbsp; Interval: ${from} — ${to} &nbsp;|&nbsp; Total operațiuni: <strong>${u.totalOps}</strong>
+  </div>
+  <div class="chips">${chips}</div>
+  <table>
+    <thead><tr><th>Data și ora</th><th>Operațiune</th><th>Document</th><th>Motiv / Detalii</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:#999;">Nicio operațiune în acest interval.</td></tr>'}</tbody>
+  </table>
+  <div class="footer">Generat de DocFlowAI · ${new Date().toLocaleString('ro-RO', {timeZone:'Europe/Bucharest'})}</div>
+  <script>window.onload = () => { window.print(); }<\/script>
+  </body></html>`;
+
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
+}
+
+// ── Export PDF raport complet ─────────────────────────────────────────────
+function exportActivityPDF() {
+  if (!_activityData) { alert('Generează mai întâi un raport.'); return; }
+  const from = isoToDMY(_activityData?.from);
+  const to   = isoToDMY(_activityData?.to);
+  const users = (_activityData.users||[]).filter(u => u.totalOps > 0);
+
+  let userSections = users.map(u => {
+    const chips = Object.entries(u.counts).map(([type,cnt]) =>
+      `<span style="display:inline-block;padding:1px 8px;margin:1px;border-radius:10px;background:#e8eaff;color:#333;font-size:10px;">${cnt}× ${OP_LABELS_RO[type]||type}</span>`
+    ).join('');
+    const rows = (u.ops||[]).map(op => {
+      const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone:'Europe/Bucharest', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      return `<tr><td>${dt}</td><td>${escH(OP_LABELS_RO[op.type]||op.label)}</td><td>${escH(op.docName||'—')}</td><td>${escH(op.reason||'—')}</td></tr>`;
+    }).join('');
+    return `
+      <div class="user-section">
+        <div class="user-header">
+          <strong>${escH(u.name)}</strong>
+          <span class="badge">${u.totalOps} operațiuni</span>
+        </div>
+        <div class="user-sub">${escH(u.functie||u.email)}${u.institutie?' · '+escH(u.institutie):''}${u.compartiment?' / '+escH(u.compartiment):''}</div>
+        <div class="chips">${chips}</div>
+        <table>
+          <thead><tr><th>Data și ora</th><th>Operațiune</th><th>Document</th><th>Motiv</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Raport activitate utilizatori — ${from} — ${to}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #111; font-size: 12px; }
+    h1 { font-size: 20px; color: #1a237e; margin-bottom: 4px; }
+    .sub { color: #555; margin-bottom: 20px; font-size: 12px; }
+    .user-section { margin-bottom: 28px; page-break-inside: avoid; border: 1px solid #dde; border-radius: 6px; padding: 14px; }
+    .user-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 14px; }
+    .badge { background: #1a237e; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 11px; }
+    .user-sub { color: #666; font-size: 11px; margin-bottom: 8px; }
+    .chips { margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1a237e; color: #fff; padding: 5px 8px; text-align: left; font-size: 11px; }
+    td { padding: 4px 8px; border-bottom: 1px solid #eee; font-size: 11px; }
+    .footer { margin-top: 20px; font-size: 10px; color: #999; border-top: 1px solid #eee; padding-top: 8px; }
+    @media print { body { margin: 10px; } .user-section { page-break-inside: avoid; } }
+  </style></head><body>
+  <h1>📊 Raport activitate utilizatori</h1>
+  <div class="sub">Interval: <strong>${from} — ${to}</strong> &nbsp;|&nbsp; ${users.length} utilizator(i) cu activitate</div>
+  ${userSections || '<p style="color:#999;text-align:center;">Nicio activitate în acest interval.</p>'}
+  <div class="footer">Generat de DocFlowAI · ${new Date().toLocaleString('ro-RO', {timeZone:'Europe/Bucharest'})}</div>
+  <script>window.onload = () => { window.print(); }<\/script>
+  </body></html>`;
+
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
+}
+
+// ── Export CSV ────────────────────────────────────────────────────────────
 async function exportActivityCSV() {
   if (!_activityData) { alert('Generează mai întâi un raport.'); return; }
-  const lines = ['Email,Nume,Institutie,Data,Tip,Label,FlowId,Document,Motiv'];
+  const from = $('rptFrom').value;
+  const to   = $('rptTo').value;
+  const lines = ['Email,Nume,Functie,Institutie,Compartiment,Data,Operatiune,Document,Motiv'];
   for (const u of _activityData.users || []) {
     for (const op of u.ops || []) {
       const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
-      lines.push(`"${u.email}","${u.name}","${u.institutie||''}","${dt}","${op.type}","${op.label}","${op.flowId}","${(op.docName||'').replace(/"/g,'""')}","${(op.reason||'').replace(/"/g,'""')}"`);
+      const labelRO = OP_LABELS_RO[op.type] || op.label;
+      lines.push(`"${u.email}","${u.name}","${u.functie||''}","${u.institutie||''}","${u.compartiment||''}","${dt}","${labelRO}","${(op.docName||'').replace(/"/g,'""')}","${(op.reason||'').replace(/"/g,'""')}"`);
     }
   }
   const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `activitate_utilizatori_${$('rptFrom').value}_${$('rptTo').value}.csv`;
+  a.download = `activitate_utilizatori_${from}_${to}.csv`;
   a.click();
-}
+
 </script>
 <script src="/notif-widget.js"></script>
 </body>

@@ -779,7 +779,7 @@ router.get('/admin/user-activity', async (req, res) => {
     const nameFilter     = (req.query.name     || '').toLowerCase().trim();
 
     // Toti utilizatorii din sistem
-    const { rows: userRows } = await pool.query('SELECT email, nume, institutie, compartiment, role FROM users ORDER BY nume');
+    const { rows: userRows } = await pool.query('SELECT email, nume, functie, institutie, compartiment, role FROM users ORDER BY nume');
 
     // Toate fluxurile din perioada
     // Selectam toate fluxurile care au activitate in perioada — fie create, fie avand evenimente in interval
@@ -846,7 +846,7 @@ router.get('/admin/user-activity', async (req, res) => {
         const email = u.email.toLowerCase();
         const act = activity[email] || { ops: [], counts: {} };
         return {
-          email: u.email, name: u.nume || u.email, institutie: u.institutie,
+          email: u.email, name: u.nume || u.email, functie: u.functie || '', institutie: u.institutie,
           compartiment: u.compartiment, role: u.role,
           totalOps: act.ops.length, counts: act.counts, ops: act.ops,
         };
