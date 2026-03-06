@@ -107,8 +107,6 @@
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 <header>
@@ -1494,6 +1492,7 @@ async function loadActivityReport() {
 // Etichete în română pentru tipurile de operațiuni
 const OP_LABELS_RO = {
   FLOW_CREATED:                   'Flux inițiat',
+  SIGNED:                         'Semnat',
   SIGNED_PDF_UPLOADED:            'Semnat',
   REFUSED:                        'Refuzat',
   REVIEW_REQUESTED:               'Trimis la revizuire',
@@ -1501,6 +1500,7 @@ const OP_LABELS_RO = {
   REINITIATED_AFTER_REVIEW:       'Reinițiere marcată',
   FLOW_COMPLETED:                 'Flux finalizat',
   DELEGATE:                       'Delegare semnătură',
+  DELEGATED:                      'Delegare semnătură',
   YOUR_TURN:                      'Notificat',
 };
 
@@ -1608,131 +1608,103 @@ function exportUserPDF(email) {
   const from = isoToDMY(_activityData?.from);
   const to   = isoToDMY(_activityData?.to);
 
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-
-  // Header
-  doc.setFontSize(16); doc.setTextColor(26, 35, 126);
-  doc.text('Raport activitate — ' + (u.name||u.email), 14, 18);
-
-  doc.setFontSize(9); doc.setTextColor(80, 80, 80);
-  const sub = [u.functie, u.institutie, u.compartiment].filter(Boolean).join(' · ');
-  doc.text(sub || u.email, 14, 25);
-  doc.text('Email: ' + u.email + '   |   Interval: ' + from + ' — ' + to + '   |   Total: ' + u.totalOps + ' operațiuni', 14, 31);
-
-  // Chips rezumat
-  let chipX = 14; let chipY = 39;
-  doc.setFontSize(8);
-  Object.entries(u.counts).forEach(([type, cnt]) => {
-    const label = (OP_LABELS_RO[type]||type) + ' ×' + cnt;
-    const w = doc.getTextWidth(label) + 6;
-    if (chipX + w > 280) { chipX = 14; chipY += 7; }
-    doc.setDrawColor(157, 176, 255); doc.setFillColor(240, 242, 255);
-    doc.roundedRect(chipX, chipY - 4, w, 6, 1, 1, 'FD');
-    doc.setTextColor(60, 80, 180); doc.text(label, chipX + 3, chipY);
-    chipX += w + 4;
-  });
-
-  // Tabel operațiuni
   const rows = (u.ops||[]).map(op => {
     const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone:'Europe/Bucharest', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    return [dt, OP_LABELS_RO[op.type]||op.label||op.type, op.docName||'—', op.reason||'—'];
-  });
+    const labelRO = OP_LABELS_RO[op.type] || op.label || op.type;
+    return `<tr><td>${dt}</td><td>${escH(labelRO)}</td><td>${escH(op.docName||'—')}</td><td>${escH(op.reason||'—')}</td></tr>`;
+  }).join('');
 
-  doc.autoTable({
-    startY: chipY + 8,
-    head: [['Data și ora', 'Operațiune', 'Document', 'Motiv / Detalii']],
-    body: rows.length ? rows : [['—', '—', 'Nicio operațiune în acest interval', '—']],
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: [26, 35, 126], textColor: 255, fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [245, 246, 255] },
-    columnStyles: { 0: { cellWidth: 38 }, 1: { cellWidth: 42 }, 2: { cellWidth: 'auto' }, 3: { cellWidth: 60 } },
-    margin: { left: 14, right: 14 },
-  });
+  const chips = Object.entries(u.counts).map(([type,cnt]) =>
+    `<span style="display:inline-block;padding:2px 10px;margin:2px;border-radius:12px;background:#e8eaff;color:#333;font-size:11px;">${OP_ICONS[type]||'•'} ${cnt}× ${escH(OP_LABELS_RO[type]||type)}</span>`
+  ).join('');
 
-  // Footer
-  const pageH = doc.internal.pageSize.height;
-  doc.setFontSize(7); doc.setTextColor(150);
-  doc.text('Generat de DocFlowAI · ' + new Date().toLocaleString('ro-RO', {timeZone:'Europe/Bucharest'}), 14, pageH - 8);
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Raport activitate — ${escH(u.name||u.email)}</title>
+  <style>
+    @page { size: A4 landscape; margin: 15mm; }
+    body { font-family: Arial, sans-serif; color: #111; font-size: 12px; }
+    h1 { font-size: 16px; color: #1a237e; margin-bottom: 4px; }
+    .sub { color: #555; font-size: 11px; margin-bottom: 14px; line-height: 1.6; }
+    .chips { margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th { background: #1a237e; color: #fff; padding: 6px 10px; text-align: left; font-size: 11px; }
+    td { padding: 5px 10px; border-bottom: 1px solid #e0e0e0; font-size: 11px; }
+    tr:nth-child(even) td { background: #f5f6ff; }
+    .footer { margin-top: 20px; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 6px; }
+  </style></head><body>
+  <h1>Raport activitate — ${escH(u.name||u.email)}</h1>
+  <div class="sub">
+    ${escH(u.functie||'')}${u.institutie?' · '+escH(u.institutie):''}${u.compartiment?' / '+escH(u.compartiment):''}<br>
+    Email: ${escH(u.email)} &nbsp;|&nbsp; Interval: ${from} — ${to} &nbsp;|&nbsp; Total: <strong>${u.totalOps}</strong> operatiuni
+  </div>
+  <div class="chips">${chips}</div>
+  <table>
+    <thead><tr><th>Data si ora</th><th>Operatiune</th><th>Document</th><th>Motiv / Detalii</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:#999;">Nicio operatiune in acest interval.</td></tr>'}</tbody>
+  </table>
+  <div class="footer">Generat de DocFlowAI · ${new Date().toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'})}</div>
+  </body></html>`;
 
-  const fname = 'activitate_' + (u.name||u.email).replace(/[^a-zA-Z0-9]/g,'_') + '_' + from.replace(/\./g,'') + '_' + to.replace(/\./g,'') + '.pdf';
-  doc.save(fname);
+  const a = document.createElement('a');
+  a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+  a.download = 'activitate_' + (u.name||u.email).replace(/[^a-zA-Z0-9]/g,'_') + '_' + from.replace(/\./g,'') + '_' + to.replace(/\./g,'') + '.html';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-// ── Export PDF raport complet ─────────────────────────────────────────────
+// ── Export HTML raport complet ─────────────────────────────────────────────
 function exportActivityPDF() {
-  if (!_activityData) { alert('Generează mai întâi un raport.'); return; }
+  if (!_activityData) { alert('Genereaza mai intai un raport.'); return; }
   const from  = isoToDMY(_activityData?.from);
   const to    = isoToDMY(_activityData?.to);
   const users = (_activityData.users||[]).filter(u => u.totalOps > 0);
 
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const pageW = doc.internal.pageSize.width;
-  const pageH = doc.internal.pageSize.height;
-
-  // Titlu pagină
-  doc.setFontSize(18); doc.setTextColor(26, 35, 126);
-  doc.text('Raport activitate utilizatori', 14, 18);
-  doc.setFontSize(10); doc.setTextColor(80, 80, 80);
-  doc.text('Interval: ' + from + ' — ' + to + '   |   ' + users.length + ' utilizator(i) cu activitate', 14, 26);
-
-  let startY = 34;
-
-  users.forEach((u, idx) => {
-    // Verifică dacă mai e loc pe pagina curentă (minim 40mm)
-    if (startY > pageH - 50) { doc.addPage(); startY = 14; }
-
-    // Header utilizator
-    doc.setFillColor(240, 242, 255); doc.setDrawColor(180, 190, 240);
-    doc.roundedRect(14, startY, pageW - 28, 12, 2, 2, 'FD');
-    doc.setFontSize(11); doc.setTextColor(26, 35, 126);
-    doc.text((u.name||u.email), 18, startY + 8);
-    doc.setFontSize(9); doc.setTextColor(100);
-    const sub = [u.functie, u.institutie, u.compartiment].filter(Boolean).join(' · ');
-    doc.text(sub || u.email, 18, startY + 14);
-    // Badge total
-    doc.setFontSize(9); doc.setTextColor(255);
-    doc.setFillColor(26, 35, 126);
-    const badge = u.totalOps + ' op.';
-    const bw = doc.getTextWidth(badge) + 6;
-    doc.roundedRect(pageW - 14 - bw, startY + 3, bw, 6, 1, 1, 'F');
-    doc.text(badge, pageW - 14 - bw + 3, startY + 7.5);
-
-    startY += 18;
-
-    // Tabel
+  const userSections = users.map(u => {
+    const chips = Object.entries(u.counts).map(([type,cnt]) =>
+      `<span style="display:inline-block;padding:1px 8px;margin:2px;border-radius:10px;background:#e8eaff;color:#333;font-size:10px;">${OP_ICONS[type]||'•'} ${cnt}× ${escH(OP_LABELS_RO[type]||type)}</span>`
+    ).join('');
     const rows = (u.ops||[]).map(op => {
       const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone:'Europe/Bucharest', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-      return [dt, OP_LABELS_RO[op.type]||op.label||op.type, op.docName||'—', op.reason||'—'];
-    });
+      return `<tr><td>${dt}</td><td>${escH(OP_LABELS_RO[op.type]||op.label||op.type)}</td><td>${escH(op.docName||'—')}</td><td>${escH(op.reason||'—')}</td></tr>`;
+    }).join('');
+    const sub = [u.functie, u.institutie, u.compartiment].filter(Boolean).join(' · ');
+    return `<div class="user-section">
+      <div class="user-header"><strong>${escH(u.name||u.email)}</strong><span class="badge">${u.totalOps} operatiuni</span></div>
+      <div class="user-sub">${escH(sub||u.email)}</div>
+      <div class="chips">${chips}</div>
+      <table><thead><tr><th>Data si ora</th><th>Operatiune</th><th>Document</th><th>Motiv</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="4" style="color:#999;text-align:center;">—</td></tr>'}</tbody></table>
+    </div>`;
+  }).join('');
 
-    doc.autoTable({
-      startY,
-      head: [['Data și ora', 'Operațiune', 'Document', 'Motiv / Detalii']],
-      body: rows,
-      styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [26, 35, 126], textColor: 255, fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [248, 249, 255] },
-      columnStyles: { 0: { cellWidth: 36 }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' }, 3: { cellWidth: 58 } },
-      margin: { left: 14, right: 14 },
-      pageBreak: 'avoid',
-    });
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Raport activitate — ${from} — ${to}</title>
+  <style>
+    @page { size: A4 landscape; margin: 12mm; }
+    body { font-family: Arial, sans-serif; color: #111; font-size: 11px; }
+    h1 { font-size: 18px; color: #1a237e; margin-bottom: 4px; }
+    .sub-title { color: #555; margin-bottom: 18px; font-size: 11px; }
+    .user-section { margin-bottom: 22px; page-break-inside: avoid; border: 1px solid #dde; border-radius: 4px; padding: 12px; }
+    .user-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; font-size: 13px; }
+    .badge { background: #1a237e; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 10px; }
+    .user-sub { color: #666; font-size: 10px; margin-bottom: 6px; }
+    .chips { margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1a237e; color: #fff; padding: 4px 8px; text-align: left; font-size: 10px; }
+    td { padding: 3px 8px; border-bottom: 1px solid #eee; font-size: 10px; }
+    .footer { margin-top: 16px; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 6px; }
+  </style></head><body>
+  <h1>Raport activitate utilizatori</h1>
+  <div class="sub-title">Interval: <strong>${from} — ${to}</strong> &nbsp;|&nbsp; ${users.length} utilizator(i) cu activitate</div>
+  ${userSections||'<p style="color:#999;text-align:center;">Nicio activitate in acest interval.</p>'}
+  <div class="footer">Generat de DocFlowAI · ${new Date().toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'})}</div>
+  </body></html>`;
 
-    startY = doc.lastAutoTable.finalY + 10;
-  });
-
-  if (!users.length) {
-    doc.setFontSize(11); doc.setTextColor(150);
-    doc.text('Nicio activitate găsită în acest interval.', pageW/2, 60, { align: 'center' });
-  }
-
-  // Footer pe ultima pagină
-  doc.setFontSize(7); doc.setTextColor(150);
-  doc.text('Generat de DocFlowAI · ' + new Date().toLocaleString('ro-RO', {timeZone:'Europe/Bucharest'}), 14, pageH - 8);
-
-  doc.save('raport_activitate_' + from.replace(/\./g,'') + '_' + to.replace(/\./g,'') + '.pdf');
+  const a = document.createElement('a');
+  a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+  a.download = 'raport_activitate_' + from.replace(/\./g,'') + '_' + to.replace(/\./g,'') + '.html';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
+
 
 // ── Export CSV ────────────────────────────────────────────────────────────
 async function exportActivityCSV() {

@@ -796,14 +796,16 @@ router.get('/admin/user-activity', async (req, res) => {
 
     // EVENT_TYPES → eticheta romana
     const OP_LABELS = {
-      FLOW_CREATED: 'Inițiat',
+      FLOW_CREATED: 'Flux inițiat',
+      SIGNED: 'Semnat',
       SIGNED_PDF_UPLOADED: 'Semnat',
       REFUSED: 'Refuzat',
-      REVIEW_REQUESTED: 'Trimis spre revizuire',
+      REVIEW_REQUESTED: 'Trimis la revizuire',
       FLOW_REINITIATED_AFTER_REVIEW: 'Reinițiat după revizuire',
-      REINITIATED_AFTER_REVIEW: 'Reinitiere marcată',
-      FLOW_COMPLETED: 'Finalizat',
+      REINITIATED_AFTER_REVIEW: 'Reinițiere marcată',
+      FLOW_COMPLETED: 'Flux finalizat',
       DELEGATE: 'Delegare semnătură',
+      DELEGATED: 'Delegare semnătură',
       YOUR_TURN: 'Notificat',
     };
 
