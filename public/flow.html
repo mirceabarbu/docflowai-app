@@ -567,7 +567,27 @@
       const btnAudit = $("btnAuditPdf");
       if (btnAudit) {
         btnAudit.style.display = isAdmin ? "" : "none";
-        btnAudit.href = `/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`;
+        btnAudit.removeAttribute("href");
+        btnAudit.onclick = async (e) => {
+          e.preventDefault();
+          btnAudit.textContent = "⏳ Se generează...";
+          btnAudit.style.pointerEvents = "none";
+          try {
+            const tok = localStorage.getItem("docflow_token");
+            const authHdr = tok ? { "Authorization": "Bearer " + tok } : {};
+            const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`, { headers: authHdr });
+            if (!r.ok) { const er = await r.json().catch(()=>({})); throw new Error(er.error || `HTTP ${r.status}`); }
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 30000);
+          } catch(err) {
+            alert("❌ Eroare export audit: " + err.message);
+          } finally {
+            btnAudit.innerHTML = "📄 Audit PDF";
+            btnAudit.style.pointerEvents = "";
+          }
+        };
       }
 
       renderSigners(j);
