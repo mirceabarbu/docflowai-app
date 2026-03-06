@@ -781,11 +781,16 @@ router.get('/admin/user-activity', async (req, res) => {
     // Toti utilizatorii din sistem
     const { rows: userRows } = await pool.query('SELECT email, nume, functie, institutie, compartiment, role FROM users ORDER BY nume');
 
-    // Toate fluxurile din perioada
-    // Selectam toate fluxurile care au activitate in perioada — fie create, fie avand evenimente in interval
-    // Folosim un interval mai larg (de la inceputul timpului pana la 'to') si filtram evenimentele in JS
+    // Selectăm DOAR câmpurile necesare din JSONB, fără PDF-uri (pdfB64/signedPdfB64 pot fi sute de MB)
     const { rows: flowRows } = await pool.query(
-      "SELECT data FROM flows WHERE created_at <= $1 ORDER BY created_at DESC LIMIT 10000",
+      `SELECT
+         data->>'flowId'   AS "flowId",
+         data->>'docName'  AS "docName",
+         data->'events'    AS events
+       FROM flows
+       WHERE created_at <= $1
+       ORDER BY created_at DESC
+       LIMIT 10000`,
       [to]
     );
 
@@ -807,10 +812,9 @@ router.get('/admin/user-activity', async (req, res) => {
     const initUsers = new Set();
 
     for (const fr of flowRows) {
-      const d = fr.data || {};
-      const flowId = d.flowId || '?';
-      const docName = d.docName || '?';
-      const events = Array.isArray(d.events) ? d.events : [];
+      const flowId  = fr.flowId  || '?';
+      const docName = fr.docName || '?';
+      const events  = Array.isArray(fr.events) ? fr.events : [];
 
       for (const ev of events) {
         if (!ev.at) continue;
