@@ -247,6 +247,7 @@ th{ color: var(--sub) !important; }
               <div style="display:flex;gap:10px;margin-bottom:0;">
                 <button id="btnRefuz" class="btn" type="button" style="flex:1; font-weight:700; padding:12px; background:rgba(255,80,80,.12); border:1px solid rgba(255,80,80,.3); color:#ffaaaa;">✕ Refuz semnarea</button>
                 <button id="btnDelegheaza" class="btn" type="button" style="flex:1; font-weight:700; padding:12px; background:rgba(255,200,50,.1); border:1px solid rgba(255,200,50,.3); color:#ffd580;">👥 Delegă semnarea</button>
+                <button id="btnRevizuire" class="btn" type="button" style="flex:1; font-weight:700; padding:12px; background:rgba(45,212,191,.1); border:1px solid rgba(45,212,191,.3); color:#7cf0e0;">🔄 Trimite spre revizuire</button>
               </div>
               <div id="refuzStatus" style="margin-top:8px; font-size:.88em; color:#ffaaaa;"></div>
               <!-- Modal delegare -->
@@ -263,6 +264,20 @@ th{ color: var(--sub) !important; }
                   <button onclick="document.getElementById('delegateModal').style.display='none'" type="button" style="padding:10px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
                 </div>
                 <div id="delegateStatus" style="margin-top:8px;font-size:.85rem;"></div>
+              </div>
+
+              <!-- Modal Revizuire -->
+              <div id="reviewModal" style="display:none; margin-top:14px; background:rgba(45,212,191,.06); border:1px solid rgba(45,212,191,.25); border-radius:12px; padding:16px;">
+                <div style="font-size:.85rem; color:#7cf0e0; font-weight:700; margin-bottom:10px;">🔄 Trimite documentul spre revizuire</div>
+                <div style="font-size:.8rem; color:var(--muted); margin-bottom:10px; line-height:1.5;">
+                  Documentul va fi trimis înapoi inițiatorului cu motivul indicat. Inițiatorul va putea re-uploada un document revizuit și reporni fluxul cu toți semnatarii.
+                </div>
+                <textarea id="reviewReason" placeholder="Motiv revizuire*" rows="3" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:10px;box-sizing:border-box;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;">
+                  <button id="btnReviewConfirm" type="button" style="flex:1;padding:10px;background:rgba(45,212,191,.2);border:1px solid rgba(45,212,191,.4);border-radius:8px;color:#7cf0e0;font-weight:700;cursor:pointer;">✓ Confirmă trimiterea spre revizuire</button>
+                  <button onclick="document.getElementById('reviewModal').style.display='none'" type="button" style="padding:10px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+                </div>
+                <div id="reviewStatus" style="margin-top:8px;font-size:.85rem;"></div>
               </div>
             </div>
           </div>
@@ -374,6 +389,16 @@ th{ color: var(--sub) !important; }
             const refuserInfo = refuser ? `${refuser.name||refuser.email} (${refuser.rol||""})` : "un semnatar";
             const reason = refuser?.refuseReason ? ` — Motiv: "${refuser.refuseReason}"` : "";
             showBlockedState("⛔ Document refuzat", `Documentul a fost refuzat de ${refuserInfo}${reason}. Fluxul este închis.`);
+            $("docName").textContent = j.docName || "—";
+            renderSignersList(j);
+            return;
+          }
+
+          // Flux trimis spre revizuire — blochează semnarea, arată mesaj
+          if (j.status === "review_requested" || j.status === "reinitiated_after_review") {
+            const reviewer = j.reviewRequestedBy || "un semnatar";
+            const reason = j.reviewReason ? ` Motiv: „${j.reviewReason}"` : "";
+            showBlockedState("🔄 Document în revizuire", `Documentul a fost trimis spre revizuire de ${reviewer}.${reason} Inițiatorul va repori fluxul după revizuire.`);
             $("docName").textContent = j.docName || "—";
             renderSignersList(j);
             return;
@@ -1005,6 +1030,51 @@ th{ color: var(--sub) !important; }
             if(statusEl) statusEl.textContent = "❌ Eroare rețea: " + e.message;
             btnDelegConfirm.disabled = false;
             btnDelegConfirm.textContent = "✓ Confirmă delegarea";
+          }
+        });
+      }
+      // ── Buton Trimite spre revizuire ──────────────────────────────────────
+      const btnRevizuire = $("btnRevizuire");
+      if (btnRevizuire) {
+        btnRevizuire.addEventListener("click", () => {
+          const reviewModal = $("reviewModal");
+          if (reviewModal) {
+            reviewModal.style.display = reviewModal.style.display === "none" ? "block" : "none";
+            // Ascunde delegateModal dacă e deschis
+            const delegModal = $("delegateModal");
+            if (delegModal) delegModal.style.display = "none";
+          }
+        });
+      }
+      const btnReviewConfirm = $("btnReviewConfirm");
+      if (btnReviewConfirm) {
+        btnReviewConfirm.addEventListener("click", async () => {
+          const reason = ($("reviewReason")?.value || "").trim();
+          const statusEl = $("reviewStatus");
+          if (!reason) { if(statusEl) statusEl.textContent = "❌ Motivul este obligatoriu."; return; }
+          btnReviewConfirm.disabled = true; btnReviewConfirm.textContent = "Se procesează...";
+          if(statusEl) statusEl.textContent = "";
+          try {
+            const r = await _apiFetch("/flows/" + encodeURIComponent(flow) + "/request-review", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token, reason })
+            });
+            const j = await r.json();
+            if (j.ok) {
+              if(statusEl) statusEl.textContent = "✅ Documentul a fost trimis spre revizuire. Inițiatorul a fost notificat.";
+              btnReviewConfirm.textContent = "✓ Trimis";
+              if (btnRevizuire) btnRevizuire.disabled = true;
+              setTimeout(() => { location.href = "/notifications.html?tab=all"; }, 1800);
+            } else {
+              if(statusEl) statusEl.textContent = "❌ " + (j.message || j.error || "Eroare");
+              btnReviewConfirm.disabled = false;
+              btnReviewConfirm.textContent = "✓ Confirmă trimiterea spre revizuire";
+            }
+          } catch(e) {
+            if(statusEl) statusEl.textContent = "❌ Eroare rețea: " + e.message;
+            btnReviewConfirm.disabled = false;
+            btnReviewConfirm.textContent = "✓ Confirmă trimiterea spre revizuire";
           }
         });
       }

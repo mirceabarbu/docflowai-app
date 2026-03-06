@@ -152,6 +152,7 @@
         <button class="btn primary" id="btnDownloadSigned">⬇️ PDF semnat</button>
         <button class="btn" id="btnDownloadOriginal" title="Descarcă PDF original (dacă există)">📎 PDF original</button>
         <button class="btn" id="btnReinitiate" style="display:none;background:rgba(255,200,50,.12);border-color:rgba(255,200,50,.35);color:#ffd580;" title="Reinițiază fluxul după refuz">🔄 Reinițiază</button>
+        <button class="btn" id="btnReinitiateReview" style="display:none;background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.35);color:#7cf0e0;" title="Reinițiază fluxul după revizuire (re-upload document)">🔄 Reinițiază după revizuire</button>
         <a id="btnAuditPdf" href="#" target="_blank" class="btn" style="display:none;text-decoration:none;" title="Export Audit PDF">📄 Audit PDF</a>
       </div>
     </div>
@@ -224,6 +225,8 @@
     if(["refused","rejected","respins"].includes(s)) return {cls:"bad", txt:"⛔ Refuzat"};
     if(["draft","init","new"].includes(s)) return {cls:"warn", txt:"📝 Draft"};
     if(["active","in_progress","inprogress","in curs","running"].includes(s)) return {cls:"warn", txt:"⏳ În curs"};
+    if(s === "review_requested") return {cls:"warn", txt:"🔄 Spre revizuire"};
+    if(s === "reinitiated_after_review") return {cls:"", txt:"🔁 Reinițiat după revizuire"};
     return {cls:"", txt:"ℹ️ " + (status||"necunoscut")};
   }
 
@@ -457,11 +460,85 @@
       // Buton Reinitiere — vizibil dacă fluxul e refuzat și userul e inițiator sau admin
       const currentUser = JSON.parse(localStorage.getItem("docflow_user") || "{}");
       const isRefused = computedStatus === "refused";
+      const isReviewRequested = data.status === "review_requested";
       const isInitiator = (data.initEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
       const isAdmin = currentUser.role === "admin";
       const btnRei = $("btnReinitiate");
       if (btnRei) btnRei.style.display = (isRefused && (isInitiator || isAdmin)) ? "" : "none";
       btnRei._flowId = flowId;
+
+      // Buton Reinitiere după revizuire — vizibil dacă fluxul e în review_requested și user e inițiator
+      const btnReiReview = $("btnReinitiateReview");
+      if (btnReiReview) btnReiReview.style.display = (isReviewRequested && (isInitiator || isAdmin)) ? "" : "none";
+
+      // Card info revizuire
+      let reviewCard = $("reviewInfoCard");
+      if (isReviewRequested) {
+        if (!reviewCard) {
+          reviewCard = document.createElement("div");
+          reviewCard.id = "reviewInfoCard";
+          reviewCard.style.cssText = "background:rgba(45,212,191,.07);border:1px solid rgba(45,212,191,.3);border-radius:14px;padding:18px 22px;margin-bottom:16px;";
+          const msgEl = $("msg");
+          if (msgEl) msgEl.parentNode.insertBefore(reviewCard, msgEl.nextSibling);
+        }
+        reviewCard.innerHTML = `
+          <div style="font-weight:700;color:#7cf0e0;margin-bottom:8px;font-size:1rem;">🔄 Document trimis spre revizuire</div>
+          <div style="color:var(--sub);font-size:.88rem;margin-bottom:6px;">
+            <strong>Solicitat de:</strong> ${data.reviewRequestedBy || "—"}
+          </div>
+          ${data.reviewReason ? `<div style="color:var(--sub);font-size:.88rem;margin-bottom:12px;"><strong>Motiv:</strong> ${data.reviewReason}</div>` : ""}
+          ${(isInitiator || isAdmin) ? `
+          <div style="margin-top:12px;">
+            <div style="font-size:.82rem;color:var(--muted);margin-bottom:8px;">Încarcă un document revizuit pentru a reporni fluxul cu toți semnatarii originali:</div>
+            <input type="file" id="reviewPdfInput" accept="application/pdf" style="display:block;margin-bottom:10px;color:var(--sub);font-size:.83rem;" />
+            <button id="btnUploadReviewPdf" class="btn" style="background:rgba(45,212,191,.2);border-color:rgba(45,212,191,.4);color:#7cf0e0;font-weight:700;">⬆️ Trimite documentul revizuit și repornește fluxul</button>
+            <div id="reviewUploadStatus" style="margin-top:8px;font-size:.83rem;"></div>
+          </div>
+          ` : '<div style="font-size:.82rem;color:var(--muted);margin-top:4px;">Inițiatorul va re-uploada un document revizuit și va reporni fluxul.</div>'}
+        `;
+        if (isInitiator || isAdmin) {
+          const btnUploadRev = $("btnUploadReviewPdf");
+          if (btnUploadRev) {
+            btnUploadRev.addEventListener("click", async () => {
+              const fileInput = $("reviewPdfInput");
+              const statusEl = $("reviewUploadStatus");
+              if (!fileInput?.files?.length) { if(statusEl) statusEl.textContent = "❌ Selectează un fișier PDF."; return; }
+              const file = fileInput.files[0];
+              if (!file.type.includes("pdf") && !file.name.endsWith(".pdf")) { if(statusEl) statusEl.textContent = "❌ Fișierul trebuie să fie PDF."; return; }
+              btnUploadRev.disabled = true; btnUploadRev.textContent = "⏳ Se procesează...";
+              if(statusEl) statusEl.textContent = "";
+              try {
+                const pdfB64 = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = e => resolve(e.target.result);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(file);
+                });
+                const r = await _apiFetch("/flows/" + encodeURIComponent(flowId) + "/reinitiate-review", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ pdfB64 })
+                });
+                const j2 = await r.json();
+                if (j2.ok) {
+                  setMsg("ok", `✅ Flux reînceput! ID nou: <strong>${j2.newFlowId}</strong> — <a href="/flow.html?flow=${j2.newFlowId}" style="color:#7cf0e0;">Deschide noul flux</a>`);
+                  if(statusEl) statusEl.textContent = "";
+                  if(reviewCard) reviewCard.style.display = "none";
+                  if(btnReiReview) btnReiReview.style.display = "none";
+                } else {
+                  if(statusEl) statusEl.textContent = "❌ " + (j2.message || j2.error || "Eroare");
+                  btnUploadRev.disabled = false; btnUploadRev.textContent = "⬆️ Trimite documentul revizuit și repornește fluxul";
+                }
+              } catch(e) {
+                if(statusEl) statusEl.textContent = "❌ Eroare: " + e.message;
+                btnUploadRev.disabled = false; btnUploadRev.textContent = "⬆️ Trimite documentul revizuit și repornește fluxul";
+              }
+            });
+          }
+        }
+      } else if (reviewCard) {
+        reviewCard.style.display = "none";
+      }
 
       // Buton Audit PDF — vizibil pentru admin
       const btnAudit = $("btnAuditPdf");
@@ -512,6 +589,14 @@
       }
     } catch(e) { setMsg("error", "❌ " + e.message); }
   });
+
+  const _btnReiReview = $("btnReinitiateReview");
+  if (_btnReiReview) {
+    _btnReiReview.addEventListener("click", () => {
+      const card = $("reviewInfoCard");
+      if (card) { card.style.display = ""; card.scrollIntoView({ behavior: "smooth", block: "center" }); }
+    });
+  }
 
   loadFlow();
 </script>

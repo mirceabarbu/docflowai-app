@@ -78,6 +78,8 @@
     .notif-card.type-REFUSED { border-left-color: #ff5050; }
     .notif-card.type-COMPLETED { border-left-color: var(--accent2); }
     .notif-card.type-YOUR_TURN { border-left-color: var(--accent); }
+    .notif-card.type-REVIEW_REQUESTED { border-left-color: var(--accent2); }
+    .notif-icon.type-REVIEW_REQUESTED { background: rgba(45,212,191,.12); }
 
     .notif-icon {
       width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
@@ -168,6 +170,7 @@
     <button class="filter-btn active" data-filter="all">Toate</button>
     <button class="filter-btn" data-filter="unread">Necitite</button>
     <button class="filter-btn" data-filter="YOUR_TURN">De semnat</button>
+    <button class="filter-btn" data-filter="REVIEW_REQUESTED">De revizuit</button>
     <button class="filter-btn" data-filter="COMPLETED">Finalizate</button>
     <button class="filter-btn" data-filter="REFUSED">Refuzate</button>
   </div>
@@ -227,6 +230,7 @@ function typeIcon(type) {
   if (type === 'YOUR_TURN') return '✍️';
   if (type === 'COMPLETED') return '✅';
   if (type === 'REFUSED') return '⛔';
+  if (type === 'REVIEW_REQUESTED') return '🔄';
   return '🔔';
 }
 
@@ -248,6 +252,7 @@ function filtered() {
     // Arata doar notificarile de semnat unde userul inca nu a semnat (status === 'current')
     return allNotifs.filter(n => n.type === 'YOUR_TURN' && n.signer_status === 'current');
   }
+  if (currentFilter === 'REVIEW_REQUESTED') return allNotifs.filter(n => n.type === 'REVIEW_REQUESTED');
   return allNotifs.filter(n => n.type === currentFilter);
 }
 
@@ -261,14 +266,15 @@ function updateTabCounts() {
     all: allNotifs.length,
     unread: allNotifs.filter(n => !n.read).length,
     YOUR_TURN: allNotifs.filter(n => n.type === 'YOUR_TURN' && n.signer_status === 'current').length,
+    REVIEW_REQUESTED: allNotifs.filter(n => n.type === 'REVIEW_REQUESTED').length,
     COMPLETED: allNotifs.filter(n => n.type === 'COMPLETED').length,
     REFUSED: allNotifs.filter(n => n.type === 'REFUSED').length,
   };
-  const labels = { all:'Toate', unread:'Necitite', YOUR_TURN:'De semnat', COMPLETED:'Finalizate', REFUSED:'Refuzate' };
+  const labels = { all:'Toate', unread:'Necitite', YOUR_TURN:'De semnat', REVIEW_REQUESTED:'De revizuit', COMPLETED:'Finalizate', REFUSED:'Refuzate' };
   document.querySelectorAll('.filter-btn').forEach(btn => {
     const f = btn.dataset.filter;
     const c = counts[f] || 0;
-    btn.innerHTML = `${labels[f]} ${c > 0 ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:.7rem;font-weight:800;margin-left:4px;background:${f==='unread'?'rgba(255,180,50,.3)':f==='YOUR_TURN'?'rgba(124,92,255,.4)':f==='REFUSED'?'rgba(255,80,80,.3)':'rgba(255,255,255,.15)'};color:${f==='unread'?'#ffd580':f==='YOUR_TURN'?'#c4b5fd':f==='REFUSED'?'#ffaaaa':'#ccc'};">${c}</span>` : ''}`;
+    btn.innerHTML = `${labels[f]} ${c > 0 ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:.7rem;font-weight:800;margin-left:4px;background:${f==='unread'?'rgba(255,180,50,.3)':f==='YOUR_TURN'?'rgba(124,92,255,.4)':f==='REFUSED'?'rgba(255,80,80,.3)':f==='REVIEW_REQUESTED'?'rgba(45,212,191,.3)':'rgba(255,255,255,.15)'};color:${f==='unread'?'#ffd580':f==='YOUR_TURN'?'#c4b5fd':f==='REFUSED'?'#ffaaaa':f==='REVIEW_REQUESTED'?'#7cf0e0':'#ccc'};">${c}</span>` : ''}`;
   });
 }
 

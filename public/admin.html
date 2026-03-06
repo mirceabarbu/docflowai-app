@@ -193,15 +193,11 @@
           <option value="">Toate compartimentele</option>
         </select>
         <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
-        <a href="/admin/flows/audit-export?days=30" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;text-decoration:none;display:inline-flex;align-items:center;">📊 Export CSV 30z</a>
+        <button onclick="exportAuditCSV()" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;">📊 Export CSV 30z</button>
       </div>
       <div id="flowsListArea" style="font-size:.83rem;color:var(--muted);">Apasă „Încarcă" pentru a vedea fluxurile.</div>
       <!-- Paginare fluxuri -->
-      <div id="flowsListPagination" style="display:none;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:8px;">
-        <button class="btn secondary" id="flowsPrevBtn" onclick="loadFlowsList(false, _adminFluxPage - 1)" style="padding:6px 16px;font-size:.82rem;">← Anterior</button>
-        <span id="flowsPageInfo" style="color:var(--muted);font-size:.82rem;"></span>
-        <button class="btn secondary" id="flowsNextBtn" onclick="loadFlowsList(false, _adminFluxPage + 1)" style="padding:6px 16px;font-size:.82rem;">Următor →</button>
-      </div>
+      <div id="flowsListPagination" style="display:none;margin-top:14px;"></div>
     </div>
 
     <h2 style="color:#2dd4bf;">🗂 Arhivare fluxuri în Google Drive</h2>
@@ -729,7 +725,7 @@ async function loadFlowsList(forceReload = true, page) {
                 ${expired?`<button onclick="regenerateToken('${f.flowId}','${current.email}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;" title="Generează token nou">🔑</button>`:''}
               ` : ''}
               <button onclick="adminDeleteFlow('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:6px;color:#ffaaaa;cursor:pointer;" title="Șterge flux definitiv (ireversibil)">🗑</button>
-              <a href="/admin/flows/${f.flowId}/audit?format=txt" target="_blank" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;" title="Export audit TXT">📋</a><a href="/admin/flows/${f.flowId}/audit?format=pdf" target="_blank" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</a>
+              <button onclick="downloadAudit('${f.flowId}','txt')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;" title="Export audit TXT">📋</button><button onclick="downloadAudit('${f.flowId}','pdf')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</button>
             </td>
           </tr>`;
         }).join("")}
@@ -737,18 +733,61 @@ async function loadFlowsList(forceReload = true, page) {
       </table></div>
       <div style="margin-top:8px;font-size:.76rem;color:var(--muted);">Pagina ${page} din ${pages} · ${total} flux${total!==1?"uri":""} total</div>`;
 
-    // Paginare
+    // Paginare fluxuri — același stil cu paginarea utilizatorilor
     const pg = document.getElementById("flowsListPagination");
     if (pg) {
-      pg.style.display = pages > 1 ? "flex" : "none";
-      const info = document.getElementById("flowsPageInfo");
-      if (info) info.textContent = "Pagina " + page + " din " + pages + " (" + total + " total)";
-      const prev = document.getElementById("flowsPrevBtn"); if (prev) prev.disabled = page <= 1;
-      const next = document.getElementById("flowsNextBtn"); if (next) next.disabled = page >= pages;
+      pg.style.display = pages > 1 ? "" : "none";
+      pg.innerHTML = "";
+      if (pages > 1) {
+        pg.className = "pagination";
+        const info = document.createElement("span"); info.className = "pg-info";
+        const from = (page - 1) * (resp.limit || 50) + 1;
+        const to = Math.min(page * (resp.limit || 50), total);
+        info.textContent = `${from}–${to} din ${total}`;
+        const prev = document.createElement("button"); prev.className = "pg-btn"; prev.textContent = "◀";
+        prev.disabled = page <= 1; prev.onclick = () => loadFlowsList(false, page - 1);
+        pg.appendChild(prev); pg.appendChild(info);
+        const maxPages = pages;
+        for (let p = 1; p <= maxPages; p++) {
+          if (maxPages > 7 && Math.abs(p - page) > 2 && p !== 1 && p !== maxPages) {
+            if (p === 2 || p === maxPages - 1) { const d = document.createElement("span"); d.className = "pg-info"; d.textContent = "…"; pg.appendChild(d); }
+            continue;
+          }
+          const b = document.createElement("button"); b.className = "pg-btn" + (p === page ? " active" : "");
+          b.textContent = p; b.onclick = (pp => () => loadFlowsList(false, pp))(p);
+          pg.appendChild(b);
+        }
+        const next = document.createElement("button"); next.className = "pg-btn"; next.textContent = "▶";
+        next.disabled = page >= pages; next.onclick = () => loadFlowsList(false, page + 1);
+        pg.appendChild(next);
+      }
     }
   } catch(e) { area.innerHTML = `<span style="color:#ffaaaa;">❌ ${e.message}</span>`; }
 }
 
+
+async function downloadAudit(flowId, format) {
+  try {
+    const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=${format}`, { headers: hdrs() });
+    if (!r.ok) { const j = await r.json().catch(()=>{}); alert('Eroare audit: ' + (j?.error || r.status)); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `audit_${flowId}.${format}`; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { alert('Eroare descărcare audit: ' + e.message); }
+}
+
+async function exportAuditCSV() {
+  try {
+    const r = await _apiFetch('/admin/flows/audit-export?days=30', { headers: hdrs() });
+    if (!r.ok) { const j = await r.json().catch(()=>{}); alert('Eroare export CSV: ' + (j?.error || r.status)); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = `audit_export_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { alert('Eroare export CSV: ' + e.message); }
+}
 
 async function adminDeleteFlow(flowId) {
   if (!confirm(`Ești sigur că vrei să ștergi fluxul ${flowId}?\nToate datele asociate (PDF, notificări) vor fi șterse ireversibil.`)) return;

@@ -12,7 +12,7 @@
     --radius:16px;--danger:#ff5555;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:var(--bg);color:#eaf0ff;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
+  body{background:var(--bg);color:#eaf0ff;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh;}
   body::before{content:'';position:fixed;inset:0;
     background:radial-gradient(ellipse 80% 60% at 20% 10%,rgba(124,92,255,.12) 0%,transparent 60%),
               radial-gradient(ellipse 60% 50% at 80% 80%,rgba(45,212,191,.08) 0%,transparent 60%);
@@ -29,6 +29,16 @@
   .btn-logout{background:transparent;border:1px solid rgba(255,85,85,.3);color:#ff8888;
     padding:7px 14px;border-radius:9px;font-size:.82rem;cursor:pointer;transition:all .2s;}
   .btn-logout:hover{background:rgba(255,85,85,.1);}
+  /* Butoane navigare header — identice cu alte pagini */
+  .btn{background:rgba(120,160,255,.22);border:1px solid rgba(120,160,255,.45);color:#e9eefc;
+    padding:8px 14px;border-radius:10px;cursor:pointer;font-size:.88rem;text-decoration:none;
+    display:inline-flex;align-items:center;gap:4px;transition:filter .15s,transform .12s;}
+  .btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
+  .btn.active{background:rgba(120,160,255,.35);border-color:rgba(120,160,255,.7);font-weight:600;}
+  .btn.danger{background:rgba(255,85,85,.18);border-color:rgba(255,85,85,.35);color:#ff8888;}
+  .btn.danger:hover{background:rgba(255,85,85,.28);}
+  .btn.success{background:rgba(45,212,191,.18);border-color:rgba(45,212,191,.35);color:#7cf0e0;}
+  .btn.success:hover{background:rgba(45,212,191,.28);}
   main{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:36px 24px 80px;}
   h1{font-size:1.7rem;font-weight:800;margin-bottom:6px;}
   h1 span{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;}
@@ -97,10 +107,13 @@
     padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;
     transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:4px;}
   .btn-use:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
-  .btn-sm{background:transparent;border:1px solid var(--line);color:var(--muted);
-    padding:6px 12px;border-radius:8px;font-size:.75rem;cursor:pointer;transition:all .2s;}
-  .btn-sm:hover{border-color:var(--sub);color:var(--sub);}
-  .btn-sm.danger:hover{border-color:var(--danger);color:var(--danger);}
+  .btn-sm{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--sub);
+    padding:6px 12px;border-radius:8px;font-size:.75rem;cursor:pointer;transition:all .15s;}
+  .btn-sm:hover{background:rgba(120,160,255,.15);border-color:rgba(120,160,255,.4);color:#e9eefc;}
+  .btn-sm.danger{color:var(--danger);}
+  .btn-sm.danger:hover{background:rgba(255,85,85,.12);border-color:var(--danger);}
+  .btn-sm.success{color:#7cf0e0;}
+  .btn-sm.success:hover{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.4);}
   .empty-state{text-align:center;padding:48px 24px;color:var(--muted);}
   .empty-icon{font-size:2.5rem;margin-bottom:12px;}
   .empty-title{font-size:1rem;font-weight:600;margin-bottom:6px;color:var(--sub);}
@@ -138,9 +151,9 @@
 <header>
   <div class="logo"><img src="/Logo.png" alt="DocFlowAI" style="height:87px;width:auto;object-fit:contain;display:block;"/></div>
   <div style="display:flex;gap:8px;align-items:center;">
-    <a href="/" style="background:rgba(255,255,255,.06);color:#e9eefc;border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;text-decoration:none;font-size:.88rem;cursor:pointer;">📝 Flux nou</a>
-    <a href="/?tab=flows" style="background:rgba(255,255,255,.06);color:#e9eefc;border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;text-decoration:none;font-size:.88rem;">📂 Fluxuri mele</a>
-    <a href="/templates" style="background:rgba(120,160,255,.22);color:#e9eefc;border:1px solid rgba(120,160,255,.45);padding:8px 12px;border-radius:10px;text-decoration:none;font-size:.88rem;font-weight:600;">📋 Șabloane</a>
+    <a href="/" class="btn">📝 Flux nou</a>
+    <a href="/?tab=flows" class="btn">📂 Fluxuri mele</a>
+    <a href="/templates" class="btn active">📋 Șabloane</a>
   </div>
   <div class="hdr-right" id="userBar">
     <button class="btn-logout" onclick="logout()">Ieșire</button>

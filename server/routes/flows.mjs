@@ -665,6 +665,138 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
   } catch(e) { console.error('reinitiate error:', e); return res.status(500).json({ error: 'server_error' }); }
 });
 
+// ── POST /flows/:flowId/request-review ───────────────────────────────────
+router.post('/flows/:flowId/request-review', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const { flowId } = req.params;
+    const { token, reason } = req.body || {};
+    if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
+    const authHeader = req.headers['authorization'] || '';
+    if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'unauthorized' });
+    let actor;
+    try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); }
+    catch(e) { return res.status(401).json({ error: 'token_invalid' }); }
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    if (data.completed || data.status === 'refused' || data.status === 'review_requested') {
+      return res.status(409).json({ error: 'invalid_flow_state', message: 'Fluxul nu poate fi trimis spre revizuire în starea curentă.' });
+    }
+    const signers = Array.isArray(data.signers) ? data.signers : [];
+    const idx = signers.findIndex(s => s.token === token);
+    if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
+    if ((signers[idx].email || '').toLowerCase() !== (actor.email || '').toLowerCase()) return res.status(403).json({ error: 'forbidden' });
+    if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer' });
+
+    const reviewerName = signers[idx].name || signers[idx].email || 'Semnatar';
+    const reviewReason = String(reason).trim();
+
+    data.status = 'review_requested';
+    data.reviewRequestedAt = new Date().toISOString();
+    data.reviewRequestedBy = signers[idx].email;
+    data.reviewReason = reviewReason;
+    data.updatedAt = new Date().toISOString();
+    data.events = Array.isArray(data.events) ? data.events : [];
+    data.events.push({ at: new Date().toISOString(), type: 'REVIEW_REQUESTED', by: signers[idx].email, reason: reviewReason });
+    await saveFlow(flowId, data);
+
+    const reviewMsg = `${reviewerName} a trimis documentul „${data.docName}" spre revizuire. Motiv: ${reviewReason}`;
+
+    // Notifică inițiatorul
+    await _notify({ userEmail: data.initEmail, flowId, type: 'REVIEW_REQUESTED', title: '🔄 Document trimis spre revizuire', message: reviewMsg, waParams: { docName: data.docName, reviewerName, reason: reviewReason } });
+
+    // Notifică semnatarii care au semnat deja
+    const sent = new Set([data.initEmail?.toLowerCase()]);
+    for (let i = 0; i < idx; i++) {
+      const s = signers[i];
+      if (s.status === 'signed' && s.email && !sent.has(s.email.toLowerCase())) {
+        sent.add(s.email.toLowerCase());
+        await _notify({ userEmail: s.email, flowId, type: 'REVIEW_REQUESTED', title: '🔄 Document trimis spre revizuire', message: reviewMsg, waParams: { docName: data.docName, reviewerName, reason: reviewReason } });
+      }
+    }
+    console.log(`🔄 Review requested pe flow ${flowId} de ${signers[idx].email}`);
+    return res.json({ ok: true, reviewReason, reviewedBy: signers[idx].email });
+  } catch(e) { console.error('request-review error:', e); return res.status(500).json({ error: 'server_error' }); }
+});
+
+// ── POST /flows/:flowId/reinitiate-review ─────────────────────────────────
+// Permite initiatorului sa re-uploadeze un document si sa restarteze fluxul cu toti semnatarii originali
+router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const actor = requireAuth(req, res); if (!actor) return;
+    const { flowId } = req.params;
+    const { pdfB64 } = req.body || {};
+    if (!pdfB64 || typeof pdfB64 !== 'string') return res.status(400).json({ error: 'pdfB64_required' });
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    const isAdmin = actor.role === 'admin';
+    const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
+    if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul poate reiniția după revizuire.' });
+    if (data.status !== 'review_requested') return res.status(409).json({ error: 'not_in_review', message: 'Fluxul nu este în starea de revizuire.' });
+
+    // Resetăm toți semnatarii originali
+    const resetSigners = (data.signers || []).map((s, i) => ({
+      ...s,
+      token: crypto.randomBytes(16).toString('hex'),
+      tokenCreatedAt: new Date().toISOString(),
+      status: i === 0 ? 'current' : 'pending',
+      signedAt: null, signature: null, pdfUploaded: false, emailSent: false,
+      refuseReason: undefined, refusedAt: undefined,
+    }));
+    resetSigners.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+    resetSigners.forEach((s, i) => { s.status = i === 0 ? 'current' : 'pending'; });
+
+    const newFlowId2 = _newFlowId(data.institutie || '');
+    const newCreatedAt = new Date().toISOString();
+    let finalPdfB64 = pdfB64;
+
+    // Aplică footer pe noul PDF
+    if (finalPdfB64 && _stampFooterOnPdf) {
+      try {
+        finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
+          flowId: newFlowId2, createdAt: newCreatedAt,
+          initName: data.initName, initFunctie: data.initFunctie,
+          institutie: data.institutie, compartiment: data.compartiment,
+          flowType: data.flowType || 'tabel'
+        });
+      } catch(e) { console.warn('Re-stamp footer on reinitiate-review error:', e.message); }
+    }
+
+    const newData = {
+      ...data,
+      flowId: newFlowId2,
+      pdfB64: finalPdfB64,
+      signers: resetSigners,
+      status: 'active',
+      completed: false, completedAt: null,
+      reviewRequestedAt: null, reviewRequestedBy: null, reviewReason: null,
+      createdAt: newCreatedAt,
+      updatedAt: newCreatedAt,
+      parentFlowId: flowId,
+      signedPdfB64: null, signedPdfUploadedAt: null, signedPdfUploadedBy: null, signedPdfVersions: [],
+      events: [{ at: newCreatedAt, type: 'FLOW_REINITIATED_AFTER_REVIEW', by: actor.email, fromFlowId: flowId, reviewReason: data.reviewReason }],
+    };
+    await saveFlow(newFlowId2, newData);
+
+    // Marchează fluxul original ca reinitiat
+    data.status = 'reinitiated_after_review';
+    data.updatedAt = newCreatedAt;
+    data.events.push({ at: newCreatedAt, type: 'REINITIATED_AFTER_REVIEW', by: actor.email, newFlowId: newFlowId2 });
+    await saveFlow(flowId, data);
+
+    // Notifică primul semnatar
+    const first = resetSigners[0];
+    if (first?.email) {
+      await _notify({ userEmail: first.email, flowId: newFlowId2, type: 'YOUR_TURN', title: 'Document revizuit de semnat',
+        message: `${data.initName} a revizuit documentul „${data.docName}" și l-a retrimis spre semnare. Este rândul tău.`,
+        waParams: { signerName: first.name || first.email, docName: data.docName } });
+    }
+    console.log(`🔄 Review reinitiate: ${flowId} → ${newFlowId2} de ${actor.email}`);
+    return res.json({ ok: true, newFlowId: newFlowId2, signers: resetSigners.length });
+  } catch(e) { console.error('reinitiate-review error:', e); return res.status(500).json({ error: 'server_error' }); }
+});
+
 // ── POST /flows/:flowId/delegate ──────────────────────────────────────────
 router.post('/flows/:flowId/delegate', async (req, res) => {
   try {
