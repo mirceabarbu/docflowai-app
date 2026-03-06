@@ -773,7 +773,10 @@ router.get('/admin/user-activity', async (req, res) => {
   try {
     const from = req.query.from ? new Date(req.query.from).toISOString() : new Date(Date.now() - 30*24*3600*1000).toISOString();
     const to   = req.query.to   ? new Date(new Date(req.query.to).getTime() + 86399999).toISOString() : new Date().toISOString();
-    const emailFilter = (req.query.email || '').toLowerCase().trim();
+    const emailFilter    = (req.query.email    || '').toLowerCase().trim();
+    const instFilter     = (req.query.institutie    || '').trim();
+    const deptFilter     = (req.query.compartiment  || '').trim();
+    const nameFilter     = (req.query.name     || '').toLowerCase().trim();
 
     // Toti utilizatorii din sistem
     const { rows: userRows } = await pool.query('SELECT email, nume, institutie, compartiment, role FROM users ORDER BY nume');
@@ -828,20 +831,24 @@ router.get('/admin/user-activity', async (req, res) => {
       activity[email].ops.sort((a, b) => b.at.localeCompare(a.at));
     }
 
-    // Compunem rezultatul
-    const users = emailFilter
-      ? userRows.filter(u => u.email.toLowerCase() === emailFilter)
-      : userRows;
-
-    const result = users.map(u => {
-      const email = u.email.toLowerCase();
-      const act = activity[email] || { ops: [], counts: {} };
-      return {
-        email: u.email, name: u.nume || u.email, institutie: u.institutie,
-        compartiment: u.compartiment, role: u.role,
-        totalOps: act.ops.length, counts: act.counts, ops: act.ops,
-      };
-    }).filter(u => !emailFilter || u.ops.length >= 0);
+    // Compunem rezultatul cu toate filtrele
+    const result = userRows
+      .filter(u => {
+        if (emailFilter && u.email.toLowerCase() !== emailFilter) return false;
+        if (instFilter && (u.institutie || '') !== instFilter) return false;
+        if (deptFilter && (u.compartiment || '') !== deptFilter) return false;
+        if (nameFilter && !(u.nume || '').toLowerCase().includes(nameFilter)) return false;
+        return true;
+      })
+      .map(u => {
+        const email = u.email.toLowerCase();
+        const act = activity[email] || { ops: [], counts: {} };
+        return {
+          email: u.email, name: u.nume || u.email, institutie: u.institutie,
+          compartiment: u.compartiment, role: u.role,
+          totalOps: act.ops.length, counts: act.counts, ops: act.ops,
+        };
+      });
 
     return res.json({ ok: true, from, to, users: result });
   } catch(e) { console.error('user-activity error:', e); return res.status(500).json({ error: String(e.message || e) }); }

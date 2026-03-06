@@ -126,7 +126,18 @@
 </header>
 
 <main>
-  <h2>Gestionare utilizatori</h2>
+
+<!-- ── TABS ─────────────────────────────────────────────────────────── -->
+<div class="admin-tabs" style="display:flex;gap:4px;margin-bottom:28px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:6px;">
+  <button class="atab atab-active" data-tab="utilizatori" onclick="switchTab('utilizatori')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:rgba(124,92,255,.25);color:#c4b5ff;transition:all .2s;">👥 Utilizatori</button>
+  <button class="atab" data-tab="fluxuri" onclick="switchTab('fluxuri')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📁 Administrare fluxuri</button>
+  <button class="atab" data-tab="rapoarte" onclick="switchTab('rapoarte')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📊 Rapoarte</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 1: UTILIZATORI                                                -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-utilizatori">
 
   <div class="card">
     <div class="card-title">➕ Utilizator nou</div>
@@ -181,175 +192,217 @@
     <div id="pgBarWrapper"></div>
   </div>
 
-  <div style="margin-top:40px;border-top:1px solid rgba(255,255,255,.08);padding-top:32px;">
-    <h2 style="color:#9db0ff;margin-bottom:16px;">📋 Fluxuri active</h2>
-    <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:18px 20px;margin-bottom:28px;">
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
-        <input id="flowSearch" placeholder="Caută după ID, document sau email..." style="flex:1;min-width:220px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;"/>
-        <select id="flowStatusFilter" style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
-          <option value="">Toate statusurile</option>
-          <option value="active">Active</option>
-          <option value="done">Finalizate</option>
-          <option value="refused">Refuzate</option>
-        </select>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 2: ADMINISTRARE FLUXURI                                       -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-fluxuri" style="display:none;">
+
+  <h2 style="color:#9db0ff;margin-bottom:16px;">📋 Fluxuri active</h2>
+  <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:18px 20px;margin-bottom:28px;">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+      <input id="flowSearch" placeholder="Caută după ID, document sau email..." style="flex:1;min-width:220px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;"/>
+      <select id="flowStatusFilter" style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
+        <option value="">Toate statusurile</option>
+        <option value="active">Active</option>
+        <option value="done">Finalizate</option>
+        <option value="refused">Refuzate</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+      <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
+        <option value="">Toate instituțiile</option>
+      </select>
+      <select id="flowDeptFilter" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;" disabled>
+        <option value="">Toate compartimentele</option>
+      </select>
+      <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
+      <button onclick="exportAuditCSV()" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;">📊 Export CSV 30z</button>
+    </div>
+    <div id="flowsListArea" style="font-size:.83rem;color:var(--muted);">Apasă „Încarcă" pentru a vedea fluxurile.</div>
+    <div id="flowsListPagination" style="display:none;margin-top:14px;"></div>
+  </div>
+
+  <h2 style="color:#2dd4bf;">🗂 Arhivare fluxuri în Google Drive</h2>
+  <div style="background:rgba(45,212,191,.05);border:1px solid rgba(45,212,191,.2);border-radius:14px;padding:22px 24px;margin-top:16px;">
+    <div style="margin-bottom:16px;">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:6px;">Arhivează fluxuri finalizate/refuzate mai vechi de</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+        <input id="archiveDays" type="number" value="30" min="1" style="width:80px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;" />
+        <span style="color:var(--muted);font-size:.85rem;">zile</span>
+        <button class="btn secondary" onclick="previewArchive()" style="padding:8px 16px;font-size:.85rem;">🔍 Previzualizare</button>
+        <button class="btn" onclick="verifyDriveConn()" style="padding:8px 16px;font-size:.85rem;background:rgba(255,255,255,.08);">🔗 Test Drive</button>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
-        <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <select id="archiveInstFilter" onchange="onArchiveInstChange()" style="flex:1;min-width:180px;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.82rem;outline:none;">
           <option value="">Toate instituțiile</option>
         </select>
-        <select id="flowDeptFilter" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;" disabled>
+        <select id="archiveDeptFilter" style="flex:1;min-width:180px;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.82rem;outline:none;" disabled>
           <option value="">Toate compartimentele</option>
         </select>
-        <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
-        <button onclick="exportAuditCSV()" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;">📊 Export CSV 30z</button>
-      </div>
-      <div id="flowsListArea" style="font-size:.83rem;color:var(--muted);">Apasă „Încarcă" pentru a vedea fluxurile.</div>
-      <!-- Paginare fluxuri -->
-      <div id="flowsListPagination" style="display:none;margin-top:14px;"></div>
-    </div>
-
-    <h2 style="color:#2dd4bf;">🗂 Arhivare fluxuri în Google Drive</h2>
-    <div style="background:rgba(45,212,191,.05);border:1px solid rgba(45,212,191,.2);border-radius:14px;padding:22px 24px;margin-top:16px;">
-      <div style="margin-bottom:16px;">
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:6px;">Arhivează fluxuri finalizate/refuzate mai vechi de</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-          <input id="archiveDays" type="number" value="30" min="1" style="width:80px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;" />
-          <span style="color:var(--muted);font-size:.85rem;">zile</span>
-          <button class="btn secondary" onclick="previewArchive()" style="padding:8px 16px;font-size:.85rem;">🔍 Previzualizare</button>
-          <button class="btn" onclick="verifyDriveConn()" style="padding:8px 16px;font-size:.85rem;background:rgba(255,255,255,.08);">🔗 Test Drive</button>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <select id="archiveInstFilter" onchange="onArchiveInstChange()" style="flex:1;min-width:180px;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.82rem;outline:none;">
-            <option value="">Toate instituțiile</option>
-          </select>
-          <select id="archiveDeptFilter" style="flex:1;min-width:180px;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.82rem;outline:none;" disabled>
-            <option value="">Toate compartimentele</option>
-          </select>
-        </div>
-      </div>
-      <div id="archivePreview" style="display:none;">
-        <div style="background:rgba(0,0,0,.2);border-radius:10px;padding:16px;margin-bottom:14px;">
-          <div id="archivePreviewSummary" style="font-size:.88rem;margin-bottom:10px;font-weight:600;"></div>
-          <div id="archivePreviewList" style="font-size:.8rem;color:var(--muted);max-height:200px;overflow-y:auto;"></div>
-        </div>
-        <button id="btnDoArchive" class="btn" onclick="doArchive()" style="background:linear-gradient(135deg,#2dd4bf,#7c5cff);padding:10px 24px;font-size:.88rem;font-weight:700;">📦 Arhivează în Drive și eliberează DB</button>
-      </div>
-      <div id="archiveMsg" style="margin-top:12px;font-size:.83rem;"></div>
-    </div>
-
-    <h2 style="color:#ffaaaa;margin-top:32px;">⚠ Administrare fluxuri</h2>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
-
-      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
-        <div style="font-weight:700;margin-bottom:6px;color:var(--sub);">🗑 Șterge definitiv fluxurile vechi</div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Elimină complet fluxurile mai vechi de X zile. <strong style="color:#ffaaaa;">Ireversibil</strong> — folosește arhivarea în Drive în primul rând.</div>
-        <div style="font-size:.78rem;color:rgba(255,170,100,.7);margin-bottom:12px;">⚠ Dacă fluxul nu e arhivat în Drive, PDF-urile se pierd definitiv.</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-          <input id="delDays" type="number" value="30" min="1" style="width:80px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;" />
-          <span style="color:var(--muted);font-size:.85rem;">zile</span>
-          <button class="btn secondary" onclick="previewCleanOld()" style="padding:8px 16px;font-size:.85rem;">🔍 Previzualizare</button>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-          <select id="delInstFilter" onchange="onDelInstChange()" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;">
-            <option value="">Toate instituțiile</option>
-          </select>
-          <select id="delDeptFilter" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;" disabled>
-            <option value="">Toate compartimentele</option>
-          </select>
-        </div>
-        <div id="msgOldFlows" style="margin-top:10px;font-size:.82rem;"></div>
-      </div>
-
-      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,80,80,.15);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
-        <div style="font-weight:700;margin-bottom:6px;color:#ffaaaa;">💣 Șterge TOATE fluxurile</div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px;">Acțiune <strong style="color:#ffaaaa;">ireversibilă</strong> — elimină complet toate fluxurile din baza de date, inclusiv PDF-urile nearkhivate.</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-          <select id="allInstFilter" onchange="onAllInstChange()" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,80,80,.2);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;">
-            <option value="">Toate instituțiile</option>
-          </select>
-          <select id="allDeptFilter" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,80,80,.2);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;" disabled>
-            <option value="">Toate compartimentele</option>
-          </select>
-        </div>
-        <button class="btn secondary" onclick="previewCleanAll()" style="padding:8px 16px;font-size:.85rem;">🔍 Previzualizare + Șterge</button>
-        <div id="msgAllFlows" style="margin-top:10px;font-size:.82rem;"></div>
-      </div>
-
-    </div>
-
-    <!-- Modal confirmare ștergere -->
-    <div id="deleteConfirmModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
-      <div style="background:#0f1731;border:1px solid rgba(255,80,80,.4);border-radius:18px;padding:32px;max-width:560px;width:calc(100%-32px);max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);">
-        <div id="delModalTitle" style="font-size:1.1rem;font-weight:800;color:#ffaaaa;margin-bottom:12px;"></div>
-        <div id="delModalDesc" style="font-size:.85rem;color:var(--muted);margin-bottom:16px;line-height:1.5;"></div>
-
-        <!-- Lista fluxuri de sters -->
-        <div id="delModalList" style="max-height:240px;overflow-y:auto;background:rgba(255,80,80,.05);border:1px solid rgba(255,80,80,.15);border-radius:10px;padding:10px;margin-bottom:18px;font-size:.78rem;"></div>
-
-        <div style="margin-bottom:18px;">
-          <label style="display:block;font-size:.82rem;color:#ffaaaa;margin-bottom:6px;font-weight:600;">
-            Pentru a confirma, scrie <strong>STERGE</strong> în câmpul de mai jos:
-          </label>
-          <input id="delConfirmInput" type="text" placeholder="Scrie STERGE" autocomplete="off"
-            style="width:100%;padding:10px 14px;background:rgba(255,255,255,.06);border:2px solid rgba(255,80,80,.3);border-radius:10px;color:#eaf0ff;font-size:.95rem;outline:none;box-sizing:border-box;"
-            oninput="document.getElementById('btnFinalDelete').disabled=this.value.trim()!=='STERGE';" />
-        </div>
-
-        <div style="display:flex;gap:10px;justify-content:flex-end;">
-          <button class="btn secondary" onclick="closeDeleteModal()" style="padding:10px 22px;">Anulează</button>
-          <button id="btnFinalDelete" class="btn btn-d" disabled onclick="executePendingDelete()"
-            style="padding:10px 22px;font-size:.88rem;font-weight:700;opacity:.5;transition:opacity .2s;">
-            🗑 Șterge definitiv
-          </button>
-        </div>
       </div>
     </div>
-
-    <!-- RAPORT ACTIVITATE UTILIZATORI -->
-    <h2 style="color:#9db0ff;margin-top:36px;margin-bottom:16px;">📊 Raport activitate utilizatori</h2>
-    <div style="background:rgba(15,23,49,.8);border:1px solid var(--line);border-radius:16px;padding:26px;margin-bottom:24px;">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;margin-bottom:18px;flex-wrap:wrap;">
-        <div>
-          <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">De la data</label>
-          <input type="date" id="rptFrom" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;" />
-        </div>
-        <div>
-          <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Până la data</label>
-          <input type="date" id="rptTo" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;" />
-        </div>
-        <div>
-          <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Utilizator (opțional)</label>
-          <select id="rptUser" style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;">
-            <option value="">— Toți utilizatorii —</option>
-          </select>
-        </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-p" onclick="loadActivityReport()" style="padding:9px 20px;font-size:.85rem;">🔍 Generează</button>
-          <button class="btn secondary" onclick="exportActivityCSV()" style="padding:9px 14px;font-size:.85rem;" title="Export CSV">📥</button>
-        </div>
+    <div id="archivePreview" style="display:none;">
+      <div style="background:rgba(0,0,0,.2);border-radius:10px;padding:16px;margin-bottom:14px;">
+        <div id="archivePreviewSummary" style="font-size:.88rem;margin-bottom:10px;font-weight:600;"></div>
+        <div id="archivePreviewList" style="font-size:.8rem;color:var(--muted);max-height:200px;overflow-y:auto;"></div>
       </div>
-      <div id="activityReport"></div>
+      <button id="btnDoArchive" class="btn" onclick="doArchive()" style="background:linear-gradient(135deg,#2dd4bf,#7c5cff);padding:10px 24px;font-size:.88rem;font-weight:700;">📦 Arhivează în Drive și eliberează DB</button>
+    </div>
+    <div id="archiveMsg" style="margin-top:12px;font-size:.83rem;"></div>
+  </div>
+
+  <h2 style="color:#ffaaaa;margin-top:32px;">⚠ Administrare fluxuri</h2>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
+
+    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
+      <div style="font-weight:700;margin-bottom:6px;color:var(--sub);">🗑 Șterge definitiv fluxurile vechi</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Elimină complet fluxurile mai vechi de X zile. <strong style="color:#ffaaaa;">Ireversibil</strong> — folosește arhivarea în Drive în primul rând.</div>
+      <div style="font-size:.78rem;color:rgba(255,170,100,.7);margin-bottom:12px;">⚠ Dacă fluxul nu e arhivat în Drive, PDF-urile se pierd definitiv.</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        <input id="delDays" type="number" value="30" min="1" style="width:80px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;" />
+        <span style="color:var(--muted);font-size:.85rem;">zile</span>
+        <button class="btn secondary" onclick="previewCleanOld()" style="padding:8px 16px;font-size:.85rem;">🔍 Previzualizare</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+        <select id="delInstFilter" onchange="onDelInstChange()" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;">
+          <option value="">Toate instituțiile</option>
+        </select>
+        <select id="delDeptFilter" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;" disabled>
+          <option value="">Toate compartimentele</option>
+        </select>
+      </div>
+      <div id="msgOldFlows" style="margin-top:10px;font-size:.82rem;"></div>
     </div>
 
-    <!-- VACUUM section -->
-    <div style="margin-top:20px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-        <div>
-          <div style="font-weight:700;margin-bottom:4px;color:var(--sub);">🧹 Eliberare spațiu DB (VACUUM)</div>
-          <div style="font-size:.8rem;color:var(--muted);">După arhivare sau ștergere masivă, rulează VACUUM ANALYZE pentru a recupera spațiul fizic din PostgreSQL.</div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <button class="btn secondary" onclick="runVacuum()" style="padding:8px 18px;font-size:.85rem;">🧹 Rulează VACUUM</button>
-          <button class="btn secondary" onclick="loadDbStats()" style="padding:8px 18px;font-size:.85rem;">📊 Stats DB</button>
-        </div>
+    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,80,80,.15);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
+      <div style="font-weight:700;margin-bottom:6px;color:#ffaaaa;">💣 Șterge TOATE fluxurile</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px;">Acțiune <strong style="color:#ffaaaa;">ireversibilă</strong> — elimină complet toate fluxurile din baza de date, inclusiv PDF-urile nearkhivate.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <select id="allInstFilter" onchange="onAllInstChange()" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,80,80,.2);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;">
+          <option value="">Toate instituțiile</option>
+        </select>
+        <select id="allDeptFilter" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,80,80,.2);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;" disabled>
+          <option value="">Toate compartimentele</option>
+        </select>
       </div>
-      <div id="msgVacuum" style="margin-top:10px;font-size:.82rem;"></div>
-      <div id="dbStats" style="margin-top:8px;font-size:.8rem;color:var(--muted);display:none;"></div>
+      <button class="btn secondary" onclick="previewCleanAll()" style="padding:8px 16px;font-size:.85rem;">🔍 Previzualizare + Șterge</button>
+      <div id="msgAllFlows" style="margin-top:10px;font-size:.82rem;"></div>
     </div>
 
   </div>
 
+  <!-- Modal confirmare ștergere -->
+  <div id="deleteConfirmModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div style="background:#0f1731;border:1px solid rgba(255,80,80,.4);border-radius:18px;padding:32px;max-width:560px;width:calc(100%-32px);max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);">
+      <div id="delModalTitle" style="font-size:1.1rem;font-weight:800;color:#ffaaaa;margin-bottom:12px;"></div>
+      <div id="delModalDesc" style="font-size:.85rem;color:var(--muted);margin-bottom:16px;line-height:1.5;"></div>
+      <div id="delModalList" style="max-height:240px;overflow-y:auto;background:rgba(255,80,80,.05);border:1px solid rgba(255,80,80,.15);border-radius:10px;padding:10px;margin-bottom:18px;font-size:.78rem;"></div>
+      <div style="margin-bottom:18px;">
+        <label style="display:block;font-size:.82rem;color:#ffaaaa;margin-bottom:6px;font-weight:600;">
+          Pentru a confirma, scrie <strong>STERGE</strong> în câmpul de mai jos:
+        </label>
+        <input id="delConfirmInput" type="text" placeholder="Scrie STERGE" autocomplete="off"
+          style="width:100%;padding:10px 14px;background:rgba(255,255,255,.06);border:2px solid rgba(255,80,80,.3);border-radius:10px;color:#eaf0ff;font-size:.95rem;outline:none;box-sizing:border-box;" />
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button class="btn secondary" onclick="closeDeleteModal()" style="padding:10px 22px;">Anulează</button>
+        <button id="btnFinalDelete" class="btn btn-d" disabled onclick="executePendingDelete()"
+          style="padding:10px 22px;font-size:.88rem;font-weight:700;opacity:.5;transition:opacity .2s;">
+          🗑 Șterge definitiv
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 3: RAPOARTE                                                   -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-rapoarte" style="display:none;">
+
+  <h2 style="color:#9db0ff;margin-bottom:16px;">📊 Raport activitate utilizatori</h2>
+  <div style="background:rgba(15,23,49,.8);border:1px solid var(--line);border-radius:16px;padding:26px;margin-bottom:24px;">
+
+    <!-- Rândul 1: interval date -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div>
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">De la data (zz.ll.aaaa)</label>
+        <input type="text" id="rptFrom" placeholder="01.03.2026" maxlength="10"
+          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;"
+          oninput="formatDateInput(this)" />
+      </div>
+      <div>
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Până la data (zz.ll.aaaa)</label>
+        <input type="text" id="rptTo" placeholder="31.03.2026" maxlength="10"
+          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;"
+          oninput="formatDateInput(this)" />
+      </div>
+    </div>
+
+    <!-- Rândul 2: filtre -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div>
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Instituție</label>
+        <select id="rptInst" onchange="onRptInstChange()"
+          style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.82rem;">
+          <option value="">— Toate instituțiile —</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Compartiment</label>
+        <select id="rptDept" disabled
+          style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.82rem;">
+          <option value="">— Toate compartimentele —</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Nume utilizator</label>
+        <input type="text" id="rptName" placeholder="Caută după nume..."
+          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;" />
+      </div>
+    </div>
+
+    <!-- Rândul 3: utilizator specific + butoane -->
+    <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;">
+      <div>
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Utilizator specific (opțional)</label>
+        <select id="rptUser"
+          style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;">
+          <option value="">— Toți utilizatorii —</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-p" onclick="loadActivityReport()" style="padding:9px 20px;font-size:.85rem;">🔍 Generează</button>
+        <button class="btn secondary" onclick="exportActivityCSV()" style="padding:9px 14px;font-size:.85rem;" title="Export CSV">📥</button>
+      </div>
+    </div>
+
+    <div id="activityReport" style="margin-top:18px;"></div>
+  </div>
+
+  <!-- VACUUM -->
+  <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;color:var(--sub);">🧹 Eliberare spațiu DB (VACUUM)</div>
+        <div style="font-size:.8rem;color:var(--muted);">După arhivare sau ștergere masivă, rulează VACUUM ANALYZE pentru a recupera spațiul fizic din PostgreSQL.</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="btn secondary" onclick="runVacuum()" style="padding:8px 18px;font-size:.85rem;">🧹 Rulează VACUUM</button>
+        <button class="btn secondary" onclick="loadDbStats()" style="padding:8px 18px;font-size:.85rem;">📊 Stats DB</button>
+      </div>
+    </div>
+    <div id="msgVacuum" style="margin-top:10px;font-size:.82rem;"></div>
+    <div id="dbStats" style="margin-top:8px;font-size:.8rem;color:var(--muted);display:none;"></div>
+  </div>
+
+</div>
+
 </main>
+
 
 <!-- Modal editare -->
 <div class="modal-bg" id="mBg" onclick="if(event.target===this)closeMod()">
@@ -1234,43 +1287,132 @@ fetch("/auth/me",{headers:hdrs()})
 
 let _activityData = null;
 
+// ── Tab switching ─────────────────────────────────────────────────────────
+function switchTab(tab) {
+  ['utilizatori','fluxuri','rapoarte'].forEach(t => {
+    const el = $('tab-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  document.querySelectorAll('.atab').forEach(btn => {
+    const active = btn.dataset.tab === tab;
+    btn.style.background = active ? 'rgba(124,92,255,.25)' : 'transparent';
+    btn.style.color = active ? '#c4b5ff' : 'var(--muted)';
+  });
+  if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); _fluxuriLoaded = true; }
+}
+let _fluxuriLoaded = false;
+
+// ── Date helpers ─────────────────────────────────────────────────────────
+/** Formatează automat input text ca zz.ll.aaaa în timp ce utilizatorul scrie */
+function formatDateInput(el) {
+  let v = el.value.replace(/[^0-9]/g,'');
+  if (v.length > 2) v = v.slice(0,2) + '.' + v.slice(2);
+  if (v.length > 5) v = v.slice(0,5) + '.' + v.slice(5,9);
+  el.value = v;
+  el.style.borderColor = v.length === 10 && parseDMY(v) ? 'rgba(45,212,191,.5)' : v.length < 10 ? '' : 'rgba(255,80,80,.5)';
+}
+
+/** Parsează zz.ll.aaaa → Date object sau null */
+function parseDMY(s) {
+  if (!s || s.length !== 10) return null;
+  const [d,m,y] = s.split('.').map(Number);
+  if (!d||!m||!y||m>12||d>31) return null;
+  const dt = new Date(y, m-1, d);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+/** Formatează Date → zz.ll.aaaa */
+function fmtDMY(d) {
+  if (!d || isNaN(d.getTime())) return '—';
+  return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+}
+
+/** Conversie dată ISO (din server) → zz.ll.aaaa */
+function isoToDMY(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : fmtDMY(d);
+}
+
+// ── Raport activitate ────────────────────────────────────────────────────
 function initActivityReport() {
-  // Setăm datele default: ultima lună
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  $('rptTo').value = today.toISOString().slice(0,10);
-  $('rptFrom').value = firstOfMonth.toISOString().slice(0,10);
-  // Populăm dropdown-ul cu utilizatori
+  // Setăm valorile ca zz.ll.aaaa (format fix, fără probleme de timezone)
+  $('rptTo').value = fmtDMY(today);
+  $('rptFrom').value = fmtDMY(firstOfMonth);
+
+  // Populăm dropdown-ul cu utilizatori + inst/dept
   _apiFetch('/admin/users').then(r => r.json()).then(data => {
+    const users = data.users || data || [];
     const sel = $('rptUser');
-    (data.users || data || []).forEach(u => {
+    users.forEach(u => {
       const opt = document.createElement('option');
       opt.value = u.email;
-      opt.textContent = `${u.name || u.email} — ${u.email}`;
+      opt.textContent = `${u.nume || u.email} — ${u.email}`;
       sel.appendChild(opt);
     });
+    // Populăm instituții
+    const insts = [...new Set(users.map(u => u.institutie).filter(Boolean))].sort();
+    const rptInst = $('rptInst');
+    insts.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i; rptInst.appendChild(o); });
+    // Stocăm pentru compartiment cascadat
+    window._rptUsers = users;
   }).catch(() => {});
+}
+
+function onRptInstChange() {
+  const inst = $('rptInst').value;
+  const deptSel = $('rptDept');
+  deptSel.innerHTML = '<option value="">— Toate compartimentele —</option>';
+  if (inst && window._rptUsers) {
+    const depts = [...new Set(window._rptUsers.filter(u => u.institutie === inst).map(u => u.compartiment).filter(Boolean))].sort();
+    depts.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = d; deptSel.appendChild(o); });
+    deptSel.disabled = depts.length === 0;
+  } else { deptSel.disabled = true; }
 }
 
 async function loadActivityReport() {
   const area = $('activityReport');
-  const from = $('rptFrom').value;
-  const to = $('rptTo').value;
-  const email = $('rptUser').value;
-  if (!from || !to) { area.innerHTML = '<p style="color:#ffaaaa;font-size:.85rem;">⚠️ Selectează intervalul de date.</p>'; return; }
+  const fromStr = $('rptFrom').value.trim();
+  const toStr   = $('rptTo').value.trim();
+  const fromDt  = parseDMY(fromStr);
+  const toDt    = parseDMY(toStr);
+
+  if (!fromDt || !toDt) {
+    area.innerHTML = '<p style="color:#ffaaaa;font-size:.85rem;">⚠️ Introdu datele în formatul zz.ll.aaaa (ex: 01.03.2026).</p>';
+    return;
+  }
+  if (fromDt > toDt) {
+    area.innerHTML = '<p style="color:#ffaaaa;font-size:.85rem;">⚠️ Data de început trebuie să fie înainte de data de sfârșit.</p>';
+    return;
+  }
+
+  // Conversie la YYYY-MM-DD pentru API
+  const fromISO = `${fromDt.getFullYear()}-${String(fromDt.getMonth()+1).padStart(2,'0')}-${String(fromDt.getDate()).padStart(2,'0')}`;
+  const toISO   = `${toDt.getFullYear()}-${String(toDt.getMonth()+1).padStart(2,'0')}-${String(toDt.getDate()).padStart(2,'0')}`;
 
   area.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);">⏳ Se generează raportul...</div>';
   try {
-    const params = new URLSearchParams({ from, to });
+    const params = new URLSearchParams({ from: fromISO, to: toISO });
+    const email = $('rptUser').value;
+    const inst  = $('rptInst').value;
+    const dept  = $('rptDept').value;
+    const name  = $('rptName').value.trim();
     if (email) params.set('email', email);
-    const r = await _apiFetch(`/admin/user-activity?${params}`);
+    if (inst)  params.set('institutie', inst);
+    if (dept)  params.set('compartiment', dept);
+    if (name)  params.set('name', name);
+    const r = await _apiFetch(`/admin/user-activity?${params}`, { headers: hdrs() });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Eroare server'); }
     const data = await r.json();
     _activityData = data;
     renderActivityReport(data);
   } catch(e) {
-    area.innerHTML = `<p style="color:#ffaaaa;font-size:.85rem;">❌ ${e.message}</p>`;
+    area.innerHTML = `<p style="color:#ffaaaa;font-size:.85rem;">❌ ${escH(e.message)}</p>`;
   }
 }
+
 
 const OP_COLORS = {
   FLOW_CREATED: '#7c5cff', SIGNED_PDF_UPLOADED: '#2dd4bf', REFUSED: '#ff5050',
@@ -1288,8 +1430,8 @@ const OP_ICONS = {
 function renderActivityReport(data) {
   const area = $('activityReport');
   const users = (data.users || []).filter(u => u.totalOps > 0 || $('rptUser').value);
-  const from = new Date(data.from).toLocaleDateString('ro-RO');
-  const to   = new Date(data.to).toLocaleDateString('ro-RO');
+  const from = isoToDMY(data.from);
+  const to   = isoToDMY(data.to);
 
   if (!users.length) {
     area.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted);">📭 Nicio activitate găsită în intervalul ${from} — ${to}.</div>`;
