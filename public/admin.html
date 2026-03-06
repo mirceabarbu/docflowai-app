@@ -343,15 +343,25 @@
 
     <!-- Rândul 1: interval date -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-      <div>
+      <div style="position:relative;">
         <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">De la data</label>
-        <input type="date" id="rptFrom"
-          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;color-scheme:dark;" />
+        <div style="position:relative;">
+          <input type="text" id="rptFromDisplay" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+            style="width:100%;padding:9px 36px 9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.95rem;box-sizing:border-box;letter-spacing:.5px;"
+            oninput="onDateTextInput(this,'rptFrom')" />
+          <input type="date" id="rptFrom" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;opacity:0;cursor:pointer;" onchange="onDatePickerChange(this,'rptFromDisplay')" />
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:14px;">📅</span>
+        </div>
       </div>
-      <div>
+      <div style="position:relative;">
         <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Până la data</label>
-        <input type="date" id="rptTo"
-          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;box-sizing:border-box;color-scheme:dark;" />
+        <div style="position:relative;">
+          <input type="text" id="rptToDisplay" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+            style="width:100%;padding:9px 36px 9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.95rem;box-sizing:border-box;letter-spacing:.5px;"
+            oninput="onDateTextInput(this,'rptTo')" />
+          <input type="date" id="rptTo" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;opacity:0;cursor:pointer;" onchange="onDatePickerChange(this,'rptToDisplay')" />
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:14px;">📅</span>
+        </div>
       </div>
     </div>
 
@@ -1301,22 +1311,72 @@ function switchTab(tab) {
 let _fluxuriLoaded = false;
 
 // ── Date helpers ─────────────────────────────────────────────────────────
-/** Conversie dată ISO (din server) → zz.ll.aaaa */
+/** Parsează zz.ll.aaaa → YYYY-MM-DD string sau null */
+function parseDMYtoISO(s) {
+  if (!s || s.length !== 10) return null;
+  const [d,m,y] = s.split('.').map(Number);
+  if (!d||!m||!y||m>12||d>31||y<2000||y>2100) return null;
+  return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+
+/** Formatează YYYY-MM-DD → zz.ll.aaaa */
 function isoToDMY(iso) {
   if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return `${m[3]}.${m[2]}.${m[1]}`;
+}
+
+/** Formatează Date object → zz.ll.aaaa */
+function dateToDMY(d) {
+  if (!d || isNaN(d.getTime())) return '';
   return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+}
+
+/** Formatează Date object → YYYY-MM-DD */
+function dateToISO(d) {
+  if (!d || isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+/** Handler pentru input text zz.ll.aaaa — auto-punctuație + sync către hidden date */
+function onDateTextInput(el, hiddenId) {
+  let v = el.value.replace(/[^0-9.]/g,'');
+  // Auto-inserare puncte
+  const digits = v.replace(/\./g,'');
+  if (digits.length > 2 && !v.includes('.')) v = digits.slice(0,2) + '.' + digits.slice(2);
+  if (digits.length > 4) {
+    const parts = v.split('.');
+    if (parts.length >= 2 && parts[1].length > 2) {
+      v = parts[0] + '.' + parts[1].slice(0,2) + '.' + parts[1].slice(2) + (parts[2]||'');
+    }
+  }
+  v = v.slice(0,10);
+  el.value = v;
+  // Sincronizează hidden date input
+  const iso = parseDMYtoISO(v);
+  const hidden = $(hiddenId);
+  if (hidden) hidden.value = iso || '';
+  el.style.borderColor = v.length === 10 ? (iso ? 'rgba(45,212,191,.5)' : 'rgba(255,80,80,.5)') : '';
+}
+
+/** Handler pentru calendar picker — sync înapoi în textbox */
+function onDatePickerChange(pickerEl, displayId) {
+  const iso = pickerEl.value; // YYYY-MM-DD
+  if (iso) { const disp = $(displayId); if (disp) { disp.value = isoToDMY(iso); disp.style.borderColor = 'rgba(45,212,191,.5)'; } }
 }
 
 // ── Raport activitate ────────────────────────────────────────────────────
 function initActivityReport() {
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  // type="date" folosește format YYYY-MM-DD intern
-  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  $('rptTo').value   = fmt(today);
-  $('rptFrom').value = fmt(firstOfMonth);
+  // Setăm textbox-urile vizibile (zz.ll.aaaa) și hidden inputs (YYYY-MM-DD)
+  const todayISO = dateToISO(today);
+  const fromISO  = dateToISO(firstOfMonth);
+  $('rptFrom').value        = fromISO;
+  $('rptTo').value          = todayISO;
+  $('rptFromDisplay').value = isoToDMY(fromISO);
+  $('rptToDisplay').value   = isoToDMY(todayISO);
 
   // Populăm dropdown-ul cu utilizatori + inst/dept
   _apiFetch('/admin/users', { headers: hdrs() }).then(r => r.json()).then(data => {
@@ -1328,7 +1388,6 @@ function initActivityReport() {
       opt.textContent = `${u.nume || u.email}${u.functie ? ' — ' + u.functie : ''}`;
       sel.appendChild(opt);
     });
-    // Populăm instituții
     const insts = [...new Set(users.map(u => u.institutie).filter(Boolean))].sort();
     const rptInst = $('rptInst');
     insts.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i; rptInst.appendChild(o); });
@@ -1349,11 +1408,18 @@ function onRptInstChange() {
 
 async function loadActivityReport() {
   const area = $('activityReport');
+  // Citim din hidden inputs (YYYY-MM-DD garantat corect)
+  // Dacă userul a tastat manual în display, sincronizăm înainte
+  const fromDisp = ($('rptFromDisplay').value||'').trim();
+  const toDisp   = ($('rptToDisplay').value||'').trim();
+  if (fromDisp.length === 10) { const iso = parseDMYtoISO(fromDisp); if (iso) $('rptFrom').value = iso; }
+  if (toDisp.length === 10)   { const iso = parseDMYtoISO(toDisp);   if (iso) $('rptTo').value = iso; }
+
   const fromISO = $('rptFrom').value;
   const toISO   = $('rptTo').value;
 
   if (!fromISO || !toISO) {
-    area.innerHTML = '<p style="color:#ffaaaa;font-size:.85rem;">⚠️ Selectează intervalul de date.</p>';
+    area.innerHTML = '<p style="color:#ffaaaa;font-size:.85rem;">⚠️ Selectează intervalul de date (format: zz.ll.aaaa).</p>';
     return;
   }
   if (fromISO > toISO) {
@@ -1367,13 +1433,13 @@ async function loadActivityReport() {
     const email = $('rptUser').value;
     const inst  = $('rptInst').value;
     const dept  = $('rptDept').value;
-    const name  = $('rptName').value.trim();
+    const name  = ($('rptName').value||'').trim();
     if (email) params.set('email', email);
     if (inst)  params.set('institutie', inst);
     if (dept)  params.set('compartiment', dept);
     if (name)  params.set('name', name);
     const r = await _apiFetch(`/admin/user-activity?${params}`, { headers: hdrs() });
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Eroare server'); }
+    if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error || `HTTP ${r.status}`); }
     const data = await r.json();
     _activityData = data;
     renderActivityReport(data);
@@ -1615,7 +1681,7 @@ async function exportActivityCSV() {
   const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `activitate_utilizatori_${from}_${to}.csv`;
+  a.download = `activitate_utilizatori_${isoToDMY($('rptFrom').value)}_${isoToDMY($('rptTo').value)}.csv`;
   a.click();
 }
 
