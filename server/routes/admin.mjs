@@ -803,7 +803,7 @@ router.get('/admin/user-activity', async (req, res) => {
       FLOW_REINITIATED_AFTER_REVIEW: 'Reinițiat după revizuire',
       REINITIATED_AFTER_REVIEW: 'Reinitiere marcată',
       FLOW_COMPLETED: 'Finalizat',
-      DELEGATE: 'Delegat',
+      DELEGATE: 'Delegare semnătură',
       YOUR_TURN: 'Notificat',
     };
 
