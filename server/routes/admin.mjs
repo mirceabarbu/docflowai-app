@@ -782,9 +782,11 @@ router.get('/admin/user-activity', async (req, res) => {
     const { rows: userRows } = await pool.query('SELECT email, nume, institutie, compartiment, role FROM users ORDER BY nume');
 
     // Toate fluxurile din perioada
+    // Selectam toate fluxurile care au activitate in perioada — fie create, fie avand evenimente in interval
+    // Folosim un interval mai larg (de la inceputul timpului pana la 'to') si filtram evenimentele in JS
     const { rows: flowRows } = await pool.query(
-      "SELECT data FROM flows WHERE created_at <= $1 AND (created_at >= $2 OR (data->>'updatedAt') >= $2) ORDER BY created_at DESC LIMIT 5000",
-      [to, from]
+      "SELECT data FROM flows WHERE created_at <= $1 ORDER BY created_at DESC LIMIT 10000",
+      [to]
     );
 
     // EVENT_TYPES → eticheta romana
