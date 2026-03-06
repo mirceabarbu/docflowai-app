@@ -1492,8 +1492,8 @@ async function loadActivityReport() {
 // Etichete în română pentru tipurile de operațiuni
 const OP_LABELS_RO = {
   FLOW_CREATED:                   'Flux inițiat',
-  SIGNED:                         'Semnat',
-  SIGNED_PDF_UPLOADED:            'Semnat',
+  SIGNED:                         'Semnat și avansat',
+  SIGNED_PDF_UPLOADED:            'PDF semnat încărcat',
   REFUSED:                        'Refuzat',
   REVIEW_REQUESTED:               'Trimis la revizuire',
   FLOW_REINITIATED_AFTER_REVIEW:  'Reinițiat după revizuire',
@@ -1524,84 +1524,89 @@ function renderActivityReport(data) {
   const to   = isoToDMY(data.to);
 
   if (!users.length) {
-    area.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted);">📭 Nicio activitate găsită în intervalul ${from} — ${to}.</div>`;
+    area.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted);">\u{1F4ED} Nicio activitate g\u0103sit\u0103 \u00een intervalul ' + from + ' \u2014 ' + to + '.</div>';
     return;
   }
 
-  let html = `<div style="margin-bottom:16px;font-size:.83rem;color:var(--muted);">Interval: <strong style="color:var(--sub);">${from} — ${to}</strong> &nbsp;·&nbsp; ${users.length} utilizator(i) cu activitate</div>`;
+  let html = '<div style="margin-bottom:16px;font-size:.83rem;color:var(--muted);">Interval: <strong style="color:var(--sub);">' + from + ' \u2014 ' + to + '</strong> &nbsp;\u00b7&nbsp; ' + users.length + ' utilizator(i) cu activitate</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:24px;">';
 
-  // 2 coloane fixe
-  html += `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:24px;">`;
   for (const u of users) {
     if (!u.totalOps && !$('rptUser').value) continue;
+    const emailKey = u.email.replace(/[^a-z0-9]/gi,'_');
+    const emailEsc = u.email.replace(/'/g,"\\'");
+    const sub2 = [u.functie||u.email, u.institutie, u.compartiment].filter(Boolean).join(' \u00b7 ');
+
     const summaryChips = Object.entries(u.counts)
       .sort((a,b) => b[1]-a[1])
       .map(([type, cnt]) => {
         const color = OP_COLORS[type] || '#9db0ff';
-        const icon  = OP_ICONS[type]  || '•';
+        const icon  = OP_ICONS[type]  || '\u2022';
         const label = OP_LABELS_RO[type] || type.replace(/_/g,' ');
-        return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:.72rem;background:${color}22;border:1px solid ${color}44;color:${color};margin:2px;">${icon} ${cnt}× ${label}</span>`;
+        return '<span onclick="toggleUserDetailByType(\'' + emailEsc + '\',\'' + type + '\')" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:.72rem;background:' + color + '22;border:1px solid ' + color + '44;color:' + color + ';margin:2px;cursor:pointer;" title="Click pentru a vedea doar aceste opera\u021biuni">' + icon + ' ' + cnt + '\u00d7 ' + label + '</span>';
       }).join('');
 
-    const emailKey = u.email.replace(/[^a-z0-9]/gi,'_');
-    // Rândul 2: funcție în loc de email
-    const sub2 = [u.functie||u.email, u.institutie, u.compartiment].filter(Boolean).join(' · ');
-
-    html += `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;transition:border-color .15s;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:.92rem;margin-bottom:2px;">${escH(u.name)}</div>
-          <div style="font-size:.76rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escH(u.email)}">${escH(sub2)}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:10px;">
-          <div style="font-size:1.4rem;font-weight:800;color:var(--accent);">${u.totalOps}</div>
-          <button onclick="exportUserPDF('${u.email.replace(/'/g,"\\'")}')"
-            style="padding:4px 10px;font-size:.72rem;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.3);border-radius:7px;color:#9db0ff;cursor:pointer;white-space:nowrap;"
-            title="Export PDF audit utilizator">📄 PDF</button>
-        </div>
-      </div>
-      <div style="cursor:pointer;" onclick="toggleUserDetail('${u.email.replace(/'/g,"\\'")}')">
-        <div>${summaryChips || '<span style="font-size:.75rem;color:var(--muted);">Nicio operațiune</span>'}</div>
-        <div style="font-size:.71rem;color:var(--muted);margin-top:8px;text-align:right;">▼ click pentru detalii</div>
-      </div>
-      <div id="detail_${emailKey}" style="display:none;margin-top:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;max-height:320px;overflow-y:auto;"></div>
-    </div>`;
+    html += '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-weight:700;font-size:.92rem;margin-bottom:2px;">' + escH(u.name||u.email) + '</div>'
+      + '<div style="font-size:.76rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escH(u.email) + '">' + escH(sub2) + '</div>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:10px;">'
+      + '<div style="font-size:1.4rem;font-weight:800;color:var(--accent);">' + u.totalOps + '</div>'
+      + '<button onclick="exportUserPDF(\'' + emailEsc + '\')" style="padding:4px 10px;font-size:.72rem;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.3);border-radius:7px;color:#9db0ff;cursor:pointer;white-space:nowrap;" title="Export raport utilizator">\u{1F4C4} PDF</button>'
+      + '</div></div>'
+      + '<div>' + (summaryChips || '<span style="font-size:.75rem;color:var(--muted);">Nicio opera\u021biune</span>') + '</div>'
+      + '<div onclick="toggleUserDetail(\'' + emailEsc + '\')" style="font-size:.71rem;color:var(--muted);margin-top:8px;text-align:right;cursor:pointer;">\u25bc click pentru detalii</div>'
+      + '<div id="detail_' + emailKey + '" style="display:none;margin-top:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;max-height:320px;overflow-y:auto;"></div>'
+      + '</div>';
   }
   html += '</div>';
   area.innerHTML = html;
 }
 
+function _buildDetailRows(ops, filterType) {
+  const filtered = filterType ? ops.filter(op => op.type === filterType) : ops;
+  if (!filtered.length) return '<div style="font-size:.8rem;color:var(--muted);">Nicio opera\u021biune de acest tip.</div>';
+  return filtered.map(op => {
+    const color = OP_COLORS[op.type] || '#9db0ff';
+    const icon  = OP_ICONS[op.type]  || '\u2022';
+    const labelRO = OP_LABELS_RO[op.type] || escH(op.label || op.type);
+    const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone:'Europe/Bucharest', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    return '<div style="display:grid;grid-template-columns:110px 200px 1fr;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">'
+      + '<span style="font-size:.74rem;color:var(--muted);">' + dt + '</span>'
+      + '<span style="font-size:.76rem;padding:2px 8px;border-radius:12px;background:' + color + '22;border:1px solid ' + color + '44;color:' + color + ';">' + icon + ' ' + labelRO + '</span>'
+      + '<span style="font-size:.76rem;color:var(--sub);" title="' + escH(op.flowId) + '">' + escH(op.docName) + (op.reason ? ' <span style="color:var(--muted);">\u2014 ' + escH(op.reason) + '</span>' : '') + '</span>'
+      + '</div>';
+  }).join('');
+}
+
 function toggleUserDetail(email) {
   const key = email.replace(/[^a-z0-9]/gi,'_');
-  const el = document.getElementById(`detail_${key}`);
+  const el = document.getElementById('detail_' + key);
   if (!el) return;
-  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
-
+  // Daca era deschis pe un tip anume sau complet, toggle
+  if (el.style.display !== 'none') { el.style.display = 'none'; el.dataset.activeType = ''; return; }
   const u = (_activityData?.users||[]).find(x => x.email === email);
   if (!u) return;
-
-  if (!u.ops.length) {
-    el.innerHTML = '<div style="font-size:.8rem;color:var(--muted);">Nicio operațiune în acest interval.</div>';
-    el.style.display = ''; return;
-  }
-
-  const rows = u.ops.map(op => {
-    const color = OP_COLORS[op.type] || '#9db0ff';
-    const icon  = OP_ICONS[op.type]  || '•';
-    const labelRO = OP_LABELS_RO[op.type] || escH(op.label);
-    const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    return `<div style="display:grid;grid-template-columns:110px 180px 1fr;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
-      <span style="font-size:.74rem;color:var(--muted);">${dt}</span>
-      <span style="font-size:.76rem;padding:2px 8px;border-radius:12px;background:${color}22;border:1px solid ${color}44;color:${color};">${icon} ${labelRO}</span>
-      <span style="font-size:.76rem;color:var(--sub);" title="${escH(op.flowId)}">${escH(op.docName)}${op.reason ? ` <span style="color:var(--muted);">— ${escH(op.reason)}</span>` : ''}</span>
-    </div>`;
-  }).join('');
-
-  el.innerHTML = rows;
+  el.innerHTML = _buildDetailRows(u.ops || [], null);
+  el.dataset.activeType = '';
   el.style.display = '';
 }
 
-// ── Export PDF per utilizator ─────────────────────────────────────────────
+function toggleUserDetailByType(email, type) {
+  const key = email.replace(/[^a-z0-9]/gi,'_');
+  const el = document.getElementById('detail_' + key);
+  if (!el) return;
+  const u = (_activityData?.users||[]).find(x => x.email === email);
+  if (!u) return;
+  // Daca deja afisat pe acelasi tip, inchide
+  if (el.style.display !== 'none' && el.dataset.activeType === type) { el.style.display = 'none'; el.dataset.activeType = ''; return; }
+  el.innerHTML = _buildDetailRows(u.ops || [], type);
+  el.dataset.activeType = type;
+  el.style.display = '';
+}
+
 function exportUserPDF(email) {
   const u = (_activityData?.users||[]).find(x => x.email === email);
   if (!u) return;
@@ -1645,10 +1650,8 @@ function exportUserPDF(email) {
   <div class="footer">Generat de DocFlowAI · ${new Date().toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'})}</div>
   </body></html>`;
 
-  const a = document.createElement('a');
-  a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
-  a.download = 'activitate_' + (u.name||u.email).replace(/[^a-zA-Z0-9]/g,'_') + '_' + from.replace(/\./g,'') + '_' + to.replace(/\./g,'') + '.html';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  const w = window.open('', '_blank');
+  if (w) { w.document.open(); w.document.write(html); w.document.close(); }
 }
 
 // ── Export HTML raport complet ─────────────────────────────────────────────
@@ -1699,10 +1702,8 @@ function exportActivityPDF() {
   <div class="footer">Generat de DocFlowAI · ${new Date().toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'})}</div>
   </body></html>`;
 
-  const a = document.createElement('a');
-  a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
-  a.download = 'raport_activitate_' + from.replace(/\./g,'') + '_' + to.replace(/\./g,'') + '.html';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  const w = window.open('', '_blank');
+  if (w) { w.document.open(); w.document.write(html); w.document.close(); }
 }
 
 
