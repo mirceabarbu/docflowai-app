@@ -905,9 +905,18 @@ th{ color: var(--sub) !important; }
           const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
           const allSigned = f.allSigned;
           const isRefused = (f.signers || []).some(s => s.status === "refused");
+          const isReviewRequested = f.status === "review_requested";
           // Verifica daca userul curent trebuie sa semneze
           const mySignerEntry = (f.signers || []).find(s => (s.email || "").toLowerCase() === currentUserEmail && s.status === "current");
-          const statusBadge = isRefused
+          // Verifica daca userul a trimis spre revizuire sau a semnat deja cand s-a cerut revizuire
+          const myReviewEntry = isReviewRequested && (
+            (f.reviewRequestedBy || "").toLowerCase() === currentUserEmail ||
+            (f.initEmail || "").toLowerCase() === currentUserEmail ||
+            (f.signers || []).some(s => (s.email||"").toLowerCase() === currentUserEmail && s.status === "signed")
+          );
+          const statusBadge = isReviewRequested
+            ? '<span style="background:rgba(250,180,0,.15);color:#ffd580;border:1px solid rgba(250,180,0,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">🔄 Spre revizuire</span>'
+            : isRefused
             ? '<span style="background:rgba(255,80,80,.15);color:#ffaaaa;border:1px solid rgba(255,80,80,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⛔ Refuzat</span>'
             : allSigned
             ? '<span style="background:rgba(45,212,191,.2);color:#7cf0e0;border:1px solid rgba(45,212,191,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">✓ Finalizat</span>'
@@ -945,7 +954,8 @@ th{ color: var(--sub) !important; }
                 <a href="/flow.html?flow=${f.flowId}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">🔍 Vezi flow</a>
                 ${dlBtn}
                 ${isRefused && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,200,50,.12);border:1px solid rgba(255,200,50,.35);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">🔄 Reinițiază</button>` : ''}
-                ${(f.initEmail||'').toLowerCase() === currentUserEmail && !f.allSigned && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Sterge flux">🗑</button>` : ''}
+                ${isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" style="background:rgba(250,180,0,.18);border:1px solid rgba(250,180,0,.4);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Doc revizuit</button>` : ''}
+                ${(f.initEmail||'').toLowerCase() === currentUserEmail && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Sterge flux">🗑</button>` : ''}
               </div>
             </div>
             <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
@@ -978,6 +988,46 @@ th{ color: var(--sub) !important; }
       alert("❌ " + (j.message || j.error || "Eroare la reinitiere"));
     }
   } catch(e) { alert("❌ " + e.message); }
+}
+
+// Modal incarcare document revizuit — cu verificare hash document original
+let _reviewUploadFlowId = null;
+function showReviewUploadModal(flowId) {
+  _reviewUploadFlowId = flowId;
+  document.getElementById("reviewUploadModal").style.display = "flex";
+  document.getElementById("reviewUploadFile").value = "";
+  document.getElementById("reviewUploadMsg").textContent = "";
+}
+function closeReviewUploadModal() {
+  document.getElementById("reviewUploadModal").style.display = "none";
+  _reviewUploadFlowId = null;
+}
+async function submitReviewUpload() {
+  const fileInp = document.getElementById("reviewUploadFile");
+  const msgEl = document.getElementById("reviewUploadMsg");
+  if (!fileInp.files[0]) { msgEl.textContent = "⚠️ Selectează un fișier PDF."; return; }
+  const file = fileInp.files[0];
+  if (!file.type.includes("pdf") && !file.name.endsWith(".pdf")) { msgEl.textContent = "⚠️ Selectează un fișier PDF valid."; return; }
+  msgEl.textContent = "⏳ Se procesează...";
+  try {
+    const pdfB64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(",")[1]);
+      r.onerror = () => rej(new Error("Eroare citire fișier"));
+      r.readAsDataURL(file);
+    });
+    const resp = await _apiFetch("/flows/" + encodeURIComponent(_reviewUploadFlowId) + "/reinitiate-review", {
+      method: "POST", body: JSON.stringify({ pdfB64 })
+    });
+    const j = await resp.json();
+    if (j.ok) {
+      closeReviewUploadModal();
+      alert("✅ Document revizuit încărcat! Fluxul a fost reinițiat (ID nou: " + j.newFlowId + ").");
+      loadMyFlows(_fluxPage);
+    } else {
+      msgEl.textContent = "❌ " + (j.message || j.error || "Eroare");
+    }
+  } catch(e) { msgEl.textContent = "❌ " + e.message; }
 }
 
 async function deleteFlow(flowId, docName) {
@@ -1430,5 +1480,19 @@ async function signFromFluxuri(flowId) {
       // ── End PDF.js renderer ────────────────────────────────────────────────
     </script>
   <script src="/notif-widget.js"></script>
+
+<!-- Modal incarcare document revizuit -->
+<div id="reviewUploadModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#0f1731;border:1px solid rgba(255,180,0,.3);border-radius:16px;padding:28px;width:100%;max-width:480px;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <h3 style="font-size:1rem;font-weight:700;color:#ffd580;margin-bottom:12px;">📤 Încarcă document revizuit</h3>
+    <p style="font-size:.83rem;color:rgba(205,216,255,.65);margin-bottom:16px;">Selectează documentul PDF revizuit. <strong style="color:#ffaaaa;">Nu poți re-încărca același fișier semnat inițial.</strong> Fluxul va fi reinițiat și toți semnatarii vor semna din nou.</p>
+    <input type="file" id="reviewUploadFile" accept=".pdf,application/pdf" style="width:100%;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,180,0,.3);border-radius:10px;color:#eaf0ff;font-size:.88rem;margin-bottom:12px;cursor:pointer;" />
+    <div id="reviewUploadMsg" style="font-size:.82rem;min-height:20px;margin-bottom:12px;color:#ffaaaa;"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="closeReviewUploadModal()" style="padding:8px 18px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:#9db0ff;border-radius:9px;font-size:.85rem;cursor:pointer;">Anulează</button>
+      <button onclick="submitReviewUpload()" style="padding:8px 22px;background:linear-gradient(135deg,rgba(250,180,0,.4),rgba(124,92,255,.4));border:1px solid rgba(250,180,0,.5);color:#ffd580;border-radius:9px;font-size:.85rem;font-weight:700;cursor:pointer;">✅ Trimite</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

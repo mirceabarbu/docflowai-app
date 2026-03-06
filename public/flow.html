@@ -394,20 +394,37 @@
     });
 
     const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    for(const e of evs){
+    // Grupăm: mai întâi evenimentele moștenite (din flux parinte), apoi cele curente
+    const inherited = evs.filter(e => e._inheritedFrom);
+    const current = evs.filter(e => !e._inheritedFrom);
+
+    const renderEv = (e, isInherited) => {
       const ts = prettyTs(e.at || e.ts || e.time || e.createdAt);
       const byRaw = e.who || e.actor || e.by || "";
       const who = nameMap[byRaw] ? esc(nameMap[byRaw]) : esc(byRaw);
       const kind = (e.type || e.kind || e.event || "EVENT").toString();
-      const extra = e.msg || e.message || e.detail || "";
+      const extra = e.msg || e.message || e.detail || e.reason || "";
       const line = [kind, who].filter(Boolean).join(' · ');
       const txt = extra ? `${line} — ${esc(extra)}` : line;
-
       const d = document.createElement("div");
       d.className = "ev";
+      if (isInherited) d.style.cssText = "opacity:.65;border-left:2px solid rgba(124,92,255,.35);padding-left:8px;";
       d.innerHTML = `<div class="ts">${ts}</div><div class="txt">${txt}</div>`;
       evBox.appendChild(d);
+    };
+
+    if (inherited.length) {
+      const sep = document.createElement("div");
+      sep.style.cssText = "font-size:.72rem;color:rgba(124,92,255,.6);padding:6px 0 4px;font-weight:600;letter-spacing:.05em;";
+      sep.textContent = "── FLUX PARINTE ────────────────────────";
+      evBox.appendChild(sep);
+      for (const e of inherited) renderEv(e, true);
+      const sep2 = document.createElement("div");
+      sep2.style.cssText = "font-size:.72rem;color:rgba(45,212,191,.6);padding:6px 0 4px;font-weight:600;letter-spacing:.05em;";
+      sep2.textContent = "── FLUX CURENT ─────────────────────────";
+      evBox.appendChild(sep2);
     }
+    for(const e of current) renderEv(e, false);
   }
 
   async function loadFlow(){
@@ -440,6 +457,7 @@
       if (!computedStatus || computedStatus === "active") {
         if (signers.length && signers.every(s => s.status === "signed")) computedStatus = "completed";
         else if (signers.some(s => s.status === "refused")) computedStatus = "refused";
+        else if (data.status === "review_requested") computedStatus = "review_requested";
         else if (signers.some(s => s.status === "signed" || s.status === "current")) computedStatus = "active";
         else computedStatus = "active";
       }

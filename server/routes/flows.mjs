@@ -728,7 +728,26 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     const { flowId } = req.params;
     const { pdfB64 } = req.body || {};
     if (!pdfB64 || typeof pdfB64 !== 'string') return res.status(400).json({ error: 'pdfB64_required' });
+    
+    // Calculăm hash-ul documentului uploadat
+    const rawPdf = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const uploadedHash = sha256Hex(rawPdf);
+    
     const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    
+    // Verificăm că nu se uploadează același document semnat deja
+    const existingHashes = new Set();
+    // Hash-ul PDF-ului original al fluxului curent
+    if (data.pdfB64) { const raw = data.pdfB64.includes(',') ? data.pdfB64.split(',')[1] : data.pdfB64; existingHashes.add(sha256Hex(raw)); }
+    // Hash-urile PDF-urilor semnate deja
+    if (data.signedPdfB64) { const raw = data.signedPdfB64.includes(',') ? data.signedPdfB64.split(',')[1] : data.signedPdfB64; existingHashes.add(sha256Hex(raw)); }
+    (data.signedPdfVersions || []).forEach(v => { if (v.pdfB64 || v.hash) existingHashes.add(v.hash || sha256Hex((v.pdfB64||'').includes(',') ? (v.pdfB64||'').split(',')[1] : (v.pdfB64||''))); });
+    (data.signers || []).forEach(s => { if (s.uploadedHash) existingHashes.add(s.uploadedHash); });
+    
+    if (existingHashes.has(uploadedHash)) {
+      return res.status(409).json({ error: 'same_document', message: 'Nu poți încărca același document care a fost semnat anterior. Uploadează documentul revizuit.' });
+    }
     if (!data) return res.status(404).json({ error: 'not_found' });
     const isAdmin = actor.role === 'admin';
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
@@ -775,7 +794,11 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
       updatedAt: newCreatedAt,
       parentFlowId: flowId,
       signedPdfB64: null, signedPdfUploadedAt: null, signedPdfUploadedBy: null, signedPdfVersions: [],
-      events: [{ at: newCreatedAt, type: 'FLOW_REINITIATED_AFTER_REVIEW', by: actor.email, fromFlowId: flowId, reviewReason: data.reviewReason }],
+      // Pastreaza istoricul complet al fluxului parinte + evenimentul de reinitiere
+      events: [
+        ...(data.events || []).map(e => ({ ...e, _inheritedFrom: flowId })),
+        { at: newCreatedAt, type: 'FLOW_REINITIATED_AFTER_REVIEW', by: actor.email, fromFlowId: flowId, reviewReason: data.reviewReason }
+      ],
     };
     await saveFlow(newFlowId2, newData);
 

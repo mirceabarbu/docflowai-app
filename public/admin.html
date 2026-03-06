@@ -8,7 +8,7 @@
     :root{--bg:#0b1020;--card:#0f1731;--muted:#9db0ff;--text:#eaf0ff;--sub:#cdd8ff;
       --line:rgba(255,255,255,.10);--accent:#7c5cff;--accent2:#2dd4bf;--radius:16px;}
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:system-ui,sans-serif;min-height:100vh;
+    body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh;
       background:radial-gradient(900px 500px at 18% 8%,rgba(124,92,255,.3),transparent 60%),
         radial-gradient(700px 450px at 82% 80%,rgba(45,212,191,.18),transparent 55%),var(--bg);
       color:var(--text);}
@@ -36,9 +36,17 @@
     input::placeholder{color:rgba(205,216,255,.35);}
     select option{background:var(--card);}
     .actions{margin-top:16px;display:flex;align-items:center;gap:10px;}
-    .btn{padding:9px 18px;border:none;border-radius:10px;font-size:.85rem;font-weight:600;cursor:pointer;transition:opacity .2s,transform .1s;}
+    /* Butoane — consistent cu restul aplicatiei */
+    .btn{display:inline-flex;align-items:center;gap:5px;padding:8px 16px;background:rgba(120,160,255,.22);border:1px solid rgba(120,160,255,.45);color:#e9eefc;border-radius:10px;font-size:.85rem;font-weight:500;cursor:pointer;transition:filter .15s,transform .1s;text-decoration:none;}
+    .btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
     .btn:active{transform:scale(.97);}
-    .btn-p{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;}
+    .btn.active{background:rgba(120,160,255,.35);border-color:rgba(120,160,255,.7);font-weight:600;}
+    .btn.secondary{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:var(--sub);}
+    .btn.secondary:hover{background:rgba(255,255,255,.13);filter:none;}
+    .btn.danger{background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.28);color:#ffaaaa;}
+    .btn.danger:hover{background:rgba(255,80,80,.25);filter:none;}
+    /* Clase vechi pastrate pentru compatibilitate */
+    .btn-p{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;}
     .btn-p:hover{opacity:.88;}
     .btn-s{background:rgba(255,255,255,.08);border:1px solid var(--line);color:var(--sub);}
     .btn-s:hover{background:rgba(255,255,255,.13);}
@@ -106,9 +114,9 @@
     <img src="/Logo.png" alt="DocFlowAI" style="height:87px;width:auto;object-fit:contain;" />
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
-    <a href="/" style="background:rgba(255,255,255,.06);color:#e9eefc;border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;text-decoration:none;font-size:.88rem;">📝 Flux nou</a>
-    <a href="/?tab=flows" style="background:rgba(255,255,255,.06);color:#e9eefc;border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;text-decoration:none;font-size:.88rem;">📂 Fluxuri mele</a>
-    <a href="/templates" style="background:rgba(255,255,255,.06);color:#e9eefc;border:1px solid rgba(255,255,255,.10);padding:8px 12px;border-radius:10px;text-decoration:none;font-size:.88rem;">📋 Șabloane</a>
+    <a href="/" class="btn" style="text-decoration:none;font-size:.88rem;">📝 Flux nou</a>
+    <a href="/?tab=flows" class="btn" style="text-decoration:none;font-size:.88rem;">📂 Fluxuri mele</a>
+    <a href="/templates" class="btn" style="text-decoration:none;font-size:.88rem;">📋 Șabloane</a>
     <span style="padding:8px 12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:10px;font-size:.85rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
   </div>
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
@@ -988,7 +996,7 @@ async function loadDbStats() {
   const el = document.getElementById("dbStats");
   const msg = document.getElementById("msgVacuum");
   try {
-    const r = await _apiFetch("/health", {headers: hdrs()});
+    const r = await _apiFetch("/admin/stats", {headers: hdrs()});
     const j = await r.json();
     const s = j.stats||{};
     el.style.display = "block";
@@ -1064,6 +1072,7 @@ fetch("/auth/me",{headers:hdrs()})
     if(hEl) hEl.textContent=u.nume||u.email||"—";
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
+    loadDbStats(); // auto-încarcă statistici DB
   })
   .catch(()=>logout());
 </script>

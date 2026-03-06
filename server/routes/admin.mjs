@@ -242,8 +242,10 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
     const eligible = rows.filter(r => {
       const d = r.data; if (!d) return false;
       const done = d.completed || (d.signers || []).every(s => s.status === 'signed');
-      const refused = (d.signers || []).some(s => s.status === 'refused');
-      if (!(done || refused) || d.storage === 'drive') return false;
+      const refused = (d.signers || []).some(s => s.status === 'refused') || d.status === 'refused';
+      const archived = d.storage === 'drive';
+      if (archived) return false;
+      if (!(done || refused)) return false;
       const u = userMap[(d.initEmail || '').toLowerCase()] || {};
       if (filterInst && (u.institutie || d.institutie || '') !== filterInst) return false;
       if (filterDept && (u.compartiment || d.compartiment || '') !== filterDept) return false;
@@ -279,10 +281,13 @@ router.post('/admin/flows/archive', async (req, res) => {
     const hasMore = start + BATCH_SIZE < flowIds.length;
     const results = [];
     for (const flowId of batch) {
+      let driveResult = null;
       try {
         const data = await getFlowData(flowId);
         if (!data) { results.push({ flowId, ok: false, error: 'not_found' }); continue; }
-        const driveResult = await archiveFlow(data);
+        // Skip deja arhivate
+        if (data.storage === 'drive') { results.push({ flowId, ok: true, skipped: true }); continue; }
+        driveResult = await archiveFlow(data);
         data.pdfB64 = null; data.signedPdfB64 = null; data.storage = 'drive';
         data.archivedAt = new Date().toISOString();
         data.driveFileIdFinal = driveResult.driveFileIdFinal || null;
@@ -296,6 +301,20 @@ router.post('/admin/flows/archive', async (req, res) => {
         console.log(`📦 Archived flow ${flowId} to Drive`);
       } catch(e) {
         console.error(`📦 Archive error ${flowId}:`, e.message);
+        // Daca Drive upload a reusit dar saveFlow a esuat, marcam oricum cu Drive IDs
+        if (driveResult) {
+          try {
+            const data2 = await getFlowData(flowId);
+            if (data2 && data2.storage !== 'drive') {
+              data2.storage = 'drive'; data2.archivedAt = new Date().toISOString();
+              data2.pdfB64 = null; data2.signedPdfB64 = null;
+              Object.assign(data2, driveResult);
+              await saveFlow(flowId, data2);
+              results.push({ flowId, ok: true, warning: 'Drive OK, DB save retry reusit: ' + e.message });
+              continue;
+            }
+          } catch(e2) { console.error(`Archive retry save error ${flowId}:`, e2.message); }
+        }
         results.push({ flowId, ok: false, error: String(e.message || e) });
       }
     }
@@ -392,7 +411,7 @@ router.post('/smtp-test', async (req, res) => {
 });
 
 router.get('/health', async (req, res) => {
-  const base = { ok: true, service: 'DocFlowAI', version: '3.2.1', dbReady: DB_READY, dbLastError: DB_LAST_ERROR, wsClients: _wsClientsSize(), ts: new Date().toISOString() };
+  const base = { ok: true, service: 'DocFlowAI', version: '3.2.2', dbReady: DB_READY, dbLastError: DB_LAST_ERROR, wsClients: _wsClientsSize(), ts: new Date().toISOString() };
   if (!pool || !DB_READY) return res.json(base);
   try {
     const [flowsR, usersR, notifsR, archR] = await Promise.all([
@@ -403,6 +422,22 @@ router.get('/health', async (req, res) => {
     const sizeR = await pool.query('SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size, pg_database_size(current_database()) AS db_bytes');
     return res.json({ ...base, stats: { flows: parseInt(flowsR.rows[0].count), flowsArchived: parseInt(archR.rows[0].count), users: parseInt(usersR.rows[0].count), unreadNotifications: parseInt(notifsR.rows[0].count), dbSize: sizeR.rows[0].db_size, dbBytes: parseInt(sizeR.rows[0].db_bytes) } });
   } catch(e) { return res.json({ ...base, statsError: e.message }); }
+});
+
+// Alias explicit cu auth pentru admin stats
+router.get('/admin/stats', async (req, res) => {
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!pool || !DB_READY) return res.json({ ok: false, error: 'db_not_ready' });
+  try {
+    const [flowsR, usersR, notifsR, archR] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM flows'), pool.query('SELECT COUNT(*) FROM users'),
+      pool.query('SELECT COUNT(*) FROM notifications WHERE read=FALSE'),
+      pool.query("SELECT COUNT(*) FROM flows WHERE data->>'storage'='drive'"),
+    ]);
+    const sizeR = await pool.query('SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size, pg_database_size(current_database()) AS db_bytes');
+    return res.json({ ok: true, stats: { flows: parseInt(flowsR.rows[0].count), flowsArchived: parseInt(archR.rows[0].count), users: parseInt(usersR.rows[0].count), unreadNotifications: parseInt(notifsR.rows[0].count), dbSize: sizeR.rows[0].db_size, dbBytes: parseInt(sizeR.rows[0].db_bytes) } });
+  } catch(e) { return res.status(500).json({ error: e.message }); }
 });
 
 // ── GET /admin/flows/:flowId/audit — export audit log ─────────────────────
@@ -423,6 +458,8 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       createdAt: data.createdAt, updatedAt: data.updatedAt,
       completed: !!data.completed, completedAt: data.completedAt || null,
       status: data.status || 'active', storage: data.storage || 'db',
+      parentFlowId: data.parentFlowId || null,
+      reviewReason: data.reviewReason || null,
       signers: (data.signers || []).map(s => ({
         order: s.order, name: s.name, email: s.email, rol: s.rol,
         functie: s.functie || '', compartiment: s.compartiment || '',
@@ -470,29 +507,31 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       const { PDFDocument, rgb, StandardFonts } = PDFLibAdmin;
       const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
       const ro = t => String(t || '').split('').map(ch => diacr[ch] || ch).join('');
+      // Format date cu timezone Romania
+      const fmtDate = iso => iso ? new Date(iso).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—';
       const pdfDoc = await PDFDocument.create();
       const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const PAGE_W = 595, PAGE_H = 842, MARGIN = 50;
       let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
       let y = PAGE_H - MARGIN;
-      const LINE_H = 14, SECTION_GAP = 10;
+      const LINE_H = 13, SECTION_GAP = 10;
       const newPage = () => { page = pdfDoc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN; };
       const ensureSpace = (needed) => { if (y < MARGIN + needed) newPage(); };
       const drawText = (text, x, size, font, color) => {
-        ensureSpace(size + 4);
+        ensureSpace(size + 6);
         page.drawText(ro(text), { x, y, size, font: font || fontR, color: color || rgb(0.2,0.2,0.2), maxWidth: PAGE_W - x - MARGIN });
-        y -= size + 4;
+        y -= size + 6;
       };
       const drawLine = () => {
-        ensureSpace(6);
+        ensureSpace(8);
         page.drawLine({ start:{x:MARGIN,y:y+4}, end:{x:PAGE_W-MARGIN,y:y+4}, thickness:0.5, color:rgb(0.75,0.75,0.75) });
-        y -= 6;
+        y -= 8;
       };
       page.drawRectangle({ x:0, y:PAGE_H-70, width:PAGE_W, height:70, color:rgb(0.1,0.1,0.25) });
       page.drawText('AUDIT LOG', { x:MARGIN, y:PAGE_H-35, size:20, font:fontB, color:rgb(1,1,1) });
       page.drawText(ro('DocFlowAI — document de trasabilitate'), { x:MARGIN, y:PAGE_H-52, size:9, font:fontR, color:rgb(0.7,0.8,1) });
-      page.drawText(ro(`Generat: ${new Date().toLocaleString('ro-RO')}`), { x:PAGE_W-200, y:PAGE_H-35, size:9, font:fontR, color:rgb(0.7,0.8,1) });
+      page.drawText(ro(`Generat: ${fmtDate(new Date().toISOString())}`), { x:PAGE_W-200, y:PAGE_H-35, size:9, font:fontR, color:rgb(0.7,0.8,1) });
       y = PAGE_H - 85;
       drawText('INFORMATII FLUX', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
@@ -500,44 +539,91 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         ['Flow ID:', audit.flowId], ['Document:', audit.docName],
         ['Initiator:', `${audit.initName} <${audit.initEmail}>`],
         ['Institutie:', audit.institutie || '—'], ['Compartiment:', audit.compartiment || '—'],
-        ['Creat:', audit.createdAt ? new Date(audit.createdAt).toLocaleString('ro-RO') : '—'],
-        ['Status:', audit.status + (audit.completed ? ' (FINALIZAT)' : '') + (audit.completedAt ? ' la ' + new Date(audit.completedAt).toLocaleString('ro-RO') : '')],
+        ['Creat:', fmtDate(audit.createdAt)],
+        ['Status:', audit.status + (audit.completed ? ' (FINALIZAT)' : '') + (audit.completedAt ? ' la ' + fmtDate(audit.completedAt) : '')],
       ];
       for (const [lbl, val] of infoRows) {
         ensureSpace(18);
         page.drawText(ro(lbl), { x:MARGIN, y, size:9, font:fontB, color:rgb(0.3,0.3,0.3) });
         page.drawText(ro(String(val||'—')), { x:MARGIN+100, y, size:9, font:fontR, color:rgb(0.15,0.15,0.15), maxWidth:PAGE_W-MARGIN-110 });
-        y -= 14;
+        y -= 16;
       }
       y -= SECTION_GAP;
       drawText('SEMNATARI', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
       for (const s of audit.signers) {
-        ensureSpace(50);
+        ensureSpace(60);
         const statusColor = s.status==='signed' ? rgb(0,0.5,0.3) : s.status==='refused' ? rgb(0.7,0.1,0.1) : rgb(0.4,0.4,0.4);
         page.drawText(ro(`${s.order}. ${s.name} — ${s.rol}`), { x:MARGIN, y, size:9, font:fontB, color:rgb(0.1,0.1,0.1), maxWidth:300 });
         page.drawText(ro(s.status.toUpperCase()), { x:PAGE_W-MARGIN-80, y, size:9, font:fontB, color:statusColor });
-        y -= 13;
+        y -= 15;
         page.drawText(ro(s.email), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.4,0.4) });
         if (s.functie) page.drawText(ro(s.functie), { x:MARGIN+220, y, size:8, font:fontR, color:rgb(0.5,0.5,0.5) });
-        y -= 12;
-        if (s.signedAt) { page.drawText(ro(`Semnat: ${new Date(s.signedAt).toLocaleString('ro-RO')}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0,0.4,0.2) }); y -= 12; }
-        if (s.refuseReason) { page.drawText(ro(`Refuz: ${s.refuseReason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.7,0.1,0.1), maxWidth:PAGE_W-MARGIN-30 }); y -= 12; }
-        if (s.delegatedFrom) { page.drawText(ro(`Delegat de: ${s.delegatedFrom.email} — ${s.delegatedFrom.reason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN-30 }); y -= 12; }
-        y -= 4;
+        y -= 13;
+        if (s.signedAt) { page.drawText(ro(`Semnat: ${fmtDate(s.signedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0,0.4,0.2) }); y -= 13; }
+        if (s.refuseReason) { page.drawText(ro(`Refuz: ${s.refuseReason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.7,0.1,0.1), maxWidth:PAGE_W-MARGIN-30 }); y -= 13; }
+        if (s.delegatedFrom) { page.drawText(ro(`Delegat de: ${s.delegatedFrom.email} — ${s.delegatedFrom.reason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN-30 }); y -= 13; }
+        y -= 6;
       }
       y -= SECTION_GAP;
+      // Calcul timp de procesare per semnatar
+      const timeRows = [];
+      for (let i = 0; i < audit.signers.length; i++) {
+        const s = audit.signers[i];
+        const notifEv = (audit.events || []).find(e => e.type === 'YOUR_TURN' && e.to === s.email || (e.type === 'FLOW_CREATED' && i === 0));
+        // Gaseste evenimentul de notificare YOUR_TURN pentru semnatarul curent
+        const yourTurnEv = (audit.events || []).filter(e => e.type === 'YOUR_TURN' && (e.signerEmail === s.email || (i === 0 && e.type === 'FLOW_CREATED')));
+        const sentAt = yourTurnEv.length ? yourTurnEv[0].at : (i === 0 ? audit.createdAt : null);
+        if (sentAt && s.signedAt) {
+          const diffMs = new Date(s.signedAt) - new Date(sentAt);
+          const diffH = Math.floor(diffMs / 3600000);
+          const diffM = Math.floor((diffMs % 3600000) / 60000);
+          const durStr = diffH > 0 ? `${diffH}h ${diffM}min` : `${diffM}min`;
+          timeRows.push(`${s.order}. ${ro(s.name||s.email)} [${ro(s.rol||'')}]: semnat in ${durStr} de la trimitere`);
+        }
+      }
+      if (timeRows.length) {
+        drawText('TIMPI DE PROCESARE', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
+        drawLine();
+        for (const t of timeRows) {
+          ensureSpace(16);
+          page.drawText(ro(t), { x:MARGIN, y, size:8, font:fontR, color:rgb(0.3,0.3,0.3), maxWidth:PAGE_W-MARGIN*2 });
+          y -= 13;
+        }
+        y -= SECTION_GAP;
+      }
       drawText(`JURNAL EVENIMENTE (${audit.events.length})`, MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
-      for (const e of audit.events) {
-        ensureSpace(16);
-        const ts = e.at ? new Date(e.at).toLocaleString('ro-RO') : '';
-        const detail = [e.by ? `by:${e.by}` : '', e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `to:${e.to}` : ''].filter(Boolean).join('  ');
-        page.drawText(ro(`[${ts}]`), { x:MARGIN, y, size:7.5, font:fontR, color:rgb(0.5,0.5,0.5) });
-        page.drawText(ro(e.type), { x:MARGIN+120, y, size:7.5, font:fontB, color:rgb(0.2,0.2,0.5) });
-        if (detail) page.drawText(ro(detail), { x:MARGIN+200, y, size:7.5, font:fontR, color:rgb(0.4,0.4,0.4), maxWidth:PAGE_W-MARGIN-210 });
-        y -= LINE_H;
+      if (audit.parentFlowId) {
+        ensureSpace(14);
+        page.drawText(ro(`[Flux parinte: ${audit.parentFlowId}]`), { x:MARGIN, y, size:7.5, font:fontR, color:rgb(0.4,0.2,0.6) });
+        y -= 12;
       }
+      const inheritedEvs = audit.events.filter(e => e._inheritedFrom);
+      const currentEvs = audit.events.filter(e => !e._inheritedFrom);
+      const renderEvent = (e, dimmed) => {
+        const detail = [e.by ? `by:${e.by}` : '', e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `to:${e.to}` : ''].filter(Boolean).join('  ');
+        const neededH = detail ? 26 : 14;
+        ensureSpace(neededH + 4);
+        const ts = e.at ? fmtDate(e.at) : '';
+        const tsWidth = 115, typeWidth = 160;
+        const dimColor = dimmed ? rgb(0.6,0.6,0.6) : rgb(0.5,0.5,0.5);
+        const typeColor = dimmed ? rgb(0.5,0.5,0.65) : rgb(0.2,0.2,0.5);
+        page.drawText(ro(`[${ts}]`), { x:MARGIN, y, size:7.5, font:fontR, color:dimColor });
+        page.drawText(ro(e.type||''), { x:MARGIN+tsWidth, y, size:7.5, font:fontB, color:typeColor });
+        if (detail) {
+          page.drawText(ro(detail), { x:MARGIN+tsWidth+typeWidth, y, size:7.5, font:fontR, color:dimColor, maxWidth:PAGE_W-MARGIN-(tsWidth+typeWidth)-MARGIN });
+        }
+        y -= LINE_H;
+      };
+      if (inheritedEvs.length) {
+        ensureSpace(14);
+        page.drawText(ro('---- FLUX PARINTE ----'), { x:MARGIN, y, size:7.5, font:fontB, color:rgb(0.4,0.2,0.6) }); y -= 12;
+        for (const e of inheritedEvs) renderEvent(e, true);
+        ensureSpace(14);
+        page.drawText(ro('---- FLUX CURENT ----'), { x:MARGIN, y, size:7.5, font:fontB, color:rgb(0.1,0.4,0.4) }); y -= 12;
+      }
+      for (const e of currentEvs) renderEvent(e, false);
       const pageCount = pdfDoc.getPageCount();
       for (let i = 0; i < pageCount; i++) {
         const pg = pdfDoc.getPage(i);
