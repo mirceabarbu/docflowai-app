@@ -1534,7 +1534,7 @@ function exportUserPDF(email) {
     <tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:#999;">Nicio operațiune în acest interval.</td></tr>'}</tbody>
   </table>
   <div class="footer">Generat de DocFlowAI · ${new Date().toLocaleString('ro-RO', {timeZone:'Europe/Bucharest'})}</div>
-  <script>window.onload = () => { window.print(); }<\/script>
+  <script>window.onload = () => { window.print(); }\x3C/script>
   </body></html>`;
 
   const w = window.open('', '_blank');
@@ -1592,7 +1592,7 @@ function exportActivityPDF() {
   <div class="sub">Interval: <strong>${from} — ${to}</strong> &nbsp;|&nbsp; ${users.length} utilizator(i) cu activitate</div>
   ${userSections || '<p style="color:#999;text-align:center;">Nicio activitate în acest interval.</p>'}
   <div class="footer">Generat de DocFlowAI · ${new Date().toLocaleString('ro-RO', {timeZone:'Europe/Bucharest'})}</div>
-  <script>window.onload = () => { window.print(); }<\/script>
+  <script>window.onload = () => { window.print(); }\x3C/script>
   </body></html>`;
 
   const w = window.open('', '_blank');
@@ -1617,6 +1617,7 @@ async function exportActivityCSV() {
   a.href = URL.createObjectURL(blob);
   a.download = `activitate_utilizatori_${from}_${to}.csv`;
   a.click();
+}
 
 </script>
 <script src="/notif-widget.js"></script>
