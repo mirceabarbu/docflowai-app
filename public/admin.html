@@ -1241,7 +1241,7 @@ function initActivityReport() {
   $('rptTo').value = today.toISOString().slice(0,10);
   $('rptFrom').value = firstOfMonth.toISOString().slice(0,10);
   // Populăm dropdown-ul cu utilizatori
-  apiFetch('/admin/users').then(r => r.json()).then(data => {
+  _apiFetch('/admin/users').then(r => r.json()).then(data => {
     const sel = $('rptUser');
     (data.users || data || []).forEach(u => {
       const opt = document.createElement('option');
@@ -1263,7 +1263,7 @@ async function loadActivityReport() {
   try {
     const params = new URLSearchParams({ from, to });
     if (email) params.set('email', email);
-    const r = await apiFetch(`/admin/user-activity?${params}`);
+    const r = await _apiFetch(`/admin/user-activity?${params}`);
     const data = await r.json();
     _activityData = data;
     renderActivityReport(data);
