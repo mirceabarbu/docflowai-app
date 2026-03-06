@@ -284,6 +284,10 @@ const MIGRATIONS = [
   {
     id: '012_notifications_urgent',
     sql: `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS urgent BOOLEAN NOT NULL DEFAULT FALSE;`
+  },
+  {
+    id: '013_ensure_admin_role',
+    sql: `UPDATE users SET role='admin' WHERE email='admin@docflowai.ro' AND role != 'admin';`
   }
 ];
 
@@ -338,6 +342,18 @@ async function initDbOnce() {
     );
     console.log('✅ Admin user creat.');
   }
+
+  // Recuperare de urgență: dacă nu există NICIUN admin în sistem,
+  // promovează admin@docflowai.ro (fără să forțeze rolul dacă există deja alți admini)
+  const { rows: admins } = await pool.query("SELECT id FROM users WHERE role='admin' LIMIT 1");
+  if (admins.length === 0) {
+    const { rowCount } = await pool.query(
+      "UPDATE users SET role='admin' WHERE lower(email)='admin@docflowai.ro'"
+    );
+    if (rowCount > 0) console.log('✅ Recuperare urgență: admin@docflowai.ro promovat la admin (niciun alt admin în sistem).');
+    else console.warn('⚠️  Niciun admin în sistem și admin@docflowai.ro nu există!');
+  }
+
   DB_READY = true; DB_LAST_ERROR = null;
   console.log('✅ DB ready.');
 }

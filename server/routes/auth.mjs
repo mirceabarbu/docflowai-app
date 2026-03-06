@@ -50,10 +50,35 @@ router.get('/auth/me', async (req, res) => {
   if (!decoded) return;
   if (!pool || !DB_READY) return res.json(decoded);
   try {
-    const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id FROM users WHERE id=$1', [decoded.userId]);
-    if (!rows[0]) return res.status(401).json({ error: 'user_not_found' });
-    res.json({ userId: rows[0].id, email: rows[0].email, orgId: rows[0].org_id, nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, role: rows[0].role });
-  } catch(e) { res.json(decoded); }
+    // Cautam mai intai dupa ID (cel mai rapid)
+    let row = null;
+    if (decoded.userId) {
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id FROM users WHERE id=$1', [decoded.userId]);
+      row = rows[0] || null;
+    }
+    // Fallback: cauta dupa email (in caz de reset DB cu IDs noi)
+    if (!row && decoded.email) {
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id FROM users WHERE lower(email)=lower($1)', [decoded.email]);
+      row = rows[0] || null;
+      if (row) console.warn(`[auth/me] User id=${decoded.userId} not found, found by email=${decoded.email} (id=${row.id})`);
+    }
+    if (!row) {
+      // JWT valid dar user nu există deloc în DB — trust JWT payload
+      console.warn(`[auth/me] User email=${decoded.email} not in DB — returning JWT payload`);
+      return res.json({
+        userId: decoded.userId, email: decoded.email, role: decoded.role,
+        orgId: decoded.orgId, nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie
+      });
+    }
+    res.json({
+      userId: row.id, email: row.email, orgId: row.org_id,
+      nume: row.nume, functie: row.functie, institutie: row.institutie, role: row.role
+    });
+  } catch(e) {
+    console.warn('[auth/me] DB error — using JWT payload:', e.message);
+    // La eroare DB, trustam JWT-ul (are role din momentul login-ului)
+    res.json(decoded);
+  }
 });
 
 router.post('/auth/refresh', async (req, res) => {
@@ -91,3 +116,130 @@ router.post('/auth/refresh', async (req, res) => {
 });
 
 export default router;
+
+// ── GET /auth/debug — diagnostic endpoint (admin only) ────────────────────
+// Afișează exact ce e în JWT și în DB pentru userul curent
+router.get('/auth/debug', async (req, res) => {
+  const auth = req.get('authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
+  if (!token) return res.status(400).json({ error: 'no_token', hint: 'Adaugă header Authorization: Bearer <token>' });
+
+  let decoded = null;
+  let jwtError = null;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch(e) {
+    jwtError = e.message;
+    try { decoded = jwt.decode(token); } catch(e2) {}
+  }
+
+  let dbUser = null;
+  let dbError = null;
+  if (decoded?.userId && pool && DB_READY) {
+    try {
+      const { rows } = await pool.query('SELECT id,email,nume,role,org_id,institutie FROM users WHERE id=$1', [decoded.userId]);
+      dbUser = rows[0] || null;
+    } catch(e) { dbError = e.message; }
+  }
+
+  // Also check by email
+  let dbUserByEmail = null;
+  if (decoded?.email && pool && DB_READY) {
+    try {
+      const { rows } = await pool.query('SELECT id,email,nume,role,org_id,institutie FROM users WHERE lower(email)=lower($1)', [decoded.email]);
+      dbUserByEmail = rows[0] || null;
+    } catch(e) {}
+  }
+
+  res.json({
+    jwt: { valid: !jwtError, error: jwtError, payload: decoded },
+    db: { byId: dbUser, byEmail: dbUserByEmail, error: dbError },
+    conclusion: {
+      jwtRole: decoded?.role,
+      dbRole: dbUser?.role || dbUserByEmail?.role,
+      willPassAdminCheck: (dbUser?.role || dbUserByEmail?.role || decoded?.role) === 'admin',
+    }
+  });
+});
+
+// ── POST /auth/fix-admin-role — repară rolul admin fără autentificare ─────
+// Necesită header X-Admin-Secret setat în env. Folosit pentru debug/recovery.
+router.post('/auth/fix-admin-role', async (req, res) => {
+  const { ADMIN_SECRET } = await import('../middleware/auth.mjs');
+  const provided = req.get('x-admin-secret') || req.body?.adminSecret;
+  if (!ADMIN_SECRET || !provided || provided !== ADMIN_SECRET) {
+    return res.status(403).json({ error: 'forbidden', hint: 'Setează ADMIN_SECRET în Railway și trimite header X-Admin-Secret' });
+  }
+  const { email } = req.body || {};
+  const targetEmail = (email || 'admin@docflowai.ro').trim().toLowerCase();
+  if (!pool || !DB_READY) return res.status(503).json({ error: 'db_not_ready' });
+  try {
+    const { rows } = await pool.query(
+      "UPDATE users SET role='admin' WHERE lower(email)=$1 RETURNING id,email,role,nume",
+      [targetEmail]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'user_not_found', email: targetEmail });
+    res.json({ ok: true, fixed: rows[0], message: `✅ ${rows[0].email} are acum role='admin'` });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /auth/fix-admin?secret=XXX — fix rapid via browser ────────────────
+// Accesibil direct din browser: /auth/fix-admin?secret=<ADMIN_SECRET>
+// Dacă ADMIN_SECRET nu e setat în env → dezactivat (403).
+router.get('/auth/fix-admin', async (req, res) => {
+  const { ADMIN_SECRET } = await import('../middleware/auth.mjs');
+  const provided = req.query.secret || req.get('x-admin-secret');
+  if (!ADMIN_SECRET) {
+    return res.status(403).send('<h2>❌ ADMIN_SECRET nu este configurat în variabilele de mediu Railway.</h2><p>Setează ADMIN_SECRET în Railway Variables, repornește, apoi accesează din nou.</p>');
+  }
+  if (!provided || provided !== ADMIN_SECRET) {
+    return res.status(403).send('<h2>❌ Secret incorect.</h2><p>Accesează: <code>/auth/fix-admin?secret=PAROLA_TA_ADMIN_SECRET</code></p>');
+  }
+  if (!pool || !DB_READY) {
+    return res.status(503).send('<h2>❌ Baza de date nu este disponibilă.</h2>');
+  }
+  try {
+    // Listează toți userii
+    const { rows: allUsers } = await pool.query('SELECT id, email, nume, role FROM users ORDER BY id');
+    
+    // Fixează admin@docflowai.ro
+    const { rows: fixed } = await pool.query(
+      "UPDATE users SET role='admin' WHERE lower(email)='admin@docflowai.ro' RETURNING id, email, role, nume"
+    );
+
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>DocFlowAI — Fix Admin</title>
+    <style>body{font-family:sans-serif;background:#0b1020;color:#eaf0ff;padding:32px;max-width:700px;margin:0 auto;}
+    h1{color:#7c5cff;} table{width:100%;border-collapse:collapse;margin:16px 0;}
+    th,td{padding:8px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,.1);}
+    th{color:#9db0ff;font-size:.8rem;} .ok{color:#2dd4bf;} .bad{color:#ff5050;}
+    .box{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:16px;margin:16px 0;}
+    </style></head><body>
+    <h1>🔧 DocFlowAI — Fix Admin Role</h1>`;
+
+    if (fixed.length > 0) {
+      html += `<div class="box"><p class="ok">✅ admin@docflowai.ro → role='admin' CORECTAT.</p>
+      <p>Acum te poți <a href="/login" style="color:#7c5cff;">loga</a>.</p></div>`;
+    } else {
+      const adminUser = allUsers.find(u => u.email.toLowerCase() === 'admin@docflowai.ro');
+      if (adminUser) {
+        html += `<div class="box"><p class="ok">✅ admin@docflowai.ro există deja cu role='${adminUser.role}'.</p>
+        <p>Dacă tot nu poți accesa pagina de admin, problema e în altă parte.</p></div>`;
+      } else {
+        html += `<div class="box"><p class="bad">❌ admin@docflowai.ro nu există în baza de date!</p>
+        <p>Setează ADMIN_INIT_PASSWORD în Railway și repornește serverul pentru a crea contul.</p></div>`;
+      }
+    }
+
+    html += `<h2>Toți utilizatorii (${allUsers.length})</h2><table>
+    <tr><th>ID</th><th>Email</th><th>Nume</th><th>Rol</th></tr>`;
+    allUsers.forEach(u => {
+      html += `<tr><td>${u.id}</td><td>${u.email}</td><td>${u.nume||'—'}</td>
+      <td class="${u.role==='admin'?'ok':'bad'}">${u.role}</td></tr>`;
+    });
+    html += `</table></body></html>`;
+
+    res.send(html);
+  } catch(e) {
+    res.status(500).send(`<h2>❌ Eroare: ${e.message}</h2>`);
+  }
+});

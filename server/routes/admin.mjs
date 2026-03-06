@@ -776,7 +776,7 @@ router.get('/admin/user-activity', async (req, res) => {
     const emailFilter = (req.query.email || '').toLowerCase().trim();
 
     // Toti utilizatorii din sistem
-    const { rows: userRows } = await pool.query('SELECT email, name, institutie, compartiment, role FROM users ORDER BY name');
+    const { rows: userRows } = await pool.query('SELECT email, nume, institutie, compartiment, role FROM users ORDER BY nume');
 
     // Toate fluxurile din perioada
     const { rows: flowRows } = await pool.query(
@@ -837,7 +837,7 @@ router.get('/admin/user-activity', async (req, res) => {
       const email = u.email.toLowerCase();
       const act = activity[email] || { ops: [], counts: {} };
       return {
-        email: u.email, name: u.name || u.email, institutie: u.institutie,
+        email: u.email, name: u.nume || u.email, institutie: u.institutie,
         compartiment: u.compartiment, role: u.role,
         totalOps: act.ops.length, counts: act.counts, ops: act.ops,
       };
