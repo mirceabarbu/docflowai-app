@@ -197,6 +197,67 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
 });
 
 // ── Flows admin ────────────────────────────────────────────────────────────
+// ── GET /admin/flows/clean-preview — preview fluxuri ce vor fi șterse ─────
+router.get('/admin/flows/clean-preview', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const days = parseInt(req.query.days || '30');
+    const filterInst = (req.query.institutie || '').trim();
+    const filterDept = (req.query.compartiment || '').trim();
+    const all = req.query.all === 'true';
+
+    const { rows: userRows } = await pool.query('SELECT email,institutie,compartiment FROM users');
+    const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
+
+    let rows;
+    if (all) {
+      const { rows: r } = await pool.query('SELECT id,data,created_at FROM flows ORDER BY created_at DESC');
+      rows = r;
+    } else {
+      const { rows: r } = await pool.query(
+        "SELECT id,data,created_at FROM flows WHERE created_at < NOW() - ($1 || ' days')::INTERVAL ORDER BY created_at DESC",
+        [days]
+      );
+      rows = r;
+    }
+
+    const eligible = rows.filter(r => {
+      const d = r.data || {};
+      const u = userMap[(d.initEmail || '').toLowerCase()] || {};
+      if (filterInst && (u.institutie || d.institutie || '') !== filterInst) return false;
+      if (filterDept && (u.compartiment || d.compartiment || '') !== filterDept) return false;
+      return true;
+    });
+
+    const totalBytes = eligible.reduce((acc, r) => {
+      const d = r.data || {};
+      return acc + (d.pdfB64 ? Math.round(d.pdfB64.length * 0.75) : 0) + (d.signedPdfB64 ? Math.round(d.signedPdfB64.length * 0.75) : 0);
+    }, 0);
+
+    return res.json({
+      count: eligible.length,
+      totalMB: Math.round(totalBytes / 1024 / 1024 * 100) / 100,
+      flows: eligible.slice(0, 200).map(r => {  // max 200 in preview
+        const d = r.data || {};
+        const u = userMap[(d.initEmail || '').toLowerCase()] || {};
+        const status = d.completed ? 'finalizat' : d.status === 'refused' ? 'refuzat' : d.status === 'review_requested' ? 'revizuire' : d.storage === 'drive' ? 'arhivat' : 'activ';
+        return {
+          flowId: d.flowId, docName: d.docName || '—',
+          initEmail: d.initEmail || '—', initName: d.initName || '—',
+          createdAt: d.createdAt || r.created_at, status,
+          storage: d.storage || 'db',
+          sizeMB: Math.round(((d.pdfB64?.length||0) + (d.signedPdfB64?.length||0)) * 0.75 / 1024 / 1024 * 100) / 100,
+          institutie: u.institutie || d.institutie || '',
+          compartiment: u.compartiment || d.compartiment || '',
+        };
+      })
+    });
+  } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
+});
+
+
 router.post('/admin/flows/clean', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -287,6 +348,13 @@ router.post('/admin/flows/archive', async (req, res) => {
         if (!data) { results.push({ flowId, ok: false, error: 'not_found' }); continue; }
         // Skip deja arhivate
         if (data.storage === 'drive') { results.push({ flowId, ok: true, skipped: true }); continue; }
+        // Skip daca nu are niciun PDF (flux gol/corupt) — marcam arhivat direct
+        if (!data.pdfB64 && !data.signedPdfB64) {
+          data.storage = 'drive'; data.archivedAt = new Date().toISOString();
+          await saveFlow(flowId, data);
+          results.push({ flowId, ok: true, warning: 'No PDF available — marked archived without Drive upload' });
+          continue;
+        }
         driveResult = await archiveFlow(data);
         data.pdfB64 = null; data.signedPdfB64 = null; data.storage = 'drive';
         data.archivedAt = new Date().toISOString();
