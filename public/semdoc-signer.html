@@ -202,6 +202,10 @@ th{ color: var(--sub) !important; }
         <div id="err" class="box hidden" style="border-color: rgba(255,90,120,.35);"></div>
 
         <div id="content">
+          <div id="urgentBanner" style="display:none;background:rgba(255,40,40,.18);border:1px solid rgba(255,40,40,.5);border-radius:10px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px;animation:pulse-urgent 1.5s ease-in-out infinite;">
+            <span style="font-size:1.3rem;">🚨</span>
+            <span style="font-weight:800;color:#ff8888;font-size:.95rem;letter-spacing:.03em;">DOCUMENT URGENT — Te rugăm să semnezi cu prioritate!</span>
+          </div>
           <div class="row" style="justify-content: space-between;">
             <div>
               <div class="muted">Document</div>
@@ -391,6 +395,9 @@ th{ color: var(--sub) !important; }
           if (signerIndex === -1) throw new Error("Token invalid (nu corespunde niciunui semnatar).");
 
           $("docName").textContent = j.docName || "—";
+          // URGENT banner
+          const urgentBanner = $("urgentBanner");
+          if (urgentBanner) { urgentBanner.style.display = j.urgent ? "flex" : "none"; }
 
           // Flux refuzat — afișează mesaj clar și blochează tot
           if (j.status === "refused" || (j.signers||[]).some(s => s.status === "refused")) {

@@ -88,6 +88,7 @@
     .badge.ok{border-color:rgba(38,208,124,.45); background:rgba(38,208,124,.10)}
     .badge.warn{border-color:rgba(255,176,32,.45); background:rgba(255,176,32,.10)}
     .badge.bad{border-color:rgba(255,77,90,.45); background:rgba(255,77,90,.10)}
+    @keyframes pulse-urgent { 0%,100%{box-shadow:0 0 0 0 rgba(255,40,40,.4);} 50%{box-shadow:0 0 0 5px rgba(255,40,40,0);} }
     .sep{height:1px;background:rgba(255,255,255,.10);margin:12px 0}
     .kv{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
     .list{display:flex;flex-direction:column;gap:10px;margin-top:10px}
@@ -169,6 +170,7 @@
           <div class="row">
             <h3 style="margin:0">Detalii</h3>
             <span class="badge" id="badgeStatus">—</span>
+            <span id="badgeUrgent" style="display:none;background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>
           </div>
           <div class="kv">
             <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
@@ -442,6 +444,9 @@
       const data = j.data || j;
 
       $("docName").textContent = (data.docName || data.documentName || data.name || data.title || "—");
+      // URGENT badge
+      const badgeUrgent = $("badgeUrgent");
+      if (badgeUrgent) badgeUrgent.style.display = data.urgent ? "" : "none";
       $("initName").textContent = (data.initName || data.initiatorName || "—");
       const instVal = data.institutie || data.institution ||
         (data.signers || []).map(s => s.institutie || s.institution).find(Boolean) || "—";

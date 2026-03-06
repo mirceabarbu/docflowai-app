@@ -458,6 +458,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       createdAt: data.createdAt, updatedAt: data.updatedAt,
       completed: !!data.completed, completedAt: data.completedAt || null,
       status: data.status || 'active', storage: data.storage || 'db',
+      urgent: !!(data.urgent),
       parentFlowId: data.parentFlowId || null,
       reviewReason: data.reviewReason || null,
       reviewHistory: Array.isArray(data.reviewHistory) ? data.reviewHistory : [],
@@ -533,15 +534,20 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       page.drawText('AUDIT LOG', { x:MARGIN, y:PAGE_H-35, size:20, font:fontB, color:rgb(1,1,1) });
       page.drawText(ro('DocFlowAI — document de trasabilitate'), { x:MARGIN, y:PAGE_H-52, size:9, font:fontR, color:rgb(0.7,0.8,1) });
       page.drawText(ro(`Generat: ${fmtDate(new Date().toISOString())}`), { x:PAGE_W-200, y:PAGE_H-35, size:9, font:fontR, color:rgb(0.7,0.8,1) });
+      // URGENT badge in header
+      if (audit.urgent) {
+        page.drawRectangle({ x:PAGE_W-130, y:PAGE_H-58, width:100, height:18, color:rgb(0.85,0.1,0.1) });
+        page.drawText('🚨 URGENT', { x:PAGE_W-125, y:PAGE_H-50, size:10, font:fontB, color:rgb(1,1,1) });
+      }
       y = PAGE_H - 85;
       drawText('INFORMATII FLUX', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
       const infoRows = [
-        ['Flow ID:', audit.flowId], ['Document:', audit.docName],
+        ['Flow ID:', audit.flowId], ['Document:', (audit.urgent ? '🚨 [URGENT] ' : '') + audit.docName],
         ['Initiator:', `${audit.initName} <${audit.initEmail}>`],
         ['Institutie:', audit.institutie || '—'], ['Compartiment:', audit.compartiment || '—'],
         ['Creat:', fmtDate(audit.createdAt)],
-        ['Status:', audit.status + (audit.completed ? ' (FINALIZAT)' : '') + (audit.completedAt ? ' la ' + fmtDate(audit.completedAt) : '')],
+        ['Status:', audit.status + (audit.completed ? ' (FINALIZAT)' : '') + (audit.completedAt ? ' la ' + fmtDate(audit.completedAt) : '') + (audit.urgent ? ' — URGENT' : '')],
       ];
       for (const [lbl, val] of infoRows) {
         ensureSpace(18);
@@ -690,4 +696,87 @@ router.get('/admin/flows/audit-export', async (req, res) => {
 });
 
 // FIX: export default DUPA toate rutele
+
+// ── GET /admin/user-activity — raport activitate per utilizator ────────────
+router.get('/admin/user-activity', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const from = req.query.from ? new Date(req.query.from).toISOString() : new Date(Date.now() - 30*24*3600*1000).toISOString();
+    const to   = req.query.to   ? new Date(new Date(req.query.to).getTime() + 86399999).toISOString() : new Date().toISOString();
+    const emailFilter = (req.query.email || '').toLowerCase().trim();
+
+    // Toti utilizatorii din sistem
+    const { rows: userRows } = await pool.query('SELECT email, name, institutie, compartiment, role FROM users ORDER BY name');
+
+    // Toate fluxurile din perioada
+    const { rows: flowRows } = await pool.query(
+      "SELECT data FROM flows WHERE created_at <= $1 AND (created_at >= $2 OR (data->>'updatedAt') >= $2) ORDER BY created_at DESC LIMIT 5000",
+      [to, from]
+    );
+
+    // EVENT_TYPES → eticheta romana
+    const OP_LABELS = {
+      FLOW_CREATED: 'Inițiat',
+      SIGNED_PDF_UPLOADED: 'Semnat',
+      REFUSED: 'Refuzat',
+      REVIEW_REQUESTED: 'Trimis spre revizuire',
+      FLOW_REINITIATED_AFTER_REVIEW: 'Reinițiat după revizuire',
+      REINITIATED_AFTER_REVIEW: 'Reinitiere marcată',
+      FLOW_COMPLETED: 'Finalizat',
+      DELEGATE: 'Delegat',
+      YOUR_TURN: 'Notificat',
+    };
+
+    // Construim raport per user
+    const activity = {}; // email -> { ops: [], counts: {} }
+    const initUsers = new Set();
+
+    for (const fr of flowRows) {
+      const d = fr.data || {};
+      const flowId = d.flowId || '?';
+      const docName = d.docName || '?';
+      const events = Array.isArray(d.events) ? d.events : [];
+
+      for (const ev of events) {
+        if (!ev.at) continue;
+        if (ev.at < from || ev.at > to) continue;
+        const byEmail = (ev.by || '').toLowerCase();
+        if (!byEmail) continue;
+        if (emailFilter && byEmail !== emailFilter) continue;
+
+        const opType = ev.type || 'EVENT';
+        const label = OP_LABELS[opType] || opType;
+
+        if (!activity[byEmail]) activity[byEmail] = { ops: [], counts: {} };
+        activity[byEmail].counts[opType] = (activity[byEmail].counts[opType] || 0) + 1;
+        activity[byEmail].ops.push({ at: ev.at, type: opType, label, flowId, docName, reason: ev.reason || ev.reviewReason || '' });
+      }
+    }
+
+    // Sortăm ops descrescator
+    for (const email of Object.keys(activity)) {
+      activity[email].ops.sort((a, b) => b.at.localeCompare(a.at));
+    }
+
+    // Compunem rezultatul
+    const users = emailFilter
+      ? userRows.filter(u => u.email.toLowerCase() === emailFilter)
+      : userRows;
+
+    const result = users.map(u => {
+      const email = u.email.toLowerCase();
+      const act = activity[email] || { ops: [], counts: {} };
+      return {
+        email: u.email, name: u.name || u.email, institutie: u.institutie,
+        compartiment: u.compartiment, role: u.role,
+        totalOps: act.ops.length, counts: act.counts, ops: act.ops,
+      };
+    }).filter(u => !emailFilter || u.ops.length >= 0);
+
+    return res.json({ ok: true, from, to, users: result });
+  } catch(e) { console.error('user-activity error:', e); return res.status(500).json({ error: String(e.message || e) }); }
+});
+
 export default router;

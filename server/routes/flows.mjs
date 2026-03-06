@@ -110,10 +110,11 @@ const createFlow = async (req, res) => {
       flowId, docName, initName, initEmail,
       initFunctie, institutie: initInstitutie, compartiment: initCompartiment,
       meta: body.meta || {}, flowType: body.flowType || 'tabel',
+      urgent: !!(body.urgent),
       pdfB64: finalPdfB64,
       signers: normalizedSigners,
       createdAt, updatedAt: new Date().toISOString(),
-      events: [{ at: new Date().toISOString(), type: 'FLOW_CREATED', by: initEmail }],
+      events: [{ at: new Date().toISOString(), type: 'FLOW_CREATED', by: initEmail, urgent: !!(body.urgent) }],
     };
     await saveFlow(flowId, data);
 
@@ -122,7 +123,7 @@ const createFlow = async (req, res) => {
     if (first?.email && !initIsSigner) {
       await _notify({ userEmail: first.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat',
         message: `${initName} te-a adăugat ca semnatar pe documentul „${data.docName}". Intră în aplicație pentru a semna.`,
-        waParams: { signerName: first.name || first.email, docName: data.docName } });
+        waParams: { signerName: first.name || first.email, docName: data.docName }, urgent: !!(data.urgent) });
     }
     return res.json({ ok: true, flowId, firstSignerEmail: first?.email || null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null });
   } catch(e) { console.error('POST /flows error:', e); return res.status(500).json({ error: 'server_error' }); }
@@ -369,7 +370,7 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
     for (const r of toNotify) {
       if (!r.email || sent.has(r.email)) continue;
       sent.add(r.email);
-      await _notify({ userEmail: r.email, flowId, type: 'REFUSED', title: '⛔ Document refuzat', message: refuseMsg, waParams: { docName: data.docName, refuserName, reason: refuseReason } });
+      await _notify({ userEmail: r.email, flowId, type: 'REFUSED', title: '⛔ Document refuzat', message: refuseMsg, waParams: { docName: data.docName, refuserName, reason: refuseReason }, urgent: !!(data.urgent) });
     }
     return res.json({ ok: true, refused: true });
   } catch(e) { console.error('refuse error:', e); return res.status(500).json({ error: 'server_error' }); }
@@ -470,7 +471,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     if (nextIdx !== -1) signers.forEach((s, i) => { if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending'; });
     data.signers = signers;
     const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
-    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); data.docName = `${flowId}_${data.docName}`; data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
+    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); data.urgent = false; data.docName = `${flowId}_${data.docName}`; data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
     const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
     if (nextSigner) nextSigner.emailSent = true;
     await saveFlow(flowId, data);
@@ -486,9 +487,9 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
         if (allDone) {
           // Issue 5: Sterge TOATE notif YOUR_TURN ramase pentru acest flux
           await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
-          if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: '✅ Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName } });
+          if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: '✅ Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName }, urgent: !!(data.urgent) });
         }
-        if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName } });
+        if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName }, urgent: !!(data.urgent) });
       } catch(notifErr) { console.error(`❌ Notificare async eșuată pentru flow ${flowId}:`, notifErr.message); }
     });
   } catch(e) { console.error('upload-signed-pdf error:', e); return res.status(500).json({ error: 'server_error' }); }
@@ -505,7 +506,7 @@ router.post('/flows/:flowId/resend', async (req, res) => {
     const current = (data.signers || []).find(s => s.status === 'current');
     if (!current) return res.status(409).json({ error: 'no_current_signer' });
     if (!current.email) return res.status(400).json({ error: 'current_missing_email' });
-    await _notify({ userEmail: current.email, flowId, type: 'YOUR_TURN', title: 'Reminder: Document de semnat', message: `Ai un document în așteptare pentru semnare: „${data.docName}". Te rugăm să accesezi aplicația.`, waParams: { signerName: current.name || current.email, docName: data.docName } });
+    await _notify({ userEmail: current.email, flowId, type: 'YOUR_TURN', title: 'Reminder: Document de semnat', message: `Ai un document în așteptare pentru semnare: „${data.docName}". Te rugăm să accesezi aplicația.`, waParams: { signerName: current.name || current.email, docName: data.docName }, urgent: !!(data.urgent) });
     return res.json({ ok: true, to: current.email });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
@@ -578,6 +579,8 @@ router.get('/my-flows', async (req, res) => {
     const myFlows = rows.map(r => r.data).filter(Boolean).map(d => ({
       flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
       createdAt: d.createdAt, updatedAt: d.updatedAt,
+      status: d.status || 'active',
+      urgent: !!(d.urgent),
       signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refuseReason: s.refuseReason }; }),
       hasSignedPdf: !!(d.signedPdfB64 || (d.storage === 'drive' && d.driveFileLinkFinal)),
       allSigned: (d.signers || []).every(s => s.status === 'signed'),
@@ -722,7 +725,7 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     const reviewMsg = `${reviewerName} a trimis documentul „${data.docName}" spre revizuire. Motiv: ${reviewReason}`;
 
     // Notifică inițiatorul
-    await _notify({ userEmail: data.initEmail, flowId, type: 'REVIEW_REQUESTED', title: '🔄 Document trimis spre revizuire', message: reviewMsg, waParams: { docName: data.docName, reviewerName, reason: reviewReason } });
+    await _notify({ userEmail: data.initEmail, flowId, type: 'REVIEW_REQUESTED', title: '🔄 Document trimis spre revizuire', message: reviewMsg, waParams: { docName: data.docName, reviewerName, reason: reviewReason }, urgent: !!(data.urgent) });
 
     // Notifică semnatarii care au semnat deja
     const sent = new Set([data.initEmail?.toLowerCase()]);
@@ -730,7 +733,7 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
       const s = signers[i];
       if (s.status === 'signed' && s.email && !sent.has(s.email.toLowerCase())) {
         sent.add(s.email.toLowerCase());
-        await _notify({ userEmail: s.email, flowId, type: 'REVIEW_REQUESTED', title: '🔄 Document trimis spre revizuire', message: reviewMsg, waParams: { docName: data.docName, reviewerName, reason: reviewReason } });
+        await _notify({ userEmail: s.email, flowId, type: 'REVIEW_REQUESTED', title: '🔄 Document trimis spre revizuire', message: reviewMsg, waParams: { docName: data.docName, reviewerName, reason: reviewReason }, urgent: !!(data.urgent) });
       }
     }
     console.log(`🔄 Review requested pe flow ${flowId} de ${signers[idx].email}`);

@@ -280,6 +280,10 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_notif_cleanup ON notifications(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_notif_user_created ON notifications(user_email, created_at DESC);
     `
+  },
+  {
+    id: '012_notifications_urgent',
+    sql: `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS urgent BOOLEAN NOT NULL DEFAULT FALSE;`
   }
 ];
 

@@ -35,17 +35,16 @@ router.get('/api/notifications/with-status', async (req, res) => {
       [actor.email.toLowerCase()]
     );
     const enriched = await Promise.all(rows.map(async (n) => {
-      if (n.type === 'YOUR_TURN' && n.flow_id) {
+      if ((n.type === 'YOUR_TURN' || n.type === 'REVIEW_REQUESTED') && n.flow_id) {
         try {
-          const fRow = await pool.query('SELECT data FROM flows WHERE id=$1', [n.flow_id]);
-          const flowData = fRow.rows[0]?.data;
-          if (flowData) {
-            const signer = (flowData.signers || []).find(s => (s.email || '').toLowerCase() === actor.email.toLowerCase());
-            return { ...n, signer_status: signer?.status || null };
+          const fData = (await pool.query('SELECT data FROM flows WHERE id=$1', [n.flow_id])).rows[0]?.data;
+          if (fData) {
+            const signer = (fData.signers || []).find(s => (s.email || '').toLowerCase() === actor.email.toLowerCase());
+            return { ...n, signer_status: signer?.status || null, flow_urgent: !!(fData.urgent) };
           }
         } catch(e) {}
       }
-      return { ...n, signer_status: null };
+      return { ...n, signer_status: null, flow_urgent: !!(n.urgent) };
     }));
     res.json(enriched);
   } catch(e) { res.status(500).json({ error: 'server_error' }); }

@@ -290,7 +290,7 @@ setInterval(async () => {
 
 // ── Notify helper ──────────────────────────────────────────────────────────
 // FIX: notif_email si notif_inapp sunt independente
-async function notify({ userEmail, flowId, type, title, message, waParams = {} }) {
+async function notify({ userEmail, flowId, type, title, message, waParams = {}, urgent = false }) {
   if (!pool || !DB_READY) return;
   const email = (userEmail || '').toLowerCase();
   if (!email) return;
@@ -301,17 +301,20 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {} }
   const needsEmail = !!(uRow?.notif_email);       // FIX: independent de notif_inapp
   const needsWa = !!(isWhatsAppConfigured() && uRow?.notif_whatsapp && uRow?.phone);
 
+  // Prefixăm titlul cu [URGENT] dacă e cazul
+  const displayTitle = urgent ? `🚨 [URGENT] ${title}` : title;
+
   if (needsInApp) {
     const r = await pool.query(
-      'INSERT INTO notifications (user_email,flow_id,type,title,message) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-      [email, flowId || null, type, title, message]
+      'INSERT INTO notifications (user_email,flow_id,type,title,message,urgent) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+      [email, flowId || null, type, displayTitle, message, !!urgent]
     );
-    wsPush(email, { event: 'new_notification', notification: { id: r.rows[0]?.id, flow_id: flowId, type, title, message, read: false, created_at: new Date().toISOString() } });
+    wsPush(email, { event: 'new_notification', notification: { id: r.rows[0]?.id, flow_id: flowId, type, title: displayTitle, message, read: false, created_at: new Date().toISOString(), urgent: !!urgent } });
     const { rows: cntRows } = await pool.query('SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE', [email]);
     wsPush(email, { event: 'unread_count', count: parseInt(cntRows[0].count) });
   }
 
-  pushToUser(pool, email, { title, body: message, icon: '/icon-192.png', badge: '/icon-72.png', data: { flowId, type } }).catch(() => {});
+  pushToUser(pool, email, { title: displayTitle, body: message, icon: '/icon-192.png', badge: '/icon-72.png', data: { flowId, type, urgent: !!urgent } }).catch(() => {});
 
   const eventsToAdd = [];
   const [emailResult, waResult] = await Promise.allSettled([

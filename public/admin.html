@@ -277,6 +277,32 @@
 
     </div>
 
+    <!-- RAPORT ACTIVITATE UTILIZATORI -->
+    <h2 style="color:#9db0ff;margin-top:36px;margin-bottom:16px;">📊 Raport activitate utilizatori</h2>
+    <div style="background:rgba(15,23,49,.8);border:1px solid var(--line);border-radius:16px;padding:26px;margin-bottom:24px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;margin-bottom:18px;flex-wrap:wrap;">
+        <div>
+          <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">De la data</label>
+          <input type="date" id="rptFrom" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;" />
+        </div>
+        <div>
+          <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Până la data</label>
+          <input type="date" id="rptTo" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;" />
+        </div>
+        <div>
+          <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Utilizator (opțional)</label>
+          <select id="rptUser" style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;">
+            <option value="">— Toți utilizatorii —</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-p" onclick="loadActivityReport()" style="padding:9px 20px;font-size:.85rem;">🔍 Generează</button>
+          <button class="btn secondary" onclick="exportActivityCSV()" style="padding:9px 14px;font-size:.85rem;" title="Export CSV">📥</button>
+        </div>
+      </div>
+      <div id="activityReport"></div>
+    </div>
+
     <!-- VACUUM section -->
     <div style="margin-top:20px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
@@ -717,7 +743,7 @@ async function loadFlowsList(forceReload = true, page) {
             ? '<span style="color:#ffaaaa;font-size:.75rem;">⛔ refuzat</span>'
             : '<span style="color:#b39dff;font-size:.75rem;">✍ activ</span>';
           return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
-            <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.flowId}">${f.docName||"—"}</td>
+            <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.flowId}">${f.urgent ? '<span style="color:#ff8888;font-weight:700;margin-right:4px;">🚨</span>' : ''}${f.docName||"—"}</td>
             <td style="padding:7px 8px;color:var(--muted);">${f.initEmail||"—"}</td>
             <td style="padding:7px 8px;">${statusBadge}</td>
             <td style="padding:7px 8px;">
@@ -1073,8 +1099,151 @@ fetch("/auth/me",{headers:hdrs()})
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
     loadDbStats(); // auto-încarcă statistici DB
+    initActivityReport(); // inițializează raportul de activitate
   })
   .catch(()=>logout());
+
+// ── Raport activitate utilizatori ────────────────────────────────────────
+
+let _activityData = null;
+
+function initActivityReport() {
+  // Setăm datele default: ultima lună
+  const today = new Date();
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  $('rptTo').value = today.toISOString().slice(0,10);
+  $('rptFrom').value = firstOfMonth.toISOString().slice(0,10);
+  // Populăm dropdown-ul cu utilizatori
+  apiFetch('/admin/users').then(r => r.json()).then(data => {
+    const sel = $('rptUser');
+    (data.users || data || []).forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.email;
+      opt.textContent = `${u.name || u.email} — ${u.email}`;
+      sel.appendChild(opt);
+    });
+  }).catch(() => {});
+}
+
+async function loadActivityReport() {
+  const area = $('activityReport');
+  const from = $('rptFrom').value;
+  const to = $('rptTo').value;
+  const email = $('rptUser').value;
+  if (!from || !to) { area.innerHTML = '<p style="color:#ffaaaa;font-size:.85rem;">⚠️ Selectează intervalul de date.</p>'; return; }
+
+  area.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);">⏳ Se generează raportul...</div>';
+  try {
+    const params = new URLSearchParams({ from, to });
+    if (email) params.set('email', email);
+    const r = await apiFetch(`/admin/user-activity?${params}`);
+    const data = await r.json();
+    _activityData = data;
+    renderActivityReport(data);
+  } catch(e) {
+    area.innerHTML = `<p style="color:#ffaaaa;font-size:.85rem;">❌ ${e.message}</p>`;
+  }
+}
+
+const OP_COLORS = {
+  FLOW_CREATED: '#7c5cff', SIGNED_PDF_UPLOADED: '#2dd4bf', REFUSED: '#ff5050',
+  REVIEW_REQUESTED: '#ffd580', FLOW_REINITIATED_AFTER_REVIEW: '#ff9955',
+  FLOW_COMPLETED: '#26d07c', DELEGATE: '#9db0ff', YOUR_TURN: '#aaa',
+  REINITIATED_AFTER_REVIEW: '#ffaaaa',
+};
+const OP_ICONS = {
+  FLOW_CREATED: '📝', SIGNED_PDF_UPLOADED: '✅', REFUSED: '⛔',
+  REVIEW_REQUESTED: '🔄', FLOW_REINITIATED_AFTER_REVIEW: '🔁',
+  FLOW_COMPLETED: '🏁', DELEGATE: '👥', YOUR_TURN: '🔔',
+  REINITIATED_AFTER_REVIEW: '🔁',
+};
+
+function renderActivityReport(data) {
+  const area = $('activityReport');
+  const users = (data.users || []).filter(u => u.totalOps > 0 || $('rptUser').value);
+  const from = new Date(data.from).toLocaleDateString('ro-RO');
+  const to   = new Date(data.to).toLocaleDateString('ro-RO');
+
+  if (!users.length) {
+    area.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted);">📭 Nicio activitate găsită în intervalul ${from} — ${to}.</div>`;
+    return;
+  }
+
+  let html = `<div style="margin-bottom:16px;font-size:.83rem;color:var(--muted);">Interval: <strong style="color:var(--sub);">${from} — ${to}</strong> &nbsp;·&nbsp; ${users.length} utilizator(i) cu activitate</div>`;
+
+  // Summary cards per user
+  html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-bottom:24px;">`;
+  for (const u of users) {
+    if (!u.totalOps && !$('rptUser').value) continue;
+    const summaryChips = Object.entries(u.counts)
+      .sort((a,b) => b[1]-a[1])
+      .map(([type, cnt]) => {
+        const color = OP_COLORS[type] || '#9db0ff';
+        const icon = OP_ICONS[type] || '•';
+        const label = type.replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase());
+        return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:.72rem;background:${color}22;border:1px solid ${color}44;color:${color};margin:2px;">${icon} ${cnt}× ${label}</span>`;
+      }).join('');
+
+    html += `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;cursor:pointer;transition:border-color .15s;"
+      onclick="toggleUserDetail('${u.email.replace(/'/g,"\\'")}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+        <div>
+          <div style="font-weight:700;font-size:.92rem;margin-bottom:2px;">${escH(u.name)}</div>
+          <div style="font-size:.76rem;color:var(--muted);">${escH(u.email)} &nbsp;·&nbsp; ${escH(u.institutie||'')} ${u.compartiment?'· '+escH(u.compartiment):''}</div>
+        </div>
+        <div style="font-size:1.4rem;font-weight:800;color:var(--accent);">${u.totalOps}</div>
+      </div>
+      <div>${summaryChips || '<span style="font-size:.75rem;color:var(--muted);">Nicio operațiune</span>'}</div>
+      <div id="detail_${u.email.replace(/[^a-z0-9]/gi,'_')}" style="display:none;margin-top:14px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px;max-height:320px;overflow-y:auto;"></div>
+    </div>`;
+  }
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function toggleUserDetail(email) {
+  const key = email.replace(/[^a-z0-9]/gi,'_');
+  const el = document.getElementById(`detail_${key}`);
+  if (!el) return;
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+
+  const u = (_activityData?.users||[]).find(x => x.email === email);
+  if (!u) return;
+
+  if (!u.ops.length) { el.innerHTML = '<div style="font-size:.8rem;color:var(--muted);">Nicio operațiune în acest interval.</div>'; el.style.display = ''; return; }
+
+  let rows = u.ops.map(op => {
+    const color = OP_COLORS[op.type] || '#9db0ff';
+    const icon  = OP_ICONS[op.type]  || '•';
+    const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    return `<div style="display:grid;grid-template-columns:110px 160px 1fr;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+      <span style="font-size:.74rem;color:var(--muted);">${dt}</span>
+      <span style="font-size:.76rem;padding:2px 8px;border-radius:12px;background:${color}22;border:1px solid ${color}44;color:${color};">${icon} ${escH(op.label)}</span>
+      <span style="font-size:.76rem;color:var(--sub);" title="${escH(op.flowId)}">${escH(op.docName)}${op.reason ? ` <span style="color:var(--muted);">— ${escH(op.reason)}</span>` : ''}</span>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = rows;
+  el.style.display = '';
+}
+
+async function exportActivityCSV() {
+  if (!_activityData) { alert('Generează mai întâi un raport.'); return; }
+  const lines = ['Email,Nume,Institutie,Data,Tip,Label,FlowId,Document,Motiv'];
+  for (const u of _activityData.users || []) {
+    for (const op of u.ops || []) {
+      const dt = new Date(op.at).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
+      lines.push(`"${u.email}","${u.name}","${u.institutie||''}","${dt}","${op.type}","${op.label}","${op.flowId}","${(op.docName||'').replace(/"/g,'""')}","${(op.reason||'').replace(/"/g,'""')}"`);
+    }
+  }
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `activitate_utilizatori_${$('rptFrom').value}_${$('rptTo').value}.csv`;
+  a.click();
+}
 </script>
 <script src="/notif-widget.js"></script>
 </body>

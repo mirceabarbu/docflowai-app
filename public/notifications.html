@@ -79,6 +79,9 @@
     .notif-card.type-COMPLETED { border-left-color: var(--accent2); }
     .notif-card.type-YOUR_TURN { border-left-color: var(--accent); }
     .notif-card.type-REVIEW_REQUESTED { border-left-color: var(--accent2); }
+    .notif-card.urgent-card { border-left: 3px solid #ff3333; background: rgba(255,40,40,.07); }
+    .notif-card.urgent-card:hover { background: rgba(255,40,40,.12); border-color: rgba(255,40,40,.4); }
+    @keyframes pulse-urgent { 0%,100%{box-shadow:0 0 0 0 rgba(255,40,40,.4);} 50%{box-shadow:0 0 0 5px rgba(255,40,40,0);} }
     .notif-icon.type-REVIEW_REQUESTED { background: rgba(45,212,191,.12); }
 
     .notif-icon {
@@ -169,6 +172,7 @@
   <div class="filters">
     <button class="filter-btn active" data-filter="all">Toate</button>
     <button class="filter-btn" data-filter="unread">Necitite</button>
+    <button class="filter-btn filter-urgent" data-filter="urgent">🚨 Urgente</button>
     <button class="filter-btn" data-filter="YOUR_TURN">De semnat</button>
     <button class="filter-btn" data-filter="REVIEW_REQUESTED">De revizuit</button>
     <button class="filter-btn" data-filter="COMPLETED">Finalizate</button>
@@ -248,6 +252,7 @@ function timeAgo(iso) {
 function filtered() {
   if (currentFilter === 'all') return allNotifs;
   if (currentFilter === 'unread') return allNotifs.filter(n => !n.read);
+  if (currentFilter === 'urgent') return allNotifs.filter(n => !!(n.urgent || n.flow_urgent));
   if (currentFilter === 'YOUR_TURN') {
     // Arata doar notificarile de semnat unde userul inca nu a semnat (status === 'current')
     return allNotifs.filter(n => n.type === 'YOUR_TURN' && n.signer_status === 'current');
@@ -265,16 +270,19 @@ function updateTabCounts() {
   const counts = {
     all: allNotifs.length,
     unread: allNotifs.filter(n => !n.read).length,
+    urgent: allNotifs.filter(n => !!(n.urgent || n.flow_urgent)).length,
     YOUR_TURN: allNotifs.filter(n => n.type === 'YOUR_TURN' && n.signer_status === 'current').length,
     REVIEW_REQUESTED: allNotifs.filter(n => n.type === 'REVIEW_REQUESTED').length,
     COMPLETED: allNotifs.filter(n => n.type === 'COMPLETED').length,
     REFUSED: allNotifs.filter(n => n.type === 'REFUSED').length,
   };
-  const labels = { all:'Toate', unread:'Necitite', YOUR_TURN:'De semnat', REVIEW_REQUESTED:'De revizuit', COMPLETED:'Finalizate', REFUSED:'Refuzate' };
+  const labels = { all:'Toate', unread:'Necitite', urgent:'🚨 Urgente', YOUR_TURN:'De semnat', REVIEW_REQUESTED:'De revizuit', COMPLETED:'Finalizate', REFUSED:'Refuzate' };
   document.querySelectorAll('.filter-btn').forEach(btn => {
     const f = btn.dataset.filter;
     const c = counts[f] || 0;
-    btn.innerHTML = `${labels[f]} ${c > 0 ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:.7rem;font-weight:800;margin-left:4px;background:${f==='unread'?'rgba(255,180,50,.3)':f==='YOUR_TURN'?'rgba(124,92,255,.4)':f==='REFUSED'?'rgba(255,80,80,.3)':f==='REVIEW_REQUESTED'?'rgba(45,212,191,.3)':'rgba(255,255,255,.15)'};color:${f==='unread'?'#ffd580':f==='YOUR_TURN'?'#c4b5fd':f==='REFUSED'?'#ffaaaa':f==='REVIEW_REQUESTED'?'#7cf0e0':'#ccc'};">${c}</span>` : ''}`;
+    const color = f==='urgent' ? 'rgba(255,40,40,.4)' : f==='unread'?'rgba(255,180,50,.3)':f==='YOUR_TURN'?'rgba(124,92,255,.4)':f==='REFUSED'?'rgba(255,80,80,.3)':f==='REVIEW_REQUESTED'?'rgba(45,212,191,.3)':'rgba(255,255,255,.15)';
+    const textColor = f==='urgent'?'#ffaaaa':f==='unread'?'#ffd580':f==='YOUR_TURN'?'#c4b5fd':f==='REFUSED'?'#ffaaaa':f==='REVIEW_REQUESTED'?'#7cf0e0':'#ccc';
+    btn.innerHTML = `${labels[f]} ${c > 0 ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:.7rem;font-weight:800;margin-left:4px;background:${color};color:${textColor};">${c}</span>` : ''}`;
   });
 }
 
@@ -295,12 +303,13 @@ function renderList() {
   div.className = 'notif-list';
   list.forEach((n, i) => {
     const card = document.createElement('div');
-    card.className = `notif-card type-${n.type||''} ${!n.read?'unread':''}`;
+    const isUrgentNotif = !!(n.urgent || n.flow_urgent);
+    card.className = `notif-card type-${n.type||''} ${!n.read?'unread':''} ${isUrgentNotif?'urgent-card':''}`;
     card.style.animationDelay = `${i * 40}ms`;
     card.innerHTML = `
       <div class="notif-icon type-${n.type||''}">${typeIcon(n.type)}</div>
       <div class="notif-body">
-        <div class="notif-title">${escHtml(n.title||'Notificare')}</div>
+        <div class="notif-title">${isUrgentNotif ? '<span style="color:#ff6666;font-weight:800;margin-right:6px;">🚨 URGENT</span>' : ''}${escHtml((n.title||'Notificare').replace(/^\s*🚨\s*\[URGENT\]\s*/i,''))}</div>
         <div class="notif-msg">${escHtml(n.message||'')}</div>
         <div class="notif-meta">
           <span class="notif-time">${timeAgo(n.created_at)}</span>
@@ -406,7 +415,7 @@ function connectWS() {
 connectWS();
 // Aplica tab din URL daca exista (?tab=sign / done / refused / unread)
 (function applyTabFromUrl() {
-  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', review: 'REVIEW_REQUESTED', unread: 'unread', all: 'all' };
+  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', review: 'REVIEW_REQUESTED', urgent: 'urgent', unread: 'unread', all: 'all' };
   const urlTab = new URLSearchParams(location.search).get('tab');
   const filter = tabMap[urlTab] || null;
   if (filter && filter !== 'all') {
