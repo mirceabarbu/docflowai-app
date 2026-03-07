@@ -54,14 +54,21 @@
     font-size:.9rem;outline:none;transition:border .2s;}
   input:focus,select:focus{border-color:var(--accent);}
   select option{background:#0f1731;}
-  .signer-row{display:grid;grid-template-columns:150px 1fr 1fr 1fr 36px;gap:8px;align-items:center;
-    margin-bottom:8px;background:rgba(255,255,255,.03);border:1px solid var(--line);
-    border-radius:10px;padding:10px 12px;cursor:grab;}
-  .signer-row.dragging{opacity:.4;}
-  .signer-row.drag-over{border-color:var(--accent);}
-  .btn-del-row{background:transparent;border:none;color:var(--danger);cursor:pointer;
-    font-size:1.1rem;padding:4px;border-radius:6px;transition:background .15s;}
-  .btn-del-row:hover{background:rgba(255,85,85,.12);}
+  /* Tabel semnatari — identic cu semdoc-initiator */
+  .signers-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px;}
+  .signers-table th{font-size:12px;color:rgba(205,216,255,.85);text-align:left;padding:10px;
+    border-bottom:1px solid rgba(255,255,255,.08);font-weight:600;letter-spacing:.04em;}
+  .signers-table td{padding:6px 5px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle;}
+  .signers-table td input,.signers-table td select{
+    width:100%;min-width:0;padding:9px 10px;border-radius:10px;
+    border:1px solid rgba(255,255,255,.12)!important;background:rgba(0,0,0,.2)!important;
+    color:#e9eefc!important;font-size:.85rem!important;outline:none;font:inherit!important;
+    box-sizing:border-box;}
+  .signers-table td input:focus,.signers-table td select:focus{border-color:var(--accent)!important;}
+  .signers-table td select option{background:#0f1731;}
+  .signers-table tr.drag-over td{background:rgba(124,92,255,.18)!important;}
+  .drag-handle{cursor:grab;text-align:center;color:rgba(255,255,255,.35);
+    user-select:none;font-size:18px;width:32px;}
   .add-row-btn{background:transparent;border:1px dashed rgba(124,92,255,.4);color:var(--accent);
     border-radius:9px;padding:8px 16px;font-size:.83rem;cursor:pointer;transition:all .2s;margin-top:4px;}
   .add-row-btn:hover{background:rgba(124,92,255,.08);border-color:var(--accent);}
@@ -129,7 +136,6 @@
   .modal h3{font-size:1rem;font-weight:700;color:var(--sub);margin-bottom:20px;}
   .modal-acts{margin-top:20px;display:flex;gap:8px;justify-content:flex-end;}
   @media(max-width:640px){
-    .signer-row{grid-template-columns:1fr 1fr 36px;grid-template-rows:auto auto;}
     .form-row{grid-template-columns:1fr;}
     .tmpl-grid{grid-template-columns:1fr;}
   }
@@ -319,9 +325,7 @@ function refreshAllDropdowns(containerId) {
       opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
       sel.appendChild(opt);
     });
-    const manualOpt = document.createElement('option');
-    manualOpt.value = '__manual__'; manualOpt.textContent = '✏️ Scrie manual...';
-    sel.appendChild(manualOpt);
+
     // Restaurează selecția curentă dacă nu e folosită în altă parte
     if (currentVal && !used.has(currentVal)) sel.value = currentVal;
   });
@@ -352,8 +356,7 @@ function addSignerRow(target='create', data={}) {
       readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);"/></td>
     <td>
       <select class="s-name-sel" style="width:100%;"><option value="">— Alege utilizator —</option></select>
-      <input type="text" class="s-name-custom" placeholder="Scrie manual..."
-        value="${esc(data.name||'')}" style="display:none;margin-top:4px;"/>
+
     </td>
     <td><input type="email" class="s-email" placeholder="—" value="${esc(data.email||'')}"
       readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);"/></td>
@@ -369,7 +372,6 @@ function addSignerRow(target='create', data={}) {
 
   // ── User dropdown
   const nameSel = tr.querySelector('.s-name-sel');
-  const nameCustom = tr.querySelector('.s-name-custom');
   const functieIn = tr.querySelector('.s-functie');
   const emailIn = tr.querySelector('.s-email');
 
@@ -387,20 +389,11 @@ function addSignerRow(target='create', data={}) {
       opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
       nameSel.appendChild(opt);
     });
-    const manualOpt = document.createElement('option');
-    manualOpt.value = '__manual__'; manualOpt.textContent = '✏️ Scrie manual...';
-    nameSel.appendChild(manualOpt);
+
   }
 
   nameSel.addEventListener('change', () => {
-    if (nameSel.value === '__manual__') {
-      nameCustom.style.display = 'block'; nameSel.style.display = 'none';
-      functieIn.value = ''; emailIn.value = '';
-      functieIn.removeAttribute('readonly'); emailIn.removeAttribute('readonly');
-      functieIn.style.opacity='1'; functieIn.style.cursor='text';
-      emailIn.style.opacity='1'; emailIn.style.cursor='text';
-      return;
-    }
+
     const user = (window._tmplUsers||[]).find(u => u.nume === nameSel.value);
     if (user) {
       functieIn.value = user.functie || '';
@@ -419,15 +412,8 @@ function addSignerRow(target='create', data={}) {
     const found = Array.from(nameSel.options).find(o => o.value === data.name);
     if (found) {
       nameSel.value = data.name;
-      const u = window._tmplUsers.find(u => u.nume === data.name);
-      if (u) { functieIn.value = u.functie||''; emailIn.value = u.email||''; }
-    } else {
-      // Manual
-      nameSel.style.display = 'none';
-      nameCustom.style.display = 'block';
-      nameCustom.value = data.name;
-      if (data.functie) { functieIn.value = data.functie; functieIn.removeAttribute('readonly'); functieIn.style.opacity='1'; }
-      if (data.email)   { emailIn.value = data.email;     emailIn.removeAttribute('readonly');   emailIn.style.opacity='1'; }
+      const usr = window._tmplUsers.find(u => u.nume === data.name);
+      if (usr) { functieIn.value = usr.functie||''; emailIn.value = usr.email||''; }
     }
   }
 
@@ -476,10 +462,7 @@ function getSigners(cid) {
       ? (r.querySelector('.s-atrib-custom')?.value?.trim() || 'ALT ATRIBUT')
       : atribSel.value;
     const nameSel = r.querySelector('.s-name-sel');
-    const nameCustom = r.querySelector('.s-name-custom');
-    const name = (nameSel && nameSel.style.display !== 'none')
-      ? nameSel.value.trim()
-      : (nameCustom?.value?.trim() || '');
+    const name = nameSel ? nameSel.value.trim() : '';
     return {
       atribut: atrib,
       functie: r.querySelector('.s-functie').value.trim(),
@@ -660,8 +643,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
           opt.textContent = (u.nume||u.email) + (u.functie?' — '+u.functie:'');
           sel.appendChild(opt);
         });
-        const mo = document.createElement('option'); mo.value='__manual__'; mo.textContent='✏️ Scrie manual...';
-        sel.appendChild(mo);
+
         // Auto-fill cu userul logat dacă ÎNTOCMIT
         const meUser = JSON.parse(localStorage.getItem('docflow_user')||'{}');
         if (meUser.email) {

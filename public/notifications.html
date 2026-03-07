@@ -43,18 +43,18 @@
     }
     .btn-accent:hover { opacity: .88; }
 
-    main { max-width: 720px; margin: 0 auto; padding: 32px 20px 60px; }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
     .page-header { margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .page-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em; }
     .page-title span { color: var(--accent); }
     .page-actions { display: flex; gap: 8px; }
 
     /* Filter tabs */
-    .filters { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+    .filters { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
     .filter-btn {
-      padding: 7px 18px; border-radius: 20px; border: 1px solid var(--line);
+      padding: 7px 15px; border-radius: 20px; border: 1px solid var(--line);
       background: transparent; color: var(--muted); cursor: pointer; font-size: .82rem;
-      font-weight: 600; transition: all .18s; white-space: nowrap;
+      font-weight: 600; transition: all .18s; white-space: nowrap; flex-shrink: 0;
     }
     .filter-btn.active {
       background: rgba(124,92,255,.18); border-color: rgba(124,92,255,.4);
