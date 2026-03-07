@@ -461,6 +461,18 @@ if(hdrEl) hdrEl.textContent=me.nume||me.email||"—";
 function logout(){localStorage.removeItem("docflow_token");localStorage.removeItem("docflow_user");location.href="/login";}
 function hdrs(){return{"Authorization":"Bearer "+token,"Content-Type":"application/json"};}
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function validatePhoneClient(phone){
+  if(!phone||!phone.trim())return{valid:true,normalized:""};
+  const p=phone.trim();
+  let normalized=null;
+  if(/^\+40[0-9]{9}$/.test(p))normalized=p.slice(1);
+  else if(/^0040[0-9]{9}$/.test(p))normalized=p.slice(2);
+  else if(/^07[0-9]{8}$/.test(p))normalized="4"+p;
+  else if(/^02[0-9]{8}$/.test(p))normalized="4"+p;
+  else if(/^03[0-9]{8}$/.test(p))normalized="4"+p;
+  if(!normalized)return{valid:false,error:"Numar invalid."};
+  return{valid:true,normalized,display:"+"+normalized};
+}
 
 function showMsg(id,txt,err){
   const el=$(id);el.className="msg "+(err?"err":"ok");el.textContent=txt;
