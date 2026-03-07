@@ -156,7 +156,8 @@
     <span id="wsStatus" title="Conexiune live" style="display:flex;align-items:center;font-size:.75rem;color:var(--muted);">
       <span class="ws-dot" id="wsDot"></span><span id="wsLabel">Connecting...</span>
     </span>
-    <span id="userLabel" style="color:var(--sub);"></span>
+    <!-- userInfo populated by JS -->
+    <span id="userInfo"></span>
     <button class="btn-danger btn-ghost" id="btnLogout">Ieșire</button>
   </div>
 </header>
@@ -196,7 +197,8 @@ let currentFilter = 'all';
 (function() {
   const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
   const label = u.nume || u.email || '';
-  if (label) $('userLabel').textContent = label;
+  if (label) $('userInfo').innerHTML = `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` +
+    (u.role === 'admin' ? ` <a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
 })();
 
 $('btnLogout').onclick = () => {

@@ -179,7 +179,17 @@
       </div>
     </div>
     <label style="margin-bottom:10px;display:block;">Semnatari (în ordinea semnării) *</label>
-    <div id="signersBuilder"></div>
+    <table class="signers-table">
+      <thead><tr>
+        <th style="width:32px;"></th>
+        <th style="width:155px;">ATRIBUT</th>
+        <th style="width:190px;">FUNCȚIE</th>
+        <th>NUME ȘI PRENUME</th>
+        <th style="width:260px;">EMAIL</th>
+        <th style="width:90px;"></th>
+      </tr></thead>
+      <tbody id="signersBuilder"></tbody>
+    </table>
     <button class="add-row-btn" onclick="addSignerRow()">+ Adaugă semnatar</button>
     <div class="create-actions">
       <button class="btn-primary" id="btnSave" onclick="saveTemplate()">💾 Salvează șablonul</button>
@@ -221,7 +231,17 @@
       </div>
     </div>
     <label style="margin-bottom:10px;display:block;">Semnatari *</label>
-    <div id="editSignersBuilder"></div>
+    <table class="signers-table">
+      <thead><tr>
+        <th style="width:32px;"></th>
+        <th style="width:155px;">ATRIBUT</th>
+        <th style="width:190px;">FUNCȚIE</th>
+        <th>NUME ȘI PRENUME</th>
+        <th style="width:260px;">EMAIL</th>
+        <th style="width:90px;"></th>
+      </tr></thead>
+      <tbody id="editSignersBuilder"></tbody>
+    </table>
     <button class="add-row-btn" onclick="addSignerRow('edit')">+ Adaugă semnatar</button>
     <div id="editMsg" style="margin-top:10px;font-size:.83rem;"></div>
     <div class="modal-acts">
@@ -267,48 +287,110 @@ function buildAtribOptions(selected) {
   }).join('');
 }
 
+// Returnează valorile utilizatorilor deja selectați dintr-un tbody, excluzând rândul curent
+function getUsedUsers(tbody, excludeRow) {
+  const used = new Set();
+  tbody.querySelectorAll('tr').forEach(tr => {
+    if (tr === excludeRow) return;
+    const sel = tr.querySelector('.s-name-sel');
+    if (sel && sel.value && sel.value !== '' && sel.value !== '__manual__') used.add(sel.value);
+  });
+  return used;
+}
+
+// Reîmprospătează toate dropdown-urile dintr-un tbody pentru a ascunde utilizatorii deja selectați
+function refreshAllDropdowns(containerId) {
+  const container = $(containerId);
+  if (!container || !window._tmplUsers) return;
+  const rows = container.querySelectorAll('tr');
+  rows.forEach(tr => {
+    const sel = tr.querySelector('.s-name-sel');
+    if (!sel || sel.style.display === 'none') return;
+    const currentVal = sel.value;
+    const used = getUsedUsers(container, tr);
+    // Rebuild options
+    while (sel.options.length > 1) sel.remove(1);
+    (window._tmplUsers || []).forEach(u => {
+      if (used.has(u.nume)) return; // ascunde utilizatorii deja selectați în alte rânduri
+      const opt = document.createElement('option');
+      opt.value = u.nume || '';
+      opt.dataset.email = u.email || '';
+      opt.dataset.functie = u.functie || '';
+      opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
+      sel.appendChild(opt);
+    });
+    const manualOpt = document.createElement('option');
+    manualOpt.value = '__manual__'; manualOpt.textContent = '✏️ Scrie manual...';
+    sel.appendChild(manualOpt);
+    // Restaurează selecția curentă dacă nu e folosită în altă parte
+    if (currentVal && !used.has(currentVal)) sel.value = currentVal;
+  });
+}
+
 function addSignerRow(target='create', data={}) {
   const cid = target === 'edit' ? 'editSignersBuilder' : 'signersBuilder';
   const container = $(cid);
   const id = ++signerCounter;
-  const div = document.createElement('div');
-  div.className = 'signer-row'; div.dataset.id = id; div.draggable = true;
-  const selectedAtrib = data.atribut || 'ÎNTOCMIT';
-  div.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:4px;">
-      <select class="s-atrib">${buildAtribOptions(selectedAtrib)}</select>
-      <input class="s-atrib-custom" type="text" placeholder="Scrie atributul..." style="display:${selectedAtrib==='__alt__'?'block':'none'};font-size:.8rem;padding:6px 8px;" value="${selectedAtrib==='__alt__'?esc(data.atributCustom||''):''}"/>
-    </div>
-    <input type="text" class="s-functie" placeholder="Funcție (auto)" value="${esc(data.functie||'')}" readonly style="opacity:.75;cursor:default;background:rgba(255,255,255,.02);"/>
-    <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
-      <select class="s-name-sel" style="width:100%;"><option value="">— Alege utilizator —</option></select>
-      <input type="text" class="s-name-custom" placeholder="Sau scrie manual" value="${esc(data.name||'')}" style="font-size:.8rem;padding:6px 8px;display:none;"/>
-    </div>
-    <input type="email" class="s-email" placeholder="Email (auto)" value="${esc(data.email||'')}" readonly style="opacity:.75;cursor:default;background:rgba(255,255,255,.02);"/>
-    <button class="btn-del-row" onclick="this.closest('.signer-row').remove()" title="Șterge">✕</button>`;
-  div.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain',id); div.classList.add('dragging'); });
-  div.addEventListener('dragend', ()=>div.classList.remove('dragging'));
-  div.addEventListener('dragover', e=>{ e.preventDefault(); div.classList.add('drag-over'); });
-  div.addEventListener('dragleave', ()=>div.classList.remove('drag-over'));
-  div.addEventListener('drop', e=>{ e.preventDefault(); div.classList.remove('drag-over');
-    const from = container.querySelector(`[data-id="${e.dataTransfer.getData('text/plain')}"]`);
-    if (from && from!==div) container.insertBefore(from, div); });
+  const tr = document.createElement('tr');
+  tr.draggable = true;
+  tr.dataset.id = id;
 
-  // Atrib custom toggle
-  const atribSel = div.querySelector('.s-atrib');
-  const atribCustom = div.querySelector('.s-atrib-custom');
+  const selectedAtrib = data.atribut || 'ÎNTOCMIT';
+  const isAlt = !ATRIBUTE.includes(selectedAtrib) || selectedAtrib === '__alt__';
+  const atribValue = isAlt ? '__alt__' : selectedAtrib;
+  const customValue = isAlt ? selectedAtrib : '';
+
+  tr.innerHTML = `
+    <td class="drag-handle">⠿</td>
+    <td>
+      <select class="s-atrib">${buildAtribOptions(atribValue)}</select>
+      <input class="s-atrib-custom" type="text" placeholder="Scrie atributul..."
+        style="display:${atribValue==='__alt__'?'block':'none'};margin-top:4px;"
+        value="${esc(customValue)}"/>
+    </td>
+    <td><input type="text" class="s-functie" placeholder="—" value="${esc(data.functie||'')}"
+      readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);"/></td>
+    <td>
+      <select class="s-name-sel" style="width:100%;"><option value="">— Alege utilizator —</option></select>
+      <input type="text" class="s-name-custom" placeholder="Scrie manual..."
+        value="${esc(data.name||'')}" style="display:none;margin-top:4px;"/>
+    </td>
+    <td><input type="email" class="s-email" placeholder="—" value="${esc(data.email||'')}"
+      readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);"/></td>
+    <td><button class="btn danger btnDel" type="button" style="padding:6px 10px;font-size:.8rem;">Șterge</button></td>
+  `;
+
+  // ── Atrib custom toggle
+  const atribSel = tr.querySelector('.s-atrib');
+  const atribCustom = tr.querySelector('.s-atrib-custom');
   atribSel.addEventListener('change', () => {
     atribCustom.style.display = atribSel.value === '__alt__' ? 'block' : 'none';
   });
 
-  // User dropdown → autofill functie + email
-  const nameSel = div.querySelector('.s-name-sel');
-  const nameCustom = div.querySelector('.s-name-custom');
-  const functieIn = div.querySelector('.s-functie');
-  const emailIn = div.querySelector('.s-email');
+  // ── User dropdown
+  const nameSel = tr.querySelector('.s-name-sel');
+  const nameCustom = tr.querySelector('.s-name-custom');
+  const functieIn = tr.querySelector('.s-functie');
+  const emailIn = tr.querySelector('.s-email');
 
-  // Populate with users
-  if (window._tmplUsers) populateUserDropdown(nameSel, data);
+  if (window._tmplUsers) {
+    refreshAllDropdowns(cid); // rebuild toate + adaugă opțiunile pentru noul rând
+    // Populează dropdown-ul noului rând (refresh nu l-a atins că nu era în DOM încă)
+    const used = getUsedUsers(container, tr);
+    while (nameSel.options.length > 1) nameSel.remove(1);
+    (window._tmplUsers || []).forEach(u => {
+      if (used.has(u.nume)) return;
+      const opt = document.createElement('option');
+      opt.value = u.nume || '';
+      opt.dataset.email = u.email || '';
+      opt.dataset.functie = u.functie || '';
+      opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
+      nameSel.appendChild(opt);
+    });
+    const manualOpt = document.createElement('option');
+    manualOpt.value = '__manual__'; manualOpt.textContent = '✏️ Scrie manual...';
+    nameSel.appendChild(manualOpt);
+  }
 
   nameSel.addEventListener('change', () => {
     if (nameSel.value === '__manual__') {
@@ -319,87 +401,83 @@ function addSignerRow(target='create', data={}) {
       emailIn.style.opacity='1'; emailIn.style.cursor='text';
       return;
     }
-    const user = (window._tmplUsers||[]).find(u=>u.nume===nameSel.value);
+    const user = (window._tmplUsers||[]).find(u => u.nume === nameSel.value);
     if (user) {
       functieIn.value = user.functie || '';
       emailIn.value = user.email || '';
+      functieIn.style.opacity='.65'; functieIn.style.cursor='default';
+      emailIn.style.opacity='.65'; emailIn.style.cursor='default';
     } else {
       functieIn.value=''; emailIn.value='';
     }
+    // Reîmprospătează celelalte dropdown-uri pentru a ascunde utilizatorul tocmai selectat
+    refreshAllDropdowns(cid);
   });
 
-  // Auto-select ÎNTOCMIT cu userul logat
-  if ((selectedAtrib === 'ÎNTOCMIT') && !data.name) {
-    const me = JSON.parse(localStorage.getItem('docflow_user')||'{}');
-    if (me.email && window._tmplUsers) {
-      const myUser = window._tmplUsers.find(u=>u.email===me.email);
-      if (myUser) {
-        nameSel.value = myUser.nume;
-        functieIn.value = myUser.functie||'';
-        emailIn.value = myUser.email||'';
-      }
+  // ── Pre-selectare dacă datele există
+  if (data.name && window._tmplUsers) {
+    const found = Array.from(nameSel.options).find(o => o.value === data.name);
+    if (found) {
+      nameSel.value = data.name;
+      const u = window._tmplUsers.find(u => u.nume === data.name);
+      if (u) { functieIn.value = u.functie||''; emailIn.value = u.email||''; }
+    } else {
+      // Manual
+      nameSel.style.display = 'none';
+      nameCustom.style.display = 'block';
+      nameCustom.value = data.name;
+      if (data.functie) { functieIn.value = data.functie; functieIn.removeAttribute('readonly'); functieIn.style.opacity='1'; }
+      if (data.email)   { emailIn.value = data.email;     emailIn.removeAttribute('readonly');   emailIn.style.opacity='1'; }
     }
   }
 
-  // Prevent duplicate user selection
-  nameSel.addEventListener('change', function() {
-    if (!this.value || this.value === '' || this.value === '__manual__') return;
-    const allRows = container.querySelectorAll('.signer-row');
-    let isDuplicate = false;
-    allRows.forEach(r => {
-      if (r === div) return;
-      const sel = r.querySelector('.s-name-sel');
-      if (sel && sel.value === this.value) isDuplicate = true;
-    });
-    if (isDuplicate) {
-      alert('Acest utilizator este deja adăugat în lista de semnatari!');
-      this.value = '';
-      functieIn.value = '';
-      emailIn.value = '';
-    }
+  // ── Drag & drop
+  let dragSrc = null;
+  tr.addEventListener('dragstart', e => { dragSrc = tr; e.dataTransfer.effectAllowed='move'; tr.style.opacity='.4'; });
+  tr.addEventListener('dragend',   () => { tr.style.opacity=''; });
+  tr.addEventListener('dragover',  e => { e.preventDefault(); tr.classList.add('drag-over'); });
+  tr.addEventListener('dragleave', () => tr.classList.remove('drag-over'));
+  tr.addEventListener('drop', e => {
+    e.preventDefault(); tr.classList.remove('drag-over');
+    if (dragSrc && dragSrc !== tr) container.insertBefore(dragSrc, tr);
+    dragSrc = null;
   });
 
-  container.appendChild(div);
-}
-
-function populateUserDropdown(sel, data={}) {
-  // Pastreaza optiunile existente, adauga userii
-  const existing = sel.options[0];
-  while (sel.options.length > 1) sel.remove(1);
-  (window._tmplUsers||[]).forEach(u => {
-    const opt = document.createElement('option');
-    opt.value = u.nume||'';
-    opt.dataset.email = u.email||'';
-    opt.dataset.functie = u.functie||'';
-    opt.textContent = (u.nume||u.email)+(u.functie?' — '+u.functie:'');
-    sel.appendChild(opt);
+  // ── Șterge
+  tr.querySelector('.btnDel').addEventListener('click', () => {
+    tr.remove();
+    refreshAllDropdowns(cid);
   });
-  // Optiune scriere manuala
-  const manualOpt = document.createElement('option');
-  manualOpt.value = '__manual__'; manualOpt.textContent = '✏️ Scrie manual...';
-  sel.appendChild(manualOpt);
-  // Pre-selectare
-  if (data.name) {
-    const found = Array.from(sel.options).find(o=>o.value===data.name);
-    if (found) { sel.value = data.name; }
-    else {
-      // Manual mode
-      sel.style.display='none';
-      const nameCustom = sel.closest('.signer-row')?.querySelector('.s-name-custom');
-      if (nameCustom) { nameCustom.style.display='block'; nameCustom.value=data.name||''; }
+
+  container.appendChild(tr);
+
+  // Auto-fill ÎNTOCMIT cu userul logat pe primul rând
+  if (selectedAtrib === 'ÎNTOCMIT' && !data.name) {
+    const me = JSON.parse(localStorage.getItem('docflow_user')||'{}');
+    if (me.email && window._tmplUsers) {
+      const myUser = window._tmplUsers.find(u => u.email && u.email.toLowerCase() === me.email.toLowerCase());
+      if (myUser) {
+        const opt = Array.from(nameSel.options).find(o => o.value === myUser.nume);
+        if (opt) {
+          nameSel.value = myUser.nume;
+          functieIn.value = myUser.functie||'';
+          emailIn.value = myUser.email||'';
+          refreshAllDropdowns(cid);
+        }
+      }
     }
   }
 }
 
 function getSigners(cid) {
-  return Array.from($(cid).querySelectorAll('.signer-row')).map(r=>{
+  return Array.from($(cid).querySelectorAll('tr')).map(r => {
     const atribSel = r.querySelector('.s-atrib');
     const atrib = atribSel.value === '__alt__'
       ? (r.querySelector('.s-atrib-custom')?.value?.trim() || 'ALT ATRIBUT')
       : atribSel.value;
     const nameSel = r.querySelector('.s-name-sel');
     const nameCustom = r.querySelector('.s-name-custom');
-    const name = (nameSel && nameSel.style.display!=='none')
+    const name = (nameSel && nameSel.style.display !== 'none')
       ? nameSel.value.trim()
       : (nameCustom?.value?.trim() || '');
     return {
@@ -411,7 +489,7 @@ function getSigners(cid) {
   });
 }
 
-addSignerRow(); // start with one row
+addSignerRow(); // pornește cu un rând
 
 async function saveTemplate() {
   const name = $('tName').value.trim();
@@ -494,7 +572,6 @@ function buildCard(t,idx) {
 }
 
 function useTemplate(id) {
-  // Stocam in sessionStorage si navigam la pagina principala
   const t = allTemplates.find(x=>x.id===id);
   if (!t) return;
   sessionStorage.setItem('applyTemplate', JSON.stringify(t));
@@ -547,9 +624,7 @@ async function copyTemplate(id) {
   if (!newName) return;
   try {
     const r = await _apiFetch('/api/templates', {method:'POST', headers:hdrs(), body:JSON.stringify({
-      name: newName.trim(),
-      signers: t.signers,
-      shared: false  // întotdeauna privat
+      name: newName.trim(), signers: t.signers, shared: false
     })});
     if (!r.ok) throw new Error();
     showMsg('createMsg', '✅ Șablon copiat ca privat!', false);
@@ -563,34 +638,39 @@ function showMsg(id,txt,err) {
 }
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
-// Fetch users for dropdowns
+
+// Încarcă utilizatori pentru dropdown-uri
 (async function loadUsers() {
   try {
     const r = await _apiFetch('/users', {headers:{'Authorization':'Bearer '+token}});
     if (!r.ok) { console.warn('fetch /users failed:', r.status); return; }
     window._tmplUsers = await r.json();
-    console.log('Users loaded:', window._tmplUsers.length);
 
-    // Populate existing rows
-    document.querySelectorAll('.signer-row').forEach(row => {
-      const sel = row.querySelector('.s-name-sel');
-      if (sel) populateUserDropdown(sel, {});
-    });
-
-    // Auto-fill ÎNTOCMIT pe primul rând cu userul logat
-    const firstRow = document.querySelector('#signersBuilder .signer-row');
+    // Populează rândul existent
+    const firstRow = $('signersBuilder').querySelector('tr');
     if (firstRow) {
-      const atrib = firstRow.querySelector('.s-atrib');
-      if (atrib && atrib.value === 'ÎNTOCMIT') {
+      const sel = firstRow.querySelector('.s-name-sel');
+      const functieIn = firstRow.querySelector('.s-functie');
+      const emailIn = firstRow.querySelector('.s-email');
+      if (sel) {
+        while (sel.options.length > 1) sel.remove(1);
+        window._tmplUsers.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.nume||''; opt.dataset.email = u.email||''; opt.dataset.functie = u.functie||'';
+          opt.textContent = (u.nume||u.email) + (u.functie?' — '+u.functie:'');
+          sel.appendChild(opt);
+        });
+        const mo = document.createElement('option'); mo.value='__manual__'; mo.textContent='✏️ Scrie manual...';
+        sel.appendChild(mo);
+        // Auto-fill cu userul logat dacă ÎNTOCMIT
         const meUser = JSON.parse(localStorage.getItem('docflow_user')||'{}');
-        const found = window._tmplUsers.find(u => u.email && meUser.email &&
-          u.email.toLowerCase() === meUser.email.toLowerCase());
-        if (found) {
-          const sel = firstRow.querySelector('.s-name-sel');
-          if (sel) {
+        if (meUser.email) {
+          const found = window._tmplUsers.find(u => u.email && u.email.toLowerCase() === meUser.email.toLowerCase());
+          if (found) {
             sel.value = found.nume||'';
-            firstRow.querySelector('.s-functie').value = found.functie||'';
-            firstRow.querySelector('.s-email').value = found.email||'';
+            if (functieIn) { functieIn.value = found.functie||''; }
+            if (emailIn)   { emailIn.value = found.email||''; }
+            refreshAllDropdowns('signersBuilder');
           }
         }
       }

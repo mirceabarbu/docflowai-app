@@ -147,6 +147,7 @@
         </div>
       </div>
       <div class="actions">
+        <span id="userBarFlow" style="color:#cdd8ff;font-size:.82rem;"></span>
         <span class="pill" id="pillFlow" title="ID Flow"><strong>Flow</strong> —</span>
         <button class="btn ghost" id="btnBack">↩️ Înapoi</button>
         <button class="btn" id="btnRefresh">🔄 Refresh</button>
@@ -482,6 +483,14 @@
 
       // Buton Reinitiere — vizibil dacă fluxul e refuzat și userul e inițiator sau admin
       const currentUser = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+      // Populate userBar
+      (function() {
+        const bar = document.getElementById('userBarFlow');
+        if (!bar) return;
+        const label = currentUser.nume || currentUser.email || '';
+        if (label) bar.innerHTML = `Conectat: <strong>${label}</strong>` +
+          (currentUser.role === 'admin' ? ` &nbsp;<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
+      })();
       const isRefused = computedStatus === "refused";
       const isReviewRequested = data.status === "review_requested";
       const isInitiator = (data.initEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
