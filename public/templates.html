@@ -156,7 +156,7 @@
     <a href="/templates" class="btn active">📋 Șabloane</a>
   </div>
   <div class="hdr-right" id="userBar">
-    <button class="btn-logout" onclick="logout()">Ieșire</button>
+    <!-- populated by JS below -->
   </div>
 </header>
 
@@ -237,6 +237,18 @@ const token = localStorage.getItem('docflow_token');
 const me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
 if (!token) { location.href = '/login?next=/templates'; }
 function logout() { localStorage.removeItem('docflow_token'); localStorage.removeItem('docflow_user'); location.href = '/login'; }
+
+// Populate userBar with name + admin link + logout
+(function() {
+  const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
+  const bar = document.getElementById('userBar');
+  if (!bar) return;
+  const label = u.nume || u.email || '';
+  bar.innerHTML =
+    (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
+    (u.role === 'admin' ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
+    `<button onclick="logout()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+})();
 function hdrs() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -328,6 +340,24 @@ function addSignerRow(target='create', data={}) {
       }
     }
   }
+
+  // Prevent duplicate user selection
+  nameSel.addEventListener('change', function() {
+    if (!this.value || this.value === '' || this.value === '__manual__') return;
+    const allRows = container.querySelectorAll('.signer-row');
+    let isDuplicate = false;
+    allRows.forEach(r => {
+      if (r === div) return;
+      const sel = r.querySelector('.s-name-sel');
+      if (sel && sel.value === this.value) isDuplicate = true;
+    });
+    if (isDuplicate) {
+      alert('Acest utilizator este deja adăugat în lista de semnatari!');
+      this.value = '';
+      functieIn.value = '';
+      emailIn.value = '';
+    }
+  });
 
   container.appendChild(div);
 }

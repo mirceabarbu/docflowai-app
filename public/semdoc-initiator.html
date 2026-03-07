@@ -618,6 +618,19 @@ th{ color: var(--sub) !important; }
 
           nameSelect.addEventListener("change", () => {
             const opt = nameSelect.options[nameSelect.selectedIndex];
+            // Prevent duplicate user selection
+            if (opt && opt.value) {
+              const allSels = tbody.querySelectorAll('.name-select');
+              let isDup = false;
+              allSels.forEach(sel => { if (sel !== nameSelect && sel.value === opt.value) isDup = true; });
+              if (isDup) {
+                alert('Acest utilizator este deja adăugat în lista de semnatari!');
+                nameSelect.value = '';
+                if (emailInput)   { emailInput.value = '';   emailInput.readOnly = false; emailInput.style.opacity = '1'; }
+                if (functieInput) { functieInput.value = ''; functieInput.readOnly = false; functieInput.style.opacity = '1'; }
+                return;
+              }
+            }
             if (opt && opt.value) {
               if (emailInput)   { emailInput.value   = opt.dataset.email   || ""; emailInput.readOnly   = true; emailInput.style.opacity   = ".7"; emailInput.style.cursor   = "default"; }
               if (functieInput) { functieInput.value = opt.dataset.functie || ""; functieInput.readOnly = true; functieInput.style.opacity = ".7"; functieInput.style.cursor = "default"; }
