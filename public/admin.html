@@ -219,6 +219,8 @@
       </select>
       <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
       <button onclick="exportAuditCSV()" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;">📊 Export CSV 30z</button>
+      <button onclick="exportFlowsCSV()" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.13);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-weight:600;" title="Exportă lista curentă de fluxuri (cu filtrele aplicate) în CSV">📥 Export CSV</button>
+      <button onclick="exportFlowsPDF()" style="padding:8px 14px;font-size:.85rem;background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-weight:600;" title="Exportă lista curentă de fluxuri (cu filtrele aplicate) în PDF">📄 Export PDF</button>
     </div>
     <div id="flowsListArea" style="font-size:.83rem;color:var(--muted);">Apasă „Încarcă" pentru a vedea fluxurile.</div>
     <div id="flowsListPagination" style="display:none;margin-top:14px;"></div>
@@ -1720,6 +1722,136 @@ function exportActivityPDF() {
 
 
 // ── Export CSV ────────────────────────────────────────────────────────────
+
+// ── Export Flows CSV ──────────────────────────────────────────────────────
+async function exportFlowsCSV() {
+  const search = (document.getElementById('flowSearch').value || '').trim();
+  const statusF = document.getElementById('flowStatusFilter').value;
+  const instF = document.getElementById('flowInstFilter').value;
+  const deptF = document.getElementById('flowDeptFilter').value;
+  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', '': 'all' };
+  const params = new URLSearchParams({ export: '1', limit: '2000', status: statusMap[statusF] || 'all' });
+  if (search) params.set('search', search);
+  if (instF) params.set('institutie', instF);
+  if (deptF) params.set('compartiment', deptF);
+  try {
+    const r = await _apiFetch('/admin/flows/list?' + params.toString(), { headers: hdrs() });
+    if (!r.ok) throw new Error('Eroare server ' + r.status);
+    const resp = await r.json();
+    const flows = Array.isArray(resp) ? resp : (resp.flows || []);
+    if (!flows.length) { alert('Nu există fluxuri de exportat cu filtrele curente.'); return; }
+    const esc = v => '"' + String(v || '').replace(/"/g, '""') + '"';
+    const headers = ['ID Flux','Document','Initiator Email','Initiator Nume','Status','Urgent','Institutie','Compartiment','Creat','Nr Semnatari','Semnatari (Nume | Email | Rol | Status | Semnat la)'];
+    const rows = flows.map(f => {
+      const status = f.completed ? 'finalizat' : f.status === 'refused' ? 'refuzat' : 'activ';
+      const signersSummary = (f.signers || []).map(s => {
+        const signedAt = s.signedAt ? new Date(s.signedAt).toLocaleDateString('ro-RO') : '-';
+        return `${s.name || '-'} | ${s.email || '-'} | ${s.rol || '-'} | ${s.status || '-'} | ${signedAt}`;
+      }).join(' // ');
+      return [
+        f.flowId, f.docName, f.initEmail, f.initName || '-',
+        status, f.urgent ? 'DA' : 'Nu',
+        f.institutie || '-', f.compartiment || '-',
+        f.createdAt ? new Date(f.createdAt).toLocaleDateString('ro-RO') : '-',
+        (f.signers || []).length,
+        signersSummary
+      ].map(esc);
+    });
+    const csv = [headers.map(h => '"' + h + '"').join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fluxuri_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+  } catch(e) { alert('Eroare export CSV: ' + e.message); }
+}
+
+async function exportFlowsPDF() {
+  const search = (document.getElementById('flowSearch').value || '').trim();
+  const statusF = document.getElementById('flowStatusFilter').value;
+  const instF = document.getElementById('flowInstFilter').value;
+  const deptF = document.getElementById('flowDeptFilter').value;
+  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', '': 'all' };
+  const params = new URLSearchParams({ export: '1', limit: '2000', status: statusMap[statusF] || 'all' });
+  if (search) params.set('search', search);
+  if (instF) params.set('institutie', instF);
+  if (deptF) params.set('compartiment', deptF);
+  try {
+    const r = await _apiFetch('/admin/flows/list?' + params.toString(), { headers: hdrs() });
+    if (!r.ok) throw new Error('Eroare server ' + r.status);
+    const resp = await r.json();
+    const flows = Array.isArray(resp) ? resp : (resp.flows || []);
+    if (!flows.length) { alert('Nu există fluxuri de exportat cu filtrele curente.'); return; }
+    const now = new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
+    const filterDesc = [
+      search ? `Căutare: „${search}"` : '',
+      statusF ? `Status: ${statusF}` : '',
+      instF ? `Instituție: ${instF}` : '',
+      deptF ? `Compartiment: ${deptF}` : '',
+    ].filter(Boolean).join(' &nbsp;|&nbsp; ') || 'Toate fluxurile';
+    const escH = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const rows = flows.map((f, idx) => {
+      const status = f.completed
+        ? '<span class="badge done">✅ finalizat</span>'
+        : f.status === 'refused'
+        ? '<span class="badge refused">⛔ refuzat</span>'
+        : '<span class="badge active">✍ activ</span>';
+      const signersHtml = (f.signers || []).map(s => {
+        const stClass = s.status === 'signed' ? 'signed' : s.status === 'refused' ? 'ref' : 'pend';
+        const signedAt = s.signedAt ? new Date(s.signedAt).toLocaleDateString('ro-RO') : '';
+        return `<span class="signer ${stClass}">${escH(s.name || s.email)}${s.rol ? ' (' + escH(s.rol) + ')' : ''}${signedAt ? ' — ' + signedAt : ''}</span>`;
+      }).join('');
+      return `<tr>
+        <td class="idx">${idx + 1}</td>
+        <td>${f.urgent ? '<b style="color:#c00;">🚨</b> ' : ''}${escH(f.docName || '—')}<br><small style="color:#888;">${escH(f.flowId)}</small></td>
+        <td>${escH(f.initName || '')}${f.initName && f.initEmail ? '<br>' : ''}${f.initEmail ? '<small>' + escH(f.initEmail) + '</small>' : ''}</td>
+        <td>${status}</td>
+        <td>${escH(f.institutie || '—')}</td>
+        <td>${escH(f.compartiment || '—')}</td>
+        <td>${f.createdAt ? new Date(f.createdAt).toLocaleDateString('ro-RO') : '—'}</td>
+        <td>${signersHtml}</td>
+      </tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8">
+  <title>Fluxuri DocFlowAI — ${new Date().toLocaleDateString('ro-RO')}</title>
+  <style>
+    @page { size: A4 landscape; margin: 15mm 12mm; }
+    body { font-family: Arial, sans-serif; font-size: 10px; color: #111; margin: 0; }
+    h2 { color: #1e2a5e; margin: 0 0 4px; font-size: 14px; }
+    .meta { color: #555; font-size: 9px; margin-bottom: 4px; }
+    .filters { color: #333; font-size: 9px; margin-bottom: 12px; background: #f0f4ff; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1e2a5e; color: #fff; padding: 5px 6px; text-align: left; font-size: 9px; white-space: nowrap; }
+    td { padding: 5px 6px; border-bottom: 1px solid #e5e7eb; vertical-align: top; font-size: 9px; }
+    tr:nth-child(even) td { background: #f8f9fb; }
+    td.idx { color: #aaa; width: 22px; text-align: right; }
+    .badge { padding: 2px 6px; border-radius: 8px; font-size: 8px; font-weight: 700; white-space: nowrap; }
+    .badge.done { background: #d1fae5; color: #065f46; }
+    .badge.refused { background: #fee2e2; color: #991b1b; }
+    .badge.active { background: #ede9fe; color: #4c1d95; }
+    .signer { display: inline-block; margin: 1px 2px 1px 0; padding: 1px 5px; border-radius: 6px; font-size: 8px; }
+    .signer.signed { background: #d1fae5; color: #065f46; }
+    .signer.ref { background: #fee2e2; color: #991b1b; }
+    .signer.pend { background: #f3f4f6; color: #374151; }
+    small { font-size: 8px; color: #888; }
+  </style></head><body>
+  <h2>📋 Fluxuri DocFlowAI</h2>
+  <div class="meta">Generat: ${now} &nbsp;|&nbsp; Total: ${flows.length} fluxuri</div>
+  <div class="filters">Filtre: ${filterDesc}</div>
+  <table>
+    <thead><tr>
+      <th>#</th><th>Document / ID</th><th>Inițiator</th><th>Status</th>
+      <th>Instituție</th><th>Compartiment</th><th>Creat</th><th>Semnatari</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <script>window.onload = () => window.print();<\/script>
+  </body></html>`;
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+  } catch(e) { alert('Eroare export PDF: ' + e.message); }
+}
 
 // ── Export Users CSV ──────────────────────────────────────────────────────
 function exportUsersCSV() {

@@ -418,8 +418,11 @@ router.get('/admin/flows/list', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   try {
+    const isExport = req.query.export === '1';
     const page = Math.max(1, parseInt(req.query.page || '1'));
-    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit || '50')));
+    const limit = isExport
+      ? Math.min(2000, Math.max(1, parseInt(req.query.limit || '2000')))
+      : Math.min(200, Math.max(1, parseInt(req.query.limit || '50')));
     const offset = (page - 1) * limit;
     const statusFilter = (req.query.status || 'all').toLowerCase();
     const instFilter = (req.query.institutie || '').trim();
@@ -444,9 +447,10 @@ router.get('/admin/flows/list', async (req, res) => {
       const d = r.data || {}; const initEmail = (d.initEmail || '').toLowerCase(); const u = userMap[initEmail] || {};
       return { flowId: d.flowId, docName: d.docName, initEmail: d.initEmail, initName: d.initName,
         status: d.status || 'active', completed: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
+        urgent: !!(d.urgent),
         storage: d.storage || 'db', createdAt: d.createdAt || r.created_at,
         institutie: u.institutie || d.institutie || '', compartiment: u.compartiment || d.compartiment || '',
-        signers: (d.signers || []).map(s => ({ name: s.name, email: s.email, rol: s.rol, status: s.status, tokenCreatedAt: s.tokenCreatedAt || null })) };
+        signers: (d.signers || []).map(s => ({ name: s.name, email: s.email, rol: s.rol, status: s.status, tokenCreatedAt: s.tokenCreatedAt || null, signedAt: s.signedAt || null, refuseReason: s.refuseReason || null })) };
     });
     return res.json({ flows, total, page, limit, pages });
   } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
