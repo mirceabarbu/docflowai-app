@@ -54,7 +54,13 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : true, credentials: true }));
+// ── CORS ──────────────────────────────────────────────────────────────────
+// FIX v3.2.2: origin:true cu credentials:true e periculos (accept orice domeniu).
+// Fallback la domeniu explicit din PUBLIC_BASE_URL dacă CORS_ORIGIN nu e setat.
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : true);
+app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 
 // ── Request ID + safe JSON error envelope ─────────────────────────────────
@@ -158,6 +164,11 @@ app.delete('/api/templates/:id', async (req, res) => {
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+// FIX v3.2.2: escape HTML pentru emailuri — previne HTML injection în notificări
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function publicBaseUrl(req) {
   const envBase = process.env.PUBLIC_BASE_URL;
   if (envBase) return envBase.replace(/\/$/, '');
@@ -339,7 +350,7 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
 
   const eventsToAdd = [];
   const [emailResult, waResult] = await Promise.allSettled([
-    needsEmail ? sendSignerEmail({ to: email, subject: title, html: `<div style="font-family:sans-serif;padding:20px;"><h2>${title}</h2><p>${message}</p></div>` }) : Promise.resolve({ ok: false, reason: 'disabled' }),
+    needsEmail ? sendSignerEmail({ to: email, subject: title, html: `<div style="font-family:sans-serif;padding:20px;"><h2>${escHtml(title)}</h2><p>${escHtml(message)}</p></div>` }) : Promise.resolve({ ok: false, reason: 'disabled' }),
     needsWa ? (async () => {
       if (type === 'YOUR_TURN') return sendWaSignRequest({ phone: uRow.phone, signerName: waParams.signerName || '', docName: waParams.docName || '' });
       if (type === 'COMPLETED') return sendWaCompleted({ phone: uRow.phone, docName: waParams.docName || '' });
@@ -378,8 +389,31 @@ app.use('/', flowsRouter);
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
+// FIX v3.2.2: heartbeat pentru detecție conexiuni zombie + timeout auth
+const WS_AUTH_TIMEOUT_MS = 15_000;  // 15s să trimită auth
+const WS_PING_INTERVAL_MS = 30_000; // ping la 30s
+
+const wsHeartbeat = setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (ws.isAlive === false) { ws.terminate(); return; }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, WS_PING_INTERVAL_MS);
+wss.on('close', () => clearInterval(wsHeartbeat));
+
 wss.on('connection', (ws, req) => {
   let clientEmail = null;
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
+  // Timeout dacă nu trimite auth în 15s
+  const authTimeout = setTimeout(() => {
+    if (!clientEmail) {
+      ws.send(JSON.stringify({ event: 'auth_timeout', message: 'Autentificare obligatorie în 15s.' }));
+      ws.terminate();
+    }
+  }, WS_AUTH_TIMEOUT_MS);
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
@@ -387,6 +421,7 @@ wss.on('connection', (ws, req) => {
         try {
           const decoded = jwt.verify(msg.token, JWT_SECRET);
           clientEmail = decoded.email.toLowerCase();
+          clearTimeout(authTimeout);
           wsRegister(clientEmail, ws);
           ws.send(JSON.stringify({ event: 'auth_ok', email: clientEmail }));
           if (pool && DB_READY) {
@@ -400,7 +435,7 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'ping') ws.send(JSON.stringify({ event: 'pong' }));
     } catch(e) {}
   });
-  ws.on('close', () => { if (clientEmail) { wsUnregister(clientEmail, ws); console.log(`🔌 WS closed: ${clientEmail}`); } });
+  ws.on('close', () => { clearTimeout(authTimeout); if (clientEmail) { wsUnregister(clientEmail, ws); console.log(`🔌 WS closed: ${clientEmail}`); } });
   ws.on('error', (e) => console.error('WS error:', e.message));
 });
 

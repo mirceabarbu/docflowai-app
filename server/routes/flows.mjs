@@ -343,6 +343,7 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
     const { flowId } = req.params;
     const { token, reason } = req.body || {};
     if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
+    if (String(reason).trim().length > 1000) return res.status(400).json({ error: 'reason_too_long', max: 1000 });
     const authHeader = req.headers['authorization'] || '';
     if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'unauthorized', message: 'Autentificare obligatorie.' });
     let actorRefuse;
@@ -701,6 +702,7 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     const { flowId } = req.params;
     const { token, reason } = req.body || {};
     if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
+    if (String(reason).trim().length > 1000) return res.status(400).json({ error: 'reason_too_long', max: 1000 });
     const authHeader = req.headers['authorization'] || '';
     if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'unauthorized' });
     let actor;
@@ -870,6 +872,11 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     if (!fromToken) return res.status(400).json({ error: 'fromToken_required' });
     if (!toEmail || !/^\S+@\S+\.\S+$/.test(toEmail)) return res.status(400).json({ error: 'toEmail_invalid' });
     if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
+    if (!String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
+    // FIX v3.2.2: nu poți delega către tine însuți
+    if (toEmail.trim().toLowerCase() === (actor.email || '').toLowerCase()) {
+      return res.status(400).json({ error: 'self_delegation_not_allowed', message: 'Nu poți delega semnătura către tine însuți.' });
+    }
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     const signers = Array.isArray(data.signers) ? data.signers : [];

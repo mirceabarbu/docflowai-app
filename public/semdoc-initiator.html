@@ -541,7 +541,7 @@ th{ color: var(--sub) !important; }
         const nameSel = tr.querySelector(".name-select");
         if (nameSel) { nameSel.value = s.name || ""; } else { tr.querySelector(".name").value = (s.name || ""); }
         tr.querySelector(".email").value = (s.email || "");
-        tr.querySelector(".btnDel").addEventListener("click", () => tr.remove());
+        tr.querySelector(".btnDel").addEventListener("click", () => { tr.remove(); refreshAllDropdowns?.(); });
 
         // Auto-fill name/email from initiator fields when ÎNTOCMIT is selected
         function syncIntocmit(sel) {
@@ -601,9 +601,12 @@ th{ color: var(--sub) !important; }
         const functieInput = tr.querySelector(".functie");
 
         function populateSelect(sel) {
-          // Șterge opțiunile vechi (păstrează prima)
+          // Șterge opțiunile vechi (păstrează prima — "Alege utilizator")
           while (sel.options.length > 1) sel.remove(1);
+          // Colectăm utilizatorii deja selectați în alte rânduri
+          const usedEmails = getUsedEmails(sel);
           (window._dbUsers || []).forEach(u => {
+            if (usedEmails.has(u.email || '')) return; // sări utilizatorii deja aleși
             const opt = document.createElement("option");
             opt.value = u.nume || "";
             opt.dataset.email = u.email || "";
@@ -613,24 +616,37 @@ th{ color: var(--sub) !important; }
           });
         }
 
+        // Returnează email-urile selectate în ALTE rânduri (nu cel curent)
+        function getUsedEmails(currentSel) {
+          const used = new Set();
+          tbody.querySelectorAll('.name-select').forEach(s => {
+            if (s === currentSel) return;
+            const opt = s.options[s.selectedIndex];
+            if (opt && opt.dataset.email) used.add(opt.dataset.email);
+          });
+          return used;
+        }
+
+        // Repopulează toate dropdown-urile (după ce un user e ales/șters în orice rând)
+        function refreshAllDropdowns() {
+          tbody.querySelectorAll('.name-select').forEach(s => {
+            const currentEmail = s.options[s.selectedIndex]?.dataset?.email || '';
+            const currentValue = s.value;
+            populateSelect(s);
+            // Restabilim selecția curentă dacă era ceva ales
+            if (currentValue && currentEmail) {
+              const restored = [...s.options].find(o => o.dataset.email === currentEmail);
+              if (restored) s.value = restored.value;
+              else { s.value = ''; } // utilizatorul a fost ales în alt rând
+            }
+          });
+        }
+
         if (nameSelect) {
           populateSelect(nameSelect);
 
           nameSelect.addEventListener("change", () => {
             const opt = nameSelect.options[nameSelect.selectedIndex];
-            // Prevent duplicate user selection
-            if (opt && opt.value) {
-              const allSels = tbody.querySelectorAll('.name-select');
-              let isDup = false;
-              allSels.forEach(sel => { if (sel !== nameSelect && sel.value === opt.value) isDup = true; });
-              if (isDup) {
-                alert('Acest utilizator este deja adăugat în lista de semnatari!');
-                nameSelect.value = '';
-                if (emailInput)   { emailInput.value = '';   emailInput.readOnly = false; emailInput.style.opacity = '1'; }
-                if (functieInput) { functieInput.value = ''; functieInput.readOnly = false; functieInput.style.opacity = '1'; }
-                return;
-              }
-            }
             if (opt && opt.value) {
               if (emailInput)   { emailInput.value   = opt.dataset.email   || ""; emailInput.readOnly   = true; emailInput.style.opacity   = ".7"; emailInput.style.cursor   = "default"; }
               if (functieInput) { functieInput.value = opt.dataset.functie || ""; functieInput.readOnly = true; functieInput.style.opacity = ".7"; functieInput.style.cursor = "default"; }
@@ -638,6 +654,8 @@ th{ color: var(--sub) !important; }
               if (emailInput)   { emailInput.value   = ""; emailInput.readOnly   = false; emailInput.style.opacity   = "1"; emailInput.style.cursor = ""; }
               if (functieInput) { functieInput.value = ""; functieInput.readOnly = false; functieInput.style.opacity = "1"; functieInput.style.cursor = ""; }
             }
+            // Actualizează toate dropdown-urile — elimină utilizatorul ales din celelalte
+            refreshAllDropdowns();
             validateForm();
           });
         }
@@ -1148,19 +1166,8 @@ async function signFromFluxuri(flowId) {
           const r = await _apiFetch("/users", { headers: { "Authorization": "Bearer " + token } });
           if (r.ok) {
             window._dbUsers = await r.json();
-            // Repopulează dropdown-urile existente și re-selectează userul logat
-            document.querySelectorAll("#signersTbody tr").forEach(tr => {
-              const sel = tr.querySelector(".name-select");
-              if (!sel || sel.options.length > 1) return;
-              window._dbUsers.forEach(u => {
-                const opt = document.createElement("option");
-                opt.value = u.nume || "";
-                opt.dataset.email = u.email || "";
-                opt.dataset.functie = u.functie || "";
-                opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
-                sel.appendChild(opt);
-              });
-            });
+            // Repopulează toate dropdown-urile respectând selecțiile existente
+            refreshAllDropdowns?.();
             // Re-sincronizează ÎNTOCMIT după ce dropdown-urile sunt populate
             autoFillFromProfile();
           }

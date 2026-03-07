@@ -262,7 +262,11 @@ router.post('/admin/flows/clean', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  const { olderThanDays, all, institutie, compartiment } = req.body || {};
+  const { olderThanDays, all, institutie, compartiment, confirmToken } = req.body || {};
+  // FIX v3.2.2: ștergerea totală necesită token de confirmare explicit
+  if (all && confirmToken !== 'DELETE_ALL_FLOWS') {
+    return res.status(400).json({ error: 'confirm_token_required', message: 'Pentru ștergerea tuturor fluxurilor trimite confirmToken: "DELETE_ALL_FLOWS".' });
+  }
   try {
     let result;
     if (!institutie && !compartiment) {
@@ -780,20 +784,30 @@ router.get('/admin/user-activity', async (req, res) => {
     const deptFilter     = (req.query.compartiment  || '').trim();
     const nameFilter     = (req.query.name     || '').toLowerCase().trim();
 
-    // Toti utilizatorii din sistem
-    const { rows: userRows } = await pool.query('SELECT email, nume, functie, institutie, compartiment, role FROM users ORDER BY nume');
+    // Toti utilizatorii din aceeași organizație
+    const { rows: selfRow } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    const orgId = selfRow[0]?.org_id || null;
+    let userQuery, userParams;
+    if (orgId) {
+      userQuery = 'SELECT email, nume, functie, institutie, compartiment, role FROM users WHERE org_id=$1 ORDER BY nume';
+      userParams = [orgId];
+    } else {
+      userQuery = 'SELECT email, nume, functie, institutie, compartiment, role FROM users ORDER BY nume';
+      userParams = [];
+    }
+    const { rows: userRows } = await pool.query(userQuery, userParams);
 
-    // Selectăm DOAR câmpurile necesare din JSONB, fără PDF-uri (pdfB64/signedPdfB64 pot fi sute de MB)
+    // FIX v3.2.2: filtrare pe org_id — admin nu vede fluxuri din alte organizații
     const { rows: flowRows } = await pool.query(
       `SELECT
          data->>'flowId'   AS "flowId",
          data->>'docName'  AS "docName",
          data->'events'    AS events
        FROM flows
-       WHERE created_at <= $1
+       WHERE created_at <= $1${orgId ? ' AND org_id = $2' : ''}
        ORDER BY created_at DESC
        LIMIT 10000`,
-      [to]
+      orgId ? [to, orgId] : [to]
     );
 
     // EVENT_TYPES → eticheta romana
