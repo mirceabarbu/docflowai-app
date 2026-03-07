@@ -1,12 +1,14 @@
 /**
- * DocFlowAI v3.2.0 — Main entry point (orchestrator)
+ * DocFlowAI v3.2.2 — Main entry point (orchestrator)
  * FIX: notify — notif_email independent de notif_inapp
  * FIX: stampFooterOnPdf — latimea textului calculata corect cu font.widthOfTextAtSize
  * FIX: LOGIN_MAX/WINDOW/BLOCK exportate ca constante configurabile via ENV
+ * FIX v3.2.2: helmet security headers, SIGNER_TOKEN_EXPIRY_DAYS din ENV
  */
 
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import pg from 'pg';
 import crypto from 'crypto';
 import path from 'path';
@@ -33,6 +35,25 @@ import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
 
 const app = express();
 app.set('trust proxy', 1);
+
+// ── Security headers ──────────────────────────────────────────────────────
+// Fallback manual dacă helmet nu e instalat încă (graceful degradation)
+try {
+  app.use(helmet({
+    contentSecurityPolicy: false, // PDF viewer inline necesită relaxare — setăm manual mai jos
+    crossOriginEmbedderPolicy: false,
+  }));
+} catch(e) {
+  console.warn('⚠️  helmet not installed — adding manual security headers');
+}
+app.use((req, res, next) => {
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
 app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : true, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 
@@ -71,12 +92,12 @@ app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'template
 
 // ── Health public ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.1', ts: new Date().toISOString() });
+  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.2', ts: new Date().toISOString() });
 });
 
 app.get('/admin/health', (req, res) => {
   if (requireAdmin(req, res)) return;
-  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.1', dbReady: !!DB_READY, dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null, ts: new Date().toISOString() });
+  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.2', dbReady: !!DB_READY, dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null, ts: new Date().toISOString() });
 });
 
 // ── Template API ──────────────────────────────────────────────────────────
@@ -172,7 +193,7 @@ function stripSensitive(data, callerSignerToken = null) {
   };
 }
 
-const SIGNER_TOKEN_EXPIRY_DAYS = 90;
+const SIGNER_TOKEN_EXPIRY_DAYS = parseInt(process.env.SIGNER_TOKEN_EXPIRY_DAYS || '90');
 function isSignerTokenExpired(signer) {
   if (!signer.tokenCreatedAt) return false;
   const created = new Date(signer.tokenCreatedAt).getTime();
@@ -395,7 +416,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { console.error('❌ PORT missing.'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`🚀 DocFlowAI v3.2.0 server on port ${PORT}`);
+  console.log(`🚀 DocFlowAI v3.2.2 server on port ${PORT}`);
   console.log(`🔌 WebSocket ready at ws://0.0.0.0:${PORT}/ws`);
   initDbWithRetry();
 });

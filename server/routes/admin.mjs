@@ -420,11 +420,13 @@ router.get('/admin/flows/list', async (req, res) => {
     const instFilter = (req.query.institutie || '').trim();
     const deptFilter = (req.query.compartiment || '').trim();
     const search = (req.query.search || '').trim().toLowerCase();
+    // FIX v3.2.2: escape caractere speciale LIKE
+    const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
     const conditions = ['1=1']; const params = [];
     if (statusFilter === 'pending') conditions.push("(data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused'");
     else if (statusFilter === 'completed') conditions.push("(data->>'completed') = 'true'");
     else if (statusFilter === 'refused') conditions.push("(data->>'status') = 'refused'");
-    if (search) { params.push(`%${search}%`); conditions.push(`(lower(data->>'docName') LIKE $${params.length} OR lower(data->>'initName') LIKE $${params.length} OR lower(data->>'initEmail') LIKE $${params.length} OR lower(data->>'flowId') LIKE $${params.length})`); }
+    if (search) { params.push(`%${escapedSearch}%`); conditions.push(`(lower(data->>'docName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initEmail') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'flowId') LIKE $${params.length} ESCAPE '\\')`); }
     if (instFilter) { params.push(instFilter); conditions.push(`(data->>'institutie' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.institutie=$${params.length}))`); }
     if (deptFilter) { params.push(deptFilter); conditions.push(`(data->>'compartiment' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.compartiment=$${params.length}))`); }
     const whereClause = conditions.join(' AND ');

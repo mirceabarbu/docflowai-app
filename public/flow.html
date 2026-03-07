@@ -436,7 +436,11 @@
       return;
     }
 
-    $("pillFlow").innerHTML = `<strong>Flow</strong> ${flowId}`;
+    // FIX v3.2.2: flowId vine din URL — folosim textContent pentru a preveni XSS
+    const pillFlow = $("pillFlow");
+    pillFlow.innerHTML = '<strong>Flow</strong> ';
+    const flowIdSpan = document.createTextNode(flowId);
+    pillFlow.appendChild(flowIdSpan);
 
     setMsg("", "");
 

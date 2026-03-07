@@ -9,6 +9,7 @@
  * FIX: upload-signed-pdf — limita exprimata in bytes reali (30MB PDF)
  * FIX: reinitiate — re-aplica footer cu noul flowId
  * FIX: notify — notif_email independent de notif_inapp
+ * FIX v3.2.2: LIKE injection escape, input length limits, originalPdfB64 pentru reinitiate curat
  */
 
 import { Router } from 'express';
@@ -53,9 +54,12 @@ const createFlow = async (req, res) => {
     }
 
     if (!docName || docName.length < 2) return res.status(400).json({ error: 'docName_required' });
+    if (docName.length > 500) return res.status(400).json({ error: 'docName_too_long', max: 500 });
     if (!initName || initName.length < 2) return res.status(400).json({ error: 'initName_required' });
+    if (initName.length > 200) return res.status(400).json({ error: 'initName_too_long', max: 200 });
     if (!initEmail || !/^\S+@\S+\.\S+$/.test(initEmail)) return res.status(400).json({ error: 'initEmail_invalid' });
     if (!signers.length) return res.status(400).json({ error: 'signers_required' });
+    if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
 
     for (let i = 0; i < signers.length; i++) {
       const s = signers[i] || {};
@@ -111,6 +115,7 @@ const createFlow = async (req, res) => {
       initFunctie, institutie: initInstitutie, compartiment: initCompartiment,
       meta: body.meta || {}, flowType: body.flowType || 'tabel',
       urgent: !!(body.urgent),
+      originalPdfB64: body.pdfB64 ?? null,  // PDF curat, fără footer — pentru reinitiate
       pdfB64: finalPdfB64,
       signers: normalizedSigners,
       createdAt, updatedAt: new Date().toISOString(),
@@ -552,6 +557,9 @@ router.get('/my-flows', async (req, res) => {
     const statusFilter = (req.query.status || 'all').toLowerCase();
     const search = (req.query.search || '').trim().toLowerCase();
 
+    // FIX v3.2.2: escape caractere speciale LIKE pentru a preveni pattern injection
+    const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
+
     // FIX: filtru org_id strict — fara "OR $2 = 0"
     let baseWhere, params;
     if (orgId) {
@@ -568,7 +576,7 @@ router.get('/my-flows', async (req, res) => {
     else if (statusFilter === 'completed') statusWhere = " AND (data->>'completed') = 'true'";
     else if (statusFilter === 'refused') statusWhere = " AND (data->>'status') = 'refused'";
     let searchWhere = '';
-    if (search) { params.push(`%${search}%`); searchWhere = ` AND (lower(data->>'docName') LIKE $${params.length} OR lower(data->>'initName') LIKE $${params.length})`; }
+    if (search) { params.push(`%${escapedSearch}%`); searchWhere = ` AND (lower(data->>'docName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initName') LIKE $${params.length} ESCAPE '\\')`; }
     const whereClause = baseWhere + statusWhere + searchWhere;
     const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
@@ -659,16 +667,20 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
       signedPdfB64: null, signedPdfUploadedAt: null, signedPdfUploadedBy: null, signedPdfVersions: [],
       events: [{ at: newCreatedAt, type: 'FLOW_REINITIATED', by: actor.email, fromFlowId: flowId }],
     };
-    // FIX: re-aplica footer cu noul flowId pe PDF-ul original
-    if (newData.pdfB64 && _stampFooterOnPdf) {
-      try {
-        newData.pdfB64 = await _stampFooterOnPdf(newData.pdfB64, {
-          flowId: newFlowId2, createdAt: newCreatedAt,
-          initName: data.initName, initFunctie: data.initFunctie,
-          institutie: data.institutie, compartiment: data.compartiment,
-          flowType: data.flowType || 'tabel'  // ancore => useObjectStreams:false
-        });
-      } catch(e) { console.warn('Re-stamp footer on reinitiate error:', e.message); }
+    // FIX v3.2.2: folosim originalPdfB64 (PDF curat, fără footer) pentru a evita double-stamp.
+    // Dacă nu există (fluxuri vechi), cădem pe pdfB64 ca fallback.
+    if (_stampFooterOnPdf) {
+      const baseForStamp = newData.originalPdfB64 || newData.pdfB64;
+      if (baseForStamp) {
+        try {
+          newData.pdfB64 = await _stampFooterOnPdf(baseForStamp, {
+            flowId: newFlowId2, createdAt: newCreatedAt,
+            initName: data.initName, initFunctie: data.initFunctie,
+            institutie: data.institutie, compartiment: data.compartiment,
+            flowType: data.flowType || 'tabel'
+          });
+        } catch(e) { console.warn('Re-stamp footer on reinitiate error:', e.message); }
+      }
     }
     await saveFlow(newFlowId2, newData);
     const first = remainingSigners[0];

@@ -117,8 +117,8 @@ router.post('/auth/refresh', async (req, res) => {
 
 export default router;
 
-// ── GET /auth/debug — diagnostic endpoint (admin only) ────────────────────
-// Afișează exact ce e în JWT și în DB pentru userul curent
+// ── GET /auth/debug — diagnostic endpoint (ADMIN ONLY) ────────────────────
+// FIX v3.2.2: necesită autentificare admin — nu mai e accesibil oricărui user autentificat
 router.get('/auth/debug', async (req, res) => {
   const auth = req.get('authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
@@ -131,6 +131,11 @@ router.get('/auth/debug', async (req, res) => {
   } catch(e) {
     jwtError = e.message;
     try { decoded = jwt.decode(token); } catch(e2) {}
+  }
+
+  // FIX: verificare rol admin înainte de a returna informații sensibile
+  if (!decoded || decoded.role !== 'admin') {
+    return res.status(403).json({ error: 'forbidden', message: 'Endpoint disponibil doar pentru administratori.' });
   }
 
   let dbUser = null;
