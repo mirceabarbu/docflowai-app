@@ -62,3 +62,9 @@ export function generatePassword() {
 export function sha256Hex(buf) {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
+
+// FIX v3.2.2: escape HTML pentru emailuri — previne HTML injection
+// Exportat din middleware pentru reutilizare în toate rutele
+export function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}

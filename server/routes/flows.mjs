@@ -15,7 +15,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, requireAuth, requireAdmin, sha256Hex } from '../middleware/auth.mjs';
+import { JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg } from '../db/index.mjs';
 
 const router = Router();
@@ -61,11 +61,23 @@ const createFlow = async (req, res) => {
     if (!signers.length) return res.status(400).json({ error: 'signers_required' });
     if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
 
+    // FIX v3.2.3: validare dimensiune PDF la creare flux
+    if (body.pdfB64 && typeof body.pdfB64 === 'string') {
+      const rawPdfCheck = body.pdfB64.includes('base64,') ? body.pdfB64.split('base64,')[1] : body.pdfB64;
+      const estimatedPdfBytes = Math.floor(rawPdfCheck.length * 0.75);
+      if (estimatedPdfBytes > 30 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_30mb', message: 'PDF-ul depășește limita de 30 MB.' });
+    }
+
     for (let i = 0; i < signers.length; i++) {
       const s = signers[i] || {};
       if (!String(s.email || '').trim() || !/^\S+@\S+\.\S+$/.test(String(s.email || '').trim())) return res.status(400).json({ error: 'signer_email_invalid', index: i });
       if (!String(s.name || '').trim() || String(s.name || '').trim().length < 2) return res.status(400).json({ error: 'signer_name_required', index: i });
     }
+
+    // FIX v3.2.3: semnatari duplicați blocați în backend
+    const signerEmails = signers.map(s => String(s.email || '').trim().toLowerCase()).filter(Boolean);
+    const uniqueEmails = new Set(signerEmails);
+    if (uniqueEmails.size !== signerEmails.length) return res.status(400).json({ error: 'duplicate_signer_emails', message: 'Același utilizator nu poate apărea de două ori în lista de semnatari.' });
 
     const normalizedSigners = signers.map((s, idx) => ({
       order: Number(s.order || idx + 1),
@@ -765,8 +777,12 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     const { pdfB64 } = req.body || {};
     if (!pdfB64 || typeof pdfB64 !== 'string') return res.status(400).json({ error: 'pdfB64_required' });
 
-    // Calculăm hash-ul documentului uploadat
+    // FIX v3.2.3: validare dimensiune PDF la reinițiere după revizuire
     const rawPdf = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const estimatedPdfBytes = Math.floor(rawPdf.length * 0.75);
+    if (estimatedPdfBytes > 30 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_30mb', message: 'PDF-ul depășește limita de 30 MB.' });
+
+    // Calculăm hash-ul documentului uploadat
     const uploadedHash = sha256Hex(rawPdf);
 
     const data = await getFlowData(flowId);
@@ -872,7 +888,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     if (!fromToken) return res.status(400).json({ error: 'fromToken_required' });
     if (!toEmail || !/^\S+@\S+\.\S+$/.test(toEmail)) return res.status(400).json({ error: 'toEmail_invalid' });
     if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
-    if (!String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
+    if (String(reason).trim().length > 1000) return res.status(400).json({ error: 'reason_too_long', max: 1000 });
     // FIX v3.2.2: nu poți delega către tine însuți
     if (toEmail.trim().toLowerCase() === (actor.email || '').toLowerCase()) {
       return res.status(400).json({ error: 'self_delegation_not_allowed', message: 'Nu poți delega semnătura către tine însuți.' });
@@ -949,14 +965,14 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
   <div style="text-align:center;margin-bottom:28px;">
     <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div>
   </div>
-  <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${resolvedName ? ', ' + resolvedName : ''},</h2>
+  <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${resolvedName ? ', ' + escHtml(resolvedName) : ''},</h2>
   <p style="color:#9db0ff;margin:0 0 6px;line-height:1.6;">
-    <strong style="color:#ffd580;">${originalName}</strong> ți-a delegat semnarea electronică a documentului:
+    <strong style="color:#ffd580;">${escHtml(originalName)}</strong> ți-a delegat semnarea electronică a documentului:
   </p>
   <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:16px 20px;margin:16px 0 20px;">
-    <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:6px;">📄 ${data.docName || flowId}</div>
-    <div style="font-size:.85rem;color:#9db0ff;margin-bottom:4px;">Inițiat de: ${data.initName || data.initEmail || ''}</div>
-    <div style="font-size:.85rem;color:#ffd580;">Motiv delegare: ${String(reason).trim()}</div>
+    <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:6px;">📄 ${escHtml(data.docName || flowId)}</div>
+    <div style="font-size:.85rem;color:#9db0ff;margin-bottom:4px;">Inițiat de: ${escHtml(data.initName || data.initEmail || '')}</div>
+    <div style="font-size:.85rem;color:#ffd580;">Motiv delegare: ${escHtml(String(reason).trim())}</div>
   </div>
   <div style="background:rgba(255,100,100,.08);border:1px solid rgba(255,100,100,.2);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:.85rem;color:#ffb3b3;">
     ⚠️ Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi.
@@ -964,7 +980,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
   <div style="text-align:center;">
     <a href="${signerLink}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:1rem;">✍️ Deschide documentul pentru semnare</a>
   </div>
-  <p style="margin-top:20px;font-size:.78rem;color:rgba(255,255,255,.3);text-align:center;">Link valid 90 de zile · DocFlowAI · ${data.institutie || ''}</p>
+  <p style="margin-top:20px;font-size:.78rem;color:rgba(255,255,255,.3);text-align:center;">Link valid 90 de zile · DocFlowAI · ${escHtml(data.institutie || '')}</p>
 </div>`
         });
       } catch(emailErr) { console.error('Delegare email error:', emailErr.message); }

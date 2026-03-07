@@ -111,12 +111,14 @@ app.get('/api/templates', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     const institutie = uRows[0]?.institutie || '';
+    const orgId = uRows[0]?.org_id || actor.orgId || null;
+    // FIX v3.2.3: filtrare pe org_id pentru sabloane partajate (nu doar pe institutie text)
     const { rows } = await pool.query(
-      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='')
+      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='' AND ($3::integer IS NULL OR org_id=$3))
        ORDER BY user_email=$1 DESC, name ASC`,
-      [actor.email.toLowerCase(), institutie]
+      [actor.email.toLowerCase(), institutie, orgId]
     );
     res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
@@ -127,7 +129,9 @@ app.post('/api/templates', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   const { name, signers, shared } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
+  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
   if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
+  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
   try {
     const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     const institutie = uRows[0]?.institutie || '';
@@ -143,6 +147,10 @@ app.put('/api/templates/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   const { name, signers, shared } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
+  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
+  if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
+  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
   try {
     const { rows } = await pool.query(
       'UPDATE templates SET name=$1,signers=$2,shared=$3,updated_at=NOW() WHERE id=$4 AND user_email=$5 RETURNING *',
@@ -293,17 +301,14 @@ async function clearLoginRate(req, email) {
   if (!pool || !DB_READY) return;
   try { await pool.query('DELETE FROM login_blocks WHERE key=$1', [loginRateKey(req, email)]); } catch(e) {}
 }
-setInterval(async () => {
-  if (!pool || !DB_READY) return;
-  try {
-    const { rowCount } = await pool.query(`DELETE FROM login_blocks WHERE (blocked_until IS NULL OR blocked_until < NOW()) AND first_at < NOW() - ($1 || ' seconds')::INTERVAL`, [LOGIN_WINDOW * 2]);
+const _loginBlocksCleanupInterval = setInterval(async () => { (blocked_until IS NULL OR blocked_until < NOW()) AND first_at < NOW() - ($1 || ' seconds')::INTERVAL`, [LOGIN_WINDOW * 2]);
     if (rowCount > 0) console.log(`🧹 login_blocks: ${rowCount} intrări expirate șterse.`);
   } catch(e) {}
 }, 30 * 60 * 1000);
 
 // ── Cleanup notificari vechi (max 500/user) ────────────────────────────────
 // Rulat o data la 6 ore pentru a preveni cresterea nelimitata
-setInterval(async () => {
+const _notifsCleanupInterval = setInterval(async () => {
   if (!pool || !DB_READY) return;
   try {
     const { rowCount } = await pool.query(`
@@ -442,6 +447,10 @@ wss.on('connection', (ws, req) => {
 // ── Graceful shutdown ─────────────────────────────────────────────────────
 function shutdown(signal) {
   console.log(`🧯 ${signal} received.`);
+  // FIX v3.2.3: oprim toate intervalele la shutdown
+  clearInterval(_loginBlocksCleanupInterval);
+  clearInterval(_notifsCleanupInterval);
+  clearInterval(wsHeartbeat);
   httpServer.close(() => { console.log('✅ Server closed.'); process.exit(0); });
   setTimeout(() => process.exit(0), 10_000).unref();
 }

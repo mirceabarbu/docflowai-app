@@ -20,6 +20,8 @@ router.post('/auth/login', async (req, res) => {
   if (requireDb(res)) return;
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email_and_password_required' });
+  // FIX v3.2.3: limită lungime parolă — previne DoS via pbkdf2Sync cu input mare
+  if (password.length > 200) return res.status(400).json({ error: 'password_too_long', max: 200 });
   const rateCheck = await _checkLoginRate(req, email);
   if (rateCheck.blocked) {
     return res.status(429).json({
@@ -115,7 +117,6 @@ router.post('/auth/refresh', async (req, res) => {
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
 
-export default router;
 
 // ── GET /auth/debug — diagnostic endpoint (ADMIN ONLY) ────────────────────
 // FIX v3.2.2: necesită autentificare admin — nu mai e accesibil oricărui user autentificat
@@ -248,3 +249,4 @@ router.get('/auth/fix-admin', async (req, res) => {
     res.status(500).send(`<h2>❌ Eroare: ${e.message}</h2>`);
   }
 });
+export default router;

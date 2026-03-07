@@ -355,12 +355,13 @@ router.post('/admin/flows/archive', async (req, res) => {
         // Skip daca nu are niciun PDF (flux gol/corupt) — marcam arhivat direct
         if (!data.pdfB64 && !data.signedPdfB64) {
           data.storage = 'drive'; data.archivedAt = new Date().toISOString();
+          data.pdfB64 = null; data.signedPdfB64 = null; data.originalPdfB64 = null;
           await saveFlow(flowId, data);
           results.push({ flowId, ok: true, warning: 'No PDF available — marked archived without Drive upload' });
           continue;
         }
         driveResult = await archiveFlow(data);
-        data.pdfB64 = null; data.signedPdfB64 = null; data.storage = 'drive';
+        data.pdfB64 = null; data.signedPdfB64 = null; data.originalPdfB64 = null; data.storage = 'drive';
         data.archivedAt = new Date().toISOString();
         data.driveFileIdFinal = driveResult.driveFileIdFinal || null;
         data.driveFileIdOriginal = driveResult.driveFileIdOriginal || null;
@@ -379,7 +380,7 @@ router.post('/admin/flows/archive', async (req, res) => {
             const data2 = await getFlowData(flowId);
             if (data2 && data2.storage !== 'drive') {
               data2.storage = 'drive'; data2.archivedAt = new Date().toISOString();
-              data2.pdfB64 = null; data2.signedPdfB64 = null;
+              data2.pdfB64 = null; data2.signedPdfB64 = null; data2.originalPdfB64 = null;
               Object.assign(data2, driveResult);
               await saveFlow(flowId, data2);
               results.push({ flowId, ok: true, warning: 'Drive OK, DB save retry reusit: ' + e.message });
