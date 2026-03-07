@@ -301,7 +301,10 @@ async function clearLoginRate(req, email) {
   if (!pool || !DB_READY) return;
   try { await pool.query('DELETE FROM login_blocks WHERE key=$1', [loginRateKey(req, email)]); } catch(e) {}
 }
-const _loginBlocksCleanupInterval = setInterval(async () => { (blocked_until IS NULL OR blocked_until < NOW()) AND first_at < NOW() - ($1 || ' seconds')::INTERVAL`, [LOGIN_WINDOW * 2]);
+const _loginBlocksCleanupInterval = setInterval(async () => {
+  if (!pool || !DB_READY) return;
+  try {
+    const { rowCount } = await pool.query(`DELETE FROM login_blocks WHERE (blocked_until IS NULL OR blocked_until < NOW()) AND first_at < NOW() - ($1 || ' seconds')::INTERVAL`, [LOGIN_WINDOW * 2]);
     if (rowCount > 0) console.log(`🧹 login_blocks: ${rowCount} intrări expirate șterse.`);
   } catch(e) {}
 }, 30 * 60 * 1000);
