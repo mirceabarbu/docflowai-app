@@ -187,7 +187,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span></div>
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><button onclick="exportUsersCSV()" style="padding:7px 14px;font-size:.82rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:600;">📥 Export CSV</button></div>
     <div class="tbl-wrap" id="tblScroll"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
     <div id="pgBarWrapper"></div>
   </div>
@@ -1720,6 +1720,28 @@ function exportActivityPDF() {
 
 
 // ── Export CSV ────────────────────────────────────────────────────────────
+
+// ── Export Users CSV ──────────────────────────────────────────────────────
+function exportUsersCSV() {
+  const users = window._filteredUsers || window._allUsers || [];
+  if (!users.length) { alert("Nu sunt utilizatori de exportat."); return; }
+  const headers = ["Nume","Functie","Institutie","Compartiment","Email","Telefon","Rol","Notif InApp","Notif Email","Notif WhatsApp","Creat"];
+  const esc2 = v => '"' + String(v||"").replace(/"/g,'""') + '"';
+  const rows = users.map(u => [
+    u.nume, u.functie, u.institutie, u.compartiment, u.email, u.phone, u.role,
+    u.notif_inapp!==false?"Da":"Nu",
+    u.notif_email?"Da":"Nu",
+    u.notif_whatsapp?"Da":"Nu",
+    u.created_at ? new Date(u.created_at).toLocaleDateString("ro-RO") : ""
+  ].map(esc2));
+  const csv = [headers.map(h=>'"'+h+'"').join(","), ...rows.map(r=>r.join(","))].join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "utilizatori_" + new Date().toISOString().slice(0,10) + ".csv";
+  a.click();
+}
+
 async function exportActivityCSV() {
   if (!_activityData) { alert('Generează mai întâi un raport.'); return; }
   const from = $('rptFrom').value;
