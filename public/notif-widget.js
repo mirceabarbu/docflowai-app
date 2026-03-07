@@ -234,8 +234,10 @@
         const latest = notifs.find(n => !n.read) || notifs[0];
         if (!latest) { window.location.href = '/notifications'; return; }
         const t = (latest.type || '').toUpperCase();
+        const isUrgent = !!(latest.urgent || latest.flow_urgent);
         let tab = 'all';
-        if (t === 'YOUR_TURN' || t === 'ASSIGNED' || t === 'SIGNER_TURN') tab = 'sign';
+        if (isUrgent) tab = 'urgent'; // flux urgent → deschide tab Urgente
+        else if (t === 'YOUR_TURN' || t === 'ASSIGNED' || t === 'SIGNER_TURN') tab = 'sign';
         else if (t === 'COMPLETED' || t === 'DONE' || t === 'FINISHED') tab = 'done';
         else if (t === 'REFUSED') tab = 'refused';
         else if (t === 'REVIEW_REQUESTED') tab = 'review';
