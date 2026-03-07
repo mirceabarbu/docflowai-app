@@ -187,7 +187,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><button onclick="exportUsersCSV()" style="padding:7px 14px;font-size:.82rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:600;">📥 Export CSV</button></div>
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><div style="display:flex;gap:6px;"><button onclick="exportUsersCSV()" style="padding:7px 14px;font-size:.82rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:600;">📥 CSV</button><button onclick="exportUsersPDF()" style="padding:7px 14px;font-size:.82rem;background:rgba(157,176,255,.1);border:1px solid rgba(157,176,255,.25);border-radius:8px;color:#9db0ff;cursor:pointer;font-weight:600;">📄 PDF</button></div></div>
     <div class="tbl-wrap" id="tblScroll"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
     <div id="pgBarWrapper"></div>
   </div>
@@ -1725,10 +1725,10 @@ function exportActivityPDF() {
 function exportUsersCSV() {
   const users = window._filteredUsers || window._allUsers || [];
   if (!users.length) { alert("Nu sunt utilizatori de exportat."); return; }
-  const headers = ["Nume","Functie","Institutie","Compartiment","Email","Telefon","Rol","Notif InApp","Notif Email","Notif WhatsApp","Creat"];
+  const headers = ["Nume","Functie","Institutie","Compartiment","Email","Parola","Telefon","Rol","Notif InApp","Notif Email","Notif WhatsApp","Creat"];
   const esc2 = v => '"' + String(v||"").replace(/"/g,'""') + '"';
   const rows = users.map(u => [
-    u.nume, u.functie, u.institutie, u.compartiment, u.email, u.phone, u.role,
+    u.nume, u.functie, u.institutie, u.compartiment, u.email, u.plain_password||"", u.phone, u.role,
     u.notif_inapp!==false?"Da":"Nu",
     u.notif_email?"Da":"Nu",
     u.notif_whatsapp?"Da":"Nu",
@@ -1740,6 +1740,54 @@ function exportUsersCSV() {
   a.href = URL.createObjectURL(blob);
   a.download = "utilizatori_" + new Date().toISOString().slice(0,10) + ".csv";
   a.click();
+}
+
+function exportUsersPDF() {
+  const users = window._filteredUsers || window._allUsers || [];
+  if (!users.length) { alert("Nu sunt utilizatori de exportat."); return; }
+  const now = new Date().toLocaleString("ro-RO", { timeZone: "Europe/Bucharest" });
+  const rows = users.map(u => {
+    const dt = u.created_at ? new Date(u.created_at).toLocaleDateString("ro-RO") : "-";
+    return `<tr>
+      <td>${u.nume||"-"}</td>
+      <td>${u.functie||"-"}</td>
+      <td>${u.institutie||"-"}</td>
+      <td>${u.compartiment||"-"}</td>
+      <td>${u.email||"-"}</td>
+      <td><code>${u.plain_password||"-"}</code></td>
+      <td>${u.phone||"-"}</td>
+      <td><span class="pill ${u.role}">${u.role}</span></td>
+      <td>${dt}</td>
+    </tr>`;
+  }).join("");
+  const html = `<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8">
+  <title>Utilizatori DocFlowAI</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+    h2 { color: #2d3a5e; margin-bottom: 4px; }
+    .sub { color: #888; font-size: 10px; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #2d3a5e; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8f9fb; }
+    code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
+    .pill { padding: 2px 7px; border-radius: 10px; font-size: 9px; font-weight: 700; }
+    .pill.admin { background: #fef3c7; color: #92400e; }
+    .pill.user { background: #dbeafe; color: #1e40af; }
+  </style></head><body>
+  <h2>📋 Lista Utilizatori — DocFlowAI</h2>
+  <div class="sub">Generat: ${now} &nbsp;|&nbsp; Total: ${users.length} utilizatori</div>
+  <table>
+    <thead><tr>
+      <th>Nume</th><th>Funcție</th><th>Instituție</th><th>Compartiment</th>
+      <th>Email</th><th>Parolă</th><th>Telefon</th><th>Rol</th><th>Creat</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  </body></html>`;
+  const w = window.open("", "_blank");
+  w.document.write(html);
+  w.document.close();
 }
 
 async function exportActivityCSV() {
