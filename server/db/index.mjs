@@ -364,6 +364,14 @@ const MIGRATIONS = [
           CREATE INDEX IF NOT EXISTS idx_audit_ip ON audit_log(actor_ip) WHERE actor_ip IS NOT NULL;`
   },
 
+  // ── B-03: Elimină plain_password din DB ───────────────────────────────────
+  // Parola temporară se trimite o singură dată prin email la creare/reset,
+  // nu se mai stochează în clar în baza de date.
+  {
+    id: '019_drop_plain_password',
+    sql: `ALTER TABLE users DROP COLUMN IF EXISTS plain_password;`
+  },
+
   // ── GWS: Google Workspace provisioning columns ────────────────────────────
   {
     id: '018_gws_provisioning',
@@ -439,8 +447,8 @@ async function initDbOnce() {
   if (parseInt(uc[0].count) === 0 && process.env.ADMIN_INIT_PASSWORD) {
     const pwd = process.env.ADMIN_INIT_PASSWORD;
     await pool.query(
-      "INSERT INTO users (email, password_hash, plain_password, nume, functie, role) VALUES ($1,$2,$3,$4,$5,'admin') ON CONFLICT DO NOTHING",
-      ['admin@docflowai.ro', _hashPasswordLocal(pwd), pwd, 'Administrator', 'Administrator sistem']
+      "INSERT INTO users (email, password_hash, nume, functie, role) VALUES ($1,$2,$3,$4,'admin') ON CONFLICT DO NOTHING",
+      ['admin@docflowai.ro', _hashPasswordLocal(pwd), 'Administrator', 'Administrator sistem']
     );
     console.log('✅ Admin user creat.');
   }

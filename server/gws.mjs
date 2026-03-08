@@ -51,7 +51,7 @@ export function buildLocalPart(prenume, numeFamilie) {
   const p = normalizePart(prenume);
   const n = normalizePart(numeFamilie);
   if (!p && !n) throw new Error('Prenume și nume lipsă pentru generare email Workspace');
-  return (p + n).replace(/\.{2,}/g, '.').replace(/^\.+|\.+$/g, '');
+  return p + n;  // pur concatenat, fără punct — ex: "mirceabarbu"
 }
 
 // ── Auth client ────────────────────────────────────────────────────────────

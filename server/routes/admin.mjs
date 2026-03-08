@@ -3,7 +3,7 @@
  * FIX: export default mutat la sfarsit (toate rutele inainte de export)
  * FIX: /admin/flows/audit mutat inainte de export default
  * FIX: /health => versiune 3.2.1
- * NOTE: plain_password pastrat intentionat (migrare viitoare)
+ * B-03: plain_password eliminat — parola se trimite o singura data prin email, nu se stocheaza
  */
 
 import { Router } from 'express';
@@ -65,11 +65,11 @@ router.get('/admin/users', async (req, res) => {
     const orgId = selfRows[0]?.org_id || null;
     let query, params;
     if (orgId) {
-      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
+      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [orgId];
     } else {
       // Admin fara org (fallback) — vede toti userii
-      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
+      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [];
     }
     const { rows } = await pool.query(query, params);
@@ -87,15 +87,35 @@ router.post('/admin/users', async (req, res) => {
     functie, institutie, compartiment, role, phone,
     notif_inapp, notif_email, notif_whatsapp, skip_verification,
     personal_email,
-    create_gws, force_password_change,
+    create_gws, force_password_change, gws_as_login,
   } = req.body || {};
 
-  // Construim numele complet din prenume+nume_familie dacă sunt disponibile
   const numeComplet = (prenume && nume_familie)
     ? `${prenume.trim()} ${nume_familie.trim()}`
     : (nume || '').trim();
 
-  if (!numeComplet || !email) return res.status(400).json({ error: 'email_and_nume_required' });
+  if (!numeComplet) return res.status(400).json({ error: 'email_and_nume_required' });
+
+  // Dacă gws_as_login=true, emailul de login va fi setat după provision (nu e furnizat de admin)
+  // Dacă nu, emailul trebuie furnizat explicit
+  if (!gws_as_login && !email) return res.status(400).json({ error: 'email_and_nume_required' });
+
+  const prn = (prenume || numeComplet.split(' ')[0] || '').trim();
+  const fam = (nume_familie || numeComplet.split(' ').slice(1).join('') || '').trim();
+
+  // Dacă gws_as_login, determinăm emailul disponibil ÎNAINTE de INSERT
+  let loginEmail = email ? email.trim().toLowerCase() : null;
+  let previewGwsEmail = null;
+  if (gws_as_login && create_gws) {
+    if (!gwsIsConfigured()) return res.status(503).json({ error: 'gws_not_configured' });
+    if (!prn && !fam) return res.status(400).json({ error: 'gws_email_required' });
+    try {
+      previewGwsEmail = await findAvailableEmail(prn, fam);
+      loginEmail = previewGwsEmail;
+    } catch(e) {
+      return res.status(400).json({ error: 'gws_email_required', detail: e.message });
+    }
+  }
 
   const validRole = ['admin', 'user'].includes(role) ? role : 'user';
   const plainPwd  = password && password.length >= 4 ? password : generatePassword();
@@ -112,21 +132,21 @@ router.post('/admin/users', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `INSERT INTO users
-         (email, password_hash, plain_password, nume, prenume, nume_familie,
+         (email, password_hash, nume, prenume, nume_familie,
           functie, institutie, compartiment, role, phone,
           notif_inapp, notif_email, notif_whatsapp, org_id,
           personal_email,
           email_verified, verification_token, verification_sent_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        RETURNING id, email, nume, prenume, nume_familie, functie, institutie,
-                 compartiment, plain_password, role, phone,
+                 compartiment, role, phone,
                  notif_inapp, notif_email, notif_whatsapp, org_id,
                  personal_email, email_verified,
                  gws_email, gws_status`,
       [
-        email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd,
+        loginEmail, hashPassword(plainPwd),
         numeComplet,
-        (prenume || '').trim(), (nume_familie || '').trim(),
+        prn, fam,
         (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(),
         validRole, phoneVal, ni, ne, nw, actor.orgId || null,
         (personal_email || '').trim().toLowerCase() || null,
@@ -137,33 +157,12 @@ router.post('/admin/users', async (req, res) => {
     );
     const user = rows[0];
 
-    // R-06: email verificare în background
-    if (needsVerification && verificationToken) {
-      const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
-      const verifyLink = `${appUrl}/auth/verify-email/${verificationToken}`;
-      sendSignerEmail({
-        to: email.trim(),
-        subject: '✅ Verificare adresă email — DocFlowAI',
-        html: `<div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-  <h2 style="color:#7c5cff;margin:0 0 16px;">✅ Verificare adresă email</h2>
-  <p>Bună <strong>${escHtml(numeComplet)}</strong>,</p>
-  <p>Contul tău DocFlowAI a fost creat de un administrator. Apasă butonul de mai jos pentru a confirma adresa de email și a activa contul.</p>
-  <div style="text-align:center;margin:28px 0;">
-    <a href="${verifyLink}" style="background:#7c5cff;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem;">Verifică adresa email</a>
-  </div>
-  <p style="font-size:.82rem;color:#5a6a8a;">Sau copiază: <code style="color:#9db0ff;">${verifyLink}</code></p>
-  <p style="font-size:.82rem;color:#5a6a8a;">Link expiră în 72h.</p>
-</div>`,
-      }).catch(e => console.warn(`R-06: verificare email eșuat pentru ${email}:`, e.message));
-    }
-
     // ── GWS Provisioning ─────────────────────────────────────────────────
     let gwsResult = null;
     if (create_gws && gwsIsConfigured()) {
-      const prn = (prenume || numeComplet.split(' ')[0] || '').trim();
-      const fam = (nume_familie || numeComplet.split(' ').slice(1).join('') || '').trim();
       try {
-        const gwsEmail = await findAvailableEmail(prn, fam);
+        // Dacă gws_as_login, emailul a fost deja rezervat — îl refolosim direct
+        const gwsEmail = previewGwsEmail || await findAvailableEmail(prn, fam);
         await provisionGwsUser({
           prenume: prn, numeFamilie: fam,
           gwsEmail, tempPassword: plainPwd,
@@ -187,7 +186,6 @@ router.post('/admin/users', async (req, res) => {
           [errMsg, user.id]
         );
         user.gws_status = 'failed';
-        user.gws_error  = errMsg;
         gwsResult = { ok: false, error: errMsg };
         console.error(`❌ GWS provision eșuat pentru user ${user.id}:`, errMsg);
       }
@@ -195,9 +193,35 @@ router.post('/admin/users', async (req, res) => {
       gwsResult = { ok: false, error: 'gws_not_configured' };
     }
 
+    // ── Trimitere credențiale ─────────────────────────────────────────────
+    // Destinație: emailul personal dacă există (mai ales când login = @docflowai.ro),
+    // altfel emailul de login
+    const credsDest = (personal_email || '').trim().toLowerCase() || loginEmail;
+    const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
+
+    if (needsVerification && verificationToken) {
+      const verifyLink = `${appUrl}/auth/verify-email/${verificationToken}`;
+      sendSignerEmail({
+        to: credsDest,
+        subject: '✅ Verificare adresă email — DocFlowAI',
+        html: `<div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
+  <h2 style="color:#7c5cff;margin:0 0 16px;">✅ Verificare adresă email</h2>
+  <p>Bună <strong>${escHtml(numeComplet)}</strong>,</p>
+  <p>Contul tău DocFlowAI a fost creat de un administrator.</p>
+  <div style="text-align:center;margin:28px 0;">
+    <a href="${verifyLink}" style="background:#7c5cff;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem;">Verifică adresa email</a>
+  </div>
+  <p style="font-size:.82rem;color:#5a6a8a;">Sau copiază: <code style="color:#9db0ff;">${verifyLink}</code></p>
+  <p style="font-size:.82rem;color:#5a6a8a;">Link expiră în 72h.</p>
+</div>`,
+      }).catch(e => console.warn(`R-06: verificare email eșuat pentru ${credsDest}:`, e.message));
+    }
+
     res.status(201).json({
       ...user,
+      plain_password: plainPwd,
       verificationSent: needsVerification && !!verificationToken,
+      credentials_sent_to: credsDest,
       gws: gwsResult,
     });
   } catch(e) {
@@ -235,7 +259,7 @@ router.post('/admin/users/:id/gws-provision', async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      'SELECT id, email, nume, prenume, nume_familie, functie, institutie, phone, personal_email, plain_password, gws_email FROM users WHERE id=$1',
+      'SELECT id, email, nume, prenume, nume_familie, functie, institutie, phone, personal_email, gws_email FROM users WHERE id=$1',
       [userId]
     );
     if (!rows.length) return res.status(404).json({ error: 'user_not_found' });
@@ -248,7 +272,7 @@ router.post('/admin/users/:id/gws-provision', async (req, res) => {
     const prn = (u.prenume || u.nume?.split(' ')[0] || '').trim();
     const fam = (u.nume_familie || u.nume?.split(' ').slice(1).join('') || '').trim();
     const gwsEmail = await findAvailableEmail(prn, fam);
-    const tempPwd  = u.plain_password || generatePassword();
+    const tempPwd  = generatePassword();  // B-03: generam parola noua, nu citim din DB
 
     await provisionGwsUser({
       prenume: prn, numeFamilie: fam,
@@ -306,14 +330,13 @@ router.put('/admin/users/:id', async (req, res) => {
   let newPlainPwd = null;
   if (password && password.length >= 4) {
     updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password));
-    updates.push(`plain_password=$${i++}`); vals.push(password);
     newPlainPwd = password;
   }
   if (!updates.length) return res.status(400).json({ error: 'nothing_to_update' });
   vals.push(targetId);
   try {
     const { rows } = await pool.query(
-      `UPDATE users SET ${updates.join(',')} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,org_id`,
+      `UPDATE users SET ${updates.join(',')} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,org_id`,
       vals
     );
     if (!rows.length) return res.status(404).json({ error: 'user_not_found' });
@@ -330,9 +353,9 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const newPwd = generatePassword();
   try {
-    // Updatam si plain_password pentru workflow admin
-    await pool.query('UPDATE users SET password_hash=$1, plain_password=$2 WHERE id=$3', [hashPassword(newPwd), newPwd, parseInt(req.params.id)]);
-    res.json({ plain_password: newPwd });
+    // B-03: stocăm doar hash-ul, parola în clar se returnează o singură dată
+    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hashPassword(newPwd), parseInt(req.params.id)]);
+    res.json({ plain_password: newPwd });  // returnat O SINGURA DATA, nu stocat
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -354,26 +377,30 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   try {
-    // Citim plain_password din DB (pastrat intentionat pentru workflow admin)
-    const { rows } = await pool.query('SELECT email,nume,functie,plain_password FROM users WHERE id=$1', [targetId]);
+    // B-03: generăm o parolă nouă la fiecare trimitere — resetăm hash-ul, trimitem pe email
+    const { rows } = await pool.query('SELECT email,nume,functie FROM users WHERE id=$1', [targetId]);
     const u = rows[0];
     if (!u) return res.status(404).json({ error: 'user_not_found' });
-    if (!u.plain_password) return res.status(400).json({ error: 'no_password_available' });
+    const newPwd = generatePassword();
+    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hashPassword(newPwd), targetId]);
     const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
     await sendSignerEmail({
       to: u.email, subject: 'Cont DocFlowAI — credențiale de acces',
       html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
         <div style="text-align:center;margin-bottom:28px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
         <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${u.nume ? ', ' + u.nume : ''},</h2>
-        <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Contul tău în <strong style="color:#eaf0ff;">DocFlowAI</strong> a fost creat.</p>
+        <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Contul tău în <strong style="color:#eaf0ff;">DocFlowAI</strong> a fost creat sau parola a fost resetată.</p>
         <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
           <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${u.email}</strong></div>
-          <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ</span><strong style="color:#ffd580;font-family:monospace;">${u.plain_password}</strong></div>
+          <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ TEMPORARĂ</span><strong style="color:#ffd580;font-family:monospace;">${newPwd}</strong></div>
         </div>
+        <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Această parolă este valabilă pentru o singură utilizare. Recomandăm schimbarea ei după prima autentificare.</p>
         <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
       </div>`
     });
-    res.json({ ok: true });
+    // Returnăm parola și emailul către admin — afișate în modal ca fallback
+    // dacă emailul nu ajunge la utilizator
+    res.json({ ok: true, plain_password: newPwd, email: u.email });
   } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 

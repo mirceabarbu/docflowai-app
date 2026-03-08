@@ -143,7 +143,7 @@
   <div class="card">
     <div class="card-title">➕ Utilizator nou</div>
     <div class="grid3">
-      <div class="frow"><label>Prenume *</label><input id="nPrenume" placeholder="Ion"/></div>
+      <div class="frow"><label>Prenume *</label><input id="nPrenume" placeholder="Ion" oninput="updateGwsPreview()"/></div>
       <div class="frow"><label>Nume familie *</label><input id="nNumeFamilie" placeholder="Popescu" oninput="updateGwsPreview()"/></div>
       <div class="frow"><label>Funcție</label>
         <input id="nFunctie" list="functieList" placeholder="Șef serviciu" autocomplete="off"/>
@@ -151,9 +151,16 @@
       </div>
     </div>
     <div class="grid3" style="margin-top:12px;">
-      <div class="frow"><label>Email (login DocFlowAI) *</label><input id="nEmail" type="email" placeholder="ion.popescu@primarie.ro"/></div>
-      <div class="frow"><label>Email personal <span style="color:var(--muted);font-size:.71rem;">— recuperare Workspace</span></label>
-        <input id="nPersonalEmail" type="email" placeholder="ion.popescu@gmail.com"/></div>
+      <!-- Email login — vizibil doar fără Workspace -->
+      <div class="frow" id="nEmailRow">
+        <label>Email (login) * <span style="color:var(--muted);font-size:.71rem;">— adresa cu care se loghează</span></label>
+        <input id="nEmail" type="email" placeholder="ion.popescu@primarie.ro"/>
+      </div>
+      <!-- Email personal — destinația credențialelor când e Workspace activ -->
+      <div class="frow">
+        <label id="nPersonalEmailLabel">Email personal <span style="color:var(--muted);font-size:.71rem;" id="nPersonalEmailHint">— opțional</span></label>
+        <input id="nPersonalEmail" type="email" placeholder="ion.popescu@gmail.com"/>
+      </div>
       <div class="frow"><label>Instituție *</label>
         <input id="nInstitutie" list="institutieList" placeholder="Ex: Primăria Cluj" autocomplete="off"/>
         <datalist id="institutieList"></datalist>
@@ -200,7 +207,7 @@
           Forțează schimbarea parolei la prima logare
         </label>
         <div id="gwsPreview" style="display:none;background:rgba(66,133,244,.1);border:1px solid rgba(66,133,244,.3);border-radius:8px;padding:8px 10px;font-size:.8rem;">
-          <span style="color:#9db0ff;">Email Workspace:</span>
+          <span style="color:#9db0ff;">Login DocFlowAI + Workspace:</span>
           <span id="gwsPreviewEmail" style="color:#fff;font-weight:700;font-family:monospace;margin-left:6px;">—</span>
           <span id="gwsPreviewSpin" style="display:none;margin-left:6px;font-size:.75rem;color:#9db0ff;">verificare...</span>
         </div>
@@ -480,6 +487,51 @@
   </div>
 </div>
 
+<!-- ── Modal parolă nouă — afișat după creare/reset ── -->
+<div class="modal-bg" id="pwdModalBg" onclick="if(event.target===this)closePwdModal()">
+  <div class="modal" style="max-width:460px;">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);font-size:24px;margin-bottom:10px;">🔑</div>
+      <h3 style="margin:0;font-size:1.1rem;">Utilizator creat cu succes</h3>
+    </div>
+    <p style="color:#9db0ff;font-size:.85rem;margin:0 0 16px;text-align:center;">
+      Parola temporară este afișată <strong style="color:#fff;">o singură dată</strong>.<br>
+      Notează-o sau trimite credențialele pe email.
+    </p>
+    <!-- Email user -->
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 16px;margin-bottom:10px;">
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:3px;">LOGIN DOCFLOWAI</span>
+      <strong id="pwdModalEmail" style="font-size:.92rem;"></strong>
+    </div>
+    <!-- Destinație email credențiale -->
+    <div id="pwdModalDestRow" style="display:none;background:rgba(45,212,191,.05);border:1px solid rgba(45,212,191,.2);border-radius:10px;padding:10px 16px;margin-bottom:10px;font-size:.83rem;">
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:3px;">CREDENȚIALE TRIMISE LA</span>
+      <strong id="pwdModalDest" style="color:#2dd4bf;"></strong>
+    </div>
+    <!-- Parola -->
+    <div style="background:rgba(124,92,255,.1);border:1px solid rgba(124,92,255,.35);border-radius:10px;padding:14px 16px;margin-bottom:10px;">
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:6px;">PAROLĂ TEMPORARĂ</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <strong id="pwdModalPwd" style="font-family:monospace;font-size:1.3rem;color:#ffd580;letter-spacing:.05em;flex:1;"></strong>
+        <button onclick="copyPwd()" id="btnCopyPwd" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(124,92,255,.5);background:rgba(124,92,255,.2);color:#c4b5ff;cursor:pointer;font-size:.8rem;font-weight:600;">📋 Copiază</button>
+      </div>
+    </div>
+    <!-- GWS info dacă există -->
+    <div id="pwdModalGws" style="display:none;background:rgba(52,168,83,.08);border:1px solid rgba(52,168,83,.3);border-radius:10px;padding:10px 16px;margin-bottom:10px;font-size:.83rem;">
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:3px;">CONT GOOGLE WORKSPACE</span>
+      <strong id="pwdModalGwsEmail" style="color:#34A853;"></strong>
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-top:3px;">Aceeași parolă temporară — utilizatorul o va schimba la prima logare.</span>
+    </div>
+    <div id="pwdModalGwsFail" style="display:none;background:rgba(234,67,53,.08);border:1px solid rgba(234,67,53,.3);border-radius:10px;padding:10px 16px;margin-bottom:10px;font-size:.83rem;color:#f28b82;">
+      ⚠️ Cont Workspace eșuat: <span id="pwdModalGwsErr"></span>
+    </div>
+    <div class="modal-acts" style="margin-top:16px;">
+      <button class="btn btn-s" onclick="closePwdModal()">Închide</button>
+      <button class="btn btn-w" id="btnPwdModalSend" onclick="sendCredsFromModal()">✉️ Trimite pe email</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $=id=>document.getElementById(id);
 const token=localStorage.getItem("docflow_token");
@@ -563,7 +615,6 @@ function renderPage(){
       <td style="color:var(--muted);font-size:.82rem">${esc(u.phone||"—")}</td>
       <td style="font-size:.9rem;text-align:center">${notifIcons||'—'}</td>
       <td>${gwsBadge}</td>
-      <td style="overflow:visible;white-space:nowrap;"><span class="pwd">${esc(u.plain_password||"—")}</span></td>
       <td><span class="pill ${u.role}">${u.role}</span></td>
       <td style="color:var(--muted);font-size:.79rem">${dt}</td>
       <td style="text-align:right;white-space:nowrap">
@@ -639,7 +690,7 @@ async function loadUsers(){
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
     el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead>
       <tr>
-        <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Compartiment</th><th>Email</th><th>Tel.</th><th>Notif.</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
+        <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Compartiment</th><th>Email</th><th>Tel.</th><th>Notif.</th><th>Workspace</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
       </tr>
       <tr id="filterRow">
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fNume"/></th>
@@ -647,8 +698,7 @@ async function loadUsers(){
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fInstitutie"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fCompartiment"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fEmail"/></th>
-        <th></th><th></th>
-        <th></th>
+        <th></th><th></th><th></th>
         <th><select class="th-filter" onchange="filterUsers()" id="fRol" style="padding:4px 6px;">
           <option value="">Toate</option>
           <option value="admin">Admin</option>
@@ -685,6 +735,16 @@ function onGwsToggle() {
   const checked = $('nCreateGws').checked;
   $('nForcePwdLabel').style.display = checked ? 'flex' : 'none';
   $('gwsPreview').style.display     = checked ? 'block' : 'none';
+  // Când Workspace e activ: emailul de login = cel generat @docflowai.ro → ascundem câmpul manual
+  $('nEmailRow').style.display      = checked ? 'none' : '';
+  if (checked) {
+    // Email personal devine destinația credențialelor
+    $('nPersonalEmailHint').textContent = '— credențialele se trimit aici';
+    $('nPersonalEmailHint').style.color = '#ffd580';
+  } else {
+    $('nPersonalEmailHint').textContent = '— opțional';
+    $('nPersonalEmailHint').style.color = '';
+  }
   if (checked) updateGwsPreview();
 }
 function updateGwsPreview() {
@@ -712,52 +772,133 @@ async function createUser(){
   const numeFamilie= ($('nNumeFamilie')||{value:''}).value.trim();
   const numeComplet= [prenume, numeFamilie].filter(Boolean).join(' ');
   const functie    = $('nFunctie').value.trim();
-  const email      = $('nEmail').value.trim();
+  const create_gws = !!($('nCreateGws')?.checked);
+  // Dacă Workspace e activ, emailul de login = cel generat @docflowai.ro (trimis de backend)
+  // Dacă nu, adminul îl introduce manual
+  const emailManual = create_gws ? '' : ($('nEmail')||{value:''}).value.trim();
   const pwd        = $('nPwd').value.trim();
   const role       = $('nRole').value;
-  if(!numeComplet||!email){showMsg('createMsg','Prenumele, numele și emailul sunt obligatorii.',true);return;}
-  const btn=$('btnCreate');btn.disabled=true;btn.textContent='Se creează...';
-  const institutie =$('nInstitutie').value.trim();
-  const compartiment=$('nCompartiment').value.trim();
-  const phone=$('nPhone').value.trim();
-  if (!validatePhoneClient(phone).valid) { alert('Număr de telefon invalid.\nEx: 0712345678 sau +40712345678'); $('nPhone').focus(); btn.disabled=false;btn.textContent='Crează utilizatorul';return; }
-  const notif_inapp=$('nNotifInapp').checked;
-  const notif_email=$('nNotifEmail').checked;
-  const notif_whatsapp=$('nNotifWa').checked;
-  const personal_email=($('nPersonalEmail')||{value:''}).value.trim();
-  const create_gws=!!($('nCreateGws')?.checked);
-  const force_password_change=!!($('nForcePwd')?.checked);
+  if (!numeComplet) { showMsg('createMsg','Prenumele și numele sunt obligatorii.',true); return; }
+  if (!create_gws && !emailManual) { showMsg('createMsg','Completează emailul de login.',true); return; }
+  const btn=$('btnCreate'); btn.disabled=true; btn.textContent='Se creează...';
+  const institutie  = $('nInstitutie').value.trim();
+  const compartiment= $('nCompartiment').value.trim();
+  const phone       = $('nPhone').value.trim();
+  if (!validatePhoneClient(phone).valid) { alert('Număr de telefon invalid.\nEx: 0712345678 sau +40712345678'); $('nPhone').focus(); btn.disabled=false; btn.textContent='Crează utilizatorul'; return; }
+  const notif_inapp    = $('nNotifInapp').checked;
+  const notif_email    = $('nNotifEmail').checked;
+  const notif_whatsapp = $('nNotifWa').checked;
+  const personal_email = ($('nPersonalEmail')||{value:''}).value.trim();
+  const force_password_change = !!($('nForcePwd')?.checked);
 
-  const body={
-    email, password:pwd, nume:numeComplet, prenume, nume_familie:numeFamilie,
+  const body = {
+    email: emailManual,   // gol dacă e Workspace — backend-ul îl setează din gws_email
+    password: pwd, nume: numeComplet, prenume, nume_familie: numeFamilie,
     functie, institutie, compartiment, role, phone,
     notif_inapp, notif_email, notif_whatsapp,
-    personal_email: personal_email||undefined,
+    personal_email: personal_email || undefined,
     create_gws, force_password_change,
+    gws_as_login: create_gws,  // flag explicit: emailul Workspace devine login
   };
-  const r=await _apiFetch('/admin/users',{method:'POST',headers:hdrs(),body:JSON.stringify(body)});
-  const d=await r.json();
-  btn.disabled=false;btn.textContent='Crează utilizatorul';
+  const r = await _apiFetch('/admin/users', {method:'POST', headers:hdrs(), body:JSON.stringify(body)});
+  const d = await r.json();
+  btn.disabled=false; btn.textContent='Crează utilizatorul';
   if(r.ok){
-    let msg = '✅ Creat! Parolă: ' + d.plain_password;
-    if (d.gws && d.gws.ok)        msg += `  |  ✅ Workspace: ${d.gws.gws_email}`;
-    else if (d.gws && !d.gws.ok)  msg += `  |  ⚠️ Workspace eșuat: ${d.gws.error}`;
-    showMsg('createMsg', msg, d.gws && !d.gws.ok);
-    window._lastCreatedId=d.id;
+    window._lastCreatedId    = d.id;
+    window._lastCreatedEmail = d.email;  // emailul real din DB (poate fi cel @docflowai.ro)
+    $('nPrenume').value=$('nNumeFamilie').value=$('nFunctie').value=
+    ($('nEmail')||{}).value=$('nPwd').value=$('nInstitutie').value=
+    $('nCompartiment').value=$('nPhone').value=($('nPersonalEmail')||{}).value='';
+    if($('nCreateGws')) $('nCreateGws').checked=false;
+    onGwsToggle();
+    loadUsers();
+    showPwdModal(d);
+  }else{
+    const m={
+      email_exists:'Emailul există deja.',
+      email_and_nume_required:'Completează prenumele, numele și emailul.',
+      gws_email_required:'Workspace bifat dar nu s-a putut genera emailul. Verifică prenumele și numele.',
+    };
+    showMsg('createMsg', m[d.error]||'Eroare: '+(d.detail||d.error), true);
+  }
+}
     $('nPrenume').value=$('nNumeFamilie').value=$('nFunctie').value=$('nEmail').value=
     $('nPwd').value=$('nInstitutie').value=$('nCompartiment').value=$('nPhone').value=
     ($('nPersonalEmail')||{}).value='';
     if($('nCreateGws')) $('nCreateGws').checked=false;
     onGwsToggle();
     loadUsers();
-    if(confirm('Utilizatorul a fost creat.\nTrimitem credențialele pe adresa: '+email+'?')){
-      await sendCreds(d.id, null);
-      showMsg('createMsg','✅ Creat și credențiale trimise!',false);
-    }
+    showPwdModal(d);
   }else{
     const m={email_exists:'Emailul există deja.',email_and_nume_required:'Completează prenumele, numele și emailul.'};
     showMsg('createMsg',m[d.error]||'Eroare: '+(d.detail||d.error),true);
   }
+}
+
+function showPwdModal(d) {
+  // Titlu diferit dacă e retrimis vs creat prima oară
+  const isSend = !!d._isSend;
+  const titleEl = $('pwdModalBg').querySelector('h3');
+  if(titleEl) titleEl.textContent = isSend ? 'Credențiale resetate și trimise' : 'Utilizator creat cu succes';
+  const subtitleEl = $('pwdModalBg').querySelector('p');
+  if(subtitleEl) subtitleEl.innerHTML = isSend
+    ? 'O parolă nouă a fost generată și trimisă pe email.<br>Dacă emailul <strong style="color:#fff;">nu ajunge</strong>, comunică parola de mai jos direct utilizatorului.'
+    : 'Parola temporară este afișată <strong style="color:#fff;">o singură dată</strong>.<br>Notează-o sau trimite credențialele pe email.';
+
+  $('pwdModalEmail').textContent = d.email || window._lastCreatedEmail || '';
+  // Arată destinația emailului dacă diferă de login
+  const dest = d.credentials_sent_to || d.email || window._lastCreatedEmail;
+  const login = d.email || window._lastCreatedEmail;
+  if (dest && dest !== login) {
+    $('pwdModalDestRow').style.display = 'block';
+    $('pwdModalDest').textContent = dest;
+  } else {
+    $('pwdModalDestRow').style.display = 'none';
+  }
+  $('pwdModalPwd').textContent   = d.plain_password || '—';
+  // Butonul "Trimite pe email" — ascuns dacă tocmai am trimis
+  $('btnPwdModalSend').style.display = isSend ? 'none' : '';
+  // GWS status
+  if (d.gws && d.gws.ok) {
+    $('pwdModalGws').style.display     = 'block';
+    $('pwdModalGwsFail').style.display = 'none';
+    $('pwdModalGwsEmail').textContent  = d.gws.gws_email;
+  } else if (d.gws && !d.gws.ok) {
+    $('pwdModalGws').style.display     = 'none';
+    $('pwdModalGwsFail').style.display = 'block';
+    $('pwdModalGwsErr').textContent    = d.gws.error || 'eroare necunoscută';
+  } else {
+    $('pwdModalGws').style.display     = 'none';
+    $('pwdModalGwsFail').style.display = 'none';
+  }
+  $('btnCopyPwd').textContent = '📋 Copiază';
+  $('pwdModalBg').classList.add('open');
+}
+function closePwdModal() {
+  $('pwdModalBg').classList.remove('open');
+}
+function copyPwd() {
+  const pwd = $('pwdModalPwd').textContent;
+  navigator.clipboard.writeText(pwd).then(() => {
+    $('btnCopyPwd').textContent = '✓ Copiat!';
+    setTimeout(() => { $('btnCopyPwd').textContent = '📋 Copiază'; }, 2000);
+  }).catch(() => {
+    // Fallback pentru browsere fără clipboard API
+    const ta = document.createElement('textarea');
+    ta.value = pwd; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    $('btnCopyPwd').textContent = '✓ Copiat!';
+    setTimeout(() => { $('btnCopyPwd').textContent = '📋 Copiază'; }, 2000);
+  });
+}
+async function sendCredsFromModal() {
+  const id = window._lastCreatedId;
+  if (!id) return;
+  closePwdModal();
+  // sendCreds va deschide din nou modalul cu parola resetată și titlul "Credențiale resetate"
+  await sendCreds(id, null);
 }
 
 async function gwsRetry(userId, btn) {
@@ -822,20 +963,28 @@ async function saveEdit(){
   else{$("eMsg").className="msg err";$("eMsg").textContent=d.error==="email_exists"?"Emailul există deja.":"Eroare.";}
 }
 
-async function sendCreds(id,btn){
-  const orig=btn?btn.textContent:"";
-  if(btn){btn.disabled=true;btn.textContent="Se trimite...";}
+async function sendCreds(id, btn){
+  const orig = btn ? btn.textContent : "";
+  if(btn){ btn.disabled=true; btn.textContent="Se trimite..."; }
   try{
-    const r=await _apiFetch("/admin/users/"+id+"/send-credentials",{method:"POST",headers:hdrs()});
-    const d=await r.json();
+    const r = await _apiFetch("/admin/users/"+id+"/send-credentials", {method:"POST", headers:hdrs()});
+    const d = await r.json();
     if(r.ok){
-      if(btn){btn.textContent="✅ Trimis!";setTimeout(()=>{btn.disabled=false;btn.textContent=orig;},4000);}
+      if(btn){ btn.textContent="✅"; setTimeout(()=>{ btn.disabled=false; btn.textContent=orig; }, 3000); }
+      // Afișăm parola nouă în modal — fallback dacă emailul nu ajunge
+      window._lastCreatedId    = id;
+      window._lastCreatedEmail = d.email;
+      showPwdModal({
+        email:         d.email,
+        plain_password: d.plain_password,
+        _isSend:       true,   // flag pentru titlu diferit
+      });
     }else{
-      const m={no_password_available:"Nu există parolă salvată.",email_failed:"Eroare la trimitere email."};
-      if(btn){btn.disabled=false;btn.textContent=orig;}
-      alert(m[d.error]||"Eroare: "+d.error);
+      const m = { user_not_found:"Utilizatorul nu a fost găsit." };
+      if(btn){ btn.disabled=false; btn.textContent=orig; }
+      alert(m[d.error] || "Eroare: " + (d.error||"necunoscută"));
     }
-  }catch(e){if(btn){btn.disabled=false;btn.textContent=orig;}alert("Eroare de rețea.");}
+  }catch(e){ if(btn){ btn.disabled=false; btn.textContent=orig; } alert("Eroare de rețea."); }
 }
 
 async function sendCredsNew(){
@@ -1397,7 +1546,7 @@ async function delUser(id,name){
   else alert("Eroare la ștergere.");
 }
 
-document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMod();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeMod();closePwdModal();}});
 fetch("/auth/me",{headers:hdrs()})
   .then(async r=>{
     if(!r.ok){logout();return;}
