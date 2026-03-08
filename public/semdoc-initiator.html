@@ -521,6 +521,20 @@ th{ color: var(--sub) !important; }
         });
       }
 
+
+      function refreshAllDropdowns() {
+        tbody.querySelectorAll(".name-select").forEach(sel => {
+          const currentEmail = (sel.options[sel.selectedIndex] || {}).dataset?.email || "";
+          const currentValue = sel.value;
+          populateSelectGlobal(sel);
+          if (currentValue && currentEmail) {
+            const restored = [...sel.options].find(o => o.dataset.email === currentEmail);
+            if (restored) sel.value = restored.value;
+            else sel.value = "";
+          }
+        });
+      }
+
       function signerRowTemplate(s = {}) {
         const tr = document.createElement("tr");
         tr.setAttribute("draggable", "true");
