@@ -635,7 +635,34 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         y -= 16;
       }
       y -= SECTION_GAP;
-      drawText('SEMNATARI', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
+      // ── RUNDE DE REVIZUIRE (dacă există) ──────────────────────────────────
+      if (audit.reviewHistory && audit.reviewHistory.length > 0) {
+        drawText('ISTORICUL RUNDELOR DE REVIZUIRE', MARGIN, 11, fontB, rgb(0.1,0.3,0.5));
+        drawLine();
+        for (const round of audit.reviewHistory) {
+          ensureSpace(20);
+          page.drawText(ro(`Runda ${round.round || ''} — reinitiata la ${fmtDate(round.reinitiatedAt)} de ${round.reinitiatedBy || ''}`), { x:MARGIN, y, size:8.5, font:fontB, color:rgb(0.1,0.3,0.55), maxWidth: PAGE_W - MARGIN * 2 });
+          y -= 14;
+          if (round.reviewReason) {
+            ensureSpace(14);
+            page.drawText(ro(`Motiv revizuire: ${round.reviewReason}`), { x:MARGIN+10, y, size:8, font:fontR, color:rgb(0.6,0.2,0.1), maxWidth: PAGE_W - MARGIN * 2 - 10 });
+            y -= 13;
+          }
+          // Semnatarii rundei
+          for (const s of (round.signers || [])) {
+            ensureSpace(28);
+            const sc = s.status === 'signed' ? rgb(0,0.45,0.25) : s.status === 'refused' ? rgb(0.65,0.1,0.1) : rgb(0.4,0.4,0.4);
+            page.drawText(ro(`${s.name||s.email} [${s.rol||''}]`), { x:MARGIN+10, y, size:8, font:fontR, color:rgb(0.2,0.2,0.2), maxWidth:280 });
+            page.drawText(ro((s.status||'').toUpperCase()), { x:MARGIN+300, y, size:8, font:fontB, color:sc });
+            y -= 12;
+            if (s.signedAt) { page.drawText(ro(`  semnat: ${fmtDate(s.signedAt)}`), { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0,0.4,0.2) }); y -= 11; }
+            if (s.refuseReason) { page.drawText(ro(`  refuz: ${s.refuseReason}`), { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0.65,0.1,0.1), maxWidth:PAGE_W-MARGIN*2-10 }); y -= 11; }
+          }
+          y -= SECTION_GAP;
+        }
+      }
+
+      drawText('SEMNATARI (RUNDA CURENTA)', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
       for (const s of audit.signers) {
         ensureSpace(60);
