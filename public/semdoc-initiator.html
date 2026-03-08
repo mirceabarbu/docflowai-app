@@ -496,42 +496,32 @@ th{ color: var(--sub) !important; }
       // Signers table
       const tbody = $("signersTbody");
 
-      // ── Global: repopulează toate dropdown-urile din tabel ─────────────────
-      // Fiecare select va conține toți userii MINUS cei deja selectați în alte rânduri.
-      // Selecția curentă a fiecărui rând este păstrată dacă userul există în altă parte.
-      function refreshAllDropdowns() {
-        tbody.querySelectorAll('.name-select').forEach(sel => {
-          const currentEmail = sel.options[sel.selectedIndex]?.dataset?.email || '';
-          const currentValue = sel.value;
-          // Colectăm emailurile folosite în ALTE rânduri
-          const used = new Set();
-          tbody.querySelectorAll('.name-select').forEach(other => {
-            if (other === sel) return;
-            const opt = other.options[other.selectedIndex];
-            if (opt?.dataset?.email) used.add(opt.dataset.email);
-          });
-          // Repopulăm opțiunile
-          while (sel.options.length > 1) sel.remove(1);
-          (window._dbUsers || []).forEach(u => {
-            if (used.has(u.email || '')) return;
-            const opt = document.createElement('option');
-            opt.value = u.nume || '';
-            opt.dataset.email = u.email || '';
-            opt.dataset.functie = u.functie || '';
-            opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
-            sel.appendChild(opt);
-          });
-          // Restaurăm selecția curentă
-          if (currentValue && currentEmail) {
-            const restored = [...sel.options].find(o => o.dataset.email === currentEmail);
-            if (restored) sel.value = restored.value;
-            else sel.value = '';
-          }
+      // ── Funcții globale pentru dropdown-urile de utilizatori ───────────────
+      function getUsedEmails(currentSel) {
+        const used = new Set();
+        tbody.querySelectorAll('.name-select').forEach(s => {
+          if (s === currentSel) return;
+          const opt = s.options[s.selectedIndex];
+          if (opt && opt.dataset.email) used.add(opt.dataset.email);
+        });
+        return used;
+      }
+
+      function populateSelectGlobal(sel) {
+        while (sel.options.length > 1) sel.remove(1);
+        const usedEmails = getUsedEmails(sel);
+        (window._dbUsers || []).forEach(u => {
+          if (usedEmails.has(u.email || '')) return;
+          const opt = document.createElement("option");
+          opt.value = u.nume || "";
+          opt.dataset.email = u.email || "";
+          opt.dataset.functie = u.functie || "";
+          opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
+          sel.appendChild(opt);
         });
       }
-      window.refreshAllDropdowns = refreshAllDropdowns;
 
-
+      function signerRowTemplate(s = {}) {
         const tr = document.createElement("tr");
         tr.setAttribute("draggable", "true");
         tr.innerHTML = `
@@ -633,39 +623,8 @@ th{ color: var(--sub) !important; }
         const emailInput   = tr.querySelector(".email");
         const functieInput = tr.querySelector(".functie");
 
-        function populateSelect(sel) {
-          // Șterge opțiunile vechi (păstrează prima — "Alege utilizator")
-          while (sel.options.length > 1) sel.remove(1);
-          // Colectăm utilizatorii deja selectați în alte rânduri
-          const usedEmails = getUsedEmails(sel);
-          (window._dbUsers || []).forEach(u => {
-            if (usedEmails.has(u.email || '')) return; // sări utilizatorii deja aleși
-            const opt = document.createElement("option");
-            opt.value = u.nume || "";
-            opt.dataset.email = u.email || "";
-            opt.dataset.functie = u.functie || "";
-            opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
-            sel.appendChild(opt);
-          });
-        }
-
-        // Returnează email-urile selectate în ALTE rânduri (nu cel curent)
-        function getUsedEmails(currentSel) {
-          const used = new Set();
-          tbody.querySelectorAll('.name-select').forEach(s => {
-            if (s === currentSel) return;
-            const opt = s.options[s.selectedIndex];
-            if (opt && opt.dataset.email) used.add(opt.dataset.email);
-          });
-          return used;
-        }
-
-        // Repopulează toate dropdown-urile (după ce un user e ales/șters în orice rând)
-        // Folosim funcția globală refreshAllDropdowns definită înainte de signerRowTemplate
-
         if (nameSelect) {
-          refreshAllDropdowns(); // populează toate rândurile inclusiv noul
-          populateSelect(nameSelect); // asigurăm că acest rând e populat
+          populateSelectGlobal(nameSelect);
 
           nameSelect.addEventListener("change", () => {
             const opt = nameSelect.options[nameSelect.selectedIndex];
@@ -676,7 +635,6 @@ th{ color: var(--sub) !important; }
               if (emailInput)   { emailInput.value   = ""; emailInput.readOnly   = false; emailInput.style.opacity   = "1"; emailInput.style.cursor = ""; }
               if (functieInput) { functieInput.value = ""; functieInput.readOnly = false; functieInput.style.opacity = "1"; functieInput.style.cursor = ""; }
             }
-            // Actualizează toate dropdown-urile — elimină utilizatorul ales din celelalte
             refreshAllDropdowns();
             validateForm();
           });
