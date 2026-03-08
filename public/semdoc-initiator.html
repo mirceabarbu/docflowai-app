@@ -207,6 +207,13 @@ th{ color: var(--sub) !important; }
       <div id="userBar" style="display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
     </header>
 
+    <!-- Banner schimbare parolă obligatorie -->
+    <div id="forcePwdBanner" style="display:none;background:linear-gradient(135deg,rgba(255,165,0,.18),rgba(255,100,0,.12));border-bottom:1px solid rgba(255,165,0,.4);padding:12px 24px;text-align:center;font-size:.88rem;color:#ffd580;">
+      ⚠️ <strong>Parola ta este temporară.</strong> Te rugăm să o schimbi acum pentru securitatea contului.
+      &nbsp;<button onclick="openChangePwdModal()" style="background:rgba(255,165,0,.25);border:1px solid rgba(255,165,0,.5);color:#ffd580;padding:4px 14px;border-radius:7px;cursor:pointer;font-size:.83rem;font-weight:700;">🔑 Schimbă parola</button>
+      &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" style="background:transparent;border:none;color:#9db0ff;cursor:pointer;font-size:.85rem;opacity:.6;">✕</button>
+    </div>
+
     <main>
       <!-- INIT -->
       <section id="viewInit">
@@ -1394,8 +1401,13 @@ async function signFromFluxuri(flowId) {
         const label = u.nume || u.email || "";
         bar.innerHTML = (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : "") +
           (u.role === "admin" ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
-          `<button onclick="openChangePwdModal()" style="background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);color:#c4b5ff;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
-          `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+          `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
+          `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');localStorage.removeItem('docflow_force_pwd');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+        // Banner parolă temporară
+        if (localStorage.getItem("docflow_force_pwd") === "1") {
+          const banner = document.getElementById("forcePwdBanner");
+          if (banner) banner.style.display = "block";
+        }
       })();
 
       // When initiator fields change, sync into any ÎNTOCMIT row
@@ -1600,7 +1612,12 @@ async function submitChangePwd(){
     const tok=localStorage.getItem('docflow_token')||'';
     const r=await fetch('/auth/change-password',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({current_password:cur,new_password:nw})});
     const d=await r.json();
-    if(r.ok){msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';btn.textContent='Salvează';setTimeout(closeChangePwdModal,1800);}
+    if(r.ok){
+      msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';btn.textContent='Salvează';
+      localStorage.removeItem('docflow_force_pwd');
+      const banner=document.getElementById('forcePwdBanner');if(banner)banner.style.display='none';
+      setTimeout(closeChangePwdModal,1800);
+    }
     else{msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');btn.disabled=false;btn.textContent='Salvează';}
   }catch(e){msg.style.color='#f28b82';msg.textContent='Eroare de rețea.';btn.disabled=false;btn.textContent='Salvează';}
 }

@@ -23,6 +23,14 @@ export function injectWsSize(fn) { _wsClientsSize = fn; }
 
 const router = Router();
 
+// Helper: determină URL-ul aplicației din request (fallback la env var)
+function getAppUrl(req) {
+  if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL.replace(/\/$/, '');
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+  const host  = req.get('x-forwarded-host') || req.get('host') || 'app.docflowai.ro';
+  return `${proto}://${host}`;
+}
+
 // ── Users ──────────────────────────────────────────────────────────────────
 // GET /users — returneaza useri din aceeasi institutie ca utilizatorul logat
 // Folosit de initiator pentru dropdown semnatari
@@ -136,8 +144,9 @@ router.post('/admin/users', async (req, res) => {
           functie, institutie, compartiment, role, phone,
           notif_inapp, notif_email, notif_whatsapp, org_id,
           personal_email,
-          email_verified, verification_token, verification_sent_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+          email_verified, verification_token, verification_sent_at,
+          force_password_change)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING id, email, nume, prenume, nume_familie, functie, institutie,
                  compartiment, role, phone,
                  notif_inapp, notif_email, notif_whatsapp, org_id,
@@ -153,6 +162,7 @@ router.post('/admin/users', async (req, res) => {
         !needsVerification,
         verificationToken,
         verificationToken ? new Date() : null,
+        true,  // force_password_change — utilizatorul trebuie să schimbe parola la prima logare
       ]
     );
     const user = rows[0];
@@ -197,7 +207,7 @@ router.post('/admin/users', async (req, res) => {
     // Destinație: emailul personal dacă există (mai ales când login = @docflowai.ro),
     // altfel emailul de login
     const credsDest = (personal_email || '').trim().toLowerCase() || loginEmail;
-    const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
+    const appUrl = getAppUrl(req);
 
     if (needsVerification && verificationToken) {
       const verifyLink = `${appUrl}/auth/verify-email/${verificationToken}`;
@@ -385,8 +395,8 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
     const u = rows[0];
     if (!u) return res.status(404).json({ error: 'user_not_found' });
     const newPwd = generatePassword();
-    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hashPassword(newPwd), targetId]);
-    const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [hashPassword(newPwd), targetId]);
+    const appUrl = getAppUrl(req);
     await sendSignerEmail({
       to: u.email, subject: 'Cont DocFlowAI — credențiale de acces',
       html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">

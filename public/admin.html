@@ -122,10 +122,17 @@
   </div>
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
     <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
-    <button onclick="openChangePwdModal()" style="background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);color:#c4b5ff;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;">🔑 Parolă</button>
+    <button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;">🔑 Parolă</button>
     <button class="btn-logout" onclick="logout()">Ieși</button>
   </div>
 </header>
+
+<!-- Banner schimbare parolă obligatorie -->
+<div id="forcePwdBanner" style="display:none;background:linear-gradient(135deg,rgba(255,165,0,.18),rgba(255,100,0,.12));border-bottom:1px solid rgba(255,165,0,.4);padding:12px 24px;text-align:center;font-size:.88rem;color:#ffd580;">
+  ⚠️ <strong>Parola ta este temporară.</strong> Te rugăm să o schimbi acum pentru securitatea contului.
+  &nbsp;<button onclick="openChangePwdModal()" style="background:rgba(255,165,0,.25);border:1px solid rgba(255,165,0,.5);color:#ffd580;padding:4px 14px;border-radius:7px;cursor:pointer;font-size:.83rem;font-weight:700;">🔑 Schimbă parola</button>
+  &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" style="background:transparent;border:none;color:#9db0ff;cursor:pointer;font-size:.85rem;opacity:.6;">✕</button>
+</div>
 
 <!-- Modal schimbare parolă -->
 <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
@@ -595,7 +602,12 @@ async function submitChangePwd(){
   try{
     const r=await _apiFetch('/auth/change-password',{method:'POST',headers:hdrs(),body:JSON.stringify({current_password:cur,new_password:nw})});
     const d=await r.json();
-    if(r.ok){msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';setTimeout(closeChangePwdModal,1800);}
+    if(r.ok){
+      msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';
+      localStorage.removeItem('docflow_force_pwd');
+      const b=$('forcePwdBanner');if(b)b.style.display='none';
+      setTimeout(closeChangePwdModal,1800);
+    }
     else{msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');btn.disabled=false;btn.textContent='Salvează';}
   }catch(e){msg.style.color='#f28b82';msg.textContent='Eroare de rețea.';btn.disabled=false;btn.textContent='Salvează';}
 }
@@ -1628,8 +1640,9 @@ fetch("/auth/me",{headers:hdrs()})
     if(!r.ok){logout();return;}
     const u=await r.json();
     if(u.role!=="admin"){logout();return;}
-    // Actualizează profilul din server
     localStorage.setItem("docflow_user",JSON.stringify({email:u.email,role:u.role,nume:u.nume||"",functie:u.functie||"",institutie:u.institutie||""}));
+    if(u.force_password_change) localStorage.setItem("docflow_force_pwd","1");
+    if(localStorage.getItem("docflow_force_pwd")==="1"){const b=$("forcePwdBanner");if(b)b.style.display="block";}
     const hEl=$("hdrUser");
     if(hEl) hEl.textContent=u.nume||u.email||"—";
     loadUsers();

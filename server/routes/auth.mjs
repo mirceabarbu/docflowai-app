@@ -42,8 +42,11 @@ router.post('/auth/login', async (req, res) => {
       { userId: user.id, email: user.email, role: user.role, orgId: user.org_id, nume: user.nume, functie: user.functie, institutie: user.institutie },
       JWT_SECRET, { expiresIn: JWT_EXPIRES }
     );
-    // FIX: nu mai returnam plain_password in raspuns
-    return res.json({ token, email: user.email, role: user.role, orgId: user.org_id, nume: user.nume, functie: user.functie, institutie: user.institutie });
+    return res.json({
+      token, email: user.email, role: user.role, orgId: user.org_id,
+      nume: user.nume, functie: user.functie, institutie: user.institutie,
+      force_password_change: !!user.force_password_change,
+    });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -55,12 +58,12 @@ router.get('/auth/me', async (req, res) => {
     // Cautam mai intai dupa ID (cel mai rapid)
     let row = null;
     if (decoded.userId) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id FROM users WHERE id=$1', [decoded.userId]);
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id,force_password_change FROM users WHERE id=$1', [decoded.userId]);
       row = rows[0] || null;
     }
     // Fallback: cauta dupa email (in caz de reset DB cu IDs noi)
     if (!row && decoded.email) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id FROM users WHERE lower(email)=lower($1)', [decoded.email]);
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id,force_password_change FROM users WHERE lower(email)=lower($1)', [decoded.email]);
       row = rows[0] || null;
       if (row) console.warn(`[auth/me] User id=${decoded.userId} not found, found by email=${decoded.email} (id=${row.id})`);
     }
@@ -74,7 +77,8 @@ router.get('/auth/me', async (req, res) => {
     }
     res.json({
       userId: row.id, email: row.email, orgId: row.org_id,
-      nume: row.nume, functie: row.functie, institutie: row.institutie, role: row.role
+      nume: row.nume, functie: row.functie, institutie: row.institutie, role: row.role,
+      force_password_change: !!row.force_password_change,
     });
   } catch(e) {
     console.warn('[auth/me] DB error — using JWT payload:', e.message);
@@ -129,7 +133,7 @@ router.post('/auth/change-password', async (req, res) => {
     const { rows } = await pool.query('SELECT password_hash FROM users WHERE id=$1', [actor.userId]);
     if (!rows[0]) return res.status(404).json({ error: 'user_not_found' });
     if (!verifyPassword(current_password, rows[0].password_hash)) return res.status(401).json({ error: 'wrong_password', message: 'Parola curentă este incorectă.' });
-    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hashPassword(new_password), actor.userId]);
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=FALSE WHERE id=$2', [hashPassword(new_password), actor.userId]);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
