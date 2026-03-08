@@ -242,7 +242,7 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
       flows: eligible.slice(0, 200).map(r => {  // max 200 in preview
         const d = r.data || {};
         const u = userMap[(d.initEmail || '').toLowerCase()] || {};
-        const status = d.completed ? 'finalizat' : d.status === 'refused' ? 'refuzat' : d.status === 'review_requested' ? 'revizuire' : d.storage === 'drive' ? 'arhivat' : 'activ';
+        const status = d.completed ? 'finalizat' : d.status === 'refused' ? 'refuzat' : d.status === 'review_requested' ? 'revizuire' : d.status === 'cancelled' ? 'anulat' : d.storage === 'drive' ? 'arhivat' : 'activ';
         return {
           flowId: d.flowId, docName: d.docName || '—',
           initEmail: d.initEmail || '—', initName: d.initName || '—',
@@ -431,9 +431,10 @@ router.get('/admin/flows/list', async (req, res) => {
     // FIX v3.2.2: escape caractere speciale LIKE
     const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
     const conditions = ['1=1']; const params = [];
-    if (statusFilter === 'pending') conditions.push("(data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused'");
+    if (statusFilter === 'pending') conditions.push("(data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused' AND (data->>'status') IS DISTINCT FROM 'cancelled'");
     else if (statusFilter === 'completed') conditions.push("(data->>'completed') = 'true'");
     else if (statusFilter === 'refused') conditions.push("(data->>'status') = 'refused'");
+    else if (statusFilter === 'cancelled') conditions.push("(data->>'status') = 'cancelled'");
     if (search) { params.push(`%${escapedSearch}%`); conditions.push(`(lower(data->>'docName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initEmail') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'flowId') LIKE $${params.length} ESCAPE '\\')`); }
     if (instFilter) { params.push(instFilter); conditions.push(`(data->>'institutie' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.institutie=$${params.length}))`); }
     if (deptFilter) { params.push(deptFilter); conditions.push(`(data->>'compartiment' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.compartiment=$${params.length}))`); }
@@ -538,6 +539,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       completed: !!data.completed, completedAt: data.completedAt || null,
       status: data.status || 'active', storage: data.storage || 'db',
       urgent: !!(data.urgent),
+      cancelledAt: data.cancelledAt || null, cancelledBy: data.cancelledBy || null, cancelReason: data.cancelReason || null,
       parentFlowId: data.parentFlowId || null,
       reviewReason: data.reviewReason || null,
       reviewHistory: Array.isArray(data.reviewHistory) ? data.reviewHistory : [],
@@ -548,6 +550,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         refuseReason: s.refuseReason || null, refusedAt: s.refusedAt || null,
         pdfUploaded: !!s.pdfUploaded, uploadedHash: s.uploadedHash || null,
         delegatedFrom: s.delegatedFrom || null, tokenCreatedAt: s.tokenCreatedAt || null,
+        notifiedAt: s.notifiedAt || null, downloadedAt: s.downloadedAt || null,
       })),
       events: Array.isArray(data.events) ? data.events : [],
       signedPdfVersions: Array.isArray(data.signedPdfVersions) ? data.signedPdfVersions : [],
@@ -626,7 +629,9 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         ['Initiator:', `${audit.initName} <${audit.initEmail}>`],
         ['Institutie:', audit.institutie || '—'], ['Compartiment:', audit.compartiment || '—'],
         ['Creat:', fmtDate(audit.createdAt)],
-        ['Status:', audit.status + (audit.completed ? ' (FINALIZAT)' : '') + (audit.completedAt ? ' la ' + fmtDate(audit.completedAt) : '') + (audit.urgent ? ' — URGENT' : '')],
+        ['Status:', audit.status + (audit.completed ? ' (FINALIZAT)' : '') + (audit.completedAt ? ' la ' + fmtDate(audit.completedAt) : '') + (audit.status === 'cancelled' && audit.cancelledAt ? ' la ' + fmtDate(audit.cancelledAt) : '') + (audit.urgent ? ' — URGENT' : '')],
+        ...(audit.cancelReason ? [['Motiv anulare:', audit.cancelReason]] : []),
+        ...(audit.cancelledBy ? [['Anulat de:', audit.cancelledBy]] : []),
       ];
       for (const [lbl, val] of infoRows) {
         ensureSpace(18);
@@ -674,6 +679,8 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         if (s.functie) page.drawText(ro(s.functie), { x:MARGIN+220, y, size:8, font:fontR, color:rgb(0.5,0.5,0.5) });
         y -= 13;
         if (s.signedAt) { page.drawText(ro(`Semnat: ${fmtDate(s.signedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0,0.4,0.2) }); y -= 13; }
+        if (s.notifiedAt) { page.drawText(ro(`Notificat: ${fmtDate(s.notifiedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.3,0.3,0.6) }); y -= 13; }
+        if (s.downloadedAt) { page.drawText(ro(`Descarcat: ${fmtDate(s.downloadedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.2,0.4,0.55) }); y -= 13; }
         if (s.refuseReason) { page.drawText(ro(`Refuz: ${s.refuseReason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.7,0.1,0.1), maxWidth:PAGE_W-MARGIN-30 }); y -= 13; }
         if (s.delegatedFrom) { page.drawText(ro(`Delegat de: ${s.delegatedFrom.email} — ${s.delegatedFrom.reason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN-30 }); y -= 13; }
         y -= 6;
@@ -810,7 +817,7 @@ router.get('/admin/flows/audit-export', async (req, res) => {
     const lines = ['flowId,docName,initEmail,createdAt,status,signersCount,eventsCount,completedAt'];
     for (const r of rows) {
       const d = r.data || {};
-      const status = d.completed ? 'completed' : (d.status === 'refused' ? 'refused' : 'active');
+      const status = d.completed ? 'completed' : (d.status === 'refused' ? 'refused' : d.status === 'cancelled' ? 'cancelled' : 'active');
       lines.push(`"${d.flowId}","${(d.docName || '').replace(/"/g, '""')}","${d.initEmail}","${d.createdAt}","${status}","${(d.signers || []).length}","${(d.events || []).length}","${d.completedAt || ''}"`);
     }
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

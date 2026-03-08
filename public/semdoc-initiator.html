@@ -953,6 +953,7 @@ th{ color: var(--sub) !important; }
           const allSigned = f.allSigned;
           const isRefused = (f.signers || []).some(s => s.status === "refused");
           const refusedByAprobat = (f.signers || []).some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
+          const isCancelled = f.status === "cancelled";
           const canReinitiate = isRefused && !refusedByAprobat;
           const isReviewRequested = f.status === "review_requested";
           const isUrgent = !!(f.urgent);
@@ -964,7 +965,9 @@ th{ color: var(--sub) !important; }
             (f.initEmail || "").toLowerCase() === currentUserEmail ||
             (f.signers || []).some(s => (s.email||"").toLowerCase() === currentUserEmail && s.status === "signed")
           );
-          const statusBadge = isReviewRequested
+          const statusBadge = isCancelled
+            ? '<span style="background:rgba(150,150,150,.15);color:#aaaaaa;border:1px solid rgba(150,150,150,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">🚫 Anulat</span>'
+            : isReviewRequested
             ? '<span style="background:rgba(250,180,0,.15);color:#ffd580;border:1px solid rgba(250,180,0,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">🔄 Spre revizuire</span>'
             : isRefused
             ? '<span style="background:rgba(255,80,80,.15);color:#ffaaaa;border:1px solid rgba(255,80,80,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⛔ Refuzat</span>'
@@ -1001,13 +1004,14 @@ th{ color: var(--sub) !important; }
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 ${isUrgent ? '<span style="background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 Prioritate</span>' : ''}
                 ${statusBadge}
-                ${mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#ff6b6b);border:none;color:#fff;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">✍ Semnează</button>` : ''}
+                ${!isCancelled && mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#ff6b6b);border:none;color:#fff;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">✍ Semnează</button>` : ''}
                 <a href="/flow.html?flow=${f.flowId}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">🔍 Vezi flow</a>
-                ${dlBtn}
-                ${canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,200,50,.12);border:1px solid rgba(255,200,50,.35);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">🔄 Reinițiază</button>` : ''}
+                ${!isCancelled ? dlBtn : ''}
+                ${!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,200,50,.12);border:1px solid rgba(255,200,50,.35);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">🔄 Reinițiază</button>` : ''}
                 ${refusedByAprobat && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<span style="color:#ffaaaa;font-size:.78rem;font-weight:600;">⛔ Refuzat de APROBATOR — flux nou necesar</span>` : ''}
-                ${isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" style="background:rgba(250,180,0,.18);border:1px solid rgba(250,180,0,.4);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Doc revizuit</button>` : ''}
-                ${(f.initEmail||'').toLowerCase() === currentUserEmail && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Sterge flux">🗑</button>` : ''}
+                ${!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" style="background:rgba(250,180,0,.18);border:1px solid rgba(250,180,0,.4);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Doc revizuit</button>` : ''}
+                ${!isCancelled && (f.initEmail||'').toLowerCase() === currentUserEmail && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Sterge flux">🗑</button>` : ''}
+                ${!isCancelled && !f.allSigned && !f.status?.includes('refused') && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(120,120,120,.1);border:1px solid rgba(120,120,120,.3);color:#aaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Anulează flux">🚫 Anulează</button>` : ''}
               </div>
             </div>
             <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
@@ -1091,6 +1095,24 @@ async function deleteFlow(flowId, docName) {
       loadMyFlows(_fluxPage);
     } else {
       alert("❌ " + (j.message || j.error || "Eroare la stergere"));
+    }
+  } catch(e) { alert("❌ " + e.message); }
+}
+
+async function cancelFlow(flowId, docName) {
+  const reason = prompt("Motiv anulare flux:\n" + docName + "\n\n(opțional)");
+  if (reason === null) return; // user a apăsat Cancel
+  try {
+    const r = await _apiFetch("/flows/" + encodeURIComponent(flowId) + "/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason.trim() })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      loadMyFlows(_fluxPage);
+    } else {
+      alert("❌ " + (j.message || j.error || "Eroare la anulare"));
     }
   } catch(e) { alert("❌ " + e.message); }
 }

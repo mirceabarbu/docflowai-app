@@ -210,6 +210,7 @@
         <option value="active">Active</option>
         <option value="done">Finalizate</option>
         <option value="refused">Refuzate</option>
+        <option value="cancelled">Anulate</option>
       </select>
       <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;">
         <option value="">Toate instituțiile</option>
@@ -838,6 +839,8 @@ async function loadFlowsList(forceReload = true, page) {
             ? '<span style="color:#7cf0e0;font-size:.75rem;">✅ finalizat</span>'
             : f.status==="refused"
             ? '<span style="color:#ffaaaa;font-size:.75rem;">⛔ refuzat</span>'
+            : f.status==="cancelled"
+            ? '<span style="color:#aaaaaa;font-size:.75rem;">🚫 anulat</span>'
             : '<span style="color:#b39dff;font-size:.75rem;">✍ activ</span>';
           return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
             <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.flowId}">${f.urgent ? '<span style="color:#ff8888;font-weight:700;margin-right:4px;">🚨</span>' : ''}${f.docName||"—"}</td>
@@ -1161,7 +1164,7 @@ async function _loadCleanPreview(params) {
 
 function _buildDeleteList(flows) {
   if (!flows.length) return '<div style="color:var(--muted);text-align:center;padding:12px;">Niciun flux găsit.</div>';
-  const statusColors = { finalizat:'#2dd4bf', refuzat:'#ff5050', arhivat:'#9db0ff', revizuire:'#ffd580', activ:'#b39dff' };
+  const statusColors = { finalizat:'#2dd4bf', refuzat:'#ff5050', arhivat:'#9db0ff', revizuire:'#ffd580', anulat:'#888888', activ:'#b39dff' };
   return flows.map(f => {
     const col = statusColors[f.status] || '#aaa';
     const dt = new Date(f.createdAt).toLocaleDateString('ro-RO');

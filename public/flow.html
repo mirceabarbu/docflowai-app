@@ -230,6 +230,7 @@
     if(["active","in_progress","inprogress","in curs","running"].includes(s)) return {cls:"warn", txt:"⏳ În curs"};
     if(s === "review_requested") return {cls:"warn", txt:"🔄 Spre revizuire"};
     if(s === "reinitiated_after_review") return {cls:"", txt:"🔁 Reinițiat după revizuire"};
+    if(s === "cancelled") return {cls:"bad", txt:"🚫 Anulat"};
     return {cls:"", txt:"ℹ️ " + (status||"necunoscut")};
   }
 
@@ -468,6 +469,7 @@
         if (signers.length && signers.every(s => s.status === "signed")) computedStatus = "completed";
         else if (signers.some(s => s.status === "refused")) computedStatus = "refused";
         else if (data.status === "review_requested") computedStatus = "review_requested";
+        else if (data.status === "cancelled") computedStatus = "cancelled";
         else if (signers.some(s => s.status === "signed" || s.status === "current")) computedStatus = "active";
         else computedStatus = "active";
       }

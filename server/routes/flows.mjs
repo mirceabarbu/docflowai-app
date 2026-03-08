@@ -133,10 +133,11 @@ const createFlow = async (req, res) => {
       createdAt, updatedAt: new Date().toISOString(),
       events: [{ at: new Date().toISOString(), type: 'FLOW_CREATED', by: initEmail, urgent: !!(body.urgent) }],
     };
-    await saveFlow(flowId, data);
-
     const first = data.signers.find(s => s.status === 'current');
     const initIsSigner = first && first.email.toLowerCase() === initEmail.toLowerCase();
+    if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
+    await saveFlow(flowId, data);
+
     if (first?.email && !initIsSigner) {
       await _notify({ userEmail: first.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat',
         message: `${initName} te-a adăugat ca semnatar pe documentul „${data.docName}". Intră în aplicație pentru a semna.`,
@@ -337,6 +338,7 @@ const signFlow = async (req, res) => {
     catch(e) { return res.status(401).json({ error: 'token_invalid', message: 'Sesiune expirată. Autentifică-te din nou.' }); }
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
+    if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled', message: 'Fluxul a fost anulat.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => s.token === token);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
@@ -370,6 +372,7 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
     catch(e) { return res.status(401).json({ error: 'token_invalid', message: 'Sesiune expirată. Autentifică-te din nou.' }); }
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
+    if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled', message: 'Fluxul a fost anulat.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => s.token === token);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
@@ -415,6 +418,10 @@ router.post('/flows/:flowId/register-download', async (req, res) => {
     const rawPdf = (data.pdfB64 || '').includes(',') ? (data.pdfB64 || '').split(',')[1] : (data.pdfB64 || '');
     if (!rawPdf) return res.status(500).json({ error: 'pdf_missing_cannot_issue_token' });
 
+    // Înregistrăm momentul descărcării PDF-ului de semnat
+    signer.downloadedAt = new Date().toISOString();
+    await saveFlow(flowId, data);
+
     // flowType 'ancore': PDF-ul nu se atinge si nu se emite uploadToken cu hash.
     // Semnatarul descarca direct, semneaza cu certificat calificat, incarca inapoi fara verificare hash.
     if (data.flowType === 'ancore') {
@@ -456,6 +463,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
 
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
+    if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled', message: 'Fluxul a fost anulat.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => s.token === token);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
@@ -498,7 +506,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
     if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); data.urgent = false; data.docName = `${flowId}_${data.docName}`; data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
     const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
-    if (nextSigner) nextSigner.emailSent = true;
+    if (nextSigner) { nextSigner.emailSent = true; nextSigner.notifiedAt = new Date().toISOString(); }
     await saveFlow(flowId, data);
     console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
     res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, nextSigner: nextSigner || null });
@@ -592,9 +600,10 @@ router.get('/my-flows', async (req, res) => {
     }
 
     let statusWhere = '';
-    if (statusFilter === 'pending') statusWhere = " AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused'";
+    if (statusFilter === 'pending') statusWhere = " AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused' AND (data->>'status') IS DISTINCT FROM 'cancelled'";
     else if (statusFilter === 'completed') statusWhere = " AND (data->>'completed') = 'true'";
     else if (statusFilter === 'refused') statusWhere = " AND (data->>'status') = 'refused'";
+    else if (statusFilter === 'cancelled') statusWhere = " AND (data->>'status') = 'cancelled'";
     let searchWhere = '';
     if (search) { params.push(`%${escapedSearch}%`); searchWhere = ` AND (lower(data->>'docName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initName') LIKE $${params.length} ESCAPE '\\')`; }
     const whereClause = baseWhere + statusWhere + searchWhere;
@@ -709,6 +718,8 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     }
     await saveFlow(newFlowId2, newData);
     const first = remainingSigners[0];
+    if (first) first.notifiedAt = new Date().toISOString();
+    await saveFlow(newFlowId2, newData);
     if (first?.email) {
       await _notify({ userEmail: first.email, flowId: newFlowId2, type: 'YOUR_TURN', title: 'Document de semnat (reinițiat)',
         message: `${data.initName} a reinițiat fluxul de semnare pentru documentul „${data.docName}". Este rândul tău să semnezi.`,
@@ -734,7 +745,7 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     catch(e) { return res.status(401).json({ error: 'token_invalid' }); }
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (data.completed || data.status === 'refused' || data.status === 'review_requested') {
+    if (data.completed || data.status === 'refused' || data.status === 'review_requested' || data.status === 'cancelled') {
       return res.status(409).json({ error: 'invalid_flow_state', message: 'Fluxul nu poate fi trimis spre revizuire în starea curentă.' });
     }
     const signers = Array.isArray(data.signers) ? data.signers : [];
@@ -870,13 +881,14 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     if (!Array.isArray(data.events)) data.events = [];
     data.events.push({ at: now, type: 'FLOW_REINITIATED_AFTER_REVIEW', by: actor.email, round: data.reviewHistory.length, reviewReason: data.reviewHistory[data.reviewHistory.length - 1]?.reviewReason });
 
+    // Notifică primul semnatar (același flowId)
+    const first = resetSigners[0];
+    if (first) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
 
     // Issue 5: Sterge notif REVIEW_REQUESTED existente pentru acest flux
     await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type='REVIEW_REQUESTED'", [flowId]).catch(() => {});
 
-    // Notifică primul semnatar (același flowId)
-    const first = resetSigners[0];
     if (first?.email) {
       await _notify({ userEmail: first.email, flowId, type: 'YOUR_TURN',
         title: 'Document revizuit de semnat',
@@ -907,8 +919,8 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     }
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
+    if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled', message: 'Fluxul a fost anulat.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
-    const idx = signers.findIndex(s => s.token === fromToken);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
     const isAdmin = actor.role === 'admin';
     const isCurrentSigner = (signers[idx].email || '').toLowerCase() === (actor.email || '').toLowerCase();
@@ -934,6 +946,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
       email: toEmail.trim().toLowerCase(),
       token: newToken,
       tokenCreatedAt: new Date().toISOString(),
+      notifiedAt: new Date().toISOString(),
       status: 'current',
       functie: delegatDb.functie || signers[idx].functie || '',
       compartiment: delegatDb.compartiment || signers[idx].compartiment || '',
@@ -1002,4 +1015,41 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     return res.json({ ok: true, flowId, from: originalEmail, to: toEmail, delegateName: resolvedName });
   } catch(e) { console.error('delegate error:', e); return res.status(500).json({ error: 'server_error' }); }
 });
+
+// ── POST /flows/:flowId/cancel ─────────────────────────────────────────────
+router.post('/flows/:flowId/cancel', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const actor = requireAuth(req, res); if (!actor) return;
+    const { flowId } = req.params;
+    const { reason } = req.body || {};
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    const isAdmin = actor.role === 'admin';
+    const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
+    if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un admin poate anula fluxul.' });
+    if (data.completed) return res.status(409).json({ error: 'already_completed', message: 'Un flux finalizat nu poate fi anulat.' });
+    if (data.status === 'cancelled') return res.status(409).json({ error: 'already_cancelled', message: 'Fluxul este deja anulat.' });
+    const now = new Date().toISOString();
+    data.status = 'cancelled';
+    data.cancelledAt = now;
+    data.cancelledBy = actor.email;
+    data.cancelReason = reason ? String(reason).trim().slice(0, 500) : null;
+    data.updatedAt = now;
+    if (!Array.isArray(data.events)) data.events = [];
+    data.events.push({ at: now, type: 'FLOW_CANCELLED', by: actor.email, reason: data.cancelReason });
+    await saveFlow(flowId, data);
+    // Șterge notificările YOUR_TURN active pentru acest flux
+    await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
+    // Notifică inițiatorul (dacă admin a anulat) și semnatarii care au semnat deja
+    if (isAdmin && data.initEmail) {
+      await _notify({ userEmail: data.initEmail, flowId, type: 'REFUSED', title: '🚫 Flux anulat de administrator',
+        message: `Fluxul „${data.docName}" a fost anulat de administrator.${data.cancelReason ? ' Motiv: ' + data.cancelReason : ''}`,
+        waParams: { docName: data.docName } });
+    }
+    console.log(`🚫 Flow ${flowId} anulat de ${actor.email}`);
+    return res.json({ ok: true, flowId, cancelledAt: now });
+  } catch(e) { console.error('cancel flow error:', e); return res.status(500).json({ error: 'server_error' }); }
+});
+
 export default router;
