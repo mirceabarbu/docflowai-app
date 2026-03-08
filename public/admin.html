@@ -209,18 +209,17 @@
         <option value="done">Finalizate</option>
         <option value="refused">Refuzate</option>
       </select>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
-      <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
+      <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;min-width:160px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
         <option value="">Toate instituțiile</option>
       </select>
-      <select id="flowDeptFilter" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;" disabled>
+      <select id="flowDeptFilter" style="flex:1;min-width:160px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;" disabled>
         <option value="">Toate compartimentele</option>
       </select>
+      <button onclick="exportFlowsCSV()" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.13);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-weight:600;" title="Exportă lista curentă de fluxuri (cu filtrele aplicate) în CSV">📥 CSV</button>
+      <button onclick="exportFlowsPDF()" style="padding:8px 14px;font-size:.85rem;background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-weight:600;" title="Exportă lista curentă de fluxuri (cu filtrele aplicate) în PDF">📄 PDF</button>
+    </div>
+    <div style="margin-bottom:14px;">
       <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
-      <button onclick="exportAuditCSV()" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;">📊 Export CSV 30z</button>
-      <button onclick="exportFlowsCSV()" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.13);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-weight:600;" title="Exportă lista curentă de fluxuri (cu filtrele aplicate) în CSV">📥 Export CSV</button>
-      <button onclick="exportFlowsPDF()" style="padding:8px 14px;font-size:.85rem;background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-weight:600;" title="Exportă lista curentă de fluxuri (cu filtrele aplicate) în PDF">📄 Export PDF</button>
     </div>
     <div id="flowsListArea" style="font-size:.83rem;color:var(--muted);">Apasă „Încarcă" pentru a vedea fluxurile.</div>
     <div id="flowsListPagination" style="display:none;margin-top:14px;"></div>
