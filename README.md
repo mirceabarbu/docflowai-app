@@ -1,33 +1,56 @@
-# DocFlowAI v3.2.0 — Enterprise
+# DocFlowAI v3.3.0 — Enterprise
 
 **Platformă de circulație și semnare electronică calificată pentru administrația publică.**
 
 ---
 
-## Changelog v3.2.0 — Patch Enterprise
+## Changelog v3.3.0 (08.03.2026)
+
+### ✨ Funcționalități noi
+- **`POST /flows/:flowId/cancel`** — Anulare flux de către inițiator sau admin. Setează `data.status = 'cancelled'`, înregistrează `cancelledAt / cancelledBy / cancelReason`, șterge notificările `YOUR_TURN/REMINDER`, notifică inițiatorul dacă adminul a anulat.
+- **`notifiedAt`** pe semnatar — timestamp setat la trimiterea email-ului `YOUR_TURN`.
+- **`downloadedAt`** pe semnatar — timestamp setat în `register-download` la descărcarea PDF-ului.
+- **Template email complet** — Emailuri `YOUR_TURN` cu branding DocFlowAI, buton direct „Semnează documentul", card document cu instituție/compartiment/ID flux, salut personalizat cu inițiator și funcție.
+- **Badge `🚫 Anulat`** în `semdoc-initiator.html`, `flow.html`, `admin.html` cu filtru dedicat în admin.
+- **Buton `🚫 Anulează`** pentru inițiator pe fluxuri active.
+- **Export CSV/PDF utilizatori** respectă filtrul activ din tabel, cu notă „filtrat: X din Y" în PDF.
+
+### 🔴 Bug fixes
+- **`NOTIFY_FAILED`** fals în jurnal — `sendSignerEmail()` returnează acum `{ ok: true, id }` la succes.
+- **Badge `🚨 Prioritate`** → corectat `🚨 URGENT`.
+- **Email `✅ ✅ Document semnat complet`** — emoji duplicat eliminat.
+- **Export utilizatori ignora filtrul activ** — `window._filteredUsers` nu era setat (variabila locală ≠ `window.*`). Rezolvat în `renderUsers()`.
+
+### 🟡 Îmbunătățiri audit PDF
+- **Secțiunea SEMNATARI** — timestamps în ordine cronologică: `Notificat → Descarcat → Incarcat → Semnat / Refuzat / Delegat`.
+- **`Incarcat`** determinat din `signedPdfVersions[signerIndex]` per semnatar.
+- **ISTORICUL RUNDELOR** — același format extins per semnatar per rundă.
+- **Header audit** — afișează `cancelledAt`, `cancelledBy`, `cancelReason` pentru fluxuri anulate.
+
+---
+
+## Changelog v3.2.0 — Patch Enterprise (07.03.2026)
 
 ### 🔴 Security fixes
-- **Eliminat `plain_password`** — parola nu se mai stochează niciodată în clar în DB (migration `010_drop_plain_password`). La creare/reset, parola este generată, returnată **o singură dată** în răspunsul API (`_generatedPassword`) și trimisă pe email, după care nu mai este recuperabilă din sistem.
-- **`GET /users`** — acum filtrează strict pe `org_id` al actorului autentificat. Previne scurgerea de email-uri și date personale între organizații în context multi-tenant.
-- **`GET /flows/:flowId` și `GET /my-flows`** — folosesc `getUserMapForOrg(orgId)` (funcție nouă în `db/index.mjs`) care filtrează userii pe organizație. Elimină leak-ul inter-tenant la îmbogățirea semnatarilor.
-- **`GET /my-flows`** — filtrul `org_id` nu mai are fallback la `OR $2 = 0`. Un user fără `orgId` vede **exclusiv** fluxurile proprii, nu toate fluxurile din DB.
+- **Eliminat `plain_password`** — parola nu se mai stochează niciodată în clar în DB. La creare/reset, parola este returnată **o singură dată** în `_generatedPassword`.
+- **`GET /users`** — filtrează strict pe `org_id`. Previne scurgerea de date între organizații.
+- **`GET /flows/:flowId` și `GET /my-flows`** — folosesc `getUserMapForOrg(orgId)`.
+- **`GET /my-flows`** — filtrul `org_id` fără fallback la `OR $2 = 0`.
 
 ### 🟠 Bug fixes
-- **`export default router`** — mutat la **sfârșitul** fișierelor `flows.mjs` și `admin.mjs`. Rutele `/delegate` și `/admin/flows/:flowId/audit` care erau definite după `export default` sunt acum corect poziționate.
-- **`PUT /flows/:flowId`** — adăugată validare: `signers` (array nevid), `docName` și `initEmail` sunt obligatorii. Câmpurile imutabile `flowId`, `orgId` și `createdAt` sunt protejate de suprascrierea body-ului.
-- **`stampFooterOnPdf`** — lățimea textului din dreapta calculată cu `fontR.widthOfTextAtSize(footerRight, FONT_SIZE)` (font metric real) în loc de `length * 4.5` (estimare incorectă pentru majuscule și caractere late).
-- **`upload-signed-pdf`** — limita de 30 MB verificată pe bytes PDF reali (`estimatedBytes = base64.length * 0.75`) în loc de pe lungimea string-ului base64.
-- **`reinitiate`** — footer-ul PDF este re-aplicat cu noul `flowId`. Anterior, noul flux moștenea footer-ul cu `flowId`-ul vechi.
-- **`notify`** — `notif_email` și `notif_inapp` sunt evaluate **independent**. Un user poate primi email chiar dacă dezactivează notificările in-app.
+- **`export default router`** mutat la sfârșitul fișierelor `flows.mjs` și `admin.mjs`.
+- **`PUT /flows/:flowId`** — validare câmpuri obligatorii; câmpuri imutabile protejate.
+- **`stampFooterOnPdf`** — lățime text calculată cu `font.widthOfTextAtSize()`.
+- **`upload-signed-pdf`** — limita 30 MB verificată pe bytes reali.
+- **`reinitiate`** — footer-ul PDF re-aplicat cu noul `flowId`.
+- **`notify`** — `notif_email` și `notif_inapp` evaluate independent.
 
 ### 🟡 Improvements
-- **`_defaultOrgIdCache`** — cache cu TTL de 5 minute (în loc de infinit). Funcție nouă `invalidateDefaultOrgCache()` pentru invalidare manuală.
-- **Rate limiting configurabil** via `LOGIN_MAX`, `LOGIN_WINDOW_SEC`, `LOGIN_BLOCK_SEC` în variabilele de mediu.
-- **`JWT_REFRESH_GRACE_SEC`** — grace period la refresh token acum configurabil via ENV (default 900 sec).
-- **Cleanup automat notificări** — job la 6 ore păstrează maxim 500 notificări per user (migration `012_notifications_cleanup_index`).
-- **Pool DB** — `max: 10` conexiuni (era 5).
-- **`nodemailer`** eliminat din `package.json` (nu era folosit — aplicația folosea Resend direct via `fetch`).
-- **Versiune** afișată ca `3.2.0` în `/health` și `/admin/health`.
+- Rate limiting configurabil via ENV.
+- Cache `_defaultOrgIdCache` cu TTL 5 minute.
+- Cleanup automat notificări la 6 ore (max 500/user).
+- Pool DB `max: 10` conexiuni. Helmet security headers.
+- `SIGNER_TOKEN_EXPIRY_DAYS` configurabil via ENV (default 90).
 
 ---
 
@@ -36,25 +59,24 @@
 ```
 Railway (Node.js)
 ├── server/
-│   ├── index.mjs           — Express orchestrator, WebSocket, notify
-│   ├── mailer.mjs          — Email via Resend API
+│   ├── index.mjs           — Express orchestrator, WebSocket, notify, stampFooter
+│   ├── mailer.mjs          — Email via Resend API (template HTML branded)
 │   ├── whatsapp.mjs        — WhatsApp via Meta Graph API
 │   ├── drive.mjs           — Arhivare Google Drive via Service Account
 │   ├── push.mjs            — Web Push (VAPID)
-│   ├── db/
-│   │   └── index.mjs       — Pool PG, migrări, saveFlow, getUserMapForOrg
-│   ├── middleware/
-│   │   └── auth.mjs        — JWT, hashPassword, requireAuth/Admin
+│   ├── db/index.mjs        — Pool PG, migrări, saveFlow, getUserMapForOrg
+│   ├── middleware/auth.mjs  — JWT, hashPassword, requireAuth/Admin
 │   └── routes/
 │       ├── auth.mjs        — /auth/login, /auth/me, /auth/refresh
-│       ├── flows.mjs       — CRUD fluxuri, sign, refuse, upload, delegate
-│       ├── admin.mjs       — Users CRUD, arhivare, audit, health
-│       └── notifications.mjs — Notificări, push subscriptions
+│       ├── flows.mjs       — CRUD fluxuri, sign, refuse, upload, delegate, cancel
+│       ├── admin.mjs       — Users CRUD, arhivare, audit PDF/CSV/JSON, health
+│       └── notifications.mjs
 └── public/
     ├── login.html
-    ├── semdoc-initiator.html
-    ├── semdoc-signer.html
-    ├── admin.html
+    ├── semdoc-initiator.html  — Creare, monitorizare, anulare fluxuri
+    ├── semdoc-signer.html     — Descărcare, upload, semnare
+    ├── flow.html              — Detalii flux
+    ├── admin.html             — Panou admin (users, fluxuri, audit, statistici)
     ├── notifications.html
     ├── templates.html
     └── notif-widget.js
@@ -78,9 +100,10 @@ JWT_EXPIRES=2h
 JWT_REFRESH_GRACE_SEC=900
 ADMIN_SECRET=your-admin-bypass-secret
 ADMIN_INIT_PASSWORD=parola-initiala-admin
+SIGNER_TOKEN_EXPIRY_DAYS=90
 ```
 
-### Rate limiting (opționale, valori default)
+### Rate limiting (opționale)
 ```
 LOGIN_MAX=10
 LOGIN_WINDOW_SEC=900
@@ -131,41 +154,44 @@ VAPID_SUBJECT=mailto:admin@docflowai.ro
 | Metodă | Endpoint | Descriere |
 |---|---|---|
 | POST | `/flows` | Creare flux |
-| GET | `/flows/:flowId` | Date flux (semnatari îmbogățiți) |
-| PUT | `/flows/:flowId` | Editare completă (admin only, validat) |
+| GET | `/flows/:flowId` | Date flux |
+| PUT | `/flows/:flowId` | Editare completă (admin only) |
 | DELETE | `/flows/:flowId` | Ștergere (inițiator/admin) |
 | GET | `/flows/:flowId/pdf` | PDF original + emite uploadToken |
 | GET | `/flows/:flowId/signed-pdf` | PDF semnat final |
 | POST | `/flows/:flowId/sign` | Marcare semnat |
 | POST | `/flows/:flowId/refuse` | Refuz cu motiv |
 | POST | `/flows/:flowId/upload-signed-pdf` | Upload PDF semnat (verificare hash) |
-| POST | `/flows/:flowId/register-download` | Emitere uploadToken |
-| POST | `/flows/:flowId/resend` | Reminder semnatar curent (admin) |
-| POST | `/flows/:flowId/regenerate-token` | Token nou pentru semnatar (admin) |
-| POST | `/flows/:flowId/reinitiate` | Reinițiere după refuz (cu footer nou) |
+| POST | `/flows/:flowId/register-download` | Emitere uploadToken + setare `downloadedAt` |
+| POST | `/flows/:flowId/resend` | Reminder semnatar curent |
+| POST | `/flows/:flowId/regenerate-token` | Token nou pentru semnatar |
+| POST | `/flows/:flowId/reinitiate` | Reinițiere după refuz |
+| POST | `/flows/:flowId/reinitiate-review` | Reinițiere după revizuire |
+| POST | `/flows/:flowId/request-review` | Cerere revizuire de la semnatar |
 | POST | `/flows/:flowId/delegate` | Delegare semnătură |
+| POST | `/flows/:flowId/cancel` | Anulare flux (inițiator/admin) |
 
 ### Fluxuri utilizator
 | Metodă | Endpoint | Descriere |
 |---|---|---|
-| GET | `/my-flows` | Fluxuri proprii (filtrat strict pe org) |
+| GET | `/my-flows` | Fluxuri proprii |
 | GET | `/my-flows/:flowId/download` | Descărcare PDF semnat |
 | GET | `/api/my-signer-token/:flowId` | Token semnare propriu |
 
 ### Admin — Utilizatori
 | Metodă | Endpoint | Descriere |
 |---|---|---|
-| GET | `/admin/users` | Lista utilizatori (fără parole) |
+| GET | `/admin/users` | Lista utilizatori |
 | POST | `/admin/users` | Creare user → `_generatedPassword` one-time |
 | PUT | `/admin/users/:id` | Editare user |
 | DELETE | `/admin/users/:id` | Ștergere user |
-| POST | `/admin/users/:id/reset-password` | Reset parolă → `_generatedPassword` one-time |
+| POST | `/admin/users/:id/reset-password` | Reset parolă one-time |
 | POST | `/admin/users/:id/send-credentials` | Reset + email credențiale |
 
 ### Admin — Fluxuri & Arhivare
 | Metodă | Endpoint | Descriere |
 |---|---|---|
-| GET | `/admin/flows/list` | Lista fluxuri (paginată, filtrate) |
+| GET | `/admin/flows/list` | Lista fluxuri (paginată, cu `cancelled`) |
 | POST | `/admin/flows/clean` | Ștergere fluxuri vechi |
 | GET | `/admin/flows/archive-preview` | Preview arhivare Drive |
 | POST | `/admin/flows/archive` | Arhivare batch în Drive |
@@ -194,13 +220,15 @@ ws://app/ws  →  auth { type: 'auth', token: '...' }
 ## Note de securitate
 
 ### Parole
-Parolele nu sunt stocate în clar. Fluxul corect:
 1. Admin creează user → server returnează `_generatedPassword` **o singură dată**
-2. Admin trimite credențialele via `/admin/users/:id/send-credentials` (resetează parola și trimite email)
-3. Parola nu mai poate fi recuperată din DB după aceea
+2. Admin trimite credențialele via `/admin/users/:id/send-credentials`
+3. Parola nu mai poate fi recuperată din DB
 
 ### Multi-tenant
-Toate query-urile pe `users`, `flows`, `templates` filtrează pe `org_id` din JWT. Un user dintr-o organizație nu poate vedea datele altei organizații.
+Toate query-urile filtrează pe `org_id` din JWT. Izolare completă între organizații.
 
 ### Upload verificare integritate
-`uploadToken` JWT cu `preHash` (sha256 PDF livrat) expiră în 4h. La upload, serverul verifică că PDF-ul primit ≠ PDF-ul original (documentul a fost semnat efectiv).
+`uploadToken` JWT cu `preHash` (sha256 PDF livrat) expiră în 4h. La upload, serverul verifică că PDF-ul primit ≠ PDF-ul original.
+
+### Token semnatar
+Linkurile de semnare expiră după `SIGNER_TOKEN_EXPIRY_DAYS` (default 90 zile). Regenerabil de admin via `/flows/:flowId/regenerate-token`.

@@ -489,6 +489,7 @@ let _filteredUsers = [];
 
 function renderUsers(users){
   _filteredUsers = users;
+  window._filteredUsers = users; // export functions read window._filteredUsers
   _currentPage = 1;
   renderPage();
 }
@@ -1881,6 +1882,9 @@ function exportUsersCSV() {
 function exportUsersPDF() {
   const users = window._filteredUsers || window._allUsers || [];
   if (!users.length) { alert("Nu sunt utilizatori de exportat."); return; }
+  const allCount = (window._allUsers || []).length;
+  const isFiltered = users.length < allCount;
+  const filterNote = isFiltered ? ` (filtrat: ${users.length} din ${allCount})` : ` (${users.length} utilizatori)`;
   const now = new Date().toLocaleString("ro-RO", { timeZone: "Europe/Bucharest" });
   const rows = users.map(u => {
     const dt = u.created_at ? new Date(u.created_at).toLocaleDateString("ro-RO") : "-";
@@ -1912,7 +1916,7 @@ function exportUsersPDF() {
     .pill.user { background: #dbeafe; color: #1e40af; }
   </style></head><body>
   <h2>📋 Lista Utilizatori — DocFlowAI</h2>
-  <div class="sub">Generat: ${now} &nbsp;|&nbsp; Total: ${users.length} utilizatori</div>
+  <div class="sub">Generat: ${now} &nbsp;|&nbsp; Total: ${filterNote}</div>
   <table>
     <thead><tr>
       <th>Nume</th><th>Funcție</th><th>Instituție</th><th>Compartiment</th>
