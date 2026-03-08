@@ -364,6 +364,21 @@ const MIGRATIONS = [
           CREATE INDEX IF NOT EXISTS idx_audit_ip ON audit_log(actor_ip) WHERE actor_ip IS NOT NULL;`
   },
 
+  // ── GWS: Google Workspace provisioning columns ────────────────────────────
+  {
+    id: '018_gws_provisioning',
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS prenume            TEXT NOT NULL DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS nume_familie       TEXT NOT NULL DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_email     TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gws_email          TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gws_status         TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gws_provisioned_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gws_error          TEXT;
+      CREATE INDEX IF NOT EXISTS idx_users_gws_email ON users(gws_email) WHERE gws_email IS NOT NULL;
+    `
+  },
+
   // ── R-06: Email verificare utilizatori noi ─────────────────────────────────
   // Userii existenți primesc email_verified=TRUE (deja activi).
   // Userii noi creați de admin primesc email_verified=FALSE până verifică email-ul.

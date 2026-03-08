@@ -13,6 +13,7 @@ import { validatePhone } from '../whatsapp.mjs';
 import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
 import { archiveFlow, verifyDrive } from '../drive.mjs';
 import { verifyWhatsApp, sendWaSignRequest } from '../whatsapp.mjs';
+import { gwsIsConfigured, findAvailableEmail, provisionGwsUser, verifyGws, buildLocalPart } from '../gws.mjs';
 
 let PDFLibAdmin = null;
 try { PDFLibAdmin = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available for audit PDF export'); }
@@ -64,11 +65,11 @@ router.get('/admin/users', async (req, res) => {
     const orgId = selfRows[0]?.org_id || null;
     let query, params;
     if (orgId) {
-      query = 'SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
+      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [orgId];
     } else {
       // Admin fara org (fallback) — vede toti userii
-      query = 'SELECT id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
+      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [];
     }
     const { rows } = await pool.query(query, params);
@@ -80,64 +81,204 @@ router.post('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  const { email, password, nume, functie, institutie, compartiment, role, phone, notif_inapp, notif_email, notif_whatsapp, skip_verification } = req.body || {};
-  if (!email || !nume) return res.status(400).json({ error: 'email_and_nume_required' });
+
+  const {
+    email, password, nume, prenume, nume_familie,
+    functie, institutie, compartiment, role, phone,
+    notif_inapp, notif_email, notif_whatsapp, skip_verification,
+    personal_email,
+    create_gws, force_password_change,
+  } = req.body || {};
+
+  // Construim numele complet din prenume+nume_familie dacă sunt disponibile
+  const numeComplet = (prenume && nume_familie)
+    ? `${prenume.trim()} ${nume_familie.trim()}`
+    : (nume || '').trim();
+
+  if (!numeComplet || !email) return res.status(400).json({ error: 'email_and_nume_required' });
+
   const validRole = ['admin', 'user'].includes(role) ? role : 'user';
-  const plainPwd = password && password.length >= 4 ? password : generatePassword();
+  const plainPwd  = password && password.length >= 4 ? password : generatePassword();
   const phoneValidation = validatePhone((phone || '').trim());
   if (!phoneValidation.valid) return res.status(400).json({ error: 'phone_invalid', message: phoneValidation.error });
   const phoneVal = phoneValidation.normalized || (phone || '').trim();
   const ni = notif_inapp !== false; const ne = !!notif_email; const nw = !!notif_whatsapp;
 
-  // R-06: generăm token de verificare email (dacă skip_verification nu e setat de admin)
   const needsVerification = !skip_verification;
-  const verificationToken = needsVerification ? (await import('crypto')).default.randomBytes(32).toString('hex') : null;
+  const verificationToken = needsVerification
+    ? (await import('crypto')).default.randomBytes(32).toString('hex')
+    : null;
 
   try {
     const { rows } = await pool.query(
       `INSERT INTO users
-         (email,password_hash,plain_password,nume,functie,institutie,compartiment,role,phone,
-          notif_inapp,notif_email,notif_whatsapp,org_id,email_verified,verification_token,verification_sent_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-       RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,
-                 notif_inapp,notif_email,notif_whatsapp,org_id,email_verified`,
+         (email, password_hash, plain_password, nume, prenume, nume_familie,
+          functie, institutie, compartiment, role, phone,
+          notif_inapp, notif_email, notif_whatsapp, org_id,
+          personal_email,
+          email_verified, verification_token, verification_sent_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       RETURNING id, email, nume, prenume, nume_familie, functie, institutie,
+                 compartiment, plain_password, role, phone,
+                 notif_inapp, notif_email, notif_whatsapp, org_id,
+                 personal_email, email_verified,
+                 gws_email, gws_status`,
       [
         email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd,
-        (nume || '').trim(), (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(),
+        numeComplet,
+        (prenume || '').trim(), (nume_familie || '').trim(),
+        (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(),
         validRole, phoneVal, ni, ne, nw, actor.orgId || null,
-        !needsVerification,           // email_verified
-        verificationToken,            // verification_token (NULL dacă skip)
-        verificationToken ? new Date() : null
+        (personal_email || '').trim().toLowerCase() || null,
+        !needsVerification,
+        verificationToken,
+        verificationToken ? new Date() : null,
       ]
     );
     const user = rows[0];
 
-    // R-06: trimitem email de verificare în background (nu blocăm răspunsul)
+    // R-06: email verificare în background
     if (needsVerification && verificationToken) {
       const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
       const verifyLink = `${appUrl}/auth/verify-email/${verificationToken}`;
       sendSignerEmail({
         to: email.trim(),
         subject: '✅ Verificare adresă email — DocFlowAI',
-        html: `
-<div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
+        html: `<div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
   <h2 style="color:#7c5cff;margin:0 0 16px;">✅ Verificare adresă email</h2>
-  <p>Bună <strong>${escHtml(nume)}</strong>,</p>
+  <p>Bună <strong>${escHtml(numeComplet)}</strong>,</p>
   <p>Contul tău DocFlowAI a fost creat de un administrator. Apasă butonul de mai jos pentru a confirma adresa de email și a activa contul.</p>
   <div style="text-align:center;margin:28px 0;">
     <a href="${verifyLink}" style="background:#7c5cff;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem;">Verifică adresa email</a>
   </div>
-  <p style="font-size:.82rem;color:#5a6a8a;">Sau copiază link-ul: <code style="color:#9db0ff;">${verifyLink}</code></p>
-  <p style="font-size:.82rem;color:#5a6a8a;">Link-ul expiră în 72 de ore. Dacă nu ai solicitat acest cont, ignoră acest mesaj.</p>
+  <p style="font-size:.82rem;color:#5a6a8a;">Sau copiază: <code style="color:#9db0ff;">${verifyLink}</code></p>
+  <p style="font-size:.82rem;color:#5a6a8a;">Link expiră în 72h.</p>
 </div>`,
-      }).catch(e => console.warn(`R-06: email verificare eșuat pentru ${email}:`, e.message));
+      }).catch(e => console.warn(`R-06: verificare email eșuat pentru ${email}:`, e.message));
     }
 
-    res.status(201).json({ ...user, verificationSent: needsVerification && !!verificationToken });
+    // ── GWS Provisioning ─────────────────────────────────────────────────
+    let gwsResult = null;
+    if (create_gws && gwsIsConfigured()) {
+      const prn = (prenume || numeComplet.split(' ')[0] || '').trim();
+      const fam = (nume_familie || numeComplet.split(' ').slice(1).join('') || '').trim();
+      try {
+        const gwsEmail = await findAvailableEmail(prn, fam);
+        await provisionGwsUser({
+          prenume: prn, numeFamilie: fam,
+          gwsEmail, tempPassword: plainPwd,
+          forcePasswordChange: !!force_password_change,
+          personalEmail: (personal_email || '').trim() || null,
+          phone: phoneVal, functie: (functie || '').trim(),
+          institutie: (institutie || '').trim(),
+        });
+        await pool.query(
+          `UPDATE users SET gws_email=$1, gws_status='active', gws_provisioned_at=NOW(), gws_error=NULL WHERE id=$2`,
+          [gwsEmail, user.id]
+        );
+        user.gws_email  = gwsEmail;
+        user.gws_status = 'active';
+        gwsResult = { ok: true, gws_email: gwsEmail };
+        console.log(`✅ GWS: cont creat ${gwsEmail} pentru user ${user.id}`);
+      } catch(gwsErr) {
+        const errMsg = gwsErr.message || String(gwsErr);
+        await pool.query(
+          `UPDATE users SET gws_status='failed', gws_error=$1 WHERE id=$2`,
+          [errMsg, user.id]
+        );
+        user.gws_status = 'failed';
+        user.gws_error  = errMsg;
+        gwsResult = { ok: false, error: errMsg };
+        console.error(`❌ GWS provision eșuat pentru user ${user.id}:`, errMsg);
+      }
+    } else if (create_gws && !gwsIsConfigured()) {
+      gwsResult = { ok: false, error: 'gws_not_configured' };
+    }
+
+    res.status(201).json({
+      ...user,
+      verificationSent: needsVerification && !!verificationToken,
+      gws: gwsResult,
+    });
   } catch(e) {
     if (e.code === '23505') return res.status(409).json({ error: 'email_exists' });
-    res.status(500).json({ error: 'server_error' });
+    res.status(500).json({ error: 'server_error', detail: e.message });
   }
+});
+
+// ── GET /admin/gws/preview-email — preview email GWS înainte de creare ─────
+router.get('/admin/gws/preview-email', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const { prenume, nume_familie } = req.query;
+  if (!prenume && !nume_familie) return res.status(400).json({ error: 'prenume_or_nume_required' });
+  if (!gwsIsConfigured()) return res.json({ configured: false });
+  try {
+    const available = await findAvailableEmail(prenume || '', nume_familie || '');
+    const base = buildLocalPart(prenume || '', nume_familie || '');
+    return res.json({ configured: true, email: available, base });
+  } catch(e) {
+    return res.json({ configured: true, error: e.message });
+  }
+});
+
+// ── POST /admin/users/:id/gws-provision — (re)provision cont Workspace ─────
+router.post('/admin/users/:id/gws-provision', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!gwsIsConfigured()) return res.status(503).json({ error: 'gws_not_configured' });
+
+  const userId = parseInt(req.params.id);
+  const { force_password_change } = req.body || {};
+
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, email, nume, prenume, nume_familie, functie, institutie, phone, personal_email, plain_password, gws_email FROM users WHERE id=$1',
+      [userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'user_not_found' });
+    const u = rows[0];
+
+    if (u.gws_email) {
+      return res.status(409).json({ error: 'already_provisioned', gws_email: u.gws_email });
+    }
+
+    const prn = (u.prenume || u.nume?.split(' ')[0] || '').trim();
+    const fam = (u.nume_familie || u.nume?.split(' ').slice(1).join('') || '').trim();
+    const gwsEmail = await findAvailableEmail(prn, fam);
+    const tempPwd  = u.plain_password || generatePassword();
+
+    await provisionGwsUser({
+      prenume: prn, numeFamilie: fam,
+      gwsEmail, tempPassword: tempPwd,
+      forcePasswordChange: force_password_change !== false,
+      personalEmail: u.personal_email || null,
+      phone: u.phone, functie: u.functie, institutie: u.institutie,
+    });
+    await pool.query(
+      `UPDATE users SET gws_email=$1, gws_status='active', gws_provisioned_at=NOW(), gws_error=NULL WHERE id=$2`,
+      [gwsEmail, userId]
+    );
+    console.log(`✅ GWS retry: cont creat ${gwsEmail} pentru user ${userId}`);
+    return res.json({ ok: true, gws_email: gwsEmail });
+  } catch(e) {
+    const errMsg = e.message || String(e);
+    await pool.query(
+      `UPDATE users SET gws_status='failed', gws_error=$1 WHERE id=$2`,
+      [errMsg, userId]
+    ).catch(() => {});
+    return res.status(500).json({ error: 'provision_failed', detail: errMsg });
+  }
+});
+
+// ── GET /admin/gws/verify — testează conectivitatea cu Workspace ───────────
+router.get('/admin/gws/verify', async (req, res) => {
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const result = await verifyGws();
+  res.status(result.ok ? 200 : 503).json(result);
 });
 
 router.put('/admin/users/:id', async (req, res) => {
