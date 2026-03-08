@@ -714,18 +714,36 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       }
       const inheritedEvs = audit.events.filter(e => e._inheritedFrom);
       const currentEvs = audit.events.filter(e => !e._inheritedFrom);
+      const EVENT_FONT_SIZE = 7.5;
+      const EVENT_LINE_H = 11;
+      const EVENT_COL_TS = MARGIN;
+      const EVENT_COL_TYPE = MARGIN + 115;
+      const EVENT_COL_DETAIL = MARGIN + 115 + 165;
+      const EVENT_DETAIL_MAX_W = PAGE_W - EVENT_COL_DETAIL - MARGIN;
+      // Estimează numărul de linii pe care se va împărți un text dat lățimea max și fontul
+      const estimateLines = (text, maxW, font, size) => {
+        if (!text) return 0;
+        const words = text.split(' ');
+        let lines = 1, lineW = 0;
+        for (const w of words) {
+          const wW = font.widthOfTextAtSize(w + ' ', size);
+          if (lineW + wW > maxW && lineW > 0) { lines++; lineW = wW; }
+          else { lineW += wW; }
+        }
+        return lines;
+      };
       const renderEvent = (e, dimmed) => {
         const detail = [e.by ? `by:${e.by}` : '', e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `to:${e.to}` : ''].filter(Boolean).join('  ');
-        const rowH = detail ? LINE_H + 8 : LINE_H;
-        ensureSpace(rowH + 4);
+        const detailLines = detail ? estimateLines(ro(detail), EVENT_DETAIL_MAX_W, fontR, EVENT_FONT_SIZE) : 0;
+        const rowH = EVENT_LINE_H + detailLines * EVENT_LINE_H + 3;
+        ensureSpace(rowH + 2);
         const ts = e.at ? fmtDate(e.at) : '';
-        const tsWidth = 115, typeWidth = 160;
         const dimColor = dimmed ? rgb(0.6,0.6,0.6) : rgb(0.5,0.5,0.5);
         const typeColor = dimmed ? rgb(0.5,0.5,0.65) : rgb(0.2,0.2,0.5);
-        page.drawText(ro(`[${ts}]`), { x:MARGIN, y, size:7.5, font:fontR, color:dimColor });
-        page.drawText(ro(e.type||''), { x:MARGIN+tsWidth, y, size:7.5, font:fontB, color:typeColor });
+        page.drawText(ro(`[${ts}]`), { x:EVENT_COL_TS, y, size:EVENT_FONT_SIZE, font:fontR, color:dimColor });
+        page.drawText(ro(e.type||''), { x:EVENT_COL_TYPE, y, size:EVENT_FONT_SIZE, font:fontB, color:typeColor });
         if (detail) {
-          page.drawText(ro(detail), { x:MARGIN+tsWidth+typeWidth, y, size:7.5, font:fontR, color:dimColor, maxWidth:PAGE_W-MARGIN-(tsWidth+typeWidth)-MARGIN });
+          page.drawText(ro(detail), { x:EVENT_COL_DETAIL, y, size:EVENT_FONT_SIZE, font:fontR, color:dimColor, maxWidth:EVENT_DETAIL_MAX_W, lineHeight: EVENT_LINE_H });
         }
         y -= rowH;
       };
