@@ -148,7 +148,7 @@ const createFlow = async (req, res) => {
     if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
     // R-02: audit_log
-    writeAuditEvent({ flowId, orgId, eventType: 'FLOW_CREATED', actorIp: _getIp(req),, actorEmail: initEmail, payload: { docName: data.docName, signersCount: normalizedSigners.length, urgent: data.urgent } });
+    writeAuditEvent({ flowId, orgId, eventType: 'FLOW_CREATED', actorIp: _getIp(req), actorEmail: initEmail, payload: { docName: data.docName, signersCount: normalizedSigners.length, urgent: data.urgent } });
 
     if (first?.email && !initIsSigner) {
       await _notify({ userEmail: first.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat',
@@ -367,7 +367,7 @@ const signFlow = async (req, res) => {
     data.events.push({ at: new Date().toISOString(), type: 'SIGNED', by: signers[idx].email || signers[idx].name || 'unknown', order: signers[idx].order });
     await saveFlow(flowId, data);
     // R-02: audit_log
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED', actorIp: _getIp(req),, actorEmail: signers[idx].email, payload: { signerName: signers[idx].name, order: signers[idx].order } });
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED', actorIp: _getIp(req), actorEmail: signers[idx].email, payload: { signerName: signers[idx].name, order: signers[idx].order } });
     return res.json({ ok: true, flowId, completed: data.signers.every(s => s.status === 'signed'), nextSigner: null, nextLink: null, awaitingUpload: true, flow: _stripPdfB64(data) });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 };
@@ -411,7 +411,7 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
     data.events.push({ at: new Date().toISOString(), type: 'REFUSED', by: signers[idx].email, reason: refuseReason });
     await saveFlow(flowId, data);
     // R-02: audit_log
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'REFUSED', actorIp: _getIp(req),, actorEmail: signers[idx].email, payload: { reason: refuseReason, signerName: refuserName, rol: refuserRol } });
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'REFUSED', actorIp: _getIp(req), actorEmail: signers[idx].email, payload: { reason: refuseReason, signerName: refuserName, rol: refuserRol } });
     // Issue 5: Sterge notif YOUR_TURN ale celui care a refuzat
     const refuserEmail5 = (signers[idx].email || '').toLowerCase();
     if (refuserEmail5) {
@@ -537,7 +537,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     if (nextSigner) { nextSigner.emailSent = true; nextSigner.notifiedAt = new Date().toISOString(); }
     await saveFlow(flowId, data);
     // R-02: audit_log — upload PDF + finalizare flux dacă e cazul
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED_PDF_UPLOADED', actorIp: _getIp(req),, actorEmail: signers[idx].email, payload: { signerName: signers[idx].name, order: signers[idx].order } });
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED_PDF_UPLOADED', actorIp: _getIp(req), actorEmail: signers[idx].email, payload: { signerName: signers[idx].name, order: signers[idx].order } });
     if (allDone) writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_COMPLETED', actorEmail: 'system', payload: { docName: data.docName, completedAt: data.completedAt } });
     console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
     res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, nextSigner: nextSigner || null });
@@ -752,7 +752,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     if (first) first.notifiedAt = new Date().toISOString();
     await saveFlow(newFlowId2, newData);
     // R-02: audit_log
-    writeAuditEvent({ flowId: newFlowId2, orgId: newData.orgId, eventType: 'FLOW_REINITIATED', actorIp: _getIp(req),, actorEmail: actor.email, payload: { parentFlowId: flowId, remainingSigners: remainingSigners.length } });
+    writeAuditEvent({ flowId: newFlowId2, orgId: newData.orgId, eventType: 'FLOW_REINITIATED', actorIp: _getIp(req), actorEmail: actor.email, payload: { parentFlowId: flowId, remainingSigners: remainingSigners.length } });
     if (first?.email) {
       await _notify({ userEmail: first.email, flowId: newFlowId2, type: 'YOUR_TURN', title: 'Document de semnat (reinițiat)',
         message: `${data.initName} a reinițiat fluxul de semnare pentru documentul „${data.docName}". Este rândul tău să semnezi.`,
@@ -799,7 +799,7 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     data.events.push({ at: new Date().toISOString(), type: 'REVIEW_REQUESTED', by: signers[idx].email, reason: reviewReason });
     await saveFlow(flowId, data);
     // R-02: audit_log
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'REVIEW_REQUESTED', actorIp: _getIp(req),, actorEmail: signers[idx].email, payload: { reviewerName, reason: reviewReason } });
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'REVIEW_REQUESTED', actorIp: _getIp(req), actorEmail: signers[idx].email, payload: { reviewerName, reason: reviewReason } });
     // Issue 5: Sterge notif YOUR_TURN ale celui care a cerut revizuire
     const reviewerEmail5 = (signers[idx].email || '').toLowerCase();
     if (reviewerEmail5) {
@@ -923,7 +923,7 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     if (first) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
     // R-02: audit_log
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_REINITIATED_AFTER_REVIEW', actorIp: _getIp(req),, actorEmail: actor.email, payload: { round: data.reviewHistory.length, docName: data.docName } });
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_REINITIATED_AFTER_REVIEW', actorIp: _getIp(req), actorEmail: actor.email, payload: { round: data.reviewHistory.length, docName: data.docName } });
 
     // Issue 5: Sterge notif REVIEW_REQUESTED existente pentru acest flux
     await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type='REVIEW_REQUESTED'", [flowId]).catch(() => {});
@@ -1000,7 +1000,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     data.events.push({ at: new Date().toISOString(), type: 'DELEGATED', from: originalEmail, to: toEmail, reason: String(reason).trim(), by: actor.email });
     await saveFlow(flowId, data);
     // R-02: audit_log
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'DELEGATED', actorIp: _getIp(req),, actorEmail: actor.email, payload: { from: originalEmail, to: toEmail, reason: String(reason).trim() } });
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'DELEGATED', actorIp: _getIp(req), actorEmail: actor.email, payload: { from: originalEmail, to: toEmail, reason: String(reason).trim() } });
 
     // ── Notificare: in-app + WhatsApp conform preferintelor din DB ──
     await _notify({
@@ -1083,7 +1083,7 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     data.events.push({ at: now, type: 'FLOW_CANCELLED', by: actor.email, reason: data.cancelReason });
     await saveFlow(flowId, data);
     // R-02: audit_log
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_CANCELLED', actorIp: _getIp(req),, actorEmail: actor.email, payload: { reason: data.cancelReason } });
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_CANCELLED', actorIp: _getIp(req), actorEmail: actor.email, payload: { reason: data.cancelReason } });
     // Șterge notificările YOUR_TURN active pentru acest flux
     await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
     // Notifică inițiatorul (dacă admin a anulat) și semnatarii care au semnat deja
