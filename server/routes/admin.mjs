@@ -311,13 +311,16 @@ router.put('/admin/users/:id', async (req, res) => {
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
-  const { email, nume, functie, institutie, compartiment, password, role, phone, notif_inapp, notif_email, notif_whatsapp } = req.body || {};
+  const { email, nume, prenume, nume_familie, functie, institutie, compartiment, password, role, phone, notif_inapp, notif_email, notif_whatsapp, personal_email } = req.body || {};
   const updates = [], vals = []; let i = 1;
   if (email) { updates.push(`email=$${i++}`); vals.push(email.trim().toLowerCase()); }
   if (nume !== undefined) { updates.push(`nume=$${i++}`); vals.push((nume || '').trim()); }
+  if (prenume !== undefined) { updates.push(`prenume=$${i++}`); vals.push((prenume || '').trim()); }
+  if (nume_familie !== undefined) { updates.push(`nume_familie=$${i++}`); vals.push((nume_familie || '').trim()); }
   if (functie !== undefined) { updates.push(`functie=$${i++}`); vals.push((functie || '').trim()); }
   if (institutie !== undefined) { updates.push(`institutie=$${i++}`); vals.push((institutie || '').trim()); }
   if (compartiment !== undefined) { updates.push(`compartiment=$${i++}`); vals.push((compartiment || '').trim()); }
+  if (personal_email !== undefined) { updates.push(`personal_email=$${i++}`); vals.push((personal_email || '').trim().toLowerCase() || null); }
   if (role && ['admin', 'user'].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
   if (phone !== undefined) {
     const pv = validatePhone((phone || '').trim());

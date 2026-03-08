@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC, requireAuth, verifyPassword } from '../middleware/auth.mjs';
+import { JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC, requireAuth, verifyPassword, hashPassword } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb } from '../db/index.mjs';
 
 const router = Router();
@@ -117,6 +117,22 @@ router.post('/auth/refresh', async (req, res) => {
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
 
+
+// ── POST /auth/change-password — schimbare parolă de către utilizatorul logat ──
+router.post('/auth/change-password', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { current_password, new_password } = req.body || {};
+  if (!current_password || !new_password) return res.status(400).json({ error: 'missing_fields' });
+  if (new_password.length < 6) return res.status(400).json({ error: 'password_too_short', message: 'Parola nouă trebuie să aibă minim 6 caractere.' });
+  try {
+    const { rows } = await pool.query('SELECT password_hash FROM users WHERE id=$1', [actor.userId]);
+    if (!rows[0]) return res.status(404).json({ error: 'user_not_found' });
+    if (!verifyPassword(current_password, rows[0].password_hash)) return res.status(401).json({ error: 'wrong_password', message: 'Parola curentă este incorectă.' });
+    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hashPassword(new_password), actor.userId]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
 
 // ── GET /auth/debug — diagnostic endpoint (ADMIN ONLY) ────────────────────
 // FIX v3.2.2: necesită autentificare admin — nu mai e accesibil oricărui user autentificat
