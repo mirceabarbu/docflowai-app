@@ -490,7 +490,12 @@ th{ color: var(--sub) !important; }
         $("viewFluxuri").classList.toggle("hidden", name !== "fluxuri");
         $("tabInit").classList.toggle("active", name === "init");
         $("tabFluxuri").classList.toggle("active", name === "fluxuri");
-        if (name === "fluxuri") loadMyFlows();
+        if (name === "fluxuri") {
+          // Nu pre-populăm search-ul — backend filtrează automat după userul logat
+          const fs = $("fluxSearch");
+          if (fs && !fs._userTyped) fs.value = "";
+          loadMyFlows();
+        }
       }
       $("tabInit").addEventListener("click", () => { showTab("init"); sessionStorage.setItem("docflow_tab", "init"); });
       // Sabloane: salveaza starea + PDF inainte de navigare

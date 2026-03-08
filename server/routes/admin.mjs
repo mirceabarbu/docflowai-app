@@ -99,7 +99,7 @@ router.post('/admin/users', async (req, res) => {
   } = req.body || {};
 
   const numeComplet = (prenume && nume_familie)
-    ? `${prenume.trim()} ${nume_familie.trim()}`
+    ? `${nume_familie.trim()} ${prenume.trim()}`
     : (nume || '').trim();
 
   if (!numeComplet) return res.status(400).json({ error: 'email_and_nume_required' });

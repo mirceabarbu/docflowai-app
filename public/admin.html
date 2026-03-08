@@ -840,7 +840,7 @@ async function _fetchGwsPreview() {
 async function createUser(){
   const prenume    = ($('nPrenume')||{value:''}).value.trim();
   const numeFamilie= ($('nNumeFamilie')||{value:''}).value.trim();
-  const numeComplet= [prenume, numeFamilie].filter(Boolean).join(' ');
+  const numeComplet= [numeFamilie, prenume].filter(Boolean).join(' ');
   const functie    = $('nFunctie').value.trim();
   const create_gws = !!($('nCreateGws')?.checked);
   // Dacă Workspace e activ, emailul de login = cel generat @docflowai.ro (trimis de backend)
@@ -1030,7 +1030,7 @@ async function saveEdit(){
   const id=$("eId").value;
   const prenume=$("ePrenume").value.trim();
   const numeFamilie=$("eNumeFamilie").value.trim();
-  const numeComplet=[prenume,numeFamilie].filter(Boolean).join(' ');
+  const numeComplet=[numeFamilie,prenume].filter(Boolean).join(' ');
   const body={
     email:$("eEmail").value.trim(),
     nume:numeComplet, prenume, nume_familie:numeFamilie,
