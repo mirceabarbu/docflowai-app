@@ -141,7 +141,7 @@ const createFlow = async (req, res) => {
     if (first?.email && !initIsSigner) {
       await _notify({ userEmail: first.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat',
         message: `${initName} te-a adăugat ca semnatar pe documentul „${data.docName}". Intră în aplicație pentru a semna.`,
-        waParams: { signerName: first.name || first.email, docName: data.docName }, urgent: !!(data.urgent) });
+        waParams: { signerName: first.name || first.email, docName: data.docName, signerToken: first.token, initName, initFunctie, institutie: initInstitutie, compartiment: initCompartiment }, urgent: !!(data.urgent) });
     }
     return res.json({ ok: true, flowId, firstSignerEmail: first?.email || null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null });
   } catch(e) { console.error('POST /flows error:', e); return res.status(500).json({ error: 'server_error' }); }
@@ -522,7 +522,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
           await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
           if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: '✅ Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName }, urgent: !!(data.urgent) });
         }
-        if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName }, urgent: !!(data.urgent) });
+        if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName, signerToken: nextSigner.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment }, urgent: !!(data.urgent) });
       } catch(notifErr) { console.error(`❌ Notificare async eșuată pentru flow ${flowId}:`, notifErr.message); }
     });
   } catch(e) { console.error('upload-signed-pdf error:', e); return res.status(500).json({ error: 'server_error' }); }
@@ -539,7 +539,7 @@ router.post('/flows/:flowId/resend', async (req, res) => {
     const current = (data.signers || []).find(s => s.status === 'current');
     if (!current) return res.status(409).json({ error: 'no_current_signer' });
     if (!current.email) return res.status(400).json({ error: 'current_missing_email' });
-    await _notify({ userEmail: current.email, flowId, type: 'YOUR_TURN', title: 'Reminder: Document de semnat', message: `Ai un document în așteptare pentru semnare: „${data.docName}". Te rugăm să accesezi aplicația.`, waParams: { signerName: current.name || current.email, docName: data.docName }, urgent: !!(data.urgent) });
+    await _notify({ userEmail: current.email, flowId, type: 'YOUR_TURN', title: 'Reminder: Document de semnat', message: `Ai un document în așteptare pentru semnare: „${data.docName}". Te rugăm să accesezi aplicația.`, waParams: { signerName: current.name || current.email, docName: data.docName, signerToken: current.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment }, urgent: !!(data.urgent) });
     return res.json({ ok: true, to: current.email });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
@@ -565,7 +565,7 @@ router.post('/flows/:flowId/regenerate-token', async (req, res) => {
     data.events.push({ at: new Date().toISOString(), type: 'TOKEN_REGENERATED', by: 'admin', signerEmail, order: signers[idx].order });
     await saveFlow(flowId, data);
     const newLink = _buildSignerLink(req, flowId, newToken);
-    await _notify({ userEmail: signers[idx].email, flowId, type: 'YOUR_TURN', title: 'Link de semnare reînnoit', message: `Link-ul tău de semnare pentru documentul „${data.docName}" a fost reînnoit.`, waParams: { signerName: signers[idx].name || signers[idx].email, docName: data.docName } });
+    await _notify({ userEmail: signers[idx].email, flowId, type: 'YOUR_TURN', title: 'Link de semnare reînnoit', message: `Link-ul tău de semnare pentru documentul „${data.docName}" a fost reînnoit.`, waParams: { signerName: signers[idx].name || signers[idx].email, docName: data.docName, signerToken: newToken, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment } });
     console.log(`🔑 Token regenerat pentru ${signerEmail} pe flow ${flowId}`);
     return res.json({ ok: true, signerEmail, newLink, message: 'Token regenerat și notificare trimisă.' });
   } catch(e) { console.error('regenerate-token error:', e); return res.status(500).json({ error: 'server_error' }); }
@@ -723,7 +723,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     if (first?.email) {
       await _notify({ userEmail: first.email, flowId: newFlowId2, type: 'YOUR_TURN', title: 'Document de semnat (reinițiat)',
         message: `${data.initName} a reinițiat fluxul de semnare pentru documentul „${data.docName}". Este rândul tău să semnezi.`,
-        waParams: { signerName: first.name || first.email, docName: data.docName } });
+        waParams: { signerName: first.name || first.email, docName: data.docName, signerToken: first.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment } });
     }
     console.log(`🔄 Flow ${flowId} reinițiat ca ${newFlowId2} de ${actor.email}`);
     return res.json({ ok: true, newFlowId: newFlowId2, signers: remainingSigners.length });
@@ -890,10 +890,11 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type='REVIEW_REQUESTED'", [flowId]).catch(() => {});
 
     if (first?.email) {
+      const roundNum = data.reviewHistory.length;
       await _notify({ userEmail: first.email, flowId, type: 'YOUR_TURN',
         title: 'Document revizuit de semnat',
         message: `${data.initName} a revizuit documentul „${data.docName}" și l-a retrimis spre semnare. Este rândul tău.`,
-        waParams: { signerName: first.name || first.email, docName: data.docName }
+        waParams: { signerName: first.name || first.email, docName: data.docName, signerToken: first.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment, roundInfo: roundNum > 1 ? `Runda ${roundNum} de semnare după revizuire` : null }
       });
     }
 
@@ -964,7 +965,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
       userEmail: toEmail, flowId, type: 'YOUR_TURN',
       title: '👥 Ai primit o delegare de semnătură',
       message: `${originalName} ți-a delegat semnarea documentului „${data.docName}". Motiv: ${String(reason).trim()}`,
-      waParams: { signerName: resolvedName, docName: data.docName }
+      waParams: { signerName: resolvedName, docName: data.docName, signerToken: newToken, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment }
     });
 
     // ── Notificare initiator despre delegare ──
