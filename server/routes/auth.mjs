@@ -249,4 +249,66 @@ router.get('/auth/fix-admin', async (req, res) => {
     res.status(500).send(`<h2>❌ Eroare: ${e.message}</h2>`);
   }
 });
+// ── GET /auth/verify-email/:token — activare cont prin link email ──────────
+// R-06: Userilor creați de admin li se trimite un link de verificare.
+// Dacă email_verified=TRUE deja (admin a bifat skip_verification), răspunde cu ok.
+router.get('/auth/verify-email/:token', async (req, res) => {
+  const { token } = req.params;
+  if (!token || token.length < 32) {
+    return res.status(400).send('<h2>❌ Token invalid sau expirat.</h2>');
+  }
+  if (!pool || !DB_READY) {
+    return res.status(503).send('<h2>❌ Serviciul nu este disponibil momentan. Încearcă din nou.</h2>');
+  }
+  try {
+    // Token valid 72 ore de la trimitere
+    const { rows } = await pool.query(
+      `SELECT id, email, email_verified, verification_sent_at FROM users
+       WHERE verification_token = $1 LIMIT 1`,
+      [token]
+    );
+    if (!rows.length) {
+      return res.status(404).send(`
+        <div style="font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center;background:#0f1731;color:#eaf0ff;padding:40px;border-radius:16px;">
+          <h2 style="color:#ff5050;">❌ Link invalid sau deja utilizat</h2>
+          <p>Tokenul de verificare nu a fost găsit. Este posibil să fi expirat sau să fi fost deja folosit.</p>
+          <p>Contactează administratorul pentru un nou link.</p>
+        </div>`);
+    }
+    const user = rows[0];
+    if (user.email_verified) {
+      return res.send(`
+        <div style="font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center;background:#0f1731;color:#eaf0ff;padding:40px;border-radius:16px;">
+          <h2 style="color:#2dd4bf;">✅ Email deja verificat</h2>
+          <p>Adresa <strong>${user.email}</strong> este deja confirmată. Poți accesa aplicația.</p>
+          <a href="/login" style="display:inline-block;margin-top:20px;background:#7c5cff;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;">Mergi la login</a>
+        </div>`);
+    }
+    // Verificăm expirarea (72 ore)
+    const sentAt = user.verification_sent_at ? new Date(user.verification_sent_at).getTime() : 0;
+    if (sentAt && Date.now() - sentAt > 72 * 3600_000) {
+      return res.status(410).send(`
+        <div style="font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center;background:#0f1731;color:#eaf0ff;padding:40px;border-radius:16px;">
+          <h2 style="color:#ff5050;">⏰ Link expirat</h2>
+          <p>Link-ul de verificare a expirat (72 ore). Contactează administratorul pentru un nou link de verificare.</p>
+        </div>`);
+    }
+    // Marchează emailul ca verificat și șterge tokenul
+    await pool.query(
+      `UPDATE users SET email_verified=TRUE, verification_token=NULL, verification_sent_at=NULL WHERE id=$1`,
+      [user.id]
+    );
+    console.log(`✅ R-06: Email verificat pentru ${user.email}`);
+    return res.send(`
+      <div style="font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center;background:#0f1731;color:#eaf0ff;padding:40px;border-radius:16px;">
+        <h2 style="color:#2dd4bf;">✅ Email confirmat!</h2>
+        <p>Adresa <strong>${user.email}</strong> a fost verificată cu succes. Contul tău DocFlowAI este acum activ.</p>
+        <a href="/login" style="display:inline-block;margin-top:20px;background:#7c5cff;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;">Mergi la login</a>
+      </div>`);
+  } catch(e) {
+    console.error('verify-email error:', e);
+    return res.status(500).send('<h2>❌ Eroare internă. Încearcă din nou.</h2>');
+  }
+});
+
 export default router;

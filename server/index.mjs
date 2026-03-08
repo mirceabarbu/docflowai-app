@@ -25,7 +25,7 @@ let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available — flow stamp disabled:', e.message); }
 
 import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
-import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex } from './middleware/auth.mjs';
+import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
 import { injectRateLimiter } from './routes/auth.mjs';
@@ -172,10 +172,7 @@ app.delete('/api/templates/:id', async (req, res) => {
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-// FIX v3.2.2: escape HTML pentru emailuri — previne HTML injection în notificări
-function escHtml(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
+// FIX v3.3.2: escHtml importat din middleware/auth.mjs — eliminat duplicatul local
 
 function publicBaseUrl(req) {
   const envBase = process.env.PUBLIC_BASE_URL;
@@ -308,6 +305,52 @@ const _loginBlocksCleanupInterval = setInterval(async () => {
     if (rowCount > 0) console.log(`🧹 login_blocks: ${rowCount} intrări expirate șterse.`);
   } catch(e) {}
 }, 30 * 60 * 1000);
+
+// ── R-04: Reminder automat semnatari inactivi ─────────────────────────────
+// Configurabil via ENV: REMINDER_INTERVAL_HOURS (default: 24h), REMINDER_INACTIVITY_DAYS (default: 3)
+// Trimite notificare REMINDER semnatarului curent dacă fluxul nu a avut activitate în N zile.
+const REMINDER_INTERVAL_MS   = (parseInt(process.env.REMINDER_INTERVAL_HOURS || '24') * 3600_000);
+const REMINDER_INACTIVITY_MS = (parseInt(process.env.REMINDER_INACTIVITY_DAYS || '3') * 86_400_000);
+
+async function _runReminderJob() {
+  if (!pool || !DB_READY) return;
+  try {
+    const cutoff = new Date(Date.now() - REMINDER_INACTIVITY_MS).toISOString();
+    const { rows } = await pool.query(
+      `SELECT id, data FROM flows
+       WHERE (data->>'completed') IS DISTINCT FROM 'true'
+         AND (data->>'status') NOT IN ('refused','cancelled')
+         AND updated_at < $1
+       LIMIT 200`,
+      [cutoff]
+    );
+    let reminded = 0;
+    for (const row of rows) {
+      const data = row.data;
+      const flowId = row.id;
+      const current = (data.signers || []).find(s => s.status === 'current');
+      if (!current?.email) continue;
+      // Evităm spam: verificăm dacă există deja o notificare REMINDER recentă (<24h)
+      const { rows: recent } = await pool.query(
+        `SELECT 1 FROM notifications WHERE user_email=$1 AND flow_id=$2 AND type='REMINDER'
+         AND created_at > NOW() - INTERVAL '24 hours' LIMIT 1`,
+        [current.email.toLowerCase(), flowId]
+      );
+      if (recent.length > 0) continue;
+      await notify({
+        userEmail: current.email, flowId, type: 'REMINDER',
+        title: '⏳ Document în așteptare',
+        message: `Documentul „${data.docName}" este în așteptarea semnăturii tale de mai mult de ${process.env.REMINDER_INACTIVITY_DAYS || 3} zile.`,
+        waParams: { signerName: current.name || current.email, docName: data.docName, signerToken: current.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment },
+        urgent: false,
+      });
+      reminded++;
+    }
+    if (reminded > 0) console.log(`⏰ Reminder job: ${reminded} semnatari notificați.`);
+  } catch(e) { console.error('Reminder job error:', e.message); }
+}
+const _reminderInterval = setInterval(_runReminderJob, REMINDER_INTERVAL_MS);
+console.log(`⏰ Reminder job pornit: interval ${process.env.REMINDER_INTERVAL_HOURS || 24}h, inactivitate ${process.env.REMINDER_INACTIVITY_DAYS || 3}z.`);
 
 // ── Cleanup notificari vechi (max 500/user) ────────────────────────────────
 // Rulat o data la 6 ore pentru a preveni cresterea nelimitata
@@ -523,6 +566,7 @@ function shutdown(signal) {
   // FIX v3.2.3: oprim toate intervalele la shutdown
   clearInterval(_loginBlocksCleanupInterval);
   clearInterval(_notifsCleanupInterval);
+  clearInterval(_reminderInterval);
   clearInterval(wsHeartbeat);
   httpServer.close(() => { console.log('✅ Server closed.'); process.exit(0); });
   setTimeout(() => process.exit(0), 10_000).unref();

@@ -7,7 +7,7 @@
  */
 
 import { Router } from 'express';
-import { requireAuth, requireAdmin, hashPassword, generatePassword } from '../middleware/auth.mjs';
+import { requireAuth, requireAdmin, hashPassword, generatePassword, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData } from '../db/index.mjs';
 import { validatePhone } from '../whatsapp.mjs';
 import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
@@ -80,7 +80,7 @@ router.post('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  const { email, password, nume, functie, institutie, compartiment, role, phone, notif_inapp, notif_email, notif_whatsapp } = req.body || {};
+  const { email, password, nume, functie, institutie, compartiment, role, phone, notif_inapp, notif_email, notif_whatsapp, skip_verification } = req.body || {};
   if (!email || !nume) return res.status(400).json({ error: 'email_and_nume_required' });
   const validRole = ['admin', 'user'].includes(role) ? role : 'user';
   const plainPwd = password && password.length >= 4 ? password : generatePassword();
@@ -88,12 +88,52 @@ router.post('/admin/users', async (req, res) => {
   if (!phoneValidation.valid) return res.status(400).json({ error: 'phone_invalid', message: phoneValidation.error });
   const phoneVal = phoneValidation.normalized || (phone || '').trim();
   const ni = notif_inapp !== false; const ne = !!notif_email; const nw = !!notif_whatsapp;
+
+  // R-06: generăm token de verificare email (dacă skip_verification nu e setat de admin)
+  const needsVerification = !skip_verification;
+  const verificationToken = needsVerification ? (await import('crypto')).default.randomBytes(32).toString('hex') : null;
+
   try {
     const { rows } = await pool.query(
-      'INSERT INTO users (email,password_hash,plain_password,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,org_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,notif_inapp,notif_email,notif_whatsapp,org_id',
-      [email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd, (nume || '').trim(), (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(), validRole, phoneVal, ni, ne, nw, actor.orgId || null]
+      `INSERT INTO users
+         (email,password_hash,plain_password,nume,functie,institutie,compartiment,role,phone,
+          notif_inapp,notif_email,notif_whatsapp,org_id,email_verified,verification_token,verification_sent_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       RETURNING id,email,nume,functie,institutie,compartiment,plain_password,role,phone,
+                 notif_inapp,notif_email,notif_whatsapp,org_id,email_verified`,
+      [
+        email.trim().toLowerCase(), hashPassword(plainPwd), plainPwd,
+        (nume || '').trim(), (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(),
+        validRole, phoneVal, ni, ne, nw, actor.orgId || null,
+        !needsVerification,           // email_verified
+        verificationToken,            // verification_token (NULL dacă skip)
+        verificationToken ? new Date() : null
+      ]
     );
-    res.status(201).json(rows[0]);
+    const user = rows[0];
+
+    // R-06: trimitem email de verificare în background (nu blocăm răspunsul)
+    if (needsVerification && verificationToken) {
+      const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
+      const verifyLink = `${appUrl}/auth/verify-email/${verificationToken}`;
+      sendSignerEmail({
+        to: email.trim(),
+        subject: '✅ Verificare adresă email — DocFlowAI',
+        html: `
+<div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
+  <h2 style="color:#7c5cff;margin:0 0 16px;">✅ Verificare adresă email</h2>
+  <p>Bună <strong>${escHtml(nume)}</strong>,</p>
+  <p>Contul tău DocFlowAI a fost creat de un administrator. Apasă butonul de mai jos pentru a confirma adresa de email și a activa contul.</p>
+  <div style="text-align:center;margin:28px 0;">
+    <a href="${verifyLink}" style="background:#7c5cff;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem;">Verifică adresa email</a>
+  </div>
+  <p style="font-size:.82rem;color:#5a6a8a;">Sau copiază link-ul: <code style="color:#9db0ff;">${verifyLink}</code></p>
+  <p style="font-size:.82rem;color:#5a6a8a;">Link-ul expiră în 72 de ore. Dacă nu ai solicitat acest cont, ignoră acest mesaj.</p>
+</div>`,
+      }).catch(e => console.warn(`R-06: email verificare eșuat pentru ${email}:`, e.message));
+    }
+
+    res.status(201).json({ ...user, verificationSent: needsVerification && !!verificationToken });
   } catch(e) {
     if (e.code === '23505') return res.status(409).json({ error: 'email_exists' });
     res.status(500).json({ error: 'server_error' });

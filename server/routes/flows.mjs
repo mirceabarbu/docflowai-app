@@ -16,9 +16,16 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg } from '../db/index.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
+import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 
 const router = Router();
+
+// ── R-03: Rate limitere pentru endpoint-urile de semnare ──────────────────
+// sign/refuse/delegate: max 20 req/min per IP — fluxul normal nu necesită mai mult
+// upload-signed-pdf:    max 5  req/min per IP — fișiere mari, procesare PDF
+const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message: 'Prea multe cereri de semnare. Încearcă în 1 minut.' });
+const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
 
 let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired, _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64, _sendSignerEmail;
 export function injectFlowDeps(deps) {
@@ -137,6 +144,8 @@ const createFlow = async (req, res) => {
     const initIsSigner = first && first.email.toLowerCase() === initEmail.toLowerCase();
     if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
+    // R-02: audit_log
+    writeAuditEvent({ flowId, orgId, eventType: 'FLOW_CREATED', actorEmail: initEmail, payload: { docName: data.docName, signersCount: normalizedSigners.length, urgent: data.urgent } });
 
     if (first?.email && !initIsSigner) {
       await _notify({ userEmail: first.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat',
@@ -154,7 +163,8 @@ router.post('/api/flows', createFlow);
 router.get('/flows/:flowId/signed-pdf', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    const signerToken = req.query.token;
+    // R-05: acceptăm token și din header X-Signer-Token (alternativă la query string)
+    const signerToken = req.query.token || req.headers['x-signer-token'] || null;
     let actor = null;
     const authHeader = req.headers['authorization'] || '';
     if (authHeader.startsWith('Bearer ')) { try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); } catch(e) {} }
@@ -186,7 +196,8 @@ router.get('/flows/:flowId/signed-pdf', async (req, res) => {
 router.get('/flows/:flowId/pdf', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    const signerToken = req.query.token;
+    // R-05: acceptăm token și din header X-Signer-Token (alternativă la query string)
+    const signerToken = req.query.token || req.headers['x-signer-token'] || null;
     let actor = null;
     const authHeader = req.headers['authorization'] || '';
     if (authHeader.startsWith('Bearer ')) { try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); } catch(e) {} }
@@ -239,7 +250,8 @@ router.get('/flows/:flowId/pdf', async (req, res) => {
 const getFlowHandler = async (req, res) => {
   try {
     if (requireDb(res)) return;
-    const signerToken = req.query.token || null;
+    // R-05: acceptăm token și din header X-Signer-Token (alternativă la query string)
+    const signerToken = req.query.token || req.headers['x-signer-token'] || null;
     let actor = null;
     const authHeader = req.headers['authorization'] || '';
     if (authHeader.startsWith('Bearer ')) {
@@ -351,11 +363,19 @@ const signFlow = async (req, res) => {
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({ at: new Date().toISOString(), type: 'SIGNED', by: signers[idx].email || signers[idx].name || 'unknown', order: signers[idx].order });
     await saveFlow(flowId, data);
+    // R-02: audit_log
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED', actorEmail: signers[idx].email, payload: { signerName: signers[idx].name, order: signers[idx].order } });
     return res.json({ ok: true, flowId, completed: data.signers.every(s => s.status === 'signed'), nextSigner: null, nextLink: null, awaitingUpload: true, flow: _stripPdfB64(data) });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 };
-router.post('/flows/:flowId/sign', signFlow);
-router.post('/api/flows/:flowId/sign', signFlow);
+router.post('/flows/:flowId/sign', _signRateLimit, signFlow);
+router.post('/api/flows/:flowId/sign', _signRateLimit, signFlow);
+
+// ── R-03: Rate limit pe endpoint-urile sensibile ─────────────────────────
+// Aplicăm cu router.use înainte de declararea handler-elor inline
+router.use('/flows/:flowId/refuse',           _signRateLimit);
+router.use('/flows/:flowId/upload-signed-pdf', _uploadRateLimit);
+router.use('/flows/:flowId/delegate',          _signRateLimit);
 
 // ── POST /flows/:flowId/refuse ─────────────────────────────────────────────
 router.post('/flows/:flowId/refuse', async (req, res) => {
@@ -387,6 +407,8 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({ at: new Date().toISOString(), type: 'REFUSED', by: signers[idx].email, reason: refuseReason });
     await saveFlow(flowId, data);
+    // R-02: audit_log
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'REFUSED', actorEmail: signers[idx].email, payload: { reason: refuseReason, signerName: refuserName, rol: refuserRol } });
     // Issue 5: Sterge notif YOUR_TURN ale celui care a refuzat
     const refuserEmail5 = (signers[idx].email || '').toLowerCase();
     if (refuserEmail5) {
@@ -407,6 +429,7 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
 // ── POST /flows/:flowId/register-download ─────────────────────────────────
 router.post('/flows/:flowId/register-download', async (req, res) => {
   try {
+    if (requireDb(res)) return;  // FIX v3.3.2: lipsea — pool putea fi null
     const { flowId } = req.params;
     const { signerToken } = req.body || {};
     if (!signerToken) return res.status(400).json({ error: 'missing_params' });
@@ -504,10 +527,13 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     if (nextIdx !== -1) signers.forEach((s, i) => { if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending'; });
     data.signers = signers;
     const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
-    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); data.urgent = false; data.docName = `${flowId}_${data.docName}`; data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
+    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); data.urgent = false; /* FIX v3.3.2: docName nu mai e alterat — era: data.docName = `${flowId}_${data.docName}` */ data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
     const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
     if (nextSigner) { nextSigner.emailSent = true; nextSigner.notifiedAt = new Date().toISOString(); }
     await saveFlow(flowId, data);
+    // R-02: audit_log — upload PDF + finalizare flux dacă e cazul
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED_PDF_UPLOADED', actorEmail: signers[idx].email, payload: { signerName: signers[idx].name, order: signers[idx].order } });
+    if (allDone) writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_COMPLETED', actorEmail: 'system', payload: { docName: data.docName, completedAt: data.completedAt } });
     console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
     res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, nextSigner: nextSigner || null });
     setImmediate(async () => {
@@ -716,10 +742,12 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
         } catch(e) { console.warn('Re-stamp footer on reinitiate error:', e.message); }
       }
     }
-    await saveFlow(newFlowId2, newData);
+    // FIX v3.3.2: primul saveFlow era redundant — mutăm după setarea notifiedAt
     const first = remainingSigners[0];
     if (first) first.notifiedAt = new Date().toISOString();
     await saveFlow(newFlowId2, newData);
+    // R-02: audit_log
+    writeAuditEvent({ flowId: newFlowId2, orgId: newData.orgId, eventType: 'FLOW_REINITIATED', actorEmail: actor.email, payload: { parentFlowId: flowId, remainingSigners: remainingSigners.length } });
     if (first?.email) {
       await _notify({ userEmail: first.email, flowId: newFlowId2, type: 'YOUR_TURN', title: 'Document de semnat (reinițiat)',
         message: `${data.initName} a reinițiat fluxul de semnare pentru documentul „${data.docName}". Este rândul tău să semnezi.`,
@@ -765,6 +793,8 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({ at: new Date().toISOString(), type: 'REVIEW_REQUESTED', by: signers[idx].email, reason: reviewReason });
     await saveFlow(flowId, data);
+    // R-02: audit_log
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'REVIEW_REQUESTED', actorEmail: signers[idx].email, payload: { reviewerName, reason: reviewReason } });
     // Issue 5: Sterge notif YOUR_TURN ale celui care a cerut revizuire
     const reviewerEmail5 = (signers[idx].email || '').toLowerCase();
     if (reviewerEmail5) {
@@ -806,7 +836,8 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     if (estimatedPdfBytes > 30 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_30mb', message: 'PDF-ul depășește limita de 30 MB.' });
 
     // Calculăm hash-ul documentului uploadat
-    const uploadedHash = sha256Hex(rawPdf);
+    // FIX v3.3.2: sha256Hex pe Buffer (bytes PDF), nu pe string base64
+    const uploadedHash = sha256Hex(Buffer.from(rawPdf, 'base64'));
 
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
@@ -817,9 +848,10 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     if (data.status !== 'review_requested') return res.status(409).json({ error: 'not_in_review', message: 'Fluxul nu este în starea de revizuire.' });
 
     // Verificăm că nu se uploadează același document semnat deja
+    // FIX v3.3.2: hash calculat consistent pe Buffer, nu pe string base64
     const existingHashes = new Set();
-    if (data.pdfB64) { const raw = data.pdfB64.includes(',') ? data.pdfB64.split(',')[1] : data.pdfB64; existingHashes.add(sha256Hex(raw)); }
-    if (data.signedPdfB64) { const raw = data.signedPdfB64.includes(',') ? data.signedPdfB64.split(',')[1] : data.signedPdfB64; existingHashes.add(sha256Hex(raw)); }
+    if (data.pdfB64) { const raw = data.pdfB64.includes(',') ? data.pdfB64.split(',')[1] : data.pdfB64; existingHashes.add(sha256Hex(Buffer.from(raw, 'base64'))); }
+    if (data.signedPdfB64) { const raw = data.signedPdfB64.includes(',') ? data.signedPdfB64.split(',')[1] : data.signedPdfB64; existingHashes.add(sha256Hex(Buffer.from(raw, 'base64'))); }
     (data.signedPdfVersions || []).forEach(v => { if (v.hash) existingHashes.add(v.hash); });
     (data.signers || []).forEach(s => { if (s.uploadedHash) existingHashes.add(s.uploadedHash); });
     if (existingHashes.has(uploadedHash)) {
@@ -885,6 +917,8 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     const first = resetSigners[0];
     if (first) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
+    // R-02: audit_log
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_REINITIATED_AFTER_REVIEW', actorEmail: actor.email, payload: { round: data.reviewHistory.length, docName: data.docName } });
 
     // Issue 5: Sterge notif REVIEW_REQUESTED existente pentru acest flux
     await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type='REVIEW_REQUESTED'", [flowId]).catch(() => {});
@@ -922,6 +956,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled', message: 'Fluxul a fost anulat.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
+    const idx = signers.findIndex(s => s.token === fromToken);  // FIX v3.3.2: linia lipsea — idx era undefined
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
     const isAdmin = actor.role === 'admin';
     const isCurrentSigner = (signers[idx].email || '').toLowerCase() === (actor.email || '').toLowerCase();
@@ -959,6 +994,8 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({ at: new Date().toISOString(), type: 'DELEGATED', from: originalEmail, to: toEmail, reason: String(reason).trim(), by: actor.email });
     await saveFlow(flowId, data);
+    // R-02: audit_log
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'DELEGATED', actorEmail: actor.email, payload: { from: originalEmail, to: toEmail, reason: String(reason).trim() } });
 
     // ── Notificare: in-app + WhatsApp conform preferintelor din DB ──
     await _notify({
@@ -1040,6 +1077,8 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     if (!Array.isArray(data.events)) data.events = [];
     data.events.push({ at: now, type: 'FLOW_CANCELLED', by: actor.email, reason: data.cancelReason });
     await saveFlow(flowId, data);
+    // R-02: audit_log
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_CANCELLED', actorEmail: actor.email, payload: { reason: data.cancelReason } });
     // Șterge notificările YOUR_TURN active pentru acest flux
     await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
     // Notifică inițiatorul (dacă admin a anulat) și semnatarii care au semnat deja
