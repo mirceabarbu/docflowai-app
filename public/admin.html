@@ -204,21 +204,21 @@
     <div style="margin-bottom:10px;">
       <input id="flowSearch" placeholder="Caută după ID, document sau email..." style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;"/>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;min-width:0;">
-      <select id="flowStatusFilter" style="flex:0 0 auto;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <select id="flowStatusFilter" style="width:160px;flex-shrink:0;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;">
         <option value="">Toate statusurile</option>
         <option value="active">Active</option>
         <option value="done">Finalizate</option>
         <option value="refused">Refuzate</option>
       </select>
-      <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;min-width:0;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;">
+      <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;">
         <option value="">Toate instituțiile</option>
       </select>
-      <select id="flowDeptFilter" style="flex:1;min-width:0;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;" disabled>
+      <select id="flowDeptFilter" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;" disabled>
         <option value="">Toate compartimentele</option>
       </select>
-      <button onclick="exportFlowsCSV()" style="flex:0 0 auto;padding:8px 12px;font-size:.83rem;background:rgba(45,212,191,.13);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-weight:600;white-space:nowrap;" title="Exportă CSV">📥 CSV</button>
-      <button onclick="exportFlowsPDF()" style="flex:0 0 auto;padding:8px 12px;font-size:.83rem;background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-weight:600;white-space:nowrap;" title="Exportă PDF">📄 PDF</button>
+      <button onclick="exportFlowsCSV()" style="flex-shrink:0;padding:8px 12px;font-size:.83rem;background:rgba(45,212,191,.13);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-weight:600;" title="Exportă CSV">📥 CSV</button>
+      <button onclick="exportFlowsPDF()" style="flex-shrink:0;padding:8px 12px;font-size:.83rem;background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-weight:600;" title="Exportă PDF">📄 PDF</button>
     </div>
     <div style="margin-bottom:14px;">
       <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
