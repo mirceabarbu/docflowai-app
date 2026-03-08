@@ -655,13 +655,15 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           }
           // Semnatarii rundei
           for (const s of (round.signers || [])) {
-            ensureSpace(28);
+            ensureSpace(50);
             const sc = s.status === 'signed' ? rgb(0,0.45,0.25) : s.status === 'refused' ? rgb(0.65,0.1,0.1) : rgb(0.4,0.4,0.4);
             page.drawText(ro(`${s.name||s.email} [${s.rol||''}]`), { x:MARGIN+10, y, size:8, font:fontR, color:rgb(0.2,0.2,0.2), maxWidth:280 });
             page.drawText(ro((s.status||'').toUpperCase()), { x:MARGIN+300, y, size:8, font:fontB, color:sc });
             y -= 12;
-            if (s.signedAt) { page.drawText(ro(`  semnat: ${fmtDate(s.signedAt)}`), { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0,0.4,0.2) }); y -= 11; }
-            if (s.refuseReason) { page.drawText(ro(`  refuz: ${s.refuseReason}`), { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0.65,0.1,0.1), maxWidth:PAGE_W-MARGIN*2-10 }); y -= 11; }
+            if (s.notifiedAt)  { page.drawText(ro(`  Notificat:  ${fmtDate(s.notifiedAt)}`),  { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0.3,0.3,0.6) }); y -= 11; }
+            if (s.downloadedAt){ page.drawText(ro(`  Descarcat:  ${fmtDate(s.downloadedAt)}`), { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0.2,0.4,0.55) }); y -= 11; }
+            if (s.signedAt)    { page.drawText(ro(`  Semnat:     ${fmtDate(s.signedAt)}`),     { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0,0.4,0.2) }); y -= 11; }
+            if (s.refuseReason){ page.drawText(ro(`  Refuz:      ${s.refuseReason}`),           { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0.65,0.1,0.1), maxWidth:PAGE_W-MARGIN*2-10 }); y -= 11; }
           }
           y -= SECTION_GAP;
         }
@@ -670,7 +672,14 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       drawText('SEMNATARI (RUNDA CURENTA)', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
       for (const s of audit.signers) {
-        ensureSpace(60);
+        // Gaseste intrarea de upload din signedPdfVersions pentru acest semnatar
+        const signerIdx = (s.order || 1) - 1;
+        const uploadEntry = (audit.signedPdfVersions || []).find(v =>
+          v.signerIndex === signerIdx || (v.uploadedBy && (v.uploadedBy || '').toLowerCase() === (s.email || '').toLowerCase())
+        );
+        const uploadedAt = uploadEntry?.uploadedAt || null;
+
+        ensureSpace(80);
         const statusColor = s.status==='signed' ? rgb(0,0.5,0.3) : s.status==='refused' ? rgb(0.7,0.1,0.1) : rgb(0.4,0.4,0.4);
         page.drawText(ro(`${s.order}. ${s.name} — ${s.rol}`), { x:MARGIN, y, size:9, font:fontB, color:rgb(0.1,0.1,0.1), maxWidth:300 });
         page.drawText(ro(s.status.toUpperCase()), { x:PAGE_W-MARGIN-80, y, size:9, font:fontB, color:statusColor });
@@ -678,11 +687,15 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         page.drawText(ro(s.email), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.4,0.4) });
         if (s.functie) page.drawText(ro(s.functie), { x:MARGIN+220, y, size:8, font:fontR, color:rgb(0.5,0.5,0.5) });
         y -= 13;
-        if (s.signedAt) { page.drawText(ro(`Semnat: ${fmtDate(s.signedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0,0.4,0.2) }); y -= 13; }
-        if (s.notifiedAt) { page.drawText(ro(`Notificat: ${fmtDate(s.notifiedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.3,0.3,0.6) }); y -= 13; }
-        if (s.downloadedAt) { page.drawText(ro(`Descarcat: ${fmtDate(s.downloadedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.2,0.4,0.55) }); y -= 13; }
-        if (s.refuseReason) { page.drawText(ro(`Refuz: ${s.refuseReason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.7,0.1,0.1), maxWidth:PAGE_W-MARGIN-30 }); y -= 13; }
-        if (s.delegatedFrom) { page.drawText(ro(`Delegat de: ${s.delegatedFrom.email} — ${s.delegatedFrom.reason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN-30 }); y -= 13; }
+        // Ordine cronologica: Notificat → Descarcat → Incarcat → Semnat
+        if (s.notifiedAt)  { page.drawText(ro(`  Notificat:  ${fmtDate(s.notifiedAt)}`),  { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.3,0.3,0.6) }); y -= 12; }
+        if (s.downloadedAt){ page.drawText(ro(`  Descarcat:  ${fmtDate(s.downloadedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.2,0.4,0.55) }); y -= 12; }
+        if (uploadedAt)    { page.drawText(ro(`  Incarcat:   ${fmtDate(uploadedAt)}`),      { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.2,0.35,0.5) }); y -= 12; }
+        if (s.signedAt)    { page.drawText(ro(`  Semnat:     ${fmtDate(s.signedAt)}`),      { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0,0.45,0.25) }); y -= 12; }
+        if (s.refusedAt || s.refuseReason) {
+          page.drawText(ro(`  Refuzat:    ${s.refusedAt ? fmtDate(s.refusedAt) : ''}${s.refuseReason ? '  Motiv: ' + s.refuseReason : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.7,0.1,0.1), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
+        }
+        if (s.delegatedFrom) { page.drawText(ro(`  Delegat de: ${s.delegatedFrom.email}${s.delegatedFrom.reason ? ' — ' + s.delegatedFrom.reason : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12; }
         y -= 6;
       }
       y -= SECTION_GAP;
