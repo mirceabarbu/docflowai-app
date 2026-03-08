@@ -842,6 +842,77 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         page.drawText(ro('---- FLUX CURENT ----'), { x:MARGIN, y, size:7.5, font:fontB, color:rgb(0.1,0.4,0.4) }); y -= 12;
       }
       for (const e of currentEvs) renderEvent(e, false);
+
+      // ── F-05: HASH-URI DOCUMENTE ───────────────────────────────────────────
+      // SHA256 al fiecărui PDF semnat — util pentru verificare integritate la litigii
+      const hashRows = audit.signers
+        .filter(s => s.uploadedHash)
+        .map(s => ({ label: `${s.order}. ${s.name || s.email} [${s.rol || ''}]`, hash: s.uploadedHash, signedAt: s.signedAt }));
+      if (hashRows.length) {
+        y -= SECTION_GAP;
+        drawText('HASH-URI DOCUMENTE (SHA-256)', MARGIN, 11, fontB, rgb(0.1,0.3,0.1));
+        drawLine();
+        ensureSpace(14);
+        page.drawText(ro('Fiecare hash identifica unic versiunea PDF semnata de semnatar.'), { x:MARGIN, y, size:7.5, font:fontR, color:rgb(0.4,0.4,0.4) });
+        y -= 13;
+        for (const hr of hashRows) {
+          ensureSpace(32);
+          page.drawText(ro(hr.label), { x:MARGIN, y, size:8.5, font:fontB, color:rgb(0.15,0.15,0.15) });
+          if (hr.signedAt) page.drawText(ro(fmtDate(hr.signedAt)), { x:PAGE_W-MARGIN-130, y, size:7.5, font:fontR, color:rgb(0.5,0.5,0.5) });
+          y -= 13;
+          // hash pe două rânduri de câte 32 chars pentru lizibilitate
+          const h = hr.hash || '';
+          page.drawText(h.slice(0,32), { x:MARGIN+10, y, size:7, font:fontR, color:rgb(0.1,0.35,0.1) });
+          page.drawText(h.slice(32), { x:MARGIN+10 + fontR.widthOfTextAtSize(h.slice(0,32)+' ', 7), y, size:7, font:fontR, color:rgb(0.1,0.35,0.1) });
+          y -= 13;
+        }
+      }
+
+      // ── F-05: ACCESURI ÎNREGISTRATE (din audit_log) ───────────────────────
+      // Citim evenimentele cu IP din audit_log — semnat, descarcat, incarcat
+      let accessRows = [];
+      try {
+        const { rows: auditRows } = await pool.query(
+          `SELECT event_type, actor_email, actor_ip, created_at, payload
+           FROM audit_log
+           WHERE flow_id = $1
+             AND event_type IN ('PDF_DOWNLOADED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED','DELEGATED','FLOW_CANCELLED','FLOW_CREATED')
+           ORDER BY created_at ASC`,
+          [flowId]
+        );
+        accessRows = auditRows;
+      } catch(e) { /* audit_log poate fi gol la fluxuri vechi */ }
+
+      if (accessRows.length) {
+        y -= SECTION_GAP;
+        drawText('ACCESURI INREGISTRATE', MARGIN, 11, fontB, rgb(0.3,0.1,0.3));
+        drawLine();
+        // Header coloane
+        ensureSpace(14);
+        page.drawText(ro('Timestamp (RO)'), { x:MARGIN, y, size:7.5, font:fontB, color:rgb(0.3,0.3,0.3) });
+        page.drawText(ro('Eveniment'), { x:MARGIN+130, y, size:7.5, font:fontB, color:rgb(0.3,0.3,0.3) });
+        page.drawText(ro('Actor'), { x:MARGIN+250, y, size:7.5, font:fontB, color:rgb(0.3,0.3,0.3) });
+        page.drawText(ro('IP'), { x:MARGIN+390, y, size:7.5, font:fontB, color:rgb(0.3,0.3,0.3) });
+        y -= 12;
+        page.drawLine({ start:{x:MARGIN, y:y+2}, end:{x:PAGE_W-MARGIN, y:y+2}, thickness:0.3, color:rgb(0.85,0.85,0.85) });
+        y -= 4;
+        for (const ar of accessRows) {
+          ensureSpace(14);
+          const ts = fmtDate(ar.created_at);
+          const evType = (ar.event_type || '').replace(/_/g, ' ');
+          const actor = (ar.actor_email || '').slice(0, 30);
+          const ip = ar.actor_ip || '—';
+          const rowColor = ar.event_type === 'REFUSED' || ar.event_type === 'FLOW_CANCELLED'
+            ? rgb(0.6,0.1,0.1)
+            : ar.event_type === 'FLOW_CREATED' ? rgb(0.1,0.4,0.1) : rgb(0.25,0.25,0.35);
+          page.drawText(ro(ts),     { x:MARGIN,     y, size:7.5, font:fontR, color:rgb(0.3,0.3,0.3), maxWidth:125 });
+          page.drawText(ro(evType), { x:MARGIN+130, y, size:7.5, font:fontB, color:rowColor, maxWidth:115 });
+          page.drawText(ro(actor),  { x:MARGIN+250, y, size:7,   font:fontR, color:rgb(0.3,0.3,0.3), maxWidth:135 });
+          page.drawText(ro(ip),     { x:MARGIN+390, y, size:7,   font:fontR, color:rgb(0.2,0.2,0.5), maxWidth:PAGE_W-MARGIN-395 });
+          y -= 13;
+        }
+      }
+
       const pageCount = pdfDoc.getPageCount();
       for (let i = 0; i < pageCount; i++) {
         const pg = pdfDoc.getPage(i);

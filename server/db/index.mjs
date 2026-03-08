@@ -357,6 +357,13 @@ const MIGRATIONS = [
     `
   },
 
+  // ── F-05: IP address logging în audit_log ─────────────────────────────────
+  {
+    id: '017_audit_log_ip',
+    sql: `ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS actor_ip TEXT;
+          CREATE INDEX IF NOT EXISTS idx_audit_ip ON audit_log(actor_ip) WHERE actor_ip IS NOT NULL;`
+  },
+
   // ── R-06: Email verificare utilizatori noi ─────────────────────────────────
   // Userii existenți primesc email_verified=TRUE (deja activi).
   // Userii noi creați de admin primesc email_verified=FALSE până verifică email-ul.
@@ -544,15 +551,15 @@ export async function getFlowData(id) {
 }
 
 /**
- * R-02: writeAuditEvent — scrie eveniment în audit_log.
+ * R-02 / F-05: writeAuditEvent — scrie eveniment în audit_log cu IP opțional.
  * Fire-and-forget: erorile sunt logate, nu propagate.
  */
-export async function writeAuditEvent({ flowId, orgId, eventType, actorEmail, payload = {} }) {
+export async function writeAuditEvent({ flowId, orgId, eventType, actorEmail, actorIp = null, payload = {} }) {
   if (!pool || !DB_READY) return;
   try {
     await pool.query(
-      'INSERT INTO audit_log (flow_id, org_id, event_type, actor_email, payload) VALUES ($1,$2,$3,$4,$5)',
-      [flowId || null, orgId || null, eventType, actorEmail || null, JSON.stringify(payload)]
+      'INSERT INTO audit_log (flow_id, org_id, event_type, actor_email, actor_ip, payload) VALUES ($1,$2,$3,$4,$5,$6)',
+      [flowId || null, orgId || null, eventType, actorEmail || null, actorIp || null, JSON.stringify(payload)]
     );
   } catch(e) {
     console.error('writeAuditEvent error:', e.message);
