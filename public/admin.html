@@ -822,18 +822,6 @@ async function createUser(){
     showMsg('createMsg', m[d.error]||'Eroare: '+(d.detail||d.error), true);
   }
 }
-    $('nPrenume').value=$('nNumeFamilie').value=$('nFunctie').value=$('nEmail').value=
-    $('nPwd').value=$('nInstitutie').value=$('nCompartiment').value=$('nPhone').value=
-    ($('nPersonalEmail')||{}).value='';
-    if($('nCreateGws')) $('nCreateGws').checked=false;
-    onGwsToggle();
-    loadUsers();
-    showPwdModal(d);
-  }else{
-    const m={email_exists:'Emailul există deja.',email_and_nume_required:'Completează prenumele, numele și emailul.'};
-    showMsg('createMsg',m[d.error]||'Eroare: '+(d.detail||d.error),true);
-  }
-}
 
 function showPwdModal(d) {
   // Titlu diferit dacă e retrimis vs creat prima oară
