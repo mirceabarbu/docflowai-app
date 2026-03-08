@@ -952,6 +952,8 @@ th{ color: var(--sub) !important; }
           const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
           const allSigned = f.allSigned;
           const isRefused = (f.signers || []).some(s => s.status === "refused");
+          const refusedByAprobat = (f.signers || []).some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
+          const canReinitiate = isRefused && !refusedByAprobat;
           const isReviewRequested = f.status === "review_requested";
           const isUrgent = !!(f.urgent);
           // Verifica daca userul curent trebuie sa semneze
@@ -1002,7 +1004,8 @@ th{ color: var(--sub) !important; }
                 ${mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#ff6b6b);border:none;color:#fff;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">✍ Semnează</button>` : ''}
                 <a href="/flow.html?flow=${f.flowId}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">🔍 Vezi flow</a>
                 ${dlBtn}
-                ${isRefused && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,200,50,.12);border:1px solid rgba(255,200,50,.35);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">🔄 Reinițiază</button>` : ''}
+                ${canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,200,50,.12);border:1px solid rgba(255,200,50,.35);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">🔄 Reinițiază</button>` : ''}
+                ${refusedByAprobat && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<span style="color:#ffaaaa;font-size:.78rem;font-weight:600;">⛔ Refuzat de APROBATOR — flux nou necesar</span>` : ''}
                 ${isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" style="background:rgba(250,180,0,.18);border:1px solid rgba(250,180,0,.4);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Doc revizuit</button>` : ''}
                 ${(f.initEmail||'').toLowerCase() === currentUserEmail && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Sterge flux">🗑</button>` : ''}
               </div>

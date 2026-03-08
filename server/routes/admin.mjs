@@ -716,8 +716,8 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       const currentEvs = audit.events.filter(e => !e._inheritedFrom);
       const renderEvent = (e, dimmed) => {
         const detail = [e.by ? `by:${e.by}` : '', e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `to:${e.to}` : ''].filter(Boolean).join('  ');
-        const neededH = detail ? 26 : 14;
-        ensureSpace(neededH + 4);
+        const rowH = detail ? LINE_H + 8 : LINE_H;
+        ensureSpace(rowH + 4);
         const ts = e.at ? fmtDate(e.at) : '';
         const tsWidth = 115, typeWidth = 160;
         const dimColor = dimmed ? rgb(0.6,0.6,0.6) : rgb(0.5,0.5,0.5);
@@ -727,7 +727,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         if (detail) {
           page.drawText(ro(detail), { x:MARGIN+tsWidth+typeWidth, y, size:7.5, font:fontR, color:dimColor, maxWidth:PAGE_W-MARGIN-(tsWidth+typeWidth)-MARGIN });
         }
-        y -= LINE_H;
+        y -= rowH;
       };
       if (inheritedEvs.length) {
         ensureSpace(14);

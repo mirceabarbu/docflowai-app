@@ -241,12 +241,19 @@ const getFlowHandler = async (req, res) => {
     const signerToken = req.query.token || null;
     let actor = null;
     const authHeader = req.headers['authorization'] || '';
-    if (authHeader.startsWith('Bearer ')) { try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); } catch(e) {} }
+    if (authHeader.startsWith('Bearer ')) {
+      try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); }
+      catch(e) {
+        // Token expirat sau invalid — dacă nu avem signerToken, returnăm eroare corectă
+        // pentru ca notif-widget să poată face refresh automat
+        if (!signerToken) return res.status(401).json({ error: 'token_invalid_or_expired' });
+      }
+    }
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (!actor && signerToken) {
       if (!(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
-    } else if (!actor) { return res.status(401).json({ error: 'auth_required' }); }
+    } else if (!actor) { return res.status(401).json({ error: 'token_invalid_or_expired' }); }
 
     // FIX: getUserMapForOrg — nu leak-uieste useri intre organizatii
     const orgId = actor?.orgId || data?.orgId || null;
@@ -657,6 +664,11 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate reiniția fluxul.' });
     const hasRefused = (data.signers || []).some(s => s.status === 'refused');
     if (!hasRefused) return res.status(409).json({ error: 'no_refused_signer', message: 'Fluxul nu are niciun semnatar care a refuzat.' });
+    // Blocăm reinițializarea dacă refuzatorul are rol APROBAT — aprobatorul finalizează procesul
+    const refusedSigner = (data.signers || []).find(s => s.status === 'refused');
+    if (refusedSigner && (refusedSigner.rol || '').toUpperCase() === 'APROBAT') {
+      return res.status(409).json({ error: 'aprobat_refused', message: 'Fluxul a fost refuzat de APROBATOR. Reinițializarea nu este permisă — contactați inițiatorul pentru un flux nou.' });
+    }
     const remainingSigners = (data.signers || []).filter(s => s.status !== 'refused').map((s, i) => ({
       ...s,
       token: crypto.randomBytes(16).toString('hex'),

@@ -543,6 +543,21 @@ th{ color: var(--sub) !important; }
             refuzBtn.style.cursor = "default";
             refuzBtn.title = "Nu poți refuza după ce ai încărcat un PDF semnat";
           }
+          // Dezactivează Delegă + Revizuire — documentul e deja pregătit pentru upload
+          const delegBtn = $("btnDelegheaza");
+          if (delegBtn) {
+            delegBtn.disabled = true;
+            delegBtn.style.opacity = ".3";
+            delegBtn.style.pointerEvents = "none";
+            delegBtn.title = "Ai ales un PDF semnat — nu mai poți delega";
+          }
+          const revBtn = $("btnRevizuire");
+          if (revBtn) {
+            revBtn.disabled = true;
+            revBtn.style.opacity = ".3";
+            revBtn.style.pointerEvents = "none";
+            revBtn.title = "Ai ales un PDF semnat — nu mai poți trimite spre revizuire";
+          }
         };
         reader.readAsDataURL(f);
       });

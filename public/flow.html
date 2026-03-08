@@ -496,11 +496,12 @@
           (currentUser.role === 'admin' ? ` &nbsp;<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
       })();
       const isRefused = computedStatus === "refused";
+      const refusedByAprobat = signers.some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
       const isReviewRequested = data.status === "review_requested";
       const isInitiator = (data.initEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
       const isAdmin = currentUser.role === "admin";
       const btnRei = $("btnReinitiate");
-      if (btnRei) btnRei.style.display = (isRefused && (isInitiator || isAdmin)) ? "" : "none";
+      if (btnRei) btnRei.style.display = (isRefused && !refusedByAprobat && (isInitiator || isAdmin)) ? "" : "none";
       btnRei._flowId = flowId;
 
       // Buton Reinitiere după revizuire — vizibil dacă fluxul e în review_requested și user e inițiator
