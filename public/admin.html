@@ -107,6 +107,7 @@
       return fetch(url, Object.assign({}, options||{}, { headers }));
     };
   </script>
+  <link rel="stylesheet" href="/mobile.css">
 </head>
 <body>
 <header>
@@ -1655,7 +1656,8 @@ function exportUserPDF(email) {
     td { padding: 5px 10px; border-bottom: 1px solid #e0e0e0; font-size: 11px; }
     tr:nth-child(even) td { background: #f5f6ff; }
     .footer { margin-top: 20px; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 6px; }
-  </style></head><body>
+  </style>
+</head><body>
   <h1>Raport activitate — ${escH(u.name||u.email)}</h1>
   <div class="sub">
     ${escH(u.functie||'')}${u.institutie?' · '+escH(u.institutie):''}${u.compartiment?' / '+escH(u.compartiment):''}<br>
@@ -1714,7 +1716,8 @@ function exportActivityPDF() {
     th { background: #1a237e; color: #fff; padding: 4px 8px; text-align: left; font-size: 10px; }
     td { padding: 3px 8px; border-bottom: 1px solid #eee; font-size: 10px; }
     .footer { margin-top: 16px; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 6px; }
-  </style></head><body>
+  </style>
+</head><body>
   <h1>Raport activitate utilizatori</h1>
   <div class="sub-title">Interval: <strong>${from} — ${to}</strong> &nbsp;|&nbsp; ${users.length} utilizator(i) cu activitate</div>
   ${userSections||'<p style="color:#999;text-align:center;">Nicio activitate in acest interval.</p>'}
@@ -1839,7 +1842,8 @@ async function exportFlowsPDF() {
     .signer.ref { background: #fee2e2; color: #991b1b; }
     .signer.pend { background: #f3f4f6; color: #374151; }
     small { font-size: 8px; color: #888; }
-  </style></head><body>
+  </style>
+</head><body>
   <h2>📋 Fluxuri DocFlowAI</h2>
   <div class="meta">Generat: ${now} &nbsp;|&nbsp; Total: ${flows.length} fluxuri</div>
   <div class="filters">Filtre: ${filterDesc}</div>
@@ -1914,7 +1918,8 @@ function exportUsersPDF() {
     .pill { padding: 2px 7px; border-radius: 10px; font-size: 9px; font-weight: 700; }
     .pill.admin { background: #fef3c7; color: #92400e; }
     .pill.user { background: #dbeafe; color: #1e40af; }
-  </style></head><body>
+  </style>
+</head><body>
   <h2>📋 Lista Utilizatori — DocFlowAI</h2>
   <div class="sub">Generat: ${now} &nbsp;|&nbsp; Total: ${filterNote}</div>
   <table>
