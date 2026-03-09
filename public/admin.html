@@ -1587,7 +1587,7 @@ async function previewCleanAll() {
       desc: `Se vor șterge <strong style="color:#ffaaaa;">TOATE cele ${data.count} fluxuri${filterDesc}</strong> (${data.totalMB} MB).
         <br><br><span style="color:rgba(255,80,80,.9);">🔴 Acțiune ireversibilă — PDF-urile nearkhivate se pierd definitiv!</span>`,
       flows: data.flows,
-      deleteBody: { all: true, ...(inst?{institutie:inst}:{}), ...(dept?{compartiment:dept}:{}) },
+      deleteBody: { all: true, confirmToken: 'DELETE_ALL_FLOWS', ...(inst?{institutie:inst}:{}), ...(dept?{compartiment:dept}:{}) },
       msgEl,
     });
   } catch(e) { msgEl.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`; }
@@ -2300,7 +2300,7 @@ function exportUsersPDF() {
   <table>
     <thead><tr>
       <th>Nume</th><th>Funcție</th><th>Instituție</th><th>Compartiment</th>
-      <th>Email</th><th>Parolă</th><th>Telefon</th><th>Rol</th><th>Creat</th>
+      <th>Email</th><th>Telefon</th><th>Rol</th><th>Creat</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>

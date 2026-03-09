@@ -334,10 +334,10 @@ th{ color: var(--sub) !important; }
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
             <input
               id="fluxSearch"
-              name="flow_search"
+              name="no_autofill_flow_search"
               type="search"
               placeholder="🔍 Caută după nume document, inițiator, ID flux..."
-              autocomplete="off"
+              autocomplete="new-password"
               autocapitalize="off"
               autocorrect="off"
               spellcheck="false"
@@ -510,11 +510,7 @@ th{ color: var(--sub) !important; }
         $("tabFluxuri").classList.toggle("active", name === "fluxuri");
         if (name === "fluxuri") {
           // Nu pre-populăm search-ul — backend filtrează automat după userul logat
-          const fs = $("fluxSearch");
-          if (fs && !fs._userTyped) {
-            fs.value = "";
-            fs.setAttribute("value", "");
-          }
+          resetFluxSearchField();
           loadMyFlows();
         }
       }
@@ -526,6 +522,19 @@ th{ color: var(--sub) !important; }
         if (pdfB64) idb.save(pdfB64);
       });
       $("tabFluxuri").addEventListener("click", () => { showTab("fluxuri"); sessionStorage.setItem("docflow_tab", "fluxuri"); });
+
+      function resetFluxSearchField(force = false) {
+        const fs = $("fluxSearch");
+        if (!fs) return;
+        if (!force && fs._userTyped) return;
+        fs.value = "";
+        fs.defaultValue = "";
+        fs.setAttribute("value", "");
+      }
+
+      window.addEventListener("pageshow", () => resetFluxSearchField(true));
+      setTimeout(() => resetFluxSearchField(true), 0);
+      setTimeout(() => resetFluxSearchField(true), 250);
 
       // Signers table
       const tbody = $("signersTbody");
@@ -1020,7 +1029,7 @@ th{ color: var(--sub) !important; }
             </div>`;
           }).join("");
           const finalStatuses = ["completed", "done", "finalizat", "finished", "complete"];
-          const pdfReady = !!(f.hasSignedPdf || f.completed || finalStatuses.includes(String(f.status || "").toLowerCase()));
+          const pdfReady = !!(f.hasSignedPdf || f.completed || f.allSigned || finalStatuses.includes(String(f.status || "").toLowerCase()));
           const dlBtn = pdfReady
             ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
             : f.allSigned
