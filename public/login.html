@@ -55,14 +55,13 @@
 </div>
 <script>
   const $=id=>document.getElementById(id);
-  // Dacă e deja logat, redirecționează
-  const tok=localStorage.getItem("docflow_token");
-  if(tok){
-    fetch("/auth/me",{headers:{"Authorization":"Bearer "+tok}})
-      .then(r=>r.ok?r.json():null)
-      .then(u=>{if(u)location.href=u.role==="admin"?"/admin":"/"})
-      .catch(()=>{});
-  }
+  // SEC-01: token-ul este în cookie HttpOnly — nu mai verificăm localStorage
+  // Verificăm autentificarea cu /auth/me (cookie trimis automat)
+  fetch("/auth/me", { credentials: 'include' })
+    .then(r=>r.ok?r.json():null)
+    .then(u=>{if(u&&u.userId)location.href=u.role==="admin"?"/admin":"/"})
+    .catch(()=>{});
+
   function showErr(msg){const el=$("errMsg");el.textContent=msg;el.style.display="block";}
   async function login(){
     const email=$("email").value.trim(),password=$("password").value;
@@ -71,13 +70,18 @@
     if(!email||!password){showErr("Completează emailul și parola.");return;}
     btn.disabled=true;btn.innerHTML='<span class="spin"></span>Se verifică...';
     try{
-      const r=await fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
+      // SEC-01: credentials: include — serverul setează cookie HttpOnly auth_token
+      const r=await fetch("/auth/login",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        credentials: 'include',
+        body:JSON.stringify({email,password})
+      });
       const d=await r.json();
       if(!r.ok){
         if(d.error==="too_many_attempts"){
           const min=Math.ceil((d.remainSec||900)/60);
           showErr(`⛔ Prea multe încercări eșuate. Contul este blocat temporar. Încearcă din nou în ${min} minute.`);
-          // Countdown
           let sec=d.remainSec||900;
           const iv=setInterval(()=>{
             sec--;
@@ -90,8 +94,11 @@
         const m={invalid_credentials:"Email sau parolă incorectă.",db_not_ready:"Baza de date nu este disponibilă."};
         showErr(m[d.error]||"Eroare de autentificare.");return;
       }
-      localStorage.setItem("docflow_token",d.token);
+      // SEC-01: token-ul este în cookie HttpOnly setat de server — nu în d.token
+      // Stocăm doar datele non-sensibile pentru UI
       localStorage.setItem("docflow_user",JSON.stringify({email:d.email,role:d.role,nume:d.nume,functie:d.functie,institutie:d.institutie||""}));
+      // Curățăm orice token vechi din localStorage (migrare de la versiunile anterioare)
+      localStorage.removeItem("docflow_token");
       if(d.force_password_change) localStorage.setItem("docflow_force_pwd","1");
       else localStorage.removeItem("docflow_force_pwd");
       const next=new URLSearchParams(location.search).get("next");

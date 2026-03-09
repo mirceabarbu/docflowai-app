@@ -147,9 +147,9 @@ th{ color: var(--sub) !important; }
     <script>
     // Auth guard — redirect to login if no valid JWT
     (function() {
-      const token = localStorage.getItem("docflow_token");
+      // SEC-01: token din cookie HttpOnly — eliminat token
       if (!token) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); return; }
-      fetch("/auth/me", { headers: { "Authorization": "Bearer " + token } })
+      fetch("/auth/me", { headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,en } })
         .then(r => { if (!r.ok) { localStorage.removeItem("docflow_token"); location.href = "/login"; } })
         .catch(() => {});
     })();
@@ -157,13 +157,12 @@ th{ color: var(--sub) !important; }
 
   <script>
     // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
-    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    // SEC-01: token în cookie HttpOnly — credentials: include trimite cookie automat
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
       const headers = Object.assign({}, (options||{}).headers || {});
-      if (tok) headers['Authorization'] = 'Bearer ' + tok;
-      return fetch(url, Object.assign({}, options||{}, { headers }));
+      delete headers['Authorization'];  // elimina orice Authorization header vechi
+      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
   <link rel="stylesheet" href="/mobile.css">
@@ -351,8 +350,8 @@ th{ color: var(--sub) !important; }
     <script>
       const $ = (id) => document.getElementById(id);
       function authHeaders(extra = {}) {
-        const t = localStorage.getItem("docflow_token") || "";
-        return t ? { ...extra, Authorization: "Bearer " + t } : extra;
+        // SEC-01: token din cookie HttpOnly — nu mai citim din localStorage
+        return extra;  // SEC-01: cookie trimis automat
       }
 
 
@@ -683,7 +682,7 @@ th{ color: var(--sub) !important; }
 
       function setDefaults() {
         tbody.innerHTML = "";
-        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI non-sensibile — OK în localStorage
         const defaults = [
           { rol: "ÎNTOCMIT", functie: u.functie || "Întocmit", name: u.nume || "", email: u.email || "" },
           { rol: "VIZAT", functie: "Șef structură", name: "", email: "" },
@@ -837,7 +836,7 @@ th{ color: var(--sub) !important; }
           btnFromTmpl.disabled = true;
           btnFromTmpl.textContent = "⏳ Se încarcă...";
           try {
-            const r = await _apiFetch("/api/templates", { headers: { "Authorization": "Bearer " + localStorage.getItem("docflow_token") } });
+            const r = await _apiFetch("/api/templates", { credentials: "include" });
             if (!r.ok) throw new Error("fetch_failed");
             const templates = await r.json();
             btnFromTmpl.disabled = false;
@@ -899,7 +898,7 @@ th{ color: var(--sub) !important; }
       // -------------------- Fluxuri mele --------------------
 
       function autoFillFromProfile() {
-        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI non-sensibile — OK în localStorage
         if (!u.email) return;
         const nameEl = $("initName");
         const emailEl = $("initEmail");
@@ -953,7 +952,8 @@ th{ color: var(--sub) !important; }
           el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
           return;
         }
-        const dlToken = encodeURIComponent(localStorage.getItem("docflow_token") || "");
+        // SEC-01: descărcarea PDF se face cu cookie auth — nu mai punem token în URL
+      const dlToken = ""; // unused — cookie trimis automat cu credentials: include
         const currentUserEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
         el.innerHTML = flows.map(f => {
           const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
@@ -1125,10 +1125,10 @@ async function cancelFlow(flowId, docName) {
 }
 
 async function signFromFluxuri(flowId) {
-        const token = localStorage.getItem("docflow_token");
+        // SEC-01: token din cookie HttpOnly — eliminat token
         try {
           const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
-            headers: { "Authorization": "Bearer " + token }
+            headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,en }
           });
           if (!r.ok) { alert("Nu s-a putut obține token-ul de semnare. Încearcă din nou."); return; }
           const j = await r.json();
@@ -1192,10 +1192,10 @@ async function signFromFluxuri(flowId) {
             // Încarcă userii din DB pentru dropdown-ul de semnatari
       window._dbUsers = [];
       (async function loadDbUsers() {
-        const token = localStorage.getItem("docflow_token");
+        // SEC-01: token din cookie HttpOnly — eliminat token
         if (!token) return;
         try {
-          const r = await _apiFetch("/users", { headers: { "Authorization": "Bearer " + token } });
+          const r = await _apiFetch("/users", { headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,en } });
           if (r.ok) {
             window._dbUsers = await r.json();
             // Repopulează toate dropdown-urile respectând selecțiile existente
@@ -1400,7 +1400,7 @@ async function signFromFluxuri(flowId) {
 
       // Show logged-in user + logout button
       (function() {
-        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI non-sensibile — OK în localStorage
         const bar = document.getElementById("userBar");
         if (!bar) return;
         const label = u.nume || u.email || "";
@@ -1614,7 +1614,7 @@ async function submitChangePwd(){
   if(nw.length<6){msg.style.color='#f28b82';msg.textContent='Parola trebuie să aibă minim 6 caractere.';return;}
   btn.disabled=true;btn.textContent='Se salvează...';
   try{
-    const tok=localStorage.getItem('docflow_token')||'';
+    // SEC-01: token din cookie HttpOnly — eliminat tok
     const r=await fetch('/auth/change-password',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({current_password:cur,new_password:nw})});
     const d=await r.json();
     if(r.ok){

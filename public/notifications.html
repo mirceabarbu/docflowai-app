@@ -137,7 +137,7 @@
     // altfel fallback la fetch standard cu Bearer token din localStorage.
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
+      // SEC-01: token din cookie HttpOnly — eliminat tok
       const headers = Object.assign({}, (options||{}).headers || {});
       if (tok) headers['Authorization'] = 'Bearer ' + tok;
       return fetch(url, Object.assign({}, options||{}, { headers }));
@@ -188,7 +188,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const token = localStorage.getItem('docflow_token');
+// SEC-01: token din cookie HttpOnly — eliminat token
 if (!token) { location.href = '/login'; }
 
 let allNotifs = [];
@@ -221,7 +221,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 // Load notifications
 async function loadNotifs() {
   try {
-    const r = await _apiFetch('/api/notifications/with-status', { headers: { 'Authorization': 'Bearer ' + token } });
+    const r = await _apiFetch('/api/notifications/with-status', { headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,en } });
     if (r.status === 401 || r.status === 403) { location.href = '/login'; return; }
     if (!r.ok) throw new Error('fetch_failed');
     allNotifs = await r.json();
@@ -331,7 +331,7 @@ function renderList() {
           // Fetch token de semnare si redirectioneaza direct la pagina de semnare
           try {
             const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(n.flow_id)}`, {
-              headers: { 'Authorization': 'Bearer ' + token }
+              headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,en }
             });
             if (r.ok) {
               const d = await r.json();

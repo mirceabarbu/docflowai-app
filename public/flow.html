@@ -129,7 +129,7 @@
     // altfel fallback la fetch standard cu Bearer token din localStorage.
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
+      // SEC-01: token din cookie HttpOnly — eliminat tok
       const headers = Object.assign({}, (options||{}).headers || {});
       if (tok) headers['Authorization'] = 'Bearer ' + tok;
       return fetch(url, Object.assign({}, options||{}, { headers }));
@@ -214,7 +214,7 @@
   const qs = new URLSearchParams(location.search);
   const flowId = qs.get("flow") || qs.get("id") || "";
   const linkToken = qs.get("token") || "";
-  const jwt = localStorage.getItem("docflow_token") || "";
+  // SEC-01: token din cookie HttpOnly — eliminat jwt
 
   function setMsg(kind, text){
     const el = $("msg");
@@ -362,9 +362,9 @@
       const mySigner = (data2.signers || []).find(s => (s.email || "").toLowerCase() === myEmail && s.status === "current");
       if (mySigner) {
         // Obtine token-ul de semnare de la server
-        const jwtToken = localStorage.getItem("docflow_token");
+        // SEC-01: token din cookie HttpOnly — eliminat jwtToken
         fetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
-          headers: { "Authorization": "Bearer " + jwtToken }
+          headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,Token }
         }).then(r => r.json()).then(j => {
           if (j.token) {
             $("hintSigner").style.display = "";
@@ -590,8 +590,8 @@
           btnAudit.textContent = "⏳ Se generează...";
           btnAudit.style.pointerEvents = "none";
           try {
-            const tok = localStorage.getItem("docflow_token");
-            const authHdr = tok ? { "Authorization": "Bearer " + tok } : {};
+            // SEC-01: token din cookie HttpOnly — eliminat tok
+            const authHdr = tok ? { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat, } : {};
             const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`, { headers: authHdr });
             if (!r.ok) { const er = await r.json().catch(()=>({})); throw new Error(er.error || `HTTP ${r.status}`); }
             const blob = await r.blob();

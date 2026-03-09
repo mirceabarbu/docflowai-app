@@ -97,14 +97,14 @@
   </style>
 
   <script>
-    // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
-    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    // SEC-01: apiFetch shim — cookie HttpOnly trimis automat cu credentials: include
+    // Nu mai citim token din localStorage
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
       const headers = Object.assign({}, (options||{}).headers || {});
-      if (tok) headers['Authorization'] = 'Bearer ' + tok;
-      return fetch(url, Object.assign({}, options||{}, { headers }));
+      // Eliminăm Authorization header vechi dacă există (tranziție)
+      delete headers['Authorization'];
+      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
   <link rel="stylesheet" href="/mobile.css">
@@ -576,13 +576,20 @@
 
 <script>
 const $=id=>document.getElementById(id);
-const token=localStorage.getItem("docflow_token");
+// SEC-01: token din cookie HttpOnly — nu mai citim din localStorage
+// Citim doar datele UI non-sensibile din localStorage
 const me=JSON.parse(localStorage.getItem("docflow_user")||"{}");
 // Nu redirecționa dacă token există — lasă serverul să verifice rolul
 if(!token){location.href="/login?next=/admin";}
 const hdrEl=$("hdrUser");
 if(hdrEl) hdrEl.textContent=me.nume||me.email||"—";
-function logout(){localStorage.removeItem("docflow_token");localStorage.removeItem("docflow_user");location.href="/login";}
+function logout(){
+  // SEC-01: invalidăm cookie-ul pe server, curățăm localStorage
+  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+  localStorage.removeItem('docflow_user');
+  localStorage.removeItem('docflow_force_pwd');
+  location.href='/login';
+}
 
 function openChangePwdModal(){
   const m=$('changePwdModal'); m.style.display='flex';
@@ -611,7 +618,7 @@ async function submitChangePwd(){
     else{msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');btn.disabled=false;btn.textContent='Salvează';}
   }catch(e){msg.style.color='#f28b82';msg.textContent='Eroare de rețea.';btn.disabled=false;btn.textContent='Salvează';}
 }
-function hdrs(){return{"Authorization":"Bearer "+token,"Content-Type":"application/json"};}
+function hdrs(){return{"Content-Type":"application/json"};} // SEC-01: token în cookie HttpOnly — nu mai trimitem Authorization header
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 function validatePhoneClient(phone){
   if(!phone||!phone.trim())return{valid:true,normalized:""};
@@ -751,7 +758,7 @@ async function loadUsers(){
     if(r.status===401||r.status===403){logout();return;}
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
-      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare ${r.status}: ${err.error||"unknown"}</div>`;
+      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare ${escH(String(r.status))}: ${escH(err.error||"unknown")}</div>`;
       return;
     }
     const users=await r.json();
@@ -796,7 +803,7 @@ async function loadUsers(){
       dlC.innerHTML=uniqueC.map(c=>`<option value="${esc(c)}">`).join("");
     }
     renderUsers(users);
-  }catch(e){$("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare: ${e.message}</div>`;}
+  }catch(e){$("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare: ${escH(e.message)}</div>`;}
 }
 
 // ── GWS preview live ───────────────────────────────────────────────────────
@@ -913,7 +920,9 @@ function showPwdModal(d) {
   } else {
     $('pwdModalDestRow').style.display = 'none';
   }
-  $('pwdModalPwd').textContent   = d.plain_password || '—';
+  // SEC-02: parola trimisă pe email — nu se mai afișează în UI
+  // SEC-02: parola trimisă pe email — nu se mai afișează în UI
+  $('pwdModalPwd').textContent = '(trimis pe email)';
   // Butonul "Trimite pe email" — ascuns dacă tocmai am trimis
   $('btnPwdModalSend').style.display = isSend ? 'none' : '';
   // GWS status
@@ -1020,9 +1029,10 @@ async function genPwd(){
   const r=await _apiFetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
   const d=await r.json();
   if(r.ok){
-    $("ePwd").value=d.plain_password;
+    // SEC-02: parola resetată e trimisă pe email — nu se mai afișează în UI
+    $("ePwd").value="";
     $("eMsg").className="msg ok";
-    $("eMsg").textContent="Parolă nouă generată: "+d.plain_password+" — va fi activă după Salvează.";
+    $("eMsg").textContent = d.message || "✅ Parolă nouă generată și trimisă pe emailul utilizatorului.";
   }
 }
 
@@ -1063,9 +1073,9 @@ async function sendCreds(id, btn){
       window._lastCreatedId    = id;
       window._lastCreatedEmail = d.email;
       showPwdModal({
-        email:         d.email,
-        plain_password: d.plain_password,
-        _isSend:       true,   // flag pentru titlu diferit
+        email:   d.email,
+        _pwdSentByEmail: true,  // SEC-02: parola trimisă pe email
+        _isSend: true,          // flag pentru titlu diferit
       });
     }else{
       const m = { user_not_found:"Utilizatorul nu a fost găsit." };
@@ -1245,7 +1255,7 @@ async function loadFlowsList(forceReload = true, page) {
         pg.appendChild(next);
       }
     }
-  } catch(e) { area.innerHTML = `<span style="color:#ffaaaa;">❌ ${e.message}</span>`; }
+  } catch(e) { area.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`; }
 }
 
 
@@ -1325,8 +1335,8 @@ async function verifyDriveConn() {
   try {
     const r = await _apiFetch("/admin/drive/verify", {headers: hdrs()});
     const j = await r.json();
-    if (j.ok) msg.innerHTML = `✅ Conexiune OK — folder: <strong>${j.folder}</strong>`;
-    else msg.innerHTML = `❌ Eroare: ${j.error}`;
+    if (j.ok) msg.innerHTML = `✅ Conexiune OK — folder: <strong>${escH(j.folder||"")}</strong>`;
+    else msg.innerHTML = `❌ Eroare: ${escH(j.error||"")}`;
   } catch(e) { msg.textContent = "❌ Eroare: " + e.message; }
 }
 
@@ -1414,7 +1424,7 @@ async function previewArchive() {
     const summary = document.getElementById("archivePreviewSummary");
     const list = document.getElementById("archivePreviewList");
     const filterLabel = inst ? ` · <span style="color:#9db0ff;">${inst}${dept?" / "+dept:""}</span>` : "";
-    summary.innerHTML = `<span style="color:#2dd4bf;">${j.count} fluxuri</span>${filterLabel} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${j.totalMB} MB</span> din baza de date`;
+    summary.innerHTML = `<span style="color:#2dd4bf;">${escH(String(j.count||0))} fluxuri</span>${escH(filterLabel)} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${escH(String(j.totalMB||0))} MB</span> din baza de date`;
     list.innerHTML = (j.flows||[]).map(f =>
       `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
         📄 ${f.docName} &nbsp;·&nbsp; ${f.status} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
@@ -1475,7 +1485,7 @@ async function runVacuum() {
   try {
     const r = await _apiFetch("/admin/db/vacuum", {method:"POST", headers:hdrs()});
     const j = await r.json();
-    if (j.ok) msg.innerHTML = `✅ VACUUM complet. Dimensiune DB: <strong>${j.dbSize}</strong>`;
+    if (j.ok) msg.innerHTML = `✅ VACUUM complet. Dimensiune DB: <strong>${escH(j.dbSize||"")}</strong>`;
     else msg.textContent = "❌ " + (j.error||"Eroare");
   } catch(e) { msg.textContent = "❌ " + e.message; }
 }
@@ -2214,10 +2224,11 @@ async function exportFlowsPDF() {
 function exportUsersCSV() {
   const users = window._filteredUsers || window._allUsers || [];
   if (!users.length) { alert("Nu sunt utilizatori de exportat."); return; }
-  const headers = ["Nume","Functie","Institutie","Compartiment","Email","Parola","Telefon","Rol","Notif InApp","Notif Email","Notif WhatsApp","Creat"];
+  // SEC-02: coloana Parola ELIMINATĂ din export — nu se mai stochează/exportă plain_password
+  const headers = ["Nume","Functie","Institutie","Compartiment","Email","Telefon","Rol","Notif InApp","Notif Email","Notif WhatsApp","Creat"];
   const esc2 = v => '"' + String(v||"").replace(/"/g,'""') + '"';
   const rows = users.map(u => [
-    u.nume, u.functie, u.institutie, u.compartiment, u.email, u.plain_password||"", u.phone, u.role,
+    u.nume, u.functie, u.institutie, u.compartiment, u.email, u.phone, u.role,
     u.notif_inapp!==false?"Da":"Nu",
     u.notif_email?"Da":"Nu",
     u.notif_whatsapp?"Da":"Nu",
@@ -2240,15 +2251,16 @@ function exportUsersPDF() {
   const now = new Date().toLocaleString("ro-RO", { timeZone: "Europe/Bucharest" });
   const rows = users.map(u => {
     const dt = u.created_at ? new Date(u.created_at).toLocaleDateString("ro-RO") : "-";
+    // SEC-04: escaping date user în PDF export — previne HTML injection
+    const esc = s => String(s||'-').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     return `<tr>
-      <td>${u.nume||"-"}</td>
-      <td>${u.functie||"-"}</td>
-      <td>${u.institutie||"-"}</td>
-      <td>${u.compartiment||"-"}</td>
-      <td>${u.email||"-"}</td>
-      <td><code>${u.plain_password||"-"}</code></td>
-      <td>${u.phone||"-"}</td>
-      <td><span class="pill ${u.role}">${u.role}</span></td>
+      <td>${esc(u.nume)}</td>
+      <td>${esc(u.functie)}</td>
+      <td>${esc(u.institutie)}</td>
+      <td>${esc(u.compartiment)}</td>
+      <td>${esc(u.email)}</td>
+      <td>${esc(u.phone)}</td>
+      <td><span class="pill ${esc(u.role)}">${esc(u.role)}</span></td>
       <td>${dt}</td>
     </tr>`;
   }).join("");

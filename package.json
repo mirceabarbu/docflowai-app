@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.2.1",
+  "version": "3.3.3",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -8,6 +8,7 @@
     "start": "node server/index.mjs"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "pg": "^8.12.0",

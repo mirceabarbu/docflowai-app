@@ -229,9 +229,9 @@ router.post('/admin/users', async (req, res) => {
 
     res.status(201).json({
       ...user,
-      plain_password: plainPwd,
-      verificationSent: needsVerification && !!verificationToken,
+      // SEC-02: plain_password ELIMINAT din response — parola trimisă pe email la creare
       credentials_sent_to: credsDest,
+      verificationSent: needsVerification && !!verificationToken,
       gws: gwsResult,
     });
   } catch(e) {
@@ -364,11 +364,40 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-  const newPwd = generatePassword();
+  const targetId = parseInt(req.params.id);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
+  // SEC-07: verificare cross-tenant — adminul poate reseta parola doar userilor din org sa
   try {
-    // B-03: stocăm doar hash-ul, parola în clar se returnează o singură dată
-    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hashPassword(newPwd), parseInt(req.params.id)]);
-    res.json({ plain_password: newPwd });  // returnat O SINGURA DATA, nu stocat
+    const { rows: targetRows } = await pool.query('SELECT id,email,nume,org_id FROM users WHERE id=$1', [targetId]);
+    if (!targetRows.length) return res.status(404).json({ error: 'user_not_found' });
+    const target = targetRows[0];
+    // Verifică că target aparține aceleiași organizații ca actorul
+    const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
+    const actorOrgId = actorRows[0]?.org_id || null;
+    if (actorOrgId && target.org_id && actorOrgId !== target.org_id) {
+      return res.status(403).json({ error: 'forbidden_cross_tenant' });
+    }
+    const newPwd = generatePassword();
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [hashPassword(newPwd), targetId]);
+    // SEC-02: parola trimisă EXCLUSIV pe email — nu returnată în response
+    const appUrl = getAppUrl(req);
+    await sendSignerEmail({
+      to: target.email,
+      subject: '🔑 Parolă resetată — DocFlowAI',
+      html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
+        <div style="text-align:center;margin-bottom:28px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
+        <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${target.nume ? ', ' + escHtml(target.nume) : ''},</h2>
+        <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Parola contului tău a fost resetată de un administrator.</p>
+        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+          <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${escHtml(target.email)}</strong></div>
+          <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ TEMPORARĂ</span><strong style="color:#ffd580;font-family:monospace;">${escHtml(newPwd)}</strong></div>
+        </div>
+        <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Schimbă parola după prima autentificare.</p>
+        <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
+      </div>`
+    }).catch(e => console.warn(`reset-password email eșuat pentru ${target.email}:`, e.message));
+    // SEC-02: plain_password ELIMINAT din response
+    res.json({ ok: true, message: `Parolă nouă trimisă pe email la ${target.email}` });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -377,9 +406,18 @@ router.delete('/admin/users/:id', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
   if (actor.userId === targetId) return res.status(400).json({ error: 'cannot_delete_self' });
   try {
-    await pool.query('DELETE FROM users WHERE id=$1', [targetId]);
+    // SEC-07: verificare cross-tenant — DELETE doar în propria organizație
+    const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
+    const actorOrgId = actorRows[0]?.org_id || null;
+    const deleteWhere = actorOrgId
+      ? 'DELETE FROM users WHERE id=$1 AND org_id=$2'
+      : 'DELETE FROM users WHERE id=$1';
+    const deleteParams = actorOrgId ? [targetId, actorOrgId] : [targetId];
+    const { rowCount } = await pool.query(deleteWhere, deleteParams);
+    if (!rowCount) return res.status(404).json({ error: 'user_not_found_or_forbidden' });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
@@ -413,7 +451,8 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
     });
     // Returnăm parola și emailul către admin — afișate în modal ca fallback
     // dacă emailul nu ajunge la utilizator
-    res.json({ ok: true, plain_password: newPwd, email: u.email });
+    // SEC-02: plain_password ELIMINAT din response — parola trimisă exclusiv pe email
+    res.json({ ok: true, email: u.email, message: `Credențiale trimise pe email la ${u.email}` });
   } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 

@@ -174,32 +174,31 @@ th{ color: var(--sub) !important; }
     <script>
     // Auth guard — semnarea strict in-app, JWT obligatoriu
     (function() {
-      const jwt = localStorage.getItem("docflow_token");
+      // SEC-01: verificare sesiune prin cookie — nu din localStorage
       if (!jwt) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); }
 
 // Populate userBar with user name + back button + logout
 (function() {
-  const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
+  const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI — OK
   const bar = document.getElementById('userBar');
   if (!bar) return;
   const label = u.nume || u.email || '';
   bar.innerHTML =
     (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
     `<a href="/notifications" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">← Înapoi</a>` +
-    `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+    `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
 })();
     })();
   </script>
 
   <script>
     // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
-    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    // SEC-01: token în cookie HttpOnly — credentials: include trimite cookie automat
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
       const headers = Object.assign({}, (options||{}).headers || {});
-      if (tok) headers['Authorization'] = 'Bearer ' + tok;
-      return fetch(url, Object.assign({}, options||{}, { headers }));
+      delete headers['Authorization'];  // elimina orice Authorization header vechi
+      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
   <link rel="stylesheet" href="/mobile.css">
@@ -576,10 +575,10 @@ th{ color: var(--sub) !important; }
           const s = currentFlow.signers[signerIndex];
           if (s.status === "current") {
             const signerName = s.name || "semnatar";
-            const jwtToken = localStorage.getItem("docflow_token") || "";
+            // SEC-01: cookie trimis automat prin credentials: include
             const rSign = await _apiFetch(`/flows/${encodeURIComponent(flow)}/sign`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwtToken}` },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ token, signature: signerName }),
             });
             const jSign = await rSign.json().catch(() => ({}));
@@ -940,7 +939,7 @@ th{ color: var(--sub) !important; }
           const refuzStatus = $("refuzStatus");
 
           try {
-            const jwtTokenRefuse = localStorage.getItem("docflow_token") || "";
+            // SEC-01: cookie trimis automat
             const r = await _apiFetch(`/flows/${flow}/refuse`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwtTokenRefuse}` },
@@ -1020,8 +1019,8 @@ th{ color: var(--sub) !important; }
           const sel = $("delegateUserSelect");
           if (sel && sel.options.length <= 1) {
             try {
-              const jwtToken = localStorage.getItem("docflow_token") || "";
-              const r = await _apiFetch("/users", { headers: { "Authorization": "Bearer " + jwtToken } });
+              // SEC-01: token din cookie HttpOnly — eliminat jwtToken
+              const r = await _apiFetch("/users", { headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,Token } });
               if (r.ok) {
                 const users = await r.json();
                 // Exclude semnatarul curent din lista
@@ -1080,8 +1079,8 @@ th{ color: var(--sub) !important; }
               // Redirect la notificari: tab 'sign' daca mai are de semnat, altfel 'all'
               setTimeout(async () => {
                 try {
-                  const jwtTok = localStorage.getItem("docflow_token") || "";
-                  const rFlows = await _apiFetch("/my-flows", { headers: { "Authorization": "Bearer " + jwtTok } });
+                  // SEC-01: token din cookie HttpOnly — eliminat jwtTok
+                  const rFlows = await _apiFetch("/my-flows", { headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,Tok } });
                   const jFlows = rFlows.ok ? await rFlows.json() : {};
                   const pending = (jFlows.flows || []).some(f =>
                     (f.signers || []).some(s => s.status === "current" && (s.email||"").toLowerCase() === (localStorage.getItem("docflow_email")||"").toLowerCase())

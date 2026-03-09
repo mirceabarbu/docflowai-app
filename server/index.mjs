@@ -1,5 +1,5 @@
 /**
- * DocFlowAI v3.2.2 — Main entry point (orchestrator)
+ * DocFlowAI v3.3.3 — Main entry point (orchestrator)
  * FIX: notify — notif_email independent de notif_inapp
  * FIX: stampFooterOnPdf — latimea textului calculata corect cu font.widthOfTextAtSize
  * FIX: LOGIN_MAX/WINDOW/BLOCK exportate ca constante configurabile via ENV
@@ -7,6 +7,7 @@
  */
 
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
 import pg from 'pg';
@@ -36,18 +37,33 @@ import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
 const app = express();
 app.set('trust proxy', 1);
 
+// SEC-01: cookie-parser — necesár pentru req.cookies.auth_token (JWT HttpOnly)
+app.use(cookieParser());
+
 // ── Security headers ──────────────────────────────────────────────────────
 // Fallback manual dacă helmet nu e instalat încă (graceful degradation)
 try {
   app.use(helmet({
-    contentSecurityPolicy: false, // PDF viewer inline necesită relaxare — setăm manual mai jos
-    crossOriginEmbedderPolicy: false,
+    // SEC-05: CSP activat — protecție XSS
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc:  ["'self'"],
+        scriptSrc:   ["'self'", "'unsafe-inline'"],  // necesar pentru vanilla JS inline; de migrat în fișiere externe în v3.4
+        styleSrc:    ["'self'", "'unsafe-inline'"],
+        imgSrc:      ["'self'", 'data:', 'blob:'],
+        connectSrc:  ["'self'", 'wss:', 'ws:'],
+        objectSrc:   ["'none'"],
+        frameAncestors: ["'none'"],           // previne clickjacking (înlocuiește X-Frame-Options)
+        upgradeInsecureRequests: [],
+      },
+    },
+    crossOriginEmbedderPolicy: false,         // necesar pentru PDF viewer blob:
+    frameguard: { action: 'deny' },           // X-Frame-Options: DENY
   }));
 } catch(e) {
   console.warn('⚠️  helmet not installed — adding manual security headers');
 }
 app.use((req, res, next) => {
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
@@ -98,12 +114,12 @@ app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'template
 
 // ── Health public ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.2', ts: new Date().toISOString() });
+  res.json({ ok: true, service: 'DocFlowAI', version: '3.3.3', ts: new Date().toISOString() });
 });
 
 app.get('/admin/health', (req, res) => {
   if (requireAdmin(req, res)) return;
-  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.2', dbReady: !!DB_READY, dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null, ts: new Date().toISOString() });
+  res.json({ ok: true, service: 'DocFlowAI', version: '3.3.3', dbReady: !!DB_READY, dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null, ts: new Date().toISOString() });
 });
 
 // ── Template API ──────────────────────────────────────────────────────────
@@ -523,21 +539,53 @@ const wsHeartbeat = setInterval(() => {
 }, WS_PING_INTERVAL_MS);
 wss.on('close', () => clearInterval(wsHeartbeat));
 
+// SEC-01: helper — parsează cookie auth_token din header-ul de upgrade WS
+function getWsCookieToken(req) {
+  const cookieHeader = req.headers.cookie || '';
+  const match = cookieHeader.match(/(?:^|;\s*)auth_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 wss.on('connection', (ws, req) => {
   let clientEmail = null;
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
 
-  // Timeout dacă nu trimite auth în 15s
+  // SEC-01: încearcă auto-auth din cookie-ul HttpOnly trimis la upgrade
+  const cookieToken = getWsCookieToken(req);
+  if (cookieToken) {
+    try {
+      const decoded = jwt.verify(cookieToken, JWT_SECRET);
+      clientEmail = decoded.email.toLowerCase();
+      wsRegister(clientEmail, ws);
+      ws.send(JSON.stringify({ event: 'auth_ok', email: clientEmail }));
+      if (pool && DB_READY) {
+        pool.query('SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE', [clientEmail])
+          .then(r => ws.send(JSON.stringify({ event: 'unread_count', count: parseInt(r.rows[0].count) })))
+          .catch(() => {});
+      }
+      console.log(`🔌 WS auto-auth (cookie): ${clientEmail}`);
+    } catch(e) {
+      // Cookie invalid/expirat — continuăm, clientul poate trimite auth manual
+      console.warn(`🔌 WS cookie invalid: ${e.message}`);
+    }
+  }
+
+  // Timeout dacă clientul nu a reușit auto-auth și nu trimite auth manual în 15s
   const authTimeout = setTimeout(() => {
     if (!clientEmail) {
       ws.send(JSON.stringify({ event: 'auth_timeout', message: 'Autentificare obligatorie în 15s.' }));
       ws.terminate();
     }
   }, WS_AUTH_TIMEOUT_MS);
+
+  // Dacă auto-auth a reușit, anulăm timeout-ul
+  if (clientEmail) clearTimeout(authTimeout);
+
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
+      // Fallback: auth manual cu token (compatibilitate tranziție)
       if (msg.type === 'auth' && msg.token) {
         try {
           const decoded = jwt.verify(msg.token, JWT_SECRET);
@@ -550,7 +598,7 @@ wss.on('connection', (ws, req) => {
               .then(r => ws.send(JSON.stringify({ event: 'unread_count', count: parseInt(r.rows[0].count) })))
               .catch(() => {});
           }
-          console.log(`🔌 WS auth: ${clientEmail}`);
+          console.log(`🔌 WS auth (token): ${clientEmail}`);
         } catch(e) { ws.send(JSON.stringify({ event: 'auth_error', message: 'invalid_token' })); }
       }
       if (msg.type === 'ping') ws.send(JSON.stringify({ event: 'pong' }));
@@ -577,7 +625,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { console.error('❌ PORT missing.'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`🚀 DocFlowAI v3.2.2 server on port ${PORT}`);
+  console.log(`🚀 DocFlowAI v3.3.3 server on port ${PORT}`);
   console.log(`🔌 WebSocket ready at ws://0.0.0.0:${PORT}/ws`);
   initDbWithRetry();
 });

@@ -146,7 +146,7 @@
     // altfel fallback la fetch standard cu Bearer token din localStorage.
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
+      // SEC-01: token din cookie HttpOnly — eliminat tok
       const headers = Object.assign({}, (options||{}).headers || {});
       if (tok) headers['Authorization'] = 'Bearer ' + tok;
       return fetch(url, Object.assign({}, options||{}, { headers }));
@@ -260,7 +260,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const token = localStorage.getItem('docflow_token');
+// SEC-01: token din cookie HttpOnly — eliminat token
 const me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
 if (!token) { location.href = '/login?next=/templates'; }
 function logout() { localStorage.removeItem('docflow_token'); localStorage.removeItem('docflow_user'); location.href = '/login'; }
@@ -276,7 +276,7 @@ function logout() { localStorage.removeItem('docflow_token'); localStorage.remov
     (u.role === 'admin' ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
     `<button onclick="logout()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
 })();
-function hdrs() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+function hdrs() { return { // SEC-01: Authorization Bearer eliminat — cookie automaten, 'Content-Type': 'application/json' }; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 const ATRIBUTE = [
@@ -498,7 +498,7 @@ let allTemplates = [];
 
 async function loadTemplates() {
   try {
-    const r = await _apiFetch('/api/templates',{headers:{'Authorization':'Bearer '+token}});
+    const r = await _apiFetch('/api/templates',{headers:{// SEC-01: Authorization Bearer eliminat — cookie automaten}});
     if (r.status===401){location.href='/login';return;}
     allTemplates = await r.json();
     renderTemplates();
@@ -626,7 +626,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
 // Încarcă utilizatori pentru dropdown-uri
 (async function loadUsers() {
   try {
-    const r = await _apiFetch('/users', {headers:{'Authorization':'Bearer '+token}});
+    const r = await _apiFetch('/users', {headers:{// SEC-01: Authorization Bearer eliminat — cookie automaten}});
     if (!r.ok) { console.warn('fetch /users failed:', r.status); return; }
     window._tmplUsers = await r.json();
 
