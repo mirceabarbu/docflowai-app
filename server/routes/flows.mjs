@@ -346,18 +346,15 @@ const signFlow = async (req, res) => {
     const { token, signature } = req.body || {};
     const sig = typeof signature === 'string' ? signature.trim() : '';
     if (!sig) return res.status(400).json({ error: 'signature_required' });
-    const authHeader = req.headers['authorization'] || '';
-    if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'unauthorized', message: 'Autentificare obligatorie pentru semnare.' });
-    let actor;
-    try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); }
-    catch(e) { return res.status(401).json({ error: 'token_invalid', message: 'Sesiune expirată. Autentifică-te din nou.' }); }
+    // Semnarea din pagina publică de signer se face pe baza tokenului de semnatar,
+    // fără sesiune de utilizator logat. Pentru fluxurile inițiate din cont, UI-ul
+    // poate trimite în continuare cookie-urile, dar nu le facem obligatorii aici.
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled', message: 'Fluxul a fost anulat.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => s.token === token);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
-    if ((signers[idx].email || '').toLowerCase() !== (actor.email || '').toLowerCase()) return res.status(403).json({ error: 'forbidden', message: 'Nu ești semnatarul acestui slot.' });
     if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired', message: 'Link-ul de semnare a expirat (90 zile). Contactează inițiatorul pentru un nou link.' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer' });
     signers[idx].status = 'signed'; signers[idx].signedAt = new Date().toISOString();
@@ -388,18 +385,13 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
     const { token, reason } = req.body || {};
     if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
     if (String(reason).trim().length > 1000) return res.status(400).json({ error: 'reason_too_long', max: 1000 });
-    const authHeader = req.headers['authorization'] || '';
-    if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'unauthorized', message: 'Autentificare obligatorie.' });
-    let actorRefuse;
-    try { actorRefuse = jwt.verify(authHeader.slice(7), JWT_SECRET); }
-    catch(e) { return res.status(401).json({ error: 'token_invalid', message: 'Sesiune expirată. Autentifică-te din nou.' }); }
+    // Refuzul din pagina publică de signer se face pe baza tokenului de semnatar.
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled', message: 'Fluxul a fost anulat.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => s.token === token);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
-    if ((signers[idx].email || '').toLowerCase() !== (actorRefuse.email || '').toLowerCase()) return res.status(403).json({ error: 'forbidden', message: 'Nu ești semnatarul acestui slot.' });
     if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired', message: 'Link-ul de semnare a expirat (90 zile).' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer' });
     const refuserName = signers[idx].name || signers[idx].email || 'Semnatar';
@@ -772,7 +764,7 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
     if (String(reason).trim().length > 1000) return res.status(400).json({ error: 'reason_too_long', max: 1000 });
     const authHeader = req.headers['authorization'] || '';
-    if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'unauthorized' });
+    // Delegarea din pagina de signer folosește tokenul de semnatar; nu impunem sesiune.
     let actor;
     try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); }
     catch(e) { return res.status(401).json({ error: 'token_invalid' }); }
@@ -784,7 +776,6 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => s.token === token);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
-    if ((signers[idx].email || '').toLowerCase() !== (actor.email || '').toLowerCase()) return res.status(403).json({ error: 'forbidden' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer' });
 
     const reviewerName = signers[idx].name || signers[idx].email || 'Semnatar';
