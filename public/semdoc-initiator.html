@@ -332,20 +332,16 @@ th{ color: var(--sub) !important; }
           </div>
           <!-- Filtre + search -->
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
-            <input type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
             <input
               id="fluxSearch"
-              name="flow_search_box"
+              name="flow_search"
               type="search"
               placeholder="🔍 Caută după nume document, inițiator, ID flux..."
               autocomplete="off"
               autocapitalize="off"
               autocorrect="off"
               spellcheck="false"
-              inputmode="search"
               data-form-type="other"
-              readonly
-              onfocus="this.removeAttribute('readonly'); neutralizeFlowSearchAutofill(true)"
               oninput="this._userTyped=true; debounceLoadFlows()"
               style="flex:1;min-width:200px;padding:9px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.88rem;outline:none;"
             />
@@ -513,7 +509,12 @@ th{ color: var(--sub) !important; }
         $("tabInit").classList.toggle("active", name === "init");
         $("tabFluxuri").classList.toggle("active", name === "fluxuri");
         if (name === "fluxuri") {
-          neutralizeFlowSearchAutofill(true);
+          // Nu pre-populăm search-ul — backend filtrează automat după userul logat
+          const fs = $("fluxSearch");
+          if (fs && !fs._userTyped) {
+            fs.value = "";
+            fs.setAttribute("value", "");
+          }
           loadMyFlows();
         }
       }
@@ -1018,8 +1019,10 @@ th{ color: var(--sub) !important; }
               ${dt2}${refuzLabel}${delegBadge}
             </div>`;
           }).join("");
-          const dlBtn = (f.allSigned && f.hasSignedPdf)
-            ? `<a href="/my-flows/${f.flowId}/download?token=${dlToken}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
+          const finalStatuses = ["completed", "done", "finalizat", "finished", "complete"];
+          const pdfReady = !!(f.hasSignedPdf || f.completed || finalStatuses.includes(String(f.status || "").toLowerCase()));
+          const dlBtn = pdfReady
+            ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
             : f.allSigned
             ? `<span style="color:var(--warn);font-size:.8rem;">⏳ Se procesează PDF...</span>`
             : `<span style="color:var(--muted);font-size:.8rem;">Nesemnat complet</span>`;
@@ -1161,18 +1164,6 @@ async function signFromFluxuri(flowId) {
       let _fluxPage = 1;
       let _fluxDebounce = null;
 
-      function neutralizeFlowSearchAutofill(force) {
-        const fs = $("fluxSearch");
-        if (!fs) return;
-        const meEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
-        const current = (fs.value || "").trim();
-        const looksLikeAutofill = !!current && !fs._userTyped && (force || current.toLowerCase() === meEmail || current.includes("@"));
-        if (looksLikeAutofill) {
-          fs.value = "";
-          fs.setAttribute("value", "");
-        }
-      }
-
       function debounceLoadFlows() {
         clearTimeout(_fluxDebounce);
         _fluxDebounce = setTimeout(() => loadMyFlows(1), 350);
@@ -1180,6 +1171,29 @@ async function signFromFluxuri(flowId) {
 
       // filterFluxuri pastrat pentru compatibilitate dar nu mai face filtrare locala
       function filterFluxuri(q) { debounceLoadFlows(); }
+
+      function normalizeFlowSearch(v) {
+        return String(v || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .trim();
+      }
+
+      function flowMatchesSearch(flow, term) {
+        const q = normalizeFlowSearch(term);
+        if (!q) return true;
+        const hay = [
+          flow.flowId,
+          flow.docName,
+          flow.initName,
+          flow.initEmail,
+          flow.institutie,
+          flow.compartiment,
+          ...(flow.signers || []).flatMap(s => [s.name, s.email, s.rol, s.functie, s.compartiment])
+        ].map(normalizeFlowSearch).filter(Boolean);
+        return hay.some(v => v.includes(q));
+      }
 
       async function loadMyFlows(page) {
         page = Math.max(1, parseInt(page) || 1);
@@ -1189,16 +1203,17 @@ async function signFromFluxuri(flowId) {
         el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:32px;"><span style="display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;"></span> Se incarca...</div>';
         const search = ($("fluxSearch") ? $("fluxSearch").value.trim() : "");
         const status = ($("fluxStatusFilter") ? $("fluxStatusFilter").value : "all");
-        const params = new URLSearchParams({ page, limit: 50, status });
-        if (search) params.set("search", search);
+        const isClientSearch = !!search;
+        const params = new URLSearchParams({ page: isClientSearch ? 1 : page, limit: isClientSearch ? 200 : 50, status });
         try {
           const r = await _apiFetch("/my-flows?" + params.toString());
           if (!r.ok) { el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare la incarcare.</div>'; return; }
           const resp = await r.json();
           // Suport raspuns paginat { flows, total, page, pages } si legacy array
-          const flows = Array.isArray(resp) ? resp : (resp.flows || []);
-          const total = resp.total || flows.length;
-          const pages = resp.pages || 1;
+          const rawFlows = Array.isArray(resp) ? resp : (resp.flows || []);
+          const flows = isClientSearch ? rawFlows.filter(f => flowMatchesSearch(f, search)) : rawFlows;
+          const total = isClientSearch ? flows.length : (resp.total || flows.length);
+          const pages = isClientSearch ? 1 : (resp.pages || 1);
           _allFlows = flows;
           if (!flows.length) {
             el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux gasit.</div>';
@@ -1209,11 +1224,13 @@ async function signFromFluxuri(flowId) {
           // Actualizeaza paginarea
           const pg = $("fluxPagination");
           if (pg) {
-            pg.style.display = pages > 1 ? "flex" : "none";
+            pg.style.display = (!isClientSearch && pages > 1) ? "flex" : "none";
             const info = $("fluxPageInfo");
-            if (info) info.textContent = "Pagina " + page + " din " + pages + " (" + total + " fluxuri)";
-            const prev = $("fluxPrevBtn"); if (prev) prev.disabled = page <= 1;
-            const next = $("fluxNextBtn"); if (next) next.disabled = page >= pages;
+            if (info) info.textContent = isClientSearch
+              ? (total + " fluxuri găsite")
+              : ("Pagina " + page + " din " + pages + " (" + total + " fluxuri)");
+            const prev = $("fluxPrevBtn"); if (prev) prev.disabled = isClientSearch || page <= 1;
+            const next = $("fluxNextBtn"); if (next) next.disabled = isClientSearch || page >= pages;
           }
         } catch(e) {
           el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare de retea.</div>';
@@ -1410,16 +1427,6 @@ async function signFromFluxuri(flowId) {
         $("btnRenunta").style.display = "none";
         $("createResult").textContent = "";
         validateForm();
-      });
-
-      window.addEventListener("load", () => {
-        neutralizeFlowSearchAutofill(true);
-        setTimeout(() => neutralizeFlowSearchAutofill(true), 50);
-        setTimeout(() => neutralizeFlowSearchAutofill(true), 300);
-      });
-      window.addEventListener("pageshow", () => {
-        neutralizeFlowSearchAutofill(true);
-        setTimeout(() => neutralizeFlowSearchAutofill(true), 50);
       });
 
       // Default load: restaureaza tab-ul si starea sau initializeaza implicit
