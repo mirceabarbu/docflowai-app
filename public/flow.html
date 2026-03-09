@@ -440,7 +440,9 @@
     setMsg("", "");
 
     try{
-      const j = await apiFetchJson(`/flows/${encodeURIComponent(flowId)}`);
+      let flowUrl = `/flows/${encodeURIComponent(flowId)}`;
+      if (linkToken) flowUrl += `?token=${encodeURIComponent(linkToken)}`;
+      const j = await apiFetchJson(flowUrl);
       const data = j.data || j;
 
       $("docName").textContent = (data.docName || data.documentName || data.name || data.title || "—");
