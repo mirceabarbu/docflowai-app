@@ -31,6 +31,12 @@ function getAppUrl(req) {
   return `${proto}://${host}`;
 }
 
+function approxB64Bytes(v) {
+  if (!v || typeof v !== 'string') return 0;
+  const b64 = v.includes(',') ? v.split(',', 2)[1] : v;
+  return Math.round((b64 || '').length * 0.75);
+}
+
 // ── Users ──────────────────────────────────────────────────────────────────
 // GET /users — returneaza useri din aceeasi institutie ca utilizatorul logat
 // Folosit de initiator pentru dropdown semnatari
@@ -396,8 +402,8 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
         <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
       </div>`
     }).catch(e => console.warn(`reset-password email eșuat pentru ${target.email}:`, e.message));
-    // Returnăm parola doar în răspunsul imediat către admin, fără a o stoca în DB
-    res.json({ ok: true, email: target.email, tempPassword: newPwd, credentials_sent_to: target.email, message: `Parolă nouă trimisă pe email la ${target.email}` });
+    // SEC-02: plain_password ELIMINAT din response
+    res.json({ ok: true, message: `Parolă nouă trimisă pe email la ${target.email}` });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -450,8 +456,9 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
       </div>`
     });
     // Returnăm parola și emailul către admin — afișate în modal ca fallback
-    // dacă emailul nu ajunge la utilizator. Nu o stocăm în DB.
-    res.json({ ok: true, email: u.email, tempPassword: newPwd, credentials_sent_to: u.email, message: `Credențiale trimise pe email la ${u.email}` });
+    // dacă emailul nu ajunge la utilizator
+    // SEC-02: plain_password ELIMINAT din response — parola trimisă exclusiv pe email
+    res.json({ ok: true, email: u.email, message: `Credențiale trimise pe email la ${u.email}` });
   } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
@@ -492,7 +499,10 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
 
     const totalBytes = eligible.reduce((acc, r) => {
       const d = r.data || {};
-      return acc + (d.pdfB64 ? Math.round(d.pdfB64.length * 0.75) : 0) + (d.signedPdfB64 ? Math.round(d.signedPdfB64.length * 0.75) : 0);
+      return acc
+        + approxB64Bytes(d.pdfB64)
+        + approxB64Bytes(d.signedPdfB64)
+        + approxB64Bytes(d.originalPdfB64);
     }, 0);
 
     return res.json({
@@ -507,7 +517,11 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
           initEmail: d.initEmail || '—', initName: d.initName || '—',
           createdAt: d.createdAt || r.created_at, status,
           storage: d.storage || 'db',
-          sizeMB: Math.round(((d.pdfB64?.length||0) + (d.signedPdfB64?.length||0)) * 0.75 / 1024 / 1024 * 100) / 100,
+          sizeMB: Math.round((
+            approxB64Bytes(d.pdfB64)
+            + approxB64Bytes(d.signedPdfB64)
+            + approxB64Bytes(d.originalPdfB64)
+          ) / 1024 / 1024 * 100) / 100,
           institutie: u.institutie || d.institutie || '',
           compartiment: u.compartiment || d.compartiment || '',
         };
@@ -576,8 +590,11 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
       return true;
     });
     const totalBytes = eligible.reduce((acc, r) => {
-      const d = r.data;
-      return acc + (d.pdfB64 ? Math.round(d.pdfB64.length * 0.75) : 0) + (d.signedPdfB64 ? Math.round(d.signedPdfB64.length * 0.75) : 0);
+      const d = r.data || {};
+      return acc
+        + approxB64Bytes(d.pdfB64)
+        + approxB64Bytes(d.signedPdfB64)
+        + approxB64Bytes(d.originalPdfB64);
     }, 0);
     return res.json({
       count: eligible.length, totalMB: Math.round(totalBytes / 1024 / 1024 * 100) / 100,
@@ -585,7 +602,11 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
         const u = userMap[(r.data.initEmail || '').toLowerCase()] || {};
         return { flowId: r.data.flowId, docName: r.data.docName, createdAt: r.data.createdAt || r.created_at,
           status: r.data.completed ? 'finalizat' : (r.data.signers || []).some(s => s.status === 'refused') ? 'refuzat' : 'necunoscut',
-          sizeMB: Math.round(((r.data.pdfB64?.length || 0) + (r.data.signedPdfB64?.length || 0)) * 0.75 / 1024 / 1024 * 100) / 100,
+          sizeMB: Math.round((
+            approxB64Bytes(r.data?.pdfB64)
+            + approxB64Bytes(r.data?.signedPdfB64)
+            + approxB64Bytes(r.data?.originalPdfB64)
+          ) / 1024 / 1024 * 100) / 100,
           institutie: u.institutie || r.data.institutie || '', compartiment: u.compartiment || r.data.compartiment || '' };
       })
     });
