@@ -193,11 +193,14 @@ th{ color: var(--sub) !important; }
 
   <script>
     // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
-    // SEC-01: token în cookie HttpOnly — credentials: include trimite cookie automat
+    // SEC-01: token în cookie HttpOnly — credentials: include trimite cookie automat.
+    // Fallback tranziție: dacă există token vechi în localStorage (sesiune anterioară upgrade),
+    // îl trimitem ca Authorization Bearer până expiră natural.
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
       const headers = Object.assign({}, (options||{}).headers || {});
-      delete headers['Authorization'];  // elimina orice Authorization header vechi
+      const legacyToken = localStorage.getItem('docflow_token');
+      if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
       return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>

@@ -102,8 +102,9 @@
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
       const headers = Object.assign({}, (options||{}).headers || {});
-      // Eliminăm Authorization header vechi dacă există (tranziție)
-      delete headers['Authorization'];
+      // Tranziție: dacă există token vechi în localStorage, îl trimitem ca fallback Bearer
+      const legacyToken = localStorage.getItem('docflow_token');
+      if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
       return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
