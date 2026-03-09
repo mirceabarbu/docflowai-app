@@ -37,6 +37,22 @@ function approxB64Bytes(v) {
   return Math.round((b64 || '').length * 0.75);
 }
 
+async function getFlowPdfBytesMap(flowIds = []) {
+  if (!flowIds.length) return new Map();
+  const { rows } = await pool.query(
+    `SELECT flow_id, COALESCE(SUM(CEIL(LENGTH(data) * 0.75)), 0)::bigint AS bytes
+       FROM flows_pdfs
+      WHERE flow_id = ANY($1)
+      GROUP BY flow_id`,
+    [flowIds]
+  );
+  return new Map(rows.map(r => [r.flow_id, Number(r.bytes) || 0]));
+}
+
+function getLegacyFlowBytes(d = {}) {
+  return approxB64Bytes(d.pdfB64) + approxB64Bytes(d.signedPdfB64) + approxB64Bytes(d.originalPdfB64);
+}
+
 // ── Users ──────────────────────────────────────────────────────────────────
 // GET /users — returneaza useri din aceeasi institutie ca utilizatorul logat
 // Folosit de initiator pentru dropdown semnatari
@@ -497,13 +513,8 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
       return true;
     });
 
-    const totalBytes = eligible.reduce((acc, r) => {
-      const d = r.data || {};
-      return acc
-        + approxB64Bytes(d.pdfB64)
-        + approxB64Bytes(d.signedPdfB64)
-        + approxB64Bytes(d.originalPdfB64);
-    }, 0);
+    const pdfBytesMap = await getFlowPdfBytesMap(eligible.map(r => r.id));
+    const totalBytes = eligible.reduce((acc, r) => acc + (pdfBytesMap.get(r.id) ?? getLegacyFlowBytes(r.data || {})), 0);
 
     return res.json({
       count: eligible.length,
@@ -511,17 +522,14 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
       flows: eligible.slice(0, 200).map(r => {  // max 200 in preview
         const d = r.data || {};
         const u = userMap[(d.initEmail || '').toLowerCase()] || {};
+        const sizeBytes = pdfBytesMap.get(r.id) ?? getLegacyFlowBytes(d);
         const status = d.completed ? 'finalizat' : d.status === 'refused' ? 'refuzat' : d.status === 'review_requested' ? 'revizuire' : d.status === 'cancelled' ? 'anulat' : d.storage === 'drive' ? 'arhivat' : 'activ';
         return {
           flowId: d.flowId, docName: d.docName || '—',
           initEmail: d.initEmail || '—', initName: d.initName || '—',
           createdAt: d.createdAt || r.created_at, status,
           storage: d.storage || 'db',
-          sizeMB: Math.round((
-            approxB64Bytes(d.pdfB64)
-            + approxB64Bytes(d.signedPdfB64)
-            + approxB64Bytes(d.originalPdfB64)
-          ) / 1024 / 1024 * 100) / 100,
+          sizeMB: Math.round(sizeBytes / 1024 / 1024 * 100) / 100,
           institutie: u.institutie || d.institutie || '',
           compartiment: u.compartiment || d.compartiment || '',
         };
@@ -589,24 +597,16 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
       if (filterDept && (u.compartiment || d.compartiment || '') !== filterDept) return false;
       return true;
     });
-    const totalBytes = eligible.reduce((acc, r) => {
-      const d = r.data || {};
-      return acc
-        + approxB64Bytes(d.pdfB64)
-        + approxB64Bytes(d.signedPdfB64)
-        + approxB64Bytes(d.originalPdfB64);
-    }, 0);
+    const pdfBytesMap = await getFlowPdfBytesMap(eligible.map(r => r.id));
+    const totalBytes = eligible.reduce((acc, r) => acc + (pdfBytesMap.get(r.id) ?? getLegacyFlowBytes(r.data || {})), 0);
     return res.json({
       count: eligible.length, totalMB: Math.round(totalBytes / 1024 / 1024 * 100) / 100,
       flows: eligible.map(r => {
         const u = userMap[(r.data.initEmail || '').toLowerCase()] || {};
+        const sizeBytes = pdfBytesMap.get(r.id) ?? getLegacyFlowBytes(r.data || {});
         return { flowId: r.data.flowId, docName: r.data.docName, createdAt: r.data.createdAt || r.created_at,
           status: r.data.completed ? 'finalizat' : (r.data.signers || []).some(s => s.status === 'refused') ? 'refuzat' : 'necunoscut',
-          sizeMB: Math.round((
-            approxB64Bytes(r.data?.pdfB64)
-            + approxB64Bytes(r.data?.signedPdfB64)
-            + approxB64Bytes(r.data?.originalPdfB64)
-          ) / 1024 / 1024 * 100) / 100,
+          sizeMB: Math.round(sizeBytes / 1024 / 1024 * 100) / 100,
           institutie: u.institutie || r.data.institutie || '', compartiment: u.compartiment || r.data.compartiment || '' };
       })
     });

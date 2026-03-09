@@ -630,7 +630,21 @@ router.get('/my-flows', async (req, res) => {
     else if (statusFilter === 'refused') statusWhere = " AND (data->>'status') = 'refused'";
     else if (statusFilter === 'cancelled') statusWhere = " AND (data->>'status') = 'cancelled'";
     let searchWhere = '';
-    if (search) { params.push(`%${escapedSearch}%`); searchWhere = ` AND (lower(data->>'docName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initName') LIKE $${params.length} ESCAPE '\\')`; }
+    if (search) {
+      params.push(`%${escapedSearch}%`);
+      searchWhere = ` AND (
+        lower(data->>'docName') LIKE $${params.length} ESCAPE '\\'
+        OR lower(data->>'initName') LIKE $${params.length} ESCAPE '\\'
+        OR lower(data->>'initEmail') LIKE $${params.length} ESCAPE '\\'
+        OR lower(data->>'flowId') LIKE $${params.length} ESCAPE '\\'
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(data->'signers') s
+          WHERE lower(coalesce(s->>'email','')) LIKE $${params.length} ESCAPE '\\'
+             OR lower(coalesce(s->>'name','')) LIKE $${params.length} ESCAPE '\\'
+        )
+      )`;
+    }
     const whereClause = baseWhere + statusWhere + searchWhere;
     const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
@@ -644,8 +658,14 @@ router.get('/my-flows', async (req, res) => {
       status: d.status || 'active',
       urgent: !!(d.urgent),
       signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refuseReason: s.refuseReason }; }),
-      hasSignedPdf: !!(d.signedPdfB64 || (d.storage === 'drive' && d.driveFileLinkFinal)),
-      allSigned: (d.signers || []).every(s => s.status === 'signed'),
+      hasSignedPdf: !!(
+        d.signedPdfB64
+        || d._signedPdfB64Present
+        || d.completed
+        || (String(d.status || '').toLowerCase() === 'completed')
+        || (d.storage === 'drive' && (d.driveFileLinkFinal || d.driveFileIdFinal))
+      ),
+      allSigned: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
     }));
     res.json({ flows: myFlows, total, page, limit, pages });
   } catch(e) { console.error('my-flows error:', e); res.status(500).json({ error: 'server_error' }); }
