@@ -114,11 +114,14 @@
     if (_refreshPromise) return _refreshPromise;
     _refreshPromise = (async () => {
       try {
-        // SEC-01: /auth/refresh folosește cookie HttpOnly — nu mai trimitem token în header
+        // Refresh: trimitem cookie HttpOnly (sesiune nouă) + fallback Bearer (tranziție)
+        const legacyTok = localStorage.getItem('docflow_token');
+        const refreshHeaders = { 'Content-Type': 'application/json' };
+        if (legacyTok) refreshHeaders['Authorization'] = 'Bearer ' + legacyTok;
         const r = await fetch('/auth/refresh', {
           method: 'POST',
-          credentials: 'include',      // trimite cookie-ul auth_token
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers: refreshHeaders,
         });
         if (r.ok) {
           const d = await r.json();
@@ -148,8 +151,9 @@
   }
 
   function redirectLogin() {
-    // SEC-01: token-ul e în cookie HttpOnly — nu mai e în localStorage
-    // Apelăm /auth/logout pentru a curăța cookie-ul pe server
+    // Nu redirecta pe pagini publice (signer accesat cu token în URL)
+    const isPublicPage = location.search.includes('token=') && !localStorage.getItem('docflow_user');
+    if (isPublicPage) return;
     fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
     localStorage.removeItem('docflow_user');
     const next = encodeURIComponent(location.pathname + location.search);
@@ -344,8 +348,13 @@
   // ══════════════════════════════════════════════════════════
 
   function init() {
-    // SEC-01: verificăm autentificarea prin /auth/me (cookie trimis automat)
-    // Nu mai verificăm localStorage pentru token
+    // Guard: nu pornim widget-ul dacă nu există niciun semn de sesiune activă.
+    // Verificăm: token legacy în localStorage SAU docflow_user (setat la login).
+    // Fără acest guard, widget-ul ar porni pe pagini publice (signer etc.) și
+    // ar face redirect neașteptat la /login.
+    const hasLegacyToken = !!localStorage.getItem('docflow_token');
+    const hasUserData    = !!localStorage.getItem('docflow_user');
+    if (!hasLegacyToken && !hasUserData) return;
 
     injectStyles();
     injectBell();
