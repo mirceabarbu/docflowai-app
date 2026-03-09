@@ -364,9 +364,7 @@
       if (mySigner) {
         // Obtine token-ul de semnare de la server
         // SEC-01: token din cookie HttpOnly — eliminat jwtToken
-        fetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
-          headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,Token }
-        }).then(r => r.json()).then(j => {
+        fetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, { credentials: 'include' }).then(r => r.json()).then(j => {
           if (j.token) {
             $("hintSigner").style.display = "";
             $("signLink").href = `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(j.token)}`;
@@ -592,8 +590,7 @@
           btnAudit.style.pointerEvents = "none";
           try {
             // SEC-01: token din cookie HttpOnly — eliminat tok
-            const authHdr = tok ? { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat, } : {};
-            const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`, { headers: authHdr });
+            const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`);
             if (!r.ok) { const er = await r.json().catch(()=>({})); throw new Error(er.error || `HTTP ${r.status}`); }
             const blob = await r.blob();
             const url = URL.createObjectURL(blob);

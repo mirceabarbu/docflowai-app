@@ -263,8 +263,8 @@
 const $ = id => document.getElementById(id);
 // SEC-01: token din cookie HttpOnly — eliminat token
 const me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
-if (!token) { location.href = '/login?next=/templates'; }
-function logout() { localStorage.removeItem('docflow_token'); localStorage.removeItem('docflow_user'); location.href = '/login'; }
+fetch('/auth/me',{credentials:'include'}).then(r=>{ if(!r.ok) location.href='/login?next=/templates'; }).catch(()=>{ location.href='/login?next=/templates'; });
+function logout() { fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{ localStorage.removeItem('docflow_token'); localStorage.removeItem('docflow_user'); location.href = '/login'; }); }
 
 // Populate userBar with name + admin link + logout
 (function() {
@@ -277,7 +277,7 @@ function logout() { localStorage.removeItem('docflow_token'); localStorage.remov
     (u.role === 'admin' ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
     `<button onclick="logout()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
 })();
-function hdrs() { return { // SEC-01: Authorization Bearer eliminat — cookie automaten, 'Content-Type': 'application/json' }; }
+function hdrs() { return { 'Content-Type': 'application/json' }; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 const ATRIBUTE = [

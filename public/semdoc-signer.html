@@ -1023,7 +1023,7 @@ th{ color: var(--sub) !important; }
           if (sel && sel.options.length <= 1) {
             try {
               // SEC-01: token din cookie HttpOnly — eliminat jwtToken
-              const r = await _apiFetch("/users", { headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,Token } });
+              const r = await _apiFetch("/users");
               if (r.ok) {
                 const users = await r.json();
                 // Exclude semnatarul curent din lista
@@ -1083,7 +1083,7 @@ th{ color: var(--sub) !important; }
               setTimeout(async () => {
                 try {
                   // SEC-01: token din cookie HttpOnly — eliminat jwtTok
-                  const rFlows = await _apiFetch("/my-flows", { headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,Tok } });
+                  const rFlows = await _apiFetch("/my-flows");
                   const jFlows = rFlows.ok ? await rFlows.json() : {};
                   const pending = (jFlows.flows || []).some(f =>
                     (f.signers || []).some(s => s.status === "current" && (s.email||"").toLowerCase() === (localStorage.getItem("docflow_email")||"").toLowerCase())

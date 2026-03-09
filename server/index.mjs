@@ -48,8 +48,9 @@ try {
     contentSecurityPolicy: {
       directives: {
         defaultSrc:  ["'self'"],
-        scriptSrc:   ["'self'", "'unsafe-inline'"],  // necesar pentru vanilla JS inline; de migrat în fișiere externe în v3.4
+        scriptSrc:   ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'],  // staging: permite CDN-urile folosite de pdf-lib/pdf.js
         styleSrc:    ["'self'", "'unsafe-inline'"],
+        scriptSrcAttr:["'unsafe-inline'"],
         imgSrc:      ["'self'", 'data:', 'blob:'],
         connectSrc:  ["'self'", 'wss:', 'ws:'],
         objectSrc:   ["'none'"],

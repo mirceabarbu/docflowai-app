@@ -145,13 +145,18 @@ th{ color: var(--sub) !important; }
 /* ===== End theme ===== */
 </style>
     <script>
-    // Auth guard — redirect to login if no valid JWT
+    // Auth guard — verifică sesiunea din cookie HttpOnly
     (function() {
-      // SEC-01: token din cookie HttpOnly — eliminat token
-      if (!token) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); return; }
-      fetch("/auth/me", { headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,en } })
-        .then(r => { if (!r.ok) { localStorage.removeItem("docflow_token"); location.href = "/login"; } })
-        .catch(() => {});
+      fetch("/auth/me", { credentials: "include" })
+        .then(r => {
+          if (!r.ok) {
+            localStorage.removeItem("docflow_token");
+            location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search);
+          }
+        })
+        .catch(() => {
+          location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search);
+        });
     })();
   </script>
 
@@ -1130,9 +1135,7 @@ async function cancelFlow(flowId, docName) {
 async function signFromFluxuri(flowId) {
         // SEC-01: token din cookie HttpOnly — eliminat token
         try {
-          const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
-            headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,en }
-          });
+          const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`);
           if (!r.ok) { alert("Nu s-a putut obține token-ul de semnare. Încearcă din nou."); return; }
           const j = await r.json();
           if (!j.token) { alert("Token de semnare indisponibil."); return; }
@@ -1195,10 +1198,8 @@ async function signFromFluxuri(flowId) {
             // Încarcă userii din DB pentru dropdown-ul de semnatari
       window._dbUsers = [];
       (async function loadDbUsers() {
-        // SEC-01: token din cookie HttpOnly — eliminat token
-        if (!token) return;
         try {
-          const r = await _apiFetch("/users", { headers: { // SEC-01: Authorization header eliminat — cookie HttpOnly trimis automat,en } });
+          const r = await _apiFetch("/users");
           if (r.ok) {
             window._dbUsers = await r.json();
             // Repopulează toate dropdown-urile respectând selecțiile existente
@@ -1410,7 +1411,7 @@ async function signFromFluxuri(flowId) {
         bar.innerHTML = (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : "") +
           (u.role === "admin" ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
           `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
-          `<button onclick="localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');localStorage.removeItem('docflow_force_pwd');location.href='/login';" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+          `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');localStorage.removeItem('docflow_force_pwd');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
         // Banner parolă temporară
         if (localStorage.getItem("docflow_force_pwd") === "1") {
           const banner = document.getElementById("forcePwdBanner");
@@ -1618,7 +1619,7 @@ async function submitChangePwd(){
   btn.disabled=true;btn.textContent='Se salvează...';
   try{
     // SEC-01: token din cookie HttpOnly — eliminat tok
-    const r=await fetch('/auth/change-password',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({current_password:cur,new_password:nw})});
+    const r=await fetch('/auth/change-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});
     const d=await r.json();
     if(r.ok){
       msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';btn.textContent='Salvează';
