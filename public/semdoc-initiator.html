@@ -332,16 +332,21 @@ th{ color: var(--sub) !important; }
           </div>
           <!-- Filtre + search -->
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+            <input type="text" tabindex="-1" autocomplete="username" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
+            <input type="password" tabindex="-1" autocomplete="new-password" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
             <input
               id="fluxSearch"
-              name="no_autofill_flow_search"
+              name="docflow_flux_search_q"
               type="search"
               placeholder="🔍 Caută după nume document, inițiator, ID flux..."
-              autocomplete="new-password"
+              autocomplete="off"
               autocapitalize="off"
               autocorrect="off"
               spellcheck="false"
               data-form-type="other"
+              data-lpignore="true"
+              readonly
+              onfocus="this.removeAttribute('readonly')"
               oninput="this._userTyped=true; debounceLoadFlows()"
               style="flex:1;min-width:200px;padding:9px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.88rem;outline:none;"
             />
@@ -510,7 +515,11 @@ th{ color: var(--sub) !important; }
         $("tabFluxuri").classList.toggle("active", name === "fluxuri");
         if (name === "fluxuri") {
           // Nu pre-populăm search-ul — backend filtrează automat după userul logat
-          resetFluxSearchField();
+          const fs = $("fluxSearch");
+          if (fs && !fs._userTyped) {
+            fs.value = "";
+            fs.setAttribute("value", "");
+          }
           loadMyFlows();
         }
       }
@@ -522,19 +531,6 @@ th{ color: var(--sub) !important; }
         if (pdfB64) idb.save(pdfB64);
       });
       $("tabFluxuri").addEventListener("click", () => { showTab("fluxuri"); sessionStorage.setItem("docflow_tab", "fluxuri"); });
-
-      function resetFluxSearchField(force = false) {
-        const fs = $("fluxSearch");
-        if (!fs) return;
-        if (!force && fs._userTyped) return;
-        fs.value = "";
-        fs.defaultValue = "";
-        fs.setAttribute("value", "");
-      }
-
-      window.addEventListener("pageshow", () => resetFluxSearchField(true));
-      setTimeout(() => resetFluxSearchField(true), 0);
-      setTimeout(() => resetFluxSearchField(true), 250);
 
       // Signers table
       const tbody = $("signersTbody");
@@ -1029,11 +1025,18 @@ th{ color: var(--sub) !important; }
             </div>`;
           }).join("");
           const finalStatuses = ["completed", "done", "finalizat", "finished", "complete"];
-          const pdfReady = !!(f.hasSignedPdf || f.completed || f.allSigned || finalStatuses.includes(String(f.status || "").toLowerCase()));
+          const successFinal = !!(f.allSigned && !isRefused && !isReviewRequested && !isCancelled);
+          const pdfReady = !!(successFinal && (f.hasSignedPdf || f.completed || finalStatuses.includes(String(f.status || "").toLowerCase())));
           const dlBtn = pdfReady
             ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
-            : f.allSigned
+            : successFinal
             ? `<span style="color:var(--warn);font-size:.8rem;">⏳ Se procesează PDF...</span>`
+            : isReviewRequested
+            ? `<span style="color:#ffd580;font-size:.8rem;">🔄 În revizuire</span>`
+            : isRefused
+            ? `<span style="color:#ffaaaa;font-size:.8rem;">⛔ Finalizare fără succes</span>`
+            : isCancelled
+            ? `<span style="color:#aaaaaa;font-size:.8rem;">🚫 Flux anulat</span>`
             : `<span style="color:var(--muted);font-size:.8rem;">Nesemnat complet</span>`;
           return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:12px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
@@ -1178,6 +1181,15 @@ async function signFromFluxuri(flowId) {
         _fluxDebounce = setTimeout(() => loadMyFlows(1), 350);
       }
 
+      function hardResetFluxSearch() {
+        const inp = $("fluxSearch");
+        if (!inp) return;
+        inp.value = "";
+        inp.setAttribute("value", "");
+        inp.defaultValue = "";
+        inp._userTyped = false;
+      }
+
       // filterFluxuri pastrat pentru compatibilitate dar nu mai face filtrare locala
       function filterFluxuri(q) { debounceLoadFlows(); }
 
@@ -1247,6 +1259,21 @@ async function signFromFluxuri(flowId) {
       }
 
             // Încarcă userii din DB pentru dropdown-ul de semnatari
+      // Anti-autocomplete: goliți forțat câmpul la încărcare / revenire în pagină
+      document.addEventListener("DOMContentLoaded", () => {
+        hardResetFluxSearch();
+        setTimeout(hardResetFluxSearch, 50);
+        setTimeout(hardResetFluxSearch, 250);
+      });
+      window.addEventListener("pageshow", () => {
+        hardResetFluxSearch();
+        setTimeout(hardResetFluxSearch, 50);
+      });
+      window.addEventListener("focus", () => {
+        const inp = $("fluxSearch");
+        if (inp && !inp._userTyped) hardResetFluxSearch();
+      });
+
       window._dbUsers = [];
       (async function loadDbUsers() {
         try {
