@@ -396,8 +396,8 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
         <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
       </div>`
     }).catch(e => console.warn(`reset-password email eșuat pentru ${target.email}:`, e.message));
-    // SEC-02: plain_password ELIMINAT din response
-    res.json({ ok: true, message: `Parolă nouă trimisă pe email la ${target.email}` });
+    // Returnăm parola doar în răspunsul imediat către admin, fără a o stoca în DB
+    res.json({ ok: true, email: target.email, tempPassword: newPwd, credentials_sent_to: target.email, message: `Parolă nouă trimisă pe email la ${target.email}` });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -450,9 +450,8 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
       </div>`
     });
     // Returnăm parola și emailul către admin — afișate în modal ca fallback
-    // dacă emailul nu ajunge la utilizator
-    // SEC-02: plain_password ELIMINAT din response — parola trimisă exclusiv pe email
-    res.json({ ok: true, email: u.email, message: `Credențiale trimise pe email la ${u.email}` });
+    // dacă emailul nu ajunge la utilizator. Nu o stocăm în DB.
+    res.json({ ok: true, email: u.email, tempPassword: newPwd, credentials_sent_to: u.email, message: `Credențiale trimise pe email la ${u.email}` });
   } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
