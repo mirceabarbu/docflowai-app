@@ -765,11 +765,9 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     const { token, reason } = req.body || {};
     if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
     if (String(reason).trim().length > 1000) return res.status(400).json({ error: 'reason_too_long', max: 1000 });
-    const authHeader = req.headers['authorization'] || '';
-    // Delegarea din pagina de signer folosește tokenul de semnatar; nu impunem sesiune.
-    let actor;
-    try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); }
-    catch(e) { return res.status(401).json({ error: 'token_invalid' }); }
+    // Review din pagina publică de signer trebuie să meargă doar pe baza tokenului de semnatar.
+    // Dacă există și sesiune validă (admin / semnatar conectat), o folosim doar pentru verificări suplimentare.
+    const actor = getOptionalActor(req);
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (data.completed || data.status === 'refused' || data.status === 'review_requested' || data.status === 'cancelled') {
@@ -778,6 +776,10 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => s.token === token);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
+    if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired', message: 'Link-ul de semnare a expirat (90 zile).' });
+    const isAdmin = actor?.role === 'admin';
+    const isCurrentSignerActor = !!actor && ((signers[idx].email || '').toLowerCase() === (actor.email || '').toLowerCase());
+    if (actor && !isAdmin && !isCurrentSignerActor) return res.status(403).json({ error: 'forbidden', message: 'Doar semnatarul curent sau un admin poate trimite spre revizuire.' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer' });
 
     const reviewerName = signers[idx].name || signers[idx].email || 'Semnatar';
@@ -939,28 +941,31 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
 router.post('/flows/:flowId/delegate', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    const actor = requireAuth(req, res); if (!actor) return;
+    const actor = getOptionalActor(req);
     const { flowId } = req.params;
     const { fromToken, toEmail, toName, reason } = req.body || {};
     if (!fromToken) return res.status(400).json({ error: 'fromToken_required' });
     if (!toEmail || !/^\S+@\S+\.\S+$/.test(toEmail)) return res.status(400).json({ error: 'toEmail_invalid' });
     if (!reason || !String(reason).trim()) return res.status(400).json({ error: 'reason_required' });
     if (String(reason).trim().length > 1000) return res.status(400).json({ error: 'reason_too_long', max: 1000 });
-    // FIX v3.2.2: nu poți delega către tine însuți
-    if (toEmail.trim().toLowerCase() === (actor.email || '').toLowerCase()) {
-      return res.status(400).json({ error: 'self_delegation_not_allowed', message: 'Nu poți delega semnătura către tine însuți.' });
-    }
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled', message: 'Fluxul a fost anulat.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => s.token === fromToken);  // FIX v3.3.2: linia lipsea — idx era undefined
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
-    const isAdmin = actor.role === 'admin';
-    const isCurrentSigner = (signers[idx].email || '').toLowerCase() === (actor.email || '').toLowerCase();
-    if (!isAdmin && !isCurrentSigner) return res.status(403).json({ error: 'forbidden', message: 'Doar semnatarul curent sau un admin poate delega.' });
-    if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer', message: 'Se poate delega doar semnatarul curent.' });
     if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired' });
+    const currentSignerEmail = (signers[idx].email || '').toLowerCase();
+    // FIX v3.3.3: delegarea trebuie să meargă și din link public (fără sesiune), pe baza fromToken.
+    // Dacă există actor logat, îl validăm; dacă nu există, permitem doar fluxul token-based.
+    const isAdmin = actor?.role === 'admin';
+    const isCurrentSigner = !!actor && currentSignerEmail === (actor.email || '').toLowerCase();
+    if (actor && !isAdmin && !isCurrentSigner) return res.status(403).json({ error: 'forbidden', message: 'Doar semnatarul curent sau un admin poate delega.' });
+    if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer', message: 'Se poate delega doar semnatarul curent.' });
+    // FIX v3.3.3: nu poți delega către tine însuți — comparăm cu actorul logat dacă există, altfel cu semnatarul curent din token.
+    if (toEmail.trim().toLowerCase() === ((actor?.email || currentSignerEmail).toLowerCase())) {
+      return res.status(400).json({ error: 'self_delegation_not_allowed', message: 'Nu poți delega semnătura către tine însuți.' });
+    }
 
     const originalName = signers[idx].name;
     const originalEmail = signers[idx].email;
