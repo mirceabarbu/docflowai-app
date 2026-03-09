@@ -15,11 +15,24 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
+import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 
 const router = Router();
+
+
+function getOptionalActor(req) {
+  const cookieToken = req.cookies?.[AUTH_COOKIE] || null;
+  if (cookieToken) {
+    try { return jwt.verify(cookieToken, JWT_SECRET); } catch (e) {}
+  }
+  const authHeader = req.headers['authorization'] || '';
+  if (authHeader.startsWith('Bearer ')) {
+    try { return jwt.verify(authHeader.slice(7), JWT_SECRET); } catch (e) {}
+  }
+  return null;
+}
 
 // ── R-03: Rate limitere pentru endpoint-urile de semnare ──────────────────
 // sign/refuse/delegate: max 20 req/min per IP — fluxul normal nu necesită mai mult
@@ -168,9 +181,7 @@ router.get('/flows/:flowId/signed-pdf', async (req, res) => {
     if (requireDb(res)) return;
     // R-05: acceptăm token și din header X-Signer-Token (alternativă la query string)
     const signerToken = req.query.token || req.headers['x-signer-token'] || null;
-    let actor = null;
-    const authHeader = req.headers['authorization'] || '';
-    if (authHeader.startsWith('Bearer ')) { try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); } catch(e) {} }
+    const actor = getOptionalActor(req);
     if (!actor && !signerToken) return res.status(403).json({ error: 'forbidden', message: 'Token de acces obligatoriu.' });
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
@@ -201,9 +212,7 @@ router.get('/flows/:flowId/pdf', async (req, res) => {
     if (requireDb(res)) return;
     // R-05: acceptăm token și din header X-Signer-Token (alternativă la query string)
     const signerToken = req.query.token || req.headers['x-signer-token'] || null;
-    let actor = null;
-    const authHeader = req.headers['authorization'] || '';
-    if (authHeader.startsWith('Bearer ')) { try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); } catch(e) {} }
+    const actor = getOptionalActor(req);
     if (!actor && !signerToken) return res.status(403).json({ error: 'forbidden', message: 'Token de acces obligatoriu.' });
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
@@ -255,21 +264,14 @@ const getFlowHandler = async (req, res) => {
     if (requireDb(res)) return;
     // R-05: acceptăm token și din header X-Signer-Token (alternativă la query string)
     const signerToken = req.query.token || req.headers['x-signer-token'] || null;
-    let actor = null;
-    const authHeader = req.headers['authorization'] || '';
-    if (authHeader.startsWith('Bearer ')) {
-      try { actor = jwt.verify(authHeader.slice(7), JWT_SECRET); }
-      catch(e) {
-        // Token expirat sau invalid — dacă nu avem signerToken, returnăm eroare corectă
-        // pentru ca notif-widget să poată face refresh automat
-        if (!signerToken) return res.status(401).json({ error: 'token_invalid_or_expired' });
-      }
-    }
+    const actor = getOptionalActor(req);
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (!actor && signerToken) {
       if (!(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
-    } else if (!actor) { return res.status(401).json({ error: 'token_invalid_or_expired' }); }
+    } else if (!actor) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
 
     // FIX: getUserMapForOrg — nu leak-uieste useri intre organizatii
     const orgId = actor?.orgId || data?.orgId || null;
