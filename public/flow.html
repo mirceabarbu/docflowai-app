@@ -246,11 +246,8 @@
   }
 
   async function apiFetchJson(url){
-    // Prefer JWT (initiator/admin). If forbidden and we have linkToken, retry with token param.
-    const hdrs = {};
-    if(jwt) hdrs["Authorization"] = "Bearer " + jwt;
-
-    let r = await _apiFetch(url, { headers: hdrs });
+    // Folosește cookie HttpOnly; dacă nu are acces, încearcă fallback cu token din link.
+    let r = await _apiFetch(url);
     if((r.status===401 || r.status===403) && linkToken){
       const u = new URL(url, location.origin);
       if(!u.searchParams.get("token")) u.searchParams.set("token", linkToken);
@@ -266,10 +263,7 @@
   }
 
   async function apiFetchBlob(url){
-    const hdrs = {};
-    if(jwt) hdrs["Authorization"] = "Bearer " + jwt;
-
-    let r = await _apiFetch(url, { headers: hdrs });
+    let r = await _apiFetch(url);
     if((r.status===401 || r.status===403) && linkToken){
       const u = new URL(url, location.origin);
       if(!u.searchParams.get("token")) u.searchParams.set("token", linkToken);
@@ -589,7 +583,6 @@
           btnAudit.textContent = "⏳ Se generează...";
           btnAudit.style.pointerEvents = "none";
           try {
-            // SEC-01: token din cookie HttpOnly — eliminat tok
             const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`);
             if (!r.ok) { const er = await r.json().catch(()=>({})); throw new Error(er.error || `HTTP ${r.status}`); }
             const blob = await r.blob();

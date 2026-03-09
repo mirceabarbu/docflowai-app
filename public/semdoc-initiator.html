@@ -145,17 +145,18 @@ th{ color: var(--sub) !important; }
 /* ===== End theme ===== */
 </style>
     <script>
-    // Auth guard — verifică sesiunea din cookie HttpOnly
+    // Auth guard — redirect to login if no valid JWT
     (function() {
-      fetch("/auth/me", { credentials: "include" })
+      fetch('/auth/me', { credentials: 'include' })
         .then(r => {
           if (!r.ok) {
-            localStorage.removeItem("docflow_token");
-            location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search);
+            localStorage.removeItem('docflow_user');
+            localStorage.removeItem('docflow_force_pwd');
+            location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
           }
         })
         .catch(() => {
-          location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search);
+          location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
         });
     })();
   </script>
@@ -1199,7 +1200,7 @@ async function signFromFluxuri(flowId) {
       window._dbUsers = [];
       (async function loadDbUsers() {
         try {
-          const r = await _apiFetch("/users");
+          const r = await _apiFetch('/users');
           if (r.ok) {
             window._dbUsers = await r.json();
             // Repopulează toate dropdown-urile respectând selecțiile existente

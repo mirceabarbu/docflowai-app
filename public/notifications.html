@@ -190,7 +190,14 @@
 <script>
 const $ = id => document.getElementById(id);
 // SEC-01: token din cookie HttpOnly — eliminat token
-fetch('/auth/me',{credentials:'include'}).then(r=>{ if(!r.ok) location.href='/login'; }).catch(()=>{ location.href='/login'; });
+fetch('/auth/me', { credentials: 'include' })
+  .then(r => {
+    if (!r.ok) {
+      localStorage.removeItem('docflow_user');
+      location.href = '/login?next=/notifications';
+    }
+  })
+  .catch(() => { location.href = '/login?next=/notifications'; });
 
 let allNotifs = [];
 let currentFilter = 'all';
@@ -204,11 +211,10 @@ let currentFilter = 'all';
 })();
 
 $('btnLogout').onclick = () => {
-  fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{
-    localStorage.removeItem('docflow_token');
-    localStorage.removeItem('docflow_user');
-    location.href = '/login';
-  });
+  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+  localStorage.removeItem('docflow_token');
+  localStorage.removeItem('docflow_user');
+  location.href = '/login';
 };
 
 // Filter buttons
@@ -333,9 +339,7 @@ function renderList() {
         if (n.type === 'YOUR_TURN') {
           // Fetch token de semnare si redirectioneaza direct la pagina de semnare
           try {
-            const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(n.flow_id)}`, {
-              
-            });
+            const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(n.flow_id)}`);
             if (r.ok) {
               const d = await r.json();
               location.href = `/semdoc-signer.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
@@ -389,7 +393,6 @@ function connectWS() {
   const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    ws.send(JSON.stringify({ type: 'auth', token }));
     setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 25000);
   };
   ws.onmessage = (ev) => {

@@ -263,8 +263,20 @@
 const $ = id => document.getElementById(id);
 // SEC-01: token din cookie HttpOnly — eliminat token
 const me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
-fetch('/auth/me',{credentials:'include'}).then(r=>{ if(!r.ok) location.href='/login?next=/templates'; }).catch(()=>{ location.href='/login?next=/templates'; });
-function logout() { fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{ localStorage.removeItem('docflow_token'); localStorage.removeItem('docflow_user'); location.href = '/login'; }); }
+fetch('/auth/me', { credentials: 'include' })
+  .then(r => {
+    if (!r.ok) {
+      localStorage.removeItem('docflow_user');
+      location.href = '/login?next=/templates';
+    }
+  })
+  .catch(() => { location.href = '/login?next=/templates'; });
+function logout() {
+  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+  localStorage.removeItem('docflow_token');
+  localStorage.removeItem('docflow_user');
+  location.href = '/login';
+}
 
 // Populate userBar with name + admin link + logout
 (function() {
@@ -499,7 +511,7 @@ let allTemplates = [];
 
 async function loadTemplates() {
   try {
-    const r = await _apiFetch('/api/templates',{headers:{// SEC-01: Authorization Bearer eliminat — cookie automaten}});
+    const r = await _apiFetch('/api/templates');
     if (r.status===401){location.href='/login';return;}
     allTemplates = await r.json();
     renderTemplates();
@@ -627,7 +639,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
 // Încarcă utilizatori pentru dropdown-uri
 (async function loadUsers() {
   try {
-    const r = await _apiFetch('/users', {headers:{// SEC-01: Authorization Bearer eliminat — cookie automaten}});
+    const r = await _apiFetch('/users');
     if (!r.ok) { console.warn('fetch /users failed:', r.status); return; }
     window._tmplUsers = await r.json();
 

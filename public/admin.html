@@ -580,10 +580,17 @@ const $=id=>document.getElementById(id);
 // SEC-01: token din cookie HttpOnly — nu mai citim din localStorage
 // Citim doar datele UI non-sensibile din localStorage
 const me=JSON.parse(localStorage.getItem("docflow_user")||"{}");
-// Nu redirecționa dacă token există — lasă serverul să verifice rolul
-if(!token){location.href="/login?next=/admin";}
 const hdrEl=$("hdrUser");
 if(hdrEl) hdrEl.textContent=me.nume||me.email||"—";
+fetch('/auth/me', { credentials: 'include' })
+  .then(r => {
+    if (!r.ok) {
+      localStorage.removeItem('docflow_user');
+      localStorage.removeItem('docflow_force_pwd');
+      location.href = '/login?next=/admin';
+    }
+  })
+  .catch(() => { location.href = '/login?next=/admin'; });
 function logout(){
   // SEC-01: invalidăm cookie-ul pe server, curățăm localStorage
   fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
