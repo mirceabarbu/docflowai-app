@@ -928,9 +928,8 @@ function showPwdModal(d) {
   } else {
     $('pwdModalDestRow').style.display = 'none';
   }
-  // SEC-02: parola trimisă pe email — nu se mai afișează în UI
-  // SEC-02: parola trimisă pe email — nu se mai afișează în UI
-  $('pwdModalPwd').textContent = '(trimis pe email)';
+  const shownPwd = d.tempPassword || d.temporaryPassword || d.password || '';
+  $('pwdModalPwd').textContent = shownPwd || '(trimis pe email)';
   // Butonul "Trimite pe email" — ascuns dacă tocmai am trimis
   $('btnPwdModalSend').style.display = isSend ? 'none' : '';
   // GWS status
@@ -1037,10 +1036,17 @@ async function genPwd(){
   const r=await _apiFetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
   const d=await r.json();
   if(r.ok){
-    // SEC-02: parola resetată e trimisă pe email — nu se mai afișează în UI
-    $("ePwd").value="";
+    $("ePwd").value = d.tempPassword || d.temporaryPassword || "";
     $("eMsg").className="msg ok";
     $("eMsg").textContent = d.message || "✅ Parolă nouă generată și trimisă pe emailul utilizatorului.";
+    window._lastCreatedId = editU.id;
+    window._lastCreatedEmail = d.email || editU.email;
+    showPwdModal({
+      email: d.email || editU.email,
+      tempPassword: d.tempPassword || d.temporaryPassword || '',
+      credentials_sent_to: d.credentials_sent_to || d.email || editU.email,
+      _isSend: true
+    });
   }
 }
 
@@ -1081,9 +1087,10 @@ async function sendCreds(id, btn){
       window._lastCreatedId    = id;
       window._lastCreatedEmail = d.email;
       showPwdModal({
-        email:   d.email,
-        _pwdSentByEmail: true,  // SEC-02: parola trimisă pe email
-        _isSend: true,          // flag pentru titlu diferit
+        email: d.email,
+        tempPassword: d.tempPassword || d.temporaryPassword || '',
+        credentials_sent_to: d.credentials_sent_to || d.email,
+        _isSend: true
       });
     }else{
       const m = { user_not_found:"Utilizatorul nu a fost găsit." };
