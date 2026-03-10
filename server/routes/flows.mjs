@@ -18,9 +18,6 @@ import jwt from 'jsonwebtoken';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
-import { getFlowDisplayState, isFlowSuccessfullyCompleted } from '../services/storageService.mjs';
-import { escapeLike } from '../services/searchService.mjs';
-import { logger } from '../lib/logger.mjs';
 
 const router = Router();
 
@@ -182,16 +179,13 @@ router.post('/api/flows', createFlow);
 router.get('/flows/:flowId/signed-pdf', async (req, res) => {
   try {
     if (requireDb(res)) return;
+    // R-05: acceptăm token și din header X-Signer-Token (alternativă la query string)
     const signerToken = req.query.token || req.headers['x-signer-token'] || null;
     const actor = getOptionalActor(req);
     if (!actor && !signerToken) return res.status(403).json({ error: 'forbidden', message: 'Token de acces obligatoriu.' });
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
-    const state = getFlowDisplayState(data);
-    if (!state.canDownloadFinalPdf) {
-      return res.status(409).json({ error: 'final_pdf_not_available', message: 'PDF-ul final poate fi descărcat doar după finalizarea cu succes a fluxului.' });
-    }
     const safeName = (data.docName || 'document').replace(/[^\w\-]+/g, '_');
     const b64 = data.signedPdfB64;
     if (!b64 || typeof b64 !== 'string') {
@@ -209,7 +203,7 @@ router.get('/flows/:flowId/signed-pdf', async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
     return res.status(200).send(Buffer.from(raw, 'base64'));
-  } catch(e) { logger.error('signed-pdf error', { route: '/flows/:flowId/signed-pdf', error: e.message }); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── GET /flows/:flowId/pdf ─────────────────────────────────────────────────
@@ -617,7 +611,7 @@ router.get('/my-flows', async (req, res) => {
     const search = (req.query.search || '').trim().toLowerCase();
 
     // FIX v3.2.2: escape caractere speciale LIKE pentru a preveni pattern injection
-    const escapedSearch = escapeLike(search);
+    const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
 
     // FIX: filtru org_id strict — fara "OR $2 = 0"
     let baseWhere, params;
@@ -658,20 +652,21 @@ router.get('/my-flows', async (req, res) => {
 
     // FIX: getUserMapForOrg — fara leak intre organizatii
     const userMap = await getUserMapForOrg(orgId);
-    const myFlows = rows.map(r => r.data).filter(Boolean).map(d => {
-      const state = getFlowDisplayState(d);
-      return {
-        flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
-        createdAt: d.createdAt, updatedAt: d.updatedAt,
-        status: d.status || 'active',
-        urgent: !!(d.urgent),
-        signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refuseReason: s.refuseReason }; }),
-        hasSignedPdf: state.hasFinalPdf,
-        canDownloadSignedPdf: state.canDownloadFinalPdf,
-        processingSignedPdf: state.isProcessingFinalPdf,
-        allSigned: !!isFlowSuccessfullyCompleted(d),
-      };
-    });
+    const myFlows = rows.map(r => r.data).filter(Boolean).map(d => ({
+      flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
+      createdAt: d.createdAt, updatedAt: d.updatedAt,
+      status: d.status || 'active',
+      urgent: !!(d.urgent),
+      signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refuseReason: s.refuseReason }; }),
+      hasSignedPdf: !!(
+        d.signedPdfB64
+        || d._signedPdfB64Present
+        || d.completed
+        || (String(d.status || '').toLowerCase() === 'completed')
+        || (d.storage === 'drive' && (d.driveFileLinkFinal || d.driveFileIdFinal))
+      ),
+      allSigned: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
+    }));
     res.json({ flows: myFlows, total, page, limit, pages });
   } catch(e) { console.error('my-flows error:', e); res.status(500).json({ error: 'server_error' }); }
 });
@@ -685,14 +680,13 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
   if (!actor) actor = requireAuth(req, res);
   if (!actor) return;
   try {
-    const d = await getFlowData(req.params.flowId);
+    const { rows } = await pool.query('SELECT data FROM flows WHERE id=$1', [req.params.flowId]);
+    const d = rows[0]?.data;
     if (!d) return res.status(404).json({ error: 'not_found' });
     const email = actor.email.toLowerCase();
     const isInit = (d.initEmail || '').toLowerCase() === email;
     const isSigner = (d.signers || []).some(s => (s.email || '').toLowerCase() === email);
     if (!isInit && !isSigner) return res.status(403).json({ error: 'forbidden' });
-    const state = getFlowDisplayState(d);
-    if (!state.canDownloadFinalPdf) return res.status(409).json({ error: 'final_pdf_not_available' });
     if (!d.signedPdfB64) {
       if (d.storage === 'drive' && d.driveFileIdFinal) {
         try {
@@ -708,7 +702,7 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
     const safeName = (d.docName || 'document').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
     res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
     res.send(buf);
-  } catch(e) { logger.error('my-flows download error', { route: '/my-flows/:flowId/download', error: e.message }); res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/reinitiate ─────────────────────────────────────────
