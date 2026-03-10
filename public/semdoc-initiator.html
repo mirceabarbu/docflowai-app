@@ -336,10 +336,10 @@ th{ color: var(--sub) !important; }
             <input type="password" tabindex="-1" autocomplete="new-password" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
             <input
               id="fluxSearch"
-              name="docflow_flux_search_q"
+              name="docflow_flux_search_q_disabled"
               type="search"
               placeholder="🔍 Caută după nume document, inițiator, ID flux..."
-              autocomplete="off"
+              autocomplete="new-password"
               autocapitalize="off"
               autocorrect="off"
               spellcheck="false"
@@ -1190,31 +1190,19 @@ async function signFromFluxuri(flowId) {
         inp._userTyped = false;
       }
 
+      function initFreshFluxSearch() {
+        if (window.DocFlowMyFlows && window.DocFlowMyFlows.ensureFreshSearchInput) {
+          window.DocFlowMyFlows.ensureFreshSearchInput('fluxSearch', debounceLoadFlows);
+        }
+        hardResetFluxSearch();
+      }
+
       // filterFluxuri pastrat pentru compatibilitate dar nu mai face filtrare locala
       function filterFluxuri(q) { debounceLoadFlows(); }
 
-      function normalizeFlowSearch(v) {
-        return String(v || "")
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[̀-ͯ]/g, "")
-          .trim();
-      }
+      function normalizeFlowSearch(v) { return window.DocFlowMyFlows ? window.DocFlowMyFlows.normalize(v) : String(v||'').toLowerCase().trim(); }
 
-      function flowMatchesSearch(flow, term) {
-        const q = normalizeFlowSearch(term);
-        if (!q) return true;
-        const hay = [
-          flow.flowId,
-          flow.docName,
-          flow.initName,
-          flow.initEmail,
-          flow.institutie,
-          flow.compartiment,
-          ...(flow.signers || []).flatMap(s => [s.name, s.email, s.rol, s.functie, s.compartiment])
-        ].map(normalizeFlowSearch).filter(Boolean);
-        return hay.some(v => v.includes(q));
-      }
+      function flowMatchesSearch(flow, term) { return window.DocFlowMyFlows ? window.DocFlowMyFlows.flowMatchesSearch(flow, term) : true; }
 
       async function loadMyFlows(page) {
         page = Math.max(1, parseInt(page) || 1);
@@ -1261,12 +1249,12 @@ async function signFromFluxuri(flowId) {
             // Încarcă userii din DB pentru dropdown-ul de semnatari
       // Anti-autocomplete: goliți forțat câmpul la încărcare / revenire în pagină
       document.addEventListener("DOMContentLoaded", () => {
-        hardResetFluxSearch();
+        initFreshFluxSearch();
         setTimeout(hardResetFluxSearch, 50);
         setTimeout(hardResetFluxSearch, 250);
       });
       window.addEventListener("pageshow", () => {
-        hardResetFluxSearch();
+        initFreshFluxSearch();
         setTimeout(hardResetFluxSearch, 50);
       });
       window.addEventListener("focus", () => {
@@ -1489,7 +1477,7 @@ async function signFromFluxuri(flowId) {
         bar.innerHTML = (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : "") +
           (u.role === "admin" ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
           `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
-          `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');localStorage.removeItem('docflow_force_pwd');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+          `<button onclick="(window.DocFlowAuth?window.DocFlowAuth.logout():fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');localStorage.removeItem('docflow_force_pwd');location.href='/login';}))" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
         // Banner parolă temporară
         if (localStorage.getItem("docflow_force_pwd") === "1") {
           const banner = document.getElementById("forcePwdBanner");

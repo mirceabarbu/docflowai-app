@@ -9,6 +9,8 @@
 import { Router } from 'express';
 import { requireAuth, requireAdmin, hashPassword, generatePassword, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData } from '../db/index.mjs';
+import { getFlowPdfBytesMap, getLegacyFlowBytes } from '../services/storageService.mjs';
+import { logger } from '../lib/logger.mjs';
 import { validatePhone } from '../whatsapp.mjs';
 import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
 import { archiveFlow, verifyDrive } from '../drive.mjs';
@@ -29,28 +31,6 @@ function getAppUrl(req) {
   const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
   const host  = req.get('x-forwarded-host') || req.get('host') || 'app.docflowai.ro';
   return `${proto}://${host}`;
-}
-
-function approxB64Bytes(v) {
-  if (!v || typeof v !== 'string') return 0;
-  const b64 = v.includes(',') ? v.split(',', 2)[1] : v;
-  return Math.round((b64 || '').length * 0.75);
-}
-
-async function getFlowPdfBytesMap(flowIds = []) {
-  if (!flowIds.length) return new Map();
-  const { rows } = await pool.query(
-    `SELECT flow_id, COALESCE(SUM(CEIL(LENGTH(data) * 0.75)), 0)::bigint AS bytes
-       FROM flows_pdfs
-      WHERE flow_id = ANY($1)
-      GROUP BY flow_id`,
-    [flowIds]
-  );
-  return new Map(rows.map(r => [r.flow_id, Number(r.bytes) || 0]));
-}
-
-function getLegacyFlowBytes(d = {}) {
-  return approxB64Bytes(d.pdfB64) + approxB64Bytes(d.signedPdfB64) + approxB64Bytes(d.originalPdfB64);
 }
 
 // ── Users ──────────────────────────────────────────────────────────────────
