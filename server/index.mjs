@@ -1,7 +1,7 @@
 /**
- * DocFlowAI v3.3.4 — Main entry point (orchestrator)
+ * DocFlowAI v3.3.5 — Main entry point (orchestrator)
  *
- * CHANGES v3.3.4:
+ * CHANGES v3.3.5:
  *  SEC-02: ADMIN_SECRET rate limiting + audit log (in auth.mjs)
  *  SEC-03: PBKDF2 600k + lazy re-hash (in auth.mjs + routes/auth.mjs)
  *  PERF-01: 3 indexuri JSONB noi (in db/index.mjs migration 021)
@@ -25,6 +25,7 @@ import jwt from 'jsonwebtoken';
 import { WebSocketServer } from 'ws';
 import { pushToUser } from './push.mjs';
 import { logger } from './middleware/logger.mjs';
+import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
@@ -110,6 +111,7 @@ app.use((req, res, next) => {
       requestId: req.requestId,
       ip: req.ip,
     }, 'request');
+    incCounter('http_requests_total', { method: req.method, status_class: `${Math.floor(res.statusCode / 100)}xx` });
   });
   next();
 });
@@ -134,7 +136,7 @@ app.get('/health', (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.4',
+    version: '3.3.5',
     ts: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     memory: {
@@ -156,7 +158,7 @@ app.get('/admin/health', async (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.4',
+    version: '3.3.5',
     dbReady: !!DB_READY,
     dbLatencyMs,
     dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null,
@@ -168,6 +170,17 @@ app.get('/admin/health', async (req, res) => {
     },
     ts: new Date().toISOString(),
   });
+});
+
+// ── METRICS-01: /metrics — Prometheus scrape endpoint ────────────────────
+// Implicit: admin-only. Setați ENV METRICS_PUBLIC=1 pentru scrape extern.
+app.get('/metrics', (req, res) => {
+  const isPublic = process.env.METRICS_PUBLIC === '1';
+  if (!isPublic && requireAdmin(req, res)) return;
+  // Actualizăm gauge-ul WS clients înainte de render
+  setGauge('ws_clients', wsClients.size);
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  res.send(renderMetrics());
 });
 
 // ── Template API ──────────────────────────────────────────────────────────
@@ -673,7 +686,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT }, 'DocFlowAI v3.3.4 server pornit');
+  logger.info({ port: PORT }, 'DocFlowAI v3.3.5 server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry();
 });
