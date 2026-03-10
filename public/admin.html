@@ -1217,23 +1217,23 @@ async function loadFlowsList(forceReload = true, page) {
             ? '<span style="color:#aaaaaa;font-size:.75rem;">🚫 anulat</span>'
             : '<span style="color:#b39dff;font-size:.75rem;">✍ activ</span>';
           return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
-            <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.flowId}">${f.urgent ? '<span style="color:#ff8888;font-weight:700;margin-right:4px;">🚨</span>' : ''}${f.docName||"—"}</td>
-            <td style="padding:7px 8px;color:var(--muted);">${f.initEmail||"—"}</td>
+            <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(f.flowId||'')}"> ${f.urgent ? '<span style="color:#ff8888;font-weight:700;margin-right:4px;">🚨</span>' : ''}${escH(f.docName||"—")}</td>
+            <td style="padding:7px 8px;color:var(--muted);">${escH(f.initEmail||"—")}</td>
             <td style="padding:7px 8px;">${statusBadge}</td>
             <td style="padding:7px 8px;">
-              ${current ? `<span style="color:${expired?'#ffaaaa':'var(--sub)'};">${current.name||current.email||"—"}</span>
+              ${current ? `<span style="color:${expired?'#ffaaaa':'var(--sub)'};">${escH(current.name||current.email||"—")}</span>
               ${expired?'<span style="font-size:.72rem;color:#ffaaaa;margin-left:4px;">⚠ link expirat</span>':''}
               ${tokenAge!==null?`<span style="font-size:.7rem;color:var(--muted);margin-left:4px;">${tokenAge}z</span>`:''}` : '<span style="color:var(--muted);">—</span>'}
             </td>
             <td style="padding:7px 8px;color:var(--muted);">${f.createdAt?new Date(f.createdAt).toLocaleDateString("ro-RO"):"—"}</td>
             <td style="padding:7px 8px;">
-              <a href="/flow.html?flow=${f.flowId}" target="_blank" style="padding:3px 10px;font-size:.75rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-right:4px;" title="Vizualizează flux">🔍</a>
+              <a href="/flow.html?flow=${encodeURIComponent(f.flowId||'')}" target="_blank" style="padding:3px 10px;font-size:.75rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-right:4px;" title="Vizualizează flux">🔍</a>
               ${current&&!f.completed&&f.status!=="refused" ? `
                 <button onclick="resendNotif('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-right:4px;" title="Retrimite notificare">📨</button>
-                ${expired?`<button onclick="regenerateToken('${f.flowId}','${current.email}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;" title="Generează token nou">🔑</button>`:''}
+                ${expired?`<button onclick="regenerateToken('${escH(f.flowId||'')}','${escH(current.email||'')}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;" title="Generează token nou">🔑</button>`:''}
               ` : ''}
-              <button onclick="adminDeleteFlow('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:6px;color:#ffaaaa;cursor:pointer;" title="Șterge flux definitiv (ireversibil)">🗑</button>
-              <button onclick="downloadAudit('${f.flowId}','txt')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;" title="Export audit TXT">📋</button><button onclick="downloadAudit('${f.flowId}','pdf')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</button>
+              <button onclick="adminDeleteFlow('${escH(f.flowId||'')}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:6px;color:#ffaaaa;cursor:pointer;" title="Șterge flux definitiv (ireversibil)">🗑</button>
+              <button onclick="downloadAudit('${escH(f.flowId||'')}','txt')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;" title="Export audit TXT">📋</button><button onclick="downloadAudit('${escH(f.flowId||'')}','pdf')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</button>
             </td>
           </tr>`;
         }).join("")}
@@ -1442,8 +1442,8 @@ async function previewArchive() {
     summary.innerHTML = `<span style="color:#2dd4bf;">${escH(String(j.count||0))} fluxuri</span>${escH(filterLabel)} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${escH(String(j.totalMB||0))} MB</span> din baza de date`;
     list.innerHTML = (j.flows||[]).map(f =>
       `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
-        📄 ${f.docName} &nbsp;·&nbsp; ${f.status} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
-        ${f.institutie?`<span style="color:var(--muted);margin-left:6px;font-size:.75rem;">${f.institutie}${f.compartiment?" / "+f.compartiment:""}</span>`:""}
+        📄 ${escH(f.docName||'—')} &nbsp;·&nbsp; ${escH(f.status||'')} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
+        ${f.institutie?`<span style="color:var(--muted);margin-left:6px;font-size:.75rem;">${escH(f.institutie)}${f.compartiment?' / '+escH(f.compartiment):''}</span>`:""}
       </div>`
     ).join("") || "<div style='color:var(--muted)'>Niciun flux eligibil.</div>";
     preview.style.display = j.count > 0 ? "block" : "none";

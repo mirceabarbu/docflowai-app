@@ -1,7 +1,8 @@
 /**
- * DocFlowAI — Auth routes v3.3.3
+ * DocFlowAI — Auth routes v3.3.4
  * POST /auth/login, GET /auth/me, POST /auth/refresh, POST /auth/logout
- * SEC-01: JWT stocat în cookie HttpOnly — nu se mai returnează token în body
+ * SEC-01: JWT stocat în cookie HttpOnly
+ * SEC-03: Lazy re-hash PBKDF2 v1→v2 la login reușit
  */
 
 import { Router } from 'express';
@@ -12,6 +13,7 @@ import {
   setAuthCookie, clearAuthCookie,
 } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb } from '../db/index.mjs';
+import { logger } from '../middleware/logger.mjs';
 
 const router = Router();
 
@@ -36,8 +38,8 @@ router.post('/auth/login', async (req, res) => {
   if (requireDb(res)) return;
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email_and_password_required' });
-  // FIX v3.2.3: limită lungime parolă — previne DoS via pbkdf2Sync cu input mare
   if (password.length > 200) return res.status(400).json({ error: 'password_too_long', max: 200 });
+
   const rateCheck = await _checkLoginRate(req, email);
   if (rateCheck.blocked) {
     return res.status(429).json({
@@ -49,28 +51,51 @@ router.post('/auth/login', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM users WHERE email=$1', [email.trim().toLowerCase()]);
     const user = rows[0];
-    if (!user || !verifyPassword(password, user.password_hash)) {
+
+    // verifyPassword returnează { ok, needsRehash } în v3.3.4
+    const verification = user ? verifyPassword(password, user.password_hash) : { ok: false, needsRehash: false };
+
+    if (!user || !verification.ok) {
       await _recordLoginFail(req, email);
+      logger.warn({ email: email.toLowerCase(), ip: req.ip }, 'Login failed: credentiale invalide');
       return res.status(401).json({ error: 'invalid_credentials' });
     }
+
     await _clearLoginRate(req, email);
+
+    // SEC-03: lazy re-hash PBKDF2 v1→v2 (100k→600k iterații)
+    if (verification.needsRehash) {
+      try {
+        const newHash = hashPassword(password);
+        await pool.query(
+          "UPDATE users SET password_hash=$1, hash_algo='pbkdf2_v2' WHERE id=$2",
+          [newHash, user.id]
+        );
+        logger.info({ userId: user.id }, 'Lazy re-hash PBKDF2 v1->v2 efectuat cu succes');
+      } catch(rehashErr) {
+        logger.warn({ err: rehashErr, userId: user.id }, 'Lazy re-hash esuat (non-fatal)');
+      }
+    }
+
     const payload = {
       userId: user.id, email: user.email, role: user.role, orgId: user.org_id,
       nume: user.nume, functie: user.functie, institutie: user.institutie,
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
-
-    // SEC-01: JWT în cookie HttpOnly — nu în body
     setAuthCookie(res, token, jwtExpiresMs());
+
+    logger.info({ userId: user.id, email: user.email, role: user.role }, 'Login reusit');
 
     return res.json({
       ok: true,
       email: user.email, role: user.role, orgId: user.org_id,
       nume: user.nume, functie: user.functie, institutie: user.institutie,
       force_password_change: !!user.force_password_change,
-      // token ELIMINAT din response — stocat exclusiv în cookie HttpOnly
     });
-  } catch(e) { return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) {
+    logger.error({ err: e }, 'Login error');
+    return res.status(500).json({ error: 'server_error' });
+  }
 });
 
 // ── GET /auth/me ─────────────────────────────────────────────────────────────
@@ -87,10 +112,10 @@ router.get('/auth/me', async (req, res) => {
     if (!row && decoded.email) {
       const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id,force_password_change FROM users WHERE lower(email)=lower($1)', [decoded.email]);
       row = rows[0] || null;
-      if (row) console.warn(`[auth/me] User id=${decoded.userId} found by email=${decoded.email} (id=${row.id})`);
+      if (row) logger.warn({ userId: decoded.userId, email: decoded.email, dbId: row.id }, '[auth/me] User gasit prin email (id mismatch)');
     }
     if (!row) {
-      console.warn(`[auth/me] User email=${decoded.email} not in DB — returning JWT payload`);
+      logger.warn({ email: decoded.email }, '[auth/me] User negasit in DB - returnez JWT payload');
       return res.json({
         userId: decoded.userId, email: decoded.email, role: decoded.role,
         orgId: decoded.orgId, nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie
@@ -102,7 +127,7 @@ router.get('/auth/me', async (req, res) => {
       force_password_change: !!row.force_password_change,
     });
   } catch(e) {
-    console.warn('[auth/me] DB error — using JWT payload:', e.message);
+    logger.warn({ err: e }, '[auth/me] DB error - folosesc JWT payload');
     res.json(decoded);
   }
 });
@@ -175,7 +200,8 @@ router.post('/auth/change-password', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT password_hash FROM users WHERE id=$1', [actor.userId]);
     if (!rows[0]) return res.status(404).json({ error: 'user_not_found' });
-    if (!verifyPassword(current_password, rows[0].password_hash)) return res.status(401).json({ error: 'wrong_password', message: 'Parola curentă este incorectă.' });
+    const verif = verifyPassword(current_password, rows[0].password_hash);
+    if (!verif.ok) return res.status(401).json({ error: 'wrong_password', message: 'Parola curentă este incorectă.' });
     await pool.query('UPDATE users SET password_hash=$1, force_password_change=FALSE WHERE id=$2', [hashPassword(new_password), actor.userId]);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
@@ -341,7 +367,7 @@ router.get('/auth/verify-email/:token', async (req, res) => {
       `UPDATE users SET email_verified=TRUE, verification_token=NULL, verification_sent_at=NULL WHERE id=$1`,
       [user.id]
     );
-    console.log(`✅ R-06: Email verificat pentru ${user.email}`);
+    logger.info(`✅ R-06: Email verificat pentru ${user.email}`);
     return res.send(`
       <div style="font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center;background:#0f1731;color:#eaf0ff;padding:40px;border-radius:16px;">
         <h2 style="color:#2dd4bf;">✅ Email confirmat!</h2>
@@ -349,7 +375,7 @@ router.get('/auth/verify-email/:token', async (req, res) => {
         <a href="/login" style="display:inline-block;margin-top:20px;background:#7c5cff;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;">Mergi la login</a>
       </div>`);
   } catch(e) {
-    console.error('verify-email error:', e);
+    logger.error({ err: e }, 'verify-email error');
     return res.status(500).send('<h2>❌ Eroare internă.</h2>');
   }
 });

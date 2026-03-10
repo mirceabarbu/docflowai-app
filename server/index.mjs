@@ -1,9 +1,12 @@
 /**
- * DocFlowAI v3.3.3 — Main entry point (orchestrator)
- * FIX: notify — notif_email independent de notif_inapp
- * FIX: stampFooterOnPdf — latimea textului calculata corect cu font.widthOfTextAtSize
- * FIX: LOGIN_MAX/WINDOW/BLOCK exportate ca constante configurabile via ENV
- * FIX v3.2.2: helmet security headers, SIGNER_TOKEN_EXPIRY_DAYS din ENV
+ * DocFlowAI v3.3.4 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.3.4:
+ *  SEC-02: ADMIN_SECRET rate limiting + audit log (in auth.mjs)
+ *  SEC-03: PBKDF2 600k + lazy re-hash (in auth.mjs + routes/auth.mjs)
+ *  PERF-01: 3 indexuri JSONB noi (in db/index.mjs migration 021)
+ *  LOG-01: Logging structurat JSON via middleware/logger.mjs (inlocuieste console.log)
+ *  HEALTH: /health endpoint imbunatatit cu memory usage + DB latency
  */
 
 import express from 'express';
@@ -21,9 +24,10 @@ import { archiveFlow, verifyDrive } from './drive.mjs';
 import jwt from 'jsonwebtoken';
 import { WebSocketServer } from 'ws';
 import { pushToUser } from './push.mjs';
+import { logger } from './middleware/logger.mjs';
 
 let PDFLib = null;
-try { PDFLib = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available — flow stamp disabled:', e.message); }
+try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
 
 import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml } from './middleware/auth.mjs';
@@ -62,7 +66,7 @@ try {
     frameguard: { action: 'deny' },           // X-Frame-Options: DENY
   }));
 } catch(e) {
-  console.warn('⚠️  helmet not installed — adding manual security headers');
+  logger.warn('helmet not installed - adaug manual security headers');
 }
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -92,15 +96,26 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Request log ───────────────────────────────────────────────────────────
+// ── Request log structurat ────────────────────────────────────────────────
 app.use((req, res, next) => {
   const start = Date.now();
-  res.on('finish', () => { console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now()-start}ms rid=${req.requestId}`); });
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    const lvl = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+    logger[lvl]({
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      ms,
+      requestId: req.requestId,
+      ip: req.ip,
+    }, 'request');
+  });
   next();
 });
 
-process.on('unhandledRejection', (err) => console.error('❌ unhandledRejection:', err));
-process.on('uncaughtException', (err) => console.error('❌ uncaughtException:', err));
+process.on('unhandledRejection', (err) => logger.error({ err }, 'unhandledRejection'));
+process.on('uncaughtException',  (err) => logger.error({ err }, 'uncaughtException'));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -115,12 +130,44 @@ app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'template
 
 // ── Health public ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'DocFlowAI', version: '3.3.3', ts: new Date().toISOString() });
+  const mem = process.memoryUsage();
+  res.json({
+    ok: true,
+    service: 'DocFlowAI',
+    version: '3.3.4',
+    ts: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    memory: {
+      rss: Math.round(mem.rss / 1024 / 1024) + 'MB',
+      heapUsed: Math.round(mem.heapUsed / 1024 / 1024) + 'MB',
+      heapTotal: Math.round(mem.heapTotal / 1024 / 1024) + 'MB',
+    },
+  });
 });
 
-app.get('/admin/health', (req, res) => {
+app.get('/admin/health', async (req, res) => {
   if (requireAdmin(req, res)) return;
-  res.json({ ok: true, service: 'DocFlowAI', version: '3.3.3', dbReady: !!DB_READY, dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null, ts: new Date().toISOString() });
+  let dbLatencyMs = null;
+  if (pool && DB_READY) {
+    const t0 = Date.now();
+    try { await pool.query('SELECT 1'); dbLatencyMs = Date.now() - t0; } catch(_) {}
+  }
+  const mem = process.memoryUsage();
+  res.json({
+    ok: true,
+    service: 'DocFlowAI',
+    version: '3.3.4',
+    dbReady: !!DB_READY,
+    dbLatencyMs,
+    dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null,
+    wsClients: wsClients.size,
+    uptime: Math.floor(process.uptime()),
+    memory: {
+      rss: Math.round(mem.rss / 1024 / 1024) + 'MB',
+      heapUsed: Math.round(mem.heapUsed / 1024 / 1024) + 'MB',
+    },
+    ts: new Date().toISOString(),
+  });
 });
 
 // ── Template API ──────────────────────────────────────────────────────────
@@ -267,7 +314,7 @@ async function stampFooterOnPdf(pdfB64, flowData) {
     // ancore: useObjectStreams:false pastreaza structura AcroForm intacta pentru aplicatiile de semnare calificata
     const isAncore = flowData.flowType === 'ancore';
     return Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
-  } catch(e) { console.warn('stampFooterOnPdf error:', e.message); return pdfB64; }
+  } catch(e) { logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)'); return pdfB64; }
 }
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
@@ -295,7 +342,7 @@ async function checkLoginRate(req, email) {
     const { blocked_until } = rows[0];
     if (blocked_until && new Date(blocked_until) > new Date()) { const remainSec = Math.ceil((new Date(blocked_until) - Date.now()) / 1000); return { blocked: true, remainSec }; }
     return { blocked: false };
-  } catch(e) { console.error('checkLoginRate error:', e.message); return { blocked: false }; }
+  } catch(e) { logger.error({ err: e }, 'checkLoginRate error'); return { blocked: false }; }
 }
 async function recordLoginFail(req, email) {
   if (!pool || !DB_READY) return;
@@ -309,7 +356,7 @@ async function recordLoginFail(req, email) {
             blocked_until = CASE WHEN (CASE WHEN login_blocks.first_at < NOW() - ($2 || ' seconds')::INTERVAL THEN 1 ELSE login_blocks.count + 1 END) >= $3 THEN NOW() + ($4 || ' seconds')::INTERVAL ELSE NULL END,
             updated_at = NOW()
     `, [key, LOGIN_WINDOW, LOGIN_MAX, LOGIN_BLOCK]);
-  } catch(e) { console.error('recordLoginFail error:', e.message); }
+  } catch(e) { logger.error({ err: e }, 'recordLoginFail error'); }
 }
 async function clearLoginRate(req, email) {
   if (!pool || !DB_READY) return;
@@ -319,7 +366,7 @@ const _loginBlocksCleanupInterval = setInterval(async () => {
   if (!pool || !DB_READY) return;
   try {
     const { rowCount } = await pool.query(`DELETE FROM login_blocks WHERE (blocked_until IS NULL OR blocked_until < NOW()) AND first_at < NOW() - ($1 || ' seconds')::INTERVAL`, [LOGIN_WINDOW * 2]);
-    if (rowCount > 0) console.log(`🧹 login_blocks: ${rowCount} intrări expirate șterse.`);
+    if (rowCount > 0) logger.info({ rowCount }, 'login_blocks: intrari expirate sterse');
   } catch(e) {}
 }, 30 * 60 * 1000);
 
@@ -363,11 +410,11 @@ async function _runReminderJob() {
       });
       reminded++;
     }
-    if (reminded > 0) console.log(`⏰ Reminder job: ${reminded} semnatari notificați.`);
-  } catch(e) { console.error('Reminder job error:', e.message); }
+    if (reminded > 0) logger.info({ reminded }, 'Reminder job: semnatari notificati');
+  } catch(e) { logger.error({ err: e }, 'Reminder job error'); }
 }
 const _reminderInterval = setInterval(_runReminderJob, REMINDER_INTERVAL_MS);
-console.log(`⏰ Reminder job pornit: interval ${process.env.REMINDER_INTERVAL_HOURS || 24}h, inactivitate ${process.env.REMINDER_INACTIVITY_DAYS || 3}z.`);
+logger.info({ intervalH: process.env.REMINDER_INTERVAL_HOURS || 24, inactivitateZ: process.env.REMINDER_INACTIVITY_DAYS || 3 }, 'Reminder job pornit');
 
 // ── Cleanup notificari vechi (max 500/user) ────────────────────────────────
 // Rulat o data la 6 ore pentru a preveni cresterea nelimitata
@@ -384,8 +431,8 @@ const _notifsCleanupInterval = setInterval(async () => {
         WHERE rn > 500
       )
     `);
-    if (rowCount > 0) console.log(`🧹 notifications: ${rowCount} notificări vechi șterse (limita 500/user).`);
-  } catch(e) { console.error('Cleanup notificări error:', e.message); }
+    if (rowCount > 0) logger.info({ rowCount }, 'notifications: notificari vechi sterse (limita 500/user)');
+  } catch(e) { logger.error({ err: e }, 'Cleanup notificari error'); }
 }, 6 * 60 * 60 * 1000);
 
 // ── Notify helper ──────────────────────────────────────────────────────────
@@ -507,7 +554,7 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
     try {
       const fd = await getFlowData(flowId);
       if (fd) { fd.events = [...(Array.isArray(fd.events) ? fd.events : []), ...eventsToAdd]; await saveFlow(flowId, fd); }
-    } catch(e) { console.error('notify event save error:', e.message); }
+    } catch(e) { logger.error({ err: e, flowId }, 'notify event save error'); }
   }
 }
 
@@ -565,10 +612,10 @@ wss.on('connection', (ws, req) => {
           .then(r => ws.send(JSON.stringify({ event: 'unread_count', count: parseInt(r.rows[0].count) })))
           .catch(() => {});
       }
-      console.log(`🔌 WS auto-auth (cookie): ${clientEmail}`);
+      logger.info({ email: clientEmail }, 'WS auto-auth (cookie)');
     } catch(e) {
       // Cookie invalid/expirat — continuăm, clientul poate trimite auth manual
-      console.warn(`🔌 WS cookie invalid: ${e.message}`);
+      logger.warn({ err: e }, 'WS cookie invalid');
     }
   }
 
@@ -599,34 +646,34 @@ wss.on('connection', (ws, req) => {
               .then(r => ws.send(JSON.stringify({ event: 'unread_count', count: parseInt(r.rows[0].count) })))
               .catch(() => {});
           }
-          console.log(`🔌 WS auth (token): ${clientEmail}`);
+          logger.info({ email: clientEmail }, 'WS auth (token)');
         } catch(e) { ws.send(JSON.stringify({ event: 'auth_error', message: 'invalid_token' })); }
       }
       if (msg.type === 'ping') ws.send(JSON.stringify({ event: 'pong' }));
     } catch(e) {}
   });
-  ws.on('close', () => { clearTimeout(authTimeout); if (clientEmail) { wsUnregister(clientEmail, ws); console.log(`🔌 WS closed: ${clientEmail}`); } });
-  ws.on('error', (e) => console.error('WS error:', e.message));
+  ws.on('close', () => { clearTimeout(authTimeout); if (clientEmail) { wsUnregister(clientEmail, ws); logger.info({ email: clientEmail }, 'WS connection closed'); } });
+  ws.on('error', (e) => logger.error({ err: e }, 'WS error'));
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────
 function shutdown(signal) {
-  console.log(`🧯 ${signal} received.`);
+  logger.info({ signal }, 'Shutdown signal received');
   // FIX v3.2.3: oprim toate intervalele la shutdown
   clearInterval(_loginBlocksCleanupInterval);
   clearInterval(_notifsCleanupInterval);
   clearInterval(_reminderInterval);
   clearInterval(wsHeartbeat);
-  httpServer.close(() => { console.log('✅ Server closed.'); process.exit(0); });
+  httpServer.close(() => { logger.info('Server closed.'); process.exit(0); });
   setTimeout(() => process.exit(0), 10_000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 const PORT = process.env.PORT;
-if (!PORT) { console.error('❌ PORT missing.'); process.exit(1); }
+if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`🚀 DocFlowAI v3.3.3 server on port ${PORT}`);
-  console.log(`🔌 WebSocket ready at ws://0.0.0.0:${PORT}/ws`);
+  logger.info({ port: PORT }, 'DocFlowAI v3.3.4 server pornit');
+  logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry();
 });

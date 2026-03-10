@@ -14,9 +14,10 @@ import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
 import { archiveFlow, verifyDrive } from '../drive.mjs';
 import { verifyWhatsApp, sendWaSignRequest } from '../whatsapp.mjs';
 import { gwsIsConfigured, findAvailableEmail, provisionGwsUser, verifyGws, buildLocalPart } from '../gws.mjs';
+import { logger } from '../middleware/logger.mjs';
 
 let PDFLibAdmin = null;
-try { PDFLibAdmin = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available for audit PDF export'); }
+try { PDFLibAdmin = await import('pdf-lib'); } catch(e) { logger.warn('⚠️ pdf-lib not available for audit PDF export'); }
 
 let _wsClientsSize = () => 0;
 export function injectWsSize(fn) { _wsClientsSize = fn; }
@@ -104,7 +105,7 @@ router.get('/admin/users', async (req, res) => {
     }
     const { rows } = await pool.query(query, params);
     res.json(rows);
-  } catch(e) { console.error('GET /admin/users error:', e); res.status(500).json({ error: 'server_error', detail: e.message }); }
+  } catch(e) { logger.error({ err: e }, 'GET /admin/users error:'); res.status(500).json({ error: 'server_error', detail: e.message }); }
 });
 
 router.post('/admin/users', async (req, res) => {
@@ -210,7 +211,7 @@ router.post('/admin/users', async (req, res) => {
         user.gws_email  = gwsEmail;
         user.gws_status = 'active';
         gwsResult = { ok: true, gws_email: gwsEmail };
-        console.log(`✅ GWS: cont creat ${gwsEmail} pentru user ${user.id}`);
+        logger.info(`✅ GWS: cont creat ${gwsEmail} pentru user ${user.id}`);
       } catch(gwsErr) {
         const errMsg = gwsErr.message || String(gwsErr);
         await pool.query(
@@ -219,7 +220,7 @@ router.post('/admin/users', async (req, res) => {
         );
         user.gws_status = 'failed';
         gwsResult = { ok: false, error: errMsg };
-        console.error(`❌ GWS provision eșuat pentru user ${user.id}:`, errMsg);
+        logger.error({ userId: user.id, errMsg }, 'GWS provision esuat');
       }
     } else if (create_gws && !gwsIsConfigured()) {
       gwsResult = { ok: false, error: 'gws_not_configured' };
@@ -246,7 +247,7 @@ router.post('/admin/users', async (req, res) => {
   <p style="font-size:.82rem;color:#5a6a8a;">Sau copiază: <code style="color:#9db0ff;">${verifyLink}</code></p>
   <p style="font-size:.82rem;color:#5a6a8a;">Link expiră în 72h.</p>
 </div>`,
-      }).catch(e => console.warn(`R-06: verificare email eșuat pentru ${credsDest}:`, e.message));
+      }).catch(e => logger.warn({ err: e, credsDest }, 'R-06: verificare email esuat'));
     }
 
     res.status(201).json({
@@ -317,7 +318,7 @@ router.post('/admin/users/:id/gws-provision', async (req, res) => {
       `UPDATE users SET gws_email=$1, gws_status='active', gws_provisioned_at=NOW(), gws_error=NULL WHERE id=$2`,
       [gwsEmail, userId]
     );
-    console.log(`✅ GWS retry: cont creat ${gwsEmail} pentru user ${userId}`);
+    logger.info(`✅ GWS retry: cont creat ${gwsEmail} pentru user ${userId}`);
     return res.json({ ok: true, gws_email: gwsEmail });
   } catch(e) {
     const errMsg = e.message || String(e);
@@ -417,7 +418,7 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
         <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Schimbă parola după prima autentificare.</p>
         <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
       </div>`
-    }).catch(e => console.warn(`reset-password email eșuat pentru ${target.email}:`, e.message));
+    }).catch(e => logger.warn({ err: e, email: target.email }, 'reset-password email esuat'));
     // SEC-02: plain_password ELIMINAT din response
     res.json({ ok: true, message: `Parolă nouă trimisă pe email la ${target.email}` });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
@@ -651,9 +652,9 @@ router.post('/admin/flows/archive', async (req, res) => {
         data.driveFileLinkOriginal = driveResult.driveFileLinkOriginal || null;
         await saveFlow(flowId, data);
         results.push({ flowId, ok: true });
-        console.log(`📦 Archived flow ${flowId} to Drive`);
+        logger.info(`📦 Archived flow ${flowId} to Drive`);
       } catch(e) {
-        console.error(`📦 Archive error ${flowId}:`, e.message);
+        logger.error({ err: e, flowId }, 'Archive error');
         // Daca Drive upload a reusit dar saveFlow a esuat, marcam oricum cu Drive IDs
         if (driveResult) {
           try {
@@ -666,7 +667,7 @@ router.post('/admin/flows/archive', async (req, res) => {
               results.push({ flowId, ok: true, warning: 'Drive OK, DB save retry reusit: ' + e.message });
               continue;
             }
-          } catch(e2) { console.error(`Archive retry save error ${flowId}:`, e2.message); }
+          } catch(e2) { logger.error({ err: e2, flowId }, 'Archive retry save error'); }
         }
         results.push({ flowId, ok: false, error: String(e.message || e) });
       }
@@ -1296,7 +1297,7 @@ router.get('/admin/user-activity', async (req, res) => {
       });
 
     return res.json({ ok: true, from, to, users: result });
-  } catch(e) { console.error('user-activity error:', e); return res.status(500).json({ error: String(e.message || e) }); }
+  } catch(e) { logger.error({ err: e }, 'user-activity error:'); return res.status(500).json({ error: String(e.message || e) }); }
 });
 
 export default router;

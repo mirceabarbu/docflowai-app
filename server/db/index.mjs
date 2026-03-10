@@ -1,12 +1,17 @@
 /**
- * DocFlowAI — DB layer v3.2.1
+ * DocFlowAI — DB layer v3.3.4
  * Pool PostgreSQL, migrări schema, helpers saveFlow / getFlowData / getUserMapForOrg.
  * NOTA: plain_password pastrat intentionat pentru workflow admin actual.
  *       Migrarea la securitate fara plain_password se face intr-o versiune viitoare.
+ *
+ * CHANGES v3.3.4:
+ *  PERF-01: Migrare 021 — 3 indexuri JSONB (idx_flows_active, idx_flows_init_org, idx_flows_org_status)
+ *  SEC-03:  Migrare 022 — coloana hash_algo pentru tracking versiune PBKDF2
  */
 
 import pg from 'pg';
 import crypto from 'crypto';
+import { logger } from '../middleware/logger.mjs';
 
 const { Pool } = pg;
 
@@ -402,6 +407,33 @@ const MIGRATIONS = [
   {
     id: '020_force_password_change',
     sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN NOT NULL DEFAULT FALSE;`
+  },
+  {
+    // PERF-01: Indexuri JSONB pentru query-urile cel mai frecvent executate
+    id: '021_perf_jsonb_indexes',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_flows_active
+        ON flows(updated_at DESC)
+        WHERE (data->>'completed') IS DISTINCT FROM 'true'
+          AND (data->>'status') NOT IN ('refused','cancelled');
+
+      CREATE INDEX IF NOT EXISTS idx_flows_init_org
+        ON flows(org_id, (data->>'initEmail'), updated_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_flows_org_status
+        ON flows(org_id, (data->>'status'), created_at DESC);
+    `
+  },
+  {
+    // SEC-03: Coloana hash_algo pentru tracking versiune hash PBKDF2
+    // 'pbkdf2_v1' = 100k iterații (legacy)
+    // 'pbkdf2_v2' = 600k iterații (OWASP 2025, curent)
+    // Detectarea automată se face și din prefixul hash-ului ("v2:"), coloana e informativă
+    id: '022_hash_algo_column',
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS hash_algo TEXT NOT NULL DEFAULT 'pbkdf2_v1';
+      UPDATE users SET hash_algo = 'pbkdf2_v2' WHERE password_hash LIKE 'v2:%';
+    `
   }
 ];
 
@@ -417,14 +449,14 @@ async function runMigrations(client) {
   let ranCount = 0;
   for (const migration of MIGRATIONS) {
     if (appliedIds.has(migration.id)) continue;
-    console.log(`⏳ Migrare: ${migration.id}...`);
+    logger.info(`Migrare: ${migration.id}...`);
     await client.query(migration.sql);
     await client.query('INSERT INTO schema_migrations (id) VALUES ($1)', [migration.id]);
-    console.log(`✅ Migrare aplicată: ${migration.id}`);
+    logger.info({ migrationId: migration.id }, 'Migrare aplicata cu succes.');
     ranCount++;
   }
-  if (ranCount === 0) console.log('✅ Schema DB actualizată (0 migrări noi).');
-  else console.log(`✅ ${ranCount} migrare(i) aplicate.`);
+  if (ranCount === 0) logger.info('Schema DB la zi (0 migrari noi).');
+  else logger.info({ count: ranCount }, 'Migrari aplicate.');
 }
 
 function _hashPasswordLocal(password) {
@@ -454,7 +486,7 @@ async function initDbOnce() {
       "INSERT INTO users (email, password_hash, nume, functie, role) VALUES ($1,$2,$3,$4,'admin') ON CONFLICT DO NOTHING",
       ['admin@docflowai.ro', _hashPasswordLocal(pwd), 'Administrator', 'Administrator sistem']
     );
-    console.log('✅ Admin user creat.');
+    logger.info('Admin user creat.');
   }
 
   // Recuperare de urgență: dacă nu există NICIUN admin în sistem,
@@ -464,28 +496,28 @@ async function initDbOnce() {
     const { rowCount } = await pool.query(
       "UPDATE users SET role='admin' WHERE lower(email)='admin@docflowai.ro'"
     );
-    if (rowCount > 0) console.log('✅ Recuperare urgență: admin@docflowai.ro promovat la admin (niciun alt admin în sistem).');
-    else console.warn('⚠️  Niciun admin în sistem și admin@docflowai.ro nu există!');
+    if (rowCount > 0) logger.warn('Recuperare urgenta: admin@docflowai.ro promovat la admin (niciun alt admin in sistem).');
+    else logger.error('Niciun admin in sistem si admin@docflowai.ro nu exista!');
   }
 
   DB_READY = true; DB_LAST_ERROR = null;
-  console.log('✅ DB ready.');
+  logger.info('DB ready.');
 }
 
 export async function initDbWithRetry() {
   const delays = [1000, 2000, 4000, 8000, 15000];
   for (let i = 0; i < delays.length; i++) {
     try {
-      console.log(`⏳ DB init attempt ${i+1}/${delays.length}...`);
+      logger.info({ attempt: i+1, total: delays.length }, 'DB init attempt...');
       await initDbOnce();
       return;
     } catch(e) {
       DB_READY = false; DB_LAST_ERROR = String(e?.message || e);
-      console.error('❌ DB init failed:', e);
+      logger.error({ err: e }, 'DB init failed');
       await new Promise(r => setTimeout(r, delays[i]));
     }
   }
-  console.error('❌ DB init failed permanent.');
+  logger.error('DB init failed permanent. Exiting.');
 }
 
 // Cache org default cu TTL 5 minute (nu infinit)
@@ -589,7 +621,7 @@ export async function writeAuditEvent({ flowId, orgId, eventType, actorEmail, ac
       [flowId || null, orgId || null, eventType, actorEmail || null, actorIp || null, JSON.stringify(payload)]
     );
   } catch(e) {
-    console.error('writeAuditEvent error:', e.message);
+    logger.error({ err: e }, 'writeAuditEvent error');
   }
 }
 

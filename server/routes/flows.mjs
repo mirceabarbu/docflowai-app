@@ -18,6 +18,7 @@ import jwt from 'jsonwebtoken';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
+import { logger } from '../middleware/logger.mjs';
 
 const router = Router();
 
@@ -141,7 +142,7 @@ const createFlow = async (req, res) => {
           institutie: initInstitutie, compartiment: initCompartiment,
           flowType: body.flowType || 'tabel'  // ancore => useObjectStreams:false
         });
-      } catch(e) { console.warn('Footer la creare error:', e.message); }
+      } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }
 
     const data = {
@@ -169,7 +170,7 @@ const createFlow = async (req, res) => {
         waParams: { signerName: first.name || first.email, docName: data.docName, signerToken: first.token, initName, initFunctie, institutie: initInstitutie, compartiment: initCompartiment }, urgent: !!(data.urgent) });
     }
     return res.json({ ok: true, flowId, firstSignerEmail: first?.email || null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null });
-  } catch(e) { console.error('POST /flows error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'POST /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 };
 
 router.post('/flows', createFlow);
@@ -237,7 +238,7 @@ router.get('/flows/:flowId/pdf', async (req, res) => {
           if (af) { const afObj = pdfDoc.context.lookup(af); if (afObj?.set) afObj.set(PDFName.of('SigFlags'), PDFNumber.of(1)); }
         } catch(e2) {}
         pdfBuf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-      } catch(e) { console.warn('PDF unlock failed:', e.message); }
+      } catch(e) { logger.warn({ err: e }, 'PDF unlock failed:'); }
     }
 
     // uploadToken: doar pentru flowType 'tabel' — ancore nu folosesc verificare hash
@@ -335,9 +336,9 @@ router.delete('/flows/:flowId', async (req, res) => {
     }
     await pool.query('DELETE FROM flows WHERE id=$1', [flowId]);
     await pool.query('DELETE FROM notifications WHERE flow_id=$1', [flowId]).catch(() => {});
-    console.log(`🗑 Flow ${flowId} șters de ${actor.email}`);
+    logger.info(`🗑 Flow ${flowId} șters de ${actor.email}`);
     return res.json({ ok: true, flowId, deletedBy: actor.email });
-  } catch(e) { console.error('DELETE /flows error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'DELETE /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/sign ───────────────────────────────────────────────
@@ -420,7 +421,7 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
       await _notify({ userEmail: r.email, flowId, type: 'REFUSED', title: '⛔ Document refuzat', message: refuseMsg, waParams: { docName: data.docName, refuserName, reason: refuseReason }, urgent: !!(data.urgent) });
     }
     return res.json({ ok: true, refused: true });
-  } catch(e) { console.error('refuse error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'refuse error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/register-download ─────────────────────────────────
@@ -458,7 +459,7 @@ router.post('/flows/:flowId/register-download', async (req, res) => {
         try { pdfDoc.catalog.delete(PDFName.of('Perms')); } catch(e2) {}
         try { const af = pdfDoc.catalog.get(PDFName.of('AcroForm')); if (af) { const afObj = pdfDoc.context.lookup(af); if (afObj?.set) afObj.set(PDFName.of('SigFlags'), PDFNumber.of(1)); } } catch(e2) {}
         pdfBufRD = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-      } catch(e2) { console.warn('register-download unlock error:', e2.message); }
+      } catch(e2) { logger.warn({ err: e2 }, 'register-download unlock error'); }
     }
     const serverPreHash = sha256Hex(pdfBufRD);
     const uploadToken = jwt.sign({ flowId, signerToken, preHash: serverPreHash }, JWT_SECRET, { expiresIn: '4h' });
@@ -533,7 +534,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     // R-02: audit_log — upload PDF + finalizare flux dacă e cazul
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED_PDF_UPLOADED', actorIp: _getIp(req), actorEmail: signers[idx].email, payload: { signerName: signers[idx].name, order: signers[idx].order } });
     if (allDone) writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_COMPLETED', actorEmail: 'system', payload: { docName: data.docName, completedAt: data.completedAt } });
-    console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
+    logger.info(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
     res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, nextSigner: nextSigner || null });
     setImmediate(async () => {
       try {
@@ -548,9 +549,9 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
           if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: 'Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName }, urgent: !!(data.urgent) });
         }
         if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName, signerToken: nextSigner.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment }, urgent: !!(data.urgent) });
-      } catch(notifErr) { console.error(`❌ Notificare async eșuată pentru flow ${flowId}:`, notifErr.message); }
+      } catch(notifErr) { logger.error({ err: notifErr, flowId }, 'Notificare async esuat'); }
     });
-  } catch(e) { console.error('upload-signed-pdf error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'upload-signed-pdf error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/resend ─────────────────────────────────────────────
@@ -591,9 +592,9 @@ router.post('/flows/:flowId/regenerate-token', async (req, res) => {
     await saveFlow(flowId, data);
     const newLink = _buildSignerLink(req, flowId, newToken);
     await _notify({ userEmail: signers[idx].email, flowId, type: 'YOUR_TURN', title: 'Link de semnare reînnoit', message: `Link-ul tău de semnare pentru documentul „${data.docName}" a fost reînnoit.`, waParams: { signerName: signers[idx].name || signers[idx].email, docName: data.docName, signerToken: newToken, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment } });
-    console.log(`🔑 Token regenerat pentru ${signerEmail} pe flow ${flowId}`);
+    logger.info(`🔑 Token regenerat pentru ${signerEmail} pe flow ${flowId}`);
     return res.json({ ok: true, signerEmail, newLink, message: 'Token regenerat și notificare trimisă.' });
-  } catch(e) { console.error('regenerate-token error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'regenerate-token error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── GET /my-flows ─────────────────────────────────────────────────────────
@@ -668,7 +669,7 @@ router.get('/my-flows', async (req, res) => {
       allSigned: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
     }));
     res.json({ flows: myFlows, total, page, limit, pages });
-  } catch(e) { console.error('my-flows error:', e); res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'my-flows error:'); res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── GET /my-flows/:flowId/download ─────────────────────────────────────────
@@ -758,7 +759,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
             institutie: data.institutie, compartiment: data.compartiment,
             flowType: data.flowType || 'tabel'
           });
-        } catch(e) { console.warn('Re-stamp footer on reinitiate error:', e.message); }
+        } catch(e) { logger.warn({ err: e }, 'Re-stamp footer on reinitiate error:'); }
       }
     }
     // FIX v3.3.2: primul saveFlow era redundant — mutăm după setarea notifiedAt
@@ -772,9 +773,9 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
         message: `${data.initName} a reinițiat fluxul de semnare pentru documentul „${data.docName}". Este rândul tău să semnezi.`,
         waParams: { signerName: first.name || first.email, docName: data.docName, signerToken: first.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment } });
     }
-    console.log(`🔄 Flow ${flowId} reinițiat ca ${newFlowId2} de ${actor.email}`);
+    logger.info(`🔄 Flow ${flowId} reinițiat ca ${newFlowId2} de ${actor.email}`);
     return res.json({ ok: true, newFlowId: newFlowId2, signers: remainingSigners.length });
-  } catch(e) { console.error('reinitiate error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'reinitiate error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/request-review ───────────────────────────────────
@@ -835,9 +836,9 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
         await _notify({ userEmail: s.email, flowId, type: 'REVIEW_REQUESTED', title: '🔄 Document trimis spre revizuire', message: reviewMsg, waParams: { docName: data.docName, reviewerName, reason: reviewReason }, urgent: !!(data.urgent) });
       }
     }
-    console.log(`🔄 Review requested pe flow ${flowId} de ${signers[idx].email}`);
+    logger.info(`🔄 Review requested pe flow ${flowId} de ${signers[idx].email}`);
     return res.json({ ok: true, reviewReason, reviewedBy: signers[idx].email });
-  } catch(e) { console.error('request-review error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'request-review error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/reinitiate-review ─────────────────────────────────
@@ -905,7 +906,7 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
           institutie: data.institutie, compartiment: data.compartiment,
           flowType: data.flowType || 'tabel'
         });
-      } catch(e) { console.warn('Re-stamp footer on reinitiate-review error:', e.message); }
+      } catch(e) { logger.warn({ err: e }, 'Re-stamp footer on reinitiate-review error:'); }
     }
 
     // Resetăm toți semnatarii cu token nou — ACELASI flowId
@@ -952,9 +953,9 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
       });
     }
 
-    console.log(`🔄 Review reinitiate in-place: ${flowId} runda ${data.reviewHistory.length} de ${actor.email}`);
+    logger.info(`🔄 Review reinitiate in-place: ${flowId} runda ${data.reviewHistory.length} de ${actor.email}`);
     return res.json({ ok: true, flowId, signers: resetSigners.length, round: data.reviewHistory.length });
-  } catch(e) { console.error('reinitiate-review error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'reinitiate-review error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/delegate ──────────────────────────────────────────
@@ -1069,12 +1070,12 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
   <p style="margin-top:20px;font-size:.78rem;color:rgba(255,255,255,.3);text-align:center;">Link valid 90 de zile · DocFlowAI · ${escHtml(data.institutie || '')}</p>
 </div>`
         });
-      } catch(emailErr) { console.error('Delegare email error:', emailErr.message); }
+      } catch(emailErr) { logger.error({ err: emailErr }, 'Delegare email error'); }
     }
 
-    console.log(`👥 Delegare ${originalEmail} → ${toEmail} pentru flow ${flowId} de ${actor.email}`);
+    logger.info(`👥 Delegare ${originalEmail} → ${toEmail} pentru flow ${flowId} de ${actor.email}`);
     return res.json({ ok: true, flowId, from: originalEmail, to: toEmail, delegateName: resolvedName });
-  } catch(e) { console.error('delegate error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'delegate error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/cancel ─────────────────────────────────────────────
@@ -1110,9 +1111,9 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
         message: `Fluxul „${data.docName}" a fost anulat de administrator.${data.cancelReason ? ' Motiv: ' + data.cancelReason : ''}`,
         waParams: { docName: data.docName } });
     }
-    console.log(`🚫 Flow ${flowId} anulat de ${actor.email}`);
+    logger.info(`🚫 Flow ${flowId} anulat de ${actor.email}`);
     return res.json({ ok: true, flowId, cancelledAt: now });
-  } catch(e) { console.error('cancel flow error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'cancel flow error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 export default router;

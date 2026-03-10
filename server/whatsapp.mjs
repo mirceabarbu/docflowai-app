@@ -74,7 +74,7 @@ function normalizePhone(phone) {
 
   // Validare finală: doar cifre, lungime E.164 (7-15 cifre)
   if (!/^\d{7,15}$/.test(p)) {
-    console.warn(`⚠️ Număr telefon invalid: "${phone}" → "${p}"`);
+    logger.warn(`⚠️ Număr telefon invalid: "${phone}" → "${p}"`);
     return null;
   }
 
@@ -118,7 +118,7 @@ export function validatePhone(phone) {
  */
 async function sendWhatsAppTemplate(to, templateName, components = []) {
   if (!isWhatsAppConfigured()) {
-    console.warn("⚠️ WhatsApp nu e configurat (WA_PHONE_NUMBER_ID / WA_ACCESS_TOKEN lipsesc)");
+    logger.warn("⚠️ WhatsApp nu e configurat (WA_PHONE_NUMBER_ID / WA_ACCESS_TOKEN lipsesc)");
     return { ok: false, reason: "not_configured" };
   }
 
@@ -152,13 +152,13 @@ async function sendWhatsAppTemplate(to, templateName, components = []) {
 
     const data = await resp.json();
     if (!resp.ok) {
-      console.error(`❌ WhatsApp API error (${phone}):`, JSON.stringify(data));
+      logger.error({ phone, data }, 'WhatsApp API error');
       return { ok: false, error: data };
     }
-    console.log(`📱 WhatsApp trimis la +${phone} (template: ${templateName})`);
+    logger.info(`📱 WhatsApp trimis la +${phone} (template: ${templateName})`);
     return { ok: true, data };
   } catch(e) {
-    console.error(`❌ WhatsApp fetch error (${phone}):`, e.message);
+    logger.error({ err: e, phone }, 'WhatsApp fetch error');
     return { ok: false, error: e.message };
   }
 }

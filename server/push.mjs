@@ -8,13 +8,14 @@
  *   VAPID_PRIVATE_KEY — cheia privată VAPID
  *   VAPID_SUBJECT     — mailto: sau URL (ex: mailto:admin@docflowai.ro)
  *
- * Generare chei: node -e "const wp=require('web-push');console.log(wp.generateVAPIDKeys())"
+ * Generare chei: node -e "const wp=require('web-push');logger.info(wp.generateVAPIDKeys())"
  * sau din dashboard Railway cu: npx web-push generate-vapid-keys
  */
 
 let webpush = null;
 let pushConfigured = false;
 
+import { logger } from './middleware/logger.mjs';
 // Încarcă web-push opțional (poate să nu fie instalat pe unele deployuri vechi)
 try {
   webpush = (await import('web-push')).default;
@@ -24,12 +25,12 @@ try {
   if (pubKey && privKey) {
     webpush.setVapidDetails(subject, pubKey, privKey);
     pushConfigured = true;
-    console.log('✅ Web Push (VAPID) configurat.');
+    logger.info('✅ Web Push (VAPID) configurat.');
   } else {
-    console.warn('⚠️ VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY lipsesc — push notifications dezactivate.');
+    logger.warn('⚠️ VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY lipsesc — push notifications dezactivate.');
   }
 } catch(e) {
-  console.warn('⚠️ web-push nu e instalat — push notifications dezactivate:', e.message);
+  logger.warn('⚠️ web-push nu e instalat — push notifications dezactivate:', e.message);
 }
 
 export function isPushConfigured() { return pushConfigured; }
@@ -46,7 +47,7 @@ export async function sendPushNotification(subscription, payload) {
     await webpush.sendNotification(subscription, JSON.stringify(payload));
     return { ok: true };
   } catch(e) {
-    console.error('Push error:', e.statusCode, e.body);
+    logger.error('Push error:', e.statusCode, e.body);
     return { ok: false, statusCode: e.statusCode, error: e.body };
   }
 }
@@ -75,7 +76,7 @@ export async function pushToUser(pool, userEmail, payload) {
     }));
     if (expired.length) {
       await pool.query('DELETE FROM push_subscriptions WHERE id = ANY($1)', [expired]);
-      console.log(`🗑 Push: ${expired.length} abonamente expirate șterse pentru ${userEmail}`);
+      logger.info(`🗑 Push: ${expired.length} abonamente expirate șterse pentru ${userEmail}`);
     }
-  } catch(e) { console.error('pushToUser error:', e.message); }
+  } catch(e) { logger.error('pushToUser error:', e.message); }
 }

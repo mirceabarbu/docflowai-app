@@ -19,13 +19,13 @@ export async function verifySmtp() {
 
 export async function sendSignerEmail({ to, subject, html }) {
   if (!RESEND_API_KEY) {
-    console.warn("⚠ sendSignerEmail skipped — RESEND_API_KEY not set.");
+    logger.warn("⚠ sendSignerEmail skipped — RESEND_API_KEY not set.");
     return;
   }
 
   const payload = { from: MAIL_FROM, to, subject, html };
 
-  console.log(`📬 Sending email via Resend to ${to}...`);
+  logger.info(`📬 Sending email via Resend to ${to}...`);
 
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -39,10 +39,10 @@ export async function sendSignerEmail({ to, subject, html }) {
   const j = await r.json().catch(() => ({}));
 
   if (!r.ok) {
-    console.error(`❌ Resend FAILED to ${to}:`, j);
+    logger.error(`❌ Resend FAILED to ${to}:`, j);
     throw new Error(j?.message || `Resend error ${r.status}`);
   }
 
-  console.log(`📧 Email sent to ${to} | id: ${j.id}`);
+  logger.info(`📧 Email sent to ${to} | id: ${j.id}`);
   return { ok: true, id: j.id };
 }
