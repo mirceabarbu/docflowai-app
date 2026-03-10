@@ -36,10 +36,9 @@ describe('hashPassword', () => {
     const h1 = hashPassword('aceeasi_parola');
     const h2 = hashPassword('aceeasi_parola');
     expect(h1).not.toBe(h2);
-    // Dar ambele trebuie să verifice corect
-    const { verifyPassword: vp } = await import('../../middleware/auth.mjs');
-    expect(vp('aceeasi_parola', h1).ok).toBe(true);
-    expect(vp('aceeasi_parola', h2).ok).toBe(true);
+    // Dar ambele trebuie să verifice corect — verifyPassword importat top-level
+    expect(verifyPassword('aceeasi_parola', h1).ok).toBe(true);
+    expect(verifyPassword('aceeasi_parola', h2).ok).toBe(true);
   });
 
   it('funcționează cu parola de lungime maximă (200 chars)', () => {
