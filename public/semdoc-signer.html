@@ -287,6 +287,19 @@ th{ color: var(--sub) !important; }
                 <button id="btnRevizuire" class="btn" type="button" style="flex:1; font-weight:700; padding:12px; background:rgba(45,212,191,.1); border:1px solid rgba(45,212,191,.3); color:#7cf0e0;">🔄 Trimite spre revizuire</button>
               </div>
               <div id="refuzStatus" style="margin-top:8px; font-size:.88em; color:#ffaaaa;"></div>
+              <!-- Modal Refuz -->
+              <div id="refuzModal" style="display:none; margin-top:14px; background:rgba(255,80,80,.06); border:1px solid rgba(255,80,80,.25); border-radius:12px; padding:16px;">
+                <div style="font-size:.85rem; color:#ffaaaa; font-weight:700; margin-bottom:10px;">✕ Refuzi semnarea acestui document</div>
+                <div style="font-size:.8rem; color:var(--muted); margin-bottom:10px; line-height:1.5;">
+                  Documentul va fi <strong style="color:#ffaaaa;">închis definitiv</strong>. Inițiatorul și toți semnatarii anteriori vor fi notificați. Această acțiune este ireversibilă.
+                </div>
+                <textarea id="refuzReason" placeholder="Motivul refuzului (opțional)" rows="3" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,80,80,.2);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:10px;box-sizing:border-box;resize:none;"></textarea>
+                <div style="display:flex;gap:8px;">
+                  <button id="btnRefuzConfirm" type="button" style="flex:1;padding:10px;background:rgba(255,80,80,.2);border:1px solid rgba(255,80,80,.4);border-radius:8px;color:#ffaaaa;font-weight:700;cursor:pointer;">✕ Confirmă refuzul</button>
+                  <button id="btnRefuzCancel" type="button" style="padding:10px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+                </div>
+                <div id="refuzModalStatus" style="margin-top:8px;font-size:.85rem;"></div>
+              </div>
               <!-- Modal delegare -->
               <div id="delegateModal" style="display:none; margin-top:14px; background:rgba(255,200,50,.06); border:1px solid rgba(255,200,50,.25); border-radius:12px; padding:16px;">
                 <div style="font-weight:700; margin-bottom:10px; color:#ffd580;">👥 Delegare semnătură</div>
@@ -936,20 +949,53 @@ th{ color: var(--sub) !important; }
         loadFlow().catch((e) => showError(String(e.message || e)));
       }
 
-      // ── Refuz semnare ──────────────────────────────────────────────────────
+      // ── Refuz semnare — modal inline (fără prompt/confirm nativ) ─────────
       const btnRefuz = $("btnRefuz");
       if (btnRefuz) {
-        btnRefuz.addEventListener("click", async () => {
-          const reason = prompt("Motivul refuzului (opțional):");
-          if (reason === null) return; // anulat
-          if (!confirm("Ești sigur că refuzi semnarea?\nToți semnatarii anteriori și inițiatorul vor fi notificați, iar lucrarea va fi ÎNCHISĂ.")) return;
+        // Deschide / închide modal
+        btnRefuz.addEventListener("click", () => {
+          const refuzModal = $("refuzModal");
+          if (!refuzModal) return;
+          const isOpen = refuzModal.style.display !== "none";
+          refuzModal.style.display = isOpen ? "none" : "block";
+          // Ascunde celelalte modale dacă sunt deschise
+          const delegModal = $("delegateModal");
+          const revModal   = $("reviewModal");
+          if (delegModal) delegModal.style.display = "none";
+          if (revModal)   revModal.style.display   = "none";
+          if (!isOpen) {
+            // Focus pe textarea la deschidere
+            setTimeout(() => { const ta = $("refuzReason"); if(ta) ta.focus(); }, 80);
+          }
+        });
+      }
 
-          btnRefuz.disabled = true;
-          btnRefuz.textContent = "Se procesează...";
+      // Buton Anulează din modal refuz
+      const btnRefuzCancel = $("btnRefuzCancel");
+      if (btnRefuzCancel) {
+        btnRefuzCancel.addEventListener("click", () => {
+          const refuzModal = $("refuzModal");
+          if (refuzModal) refuzModal.style.display = "none";
+          const ta = $("refuzReason");
+          if (ta) ta.value = "";
+          const st = $("refuzModalStatus");
+          if (st) st.textContent = "";
+        });
+      }
+
+      // Buton Confirmă refuzul
+      const btnRefuzConfirm = $("btnRefuzConfirm");
+      if (btnRefuzConfirm) {
+        btnRefuzConfirm.addEventListener("click", async () => {
+          const reason   = ($("refuzReason")?.value || "").trim();
+          const statusEl = $("refuzModalStatus");
           const refuzStatus = $("refuzStatus");
 
+          btnRefuzConfirm.disabled = true;
+          btnRefuzConfirm.textContent = "Se procesează...";
+          if (statusEl) statusEl.textContent = "";
+
           try {
-            // SEC-01: cookie trimis automat
             const r = await _apiFetch(`/flows/${flow}/refuse`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -957,22 +1003,26 @@ th{ color: var(--sub) !important; }
             });
             const d = await r.json();
             if (r.ok) {
-              btnRefuz.style.background = "rgba(255,80,80,.3)";
-              btnRefuz.textContent = "✓ Refuz înregistrat";
+              // Ascunde modalul, afișează confirmare
+              const refuzModal = $("refuzModal");
+              if (refuzModal) refuzModal.style.display = "none";
+              btnRefuz.style.background   = "rgba(255,80,80,.3)";
+              btnRefuz.style.borderColor  = "rgba(255,80,80,.6)";
+              btnRefuz.textContent        = "✓ Refuz înregistrat";
+              btnRefuz.disabled           = true;
               if (refuzStatus) refuzStatus.innerHTML = "❌ Ai refuzat semnarea. Inițiatorul și semnatarii anteriori au fost notificați. Lucrarea este <strong>ÎNCHISĂ</strong>.";
               const signBox = $("signBox");
               if (signBox) signBox.style.display = "none";
-              // Redirect la fluxuri mele dupa 2.5s
               setTimeout(() => { location.href = "/?tab=flows"; }, 2500);
             } else {
-              btnRefuz.disabled = false;
-              btnRefuz.textContent = "✕ Refuz semnarea acestui document";
-              if (refuzStatus) refuzStatus.textContent = "Eroare: " + (d.error || "unknown");
+              if (statusEl) statusEl.textContent = "❌ Eroare: " + (d.error || "unknown");
+              btnRefuzConfirm.disabled    = false;
+              btnRefuzConfirm.textContent = "✕ Confirmă refuzul";
             }
           } catch(e) {
-            btnRefuz.disabled = false;
-            btnRefuz.textContent = "✕ Refuz semnarea acestui document";
-            if (refuzStatus) refuzStatus.textContent = "Eroare de rețea.";
+            if (statusEl) statusEl.textContent = "❌ Eroare de rețea.";
+            btnRefuzConfirm.disabled    = false;
+            btnRefuzConfirm.textContent = "✕ Confirmă refuzul";
           }
         });
       }
