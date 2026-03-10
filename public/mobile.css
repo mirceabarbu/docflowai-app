@@ -1,0 +1,378 @@
+/*
+ * DocFlowAI — mobile.css  (v3.3.2)
+ * Responsive layer — zero modificări la logica paginilor.
+ * Inclus în <head> după stilurile inline ale fiecărei pagini.
+ * Breakpoints: 768px (tabletă), 480px (telefon mic)
+ */
+
+/* ─── RESETURI GLOBALE ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ─── 768px — TABLETĂ / LAPTOP MIC ──────────────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* ── Header generic (signer + initiator) ── */
+  header {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 10px 14px !important;
+  }
+  header img[alt="DocFlowAI"],
+  .brand img {
+    height: 52px !important;
+  }
+
+  /* ── Logo DocFlowAI în admin ── */
+  main header img,
+  header > div > img[alt="DocFlowAI"] {
+    height: 52px !important;
+  }
+
+  /* ── Admin header nav buttons ── */
+  header > div:nth-child(2) {
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+  }
+
+  /* ── Tabs (initiator) ── */
+  .tabs {
+    gap: 4px !important;
+    flex-wrap: wrap !important;
+  }
+  .tabbtn {
+    font-size: .78rem !important;
+    padding: 6px 10px !important;
+  }
+
+  /* ── Admin tabs ── */
+  .admin-tabs {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    padding: 5px !important;
+  }
+  .admin-tabs .atab {
+    flex: 1 1 calc(50% - 4px) !important;
+    min-width: 120px !important;
+    font-size: .78rem !important;
+    padding: 8px 8px !important;
+    text-align: center !important;
+  }
+
+  /* ── Grid 12-col → 2-col (initiator) ── */
+  .grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .col-3, .col-4, .col-5 { grid-column: span 2 !important; }
+  .col-6 { grid-column: span 2 !important; }
+  .col-12 { grid-column: span 2 !important; }
+
+  /* ── Grid2 / Grid3 (admin) → full width ── */
+  .grid2, .grid3 {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* ── Main padding ── */
+  main {
+    padding: 14px 12px 48px !important;
+  }
+  .wrap {
+    margin: 14px auto !important;
+    padding: 0 12px 48px !important;
+  }
+
+  /* ── Cards ── */
+  .card {
+    padding: 14px 14px !important;
+    border-radius: 12px !important;
+  }
+
+  /* ── Tabele — scroll orizontal în loc de overflow ascuns ── */
+  table {
+    display: block !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    white-space: nowrap !important;
+    table-layout: auto !important;
+    width: 100% !important;
+  }
+  /* Coloanele fixe devin flexibile */
+  th[style*="width:280px"],
+  td[style*="width:280px"] { min-width: 180px !important; }
+  th[style*="width:200px"],
+  td[style*="width:200px"] { min-width: 140px !important; }
+  th[style*="width:140px"],
+  td[style*="width:140px"] { min-width: 100px !important; }
+
+  /* ── Filtre notificări — scroll orizontal ── */
+  .filters {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    padding-bottom: 6px !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* ── Flow.html topbar ── */
+  .topbar {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  .topbar .actions {
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+    justify-content: flex-start !important;
+  }
+  .topbar .actions .btn {
+    font-size: .76rem !important;
+    padding: 6px 10px !important;
+  }
+
+  /* ── Events timeline (flow.html) ── */
+  .events .ev {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .events .ts {
+    min-width: unset !important;
+    font-size: .72rem !important;
+    width: 100% !important;
+  }
+
+  /* ── Modal ── */
+  .modal {
+    max-width: calc(100vw - 24px) !important;
+    padding: 20px 16px !important;
+    border-radius: 14px !important;
+  }
+  .modal-acts {
+    flex-wrap: wrap !important;
+  }
+  .modal-acts .btn {
+    flex: 1 1 auto !important;
+  }
+
+  /* ── Butoane acțiuni principale ── */
+  .actions .btn,
+  .page-actions .btn-ghost,
+  .page-actions .btn {
+    font-size: .78rem !important;
+    padding: 6px 10px !important;
+  }
+
+  /* ── PDF preview container ── */
+  #pdfPagesContainer {
+    max-height: 60vh !important;
+  }
+}
+
+/* ─── 480px — TELEFON ────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+
+  /* ── Header — stivuit vertical ── */
+  header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+  header img[alt="DocFlowAI"],
+  .brand img {
+    height: 44px !important;
+  }
+
+  /* ── Tabs → scroll orizontal (nu wrap) ── */
+  .tabs {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 4px !important;
+  }
+  .tabbtn {
+    flex-shrink: 0 !important;
+    font-size: .76rem !important;
+    padding: 6px 10px !important;
+    white-space: nowrap !important;
+  }
+
+  /* ── Admin tabs → câte 1 pe rând ── */
+  .admin-tabs {
+    flex-direction: column !important;
+  }
+  .admin-tabs .atab {
+    flex: 1 1 100% !important;
+    font-size: .82rem !important;
+  }
+
+  /* ── Grid → 1 coloană ── */
+  .grid {
+    grid-template-columns: 1fr !important;
+  }
+  .col-3, .col-4, .col-5, .col-6, .col-12 {
+    grid-column: span 1 !important;
+  }
+  .grid2, .grid3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── BUTOANE REFUZ / DELEGĂ / REVIZUIRE → stivuite vertical ── */
+  /* Selector generic: orice div cu 3 butoane .btn flexibili */
+  #btnRefuz,
+  #btnDelegheaza,
+  #btnRevizuire {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+  /* Containerul lor */
+  #btnRefuz + #btnDelegheaza,
+  #btnDelegheaza + #btnRevizuire {
+    /* Aplicat via flex-wrap pe container */
+  }
+  /* Forțăm flex-wrap pe orice container direct-parent al acestor butoane */
+  :has(> #btnRefuz) {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* Fallback pentru browsere fără :has() */
+  #btnRefuz { order: 1; }
+  #btnDelegheaza { order: 2; }
+  #btnRevizuire { order: 3; }
+
+  /* ── Butoane flow.html topbar → 2 pe rând ── */
+  .topbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .topbar .brand { margin-bottom: 4px; }
+  .topbar .actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+  }
+  .topbar .actions .btn {
+    width: 100% !important;
+    justify-content: center !important;
+    font-size: .75rem !important;
+    padding: 8px 6px !important;
+  }
+
+  /* ── Admin header buttons → ascunde textul, păstrează emoji ── */
+  header > div:nth-child(2) a.btn,
+  header > div:nth-child(2) span {
+    font-size: .75rem !important;
+    padding: 6px 8px !important;
+  }
+
+  /* ── UserBar → font mic ── */
+  #userBar, .header-right {
+    font-size: .73rem !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+    width: 100% !important;
+  }
+
+  /* ── Card title ── */
+  .card-title {
+    font-size: .95rem !important;
+  }
+
+  /* ── Butoane principale full-width ── */
+  #btnCreate,
+  #btnRenunta,
+  #btnDownloadForSigning,
+  #btnChooseSignedPdf,
+  #btnUploadSignedPdf {
+    width: 100% !important;
+  }
+
+  /* ── Input / Select — font mai mare pe telefon (evită zoom iOS) ── */
+  input, select, textarea {
+    font-size: 16px !important; /* iOS nu face zoom la 16px+ */
+  }
+
+  /* ── Tabel semnatari în initiator — coloane minime ── */
+  #signersTbody td,
+  #signersTbody th {
+    min-width: 80px !important;
+    padding: 6px 6px !important;
+    font-size: .75rem !important;
+  }
+
+  /* ── Pagination ── */
+  .pagination {
+    gap: 4px !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+  }
+
+  /* ── Notificări item ── */
+  .notif-item {
+    padding: 12px 10px !important;
+    gap: 8px !important;
+  }
+  .notif-icon {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 16px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* ── Login card ── */
+  .wrap[style*="max-width:400px"],
+  .wrap {
+    padding: 14px !important;
+  }
+
+  /* ── Modal full-screen pe telefon ── */
+  .modal {
+    max-width: 100vw !important;
+    max-height: 92vh !important;
+    overflow-y: auto !important;
+    border-radius: 16px 16px 0 0 !important;
+    margin: auto 0 0 0 !important;
+  }
+  .modal-bg.open {
+    align-items: flex-end !important;
+  }
+
+  /* ── PDF preview — înălțime redusă pe telefon ── */
+  #pdfPagesContainer {
+    max-height: 45vh !important;
+  }
+
+  /* ── Events text wrap ── */
+  .events .ev {
+    align-items: flex-start !important;
+  }
+  .events .txt {
+    word-break: break-word !important;
+    font-size: .78rem !important;
+  }
+
+  /* ── Pill-uri status ── */
+  .pill {
+    font-size: .67rem !important;
+    padding: 2px 6px !important;
+  }
+
+  /* ── Filtru search în admin ── */
+  .th-filter {
+    font-size: .72rem !important;
+    padding: 3px 5px !important;
+  }
+}
+
+/* ─── UTILITAR: touch target minim 44px (WCAG) ──────────────────────────── */
+@media (max-width: 768px) {
+  button, a.btn, .btn, .tabbtn, .atab, .btn-ghost, .btn-danger {
+    min-height: 38px !important;
+  }
+}
+
+/* ─── PRINT — ascunde navigație ─────────────────────────────────────────── */
+@media print {
+  header, .admin-tabs, .tabs, .pagination, #userBar, .header-right { display: none !important; }
+  main, .wrap { padding: 0 !important; margin: 0 !important; }
+  .card { border: 1px solid #ccc !important; box-shadow: none !important; }
+}

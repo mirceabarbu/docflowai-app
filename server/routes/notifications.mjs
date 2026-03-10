@@ -34,18 +34,35 @@ router.get('/api/notifications/with-status', async (req, res) => {
       'SELECT * FROM notifications WHERE user_email=$1 ORDER BY created_at DESC LIMIT 100',
       [actor.email.toLowerCase()]
     );
-    const enriched = await Promise.all(rows.map(async (n) => {
-      if ((n.type === 'YOUR_TURN' || n.type === 'REVIEW_REQUESTED') && n.flow_id) {
-        try {
-          const fData = (await pool.query('SELECT data FROM flows WHERE id=$1', [n.flow_id])).rows[0]?.data;
-          if (fData) {
-            const signer = (fData.signers || []).find(s => (s.email || '').toLowerCase() === actor.email.toLowerCase());
-            return { ...n, signer_status: signer?.status || null, flow_urgent: !!(fData.urgent) };
-          }
-        } catch(e) {}
+
+    // FIX v3.2.2: batch query în loc de N+1 — un singur query pentru toate flow_id-urile relevante
+    const flowIds = [...new Set(
+      rows
+        .filter(n => (n.type === 'YOUR_TURN' || n.type === 'REVIEW_REQUESTED') && n.flow_id)
+        .map(n => n.flow_id)
+    )];
+
+    const flowMap = {};
+    if (flowIds.length > 0) {
+      const { rows: flowRows } = await pool.query(
+        'SELECT id, data FROM flows WHERE id = ANY($1)',
+        [flowIds]
+      );
+      for (const fr of flowRows) {
+        const signer = (fr.data?.signers || []).find(
+          s => (s.email || '').toLowerCase() === actor.email.toLowerCase()
+        );
+        flowMap[fr.id] = { signer_status: signer?.status || null, flow_urgent: !!(fr.data?.urgent) };
+      }
+    }
+
+    const enriched = rows.map(n => {
+      if ((n.type === 'YOUR_TURN' || n.type === 'REVIEW_REQUESTED') && n.flow_id && flowMap[n.flow_id]) {
+        return { ...n, ...flowMap[n.flow_id] };
       }
       return { ...n, signer_status: null, flow_urgent: !!(n.urgent) };
-    }));
+    });
+
     res.json(enriched);
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });

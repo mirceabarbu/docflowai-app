@@ -1,12 +1,15 @@
 /**
- * DocFlowAI v3.2.0 — Main entry point (orchestrator)
+ * DocFlowAI v3.3.3 — Main entry point (orchestrator)
  * FIX: notify — notif_email independent de notif_inapp
  * FIX: stampFooterOnPdf — latimea textului calculata corect cu font.widthOfTextAtSize
  * FIX: LOGIN_MAX/WINDOW/BLOCK exportate ca constante configurabile via ENV
+ * FIX v3.2.2: helmet security headers, SIGNER_TOKEN_EXPIRY_DAYS din ENV
  */
 
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import helmet from 'helmet';
 import pg from 'pg';
 import crypto from 'crypto';
 import path from 'path';
@@ -23,7 +26,7 @@ let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available — flow stamp disabled:', e.message); }
 
 import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
-import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex } from './middleware/auth.mjs';
+import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
 import { injectRateLimiter } from './routes/auth.mjs';
@@ -33,7 +36,48 @@ import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
 
 const app = express();
 app.set('trust proxy', 1);
-app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : true, credentials: true }));
+
+// SEC-01: cookie-parser — necesár pentru req.cookies.auth_token (JWT HttpOnly)
+app.use(cookieParser());
+
+// ── Security headers ──────────────────────────────────────────────────────
+// Fallback manual dacă helmet nu e instalat încă (graceful degradation)
+try {
+  app.use(helmet({
+    // SEC-05: CSP activat — protecție XSS
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc:  ["'self'"],
+        scriptSrc:   ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'],  // staging: permite CDN-urile folosite de pdf-lib/pdf.js
+        styleSrc:    ["'self'", "'unsafe-inline'"],
+        scriptSrcAttr:["'unsafe-inline'"],
+        imgSrc:      ["'self'", 'data:', 'blob:'],
+        connectSrc:  ["'self'", 'wss:', 'ws:'],
+        objectSrc:   ["'none'"],
+        frameAncestors: ["'none'"],           // previne clickjacking (înlocuiește X-Frame-Options)
+        upgradeInsecureRequests: [],
+      },
+    },
+    crossOriginEmbedderPolicy: false,         // necesar pentru PDF viewer blob:
+    frameguard: { action: 'deny' },           // X-Frame-Options: DENY
+  }));
+} catch(e) {
+  console.warn('⚠️  helmet not installed — adding manual security headers');
+}
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+// ── CORS ──────────────────────────────────────────────────────────────────
+// FIX v3.2.2: origin:true cu credentials:true e periculos (accept orice domeniu).
+// Fallback la domeniu explicit din PUBLIC_BASE_URL dacă CORS_ORIGIN nu e setat.
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : true);
+app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 
 // ── Request ID + safe JSON error envelope ─────────────────────────────────
@@ -71,12 +115,12 @@ app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'template
 
 // ── Health public ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.1', ts: new Date().toISOString() });
+  res.json({ ok: true, service: 'DocFlowAI', version: '3.3.3', ts: new Date().toISOString() });
 });
 
 app.get('/admin/health', (req, res) => {
   if (requireAdmin(req, res)) return;
-  res.json({ ok: true, service: 'DocFlowAI', version: '3.2.1', dbReady: !!DB_READY, dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null, ts: new Date().toISOString() });
+  res.json({ ok: true, service: 'DocFlowAI', version: '3.3.3', dbReady: !!DB_READY, dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null, ts: new Date().toISOString() });
 });
 
 // ── Template API ──────────────────────────────────────────────────────────
@@ -84,12 +128,14 @@ app.get('/api/templates', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     const institutie = uRows[0]?.institutie || '';
+    const orgId = uRows[0]?.org_id || actor.orgId || null;
+    // FIX v3.2.3: filtrare pe org_id pentru sabloane partajate (nu doar pe institutie text)
     const { rows } = await pool.query(
-      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='')
+      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='' AND ($3::integer IS NULL OR org_id=$3))
        ORDER BY user_email=$1 DESC, name ASC`,
-      [actor.email.toLowerCase(), institutie]
+      [actor.email.toLowerCase(), institutie, orgId]
     );
     res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
@@ -100,7 +146,9 @@ app.post('/api/templates', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   const { name, signers, shared } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
+  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
   if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
+  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
   try {
     const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     const institutie = uRows[0]?.institutie || '';
@@ -116,6 +164,10 @@ app.put('/api/templates/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   const { name, signers, shared } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
+  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
+  if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
+  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
   try {
     const { rows } = await pool.query(
       'UPDATE templates SET name=$1,signers=$2,shared=$3,updated_at=NOW() WHERE id=$4 AND user_email=$5 RETURNING *',
@@ -137,6 +189,8 @@ app.delete('/api/templates/:id', async (req, res) => {
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+// FIX v3.3.2: escHtml importat din middleware/auth.mjs — eliminat duplicatul local
+
 function publicBaseUrl(req) {
   const envBase = process.env.PUBLIC_BASE_URL;
   if (envBase) return envBase.replace(/\/$/, '');
@@ -172,7 +226,7 @@ function stripSensitive(data, callerSignerToken = null) {
   };
 }
 
-const SIGNER_TOKEN_EXPIRY_DAYS = 90;
+const SIGNER_TOKEN_EXPIRY_DAYS = parseInt(process.env.SIGNER_TOKEN_EXPIRY_DAYS || '90');
 function isSignerTokenExpired(signer) {
   if (!signer.tokenCreatedAt) return false;
   const created = new Date(signer.tokenCreatedAt).getTime();
@@ -261,7 +315,7 @@ async function clearLoginRate(req, email) {
   if (!pool || !DB_READY) return;
   try { await pool.query('DELETE FROM login_blocks WHERE key=$1', [loginRateKey(req, email)]); } catch(e) {}
 }
-setInterval(async () => {
+const _loginBlocksCleanupInterval = setInterval(async () => {
   if (!pool || !DB_READY) return;
   try {
     const { rowCount } = await pool.query(`DELETE FROM login_blocks WHERE (blocked_until IS NULL OR blocked_until < NOW()) AND first_at < NOW() - ($1 || ' seconds')::INTERVAL`, [LOGIN_WINDOW * 2]);
@@ -269,9 +323,55 @@ setInterval(async () => {
   } catch(e) {}
 }, 30 * 60 * 1000);
 
+// ── R-04: Reminder automat semnatari inactivi ─────────────────────────────
+// Configurabil via ENV: REMINDER_INTERVAL_HOURS (default: 24h), REMINDER_INACTIVITY_DAYS (default: 3)
+// Trimite notificare REMINDER semnatarului curent dacă fluxul nu a avut activitate în N zile.
+const REMINDER_INTERVAL_MS   = (parseInt(process.env.REMINDER_INTERVAL_HOURS || '24') * 3600_000);
+const REMINDER_INACTIVITY_MS = (parseInt(process.env.REMINDER_INACTIVITY_DAYS || '3') * 86_400_000);
+
+async function _runReminderJob() {
+  if (!pool || !DB_READY) return;
+  try {
+    const cutoff = new Date(Date.now() - REMINDER_INACTIVITY_MS).toISOString();
+    const { rows } = await pool.query(
+      `SELECT id, data FROM flows
+       WHERE (data->>'completed') IS DISTINCT FROM 'true'
+         AND (data->>'status') NOT IN ('refused','cancelled')
+         AND updated_at < $1
+       LIMIT 200`,
+      [cutoff]
+    );
+    let reminded = 0;
+    for (const row of rows) {
+      const data = row.data;
+      const flowId = row.id;
+      const current = (data.signers || []).find(s => s.status === 'current');
+      if (!current?.email) continue;
+      // Evităm spam: verificăm dacă există deja o notificare REMINDER recentă (<24h)
+      const { rows: recent } = await pool.query(
+        `SELECT 1 FROM notifications WHERE user_email=$1 AND flow_id=$2 AND type='REMINDER'
+         AND created_at > NOW() - INTERVAL '24 hours' LIMIT 1`,
+        [current.email.toLowerCase(), flowId]
+      );
+      if (recent.length > 0) continue;
+      await notify({
+        userEmail: current.email, flowId, type: 'REMINDER',
+        title: '⏳ Document în așteptare',
+        message: `Documentul „${data.docName}" este în așteptarea semnăturii tale de mai mult de ${process.env.REMINDER_INACTIVITY_DAYS || 3} zile.`,
+        waParams: { signerName: current.name || current.email, docName: data.docName, signerToken: current.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment },
+        urgent: false,
+      });
+      reminded++;
+    }
+    if (reminded > 0) console.log(`⏰ Reminder job: ${reminded} semnatari notificați.`);
+  } catch(e) { console.error('Reminder job error:', e.message); }
+}
+const _reminderInterval = setInterval(_runReminderJob, REMINDER_INTERVAL_MS);
+console.log(`⏰ Reminder job pornit: interval ${process.env.REMINDER_INTERVAL_HOURS || 24}h, inactivitate ${process.env.REMINDER_INACTIVITY_DAYS || 3}z.`);
+
 // ── Cleanup notificari vechi (max 500/user) ────────────────────────────────
 // Rulat o data la 6 ore pentru a preveni cresterea nelimitata
-setInterval(async () => {
+const _notifsCleanupInterval = setInterval(async () => {
   if (!pool || !DB_READY) return;
   try {
     const { rowCount } = await pool.query(`
@@ -317,8 +417,78 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
   pushToUser(pool, email, { title: displayTitle, body: message, icon: '/icon-192.png', badge: '/icon-72.png', data: { flowId, type, urgent: !!urgent } }).catch(() => {});
 
   const eventsToAdd = [];
+  const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
+
+  // Construiește HTML email — template complet pentru YOUR_TURN, simplu pentru restul
+  let emailHtml;
+  if (type === 'YOUR_TURN' && waParams.signerToken) {
+    const signerLink = `${appUrl}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(waParams.signerToken)}`;
+    const flowUrl = `${appUrl}/flow.html?flow=${encodeURIComponent(flowId)}`;
+    emailHtml = `
+<div style="background:#0b1120;margin:0;padding:32px 16px;font-family:system-ui,-apple-system,sans-serif;">
+<div style="max-width:520px;margin:0 auto;background:#111827;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#1e1460 0%,#0f2a4a 100%);padding:28px 32px 24px;text-align:center;">
+    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:10px;padding:10px 18px;font-size:1.1rem;font-weight:800;color:#fff;letter-spacing:.5px;">📋 DocFlowAI</div>
+    <div style="margin-top:14px;font-size:.8rem;color:rgba(255,255,255,.4);letter-spacing:1px;text-transform:uppercase;">Platformă documente electronice</div>
+  </div>
+  <!-- Body -->
+  <div style="padding:28px 32px;">
+    <p style="margin:0 0 6px;font-size:1rem;color:#cdd8ff;">Bună${waParams.signerName ? ', <strong>' + escHtml(waParams.signerName) + '</strong>' : ''},</p>
+    <p style="margin:0 0 20px;font-size:.9rem;color:#9db0ff;line-height:1.6;">
+      ${waParams.initName ? `<strong style="color:#eaf0ff;">${escHtml(waParams.initName)}</strong> te-a adăugat ca semnatar pe documentul de mai jos.` : 'Ești invitat să semnezi electronic un document.'}
+      ${waParams.initFunctie || waParams.institutie ? `<br><span style="font-size:.82rem;color:#7c8db0;">${[waParams.initFunctie, waParams.institutie].filter(Boolean).map(escHtml).join(' · ')}</span>` : ''}
+    </p>
+    <!-- Document card -->
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:18px 20px;margin-bottom:24px;">
+      <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:8px;">📄 ${escHtml(waParams.docName || 'Document de semnat')}</div>
+      ${waParams.institutie ? `<div style="font-size:.82rem;color:#9db0ff;margin-bottom:3px;">🏛 ${escHtml(waParams.institutie)}</div>` : ''}
+      ${waParams.compartiment ? `<div style="font-size:.82rem;color:#9db0ff;margin-bottom:3px;">📂 ${escHtml(waParams.compartiment)}</div>` : ''}
+      <div style="font-size:.8rem;color:#5a6a8a;margin-top:6px;">ID flux: <code style="color:#7c8db0;">${escHtml(flowId)}</code></div>
+    </div>
+    ${waParams.roundInfo ? `<div style="background:rgba(250,180,0,.08);border:1px solid rgba(250,180,0,.2);border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:.83rem;color:#ffd580;">🔄 ${escHtml(waParams.roundInfo)}</div>` : ''}
+    <!-- CTA -->
+    <div style="text-align:center;margin-bottom:20px;">
+      <a href="${signerLink}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;font-weight:700;font-size:1rem;letter-spacing:.3px;">✍️ Semnează documentul</a>
+    </div>
+    <div style="text-align:center;margin-bottom:8px;">
+      <a href="${flowUrl}" style="font-size:.8rem;color:#5a6a8a;text-decoration:none;">🔍 Vezi statusul fluxului</a>
+    </div>
+    <!-- Warning -->
+    <div style="background:rgba(255,100,100,.07);border:1px solid rgba(255,100,100,.18);border-radius:8px;padding:10px 14px;margin-top:16px;font-size:.8rem;color:#ffb3b3;">
+      ⚠️ Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi în aplicație.
+    </div>
+  </div>
+  <!-- Footer -->
+  <div style="border-top:1px solid rgba(255,255,255,.06);padding:14px 32px;text-align:center;">
+    <p style="margin:0;font-size:.72rem;color:rgba(255,255,255,.25);">Link valabil 90 de zile · DocFlowAI · Dacă nu ești semnatarul acestui document, ignoră acest email.</p>
+  </div>
+</div>
+</div>`;
+  } else {
+    // Template generic pentru REFUSED, COMPLETED, REVIEW_REQUESTED etc.
+    const iconMap = { COMPLETED: '✅', REFUSED: '⛔', REVIEW_REQUESTED: '🔄', DELEGATED: '👥' };
+    const icon = iconMap[type] || 'ℹ️';
+    emailHtml = `
+<div style="background:#0b1120;margin:0;padding:32px 16px;font-family:system-ui,-apple-system,sans-serif;">
+<div style="max-width:520px;margin:0 auto;background:#111827;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
+  <div style="background:linear-gradient(135deg,#1e1460 0%,#0f2a4a 100%);padding:24px 32px;text-align:center;">
+    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:10px;padding:10px 18px;font-size:1.1rem;font-weight:800;color:#fff;">📋 DocFlowAI</div>
+  </div>
+  <div style="padding:28px 32px;">
+    <h2 style="margin:0 0 12px;font-size:1.05rem;color:#eaf0ff;">${icon} ${escHtml(title)}</h2>
+    <p style="margin:0 0 16px;font-size:.9rem;color:#9db0ff;line-height:1.6;">${escHtml(message)}</p>
+    ${flowId ? `<div style="text-align:center;margin-top:20px;"><a href="${appUrl}/flow.html?flow=${encodeURIComponent(flowId)}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:10px 24px;border-radius:8px;font-size:.88rem;font-weight:600;">🔍 Vezi detalii flux</a></div>` : ''}
+  </div>
+  <div style="border-top:1px solid rgba(255,255,255,.06);padding:12px 32px;text-align:center;">
+    <p style="margin:0;font-size:.72rem;color:rgba(255,255,255,.25);">DocFlowAI · Platformă documente electronice</p>
+  </div>
+</div>
+</div>`;
+  }
+
   const [emailResult, waResult] = await Promise.allSettled([
-    needsEmail ? sendSignerEmail({ to: email, subject: title, html: `<div style="font-family:sans-serif;padding:20px;"><h2>${title}</h2><p>${message}</p></div>` }) : Promise.resolve({ ok: false, reason: 'disabled' }),
+    needsEmail ? sendSignerEmail({ to: email, subject: urgent ? `🚨 [URGENT] ${title}` : title, html: emailHtml }) : Promise.resolve({ ok: false, reason: 'disabled' }),
     needsWa ? (async () => {
       if (type === 'YOUR_TURN') return sendWaSignRequest({ phone: uRow.phone, signerName: waParams.signerName || '', docName: waParams.docName || '' });
       if (type === 'COMPLETED') return sendWaCompleted({ phone: uRow.phone, docName: waParams.docName || '' });
@@ -357,15 +527,71 @@ app.use('/', flowsRouter);
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
+// FIX v3.2.2: heartbeat pentru detecție conexiuni zombie + timeout auth
+const WS_AUTH_TIMEOUT_MS = 15_000;  // 15s să trimită auth
+const WS_PING_INTERVAL_MS = 30_000; // ping la 30s
+
+const wsHeartbeat = setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (ws.isAlive === false) { ws.terminate(); return; }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, WS_PING_INTERVAL_MS);
+wss.on('close', () => clearInterval(wsHeartbeat));
+
+// SEC-01: helper — parsează cookie auth_token din header-ul de upgrade WS
+function getWsCookieToken(req) {
+  const cookieHeader = req.headers.cookie || '';
+  const match = cookieHeader.match(/(?:^|;\s*)auth_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 wss.on('connection', (ws, req) => {
   let clientEmail = null;
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
+  // SEC-01: încearcă auto-auth din cookie-ul HttpOnly trimis la upgrade
+  const cookieToken = getWsCookieToken(req);
+  if (cookieToken) {
+    try {
+      const decoded = jwt.verify(cookieToken, JWT_SECRET);
+      clientEmail = decoded.email.toLowerCase();
+      wsRegister(clientEmail, ws);
+      ws.send(JSON.stringify({ event: 'auth_ok', email: clientEmail }));
+      if (pool && DB_READY) {
+        pool.query('SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE', [clientEmail])
+          .then(r => ws.send(JSON.stringify({ event: 'unread_count', count: parseInt(r.rows[0].count) })))
+          .catch(() => {});
+      }
+      console.log(`🔌 WS auto-auth (cookie): ${clientEmail}`);
+    } catch(e) {
+      // Cookie invalid/expirat — continuăm, clientul poate trimite auth manual
+      console.warn(`🔌 WS cookie invalid: ${e.message}`);
+    }
+  }
+
+  // Timeout dacă clientul nu a reușit auto-auth și nu trimite auth manual în 15s
+  const authTimeout = setTimeout(() => {
+    if (!clientEmail) {
+      ws.send(JSON.stringify({ event: 'auth_timeout', message: 'Autentificare obligatorie în 15s.' }));
+      ws.terminate();
+    }
+  }, WS_AUTH_TIMEOUT_MS);
+
+  // Dacă auto-auth a reușit, anulăm timeout-ul
+  if (clientEmail) clearTimeout(authTimeout);
+
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
+      // Fallback: auth manual cu token (compatibilitate tranziție)
       if (msg.type === 'auth' && msg.token) {
         try {
           const decoded = jwt.verify(msg.token, JWT_SECRET);
           clientEmail = decoded.email.toLowerCase();
+          clearTimeout(authTimeout);
           wsRegister(clientEmail, ws);
           ws.send(JSON.stringify({ event: 'auth_ok', email: clientEmail }));
           if (pool && DB_READY) {
@@ -373,19 +599,24 @@ wss.on('connection', (ws, req) => {
               .then(r => ws.send(JSON.stringify({ event: 'unread_count', count: parseInt(r.rows[0].count) })))
               .catch(() => {});
           }
-          console.log(`🔌 WS auth: ${clientEmail}`);
+          console.log(`🔌 WS auth (token): ${clientEmail}`);
         } catch(e) { ws.send(JSON.stringify({ event: 'auth_error', message: 'invalid_token' })); }
       }
       if (msg.type === 'ping') ws.send(JSON.stringify({ event: 'pong' }));
     } catch(e) {}
   });
-  ws.on('close', () => { if (clientEmail) { wsUnregister(clientEmail, ws); console.log(`🔌 WS closed: ${clientEmail}`); } });
+  ws.on('close', () => { clearTimeout(authTimeout); if (clientEmail) { wsUnregister(clientEmail, ws); console.log(`🔌 WS closed: ${clientEmail}`); } });
   ws.on('error', (e) => console.error('WS error:', e.message));
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────
 function shutdown(signal) {
   console.log(`🧯 ${signal} received.`);
+  // FIX v3.2.3: oprim toate intervalele la shutdown
+  clearInterval(_loginBlocksCleanupInterval);
+  clearInterval(_notifsCleanupInterval);
+  clearInterval(_reminderInterval);
+  clearInterval(wsHeartbeat);
   httpServer.close(() => { console.log('✅ Server closed.'); process.exit(0); });
   setTimeout(() => process.exit(0), 10_000).unref();
 }
@@ -395,7 +626,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { console.error('❌ PORT missing.'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`🚀 DocFlowAI v3.2.0 server on port ${PORT}`);
+  console.log(`🚀 DocFlowAI v3.3.3 server on port ${PORT}`);
   console.log(`🔌 WebSocket ready at ws://0.0.0.0:${PORT}/ws`);
   initDbWithRetry();
 });

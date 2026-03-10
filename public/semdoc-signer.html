@@ -172,29 +172,53 @@ th{ color: var(--sub) !important; }
 /* ===== End theme ===== */
 </style>
     <script>
-    // Auth guard — semnarea strict in-app, JWT obligatoriu
+    // Auth guard — semnarea strict in-app, cookie HttpOnly obligatoriu
     (function() {
-      const jwt = localStorage.getItem("docflow_token");
-      if (!jwt) { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); }
+      fetch('/auth/me', { credentials: 'include' })
+        .then(r => {
+          if (!r.ok) {
+            location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+          }
+        })
+        .catch(() => {
+          location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+        });
+
+// Populate userBar with user name + back button + logout
+(function() {
+  const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI — OK
+  const bar = document.getElementById('userBar');
+  if (!bar) return;
+  const label = u.nume || u.email || '';
+  bar.innerHTML =
+    (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
+    `<a href="/notifications" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">← Înapoi</a>` +
+    `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+})();
     })();
   </script>
 
   <script>
     // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
-    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    // SEC-01: token în cookie HttpOnly — credentials: include trimite cookie automat.
+    // Fallback tranziție: dacă există token vechi în localStorage (sesiune anterioară upgrade),
+    // îl trimitem ca Authorization Bearer până expiră natural.
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
       const headers = Object.assign({}, (options||{}).headers || {});
-      if (tok) headers['Authorization'] = 'Bearer ' + tok;
-      return fetch(url, Object.assign({}, options||{}, { headers }));
+      const legacyToken = localStorage.getItem('docflow_token');
+      if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
+      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
+  <link rel="stylesheet" href="/mobile.css">
 </head>
   <body>
     <header style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;">
       <img src="/Logo.png" alt="DocFlowAI" style="height:80px;width:auto;object-fit:contain;" />
-      <div id="userBar" style="display:flex;align-items:center;gap:10px;"></div>
+      <div id="userBar" style="display:flex;align-items:center;gap:10px;">
+        <!-- populated by JS -->
+      </div>
     </header>
 
     <main>
@@ -529,6 +553,21 @@ th{ color: var(--sub) !important; }
             refuzBtn.style.cursor = "default";
             refuzBtn.title = "Nu poți refuza după ce ai încărcat un PDF semnat";
           }
+          // Dezactivează Delegă + Revizuire — documentul e deja pregătit pentru upload
+          const delegBtn = $("btnDelegheaza");
+          if (delegBtn) {
+            delegBtn.disabled = true;
+            delegBtn.style.opacity = ".3";
+            delegBtn.style.pointerEvents = "none";
+            delegBtn.title = "Ai ales un PDF semnat — nu mai poți delega";
+          }
+          const revBtn = $("btnRevizuire");
+          if (revBtn) {
+            revBtn.disabled = true;
+            revBtn.style.opacity = ".3";
+            revBtn.style.pointerEvents = "none";
+            revBtn.title = "Ai ales un PDF semnat — nu mai poți trimite spre revizuire";
+          }
         };
         reader.readAsDataURL(f);
       });
@@ -546,10 +585,10 @@ th{ color: var(--sub) !important; }
           const s = currentFlow.signers[signerIndex];
           if (s.status === "current") {
             const signerName = s.name || "semnatar";
-            const jwtToken = localStorage.getItem("docflow_token") || "";
+            // SEC-01: cookie trimis automat prin credentials: include
             const rSign = await _apiFetch(`/flows/${encodeURIComponent(flow)}/sign`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwtToken}` },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ token, signature: signerName }),
             });
             const jSign = await rSign.json().catch(() => ({}));
@@ -644,6 +683,14 @@ th{ color: var(--sub) !important; }
             const origForHash = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
             _uploadToken = origForHash.headers.get("X-Docflow-UploadToken") || null;
             pdfBlob = await prevResp.blob();
+            // Înregistrăm descărcarea (downloadedAt) pentru semnatarul curent
+            try {
+              await _apiFetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ signerToken: token }),
+              });
+            } catch(e) { console.warn("register-download (signer 2+) error:", e.message); }
           } else if (currentFlow?.flowType === "ancore") {
             // Tip 2: ancore existente — descărcăm PDF-ul original fără modificări
             status.textContent = "⏳ Se descarcă PDF-ul original (ancore existente)...";
@@ -773,9 +820,23 @@ th{ color: var(--sub) !important; }
         const cartusH = rows * cellH + titleH + 10;
         const cartusBottom = 36; // footer server e la y=14, separator la y=28 → cartus începe de la 36
 
+        // FIX 4: Verifică dacă tabelul încape pe ultima pagină
+        // Dacă nu încape (tabelul s-ar suprapune cu conținutul paginii), adaugă pagină nouă
+        const { height: pH } = lastPage.getSize();
+        const tableTopY = cartusBottom + cartusH; // y-ul de sus al tabelului
+        const minFreeSpace = cartusH + 60; // spațiu minim necesar (tabel + margin sus)
+        let drawPage = lastPage;
+        if (tableTopY > pH - 60) {
+          // Tabelul nu încape — adaugă pagină nouă
+          const [newPage] = await pdfDoc.copyPages(pdfDoc, [pages.length - 1]);
+          // Creează pagina nouă goală cu aceleași dimensiuni
+          const blankPage = pdfDoc.addPage([pW, pH]);
+          drawPage = blankPage;
+        }
+
         // Title bar — fundal alb, text negru (conform cerinta)
-        lastPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
-        lastPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: cartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(0,0,0) });
+        drawPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
+        drawPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: cartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(0,0,0) });
         // (Removed) Generat timestamp in header bar — kept footer timestamp as single source of truth
 
         // AcroForm — comportament diferit dupa tipul fluxului:
@@ -814,25 +875,25 @@ th{ color: var(--sub) !important; }
           const borderColor = rgb(.2,.2,.2);
           const bgColor     = isSigned ? rgb(.94,.98,.94) : lightBg;
 
-          lastPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: 1 });
-          lastPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
+          drawPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: 1 });
+          drawPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
 
           // Dimensiunile câmpului de semnătură — declarate o singură dată per celulă
           const sigFieldTop = cy + cellH - 42;
           const sigFieldBot = cy + 4;
 
-          lastPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy+cellH-15, size: 8, font: fontB, color: rgb(.1,.1,.1) });
-          if (s.functie) lastPage.drawText(ro(s.functie), { x: cx+8, y: cy+cellH-27, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
-          if (s.name)    lastPage.drawText(ro(s.name),    { x: cx+8, y: cy+cellH-39, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
+          drawPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy+cellH-15, size: 8, font: fontB, color: rgb(.1,.1,.1) });
+          if (s.functie) drawPage.drawText(ro(s.functie), { x: cx+8, y: cy+cellH-27, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
+          if (s.name)    drawPage.drawText(ro(s.name),    { x: cx+8, y: cy+cellH-39, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
 
           if (isSigned && s.signature) {
-            lastPage.drawText(ro(s.signature), { x: cx+8, y: cy+22, size: 8, font: fontB, color: rgb(.1,.1,.1) });
-            if (s.signedAt) lastPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
+            drawPage.drawText(ro(s.signature), { x: cx+8, y: cy+22, size: 8, font: fontB, color: rgb(.1,.1,.1) });
+            if (s.signedAt) drawPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
           } else {
             // Label centrat în câmpul de semnătură extins
             const midSigY = sigFieldBot + (sigFieldTop - sigFieldBot) / 2 - 3;
-            lastPage.drawText("L.S.", { x: cx+8, y: midSigY + 8, size: 7, font: fontB, color: rgb(.5,.5,.6) });
-            lastPage.drawText("Camp semnatura electronica calificata", { x: cx+8, y: midSigY - 4, size: 6, font: fontR, color: rgb(.6,.6,.6) });
+            drawPage.drawText("L.S.", { x: cx+8, y: midSigY + 8, size: 7, font: fontB, color: rgb(.5,.5,.6) });
+            drawPage.drawText("Camp semnatura electronica calificata", { x: cx+8, y: midSigY - 4, size: 6, font: fontR, color: rgb(.6,.6,.6) });
           }
 
           // AcroForm — toate câmpurile active (Ff=0), fără evidențiere per semnatar
@@ -888,10 +949,10 @@ th{ color: var(--sub) !important; }
           const refuzStatus = $("refuzStatus");
 
           try {
-            const jwtTokenRefuse = localStorage.getItem("docflow_token") || "";
+            // SEC-01: cookie trimis automat
             const r = await _apiFetch(`/flows/${flow}/refuse`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwtTokenRefuse}` },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ token, reason: reason || "Fără motiv specificat" })
             });
             const d = await r.json();
@@ -968,8 +1029,8 @@ th{ color: var(--sub) !important; }
           const sel = $("delegateUserSelect");
           if (sel && sel.options.length <= 1) {
             try {
-              const jwtToken = localStorage.getItem("docflow_token") || "";
-              const r = await _apiFetch("/users", { headers: { "Authorization": "Bearer " + jwtToken } });
+              // SEC-01: token din cookie HttpOnly — eliminat jwtToken
+              const r = await _apiFetch('/users');
               if (r.ok) {
                 const users = await r.json();
                 // Exclude semnatarul curent din lista
@@ -1028,8 +1089,8 @@ th{ color: var(--sub) !important; }
               // Redirect la notificari: tab 'sign' daca mai are de semnat, altfel 'all'
               setTimeout(async () => {
                 try {
-                  const jwtTok = localStorage.getItem("docflow_token") || "";
-                  const rFlows = await _apiFetch("/my-flows", { headers: { "Authorization": "Bearer " + jwtTok } });
+                  // SEC-01: token din cookie HttpOnly — eliminat jwtTok
+                  const rFlows = await _apiFetch('/my-flows');
                   const jFlows = rFlows.ok ? await rFlows.json() : {};
                   const pending = (jFlows.flows || []).some(f =>
                     (f.signers || []).some(s => s.status === "current" && (s.email||"").toLowerCase() === (localStorage.getItem("docflow_email")||"").toLowerCase())

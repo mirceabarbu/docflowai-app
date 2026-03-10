@@ -288,6 +288,120 @@ const MIGRATIONS = [
   {
     id: '013_ensure_admin_role',
     sql: `UPDATE users SET role='admin' WHERE email='admin@docflowai.ro' AND role != 'admin';`
+  },
+
+  // ── R-01: PDF-uri extrase din JSONB → tabelă dedicată ─────────────────────
+  // Motivație: JSONB-ul fluxurilor nu mai conține câmpuri de sute de KB.
+  // Queries pe my-flows/admin sunt mult mai rapide; backup-urile DB scad drastic.
+  // Markeri _*Present rămân în JSONB pentru queries fără JOIN.
+  {
+    id: '014_flows_pdfs_storage',
+    sql: `
+      CREATE TABLE IF NOT EXISTS flows_pdfs (
+        flow_id  TEXT NOT NULL,
+        key      TEXT NOT NULL CHECK (key IN ('pdfB64','signedPdfB64','originalPdfB64')),
+        data     TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (flow_id, key),
+        FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_flows_pdfs_flow ON flows_pdfs(flow_id);
+
+      -- Migrare date existente: inserăm PDF-urile din JSONB în tabel separat
+      INSERT INTO flows_pdfs (flow_id, key, data, updated_at)
+        SELECT id, 'pdfB64', data->>'pdfB64', NOW()
+        FROM flows WHERE (data->>'pdfB64') IS NOT NULL AND (data->>'pdfB64') != ''
+        ON CONFLICT (flow_id, key) DO NOTHING;
+
+      INSERT INTO flows_pdfs (flow_id, key, data, updated_at)
+        SELECT id, 'signedPdfB64', data->>'signedPdfB64', NOW()
+        FROM flows WHERE (data->>'signedPdfB64') IS NOT NULL AND (data->>'signedPdfB64') != ''
+        ON CONFLICT (flow_id, key) DO NOTHING;
+
+      INSERT INTO flows_pdfs (flow_id, key, data, updated_at)
+        SELECT id, 'originalPdfB64', data->>'originalPdfB64', NOW()
+        FROM flows WHERE (data->>'originalPdfB64') IS NOT NULL AND (data->>'originalPdfB64') != ''
+        ON CONFLICT (flow_id, key) DO NOTHING;
+
+      -- Curățăm JSONB: înlocuim câmpurile PDF cu markeri booleeni de prezență
+      UPDATE flows SET data =
+        (data - 'pdfB64' - 'signedPdfB64' - 'originalPdfB64')
+        || jsonb_build_object(
+          '_pdfB64Present',      (data->>'pdfB64')         IS NOT NULL AND (data->>'pdfB64')         != '',
+          '_signedPdfB64Present',  (data->>'signedPdfB64')   IS NOT NULL AND (data->>'signedPdfB64')   != '',
+          '_originalPdfB64Present',(data->>'originalPdfB64') IS NOT NULL AND (data->>'originalPdfB64') != ''
+        )
+      WHERE data ? 'pdfB64' OR data ? 'signedPdfB64' OR data ? 'originalPdfB64';
+    `
+  },
+
+  // ── R-02: Tabelă audit_log dedicată pentru interogabilitate SQL ────────────
+  // events[] din JSONB nu dispare — rămâne pentru compatibilitate și audit PDF.
+  // audit_log permite interogări eficiente: câte fluxuri refuzate azi? etc.
+  {
+    id: '015_audit_log',
+    sql: `
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id          BIGSERIAL PRIMARY KEY,
+        flow_id     TEXT,
+        org_id      INTEGER,
+        event_type  TEXT NOT NULL,
+        actor_email TEXT,
+        payload     JSONB,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_flow    ON audit_log(flow_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_org     ON audit_log(org_id,  created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_type    ON audit_log(event_type, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_actor   ON audit_log(actor_email, created_at DESC);
+    `
+  },
+
+  // ── F-05: IP address logging în audit_log ─────────────────────────────────
+  {
+    id: '017_audit_log_ip',
+    sql: `ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS actor_ip TEXT;
+          CREATE INDEX IF NOT EXISTS idx_audit_ip ON audit_log(actor_ip) WHERE actor_ip IS NOT NULL;`
+  },
+
+  // ── B-03: Elimină plain_password din DB ───────────────────────────────────
+  // Parola temporară se trimite o singură dată prin email la creare/reset,
+  // nu se mai stochează în clar în baza de date.
+  {
+    id: '019_drop_plain_password',
+    sql: `ALTER TABLE users DROP COLUMN IF EXISTS plain_password;`
+  },
+
+  // ── GWS: Google Workspace provisioning columns ────────────────────────────
+  {
+    id: '018_gws_provisioning',
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS prenume            TEXT NOT NULL DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS nume_familie       TEXT NOT NULL DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_email     TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gws_email          TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gws_status         TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gws_provisioned_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS gws_error          TEXT;
+      CREATE INDEX IF NOT EXISTS idx_users_gws_email ON users(gws_email) WHERE gws_email IS NOT NULL;
+    `
+  },
+
+  // ── R-06: Email verificare utilizatori noi ─────────────────────────────────
+  // Userii existenți primesc email_verified=TRUE (deja activi).
+  // Userii noi creați de admin primesc email_verified=FALSE până verifică email-ul.
+  {
+    id: '016_email_verification',
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified      BOOLEAN    NOT NULL DEFAULT TRUE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token  TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_sent_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_users_verif_token ON users(verification_token) WHERE verification_token IS NOT NULL;
+    `
+  },
+  {
+    id: '020_force_password_change',
+    sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN NOT NULL DEFAULT FALSE;`
   }
 ];
 
@@ -337,8 +451,8 @@ async function initDbOnce() {
   if (parseInt(uc[0].count) === 0 && process.env.ADMIN_INIT_PASSWORD) {
     const pwd = process.env.ADMIN_INIT_PASSWORD;
     await pool.query(
-      "INSERT INTO users (email, password_hash, plain_password, nume, functie, role) VALUES ($1,$2,$3,$4,$5,'admin') ON CONFLICT DO NOTHING",
-      ['admin@docflowai.ro', _hashPasswordLocal(pwd), pwd, 'Administrator', 'Administrator sistem']
+      "INSERT INTO users (email, password_hash, nume, functie, role) VALUES ($1,$2,$3,$4,'admin') ON CONFLICT DO NOTHING",
+      ['admin@docflowai.ro', _hashPasswordLocal(pwd), 'Administrator', 'Administrator sistem']
     );
     console.log('✅ Admin user creat.');
   }
@@ -399,18 +513,84 @@ export function requireDb(res) {
   return false;
 }
 
+// ── Câmpurile PDF care se stochează în flows_pdfs, nu în JSONB ──────────────
+const _PDF_KEYS = ['pdfB64', 'signedPdfB64', 'originalPdfB64'];
+
+/**
+ * R-01: saveFlow — extrage câmpurile PDF din JSONB și le persistă în flows_pdfs.
+ * Markerii booleeni _*Present rămân în JSONB pentru queries directe (my-flows etc.)
+ */
 export async function saveFlow(id, data) {
   const orgId = data?.orgId || data?.org_id || null;
+  const cleanData = { ...data };
+
+  // Separă câmpurile PDF de restul datelor
+  const pdfWrites = {}; // key → value | null (null = ștergere)
+  for (const key of _PDF_KEYS) {
+    if (key in cleanData) {
+      pdfWrites[key] = cleanData[key] ?? null;
+      delete cleanData[key];
+      // Actualizează marker-ul de prezență în JSONB
+      cleanData[`_${key}Present`] = pdfWrites[key] !== null && pdfWrites[key] !== '';
+    }
+    // Dacă key nu e în cleanData, marker-ul existent rămâne neschimbat
+  }
+
+  // Salvează JSONB fără câmpurile PDF
   await pool.query(
     `INSERT INTO flows (id,data,org_id) VALUES ($1,$2::jsonb,$3)
      ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, org_id=EXCLUDED.org_id, updated_at=NOW()`,
-    [id, JSON.stringify(data), orgId]
+    [id, JSON.stringify(cleanData), orgId]
   );
+
+  // Upsert / delete în flows_pdfs
+  for (const [key, val] of Object.entries(pdfWrites)) {
+    if (val === null || val === '') {
+      await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [id, key]);
+    } else {
+      await pool.query(
+        `INSERT INTO flows_pdfs (flow_id, key, data, updated_at) VALUES ($1,$2,$3,NOW())
+         ON CONFLICT (flow_id, key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
+        [id, key, val]
+      );
+    }
+  }
 }
 
+/**
+ * R-01: getFlowData — reconstituie câmpurile PDF din flows_pdfs în obiectul flow.
+ * Șterge markerii _*Present (nu mai sunt necesari când avem datele reale).
+ */
 export async function getFlowData(id) {
   const r = await pool.query('SELECT data FROM flows WHERE id=$1', [id]);
-  return r.rows[0]?.data ?? null;
+  if (!r.rows[0]) return null;
+  const data = r.rows[0].data;
+
+  // Reataşează câmpurile PDF din flows_pdfs
+  const pdfs = await pool.query('SELECT key, data FROM flows_pdfs WHERE flow_id=$1', [id]);
+  for (const row of pdfs.rows) {
+    data[row.key] = row.data;
+  }
+  // Curăță markerii (inutili când avem datele reale)
+  for (const key of _PDF_KEYS) delete data[`_${key}Present`];
+
+  return data;
+}
+
+/**
+ * R-02 / F-05: writeAuditEvent — scrie eveniment în audit_log cu IP opțional.
+ * Fire-and-forget: erorile sunt logate, nu propagate.
+ */
+export async function writeAuditEvent({ flowId, orgId, eventType, actorEmail, actorIp = null, payload = {} }) {
+  if (!pool || !DB_READY) return;
+  try {
+    await pool.query(
+      'INSERT INTO audit_log (flow_id, org_id, event_type, actor_email, actor_ip, payload) VALUES ($1,$2,$3,$4,$5,$6)',
+      [flowId || null, orgId || null, eventType, actorEmail || null, actorIp || null, JSON.stringify(payload)]
+    );
+  } catch(e) {
+    console.error('writeAuditEvent error:', e.message);
+  }
 }
 
 /**

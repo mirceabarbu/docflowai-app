@@ -48,8 +48,8 @@ function normalizeForFolder(str) {
     .substring(0, 50);
 }
 
-// Structură: DocFlowAI/Institutie/An/Luna/
-async function ensureFlowFolder(drive, institutie, createdAt) {
+// Structură: DocFlowAI/Institutie/An/Luna/FlowId/
+async function ensureFlowFolder(drive, institutie, createdAt, flowId) {
   const date = new Date(createdAt || Date.now());
   const an = String(date.getFullYear());
   const luna = String(date.getMonth() + 1).padStart(2, "0");
@@ -58,7 +58,8 @@ async function ensureFlowFolder(drive, institutie, createdAt) {
   const instFolder = await ensureFolder(drive, instClean, ROOT_FOLDER_ID);
   const anFolder = await ensureFolder(drive, an, instFolder);
   const lunaFolder = await ensureFolder(drive, luna, anFolder);
-  return lunaFolder;
+  const flowFolder = await ensureFolder(drive, flowId || "FLOW_UNKNOWN", lunaFolder);
+  return flowFolder;
 }
 
 // Upload fișier, returnează { id, webViewLink }
@@ -81,7 +82,7 @@ export async function archiveFlow(flowData) {
 
   // Multi-tenant: folosim flowData.institutie setat la creare, NU derivăm din email
   const institutie = (flowData.institutie || "").trim() || "Necunoscut";
-  const folderId = await ensureFlowFolder(drive, institutie, flowData.createdAt);
+  const folderId = await ensureFlowFolder(drive, institutie, flowData.createdAt, flowData.flowId);
 
   const safeName = (flowData.docName || "document").replace(/[^\w\s\-]/g, "").trim().substring(0, 60);
   const prefix = `${flowData.flowId}_${safeName}`;

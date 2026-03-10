@@ -11,7 +11,7 @@
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: system-ui, sans-serif; min-height: 100vh; color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; min-height: 100vh; color: var(--text);
       background: radial-gradient(900px 600px at 20% 10%, rgba(124,92,255,.28), transparent 60%),
         radial-gradient(700px 500px at 80% 85%, rgba(45,212,191,.18), transparent 55%), var(--bg);
     }
@@ -23,7 +23,7 @@
       display: flex; align-items: center; justify-content: space-between; gap: 16px;
     }
     .brand { display: flex; align-items: center; gap: 10px; }
-    .brand img { height: 52px; width: auto; object-fit: contain; }
+    .brand img { height: 80px; width: auto; object-fit: contain; }
     .brand-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; }
     .header-right { display: flex; align-items: center; gap: 10px; font-size: .82rem; }
     .btn-ghost {
@@ -43,18 +43,18 @@
     }
     .btn-accent:hover { opacity: .88; }
 
-    main { max-width: 720px; margin: 0 auto; padding: 32px 20px 60px; }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
     .page-header { margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .page-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em; }
     .page-title span { color: var(--accent); }
     .page-actions { display: flex; gap: 8px; }
 
     /* Filter tabs */
-    .filters { display: flex; gap: 6px; margin-bottom: 20px; }
+    .filters { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
     .filter-btn {
-      padding: 6px 16px; border-radius: 20px; border: 1px solid var(--line);
+      padding: 7px 15px; border-radius: 20px; border: 1px solid var(--line);
       background: transparent; color: var(--muted); cursor: pointer; font-size: .82rem;
-      font-weight: 600; transition: all .18s;
+      font-weight: 600; transition: all .18s; white-space: nowrap; flex-shrink: 0;
     }
     .filter-btn.active {
       background: rgba(124,92,255,.18); border-color: rgba(124,92,255,.4);
@@ -137,12 +137,14 @@
     // altfel fallback la fetch standard cu Bearer token din localStorage.
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
       const headers = Object.assign({}, (options||{}).headers || {});
-      if (tok) headers['Authorization'] = 'Bearer ' + tok;
-      return fetch(url, Object.assign({}, options||{}, { headers }));
+      // Tranziție: dacă există token vechi în localStorage, îl trimitem ca fallback Bearer
+      const legacyToken = localStorage.getItem('docflow_token');
+      if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
+      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
+  <link rel="stylesheet" href="/mobile.css">
 </head>
 <body>
 
@@ -156,7 +158,8 @@
     <span id="wsStatus" title="Conexiune live" style="display:flex;align-items:center;font-size:.75rem;color:var(--muted);">
       <span class="ws-dot" id="wsDot"></span><span id="wsLabel">Connecting...</span>
     </span>
-    <span id="userLabel" style="color:var(--sub);"></span>
+    <!-- userInfo populated by JS -->
+    <span id="userInfo"></span>
     <button class="btn-danger btn-ghost" id="btnLogout">Ieșire</button>
   </div>
 </header>
@@ -186,8 +189,15 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const token = localStorage.getItem('docflow_token');
-if (!token) { location.href = '/login'; }
+// SEC-01: token din cookie HttpOnly — eliminat token
+fetch('/auth/me', { credentials: 'include' })
+  .then(r => {
+    if (!r.ok) {
+      localStorage.removeItem('docflow_user');
+      location.href = '/login?next=/notifications';
+    }
+  })
+  .catch(() => { location.href = '/login?next=/notifications'; });
 
 let allNotifs = [];
 let currentFilter = 'all';
@@ -196,10 +206,12 @@ let currentFilter = 'all';
 (function() {
   const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
   const label = u.nume || u.email || '';
-  if (label) $('userLabel').textContent = label;
+  if (label) $('userInfo').innerHTML = `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` +
+    (u.role === 'admin' ? ` <a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
 })();
 
 $('btnLogout').onclick = () => {
+  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
   localStorage.removeItem('docflow_token');
   localStorage.removeItem('docflow_user');
   location.href = '/login';
@@ -218,7 +230,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 // Load notifications
 async function loadNotifs() {
   try {
-    const r = await _apiFetch('/api/notifications/with-status', { headers: { 'Authorization': 'Bearer ' + token } });
+    const r = await _apiFetch('/api/notifications/with-status');
     if (r.status === 401 || r.status === 403) { location.href = '/login'; return; }
     if (!r.ok) throw new Error('fetch_failed');
     allNotifs = await r.json();
@@ -309,7 +321,7 @@ function renderList() {
     card.innerHTML = `
       <div class="notif-icon type-${n.type||''}">${typeIcon(n.type)}</div>
       <div class="notif-body">
-        <div class="notif-title">${isUrgentNotif ? '<span style="color:#ff6666;font-weight:800;margin-right:6px;">🚨 Prioritate</span>' : ''}${escHtml((n.title||'Notificare').replace(/^\s*🚨\s*\[URGENT\]\s*/i,''))}</div>
+        <div class="notif-title">${isUrgentNotif ? '<span style="color:#ff6666;font-weight:800;margin-right:6px;">🚨 URGENT</span>' : ''}${escHtml((n.title||'Notificare').replace(/^\s*🚨\s*\[URGENT\]\s*/i,''))}</div>
         <div class="notif-msg">${escHtml(n.message||'')}</div>
         <div class="notif-meta">
           <span class="notif-time">${timeAgo(n.created_at)}</span>
@@ -327,9 +339,7 @@ function renderList() {
         if (n.type === 'YOUR_TURN') {
           // Fetch token de semnare si redirectioneaza direct la pagina de semnare
           try {
-            const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(n.flow_id)}`, {
-              headers: { 'Authorization': 'Bearer ' + token }
-            });
+            const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(n.flow_id)}`);
             if (r.ok) {
               const d = await r.json();
               location.href = `/semdoc-signer.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
@@ -359,21 +369,21 @@ async function markRead(id) {
   if (!n || n.read) return;
   n.read = true;
   renderList(); updateReadAllBtn(); updateTabCounts();
-  await _apiFetch(`/api/notifications/${id}/read`, { method:'POST', headers:{'Authorization':'Bearer '+token} }).catch(()=>{});
+  await _apiFetch(`/api/notifications/${id}/read`, { method:'POST' }).catch(()=>{});
 }
 
 window.deleteNotif = async (e, id) => {
   e.stopPropagation();
   allNotifs = allNotifs.filter(n => n.id !== id);
   renderList(); updateReadAllBtn(); updateTabCounts();
-  await _apiFetch(`/api/notifications/${id}`, { method:'DELETE', headers:{'Authorization':'Bearer '+token} }).catch(()=>{});
+  await _apiFetch(`/api/notifications/${id}`, { method:'DELETE' }).catch(()=>{});
 };
 
 $('btnReadAll').onclick = async () => {
   allNotifs.forEach(n => n.read = true);
   updateTabCounts();
   renderList(); updateReadAllBtn();
-  await _apiFetch('/api/notifications/read-all', { method:'POST', headers:{'Authorization':'Bearer '+token} }).catch(()=>{});
+  await _apiFetch('/api/notifications/read-all', { method:'POST' }).catch(()=>{});
 };
 
 // ── WebSocket ──────────────────────────────────────────────
@@ -383,7 +393,6 @@ function connectWS() {
   const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    ws.send(JSON.stringify({ type: 'auth', token }));
     setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 25000);
   };
   ws.onmessage = (ev) => {

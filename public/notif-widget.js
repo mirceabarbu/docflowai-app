@@ -113,25 +113,27 @@
   async function refreshToken() {
     if (_refreshPromise) return _refreshPromise;
     _refreshPromise = (async () => {
-      const token = localStorage.getItem('docflow_token');
-      if (!token) { redirectLogin(); return false; }
       try {
+        // Refresh: trimitem cookie HttpOnly (sesiune nouă) + fallback Bearer (tranziție)
+        const legacyTok = localStorage.getItem('docflow_token');
+        const refreshHeaders = { 'Content-Type': 'application/json' };
+        if (legacyTok) refreshHeaders['Authorization'] = 'Bearer ' + legacyTok;
         const r = await fetch('/auth/refresh', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token }
+          credentials: 'include',
+          headers: refreshHeaders,
         });
         if (r.ok) {
           const d = await r.json();
-          localStorage.setItem('docflow_token', d.token);
-          // Actualizează și datele user dacă s-au schimbat
+          // SEC-01: token-ul NU mai este stocat în localStorage
+          // Actualizează datele user (non-sensibile) pentru UI
           const existing = JSON.parse(localStorage.getItem('docflow_user') || '{}');
           localStorage.setItem('docflow_user', JSON.stringify({
             ...existing,
             email: d.email, role: d.role, nume: d.nume,
             functie: d.functie, institutie: d.institutie || existing.institutie || ''
           }));
-          console.log('[DocFlowAI] Token reînnoit cu succes.');
-          // Reconectează WebSocket cu noul token
+          console.log('[DocFlowAI] Token reînnoit cu succes (cookie).');
           if (ws) { ws.close(); }
           return true;
         } else {
@@ -149,7 +151,10 @@
   }
 
   function redirectLogin() {
-    localStorage.removeItem('docflow_token');
+    // Nu redirecta pe pagini publice (signer accesat cu token în URL)
+    const isPublicPage = location.search.includes('token=') && !localStorage.getItem('docflow_user');
+    if (isPublicPage) return;
+    fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
     localStorage.removeItem('docflow_user');
     const next = encodeURIComponent(location.pathname + location.search);
     location.href = '/login?next=' + next;
@@ -163,36 +168,28 @@
    * La 401 după refresh eșuat: redirect login.
    */
   async function apiFetch(url, options = {}) {
-    const token = localStorage.getItem('docflow_token');
+    // SEC-01: token-ul e în cookie HttpOnly — trimis automat cu credentials: 'include'
+    // Nu mai citim/scriem localStorage pentru token
     const headers = { ...(options.headers || {}) };
-    if (token) headers['Authorization'] = 'Bearer ' + token;
+    // Eliminăm Authorization header dacă a rămas din cod vechi (tranziție)
+    delete headers['Authorization'];
 
-    // Refresh proactiv dacă tokenul expiră în < 20 minute
-    if (token) {
-      const remaining = msUntilExpiry(token);
-      if (remaining > 0 && remaining < 20 * 60 * 1000) {
-        await refreshToken();
-        const newToken = localStorage.getItem('docflow_token');
-        if (newToken) headers['Authorization'] = 'Bearer ' + newToken;
-      }
-    }
+    // Refresh proactiv periodic (bazat pe timp, nu pe token local)
+    // La fiecare 10 min, scheduleProactiveRefresh() apelează refreshToken()
 
-    let res = await fetch(url, { ...options, headers });
+    let res = await fetch(url, { ...options, headers, credentials: 'include' });
 
     // Refresh reactiv la 401
     if (res.status === 401) {
       let body = {};
       try { body = await res.clone().json(); } catch(e) {}
       const err = body?.error || '';
-      // Încearcă refresh dacă e token expirat (nu credențiale invalide)
       if (err === 'token_invalid_or_expired' || err === 'unauthorized' || err === 'token_invalid') {
         const ok = await refreshToken();
         if (ok) {
-          const retryToken = localStorage.getItem('docflow_token');
-          const retryHeaders = { ...headers, 'Authorization': 'Bearer ' + retryToken };
-          res = await fetch(url, { ...options, headers: retryHeaders });
+          // Cookie nou setat de /auth/refresh — retry automat
+          res = await fetch(url, { ...options, headers, credentials: 'include' });
         }
-        // Dacă retry-ul tot 401 → redirectLogin se va face în refreshToken()
       }
     }
 
@@ -201,14 +198,11 @@
 
   // ── Refresh proactiv periodic (la fiecare 10 minute verifică dacă mai are < 20 min) ──
   function scheduleProactiveRefresh() {
+    // SEC-01: nu mai avem token în localStorage — refresh la fiecare 25 minute (înainte de expirare 2h)
     setInterval(async () => {
-      const token = localStorage.getItem('docflow_token');
-      if (!token) return;
-      const remaining = msUntilExpiry(token);
-      if (remaining > 0 && remaining < 20 * 60 * 1000) {
-        await refreshToken();
-      }
-    }, 10 * 60 * 1000); // verifică la fiecare 10 minute
+      // Încearcă refresh silențios; dacă cookie-ul e valid, serverul emite unul nou
+      await refreshToken();
+    }, 25 * 60 * 1000); // la fiecare 25 minute
   }
 
   // ══════════════════════════════════════════════════════════
@@ -226,16 +220,18 @@
     bellBtn.innerHTML = `🔔<span id="nw-badge"></span>`;
     bellBtn.addEventListener('click', async (e) => {
       e.preventDefault();
-      const tok = localStorage.getItem('docflow_token');
-      if (!tok || unreadCount === 0) { window.location.href = '/notifications'; return; }
+      // SEC-01: nu mai verificăm token din localStorage — cookie trimis automat
+      if (unreadCount === 0) { window.location.href = '/notifications'; return; }
       try {
         const r = await apiFetch('/api/notifications');
         const notifs = await r.json();
         const latest = notifs.find(n => !n.read) || notifs[0];
         if (!latest) { window.location.href = '/notifications'; return; }
         const t = (latest.type || '').toUpperCase();
+        const isUrgent = !!(latest.urgent || latest.flow_urgent);
         let tab = 'all';
-        if (t === 'YOUR_TURN' || t === 'ASSIGNED' || t === 'SIGNER_TURN') tab = 'sign';
+        if (isUrgent) tab = 'urgent'; // flux urgent → deschide tab Urgente
+        else if (t === 'YOUR_TURN' || t === 'ASSIGNED' || t === 'SIGNER_TURN') tab = 'sign';
         else if (t === 'COMPLETED' || t === 'DONE' || t === 'FINISHED') tab = 'done';
         else if (t === 'REFUSED') tab = 'refused';
         else if (t === 'REVIEW_REQUESTED') tab = 'review';
@@ -300,15 +296,16 @@
   // ══════════════════════════════════════════════════════════
 
   function connectWS() {
-    const token = localStorage.getItem('docflow_token');
-    if (!token) return;
+    // SEC-01: cookie-ul auth_token e trimis automat la WS upgrade (același origin)
+    // Serverul face auto-auth din cookie — nu mai trimitem token explicit
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${proto}//${location.host}/ws`);
 
     ws.onopen = () => {
       wsReady = true;
-      ws.send(JSON.stringify({ type: 'auth', token: localStorage.getItem('docflow_token') }));
+      // SEC-01: nu mai trimitem token explicit — serverul l-a verificat din cookie la upgrade
+      // Trimitem ping pentru a confirma conexiunea
       if (keepaliveTimer) clearInterval(keepaliveTimer);
       keepaliveTimer = setInterval(() => {
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' }));
@@ -340,8 +337,6 @@
   }
 
   async function fetchUnreadCount() {
-    const token = localStorage.getItem('docflow_token');
-    if (!token) return;
     try {
       const r = await apiFetch('/api/notifications/unread-count');
       if (r.ok) { const d = await r.json(); updateBadge(d.count); }
@@ -353,8 +348,13 @@
   // ══════════════════════════════════════════════════════════
 
   function init() {
-    const token = localStorage.getItem('docflow_token');
-    if (!token) return;
+    // Guard: nu pornim widget-ul dacă nu există niciun semn de sesiune activă.
+    // Verificăm: token legacy în localStorage SAU docflow_user (setat la login).
+    // Fără acest guard, widget-ul ar porni pe pagini publice (signer etc.) și
+    // ar face redirect neașteptat la /login.
+    const hasLegacyToken = !!localStorage.getItem('docflow_token');
+    const hasUserData    = !!localStorage.getItem('docflow_user');
+    if (!hasLegacyToken && !hasUserData) return;
 
     injectStyles();
     injectBell();
@@ -429,12 +429,11 @@
           applicationServerKey: urlBase64ToUint8Array(vapidKey),
         });
       }
-      // Trimite abonamentul la server
-      const token = localStorage.getItem('docflow_token');
-      if (!token) return;
+      // Trimite abonamentul la server — SEC-01: cookie trimis automat cu credentials: include
       await fetch('/api/push/subscribe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')))), auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')))) } })
       });
       console.log('✅ Push notifications activate.');

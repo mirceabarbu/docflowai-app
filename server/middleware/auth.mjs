@@ -1,6 +1,7 @@
 /**
- * DocFlowAI — Auth middleware v3.2.0
+ * DocFlowAI — Auth middleware v3.3.3
  * requireAuth, requireAdmin, hashPassword, verifyPassword, JWT helpers.
+ * SEC-01: requireAuth citește cookie HttpOnly auth_token (fallback: Bearer header)
  */
 
 import crypto from 'crypto';
@@ -16,6 +17,9 @@ export const JWT_EXPIRES = process.env.JWT_EXPIRES || '2h';
 export const JWT_REFRESH_GRACE_SEC = parseInt(process.env.JWT_REFRESH_GRACE_SEC || '900');
 export const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 
+// SEC-01: cookie name centralizat — schimbat într-un singur loc dacă e nevoie
+export const AUTH_COOKIE = 'auth_token';
+
 export function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
@@ -29,9 +33,20 @@ export function verifyPassword(password, stored) {
   return check === hash;
 }
 
+/**
+ * SEC-01: requireAuth — verifică cookie HttpOnly auth_token, cu fallback la Bearer header.
+ * Fallback-ul Bearer rămâne activ pentru compatibilitate cu tokenii existenți în tranziție.
+ */
 export function requireAuth(req, res) {
-  const auth = req.get('authorization') || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
+  // 1. Încearcă cookie-ul HttpOnly (metoda sigură)
+  let token = req.cookies?.[AUTH_COOKIE] || null;
+
+  // 2. Fallback: Authorization: Bearer <token> (compatibilitate tranziție)
+  if (!token) {
+    const auth = req.get('authorization') || '';
+    token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
+  }
+
   if (!token) { res.status(401).json({ error: 'unauthorized' }); return null; }
   try { return jwt.verify(token, JWT_SECRET); }
   catch(e) { res.status(401).json({ error: 'token_invalid_or_expired' }); return null; }
@@ -49,7 +64,31 @@ export function requireAdmin(req, res) {
 }
 
 /**
- * FIX: generatePassword — fara plain_password in DB.
+ * SEC-01: setAuthCookie — setează cookie-ul HttpOnly cu JWT.
+ * Apelat din auth routes după login/refresh.
+ */
+export function setAuthCookie(res, token, maxAgeMs) {
+  res.cookie(AUTH_COOKIE, token, {
+    httpOnly: true,                                   // inaccesibil din JS — previne XSS
+    secure: process.env.NODE_ENV !== 'test',          // HTTPS only (Railway = HTTPS)
+    sameSite: 'strict',                               // protecție CSRF
+    path: '/',
+    maxAge: maxAgeMs || (2 * 60 * 60 * 1000),        // default 2h în ms
+  });
+}
+
+/**
+ * SEC-01: clearAuthCookie — șterge cookie-ul de sesiune la logout.
+ */
+export function clearAuthCookie(res) {
+  res.cookie(AUTH_COOKIE, '', {
+    httpOnly: true, secure: process.env.NODE_ENV !== 'test',
+    sameSite: 'strict', path: '/', maxAge: 0,
+  });
+}
+
+/**
+ * generatePassword — fara plain_password in DB.
  * Parola generata se returneaza caller-ului O SINGURA DATA, nu se stocheaza in clar.
  */
 export function generatePassword() {
@@ -61,4 +100,10 @@ export function generatePassword() {
 
 export function sha256Hex(buf) {
   return crypto.createHash('sha256').update(buf).digest('hex');
+}
+
+// escHtml — escape HTML pentru emailuri și output — previne HTML injection
+// Exportat din middleware pentru reutilizare în toate rutele
+export function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }

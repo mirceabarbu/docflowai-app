@@ -44,4 +44,5 @@ export async function sendSignerEmail({ to, subject, html }) {
   }
 
   console.log(`📧 Email sent to ${to} | id: ${j.id}`);
+  return { ok: true, id: j.id };
 }

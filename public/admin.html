@@ -97,16 +97,18 @@
   </style>
 
   <script>
-    // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
-    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    // SEC-01: apiFetch shim — cookie HttpOnly trimis automat cu credentials: include
+    // Nu mai citim token din localStorage
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
       const headers = Object.assign({}, (options||{}).headers || {});
-      if (tok) headers['Authorization'] = 'Bearer ' + tok;
-      return fetch(url, Object.assign({}, options||{}, { headers }));
+      // Tranziție: dacă există token vechi în localStorage, îl trimitem ca fallback Bearer
+      const legacyToken = localStorage.getItem('docflow_token');
+      if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
+      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
+  <link rel="stylesheet" href="/mobile.css">
 </head>
 <body>
 <header>
@@ -121,9 +123,41 @@
   </div>
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
     <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
+    <button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;">🔑 Parolă</button>
     <button class="btn-logout" onclick="logout()">Ieși</button>
   </div>
 </header>
+
+<!-- Banner schimbare parolă obligatorie -->
+<div id="forcePwdBanner" style="display:none;background:linear-gradient(135deg,rgba(255,165,0,.18),rgba(255,100,0,.12));border-bottom:1px solid rgba(255,165,0,.4);padding:12px 24px;text-align:center;font-size:.88rem;color:#ffd580;">
+  ⚠️ <strong>Parola ta este temporară.</strong> Te rugăm să o schimbi acum pentru securitatea contului.
+  &nbsp;<button onclick="openChangePwdModal()" style="background:rgba(255,165,0,.25);border:1px solid rgba(255,165,0,.5);color:#ffd580;padding:4px 14px;border-radius:7px;cursor:pointer;font-size:.83rem;font-weight:700;">🔑 Schimbă parola</button>
+  &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" style="background:transparent;border:none;color:#9db0ff;cursor:pointer;font-size:.85rem;opacity:.6;">✕</button>
+</div>
+
+<!-- Modal schimbare parolă -->
+<div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
+  <div style="background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:32px;width:360px;max-width:calc(100vw - 32px);box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <h3 style="margin:0 0 20px;color:#eaf0ff;font-size:1.05rem;">🔑 Schimbă parola</h3>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;font-size:.8rem;color:#9db0ff;margin-bottom:5px;">Parola curentă</label>
+      <input id="cpCurrent" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#eaf0ff;font-size:.9rem;outline:none;"/>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;font-size:.8rem;color:#9db0ff;margin-bottom:5px;">Parola nouă <span style="color:#5a6a8a;">(minim 6 caractere)</span></label>
+      <input id="cpNew" type="password" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#eaf0ff;font-size:.9rem;outline:none;"/>
+    </div>
+    <div style="margin-bottom:18px;">
+      <label style="display:block;font-size:.8rem;color:#9db0ff;margin-bottom:5px;">Confirmă parola nouă</label>
+      <input id="cpConfirm" type="password" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#eaf0ff;font-size:.9rem;outline:none;"/>
+    </div>
+    <div id="cpMsg" style="min-height:20px;margin-bottom:14px;font-size:.83rem;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeChangePwdModal()" style="padding:8px 18px;border-radius:9px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#9db0ff;cursor:pointer;font-size:.85rem;">Anulează</button>
+      <button onclick="submitChangePwd()" id="cpBtn" style="padding:8px 20px;border-radius:9px;border:none;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;cursor:pointer;font-size:.85rem;font-weight:700;">Salvează</button>
+    </div>
+  </div>
+</div>
 
 <main>
 
@@ -142,17 +176,33 @@
   <div class="card">
     <div class="card-title">➕ Utilizator nou</div>
     <div class="grid3">
-      <div class="frow"><label>Nume și prenume *</label><input id="nNume" placeholder="Popescu Ion"/></div>
+      <div class="frow"><label>Prenume *</label><input id="nPrenume" placeholder="Ion" oninput="updateGwsPreview()"/></div>
+      <div class="frow"><label>Nume familie *</label><input id="nNumeFamilie" placeholder="Popescu" oninput="updateGwsPreview()"/></div>
       <div class="frow"><label>Funcție</label>
         <input id="nFunctie" list="functieList" placeholder="Șef serviciu" autocomplete="off"/>
         <datalist id="functieList"></datalist>
       </div>
-      <div class="frow"><label>Email (login) *</label><input id="nEmail" type="email" placeholder="ion@primarie.ro"/></div>
     </div>
     <div class="grid3" style="margin-top:12px;">
+      <!-- Email login — vizibil doar fără Workspace -->
+      <div class="frow" id="nEmailRow">
+        <label>Email (login) * <span style="color:var(--muted);font-size:.71rem;">— adresa cu care se loghează</span></label>
+        <input id="nEmail" type="email" placeholder="ion.popescu@primarie.ro"/>
+      </div>
+      <!-- Email personal — destinația credențialelor când e Workspace activ -->
+      <div class="frow">
+        <label id="nPersonalEmailLabel">Email personal <span style="color:var(--muted);font-size:.71rem;" id="nPersonalEmailHint">— opțional</span></label>
+        <input id="nPersonalEmail" type="email" placeholder="ion.popescu@gmail.com"/>
+      </div>
       <div class="frow"><label>Instituție *</label>
         <input id="nInstitutie" list="institutieList" placeholder="Ex: Primăria Cluj" autocomplete="off"/>
         <datalist id="institutieList"></datalist>
+      </div>
+    </div>
+    <div class="grid3" style="margin-top:12px;">
+      <div class="frow"><label>Compartiment</label>
+        <input id="nCompartiment" list="compartimentList" placeholder="Ex: Serviciul Financiar" autocomplete="off"/>
+        <datalist id="compartimentList"></datalist>
       </div>
       <div class="frow">
         <label>Parolă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = auto</span></label>
@@ -163,10 +213,6 @@
       </div>
     </div>
     <div class="grid3" style="margin-top:12px;">
-      <div class="frow"><label>Compartiment</label>
-        <input id="nCompartiment" list="compartimentList" placeholder="Ex: Serviciul Financiar" autocomplete="off"/>
-        <datalist id="compartimentList"></datalist>
-      </div>
       <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
         <input id="nPhone" type="tel" placeholder="0712345678 sau +40712345678" oninput="phoneInputFeedback(this)"/></div>
       <div class="frow"><label>Notificări</label>
@@ -179,6 +225,26 @@
             📱 WhatsApp <input type="checkbox" id="nNotifWa" style="accent-color:#25D366;width:15px;height:15px;"></label>
         </div>
       </div>
+      <!-- ── Google Workspace ── -->
+      <div class="frow" id="gwsBox" style="background:rgba(66,133,244,.07);border:1px solid rgba(66,133,244,.25);border-radius:12px;padding:12px 14px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          <strong style="font-size:.85rem;color:#9db0ff;">Google Workspace</strong>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;color:var(--sub);margin-bottom:8px;">
+          <input type="checkbox" id="nCreateGws" style="accent-color:#4285F4;width:15px;height:15px;" onchange="onGwsToggle()"/>
+          Creează cont <strong>@docflowai.ro</strong>
+        </label>
+        <label id="nForcePwdLabel" style="display:none;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;color:var(--sub);margin-bottom:10px;">
+          <input type="checkbox" id="nForcePwd" checked style="accent-color:#4285F4;width:15px;height:15px;"/>
+          Forțează schimbarea parolei la prima logare
+        </label>
+        <div id="gwsPreview" style="display:none;background:rgba(66,133,244,.1);border:1px solid rgba(66,133,244,.3);border-radius:8px;padding:8px 10px;font-size:.8rem;">
+          <span style="color:#9db0ff;">Login DocFlowAI + Workspace:</span>
+          <span id="gwsPreviewEmail" style="color:#fff;font-weight:700;font-family:monospace;margin-left:6px;">—</span>
+          <span id="gwsPreviewSpin" style="display:none;margin-left:6px;font-size:.75rem;color:#9db0ff;">verificare...</span>
+        </div>
+      </div>
     </div>
     <div class="actions">
       <button class="btn btn-p" id="btnCreate" onclick="createUser()">Crează utilizatorul</button>
@@ -187,7 +253,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span></div>
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><div style="display:flex;gap:6px;"><button onclick="exportUsersCSV()" style="padding:7px 14px;font-size:.82rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:600;">📥 CSV</button><button onclick="exportUsersPDF()" style="padding:7px 14px;font-size:.82rem;background:rgba(157,176,255,.1);border:1px solid rgba(157,176,255,.25);border-radius:8px;color:#9db0ff;cursor:pointer;font-weight:600;">📄 PDF</button></div></div>
     <div class="tbl-wrap" id="tblScroll"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
     <div id="pgBarWrapper"></div>
   </div>
@@ -201,24 +267,28 @@
 
   <h2 style="color:#9db0ff;margin-bottom:16px;">📋 Fluxuri active</h2>
   <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:18px 20px;margin-bottom:28px;">
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
-      <input id="flowSearch" placeholder="Caută după ID, document sau email..." style="flex:1;min-width:220px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;"/>
-      <select id="flowStatusFilter" style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
+    <div style="margin-bottom:10px;">
+      <input id="flowSearch" placeholder="Caută după ID, document sau email..." style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;"/>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <select id="flowStatusFilter" style="width:160px;flex-shrink:0;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;">
         <option value="">Toate statusurile</option>
         <option value="active">Active</option>
         <option value="done">Finalizate</option>
         <option value="refused">Refuzate</option>
+        <option value="cancelled">Anulate</option>
       </select>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
-      <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;">
+      <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;">
         <option value="">Toate instituțiile</option>
       </select>
-      <select id="flowDeptFilter" style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;" disabled>
+      <select id="flowDeptFilter" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;" disabled>
         <option value="">Toate compartimentele</option>
       </select>
+      <button onclick="exportFlowsCSV()" style="flex-shrink:0;padding:8px 12px;font-size:.83rem;background:rgba(45,212,191,.13);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-weight:600;" title="Exportă CSV">📥 CSV</button>
+      <button onclick="exportFlowsPDF()" style="flex-shrink:0;padding:8px 12px;font-size:.83rem;background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-weight:600;" title="Exportă PDF">📄 PDF</button>
+    </div>
+    <div style="margin-bottom:14px;">
       <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
-      <button onclick="exportAuditCSV()" style="padding:8px 14px;font-size:.85rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;">📊 Export CSV 30z</button>
     </div>
     <div id="flowsListArea" style="font-size:.83rem;color:var(--muted);">Apasă „Încarcă" pentru a vedea fluxurile.</div>
     <div id="flowsListPagination" style="display:none;margin-top:14px;"></div>
@@ -407,39 +477,49 @@
 
 <!-- Modal editare -->
 <div class="modal-bg" id="mBg" onclick="if(event.target===this)closeMod()">
-  <div class="modal">
+  <div class="modal" style="max-width:680px;">
     <h3>✏️ Editează utilizator</h3>
     <input type="hidden" id="eId"/>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
       <div>
-        <div class="frow"><label>Nume și prenume</label><input id="eNume"/></div>
+        <div class="frow"><label>Prenume</label><input id="ePrenume" placeholder="Ion"/></div>
+        <div class="frow"><label>Nume familie</label><input id="eNumeFamilie" placeholder="Popescu"/></div>
         <div class="frow"><label>Funcție</label><input id="eFunctie" list="functieList" autocomplete="off"/></div>
-        <div class="frow"><label>Instituție</label><input id="eInstitutie" list="institutieList" autocomplete="off"/></div>
       </div>
       <div>
+        <div class="frow"><label>Instituție</label><input id="eInstitutie" list="institutieList" autocomplete="off"/></div>
         <div class="frow"><label>Compartiment</label><input id="eCompartiment" list="compartimentList" autocomplete="off"/></div>
-        <div class="frow"><label>Email</label><input id="eEmail" type="email"/></div>
+        <div class="frow"><label>Email (login)</label><input id="eEmail" type="email"/></div>
+      </div>
+      <div>
+        <div class="frow"><label>Email personal</label><input id="ePersonalEmail" type="email" placeholder="gmail, yahoo..."/></div>
         <div class="frow"><label>Rol</label>
           <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
+        <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">07XXXXXXXX</span></label>
+          <input id="ePhone" type="tel" placeholder="0712345678" oninput="phoneInputFeedback(this)"/></div>
       </div>
-      <div>
-        <div class="frow">
-          <label>Parolă nouă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = păstrează</span></label>
-          <input id="ePwd" type="text" placeholder=""/>
-        </div>
-        <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
-          <input id="ePhone" type="tel" placeholder="0712345678 sau +40712345678" oninput="phoneInputFeedback(this)"/></div>
-        <div class="frow"><label>Notificări preferate</label>
-          <div style="display:flex;flex-direction:column;gap:7px;margin-top:6px;">
-            <label style="display:flex;align-items:center;justify-content:space-between;font-size:.83rem;color:var(--sub);cursor:pointer;">
-              🔔 În aplicație <input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);width:15px;height:15px;"></label>
-            <label style="display:flex;align-items:center;justify-content:space-between;font-size:.83rem;color:var(--sub);cursor:pointer;">
-              ✉️ Email <input type="checkbox" id="eNotifEmail" style="accent-color:var(--accent);width:15px;height:15px;"></label>
-            <label style="display:flex;align-items:center;justify-content:space-between;font-size:.83rem;color:var(--sub);cursor:pointer;">
-              📱 WhatsApp <input type="checkbox" id="eNotifWa" style="accent-color:#25D366;width:15px;height:15px;"></label>
-          </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+      <div class="frow">
+        <label>Parolă nouă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = păstrează</span></label>
+        <input id="ePwd" type="text" placeholder=""/>
+      </div>
+      <div class="frow"><label>Notificări preferate</label>
+        <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);width:15px;height:15px;"> 🔔 App</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <input type="checkbox" id="eNotifEmail" style="accent-color:var(--accent);width:15px;height:15px;"> ✉️ Email</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
+            <input type="checkbox" id="eNotifWa" style="accent-color:#25D366;width:15px;height:15px;"> 📱 WhatsApp</label>
         </div>
       </div>
+    </div>
+    <!-- Status Workspace -->
+    <div id="eGwsRow" style="display:none;margin-top:12px;background:rgba(66,133,244,.07);border:1px solid rgba(66,133,244,.2);border-radius:10px;padding:10px 14px;font-size:.83rem;">
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:4px;">CONT GOOGLE WORKSPACE</span>
+      <span id="eGwsEmail" style="color:#34A853;font-weight:700;font-family:monospace;"></span>
+      <span id="eGwsFail" style="color:#f28b82;display:none;"></span>
     </div>
     <div id="eMsg" style="margin-top:8px;"></div>
     <div class="modal-acts">
@@ -450,17 +530,116 @@
   </div>
 </div>
 
+<!-- ── Modal parolă nouă — afișat după creare/reset ── -->
+<div class="modal-bg" id="pwdModalBg" onclick="if(event.target===this)closePwdModal()">
+  <div class="modal" style="max-width:460px;">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);font-size:24px;margin-bottom:10px;">🔑</div>
+      <h3 style="margin:0;font-size:1.1rem;">Utilizator creat cu succes</h3>
+    </div>
+    <p style="color:#9db0ff;font-size:.85rem;margin:0 0 16px;text-align:center;">
+      Parola temporară este afișată <strong style="color:#fff;">o singură dată</strong>.<br>
+      Notează-o sau trimite credențialele pe email.
+    </p>
+    <!-- Email user -->
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 16px;margin-bottom:10px;">
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:3px;">LOGIN DOCFLOWAI</span>
+      <strong id="pwdModalEmail" style="font-size:.92rem;"></strong>
+    </div>
+    <!-- Destinație email credențiale -->
+    <div id="pwdModalDestRow" style="display:none;background:rgba(45,212,191,.05);border:1px solid rgba(45,212,191,.2);border-radius:10px;padding:10px 16px;margin-bottom:10px;font-size:.83rem;">
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:3px;">CREDENȚIALE TRIMISE LA</span>
+      <strong id="pwdModalDest" style="color:#2dd4bf;"></strong>
+    </div>
+    <!-- Parola -->
+    <div style="background:rgba(124,92,255,.1);border:1px solid rgba(124,92,255,.35);border-radius:10px;padding:14px 16px;margin-bottom:10px;">
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:6px;">PAROLĂ TEMPORARĂ</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <strong id="pwdModalPwd" style="font-family:monospace;font-size:1.3rem;color:#ffd580;letter-spacing:.05em;flex:1;"></strong>
+        <button onclick="copyPwd()" id="btnCopyPwd" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(124,92,255,.5);background:rgba(124,92,255,.2);color:#c4b5ff;cursor:pointer;font-size:.8rem;font-weight:600;">📋 Copiază</button>
+      </div>
+    </div>
+    <!-- GWS info dacă există -->
+    <div id="pwdModalGws" style="display:none;background:rgba(52,168,83,.08);border:1px solid rgba(52,168,83,.3);border-radius:10px;padding:10px 16px;margin-bottom:10px;font-size:.83rem;">
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:3px;">CONT GOOGLE WORKSPACE</span>
+      <strong id="pwdModalGwsEmail" style="color:#34A853;"></strong>
+      <span style="color:#9db0ff;font-size:.75rem;display:block;margin-top:3px;">Aceeași parolă temporară — utilizatorul o va schimba la prima logare.</span>
+    </div>
+    <div id="pwdModalGwsFail" style="display:none;background:rgba(234,67,53,.08);border:1px solid rgba(234,67,53,.3);border-radius:10px;padding:10px 16px;margin-bottom:10px;font-size:.83rem;color:#f28b82;">
+      ⚠️ Cont Workspace eșuat: <span id="pwdModalGwsErr"></span>
+    </div>
+    <div class="modal-acts" style="margin-top:16px;">
+      <button class="btn btn-s" onclick="closePwdModal()">Închide</button>
+      <button class="btn btn-w" id="btnPwdModalSend" onclick="sendCredsFromModal()">✉️ Trimite pe email</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $=id=>document.getElementById(id);
-const token=localStorage.getItem("docflow_token");
+// SEC-01: token din cookie HttpOnly — nu mai citim din localStorage
+// Citim doar datele UI non-sensibile din localStorage
 const me=JSON.parse(localStorage.getItem("docflow_user")||"{}");
-// Nu redirecționa dacă token există — lasă serverul să verifice rolul
-if(!token){location.href="/login?next=/admin";}
 const hdrEl=$("hdrUser");
 if(hdrEl) hdrEl.textContent=me.nume||me.email||"—";
-function logout(){localStorage.removeItem("docflow_token");localStorage.removeItem("docflow_user");location.href="/login";}
-function hdrs(){return{"Authorization":"Bearer "+token,"Content-Type":"application/json"};}
+fetch('/auth/me', { credentials: 'include' })
+  .then(r => {
+    if (!r.ok) {
+      localStorage.removeItem('docflow_user');
+      localStorage.removeItem('docflow_force_pwd');
+      location.href = '/login?next=/admin';
+    }
+  })
+  .catch(() => { location.href = '/login?next=/admin'; });
+function logout(){
+  // SEC-01: invalidăm cookie-ul pe server, curățăm localStorage
+  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+  localStorage.removeItem('docflow_user');
+  localStorage.removeItem('docflow_force_pwd');
+  location.href='/login';
+}
+
+function openChangePwdModal(){
+  const m=$('changePwdModal'); m.style.display='flex';
+  $('cpCurrent').value=$('cpNew').value=$('cpConfirm').value='';
+  $('cpMsg').textContent='';$('cpMsg').style.color='';
+  $('cpBtn').disabled=false;$('cpBtn').textContent='Salvează';
+  $('cpCurrent').focus();
+}
+function closeChangePwdModal(){$('changePwdModal').style.display='none';}
+async function submitChangePwd(){
+  const cur=$('cpCurrent').value, nw=$('cpNew').value, cf=$('cpConfirm').value;
+  const msg=$('cpMsg'), btn=$('cpBtn');
+  if(!cur||!nw||!cf){msg.style.color='#f28b82';msg.textContent='Completează toate câmpurile.';return;}
+  if(nw!==cf){msg.style.color='#f28b82';msg.textContent='Parolele noi nu coincid.';return;}
+  if(nw.length<6){msg.style.color='#f28b82';msg.textContent='Parola trebuie să aibă minim 6 caractere.';return;}
+  btn.disabled=true;btn.textContent='Se salvează...';
+  try{
+    const r=await _apiFetch('/auth/change-password',{method:'POST',headers:hdrs(),body:JSON.stringify({current_password:cur,new_password:nw})});
+    const d=await r.json();
+    if(r.ok){
+      msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';
+      localStorage.removeItem('docflow_force_pwd');
+      const b=$('forcePwdBanner');if(b)b.style.display='none';
+      setTimeout(closeChangePwdModal,1800);
+    }
+    else{msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');btn.disabled=false;btn.textContent='Salvează';}
+  }catch(e){msg.style.color='#f28b82';msg.textContent='Eroare de rețea.';btn.disabled=false;btn.textContent='Salvează';}
+}
+function hdrs(){return{"Content-Type":"application/json"};} // SEC-01: token în cookie HttpOnly — nu mai trimitem Authorization header
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function validatePhoneClient(phone){
+  if(!phone||!phone.trim())return{valid:true,normalized:""};
+  const p=phone.trim();
+  let normalized=null;
+  if(/^\+40[0-9]{9}$/.test(p))normalized=p.slice(1);
+  else if(/^0040[0-9]{9}$/.test(p))normalized=p.slice(2);
+  else if(/^07[0-9]{8}$/.test(p))normalized="4"+p;
+  else if(/^02[0-9]{8}$/.test(p))normalized="4"+p;
+  else if(/^03[0-9]{8}$/.test(p))normalized="4"+p;
+  if(!normalized)return{valid:false,error:"Numar invalid."};
+  return{valid:true,normalized,display:"+"+normalized};
+}
 
 function showMsg(id,txt,err){
   const el=$(id);el.className="msg "+(err?"err":"ok");el.textContent=txt;
@@ -473,6 +652,7 @@ let _filteredUsers = [];
 
 function renderUsers(users){
   _filteredUsers = users;
+  window._filteredUsers = users; // export functions read window._filteredUsers
   _currentPage = 1;
   renderPage();
 }
@@ -502,6 +682,15 @@ function renderPage(){
       u.notif_email ? '✉️' : '',
       u.notif_whatsapp ? '📱' : ''
     ].filter(Boolean).join(' ');
+    const gwsBadge = u.gws_email
+      ? `<span title="${esc(u.gws_email)}" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:8px;font-size:.71rem;font-weight:700;background:rgba(52,168,83,.18);border:1px solid rgba(52,168,83,.4);color:#34A853;white-space:nowrap;">
+           <svg width="10" height="10" viewBox="0 0 24 24" fill="#34A853"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+           ${esc(u.gws_email.split('@')[0])}
+         </span>`
+      : (u.gws_status === 'failed'
+          ? `<span title="${esc(u.gws_error||'')}" style="padding:2px 7px;border-radius:8px;font-size:.71rem;font-weight:700;background:rgba(234,67,53,.15);border:1px solid rgba(234,67,53,.35);color:#EA4335;">⚠ eșuat</span>`
+          : `<span style="color:var(--muted);font-size:.78rem;">—</span>`
+        );
     tr.innerHTML=`
       <td><strong>${esc(u.nume||"—")}</strong>${isMe?' <span style="font-size:.71rem;color:var(--muted)">(tu)</span>':''}</td>
       <td style="color:var(--sub)">${esc(u.functie||"—")}</td>
@@ -510,13 +699,14 @@ function renderPage(){
       <td style="color:var(--muted);font-size:.82rem">${esc(u.email)}</td>
       <td style="color:var(--muted);font-size:.82rem">${esc(u.phone||"—")}</td>
       <td style="font-size:.9rem;text-align:center">${notifIcons||'—'}</td>
-      <td style="overflow:visible;white-space:nowrap;"><span class="pwd">${esc(u.plain_password||"—")}</span></td>
+      <td>${gwsBadge}</td>
       <td><span class="pill ${u.role}">${u.role}</span></td>
       <td style="color:var(--muted);font-size:.79rem">${dt}</td>
       <td style="text-align:right;white-space:nowrap">
         <div style="display:flex;gap:3px;justify-content:flex-end;">
           <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})' title="Editează" style="padding:4px 8px">✏</button>
           <button class="btn btn-sm btn-w" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale" style="padding:4px 8px">✉</button>
+          ${!u.gws_email?`<button class="btn btn-sm" onclick="gwsRetry(${u.id},this)" title="Creează cont Workspace" style="padding:4px 8px;background:rgba(66,133,244,.15);border-color:rgba(66,133,244,.4);color:#4285F4;">G+</button>`:''}
           ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Șterge" style="padding:4px 8px">✕</button>`:""}
         </div>
       </td>`;
@@ -576,7 +766,7 @@ async function loadUsers(){
     if(r.status===401||r.status===403){logout();return;}
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
-      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare ${r.status}: ${err.error||"unknown"}</div>`;
+      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare ${escH(String(r.status))}: ${escH(err.error||"unknown")}</div>`;
       return;
     }
     const users=await r.json();
@@ -585,7 +775,7 @@ async function loadUsers(){
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
     el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead>
       <tr>
-        <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Compartiment</th><th>Email</th><th>Tel.</th><th>Notif.</th><th>Parolă</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
+        <th>Nume și prenume</th><th>Funcție</th><th>Instituție</th><th>Compartiment</th><th>Email</th><th>Tel.</th><th>Notif.</th><th>Workspace</th><th>Rol</th><th>Creat</th><th style="text-align:right">Acțiuni</th>
       </tr>
       <tr id="filterRow">
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fNume"/></th>
@@ -593,8 +783,7 @@ async function loadUsers(){
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fInstitutie"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fCompartiment"/></th>
         <th><input class="th-filter" placeholder="Filtrează..." oninput="filterUsers()" id="fEmail"/></th>
-        <th></th><th></th>
-        <th></th>
+        <th></th><th></th><th></th>
         <th><select class="th-filter" onchange="filterUsers()" id="fRol" style="padding:4px 6px;">
           <option value="">Toate</option>
           <option value="admin">Admin</option>
@@ -622,52 +811,223 @@ async function loadUsers(){
       dlC.innerHTML=uniqueC.map(c=>`<option value="${esc(c)}">`).join("");
     }
     renderUsers(users);
-  }catch(e){$("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare: ${e.message}</div>`;}
+  }catch(e){$("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare: ${escH(e.message)}</div>`;}
+}
+
+// ── GWS preview live ───────────────────────────────────────────────────────
+let _gwsPreviewTimer = null;
+function onGwsToggle() {
+  const checked = $('nCreateGws').checked;
+  $('nForcePwdLabel').style.display = checked ? 'flex' : 'none';
+  $('gwsPreview').style.display     = checked ? 'block' : 'none';
+  // Când Workspace e activ: emailul de login = cel generat @docflowai.ro → ascundem câmpul manual
+  $('nEmailRow').style.display      = checked ? 'none' : '';
+  if (checked) {
+    // Email personal devine destinația credențialelor
+    $('nPersonalEmailHint').textContent = '— credențialele se trimit aici';
+    $('nPersonalEmailHint').style.color = '#ffd580';
+  } else {
+    $('nPersonalEmailHint').textContent = '— opțional';
+    $('nPersonalEmailHint').style.color = '';
+  }
+  if (checked) updateGwsPreview();
+}
+function updateGwsPreview() {
+  if (!$('nCreateGws') || !$('nCreateGws').checked) return;
+  clearTimeout(_gwsPreviewTimer);
+  _gwsPreviewTimer = setTimeout(_fetchGwsPreview, 450);
+}
+async function _fetchGwsPreview() {
+  const prenume = ($('nPrenume').value||'').trim();
+  const fam     = ($('nNumeFamilie').value||'').trim();
+  if (!prenume && !fam) { $('gwsPreviewEmail').textContent = '—'; return; }
+  $('gwsPreviewSpin').style.display = 'inline';
+  try {
+    const r = await _apiFetch(`/admin/gws/preview-email?prenume=${encodeURIComponent(prenume)}&nume_familie=${encodeURIComponent(fam)}`, { headers: hdrs() });
+    const d = await r.json();
+    if (!d.configured) { $('gwsPreviewEmail').textContent = '⚠️ GWS neconfigurat'; }
+    else if (d.error)  { $('gwsPreviewEmail').textContent = '⚠️ ' + d.error; }
+    else               { $('gwsPreviewEmail').textContent = d.email; }
+  } catch(e) { $('gwsPreviewEmail').textContent = '—'; }
+  finally { $('gwsPreviewSpin').style.display = 'none'; }
 }
 
 async function createUser(){
-  const nume=$("nNume").value.trim(),functie=$("nFunctie").value.trim();
-  const email=$("nEmail").value.trim(),pwd=$("nPwd").value.trim(),role=$("nRole").value;
-  if(!nume||!email){showMsg("createMsg","Numele și emailul sunt obligatorii.",true);return;}
-  const btn=$("btnCreate");btn.disabled=true;btn.textContent="Se creează...";
-  const institutie=$("nInstitutie").value.trim();
-  const compartiment=$("nCompartiment").value.trim();
-  const phone=$("nPhone").value.trim();
-  if (!validatePhoneClient(phone).valid) { alert("Număr de telefon invalid pentru WhatsApp.\nEx: 0712345678 sau +40712345678"); $("nPhone").focus(); return; }
-  const notif_inapp=$("nNotifInapp").checked;
-  const notif_email=$("nNotifEmail").checked;
-  const notif_whatsapp=$("nNotifWa").checked;
-  const r=await _apiFetch("/admin/users",{method:"POST",headers:hdrs(),body:JSON.stringify({email,password:pwd,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp})});
-  const d=await r.json();
-  btn.disabled=false;btn.textContent="Crează utilizatorul";
+  const prenume    = ($('nPrenume')||{value:''}).value.trim();
+  const numeFamilie= ($('nNumeFamilie')||{value:''}).value.trim();
+  const numeComplet= [numeFamilie, prenume].filter(Boolean).join(' ');
+  const functie    = $('nFunctie').value.trim();
+  const create_gws = !!($('nCreateGws')?.checked);
+  // Dacă Workspace e activ, emailul de login = cel generat @docflowai.ro (trimis de backend)
+  // Dacă nu, adminul îl introduce manual
+  const emailManual = create_gws ? '' : ($('nEmail')||{value:''}).value.trim();
+  const pwd        = $('nPwd').value.trim();
+  const role       = $('nRole').value;
+  if (!numeComplet) { showMsg('createMsg','Prenumele și numele sunt obligatorii.',true); return; }
+  if (!create_gws && !emailManual) { showMsg('createMsg','Completează emailul de login.',true); return; }
+  const btn=$('btnCreate'); btn.disabled=true; btn.textContent='Se creează...';
+  const institutie  = $('nInstitutie').value.trim();
+  const compartiment= $('nCompartiment').value.trim();
+  const phone       = $('nPhone').value.trim();
+  if (!validatePhoneClient(phone).valid) { alert('Număr de telefon invalid.\nEx: 0712345678 sau +40712345678'); $('nPhone').focus(); btn.disabled=false; btn.textContent='Crează utilizatorul'; return; }
+  const notif_inapp    = $('nNotifInapp').checked;
+  const notif_email    = $('nNotifEmail').checked;
+  const notif_whatsapp = $('nNotifWa').checked;
+  const personal_email = ($('nPersonalEmail')||{value:''}).value.trim();
+  const force_password_change = !!($('nForcePwd')?.checked);
+
+  const body = {
+    email: emailManual,   // gol dacă e Workspace — backend-ul îl setează din gws_email
+    password: pwd, nume: numeComplet, prenume, nume_familie: numeFamilie,
+    functie, institutie, compartiment, role, phone,
+    notif_inapp, notif_email, notif_whatsapp,
+    personal_email: personal_email || undefined,
+    create_gws, force_password_change,
+    gws_as_login: create_gws,  // flag explicit: emailul Workspace devine login
+  };
+  const r = await _apiFetch('/admin/users', {method:'POST', headers:hdrs(), body:JSON.stringify(body)});
+  const d = await r.json();
+  btn.disabled=false; btn.textContent='Crează utilizatorul';
   if(r.ok){
-    showMsg("createMsg","✅ Creat! Parolă: "+d.plain_password,false);
-    window._lastCreatedId=d.id;
-    $("nNume").value=$("nFunctie").value=$("nEmail").value=$("nPwd").value=$("nInstitutie").value=$("nCompartiment").value=$("nPhone").value="";
+    window._lastCreatedId    = d.id;
+    window._lastCreatedEmail = d.email;  // emailul real din DB (poate fi cel @docflowai.ro)
+    $('nPrenume').value=$('nNumeFamilie').value=$('nFunctie').value=
+    ($('nEmail')||{}).value=$('nPwd').value=$('nInstitutie').value=
+    $('nCompartiment').value=$('nPhone').value=($('nPersonalEmail')||{}).value='';
+    if($('nCreateGws')) $('nCreateGws').checked=false;
+    onGwsToggle();
     loadUsers();
-    // Întreabă dacă trimite credențiale pe email
-    if(confirm("Utilizatorul a fost creat.\nTrimitem credențialele (email + parolă) pe adresa: "+email+"?")){
-      await sendCreds(d.id, null);
-      showMsg("createMsg","✅ Creat și credențiale trimise pe email!",false);
-    }
+    showPwdModal(d);
   }else{
-    const m={email_exists:"Emailul există deja.",email_and_nume_required:"Completează numele și emailul."};
-    showMsg("createMsg",m[d.error]||"Eroare.",true);
+    const m={
+      email_exists:'Emailul există deja.',
+      email_and_nume_required:'Completează prenumele, numele și emailul.',
+      gws_email_required:'Workspace bifat dar nu s-a putut genera emailul. Verifică prenumele și numele.',
+    };
+    showMsg('createMsg', m[d.error]||'Eroare: '+(d.detail||d.error), true);
+  }
+}
+
+function showPwdModal(d) {
+  // Titlu diferit dacă e retrimis vs creat prima oară
+  const isSend = !!d._isSend;
+  const titleEl = $('pwdModalBg').querySelector('h3');
+  if(titleEl) titleEl.textContent = isSend ? 'Credențiale resetate și trimise' : 'Utilizator creat cu succes';
+  const subtitleEl = $('pwdModalBg').querySelector('p');
+  if(subtitleEl) subtitleEl.innerHTML = isSend
+    ? 'O parolă nouă a fost generată și trimisă pe email.<br>Dacă emailul <strong style="color:#fff;">nu ajunge</strong>, comunică parola de mai jos direct utilizatorului.'
+    : 'Parola temporară este afișată <strong style="color:#fff;">o singură dată</strong>.<br>Notează-o sau trimite credențialele pe email.';
+
+  $('pwdModalEmail').textContent = d.email || window._lastCreatedEmail || '';
+  // Arată destinația emailului dacă diferă de login
+  const dest = d.credentials_sent_to || d.email || window._lastCreatedEmail;
+  const login = d.email || window._lastCreatedEmail;
+  if (dest && dest !== login) {
+    $('pwdModalDestRow').style.display = 'block';
+    $('pwdModalDest').textContent = dest;
+  } else {
+    $('pwdModalDestRow').style.display = 'none';
+  }
+  const shownPwd = d.tempPassword || d.temporaryPassword || d.password || '';
+  $('pwdModalPwd').textContent = shownPwd || '(trimis pe email)';
+  // Butonul "Trimite pe email" — ascuns dacă tocmai am trimis
+  $('btnPwdModalSend').style.display = isSend ? 'none' : '';
+  // GWS status
+  if (d.gws && d.gws.ok) {
+    $('pwdModalGws').style.display     = 'block';
+    $('pwdModalGwsFail').style.display = 'none';
+    $('pwdModalGwsEmail').textContent  = d.gws.gws_email;
+  } else if (d.gws && !d.gws.ok) {
+    $('pwdModalGws').style.display     = 'none';
+    $('pwdModalGwsFail').style.display = 'block';
+    $('pwdModalGwsErr').textContent    = d.gws.error || 'eroare necunoscută';
+  } else {
+    $('pwdModalGws').style.display     = 'none';
+    $('pwdModalGwsFail').style.display = 'none';
+  }
+  $('btnCopyPwd').textContent = '📋 Copiază';
+  $('pwdModalBg').classList.add('open');
+}
+function closePwdModal() {
+  $('pwdModalBg').classList.remove('open');
+}
+function copyPwd() {
+  const pwd = $('pwdModalPwd').textContent;
+  navigator.clipboard.writeText(pwd).then(() => {
+    $('btnCopyPwd').textContent = '✓ Copiat!';
+    setTimeout(() => { $('btnCopyPwd').textContent = '📋 Copiază'; }, 2000);
+  }).catch(() => {
+    // Fallback pentru browsere fără clipboard API
+    const ta = document.createElement('textarea');
+    ta.value = pwd; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    $('btnCopyPwd').textContent = '✓ Copiat!';
+    setTimeout(() => { $('btnCopyPwd').textContent = '📋 Copiază'; }, 2000);
+  });
+}
+async function sendCredsFromModal() {
+  const id = window._lastCreatedId;
+  if (!id) return;
+  closePwdModal();
+  // sendCreds va deschide din nou modalul cu parola resetată și titlul "Credențiale resetate"
+  await sendCreds(id, null);
+}
+
+async function gwsRetry(userId, btn) {
+  if (!confirm('Creează cont Google Workspace pentru acest utilizator?')) return;
+  if (btn) { btn.disabled=true; btn.textContent='...'; }
+  try {
+    const r = await _apiFetch(`/admin/users/${userId}/gws-provision`, {
+      method: 'POST', headers: hdrs(),
+      body: JSON.stringify({ force_password_change: true })
+    });
+    const d = await r.json();
+    if (r.ok) {
+      alert('✅ Cont Workspace creat: ' + d.gws_email);
+      loadUsers();
+    } else {
+      const m = { already_provisioned: 'Userul are deja un cont Workspace: ' + d.gws_email,
+                  gws_not_configured: 'Google Workspace nu este configurat (variabile de mediu lipsesc).' };
+      alert('⚠️ ' + (m[d.error] || d.detail || d.error));
+      if (btn) { btn.disabled=false; btn.textContent='G+'; }
+    }
+  } catch(e) {
+    alert('Eroare: ' + e.message);
+    if (btn) { btn.disabled=false; btn.textContent='G+'; }
   }
 }
 
 let editU=null;
 function openEdit(u){
-  editU=u;$("eId").value=u.id;$("eNume").value=u.nume||"";$("eFunctie").value=u.functie||"";
+  editU=u;
+  $("eId").value=u.id;
+  $("ePrenume").value=u.prenume||u.nume?.split(' ')[0]||"";
+  $("eNumeFamilie").value=u.nume_familie||u.nume?.split(' ').slice(1).join(' ')||"";
+  $("eFunctie").value=u.functie||"";
   $("eInstitutie").value=u.institutie||"";
   $("eCompartiment").value=u.compartiment||"";
-  $("eEmail").value=u.email;$("eRole").value=u.role;$("ePwd").value="";
+  $("eEmail").value=u.email;
+  $("ePersonalEmail").value=u.personal_email||"";
+  $("eRole").value=u.role;
+  $("ePwd").value="";
   $("ePhone").value=u.phone||"";
   $("eNotifInapp").checked=u.notif_inapp!==false;
   $("eNotifEmail").checked=!!u.notif_email;
   $("eNotifWa").checked=!!u.notif_whatsapp;
+  // GWS status
+  if(u.gws_email){
+    $("eGwsRow").style.display="block";
+    $("eGwsEmail").textContent=u.gws_email;$("eGwsEmail").style.display="";
+    $("eGwsFail").style.display="none";
+  } else if(u.gws_status==="failed"){
+    $("eGwsRow").style.display="block";
+    $("eGwsEmail").style.display="none";
+    $("eGwsFail").style.display="";$("eGwsFail").textContent="⚠ Provision eșuat — folosește butonul G+ din tabel";
+  } else { $("eGwsRow").style.display="none"; }
   $("eMsg").textContent="";$("eMsg").className="";
-  $("mBg").classList.add("open");$("eNume").focus();
+  $("mBg").classList.add("open");$("ePrenume").focus();
 }
 function closeMod(){$("mBg").classList.remove("open");editU=null;}
 
@@ -675,39 +1035,69 @@ async function genPwd(){
   if(!editU)return;
   const r=await _apiFetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
   const d=await r.json();
-  if(r.ok){$("ePwd").value=d.plain_password;$("eMsg").className="msg ok";$("eMsg").textContent="Generată: "+d.plain_password;}
+  if(r.ok){
+    $("ePwd").value = d.tempPassword || d.temporaryPassword || "";
+    $("eMsg").className="msg ok";
+    $("eMsg").textContent = d.message || "✅ Parolă nouă generată și trimisă pe emailul utilizatorului.";
+    window._lastCreatedId = editU.id;
+    window._lastCreatedEmail = d.email || editU.email;
+    showPwdModal({
+      email: d.email || editU.email,
+      tempPassword: d.tempPassword || d.temporaryPassword || '',
+      credentials_sent_to: d.credentials_sent_to || d.email || editU.email,
+      _isSend: true
+    });
+  }
 }
 
 async function saveEdit(){
   const id=$("eId").value;
-  const body={email:$("eEmail").value.trim(),nume:$("eNume").value.trim(),
-    functie:$("eFunctie").value.trim(),institutie:$("eInstitutie").value.trim(),
-    compartiment:$("eCompartiment").value.trim(),role:$("eRole").value,
+  const prenume=$("ePrenume").value.trim();
+  const numeFamilie=$("eNumeFamilie").value.trim();
+  const numeComplet=[numeFamilie,prenume].filter(Boolean).join(' ');
+  const body={
+    email:$("eEmail").value.trim(),
+    nume:numeComplet, prenume, nume_familie:numeFamilie,
+    functie:$("eFunctie").value.trim(),
+    institutie:$("eInstitutie").value.trim(),
+    compartiment:$("eCompartiment").value.trim(),
+    role:$("eRole").value,
     phone:$("ePhone").value.trim(),
+    personal_email:$("ePersonalEmail").value.trim()||null,
     notif_inapp:$("eNotifInapp").checked,
     notif_email:$("eNotifEmail").checked,
-    notif_whatsapp:$("eNotifWa").checked};
-  const p=$("ePwd").value.trim();if(p)body.password=p;
+    notif_whatsapp:$("eNotifWa").checked
+  };
+  const p=$("ePwd").value.trim(); if(p) body.password=p;
   const r=await _apiFetch("/admin/users/"+id,{method:"PUT",headers:hdrs(),body:JSON.stringify(body)});
   const d=await r.json();
   if(r.ok){closeMod();loadUsers();}
   else{$("eMsg").className="msg err";$("eMsg").textContent=d.error==="email_exists"?"Emailul există deja.":"Eroare.";}
 }
 
-async function sendCreds(id,btn){
-  const orig=btn?btn.textContent:"";
-  if(btn){btn.disabled=true;btn.textContent="Se trimite...";}
+async function sendCreds(id, btn){
+  const orig = btn ? btn.textContent : "";
+  if(btn){ btn.disabled=true; btn.textContent="Se trimite..."; }
   try{
-    const r=await _apiFetch("/admin/users/"+id+"/send-credentials",{method:"POST",headers:hdrs()});
-    const d=await r.json();
+    const r = await _apiFetch("/admin/users/"+id+"/send-credentials", {method:"POST", headers:hdrs()});
+    const d = await r.json();
     if(r.ok){
-      if(btn){btn.textContent="✅ Trimis!";setTimeout(()=>{btn.disabled=false;btn.textContent=orig;},4000);}
+      if(btn){ btn.textContent="✅"; setTimeout(()=>{ btn.disabled=false; btn.textContent=orig; }, 3000); }
+      // Afișăm parola nouă în modal — fallback dacă emailul nu ajunge
+      window._lastCreatedId    = id;
+      window._lastCreatedEmail = d.email;
+      showPwdModal({
+        email: d.email,
+        tempPassword: d.tempPassword || d.temporaryPassword || '',
+        credentials_sent_to: d.credentials_sent_to || d.email,
+        _isSend: true
+      });
     }else{
-      const m={no_password_available:"Nu există parolă salvată.",email_failed:"Eroare la trimitere email."};
-      if(btn){btn.disabled=false;btn.textContent=orig;}
-      alert(m[d.error]||"Eroare: "+d.error);
+      const m = { user_not_found:"Utilizatorul nu a fost găsit." };
+      if(btn){ btn.disabled=false; btn.textContent=orig; }
+      alert(m[d.error] || "Eroare: " + (d.error||"necunoscută"));
     }
-  }catch(e){if(btn){btn.disabled=false;btn.textContent=orig;}alert("Eroare de rețea.");}
+  }catch(e){ if(btn){ btn.disabled=false; btn.textContent=orig; } alert("Eroare de rețea."); }
 }
 
 async function sendCredsNew(){
@@ -823,6 +1213,8 @@ async function loadFlowsList(forceReload = true, page) {
             ? '<span style="color:#7cf0e0;font-size:.75rem;">✅ finalizat</span>'
             : f.status==="refused"
             ? '<span style="color:#ffaaaa;font-size:.75rem;">⛔ refuzat</span>'
+            : f.status==="cancelled"
+            ? '<span style="color:#aaaaaa;font-size:.75rem;">🚫 anulat</span>'
             : '<span style="color:#b39dff;font-size:.75rem;">✍ activ</span>';
           return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
             <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.flowId}">${f.urgent ? '<span style="color:#ff8888;font-weight:700;margin-right:4px;">🚨</span>' : ''}${f.docName||"—"}</td>
@@ -878,7 +1270,7 @@ async function loadFlowsList(forceReload = true, page) {
         pg.appendChild(next);
       }
     }
-  } catch(e) { area.innerHTML = `<span style="color:#ffaaaa;">❌ ${e.message}</span>`; }
+  } catch(e) { area.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`; }
 }
 
 
@@ -958,8 +1350,8 @@ async function verifyDriveConn() {
   try {
     const r = await _apiFetch("/admin/drive/verify", {headers: hdrs()});
     const j = await r.json();
-    if (j.ok) msg.innerHTML = `✅ Conexiune OK — folder: <strong>${j.folder}</strong>`;
-    else msg.innerHTML = `❌ Eroare: ${j.error}`;
+    if (j.ok) msg.innerHTML = `✅ Conexiune OK — folder: <strong>${escH(j.folder||"")}</strong>`;
+    else msg.innerHTML = `❌ Eroare: ${escH(j.error||"")}`;
   } catch(e) { msg.textContent = "❌ Eroare: " + e.message; }
 }
 
@@ -1047,7 +1439,7 @@ async function previewArchive() {
     const summary = document.getElementById("archivePreviewSummary");
     const list = document.getElementById("archivePreviewList");
     const filterLabel = inst ? ` · <span style="color:#9db0ff;">${inst}${dept?" / "+dept:""}</span>` : "";
-    summary.innerHTML = `<span style="color:#2dd4bf;">${j.count} fluxuri</span>${filterLabel} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${j.totalMB} MB</span> din baza de date`;
+    summary.innerHTML = `<span style="color:#2dd4bf;">${escH(String(j.count||0))} fluxuri</span>${escH(filterLabel)} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${escH(String(j.totalMB||0))} MB</span> din baza de date`;
     list.innerHTML = (j.flows||[]).map(f =>
       `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
         📄 ${f.docName} &nbsp;·&nbsp; ${f.status} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
@@ -1108,7 +1500,7 @@ async function runVacuum() {
   try {
     const r = await _apiFetch("/admin/db/vacuum", {method:"POST", headers:hdrs()});
     const j = await r.json();
-    if (j.ok) msg.innerHTML = `✅ VACUUM complet. Dimensiune DB: <strong>${j.dbSize}</strong>`;
+    if (j.ok) msg.innerHTML = `✅ VACUUM complet. Dimensiune DB: <strong>${escH(j.dbSize||"")}</strong>`;
     else msg.textContent = "❌ " + (j.error||"Eroare");
   } catch(e) { msg.textContent = "❌ " + e.message; }
 }
@@ -1146,7 +1538,7 @@ async function _loadCleanPreview(params) {
 
 function _buildDeleteList(flows) {
   if (!flows.length) return '<div style="color:var(--muted);text-align:center;padding:12px;">Niciun flux găsit.</div>';
-  const statusColors = { finalizat:'#2dd4bf', refuzat:'#ff5050', arhivat:'#9db0ff', revizuire:'#ffd580', activ:'#b39dff' };
+  const statusColors = { finalizat:'#2dd4bf', refuzat:'#ff5050', arhivat:'#9db0ff', revizuire:'#ffd580', anulat:'#888888', activ:'#b39dff' };
   return flows.map(f => {
     const col = statusColors[f.status] || '#aaa';
     const dt = new Date(f.createdAt).toLocaleDateString('ro-RO');
@@ -1195,7 +1587,7 @@ async function previewCleanAll() {
       desc: `Se vor șterge <strong style="color:#ffaaaa;">TOATE cele ${data.count} fluxuri${filterDesc}</strong> (${data.totalMB} MB).
         <br><br><span style="color:rgba(255,80,80,.9);">🔴 Acțiune ireversibilă — PDF-urile nearkhivate se pierd definitiv!</span>`,
       flows: data.flows,
-      deleteBody: { all: true, ...(inst?{institutie:inst}:{}), ...(dept?{compartiment:dept}:{}) },
+      deleteBody: { all: true, confirmToken: 'DELETE_ALL_FLOWS', ...(inst?{institutie:inst}:{}), ...(dept?{compartiment:dept}:{}) },
       msgEl,
     });
   } catch(e) { msgEl.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`; }
@@ -1267,14 +1659,15 @@ async function delUser(id,name){
   else alert("Eroare la ștergere.");
 }
 
-document.addEventListener("keydown",e=>{if(e.key==="Escape")closeMod();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeMod();closePwdModal();closeChangePwdModal();}});
 fetch("/auth/me",{headers:hdrs()})
   .then(async r=>{
     if(!r.ok){logout();return;}
     const u=await r.json();
     if(u.role!=="admin"){logout();return;}
-    // Actualizează profilul din server
     localStorage.setItem("docflow_user",JSON.stringify({email:u.email,role:u.role,nume:u.nume||"",functie:u.functie||"",institutie:u.institutie||""}));
+    if(u.force_password_change) localStorage.setItem("docflow_force_pwd","1");
+    if(localStorage.getItem("docflow_force_pwd")==="1"){const b=$("forcePwdBanner");if(b)b.style.display="block";}
     const hEl=$("hdrUser");
     if(hEl) hEl.textContent=u.nume||u.email||"—";
     loadUsers();
@@ -1636,7 +2029,8 @@ function exportUserPDF(email) {
     td { padding: 5px 10px; border-bottom: 1px solid #e0e0e0; font-size: 11px; }
     tr:nth-child(even) td { background: #f5f6ff; }
     .footer { margin-top: 20px; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 6px; }
-  </style></head><body>
+  </style>
+</head><body>
   <h1>Raport activitate — ${escH(u.name||u.email)}</h1>
   <div class="sub">
     ${escH(u.functie||'')}${u.institutie?' · '+escH(u.institutie):''}${u.compartiment?' / '+escH(u.compartiment):''}<br>
@@ -1695,7 +2089,8 @@ function exportActivityPDF() {
     th { background: #1a237e; color: #fff; padding: 4px 8px; text-align: left; font-size: 10px; }
     td { padding: 3px 8px; border-bottom: 1px solid #eee; font-size: 10px; }
     .footer { margin-top: 16px; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 6px; }
-  </style></head><body>
+  </style>
+</head><body>
   <h1>Raport activitate utilizatori</h1>
   <div class="sub-title">Interval: <strong>${from} — ${to}</strong> &nbsp;|&nbsp; ${users.length} utilizator(i) cu activitate</div>
   ${userSections||'<p style="color:#999;text-align:center;">Nicio activitate in acest interval.</p>'}
@@ -1708,6 +2103,213 @@ function exportActivityPDF() {
 
 
 // ── Export CSV ────────────────────────────────────────────────────────────
+
+// ── Export Flows CSV ──────────────────────────────────────────────────────
+async function exportFlowsCSV() {
+  const search = (document.getElementById('flowSearch').value || '').trim();
+  const statusF = document.getElementById('flowStatusFilter').value;
+  const instF = document.getElementById('flowInstFilter').value;
+  const deptF = document.getElementById('flowDeptFilter').value;
+  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', '': 'all' };
+  const params = new URLSearchParams({ export: '1', limit: '2000', status: statusMap[statusF] || 'all' });
+  if (search) params.set('search', search);
+  if (instF) params.set('institutie', instF);
+  if (deptF) params.set('compartiment', deptF);
+  try {
+    const r = await _apiFetch('/admin/flows/list?' + params.toString(), { headers: hdrs() });
+    if (!r.ok) throw new Error('Eroare server ' + r.status);
+    const resp = await r.json();
+    const flows = Array.isArray(resp) ? resp : (resp.flows || []);
+    if (!flows.length) { alert('Nu există fluxuri de exportat cu filtrele curente.'); return; }
+    const esc = v => '"' + String(v || '').replace(/"/g, '""') + '"';
+    const headers = ['ID Flux','Document','Initiator Email','Initiator Nume','Status','Urgent','Institutie','Compartiment','Creat','Nr Semnatari','Semnatari (Nume | Email | Rol | Status | Semnat la)'];
+    const rows = flows.map(f => {
+      const status = f.completed ? 'finalizat' : f.status === 'refused' ? 'refuzat' : 'activ';
+      const signersSummary = (f.signers || []).map(s => {
+        const signedAt = s.signedAt ? new Date(s.signedAt).toLocaleDateString('ro-RO') : '-';
+        return `${s.name || '-'} | ${s.email || '-'} | ${s.rol || '-'} | ${s.status || '-'} | ${signedAt}`;
+      }).join(' // ');
+      return [
+        f.flowId, f.docName, f.initEmail, f.initName || '-',
+        status, f.urgent ? 'DA' : 'Nu',
+        f.institutie || '-', f.compartiment || '-',
+        f.createdAt ? new Date(f.createdAt).toLocaleDateString('ro-RO') : '-',
+        (f.signers || []).length,
+        signersSummary
+      ].map(esc);
+    });
+    const csv = [headers.map(h => '"' + h + '"').join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fluxuri_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+  } catch(e) { alert('Eroare export CSV: ' + e.message); }
+}
+
+async function exportFlowsPDF() {
+  const search = (document.getElementById('flowSearch').value || '').trim();
+  const statusF = document.getElementById('flowStatusFilter').value;
+  const instF = document.getElementById('flowInstFilter').value;
+  const deptF = document.getElementById('flowDeptFilter').value;
+  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', '': 'all' };
+  const params = new URLSearchParams({ export: '1', limit: '2000', status: statusMap[statusF] || 'all' });
+  if (search) params.set('search', search);
+  if (instF) params.set('institutie', instF);
+  if (deptF) params.set('compartiment', deptF);
+  try {
+    const r = await _apiFetch('/admin/flows/list?' + params.toString(), { headers: hdrs() });
+    if (!r.ok) throw new Error('Eroare server ' + r.status);
+    const resp = await r.json();
+    const flows = Array.isArray(resp) ? resp : (resp.flows || []);
+    if (!flows.length) { alert('Nu există fluxuri de exportat cu filtrele curente.'); return; }
+    const now = new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
+    const filterDesc = [
+      search ? `Căutare: „${search}"` : '',
+      statusF ? `Status: ${statusF}` : '',
+      instF ? `Instituție: ${instF}` : '',
+      deptF ? `Compartiment: ${deptF}` : '',
+    ].filter(Boolean).join(' &nbsp;|&nbsp; ') || 'Toate fluxurile';
+    const escH = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const rows = flows.map((f, idx) => {
+      const status = f.completed
+        ? '<span class="badge done">✅ finalizat</span>'
+        : f.status === 'refused'
+        ? '<span class="badge refused">⛔ refuzat</span>'
+        : '<span class="badge active">✍ activ</span>';
+      const signersHtml = (f.signers || []).map(s => {
+        const stClass = s.status === 'signed' ? 'signed' : s.status === 'refused' ? 'ref' : 'pend';
+        const signedAt = s.signedAt ? new Date(s.signedAt).toLocaleDateString('ro-RO') : '';
+        return `<span class="signer ${stClass}">${escH(s.name || s.email)}${s.rol ? ' (' + escH(s.rol) + ')' : ''}${signedAt ? ' — ' + signedAt : ''}</span>`;
+      }).join('');
+      return `<tr>
+        <td class="idx">${idx + 1}</td>
+        <td>${f.urgent ? '<b style="color:#c00;">🚨</b> ' : ''}${escH(f.docName || '—')}<br><small style="color:#888;">${escH(f.flowId)}</small></td>
+        <td>${escH(f.initName || '')}${f.initName && f.initEmail ? '<br>' : ''}${f.initEmail ? '<small>' + escH(f.initEmail) + '</small>' : ''}</td>
+        <td>${status}</td>
+        <td>${escH(f.institutie || '—')}</td>
+        <td>${escH(f.compartiment || '—')}</td>
+        <td>${f.createdAt ? new Date(f.createdAt).toLocaleDateString('ro-RO') : '—'}</td>
+        <td>${signersHtml}</td>
+      </tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8">
+  <title>Fluxuri DocFlowAI — ${new Date().toLocaleDateString('ro-RO')}</title>
+  <style>
+    @page { size: A4 landscape; margin: 15mm 12mm; }
+    body { font-family: Arial, sans-serif; font-size: 10px; color: #111; margin: 0; }
+    h2 { color: #1e2a5e; margin: 0 0 4px; font-size: 14px; }
+    .meta { color: #555; font-size: 9px; margin-bottom: 4px; }
+    .filters { color: #333; font-size: 9px; margin-bottom: 12px; background: #f0f4ff; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #1e2a5e; color: #fff; padding: 5px 6px; text-align: left; font-size: 9px; white-space: nowrap; }
+    td { padding: 5px 6px; border-bottom: 1px solid #e5e7eb; vertical-align: top; font-size: 9px; }
+    tr:nth-child(even) td { background: #f8f9fb; }
+    td.idx { color: #aaa; width: 22px; text-align: right; }
+    .badge { padding: 2px 6px; border-radius: 8px; font-size: 8px; font-weight: 700; white-space: nowrap; }
+    .badge.done { background: #d1fae5; color: #065f46; }
+    .badge.refused { background: #fee2e2; color: #991b1b; }
+    .badge.active { background: #ede9fe; color: #4c1d95; }
+    .signer { display: inline-block; margin: 1px 2px 1px 0; padding: 1px 5px; border-radius: 6px; font-size: 8px; }
+    .signer.signed { background: #d1fae5; color: #065f46; }
+    .signer.ref { background: #fee2e2; color: #991b1b; }
+    .signer.pend { background: #f3f4f6; color: #374151; }
+    small { font-size: 8px; color: #888; }
+  </style>
+</head><body>
+  <h2>📋 Fluxuri DocFlowAI</h2>
+  <div class="meta">Generat: ${now} &nbsp;|&nbsp; Total: ${flows.length} fluxuri</div>
+  <div class="filters">Filtre: ${filterDesc}</div>
+  <table>
+    <thead><tr>
+      <th>#</th><th>Document / ID</th><th>Inițiator</th><th>Status</th>
+      <th>Instituție</th><th>Compartiment</th><th>Creat</th><th>Semnatari</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <script>window.onload = () => window.print();<\/script>
+  </body></html>`;
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+  } catch(e) { alert('Eroare export PDF: ' + e.message); }
+}
+
+// ── Export Users CSV ──────────────────────────────────────────────────────
+function exportUsersCSV() {
+  const users = window._filteredUsers || window._allUsers || [];
+  if (!users.length) { alert("Nu sunt utilizatori de exportat."); return; }
+  // SEC-02: coloana Parola ELIMINATĂ din export — nu se mai stochează/exportă plain_password
+  const headers = ["Nume","Functie","Institutie","Compartiment","Email","Telefon","Rol","Notif InApp","Notif Email","Notif WhatsApp","Creat"];
+  const esc2 = v => '"' + String(v||"").replace(/"/g,'""') + '"';
+  const rows = users.map(u => [
+    u.nume, u.functie, u.institutie, u.compartiment, u.email, u.phone, u.role,
+    u.notif_inapp!==false?"Da":"Nu",
+    u.notif_email?"Da":"Nu",
+    u.notif_whatsapp?"Da":"Nu",
+    u.created_at ? new Date(u.created_at).toLocaleDateString("ro-RO") : ""
+  ].map(esc2));
+  const csv = [headers.map(h=>'"'+h+'"').join(","), ...rows.map(r=>r.join(","))].join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "utilizatori_" + new Date().toISOString().slice(0,10) + ".csv";
+  a.click();
+}
+
+function exportUsersPDF() {
+  const users = window._filteredUsers || window._allUsers || [];
+  if (!users.length) { alert("Nu sunt utilizatori de exportat."); return; }
+  const allCount = (window._allUsers || []).length;
+  const isFiltered = users.length < allCount;
+  const filterNote = isFiltered ? ` (filtrat: ${users.length} din ${allCount})` : ` (${users.length} utilizatori)`;
+  const now = new Date().toLocaleString("ro-RO", { timeZone: "Europe/Bucharest" });
+  const rows = users.map(u => {
+    const dt = u.created_at ? new Date(u.created_at).toLocaleDateString("ro-RO") : "-";
+    // SEC-04: escaping date user în PDF export — previne HTML injection
+    const esc = s => String(s||'-').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<tr>
+      <td>${esc(u.nume)}</td>
+      <td>${esc(u.functie)}</td>
+      <td>${esc(u.institutie)}</td>
+      <td>${esc(u.compartiment)}</td>
+      <td>${esc(u.email)}</td>
+      <td>${esc(u.phone)}</td>
+      <td><span class="pill ${esc(u.role)}">${esc(u.role)}</span></td>
+      <td>${dt}</td>
+    </tr>`;
+  }).join("");
+  const html = `<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8">
+  <title>Utilizatori DocFlowAI</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+    h2 { color: #2d3a5e; margin-bottom: 4px; }
+    .sub { color: #888; font-size: 10px; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #2d3a5e; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8f9fb; }
+    code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
+    .pill { padding: 2px 7px; border-radius: 10px; font-size: 9px; font-weight: 700; }
+    .pill.admin { background: #fef3c7; color: #92400e; }
+    .pill.user { background: #dbeafe; color: #1e40af; }
+  </style>
+</head><body>
+  <h2>📋 Lista Utilizatori — DocFlowAI</h2>
+  <div class="sub">Generat: ${now} &nbsp;|&nbsp; Total: ${filterNote}</div>
+  <table>
+    <thead><tr>
+      <th>Nume</th><th>Funcție</th><th>Instituție</th><th>Compartiment</th>
+      <th>Email</th><th>Telefon</th><th>Rol</th><th>Creat</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  </body></html>`;
+  const w = window.open("", "_blank");
+  w.document.write(html);
+  w.document.close();
+}
+
 async function exportActivityCSV() {
   if (!_activityData) { alert('Generează mai întâi un raport.'); return; }
   const from = $('rptFrom').value;

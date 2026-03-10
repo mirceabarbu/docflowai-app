@@ -129,12 +129,14 @@
     // altfel fallback la fetch standard cu Bearer token din localStorage.
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const tok = localStorage.getItem('docflow_token');
       const headers = Object.assign({}, (options||{}).headers || {});
-      if (tok) headers['Authorization'] = 'Bearer ' + tok;
-      return fetch(url, Object.assign({}, options||{}, { headers }));
+      // Tranziție: dacă există token vechi în localStorage, îl trimitem ca fallback Bearer
+      const legacyToken = localStorage.getItem('docflow_token');
+      if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
+      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
+  <link rel="stylesheet" href="/mobile.css">
 </head>
 <body>
   <div class="wrap">
@@ -147,6 +149,7 @@
         </div>
       </div>
       <div class="actions">
+        <span id="userBarFlow" style="color:#cdd8ff;font-size:.82rem;"></span>
         <span class="pill" id="pillFlow" title="ID Flow"><strong>Flow</strong> —</span>
         <button class="btn ghost" id="btnBack">↩️ Înapoi</button>
         <button class="btn" id="btnRefresh">🔄 Refresh</button>
@@ -170,7 +173,7 @@
           <div class="row">
             <h3 style="margin:0">Detalii</h3>
             <span class="badge" id="badgeStatus">—</span>
-            <span id="badgeUrgent" style="display:none;background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 Prioritate</span>
+            <span id="badgeUrgent" style="display:none;background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>
           </div>
           <div class="kv">
             <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
@@ -212,7 +215,7 @@
   const qs = new URLSearchParams(location.search);
   const flowId = qs.get("flow") || qs.get("id") || "";
   const linkToken = qs.get("token") || "";
-  const jwt = localStorage.getItem("docflow_token") || "";
+  // SEC-01: token din cookie HttpOnly — eliminat jwt
 
   function setMsg(kind, text){
     const el = $("msg");
@@ -229,6 +232,7 @@
     if(["active","in_progress","inprogress","in curs","running"].includes(s)) return {cls:"warn", txt:"⏳ În curs"};
     if(s === "review_requested") return {cls:"warn", txt:"🔄 Spre revizuire"};
     if(s === "reinitiated_after_review") return {cls:"", txt:"🔁 Reinițiat după revizuire"};
+    if(s === "cancelled") return {cls:"bad", txt:"🚫 Anulat"};
     return {cls:"", txt:"ℹ️ " + (status||"necunoscut")};
   }
 
@@ -242,11 +246,8 @@
   }
 
   async function apiFetchJson(url){
-    // Prefer JWT (initiator/admin). If forbidden and we have linkToken, retry with token param.
-    const hdrs = {};
-    if(jwt) hdrs["Authorization"] = "Bearer " + jwt;
-
-    let r = await _apiFetch(url, { headers: hdrs });
+    // Folosește cookie HttpOnly; dacă nu are acces, încearcă fallback cu token din link.
+    let r = await _apiFetch(url);
     if((r.status===401 || r.status===403) && linkToken){
       const u = new URL(url, location.origin);
       if(!u.searchParams.get("token")) u.searchParams.set("token", linkToken);
@@ -262,10 +263,7 @@
   }
 
   async function apiFetchBlob(url){
-    const hdrs = {};
-    if(jwt) hdrs["Authorization"] = "Bearer " + jwt;
-
-    let r = await _apiFetch(url, { headers: hdrs });
+    let r = await _apiFetch(url);
     if((r.status===401 || r.status===403) && linkToken){
       const u = new URL(url, location.origin);
       if(!u.searchParams.get("token")) u.searchParams.set("token", linkToken);
@@ -359,10 +357,8 @@
       const mySigner = (data2.signers || []).find(s => (s.email || "").toLowerCase() === myEmail && s.status === "current");
       if (mySigner) {
         // Obtine token-ul de semnare de la server
-        const jwtToken = localStorage.getItem("docflow_token");
-        fetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, {
-          headers: { "Authorization": "Bearer " + jwtToken }
-        }).then(r => r.json()).then(j => {
+        // SEC-01: token din cookie HttpOnly — eliminat jwtToken
+        fetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`, { credentials: 'include' }).then(r => r.json()).then(j => {
           if (j.token) {
             $("hintSigner").style.display = "";
             $("signLink").href = `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(j.token)}`;
@@ -435,12 +431,18 @@
       return;
     }
 
-    $("pillFlow").innerHTML = `<strong>Flow</strong> ${flowId}`;
+    // FIX v3.2.2: flowId vine din URL — folosim textContent pentru a preveni XSS
+    const pillFlow = $("pillFlow");
+    pillFlow.innerHTML = '<strong>Flow</strong> ';
+    const flowIdSpan = document.createTextNode(flowId);
+    pillFlow.appendChild(flowIdSpan);
 
     setMsg("", "");
 
     try{
-      const j = await apiFetchJson(`/flows/${encodeURIComponent(flowId)}`);
+      let flowUrl = `/flows/${encodeURIComponent(flowId)}`;
+      if (linkToken) flowUrl += `?token=${encodeURIComponent(linkToken)}`;
+      const j = await apiFetchJson(flowUrl);
       const data = j.data || j;
 
       $("docName").textContent = (data.docName || data.documentName || data.name || data.title || "—");
@@ -463,6 +465,7 @@
         if (signers.length && signers.every(s => s.status === "signed")) computedStatus = "completed";
         else if (signers.some(s => s.status === "refused")) computedStatus = "refused";
         else if (data.status === "review_requested") computedStatus = "review_requested";
+        else if (data.status === "cancelled") computedStatus = "cancelled";
         else if (signers.some(s => s.status === "signed" || s.status === "current")) computedStatus = "active";
         else computedStatus = "active";
       }
@@ -482,12 +485,21 @@
 
       // Buton Reinitiere — vizibil dacă fluxul e refuzat și userul e inițiator sau admin
       const currentUser = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+      // Populate userBar
+      (function() {
+        const bar = document.getElementById('userBarFlow');
+        if (!bar) return;
+        const label = currentUser.nume || currentUser.email || '';
+        if (label) bar.innerHTML = `Conectat: <strong>${label}</strong>` +
+          (currentUser.role === 'admin' ? ` &nbsp;<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
+      })();
       const isRefused = computedStatus === "refused";
+      const refusedByAprobat = signers.some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
       const isReviewRequested = data.status === "review_requested";
       const isInitiator = (data.initEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
       const isAdmin = currentUser.role === "admin";
       const btnRei = $("btnReinitiate");
-      if (btnRei) btnRei.style.display = (isRefused && (isInitiator || isAdmin)) ? "" : "none";
+      if (btnRei) btnRei.style.display = (isRefused && !refusedByAprobat && (isInitiator || isAdmin)) ? "" : "none";
       btnRei._flowId = flowId;
 
       // Buton Reinitiere după revizuire — vizibil dacă fluxul e în review_requested și user e inițiator
@@ -573,9 +585,7 @@
           btnAudit.textContent = "⏳ Se generează...";
           btnAudit.style.pointerEvents = "none";
           try {
-            const tok = localStorage.getItem("docflow_token");
-            const authHdr = tok ? { "Authorization": "Bearer " + tok } : {};
-            const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`, { headers: authHdr });
+            const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`);
             if (!r.ok) { const er = await r.json().catch(()=>({})); throw new Error(er.error || `HTTP ${r.status}`); }
             const blob = await r.blob();
             const url = URL.createObjectURL(blob);
