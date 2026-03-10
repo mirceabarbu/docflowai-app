@@ -1,3 +1,5 @@
+import { logger } from './middleware/logger.mjs';
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const MAIL_FROM = process.env.MAIL_FROM || "DocFlowAI <noreply@docflowai.ro>";
 
