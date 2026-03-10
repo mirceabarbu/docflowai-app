@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>DocFlowAI — Șabloane</title>
+<style>
+  :root {
+    --bg:#080e24;--surface:#0f1731;--surface2:#141e3a;
+    --accent:#7c5cff;--accent2:#2dd4bf;
+    --sub:#9db0ff;--muted:#5a6a9a;--line:rgba(255,255,255,.08);
+    --radius:16px;--danger:#ff5555;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:#eaf0ff;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;
+    background:radial-gradient(ellipse 80% 60% at 20% 10%,rgba(124,92,255,.12) 0%,transparent 60%),
+              radial-gradient(ellipse 60% 50% at 80% 80%,rgba(45,212,191,.08) 0%,transparent 60%);
+    pointer-events:none;z-index:0;}
+  header{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;
+    padding:14px 28px;background:rgba(8,14,36,.85);backdrop-filter:blur(16px);
+    border-bottom:1px solid var(--line);}
+  .logo{display:flex;align-items:center;}
+  .logo img{height:87px;width:auto;object-fit:contain;}
+  .hdr-right{display:flex;align-items:center;gap:10px;}
+  .btn-back{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:7px 14px;
+    border-radius:9px;font-size:.82rem;transition:all .2s;}
+  .btn-back:hover{color:var(--sub);border-color:var(--sub);}
+  .btn-logout{background:transparent;border:1px solid rgba(255,85,85,.3);color:#ff8888;
+    padding:7px 14px;border-radius:9px;font-size:.82rem;cursor:pointer;transition:all .2s;}
+  .btn-logout:hover{background:rgba(255,85,85,.1);}
+  /* Butoane navigare header — identice cu alte pagini */
+  .btn{background:rgba(120,160,255,.22);border:1px solid rgba(120,160,255,.45);color:#e9eefc;
+    padding:8px 14px;border-radius:10px;cursor:pointer;font-size:.88rem;text-decoration:none;
+    display:inline-flex;align-items:center;gap:4px;transition:filter .15s,transform .12s;}
+  .btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
+  .btn.active{background:rgba(120,160,255,.35);border-color:rgba(120,160,255,.7);font-weight:600;}
+  .btn.danger{background:rgba(255,85,85,.18);border-color:rgba(255,85,85,.35);color:#ff8888;}
+  .btn.danger:hover{background:rgba(255,85,85,.28);}
+  .btn.success{background:rgba(45,212,191,.18);border-color:rgba(45,212,191,.35);color:#7cf0e0;}
+  .btn.success:hover{background:rgba(45,212,191,.28);}
+  main{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:36px 24px 80px;}
+  h1{font-size:1.7rem;font-weight:800;margin-bottom:6px;}
+  h1 span{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;}
+  .subtitle{color:var(--muted);font-size:.88rem;margin-bottom:32px;}
+  .create-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:28px;margin-bottom:32px;}
+  .create-card h2{font-size:1rem;font-weight:700;color:var(--sub);margin-bottom:20px;}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+  label{display:block;font-size:.75rem;color:var(--muted);margin-bottom:5px;font-weight:600;
+    letter-spacing:.04em;text-transform:uppercase;}
+  input[type=text],input[type=email],select{width:100%;background:rgba(255,255,255,.05);
+    border:1px solid var(--line);border-radius:10px;padding:10px 13px;color:#eaf0ff;
+    font-size:.9rem;outline:none;transition:border .2s;}
+  input:focus,select:focus{border-color:var(--accent);}
+  select option{background:#0f1731;}
+  /* Tabel semnatari — identic cu semdoc-initiator */
+  .signers-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px;}
+  .signers-table th{font-size:12px;color:rgba(205,216,255,.85);text-align:left;padding:10px;
+    border-bottom:1px solid rgba(255,255,255,.08);font-weight:600;letter-spacing:.04em;}
+  .signers-table td{padding:6px 5px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle;}
+  .signers-table td input,.signers-table td select{
+    width:100%;min-width:0;padding:9px 10px;border-radius:10px;
+    border:1px solid rgba(255,255,255,.12)!important;background:rgba(0,0,0,.2)!important;
+    color:#e9eefc!important;font-size:.85rem!important;outline:none;font:inherit!important;
+    box-sizing:border-box;}
+  .signers-table td input:focus,.signers-table td select:focus{border-color:var(--accent)!important;}
+  .signers-table td select option{background:#0f1731;}
+  .signers-table tr.drag-over td{background:rgba(124,92,255,.18)!important;}
+  .drag-handle{cursor:grab;text-align:center;color:rgba(255,255,255,.35);
+    user-select:none;font-size:18px;width:32px;}
+  .add-row-btn{background:transparent;border:1px dashed rgba(124,92,255,.4);color:var(--accent);
+    border-radius:9px;padding:8px 16px;font-size:.83rem;cursor:pointer;transition:all .2s;margin-top:4px;}
+  .add-row-btn:hover{background:rgba(124,92,255,.08);border-color:var(--accent);}
+  .shared-row{display:flex;align-items:center;gap:10px;margin-top:14px;}
+  .shared-row label{margin:0;text-transform:none;font-size:.85rem;color:var(--sub);cursor:pointer;}
+  input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer;}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),#2dd4bf);color:#fff;border:none;
+    padding:11px 24px;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;transition:all .15s;}
+  .btn-primary:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
+  .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+  .create-actions{display:flex;align-items:center;gap:14px;margin-top:18px;}
+  .msg{font-size:.83rem;padding:8px 14px;border-radius:8px;}
+  .msg.ok{background:rgba(45,212,191,.1);color:#7cf0e0;}
+  .msg.err{background:rgba(255,85,85,.1);color:#ffaaaa;}
+  .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .section-title{font-size:1rem;font-weight:700;color:var(--sub);}
+  .section-tag{font-size:.72rem;color:var(--muted);background:rgba(255,255,255,.06);
+    padding:3px 10px;border-radius:20px;border:1px solid var(--line);}
+  .tmpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:40px;}
+  .tmpl-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px 22px;transition:border-color .2s,transform .15s;animation:card-in .3s ease both;}
+  .tmpl-card:hover{border-color:rgba(124,92,255,.35);transform:translateY(-2px);}
+  .tmpl-card.shared-card{border-left:3px solid var(--accent2);}
+  @keyframes card-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  .tmpl-name{font-size:1rem;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .tmpl-badge{font-size:.65rem;padding:2px 8px;border-radius:20px;font-weight:700;letter-spacing:.06em;}
+  .badge-shared{background:rgba(45,212,191,.15);color:var(--accent2);border:1px solid rgba(45,212,191,.3);}
+  .badge-private{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--line);}
+  .badge-extern{background:rgba(124,92,255,.12);color:var(--accent);border:1px solid rgba(124,92,255,.25);}
+  .tmpl-meta{font-size:.75rem;color:var(--muted);margin-bottom:14px;}
+  .tmpl-signers{margin-bottom:14px;}
+  .tmpl-signer-item{display:flex;align-items:center;gap:8px;padding:6px 0;
+    border-bottom:1px solid rgba(255,255,255,.04);}
+  .tmpl-signer-item:last-child{border-bottom:none;}
+  .signer-idx{font-size:.7rem;color:var(--muted);min-width:18px;font-weight:700;}
+  .signer-info{flex:1;}
+  .signer-name-row{font-size:.83rem;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .signer-sub{font-size:.73rem;color:var(--muted);}
+  .atrib-pill{font-size:.65rem;padding:2px 7px;border-radius:6px;font-weight:700;
+    background:rgba(124,92,255,.15);color:var(--accent);border:1px solid rgba(124,92,255,.2);}
+  .tmpl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
+  .btn-use{background:linear-gradient(135deg,var(--accent),#2dd4bf);color:#fff;border:none;
+    padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;
+    transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:4px;}
+  .btn-use:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
+  .btn-sm{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--sub);
+    padding:6px 12px;border-radius:8px;font-size:.75rem;cursor:pointer;transition:all .15s;}
+  .btn-sm:hover{background:rgba(120,160,255,.15);border-color:rgba(120,160,255,.4);color:#e9eefc;}
+  .btn-sm.danger{color:var(--danger);}
+  .btn-sm.danger:hover{background:rgba(255,85,85,.12);border-color:var(--danger);}
+  .btn-sm.success{color:#7cf0e0;}
+  .btn-sm.success:hover{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.4);}
+  .empty-state{text-align:center;padding:48px 24px;color:var(--muted);}
+  .empty-icon{font-size:2.5rem;margin-bottom:12px;}
+  .empty-title{font-size:1rem;font-weight:600;margin-bottom:6px;color:var(--sub);}
+  .spin{display:inline-block;width:20px;height:20px;border:2px solid rgba(124,92,255,.3);
+    border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;
+    align-items:center;justify-content:center;padding:20px;}
+  .modal-bg.open{display:flex;}
+  .modal{background:#0f1731;border:1px solid var(--line);border-radius:var(--radius);
+    padding:28px;width:100%;max-width:933px;max-height:90vh;overflow-y:auto;
+    box-shadow:0 24px 64px rgba(0,0,0,.6);}
+  .modal h3{font-size:1rem;font-weight:700;color:var(--sub);margin-bottom:20px;}
+  .modal-acts{margin-top:20px;display:flex;gap:8px;justify-content:flex-end;}
+  @media(max-width:640px){
+    .form-row{grid-template-columns:1fr;}
+    .tmpl-grid{grid-template-columns:1fr;}
+  }
+</style>
+
+  <script>
+    // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
+    // altfel fallback la fetch standard cu Bearer token din localStorage.
+    window._apiFetch = async function(url, options) {
+      if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
+      const headers = Object.assign({}, (options||{}).headers || {});
+      // Tranziție: dacă există token vechi în localStorage, îl trimitem ca fallback Bearer
+      const legacyToken = localStorage.getItem('docflow_token');
+      if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
+      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
+    };
+  </script>
+  <link rel="stylesheet" href="/mobile.css">
+</head>
+<body>
+<header>
+  <div class="logo"><img src="/Logo.png" alt="DocFlowAI" style="height:87px;width:auto;object-fit:contain;display:block;"/></div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <a href="/" class="btn">📝 Flux nou</a>
+    <a href="/?tab=flows" class="btn">📂 Fluxuri mele</a>
+    <a href="/templates" class="btn active">📋 Șabloane</a>
+  </div>
+  <div class="hdr-right" id="userBar">
+    <!-- populated by JS below -->
+  </div>
+</header>
+
+<main>
+  <h1>📋 <span style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">Șabloane</span></h1>
+  <p class="subtitle">Configurează seturi de semnatari reutilizabili pentru fluxuri rapide.</p>
+
+  <div class="create-card">
+    <h2>➕ Șablon nou</h2>
+    <div class="form-row">
+      <div>
+        <label>Nume șablon *</label>
+        <input id="tName" type="text" placeholder="Ex: Aprobare referat consum"/>
+      </div>
+      <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
+        <div class="shared-row">
+          <input type="checkbox" id="tShared"/>
+          <label for="tShared">🏢 Distribuie cu instituția mea</label>
+        </div>
+      </div>
+    </div>
+    <label style="margin-bottom:10px;display:block;">Semnatari (în ordinea semnării) *</label>
+    <table class="signers-table">
+      <thead><tr>
+        <th style="width:32px;"></th>
+        <th style="width:155px;">ATRIBUT</th>
+        <th style="width:190px;">FUNCȚIE</th>
+        <th>NUME ȘI PRENUME</th>
+        <th style="width:260px;">EMAIL</th>
+        <th style="width:90px;"></th>
+      </tr></thead>
+      <tbody id="signersBuilder"></tbody>
+    </table>
+    <button class="add-row-btn" onclick="addSignerRow()">+ Adaugă semnatar</button>
+    <div class="create-actions">
+      <button class="btn-primary" id="btnSave" onclick="saveTemplate()">💾 Salvează șablonul</button>
+      <div id="createMsg"></div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title">🔒 Șabloanele mele</span>
+    <span class="section-tag" id="myCount">—</span>
+  </div>
+  <div id="myGrid" class="tmpl-grid">
+    <div class="empty-state"><span class="spin"></span></div>
+  </div>
+
+  <div id="sharedSection" style="display:none;">
+    <div class="section-header">
+      <span class="section-title">🏢 Șabloane instituție</span>
+      <span class="section-tag" id="sharedCount">—</span>
+    </div>
+    <div id="sharedGrid" class="tmpl-grid"></div>
+  </div>
+</main>
+
+<div class="modal-bg" id="editModal" onclick="if(event.target===this)closeEdit()">
+  <div class="modal">
+    <h3>✏️ Editează șablon</h3>
+    <input type="hidden" id="eId"/>
+    <div class="form-row">
+      <div>
+        <label>Nume șablon *</label>
+        <input id="eName" type="text"/>
+      </div>
+      <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
+        <div class="shared-row">
+          <input type="checkbox" id="eShared"/>
+          <label for="eShared">🏢 Distribuie cu instituția</label>
+        </div>
+      </div>
+    </div>
+    <label style="margin-bottom:10px;display:block;">Semnatari *</label>
+    <table class="signers-table">
+      <thead><tr>
+        <th style="width:32px;"></th>
+        <th style="width:155px;">ATRIBUT</th>
+        <th style="width:190px;">FUNCȚIE</th>
+        <th>NUME ȘI PRENUME</th>
+        <th style="width:260px;">EMAIL</th>
+        <th style="width:90px;"></th>
+      </tr></thead>
+      <tbody id="editSignersBuilder"></tbody>
+    </table>
+    <button class="add-row-btn" onclick="addSignerRow('edit')">+ Adaugă semnatar</button>
+    <div id="editMsg" style="margin-top:10px;font-size:.83rem;"></div>
+    <div class="modal-acts">
+      <button class="btn-sm" onclick="closeEdit()">Anulează</button>
+      <button class="btn-primary" onclick="saveEdit()">💾 Salvează</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+// SEC-01: token din cookie HttpOnly — eliminat token
+const me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
+fetch('/auth/me', { credentials: 'include' })
+  .then(r => {
+    if (!r.ok) {
+      localStorage.removeItem('docflow_user');
+      location.href = '/login?next=/templates';
+    }
+  })
+  .catch(() => { location.href = '/login?next=/templates'; });
+function logout() {
+  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+  localStorage.removeItem('docflow_token');
+  localStorage.removeItem('docflow_user');
+  location.href = '/login';
+}
+
+// Populate userBar with name + admin link + logout
+(function() {
+  const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
+  const bar = document.getElementById('userBar');
+  if (!bar) return;
+  const label = u.nume || u.email || '';
+  bar.innerHTML =
+    (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
+    (u.role === 'admin' ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
+    `<button onclick="logout()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+})();
+function hdrs() { return { 'Content-Type': 'application/json' }; }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+const ATRIBUTE = [
+  'ÎNTOCMIT','VERIFICAT','VIZAT','AVIZAT','APROBAT',
+  'VIZĂ CFPP','VIZĂ JURIDICĂ','VIZĂ TEHNICĂ','VIZĂ ECONOMICĂ',
+  'CONTROLAT','CERTIFICAT','CONTRASEMNAT','ÎNSUȘIT','ASUMAT',
+  'SEMNAT','LUAT LA CUNOȘTINȚĂ','ÎNREGISTRAT','CONFIRMAT','__alt__'
+];
+let signerCounter = 0;
+
+function buildAtribOptions(selected) {
+  return ATRIBUTE.map(a => {
+    const label = a === '__alt__' ? 'Alt atribut...' : a;
+    return `<option value="${a}"${a===selected?' selected':''}>${label}</option>`;
+  }).join('');
+}
+
+// Returnează valorile utilizatorilor deja selectați dintr-un tbody, excluzând rândul curent
+function getUsedUsers(tbody, excludeRow) {
+  const used = new Set();
+  tbody.querySelectorAll('tr').forEach(tr => {
+    if (tr === excludeRow) return;
+    const sel = tr.querySelector('.s-name-sel');
+    if (sel && sel.value && sel.value !== '' && sel.value !== '__manual__') used.add(sel.value);
+  });
+  return used;
+}
+
+// Reîmprospătează toate dropdown-urile dintr-un tbody pentru a ascunde utilizatorii deja selectați
+function refreshAllDropdowns(containerId) {
+  const container = $(containerId);
+  if (!container || !window._tmplUsers) return;
+  const rows = container.querySelectorAll('tr');
+  rows.forEach(tr => {
+    const sel = tr.querySelector('.s-name-sel');
+    if (!sel || sel.style.display === 'none') return;
+    const currentVal = sel.value;
+    const used = getUsedUsers(container, tr);
+    // Rebuild options
+    while (sel.options.length > 1) sel.remove(1);
+    (window._tmplUsers || []).forEach(u => {
+      if (used.has(u.nume)) return; // ascunde utilizatorii deja selectați în alte rânduri
+      const opt = document.createElement('option');
+      opt.value = u.nume || '';
+      opt.dataset.email = u.email || '';
+      opt.dataset.functie = u.functie || '';
+      opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
+      sel.appendChild(opt);
+    });
+
+    // Restaurează selecția curentă dacă nu e folosită în altă parte
+    if (currentVal && !used.has(currentVal)) sel.value = currentVal;
+  });
+}
+
+function addSignerRow(target='create', data={}) {
+  const cid = target === 'edit' ? 'editSignersBuilder' : 'signersBuilder';
+  const container = $(cid);
+  const id = ++signerCounter;
+  const tr = document.createElement('tr');
+  tr.draggable = true;
+  tr.dataset.id = id;
+
+  const selectedAtrib = data.atribut || 'ÎNTOCMIT';
+  const isAlt = !ATRIBUTE.includes(selectedAtrib) || selectedAtrib === '__alt__';
+  const atribValue = isAlt ? '__alt__' : selectedAtrib;
+  const customValue = isAlt ? selectedAtrib : '';
+
+  tr.innerHTML = `
+    <td class="drag-handle">⠿</td>
+    <td>
+      <select class="s-atrib">${buildAtribOptions(atribValue)}</select>
+      <input class="s-atrib-custom" type="text" placeholder="Scrie atributul..."
+        style="display:${atribValue==='__alt__'?'block':'none'};margin-top:4px;"
+        value="${esc(customValue)}"/>
+    </td>
+    <td><input type="text" class="s-functie" placeholder="—" value="${esc(data.functie||'')}"
+      readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);"/></td>
+    <td>
+      <select class="s-name-sel" style="width:100%;"><option value="">— Alege utilizator —</option></select>
+
+    </td>
+    <td><input type="email" class="s-email" placeholder="—" value="${esc(data.email||'')}"
+      readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);"/></td>
+    <td><button class="btn danger btnDel" type="button" style="padding:6px 10px;font-size:.8rem;">Șterge</button></td>
+  `;
+
+  // ── Atrib custom toggle
+  const atribSel = tr.querySelector('.s-atrib');
+  const atribCustom = tr.querySelector('.s-atrib-custom');
+  atribSel.addEventListener('change', () => {
+    atribCustom.style.display = atribSel.value === '__alt__' ? 'block' : 'none';
+  });
+
+  // ── User dropdown
+  const nameSel = tr.querySelector('.s-name-sel');
+  const functieIn = tr.querySelector('.s-functie');
+  const emailIn = tr.querySelector('.s-email');
+
+  if (window._tmplUsers) {
+    refreshAllDropdowns(cid); // rebuild toate + adaugă opțiunile pentru noul rând
+    // Populează dropdown-ul noului rând (refresh nu l-a atins că nu era în DOM încă)
+    const used = getUsedUsers(container, tr);
+    while (nameSel.options.length > 1) nameSel.remove(1);
+    (window._tmplUsers || []).forEach(u => {
+      if (used.has(u.nume)) return;
+      const opt = document.createElement('option');
+      opt.value = u.nume || '';
+      opt.dataset.email = u.email || '';
+      opt.dataset.functie = u.functie || '';
+      opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
+      nameSel.appendChild(opt);
+    });
+
+  }
+
+  nameSel.addEventListener('change', () => {
+
+    const user = (window._tmplUsers||[]).find(u => u.nume === nameSel.value);
+    if (user) {
+      functieIn.value = user.functie || '';
+      emailIn.value = user.email || '';
+      functieIn.style.opacity='.65'; functieIn.style.cursor='default';
+      emailIn.style.opacity='.65'; emailIn.style.cursor='default';
+    } else {
+      functieIn.value=''; emailIn.value='';
+    }
+    // Reîmprospătează celelalte dropdown-uri pentru a ascunde utilizatorul tocmai selectat
+    refreshAllDropdowns(cid);
+  });
+
+  // ── Pre-selectare dacă datele există
+  if (data.name && window._tmplUsers) {
+    const found = Array.from(nameSel.options).find(o => o.value === data.name);
+    if (found) {
+      nameSel.value = data.name;
+      const usr = window._tmplUsers.find(u => u.nume === data.name);
+      if (usr) { functieIn.value = usr.functie||''; emailIn.value = usr.email||''; }
+    }
+  }
+
+  // ── Drag & drop
+  let dragSrc = null;
+  tr.addEventListener('dragstart', e => { dragSrc = tr; e.dataTransfer.effectAllowed='move'; tr.style.opacity='.4'; });
+  tr.addEventListener('dragend',   () => { tr.style.opacity=''; });
+  tr.addEventListener('dragover',  e => { e.preventDefault(); tr.classList.add('drag-over'); });
+  tr.addEventListener('dragleave', () => tr.classList.remove('drag-over'));
+  tr.addEventListener('drop', e => {
+    e.preventDefault(); tr.classList.remove('drag-over');
+    if (dragSrc && dragSrc !== tr) container.insertBefore(dragSrc, tr);
+    dragSrc = null;
+  });
+
+  // ── Șterge
+  tr.querySelector('.btnDel').addEventListener('click', () => {
+    tr.remove();
+    refreshAllDropdowns(cid);
+  });
+
+  container.appendChild(tr);
+
+  // Auto-fill ÎNTOCMIT cu userul logat pe primul rând
+  if (selectedAtrib === 'ÎNTOCMIT' && !data.name) {
+    const me = JSON.parse(localStorage.getItem('docflow_user')||'{}');
+    if (me.email && window._tmplUsers) {
+      const myUser = window._tmplUsers.find(u => u.email && u.email.toLowerCase() === me.email.toLowerCase());
+      if (myUser) {
+        const opt = Array.from(nameSel.options).find(o => o.value === myUser.nume);
+        if (opt) {
+          nameSel.value = myUser.nume;
+          functieIn.value = myUser.functie||'';
+          emailIn.value = myUser.email||'';
+          refreshAllDropdowns(cid);
+        }
+      }
+    }
+  }
+}
+
+function getSigners(cid) {
+  return Array.from($(cid).querySelectorAll('tr')).map(r => {
+    const atribSel = r.querySelector('.s-atrib');
+    const atrib = atribSel.value === '__alt__'
+      ? (r.querySelector('.s-atrib-custom')?.value?.trim() || 'ALT ATRIBUT')
+      : atribSel.value;
+    const nameSel = r.querySelector('.s-name-sel');
+    const name = nameSel ? nameSel.value.trim() : '';
+    return {
+      atribut: atrib,
+      functie: r.querySelector('.s-functie').value.trim(),
+      name,
+      email: r.querySelector('.s-email').value.trim().toLowerCase(),
+    };
+  });
+}
+
+addSignerRow(); // pornește cu un rând
+
+async function saveTemplate() {
+  const name = $('tName').value.trim();
+  if (!name) { showMsg('createMsg','Completează numele șablonului.',true); return; }
+  const signers = getSigners('signersBuilder');
+  if (!signers.length) { showMsg('createMsg','Adaugă cel puțin un semnatar.',true); return; }
+  if (signers.some(s=>!s.name||!s.email)) { showMsg('createMsg','Completează numele și emailul pentru toți semnatarii.',true); return; }
+  const btn=$('btnSave'); btn.disabled=true; btn.textContent='⏳ Se salvează...';
+  try {
+    const r = await _apiFetch('/api/templates',{method:'POST',headers:hdrs(),body:JSON.stringify({name,signers,shared:$('tShared').checked})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    showMsg('createMsg','✅ Șablon salvat!',false);
+    $('tName').value=''; $('tShared').checked=false;
+    $('signersBuilder').innerHTML=''; addSignerRow();
+    loadTemplates();
+  } catch(e) { showMsg('createMsg','❌ Eroare: '+e.message,true); }
+  btn.disabled=false; btn.textContent='💾 Salvează șablonul';
+}
+
+let allTemplates = [];
+
+async function loadTemplates() {
+  try {
+    const r = await _apiFetch('/api/templates');
+    if (r.status===401){location.href='/login';return;}
+    allTemplates = await r.json();
+    renderTemplates();
+  } catch(e) {
+    $('myGrid').innerHTML=`<div class="empty-state"><div class="empty-icon">⚠️</div><div>Eroare la încărcare</div></div>`;
+  }
+}
+
+function renderTemplates() {
+  const mine = allTemplates.filter(t=>t.isOwner);
+  const shared = allTemplates.filter(t=>!t.isOwner);
+  $('myCount').textContent=`(${mine.length})`;
+  $('myGrid').innerHTML = mine.length ? '' : `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">Niciun șablon încă</div><div style="font-size:.82rem;margin-top:4px;">Creează primul tău șablon mai sus.</div></div>`;
+  mine.forEach((t,i)=>$('myGrid').appendChild(buildCard(t,i)));
+  if (shared.length) {
+    $('sharedSection').style.display='';
+    $('sharedCount').textContent=`(${shared.length})`;
+    $('sharedGrid').innerHTML='';
+    shared.forEach((t,i)=>$('sharedGrid').appendChild(buildCard(t,i)));
+  } else { $('sharedSection').style.display='none'; }
+}
+
+function buildCard(t,idx) {
+  const div=document.createElement('div');
+  div.className='tmpl-card'+((!t.isOwner)?' shared-card':'');
+  div.style.animationDelay=(idx*40)+'ms';
+  const dt=t.created_at?new Date(t.created_at).toLocaleDateString('ro-RO'):'—';
+  const badge = !t.isOwner
+    ? '<span class="tmpl-badge badge-extern">instituție</span>'
+    : t.shared ? '<span class="tmpl-badge badge-shared">shared</span>'
+    : '<span class="tmpl-badge badge-private">privat</span>';
+  const signersHtml=(t.signers||[]).map((s,i)=>`
+    <div class="tmpl-signer-item">
+      <span class="signer-idx">${i+1}.</span>
+      <div class="signer-info">
+        <div class="signer-name-row">${esc(s.name||'—')} <span class="atrib-pill">${esc(s.atribut||'')}</span></div>
+        <div class="signer-sub">${esc(s.functie||'')} · ${esc(s.email||'')}</div>
+      </div>
+    </div>`).join('');
+  const actions = t.isOwner ? `
+    <button class="btn-sm" onclick='openEdit(${JSON.stringify(t)})'>✏️ Editează</button>
+    <button class="btn-sm" onclick="toggleShared(${t.id},${t.shared})">${t.shared?'🔒 Fă privat':'🏢 Share'}</button>
+    <button class="btn-sm danger" onclick="deleteTemplate(${t.id},'${esc(t.name)}')">🗑 Șterge</button>
+    <button class="btn-sm" onclick="copyTemplate(${t.id})">📋 Copiază</button>`
+  : `<button class="btn-sm success" onclick="copyTemplate(${t.id})">📋 Copiază ca al meu</button>`;
+  div.innerHTML=`
+    <div class="tmpl-name">${esc(t.name)} ${badge}</div>
+    <div class="tmpl-meta">${(t.signers||[]).length} semnatari · ${dt}</div>
+    <div class="tmpl-signers">${signersHtml}</div>
+    <div class="tmpl-actions">
+      <button class="btn-use" onclick="useTemplate(${t.id})">▶ Folosește</button>
+      ${actions}
+    </div>`;
+  return div;
+}
+
+function useTemplate(id) {
+  const t = allTemplates.find(x=>x.id===id);
+  if (!t) return;
+  sessionStorage.setItem('applyTemplate', JSON.stringify(t));
+  location.href = '/';
+}
+
+function openEdit(t) {
+  $('eId').value=t.id; $('eName').value=t.name; $('eShared').checked=!!t.shared;
+  $('editSignersBuilder').innerHTML='';
+  (t.signers||[]).forEach(s=>addSignerRow('edit',s));
+  $('editMsg').textContent='';
+  $('editModal').classList.add('open');
+}
+function closeEdit(){$('editModal').classList.remove('open');}
+
+async function saveEdit() {
+  const id=$('eId').value, name=$('eName').value.trim();
+  if (!name){showMsg('editMsg','Completează numele.',true);return;}
+  const signers=getSigners('editSignersBuilder');
+  if (signers.some(s=>!s.name||!s.email)){showMsg('editMsg','Completează toți semnatarii.',true);return;}
+  try {
+    const r=await _apiFetch('/api/templates/'+id,{method:'PUT',headers:hdrs(),body:JSON.stringify({name,signers,shared:$('eShared').checked})});
+    if (!r.ok) throw new Error((await r.json()).error);
+    closeEdit(); loadTemplates();
+  } catch(e){showMsg('editMsg','❌ '+e.message,true);}
+}
+
+async function toggleShared(id,currentShared) {
+  const t=allTemplates.find(x=>x.id===id); if(!t)return;
+  try {
+    const r=await _apiFetch('/api/templates/'+id,{method:'PUT',headers:hdrs(),body:JSON.stringify({name:t.name,signers:t.signers,shared:!currentShared})});
+    if(!r.ok) throw new Error(); loadTemplates();
+  } catch(e){alert('Eroare la actualizare.');}
+}
+
+async function deleteTemplate(id,name) {
+  if(!confirm(`Ștergi șablonul "${name}"?`))return;
+  try {
+    const r=await _apiFetch('/api/templates/'+id,{method:'DELETE',headers:hdrs()});
+    if(!r.ok) throw new Error(); loadTemplates();
+  } catch(e){alert('Eroare la ștergere.');}
+}
+
+async function copyTemplate(id) {
+  const t = allTemplates.find(x=>x.id===id);
+  if (!t) return;
+  const newName = t.isOwner
+    ? (prompt('Nume pentru copie:', t.name + ' (copie)') || null)
+    : (prompt('Salvează ca șablon privat al tău. Nume:', t.name) || null);
+  if (!newName) return;
+  try {
+    const r = await _apiFetch('/api/templates', {method:'POST', headers:hdrs(), body:JSON.stringify({
+      name: newName.trim(), signers: t.signers, shared: false
+    })});
+    if (!r.ok) throw new Error();
+    showMsg('createMsg', '✅ Șablon copiat ca privat!', false);
+    loadTemplates();
+  } catch(e) { alert('Eroare la copiere.'); }
+}
+
+function showMsg(id,txt,err) {
+  const el=$(id); el.className='msg '+(err?'err':'ok'); el.textContent=txt;
+  setTimeout(()=>{el.textContent='';el.className='';},5000);
+}
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
+
+// Încarcă utilizatori pentru dropdown-uri
+(async function loadUsers() {
+  try {
+    const r = await _apiFetch('/users');
+    if (!r.ok) { console.warn('fetch /users failed:', r.status); return; }
+    window._tmplUsers = await r.json();
+
+    // Populează rândul existent
+    const firstRow = $('signersBuilder').querySelector('tr');
+    if (firstRow) {
+      const sel = firstRow.querySelector('.s-name-sel');
+      const functieIn = firstRow.querySelector('.s-functie');
+      const emailIn = firstRow.querySelector('.s-email');
+      if (sel) {
+        while (sel.options.length > 1) sel.remove(1);
+        window._tmplUsers.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.nume||''; opt.dataset.email = u.email||''; opt.dataset.functie = u.functie||'';
+          opt.textContent = (u.nume||u.email) + (u.functie?' — '+u.functie:'');
+          sel.appendChild(opt);
+        });
+
+        // Auto-fill cu userul logat dacă ÎNTOCMIT
+        const meUser = JSON.parse(localStorage.getItem('docflow_user')||'{}');
+        if (meUser.email) {
+          const found = window._tmplUsers.find(u => u.email && u.email.toLowerCase() === meUser.email.toLowerCase());
+          if (found) {
+            sel.value = found.nume||'';
+            if (functieIn) { functieIn.value = found.functie||''; }
+            if (emailIn)   { emailIn.value = found.email||''; }
+            refreshAllDropdowns('signersBuilder');
+          }
+        }
+      }
+    }
+  } catch(e) { console.warn('Nu s-au putut incarca userii:', e); }
+})();
+
+loadTemplates();
+</script>
+<script src="/notif-widget.js"></script>
+</body>
+</html>
