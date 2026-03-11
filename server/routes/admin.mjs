@@ -1137,7 +1137,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         const emailEvsBySigner = (audit.events || []).filter(e => e.type === 'EMAIL_SENT' && e.by === s.email && !e._inheritedFrom);
         for (const ee of emailEvsBySigner) {
           ensureSpace(14);
-          page.drawText(ro(`  Email trimis: ${fmtDate(ee.at)}  catre: ${ee.to || ''}${ee.subject ? '  Subiect: ' + ee.subject : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.05,0.45,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
+          page.drawText(ro(`  Email trimis: ${fmtDate(ee.at)}  catre: ${ee.to || ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.05,0.45,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
         }
         y -= 6;
       }
@@ -1151,7 +1151,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           page.drawText(ro(`Initiator (${audit.initEmail}):`), { x:MARGIN, y, size:8, font:fontB, color:rgb(0.2,0.2,0.4) }); y -= 12;
           for (const ee of emailEvsByInit) {
             ensureSpace(14);
-            page.drawText(ro(`  Email trimis: ${fmtDate(ee.at)}  catre: ${ee.to || ''}${ee.subject ? '  Subiect: ' + ee.subject : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.05,0.45,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
+            page.drawText(ro(`  Email trimis: ${fmtDate(ee.at)}  catre: ${ee.to || ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.05,0.45,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
           }
           y -= 4;
         }

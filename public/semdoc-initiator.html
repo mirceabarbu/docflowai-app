@@ -1709,6 +1709,10 @@ async function submitChangePwd(){
       setTimeout(closeChangePwdModal,1800);
     }
     else{msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');btn.disabled=false;btn.textContent='Salvează';}
+  } catch(e){ console.error(e); msg.style.color='#f28b82'; msg.textContent='Eroare de rețea.'; btn.disabled=false; btn.textContent='Salvează'; }
+}
+</script>
+
 <!-- ── Modal Trimite Email Extern ─────────────────────────────────────── -->
 <div id="sendEmailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;padding:16px;">
   <div style="background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:28px 32px;width:100%;max-width:520px;position:relative;">
@@ -1727,7 +1731,7 @@ async function submitChangePwd(){
       </div>
       <div>
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Mesaj personalizat <span style="color:var(--muted);font-size:.72rem;">— opțional</span></label>
-        <textarea id="semBody" rows="4" readonly style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
+        <textarea id="semBody" rows="7" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
       <!-- PDF semnat și referință Flow ID incluse automat -->
       <div id="semMsg" style="font-size:.82rem;min-height:18px;"></div>
