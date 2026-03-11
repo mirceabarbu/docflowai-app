@@ -692,7 +692,7 @@
       </div>
       <div>
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Mesaj personalizat <span style="color:var(--muted);font-size:.72rem;">— opțional</span></label>
-        <textarea id="flowSemBody" rows="4" placeholder="Stimate/ă," style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
+        <textarea id="flowSemBody" rows="4" readonly style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
       <div style="display:flex;gap:20px;flex-wrap:wrap;">
         <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.83rem;color:#cdd6f4;">
@@ -710,6 +710,7 @@
 <script>
 let _flowSemId = null;
 function openFlowSendEmailModal(flowId, docName, institutie, compartiment, completedAt) {
+  const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
   _flowSemId = flowId;
   document.getElementById('flowSemDocLabel').textContent = docName;
   document.getElementById('flowSemTo').value = '';
@@ -717,9 +718,20 @@ function openFlowSendEmailModal(flowId, docName, institutie, compartiment, compl
   document.getElementById('flowSemSendBtn').disabled = false;
   document.getElementById('flowSemSendBtn').textContent = '📤 Trimite email';
   document.getElementById('flowSemSubject').value = `Document semnat electronic: ${docName}`;
+  const senderName  = u.nume || u.email || '';
+  const senderTitle = [u.functie, u.compartiment, u.institutie].filter(Boolean).join(', ');
+  const instStr = institutie  ? `Instituție: ${institutie}\n`  : '';
   const compStr = compartiment ? `Compartiment: ${compartiment}\n` : '';
-  const instStr = institutie ? `Instituție: ${institutie}\n` : '';
-  document.getElementById('flowSemBody').value = `Vă transmitem atașat documentul „${docName}", semnat electronic de toate părțile implicate.\n\n${instStr}${compStr}Data finalizării: ${completedAt ? new Date(completedAt).toLocaleDateString('ro-RO') : '—'}`;
+  const dateStr = completedAt ? new Date(completedAt).toLocaleDateString('ro-RO') : '—';
+  document.getElementById('flowSemBody').value =
+`Stimate/ă,
+
+Vă transmitem atașat documentul „${docName}", semnat electronic de toate părțile implicate.
+
+${instStr}${compStr}Data finalizării: ${dateStr}
+
+Cu stimă,
+${senderName}${senderTitle ? '\n' + senderTitle : ''}`;
   document.getElementById('flowSendEmailModal').style.display = 'flex';
   setTimeout(() => document.getElementById('flowSemTo').focus(), 100);
 }

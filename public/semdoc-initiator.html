@@ -1027,6 +1027,8 @@ th{ color: var(--sub) !important; }
           const finalStatuses = ["completed", "done", "finalizat", "finished", "complete"];
           const successFinal = !!(f.allSigned && !isRefused && !isReviewRequested && !isCancelled);
           const pdfReady = !!(successFinal && (f.hasSignedPdf || f.completed || finalStatuses.includes(String(f.status || "").toLowerCase())));
+          // Salvăm datele fluxului pentru modalul de email (evităm JSON în onclick)
+          if (pdfReady) { window._flowsEmailData = window._flowsEmailData || {}; window._flowsEmailData[f.flowId] = f; }
           const dlBtn = pdfReady
             ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
             : successFinal
@@ -1050,7 +1052,7 @@ th{ color: var(--sub) !important; }
                 ${!isCancelled && mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#ff6b6b);border:none;color:#fff;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">✍ Semnează</button>` : ''}
                 <a href="/flow.html?flow=${f.flowId}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">🔍 Vezi flow</a>
                 ${!isCancelled ? dlBtn : ''}
-                ${pdfReady ? `<button onclick="openSendEmailModal('${f.flowId}','${(f.docName||'').replace(/'/g,"\\'")}','${(f.institutie||'').replace(/'/g,"\\'")}','${(f.compartiment||'').replace(/'/g,"\\'")}','${(f.initName||'').replace(/'/g,"\\'")}','${(f.completedAt||'').replace(/'/g,"\\'")}','${(f.initEmail||'').replace(/'/g,"\\'")}','${JSON.stringify(f.signers||[]).replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="background:rgba(45,212,191,.15);border:1px solid rgba(45,212,191,.35);color:#7cf0e0;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;" title="Trimite pe email extern">📧 Trimite</button>` : ''}
+                ${pdfReady ? `<button onclick="openSendEmailModal('${f.flowId}')" style="background:rgba(45,212,191,.15);border:1px solid rgba(45,212,191,.35);color:#7cf0e0;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;" title="Trimite pe email extern">📧 Trimite</button>` : ''}
                 ${!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,200,50,.12);border:1px solid rgba(255,200,50,.35);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">🔄 Reinițiază</button>` : ''}
                 ${refusedByAprobat && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<span style="color:#ffaaaa;font-size:.78rem;font-weight:600;">⛔ Refuzat de APROBATOR — flux nou necesar</span>` : ''}
                 ${!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" style="background:rgba(250,180,0,.18);border:1px solid rgba(250,180,0,.4);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Doc revizuit</button>` : ''}
@@ -1725,7 +1727,7 @@ async function submitChangePwd(){
       </div>
       <div>
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Mesaj personalizat <span style="color:var(--muted);font-size:.72rem;">— opțional</span></label>
-        <textarea id="semBody" rows="4" placeholder="Stimate/ă," style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
+        <textarea id="semBody" rows="4" readonly style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
       <div style="display:flex;gap:20px;flex-wrap:wrap;">
         <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.83rem;color:#cdd6f4;">
@@ -1744,20 +1746,32 @@ async function submitChangePwd(){
 <script>
 let _semFlowId = null;
 
-function openSendEmailModal(flowId, docName, institutie, compartiment, initName, completedAt, initEmail, signersJson) {
+function openSendEmailModal(flowId) {
+  const f = (window._flowsEmailData || {})[flowId] || {};
+  const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
   _semFlowId = flowId;
-  document.getElementById('semDocNameLabel').textContent = docName;
+  document.getElementById('semDocNameLabel').textContent = f.docName || flowId;
   document.getElementById('semTo').value = '';
   document.getElementById('semMsg').textContent = '';
   document.getElementById('semMsg').style.color = '';
   document.getElementById('semSendBtn').disabled = false;
   document.getElementById('semSendBtn').textContent = '📤 Trimite email';
-  // Pre-populare subiect
-  document.getElementById('semSubject').value = `Document semnat electronic: ${docName}`;
-  // Pre-populare corp
-  const compStr = compartiment ? `Compartiment: ${compartiment}\n` : '';
-  const instStr = institutie ? `Instituție: ${institutie}\n` : '';
-  document.getElementById('semBody').value = `Vă transmitem atașat documentul „${docName}", semnat electronic de toate părțile implicate.\n\n${instStr}${compStr}Data finalizării: ${completedAt ? new Date(completedAt).toLocaleDateString('ro-RO') : '—'}`;
+  document.getElementById('semSubject').value = `Document semnat electronic: ${f.docName || flowId}`;
+  // Corp pre-completat + readonly
+  const senderName  = u.nume || u.email || '';
+  const senderTitle = [u.functie, u.compartiment, u.institutie].filter(Boolean).join(', ');
+  const instStr     = f.institutie  ? `Instituție: ${f.institutie}\n`  : '';
+  const compStr     = f.compartiment ? `Compartiment: ${f.compartiment}\n` : '';
+  const dateStr     = f.completedAt  ? new Date(f.completedAt).toLocaleDateString('ro-RO') : '—';
+  document.getElementById('semBody').value =
+`Stimate/ă,
+
+Vă transmitem atașat documentul „${f.docName || flowId}", semnat electronic de toate părțile implicate.
+
+${instStr}${compStr}Data finalizării: ${dateStr}
+
+Cu stimă,
+${senderName}${senderTitle ? '\n' + senderTitle : ''}`;
   document.getElementById('sendEmailModal').style.display = 'flex';
   setTimeout(() => document.getElementById('semTo').focus(), 100);
 }
@@ -1778,15 +1792,13 @@ async function doSendEmail() {
 
   if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { msg.style.color='#ffaaaa'; msg.textContent='Introduceți o adresă de email validă.'; return; }
   if (!subject) { msg.style.color='#ffaaaa'; msg.textContent='Subiectul este obligatoriu.'; return; }
-  if (!includeAttachment && !includeLink) { msg.style.color='#ffaaaa'; msg.textContent='Selectați cel puțin o opțiune (atașament sau referință).'; return; }
 
   btn.disabled = true; btn.textContent = '⏳ Se trimite...'; msg.textContent = '';
 
   try {
-    const tok = localStorage.getItem('jwt') || sessionStorage.getItem('jwt') || '';
-    const r = await fetch(`/flows/${encodeURIComponent(_semFlowId)}/send-email`, {
+    const r = await _apiFetch(`/flows/${encodeURIComponent(_semFlowId)}/send-email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ to, subject, bodyText, includeAttachment, includeLink }),
     });
     const d = await r.json();
