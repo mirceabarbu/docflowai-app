@@ -491,13 +491,13 @@
         if (!bar) return;
         const label = currentUser.nume || currentUser.email || '';
         if (label) bar.innerHTML = `Conectat: <strong>${label}</strong>` +
-          (currentUser.role === 'admin' ? ` &nbsp;<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
+          ((currentUser.role === 'admin' || currentUser.role === 'org_admin') ? ` &nbsp;<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
       })();
       const isRefused = computedStatus === "refused";
       const refusedByAprobat = signers.some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
       const isReviewRequested = data.status === "review_requested";
       const isInitiator = (data.initEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
-      const isAdmin = currentUser.role === "admin";
+      const isAdmin = currentUser.role === "admin" || currentUser.role === "org_admin";
       const btnRei = $("btnReinitiate");
       if (btnRei) btnRei.style.display = (isRefused && !refusedByAprobat && (isInitiator || isAdmin)) ? "" : "none";
       btnRei._flowId = flowId;

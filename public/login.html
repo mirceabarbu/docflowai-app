@@ -59,7 +59,7 @@
   // Verificăm autentificarea cu /auth/me (cookie trimis automat)
   fetch("/auth/me", { credentials: 'include' })
     .then(r=>r.ok?r.json():null)
-    .then(u=>{if(u&&u.userId)location.href=u.role==="admin"?"/admin":"/"})
+    .then(u=>{if(u&&u.userId)location.href=(u.role==="admin"||u.role==="org_admin")?"/admin":"/"})
     .catch(()=>{});
 
   function showErr(msg){const el=$("errMsg");el.textContent=msg;el.style.display="block";}
@@ -102,7 +102,7 @@
       if(d.force_password_change) localStorage.setItem("docflow_force_pwd","1");
       else localStorage.removeItem("docflow_force_pwd");
       const next=new URLSearchParams(location.search).get("next");
-      location.href=d.role==="admin"?(next&&next.startsWith("/admin")?next:"/admin"):(next||"/");
+      location.href=(d.role==="admin"||d.role==="org_admin")?(next&&next.startsWith("/admin")?next:"/admin"):(next||"/");
     }catch(e){showErr("Eroare de rețea.");}
     finally{btn.disabled=false;btn.textContent="Intră în cont";}
   }
