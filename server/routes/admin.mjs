@@ -318,7 +318,7 @@ router.post('/admin/users', async (req, res) => {
 router.get('/admin/gws/preview-email', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const { prenume, nume_familie } = req.query;
   if (!prenume && !nume_familie) return res.status(400).json({ error: 'prenume_or_nume_required' });
   if (!gwsIsConfigured()) return res.json({ configured: false });
@@ -335,7 +335,7 @@ router.get('/admin/gws/preview-email', async (req, res) => {
 router.post('/admin/users/:id/gws-provision', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   if (!gwsIsConfigured()) return res.status(503).json({ error: 'gws_not_configured' });
 
   const userId = parseInt(req.params.id);
@@ -392,7 +392,7 @@ router.get('/admin/gws/verify', async (req, res) => {
 router.put('/admin/users/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
   const { email, nume, prenume, nume_familie, functie, institutie, compartiment, password, role, phone, notif_inapp, notif_email, notif_whatsapp, personal_email } = req.body || {};
@@ -515,6 +515,7 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
       const actorOrgId = actorRows[0]?.org_id || null;
       if (!actorOrgId || actorOrgId !== u.org_id) return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
+    const newPwd = generatePassword();
     await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [hashPassword(newPwd), targetId]);
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
