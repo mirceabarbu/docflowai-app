@@ -607,7 +607,8 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
         return { flowId: r.data.flowId, docName: r.data.docName, createdAt: r.data.createdAt || r.created_at,
           status: r.data.completed ? 'finalizat' : (r.data.signers || []).some(s => s.status === 'refused') ? 'refuzat' : 'necunoscut',
           sizeMB: Math.round(sizeBytes / 1024 / 1024 * 100) / 100,
-          institutie: u.institutie || r.data.institutie || '', compartiment: u.compartiment || r.data.compartiment || '' };
+          institutie: u.institutie || r.data.institutie || '', compartiment: u.compartiment || r.data.compartiment || '',
+          initName: r.data.initName || '', initEmail: r.data.initEmail || '' };
       })
     });
   } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }

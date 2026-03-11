@@ -1444,6 +1444,7 @@ async function previewArchive() {
       `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
         📄 ${escH(f.docName||'—')} &nbsp;·&nbsp; ${escH(f.status||'')} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
         ${f.institutie?`<span style="color:var(--muted);margin-left:6px;font-size:.75rem;">${escH(f.institutie)}${f.compartiment?' / '+escH(f.compartiment):''}</span>`:""}
+        ${f.initName||f.initEmail?`<span style="color:#9db0ff;margin-left:6px;font-size:.75rem;" title="${escH(f.initEmail||'')}">👤 ${escH(f.initName||f.initEmail)}</span>`:""}
       </div>`
     ).join("") || "<div style='color:var(--muted)'>Niciun flux eligibil.</div>";
     preview.style.display = j.count > 0 ? "block" : "none";
@@ -1455,7 +1456,7 @@ async function doArchive() {
   if (!_archiveFlowIds.length) return;
   const btn = document.getElementById("btnDoArchive");
   const msg = document.getElementById("archiveMsg");
-  if (!confirm(`Arhivezi ${_archiveFlowIds.length} fluxuri în Google Drive și ștergi PDF-urile din DB? Acțiunea nu poate fi anulată.`)) return;
+  if (!confirm(`Arhivezi ${_archiveFlowIds.length} fluxuri în Google Drive?\n\nCe se întâmplă:\n✅ PDF-urile sunt copiate în Google Drive\n✅ Fluxurile rămân vizibile în platformă (cu link Drive)\n🗑️ PDF-urile (pdfB64 / signedPdfB64 / originalPdfB64) sunt șterse din baza de date PostgreSQL\n\nAcțiunea nu poate fi anulată.`)) return;
   btn.disabled = true;
   msg.textContent = "";
   let totalOk = 0, totalFail = 0, batchIndex = 0, failedFlows = [];
