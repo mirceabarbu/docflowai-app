@@ -1760,17 +1760,13 @@ function openSendEmailModal(flowId) {
   // Corp pre-completat + readonly
   const senderName  = u.nume || u.email || '';
   const today = new Date().toLocaleDateString('ro-RO');
-  const instStr  = f.institutie   ? `\nInstituție: ${f.institutie}`   : '';
-  const compStr  = f.compartiment ? `\nCompartiment: ${f.compartiment}` : '';
-  const functieStr = u.functie    ? `\nFuncție: ${u.functie}`         : '';
-  const institutieStr = (u.institutie || f.institutie) ? `\nInstituție: ${u.institutie || f.institutie}` : '';
-  const compartimentStr = (u.compartiment || f.compartiment) ? `\nCompartiment: ${u.compartiment || f.compartiment}` : '';
-  const dateStr  = f.completedAt  ? new Date(f.completedAt).toLocaleDateString('ro-RO') : '—';
+  const functieStr      = u.functie                               ? `\nFuncție: ${u.functie}`                               : '';
+  const institutieStr   = (u.institutie   || f.institutie)        ? `\nInstituție: ${u.institutie   || f.institutie}`        : '';
+  const compartimentStr = (u.compartiment || f.compartiment)      ? `\nCompartiment: ${u.compartiment || f.compartiment}`   : '';
   document.getElementById('semBody').value =
-`Stimate/Stimată,
+`Doamnă/Domnule,
 
-Vă transmitem atașat documentul „${f.docName || flowId}", semnat electronic de toate părțile implicate.${instStr}${compStr}
-Data finalizării: ${dateStr}
+Vă transmitem atașat documentul „${f.docName || flowId}", semnat electronic de toate părțile implicate.
 
 Cu stimă,
 Nume: ${senderName}${functieStr}${institutieStr}${compartimentStr}

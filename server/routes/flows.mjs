@@ -656,6 +656,11 @@ router.get('/my-flows', async (req, res) => {
     const myFlows = rows.map(r => r.data).filter(Boolean).map(d => ({
       flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
       createdAt: d.createdAt, updatedAt: d.updatedAt,
+      completedAt: d.completedAt || null,
+      institutie: d.institutie || '',
+      compartiment: d.compartiment || '',
+      initEmail: d.initEmail || '',
+      initName: d.initName || '',
       status: d.status || 'active',
       urgent: !!(d.urgent),
       signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refuseReason: s.refuseReason }; }),
@@ -1132,7 +1137,7 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
 
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (data.status !== 'completed')
+    if (!data.completed && data.status !== 'completed')
       return res.status(409).json({ error: 'not_completed', message: 'Documentul nu este finalizat.' });
 
     // Preluăm datele expeditorului din DB (funcție, institutie, compartiment)
