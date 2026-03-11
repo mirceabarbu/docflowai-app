@@ -302,7 +302,8 @@ router.post('/admin/users', async (req, res) => {
 
     res.status(201).json({
       ...user,
-      // SEC-02: plain_password ELIMINAT din response — parola trimisă pe email la creare
+      // Parola returnată în response pentru afișare în modal (o singură dată) — nu se stochează
+      tempPassword: plainPwd,
       credentials_sent_to: credsDest,
       verificationSent: needsVerification && !!verificationToken,
       gws: gwsResult,
@@ -439,7 +440,7 @@ router.put('/admin/users/:id', async (req, res) => {
 router.post('/admin/users/:id/reset-password', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
   // SEC-07: verificare cross-tenant — adminul poate reseta parola doar userilor din org sa
@@ -501,14 +502,19 @@ router.delete('/admin/users/:id', async (req, res) => {
 router.post('/admin/users/:id/send-credentials', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   try {
-    // B-03: generăm o parolă nouă la fiecare trimitere — resetăm hash-ul, trimitem pe email
-    const { rows } = await pool.query('SELECT email,nume,functie FROM users WHERE id=$1', [targetId]);
+    // SEC-07: cross-tenant check — org_admin poate trimite credențiale doar userilor din org sa
+    const { rows } = await pool.query('SELECT email,nume,functie,org_id FROM users WHERE id=$1', [targetId]);
     const u = rows[0];
     if (!u) return res.status(404).json({ error: 'user_not_found' });
-    const newPwd = generatePassword();
+    // cross-tenant: org_admin poate acționa doar pe userii din propria org
+    if (actor.role === 'org_admin') {
+      const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
+      const actorOrgId = actorRows[0]?.org_id || null;
+      if (!actorOrgId || actorOrgId !== u.org_id) return res.status(403).json({ error: 'forbidden_cross_tenant' });
+    }
     await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [hashPassword(newPwd), targetId]);
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
