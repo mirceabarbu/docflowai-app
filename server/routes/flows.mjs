@@ -1116,4 +1116,151 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
   } catch(e) { logger.error({ err: e }, 'cancel flow error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
+// ── POST /flows/:flowId/send-email — trimite PDF semnat pe email extern ───
+router.post('/:flowId/send-email', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { flowId } = req.params;
+    const { to, subject, bodyText, includeAttachment = true, includeLink = true } = req.body || {};
+
+    // Validare
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()))
+      return res.status(400).json({ error: 'invalid_email', message: 'Adresă de email invalidă.' });
+    if (!subject || !subject.trim())
+      return res.status(400).json({ error: 'subject_required', message: 'Subiectul este obligatoriu.' });
+
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    if (data.status !== 'completed')
+      return res.status(409).json({ error: 'not_completed', message: 'Documentul nu este finalizat.' });
+
+    // Preluăm datele expeditorului din DB (funcție, institutie, compartiment)
+    const { rows: senderRows } = await pool.query(
+      'SELECT nume, functie, institutie, compartiment, email FROM users WHERE email=$1',
+      [actor.email.toLowerCase()]
+    );
+    const sender = senderRows[0] || {};
+    const senderName  = sender.nume  || actor.email;
+    const senderTitle = [sender.functie, sender.compartiment, sender.institutie].filter(Boolean).join(' · ');
+
+    // PDF semnat
+    const pdfB64 = data.signedPdfB64 || data.pdfB64 || null;
+    if (includeAttachment && !pdfB64)
+      return res.status(409).json({ error: 'no_pdf', message: 'PDF-ul semnat nu este disponibil.' });
+
+    // Semnatari — pentru tabelul din mail
+    const signers = (data.signers || []).map(s => ({
+      name: s.name || s.email,
+      rol: s.rol || '',
+      signedAt: s.signedAt || null,
+      status: s.signed ? 'semnat' : (s.refused ? 'refuzat' : 'în așteptare'),
+    }));
+
+    const signersTable = signers.map(s => `
+      <tr>
+        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;">${s.name}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#9db0ff;">${s.rol}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#2dd4bf;">${s.status}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#888;">${s.signedAt ? new Date(s.signedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td>
+      </tr>`).join('');
+
+    const customBody = bodyText ? `<p style="margin:0 0 20px;line-height:1.7;color:#cdd6f4;">${bodyText.replace(/\n/g, '<br>')}</p>` : '';
+
+    const linkSection = includeLink ? `
+      <div style="margin:24px 0;padding:16px;background:#1a1d2e;border-radius:8px;border-left:3px solid #2dd4bf;">
+        <p style="margin:0 0 8px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Document disponibil în platformă</p>
+        <p style="margin:0;font-size:13px;color:#7cf0e0;">Flow ID: <strong>${flowId}</strong> · Platformă: DocFlowAI</p>
+      </div>` : '';
+
+    const html = `<!DOCTYPE html>
+<html lang="ro"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0f1117;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:620px;margin:0 auto;padding:32px 16px;">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#1a1d2e,#12152a);border:1px solid rgba(157,176,255,.15);border-radius:14px;padding:28px 32px;margin-bottom:24px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">📄</div>
+        <div>
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.8px;">Document semnat electronic</div>
+          <div style="font-size:18px;font-weight:700;color:#eaf0ff;">${data.docName || flowId}</div>
+        </div>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr><td style="padding:4px 0;color:#888;width:130px;">Instituție</td><td style="color:#eaf0ff;">${data.institutie || '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#888;">Compartiment</td><td style="color:#eaf0ff;">${data.compartiment || '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#888;">Finalizat la</td><td style="color:#2dd4bf;">${data.completedAt ? new Date(data.completedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#888;">Flow ID</td><td style="color:#9db0ff;font-family:monospace;font-size:12px;">${flowId}</td></tr>
+      </table>
+    </div>
+
+    <!-- Corp personalizat -->
+    ${customBody}
+
+    <!-- Semnatari -->
+    <div style="background:#1a1d2e;border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+      <p style="margin:0 0 14px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Semnatari</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#eaf0ff;">
+        <thead>
+          <tr style="border-bottom:1px solid #2a2d3e;">
+            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Nume</th>
+            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Rol</th>
+            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Status</th>
+            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Data</th>
+          </tr>
+        </thead>
+        <tbody>${signersTable}</tbody>
+      </table>
+    </div>
+
+    ${linkSection}
+
+    <!-- Semnătură expeditor -->
+    <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:20px;margin-top:8px;">
+      <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#eaf0ff;">${senderName}</p>
+      ${senderTitle ? `<p style="margin:0 0 2px;font-size:12px;color:#9db0ff;">${senderTitle}</p>` : ''}
+      <p style="margin:8px 0 0;font-size:11px;color:#555;">Trimis prin DocFlowAI · noreply@docflowai.ro</p>
+    </div>
+
+  </div>
+</body></html>`;
+
+    // Construim payload Resend
+    const { sendSignerEmail } = await import('../mailer.mjs');
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    const MAIL_FROM = process.env.MAIL_FROM || 'DocFlowAI <noreply@docflowai.ro>';
+
+    if (!RESEND_API_KEY) return res.status(503).json({ error: 'mail_not_configured', message: 'Email-ul nu este configurat pe server.' });
+
+    const payload = { from: MAIL_FROM, to: to.trim(), subject: subject.trim(), html };
+    if (includeAttachment && pdfB64) {
+      const pdfName = `${(data.docName || flowId).replace(/[^a-zA-Z0-9_\-\.]/g, '_')}_semnat.pdf`;
+      payload.attachments = [{ filename: pdfName, content: pdfB64 }];
+    }
+
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      logger.error({ err: j }, `send-email FAILED to ${to}`);
+      return res.status(502).json({ error: 'send_failed', message: j?.message || 'Eroare la trimiterea emailului.' });
+    }
+
+    // Audit log
+    const now = new Date().toISOString();
+    if (!Array.isArray(data.events)) data.events = [];
+    data.events.push({ at: now, type: 'EMAIL_SENT', by: actor.email, to: to.trim(), subject: subject.trim() });
+    await saveFlow(flowId, data);
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_SENT', actorIp: _getIp(req), actorEmail: actor.email, payload: { to: to.trim(), subject: subject.trim(), resendId: j.id } });
+
+    logger.info(`📧 Flow ${flowId} trimis extern către ${to} de ${actor.email}`);
+    return res.json({ ok: true, resendId: j.id });
+  } catch(e) { logger.error({ err: e }, 'send-email error'); return res.status(500).json({ error: 'server_error', message: String(e.message) }); }
+});
+
 export default router;
