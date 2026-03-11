@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DocFlowAI — Offline</title>
+  <style>
+    :root { --bg: #0e1117; --card: #161b22; --accent: #2dd4bf; --text: #e6edf3; --muted: #8b949e; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif;
+           min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: var(--card); border: 1px solid rgba(255,255,255,.08); border-radius: 16px;
+            padding: 48px 40px; max-width: 420px; text-align: center; }
+    .icon { font-size: 3rem; margin-bottom: 16px; }
+    h1 { font-size: 1.4rem; margin-bottom: 12px; color: var(--text); }
+    p { color: var(--muted); font-size: .9rem; line-height: 1.6; margin-bottom: 24px; }
+    button { background: linear-gradient(135deg, #2dd4bf, #7c5cff); color: #fff;
+             border: none; padding: 12px 28px; border-radius: 8px; font-size: .9rem;
+             font-weight: 600; cursor: pointer; }
+    button:hover { opacity: .85; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">📡</div>
+    <h1>Nu există conexiune</h1>
+    <p>DocFlowAI necesită o conexiune la internet pentru a funcționa.<br>
+       Verifică conexiunea și încearcă din nou.</p>
+    <button onclick="window.location.reload()">Reîncearcă</button>
+  </div>
+</body>
+</html>

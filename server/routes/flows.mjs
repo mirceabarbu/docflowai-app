@@ -18,6 +18,7 @@ import jwt from 'jsonwebtoken';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
+import { logger } from '../middleware/logger.mjs';
 
 const router = Router();
 
@@ -141,7 +142,7 @@ const createFlow = async (req, res) => {
           institutie: initInstitutie, compartiment: initCompartiment,
           flowType: body.flowType || 'tabel'  // ancore => useObjectStreams:false
         });
-      } catch(e) { console.warn('Footer la creare error:', e.message); }
+      } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }
 
     const data = {
@@ -169,7 +170,7 @@ const createFlow = async (req, res) => {
         waParams: { signerName: first.name || first.email, docName: data.docName, signerToken: first.token, initName, initFunctie, institutie: initInstitutie, compartiment: initCompartiment }, urgent: !!(data.urgent) });
     }
     return res.json({ ok: true, flowId, firstSignerEmail: first?.email || null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null });
-  } catch(e) { console.error('POST /flows error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'POST /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 };
 
 router.post('/flows', createFlow);
@@ -237,7 +238,7 @@ router.get('/flows/:flowId/pdf', async (req, res) => {
           if (af) { const afObj = pdfDoc.context.lookup(af); if (afObj?.set) afObj.set(PDFName.of('SigFlags'), PDFNumber.of(1)); }
         } catch(e2) {}
         pdfBuf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-      } catch(e) { console.warn('PDF unlock failed:', e.message); }
+      } catch(e) { logger.warn({ err: e }, 'PDF unlock failed:'); }
     }
 
     // uploadToken: doar pentru flowType 'tabel' — ancore nu folosesc verificare hash
@@ -335,9 +336,9 @@ router.delete('/flows/:flowId', async (req, res) => {
     }
     await pool.query('DELETE FROM flows WHERE id=$1', [flowId]);
     await pool.query('DELETE FROM notifications WHERE flow_id=$1', [flowId]).catch(() => {});
-    console.log(`🗑 Flow ${flowId} șters de ${actor.email}`);
+    logger.info(`🗑 Flow ${flowId} șters de ${actor.email}`);
     return res.json({ ok: true, flowId, deletedBy: actor.email });
-  } catch(e) { console.error('DELETE /flows error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'DELETE /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/sign ───────────────────────────────────────────────
@@ -420,7 +421,7 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
       await _notify({ userEmail: r.email, flowId, type: 'REFUSED', title: '⛔ Document refuzat', message: refuseMsg, waParams: { docName: data.docName, refuserName, reason: refuseReason }, urgent: !!(data.urgent) });
     }
     return res.json({ ok: true, refused: true });
-  } catch(e) { console.error('refuse error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'refuse error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/register-download ─────────────────────────────────
@@ -458,7 +459,7 @@ router.post('/flows/:flowId/register-download', async (req, res) => {
         try { pdfDoc.catalog.delete(PDFName.of('Perms')); } catch(e2) {}
         try { const af = pdfDoc.catalog.get(PDFName.of('AcroForm')); if (af) { const afObj = pdfDoc.context.lookup(af); if (afObj?.set) afObj.set(PDFName.of('SigFlags'), PDFNumber.of(1)); } } catch(e2) {}
         pdfBufRD = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-      } catch(e2) { console.warn('register-download unlock error:', e2.message); }
+      } catch(e2) { logger.warn({ err: e2 }, 'register-download unlock error'); }
     }
     const serverPreHash = sha256Hex(pdfBufRD);
     const uploadToken = jwt.sign({ flowId, signerToken, preHash: serverPreHash }, JWT_SECRET, { expiresIn: '4h' });
@@ -533,7 +534,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     // R-02: audit_log — upload PDF + finalizare flux dacă e cazul
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED_PDF_UPLOADED', actorIp: _getIp(req), actorEmail: signers[idx].email, payload: { signerName: signers[idx].name, order: signers[idx].order } });
     if (allDone) writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_COMPLETED', actorEmail: 'system', payload: { docName: data.docName, completedAt: data.completedAt } });
-    console.log(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
+    logger.info(`📎 Signed PDF uploaded for flow ${flowId} by ${signers[idx].email || signers[idx].name}`);
     res.json({ ok: true, flowId, completed: allDone, uploadedAt: data.signedPdfUploadedAt, downloadUrl: `/flows/${flowId}/signed-pdf`, nextSigner: nextSigner || null });
     setImmediate(async () => {
       try {
@@ -548,9 +549,9 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
           if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: 'Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName }, urgent: !!(data.urgent) });
         }
         if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName, signerToken: nextSigner.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment }, urgent: !!(data.urgent) });
-      } catch(notifErr) { console.error(`❌ Notificare async eșuată pentru flow ${flowId}:`, notifErr.message); }
+      } catch(notifErr) { logger.error({ err: notifErr, flowId }, 'Notificare async esuat'); }
     });
-  } catch(e) { console.error('upload-signed-pdf error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'upload-signed-pdf error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/resend ─────────────────────────────────────────────
@@ -591,9 +592,9 @@ router.post('/flows/:flowId/regenerate-token', async (req, res) => {
     await saveFlow(flowId, data);
     const newLink = _buildSignerLink(req, flowId, newToken);
     await _notify({ userEmail: signers[idx].email, flowId, type: 'YOUR_TURN', title: 'Link de semnare reînnoit', message: `Link-ul tău de semnare pentru documentul „${data.docName}" a fost reînnoit.`, waParams: { signerName: signers[idx].name || signers[idx].email, docName: data.docName, signerToken: newToken, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment } });
-    console.log(`🔑 Token regenerat pentru ${signerEmail} pe flow ${flowId}`);
+    logger.info(`🔑 Token regenerat pentru ${signerEmail} pe flow ${flowId}`);
     return res.json({ ok: true, signerEmail, newLink, message: 'Token regenerat și notificare trimisă.' });
-  } catch(e) { console.error('regenerate-token error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'regenerate-token error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── GET /my-flows ─────────────────────────────────────────────────────────
@@ -668,7 +669,7 @@ router.get('/my-flows', async (req, res) => {
       allSigned: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
     }));
     res.json({ flows: myFlows, total, page, limit, pages });
-  } catch(e) { console.error('my-flows error:', e); res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'my-flows error:'); res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── GET /my-flows/:flowId/download ─────────────────────────────────────────
@@ -758,7 +759,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
             institutie: data.institutie, compartiment: data.compartiment,
             flowType: data.flowType || 'tabel'
           });
-        } catch(e) { console.warn('Re-stamp footer on reinitiate error:', e.message); }
+        } catch(e) { logger.warn({ err: e }, 'Re-stamp footer on reinitiate error:'); }
       }
     }
     // FIX v3.3.2: primul saveFlow era redundant — mutăm după setarea notifiedAt
@@ -772,9 +773,9 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
         message: `${data.initName} a reinițiat fluxul de semnare pentru documentul „${data.docName}". Este rândul tău să semnezi.`,
         waParams: { signerName: first.name || first.email, docName: data.docName, signerToken: first.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment } });
     }
-    console.log(`🔄 Flow ${flowId} reinițiat ca ${newFlowId2} de ${actor.email}`);
+    logger.info(`🔄 Flow ${flowId} reinițiat ca ${newFlowId2} de ${actor.email}`);
     return res.json({ ok: true, newFlowId: newFlowId2, signers: remainingSigners.length });
-  } catch(e) { console.error('reinitiate error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'reinitiate error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/request-review ───────────────────────────────────
@@ -835,9 +836,9 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
         await _notify({ userEmail: s.email, flowId, type: 'REVIEW_REQUESTED', title: '🔄 Document trimis spre revizuire', message: reviewMsg, waParams: { docName: data.docName, reviewerName, reason: reviewReason }, urgent: !!(data.urgent) });
       }
     }
-    console.log(`🔄 Review requested pe flow ${flowId} de ${signers[idx].email}`);
+    logger.info(`🔄 Review requested pe flow ${flowId} de ${signers[idx].email}`);
     return res.json({ ok: true, reviewReason, reviewedBy: signers[idx].email });
-  } catch(e) { console.error('request-review error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'request-review error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/reinitiate-review ─────────────────────────────────
@@ -905,7 +906,7 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
           institutie: data.institutie, compartiment: data.compartiment,
           flowType: data.flowType || 'tabel'
         });
-      } catch(e) { console.warn('Re-stamp footer on reinitiate-review error:', e.message); }
+      } catch(e) { logger.warn({ err: e }, 'Re-stamp footer on reinitiate-review error:'); }
     }
 
     // Resetăm toți semnatarii cu token nou — ACELASI flowId
@@ -952,9 +953,9 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
       });
     }
 
-    console.log(`🔄 Review reinitiate in-place: ${flowId} runda ${data.reviewHistory.length} de ${actor.email}`);
+    logger.info(`🔄 Review reinitiate in-place: ${flowId} runda ${data.reviewHistory.length} de ${actor.email}`);
     return res.json({ ok: true, flowId, signers: resetSigners.length, round: data.reviewHistory.length });
-  } catch(e) { console.error('reinitiate-review error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'reinitiate-review error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/delegate ──────────────────────────────────────────
@@ -1069,12 +1070,12 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
   <p style="margin-top:20px;font-size:.78rem;color:rgba(255,255,255,.3);text-align:center;">Link valid 90 de zile · DocFlowAI · ${escHtml(data.institutie || '')}</p>
 </div>`
         });
-      } catch(emailErr) { console.error('Delegare email error:', emailErr.message); }
+      } catch(emailErr) { logger.error({ err: emailErr }, 'Delegare email error'); }
     }
 
-    console.log(`👥 Delegare ${originalEmail} → ${toEmail} pentru flow ${flowId} de ${actor.email}`);
+    logger.info(`👥 Delegare ${originalEmail} → ${toEmail} pentru flow ${flowId} de ${actor.email}`);
     return res.json({ ok: true, flowId, from: originalEmail, to: toEmail, delegateName: resolvedName });
-  } catch(e) { console.error('delegate error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'delegate error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── POST /flows/:flowId/cancel ─────────────────────────────────────────────
@@ -1110,9 +1111,156 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
         message: `Fluxul „${data.docName}" a fost anulat de administrator.${data.cancelReason ? ' Motiv: ' + data.cancelReason : ''}`,
         waParams: { docName: data.docName } });
     }
-    console.log(`🚫 Flow ${flowId} anulat de ${actor.email}`);
+    logger.info(`🚫 Flow ${flowId} anulat de ${actor.email}`);
     return res.json({ ok: true, flowId, cancelledAt: now });
-  } catch(e) { console.error('cancel flow error:', e); return res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'cancel flow error:'); return res.status(500).json({ error: 'server_error' }); }
+});
+
+// ── POST /flows/:flowId/send-email — trimite PDF semnat pe email extern ───
+router.post('/:flowId/send-email', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { flowId } = req.params;
+    const { to, subject, bodyText, includeAttachment = true, includeLink = true } = req.body || {};
+
+    // Validare
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()))
+      return res.status(400).json({ error: 'invalid_email', message: 'Adresă de email invalidă.' });
+    if (!subject || !subject.trim())
+      return res.status(400).json({ error: 'subject_required', message: 'Subiectul este obligatoriu.' });
+
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    if (data.status !== 'completed')
+      return res.status(409).json({ error: 'not_completed', message: 'Documentul nu este finalizat.' });
+
+    // Preluăm datele expeditorului din DB (funcție, institutie, compartiment)
+    const { rows: senderRows } = await pool.query(
+      'SELECT nume, functie, institutie, compartiment, email FROM users WHERE email=$1',
+      [actor.email.toLowerCase()]
+    );
+    const sender = senderRows[0] || {};
+    const senderName  = sender.nume  || actor.email;
+    const senderTitle = [sender.functie, sender.compartiment, sender.institutie].filter(Boolean).join(' · ');
+
+    // PDF semnat
+    const pdfB64 = data.signedPdfB64 || data.pdfB64 || null;
+    if (includeAttachment && !pdfB64)
+      return res.status(409).json({ error: 'no_pdf', message: 'PDF-ul semnat nu este disponibil.' });
+
+    // Semnatari — pentru tabelul din mail
+    const signers = (data.signers || []).map(s => ({
+      name: s.name || s.email,
+      rol: s.rol || '',
+      signedAt: s.signedAt || null,
+      status: s.signed ? 'semnat' : (s.refused ? 'refuzat' : 'în așteptare'),
+    }));
+
+    const signersTable = signers.map(s => `
+      <tr>
+        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;">${s.name}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#9db0ff;">${s.rol}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#2dd4bf;">${s.status}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#888;">${s.signedAt ? new Date(s.signedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td>
+      </tr>`).join('');
+
+    const customBody = bodyText ? `<p style="margin:0 0 20px;line-height:1.7;color:#cdd6f4;">${bodyText.replace(/\n/g, '<br>')}</p>` : '';
+
+    const linkSection = includeLink ? `
+      <div style="margin:24px 0;padding:16px;background:#1a1d2e;border-radius:8px;border-left:3px solid #2dd4bf;">
+        <p style="margin:0 0 8px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Document disponibil în platformă</p>
+        <p style="margin:0;font-size:13px;color:#7cf0e0;">Flow ID: <strong>${flowId}</strong> · Platformă: DocFlowAI</p>
+      </div>` : '';
+
+    const html = `<!DOCTYPE html>
+<html lang="ro"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0f1117;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:620px;margin:0 auto;padding:32px 16px;">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#1a1d2e,#12152a);border:1px solid rgba(157,176,255,.15);border-radius:14px;padding:28px 32px;margin-bottom:24px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">📄</div>
+        <div>
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.8px;">Document semnat electronic</div>
+          <div style="font-size:18px;font-weight:700;color:#eaf0ff;">${data.docName || flowId}</div>
+        </div>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr><td style="padding:4px 0;color:#888;width:130px;">Instituție</td><td style="color:#eaf0ff;">${data.institutie || '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#888;">Compartiment</td><td style="color:#eaf0ff;">${data.compartiment || '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#888;">Finalizat la</td><td style="color:#2dd4bf;">${data.completedAt ? new Date(data.completedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#888;">Flow ID</td><td style="color:#9db0ff;font-family:monospace;font-size:12px;">${flowId}</td></tr>
+      </table>
+    </div>
+
+    <!-- Corp personalizat -->
+    ${customBody}
+
+    <!-- Semnatari -->
+    <div style="background:#1a1d2e;border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+      <p style="margin:0 0 14px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Semnatari</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#eaf0ff;">
+        <thead>
+          <tr style="border-bottom:1px solid #2a2d3e;">
+            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Nume</th>
+            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Rol</th>
+            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Status</th>
+            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Data</th>
+          </tr>
+        </thead>
+        <tbody>${signersTable}</tbody>
+      </table>
+    </div>
+
+    ${linkSection}
+
+    <!-- Semnătură expeditor -->
+    <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:20px;margin-top:8px;">
+      <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#eaf0ff;">${senderName}</p>
+      ${senderTitle ? `<p style="margin:0 0 2px;font-size:12px;color:#9db0ff;">${senderTitle}</p>` : ''}
+      <p style="margin:8px 0 0;font-size:11px;color:#555;">Trimis prin DocFlowAI · noreply@docflowai.ro</p>
+    </div>
+
+  </div>
+</body></html>`;
+
+    // Construim payload Resend
+    const { sendSignerEmail } = await import('../mailer.mjs');
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    const MAIL_FROM = process.env.MAIL_FROM || 'DocFlowAI <noreply@docflowai.ro>';
+
+    if (!RESEND_API_KEY) return res.status(503).json({ error: 'mail_not_configured', message: 'Email-ul nu este configurat pe server.' });
+
+    const payload = { from: MAIL_FROM, to: to.trim(), subject: subject.trim(), html };
+    if (includeAttachment && pdfB64) {
+      const pdfName = `${(data.docName || flowId).replace(/[^a-zA-Z0-9_\-\.]/g, '_')}_semnat.pdf`;
+      payload.attachments = [{ filename: pdfName, content: pdfB64 }];
+    }
+
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      logger.error({ err: j }, `send-email FAILED to ${to}`);
+      return res.status(502).json({ error: 'send_failed', message: j?.message || 'Eroare la trimiterea emailului.' });
+    }
+
+    // Audit log
+    const now = new Date().toISOString();
+    if (!Array.isArray(data.events)) data.events = [];
+    data.events.push({ at: now, type: 'EMAIL_SENT', by: actor.email, to: to.trim(), subject: subject.trim() });
+    await saveFlow(flowId, data);
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_SENT', actorIp: _getIp(req), actorEmail: actor.email, payload: { to: to.trim(), subject: subject.trim(), resendId: j.id } });
+
+    logger.info(`📧 Flow ${flowId} trimis extern către ${to} de ${actor.email}`);
+    return res.json({ ok: true, resendId: j.id });
+  } catch(e) { logger.error({ err: e }, 'send-email error'); return res.status(500).json({ error: 'server_error', message: String(e.message) }); }
 });
 
 export default router;

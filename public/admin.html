@@ -75,6 +75,7 @@
     tr:hover td{background:rgba(255,255,255,.015);}
     .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.71rem;font-weight:700;}
     .pill.admin{background:rgba(124,92,255,.25);color:#c4b0ff;}
+    .pill.org_admin{background:rgba(255,180,50,.2);color:#ffd580;border:1px solid rgba(255,180,50,.3);}
     .pill.user{background:rgba(45,212,191,.18);color:#7cf0e0;}
     .pwd{font-family:monospace;background:rgba(255,180,50,.1);border:1px solid rgba(255,180,50,.22);
       padding:2px 8px;border-radius:6px;color:#ffd580;font-size:.84rem;letter-spacing:.03em;
@@ -119,7 +120,7 @@
     <a href="/" class="btn" style="text-decoration:none;font-size:.88rem;">📝 Flux nou</a>
     <a href="/?tab=flows" class="btn" style="text-decoration:none;font-size:.88rem;">📂 Fluxuri mele</a>
     <a href="/templates" class="btn" style="text-decoration:none;font-size:.88rem;">📋 Șabloane</a>
-    <span style="padding:8px 12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:10px;font-size:.85rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
+    <span id="adminBadge" style="padding:8px 12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:10px;font-size:.85rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
   </div>
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
     <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
@@ -209,7 +210,12 @@
         <input id="nPwd" type="text" placeholder="generată automat dacă e gol"/>
       </div>
       <div class="frow"><label>Rol</label>
-        <select id="nRole"><option value="user">User</option><option value="admin">Admin</option></select>
+        <select id="nRole" onchange="onRoleChange(this.value)"><option value="user">User</option><option value="org_admin">Admin Instituție</option><option value="admin">Admin</option></select>
+      </div>
+      <div class="frow" id="nOrgRow" style="display:none;"><label>Organizație <span style="color:#ff8080;">*</span> <span style="color:var(--muted);font-size:.71rem;">— existentă sau nouă</span></label>
+        <input id="nOrgName" list="orgNameList" placeholder="Ex: Primăria Cluj-Napoca" autocomplete="off"/>
+        <datalist id="orgNameList"></datalist>
+        <div id="nOrgHint" style="font-size:.75rem;color:var(--muted);margin-top:4px;display:none;"></div>
       </div>
     </div>
     <div class="grid3" style="margin-top:12px;">
@@ -323,10 +329,11 @@
     <div id="archiveMsg" style="margin-top:12px;font-size:.83rem;"></div>
   </div>
 
+  <div id="adminFluxSection">
   <h2 style="color:#ffaaaa;margin-top:32px;">⚠ Administrare fluxuri</h2>
-  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
+  <div id="fluxAdminCards" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
 
-    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
+    <div id="delOldCard" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
       <div style="font-weight:700;margin-bottom:6px;color:var(--sub);">🗑 Șterge definitiv fluxurile vechi</div>
       <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Elimină complet fluxurile mai vechi de X zile. <strong style="color:#ffaaaa;">Ireversibil</strong> — folosește arhivarea în Drive în primul rând.</div>
       <div style="font-size:.78rem;color:rgba(255,170,100,.7);margin-bottom:12px;">⚠ Dacă fluxul nu e arhivat în Drive, PDF-urile se pierd definitiv.</div>
@@ -346,7 +353,7 @@
       <div id="msgOldFlows" style="margin-top:10px;font-size:.82rem;"></div>
     </div>
 
-    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,80,80,.15);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
+    <div id="delAllCard" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,80,80,.15);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
       <div style="font-weight:700;margin-bottom:6px;color:#ffaaaa;">💣 Șterge TOATE fluxurile</div>
       <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px;">Acțiune <strong style="color:#ffaaaa;">ireversibilă</strong> — elimină complet toate fluxurile din baza de date, inclusiv PDF-urile nearkhivate.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
@@ -386,7 +393,7 @@
     </div>
   </div>
 
-  <div style="margin-top:24px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
+  <div id="vacuumCard" style="margin-top:24px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <div>
         <div style="font-weight:700;margin-bottom:4px;color:var(--sub);">🧹 Eliberare spațiu DB (VACUUM)</div>
@@ -400,6 +407,7 @@
     <div id="msgVacuum" style="margin-top:10px;font-size:.82rem;"></div>
     <div id="dbStats" style="margin-top:8px;font-size:.8rem;color:var(--muted);display:none;"></div>
   </div>
+  </div><!-- /adminFluxSection -->
 
 </div>
 
@@ -494,7 +502,7 @@
       <div>
         <div class="frow"><label>Email personal</label><input id="ePersonalEmail" type="email" placeholder="gmail, yahoo..."/></div>
         <div class="frow"><label>Rol</label>
-          <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
+          <select id="eRole"><option value="user">User</option><option value="org_admin">Admin Instituție</option><option value="admin">Admin</option></select></div>
         <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">07XXXXXXXX</span></label>
           <input id="ePhone" type="tel" placeholder="0712345678" oninput="phoneInputFeedback(this)"/></div>
       </div>
@@ -700,7 +708,7 @@ function renderPage(){
       <td style="color:var(--muted);font-size:.82rem">${esc(u.phone||"—")}</td>
       <td style="font-size:.9rem;text-align:center">${notifIcons||'—'}</td>
       <td>${gwsBadge}</td>
-      <td><span class="pill ${u.role}">${u.role}</span></td>
+      <td><span class="pill ${u.role}">${u.role==="org_admin"?"Admin Instituție":u.role==="admin"?"Admin":"User"}</span></td>
       <td style="color:var(--muted);font-size:.79rem">${dt}</td>
       <td style="text-align:right;white-space:nowrap">
         <div style="display:flex;gap:3px;justify-content:flex-end;">
@@ -740,6 +748,94 @@ function renderPagination(total, current, totalPages){
   pg.appendChild(next);
 }
 
+// ── org_admin: blochează toate filtrele de instituție ─────────────────────
+function lockOrgAdminFilters(institutie) {
+  if (!institutie) return;
+  const lock = (el, val) => {
+    if (!el) return;
+    // input
+    if (el.tagName === 'INPUT') {
+      el.value = val;
+      el.readOnly = true;
+      el.style.cssText += ';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+    }
+    // select
+    if (el.tagName === 'SELECT') {
+      // Adăugăm opțiunea dacă nu există
+      let found = false;
+      for (const o of el.options) { if (o.value === val) { found = true; break; } }
+      if (!found) { const o = new Option(val, val); el.appendChild(o); }
+      el.value = val;
+      el.disabled = true;
+      el.style.cssText += ';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+    }
+  };
+  // Tab Utilizatori — formular creare
+  lock($('nInstitutie'), institutie);
+  // Tab Utilizatori — filtrul din capul tabelului
+  const fI = $('fInstitutie');
+  if (fI) { fI.value = institutie; fI.readOnly = true; fI.style.cssText += ';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;'; filterUsers(); }
+  // Tab Fluxuri — flowInstFilter
+  lock($('flowInstFilter'), institutie);
+  // Tab Fluxuri — archiveInstFilter
+  lock($('archiveInstFilter'), institutie);
+  // Tab Fluxuri — delInstFilter (ștergere vechi)
+  lock($('delInstFilter'), institutie);
+  // Ascunde întreaga secțiune "Administrare fluxuri" — doar super-admin
+  const adminFluxSection = $('adminFluxSection');
+  if (adminFluxSection) adminFluxSection.style.display = 'none';
+  // (vacuumCard și delAllCard sunt în interiorul secțiunii — ascunse implicit)
+  // Tab Rapoarte — rptInst
+  lock($('rptInst'), institutie);
+}
+
+// Patch: după ce se populează flowInstFilter, re-aplică lock dacă org_admin
+const _origPopulateFlowInst = window.onFlowInstChange;
+
+function onRoleChange(role) {
+  const row = $('nOrgRow');
+  if (!row) return;
+  if (role === 'org_admin') {
+    row.style.display = '';
+    loadOrganizationsAutocomplete();
+  } else {
+    row.style.display = 'none';
+    if ($('nOrgName')) $('nOrgName').value = '';
+    if ($('nOrgHint')) $('nOrgHint').style.display = 'none';
+  }
+}
+
+let _orgList = []; // cache organizații existente
+async function loadOrganizationsAutocomplete() {
+  if (_orgList.length) return; // deja încărcat
+  try {
+    const r = await _apiFetch('/admin/organizations', { headers: hdrs() });
+    if (!r.ok) return;
+    _orgList = await r.json();
+    const dl = $('orgNameList');
+    if (dl) dl.innerHTML = _orgList.map(o => `<option value="${escH(o.name)}">`).join('');
+    // Attach input listener pentru hint
+    const inp = $('nOrgName');
+    if (inp) inp.addEventListener('input', _updateOrgHint);
+  } catch(e) { /* ignore */ }
+}
+
+function _updateOrgHint() {
+  const val = ($('nOrgName')?.value || '').trim();
+  const hint = $('nOrgHint');
+  if (!hint) return;
+  if (!val) { hint.style.display = 'none'; return; }
+  const existing = _orgList.find(o => o.name.toLowerCase() === val.toLowerCase());
+  if (existing) {
+    hint.textContent = `✅ Organizație existentă (ID: ${existing.id}) — userul va fi asociat automat`;
+    hint.style.color = '#2dd4bf';
+  } else {
+    hint.textContent = `🆕 Organizație nouă — va fi creată automat la salvare`;
+    hint.style.color = '#ffd580';
+  }
+  hint.style.display = '';
+}
+
 function filterUsers(){
   if(!window._allUsers)return;
   const fN=($('fNume')||{value:''}).value.toLowerCase();
@@ -763,10 +859,11 @@ function filterUsers(){
 async function loadUsers(){
   try{
     const r=await _apiFetch("/admin/users",{headers:hdrs()});
-    if(r.status===401||r.status===403){logout();return;}
+    if(r.status===401){logout();return;}
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
-      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare ${escH(String(r.status))}: ${escH(err.error||"unknown")}</div>`;
+      const msg = r.status===403 && err.message ? err.message : (err.error||'Eroare '+r.status);
+      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">⚠️ ${escH(msg)}</div>`;
       return;
     }
     const users=await r.json();
@@ -876,14 +973,17 @@ async function createUser(){
   const personal_email = ($('nPersonalEmail')||{value:''}).value.trim();
   const force_password_change = !!($('nForcePwd')?.checked);
 
+  const org_name = ($('nOrgName')?.value || '').trim();
+  if (role === 'org_admin' && !org_name) { showMsg('createMsg','Completați organizația pentru Admin Instituție.',true); btn.disabled=false; btn.textContent='Crează utilizatorul'; return; }
   const body = {
-    email: emailManual,   // gol dacă e Workspace — backend-ul îl setează din gws_email
+    email: emailManual,
     password: pwd, nume: numeComplet, prenume, nume_familie: numeFamilie,
     functie, institutie, compartiment, role, phone,
     notif_inapp, notif_email, notif_whatsapp,
     personal_email: personal_email || undefined,
     create_gws, force_password_change,
-    gws_as_login: create_gws,  // flag explicit: emailul Workspace devine login
+    gws_as_login: create_gws,
+    org_name: org_name || undefined,
   };
   const r = await _apiFetch('/admin/users', {method:'POST', headers:hdrs(), body:JSON.stringify(body)});
   const d = await r.json();
@@ -895,7 +995,13 @@ async function createUser(){
     ($('nEmail')||{}).value=$('nPwd').value=$('nInstitutie').value=
     $('nCompartiment').value=$('nPhone').value=($('nPersonalEmail')||{}).value='';
     if($('nCreateGws')) $('nCreateGws').checked=false;
+    if($('nOrgName')) $('nOrgName').value='';
     onGwsToggle();
+    onRoleChange('user');
+    // Re-applică instituția pentru org_admin după reset form
+    if(window._orgAdminInstitutie && $('nInstitutie')){
+      $('nInstitutie').value=window._orgAdminInstitutie;
+    }
     loadUsers();
     showPwdModal(d);
   }else{
@@ -1016,6 +1122,15 @@ function openEdit(u){
   $("eNotifInapp").checked=u.notif_inapp!==false;
   $("eNotifEmail").checked=!!u.notif_email;
   $("eNotifWa").checked=!!u.notif_whatsapp;
+  // org_admin: blochează câmpul Instituție și Rol
+  const eInst=$("eInstitutie"); const eRoleEl=$("eRole");
+  if(window._orgAdminInstitutie){
+    if(eInst){eInst.readOnly=true;eInst.style.background='rgba(45,212,191,.08)';eInst.style.borderColor='rgba(45,212,191,.3)';eInst.style.color='#2dd4bf';eInst.style.cursor='not-allowed';}
+    if(eRoleEl){eRoleEl.disabled=true;eRoleEl.style.background='rgba(45,212,191,.08)';eRoleEl.style.borderColor='rgba(45,212,191,.3)';eRoleEl.style.color='#2dd4bf';}
+  } else {
+    if(eInst){eInst.readOnly=false;eInst.style.background='';eInst.style.borderColor='';eInst.style.color='';eInst.style.cursor='';}
+    if(eRoleEl){eRoleEl.disabled=false;eRoleEl.style.background='';eRoleEl.style.borderColor='';eRoleEl.style.color='';}
+  }
   // GWS status
   if(u.gws_email){
     $("eGwsRow").style.display="block";
@@ -1121,6 +1236,14 @@ function populateFlowInstDropdown(flows) {
     sel.appendChild(opt);
   });
   if (currentVal) sel.value = currentVal;
+  // org_admin: re-aplică lock după populare
+  if (window._orgAdminInstitutie) {
+    let found=false; for(const o of sel.options){if(o.value===window._orgAdminInstitutie){found=true;break;}} 
+    if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);sel.appendChild(o);}
+    sel.value=window._orgAdminInstitutie; sel.disabled=true;
+    sel.style.cssText+=';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+    onFlowInstChange();
+  }
 }
 
 function onFlowInstChange() {
@@ -1217,23 +1340,23 @@ async function loadFlowsList(forceReload = true, page) {
             ? '<span style="color:#aaaaaa;font-size:.75rem;">🚫 anulat</span>'
             : '<span style="color:#b39dff;font-size:.75rem;">✍ activ</span>';
           return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
-            <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.flowId}">${f.urgent ? '<span style="color:#ff8888;font-weight:700;margin-right:4px;">🚨</span>' : ''}${f.docName||"—"}</td>
-            <td style="padding:7px 8px;color:var(--muted);">${f.initEmail||"—"}</td>
+            <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(f.flowId||'')}"> ${f.urgent ? '<span style="color:#ff8888;font-weight:700;margin-right:4px;">🚨</span>' : ''}${escH(f.docName||"—")}</td>
+            <td style="padding:7px 8px;color:var(--muted);">${escH(f.initEmail||"—")}</td>
             <td style="padding:7px 8px;">${statusBadge}</td>
             <td style="padding:7px 8px;">
-              ${current ? `<span style="color:${expired?'#ffaaaa':'var(--sub)'};">${current.name||current.email||"—"}</span>
+              ${current ? `<span style="color:${expired?'#ffaaaa':'var(--sub)'};">${escH(current.name||current.email||"—")}</span>
               ${expired?'<span style="font-size:.72rem;color:#ffaaaa;margin-left:4px;">⚠ link expirat</span>':''}
               ${tokenAge!==null?`<span style="font-size:.7rem;color:var(--muted);margin-left:4px;">${tokenAge}z</span>`:''}` : '<span style="color:var(--muted);">—</span>'}
             </td>
             <td style="padding:7px 8px;color:var(--muted);">${f.createdAt?new Date(f.createdAt).toLocaleDateString("ro-RO"):"—"}</td>
             <td style="padding:7px 8px;">
-              <a href="/flow.html?flow=${f.flowId}" target="_blank" style="padding:3px 10px;font-size:.75rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-right:4px;" title="Vizualizează flux">🔍</a>
+              <a href="/flow.html?flow=${encodeURIComponent(f.flowId||'')}" target="_blank" style="padding:3px 10px;font-size:.75rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-right:4px;" title="Vizualizează flux">🔍</a>
               ${current&&!f.completed&&f.status!=="refused" ? `
                 <button onclick="resendNotif('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-right:4px;" title="Retrimite notificare">📨</button>
-                ${expired?`<button onclick="regenerateToken('${f.flowId}','${current.email}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;" title="Generează token nou">🔑</button>`:''}
+                ${expired?`<button onclick="regenerateToken('${escH(f.flowId||'')}','${escH(current.email||'')}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;" title="Generează token nou">🔑</button>`:''}
               ` : ''}
-              <button onclick="adminDeleteFlow('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:6px;color:#ffaaaa;cursor:pointer;" title="Șterge flux definitiv (ireversibil)">🗑</button>
-              <button onclick="downloadAudit('${f.flowId}','txt')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;" title="Export audit TXT">📋</button><button onclick="downloadAudit('${f.flowId}','pdf')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</button>
+              <button onclick="adminDeleteFlow('${escH(f.flowId||'')}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:6px;color:#ffaaaa;cursor:pointer;" title="Șterge flux definitiv (ireversibil)">🗑</button>
+              <button onclick="downloadAudit('${escH(f.flowId||'')}','txt')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;" title="Export audit TXT">📋</button><button onclick="downloadAudit('${escH(f.flowId||'')}','pdf')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</button>
             </td>
           </tr>`;
         }).join("")}
@@ -1382,6 +1505,14 @@ async function loadArchiveInstData() {
     const o = document.createElement("option"); o.value = inst; o.textContent = inst; s.appendChild(o);
   });
   if (cur) s.value = cur;
+  // org_admin: re-aplică lock pe archiveInstFilter după populare
+  if (window._orgAdminInstitutie) {
+    let found=false; for(const o of s.options){if(o.value===window._orgAdminInstitutie){found=true;break;}}
+    if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);s.appendChild(o);}
+    s.value=window._orgAdminInstitutie; s.disabled=true;
+    s.style.cssText+=';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+    onArchiveInstChange();
+  }
   // Populează instituții ștergere
   const s2 = document.getElementById("delInstFilter");
   const cur2 = s2.value;
@@ -1390,6 +1521,13 @@ async function loadArchiveInstData() {
     const o = document.createElement("option"); o.value = inst; o.textContent = inst; s2.appendChild(o);
   });
   if (cur2) s2.value = cur2;
+  // org_admin: re-aplică lock pe delInstFilter
+  if (window._orgAdminInstitutie) {
+    let found=false; for(const o of s2.options){if(o.value===window._orgAdminInstitutie){found=true;break;}}
+    if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);s2.appendChild(o);}
+    s2.value=window._orgAdminInstitutie; s2.disabled=true;
+    s2.style.background='rgba(45,212,191,.08)';s2.style.borderColor='rgba(45,212,191,.3)';s2.style.color='#2dd4bf';s2.style.cursor='not-allowed';
+  }
   // Populează instituții ștergere totală
   const s3 = document.getElementById("allInstFilter");
   const cur3 = s3.value;
@@ -1442,8 +1580,9 @@ async function previewArchive() {
     summary.innerHTML = `<span style="color:#2dd4bf;">${escH(String(j.count||0))} fluxuri</span>${escH(filterLabel)} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${escH(String(j.totalMB||0))} MB</span> din baza de date`;
     list.innerHTML = (j.flows||[]).map(f =>
       `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
-        📄 ${f.docName} &nbsp;·&nbsp; ${f.status} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
-        ${f.institutie?`<span style="color:var(--muted);margin-left:6px;font-size:.75rem;">${f.institutie}${f.compartiment?" / "+f.compartiment:""}</span>`:""}
+        📄 ${escH(f.docName||'—')} &nbsp;·&nbsp; ${escH(f.status||'')} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
+        ${f.institutie?`<span style="color:var(--muted);margin-left:6px;font-size:.75rem;">${escH(f.institutie)}${f.compartiment?' / '+escH(f.compartiment):''}</span>`:""}
+        ${f.initName||f.initEmail?`<span style="color:#9db0ff;margin-left:6px;font-size:.75rem;" title="${escH(f.initEmail||'')}">👤 ${escH(f.initName||f.initEmail)}</span>`:""}
       </div>`
     ).join("") || "<div style='color:var(--muted)'>Niciun flux eligibil.</div>";
     preview.style.display = j.count > 0 ? "block" : "none";
@@ -1455,7 +1594,7 @@ async function doArchive() {
   if (!_archiveFlowIds.length) return;
   const btn = document.getElementById("btnDoArchive");
   const msg = document.getElementById("archiveMsg");
-  if (!confirm(`Arhivezi ${_archiveFlowIds.length} fluxuri în Google Drive și ștergi PDF-urile din DB? Acțiunea nu poate fi anulată.`)) return;
+  if (!confirm(`Arhivezi ${_archiveFlowIds.length} fluxuri în Google Drive?\n\nCe se întâmplă:\n✅ PDF-urile sunt copiate în Google Drive\n✅ Fluxurile rămân vizibile în platformă (cu link Drive)\n🗑️ PDF-urile (pdfB64 / signedPdfB64 / originalPdfB64) sunt șterse din baza de date PostgreSQL\n\nAcțiunea nu poate fi anulată.`)) return;
   btn.disabled = true;
   msg.textContent = "";
   let totalOk = 0, totalFail = 0, batchIndex = 0, failedFlows = [];
@@ -1511,17 +1650,19 @@ async function loadDbStats() {
   try {
     const r = await _apiFetch("/admin/stats", {headers: hdrs()});
     const j = await r.json();
+    if (!r.ok) { if(msg) msg.innerHTML = `❌ ${escH(j.error||'forbidden')}`; return; }
     const s = j.stats||{};
     el.style.display = "block";
+    const dbSizeSpan = s.dbSize ? `<span style="color:#2dd4bf;font-weight:700;">💾 DB: ${escH(s.dbSize)}</span>` : '';
     el.innerHTML = `
       <span style="margin-right:16px;">📁 Fluxuri: <strong>${s.flows||0}</strong></span>
       <span style="margin-right:16px;">🗂 Arhivate: <strong>${s.flowsArchived||0}</strong></span>
       <span style="margin-right:16px;">👥 Utilizatori: <strong>${s.users||0}</strong></span>
       <span style="margin-right:16px;">🔔 Notificări necitite: <strong>${s.unreadNotifications||0}</strong></span>
-      <span style="color:#2dd4bf;font-weight:700;">💾 DB: ${s.dbSize||"—"}</span>
+      ${dbSizeSpan}
     `;
-    msg.textContent = "";
-  } catch(e) { msg.textContent = "❌ " + e.message; }
+    if(msg) msg.textContent = "";
+  } catch(e) { if(msg) msg.textContent = "❌ " + e.message; }
 }
 
 // ── Delete flows — preview + modal confirmare ────────────────────────────
@@ -1664,16 +1805,47 @@ fetch("/auth/me",{headers:hdrs()})
   .then(async r=>{
     if(!r.ok){logout();return;}
     const u=await r.json();
-    if(u.role!=="admin"){logout();return;}
+    if(u.role!=="admin" && u.role!=="org_admin"){logout();return;}
+    // org_admin fara org_id → eroare configurare, nu delogăm, arătăm mesaj
+    if(u.role==="org_admin" && !u.orgId){
+      document.body.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0e1117;font-family:'Segoe UI',sans-serif;">
+        <div style="background:#161b22;border:1px solid rgba(255,100,100,.3);border-radius:16px;padding:48px 40px;max-width:480px;text-align:center;">
+          <div style="font-size:2.5rem;margin-bottom:16px;">⚠️</div>
+          <h2 style="color:#ffaaaa;margin-bottom:12px;">Cont neconfigurat</h2>
+          <p style="color:#8b949e;line-height:1.6;margin-bottom:24px;">Contul de <strong style="color:#ffd580;">Administrator Instituție</strong> nu are o organizație asociată.<br><br>
+          Contactați super-administratorul pentru a seta organizația acestui cont.</p>
+          <button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>location.href='/login.html')"
+            style="background:rgba(255,80,80,.2);border:1px solid rgba(255,80,80,.4);color:#ffaaaa;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:.9rem;">
+            Înapoi la login
+          </button>
+        </div>
+      </div>`;
+      return;
+    }
     localStorage.setItem("docflow_user",JSON.stringify({email:u.email,role:u.role,nume:u.nume||"",functie:u.functie||"",institutie:u.institutie||""}));
     if(u.force_password_change) localStorage.setItem("docflow_force_pwd","1");
     if(localStorage.getItem("docflow_force_pwd")==="1"){const b=$("forcePwdBanner");if(b)b.style.display="block";}
     const hEl=$("hdrUser");
     if(hEl) hEl.textContent=u.nume||u.email||"—";
+    // Badge diferit pentru org_admin
+    const badgeEl=$("adminBadge");
+    if(badgeEl && u.role==="org_admin"){
+      badgeEl.textContent="🏛 ADMIN INSTITUȚIE";
+      badgeEl.style.background="rgba(45,212,191,.15)";
+      badgeEl.style.borderColor="rgba(45,212,191,.3)";
+      badgeEl.style.color="#2dd4bf";
+    }
+    // Ascunde tab GWS și operații globale pentru org_admin
+    if(u.role==="org_admin"){
+      const gwsTab=document.querySelector('[onclick*="gws"]');
+      if(gwsTab) gwsTab.style.display="none";
+    }
+    if(u.role==="org_admin") window._orgAdminInstitutie = u.institutie || "";
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
     loadDbStats(); // auto-încarcă statistici DB
     initActivityReport(); // inițializează raportul de activitate
+    if(u.role==="org_admin") lockOrgAdminFilters(u.institutie||"");
   })
   .catch(()=>logout());
 
@@ -1781,6 +1953,13 @@ function _rebuildRptInst() {
   const insts = [...new Set(users.map(u => u.institutie).filter(Boolean))].sort();
   insts.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i; rptInst.appendChild(o); });
   if (prevInst) rptInst.value = prevInst;
+  // org_admin: blochează rptInst după populare
+  if (window._orgAdminInstitutie) {
+    let found=false; for(const o of rptInst.options){if(o.value===window._orgAdminInstitutie){found=true;break;}}
+    if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);rptInst.appendChild(o);}
+    rptInst.value=window._orgAdminInstitutie; rptInst.disabled=true;
+    rptInst.style.cssText+=';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+  }
   _rebuildRptDept();
 }
 
@@ -2275,7 +2454,7 @@ function exportUsersPDF() {
       <td>${esc(u.compartiment)}</td>
       <td>${esc(u.email)}</td>
       <td>${esc(u.phone)}</td>
-      <td><span class="pill ${esc(u.role)}">${esc(u.role)}</span></td>
+      <td><span class="pill ${esc(u.role)}">${u.role==="org_admin"?"Admin Instituție":u.role==="admin"?"Admin":"User"}</span></td>
       <td>${dt}</td>
     </tr>`;
   }).join("");
@@ -2292,6 +2471,7 @@ function exportUsersPDF() {
     code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
     .pill { padding: 2px 7px; border-radius: 10px; font-size: 9px; font-weight: 700; }
     .pill.admin { background: #fef3c7; color: #92400e; }
+    .pill.org_admin { background: #fef3c7; color: #b45309; }
     .pill.user { background: #dbeafe; color: #1e40af; }
   </style>
 </head><body>

@@ -1,11 +1,14 @@
 {
   "name": "docflowai-app",
-  "version": "3.3.3",
+  "version": "3.3.5-fix2",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
   "scripts": {
-    "start": "node server/index.mjs"
+    "start": "node server/index.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
@@ -18,5 +21,10 @@
     "pdf-lib": "^1.17.1",
     "web-push": "^3.6.7",
     "helmet": "^8.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0",
+    "supertest": "^7.0.0",
+    "@vitest/coverage-v8": "^2.1.0"
   }
 }

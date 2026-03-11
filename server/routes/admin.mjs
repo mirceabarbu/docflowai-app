@@ -14,9 +14,22 @@ import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
 import { archiveFlow, verifyDrive } from '../drive.mjs';
 import { verifyWhatsApp, sendWaSignRequest } from '../whatsapp.mjs';
 import { gwsIsConfigured, findAvailableEmail, provisionGwsUser, verifyGws, buildLocalPart } from '../gws.mjs';
+import { logger } from '../middleware/logger.mjs';
+
+// ── Helper: acceptă atât admin cât și org_admin ─────────────────────────────
+// org_admin vede/modifică doar propria organizație (orgId din JWT)
+// admin vede totul (orgId=null sau orice)
+function isAdminOrOrgAdmin(actor) {
+  return actor?.role === 'admin' || actor?.role === 'org_admin';
+}
+// Helper: returnează orgId filtru pentru query (null = toate, number = filtrat)
+function actorOrgFilter(actor) {
+  if (actor?.role === 'org_admin') return actor.orgId || null;
+  return null; // admin = fără filtru
+}
 
 let PDFLibAdmin = null;
-try { PDFLibAdmin = await import('pdf-lib'); } catch(e) { console.warn('⚠️ pdf-lib not available for audit PDF export'); }
+try { PDFLibAdmin = await import('pdf-lib'); } catch(e) { logger.warn('⚠️ pdf-lib not available for audit PDF export'); }
 
 let _wsClientsSize = () => 0;
 export function injectWsSize(fn) { _wsClientsSize = fn; }
@@ -85,39 +98,53 @@ router.get('/users', async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
+// ── GET /admin/organizations — listă organizații (doar super-admin) ────────
+router.get('/admin/organizations', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { rows } = await pool.query('SELECT id, name FROM organizations ORDER BY name ASC');
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
 router.get('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
   const user = requireAuth(req, res); if (!user) return;
-  if (user.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(user)) return res.status(403).json({ error: 'forbidden' });
   try {
-    // Citim orgId din DB pentru a fi siguri ca avem valoarea corecta (nu din JWT vechi)
+    // Citim orgId din DB — JWT poate fi vechi
     const { rows: selfRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [user.email.toLowerCase()]);
     const orgId = selfRows[0]?.org_id || null;
+    // org_admin TREBUIE să aibă org_id setat — altfel nu poate accesa
+    if (user.role === 'org_admin' && !orgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată. Contactați super-administratorul.' });
     let query, params;
     if (orgId) {
+      // org_admin: filtrat strict la org_id propriu; admin cu org_id: la fel
       query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [orgId];
     } else {
-      // Admin fara org (fallback) — vede toti userii
+      // admin fara org_id (super-admin global) — vede toti
       query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [];
     }
     const { rows } = await pool.query(query, params);
     res.json(rows);
-  } catch(e) { console.error('GET /admin/users error:', e); res.status(500).json({ error: 'server_error', detail: e.message }); }
+  } catch(e) { logger.error({ err: e }, 'GET /admin/users error:'); res.status(500).json({ error: 'server_error', detail: e.message }); }
 });
 
 router.post('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
 
   const {
     email, password, nume, prenume, nume_familie,
     functie, institutie, compartiment, role, phone,
     notif_inapp, notif_email, notif_whatsapp, skip_verification,
     personal_email,
-    create_gws, force_password_change, gws_as_login,
+    create_gws, force_password_change, gws_as_login, org_name: bodyOrgName,
   } = req.body || {};
 
   const numeComplet = (prenume && nume_familie)
@@ -147,7 +174,9 @@ router.post('/admin/users', async (req, res) => {
     }
   }
 
-  const validRole = ['admin', 'user'].includes(role) ? role : 'user';
+  // org_admin nu poate crea alt admin sau org_admin cu rol superior propriului rol
+  const allowedRoles = actor.role === 'admin' ? ['admin', 'org_admin', 'user'] : ['user'];
+  const validRole = allowedRoles.includes(role) ? role : 'user';
   const plainPwd  = password && password.length >= 4 ? password : generatePassword();
   const phoneValidation = validatePhone((phone || '').trim());
   if (!phoneValidation.valid) return res.status(400).json({ error: 'phone_invalid', message: phoneValidation.error });
@@ -159,6 +188,28 @@ router.post('/admin/users', async (req, res) => {
     ? (await import('crypto')).default.randomBytes(32).toString('hex')
     : null;
 
+  // Determinăm org_id de folosit:
+  // - org_admin: folosește propriul org_id din DB (nu poate crea în altă org)
+  // - admin (super-admin): dacă creează un org_admin, primește org_name → upsert în organizations
+  let insertOrgId = actor.orgId || null;
+  if (actor.role === 'org_admin') {
+    const { rows: actorOrgRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    insertOrgId = actorOrgRows[0]?.org_id || null;
+    if (!insertOrgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată.' });
+  } else if (actor.role === 'admin' && validRole === 'org_admin') {
+    const orgNameTrimmed = (bodyOrgName || '').trim();
+    if (!orgNameTrimmed) return res.status(400).json({ error: 'org_name_required', message: 'Specificați organizația pentru Administrator Instituție.' });
+    // Upsert: creează organizație nouă sau reutilizează existentă cu același nume
+    const { rows: orgRows } = await pool.query(
+      `INSERT INTO organizations (name) VALUES ($1)
+       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`,
+      [orgNameTrimmed]
+    );
+    insertOrgId = orgRows[0]?.id || null;
+    if (!insertOrgId) return res.status(500).json({ error: 'org_create_failed' });
+    logger.info({ orgName: orgNameTrimmed, orgId: insertOrgId }, 'Organizatie upsert pentru org_admin');
+  }
   try {
     const { rows } = await pool.query(
       `INSERT INTO users
@@ -179,7 +230,7 @@ router.post('/admin/users', async (req, res) => {
         numeComplet,
         prn, fam,
         (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(),
-        validRole, phoneVal, ni, ne, nw, actor.orgId || null,
+        validRole, phoneVal, ni, ne, nw, insertOrgId,
         (personal_email || '').trim().toLowerCase() || null,
         !needsVerification,
         verificationToken,
@@ -210,7 +261,7 @@ router.post('/admin/users', async (req, res) => {
         user.gws_email  = gwsEmail;
         user.gws_status = 'active';
         gwsResult = { ok: true, gws_email: gwsEmail };
-        console.log(`✅ GWS: cont creat ${gwsEmail} pentru user ${user.id}`);
+        logger.info(`✅ GWS: cont creat ${gwsEmail} pentru user ${user.id}`);
       } catch(gwsErr) {
         const errMsg = gwsErr.message || String(gwsErr);
         await pool.query(
@@ -219,7 +270,7 @@ router.post('/admin/users', async (req, res) => {
         );
         user.gws_status = 'failed';
         gwsResult = { ok: false, error: errMsg };
-        console.error(`❌ GWS provision eșuat pentru user ${user.id}:`, errMsg);
+        logger.error({ userId: user.id, errMsg }, 'GWS provision esuat');
       }
     } else if (create_gws && !gwsIsConfigured()) {
       gwsResult = { ok: false, error: 'gws_not_configured' };
@@ -246,7 +297,7 @@ router.post('/admin/users', async (req, res) => {
   <p style="font-size:.82rem;color:#5a6a8a;">Sau copiază: <code style="color:#9db0ff;">${verifyLink}</code></p>
   <p style="font-size:.82rem;color:#5a6a8a;">Link expiră în 72h.</p>
 </div>`,
-      }).catch(e => console.warn(`R-06: verificare email eșuat pentru ${credsDest}:`, e.message));
+      }).catch(e => logger.warn({ err: e, credsDest }, 'R-06: verificare email esuat'));
     }
 
     res.status(201).json({
@@ -317,7 +368,7 @@ router.post('/admin/users/:id/gws-provision', async (req, res) => {
       `UPDATE users SET gws_email=$1, gws_status='active', gws_provisioned_at=NOW(), gws_error=NULL WHERE id=$2`,
       [gwsEmail, userId]
     );
-    console.log(`✅ GWS retry: cont creat ${gwsEmail} pentru user ${userId}`);
+    logger.info(`✅ GWS retry: cont creat ${gwsEmail} pentru user ${userId}`);
     return res.json({ ok: true, gws_email: gwsEmail });
   } catch(e) {
     const errMsg = e.message || String(e);
@@ -353,7 +404,10 @@ router.put('/admin/users/:id', async (req, res) => {
   if (institutie !== undefined) { updates.push(`institutie=$${i++}`); vals.push((institutie || '').trim()); }
   if (compartiment !== undefined) { updates.push(`compartiment=$${i++}`); vals.push((compartiment || '').trim()); }
   if (personal_email !== undefined) { updates.push(`personal_email=$${i++}`); vals.push((personal_email || '').trim().toLowerCase() || null); }
-  if (role && ['admin', 'user'].includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
+  if (role) {
+    const allowedRolesUpd = actor.role === 'admin' ? ['admin', 'org_admin', 'user'] : ['user'];
+    if (allowedRolesUpd.includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
+  }
   if (phone !== undefined) {
     const pv = validatePhone((phone || '').trim());
     if (!pv.valid) return res.status(400).json({ error: 'phone_invalid', message: pv.error });
@@ -417,9 +471,9 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
         <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Schimbă parola după prima autentificare.</p>
         <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
       </div>`
-    }).catch(e => console.warn(`reset-password email eșuat pentru ${target.email}:`, e.message));
-    // SEC-02: plain_password ELIMINAT din response
-    res.json({ ok: true, message: `Parolă nouă trimisă pe email la ${target.email}` });
+    }).catch(e => logger.warn({ err: e, email: target.email }, 'reset-password email esuat'));
+    // Returnăm parola și emailul în response — afișate în modal ca fallback
+    res.json({ ok: true, email: target.email, tempPassword: newPwd, message: `Parolă nouă trimisă pe email la ${target.email}` });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -472,9 +526,8 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
       </div>`
     });
     // Returnăm parola și emailul către admin — afișate în modal ca fallback
-    // dacă emailul nu ajunge la utilizator
-    // SEC-02: plain_password ELIMINAT din response — parola trimisă exclusiv pe email
-    res.json({ ok: true, email: u.email, message: `Credențiale trimise pe email la ${u.email}` });
+    // dacă emailul nu ajunge la utilizator (parola este trimisă și pe email)
+    res.json({ ok: true, email: u.email, tempPassword: newPwd, message: `Credențiale trimise pe email la ${u.email}` });
   } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
@@ -576,14 +629,25 @@ router.post('/admin/flows/clean', async (req, res) => {
 router.get('/admin/flows/archive-preview', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
+    // org_admin: filtrare strictă după org_id
+    let apOrgId = null;
+    if (actor.role === 'org_admin') {
+      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+      apOrgId = aRows[0]?.org_id || null;
+      if (!apOrgId) return res.status(403).json({ error: 'org_admin_no_org' });
+    }
     const days = parseInt(req.query.days || '30');
     const filterInst = (req.query.institutie || '').trim();
     const filterDept = (req.query.compartiment || '').trim();
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    const { rows } = await pool.query('SELECT id,data,created_at FROM flows WHERE created_at < $1 ORDER BY created_at ASC', [cutoff]);
-    const { rows: userRows } = await pool.query('SELECT email,institutie,compartiment FROM users');
+    const { rows } = apOrgId
+      ? await pool.query('SELECT id,data,created_at FROM flows WHERE created_at < $1 AND org_id=$2 ORDER BY created_at ASC', [cutoff, apOrgId])
+      : await pool.query('SELECT id,data,created_at FROM flows WHERE created_at < $1 ORDER BY created_at ASC', [cutoff]);
+    const { rows: userRows } = apOrgId
+      ? await pool.query('SELECT email,institutie,compartiment FROM users WHERE org_id=$1', [apOrgId])
+      : await pool.query('SELECT email,institutie,compartiment FROM users');
     const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
     const eligible = rows.filter(r => {
       const d = r.data; if (!d) return false;
@@ -607,7 +671,8 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
         return { flowId: r.data.flowId, docName: r.data.docName, createdAt: r.data.createdAt || r.created_at,
           status: r.data.completed ? 'finalizat' : (r.data.signers || []).some(s => s.status === 'refused') ? 'refuzat' : 'necunoscut',
           sizeMB: Math.round(sizeBytes / 1024 / 1024 * 100) / 100,
-          institutie: u.institutie || r.data.institutie || '', compartiment: u.compartiment || r.data.compartiment || '' };
+          institutie: u.institutie || r.data.institutie || '', compartiment: u.compartiment || r.data.compartiment || '',
+          initName: r.data.initName || '', initEmail: r.data.initEmail || '' };
       })
     });
   } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
@@ -616,7 +681,7 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
 router.post('/admin/flows/archive', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
     const { flowIds, batchIndex = 0 } = req.body || {};
     if (!Array.isArray(flowIds) || !flowIds.length) return res.status(400).json({ error: 'flowIds_required' });
@@ -651,9 +716,9 @@ router.post('/admin/flows/archive', async (req, res) => {
         data.driveFileLinkOriginal = driveResult.driveFileLinkOriginal || null;
         await saveFlow(flowId, data);
         results.push({ flowId, ok: true });
-        console.log(`📦 Archived flow ${flowId} to Drive`);
+        logger.info(`📦 Archived flow ${flowId} to Drive`);
       } catch(e) {
-        console.error(`📦 Archive error ${flowId}:`, e.message);
+        logger.error({ err: e, flowId }, 'Archive error');
         // Daca Drive upload a reusit dar saveFlow a esuat, marcam oricum cu Drive IDs
         if (driveResult) {
           try {
@@ -666,12 +731,55 @@ router.post('/admin/flows/archive', async (req, res) => {
               results.push({ flowId, ok: true, warning: 'Drive OK, DB save retry reusit: ' + e.message });
               continue;
             }
-          } catch(e2) { console.error(`Archive retry save error ${flowId}:`, e2.message); }
+          } catch(e2) { logger.error({ err: e2, flowId }, 'Archive retry save error'); }
         }
         results.push({ flowId, ok: false, error: String(e.message || e) });
       }
     }
     return res.json({ ok: true, results, hasMore, nextBatchIndex: batchIndex + 1, totalProcessed: start + batch.length, total: flowIds.length });
+  } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ── POST /admin/flows/archive-async — crează un job de arhivare asincron ──
+// Returnează imediat un jobId; procesarea se face în background (index.mjs)
+router.post('/admin/flows/archive-async', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin' && actor.role !== 'org_admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { flowIds } = req.body || {};
+    if (!Array.isArray(flowIds) || !flowIds.length) return res.status(400).json({ error: 'flowIds_required' });
+    const { rows } = await pool.query(
+      `INSERT INTO archive_jobs (org_id, flow_ids, status, created_by)
+       VALUES ($1, $2, 'pending', $3) RETURNING id, created_at`,
+      [actor.orgId || null, JSON.stringify(flowIds), actor.email]
+    );
+    const job = rows[0];
+    logger.info({ jobId: job.id, flowCount: flowIds.length, actor: actor.email }, 'Archive job creat');
+    return res.json({ ok: true, jobId: job.id, flowCount: flowIds.length, message: 'Job creat. Procesarea începe în cel mult 30 de secunde.' });
+  } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// ── GET /admin/flows/archive-job/:jobId — status job arhivare ──────────────
+router.get('/admin/flows/archive-job/:jobId', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin' && actor.role !== 'org_admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, status, created_at, started_at, finished_at, result, error,
+              jsonb_array_length(flow_ids) AS flow_count
+       FROM archive_jobs WHERE id=$1`,
+      [parseInt(req.params.jobId)]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const job = rows[0];
+    return res.json({
+      jobId: job.id, status: job.status, flowCount: job.flow_count,
+      createdAt: job.created_at, startedAt: job.started_at, finishedAt: job.finished_at,
+      result: job.result, error: job.error,
+      done: job.status === 'done' || job.status === 'error',
+    });
   } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
 });
 
@@ -689,14 +797,14 @@ router.post('/admin/db/vacuum', async (req, res) => {
 router.get('/admin/drive/verify', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try { res.json(await verifyDrive()); } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
 router.get('/admin/flows/list', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
     const isExport = req.query.export === '1';
     const page = Math.max(1, parseInt(req.query.page || '1'));
@@ -710,7 +818,16 @@ router.get('/admin/flows/list', async (req, res) => {
     const search = (req.query.search || '').trim().toLowerCase();
     // FIX v3.2.2: escape caractere speciale LIKE
     const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
+    // org_admin: filtrare strictă după org_id
+    let actorOrgId = null;
+    if (actor.role === 'org_admin') {
+      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+      actorOrgId = aRows[0]?.org_id || null;
+      if (!actorOrgId) return res.status(403).json({ error: 'org_admin_no_org' });
+    }
     const conditions = ['1=1']; const params = [];
+    // Org filter aplicat primul — cel mai restrictiv
+    if (actorOrgId) { params.push(actorOrgId); conditions.push(`org_id = $${params.length}`); }
     if (statusFilter === 'pending') conditions.push("(data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused' AND (data->>'status') IS DISTINCT FROM 'cancelled'");
     else if (statusFilter === 'completed') conditions.push("(data->>'completed') = 'true'");
     else if (statusFilter === 'refused') conditions.push("(data->>'status') = 'refused'");
@@ -787,9 +904,23 @@ router.get('/health', async (req, res) => {
 // Alias explicit cu auth pentru admin stats
 router.get('/admin/stats', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   if (!pool || !DB_READY) return res.json({ ok: false, error: 'db_not_ready' });
   try {
+    if (actor.role === 'org_admin') {
+      // Stats filtrate pe org_id
+      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+      const orgId = aRows[0]?.org_id;
+      if (!orgId) return res.status(403).json({ error: 'org_admin_no_org' });
+      const [flowsR, usersR, notifsR, archR] = await Promise.all([
+        pool.query('SELECT COUNT(*) FROM flows WHERE org_id=$1', [orgId]),
+        pool.query('SELECT COUNT(*) FROM users WHERE org_id=$1', [orgId]),
+        pool.query('SELECT COUNT(*) FROM notifications n JOIN users u ON u.id=n.user_id WHERE u.org_id=$1 AND n.read=FALSE', [orgId]),
+        pool.query("SELECT COUNT(*) FROM flows WHERE org_id=$1 AND data->>'storage'='drive'", [orgId]),
+      ]);
+      return res.json({ ok: true, stats: { flows: parseInt(flowsR.rows[0].count), flowsArchived: parseInt(archR.rows[0].count), users: parseInt(usersR.rows[0].count), unreadNotifications: parseInt(notifsR.rows[0].count), dbSize: null, dbBytes: null } });
+    }
+    // Super-admin: stats globale
     const [flowsR, usersR, notifsR, archR] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM flows'), pool.query('SELECT COUNT(*) FROM users'),
       pool.query('SELECT COUNT(*) FROM notifications WHERE read=FALSE'),
@@ -805,7 +936,7 @@ router.get('/admin/stats', async (req, res) => {
 router.get('/admin/flows/:flowId/audit', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
@@ -873,6 +1004,15 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       const ro = t => String(t || '').split('').map(ch => diacr[ch] || ch).join('');
       // Format date cu timezone Romania
       const fmtDate = iso => iso ? new Date(iso).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—';
+      // Traduceri tip eveniment → română
+      const EVENT_LABELS_RO = {
+        'FLOW_CREATED': 'FLUX CREAT', 'SIGNED': 'SEMNAT', 'SIGNED_PDF_UPLOADED': 'PDF SEMNAT INCARCAT',
+        'REVIEW_REQUESTED': 'TRIMIS SPRE REVIZUIRE', 'FLOW_REINITIATED_AFTER_REVIEW': 'FLUX REINITIAT',
+        'FLOW_COMPLETED': 'FLUX FINALIZAT', 'FLOW_CANCELLED': 'FLUX ANULAT', 'REFUSED': 'REFUZAT',
+        'DELEGATED': 'DELEGAT', 'PDF_DOWNLOADED': 'PDF DESCARCAT', 'REMINDER': 'REMINDER TRIMIS',
+        'YOUR_TURN': 'NOTIFICARE RAND', 'FLOW_REINITIATED_AFTER_REVIEW': 'REINITIAT DUPA REVIZUIRE',
+      };
+      const evLabel = (type) => EVENT_LABELS_RO[type] || (type||'').replace(/_/g, ' ');
       const pdfDoc = await PDFDocument.create();
       const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -928,6 +1068,12 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           ensureSpace(20);
           page.drawText(ro(`Runda ${round.round || ''} — reinitiata la ${fmtDate(round.reinitiatedAt)} de ${round.reinitiatedBy || ''}`), { x:MARGIN, y, size:8.5, font:fontB, color:rgb(0.1,0.3,0.55), maxWidth: PAGE_W - MARGIN * 2 });
           y -= 14;
+          // Cine a solicitat revizuirea și când
+          if (round.reviewRequestedBy) {
+            ensureSpace(14);
+            page.drawText(ro(`Cerere revizuire: ${round.reviewRequestedBy} la ${fmtDate(round.reviewRequestedAt)}`), { x:MARGIN+10, y, size:8, font:fontB, color:rgb(0.55,0.1,0.55), maxWidth: PAGE_W - MARGIN * 2 - 10 });
+            y -= 13;
+          }
           if (round.reviewReason) {
             ensureSpace(14);
             page.drawText(ro(`Motiv revizuire: ${round.reviewReason}`), { x:MARGIN+10, y, size:8, font:fontR, color:rgb(0.6,0.2,0.1), maxWidth: PAGE_W - MARGIN * 2 - 10 });
@@ -935,14 +1081,19 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           }
           // Semnatarii rundei
           for (const s of (round.signers || [])) {
-            ensureSpace(50);
-            const sc = s.status === 'signed' ? rgb(0,0.45,0.25) : s.status === 'refused' ? rgb(0.65,0.1,0.1) : rgb(0.4,0.4,0.4);
+            ensureSpace(60);
+            const isRequester = round.reviewRequestedBy && s.email === round.reviewRequestedBy;
+            const sc = s.status === 'signed' ? rgb(0,0.45,0.25) : s.status === 'refused' ? rgb(0.65,0.1,0.1) : isRequester ? rgb(0.55,0.1,0.55) : rgb(0.4,0.4,0.4);
+            const statusLabel = isRequester && s.status !== 'signed' && s.status !== 'refused' ? 'A TRIMIS SPRE REVIZUIRE' : (s.status||'').toUpperCase();
             page.drawText(ro(`${s.name||s.email} [${s.rol||''}]`), { x:MARGIN+10, y, size:8, font:fontR, color:rgb(0.2,0.2,0.2), maxWidth:280 });
-            page.drawText(ro((s.status||'').toUpperCase()), { x:MARGIN+300, y, size:8, font:fontB, color:sc });
+            page.drawText(ro(statusLabel), { x:MARGIN+300, y, size:8, font:fontB, color:sc });
             y -= 12;
             if (s.notifiedAt)  { page.drawText(ro(`  Notificat:  ${fmtDate(s.notifiedAt)}`),  { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0.3,0.3,0.6) }); y -= 11; }
             if (s.downloadedAt){ page.drawText(ro(`  Descarcat:  ${fmtDate(s.downloadedAt)}`), { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0.2,0.4,0.55) }); y -= 11; }
             if (s.signedAt)    { page.drawText(ro(`  Semnat:     ${fmtDate(s.signedAt)}`),     { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0,0.4,0.2) }); y -= 11; }
+            if (isRequester && round.reviewRequestedAt) {
+              page.drawText(ro(`  Trimis spre revizuire: ${fmtDate(round.reviewRequestedAt)}`), { x:MARGIN+10, y, size:7.5, font:fontB, color:rgb(0.55,0.1,0.55), maxWidth:PAGE_W-MARGIN*2-10 }); y -= 11;
+            }
             if (s.refuseReason){ page.drawText(ro(`  Refuz:      ${s.refuseReason}`),           { x:MARGIN+10, y, size:7.5, font:fontR, color:rgb(0.65,0.1,0.1), maxWidth:PAGE_W-MARGIN*2-10 }); y -= 11; }
           }
           y -= SECTION_GAP;
@@ -976,6 +1127,12 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           page.drawText(ro(`  Refuzat:    ${s.refusedAt ? fmtDate(s.refusedAt) : ''}${s.refuseReason ? '  Motiv: ' + s.refuseReason : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.7,0.1,0.1), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
         }
         if (s.delegatedFrom) { page.drawText(ro(`  Delegat de: ${s.delegatedFrom.email}${s.delegatedFrom.reason ? ' — ' + s.delegatedFrom.reason : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12; }
+        // Dacă semnatarul a trimis spre revizuire (acțiune vizibilă în runda curentă)
+        const reviewEvForSigner = (audit.events || []).find(e => e.type === 'REVIEW_REQUESTED' && e.by === s.email && !e._inheritedFrom);
+        if (reviewEvForSigner) {
+          page.drawText(ro(`  Trimis spre revizuire: ${fmtDate(reviewEvForSigner.at)}`), { x:MARGIN+12, y, size:8, font:fontB, color:rgb(0.55,0.1,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
+          if (reviewEvForSigner.reason) { page.drawText(ro(`  Motiv: ${reviewEvForSigner.reason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.6,0.2,0.1), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12; }
+        }
         y -= 6;
       }
       y -= SECTION_GAP;
@@ -1060,7 +1217,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         return lines;
       };
       const renderEvent = (e, dimmed) => {
-        const detail = [e.by ? `by:${e.by}` : '', e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `to:${e.to}` : ''].filter(Boolean).join('  ');
+        const detail = [e.by ? `de:${e.by}` : '', e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `catre:${e.to}` : ''].filter(Boolean).join('  ');
         const detailLines = detail ? estimateLines(ro(detail), EVENT_DETAIL_MAX_W, fontR, EVENT_FONT_SIZE) : 0;
         const rowH = EVENT_LINE_H + detailLines * EVENT_LINE_H + 3;
         ensureSpace(rowH + 2);
@@ -1068,7 +1225,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         const dimColor = dimmed ? rgb(0.6,0.6,0.6) : rgb(0.5,0.5,0.5);
         const typeColor = dimmed ? rgb(0.5,0.5,0.65) : rgb(0.2,0.2,0.5);
         page.drawText(ro(`[${ts}]`), { x:EVENT_COL_TS, y, size:EVENT_FONT_SIZE, font:fontR, color:dimColor });
-        page.drawText(ro(e.type||''), { x:EVENT_COL_TYPE, y, size:EVENT_FONT_SIZE, font:fontB, color:typeColor });
+        page.drawText(ro(evLabel(e.type)), { x:EVENT_COL_TYPE, y, size:EVENT_FONT_SIZE, font:fontB, color:typeColor });
         if (detail) {
           page.drawText(ro(detail), { x:EVENT_COL_DETAIL, y, size:EVENT_FONT_SIZE, font:fontR, color:dimColor, maxWidth:EVENT_DETAIL_MAX_W, lineHeight: EVENT_LINE_H });
         }
@@ -1133,13 +1290,13 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         page.drawText(ro('Eveniment'), { x:MARGIN+130, y, size:7.5, font:fontB, color:rgb(0.3,0.3,0.3) });
         page.drawText(ro('Actor'), { x:MARGIN+250, y, size:7.5, font:fontB, color:rgb(0.3,0.3,0.3) });
         page.drawText(ro('IP'), { x:MARGIN+390, y, size:7.5, font:fontB, color:rgb(0.3,0.3,0.3) });
-        y -= 12;
+        y -= 14;
         page.drawLine({ start:{x:MARGIN, y:y+2}, end:{x:PAGE_W-MARGIN, y:y+2}, thickness:0.3, color:rgb(0.85,0.85,0.85) });
-        y -= 4;
+        y -= 8;
         for (const ar of accessRows) {
           ensureSpace(14);
           const ts = fmtDate(ar.created_at);
-          const evType = (ar.event_type || '').replace(/_/g, ' ');
+          const evType = evLabel(ar.event_type || '');
           const actor = (ar.actor_email || '').slice(0, 30);
           const ip = ar.actor_ip || '—';
           const rowColor = ar.event_type === 'REFUSED' || ar.event_type === 'FLOW_CANCELLED'
@@ -1196,7 +1353,7 @@ router.get('/admin/flows/audit-export', async (req, res) => {
 router.get('/admin/user-activity', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
     const from = req.query.from ? new Date(req.query.from).toISOString() : new Date(Date.now() - 30*24*3600*1000).toISOString();
     const to   = req.query.to   ? new Date(new Date(req.query.to).getTime() + 86399999).toISOString() : new Date().toISOString();
@@ -1208,6 +1365,8 @@ router.get('/admin/user-activity', async (req, res) => {
     // Toti utilizatorii din aceeași organizație
     const { rows: selfRow } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     const orgId = selfRow[0]?.org_id || null;
+    // org_admin fără org_id → acces refuzat
+    if (actor.role === 'org_admin' && !orgId) return res.status(403).json({ error: 'org_admin_no_org' });
     let userQuery, userParams;
     if (orgId) {
       userQuery = 'SELECT email, nume, functie, institutie, compartiment, role FROM users WHERE org_id=$1 ORDER BY nume';
@@ -1296,7 +1455,7 @@ router.get('/admin/user-activity', async (req, res) => {
       });
 
     return res.json({ ok: true, from, to, users: result });
-  } catch(e) { console.error('user-activity error:', e); return res.status(500).json({ error: String(e.message || e) }); }
+  } catch(e) { logger.error({ err: e }, 'user-activity error:'); return res.status(500).json({ error: String(e.message || e) }); }
 });
 
 export default router;

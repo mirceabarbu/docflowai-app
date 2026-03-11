@@ -286,7 +286,7 @@ function logout() {
   const label = u.nume || u.email || '';
   bar.innerHTML =
     (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
-    (u.role === 'admin' ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
+    ((u.role === 'admin' || u.role === 'org_admin') ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
     `<button onclick="logout()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
 })();
 function hdrs() { return { 'Content-Type': 'application/json' }; }
