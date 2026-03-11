@@ -1027,8 +1027,8 @@ th{ color: var(--sub) !important; }
           const finalStatuses = ["completed", "done", "finalizat", "finished", "complete"];
           const successFinal = !!(f.allSigned && !isRefused && !isReviewRequested && !isCancelled);
           const pdfReady = !!(successFinal && (f.hasSignedPdf || f.completed || finalStatuses.includes(String(f.status || "").toLowerCase())));
-          // Salvăm datele fluxului pentru modalul de email (evităm JSON în onclick)
-          if (pdfReady) { window._flowsEmailData = window._flowsEmailData || {}; window._flowsEmailData[f.flowId] = f; }
+          // Salvăm datele fluxului pentru modalul de email (stocăm orice flux finalizat)
+          if (successFinal || pdfReady) { window._flowsEmailData = window._flowsEmailData || {}; window._flowsEmailData[f.flowId] = f; }
           const dlBtn = pdfReady
             ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
             : successFinal
@@ -1759,19 +1759,22 @@ function openSendEmailModal(flowId) {
   document.getElementById('semSubject').value = `Document semnat electronic: ${f.docName || flowId}`;
   // Corp pre-completat + readonly
   const senderName  = u.nume || u.email || '';
-  const senderTitle = [u.functie, u.compartiment, u.institutie].filter(Boolean).join(', ');
-  const instStr     = f.institutie  ? `Instituție: ${f.institutie}\n`  : '';
-  const compStr     = f.compartiment ? `Compartiment: ${f.compartiment}\n` : '';
-  const dateStr     = f.completedAt  ? new Date(f.completedAt).toLocaleDateString('ro-RO') : '—';
+  const today = new Date().toLocaleDateString('ro-RO');
+  const instStr  = f.institutie   ? `\nInstituție: ${f.institutie}`   : '';
+  const compStr  = f.compartiment ? `\nCompartiment: ${f.compartiment}` : '';
+  const functieStr = u.functie    ? `\nFuncție: ${u.functie}`         : '';
+  const institutieStr = (u.institutie || f.institutie) ? `\nInstituție: ${u.institutie || f.institutie}` : '';
+  const compartimentStr = (u.compartiment || f.compartiment) ? `\nCompartiment: ${u.compartiment || f.compartiment}` : '';
+  const dateStr  = f.completedAt  ? new Date(f.completedAt).toLocaleDateString('ro-RO') : '—';
   document.getElementById('semBody').value =
-`Stimate/ă,
+`Stimate/Stimată,
 
-Vă transmitem atașat documentul „${f.docName || flowId}", semnat electronic de toate părțile implicate.
-
-${instStr}${compStr}Data finalizării: ${dateStr}
+Vă transmitem atașat documentul „${f.docName || flowId}", semnat electronic de toate părțile implicate.${instStr}${compStr}
+Data finalizării: ${dateStr}
 
 Cu stimă,
-${senderName}${senderTitle ? '\n' + senderTitle : ''}`;
+Nume: ${senderName}${functieStr}${institutieStr}${compartimentStr}
+Data: ${today}`;
   document.getElementById('sendEmailModal').style.display = 'flex';
   setTimeout(() => document.getElementById('semTo').focus(), 100);
 }

@@ -1117,7 +1117,7 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
 });
 
 // ── POST /flows/:flowId/send-email — trimite PDF semnat pe email extern ───
-router.post('/:flowId/send-email', async (req, res) => {
+router.post('/flows/:flowId/send-email', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {

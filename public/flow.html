@@ -718,20 +718,23 @@ function openFlowSendEmailModal(flowId, docName, institutie, compartiment, compl
   document.getElementById('flowSemSendBtn').disabled = false;
   document.getElementById('flowSemSendBtn').textContent = '📤 Trimite email';
   document.getElementById('flowSemSubject').value = `Document semnat electronic: ${docName}`;
-  const senderName  = u.nume || u.email || '';
-  const senderTitle = [u.functie, u.compartiment, u.institutie].filter(Boolean).join(', ');
-  const instStr = institutie  ? `Instituție: ${institutie}\n`  : '';
-  const compStr = compartiment ? `Compartiment: ${compartiment}\n` : '';
+  const senderName = u.nume || u.email || '';
+  const today = new Date().toLocaleDateString('ro-RO');
+  const instStr  = institutie   ? `\nInstituție: ${institutie}`   : '';
+  const compStr  = compartiment ? `\nCompartiment: ${compartiment}` : '';
+  const functieStr    = u.functie     ? `\nFuncție: ${u.functie}`         : '';
+  const institutieStr = (u.institutie || institutie) ? `\nInstituție: ${u.institutie || institutie}` : '';
+  const compartimentStr = (u.compartiment || compartiment) ? `\nCompartiment: ${u.compartiment || compartiment}` : '';
   const dateStr = completedAt ? new Date(completedAt).toLocaleDateString('ro-RO') : '—';
   document.getElementById('flowSemBody').value =
-`Stimate/ă,
+`Stimate/Stimată,
 
-Vă transmitem atașat documentul „${docName}", semnat electronic de toate părțile implicate.
-
-${instStr}${compStr}Data finalizării: ${dateStr}
+Vă transmitem atașat documentul „${docName}", semnat electronic de toate părțile implicate.${instStr}${compStr}
+Data finalizării: ${dateStr}
 
 Cu stimă,
-${senderName}${senderTitle ? '\n' + senderTitle : ''}`;
+Nume: ${senderName}${functieStr}${institutieStr}${compartimentStr}
+Data: ${today}`;
   document.getElementById('flowSendEmailModal').style.display = 'flex';
   setTimeout(() => document.getElementById('flowSemTo').focus(), 100);
 }
