@@ -746,7 +746,44 @@ function renderPagination(total, current, totalPages){
   pg.appendChild(next);
 }
 
-// ── org_admin: afișează câmp organizație când se selectează rolul ─────────
+// ── org_admin: blochează toate filtrele de instituție ─────────────────────
+function lockOrgAdminFilters(institutie) {
+  if (!institutie) return;
+  const lock = (el, val) => {
+    if (!el) return;
+    // input
+    if (el.tagName === 'INPUT') {
+      el.value = val;
+      el.readOnly = true;
+      el.style.cssText += ';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+    }
+    // select
+    if (el.tagName === 'SELECT') {
+      // Adăugăm opțiunea dacă nu există
+      let found = false;
+      for (const o of el.options) { if (o.value === val) { found = true; break; } }
+      if (!found) { const o = new Option(val, val); el.appendChild(o); }
+      el.value = val;
+      el.disabled = true;
+      el.style.cssText += ';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+    }
+  };
+  // Tab Utilizatori — formular creare
+  lock($('nInstitutie'), institutie);
+  // Tab Utilizatori — filtrul din capul tabelului
+  const fI = $('fInstitutie');
+  if (fI) { fI.value = institutie; fI.readOnly = true; fI.style.cssText += ';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;'; filterUsers(); }
+  // Tab Fluxuri — flowInstFilter
+  lock($('flowInstFilter'), institutie);
+  // Tab Fluxuri — archiveInstFilter
+  lock($('archiveInstFilter'), institutie);
+  // Tab Rapoarte — rptInst
+  lock($('rptInst'), institutie);
+}
+
+// Patch: după ce se populează flowInstFilter, re-aplică lock dacă org_admin
+const _origPopulateFlowInst = window.onFlowInstChange;
+
 function onRoleChange(role) {
   const row = $('nOrgRow');
   if (!row) return;
@@ -953,6 +990,10 @@ async function createUser(){
     if($('nOrgName')) $('nOrgName').value='';
     onGwsToggle();
     onRoleChange('user');
+    // Re-applică instituția pentru org_admin după reset form
+    if(window._orgAdminInstitutie && $('nInstitutie')){
+      $('nInstitutie').value=window._orgAdminInstitutie;
+    }
     loadUsers();
     showPwdModal(d);
   }else{
@@ -1073,6 +1114,15 @@ function openEdit(u){
   $("eNotifInapp").checked=u.notif_inapp!==false;
   $("eNotifEmail").checked=!!u.notif_email;
   $("eNotifWa").checked=!!u.notif_whatsapp;
+  // org_admin: blochează câmpul Instituție și Rol
+  const eInst=$("eInstitutie"); const eRoleEl=$("eRole");
+  if(window._orgAdminInstitutie){
+    if(eInst){eInst.readOnly=true;eInst.style.background='rgba(45,212,191,.08)';eInst.style.borderColor='rgba(45,212,191,.3)';eInst.style.color='#2dd4bf';eInst.style.cursor='not-allowed';}
+    if(eRoleEl){eRoleEl.disabled=true;eRoleEl.style.background='rgba(45,212,191,.08)';eRoleEl.style.borderColor='rgba(45,212,191,.3)';eRoleEl.style.color='#2dd4bf';}
+  } else {
+    if(eInst){eInst.readOnly=false;eInst.style.background='';eInst.style.borderColor='';eInst.style.color='';eInst.style.cursor='';}
+    if(eRoleEl){eRoleEl.disabled=false;eRoleEl.style.background='';eRoleEl.style.borderColor='';eRoleEl.style.color='';}
+  }
   // GWS status
   if(u.gws_email){
     $("eGwsRow").style.display="block";
@@ -1178,6 +1228,14 @@ function populateFlowInstDropdown(flows) {
     sel.appendChild(opt);
   });
   if (currentVal) sel.value = currentVal;
+  // org_admin: re-aplică lock după populare
+  if (window._orgAdminInstitutie) {
+    let found=false; for(const o of sel.options){if(o.value===window._orgAdminInstitutie){found=true;break;}} 
+    if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);sel.appendChild(o);}
+    sel.value=window._orgAdminInstitutie; sel.disabled=true;
+    sel.style.cssText+=';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+    onFlowInstChange();
+  }
 }
 
 function onFlowInstChange() {
@@ -1439,6 +1497,14 @@ async function loadArchiveInstData() {
     const o = document.createElement("option"); o.value = inst; o.textContent = inst; s.appendChild(o);
   });
   if (cur) s.value = cur;
+  // org_admin: re-aplică lock pe archiveInstFilter după populare
+  if (window._orgAdminInstitutie) {
+    let found=false; for(const o of s.options){if(o.value===window._orgAdminInstitutie){found=true;break;}}
+    if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);s.appendChild(o);}
+    s.value=window._orgAdminInstitutie; s.disabled=true;
+    s.style.cssText+=';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+    onArchiveInstChange();
+  }
   // Populează instituții ștergere
   const s2 = document.getElementById("delInstFilter");
   const cur2 = s2.value;
@@ -1757,10 +1823,12 @@ fetch("/auth/me",{headers:hdrs()})
       const gwsTab=document.querySelector('[onclick*="gws"]');
       if(gwsTab) gwsTab.style.display="none";
     }
+    if(u.role==="org_admin") window._orgAdminInstitutie = u.institutie || "";
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
     loadDbStats(); // auto-încarcă statistici DB
     initActivityReport(); // inițializează raportul de activitate
+    if(u.role==="org_admin") lockOrgAdminFilters(u.institutie||"");
   })
   .catch(()=>logout());
 
@@ -1868,6 +1936,13 @@ function _rebuildRptInst() {
   const insts = [...new Set(users.map(u => u.institutie).filter(Boolean))].sort();
   insts.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i; rptInst.appendChild(o); });
   if (prevInst) rptInst.value = prevInst;
+  // org_admin: blochează rptInst după populare
+  if (window._orgAdminInstitutie) {
+    let found=false; for(const o of rptInst.options){if(o.value===window._orgAdminInstitutie){found=true;break;}}
+    if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);rptInst.appendChild(o);}
+    rptInst.value=window._orgAdminInstitutie; rptInst.disabled=true;
+    rptInst.style.cssText+=';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
+  }
   _rebuildRptDept();
 }
 
