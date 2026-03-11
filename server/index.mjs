@@ -386,20 +386,25 @@ const _loginBlocksCleanupInterval = setInterval(async () => {
 // ── R-04: Reminder automat semnatari inactivi ─────────────────────────────
 // Configurabil via ENV: REMINDER_INTERVAL_HOURS (default: 24h), REMINDER_INACTIVITY_DAYS (default: 3)
 // Trimite notificare REMINDER semnatarului curent dacă fluxul nu a avut activitate în N zile.
-const REMINDER_INTERVAL_MS   = (parseInt(process.env.REMINDER_INTERVAL_HOURS || '24') * 3600_000);
-const REMINDER_INACTIVITY_MS = (parseInt(process.env.REMINDER_INACTIVITY_DAYS || '3') * 86_400_000);
+// ── R-04: Reminder automat — niveluri multiple (24h / 48h / 72h escaladare)
+// ENV: REMINDER_INTERVAL_HOURS (default: 6h — cat de des verificam)
+//      REMINDER_1_HOURS (default: 24), REMINDER_2_HOURS (default: 48), REMINDER_3_HOURS (default: 72)
+const REMINDER_INTERVAL_MS = (parseInt(process.env.REMINDER_INTERVAL_HOURS || '6') * 3600_000);
+const R1_MS = (parseInt(process.env.REMINDER_1_HOURS || '24') * 3600_000);
+const R2_MS = (parseInt(process.env.REMINDER_2_HOURS || '48') * 3600_000);
+const R3_MS = (parseInt(process.env.REMINDER_3_HOURS || '72') * 3600_000);
 
 async function _runReminderJob() {
   if (!pool || !DB_READY) return;
   try {
-    const cutoff = new Date(Date.now() - REMINDER_INACTIVITY_MS).toISOString();
+    const cutoff1 = new Date(Date.now() - R1_MS).toISOString();
     const { rows } = await pool.query(
       `SELECT id, data FROM flows
        WHERE (data->>'completed') IS DISTINCT FROM 'true'
-         AND (data->>'status') NOT IN ('refused','cancelled')
+         AND (data->>'status') NOT IN ('refused','cancelled','review_requested')
          AND updated_at < $1
-       LIMIT 200`,
-      [cutoff]
+       LIMIT 300`,
+      [cutoff1]
     );
     let reminded = 0;
     for (const row of rows) {
@@ -407,27 +412,107 @@ async function _runReminderJob() {
       const flowId = row.id;
       const current = (data.signers || []).find(s => s.status === 'current');
       if (!current?.email) continue;
-      // Evităm spam: verificăm dacă există deja o notificare REMINDER recentă (<24h)
-      const { rows: recent } = await pool.query(
-        `SELECT 1 FROM notifications WHERE user_email=$1 AND flow_id=$2 AND type='REMINDER'
-         AND created_at > NOW() - INTERVAL '24 hours' LIMIT 1`,
+
+      const { rows: sentRows } = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM notifications WHERE user_email=$1 AND flow_id=$2 AND type='REMINDER'`,
         [current.email.toLowerCase(), flowId]
       );
-      if (recent.length > 0) continue;
-      await notify({
-        userEmail: current.email, flowId, type: 'REMINDER',
-        title: '⏳ Document în așteptare',
-        message: `Documentul „${data.docName}" este în așteptarea semnăturii tale de mai mult de ${process.env.REMINDER_INACTIVITY_DAYS || 3} zile.`,
-        waParams: { signerName: current.name || current.email, docName: data.docName, signerToken: current.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment },
-        urgent: false,
-      });
-      reminded++;
+      const sentCount = parseInt(sentRows[0]?.cnt || '0');
+
+      const { rows: lastRows } = await pool.query(
+        `SELECT created_at FROM notifications WHERE user_email=$1 AND flow_id=$2 AND type='REMINDER'
+         ORDER BY created_at DESC LIMIT 1`,
+        [current.email.toLowerCase(), flowId]
+      );
+      const lastSentAt = lastRows[0]?.created_at ? new Date(lastRows[0].created_at).getTime() : 0;
+      const inactiveSince = current.notifiedAt ? new Date(current.notifiedAt).getTime() : (Date.now() - R1_MS);
+      const inactiveMs = Date.now() - inactiveSince;
+      const minGap = R1_MS - 3600_000; // anti-spam: minim R1-1h intre remindere
+
+      if (sentCount === 0 && inactiveMs >= R1_MS && (Date.now() - lastSentAt) > minGap) {
+        await notify({ userEmail: current.email, flowId, type: 'REMINDER',
+          title: '⏳ Document în așteptare',
+          message: `Documentul „${data.docName}" așteaptă semnătura ta de mai mult de 24 de ore.`,
+          waParams: { signerName: current.name || current.email, docName: data.docName, signerToken: current.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment },
+          urgent: false });
+        reminded++;
+      } else if (sentCount === 1 && inactiveMs >= R2_MS && (Date.now() - lastSentAt) > minGap) {
+        await notify({ userEmail: current.email, flowId, type: 'REMINDER',
+          title: '⚠️ Acțiune necesară — document nesemnat',
+          message: `Documentul „${data.docName}" este nesemnat de 2 zile. Te rugăm să acționezi.`,
+          waParams: { signerName: current.name || current.email, docName: data.docName, signerToken: current.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment },
+          urgent: false });
+        reminded++;
+      } else if (sentCount === 2 && inactiveMs >= R3_MS && (Date.now() - lastSentAt) > minGap) {
+        await notify({ userEmail: current.email, flowId, type: 'REMINDER',
+          title: '🚨 Flux blocat — 3 zile fără acțiune',
+          message: `Documentul „${data.docName}" este blocat de 3 zile. Semnează sau delegă urgent.`,
+          waParams: { signerName: current.name || current.email, docName: data.docName, signerToken: current.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment },
+          urgent: true });
+        // Escaladare: notifică și inițiatorul
+        if (data.initEmail && data.initEmail.toLowerCase() !== current.email.toLowerCase()) {
+          await notify({ userEmail: data.initEmail, flowId, type: 'REMINDER',
+            title: '🚨 Flux blocat — intervenție necesară',
+            message: `Documentul „${data.docName}" e blocat la ${current.name || current.email} [${current.rol || ''}] de 3 zile. Poți delega sau contacta semnatarul.`,
+            waParams: { docName: data.docName, initName: data.initName }, urgent: true });
+        }
+        reminded++;
+      }
     }
-    if (reminded > 0) logger.info({ reminded }, 'Reminder job: semnatari notificati');
+    if (reminded > 0) logger.info({ reminded }, 'Reminder job multi-level: notificari trimise');
   } catch(e) { logger.error({ err: e }, 'Reminder job error'); }
 }
 const _reminderInterval = setInterval(_runReminderJob, REMINDER_INTERVAL_MS);
-logger.info({ intervalH: process.env.REMINDER_INTERVAL_HOURS || 24, inactivitateZ: process.env.REMINDER_INACTIVITY_DAYS || 3 }, 'Reminder job pornit');
+logger.info({ intervalH: process.env.REMINDER_INTERVAL_HOURS || 6, r1h: 24, r2h: 48, r3h: 72 }, 'Reminder job (multi-level) pornit');
+
+// ── ASYNC-01: Background processor pentru arhivare async ──────────────────
+// Procesează jobs din tabelul archive_jobs în loturi de 10, evitând timeout Railway
+
+async function _runArchiveJobProcessor() {
+  if (!pool || !DB_READY) return;
+  try {
+    // Preluăm un job pending la un moment dat (SKIP LOCKED evită race condition)
+    const { rows: jobs } = await pool.query(
+      `UPDATE archive_jobs SET status='processing', started_at=NOW()
+       WHERE id = (SELECT id FROM archive_jobs WHERE status='pending' ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED)
+       RETURNING *`
+    );
+    if (!jobs.length) return;
+    const job = jobs[0];
+    const flowIds = Array.isArray(job.flow_ids) ? job.flow_ids : [];
+    const results = [];
+    let totalOk = 0, totalFail = 0;
+    for (const flowId of flowIds) {
+      try {
+        const data = await getFlowData(flowId);
+        if (!data) { results.push({ flowId, ok: false, error: 'not_found' }); totalFail++; continue; }
+        if (data.storage === 'drive') { results.push({ flowId, ok: true, skipped: true }); continue; }
+        if (!data.pdfB64 && !data.signedPdfB64) {
+          data.storage = 'drive'; data.archivedAt = new Date().toISOString();
+          await saveFlow(flowId, data);
+          results.push({ flowId, ok: true, warning: 'no_pdf_marked_archived' }); totalOk++; continue;
+        }
+        const driveResult = await archiveFlow(data);
+        data.pdfB64 = null; data.signedPdfB64 = null; data.originalPdfB64 = null;
+        data.storage = 'drive'; data.archivedAt = new Date().toISOString();
+        Object.assign(data, driveResult);
+        await saveFlow(flowId, data);
+        results.push({ flowId, ok: true }); totalOk++;
+        logger.info({ flowId }, 'Archive job: flux arhivat in Drive');
+      } catch(e) {
+        logger.error({ err: e, flowId }, 'Archive job: eroare flux');
+        results.push({ flowId, ok: false, error: String(e.message || e) }); totalFail++;
+      }
+    }
+    await pool.query(
+      `UPDATE archive_jobs SET status='done', finished_at=NOW(), result=$1 WHERE id=$2`,
+      [JSON.stringify({ results, totalOk, totalFail }), job.id]
+    );
+    logger.info({ jobId: job.id, totalOk, totalFail }, 'Archive job procesat');
+  } catch(e) { logger.error({ err: e }, 'Archive job processor error'); }
+}
+const _archiveJobInterval = setInterval(_runArchiveJobProcessor, 30_000); // verifică la 30s
+logger.info('Archive job processor pornit (interval: 30s)');
 
 // ── Cleanup notificari vechi (max 500/user) ────────────────────────────────
 // Rulat o data la 6 ore pentru a preveni cresterea nelimitata
@@ -676,6 +761,7 @@ function shutdown(signal) {
   clearInterval(_loginBlocksCleanupInterval);
   clearInterval(_notifsCleanupInterval);
   clearInterval(_reminderInterval);
+  clearInterval(_archiveJobInterval);
   clearInterval(wsHeartbeat);
   httpServer.close(() => { logger.info('Server closed.'); process.exit(0); });
   setTimeout(() => process.exit(0), 10_000).unref();

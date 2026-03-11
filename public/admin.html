@@ -75,6 +75,7 @@
     tr:hover td{background:rgba(255,255,255,.015);}
     .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.71rem;font-weight:700;}
     .pill.admin{background:rgba(124,92,255,.25);color:#c4b0ff;}
+    .pill.org_admin{background:rgba(255,180,50,.2);color:#ffd580;border:1px solid rgba(255,180,50,.3);}
     .pill.user{background:rgba(45,212,191,.18);color:#7cf0e0;}
     .pwd{font-family:monospace;background:rgba(255,180,50,.1);border:1px solid rgba(255,180,50,.22);
       padding:2px 8px;border-radius:6px;color:#ffd580;font-size:.84rem;letter-spacing:.03em;
@@ -119,7 +120,7 @@
     <a href="/" class="btn" style="text-decoration:none;font-size:.88rem;">📝 Flux nou</a>
     <a href="/?tab=flows" class="btn" style="text-decoration:none;font-size:.88rem;">📂 Fluxuri mele</a>
     <a href="/templates" class="btn" style="text-decoration:none;font-size:.88rem;">📋 Șabloane</a>
-    <span style="padding:8px 12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:10px;font-size:.85rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
+    <span id="adminBadge" style="padding:8px 12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:10px;font-size:.85rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
   </div>
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
     <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
@@ -209,7 +210,7 @@
         <input id="nPwd" type="text" placeholder="generată automat dacă e gol"/>
       </div>
       <div class="frow"><label>Rol</label>
-        <select id="nRole"><option value="user">User</option><option value="admin">Admin</option></select>
+        <select id="nRole"><option value="user">User</option><option value="org_admin">Admin Instituție</option><option value="admin">Admin</option></select>
       </div>
     </div>
     <div class="grid3" style="margin-top:12px;">
@@ -494,7 +495,7 @@
       <div>
         <div class="frow"><label>Email personal</label><input id="ePersonalEmail" type="email" placeholder="gmail, yahoo..."/></div>
         <div class="frow"><label>Rol</label>
-          <select id="eRole"><option value="user">User</option><option value="admin">Admin</option></select></div>
+          <select id="eRole"><option value="user">User</option><option value="org_admin">Admin Instituție</option><option value="admin">Admin</option></select></div>
         <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">07XXXXXXXX</span></label>
           <input id="ePhone" type="tel" placeholder="0712345678" oninput="phoneInputFeedback(this)"/></div>
       </div>
@@ -700,7 +701,7 @@ function renderPage(){
       <td style="color:var(--muted);font-size:.82rem">${esc(u.phone||"—")}</td>
       <td style="font-size:.9rem;text-align:center">${notifIcons||'—'}</td>
       <td>${gwsBadge}</td>
-      <td><span class="pill ${u.role}">${u.role}</span></td>
+      <td><span class="pill ${u.role}">${u.role==="org_admin"?"Admin Instituție":u.role==="admin"?"Admin":"User"}</span></td>
       <td style="color:var(--muted);font-size:.79rem">${dt}</td>
       <td style="text-align:right;white-space:nowrap">
         <div style="display:flex;gap:3px;justify-content:flex-end;">
@@ -1665,12 +1666,25 @@ fetch("/auth/me",{headers:hdrs()})
   .then(async r=>{
     if(!r.ok){logout();return;}
     const u=await r.json();
-    if(u.role!=="admin"){logout();return;}
+    if(u.role!=="admin" && u.role!=="org_admin"){logout();return;}
     localStorage.setItem("docflow_user",JSON.stringify({email:u.email,role:u.role,nume:u.nume||"",functie:u.functie||"",institutie:u.institutie||""}));
     if(u.force_password_change) localStorage.setItem("docflow_force_pwd","1");
     if(localStorage.getItem("docflow_force_pwd")==="1"){const b=$("forcePwdBanner");if(b)b.style.display="block";}
     const hEl=$("hdrUser");
     if(hEl) hEl.textContent=u.nume||u.email||"—";
+    // Badge diferit pentru org_admin
+    const badgeEl=$("adminBadge");
+    if(badgeEl && u.role==="org_admin"){
+      badgeEl.textContent="🏛 ADMIN INSTITUȚIE";
+      badgeEl.style.background="rgba(45,212,191,.15)";
+      badgeEl.style.borderColor="rgba(45,212,191,.3)";
+      badgeEl.style.color="#2dd4bf";
+    }
+    // Ascunde tab GWS și operații globale pentru org_admin
+    if(u.role==="org_admin"){
+      const gwsTab=document.querySelector('[onclick*="gws"]');
+      if(gwsTab) gwsTab.style.display="none";
+    }
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
     loadDbStats(); // auto-încarcă statistici DB
@@ -2276,7 +2290,7 @@ function exportUsersPDF() {
       <td>${esc(u.compartiment)}</td>
       <td>${esc(u.email)}</td>
       <td>${esc(u.phone)}</td>
-      <td><span class="pill ${esc(u.role)}">${esc(u.role)}</span></td>
+      <td><span class="pill ${esc(u.role)}">${u.role==="org_admin"?"Admin Instituție":u.role==="admin"?"Admin":"User"}</span></td>
       <td>${dt}</td>
     </tr>`;
   }).join("");
@@ -2293,6 +2307,7 @@ function exportUsersPDF() {
     code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
     .pill { padding: 2px 7px; border-radius: 10px; font-size: 9px; font-weight: 700; }
     .pill.admin { background: #fef3c7; color: #92400e; }
+    .pill.org_admin { background: #fef3c7; color: #b45309; }
     .pill.user { background: #dbeafe; color: #1e40af; }
   </style>
 </head><body>

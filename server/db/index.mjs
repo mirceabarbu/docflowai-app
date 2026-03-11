@@ -434,6 +434,35 @@ const MIGRATIONS = [
       ALTER TABLE users ADD COLUMN IF NOT EXISTS hash_algo TEXT NOT NULL DEFAULT 'pbkdf2_v1';
       UPDATE users SET hash_algo = 'pbkdf2_v2' WHERE password_hash LIKE 'v2:%';
     `
+  },
+  {
+    // ASYNC-01: Tabel pentru arhivare asincronă — evită timeout Railway pe loturi mari
+    id: '023_archive_jobs',
+    sql: `
+      CREATE TABLE IF NOT EXISTS archive_jobs (
+        id         BIGSERIAL PRIMARY KEY,
+        org_id     INTEGER,
+        flow_ids   JSONB    NOT NULL DEFAULT '[]',
+        status     TEXT     NOT NULL DEFAULT 'pending',
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        started_at TIMESTAMPTZ,
+        finished_at TIMESTAMPTZ,
+        result     JSONB,
+        error      TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_archive_jobs_status ON archive_jobs(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_archive_jobs_org    ON archive_jobs(org_id, created_at DESC);
+    `
+  },
+  {
+    // ORG-ADMIN-01: Suport rol org_admin — admin limitat la propria instituție
+    id: '024_org_admin_role',
+    sql: `
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+      ALTER TABLE users ADD CONSTRAINT users_role_check
+        CHECK (role IN ('admin', 'org_admin', 'user'));
+    `
   }
 ];
 
