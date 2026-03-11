@@ -392,7 +392,7 @@
     </div>
   </div>
 
-  <div style="margin-top:24px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
+  <div id="vacuumCard" style="margin-top:24px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 24px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <div>
         <div style="font-weight:700;margin-bottom:4px;color:var(--sub);">🧹 Eliberare spațiu DB (VACUUM)</div>
@@ -779,9 +779,11 @@ function lockOrgAdminFilters(institutie) {
   lock($('archiveInstFilter'), institutie);
   // Tab Fluxuri — delInstFilter (ștergere vechi)
   lock($('delInstFilter'), institutie);
-  // Tab Fluxuri — ascunde cardul "Șterge TOATE" — prea periculos pentru org_admin
+  // Ascunde cardul VACUUM (super-admin only) și cardul "Șterge TOATE"
   const delAllCard = $('delAllCard');
   if (delAllCard) delAllCard.style.display = 'none';
+  const vacuumCard = $('vacuumCard');
+  if (vacuumCard) vacuumCard.style.display = 'none';
   // Tab Rapoarte — rptInst
   lock($('rptInst'), institutie);
 }
@@ -1647,17 +1649,19 @@ async function loadDbStats() {
   try {
     const r = await _apiFetch("/admin/stats", {headers: hdrs()});
     const j = await r.json();
+    if (!r.ok) { if(msg) msg.innerHTML = `❌ ${escH(j.error||'forbidden')}`; return; }
     const s = j.stats||{};
     el.style.display = "block";
+    const dbSizeSpan = s.dbSize ? `<span style="color:#2dd4bf;font-weight:700;">💾 DB: ${escH(s.dbSize)}</span>` : '';
     el.innerHTML = `
       <span style="margin-right:16px;">📁 Fluxuri: <strong>${s.flows||0}</strong></span>
       <span style="margin-right:16px;">🗂 Arhivate: <strong>${s.flowsArchived||0}</strong></span>
       <span style="margin-right:16px;">👥 Utilizatori: <strong>${s.users||0}</strong></span>
       <span style="margin-right:16px;">🔔 Notificări necitite: <strong>${s.unreadNotifications||0}</strong></span>
-      <span style="color:#2dd4bf;font-weight:700;">💾 DB: ${s.dbSize||"—"}</span>
+      ${dbSizeSpan}
     `;
-    msg.textContent = "";
-  } catch(e) { msg.textContent = "❌ " + e.message; }
+    if(msg) msg.textContent = "";
+  } catch(e) { if(msg) msg.textContent = "❌ " + e.message; }
 }
 
 // ── Delete flows — preview + modal confirmare ────────────────────────────

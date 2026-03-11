@@ -904,9 +904,23 @@ router.get('/health', async (req, res) => {
 // Alias explicit cu auth pentru admin stats
 router.get('/admin/stats', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   if (!pool || !DB_READY) return res.json({ ok: false, error: 'db_not_ready' });
   try {
+    if (actor.role === 'org_admin') {
+      // Stats filtrate pe org_id
+      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+      const orgId = aRows[0]?.org_id;
+      if (!orgId) return res.status(403).json({ error: 'org_admin_no_org' });
+      const [flowsR, usersR, notifsR, archR] = await Promise.all([
+        pool.query('SELECT COUNT(*) FROM flows WHERE org_id=$1', [orgId]),
+        pool.query('SELECT COUNT(*) FROM users WHERE org_id=$1', [orgId]),
+        pool.query('SELECT COUNT(*) FROM notifications n JOIN users u ON u.id=n.user_id WHERE u.org_id=$1 AND n.read=FALSE', [orgId]),
+        pool.query("SELECT COUNT(*) FROM flows WHERE org_id=$1 AND data->>'storage'='drive'", [orgId]),
+      ]);
+      return res.json({ ok: true, stats: { flows: parseInt(flowsR.rows[0].count), flowsArchived: parseInt(archR.rows[0].count), users: parseInt(usersR.rows[0].count), unreadNotifications: parseInt(notifsR.rows[0].count), dbSize: null, dbBytes: null } });
+    }
+    // Super-admin: stats globale
     const [flowsR, usersR, notifsR, archR] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM flows'), pool.query('SELECT COUNT(*) FROM users'),
       pool.query('SELECT COUNT(*) FROM notifications WHERE read=FALSE'),
