@@ -329,6 +329,7 @@
     <div id="archiveMsg" style="margin-top:12px;font-size:.83rem;"></div>
   </div>
 
+  <div id="adminFluxSection">
   <h2 style="color:#ffaaaa;margin-top:32px;">⚠ Administrare fluxuri</h2>
   <div id="fluxAdminCards" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
 
@@ -406,6 +407,7 @@
     <div id="msgVacuum" style="margin-top:10px;font-size:.82rem;"></div>
     <div id="dbStats" style="margin-top:8px;font-size:.8rem;color:var(--muted);display:none;"></div>
   </div>
+  </div><!-- /adminFluxSection -->
 
 </div>
 
@@ -779,11 +781,10 @@ function lockOrgAdminFilters(institutie) {
   lock($('archiveInstFilter'), institutie);
   // Tab Fluxuri — delInstFilter (ștergere vechi)
   lock($('delInstFilter'), institutie);
-  // Ascunde cardul VACUUM (super-admin only) și cardul "Șterge TOATE"
-  const delAllCard = $('delAllCard');
-  if (delAllCard) delAllCard.style.display = 'none';
-  const vacuumCard = $('vacuumCard');
-  if (vacuumCard) vacuumCard.style.display = 'none';
+  // Ascunde întreaga secțiune "Administrare fluxuri" — doar super-admin
+  const adminFluxSection = $('adminFluxSection');
+  if (adminFluxSection) adminFluxSection.style.display = 'none';
+  // (vacuumCard și delAllCard sunt în interiorul secțiunii — ascunse implicit)
   // Tab Rapoarte — rptInst
   lock($('rptInst'), institutie);
 }
