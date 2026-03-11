@@ -210,7 +210,12 @@
         <input id="nPwd" type="text" placeholder="generată automat dacă e gol"/>
       </div>
       <div class="frow"><label>Rol</label>
-        <select id="nRole"><option value="user">User</option><option value="org_admin">Admin Instituție</option><option value="admin">Admin</option></select>
+        <select id="nRole" onchange="onRoleChange(this.value)"><option value="user">User</option><option value="org_admin">Admin Instituție</option><option value="admin">Admin</option></select>
+      </div>
+      <div class="frow" id="nOrgRow" style="display:none;"><label>Organizație <span style="color:#ff8080;">*</span> <span style="color:var(--muted);font-size:.71rem;">— existentă sau nouă</span></label>
+        <input id="nOrgName" list="orgNameList" placeholder="Ex: Primăria Cluj-Napoca" autocomplete="off"/>
+        <datalist id="orgNameList"></datalist>
+        <div id="nOrgHint" style="font-size:.75rem;color:var(--muted);margin-top:4px;display:none;"></div>
       </div>
     </div>
     <div class="grid3" style="margin-top:12px;">
@@ -741,6 +746,51 @@ function renderPagination(total, current, totalPages){
   pg.appendChild(next);
 }
 
+// ── org_admin: afișează câmp organizație când se selectează rolul ─────────
+function onRoleChange(role) {
+  const row = $('nOrgRow');
+  if (!row) return;
+  if (role === 'org_admin') {
+    row.style.display = '';
+    loadOrganizationsAutocomplete();
+  } else {
+    row.style.display = 'none';
+    if ($('nOrgName')) $('nOrgName').value = '';
+    if ($('nOrgHint')) $('nOrgHint').style.display = 'none';
+  }
+}
+
+let _orgList = []; // cache organizații existente
+async function loadOrganizationsAutocomplete() {
+  if (_orgList.length) return; // deja încărcat
+  try {
+    const r = await _apiFetch('/admin/organizations', { headers: hdrs() });
+    if (!r.ok) return;
+    _orgList = await r.json();
+    const dl = $('orgNameList');
+    if (dl) dl.innerHTML = _orgList.map(o => `<option value="${escH(o.name)}">`).join('');
+    // Attach input listener pentru hint
+    const inp = $('nOrgName');
+    if (inp) inp.addEventListener('input', _updateOrgHint);
+  } catch(e) { /* ignore */ }
+}
+
+function _updateOrgHint() {
+  const val = ($('nOrgName')?.value || '').trim();
+  const hint = $('nOrgHint');
+  if (!hint) return;
+  if (!val) { hint.style.display = 'none'; return; }
+  const existing = _orgList.find(o => o.name.toLowerCase() === val.toLowerCase());
+  if (existing) {
+    hint.textContent = `✅ Organizație existentă (ID: ${existing.id}) — userul va fi asociat automat`;
+    hint.style.color = '#2dd4bf';
+  } else {
+    hint.textContent = `🆕 Organizație nouă — va fi creată automat la salvare`;
+    hint.style.color = '#ffd580';
+  }
+  hint.style.display = '';
+}
+
 function filterUsers(){
   if(!window._allUsers)return;
   const fN=($('fNume')||{value:''}).value.toLowerCase();
@@ -764,10 +814,11 @@ function filterUsers(){
 async function loadUsers(){
   try{
     const r=await _apiFetch("/admin/users",{headers:hdrs()});
-    if(r.status===401||r.status===403){logout();return;}
+    if(r.status===401){logout();return;}
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
-      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare ${escH(String(r.status))}: ${escH(err.error||"unknown")}</div>`;
+      const msg = r.status===403 && err.message ? err.message : (err.error||'Eroare '+r.status);
+      $("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">⚠️ ${escH(msg)}</div>`;
       return;
     }
     const users=await r.json();
@@ -877,14 +928,17 @@ async function createUser(){
   const personal_email = ($('nPersonalEmail')||{value:''}).value.trim();
   const force_password_change = !!($('nForcePwd')?.checked);
 
+  const org_name = ($('nOrgName')?.value || '').trim();
+  if (role === 'org_admin' && !org_name) { showMsg('createMsg','Completați organizația pentru Admin Instituție.',true); btn.disabled=false; btn.textContent='Crează utilizatorul'; return; }
   const body = {
-    email: emailManual,   // gol dacă e Workspace — backend-ul îl setează din gws_email
+    email: emailManual,
     password: pwd, nume: numeComplet, prenume, nume_familie: numeFamilie,
     functie, institutie, compartiment, role, phone,
     notif_inapp, notif_email, notif_whatsapp,
     personal_email: personal_email || undefined,
     create_gws, force_password_change,
-    gws_as_login: create_gws,  // flag explicit: emailul Workspace devine login
+    gws_as_login: create_gws,
+    org_name: org_name || undefined,
   };
   const r = await _apiFetch('/admin/users', {method:'POST', headers:hdrs(), body:JSON.stringify(body)});
   const d = await r.json();
@@ -896,7 +950,9 @@ async function createUser(){
     ($('nEmail')||{}).value=$('nPwd').value=$('nInstitutie').value=
     $('nCompartiment').value=$('nPhone').value=($('nPersonalEmail')||{}).value='';
     if($('nCreateGws')) $('nCreateGws').checked=false;
+    if($('nOrgName')) $('nOrgName').value='';
     onGwsToggle();
+    onRoleChange('user');
     loadUsers();
     showPwdModal(d);
   }else{
@@ -1667,6 +1723,22 @@ fetch("/auth/me",{headers:hdrs()})
     if(!r.ok){logout();return;}
     const u=await r.json();
     if(u.role!=="admin" && u.role!=="org_admin"){logout();return;}
+    // org_admin fara org_id → eroare configurare, nu delogăm, arătăm mesaj
+    if(u.role==="org_admin" && !u.orgId){
+      document.body.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0e1117;font-family:'Segoe UI',sans-serif;">
+        <div style="background:#161b22;border:1px solid rgba(255,100,100,.3);border-radius:16px;padding:48px 40px;max-width:480px;text-align:center;">
+          <div style="font-size:2.5rem;margin-bottom:16px;">⚠️</div>
+          <h2 style="color:#ffaaaa;margin-bottom:12px;">Cont neconfigurat</h2>
+          <p style="color:#8b949e;line-height:1.6;margin-bottom:24px;">Contul de <strong style="color:#ffd580;">Administrator Instituție</strong> nu are o organizație asociată.<br><br>
+          Contactați super-administratorul pentru a seta organizația acestui cont.</p>
+          <button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>location.href='/login.html')"
+            style="background:rgba(255,80,80,.2);border:1px solid rgba(255,80,80,.4);color:#ffaaaa;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:.9rem;">
+            Înapoi la login
+          </button>
+        </div>
+      </div>`;
+      return;
+    }
     localStorage.setItem("docflow_user",JSON.stringify({email:u.email,role:u.role,nume:u.nume||"",functie:u.functie||"",institutie:u.institutie||""}));
     if(u.force_password_change) localStorage.setItem("docflow_force_pwd","1");
     if(localStorage.getItem("docflow_force_pwd")==="1"){const b=$("forcePwdBanner");if(b)b.style.display="block";}

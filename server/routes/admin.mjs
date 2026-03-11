@@ -98,6 +98,17 @@ router.get('/users', async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
+// ── GET /admin/organizations — listă organizații (doar super-admin) ────────
+router.get('/admin/organizations', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { rows } = await pool.query('SELECT id, name FROM organizations ORDER BY name ASC');
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
 router.get('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
   const user = requireAuth(req, res); if (!user) return;
@@ -133,7 +144,7 @@ router.post('/admin/users', async (req, res) => {
     functie, institutie, compartiment, role, phone,
     notif_inapp, notif_email, notif_whatsapp, skip_verification,
     personal_email,
-    create_gws, force_password_change, gws_as_login,
+    create_gws, force_password_change, gws_as_login, org_name: bodyOrgName,
   } = req.body || {};
 
   const numeComplet = (prenume && nume_familie)
@@ -177,12 +188,27 @@ router.post('/admin/users', async (req, res) => {
     ? (await import('crypto')).default.randomBytes(32).toString('hex')
     : null;
 
-  // Determinăm org_id de folosit: org_admin folosește propriul org_id din DB (nu din JWT)
+  // Determinăm org_id de folosit:
+  // - org_admin: folosește propriul org_id din DB (nu poate crea în altă org)
+  // - admin (super-admin): dacă creează un org_admin, primește org_name → upsert în organizations
   let insertOrgId = actor.orgId || null;
   if (actor.role === 'org_admin') {
     const { rows: actorOrgRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     insertOrgId = actorOrgRows[0]?.org_id || null;
     if (!insertOrgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată.' });
+  } else if (actor.role === 'admin' && validRole === 'org_admin') {
+    const orgNameTrimmed = (bodyOrgName || '').trim();
+    if (!orgNameTrimmed) return res.status(400).json({ error: 'org_name_required', message: 'Specificați organizația pentru Administrator Instituție.' });
+    // Upsert: creează organizație nouă sau reutilizează existentă cu același nume
+    const { rows: orgRows } = await pool.query(
+      `INSERT INTO organizations (name) VALUES ($1)
+       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`,
+      [orgNameTrimmed]
+    );
+    insertOrgId = orgRows[0]?.id || null;
+    if (!insertOrgId) return res.status(500).json({ error: 'org_create_failed' });
+    logger.info({ orgName: orgNameTrimmed, orgId: insertOrgId }, 'Organizatie upsert pentru org_admin');
   }
   try {
     const { rows } = await pool.query(
