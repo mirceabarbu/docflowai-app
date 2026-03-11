@@ -1133,7 +1133,28 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           page.drawText(ro(`  Trimis spre revizuire: ${fmtDate(reviewEvForSigner.at)}`), { x:MARGIN+12, y, size:8, font:fontB, color:rgb(0.55,0.1,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
           if (reviewEvForSigner.reason) { page.drawText(ro(`  Motiv: ${reviewEvForSigner.reason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.6,0.2,0.1), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12; }
         }
+        // EMAIL_SENT trimis de acest semnatar
+        const emailEvsBySigner = (audit.events || []).filter(e => e.type === 'EMAIL_SENT' && e.by === s.email && !e._inheritedFrom);
+        for (const ee of emailEvsBySigner) {
+          ensureSpace(14);
+          page.drawText(ro(`  Email trimis: ${fmtDate(ee.at)}  catre: ${ee.to || ''}${ee.subject ? '  Subiect: ' + ee.subject : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.05,0.45,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
+        }
         y -= 6;
+      }
+      // EMAIL_SENT de catre initiator (daca nu e si semnatar)
+      const signerEmails = new Set(audit.signers.map(s => (s.email||'').toLowerCase()));
+      const initEmail = (audit.initEmail||'').toLowerCase();
+      if (initEmail && !signerEmails.has(initEmail)) {
+        const emailEvsByInit = (audit.events || []).filter(e => e.type === 'EMAIL_SENT' && (e.by||'').toLowerCase() === initEmail && !e._inheritedFrom);
+        if (emailEvsByInit.length) {
+          ensureSpace(20);
+          page.drawText(ro(`Initiator (${audit.initEmail}):`), { x:MARGIN, y, size:8, font:fontB, color:rgb(0.2,0.2,0.4) }); y -= 12;
+          for (const ee of emailEvsByInit) {
+            ensureSpace(14);
+            page.drawText(ro(`  Email trimis: ${fmtDate(ee.at)}  catre: ${ee.to || ''}${ee.subject ? '  Subiect: ' + ee.subject : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.05,0.45,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
+          }
+          y -= 4;
+        }
       }
       y -= SECTION_GAP;
       // Issue 3: Calcul timp de procesare per semnatar — pentru ORICE actiune (semnat/refuzat/revizuire)

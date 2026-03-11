@@ -1729,14 +1729,7 @@ async function submitChangePwd(){
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Mesaj personalizat <span style="color:var(--muted);font-size:.72rem;">— opțional</span></label>
         <textarea id="semBody" rows="4" readonly style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.83rem;color:#cdd6f4;">
-          <input type="checkbox" id="semAttach" checked style="width:14px;height:14px;accent-color:#2dd4bf;"> Atașează PDF semnat
-        </label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.83rem;color:#cdd6f4;">
-          <input type="checkbox" id="semLink" checked style="width:14px;height:14px;accent-color:#2dd4bf;"> Include referință Flow ID
-        </label>
-      </div>
+      <!-- PDF semnat și referință Flow ID incluse automat -->
       <div id="semMsg" style="font-size:.82rem;min-height:18px;"></div>
       <button id="semSendBtn" onclick="doSendEmail()" style="background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;color:#fff;padding:11px 24px;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;width:100%;">📤 Trimite email</button>
     </div>
@@ -1749,14 +1742,18 @@ let _semFlowId = null;
 async function openSendEmailModal(flowId) {
   const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
   _semFlowId = flowId;
-  // Fetch date flux direct (același mecanism ca flow.html)
+  // Fetch date flux direct — același mecanism ca flow.html, folosim window._apiFetch
   let f = (window._flowsEmailData || {})[flowId] || {};
   if (!f.docName) {
     try {
-      const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}`);
+      const jwt = localStorage.getItem('docflow_token') || localStorage.getItem('jwt') || '';
+      const r = await fetch(`/flows/${encodeURIComponent(flowId)}`, {
+        headers: jwt ? { 'Authorization': 'Bearer ' + jwt } : {},
+        credentials: 'include',
+      });
       const j = await r.json();
       f = j.data || j || {};
-    } catch(e) { /* folosim ce avem */ }
+    } catch(e) { console.warn('openSendEmailModal fetch:', e); }
   }
   document.getElementById('semDocNameLabel').textContent = f.docName || flowId;
   document.getElementById('semTo').value = '';
@@ -1791,8 +1788,6 @@ async function doSendEmail() {
   const to      = (document.getElementById('semTo').value || '').trim();
   const subject = (document.getElementById('semSubject').value || '').trim();
   const bodyText= (document.getElementById('semBody').value || '').trim();
-  const includeAttachment = document.getElementById('semAttach').checked;
-  const includeLink       = document.getElementById('semLink').checked;
   const msg = document.getElementById('semMsg');
   const btn = document.getElementById('semSendBtn');
 
@@ -1802,10 +1797,12 @@ async function doSendEmail() {
   btn.disabled = true; btn.textContent = '⏳ Se trimite...'; msg.textContent = '';
 
   try {
-    const r = await _apiFetch(`/flows/${encodeURIComponent(_semFlowId)}/send-email`, {
+    const jwt = localStorage.getItem('docflow_token') || localStorage.getItem('jwt') || '';
+    const r = await fetch(`/flows/${encodeURIComponent(_semFlowId)}/send-email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, subject, bodyText, includeAttachment, includeLink }),
+      headers: { 'Content-Type': 'application/json', ...(jwt ? { 'Authorization': 'Bearer ' + jwt } : {}) },
+      credentials: 'include',
+      body: JSON.stringify({ to, subject, bodyText }),
     });
     const d = await r.json();
     if (r.ok) {

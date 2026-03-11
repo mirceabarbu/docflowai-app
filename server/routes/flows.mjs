@@ -1127,7 +1127,9 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { flowId } = req.params;
-    const { to, subject, bodyText, includeAttachment = true, includeLink = true } = req.body || {};
+    const { to, subject, bodyText } = req.body || {};
+    const includeAttachment = true;  // întotdeauna atașăm PDF-ul semnat
+    const includeLink = true;        // întotdeauna includem referința Flow ID
 
     // Validare
     if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()))
@@ -1174,63 +1176,55 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
         <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#5a6a9a;font-size:12px;">${s.signedAt ? new Date(s.signedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td>
       </tr>`).join('');
 
-    const customBody = bodyText ? `<p style="margin:0 0 20px;line-height:1.7;color:#cdd6f4;">${bodyText.replace(/\n/g, '<br>')}</p>` : '';
+    // Corp mesaj — text negru pe fundal alb, newline -> <br>
+    const customBody = bodyText
+      ? `<p style="margin:0 0 24px;line-height:1.8;color:#1a1a1a;font-size:14px;white-space:pre-line;">${bodyText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</p>`
+      : '';
 
-    const linkSection = includeLink ? `
-      <div style="margin:24px 0;padding:16px;background:#1a1d2e;border-radius:8px;border-left:3px solid #2dd4bf;">
-        <p style="margin:0 0 8px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Document disponibil în platformă</p>
-        <p style="margin:0;font-size:13px;color:#7cf0e0;">Flow ID: <strong>${flowId}</strong> · Platformă: DocFlowAI</p>
-      </div>` : '';
+    // Secțiune "Document disponibil în platformă" — fond cald albastru deschis
+    const linkSection = `
+      <div style="margin:20px 0;padding:16px 20px;background:#f0f4ff;border:1px solid #c5d0f0;border-radius:10px;border-left:4px solid #7c5cff;">
+        <p style="margin:0 0 6px;font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Document disponibil în platformă</p>
+        <p style="margin:0;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong> · Platformă: <strong>DocFlowAI</strong></p>
+      </div>`;
 
     const html = `<!DOCTYPE html>
 <html lang="ro"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#0f1117;font-family:'Segoe UI',Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#f5f7fc;font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a;">
   <div style="max-width:620px;margin:0 auto;padding:32px 16px;">
 
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1a1d2e,#12152a);border:1px solid rgba(157,176,255,.15);border-radius:14px;padding:28px 32px;margin-bottom:24px;">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-        <div style="width:36px;height:36px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">📄</div>
+    <!-- Header gradient -->
+    <div style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:14px 14px 0 0;padding:24px 32px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:40px;height:40px;background:rgba(255,255,255,.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;">📄</div>
         <div>
-          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.8px;">Document semnat electronic</div>
-          <div style="font-size:18px;font-weight:700;color:#eaf0ff;">${data.docName || flowId}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.8px;">Document semnat electronic</div>
+          <div style="font-size:17px;font-weight:700;color:#fff;">${data.docName || flowId}</div>
         </div>
       </div>
+    </div>
 
+    <!-- Info card -->
+    <div style="background:#fff;border:1px solid #dde4f5;border-top:none;border-radius:0 0 14px 14px;padding:20px 32px 24px;margin-bottom:20px;">
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <tr><td style="padding:4px 0;color:#888;width:130px;">Instituție</td><td style="color:#eaf0ff;">${data.institutie || '—'}</td></tr>
-        <tr><td style="padding:4px 0;color:#888;">Compartiment</td><td style="color:#eaf0ff;">${data.compartiment || '—'}</td></tr>
-        <tr><td style="padding:4px 0;color:#888;">Finalizat la</td><td style="color:#2dd4bf;">${data.completedAt ? new Date(data.completedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td></tr>
-        <tr><td style="padding:4px 0;color:#888;">Flow ID</td><td style="color:#9db0ff;font-family:monospace;font-size:12px;">${flowId}</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6a9a;width:140px;font-weight:600;">Instituție</td><td style="color:#1a1a1a;">${data.institutie || '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Compartiment</td><td style="color:#1a1a1a;">${data.compartiment || '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Finalizat la</td><td style="color:#1a7a4a;font-weight:600;">${data.completedAt ? new Date(data.completedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Flow ID</td><td style="color:#7c5cff;font-family:monospace;font-size:12px;">${flowId}</td></tr>
       </table>
     </div>
 
-    <!-- Corp personalizat -->
-    ${customBody}
-
-    <!-- Semnatari -->
-    <div style="background:#f0f4ff;border:1px solid #c5d0f0;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-      <p style="margin:0 0 14px;font-size:12px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">Semnatari</p>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#1a2340;">
-        <thead>
-          <tr style="border-bottom:2px solid #c5d0f0;">
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-weight:600;">Nume</th>
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-weight:600;">Rol</th>
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-weight:600;">Status</th>
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-weight:600;">Data</th>
-          </tr>
-        </thead>
-        <tbody>${signersTable}</tbody>
-      </table>
+    <!-- Corp personalizat (text negru) -->
+    <div style="background:#fff;border:1px solid #dde4f5;border-radius:10px;padding:20px 24px;margin-bottom:20px;">
+      ${customBody || '<p style="margin:0;color:#1a1a1a;font-size:14px;">Vă transmitem atașat documentul semnat electronic.</p>'}
     </div>
 
+    <!-- Document disponibil în platformă -->
     ${linkSection}
 
-    <!-- Semnătură expeditor -->
-    <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:20px;margin-top:8px;">
-      <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#eaf0ff;">${senderName}</p>
-      ${senderTitle ? `<p style="margin:0 0 2px;font-size:12px;color:#9db0ff;">${senderTitle}</p>` : ''}
-      <p style="margin:8px 0 0;font-size:11px;color:#555;">Trimis prin DocFlowAI · noreply@docflowai.ro</p>
+    <!-- Footer -->
+    <div style="border-top:1px solid #dde4f5;padding-top:16px;margin-top:4px;text-align:center;">
+      <p style="margin:0 0 4px;font-size:12px;color:#5a6a9a;">Trimis prin <strong>DocFlowAI</strong> · noreply@docflowai.ro</p>
     </div>
 
   </div>

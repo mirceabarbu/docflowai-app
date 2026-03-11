@@ -705,14 +705,7 @@
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Mesaj personalizat <span style="color:var(--muted);font-size:.72rem;">— opțional</span></label>
         <textarea id="flowSemBody" rows="4" readonly style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.83rem;color:#cdd6f4;">
-          <input type="checkbox" id="flowSemAttach" checked style="width:14px;height:14px;accent-color:#2dd4bf;"> Atașează PDF semnat
-        </label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.83rem;color:#cdd6f4;">
-          <input type="checkbox" id="flowSemLink" checked style="width:14px;height:14px;accent-color:#2dd4bf;"> Include referință Flow ID
-        </label>
-      </div>
+      <!-- PDF semnat și referință Flow ID incluse automat -->
       <div id="flowSemMsg" style="font-size:.82rem;min-height:18px;"></div>
       <button id="flowSemSendBtn" onclick="doFlowSendEmail()" style="background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;color:#fff;padding:11px 24px;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;width:100%;">📤 Trimite email</button>
     </div>
@@ -753,8 +746,7 @@ async function doFlowSendEmail() {
   const to      = (document.getElementById('flowSemTo').value||'').trim();
   const subject = (document.getElementById('flowSemSubject').value||'').trim();
   const bodyText= (document.getElementById('flowSemBody').value||'').trim();
-  const includeAttachment = document.getElementById('flowSemAttach').checked;
-  const includeLink       = document.getElementById('flowSemLink').checked;
+
   const msg = document.getElementById('flowSemMsg');
   const btn = document.getElementById('flowSemSendBtn');
   if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { msg.style.color='#ffaaaa'; msg.textContent='Introduceți o adresă de email validă.'; return; }
@@ -764,7 +756,7 @@ async function doFlowSendEmail() {
   try {
     const r = await _apiFetch(`/flows/${encodeURIComponent(_flowSemId)}/send-email`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ to, subject, bodyText, includeAttachment, includeLink }),
+      body: JSON.stringify({ to, subject, bodyText }),
     });
     const d = await r.json();
     if (r.ok) { msg.style.color='#2dd4bf'; msg.textContent=`✅ Email trimis cu succes către ${to}`; btn.textContent='✅ Trimis!'; setTimeout(()=>closeFlowSendEmailModal(),2000); }
