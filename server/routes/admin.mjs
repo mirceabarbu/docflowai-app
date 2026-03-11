@@ -1008,7 +1008,8 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       if (!PDFLibAdmin) return res.status(503).json({ error: 'pdf_lib_not_available' });
       const { PDFDocument, rgb, StandardFonts } = PDFLibAdmin;
       const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-      const ro = t => String(t || '').split('').map(ch => diacr[ch] || ch).join('');
+      // ro() — inlocuieste diacritice + elimina caractere non-WinAnsi (emoji, unicode > 0xFF) pentru pdf-lib
+      const ro = t => String(t || '').replace(/[^\x00-\xFF]/g, '?').split('').map(ch => diacr[ch] || ch).join('');
       // Format date cu timezone Romania
       const fmtDate = iso => iso ? new Date(iso).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—';
       // Traduceri tip eveniment → română
@@ -1046,13 +1047,13 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       // URGENT badge in header
       if (audit.urgent) {
         page.drawRectangle({ x:PAGE_W-130, y:PAGE_H-58, width:100, height:18, color:rgb(0.85,0.1,0.1) });
-        page.drawText('🚨 URGENT', { x:PAGE_W-125, y:PAGE_H-50, size:10, font:fontB, color:rgb(1,1,1) });
+        page.drawText('!! URGENT !!', { x:PAGE_W-130, y:PAGE_H-50, size:10, font:fontB, color:rgb(1,1,1) });
       }
       y = PAGE_H - 85;
       drawText('INFORMATII FLUX', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
       const infoRows = [
-        ['Flow ID:', audit.flowId], ['Document:', (audit.urgent ? '🚨 [URGENT] ' : '') + audit.docName],
+        ['Flow ID:', audit.flowId], ['Document:', (audit.urgent ? '[URGENT] ' : '') + audit.docName],
         ['Initiator:', `${audit.initName} <${audit.initEmail}>`],
         ['Institutie:', audit.institutie || '—'], ['Compartiment:', audit.compartiment || '—'],
         ['Creat:', fmtDate(audit.createdAt)],

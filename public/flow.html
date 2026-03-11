@@ -306,6 +306,8 @@
 
     const currentId = flow.currentSignerId || flow.data?.currentSignerId || flow.currentSigner || flow.data?.currentSigner;
 
+    const isFlowRefused = signers.some(s => (s.status || '').toLowerCase() === 'refused');
+
     for(const s of signers){
       const isCurrent = currentId && (s.id===currentId || s.signerId===currentId || s.token===currentId);
       const st = (s.status || "").toLowerCase();
@@ -314,6 +316,7 @@
       if(st==="signed" || st==="done") right = `<span class="badge ok">✅ semnat</span>`;
       else if(st==="refused") right = `<span class="badge bad">⛔ refuz</span>`;
       else if(isCurrent) right = `<span class="badge warn">⏱️ curent</span>`;
+      else if(isFlowRefused && st==="pending") right = `<span class="badge bad">🚫 anulat</span>`;
 
       const when = st==="refused" ? (s.refusedAt || s.at) : (s.signedAt || s.at || s.updatedAt || s.date);
       const metaBits = [];

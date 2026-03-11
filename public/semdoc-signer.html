@@ -385,12 +385,14 @@ th{ color: var(--sub) !important; }
         const whoEl = $("whoSigners");
         if (!whoEl) return;
         const esc3 = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const isRefused = (j.signers||[]).some(x => x.status === 'refused');
         whoEl.innerHTML = (j.signers||[]).map(x => {
           const st = x.status==='signed'&&!x.pdfUploaded?'current':x.status;
-          const icon = st==='signed'?'✅':st==='refused'?'⛔':st==='current'?'✍':'⏳';
-          const badgeColor = st==='signed'?'rgba(45,212,191,.2)':st==='refused'?'rgba(255,80,80,.2)':st==='current'?'rgba(124,92,255,.25)':'rgba(255,255,255,.06)';
-          const badgeText = st==='signed'?'semnat':st==='refused'?'refuzat':st==='current'?'curent':'în așteptare';
-          const textColor = st==='signed'?'#7cf0e0':st==='refused'?'#ffaaaa':st==='current'?'#b39dff':'#9db0ff';
+          const isCancelled = isRefused && st === 'pending';
+          const icon = st==='signed'?'✅':st==='refused'?'⛔':st==='current'?'✍':isCancelled?'🚫':'⏳';
+          const badgeColor = st==='signed'?'rgba(45,212,191,.2)':st==='refused'?'rgba(255,80,80,.2)':st==='current'?'rgba(124,92,255,.25)':isCancelled?'rgba(255,80,80,.12)':'rgba(255,255,255,.06)';
+          const badgeText = st==='signed'?'semnat':st==='refused'?'refuzat':st==='current'?'curent':isCancelled?'anulat':'în așteptare';
+          const textColor = st==='signed'?'#7cf0e0':st==='refused'?'#ffaaaa':st==='current'?'#b39dff':isCancelled?'#ff9999':'#9db0ff';
           const extra = [x.functie, x.compartiment].filter(Boolean).join(' · ');
           const isMe = x.token === token;
           // Badge delegare — vizibil daca semnatarul e delegat
