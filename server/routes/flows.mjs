@@ -1162,12 +1162,16 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
       status: s.signed ? 'semnat' : (s.refused ? 'refuzat' : 'în așteptare'),
     }));
 
+    const statusColor = (st) => st === 'semnat' ? '#1a7a4a' : st === 'refuzat' ? '#b03030' : '#7c5cff';
+    const statusBg    = (st) => st === 'semnat' ? '#d4f5e5' : st === 'refuzat' ? '#fde8e8' : '#ede8ff';
     const signersTable = signers.map(s => `
       <tr>
-        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;">${s.name}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#9db0ff;">${s.rol}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#2dd4bf;">${s.status}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#888;">${s.signedAt ? new Date(s.signedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#1a2340;font-weight:500;">${s.name}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#3d5299;font-weight:600;">${s.rol}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;">
+          <span style="background:${statusBg(s.status)};color:${statusColor(s.status)};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">${s.status.toUpperCase()}</span>
+        </td>
+        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#5a6a9a;font-size:12px;">${s.signedAt ? new Date(s.signedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td>
       </tr>`).join('');
 
     const customBody = bodyText ? `<p style="margin:0 0 20px;line-height:1.7;color:#cdd6f4;">${bodyText.replace(/\n/g, '<br>')}</p>` : '';
@@ -1205,15 +1209,15 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     ${customBody}
 
     <!-- Semnatari -->
-    <div style="background:#1a1d2e;border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-      <p style="margin:0 0 14px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Semnatari</p>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#eaf0ff;">
+    <div style="background:#f0f4ff;border:1px solid #c5d0f0;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+      <p style="margin:0 0 14px;font-size:12px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">Semnatari</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#1a2340;">
         <thead>
-          <tr style="border-bottom:1px solid #2a2d3e;">
-            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Nume</th>
-            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Rol</th>
-            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Status</th>
-            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Data</th>
+          <tr style="border-bottom:2px solid #c5d0f0;">
+            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-weight:600;">Nume</th>
+            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-weight:600;">Rol</th>
+            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-weight:600;">Status</th>
+            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-weight:600;">Data</th>
           </tr>
         </thead>
         <tbody>${signersTable}</tbody>
@@ -1242,7 +1246,9 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     const payload = { from: MAIL_FROM, to: to.trim(), subject: subject.trim(), html };
     if (includeAttachment && pdfB64) {
       const pdfName = `${(data.docName || flowId).replace(/[^a-zA-Z0-9_\-\.]/g, '_')}_semnat.pdf`;
-      payload.attachments = [{ filename: pdfName, content: pdfB64 }];
+      // Strip data URL prefix dacă există (Resend necesită base64 curat)
+      const cleanPdfB64 = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+      payload.attachments = [{ filename: pdfName, content: cleanPdfB64 }];
     }
 
     const r = await fetch('https://api.resend.com/emails', {

@@ -1010,7 +1010,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         'REVIEW_REQUESTED': 'TRIMIS SPRE REVIZUIRE', 'FLOW_REINITIATED_AFTER_REVIEW': 'FLUX REINITIAT',
         'FLOW_COMPLETED': 'FLUX FINALIZAT', 'FLOW_CANCELLED': 'FLUX ANULAT', 'REFUSED': 'REFUZAT',
         'DELEGATED': 'DELEGAT', 'PDF_DOWNLOADED': 'PDF DESCARCAT', 'REMINDER': 'REMINDER TRIMIS',
-        'YOUR_TURN': 'NOTIFICARE RAND', 'FLOW_REINITIATED_AFTER_REVIEW': 'REINITIAT DUPA REVIZUIRE',
+        'YOUR_TURN': 'NOTIFICARE RAND', 'EMAIL_SENT': 'EMAIL EXTERN TRIMIS',
       };
       const evLabel = (type) => EVENT_LABELS_RO[type] || (type||'').replace(/_/g, ' ');
       const pdfDoc = await PDFDocument.create();

@@ -402,11 +402,22 @@
       const byRaw = e.who || e.actor || e.by || "";
       const who = nameMap[byRaw] ? esc(nameMap[byRaw]) : esc(byRaw);
       const kind = (e.type || e.kind || e.event || "EVENT").toString();
-      const extra = e.msg || e.message || e.detail || e.reason || "";
-      const line = [kind, who].filter(Boolean).join(' · ');
-      const txt = extra ? `${line} — ${esc(extra)}` : line;
+      const EVENT_LABELS = {
+        'FLOW_CREATED':'FLUX CREAT','SIGNED':'SEMNAT','SIGNED_PDF_UPLOADED':'PDF SEMNAT ÎNCĂRCAT',
+        'FLOW_COMPLETED':'FLUX FINALIZAT','FLOW_CANCELLED':'FLUX ANULAT','REFUSED':'REFUZAT',
+        'DELEGATED':'DELEGAT','PDF_DOWNLOADED':'PDF DESCĂRCAT','REVIEW_REQUESTED':'TRIMIS SPRE REVIZUIRE',
+        'FLOW_REINITIATED':'REINIȚIAT','FLOW_REINITIATED_AFTER_REVIEW':'REINIȚIAT DUPĂ REVIZUIRE',
+        'EMAIL_SENT':'📧 EMAIL TRIMIS EXTERN',
+      };
+      const kindLabel = EVENT_LABELS[kind] || kind.replace(/_/g,' ');
+      const extra = kind === 'EMAIL_SENT'
+        ? `către: ${esc(e.to||'')} · subiect: ${esc(e.subject||'')}`
+        : (e.msg || e.message || e.detail || e.reason || "");
+      const line = [kindLabel, who].filter(Boolean).join(' · ');
+      const txt = extra ? `${line} — ${extra}` : line;
       const d = document.createElement("div");
       d.className = "ev";
+      if (kind === 'EMAIL_SENT') d.style.cssText = "border-left:2px solid rgba(45,212,191,.6);padding-left:8px;";
       if (isInherited) d.style.cssText = "opacity:.65;border-left:2px solid rgba(124,92,255,.35);padding-left:8px;";
       d.innerHTML = `<div class="ts">${ts}</div><div class="txt">${txt}</div>`;
       evBox.appendChild(d);
@@ -724,9 +735,9 @@ function openFlowSendEmailModal(flowId, docName, institutie, compartiment, compl
   const institutieStr   = (u.institutie   || institutie)          ? `\nInstituție: ${u.institutie   || institutie}`          : '';
   const compartimentStr = (u.compartiment || compartiment)        ? `\nCompartiment: ${u.compartiment || compartiment}`     : '';
   document.getElementById('flowSemBody').value =
-`Doamnă/Domnule,
+`Stimată/e Doamnă/Domnule,
 
-Vă transmitem atașat documentul „${docName}", semnat electronic de toate părțile implicate.
+Vă transmitem atașat documentul „${docName}", în vederea aplicării prevederilor legale.
 
 Cu stimă,
 Nume: ${senderName}${functieStr}${institutieStr}${compartimentStr}

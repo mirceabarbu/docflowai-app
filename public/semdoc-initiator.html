@@ -1746,10 +1746,18 @@ async function submitChangePwd(){
 <script>
 let _semFlowId = null;
 
-function openSendEmailModal(flowId) {
-  const f = (window._flowsEmailData || {})[flowId] || {};
+async function openSendEmailModal(flowId) {
   const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
   _semFlowId = flowId;
+  // Fetch date flux direct (același mecanism ca flow.html)
+  let f = (window._flowsEmailData || {})[flowId] || {};
+  if (!f.docName) {
+    try {
+      const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}`);
+      const j = await r.json();
+      f = j.data || j || {};
+    } catch(e) { /* folosim ce avem */ }
+  }
   document.getElementById('semDocNameLabel').textContent = f.docName || flowId;
   document.getElementById('semTo').value = '';
   document.getElementById('semMsg').textContent = '';
@@ -1757,16 +1765,15 @@ function openSendEmailModal(flowId) {
   document.getElementById('semSendBtn').disabled = false;
   document.getElementById('semSendBtn').textContent = '📤 Trimite email';
   document.getElementById('semSubject').value = `Document semnat electronic: ${f.docName || flowId}`;
-  // Corp pre-completat + readonly
   const senderName  = u.nume || u.email || '';
   const today = new Date().toLocaleDateString('ro-RO');
   const functieStr      = u.functie                               ? `\nFuncție: ${u.functie}`                               : '';
   const institutieStr   = (u.institutie   || f.institutie)        ? `\nInstituție: ${u.institutie   || f.institutie}`        : '';
   const compartimentStr = (u.compartiment || f.compartiment)      ? `\nCompartiment: ${u.compartiment || f.compartiment}`   : '';
   document.getElementById('semBody').value =
-`Doamnă/Domnule,
+`Stimată/e Doamnă/Domnule,
 
-Vă transmitem atașat documentul „${f.docName || flowId}", semnat electronic de toate părțile implicate.
+Vă transmitem atașat documentul „${f.docName || flowId}", în vederea aplicării prevederilor legale.
 
 Cu stimă,
 Nume: ${senderName}${functieStr}${institutieStr}${compartimentStr}
