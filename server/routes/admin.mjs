@@ -103,15 +103,18 @@ router.get('/admin/users', async (req, res) => {
   const user = requireAuth(req, res); if (!user) return;
   if (!isAdminOrOrgAdmin(user)) return res.status(403).json({ error: 'forbidden' });
   try {
-    // Citim orgId din DB pentru a fi siguri ca avem valoarea corecta (nu din JWT vechi)
+    // Citim orgId din DB — JWT poate fi vechi
     const { rows: selfRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [user.email.toLowerCase()]);
     const orgId = selfRows[0]?.org_id || null;
+    // org_admin TREBUIE să aibă org_id setat — altfel nu poate accesa
+    if (user.role === 'org_admin' && !orgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată. Contactați super-administratorul.' });
     let query, params;
     if (orgId) {
+      // org_admin: filtrat strict la org_id propriu; admin cu org_id: la fel
       query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [orgId];
     } else {
-      // Admin fara org (fallback) — vede toti userii
+      // admin fara org_id (super-admin global) — vede toti
       query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [];
     }
@@ -174,6 +177,13 @@ router.post('/admin/users', async (req, res) => {
     ? (await import('crypto')).default.randomBytes(32).toString('hex')
     : null;
 
+  // Determinăm org_id de folosit: org_admin folosește propriul org_id din DB (nu din JWT)
+  let insertOrgId = actor.orgId || null;
+  if (actor.role === 'org_admin') {
+    const { rows: actorOrgRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    insertOrgId = actorOrgRows[0]?.org_id || null;
+    if (!insertOrgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată.' });
+  }
   try {
     const { rows } = await pool.query(
       `INSERT INTO users
@@ -194,7 +204,7 @@ router.post('/admin/users', async (req, res) => {
         numeComplet,
         prn, fam,
         (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(),
-        validRole, phoneVal, ni, ne, nw, actor.orgId || null,
+        validRole, phoneVal, ni, ne, nw, insertOrgId,
         (personal_email || '').trim().toLowerCase() || null,
         !needsVerification,
         verificationToken,
@@ -595,12 +605,23 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
+    // org_admin: filtrare strictă după org_id
+    let apOrgId = null;
+    if (actor.role === 'org_admin') {
+      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+      apOrgId = aRows[0]?.org_id || null;
+      if (!apOrgId) return res.status(403).json({ error: 'org_admin_no_org' });
+    }
     const days = parseInt(req.query.days || '30');
     const filterInst = (req.query.institutie || '').trim();
     const filterDept = (req.query.compartiment || '').trim();
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    const { rows } = await pool.query('SELECT id,data,created_at FROM flows WHERE created_at < $1 ORDER BY created_at ASC', [cutoff]);
-    const { rows: userRows } = await pool.query('SELECT email,institutie,compartiment FROM users');
+    const { rows } = apOrgId
+      ? await pool.query('SELECT id,data,created_at FROM flows WHERE created_at < $1 AND org_id=$2 ORDER BY created_at ASC', [cutoff, apOrgId])
+      : await pool.query('SELECT id,data,created_at FROM flows WHERE created_at < $1 ORDER BY created_at ASC', [cutoff]);
+    const { rows: userRows } = apOrgId
+      ? await pool.query('SELECT email,institutie,compartiment FROM users WHERE org_id=$1', [apOrgId])
+      : await pool.query('SELECT email,institutie,compartiment FROM users');
     const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
     const eligible = rows.filter(r => {
       const d = r.data; if (!d) return false;
@@ -771,7 +792,16 @@ router.get('/admin/flows/list', async (req, res) => {
     const search = (req.query.search || '').trim().toLowerCase();
     // FIX v3.2.2: escape caractere speciale LIKE
     const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
+    // org_admin: filtrare strictă după org_id
+    let actorOrgId = null;
+    if (actor.role === 'org_admin') {
+      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+      actorOrgId = aRows[0]?.org_id || null;
+      if (!actorOrgId) return res.status(403).json({ error: 'org_admin_no_org' });
+    }
     const conditions = ['1=1']; const params = [];
+    // Org filter aplicat primul — cel mai restrictiv
+    if (actorOrgId) { params.push(actorOrgId); conditions.push(`org_id = $${params.length}`); }
     if (statusFilter === 'pending') conditions.push("(data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused' AND (data->>'status') IS DISTINCT FROM 'cancelled'");
     else if (statusFilter === 'completed') conditions.push("(data->>'completed') = 'true'");
     else if (statusFilter === 'refused') conditions.push("(data->>'status') = 'refused'");
@@ -1295,6 +1325,8 @@ router.get('/admin/user-activity', async (req, res) => {
     // Toti utilizatorii din aceeași organizație
     const { rows: selfRow } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     const orgId = selfRow[0]?.org_id || null;
+    // org_admin fără org_id → acces refuzat
+    if (actor.role === 'org_admin' && !orgId) return res.status(403).json({ error: 'org_admin_no_org' });
     let userQuery, userParams;
     if (orgId) {
       userQuery = 'SELECT email, nume, functie, institutie, compartiment, role FROM users WHERE org_id=$1 ORDER BY nume';
