@@ -825,7 +825,7 @@ th{ color: var(--sub) !important; }
 
         const MARGIN = 40;
         const n = signers.length;
-        const cols = n <= 3 ? n : n <= 6 ? Math.ceil(n/2) : Math.ceil(n/3);
+        const cols = Math.min(n, 2); // max 2 pe rand; ultimul impar ramane la latimea unei casute
         const rows = Math.ceil(n/cols);
         const cellW = (pW - MARGIN*2) / cols;
         const cellH = 80;
