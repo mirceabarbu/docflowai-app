@@ -330,9 +330,9 @@
   </div>
 
   <h2 style="color:#ffaaaa;margin-top:32px;">⚠ Administrare fluxuri</h2>
-  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
+  <div id="fluxAdminCards" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
 
-    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
+    <div id="delOldCard" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
       <div style="font-weight:700;margin-bottom:6px;color:var(--sub);">🗑 Șterge definitiv fluxurile vechi</div>
       <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">Elimină complet fluxurile mai vechi de X zile. <strong style="color:#ffaaaa;">Ireversibil</strong> — folosește arhivarea în Drive în primul rând.</div>
       <div style="font-size:.78rem;color:rgba(255,170,100,.7);margin-bottom:12px;">⚠ Dacă fluxul nu e arhivat în Drive, PDF-urile se pierd definitiv.</div>
@@ -352,7 +352,7 @@
       <div id="msgOldFlows" style="margin-top:10px;font-size:.82rem;"></div>
     </div>
 
-    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,80,80,.15);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
+    <div id="delAllCard" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,80,80,.15);border-radius:14px;padding:22px 24px;flex:1;min-width:260px;">
       <div style="font-weight:700;margin-bottom:6px;color:#ffaaaa;">💣 Șterge TOATE fluxurile</div>
       <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px;">Acțiune <strong style="color:#ffaaaa;">ireversibilă</strong> — elimină complet toate fluxurile din baza de date, inclusiv PDF-urile nearkhivate.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
@@ -777,6 +777,11 @@ function lockOrgAdminFilters(institutie) {
   lock($('flowInstFilter'), institutie);
   // Tab Fluxuri — archiveInstFilter
   lock($('archiveInstFilter'), institutie);
+  // Tab Fluxuri — delInstFilter (ștergere vechi)
+  lock($('delInstFilter'), institutie);
+  // Tab Fluxuri — ascunde cardul "Șterge TOATE" — prea periculos pentru org_admin
+  const delAllCard = $('delAllCard');
+  if (delAllCard) delAllCard.style.display = 'none';
   // Tab Rapoarte — rptInst
   lock($('rptInst'), institutie);
 }
@@ -1513,6 +1518,13 @@ async function loadArchiveInstData() {
     const o = document.createElement("option"); o.value = inst; o.textContent = inst; s2.appendChild(o);
   });
   if (cur2) s2.value = cur2;
+  // org_admin: re-aplică lock pe delInstFilter
+  if (window._orgAdminInstitutie) {
+    let found=false; for(const o of s2.options){if(o.value===window._orgAdminInstitutie){found=true;break;}}
+    if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);s2.appendChild(o);}
+    s2.value=window._orgAdminInstitutie; s2.disabled=true;
+    s2.style.background='rgba(45,212,191,.08)';s2.style.borderColor='rgba(45,212,191,.3)';s2.style.color='#2dd4bf';s2.style.cursor='not-allowed';
+  }
   // Populează instituții ștergere totală
   const s3 = document.getElementById("allInstFilter");
   const cur3 = s3.value;
