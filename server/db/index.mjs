@@ -463,6 +463,24 @@ const MIGRATIONS = [
       ALTER TABLE users ADD CONSTRAINT users_role_check
         CHECK (role IN ('admin', 'org_admin', 'user'));
     `
+  },
+  // ── F-06: Documente suport atașate fluxului ─────────────────────────────
+  {
+    id: '025_flow_attachments',
+    sql: `
+      CREATE TABLE IF NOT EXISTS flow_attachments (
+        id          SERIAL PRIMARY KEY,
+        flow_id     TEXT        NOT NULL,
+        filename    TEXT        NOT NULL,
+        mime_type   TEXT        NOT NULL DEFAULT 'application/octet-stream',
+        size_bytes  INTEGER     NOT NULL DEFAULT 0,
+        data        BYTEA       NOT NULL,
+        drive_file_id   TEXT,
+        drive_file_link TEXT,
+        uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_flow_att_flow ON flow_attachments(flow_id);
+    `
   }
 ];
 

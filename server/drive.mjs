@@ -76,7 +76,7 @@ async function uploadFile(drive, folderId, name, buffer, mimeType) {
 }
 
 // Arhivează un flow complet
-export async function archiveFlow(flowData) {
+export async function archiveFlow(flowData, pool) {
   if (!ROOT_FOLDER_ID) throw new Error("GOOGLE_DRIVE_FOLDER_ID lipsește.");
   const drive = getDrive();
 
@@ -110,7 +110,32 @@ export async function archiveFlow(flowData) {
     result.driveFileLinkOriginal = up.webViewLink;
   }
 
-  // 3. Audit JSON
+  // 3. Documente suport (flow_attachments) — dacă pool disponibil
+  if (pool) {
+    try {
+      const { rows: attachments } = await pool.query(
+        'SELECT id, filename, mime_type, data FROM flow_attachments WHERE flow_id=$1 ORDER BY uploaded_at ASC',
+        [flowData.flowId]
+      );
+      const driveAttachments = [];
+      for (const att of attachments) {
+        const safeFn = att.filename.replace(/[^\w\-\.]/g, '_').substring(0, 100);
+        const up = await uploadFile(drive, folderId, `${prefix}_suport_${safeFn}`, att.data, att.mime_type);
+        // Actualizare drive_file_id în DB
+        await pool.query(
+          'UPDATE flow_attachments SET drive_file_id=$1, drive_file_link=$2 WHERE id=$3',
+          [up.id, up.webViewLink, att.id]
+        ).catch(() => {});
+        driveAttachments.push({ id: att.id, filename: att.filename, driveFileId: up.id, driveFileLink: up.webViewLink });
+      }
+      if (driveAttachments.length) result.driveAttachments = driveAttachments;
+    } catch(attErr) {
+      // Non-fatal — continuăm arhivarea fără documente suport
+      console.warn('[drive] archiveFlow attachments error (non-fatal):', attErr.message);
+    }
+  }
+
+  // 4. Audit JSON
   const audit = {
     flowId: flowData.flowId,
     docName: flowData.docName,

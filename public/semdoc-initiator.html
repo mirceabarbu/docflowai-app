@@ -312,6 +312,21 @@ th{ color: var(--sub) !important; }
               </table>
             </div>
 
+            <!-- F-06: Documente suport -->
+            <div class="col-12">
+              <div style="border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 16px;background:rgba(255,255,255,.03);margin-bottom:4px;">
+                <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:8px;">📎 Documente suport <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional, max 5 fișiere × 10 MB (PDF, ZIP, RAR)</span></div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                  <label id="attachPickerLabel" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;cursor:pointer;font-size:.83rem;color:#b39dff;font-weight:600;">
+                    ➕ Adaugă fișier
+                    <input id="attachPicker" type="file" accept=".pdf,.zip,.rar,application/pdf,application/zip,application/x-rar-compressed" multiple style="display:none;" />
+                  </label>
+                  <span id="attachHint" style="font-size:.78rem;color:var(--muted);">Niciun fișier selectat</span>
+                </div>
+                <div id="attachList" style="margin-top:8px;display:flex;flex-direction:column;gap:4px;"></div>
+              </div>
+            </div>
+
             <div class="col-12">
               <div class="row">
                 <button id="btnCreate" class="btn" type="button">Pornește flux</button>
@@ -1059,14 +1074,31 @@ th{ color: var(--sub) !important; }
                 ${refusedByAprobat && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<span style="color:#ffaaaa;font-size:.78rem;font-weight:600;">⛔ Refuzat de APROBATOR — flux nou necesar</span>` : ''}
                 ${!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" style="background:rgba(250,180,0,.18);border:1px solid rgba(250,180,0,.4);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Doc revizuit</button>` : ''}
                 ${!isCancelled && (f.initEmail||'').toLowerCase() === currentUserEmail && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Sterge flux">🗑</button>` : ''}
-                ${!isCancelled && !f.allSigned && !isRefused && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(120,120,120,.1);border:1px solid rgba(120,120,120,.3);color:#aaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Anulează flux">🚫 Anulează</button>` : ''}
+                ${!isCancelled && !f.allSigned && !f.completed && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(120,120,120,.1);border:1px solid rgba(120,120,120,.3);color:#aaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Anulează flux">🚫 Anulează</button>` : ''}
               </div>
             </div>
             <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
               ${signerRows}
             </div>
+            <div id="attRow_${f.flowId}" style="display:none;border-top:1px solid rgba(255,255,255,.04);padding-top:8px;margin-top:6px;"></div>
           </div>`;
         }).join("");
+
+        // F-06: Fetch asincron documente suport pentru fluxurile vizibile
+        flows.forEach(f => {
+          _apiFetch(`/flows/${encodeURIComponent(f.flowId)}/attachments`).then(r => r.ok ? r.json() : null).then(j => {
+            const atts = j?.attachments || [];
+            const row = document.getElementById(`attRow_${f.flowId}`);
+            if (!row || !atts.length) return;
+            const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
+            row.style.display = '';
+            row.innerHTML = `<div style="font-size:.78rem;color:var(--muted);font-weight:600;margin-bottom:5px;">📎 Documente suport</div>` +
+              atts.map(a => `<a href="/flows/${encodeURIComponent(f.flowId)}/attachments/${a.id}" download="${a.filename.replace(/"/g,'')}"
+                style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:rgba(124,92,255,.1);border-radius:6px;text-decoration:none;color:#b39dff;font-size:.78rem;margin-right:6px;margin-bottom:4px;border:1px solid rgba(124,92,255,.2);">
+                ${iconByMime(a.mimeType)} ${a.filename} <span style="color:var(--muted)">${(a.sizeBytes/1024).toFixed(0)}KB</span> ⬇</a>`
+              ).join('');
+          }).catch(() => {});
+        });
       }
 
 
@@ -1532,6 +1564,54 @@ async function signFromFluxuri(flowId) {
       // Create flow
       validateForm(); // inițializare stare buton
 
+      // ── F-06: Attachment picker ─────────────────────────────────────────
+      const _attachFiles = []; // [{file, name}]
+      const ATTACH_MAX = 5;
+      const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+
+      function _renderAttachList() {
+        const list = $('attachList');
+        const hint = $('attachHint');
+        hint.textContent = _attachFiles.length ? `${_attachFiles.length} fișier(e) selectat(e)` : 'Niciun fișier selectat';
+        list.innerHTML = _attachFiles.map((af, i) => `
+          <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(124,92,255,.1);border-radius:6px;font-size:.8rem;">
+            <span style="color:#b39dff;">📄</span>
+            <span style="flex:1;color:var(--sub);">${af.file.name}</span>
+            <span style="color:var(--muted);">${(af.file.size/1024).toFixed(0)} KB</span>
+            <button onclick="_removeAttach(${i})" style="background:none;border:none;color:#ff8080;cursor:pointer;font-size:.85rem;padding:0 2px;" title="Elimină">✕</button>
+          </div>`).join('');
+      }
+      window._removeAttach = (i) => { _attachFiles.splice(i, 1); _renderAttachList(); };
+
+      $('attachPicker').addEventListener('change', (e) => {
+        for (const f of e.target.files) {
+          if (_attachFiles.length >= ATTACH_MAX) { alert(`Maxim ${ATTACH_MAX} fișiere suport.`); break; }
+          if (f.size > ATTACH_MAX_BYTES) { alert(`„${f.name}" depășește 10 MB și nu a fost adăugat.`); continue; }
+          const ext = f.name.split('.').pop().toLowerCase();
+          if (!['pdf','zip','rar'].includes(ext)) { alert(`„${f.name}": tip nesuporten. Acceptate: PDF, ZIP, RAR.`); continue; }
+          if (_attachFiles.some(af => af.file.name === f.name && af.file.size === f.size)) continue; // skip duplicate
+          _attachFiles.push({ file: f });
+        }
+        e.target.value = ''; // reset picker
+        _renderAttachList();
+      });
+
+      async function _uploadAttachments(flowId) {
+        if (!_attachFiles.length) return;
+        for (const af of _attachFiles) {
+          try {
+            const b64 = await new Promise((res, rej) => {
+              const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(af.file);
+            });
+            const mimeByExt = { pdf: 'application/pdf', zip: 'application/zip', rar: 'application/x-rar-compressed' };
+            const ext = af.file.name.split('.').pop().toLowerCase();
+            await _apiFetch(`/flows/${encodeURIComponent(flowId)}/attachments`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: af.file.name, mimeType: mimeByExt[ext] || 'application/octet-stream', dataB64: b64 })
+            });
+          } catch(e) { console.warn('Attachment upload failed:', af.file.name, e); }
+        }
+      }
 
       // ── Stampila flux pe ultima pagina PDF ─────────────────────────────────
       // Footer aplicat de server la finalizare, nu la creare flux
@@ -1567,6 +1647,12 @@ async function signFromFluxuri(flowId) {
           localStorage.setItem("lastInitName", $("initName").value.trim());
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
           clearFormState(); // flux creat cu succes — sterge draft + IDB
+
+          // F-06: Upload documente suport (async, non-blocking pentru UX)
+          if (_attachFiles.length) {
+            $("createResult").textContent = `✅ Flux creat. Se încarcă ${_attachFiles.length} document(e) suport...`;
+            await _uploadAttachments(j.flowId);
+          }
 
           // Redirect UX:
           // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare

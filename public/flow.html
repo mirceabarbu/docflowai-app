@@ -201,6 +201,15 @@
 
       </div>
 
+      <!-- Documente suport — full width, vizibil dacă există -->
+      <div id="attachmentsCard" class="card" style="display:none;">
+        <div class="row">
+          <h3 style="margin:0">📎 Documente suport</h3>
+          <span class="muted small">atașate la crearea fluxului</span>
+        </div>
+        <div id="attachmentsList" style="display:flex;flex-direction:column;gap:5px;margin-top:8px;"></div>
+      </div>
+
       <!-- Evenimente — full width -->
       <div class="card">
         <div class="row">
@@ -442,6 +451,33 @@
     for(const e of current) renderEv(e, false);
   }
 
+  // F-06: Documente suport
+  async function loadAttachments() {
+    try {
+      const params = new URLSearchParams();
+      if (linkToken) params.set('token', linkToken);
+      const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}/attachments?${params}`);
+      if (!r.ok) return;
+      const j = await r.json();
+      const atts = j.attachments || [];
+      const card = $('attachmentsCard');
+      const list = $('attachmentsList');
+      if (!atts.length || !card || !list) return;
+      card.style.display = '';
+      const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
+      const tokenParam = linkToken ? `?token=${encodeURIComponent(linkToken)}` : '';
+      list.innerHTML = atts.map(a => `
+        <a href="/flows/${encodeURIComponent(flowId)}/attachments/${a.id}${tokenParam}"
+           download="${a.filename.replace(/"/g,'')}"
+           style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(124,92,255,.1);border-radius:8px;text-decoration:none;color:var(--text);font-size:.85rem;border:1px solid rgba(124,92,255,.2);">
+          <span>${iconByMime(a.mimeType)}</span>
+          <span style="flex:1;">${a.filename}</span>
+          <span style="color:var(--muted);font-size:.78rem;">${(a.sizeBytes/1024).toFixed(0)} KB</span>
+          <span style="color:#b39dff;font-weight:700;font-size:.78rem;">⬇ Descarcă</span>
+        </a>`).join('');
+    } catch(e) { /* non-fatal */ }
+  }
+
   async function loadFlow(){
     if(!flowId){
       setMsg("error", `Lipsește parametrul <b>flow</b> în URL. Exemplu: <code>/flow.html?flow=FLOW_...</code>`);
@@ -646,6 +682,7 @@
 
       renderSigners(j);
       renderEvents(j);
+      loadAttachments(); // F-06
 
     }catch(e){
       setMsg("error", "❌ " + (e.message || e));
@@ -716,7 +753,7 @@
 
 <!-- ── Modal Trimite Email Extern ────────────────────────────────────── -->
 <div id="flowSendEmailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;padding:16px;">
-  <div style="background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:28px 32px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;position:relative;">
+  <div style="background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:22px 28px;width:100%;max-width:600px;max-height:92vh;overflow-y:auto;position:relative;">
     <button onclick="closeFlowSendEmailModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
     <div style="font-size:1.05rem;font-weight:700;color:#eaf0ff;margin-bottom:4px;">📧 Trimite document pe email</div>
     <div id="flowSemDocLabel" style="font-size:.8rem;color:#9db0ff;margin-bottom:20px;"></div>
@@ -731,7 +768,7 @@
       </div>
       <div>
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Mesaj personalizat <span style="color:var(--muted);font-size:.72rem;">— opțional</span></label>
-        <textarea id="flowSemBody" rows="7" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
+        <textarea id="flowSemBody" rows="14" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
       <!-- PDF semnat și referință Flow ID incluse automat -->
       <div id="flowSemMsg" style="font-size:.82rem;min-height:18px;"></div>

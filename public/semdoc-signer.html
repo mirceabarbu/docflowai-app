@@ -260,6 +260,12 @@ th{ color: var(--sub) !important; }
             </div>
           </div>
 
+          <!-- F-06: Documente suport -->
+          <div id="attachmentsBox" style="display:none;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:14px 16px;margin-top:2px;">
+            <div style="font-weight:700;font-size:.85rem;color:rgba(205,216,255,.85);margin-bottom:8px;">📎 Documente suport</div>
+            <div id="attachmentsList" style="display:flex;flex-direction:column;gap:5px;"></div>
+          </div>
+
           <div style="height:12px"></div>
 
           <!-- Semnătură electronică calificată — flux unic -->
@@ -410,6 +416,29 @@ th{ color: var(--sub) !important; }
         }).join('');
       }
 
+      async function loadAttachments() {
+        try {
+          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/attachments?token=${encodeURIComponent(token||'')}`);
+          if (!r.ok) return;
+          const j = await r.json();
+          const atts = j.attachments || [];
+          const box = document.getElementById('attachmentsBox');
+          const list = document.getElementById('attachmentsList');
+          if (!atts.length || !box || !list) return;
+          box.style.display = '';
+          const iconByMime = t => t.includes('pdf') ? '📄' : t.includes('zip') ? '🗜️' : t.includes('rar') ? '🗜️' : '📎';
+          list.innerHTML = atts.map(a => `
+            <a href="/flows/${encodeURIComponent(flow)}/attachments/${a.id}?token=${encodeURIComponent(token||'')}"
+               download="${a.filename.replace(/"/g,'')}"
+               style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(124,92,255,.1);border-radius:7px;text-decoration:none;color:var(--text);font-size:.82rem;">
+              <span>${iconByMime(a.mimeType)}</span>
+              <span style="flex:1;">${a.filename}</span>
+              <span style="color:var(--muted);font-size:.75rem;">${(a.sizeBytes/1024).toFixed(0)} KB</span>
+              <span style="color:#b39dff;font-size:.75rem;font-weight:700;">⬇</span>
+            </a>`).join('');
+        } catch(e) { /* non-fatal */ }
+      }
+
       async function loadFlow() {
         if (!flow || !token) return;
 
@@ -470,6 +499,7 @@ th{ color: var(--sub) !important; }
 
           const s = j.signers[signerIndex];
           renderSignersList(j);
+          loadAttachments(); // F-06: documente suport
 
           const lines = [];
           lines.push(`Semnatar curent: ${j.signers.findIndex(x => x.status === "current") + 1}`);
