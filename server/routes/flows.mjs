@@ -89,7 +89,7 @@ const createFlow = async (req, res) => {
     if (body.pdfB64 && typeof body.pdfB64 === 'string') {
       const rawPdfCheck = body.pdfB64.includes('base64,') ? body.pdfB64.split('base64,')[1] : body.pdfB64;
       const estimatedPdfBytes = Math.floor(rawPdfCheck.length * 0.75);
-      if (estimatedPdfBytes > 30 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_30mb', message: 'PDF-ul depășește limita de 30 MB.' });
+      if (estimatedPdfBytes > 50 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_50mb', message: 'PDF-ul depășește limita de 50 MB.' });
     }
 
     for (let i = 0; i < signers.length; i++) {
@@ -860,7 +860,7 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     // FIX v3.2.3: validare dimensiune PDF la reinițiere după revizuire
     const rawPdf = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
     const estimatedPdfBytes = Math.floor(rawPdf.length * 0.75);
-    if (estimatedPdfBytes > 30 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_30mb', message: 'PDF-ul depășește limita de 30 MB.' });
+    if (estimatedPdfBytes > 50 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_50mb', message: 'PDF-ul depășește limita de 50 MB.' });
 
     // Calculăm hash-ul documentului uploadat
     // FIX v3.3.2: sha256Hex pe Buffer (bytes PDF), nu pe string base64

@@ -7,7 +7,7 @@
     <style>
       *{box-sizing:border-box;}
 body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
-      header { padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); display:flex; gap:12px; align-items:center; justify-content:space-between; }
+      header { position:sticky; top:0; z-index:100; padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); display:flex; gap:12px; align-items:center; justify-content:space-between; }
       .brand { font-weight: 800; letter-spacing:.2px; }
       .tabs { display:flex; gap:8px; }
       button, input, select { font: inherit; }
@@ -66,8 +66,9 @@ body{
 }
 
 header{
-  background: rgba(15,23,49,.55) !important;
-  backdrop-filter: blur(10px);
+  position:sticky !important; top:0 !important; z-index:100 !important;
+  background: rgba(15,23,49,.85) !important;
+  backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--line) !important;
   display: flex !important;
   align-items: center !important;
@@ -242,7 +243,7 @@ th{ color: var(--sub) !important; }
             </div>
 
             <div class="col-5">
-              <label>PDF (atașament maxim 5MB)</label>
+              <label>PDF (atașament maxim 50MB)</label>
               <input id="pdfFile" type="file" accept="application/pdf" style="display:none;" />
               <div class="row" style="gap:8px; align-items:center; flex-wrap:nowrap; margin-top:2px;">
                 <button id="btnChoosePdf" class="btn secondary" type="button" style="width:auto; flex-shrink:0;">📎 Alege</button>
@@ -460,7 +461,7 @@ th{ color: var(--sub) !important; }
         const f = $("pdfFile").files && $("pdfFile").files[0];
         if (!f){ pdfB64=null; setPdfInfo("Nu ai selectat încă un PDF."); return; }
         if (f.type !== "application/pdf"){ pdfB64=null; setPdfInfo("❌ Te rog selectează un fișier PDF.", true); return; }
-        if (f.size > 5*1024*1024){ pdfB64=null; setPdfInfo("❌ PDF prea mare — max 5MB. Comprimă documentul și încearcă din nou.", true); $("pdfFile").value=""; return; }
+        if (f.size > 50*1024*1024){ pdfB64=null; setPdfInfo("❌ PDF prea mare — max 50MB. Comprimă documentul și încearcă din nou.", true); $("pdfFile").value=""; return; }
         setPdfInfo(`Selectat: ${f.name} (${Math.round(f.size/1024)} KB).`);
         const reader = new FileReader();
         reader.onload = () => {
