@@ -1225,8 +1225,9 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         page.drawText(ro(`[Flux parinte: ${audit.parentFlowId}]`), { x:MARGIN, y, size:7.5, font:fontR, color:rgb(0.4,0.2,0.6) });
         y -= 12;
       }
-      const inheritedEvs = audit.events.filter(e => e._inheritedFrom);
-      const currentEvs = audit.events.filter(e => !e._inheritedFrom);
+      const sortByDate = (a, b) => new Date(a.at || 0) - new Date(b.at || 0);
+      const inheritedEvs = audit.events.filter(e => e._inheritedFrom).sort(sortByDate);
+      const currentEvs = audit.events.filter(e => !e._inheritedFrom).sort(sortByDate);
       const EVENT_FONT_SIZE = 7.5;
       const EVENT_LINE_H = 11;
       const EVENT_COL_TS = MARGIN;
