@@ -942,7 +942,8 @@ async function _fetchGwsPreview() {
   try {
     const r = await _apiFetch(`/admin/gws/preview-email?prenume=${encodeURIComponent(prenume)}&nume_familie=${encodeURIComponent(fam)}`, { headers: hdrs() });
     const d = await r.json();
-    if (!d.configured) { $('gwsPreviewEmail').textContent = '⚠️ GWS neconfigurat'; }
+    if (!r.ok) { $('gwsPreviewEmail').textContent = r.status === 403 ? '⚠️ Acces interzis' : '⚠️ Eroare ' + r.status; }
+    else if (!d.configured) { $('gwsPreviewEmail').textContent = '⚠️ GWS neconfigurat'; }
     else if (d.error)  { $('gwsPreviewEmail').textContent = '⚠️ ' + d.error; }
     else               { $('gwsPreviewEmail').textContent = d.email; }
   } catch(e) { $('gwsPreviewEmail').textContent = '—'; }
