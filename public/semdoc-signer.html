@@ -312,17 +312,17 @@ th{ color: var(--sub) !important; }
             <div id="stepPanel2" style="background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:16px; margin-bottom:12px; opacity:.45; transition:all .3s;">
               <div style="font-weight:600; font-size:.88rem; color:#9db0ff; margin-bottom:8px;">② Semnează în aplicația ta</div>
               <div style="display:flex; gap:10px; align-items:stretch;">
-                <a id="hintAdobe" href="#" onclick="return false;" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; text-decoration:none; opacity:.6;">
+                <a id="hintAdobe" href="https://www.adobe.com/ro/acrobat/pdf-reader.html" target="_blank" rel="noopener" title="Descarca Adobe Acrobat Reader" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; text-decoration:none; opacity:.6; cursor:pointer; transition:border-color .2s,background .2s;" onmouseover="this.style.borderColor='rgba(255,100,50,.45)';this.style.background='rgba(255,100,50,.07)';" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.background='rgba(255,255,255,.04)';">
                   <span style="font-size:1.4rem;">📄</span>
                   <span style="font-size:.75rem; color:#9db0ff; text-align:center; line-height:1.3;">Adobe Acrobat</span>
                 </a>
-                <a id="hintESign" href="#" onclick="return false;" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; text-decoration:none; opacity:.6;">
+                <a id="hintESign" href="https://ca.stsisp.ro" target="_blank" rel="noopener" title="Deschide pagina E-SignEncrypt STS" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; text-decoration:none; opacity:.6; cursor:pointer; transition:border-color .2s,background .2s;" onmouseover="this.style.borderColor='rgba(50,180,255,.45)';this.style.background='rgba(50,180,255,.07)';" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.background='rgba(255,255,255,.04)';">
                   <span style="font-size:1.4rem;">🔐</span>
                   <span style="font-size:.75rem; color:#9db0ff; text-align:center; line-height:1.3;">E-SignEncrypt STS</span>
                 </a>
-                <a id="hintSTSign" href="#" onclick="return false;" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; text-decoration:none; opacity:.6;">
+                <a id="hintSTSign" href="https://sts.ro/servicii-de-certificare-calificata/" target="_blank" rel="noopener" title="Informatii semnatura STS" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; text-decoration:none; opacity:.6; cursor:pointer; transition:border-color .2s,background .2s;" onmouseover="this.style.borderColor='rgba(45,212,191,.45)';this.style.background='rgba(45,212,191,.07)';" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.background='rgba(255,255,255,.04)';">
                   <span style="font-size:1.4rem;">📋</span>
-                  <span style="font-size:.75rem; color:#9db0ff; text-align:center; line-height:1.3;">STSign</span>
+                  <span style="font-size:.75rem; color:#9db0ff; text-align:center; line-height:1.3;">STSign / STS</span>
                 </a>
               </div>
               <div class="muted" style="font-size:.78rem; margin-top:10px; text-align:center; line-height:1.5;">
@@ -944,8 +944,8 @@ th{ color: var(--sub) !important; }
           // Activeaza upload-ul dupa descarcare reusita
           const chooseBtn = $("btnChooseSignedPdf");
           if (chooseBtn) { chooseBtn.disabled = false; chooseBtn.title = ""; }
-          // Avansează stepper vizual la Pasul 2
-          stepperAdvance(2);
+          // Avansează stepper vizual direct la Pasul 3 (pasul 2 e extern, se consideră indeplinit automat)
+          stepperAdvance(3);
 
         } catch(err) {
           console.error("downloadPdfForSigning error:", err);
