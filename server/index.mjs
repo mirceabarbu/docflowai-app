@@ -492,7 +492,7 @@ async function _runArchiveJobProcessor() {
           await saveFlow(flowId, data);
           results.push({ flowId, ok: true, warning: 'no_pdf_marked_archived' }); totalOk++; continue;
         }
-        const driveResult = await archiveFlow(data);
+        const driveResult = await archiveFlow(data, pool);
         data.pdfB64 = null; data.signedPdfB64 = null; data.originalPdfB64 = null;
         data.storage = 'drive'; data.archivedAt = new Date().toISOString();
         Object.assign(data, driveResult);

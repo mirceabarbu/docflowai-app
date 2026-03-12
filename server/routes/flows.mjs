@@ -131,16 +131,17 @@ const createFlow = async (req, res) => {
     const flowId = _newFlowId(initInstitutie);
     let finalPdfB64 = body.pdfB64 ?? null;
 
-    // flowType 'ancore': PDF-ul NU se modifica deloc la ingest.
-    // Footer-ul se aplica mai jos (stampFooterOnPdf) o singura data, inainte de prima semnatura.
+    // flowType 'ancore': PDF-ul NU se modifica deloc — nici footer stamp.
+    // Formularele oficiale (Formular 17 etc.) pot contine semnaturi de certificare
+    // ale autoritatii emitente. Orice modificare (chiar si pdf-lib save) le invalideaza.
     // Campurile de semnatura predefinite (AcroForm) raman intacte.
 
-    if (finalPdfB64 && _stampFooterOnPdf) {
+    if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
       try {
         finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
           flowId, createdAt, initName, initFunctie,
           institutie: initInstitutie, compartiment: initCompartiment,
-          flowType: body.flowType || 'tabel'  // ancore => useObjectStreams:false
+          flowType: body.flowType || 'tabel'
         });
       } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }
@@ -656,6 +657,11 @@ router.get('/my-flows', async (req, res) => {
     const myFlows = rows.map(r => r.data).filter(Boolean).map(d => ({
       flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
       createdAt: d.createdAt, updatedAt: d.updatedAt,
+      completedAt: d.completedAt || null,
+      institutie: d.institutie || '',
+      compartiment: d.compartiment || '',
+      initEmail: d.initEmail || '',
+      initName: d.initName || '',
       status: d.status || 'active',
       urgent: !!(d.urgent),
       signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refuseReason: s.refuseReason }; }),
@@ -749,7 +755,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     };
     // FIX v3.2.2: folosim originalPdfB64 (PDF curat, fără footer) pentru a evita double-stamp.
     // Dacă nu există (fluxuri vechi), cădem pe pdfB64 ca fallback.
-    if (_stampFooterOnPdf) {
+    if (_stampFooterOnPdf && (data.flowType || 'tabel') !== 'ancore') {
       const baseForStamp = newData.originalPdfB64 || newData.pdfB64;
       if (baseForStamp) {
         try {
@@ -896,9 +902,9 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
       reinitiatedAt: now, reinitiatedBy: actor.email
     });
 
-    // Aplică footer pe noul PDF (pastrează ACELASI flowId în footer)
+    // Aplică footer pe noul PDF (pastrează ACELASI flowId în footer) — doar pentru tabel
     let finalPdfB64 = pdfB64;
-    if (finalPdfB64 && _stampFooterOnPdf) {
+    if (finalPdfB64 && _stampFooterOnPdf && (data.flowType || 'tabel') !== 'ancore') {
       try {
         finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
           flowId, createdAt: now,
@@ -1116,13 +1122,128 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
   } catch(e) { logger.error({ err: e }, 'cancel flow error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
-// ── POST /flows/:flowId/send-email — trimite PDF semnat pe email extern ───
-router.post('/:flowId/send-email', async (req, res) => {
+// ── F-06: Documente suport ────────────────────────────────────────────────
+// Tipuri MIME acceptate: PDF, ZIP, RAR
+const ATTACH_ALLOWED_MIME = new Set([
+  'application/pdf',
+  'application/zip', 'application/x-zip-compressed', 'application/x-zip',
+  'application/x-rar-compressed', 'application/vnd.rar', 'application/x-rar',
+]);
+const ATTACH_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
+// POST /flows/:flowId/attachments — încarcă document suport
+router.post('/flows/:flowId/attachments', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const actor = requireAuth(req, res); if (!actor) return;
+    const { flowId } = req.params;
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    // Doar inițiatorul sau admin poate atașa documente
+    const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
+    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+    if (!isInit && !isAdmin) return res.status(403).json({ error: 'forbidden' });
+    if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled' });
+
+    const { filename, mimeType, dataB64 } = req.body || {};
+    if (!filename || !dataB64) return res.status(400).json({ error: 'filename_and_data_required' });
+
+    // Detectare MIME din extensie dacă nu e furnizat sau e generic
+    const ext = (filename.split('.').pop() || '').toLowerCase();
+    const mimeByExt = { pdf: 'application/pdf', zip: 'application/zip', rar: 'application/x-rar-compressed' };
+    const resolvedMime = (mimeType && ATTACH_ALLOWED_MIME.has(mimeType)) ? mimeType : (mimeByExt[ext] || mimeType || 'application/octet-stream');
+    if (!ATTACH_ALLOWED_MIME.has(resolvedMime)) {
+      return res.status(400).json({ error: 'invalid_type', message: 'Tipuri acceptate: PDF, ZIP, RAR.' });
+    }
+
+    const raw = dataB64.includes(',') ? dataB64.split(',')[1] : dataB64;
+    const buf = Buffer.from(raw, 'base64');
+    if (buf.length > ATTACH_MAX_BYTES) return res.status(413).json({ error: 'too_large', message: 'Fișierul depășește limita de 10 MB.' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO flow_attachments (flow_id, filename, mime_type, size_bytes, data)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, filename, mime_type, size_bytes, uploaded_at`,
+      [flowId, filename.slice(0, 255), resolvedMime, buf.length, buf]
+    );
+    const att = rows[0];
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'ATTACHMENT_ADDED', actorIp: _getIp(req), actorEmail: actor.email, payload: { filename: att.filename, size: att.size_bytes } });
+    logger.info(`📎 Attachment ${att.id} adăugat la flow ${flowId} de ${actor.email}`);
+    return res.status(201).json({ ok: true, id: att.id, filename: att.filename, mimeType: att.mime_type, sizeBytes: att.size_bytes, uploadedAt: att.uploaded_at });
+  } catch(e) { logger.error({ err: e }, 'attachment upload error'); return res.status(500).json({ error: 'server_error' }); }
+});
+
+// GET /flows/:flowId/attachments — lista documente suport
+router.get('/flows/:flowId/attachments', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const signerToken = req.query.token || null;
+    const actor = getOptionalActor(req);
+    if (!actor && !signerToken) return res.status(403).json({ error: 'forbidden' });
+    const { flowId } = req.params;
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken))
+      return res.status(403).json({ error: 'forbidden' });
+    const { rows } = await pool.query(
+      `SELECT id, filename, mime_type, size_bytes, drive_file_id, drive_file_link, uploaded_at
+       FROM flow_attachments WHERE flow_id=$1 ORDER BY uploaded_at ASC`,
+      [flowId]
+    );
+    return res.json({ attachments: rows.map(r => ({ id: r.id, filename: r.filename, mimeType: r.mime_type, sizeBytes: r.size_bytes, driveFileId: r.drive_file_id, driveFileLink: r.drive_file_link, uploadedAt: r.uploaded_at })) });
+  } catch(e) { return res.status(500).json({ error: 'server_error' }); }
+});
+
+// GET /flows/:flowId/attachments/:attId — descarcă document suport
+router.get('/flows/:flowId/attachments/:attId', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const signerToken = req.query.token || null;
+    const actor = getOptionalActor(req);
+    if (!actor && !signerToken) return res.status(403).json({ error: 'forbidden' });
+    const { flowId, attId } = req.params;
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken))
+      return res.status(403).json({ error: 'forbidden' });
+    const { rows } = await pool.query(
+      'SELECT filename, mime_type, data FROM flow_attachments WHERE id=$1 AND flow_id=$2',
+      [parseInt(attId), flowId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'attachment_not_found' });
+    const att = rows[0];
+    const safeName = att.filename.replace(/[^\w\-\.]/g, '_');
+    res.setHeader('Content-Type', att.mime_type);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    return res.status(200).send(att.data);
+  } catch(e) { return res.status(500).json({ error: 'server_error' }); }
+});
+
+// DELETE /flows/:flowId/attachments/:attId — șterge document suport (inițiator/admin)
+router.delete('/flows/:flowId/attachments/:attId', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const actor = requireAuth(req, res); if (!actor) return;
+    const { flowId, attId } = req.params;
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
+    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+    if (!isInit && !isAdmin) return res.status(403).json({ error: 'forbidden' });
+    const { rowCount } = await pool.query('DELETE FROM flow_attachments WHERE id=$1 AND flow_id=$2', [parseInt(attId), flowId]);
+    if (!rowCount) return res.status(404).json({ error: 'not_found' });
+    return res.json({ ok: true });
+  } catch(e) { return res.status(500).json({ error: 'server_error' }); }
+});
+
+
+router.post('/flows/:flowId/send-email', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { flowId } = req.params;
-    const { to, subject, bodyText, includeAttachment = true, includeLink = true } = req.body || {};
+    const { to, subject, bodyText } = req.body || {};
+    const includeAttachment = true;  // întotdeauna atașăm PDF-ul semnat
+    const includeLink = true;        // întotdeauna includem referința Flow ID
 
     // Validare
     if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()))
@@ -1132,7 +1253,7 @@ router.post('/:flowId/send-email', async (req, res) => {
 
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (data.status !== 'completed')
+    if (!data.completed && data.status !== 'completed')
       return res.status(409).json({ error: 'not_completed', message: 'Documentul nu este finalizat.' });
 
     // Preluăm datele expeditorului din DB (funcție, institutie, compartiment)
@@ -1157,71 +1278,69 @@ router.post('/:flowId/send-email', async (req, res) => {
       status: s.signed ? 'semnat' : (s.refused ? 'refuzat' : 'în așteptare'),
     }));
 
+    const statusColor = (st) => st === 'semnat' ? '#1a7a4a' : st === 'refuzat' ? '#b03030' : '#7c5cff';
+    const statusBg    = (st) => st === 'semnat' ? '#d4f5e5' : st === 'refuzat' ? '#fde8e8' : '#ede8ff';
     const signersTable = signers.map(s => `
       <tr>
-        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;">${s.name}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#9db0ff;">${s.rol}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#2dd4bf;">${s.status}</td>
-        <td style="padding:6px 12px;border-bottom:1px solid #2a2d3e;color:#888;">${s.signedAt ? new Date(s.signedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#1a2340;font-weight:500;">${s.name}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#3d5299;font-weight:600;">${s.rol}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;">
+          <span style="background:${statusBg(s.status)};color:${statusColor(s.status)};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">${s.status.toUpperCase()}</span>
+        </td>
+        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#5a6a9a;font-size:12px;">${s.signedAt ? new Date(s.signedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td>
       </tr>`).join('');
 
-    const customBody = bodyText ? `<p style="margin:0 0 20px;line-height:1.7;color:#cdd6f4;">${bodyText.replace(/\n/g, '<br>')}</p>` : '';
+    // Corp mesaj — text negru pe fundal alb, newline -> <br>
+    const customBody = bodyText
+      ? `<p style="margin:0 0 24px;line-height:1.8;color:#1a1a1a;font-size:14px;white-space:pre-line;">${bodyText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</p>`
+      : '';
 
-    const linkSection = includeLink ? `
-      <div style="margin:24px 0;padding:16px;background:#1a1d2e;border-radius:8px;border-left:3px solid #2dd4bf;">
-        <p style="margin:0 0 8px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Document disponibil în platformă</p>
-        <p style="margin:0;font-size:13px;color:#7cf0e0;">Flow ID: <strong>${flowId}</strong> · Platformă: DocFlowAI</p>
-      </div>` : '';
+    // Secțiune "Document disponibil în platformă" — fond cald albastru deschis
+    const linkSection = `
+      <div style="margin:20px 0;padding:16px 20px;background:#f0f4ff;border:1px solid #c5d0f0;border-radius:10px;border-left:4px solid #7c5cff;">
+        <p style="margin:0 0 6px;font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Document disponibil în platformă</p>
+        <p style="margin:0;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong> · Platformă: <strong>DocFlowAI</strong></p>
+      </div>`;
 
     const html = `<!DOCTYPE html>
 <html lang="ro"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#0f1117;font-family:'Segoe UI',Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#f5f7fc;font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a;">
   <div style="max-width:620px;margin:0 auto;padding:32px 16px;">
 
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1a1d2e,#12152a);border:1px solid rgba(157,176,255,.15);border-radius:14px;padding:28px 32px;margin-bottom:24px;">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-        <div style="width:36px;height:36px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;">📄</div>
-        <div>
-          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.8px;">Document semnat electronic</div>
-          <div style="font-size:18px;font-weight:700;color:#eaf0ff;">${data.docName || flowId}</div>
-        </div>
-      </div>
+    <!-- Header gradient — table layout (no flex/gap, email client compatibility) -->
+    <div style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:14px 14px 0 0;padding:24px 32px;">
+      <table role="presentation" style="width:100%;border-collapse:collapse;"><tr>
+        <td style="width:52px;vertical-align:middle;">
+          <div style="width:40px;height:40px;background:rgba(255,255,255,.2);border-radius:10px;text-align:center;line-height:40px;font-size:20px;">&#128203;</div>
+        </td>
+        <td style="vertical-align:middle;padding-left:12px;">
+          <div style="font-size:11px;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:4px;">Document semnat electronic</div>
+          <div style="font-size:17px;font-weight:700;color:#fff;">${data.docName || flowId}</div>
+        </td>
+      </tr></table>
+    </div>
 
+    <!-- Info card -->
+    <div style="background:#fff;border:1px solid #dde4f5;border-top:none;border-radius:0 0 14px 14px;padding:20px 32px 24px;margin-bottom:20px;">
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <tr><td style="padding:4px 0;color:#888;width:130px;">Instituție</td><td style="color:#eaf0ff;">${data.institutie || '—'}</td></tr>
-        <tr><td style="padding:4px 0;color:#888;">Compartiment</td><td style="color:#eaf0ff;">${data.compartiment || '—'}</td></tr>
-        <tr><td style="padding:4px 0;color:#888;">Finalizat la</td><td style="color:#2dd4bf;">${data.completedAt ? new Date(data.completedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td></tr>
-        <tr><td style="padding:4px 0;color:#888;">Flow ID</td><td style="color:#9db0ff;font-family:monospace;font-size:12px;">${flowId}</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6a9a;width:140px;font-weight:600;">Instituție</td><td style="color:#1a1a1a;">${data.institutie || '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Compartiment</td><td style="color:#1a1a1a;">${data.compartiment || '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Finalizat la</td><td style="color:#1a7a4a;font-weight:600;">${data.completedAt ? new Date(data.completedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td></tr>
+        <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Flow ID</td><td style="color:#7c5cff;font-family:monospace;font-size:12px;">${flowId}</td></tr>
       </table>
     </div>
 
-    <!-- Corp personalizat -->
-    ${customBody}
-
-    <!-- Semnatari -->
-    <div style="background:#1a1d2e;border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-      <p style="margin:0 0 14px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Semnatari</p>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#eaf0ff;">
-        <thead>
-          <tr style="border-bottom:1px solid #2a2d3e;">
-            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Nume</th>
-            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Rol</th>
-            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Status</th>
-            <th style="padding:6px 12px;text-align:left;color:#888;font-weight:500;">Data</th>
-          </tr>
-        </thead>
-        <tbody>${signersTable}</tbody>
-      </table>
+    <!-- Corp personalizat (text negru) -->
+    <div style="background:#fff;border:1px solid #dde4f5;border-radius:10px;padding:20px 24px;margin-bottom:20px;">
+      ${customBody || '<p style="margin:0;color:#1a1a1a;font-size:14px;">Vă transmitem atașat documentul semnat electronic.</p>'}
     </div>
 
+    <!-- Document disponibil în platformă -->
     ${linkSection}
 
-    <!-- Semnătură expeditor -->
-    <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:20px;margin-top:8px;">
-      <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#eaf0ff;">${senderName}</p>
-      ${senderTitle ? `<p style="margin:0 0 2px;font-size:12px;color:#9db0ff;">${senderTitle}</p>` : ''}
-      <p style="margin:8px 0 0;font-size:11px;color:#555;">Trimis prin DocFlowAI · noreply@docflowai.ro</p>
+    <!-- Footer -->
+    <div style="border-top:1px solid #dde4f5;padding-top:16px;margin-top:4px;text-align:center;">
+      <p style="margin:0 0 4px;font-size:12px;color:#5a6a9a;">Trimis prin <strong>DocFlowAI</strong> · noreply@docflowai.ro</p>
     </div>
 
   </div>
@@ -1237,7 +1356,9 @@ router.post('/:flowId/send-email', async (req, res) => {
     const payload = { from: MAIL_FROM, to: to.trim(), subject: subject.trim(), html };
     if (includeAttachment && pdfB64) {
       const pdfName = `${(data.docName || flowId).replace(/[^a-zA-Z0-9_\-\.]/g, '_')}_semnat.pdf`;
-      payload.attachments = [{ filename: pdfName, content: pdfB64 }];
+      // Strip data URL prefix dacă există (Resend necesită base64 curat)
+      const cleanPdfB64 = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+      payload.attachments = [{ filename: pdfName, content: cleanPdfB64 }];
     }
 
     const r = await fetch('https://api.resend.com/emails', {

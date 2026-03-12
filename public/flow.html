@@ -158,6 +158,7 @@
         <button class="btn" id="btnSendEmail" style="display:none;background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.35);color:#7cf0e0;" title="Trimite PDF semnat pe email extern">📧 Trimite</button>
         <button class="btn" id="btnReinitiate" style="display:none;background:rgba(255,200,50,.12);border-color:rgba(255,200,50,.35);color:#ffd580;" title="Reinițiază fluxul după refuz">🔄 Reinițiază</button>
         <button class="btn" id="btnReinitiateReview" style="display:none;background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.35);color:#7cf0e0;" title="Reinițiază fluxul după revizuire (re-upload document)">🔄 Reinițiază după revizuire</button>
+        <button class="btn" id="btnCancelFlow" style="display:none;background:rgba(120,120,120,.1);border-color:rgba(120,120,120,.3);color:#aaa;" title="Anulează fluxul">🚫 Anulează</button>
         <a id="btnAuditPdf" href="#" target="_blank" class="btn" style="display:none;text-decoration:none;" title="Export Audit PDF">📄 Audit PDF</a>
       </div>
     </div>
@@ -198,6 +199,15 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Documente suport — full width, vizibil dacă există -->
+      <div id="attachmentsCard" class="card" style="display:none;">
+        <div class="row">
+          <h3 style="margin:0">📎 Documente suport</h3>
+          <span class="muted small">atașate la crearea fluxului</span>
+        </div>
+        <div id="attachmentsList" style="display:flex;flex-direction:column;gap:5px;margin-top:8px;"></div>
       </div>
 
       <!-- Evenimente — full width -->
@@ -306,6 +316,8 @@
 
     const currentId = flow.currentSignerId || flow.data?.currentSignerId || flow.currentSigner || flow.data?.currentSigner;
 
+    const isFlowRefused = signers.some(s => (s.status || '').toLowerCase() === 'refused');
+
     for(const s of signers){
       const isCurrent = currentId && (s.id===currentId || s.signerId===currentId || s.token===currentId);
       const st = (s.status || "").toLowerCase();
@@ -314,6 +326,7 @@
       if(st==="signed" || st==="done") right = `<span class="badge ok">✅ semnat</span>`;
       else if(st==="refused") right = `<span class="badge bad">⛔ refuz</span>`;
       else if(isCurrent) right = `<span class="badge warn">⏱️ curent</span>`;
+      else if(isFlowRefused && st==="pending") right = `<span class="badge bad">🚫 anulat</span>`;
 
       const when = st==="refused" ? (s.refusedAt || s.at) : (s.signedAt || s.at || s.updatedAt || s.date);
       const metaBits = [];
@@ -394,19 +407,31 @@
 
     const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     // Grupăm: mai întâi evenimentele moștenite (din flux parinte), apoi cele curente
-    const inherited = evs.filter(e => e._inheritedFrom);
-    const current = evs.filter(e => !e._inheritedFrom);
+    const sortByDate = (a, b) => new Date(a.at || a.ts || a.time || 0) - new Date(b.at || b.ts || b.time || 0);
+    const inherited = evs.filter(e => e._inheritedFrom).sort(sortByDate);
+    const current = evs.filter(e => !e._inheritedFrom).sort(sortByDate);
 
     const renderEv = (e, isInherited) => {
       const ts = prettyTs(e.at || e.ts || e.time || e.createdAt);
       const byRaw = e.who || e.actor || e.by || "";
       const who = nameMap[byRaw] ? esc(nameMap[byRaw]) : esc(byRaw);
       const kind = (e.type || e.kind || e.event || "EVENT").toString();
-      const extra = e.msg || e.message || e.detail || e.reason || "";
-      const line = [kind, who].filter(Boolean).join(' · ');
-      const txt = extra ? `${line} — ${esc(extra)}` : line;
+      const EVENT_LABELS = {
+        'FLOW_CREATED':'FLUX CREAT','SIGNED':'SEMNAT','SIGNED_PDF_UPLOADED':'PDF SEMNAT ÎNCĂRCAT',
+        'FLOW_COMPLETED':'FLUX FINALIZAT','FLOW_CANCELLED':'FLUX ANULAT','REFUSED':'REFUZAT',
+        'DELEGATED':'DELEGAT','PDF_DOWNLOADED':'PDF DESCĂRCAT','REVIEW_REQUESTED':'TRIMIS SPRE REVIZUIRE',
+        'FLOW_REINITIATED':'REINIȚIAT','FLOW_REINITIATED_AFTER_REVIEW':'REINIȚIAT DUPĂ REVIZUIRE',
+        'EMAIL_SENT':'📧 EMAIL TRIMIS EXTERN',
+      };
+      const kindLabel = EVENT_LABELS[kind] || kind.replace(/_/g,' ');
+      const extra = kind === 'EMAIL_SENT'
+        ? `către: ${esc(e.to||'')} · subiect: ${esc(e.subject||'')}`
+        : (e.msg || e.message || e.detail || e.reason || "");
+      const line = [kindLabel, who].filter(Boolean).join(' · ');
+      const txt = extra ? `${line} — ${extra}` : line;
       const d = document.createElement("div");
       d.className = "ev";
+      if (kind === 'EMAIL_SENT') d.style.cssText = "border-left:2px solid rgba(45,212,191,.6);padding-left:8px;";
       if (isInherited) d.style.cssText = "opacity:.65;border-left:2px solid rgba(124,92,255,.35);padding-left:8px;";
       d.innerHTML = `<div class="ts">${ts}</div><div class="txt">${txt}</div>`;
       evBox.appendChild(d);
@@ -424,6 +449,33 @@
       evBox.appendChild(sep2);
     }
     for(const e of current) renderEv(e, false);
+  }
+
+  // F-06: Documente suport
+  async function loadAttachments() {
+    try {
+      const params = new URLSearchParams();
+      if (linkToken) params.set('token', linkToken);
+      const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}/attachments?${params}`);
+      if (!r.ok) return;
+      const j = await r.json();
+      const atts = j.attachments || [];
+      const card = $('attachmentsCard');
+      const list = $('attachmentsList');
+      if (!atts.length || !card || !list) return;
+      card.style.display = '';
+      const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
+      const tokenParam = linkToken ? `?token=${encodeURIComponent(linkToken)}` : '';
+      list.innerHTML = atts.map(a => `
+        <a href="/flows/${encodeURIComponent(flowId)}/attachments/${a.id}${tokenParam}"
+           download="${a.filename.replace(/"/g,'')}"
+           style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(124,92,255,.1);border-radius:8px;text-decoration:none;color:var(--text);font-size:.85rem;border:1px solid rgba(124,92,255,.2);">
+          <span>${iconByMime(a.mimeType)}</span>
+          <span style="flex:1;">${a.filename}</span>
+          <span style="color:var(--muted);font-size:.78rem;">${(a.sizeBytes/1024).toFixed(0)} KB</span>
+          <span style="color:#b39dff;font-weight:700;font-size:.78rem;">⬇ Descarcă</span>
+        </a>`).join('');
+    } catch(e) { /* non-fatal */ }
   }
 
   async function loadFlow(){
@@ -510,6 +562,29 @@
       // Buton Reinitiere după revizuire — vizibil dacă fluxul e în review_requested și user e inițiator
       const btnReiReview = $("btnReinitiateReview");
       if (btnReiReview) btnReiReview.style.display = (isReviewRequested && (isInitiator || isAdmin)) ? "" : "none";
+
+      // Buton Anulează — vizibil pentru inițiator/admin dacă fluxul nu e finalizat/anulat/refuzat
+      const btnCancelFlow = $("btnCancelFlow");
+      const canCancel = !data.completed && computedStatus !== 'cancelled' && computedStatus !== 'refused' && (isInitiator || isAdmin);
+      if (btnCancelFlow) {
+        btnCancelFlow.style.display = canCancel ? "" : "none";
+        btnCancelFlow.onclick = async () => {
+          const reason = prompt('Motiv anulare (opțional):') ?? null;
+          if (reason === null) return; // user a dat Cancel la prompt
+          if (!confirm(`Anulezi fluxul „${data.docName || flowId}"? Acțiunea este ireversibilă.`)) return;
+          btnCancelFlow.disabled = true; btnCancelFlow.textContent = '⏳ Se anulează...';
+          try {
+            const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}/cancel`, {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ reason: reason || null })
+            });
+            const j = await r.json();
+            if (j.ok) { setMsg('ok', '🚫 Flux anulat cu succes.'); setTimeout(() => loadFlow(), 800); }
+            else setMsg('error', j.message || j.error || 'Eroare la anulare.');
+          } catch(e) { setMsg('error', 'Eroare rețea.'); }
+          finally { btnCancelFlow.disabled = false; btnCancelFlow.textContent = '🚫 Anulează'; }
+        };
+      }
 
       // Card info revizuire
       let reviewCard = $("reviewInfoCard");
@@ -607,6 +682,7 @@
 
       renderSigners(j);
       renderEvents(j);
+      loadAttachments(); // F-06
 
     }catch(e){
       setMsg("error", "❌ " + (e.message || e));
@@ -677,7 +753,7 @@
 
 <!-- ── Modal Trimite Email Extern ────────────────────────────────────── -->
 <div id="flowSendEmailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;padding:16px;">
-  <div style="background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:28px 32px;width:100%;max-width:520px;position:relative;">
+  <div style="background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:22px 28px;width:100%;max-width:600px;max-height:92vh;overflow-y:auto;position:relative;">
     <button onclick="closeFlowSendEmailModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
     <div style="font-size:1.05rem;font-weight:700;color:#eaf0ff;margin-bottom:4px;">📧 Trimite document pe email</div>
     <div id="flowSemDocLabel" style="font-size:.8rem;color:#9db0ff;margin-bottom:20px;"></div>
@@ -692,16 +768,9 @@
       </div>
       <div>
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Mesaj personalizat <span style="color:var(--muted);font-size:.72rem;">— opțional</span></label>
-        <textarea id="flowSemBody" rows="4" placeholder="Stimate/ă," style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
+        <textarea id="flowSemBody" rows="14" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.83rem;color:#cdd6f4;">
-          <input type="checkbox" id="flowSemAttach" checked style="width:14px;height:14px;accent-color:#2dd4bf;"> Atașează PDF semnat
-        </label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.83rem;color:#cdd6f4;">
-          <input type="checkbox" id="flowSemLink" checked style="width:14px;height:14px;accent-color:#2dd4bf;"> Include referință Flow ID
-        </label>
-      </div>
+      <!-- PDF semnat și referință Flow ID incluse automat -->
       <div id="flowSemMsg" style="font-size:.82rem;min-height:18px;"></div>
       <button id="flowSemSendBtn" onclick="doFlowSendEmail()" style="background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;color:#fff;padding:11px 24px;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;width:100%;">📤 Trimite email</button>
     </div>
@@ -710,6 +779,7 @@
 <script>
 let _flowSemId = null;
 function openFlowSendEmailModal(flowId, docName, institutie, compartiment, completedAt) {
+  const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
   _flowSemId = flowId;
   document.getElementById('flowSemDocLabel').textContent = docName;
   document.getElementById('flowSemTo').value = '';
@@ -717,9 +787,19 @@ function openFlowSendEmailModal(flowId, docName, institutie, compartiment, compl
   document.getElementById('flowSemSendBtn').disabled = false;
   document.getElementById('flowSemSendBtn').textContent = '📤 Trimite email';
   document.getElementById('flowSemSubject').value = `Document semnat electronic: ${docName}`;
-  const compStr = compartiment ? `Compartiment: ${compartiment}\n` : '';
-  const instStr = institutie ? `Instituție: ${institutie}\n` : '';
-  document.getElementById('flowSemBody').value = `Vă transmitem atașat documentul „${docName}", semnat electronic de toate părțile implicate.\n\n${instStr}${compStr}Data finalizării: ${completedAt ? new Date(completedAt).toLocaleDateString('ro-RO') : '—'}`;
+  const senderName = u.nume || u.email || '';
+  const today = new Date().toLocaleDateString('ro-RO');
+  const functieStr      = u.functie                               ? `\nFuncție: ${u.functie}`                               : '';
+  const institutieStr   = (u.institutie   || institutie)          ? `\nInstituție: ${u.institutie   || institutie}`          : '';
+  const compartimentStr = (u.compartiment || compartiment)        ? `\nCompartiment: ${u.compartiment || compartiment}`     : '';
+  document.getElementById('flowSemBody').value =
+`Stimată/e Doamnă/Domnule,
+
+Vă transmitem atașat documentul „${docName}", în vederea aplicării prevederilor legale.
+
+Cu stimă,
+Nume: ${senderName}${functieStr}${institutieStr}${compartimentStr}
+Data: ${today}`;
   document.getElementById('flowSendEmailModal').style.display = 'flex';
   setTimeout(() => document.getElementById('flowSemTo').focus(), 100);
 }
@@ -731,18 +811,16 @@ async function doFlowSendEmail() {
   const to      = (document.getElementById('flowSemTo').value||'').trim();
   const subject = (document.getElementById('flowSemSubject').value||'').trim();
   const bodyText= (document.getElementById('flowSemBody').value||'').trim();
-  const includeAttachment = document.getElementById('flowSemAttach').checked;
-  const includeLink       = document.getElementById('flowSemLink').checked;
+
   const msg = document.getElementById('flowSemMsg');
   const btn = document.getElementById('flowSemSendBtn');
   if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { msg.style.color='#ffaaaa'; msg.textContent='Introduceți o adresă de email validă.'; return; }
   if (!subject) { msg.style.color='#ffaaaa'; msg.textContent='Subiectul este obligatoriu.'; return; }
-  if (!includeAttachment && !includeLink) { msg.style.color='#ffaaaa'; msg.textContent='Selectați cel puțin o opțiune.'; return; }
   btn.disabled=true; btn.textContent='⏳ Se trimite...'; msg.textContent='';
   try {
     const r = await _apiFetch(`/flows/${encodeURIComponent(_flowSemId)}/send-email`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ to, subject, bodyText, includeAttachment, includeLink }),
+      body: JSON.stringify({ to, subject, bodyText }),
     });
     const d = await r.json();
     if (r.ok) { msg.style.color='#2dd4bf'; msg.textContent=`✅ Email trimis cu succes către ${to}`; btn.textContent='✅ Trimis!'; setTimeout(()=>closeFlowSendEmailModal(),2000); }

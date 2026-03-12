@@ -302,7 +302,8 @@ router.post('/admin/users', async (req, res) => {
 
     res.status(201).json({
       ...user,
-      // SEC-02: plain_password ELIMINAT din response — parola trimisă pe email la creare
+      // Parola returnată în response pentru afișare în modal (o singură dată) — nu se stochează
+      tempPassword: plainPwd,
       credentials_sent_to: credsDest,
       verificationSent: needsVerification && !!verificationToken,
       gws: gwsResult,
@@ -317,7 +318,7 @@ router.post('/admin/users', async (req, res) => {
 router.get('/admin/gws/preview-email', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const { prenume, nume_familie } = req.query;
   if (!prenume && !nume_familie) return res.status(400).json({ error: 'prenume_or_nume_required' });
   if (!gwsIsConfigured()) return res.json({ configured: false });
@@ -334,7 +335,7 @@ router.get('/admin/gws/preview-email', async (req, res) => {
 router.post('/admin/users/:id/gws-provision', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   if (!gwsIsConfigured()) return res.status(503).json({ error: 'gws_not_configured' });
 
   const userId = parseInt(req.params.id);
@@ -391,7 +392,7 @@ router.get('/admin/gws/verify', async (req, res) => {
 router.put('/admin/users/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
   const { email, nume, prenume, nume_familie, functie, institutie, compartiment, password, role, phone, notif_inapp, notif_email, notif_whatsapp, personal_email } = req.body || {};
@@ -439,7 +440,7 @@ router.put('/admin/users/:id', async (req, res) => {
 router.post('/admin/users/:id/reset-password', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
   // SEC-07: verificare cross-tenant — adminul poate reseta parola doar userilor din org sa
@@ -501,13 +502,19 @@ router.delete('/admin/users/:id', async (req, res) => {
 router.post('/admin/users/:id/send-credentials', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   try {
-    // B-03: generăm o parolă nouă la fiecare trimitere — resetăm hash-ul, trimitem pe email
-    const { rows } = await pool.query('SELECT email,nume,functie FROM users WHERE id=$1', [targetId]);
+    // SEC-07: cross-tenant check — org_admin poate trimite credențiale doar userilor din org sa
+    const { rows } = await pool.query('SELECT email,nume,functie,org_id FROM users WHERE id=$1', [targetId]);
     const u = rows[0];
     if (!u) return res.status(404).json({ error: 'user_not_found' });
+    // cross-tenant: org_admin poate acționa doar pe userii din propria org
+    if (actor.role === 'org_admin') {
+      const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
+      const actorOrgId = actorRows[0]?.org_id || null;
+      if (!actorOrgId || actorOrgId !== u.org_id) return res.status(403).json({ error: 'forbidden_cross_tenant' });
+    }
     const newPwd = generatePassword();
     await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [hashPassword(newPwd), targetId]);
     const appUrl = getAppUrl(req);
@@ -1001,7 +1008,8 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       if (!PDFLibAdmin) return res.status(503).json({ error: 'pdf_lib_not_available' });
       const { PDFDocument, rgb, StandardFonts } = PDFLibAdmin;
       const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-      const ro = t => String(t || '').split('').map(ch => diacr[ch] || ch).join('');
+      // ro() — inlocuieste diacritice + elimina silentios caractere non-WinAnsi (emoji, unicode > 0xFF)
+      const ro = t => String(t || '').replace(/[^\x00-\xFF]/g, '').split('').map(ch => diacr[ch] || ch).join('');
       // Format date cu timezone Romania
       const fmtDate = iso => iso ? new Date(iso).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—';
       // Traduceri tip eveniment → română
@@ -1010,7 +1018,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         'REVIEW_REQUESTED': 'TRIMIS SPRE REVIZUIRE', 'FLOW_REINITIATED_AFTER_REVIEW': 'FLUX REINITIAT',
         'FLOW_COMPLETED': 'FLUX FINALIZAT', 'FLOW_CANCELLED': 'FLUX ANULAT', 'REFUSED': 'REFUZAT',
         'DELEGATED': 'DELEGAT', 'PDF_DOWNLOADED': 'PDF DESCARCAT', 'REMINDER': 'REMINDER TRIMIS',
-        'YOUR_TURN': 'NOTIFICARE RAND', 'FLOW_REINITIATED_AFTER_REVIEW': 'REINITIAT DUPA REVIZUIRE',
+        'YOUR_TURN': 'NOTIFICARE RAND', 'EMAIL_SENT': 'EMAIL EXTERN TRIMIS',
       };
       const evLabel = (type) => EVENT_LABELS_RO[type] || (type||'').replace(/_/g, ' ');
       const pdfDoc = await PDFDocument.create();
@@ -1039,13 +1047,13 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       // URGENT badge in header
       if (audit.urgent) {
         page.drawRectangle({ x:PAGE_W-130, y:PAGE_H-58, width:100, height:18, color:rgb(0.85,0.1,0.1) });
-        page.drawText('🚨 URGENT', { x:PAGE_W-125, y:PAGE_H-50, size:10, font:fontB, color:rgb(1,1,1) });
+        page.drawText('! URGENT !', { x:PAGE_W-122, y:PAGE_H-50, size:10, font:fontB, color:rgb(1,1,1) });
       }
       y = PAGE_H - 85;
       drawText('INFORMATII FLUX', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
       drawLine();
       const infoRows = [
-        ['Flow ID:', audit.flowId], ['Document:', (audit.urgent ? '🚨 [URGENT] ' : '') + audit.docName],
+        ['Flow ID:', audit.flowId], ['Document:', (audit.urgent ? '[URGENT] ' : '') + audit.docName],
         ['Initiator:', `${audit.initName} <${audit.initEmail}>`],
         ['Institutie:', audit.institutie || '—'], ['Compartiment:', audit.compartiment || '—'],
         ['Creat:', fmtDate(audit.createdAt)],
@@ -1118,7 +1126,8 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         page.drawText(ro(s.email), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.4,0.4) });
         if (s.functie) page.drawText(ro(s.functie), { x:MARGIN+220, y, size:8, font:fontR, color:rgb(0.5,0.5,0.5) });
         y -= 13;
-        // Ordine cronologica: Notificat → Descarcat → Incarcat → Semnat
+        // Ordine cronologica: Delegat de (daca e cazul) → Notificat → Descarcat → Incarcat → Semnat/Refuzat
+        if (s.delegatedFrom) { page.drawText(ro(`  Delegat de: ${s.delegatedFrom.email}${s.delegatedFrom.reason ? '  Motiv: ' + s.delegatedFrom.reason : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12; }
         if (s.notifiedAt)  { page.drawText(ro(`  Notificat:  ${fmtDate(s.notifiedAt)}`),  { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.3,0.3,0.6) }); y -= 12; }
         if (s.downloadedAt){ page.drawText(ro(`  Descarcat:  ${fmtDate(s.downloadedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.2,0.4,0.55) }); y -= 12; }
         if (uploadedAt)    { page.drawText(ro(`  Incarcat:   ${fmtDate(uploadedAt)}`),      { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.2,0.35,0.5) }); y -= 12; }
@@ -1126,14 +1135,34 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         if (s.refusedAt || s.refuseReason) {
           page.drawText(ro(`  Refuzat:    ${s.refusedAt ? fmtDate(s.refusedAt) : ''}${s.refuseReason ? '  Motiv: ' + s.refuseReason : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.7,0.1,0.1), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
         }
-        if (s.delegatedFrom) { page.drawText(ro(`  Delegat de: ${s.delegatedFrom.email}${s.delegatedFrom.reason ? ' — ' + s.delegatedFrom.reason : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12; }
         // Dacă semnatarul a trimis spre revizuire (acțiune vizibilă în runda curentă)
         const reviewEvForSigner = (audit.events || []).find(e => e.type === 'REVIEW_REQUESTED' && e.by === s.email && !e._inheritedFrom);
         if (reviewEvForSigner) {
           page.drawText(ro(`  Trimis spre revizuire: ${fmtDate(reviewEvForSigner.at)}`), { x:MARGIN+12, y, size:8, font:fontB, color:rgb(0.55,0.1,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
           if (reviewEvForSigner.reason) { page.drawText(ro(`  Motiv: ${reviewEvForSigner.reason}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.6,0.2,0.1), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12; }
         }
+        // EMAIL_SENT trimis de acest semnatar
+        const emailEvsBySigner = (audit.events || []).filter(e => e.type === 'EMAIL_SENT' && e.by === s.email && !e._inheritedFrom);
+        for (const ee of emailEvsBySigner) {
+          ensureSpace(14);
+          page.drawText(ro(`  Email trimis: ${fmtDate(ee.at)}  catre: ${ee.to || ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.05,0.45,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
+        }
         y -= 6;
+      }
+      // EMAIL_SENT de catre initiator (daca nu e si semnatar)
+      const signerEmails = new Set(audit.signers.map(s => (s.email||'').toLowerCase()));
+      const initEmail = (audit.initEmail||'').toLowerCase();
+      if (initEmail && !signerEmails.has(initEmail)) {
+        const emailEvsByInit = (audit.events || []).filter(e => e.type === 'EMAIL_SENT' && (e.by||'').toLowerCase() === initEmail && !e._inheritedFrom);
+        if (emailEvsByInit.length) {
+          ensureSpace(20);
+          page.drawText(ro(`Initiator (${audit.initEmail}):`), { x:MARGIN, y, size:8, font:fontB, color:rgb(0.2,0.2,0.4) }); y -= 12;
+          for (const ee of emailEvsByInit) {
+            ensureSpace(14);
+            page.drawText(ro(`  Email trimis: ${fmtDate(ee.at)}  catre: ${ee.to || ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.05,0.45,0.55), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12;
+          }
+          y -= 4;
+        }
       }
       y -= SECTION_GAP;
       // Issue 3: Calcul timp de procesare per semnatar — pentru ORICE actiune (semnat/refuzat/revizuire)
@@ -1196,8 +1225,9 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         page.drawText(ro(`[Flux parinte: ${audit.parentFlowId}]`), { x:MARGIN, y, size:7.5, font:fontR, color:rgb(0.4,0.2,0.6) });
         y -= 12;
       }
-      const inheritedEvs = audit.events.filter(e => e._inheritedFrom);
-      const currentEvs = audit.events.filter(e => !e._inheritedFrom);
+      const sortByDate = (a, b) => new Date(a.at || 0) - new Date(b.at || 0);
+      const inheritedEvs = audit.events.filter(e => e._inheritedFrom).sort(sortByDate);
+      const currentEvs = audit.events.filter(e => !e._inheritedFrom).sort(sortByDate);
       const EVENT_FONT_SIZE = 7.5;
       const EVENT_LINE_H = 11;
       const EVENT_COL_TS = MARGIN;
@@ -1273,7 +1303,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           `SELECT event_type, actor_email, actor_ip, created_at, payload
            FROM audit_log
            WHERE flow_id = $1
-             AND event_type IN ('PDF_DOWNLOADED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED','DELEGATED','FLOW_CANCELLED','FLOW_CREATED')
+             AND event_type IN ('PDF_DOWNLOADED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED','DELEGATED','FLOW_CANCELLED','FLOW_CREATED','EMAIL_SENT')
            ORDER BY created_at ASC`,
           [flowId]
         );
