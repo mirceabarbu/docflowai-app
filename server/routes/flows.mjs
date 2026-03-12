@@ -131,16 +131,17 @@ const createFlow = async (req, res) => {
     const flowId = _newFlowId(initInstitutie);
     let finalPdfB64 = body.pdfB64 ?? null;
 
-    // flowType 'ancore': PDF-ul NU se modifica deloc la ingest.
-    // Footer-ul se aplica mai jos (stampFooterOnPdf) o singura data, inainte de prima semnatura.
+    // flowType 'ancore': PDF-ul NU se modifica deloc — nici footer stamp.
+    // Formularele oficiale (Formular 17 etc.) pot contine semnaturi de certificare
+    // ale autoritatii emitente. Orice modificare (chiar si pdf-lib save) le invalideaza.
     // Campurile de semnatura predefinite (AcroForm) raman intacte.
 
-    if (finalPdfB64 && _stampFooterOnPdf) {
+    if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
       try {
         finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
           flowId, createdAt, initName, initFunctie,
           institutie: initInstitutie, compartiment: initCompartiment,
-          flowType: body.flowType || 'tabel'  // ancore => useObjectStreams:false
+          flowType: body.flowType || 'tabel'
         });
       } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }
@@ -754,7 +755,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     };
     // FIX v3.2.2: folosim originalPdfB64 (PDF curat, fără footer) pentru a evita double-stamp.
     // Dacă nu există (fluxuri vechi), cădem pe pdfB64 ca fallback.
-    if (_stampFooterOnPdf) {
+    if (_stampFooterOnPdf && (data.flowType || 'tabel') !== 'ancore') {
       const baseForStamp = newData.originalPdfB64 || newData.pdfB64;
       if (baseForStamp) {
         try {
@@ -901,9 +902,9 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
       reinitiatedAt: now, reinitiatedBy: actor.email
     });
 
-    // Aplică footer pe noul PDF (pastrează ACELASI flowId în footer)
+    // Aplică footer pe noul PDF (pastrează ACELASI flowId în footer) — doar pentru tabel
     let finalPdfB64 = pdfB64;
-    if (finalPdfB64 && _stampFooterOnPdf) {
+    if (finalPdfB64 && _stampFooterOnPdf && (data.flowType || 'tabel') !== 'ancore') {
       try {
         finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
           flowId, createdAt: now,
