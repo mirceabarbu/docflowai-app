@@ -153,17 +153,26 @@ process.on('uncaughtException',  (err) => logger.error({ err }, 'uncaughtExcepti
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, '../public');
-app.use(express.static(PUBLIC_DIR));
+// ── Fișiere statice (CSS, JS, imagini, manifeste) ────────────────────────────
+// HTML-urile sunt blocate din static — servite mai jos prin serveWithNonce()
+// care injectează nonce CSP per-request. Fără această excludere, express.static
+// le-ar servi fără nonce și CSP ar bloca toate script-urile inline.
+app.use((req, res, next) => {
+  if (req.path.endsWith('.html')) return next(); // sare static, ajunge la serveWithNonce
+  next();
+}, express.static(PUBLIC_DIR));
 
+// ── Pagini HTML — servite cu nonce CSP injectat ───────────────────────────────
 app.get('/',              serveWithNonce(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
 app.get('/login',         serveWithNonce(path.join(PUBLIC_DIR, 'login.html')));
 app.get('/admin',         serveWithNonce(path.join(PUBLIC_DIR, 'admin.html')));
 app.get('/notifications', serveWithNonce(path.join(PUBLIC_DIR, 'notifications.html')));
 app.get('/templates',     serveWithNonce(path.join(PUBLIC_DIR, 'templates.html')));
-// Ruta signer e accesată cu query params — servim cu nonce pentru a permite inline scripts
 app.get('/semdoc-signer.html',    serveWithNonce(path.join(PUBLIC_DIR, 'semdoc-signer.html')));
 app.get('/semdoc-initiator.html', serveWithNonce(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
 app.get('/flow.html',             serveWithNonce(path.join(PUBLIC_DIR, 'flow.html')));
+app.get('/login.html',            serveWithNonce(path.join(PUBLIC_DIR, 'login.html')));
+app.get('/offline.html',          serveWithNonce(path.join(PUBLIC_DIR, 'offline.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
