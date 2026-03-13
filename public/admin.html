@@ -293,6 +293,13 @@
       <button onclick="exportFlowsCSV()" style="flex-shrink:0;padding:8px 12px;font-size:.83rem;background:rgba(45,212,191,.13);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-weight:600;" title="Exportă CSV">📥 CSV</button>
       <button onclick="exportFlowsPDF()" style="flex-shrink:0;padding:8px 12px;font-size:.83rem;background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-weight:600;" title="Exportă PDF">📄 PDF</button>
     </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <label style="font-size:.8rem;color:var(--muted);flex-shrink:0;">📅 Perioadă:</label>
+      <input type="date" id="flowDateFrom" style="padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;cursor:pointer;" title="De la data"/>
+      <span style="color:var(--muted);font-size:.82rem;">—</span>
+      <input type="date" id="flowDateTo" style="padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;cursor:pointer;" title="Până la data"/>
+      <button onclick="document.getElementById('flowDateFrom').value='';document.getElementById('flowDateTo').value='';loadFlowsList(false,1);" style="padding:6px 10px;font-size:.78rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:var(--muted);cursor:pointer;" title="Șterge filtru dată">✕ Resetează</button>
+    </div>
     <div style="margin-bottom:14px;">
       <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
     </div>
@@ -1288,16 +1295,20 @@ async function loadFlowsList(forceReload = true, page) {
   const statusF = document.getElementById("flowStatusFilter").value;
   const instF = document.getElementById("flowInstFilter").value;
   const deptF = document.getElementById("flowDeptFilter").value;
+  const dateFrom = (document.getElementById("flowDateFrom")?.value || "").trim();
+  const dateTo   = (document.getElementById("flowDateTo")?.value   || "").trim();
   area.innerHTML = '<span style="color:var(--muted);">⏳ Se incarca...</span>';
 
   // Mapeaza valorile locale la parametrii server
-  const statusMap = { active: "pending", done: "completed", refused: "refused", "": "all" };
+  const statusMap = { active: "pending", done: "completed", refused: "refused", cancelled: "cancelled", "": "all" };
   const statusParam = statusMap[statusF] || "all";
 
   const params = new URLSearchParams({ page, limit: 10, status: statusParam });
   if (search) params.set("search", search);
   if (instF) params.set("institutie", instF);
   if (deptF) params.set("compartiment", deptF);
+  if (dateFrom) params.set("dateFrom", dateFrom);
+  if (dateTo)   params.set("dateTo",   dateTo);
 
   try {
     const r = await _apiFetch("/admin/flows/list?" + params.toString(), {headers: hdrs()});
@@ -1577,8 +1588,8 @@ async function previewArchive() {
     _archiveFlowIds = (j.flows||[]).map(f => f.flowId);
     const summary = document.getElementById("archivePreviewSummary");
     const list = document.getElementById("archivePreviewList");
-    const filterLabel = inst ? ` · <span style="color:#9db0ff;">${inst}${dept?" / "+dept:""}</span>` : "";
-    summary.innerHTML = `<span style="color:#2dd4bf;">${escH(String(j.count||0))} fluxuri</span>${escH(filterLabel)} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${escH(String(j.totalMB||0))} MB</span> din baza de date`;
+    const filterLabel = inst ? ` · <span style="color:#9db0ff;">${escH(inst)}${dept?" / "+escH(dept):""}</span>` : "";
+    summary.innerHTML = `<span style="color:#2dd4bf;">${escH(String(j.count||0))} fluxuri</span>${filterLabel} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${escH(String(j.totalMB||0))} MB</span> din baza de date`;
     list.innerHTML = (j.flows||[]).map(f =>
       `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
         📄 ${escH(f.docName||'—')} &nbsp;·&nbsp; ${escH(f.status||'')} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
@@ -2293,7 +2304,7 @@ async function exportFlowsCSV() {
   const statusF = document.getElementById('flowStatusFilter').value;
   const instF = document.getElementById('flowInstFilter').value;
   const deptF = document.getElementById('flowDeptFilter').value;
-  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', '': 'all' };
+  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', cancelled: 'cancelled', '': 'all' };
   const params = new URLSearchParams({ export: '1', limit: '2000', status: statusMap[statusF] || 'all' });
   if (search) params.set('search', search);
   if (instF) params.set('institutie', instF);
@@ -2335,7 +2346,7 @@ async function exportFlowsPDF() {
   const statusF = document.getElementById('flowStatusFilter').value;
   const instF = document.getElementById('flowInstFilter').value;
   const deptF = document.getElementById('flowDeptFilter').value;
-  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', '': 'all' };
+  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', cancelled: 'cancelled', '': 'all' };
   const params = new URLSearchParams({ export: '1', limit: '2000', status: statusMap[statusF] || 'all' });
   if (search) params.set('search', search);
   if (instF) params.set('institutie', instF);

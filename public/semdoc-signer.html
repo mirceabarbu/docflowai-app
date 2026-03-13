@@ -870,61 +870,66 @@ th{ color: var(--sub) !important; }
         const cols = Math.min(n, 2); // max 2 pe rand; ultimul impar ramane la latimea unei casute
         const rows = Math.ceil(n/cols);
         const cellW = (pW - MARGIN*2) / cols;
-        const cellH = 80;
+        const CELL_H_MAX = 80;  // înălțime celulă normală
+        const CELL_H_MIN = 50;  // înălțime minimă lizibilă
         const titleH = 20;
-        const cartusH = rows * cellH + titleH + 10;
         const cartusBottom = 36; // footer server e la y=14, separator la y=28 → cartus începe de la 36
-
-        // Verifică dacă tabelul încape pe ultima pagină folosind PDF.js text detection
-        // Folosim pdfBytes original (deja disponibil) — nu pdfDoc.save() care e lent și inutil
         const { height: pH } = lastPage.getSize();
-        // Zona tabelului: de la cartusBottom până la cartusBottom+cartusH, plus 50pt margine deasupra
-        const cartusZoneBottom = cartusBottom - 5;     // puțin sub baza tabelului
-        const cartusZoneTop    = cartusBottom + cartusH + 50; // 50pt margine deasupra tabelului
-        let drawPage = lastPage;
-        let actualCartusBottom = cartusBottom;
-        let newPageNeeded = false;
 
+        // ── Detectare spațiu liber la baza ultimei pagini via PDF.js ──────────
+        // lowestContentY = cel mai de jos y al textului de conținut (ignorăm footer-ul server)
+        // Spațiu disponibil = de la cartusBottom până la (lowestContentY - 20pt margine)
+        let lowestContentY = pH; // implicit: toată pagina e ocupată → pagină nouă
         if (window.pdfjsLib) {
           try {
             const pdfjsDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
-            const lastPageIdx = pdfjsDoc.numPages; // 1-indexed
-            const pdfjsPage  = await pdfjsDoc.getPage(lastPageIdx);
-            const textContent = await pdfjsPage.getTextContent();
-
-            // Viewport PDF.js → coordonate PDF: transform[5] = Y de la baza paginii
-            let highestContentY = 0; // cel mai sus text de pe pagina (cel mai mare Y)
-            for (const item of (textContent.items || [])) {
+            const pdfjsPage = await pdfjsDoc.getPage(pdfjsDoc.numPages);
+            const tc = await pdfjsPage.getTextContent();
+            let minY = pH; // cel mai mic Y (cel mai jos text de conținut)
+            for (const item of (tc.items || [])) {
               const y = item.transform ? item.transform[5] : 0;
-              if (y > cartusBottom + 5) { // ignoram footer-ul serverului (y≈14-28)
-                if (y > highestContentY) highestContentY = y;
+              if (y > cartusBottom + 10) { // ignorăm footer-ul serverului (y≈14-28)
+                if (y < minY) minY = y;
               }
             }
-            console.log('[DocFlowAI] PDF text detection — highestContentY:', highestContentY,
-              '| cartusZoneTop:', cartusZoneTop, '| pH:', pH);
-
-            // Dacă există text în zona unde ar fi tabelul → pagină nouă
-            if (highestContentY > cartusZoneBottom) {
-              newPageNeeded = true;
-              console.log('[DocFlowAI] Tabel pe pagina noua (text detectat la y=' + highestContentY + ')');
-            }
+            lowestContentY = (minY < pH) ? minY : pH;
+            console.log('[DocFlowAI] lowestContentY:', lowestContentY, '| pH:', pH, '| cartusBottom:', cartusBottom);
           } catch(e) {
-            // PDF.js a eșuat → fallback conservator: pagina nouă (mai sigur decât suprapunere)
-            newPageNeeded = true;
-            console.warn('[DocFlowAI] PDF.js text detection failed, fallback → pagina noua:', e.message);
+            console.warn('[DocFlowAI] PDF.js failed → new page fallback:', e.message);
+            lowestContentY = pH; // fallback conservator → pagină nouă
           }
         } else {
-          // PDF.js indisponibil → pagina nouă conservator
-          newPageNeeded = true;
-          console.warn('[DocFlowAI] pdfjsLib indisponibil → pagina noua conservator');
+          lowestContentY = pH; // PDF.js indisponibil → pagină nouă conservator
         }
 
-        if (newPageNeeded) {
+        // Spațiu disponibil între cartusBottom și cel mai jos rând de conținut (cu 20pt margine)
+        const availableH = lowestContentY - cartusBottom - 20;
+        const cartusHMax = rows * CELL_H_MAX + titleH + 10;
+        const cartusHMin = rows * CELL_H_MIN + titleH + 10;
+
+        let drawPage = lastPage;
+        let actualCartusBottom = cartusBottom;
+        let cellH; // înălțimea finală a celulei — calculată adaptiv
+
+        if (availableH >= cartusHMax) {
+          // Spațiu suficient pentru tabel normal
+          cellH = CELL_H_MAX;
+          console.log('[DocFlowAI] Tabel pe pagina curentă, cellH normal:', cellH);
+        } else if (availableH >= cartusHMin) {
+          // Spațiu parțial — redimensionăm tabelul să încapă exact
+          cellH = Math.floor((availableH - titleH - 10) / rows);
+          cellH = Math.max(cellH, CELL_H_MIN); // nu sub minim
+          console.log('[DocFlowAI] Tabel pe pagina curentă, cellH redus:', cellH, '| availableH:', availableH);
+        } else {
+          // Spațiu insuficient → pagină nouă, tabel sus cu cellH normal
+          cellH = CELL_H_MAX;
           const blankPage = pdfDoc.addPage([pW, pH]);
           drawPage = blankPage;
-          // Pe pagina nouă: tabel plasat sus (40pt de la top)
-          actualCartusBottom = pH - cartusH - 40;
+          actualCartusBottom = pH - (rows * cellH + titleH + 10) - 40;
+          console.log('[DocFlowAI] Tabel pe pagina nouă, cellH normal:', cellH);
         }
+
+        const cartusH = rows * cellH + titleH + 10;
 
         // Title bar — fundal alb, text negru (conform cerinta)
         drawPage.drawRectangle({ x: MARGIN, y: actualCartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
@@ -971,21 +976,23 @@ th{ color: var(--sub) !important; }
           drawPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
 
           // Dimensiunile câmpului de semnătură — declarate o singură dată per celulă
-          const sigFieldTop = cy + cellH - 42;
+          // Offseturi scalate proporțional cu cellH (referință: cellH=80)
+          const scale = cellH / 80;
+          const sigFieldTop = cy + cellH - Math.round(42 * scale);
           const sigFieldBot = cy + 4;
 
-          drawPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy+cellH-15, size: 8, font: fontB, color: rgb(.1,.1,.1) });
-          if (s.functie) drawPage.drawText(ro(s.functie), { x: cx+8, y: cy+cellH-27, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
-          if (s.name)    drawPage.drawText(ro(s.name),    { x: cx+8, y: cy+cellH-39, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
+          drawPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy+cellH-Math.round(15*scale), size: Math.max(6,Math.round(8*scale)), font: fontB, color: rgb(.1,.1,.1) });
+          if (s.functie) drawPage.drawText(ro(s.functie), { x: cx+8, y: cy+cellH-Math.round(27*scale), size: Math.max(5,Math.round(7.5*scale)), font: fontR, color: rgb(.3,.3,.3) });
+          if (s.name)    drawPage.drawText(ro(s.name),    { x: cx+8, y: cy+cellH-Math.round(39*scale), size: Math.max(6,Math.round(8.5*scale)), font: fontB, color: rgb(.05,.05,.05) });
 
           if (isSigned && s.signature) {
-            drawPage.drawText(ro(s.signature), { x: cx+8, y: cy+22, size: 8, font: fontB, color: rgb(.1,.1,.1) });
-            if (s.signedAt) drawPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
+            drawPage.drawText(ro(s.signature), { x: cx+8, y: cy+Math.round(22*scale), size: Math.max(6,Math.round(8*scale)), font: fontB, color: rgb(.1,.1,.1) });
+            if (s.signedAt) drawPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+8, y: cy+Math.round(10*scale), size: Math.max(5,Math.round(6.5*scale)), font: fontR, color: rgb(.5,.5,.5) });
           } else {
             // Label centrat în câmpul de semnătură extins
             const midSigY = sigFieldBot + (sigFieldTop - sigFieldBot) / 2 - 3;
             drawPage.drawText("L.S.", { x: cx+8, y: midSigY + 8, size: 7, font: fontB, color: rgb(.5,.5,.6) });
-            drawPage.drawText("Camp semnatura electronica calificata", { x: cx+8, y: midSigY - 4, size: 6, font: fontR, color: rgb(.6,.6,.6) });
+            if (cellH >= 65) drawPage.drawText("Camp semnatura electronica calificata", { x: cx+8, y: midSigY - 4, size: 6, font: fontR, color: rgb(.6,.6,.6) });
           }
 
           // AcroForm — toate câmpurile active (Ff=0), fără evidențiere per semnatar
