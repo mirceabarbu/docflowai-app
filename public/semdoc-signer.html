@@ -478,6 +478,16 @@ th{ color: var(--sub) !important; }
             return;
           }
 
+          // Flux anulat — blochează semnarea, arată mesaj clar
+          if (j.status === "cancelled") {
+            const canceledBy = j.cancelledBy || j.initName || "inițiator";
+            const reason = j.cancelReason ? ` — Motiv: „${j.cancelReason}"` : "";
+            showBlockedState("🚫 Flux anulat", `Fluxul a fost anulat de ${canceledBy}${reason}. Semnarea nu mai este posibilă.`);
+            $("docName").textContent = j.docName || "—";
+            renderSignersList(j);
+            return;
+          }
+
           // Flux trimis spre revizuire — blochează semnarea, arată mesaj
           if (j.status === "review_requested" || j.status === "reinitiated_after_review") {
             const reviewer = j.reviewRequestedBy || "un semnatar";
@@ -865,23 +875,41 @@ th{ color: var(--sub) !important; }
         const cartusH = rows * cellH + titleH + 10;
         const cartusBottom = 36; // footer server e la y=14, separator la y=28 → cartus începe de la 36
 
-        // FIX 4: Verifică dacă tabelul încape pe ultima pagină
-        // Dacă nu încape (tabelul s-ar suprapune cu conținutul paginii), adaugă pagină nouă
+        // Verifică dacă tabelul încape pe ultima pagină folosind PDF.js text detection
         const { height: pH } = lastPage.getSize();
-        const tableTopY = cartusBottom + cartusH; // y-ul de sus al tabelului
-        const minFreeSpace = cartusH + 60; // spațiu minim necesar (tabel + margin sus)
+        const cartusZoneTop = cartusBottom + cartusH + 40; // zona tabelului + 40pt margine sus
         let drawPage = lastPage;
-        if (tableTopY > pH - 60) {
-          // Tabelul nu încape — adaugă pagină nouă
-          const [newPage] = await pdfDoc.copyPages(pdfDoc, [pages.length - 1]);
-          // Creează pagina nouă goală cu aceleași dimensiuni
-          const blankPage = pdfDoc.addPage([pW, pH]);
-          drawPage = blankPage;
-        }
+        let actualCartusBottom = cartusBottom; // jos pagina existenta
+
+        try {
+          if (window.pdfjsLib) {
+            // Salvam temporar PDF-ul curent (fara modificari inca) si verificam textul paginii
+            const tmpBytes = await pdfDoc.save();
+            const pdfjsDoc = await pdfjsLib.getDocument({ data: tmpBytes }).promise;
+            const pdfjsPage = await pdfjsDoc.getPage(pages.length);
+            const textContent = await pdfjsPage.getTextContent();
+            let hasContentInZone = false;
+            for (const item of (textContent.items || [])) {
+              // transform[5] = y de la baza paginii (coordonate PDF)
+              const yFromBottom = item.transform ? item.transform[5] : 0;
+              if (yFromBottom < cartusZoneTop && yFromBottom > cartusBottom - 5) {
+                hasContentInZone = true;
+                break;
+              }
+            }
+            if (hasContentInZone) {
+              // Continut in zona tabelului — adauga pagina noua si plaseaza tabelul SUS
+              const blankPage = pdfDoc.addPage([pW, pH]);
+              drawPage = blankPage;
+              // Pe pagina noua: tabel plasat sus (margin de 40pt de la top, adica y = pH - cartusH - 40)
+              actualCartusBottom = pH - cartusH - 40;
+            }
+          }
+        } catch(e) { /* PDF.js check esuat — folosim pagina existenta */ }
 
         // Title bar — fundal alb, text negru (conform cerinta)
-        drawPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
-        drawPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: cartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(0,0,0) });
+        drawPage.drawRectangle({ x: MARGIN, y: actualCartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
+        drawPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: actualCartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(0,0,0) });
         // (Removed) Generat timestamp in header bar — kept footer timestamp as single source of truth
 
         // AcroForm — comportament diferit dupa tipul fluxului:
@@ -914,7 +942,7 @@ th{ color: var(--sub) !important; }
           const row = Math.floor(idx / cols);
           const col = idx % cols;
           const cx = MARGIN + col * cellW;
-          const cy = cartusBottom + (rows - 1 - row) * cellH;
+          const cy = actualCartusBottom + (rows - 1 - row) * cellH;
 
           const isSigned = s.status === "signed" && !!s.pdfUploaded;
           const borderColor = rgb(.2,.2,.2);
@@ -954,7 +982,7 @@ th{ color: var(--sub) !important; }
             TU: PDFString.of(ro(s.rol||'') + (s.name ? ' - '+ro(s.name) : '') + (isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
             F: PDFNumber.of(4),
             Ff: PDFNumber.of(0),
-            P: lastPage.ref,
+            P: drawPage.ref,
             DA: PDFString.of('/Helv 10 Tf 0 g'),
             MK: pdfDoc.context.obj({
               BC: pdfDoc.context.obj([hR,hG,hB].map(v=>PDFNumber.of(v))),
