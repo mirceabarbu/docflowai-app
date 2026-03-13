@@ -877,33 +877,47 @@ th{ color: var(--sub) !important; }
         const { height: pH } = lastPage.getSize();
 
         // ── Detectare spațiu liber la baza ultimei pagini via PDF.js ──────────
-        // lowestContentY = cel mai de jos y al textului de conținut (ignorăm footer-ul server)
-        // Spațiu disponibil = de la cartusBottom până la (lowestContentY - 20pt margine)
-        let lowestContentY = pH; // implicit: toată pagina e ocupată → pagină nouă
+        // lowestContentY = y-ul celui mai de jos rând de text de conținut (ignorăm footer-ul server y≈14-28)
+        // pdfBytes este ArrayBuffer — trebuie convertit la Uint8Array pentru PDF.js
+        // Dacă detecția eșuează → fallback conservator: pagină nouă
+        let lowestContentY = 0; // 0 = nu știm → pagină nouă conservator
         if (window.pdfjsLib) {
           try {
-            const pdfjsDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
+            const uint8 = new Uint8Array(pdfBytes); // ← fix: ArrayBuffer → Uint8Array
+            const pdfjsDoc = await pdfjsLib.getDocument({ data: uint8 }).promise;
             const pdfjsPage = await pdfjsDoc.getPage(pdfjsDoc.numPages);
             const tc = await pdfjsPage.getTextContent();
-            let minY = pH; // cel mai mic Y (cel mai jos text de conținut)
+            // transform[5] = Y de la baza paginii (coordonate PDF)
+            // Căutăm cel mai MIC Y dintre itemele de CONȚINUT (nu footer)
+            let minY = pH;
             for (const item of (tc.items || [])) {
               const y = item.transform ? item.transform[5] : 0;
-              if (y > cartusBottom + 10) { // ignorăm footer-ul serverului (y≈14-28)
+              if (y > cartusBottom + 10) { // ignorăm footer-ul serverului (y ≈ 14–28)
                 if (y < minY) minY = y;
               }
             }
-            lowestContentY = (minY < pH) ? minY : pH;
-            console.log('[DocFlowAI] lowestContentY:', lowestContentY, '| pH:', pH, '| cartusBottom:', cartusBottom);
+            if (minY < pH) {
+              lowestContentY = minY; // am găsit conținut
+              console.log('[DocFlowAI] lowestContentY:', lowestContentY, '| pH:', pH, '| cartusBottom:', cartusBottom);
+            } else {
+              // Nu s-a găsit niciun text — pagina poate fi goală sau conținut doar grafic
+              // Tratăm ca pagină goală → tabel jos normal
+              lowestContentY = cartusBottom + 1000; // valoare mare → tabel pe pagina curentă
+              console.log('[DocFlowAI] Niciun text detectat — pagina tratată ca goală');
+            }
           } catch(e) {
             console.warn('[DocFlowAI] PDF.js failed → new page fallback:', e.message);
-            lowestContentY = pH; // fallback conservator → pagină nouă
+            lowestContentY = 0; // fallback: pagină nouă
           }
         } else {
-          lowestContentY = pH; // PDF.js indisponibil → pagină nouă conservator
+          console.warn('[DocFlowAI] pdfjsLib indisponibil → new page fallback');
+          lowestContentY = 0; // fallback: pagină nouă
         }
 
-        // Spațiu disponibil între cartusBottom și cel mai jos rând de conținut (cu 20pt margine)
-        const availableH = lowestContentY - cartusBottom - 20;
+        // Spațiu disponibil = de la cartusBottom până la cel mai jos conținut (cu 20pt margine)
+        const availableH = lowestContentY > cartusBottom
+          ? lowestContentY - cartusBottom - 20
+          : 0; // 0 forțează pagina nouă
         const cartusHMax = rows * CELL_H_MAX + titleH + 10;
         const cartusHMin = rows * CELL_H_MIN + titleH + 10;
 
