@@ -269,87 +269,20 @@ th{ color: var(--sub) !important; }
           <div style="height:12px"></div>
 
           <!-- Semnătură electronică calificată — flux unic -->
-          <div id="signBox" style="background:rgba(124,92,255,.08); border:1px solid rgba(124,92,255,.3); border-radius:14px; padding:20px;">
-
-            <!-- Titlu -->
-            <div style="font-weight:700; font-size:1rem; margin-bottom:18px; display:flex; align-items:center; gap:8px;">
-              ✍️ Semnătură electronică calificată
+          <div id="signBox" style="background:rgba(124,92,255,.08); border:1px solid rgba(124,92,255,.3); border-radius:14px; padding:16px;">
+            <div style="font-weight:700; margin-bottom:10px;">✍️ Semnătură electronică calificată</div>
+            <div class="muted" style="margin-bottom:14px; font-size:.92em; line-height:1.7;">
+              <strong>1.</strong> Descarcă PDF-ul de mai jos (conține semnăturile semnatarilor anteriori)<br/>
+              <strong>2.</strong> Semnează-l cu <strong>E-SignEncrypt / Adobe Acrobat</strong> folosind certificatul STS<br/>
+              <strong>3.</strong> Încarcă PDF-ul semnat și apasă <strong>Trimite</strong> — abia atunci va fi notificat următorul semnatar<br/>
+              <span id="warnAncoreOnly" style="display:none; color:#ffd580; font-size:.87em;">⚠️ Asigură-te că încarci PDF-ul <strong>semnat</strong> — aplicația nu verifică dacă documentul conține semnătură.</span>
             </div>
-
-            <!-- Stepper indicator -->
-            <div id="stepperBar" style="display:flex; align-items:center; margin-bottom:22px; gap:0;">
-              <!-- Pas 1 -->
-              <div id="step1Indicator" style="display:flex; flex-direction:column; align-items:center; gap:5px; flex:1;">
-                <div id="step1Circle" style="width:32px; height:32px; border-radius:50%; background:rgba(124,92,255,.9); border:2px solid #7c5cff; display:flex; align-items:center; justify-content:center; font-size:.85rem; font-weight:700; color:#fff; transition:all .3s;">1</div>
-                <div style="font-size:.72rem; color:#9db0ff; text-align:center; line-height:1.3;">Descarcă</div>
-              </div>
-              <div id="connLine1" style="flex:1; height:2px; background:rgba(255,255,255,.1); margin-bottom:18px; transition:background .4s;"></div>
-              <!-- Pas 2 -->
-              <div id="step2Indicator" style="display:flex; flex-direction:column; align-items:center; gap:5px; flex:1;">
-                <div id="step2Circle" style="width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.15); display:flex; align-items:center; justify-content:center; font-size:.85rem; font-weight:700; color:#5a6a9a; transition:all .3s;">2</div>
-                <div style="font-size:.72rem; color:#5a6a9a; text-align:center; line-height:1.3;">Semnează</div>
-              </div>
-              <div id="connLine2" style="flex:1; height:2px; background:rgba(255,255,255,.1); margin-bottom:18px; transition:background .4s;"></div>
-              <!-- Pas 3 -->
-              <div id="step3Indicator" style="display:flex; flex-direction:column; align-items:center; gap:5px; flex:1;">
-                <div id="step3Circle" style="width:32px; height:32px; border-radius:50%; background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.15); display:flex; align-items:center; justify-content:center; font-size:.85rem; font-weight:700; color:#5a6a9a; transition:all .3s;">3</div>
-                <div style="font-size:.72rem; color:#5a6a9a; text-align:center; line-height:1.3;">Trimite</div>
-              </div>
-            </div>
-
-            <!-- PAS 1: Descarcă -->
-            <div id="stepPanel1" style="background:rgba(124,92,255,.06); border:1px solid rgba(124,92,255,.2); border-radius:12px; padding:16px; margin-bottom:12px; transition:all .3s;">
-              <div style="font-weight:600; font-size:.88rem; color:#b39dff; margin-bottom:6px;">① Descarcă documentul</div>
-              <div class="muted" style="font-size:.82rem; margin-bottom:12px; line-height:1.6;">
-                PDF-ul conține semnăturile semnatarilor anteriori și câmpurile pregătite pentru semnătura ta.
-                <span id="warnAncoreOnly" style="display:none;"><br/>⚠️ <span style="color:#ffd580;">Asigură-te că încarci PDF-ul <strong>semnat</strong> — aplicația nu verifică dacă documentul conține semnătură.</span></span>
-              </div>
-              <button id="btnDownloadForSigning" class="btn secondary" style="width:100%;" onclick="downloadPdfForSigning()">⬇️ Descarcă PDF pentru semnare calificată</button>
-              <div id="downloadForSigningStatus" class="muted" style="font-size:.82em; margin-top:8px; min-height:16px;"></div>
-            </div>
-
-            <!-- PAS 2: Semnează extern -->
-            <div id="stepPanel2" style="background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:16px; margin-bottom:12px; opacity:.45; transition:all .3s;">
-              <div style="font-weight:600; font-size:.88rem; color:#9db0ff; margin-bottom:8px;">② Semnează în aplicația ta</div>
-              <div style="display:flex; gap:10px; align-items:stretch;">
-                <a id="hintAdobe" href="https://www.adobe.com/ro/acrobat/pdf-reader.html" target="_blank" rel="noopener" title="Descarca Adobe Acrobat Reader" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; text-decoration:none; opacity:.6; cursor:pointer; transition:border-color .2s,background .2s;" onmouseover="this.style.borderColor='rgba(255,100,50,.45)';this.style.background='rgba(255,100,50,.07)';" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.background='rgba(255,255,255,.04)';">
-                  <span style="font-size:1.4rem;">📄</span>
-                  <span style="font-size:.75rem; color:#9db0ff; text-align:center; line-height:1.3;">Adobe Acrobat</span>
-                </a>
-                <a id="hintESign" href="https://ca.stsisp.ro" target="_blank" rel="noopener" title="Deschide pagina E-SignEncrypt STS" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; text-decoration:none; opacity:.6; cursor:pointer; transition:border-color .2s,background .2s;" onmouseover="this.style.borderColor='rgba(50,180,255,.45)';this.style.background='rgba(50,180,255,.07)';" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.background='rgba(255,255,255,.04)';">
-                  <span style="font-size:1.4rem;">🔐</span>
-                  <span style="font-size:.75rem; color:#9db0ff; text-align:center; line-height:1.3;">E-SignEncrypt STS</span>
-                </a>
-                <a id="hintSTSign" href="https://sts.ro/servicii-de-certificare-calificata/" target="_blank" rel="noopener" title="Informatii semnatura STS" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; text-decoration:none; opacity:.6; cursor:pointer; transition:border-color .2s,background .2s;" onmouseover="this.style.borderColor='rgba(45,212,191,.45)';this.style.background='rgba(45,212,191,.07)';" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.background='rgba(255,255,255,.04)';">
-                  <span style="font-size:1.4rem;">📋</span>
-                  <span style="font-size:.75rem; color:#9db0ff; text-align:center; line-height:1.3;">STSign / STS</span>
-                </a>
-              </div>
-              <div class="muted" style="font-size:.78rem; margin-top:10px; text-align:center; line-height:1.5;">
-                Deschide fișierul descărcat în aplicația preferată, aplică semnătura electronică calificată, salvează PDF-ul.
-              </div>
-            </div>
-
-            <!-- PAS 3: Încarcă + Trimite -->
-            <div id="stepPanel3" style="background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:16px; opacity:.45; transition:all .3s;">
-              <div style="font-weight:600; font-size:.88rem; color:#9db0ff; margin-bottom:10px;">③ Încarcă PDF-ul semnat</div>
+            <button id="btnDownloadForSigning" class="btn secondary" style="margin-bottom:8px; width:100%;" onclick="downloadPdfForSigning()">⬇️ Descarcă PDF pentru semnare calificată</button>
+            <div id="downloadForSigningStatus" class="muted" style="font-size:.85em; margin-bottom:12px;"></div>
+            <div style="border-top:1px solid rgba(255,255,255,.1); padding-top:14px;">
               <input id="signedPdfFile" type="file" accept="application/pdf" style="display:none;" />
-
-              <!-- Drop zone -->
-              <div id="dropZone" style="border:2px dashed rgba(124,92,255,.3); border-radius:10px; padding:20px 12px; text-align:center; cursor:pointer; transition:all .25s; margin-bottom:10px;"
-                onclick="document.getElementById('signedPdfFile').click()"
-                ondragover="event.preventDefault(); this.style.borderColor='rgba(124,92,255,.8)'; this.style.background='rgba(124,92,255,.08)';"
-                ondragleave="this.style.borderColor='rgba(124,92,255,.3)'; this.style.background='transparent';"
-                ondrop="event.preventDefault(); this.style.borderColor='rgba(124,92,255,.3)'; this.style.background='transparent'; const dt=event.dataTransfer; if(dt.files.length){const fi=document.getElementById('signedPdfFile'); const dT=new DataTransfer(); dT.items.add(dt.files[0]); fi.files=dT.files; fi.dispatchEvent(new Event('change'));}">
-                <div style="font-size:1.5rem; margin-bottom:6px;">📂</div>
-                <div style="font-size:.83rem; color:#9db0ff; font-weight:600;">Trage PDF-ul semnat aici</div>
-                <div class="muted" style="font-size:.75rem; margin-top:3px;">sau click pentru a alege fișierul</div>
-              </div>
-
-              <!-- Ascuns — păstram id-ul vechi pentru compatibilitate cu JS -->
-              <button id="btnChooseSignedPdf" class="btn secondary" type="button" style="display:none;" disabled title="Descarcă mai întâi PDF-ul pentru semnare">📂 Alege fișier PDF semnat</button>
-
-              <div id="signedPdfInfo" class="muted" style="font-size:.85em; margin-bottom:10px; min-height:18px;"></div>
+              <button id="btnChooseSignedPdf" class="btn secondary" type="button" style="width:100%; margin-bottom:8px;" disabled title="Descarcă mai întâi PDF-ul pentru semnare">📂 Încarcă fișier PDF semnat calificat</button>
+              <div id="signedPdfInfo" class="muted" style="font-size:.9em; margin-bottom:10px;">Niciun fișier selectat.</div>
               <button id="btnUploadSignedPdf" class="btn" type="button" style="width:100%; font-weight:700; padding:13px;" disabled>⬆️ Trimite PDF semnat calificat</button>
               <div id="uploadStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
             </div>
@@ -620,88 +553,6 @@ th{ color: var(--sub) !important; }
       });
 
       // ── Upload PDF Semnat Calificat ─────────────────────────────────────────
-      // ── Stepper vizual ─────────────────────────────────────────────────────
-      function stepperAdvance(step) {
-        // step: 1 = descarcă (initial), 2 = semnează, 3 = trimite
-        const circles = [$('step1Circle'), $('step2Circle'), $('step3Circle')];
-        const panels  = [$('stepPanel1'), $('stepPanel2'), $('stepPanel3')];
-        const lines   = [$('connLine1'), $('connLine2')];
-        const labels  = [
-          $('step1Indicator')?.querySelector('div:last-child'),
-          $('step2Indicator')?.querySelector('div:last-child'),
-          $('step3Indicator')?.querySelector('div:last-child'),
-        ];
-
-        circles.forEach((c, i) => {
-          if (!c) return;
-          if (i < step - 1) {
-            // Completed
-            c.textContent = '✓';
-            c.style.background = 'rgba(45,212,191,.85)';
-            c.style.borderColor = '#2dd4bf';
-            c.style.color = '#fff';
-            if (labels[i]) labels[i].style.color = '#2dd4bf';
-          } else if (i === step - 1) {
-            // Active
-            c.textContent = String(i + 1);
-            c.style.background = 'rgba(124,92,255,.9)';
-            c.style.borderColor = '#7c5cff';
-            c.style.color = '#fff';
-            if (labels[i]) labels[i].style.color = '#b39dff';
-          } else {
-            // Future
-            c.textContent = String(i + 1);
-            c.style.background = 'rgba(255,255,255,.08)';
-            c.style.borderColor = 'rgba(255,255,255,.15)';
-            c.style.color = '#5a6a9a';
-            if (labels[i]) labels[i].style.color = '#5a6a9a';
-          }
-        });
-
-        lines.forEach((l, i) => {
-          if (!l) return;
-          l.style.background = i < step - 1 ? 'rgba(45,212,191,.5)' : 'rgba(255,255,255,.1)';
-        });
-
-        panels.forEach((p, i) => {
-          if (!p) return;
-          if (i === step - 1) {
-            p.style.opacity = '1';
-            p.style.border = i === 0 ? '1px solid rgba(124,92,255,.35)'
-                           : i === 1 ? '1px solid rgba(255,200,80,.25)'
-                           : '1px solid rgba(45,212,191,.3)';
-            p.style.background = i === 0 ? 'rgba(124,92,255,.08)'
-                                : i === 1 ? 'rgba(255,200,80,.05)'
-                                : 'rgba(45,212,191,.06)';
-          } else if (i < step - 1) {
-            p.style.opacity = '0.6';
-            p.style.border = '1px solid rgba(45,212,191,.15)';
-            p.style.background = 'rgba(45,212,191,.03)';
-          } else {
-            p.style.opacity = '0.35';
-            p.style.border = '1px solid rgba(255,255,255,.08)';
-            p.style.background = 'rgba(255,255,255,.03)';
-          }
-        });
-
-        // Activează drop zone la pasul 2 și 3
-        const dz = $('dropZone');
-        if (dz) {
-          if (step >= 2) {
-            dz.style.cursor = 'pointer';
-            dz.style.borderColor = 'rgba(124,92,255,.5)';
-          }
-        }
-        // Activează hint-uri aplicații la pasul 2
-        ['hintAdobe','hintESign','hintSTSign'].forEach(id => {
-          const el = $(id);
-          if (el) el.style.opacity = step >= 2 ? '1' : '0.5';
-        });
-      }
-
-      // Inițializare stepper la pas 1
-      stepperAdvance(1);
-
       let signedPdfB64Data = null;
 
       $("btnChooseSignedPdf").addEventListener("click", () => $("signedPdfFile").click());
@@ -738,7 +589,6 @@ th{ color: var(--sub) !important; }
           const s = currentFlow?.signers?.[signerIndex];
           const canUpload = s && (s.status === "current" || (s.status === "signed" && !s.pdfUploaded));
           $("btnUploadSignedPdf").disabled = !canUpload;
-          if (canUpload) stepperAdvance(3);
           // Dezactivează butonul de refuz când PDF-ul e încărcat
           const refuzBtn = $("btnRefuz");
           if (refuzBtn) {
@@ -939,13 +789,11 @@ th{ color: var(--sub) !important; }
           // Nu deschidem în browser — lăsăm OS să deschidă cu aplicația implicită (Adobe)
           setTimeout(() => URL.revokeObjectURL(url), 30000);
 
-          status.textContent = "✅ PDF descărcat. Deschide fișierul în Adobe Acrobat / E-SignEncrypt și aplică semnătura electronică calificată.";
+          status.textContent = "✅ PDF descărcat în folderul Downloads. Deschide fișierul în Adobe Acrobat/Reader pentru a aplica semnătura electronică calificată.";
           btn.textContent = "⬇️ Descarcă din nou";
           // Activeaza upload-ul dupa descarcare reusita
           const chooseBtn = $("btnChooseSignedPdf");
           if (chooseBtn) { chooseBtn.disabled = false; chooseBtn.title = ""; }
-          // Avansează stepper vizual direct la Pasul 3 (pasul 2 e extern, se consideră indeplinit automat)
-          stepperAdvance(3);
 
         } catch(err) {
           console.error("downloadPdfForSigning error:", err);
