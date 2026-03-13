@@ -76,7 +76,7 @@ try {
           // FIX-07: 'unsafe-inline' eliminat — înlocuit cu nonce per request
           scriptSrc:      buildScriptSrc(req, res),
           styleSrc:       ["'self'", "'unsafe-inline'"],  // inline styles rămân (fără risc XSS)
-          scriptSrcAttr:  ["'none'"],                     // nu permite event handlers inline (onclick=)
+          scriptSrcAttr:  ["'unsafe-inline'"],             // permite onclick=/onsubmit= (mai puțin risc decât <script> tags)
           imgSrc:         ["'self'", 'data:', 'blob:'],
           connectSrc:     ["'self'", 'wss:', 'ws:'],
           objectSrc:      ["'none'"],

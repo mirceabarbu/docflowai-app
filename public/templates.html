@@ -722,7 +722,7 @@ async function submitChangePwd(){
   if(nw!==cf){msg.textContent='Parolele noi nu coincid.';return;}
   btn.disabled=true; btn.textContent='Se salveaza...';
   try{
-    var r=await fetch('/auth/change-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({currentPassword:cur,newPassword:nw})});
+    var r=await fetch('/auth/change-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});
     var d=await r.json();
     if(r.ok){
       msg.style.color='#34A853'; msg.textContent='Parola schimbata cu succes!'; btn.textContent='Salveaza';

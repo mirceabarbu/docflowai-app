@@ -1815,7 +1815,7 @@ fetch("/auth/me",{headers:hdrs()})
           <h2 style="color:#ffaaaa;margin-bottom:12px;">Cont neconfigurat</h2>
           <p style="color:#8b949e;line-height:1.6;margin-bottom:24px;">Contul de <strong style="color:#ffd580;">Administrator Instituție</strong> nu are o organizație asociată.<br><br>
           Contactați super-administratorul pentru a seta organizația acestui cont.</p>
-          <button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>location.href='/login.html')"
+          <button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>location.href='/login')"
             style="background:rgba(255,80,80,.2);border:1px solid rgba(255,80,80,.4);color:#ffaaaa;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:.9rem;">
             Înapoi la login
           </button>
