@@ -937,33 +937,9 @@ th{ color: var(--sub) !important; }
         }
 
         // Spațiu disponibil = de la cartusBottom până la cel mai jos conținut (cu 20pt margine)
-        const availableH = lowestContentY > cartusBottom
-          ? lowestContentY - cartusBottom - 20
-          : 0; // 0 forțează pagina nouă
-        const cartusHMax = rows * CELL_H_MAX + titleH + 10;
-        const cartusHMin = rows * CELL_H_MIN + titleH + 10;
-
+        // cellH=60 fix — tabel mereu pe pagina curentă jos
         let drawPage = lastPage;
         let actualCartusBottom = cartusBottom;
-        let cellH; // înălțimea finală a celulei — calculată adaptiv
-
-        if (availableH >= cartusHMax) {
-          // Spațiu suficient pentru tabel normal
-          cellH = CELL_H_MAX;
-          console.log('[DocFlowAI] Tabel pe pagina curentă, cellH normal:', cellH);
-        } else if (availableH >= cartusHMin) {
-          // Spațiu parțial — redimensionăm tabelul să încapă exact
-          cellH = Math.floor((availableH - titleH - 10) / rows);
-          cellH = Math.max(cellH, CELL_H_MIN); // nu sub minim
-          console.log('[DocFlowAI] Tabel pe pagina curentă, cellH redus:', cellH, '| availableH:', availableH);
-        } else {
-          // Spațiu insuficient → pagină nouă, tabel sus cu cellH normal
-          cellH = CELL_H_MAX;
-          const blankPage = pdfDoc.addPage([pW, pH]);
-          drawPage = blankPage;
-          actualCartusBottom = pH - (rows * cellH + titleH + 10) - 40;
-          console.log('[DocFlowAI] Tabel pe pagina nouă, cellH normal:', cellH);
-        }
 
         const cartusH = rows * cellH + titleH + 10;
 
