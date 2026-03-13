@@ -893,7 +893,7 @@ th{ color: var(--sub) !important; }
         const cols = Math.min(n, 3); // max 3 pe rand
         const rows = Math.ceil(n / cols);
         const cellW = (pW - MARGIN*2) / cols;
-        const cellH = 60;  // înălțime fixă ¾ din 80
+        const cellH = 48; // 2 rânduri text + câmp semnătură compact
         const titleH = 20;
         const cartusBottom = 36;
         const { height: pH } = lastPage.getSize();
@@ -990,7 +990,7 @@ th{ color: var(--sub) !important; }
           // Dimensiunile câmpului de semnătură — declarate o singură dată per celulă
           // Offseturi scalate proporțional cu cellH (referință: cellH=80)
           // cellH=60 fix — câmpul de semnătură ocupă zona de jos
-          const sigFieldTop = cy + cellH - 36; // 60-36=24pt de la baza celulei
+          const sigFieldTop = cy + cellH - 26; // text ocupă 26pt de sus
           const sigFieldBot = cy + 4;
 
           // Rând 1: Rol (bold)
