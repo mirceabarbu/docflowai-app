@@ -41,10 +41,10 @@ function getOptionalActor(req) {
 
 // F-05: extrage IP real (ținând cont de reverse proxy Railway/Express trust proxy)
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
-const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, bucket: 'sign',   message: 'Prea multe cereri de semnare. Încearcă în 1 minut.' });
-const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  bucket: 'upload', message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
+const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message: 'Prea multe cereri de semnare. Încearcă în 1 minut.' });
+const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
 
-let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired, _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64, _sendSignerEmail, _jsonPdfParser, _dispatchWebhook;
+let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired, _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64, _sendSignerEmail;
 export function injectFlowDeps(deps) {
   _notify = deps.notify;
   _wsPush = deps.wsPush;
@@ -56,8 +56,6 @@ export function injectFlowDeps(deps) {
   _stripSensitive = deps.stripSensitive;
   _stripPdfB64 = deps.stripPdfB64;
   _sendSignerEmail = deps.sendSignerEmail;
-  _jsonPdfParser = deps.jsonPdfParser || null;
-  _dispatchWebhook = deps.dispatchWebhook || null;
 }
 
 // ── POST /flows — creare flux ──────────────────────────────────────────────
@@ -93,23 +91,6 @@ const createFlow = async (req, res) => {
       const estimatedPdfBytes = Math.floor(rawPdfCheck.length * 0.75);
       if (estimatedPdfBytes > 50 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_50mb', message: 'PDF-ul depășește limita de 50 MB.' });
     }
-
-    // FIX v3.3.8: validare body.meta — prevenire payload abuz
-    if (body.meta !== undefined && body.meta !== null) {
-      if (typeof body.meta !== 'object' || Array.isArray(body.meta)) return res.status(400).json({ error: 'meta_must_be_object' });
-      const metaKeys = Object.keys(body.meta);
-      if (metaKeys.length > 50) return res.status(400).json({ error: 'meta_too_many_fields', max: 50 });
-      for (const k of metaKeys) {
-        if (k.length > 100) return res.status(400).json({ error: 'meta_key_too_long', max: 100 });
-        const v = body.meta[k];
-        if (typeof v === 'string' && v.length > 1000) return res.status(400).json({ error: 'meta_value_too_long', key: k, max: 1000 });
-      }
-    }
-
-    // FIX v3.3.8: validare flowType
-    const allowedFlowTypes = ['tabel', 'ancore'];
-    const flowType = body.flowType || 'tabel';
-    if (!allowedFlowTypes.includes(flowType)) return res.status(400).json({ error: 'invalid_flow_type', allowed: allowedFlowTypes });
 
     for (let i = 0; i < signers.length; i++) {
       const s = signers[i] || {};
@@ -155,12 +136,12 @@ const createFlow = async (req, res) => {
     // ale autoritatii emitente. Orice modificare (chiar si pdf-lib save) le invalideaza.
     // Campurile de semnatura predefinite (AcroForm) raman intacte.
 
-    if (finalPdfB64 && _stampFooterOnPdf && flowType !== 'ancore') {
+    if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
       try {
         finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
           flowId, createdAt, initName, initFunctie,
           institutie: initInstitutie, compartiment: initCompartiment,
-          flowType
+          flowType: body.flowType || 'tabel'
         });
       } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }
@@ -169,7 +150,7 @@ const createFlow = async (req, res) => {
       orgId,
       flowId, docName, initName, initEmail,
       initFunctie, institutie: initInstitutie, compartiment: initCompartiment,
-      meta: body.meta || {}, flowType,
+      meta: body.meta || {}, flowType: body.flowType || 'tabel',
       urgent: !!(body.urgent),
       originalPdfB64: body.pdfB64 ?? null,  // PDF curat, fără footer — pentru reinitiate
       pdfB64: finalPdfB64,
@@ -193,11 +174,8 @@ const createFlow = async (req, res) => {
   } catch(e) { logger.error({ err: e }, 'POST /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 };
 
-// Helper: middleware PDF parser — suprascrie limita globală de 50kb pentru rutele cu PDF
-const pdfBodyMiddleware = (req, res, next) => (_jsonPdfParser ? _jsonPdfParser(req, res, next) : next());
-
-router.post('/flows', pdfBodyMiddleware, createFlow);
-router.post('/api/flows', pdfBodyMiddleware, createFlow);
+router.post('/flows', createFlow);
+router.post('/api/flows', createFlow);
 
 // ── GET /flows/:flowId/signed-pdf ──────────────────────────────────────────
 router.get('/flows/:flowId/signed-pdf', async (req, res) => {
@@ -400,7 +378,7 @@ router.post('/api/flows/:flowId/sign', _signRateLimit, signFlow);
 // ── R-03: Rate limit pe endpoint-urile sensibile ─────────────────────────
 // Aplicăm cu router.use înainte de declararea handler-elor inline
 router.use('/flows/:flowId/refuse',           _signRateLimit);
-router.use('/flows/:flowId/upload-signed-pdf', _uploadRateLimit, pdfBodyMiddleware);
+router.use('/flows/:flowId/upload-signed-pdf', _uploadRateLimit);
 router.use('/flows/:flowId/delegate',          _signRateLimit);
 
 // ── POST /flows/:flowId/refuse ─────────────────────────────────────────────
@@ -460,7 +438,6 @@ router.post('/flows/:flowId/register-download', async (req, res) => {
     if (!signer) return res.status(403).json({ error: 'invalid_signer_token' });
     if (_isSignerTokenExpired(signer)) return res.status(403).json({ error: 'token_expired' });
     // Semnatar 2+: va descărca signedPdfB64 (cu semnăturile anterioare) — hash calculat pe acela
-    // Semnatar 1: descarcă pdfB64 (original) — hash calculat pe original
     const rawSignedPdf = (data.signedPdfB64 || '').includes(',') ? (data.signedPdfB64 || '').split(',')[1] : (data.signedPdfB64 || '');
     const rawPdf = rawSignedPdf || ((data.pdfB64 || '').includes(',') ? (data.pdfB64 || '').split(',')[1] : (data.pdfB64 || ''));
     if (!rawPdf) return res.status(500).json({ error: 'pdf_missing_cannot_issue_token' });
@@ -573,8 +550,6 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
           // Issue 5: Sterge TOATE notif YOUR_TURN ramase pentru acest flux
           await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
           if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: 'Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName }, urgent: !!(data.urgent) });
-          // FEAT-01 v3.3.8: Webhook per org la FLOW_COMPLETED
-          if (_dispatchWebhook) await _dispatchWebhook(data, pool, 'FLOW_COMPLETED').catch(e => logger.warn({ err: e, flowId }, 'Webhook dispatch error (non-fatal)'));
         }
         if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName, signerToken: nextSigner.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment }, urgent: !!(data.urgent) });
       } catch(notifErr) { logger.error({ err: notifErr, flowId }, 'Notificare async esuat'); }

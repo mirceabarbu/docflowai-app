@@ -206,37 +206,9 @@ th{ color: var(--sub) !important; }
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
       const headers = Object.assign({}, (options||{}).headers || {});
-      // SEC: token semnatar mutat din query string în header (v3.4.0)
-      // Extrage ?token= din URL și îl trimite ca X-Signer-Token header
-      let cleanUrl = url;
-      try {
-        const u = new URL(url, window.location.origin);
-        const t = u.searchParams.get('token');
-        if (t) {
-          headers['X-Signer-Token'] = t;
-          u.searchParams.delete('token');
-          cleanUrl = u.pathname + (u.search ? u.search : '') + (u.hash ? u.hash : '');
-        }
-      } catch(e) { /* URL parse fail — folosim url original */ }
       const legacyToken = localStorage.getItem('docflow_token');
       if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
-      return fetch(cleanUrl, Object.assign({}, options||{}, { headers, credentials: 'include' }));
-    };
-
-    // SEC v3.4.0: helper download fișiere cu signer token în header (nu în URL)
-    // token e definit mai jos în scriptul principal — folosim o funcție care îl citește lazy
-    window.downloadWithToken = async function(url, filename) {
-      const signerToken = (new URLSearchParams(location.search)).get('token') || '';
-      try {
-        const resp = await _apiFetch(url + (signerToken ? '?token=' + encodeURIComponent(signerToken) : ''));
-        if (!resp.ok) { alert('Eroare la descărcare (' + resp.status + ')'); return; }
-        const blob = await resp.blob();
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = filename || 'document.pdf';
-        document.body.appendChild(a); a.click();
-        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-      } catch(e) { alert('Eroare la descărcare: ' + e.message); }
+      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
   <link rel="stylesheet" href="/mobile.css">
@@ -456,7 +428,8 @@ th{ color: var(--sub) !important; }
           box.style.display = '';
           const iconByMime = t => t.includes('pdf') ? '📄' : t.includes('zip') ? '🗜️' : t.includes('rar') ? '🗜️' : '📎';
           list.innerHTML = atts.map(a => `
-            <a href="#" onclick="downloadWithToken('/flows/${encodeURIComponent(flow)}/attachments/${a.id}', '${a.filename.replace(/'/g,'')}'); return false;"
+            <a href="/flows/${encodeURIComponent(flow)}/attachments/${a.id}?token=${encodeURIComponent(token||'')}"
+               download="${a.filename.replace(/"/g,'')}"
                style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(124,92,255,.1);border-radius:7px;text-decoration:none;color:var(--text);font-size:.82rem;">
               <span>${iconByMime(a.mimeType)}</span>
               <span style="flex:1;">${a.filename}</span>
@@ -557,7 +530,7 @@ th{ color: var(--sub) !important; }
             const box = $("completedBox");
             if (box) box.style.display = "block";
             const dlBtn = $("btnDownloadFinalPdf");
-            if (dlBtn) { dlBtn.href = '#'; dlBtn.onclick = (e) => { e.preventDefault(); downloadWithToken(`/flows/${encodeURIComponent(flow)}/signed-pdf`, (j.docName || 'document') + '_semnat.pdf'); }; }
+            if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`;
           } else if (thisSigned) {
             // This signer already uploaded — lock box, show waiting message
             if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
@@ -715,7 +688,7 @@ th{ color: var(--sub) !important; }
             if (completedBox) {
               completedBox.style.display = "block";
               const dlBtn = $("btnDownloadFinalPdf");
-              if (dlBtn) { dlBtn.href = '#'; dlBtn.onclick = (e) => { e.preventDefault(); downloadWithToken(`/flows/${encodeURIComponent(flow)}/signed-pdf`, (j?.docName || 'document') + '_semnat.pdf'); }; }
+              if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`;
             }
             const signBox = $("signBox");
             if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }

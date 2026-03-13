@@ -481,47 +481,6 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_flow_att_flow ON flow_attachments(flow_id);
     `
-  },
-  {
-    // FIX-09 v3.3.8: Rate limiter PostgreSQL-backed — înlocuiește Map JS in-memory
-    id: '026_api_rate_limits',
-    sql: `
-      CREATE TABLE IF NOT EXISTS api_rate_limits (
-        key           TEXT PRIMARY KEY,
-        count         INTEGER NOT NULL DEFAULT 0,
-        first_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        blocked_until TIMESTAMPTZ,
-        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_api_rl_blocked ON api_rate_limits(blocked_until)
-        WHERE blocked_until IS NOT NULL;
-    `
-  },
-  {
-    // FEAT-01 v3.3.8: Webhook per organizație la FLOW_COMPLETED
-    // Câmp webhook_url în organizations + tabelă webhook_deliveries pentru retry logic
-    id: '027_org_webhook',
-    sql: `
-      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS webhook_url TEXT;
-      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS webhook_secret TEXT;
-
-      CREATE TABLE IF NOT EXISTS webhook_deliveries (
-        id           SERIAL PRIMARY KEY,
-        org_id       INTEGER NOT NULL,
-        flow_id      TEXT NOT NULL,
-        event_type   TEXT NOT NULL DEFAULT 'FLOW_COMPLETED',
-        payload      JSONB NOT NULL,
-        status       TEXT NOT NULL DEFAULT 'pending',  -- pending / delivered / failed
-        attempts     INTEGER NOT NULL DEFAULT 0,
-        last_error   TEXT,
-        next_retry   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        delivered_at TIMESTAMPTZ,
-        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_wh_del_pending ON webhook_deliveries(next_retry)
-        WHERE status = 'pending';
-      CREATE INDEX IF NOT EXISTS idx_wh_del_org ON webhook_deliveries(org_id, created_at DESC);
-    `
   }
 ];
 

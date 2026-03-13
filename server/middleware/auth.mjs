@@ -174,12 +174,10 @@ export function clearAuthCookie(res) {
   });
 }
 
-// generatePassword — 12 caractere din 62 posibile → ~71 bits de entropie (OWASP 2025: min 64 bits)
-// Format: xxxx-xxxx-xxxx (ușor de citit, fără caractere ambigui: 0/O, 1/l/I)
 export function generatePassword() {
-  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
   let p = '';
-  for (let i = 0; i < 12; i++) { if (i === 4 || i === 8) p += '-'; p += chars[crypto.randomInt(chars.length)]; }
+  for (let i = 0; i < 9; i++) { if (i===3||i===6) p+='-'; p+=chars[crypto.randomInt(chars.length)]; }
   return p;
 }
 
