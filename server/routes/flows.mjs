@@ -459,7 +459,10 @@ router.post('/flows/:flowId/register-download', async (req, res) => {
     const signer = (data.signers || []).find(s => s.token === signerToken);
     if (!signer) return res.status(403).json({ error: 'invalid_signer_token' });
     if (_isSignerTokenExpired(signer)) return res.status(403).json({ error: 'token_expired' });
-    const rawPdf = (data.pdfB64 || '').includes(',') ? (data.pdfB64 || '').split(',')[1] : (data.pdfB64 || '');
+    // Semnatar 2+: va descărca signedPdfB64 (cu semnăturile anterioare) — hash calculat pe acela
+    // Semnatar 1: descarcă pdfB64 (original) — hash calculat pe original
+    const rawSignedPdf = (data.signedPdfB64 || '').includes(',') ? (data.signedPdfB64 || '').split(',')[1] : (data.signedPdfB64 || '');
+    const rawPdf = rawSignedPdf || ((data.pdfB64 || '').includes(',') ? (data.pdfB64 || '').split(',')[1] : (data.pdfB64 || ''));
     if (!rawPdf) return res.status(500).json({ error: 'pdf_missing_cannot_issue_token' });
 
     // Înregistrăm momentul descărcării PDF-ului de semnat
@@ -686,6 +689,7 @@ router.get('/my-flows', async (req, res) => {
       compartiment: d.compartiment || '',
       initEmail: d.initEmail || '',
       initName: d.initName || '',
+      flowType: d.flowType || 'tabel',
       status: d.status || 'active',
       urgent: !!(d.urgent),
       signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refuseReason: s.refuseReason }; }),

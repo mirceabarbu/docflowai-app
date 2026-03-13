@@ -765,13 +765,17 @@ th{ color: var(--sub) !important; }
             const origForHash = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
             _uploadToken = origForHash.headers.get("X-Docflow-UploadToken") || null;
             pdfBlob = await prevResp.blob();
-            // Înregistrăm descărcarea (downloadedAt) pentru semnatarul curent
+            // Înregistrăm descărcarea (downloadedAt) + obținem uploadToken bazat pe signed-pdf
             try {
-              await _apiFetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
+              const regResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ signerToken: token }),
               });
+              if (regResp.ok) {
+                const regJson = await regResp.json();
+                if (regJson.uploadToken) _uploadToken = regJson.uploadToken;
+              }
             } catch(e) { console.warn("register-download (signer 2+) error:", e.message); }
           } else if (currentFlow?.flowType === "ancore") {
             // Tip 2: ancore existente — descărcăm PDF-ul original fără modificări
