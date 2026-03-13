@@ -193,18 +193,6 @@ th{ color: var(--sub) !important; }
           location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
         });
 
-// Populate userBar with user name + back button + logout
-(function() {
-  const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI — OK
-  const bar = document.getElementById('userBar');
-  if (!bar) return;
-  const label = u.nume || u.email || '';
-  bar.innerHTML =
-    (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
-    ((u.role === 'admin' || u.role === 'org_admin') ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
-    `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
-    `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
-})();
     })();
   </script>
 
@@ -381,6 +369,23 @@ th{ color: var(--sub) !important; }
       const params = new URLSearchParams(location.search);
       const flow = params.get("flow");
       const token = params.get("token");
+
+      // Populate userBar — rulează după DOM, deci getElementById funcționează corect
+      (function() {
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        const bar = document.getElementById('userBar');
+        if (!bar) return;
+        const label = u.nume || u.email || '';
+        bar.innerHTML =
+          (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
+          ((u.role === 'admin' || u.role === 'org_admin') ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
+          `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
+          `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+        if (localStorage.getItem("docflow_force_pwd") === "1") {
+          const banner = document.getElementById("forcePwdBanner");
+          if (banner) banner.style.display = "block";
+        }
+      })();
 
       if (!flow || !token) {
         showError("Link invalid. Lipsesc parametri (flow/token).");
