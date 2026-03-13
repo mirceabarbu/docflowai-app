@@ -995,10 +995,9 @@ th{ color: var(--sub) !important; }
 
           // Rând 1: Rol (bold)
           drawPage.drawText(ro(s.rol)||"—", { x: cx+6, y: cy+cellH-13, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
-          // Rând 2: Nume Prenume (bold)
-          if (s.name) drawPage.drawText(ro(s.name), { x: cx+6, y: cy+cellH-24, size: 7.5, font: fontB, color: rgb(.05,.05,.05), maxWidth: cellW-12 });
-          // Rând 3: Funcție (regular, mai mic)
-          if (s.functie) drawPage.drawText(ro(s.functie), { x: cx+6, y: cy+cellH-34, size: 6.5, font: fontR, color: rgb(.35,.35,.35), maxWidth: cellW-12 });
+          // Rând 2: "Nume Prenume - Funcție" pe un singur rând
+          const nameFunc = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
+          if (nameFunc) drawPage.drawText(nameFunc, { x: cx+6, y: cy+cellH-24, size: 7, font: fontR, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
 
           if (isSigned && s.signature) {
             drawPage.drawText(ro(s.signature), { x: cx+6, y: cy+18, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
