@@ -1303,7 +1303,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           `SELECT event_type, actor_email, actor_ip, created_at, payload
            FROM audit_log
            WHERE flow_id = $1
-             AND event_type IN ('PDF_DOWNLOADED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED','DELEGATED','FLOW_CANCELLED','FLOW_CREATED','EMAIL_SENT')
+             AND event_type IN ('PDF_DOWNLOADED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED','DELEGATED','FLOW_CANCELLED','FLOW_CREATED','FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW','EMAIL_SENT')
            ORDER BY created_at ASC`,
           [flowId]
         );

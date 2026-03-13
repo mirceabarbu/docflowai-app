@@ -1815,7 +1815,7 @@ fetch("/auth/me",{headers:hdrs()})
           <h2 style="color:#ffaaaa;margin-bottom:12px;">Cont neconfigurat</h2>
           <p style="color:#8b949e;line-height:1.6;margin-bottom:24px;">Contul de <strong style="color:#ffd580;">Administrator Instituție</strong> nu are o organizație asociată.<br><br>
           Contactați super-administratorul pentru a seta organizația acestui cont.</p>
-          <button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>location.href='/login')"
+          <button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>location.href='/login.html')"
             style="background:rgba(255,80,80,.2);border:1px solid rgba(255,80,80,.4);color:#ffaaaa;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:.9rem;">
             Înapoi la login
           </button>
@@ -2069,6 +2069,7 @@ const OP_LABELS_RO = {
   SIGNED_PDF_UPLOADED:            'PDF semnat încărcat',
   REFUSED:                        'Refuzat',
   REVIEW_REQUESTED:               'Trimis la revizuire',
+  FLOW_REINITIATED:               'Flux reinițiat după refuz',
   FLOW_REINITIATED_AFTER_REVIEW:  'Reinițiat după revizuire',
   REINITIATED_AFTER_REVIEW:       'Reinițiere marcată',
   FLOW_COMPLETED:                 'Flux finalizat',
@@ -2081,13 +2082,13 @@ const OP_LABELS_RO = {
 
 const OP_COLORS = {
   FLOW_CREATED: '#7c5cff', SIGNED_PDF_UPLOADED: '#2dd4bf', REFUSED: '#ff5050',
-  REVIEW_REQUESTED: '#ffd580', FLOW_REINITIATED_AFTER_REVIEW: '#ff9955',
+  REVIEW_REQUESTED: '#ffd580', FLOW_REINITIATED: '#ff9955', FLOW_REINITIATED_AFTER_REVIEW: '#ff9955',
   FLOW_COMPLETED: '#26d07c', FLOW_CANCELLED: '#888888', DELEGATE: '#9db0ff', YOUR_TURN: '#aaa',
   REINITIATED_AFTER_REVIEW: '#ffaaaa', EMAIL_SENT: '#2dd4bf',
 };
 const OP_ICONS = {
   FLOW_CREATED: '📝', SIGNED_PDF_UPLOADED: '✅', REFUSED: '⛔',
-  REVIEW_REQUESTED: '🔄', FLOW_REINITIATED_AFTER_REVIEW: '🔁',
+  REVIEW_REQUESTED: '🔄', FLOW_REINITIATED: '🔁', FLOW_REINITIATED_AFTER_REVIEW: '🔁',
   FLOW_COMPLETED: '🏁', FLOW_CANCELLED: '🚫', DELEGATE: '👥', YOUR_TURN: '🔔',
   REINITIATED_AFTER_REVIEW: '🔁', EMAIL_SENT: '📧',
 };

@@ -164,6 +164,10 @@
     </div>
 
     <div id="msg"></div>
+    <div id="parentFlowBanner" style="display:none;margin-bottom:12px;padding:10px 16px;border-radius:10px;background:rgba(255,200,50,.1);border:1px solid rgba(255,200,50,.3);color:#ffd580;font-size:.85rem;">
+      🔁 <strong>Flux reinițiat după refuz</strong> — acest flux continuă de la un flux anterior:
+      <a id="parentFlowLink" href="#" style="color:#ffd580;text-decoration:underline;font-weight:700;"></a>
+    </div>
 
     <div class="grid">
 
@@ -517,6 +521,17 @@
         (data.signers || []).map(s => s.compartiment).find(Boolean) || "—";
       $("compartiment").textContent = compartVal;
       $("updatedAt").textContent = prettyTs(data.updatedAt || data.updated_at || data.createdAt || data.created_at);
+
+      // Banner flux reinițiat după refuz
+      if (data.parentFlowId) {
+        const banner = $("parentFlowBanner");
+        const link   = $("parentFlowLink");
+        if (banner && link) {
+          link.textContent = data.parentFlowId;
+          link.href = `/flow.html?flow=${encodeURIComponent(data.parentFlowId)}${linkToken ? '&token=' + encodeURIComponent(linkToken) : ''}`;
+          banner.style.display = '';
+        }
+      }
 
       // Calculeaza status real din semnatari
       const signers = data.signers || [];

@@ -434,7 +434,7 @@ th{ color: var(--sub) !important; }
               <span>${iconByMime(a.mimeType)}</span>
               <span style="flex:1;">${a.filename}</span>
               <span style="color:var(--muted);font-size:.75rem;">${(a.sizeBytes/1024).toFixed(0)} KB</span>
-              <span style="color:#b39dff;font-size:.75rem;font-weight:700;">⬇</span>
+              <span style="color:#b39dff;font-size:.75rem;font-weight:700;">⬇ Descarcă</span>
             </a>`).join('');
         } catch(e) { /* non-fatal */ }
       }
@@ -738,17 +738,13 @@ th{ color: var(--sub) !important; }
             const origForHash = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
             _uploadToken = origForHash.headers.get("X-Docflow-UploadToken") || null;
             pdfBlob = await prevResp.blob();
-            // Înregistrăm descărcarea (downloadedAt) + obținem uploadToken bazat pe signed-pdf
+            // Înregistrăm descărcarea (downloadedAt) pentru semnatarul curent
             try {
-              const regResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
+              await _apiFetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ signerToken: token }),
               });
-              if (regResp.ok) {
-                const regJson = await regResp.json();
-                if (regJson.uploadToken) _uploadToken = regJson.uploadToken;
-              }
             } catch(e) { console.warn("register-download (signer 2+) error:", e.message); }
           } else if (currentFlow?.flowType === "ancore") {
             // Tip 2: ancore existente — descărcăm PDF-ul original fără modificări
@@ -880,36 +876,55 @@ th{ color: var(--sub) !important; }
         const cartusBottom = 36; // footer server e la y=14, separator la y=28 → cartus începe de la 36
 
         // Verifică dacă tabelul încape pe ultima pagină folosind PDF.js text detection
+        // Folosim pdfBytes original (deja disponibil) — nu pdfDoc.save() care e lent și inutil
         const { height: pH } = lastPage.getSize();
-        const cartusZoneTop = cartusBottom + cartusH + 40; // zona tabelului + 40pt margine sus
+        // Zona tabelului: de la cartusBottom până la cartusBottom+cartusH, plus 50pt margine deasupra
+        const cartusZoneBottom = cartusBottom - 5;     // puțin sub baza tabelului
+        const cartusZoneTop    = cartusBottom + cartusH + 50; // 50pt margine deasupra tabelului
         let drawPage = lastPage;
-        let actualCartusBottom = cartusBottom; // jos pagina existenta
+        let actualCartusBottom = cartusBottom;
+        let newPageNeeded = false;
 
-        try {
-          if (window.pdfjsLib) {
-            // Salvam temporar PDF-ul curent (fara modificari inca) si verificam textul paginii
-            const tmpBytes = await pdfDoc.save();
-            const pdfjsDoc = await pdfjsLib.getDocument({ data: tmpBytes }).promise;
-            const pdfjsPage = await pdfjsDoc.getPage(pages.length);
+        if (window.pdfjsLib) {
+          try {
+            const pdfjsDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
+            const lastPageIdx = pdfjsDoc.numPages; // 1-indexed
+            const pdfjsPage  = await pdfjsDoc.getPage(lastPageIdx);
             const textContent = await pdfjsPage.getTextContent();
-            let hasContentInZone = false;
+
+            // Viewport PDF.js → coordonate PDF: transform[5] = Y de la baza paginii
+            let highestContentY = 0; // cel mai sus text de pe pagina (cel mai mare Y)
             for (const item of (textContent.items || [])) {
-              // transform[5] = y de la baza paginii (coordonate PDF)
-              const yFromBottom = item.transform ? item.transform[5] : 0;
-              if (yFromBottom < cartusZoneTop && yFromBottom > cartusBottom - 5) {
-                hasContentInZone = true;
-                break;
+              const y = item.transform ? item.transform[5] : 0;
+              if (y > cartusBottom + 5) { // ignoram footer-ul serverului (y≈14-28)
+                if (y > highestContentY) highestContentY = y;
               }
             }
-            if (hasContentInZone) {
-              // Continut in zona tabelului — adauga pagina noua si plaseaza tabelul SUS
-              const blankPage = pdfDoc.addPage([pW, pH]);
-              drawPage = blankPage;
-              // Pe pagina noua: tabel plasat sus (margin de 40pt de la top, adica y = pH - cartusH - 40)
-              actualCartusBottom = pH - cartusH - 40;
+            console.log('[DocFlowAI] PDF text detection — highestContentY:', highestContentY,
+              '| cartusZoneTop:', cartusZoneTop, '| pH:', pH);
+
+            // Dacă există text în zona unde ar fi tabelul → pagină nouă
+            if (highestContentY > cartusZoneBottom) {
+              newPageNeeded = true;
+              console.log('[DocFlowAI] Tabel pe pagina noua (text detectat la y=' + highestContentY + ')');
             }
+          } catch(e) {
+            // PDF.js a eșuat → fallback conservator: pagina nouă (mai sigur decât suprapunere)
+            newPageNeeded = true;
+            console.warn('[DocFlowAI] PDF.js text detection failed, fallback → pagina noua:', e.message);
           }
-        } catch(e) { /* PDF.js check esuat — folosim pagina existenta */ }
+        } else {
+          // PDF.js indisponibil → pagina nouă conservator
+          newPageNeeded = true;
+          console.warn('[DocFlowAI] pdfjsLib indisponibil → pagina noua conservator');
+        }
+
+        if (newPageNeeded) {
+          const blankPage = pdfDoc.addPage([pW, pH]);
+          drawPage = blankPage;
+          // Pe pagina nouă: tabel plasat sus (40pt de la top)
+          actualCartusBottom = pH - cartusH - 40;
+        }
 
         // Title bar — fundal alb, text negru (conform cerinta)
         drawPage.drawRectangle({ x: MARGIN, y: actualCartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
