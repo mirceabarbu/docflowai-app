@@ -328,7 +328,7 @@ router.delete('/flows/:flowId', async (req, res) => {
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    const isAdmin = actor.role === 'admin';
+    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate șterge acest flux.' });
     if (!isAdmin) {
@@ -1104,6 +1104,12 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     data.cancelledBy = actor.email;
     data.cancelReason = reason ? String(reason).trim().slice(0, 500) : null;
     data.updatedAt = now;
+    // Marchează semnatarii pending/current ca 'cancelled'
+    if (Array.isArray(data.signers)) {
+      data.signers = data.signers.map(s =>
+        (s.status === 'pending' || s.status === 'current') ? { ...s, status: 'cancelled' } : s
+      );
+    }
     if (!Array.isArray(data.events)) data.events = [];
     data.events.push({ at: now, type: 'FLOW_CANCELLED', by: actor.email, reason: data.cancelReason });
     await saveFlow(flowId, data);

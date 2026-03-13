@@ -179,6 +179,7 @@
           </div>
           <div class="kv">
             <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
+            <span class="pill"><strong>Tip flux</strong> <span id="flowTypePill">—</span></span>
             <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
             <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
             <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
@@ -322,11 +323,13 @@
       const isCurrent = currentId && (s.id===currentId || s.signerId===currentId || s.token===currentId);
       const st = (s.status || "").toLowerCase();
 
+      const isFlowCancelled = (flow.status || flow.data?.status || '') === 'cancelled';
       let right = `<span class="badge">⏳ în așteptare</span>`;
       if(st==="signed" || st==="done") right = `<span class="badge ok">✅ semnat</span>`;
       else if(st==="refused") right = `<span class="badge bad">⛔ refuz</span>`;
+      else if(st==="cancelled") right = `<span class="badge bad">🚫 anulat</span>`;
       else if(isCurrent) right = `<span class="badge warn">⏱️ curent</span>`;
-      else if(isFlowRefused && st==="pending") right = `<span class="badge bad">🚫 anulat</span>`;
+      else if((isFlowRefused || isFlowCancelled) && st==="pending") right = `<span class="badge bad">🚫 anulat</span>`;
 
       const when = st==="refused" ? (s.refusedAt || s.at) : (s.signedAt || s.at || s.updatedAt || s.date);
       const metaBits = [];
@@ -361,10 +364,10 @@
       list.appendChild(el);
     }
 
-    if(linkToken){
+    if(linkToken && (flow.status || flow.data?.status) !== 'cancelled'){
       $("hintSigner").style.display = "";
       $("signLink").href = `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(linkToken)}`;
-    } else {
+    } else if (!linkToken) {
       // Verifica daca userul autentificat e semnatarul curent — fara token in URL
       const myEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
       const data2 = flow.data || flow;
@@ -500,6 +503,8 @@
       window._flowData = data; // pentru modal email
 
       $("docName").textContent = (data.docName || data.documentName || data.name || data.title || "—");
+      const ftPill = $("flowTypePill");
+      if (ftPill) ftPill.innerHTML = data.flowType === 'ancore' ? '<span title="PDF cu ancore existente" style="color:#7cf0e0;font-weight:600;">⚓ Ancore</span>' : '<span title="PDF cu tabel generat" style="color:#b39dff;font-weight:600;">📋 Tabel generat</span>';
       // URGENT badge
       const badgeUrgent = $("badgeUrgent");
       if (badgeUrgent) badgeUrgent.style.display = data.urgent ? "" : "none";
