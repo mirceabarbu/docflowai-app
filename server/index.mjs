@@ -62,32 +62,29 @@ app.set('trust proxy', 1);
 // SEC-01: cookie-parser — necesár pentru req.cookies.auth_token (JWT HttpOnly)
 app.use(cookieParser());
 
-// FIX-07: Nonce CSP per request — generat înainte de helmet pentru a putea
-// fi referit în directivele scriptSrc. Elimină 'unsafe-inline'.
-app.use(cspNonce);
-
 // ── Security headers ──────────────────────────────────────────────────────
 try {
-  app.use((req, res, next) => {
-    helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc:     ["'self'"],
-          // FIX-07: 'unsafe-inline' eliminat — înlocuit cu nonce per request
-          scriptSrc:      buildScriptSrc(req, res),
-          styleSrc:       ["'self'", "'unsafe-inline'"],  // inline styles rămân (fără risc XSS)
-          scriptSrcAttr:  ["'unsafe-inline'"],             // permite onclick=/onsubmit= (mai puțin risc decât <script> tags)
-          imgSrc:         ["'self'", 'data:', 'blob:'],
-          connectSrc:     ["'self'", 'wss:', 'ws:'],
-          objectSrc:      ["'none'"],
-          frameAncestors: ["'none'"],
-          upgradeInsecureRequests: [],
-        },
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc:     ["'self'"],
+        scriptSrc:      [
+          "'self'", "'unsafe-inline'",
+          'https://unpkg.com',
+          'https://cdn.jsdelivr.net',
+          'https://cdnjs.cloudflare.com',
+        ],
+        styleSrc:       ["'self'", "'unsafe-inline'"],
+        imgSrc:         ["'self'", 'data:', 'blob:'],
+        connectSrc:     ["'self'", 'wss:', 'ws:'],
+        objectSrc:      ["'none'"],
+        frameAncestors: ["'none'"],
+        upgradeInsecureRequests: [],
       },
-      crossOriginEmbedderPolicy: false,
-      frameguard: { action: 'deny' },
-    })(req, res, next);
-  });
+    },
+    crossOriginEmbedderPolicy: false,
+    frameguard: { action: 'deny' },
+  }));
 } catch(e) {
   logger.warn('helmet not installed - adaug manual security headers');
 }
@@ -153,26 +150,20 @@ process.on('uncaughtException',  (err) => logger.error({ err }, 'uncaughtExcepti
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, '../public');
-// ── Fișiere statice (CSS, JS, imagini, manifeste) ────────────────────────────
-// HTML-urile sunt blocate din static — servite mai jos prin serveWithNonce()
-// care injectează nonce CSP per-request. Fără această excludere, express.static
-// le-ar servi fără nonce și CSP ar bloca toate script-urile inline.
-app.use((req, res, next) => {
-  if (req.path.endsWith('.html')) return next(); // sare static, ajunge la serveWithNonce
-  next();
-}, express.static(PUBLIC_DIR));
+// ── Fișiere statice ────────────────────────────────────────────────────────
+app.use(express.static(PUBLIC_DIR));
 
-// ── Pagini HTML — servite cu nonce CSP injectat ───────────────────────────────
-app.get('/',              serveWithNonce(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
-app.get('/login',         serveWithNonce(path.join(PUBLIC_DIR, 'login.html')));
-app.get('/admin',         serveWithNonce(path.join(PUBLIC_DIR, 'admin.html')));
-app.get('/notifications', serveWithNonce(path.join(PUBLIC_DIR, 'notifications.html')));
-app.get('/templates',     serveWithNonce(path.join(PUBLIC_DIR, 'templates.html')));
-app.get('/semdoc-signer.html',    serveWithNonce(path.join(PUBLIC_DIR, 'semdoc-signer.html')));
-app.get('/semdoc-initiator.html', serveWithNonce(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
-app.get('/flow.html',             serveWithNonce(path.join(PUBLIC_DIR, 'flow.html')));
-app.get('/login.html',            serveWithNonce(path.join(PUBLIC_DIR, 'login.html')));
-app.get('/offline.html',          serveWithNonce(path.join(PUBLIC_DIR, 'offline.html')));
+// ── Rute HTML — alias-uri fără extensie ───────────────────────────────────
+app.get('/',              (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
+app.get('/login',         (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
+app.get('/admin',         (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
+app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'notifications.html')));
+app.get('/templates',     (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
+app.get('/semdoc-signer.html',    (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'semdoc-signer.html')));
+app.get('/semdoc-initiator.html', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
+app.get('/flow.html',             (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'flow.html')));
+app.get('/login.html',            (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
+app.get('/offline.html',          (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'offline.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
