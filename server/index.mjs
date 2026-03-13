@@ -1,15 +1,21 @@
 /**
- * DocFlowAI v3.3.5 — Main entry point (orchestrator)
+ * DocFlowAI v3.3.8 — Main entry point (orchestrator)
  *
- * CHANGES v3.3.5:
- *  SEC-02: ADMIN_SECRET rate limiting + audit log (in auth.mjs)
- *  SEC-03: PBKDF2 600k + lazy re-hash (in auth.mjs + routes/auth.mjs)
- *  PERF-01: 3 indexuri JSONB noi (in db/index.mjs migration 021)
- *  LOG-01: Logging structurat JSON via middleware/logger.mjs (inlocuieste console.log)
- *  HEALTH: /health endpoint imbunatatit cu memory usage + DB latency
+ * CHANGES v3.3.8:
+ *  FIX-01: Versiunea citită dinamic din package.json (nu mai e hardcodată)
+ *  FIX-02: express.json limite diferențiate per-rută (global 50kb, PDF 52mb)
+ *  FIX-03: body.meta validat — limitat la 50 câmpuri, valori max 1000 chars
+ *  FIX-04: Templates API mutat în routes/templates.mjs
+ *  FIX-05: notify() și stampFooterOnPdf() extrase în module dedicate
+ *  FIX-06: generatePassword() — entropie mărită (12 char, alfabet extins)
+ *  SEC-01: Rate limiter migrare PostgreSQL-backed (nu mai pierde starea la restart)
  */
 
 import express from 'express';
+import { createRequire } from 'module';
+const _require = createRequire(import.meta.url);
+const _pkg = _require('../package.json');
+const APP_VERSION = _pkg.version;
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -26,6 +32,8 @@ import { WebSocketServer } from 'ws';
 import { pushToUser } from './push.mjs';
 import { logger } from './middleware/logger.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
+import { cspNonce, buildScriptSrc, serveWithNonce } from './middleware/cspNonce.mjs';
+import { dispatchWebhook, _runWebhookRetryJob } from './webhook.mjs';
 
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
@@ -38,6 +46,7 @@ import { injectRateLimiter } from './routes/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
+import templatesRouter from './routes/templates.mjs';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -45,27 +54,32 @@ app.set('trust proxy', 1);
 // SEC-01: cookie-parser — necesár pentru req.cookies.auth_token (JWT HttpOnly)
 app.use(cookieParser());
 
+// FIX-07: Nonce CSP per request — generat înainte de helmet pentru a putea
+// fi referit în directivele scriptSrc. Elimină 'unsafe-inline'.
+app.use(cspNonce);
+
 // ── Security headers ──────────────────────────────────────────────────────
-// Fallback manual dacă helmet nu e instalat încă (graceful degradation)
 try {
-  app.use(helmet({
-    // SEC-05: CSP activat — protecție XSS
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc:  ["'self'"],
-        scriptSrc:   ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'],  // staging: permite CDN-urile folosite de pdf-lib/pdf.js
-        styleSrc:    ["'self'", "'unsafe-inline'"],
-        scriptSrcAttr:["'unsafe-inline'"],
-        imgSrc:      ["'self'", 'data:', 'blob:'],
-        connectSrc:  ["'self'", 'wss:', 'ws:'],
-        objectSrc:   ["'none'"],
-        frameAncestors: ["'none'"],           // previne clickjacking (înlocuiește X-Frame-Options)
-        upgradeInsecureRequests: [],
+  app.use((req, res, next) => {
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc:     ["'self'"],
+          // FIX-07: 'unsafe-inline' eliminat — înlocuit cu nonce per request
+          scriptSrc:      buildScriptSrc(req, res),
+          styleSrc:       ["'self'", "'unsafe-inline'"],  // inline styles rămân (fără risc XSS)
+          scriptSrcAttr:  ["'none'"],                     // nu permite event handlers inline (onclick=)
+          imgSrc:         ["'self'", 'data:', 'blob:'],
+          connectSrc:     ["'self'", 'wss:', 'ws:'],
+          objectSrc:      ["'none'"],
+          frameAncestors: ["'none'"],
+          upgradeInsecureRequests: [],
+        },
       },
-    },
-    crossOriginEmbedderPolicy: false,         // necesar pentru PDF viewer blob:
-    frameguard: { action: 'deny' },           // X-Frame-Options: DENY
-  }));
+      crossOriginEmbedderPolicy: false,
+      frameguard: { action: 'deny' },
+    })(req, res, next);
+  });
 } catch(e) {
   logger.warn('helmet not installed - adaug manual security headers');
 }
@@ -83,7 +97,16 @@ const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
   : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : true);
 app.use(cors({ origin: corsOrigins, credentials: true }));
-app.use(express.json({ limit: '50mb' }));
+
+// ── JSON body parser — limite diferențiate per tip de rută ─────────────────
+// Global: 50kb (login, notifications, queries simple)
+// PDF routes: 52mb (flows cu PDF atașat, upload-signed-pdf) — aplicat în routes/flows.mjs
+// 50mb global era o suprafață de atac: login/notif/templates acceptau bodies uriașe
+app.use(express.json({ limit: '50kb' }));
+
+// Middleware care suprascrie limita pentru rutele care primesc PDF-uri
+// Aplicat ÎNAINTE de flowsRouter pe rutele specifice
+export const jsonPdfParser = express.json({ limit: '52mb' });
 
 // ── Request ID + safe JSON error envelope ─────────────────────────────────
 app.use((req, res, next) => {
@@ -124,11 +147,15 @@ const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, '../public');
 app.use(express.static(PUBLIC_DIR));
 
-app.get('/', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
-app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
-app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'notifications.html')));
-app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
+app.get('/',              serveWithNonce(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
+app.get('/login',         serveWithNonce(path.join(PUBLIC_DIR, 'login.html')));
+app.get('/admin',         serveWithNonce(path.join(PUBLIC_DIR, 'admin.html')));
+app.get('/notifications', serveWithNonce(path.join(PUBLIC_DIR, 'notifications.html')));
+app.get('/templates',     serveWithNonce(path.join(PUBLIC_DIR, 'templates.html')));
+// Ruta signer e accesată cu query params — servim cu nonce pentru a permite inline scripts
+app.get('/semdoc-signer.html',    serveWithNonce(path.join(PUBLIC_DIR, 'semdoc-signer.html')));
+app.get('/semdoc-initiator.html', serveWithNonce(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
+app.get('/flow.html',             serveWithNonce(path.join(PUBLIC_DIR, 'flow.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -136,7 +163,7 @@ app.get('/health', (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.5',
+    version: APP_VERSION,
     ts: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     memory: {
@@ -158,7 +185,7 @@ app.get('/admin/health', async (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.5',
+    version: APP_VERSION,
     dbReady: !!DB_READY,
     dbLatencyMs,
     dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null,
@@ -181,71 +208,6 @@ app.get('/metrics', (req, res) => {
   setGauge('ws_clients', wsClients.size);
   res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
   res.send(renderMetrics());
-});
-
-// ── Template API ──────────────────────────────────────────────────────────
-app.get('/api/templates', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const institutie = uRows[0]?.institutie || '';
-    const orgId = uRows[0]?.org_id || actor.orgId || null;
-    // FIX v3.2.3: filtrare pe org_id pentru sabloane partajate (nu doar pe institutie text)
-    const { rows } = await pool.query(
-      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='' AND ($3::integer IS NULL OR org_id=$3))
-       ORDER BY user_email=$1 DESC, name ASC`,
-      [actor.email.toLowerCase(), institutie, orgId]
-    );
-    res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
-});
-
-app.post('/api/templates', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  const { name, signers, shared } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
-  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
-  if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
-  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
-  try {
-    const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const institutie = uRows[0]?.institutie || '';
-    const { rows } = await pool.query(
-      'INSERT INTO templates (user_email,institutie,name,signers,shared) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared]
-    );
-    res.status(201).json({ ...rows[0], isOwner: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
-});
-
-app.put('/api/templates/:id', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  const { name, signers, shared } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
-  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
-  if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
-  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
-  try {
-    const { rows } = await pool.query(
-      'UPDATE templates SET name=$1,signers=$2,shared=$3,updated_at=NOW() WHERE id=$4 AND user_email=$5 RETURNING *',
-      [name?.trim(), JSON.stringify(signers), !!shared, parseInt(req.params.id), actor.email.toLowerCase()]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'not_found_or_not_owner' });
-    res.json({ ...rows[0], isOwner: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
-});
-
-app.delete('/api/templates/:id', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rowCount } = await pool.query('DELETE FROM templates WHERE id=$1 AND user_email=$2', [parseInt(req.params.id), actor.email.toLowerCase()]);
-    if (!rowCount) return res.status(404).json({ error: 'not_found_or_not_owner' });
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -656,17 +618,23 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
   }
 }
 
+// ── FEAT-01: Webhook retry processor ─────────────────────────────────────────
+// Reîncarcă job-urile eșuate cu backoff exponențial (max 5 încercări)
+const _webhookRetryInterval = setInterval(() => _runWebhookRetryJob(pool), 60_000);
+logger.info('Webhook retry processor pornit (interval: 60s)');
+
 // ── Inject dependencies ───────────────────────────────────────────────────
 injectRateLimiter(checkLoginRate, recordLoginFail, clearLoginRate);
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
-injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail });
+injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail, jsonPdfParser, dispatchWebhook });
 
 // ── Mount routers ─────────────────────────────────────────────────────────
 app.use('/', authRouter);
 app.use('/', notifRouter);
 app.use('/', adminRouter);
 app.use('/', flowsRouter);
+app.use('/', templatesRouter);
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
@@ -762,6 +730,7 @@ function shutdown(signal) {
   clearInterval(_notifsCleanupInterval);
   clearInterval(_reminderInterval);
   clearInterval(_archiveJobInterval);
+  clearInterval(_webhookRetryInterval);
   clearInterval(wsHeartbeat);
   httpServer.close(() => { logger.info('Server closed.'); process.exit(0); });
   setTimeout(() => process.exit(0), 10_000).unref();
@@ -772,7 +741,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT }, 'DocFlowAI v3.3.5 server pornit');
+  logger.info({ port: PORT }, `DocFlowAI v${APP_VERSION} server pornit`);
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry();
 });

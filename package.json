@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.3.7",
+  "version": "3.3.8",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -14,17 +14,17 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "pg": "^8.12.0",
-    "jsonwebtoken": "^9.0.2",
-    "ws": "^8.17.0",
     "googleapis": "^144.0.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
     "pdf-lib": "^1.17.1",
+    "pg": "^8.12.0",
     "web-push": "^3.6.7",
-    "helmet": "^8.0.0"
+    "ws": "^8.17.0"
   },
   "devDependencies": {
-    "vitest": "^2.1.0",
-    "supertest": "^7.0.0",
-    "@vitest/coverage-v8": "^2.1.0"
+    "@vitest/coverage-v8": "^2.1.0",
+    "supertest": "^7.2.2",
+    "vitest": "^2.1.9"
   }
 }
