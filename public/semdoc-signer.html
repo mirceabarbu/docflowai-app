@@ -941,11 +941,11 @@ th{ color: var(--sub) !important; }
         let drawPage = lastPage;
         let actualCartusBottom = cartusBottom;
 
-        const cartusH = rows * cellH + titleH + 10;
+        const cartusH = rows * cellH + titleH;
 
         // Title bar — fundal alb, text negru (conform cerinta)
         drawPage.drawRectangle({ x: MARGIN, y: actualCartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
-        drawPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: actualCartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(0,0,0) });
+        drawPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: actualCartusBottom + cartusH - titleH + 6, size: 7, font: fontB, color: rgb(0,0,0) });
         // (Removed) Generat timestamp in header bar — kept footer timestamp as single source of truth
 
         // AcroForm — comportament diferit dupa tipul fluxului:

@@ -2440,7 +2440,7 @@ async function exportFlowsPDF() {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <script>window.onload = () => window.print();<\/script>
+
   </body></html>`;
     const w = window.open('', '_blank');
     w.document.write(html);
