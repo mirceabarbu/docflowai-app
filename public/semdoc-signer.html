@@ -78,10 +78,19 @@ body{
 }
 
 header{
-  background: rgba(15,23,49,.55) !important;
-  backdrop-filter: blur(10px);
+  position:sticky !important; top:0 !important; z-index:100 !important;
+  background: rgba(15,23,49,.85) !important;
+  backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--line) !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
 }
+#userBar { display:flex !important; align-items:center !important; gap:10px !important; font-size:.82rem; }
+#userBar button { background:rgba(255,80,80,.15) !important; border:1px solid rgba(255,80,80,.3) !important; color:#ffaaaa !important; padding:5px 14px !important; border-radius:8px !important; cursor:pointer !important; font-size:.8rem !important; font-weight:600 !important; }
+.tabbtn { display:inline-flex;align-items:center;gap:5px;background:rgba(120,160,255,.22);color:#e9eefc;border:1px solid rgba(120,160,255,.45);padding:8px 14px;border-radius:10px;font-size:.85rem;font-weight:500;cursor:pointer;transition:filter .15s,transform .1s;text-decoration:none; }
+.tabbtn:hover { filter:brightness(1.08);transform:translateY(-1px); }
+.tabbtn.signer-active { background:rgba(45,212,191,.22);border-color:rgba(45,212,191,.55);font-weight:600;color:#7cf0e0; }
 
 .brand{ color: var(--text) !important; }
 .muted, .card-sub, label{ color: var(--sub) !important; opacity: .9 !important; }
@@ -184,17 +193,6 @@ th{ color: var(--sub) !important; }
           location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
         });
 
-// Populate userBar with user name + back button + logout
-(function() {
-  const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI — OK
-  const bar = document.getElementById('userBar');
-  if (!bar) return;
-  const label = u.nume || u.email || '';
-  bar.innerHTML =
-    (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
-    `<a href="/notifications" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">← Înapoi</a>` +
-    `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
-})();
     })();
   </script>
 
@@ -214,9 +212,17 @@ th{ color: var(--sub) !important; }
   <link rel="stylesheet" href="/mobile.css">
 </head>
   <body>
-    <header style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;">
-      <img src="/Logo.png" alt="DocFlowAI" style="height:80px;width:auto;object-fit:contain;" />
-      <div id="userBar" style="display:flex;align-items:center;gap:10px;">
+    <header>
+      <div class="brand">
+        <img src="/Logo.png" alt="DocFlowAI" style="height:87px;width:auto;object-fit:contain;display:block;" />
+      </div>
+      <div class="tabs" style="display:flex;gap:8px;">
+        <a href="/semdoc-initiator.html" class="tabbtn" style="text-decoration:none;">📝 Flux nou</a>
+        <a href="/semdoc-initiator.html#fluxuri" class="tabbtn" style="text-decoration:none;">📂 Fluxuri mele</a>
+        <a href="/templates" class="tabbtn" style="text-decoration:none;">📋 Șabloane</a>
+        <span class="tabbtn signer-active">✍️ Semnare</span>
+      </div>
+      <div id="userBar" style="display:flex;align-items:center;gap:10px;font-size:.82rem;">
         <!-- populated by JS -->
       </div>
     </header>
@@ -281,7 +287,7 @@ th{ color: var(--sub) !important; }
             <div id="downloadForSigningStatus" class="muted" style="font-size:.85em; margin-bottom:12px;"></div>
             <div style="border-top:1px solid rgba(255,255,255,.1); padding-top:14px;">
               <input id="signedPdfFile" type="file" accept="application/pdf" style="display:none;" />
-              <button id="btnChooseSignedPdf" class="btn secondary" type="button" style="width:100%; margin-bottom:8px;" disabled title="Descarcă mai întâi PDF-ul pentru semnare">📂 Alege fișier PDF semnat</button>
+              <button id="btnChooseSignedPdf" class="btn secondary" type="button" style="width:100%; margin-bottom:8px;" disabled title="Descarcă mai întâi PDF-ul pentru semnare">📂 Încarcă fișier PDF semnat calificat</button>
               <div id="signedPdfInfo" class="muted" style="font-size:.9em; margin-bottom:10px;">Niciun fișier selectat.</div>
               <button id="btnUploadSignedPdf" class="btn" type="button" style="width:100%; font-weight:700; padding:13px;" disabled>⬆️ Trimite PDF semnat calificat</button>
               <div id="uploadStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
@@ -364,6 +370,23 @@ th{ color: var(--sub) !important; }
       const flow = params.get("flow");
       const token = params.get("token");
 
+      // Populate userBar — rulează după DOM, deci getElementById funcționează corect
+      (function() {
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        const bar = document.getElementById('userBar');
+        if (!bar) return;
+        const label = u.nume || u.email || '';
+        bar.innerHTML =
+          (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
+          ((u.role === 'admin' || u.role === 'org_admin') ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
+          `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
+          `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
+        if (localStorage.getItem("docflow_force_pwd") === "1") {
+          const banner = document.getElementById("forcePwdBanner");
+          if (banner) banner.style.display = "block";
+        }
+      })();
+
       if (!flow || !token) {
         showError("Link invalid. Lipsesc parametri (flow/token).");
         $("content").style.display = "none";
@@ -434,7 +457,7 @@ th{ color: var(--sub) !important; }
               <span>${iconByMime(a.mimeType)}</span>
               <span style="flex:1;">${a.filename}</span>
               <span style="color:var(--muted);font-size:.75rem;">${(a.sizeBytes/1024).toFixed(0)} KB</span>
-              <span style="color:#b39dff;font-size:.75rem;font-weight:700;">⬇</span>
+              <span style="color:#b39dff;font-size:.75rem;font-weight:700;">⬇ Descarcă</span>
             </a>`).join('');
         } catch(e) { /* non-fatal */ }
       }
@@ -473,6 +496,16 @@ th{ color: var(--sub) !important; }
             const refuserInfo = refuser ? `${refuser.name||refuser.email} (${refuser.rol||""})` : "un semnatar";
             const reason = refuser?.refuseReason ? ` — Motiv: "${refuser.refuseReason}"` : "";
             showBlockedState("⛔ Document refuzat", `Documentul a fost refuzat de ${refuserInfo}${reason}. Fluxul este închis.`);
+            $("docName").textContent = j.docName || "—";
+            renderSignersList(j);
+            return;
+          }
+
+          // Flux anulat — blochează semnarea, arată mesaj clar
+          if (j.status === "cancelled") {
+            const canceledBy = j.cancelledBy || j.initName || "inițiator";
+            const reason = j.cancelReason ? ` — Motiv: „${j.cancelReason}"` : "";
+            showBlockedState("🚫 Flux anulat", `Fluxul a fost anulat de ${canceledBy}${reason}. Semnarea nu mai este posibilă.`);
             $("docName").textContent = j.docName || "—";
             renderSignersList(j);
             return;
@@ -857,31 +890,62 @@ th{ color: var(--sub) !important; }
 
         const MARGIN = 40;
         const n = signers.length;
-        const cols = Math.min(n, 2); // max 2 pe rand; ultimul impar ramane la latimea unei casute
-        const rows = Math.ceil(n/cols);
+        const cols = Math.min(n, 3); // max 3 pe rand
+        const rows = Math.ceil(n / cols);
         const cellW = (pW - MARGIN*2) / cols;
-        const cellH = 80;
+        const cellH = 48; // 2 rânduri text + câmp semnătură compact
         const titleH = 20;
-        const cartusH = rows * cellH + titleH + 10;
-        const cartusBottom = 36; // footer server e la y=14, separator la y=28 → cartus începe de la 36
-
-        // FIX 4: Verifică dacă tabelul încape pe ultima pagină
-        // Dacă nu încape (tabelul s-ar suprapune cu conținutul paginii), adaugă pagină nouă
+        const cartusBottom = 36;
         const { height: pH } = lastPage.getSize();
-        const tableTopY = cartusBottom + cartusH; // y-ul de sus al tabelului
-        const minFreeSpace = cartusH + 60; // spațiu minim necesar (tabel + margin sus)
-        let drawPage = lastPage;
-        if (tableTopY > pH - 60) {
-          // Tabelul nu încape — adaugă pagină nouă
-          const [newPage] = await pdfDoc.copyPages(pdfDoc, [pages.length - 1]);
-          // Creează pagina nouă goală cu aceleași dimensiuni
-          const blankPage = pdfDoc.addPage([pW, pH]);
-          drawPage = blankPage;
+
+        // ── Detectare spațiu liber la baza ultimei pagini via PDF.js ──────────
+        // lowestContentY = y-ul celui mai de jos rând de text de conținut (ignorăm footer-ul server y≈14-28)
+        // pdfBytes este ArrayBuffer — trebuie convertit la Uint8Array pentru PDF.js
+        // Dacă detecția eșuează → fallback conservator: pagină nouă
+        let lowestContentY = 0; // 0 = nu știm → pagină nouă conservator
+        if (window.pdfjsLib) {
+          try {
+            const uint8 = new Uint8Array(pdfBytes); // ← fix: ArrayBuffer → Uint8Array
+            const pdfjsDoc = await pdfjsLib.getDocument({ data: uint8 }).promise;
+            const pdfjsPage = await pdfjsDoc.getPage(pdfjsDoc.numPages);
+            const tc = await pdfjsPage.getTextContent();
+            // transform[5] = Y de la baza paginii (coordonate PDF)
+            // Căutăm cel mai MIC Y dintre itemele de CONȚINUT (nu footer)
+            let minY = pH;
+            for (const item of (tc.items || [])) {
+              const y = item.transform ? item.transform[5] : 0;
+              if (y > cartusBottom + 10) { // ignorăm footer-ul serverului (y ≈ 14–28)
+                if (y < minY) minY = y;
+              }
+            }
+            if (minY < pH) {
+              lowestContentY = minY; // am găsit conținut
+              console.log('[DocFlowAI] lowestContentY:', lowestContentY, '| pH:', pH, '| cartusBottom:', cartusBottom);
+            } else {
+              // Nu s-a găsit niciun text — pagina poate fi goală sau conținut doar grafic
+              // Tratăm ca pagină goală → tabel jos normal
+              lowestContentY = cartusBottom + 1000; // valoare mare → tabel pe pagina curentă
+              console.log('[DocFlowAI] Niciun text detectat — pagina tratată ca goală');
+            }
+          } catch(e) {
+            console.warn('[DocFlowAI] PDF.js failed → new page fallback:', e.message);
+            lowestContentY = 0; // fallback: pagină nouă
+          }
+        } else {
+          console.warn('[DocFlowAI] pdfjsLib indisponibil → new page fallback');
+          lowestContentY = 0; // fallback: pagină nouă
         }
 
+        // Spațiu disponibil = de la cartusBottom până la cel mai jos conținut (cu 20pt margine)
+        // cellH=60 fix — tabel mereu pe pagina curentă jos
+        let drawPage = lastPage;
+        let actualCartusBottom = cartusBottom;
+
+        const cartusH = rows * cellH + titleH;
+
         // Title bar — fundal alb, text negru (conform cerinta)
-        drawPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
-        drawPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: cartusBottom + cartusH - titleH + 6, size: 9, font: fontB, color: rgb(0,0,0) });
+        drawPage.drawRectangle({ x: MARGIN, y: actualCartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
+        drawPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: actualCartusBottom + cartusH - titleH + 6, size: 7, font: fontB, color: rgb(0,0,0) });
         // (Removed) Generat timestamp in header bar — kept footer timestamp as single source of truth
 
         // AcroForm — comportament diferit dupa tipul fluxului:
@@ -914,7 +978,7 @@ th{ color: var(--sub) !important; }
           const row = Math.floor(idx / cols);
           const col = idx % cols;
           const cx = MARGIN + col * cellW;
-          const cy = cartusBottom + (rows - 1 - row) * cellH;
+          const cy = actualCartusBottom + (rows - 1 - row) * cellH;
 
           const isSigned = s.status === "signed" && !!s.pdfUploaded;
           const borderColor = rgb(.2,.2,.2);
@@ -924,21 +988,24 @@ th{ color: var(--sub) !important; }
           drawPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
 
           // Dimensiunile câmpului de semnătură — declarate o singură dată per celulă
-          const sigFieldTop = cy + cellH - 42;
+          // Offseturi scalate proporțional cu cellH (referință: cellH=80)
+          // cellH=60 fix — câmpul de semnătură ocupă zona de jos
+          const sigFieldTop = cy + cellH - 26; // text ocupă 26pt de sus
           const sigFieldBot = cy + 4;
 
-          drawPage.drawText(ro(s.rol)||"—", { x: cx+8, y: cy+cellH-15, size: 8, font: fontB, color: rgb(.1,.1,.1) });
-          if (s.functie) drawPage.drawText(ro(s.functie), { x: cx+8, y: cy+cellH-27, size: 7.5, font: fontR, color: rgb(.3,.3,.3) });
-          if (s.name)    drawPage.drawText(ro(s.name),    { x: cx+8, y: cy+cellH-39, size: 8.5, font: fontB, color: rgb(.05,.05,.05) });
+          // Rând 1: Rol (bold)
+          drawPage.drawText(ro(s.rol)||"—", { x: cx+6, y: cy+cellH-13, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
+          // Rând 2: "Nume Prenume - Funcție" pe un singur rând
+          const nameFunc = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
+          if (nameFunc) drawPage.drawText(nameFunc, { x: cx+6, y: cy+cellH-24, size: 7, font: fontR, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
 
           if (isSigned && s.signature) {
-            drawPage.drawText(ro(s.signature), { x: cx+8, y: cy+22, size: 8, font: fontB, color: rgb(.1,.1,.1) });
-            if (s.signedAt) drawPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+8, y: cy+10, size: 6.5, font: fontR, color: rgb(.5,.5,.5) });
+            drawPage.drawText(ro(s.signature), { x: cx+6, y: cy+18, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
+            if (s.signedAt) drawPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+6, y: cy+8, size: 5.5, font: fontR, color: rgb(.5,.5,.5), maxWidth: cellW-12 });
           } else {
-            // Label centrat în câmpul de semnătură extins
-            const midSigY = sigFieldBot + (sigFieldTop - sigFieldBot) / 2 - 3;
-            drawPage.drawText("L.S.", { x: cx+8, y: midSigY + 8, size: 7, font: fontB, color: rgb(.5,.5,.6) });
-            drawPage.drawText("Camp semnatura electronica calificata", { x: cx+8, y: midSigY - 4, size: 6, font: fontR, color: rgb(.6,.6,.6) });
+            const midSigY = sigFieldBot + (sigFieldTop - sigFieldBot) / 2 - 2;
+            drawPage.drawText("L.S.", { x: cx+6, y: midSigY + 6, size: 6.5, font: fontB, color: rgb(.5,.5,.6) });
+            drawPage.drawText("Semnatura electronica", { x: cx+6, y: midSigY - 4, size: 5.5, font: fontR, color: rgb(.6,.6,.6), maxWidth: cellW-12 });
           }
 
           // AcroForm — toate câmpurile active (Ff=0), fără evidențiere per semnatar
@@ -954,7 +1021,7 @@ th{ color: var(--sub) !important; }
             TU: PDFString.of(ro(s.rol||'') + (s.name ? ' - '+ro(s.name) : '') + (isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
             F: PDFNumber.of(4),
             Ff: PDFNumber.of(0),
-            P: lastPage.ref,
+            P: drawPage.ref,
             DA: PDFString.of('/Helv 10 Tf 0 g'),
             MK: pdfDoc.context.obj({
               BC: pdfDoc.context.obj([hR,hG,hB].map(v=>PDFNumber.of(v))),
@@ -1239,5 +1306,63 @@ th{ color: var(--sub) !important; }
       }
 
 </script>
+
+<!-- ── Modal Schimbă Parola ───────────────────────────────────────────── -->
+<div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
+  <div style="background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:32px;width:360px;max-width:calc(100vw - 32px);box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <h3 style="margin:0 0 20px;color:#eaf0ff;font-size:1.05rem;">🔑 Schimbă parola</h3>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;font-size:.8rem;color:#9db0ff;margin-bottom:5px;">Parola curentă</label>
+      <input id="cpCurrent" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#eaf0ff;font-size:.9rem;outline:none;"/>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;font-size:.8rem;color:#9db0ff;margin-bottom:5px;">Parola nouă <span style="color:#5a6a8a;">(minim 6 caractere)</span></label>
+      <input id="cpNew" type="password" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#eaf0ff;font-size:.9rem;outline:none;"/>
+    </div>
+    <div style="margin-bottom:18px;">
+      <label style="display:block;font-size:.8rem;color:#9db0ff;margin-bottom:5px;">Confirmă parola nouă</label>
+      <input id="cpConfirm" type="password" autocomplete="new-password" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#eaf0ff;font-size:.9rem;outline:none;"/>
+    </div>
+    <div id="cpMsg" style="min-height:20px;margin-bottom:14px;font-size:.83rem;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeChangePwdModal()" style="padding:8px 18px;border-radius:9px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#9db0ff;cursor:pointer;font-size:.85rem;">Anulează</button>
+      <button onclick="submitChangePwd()" id="cpBtn" style="padding:8px 20px;border-radius:9px;border:none;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;cursor:pointer;font-size:.85rem;font-weight:700;">Salvează</button>
+    </div>
+  </div>
+</div>
+<script>
+function openChangePwdModal(){
+  document.getElementById('changePwdModal').style.display='flex';
+  document.getElementById('cpCurrent').value=document.getElementById('cpNew').value=document.getElementById('cpConfirm').value='';
+  document.getElementById('cpMsg').textContent='';document.getElementById('cpMsg').style.color='';
+  document.getElementById('cpBtn').disabled=false;document.getElementById('cpBtn').textContent='Salvează';
+  document.getElementById('cpCurrent').focus();
+}
+function closeChangePwdModal(){document.getElementById('changePwdModal').style.display='none';}
+async function submitChangePwd(){
+  const cur=document.getElementById('cpCurrent').value;
+  const nw=document.getElementById('cpNew').value;
+  const cf=document.getElementById('cpConfirm').value;
+  const msg=document.getElementById('cpMsg');
+  const btn=document.getElementById('cpBtn');
+  if(!cur||!nw||!cf){msg.style.color='#f28b82';msg.textContent='Completează toate câmpurile.';return;}
+  if(nw!==cf){msg.style.color='#f28b82';msg.textContent='Parolele noi nu coincid.';return;}
+  if(nw.length<6){msg.style.color='#f28b82';msg.textContent='Parola trebuie să aibă minim 6 caractere.';return;}
+  btn.disabled=true;btn.textContent='Se salvează...';
+  try{
+    const r=await fetch('/auth/change-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});
+    const d=await r.json();
+    if(r.ok){
+      msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';btn.textContent='Salvează';
+      localStorage.removeItem('docflow_force_pwd');
+      setTimeout(closeChangePwdModal,1800);
+    } else {
+      msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');
+      btn.disabled=false;btn.textContent='Salvează';
+    }
+  } catch(e){msg.style.color='#f28b82';msg.textContent='Eroare de rețea.';btn.disabled=false;btn.textContent='Salvează';}
+}
+</script>
+
 </body>
 </html>

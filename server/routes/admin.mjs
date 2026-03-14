@@ -823,6 +823,8 @@ router.get('/admin/flows/list', async (req, res) => {
     const instFilter = (req.query.institutie || '').trim();
     const deptFilter = (req.query.compartiment || '').trim();
     const search = (req.query.search || '').trim().toLowerCase();
+    const dateFrom = (req.query.dateFrom || '').trim();  // YYYY-MM-DD
+    const dateTo   = (req.query.dateTo   || '').trim();  // YYYY-MM-DD
     // FIX v3.2.2: escape caractere speciale LIKE
     const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
     // org_admin: filtrare strictă după org_id
@@ -842,6 +844,8 @@ router.get('/admin/flows/list', async (req, res) => {
     if (search) { params.push(`%${escapedSearch}%`); conditions.push(`(lower(data->>'docName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initEmail') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'flowId') LIKE $${params.length} ESCAPE '\\')`); }
     if (instFilter) { params.push(instFilter); conditions.push(`(data->>'institutie' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.institutie=$${params.length}))`); }
     if (deptFilter) { params.push(deptFilter); conditions.push(`(data->>'compartiment' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.compartiment=$${params.length}))`); }
+    if (dateFrom) { params.push(dateFrom + 'T00:00:00.000Z'); conditions.push(`(data->>'createdAt') >= $${params.length}`); }
+    if (dateTo)   { params.push(dateTo   + 'T23:59:59.999Z'); conditions.push(`(data->>'createdAt') <= $${params.length}`); }
     const whereClause = conditions.join(' AND ');
     const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
@@ -1015,7 +1019,8 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       // Traduceri tip eveniment → română
       const EVENT_LABELS_RO = {
         'FLOW_CREATED': 'FLUX CREAT', 'SIGNED': 'SEMNAT', 'SIGNED_PDF_UPLOADED': 'PDF SEMNAT INCARCAT',
-        'REVIEW_REQUESTED': 'TRIMIS SPRE REVIZUIRE', 'FLOW_REINITIATED_AFTER_REVIEW': 'FLUX REINITIAT',
+        'REVIEW_REQUESTED': 'TRIMIS SPRE REVIZUIRE', 'FLOW_REINITIATED_AFTER_REVIEW': 'FLUX REINITIAT DUPA REVIZUIRE',
+        'FLOW_REINITIATED': 'FLUX REINITIAT DUPA REFUZ',
         'FLOW_COMPLETED': 'FLUX FINALIZAT', 'FLOW_CANCELLED': 'FLUX ANULAT', 'REFUSED': 'REFUZAT',
         'DELEGATED': 'DELEGAT', 'PDF_DOWNLOADED': 'PDF DESCARCAT', 'REMINDER': 'REMINDER TRIMIS',
         'YOUR_TURN': 'NOTIFICARE RAND', 'EMAIL_SENT': 'EMAIL EXTERN TRIMIS',
@@ -1060,6 +1065,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         ['Status:', audit.status + (audit.completed ? ' (FINALIZAT)' : '') + (audit.completedAt ? ' la ' + fmtDate(audit.completedAt) : '') + (audit.status === 'cancelled' && audit.cancelledAt ? ' la ' + fmtDate(audit.cancelledAt) : '') + (audit.urgent ? ' — URGENT' : '')],
         ...(audit.cancelReason ? [['Motiv anulare:', audit.cancelReason]] : []),
         ...(audit.cancelledBy ? [['Anulat de:', audit.cancelledBy]] : []),
+        ...(audit.parentFlowId ? [['Reinitiat din:', `Flux anterior: ${audit.parentFlowId} (reinitiat dupa refuz)`]] : []),
       ];
       for (const [lbl, val] of infoRows) {
         ensureSpace(18);
@@ -1303,7 +1309,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           `SELECT event_type, actor_email, actor_ip, created_at, payload
            FROM audit_log
            WHERE flow_id = $1
-             AND event_type IN ('PDF_DOWNLOADED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED','DELEGATED','FLOW_CANCELLED','FLOW_CREATED','EMAIL_SENT')
+             AND event_type IN ('PDF_DOWNLOADED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED','DELEGATED','FLOW_CANCELLED','FLOW_CREATED','FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW','EMAIL_SENT')
            ORDER BY created_at ASC`,
           [flowId]
         );

@@ -89,7 +89,7 @@ const createFlow = async (req, res) => {
     if (body.pdfB64 && typeof body.pdfB64 === 'string') {
       const rawPdfCheck = body.pdfB64.includes('base64,') ? body.pdfB64.split('base64,')[1] : body.pdfB64;
       const estimatedPdfBytes = Math.floor(rawPdfCheck.length * 0.75);
-      if (estimatedPdfBytes > 30 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_30mb', message: 'PDF-ul depășește limita de 30 MB.' });
+      if (estimatedPdfBytes > 50 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_50mb', message: 'PDF-ul depășește limita de 50 MB.' });
     }
 
     for (let i = 0; i < signers.length; i++) {
@@ -328,7 +328,7 @@ router.delete('/flows/:flowId', async (req, res) => {
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    const isAdmin = actor.role === 'admin';
+    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate șterge acest flux.' });
     if (!isAdmin) {
@@ -528,7 +528,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
     if (nextIdx !== -1) signers.forEach((s, i) => { if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending'; });
     data.signers = signers;
     const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
-    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); data.urgent = false; /* FIX v3.3.2: docName nu mai e alterat — era: data.docName = `${flowId}_${data.docName}` */ data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
+    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); /* urgent păstrat intenționat — badge URGENT rămâne vizibil în admin și după finalizare */ data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
     const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
     if (nextSigner) { nextSigner.emailSent = true; nextSigner.notifiedAt = new Date().toISOString(); }
     await saveFlow(flowId, data);
@@ -772,6 +772,20 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     const first = remainingSigners[0];
     if (first) first.notifiedAt = new Date().toISOString();
     await saveFlow(newFlowId2, newData);
+    // Copiere atașamente (documente suport) din fluxul original
+    try {
+      const attRows = await db.query(
+        `SELECT filename, mime_type, size_bytes, data FROM flow_attachments WHERE flow_id = $1`,
+        [flowId]
+      );
+      for (const att of attRows.rows) {
+        await db.query(
+          `INSERT INTO flow_attachments (flow_id, filename, mime_type, size_bytes, data) VALUES ($1, $2, $3, $4, $5)`,
+          [newFlowId2, att.filename, att.mime_type, att.size_bytes, att.data]
+        );
+      }
+      if (attRows.rows.length) logger.info(`📎 Copiate ${attRows.rows.length} atașamente din ${flowId} → ${newFlowId2}`);
+    } catch(e) { logger.warn({ err: e }, 'reinitiate: copy attachments error'); }
     // R-02: audit_log
     writeAuditEvent({ flowId: newFlowId2, orgId: newData.orgId, eventType: 'FLOW_REINITIATED', actorIp: _getIp(req), actorEmail: actor.email, payload: { parentFlowId: flowId, remainingSigners: remainingSigners.length } });
     if (first?.email) {
@@ -860,7 +874,7 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     // FIX v3.2.3: validare dimensiune PDF la reinițiere după revizuire
     const rawPdf = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
     const estimatedPdfBytes = Math.floor(rawPdf.length * 0.75);
-    if (estimatedPdfBytes > 30 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_30mb', message: 'PDF-ul depășește limita de 30 MB.' });
+    if (estimatedPdfBytes > 50 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_50mb', message: 'PDF-ul depășește limita de 50 MB.' });
 
     // Calculăm hash-ul documentului uploadat
     // FIX v3.3.2: sha256Hex pe Buffer (bytes PDF), nu pe string base64
@@ -1104,6 +1118,12 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     data.cancelledBy = actor.email;
     data.cancelReason = reason ? String(reason).trim().slice(0, 500) : null;
     data.updatedAt = now;
+    // Marchează semnatarii pending/current ca 'cancelled'
+    if (Array.isArray(data.signers)) {
+      data.signers = data.signers.map(s =>
+        (s.status === 'pending' || s.status === 'current') ? { ...s, status: 'cancelled' } : s
+      );
+    }
     if (!Array.isArray(data.events)) data.events = [];
     data.events.push({ at: now, type: 'FLOW_CANCELLED', by: actor.email, reason: data.cancelReason });
     await saveFlow(flowId, data);

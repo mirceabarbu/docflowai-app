@@ -1,4 +1,4 @@
-# DocFlowAI v3.3.0 — Enterprise
+# DocFlowAI v3.3.6 — Enterprise
 
 **Platformă de circulație și semnare electronică calificată pentru administrația publică.**
 

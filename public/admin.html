@@ -277,7 +277,7 @@
       <input id="flowSearch" placeholder="Caută după ID, document sau email..." style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;"/>
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-      <select id="flowStatusFilter" style="width:160px;flex-shrink:0;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;">
+      <select id="flowStatusFilter" onchange="loadFlowsList(false,1)" style="width:160px;flex-shrink:0;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;">
         <option value="">Toate statusurile</option>
         <option value="active">Active</option>
         <option value="done">Finalizate</option>
@@ -287,11 +287,37 @@
       <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;">
         <option value="">Toate instituțiile</option>
       </select>
-      <select id="flowDeptFilter" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;" disabled>
+      <select id="flowDeptFilter" onchange="loadFlowsList(false,1)" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;" disabled>
         <option value="">Toate compartimentele</option>
       </select>
       <button onclick="exportFlowsCSV()" style="flex-shrink:0;padding:8px 12px;font-size:.83rem;background:rgba(45,212,191,.13);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-weight:600;" title="Exportă CSV">📥 CSV</button>
       <button onclick="exportFlowsPDF()" style="flex-shrink:0;padding:8px 12px;font-size:.83rem;background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-weight:600;" title="Exportă PDF">📄 PDF</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-bottom:10px;">
+      <div>
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">De la data</label>
+        <div style="position:relative;">
+          <input type="text" id="flowDateFromDisplay" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+            style="width:100%;padding:9px 36px 9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.9rem;box-sizing:border-box;letter-spacing:.5px;"
+            oninput="onDateTextInput(this,'flowDateFrom')" />
+          <input type="date" id="flowDateFrom" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;opacity:0;cursor:pointer;" onchange="onDatePickerChange(this,'flowDateFromDisplay')" />
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:14px;">📅</span>
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Până la data</label>
+        <div style="position:relative;">
+          <input type="text" id="flowDateToDisplay" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+            style="width:100%;padding:9px 36px 9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.9rem;box-sizing:border-box;letter-spacing:.5px;"
+            oninput="onDateTextInput(this,'flowDateTo')" />
+          <input type="date" id="flowDateTo" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;opacity:0;cursor:pointer;" onchange="onDatePickerChange(this,'flowDateToDisplay')" />
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:14px;">📅</span>
+        </div>
+      </div>
+      <div>
+        <button onclick="document.getElementById('flowDateFrom').value='';document.getElementById('flowDateTo').value='';document.getElementById('flowDateFromDisplay').value='';document.getElementById('flowDateToDisplay').value='';loadFlowsList(false,1);"
+          style="padding:9px 14px;font-size:.82rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--muted);cursor:pointer;white-space:nowrap;">✕ Resetează</button>
+      </div>
     </div>
     <div style="margin-bottom:14px;">
       <button class="btn secondary" onclick="loadFlowsList()" style="padding:8px 16px;font-size:.85rem;">🔄 Încarcă</button>
@@ -1288,16 +1314,20 @@ async function loadFlowsList(forceReload = true, page) {
   const statusF = document.getElementById("flowStatusFilter").value;
   const instF = document.getElementById("flowInstFilter").value;
   const deptF = document.getElementById("flowDeptFilter").value;
+  const dateFrom = (document.getElementById("flowDateFrom")?.value || "").trim();
+  const dateTo   = (document.getElementById("flowDateTo")?.value   || "").trim();
   area.innerHTML = '<span style="color:var(--muted);">⏳ Se incarca...</span>';
 
   // Mapeaza valorile locale la parametrii server
-  const statusMap = { active: "pending", done: "completed", refused: "refused", "": "all" };
+  const statusMap = { active: "pending", done: "completed", refused: "refused", cancelled: "cancelled", "": "all" };
   const statusParam = statusMap[statusF] || "all";
 
   const params = new URLSearchParams({ page, limit: 10, status: statusParam });
   if (search) params.set("search", search);
   if (instF) params.set("institutie", instF);
   if (deptF) params.set("compartiment", deptF);
+  if (dateFrom) params.set("dateFrom", dateFrom);
+  if (dateTo)   params.set("dateTo",   dateTo);
 
   try {
     const r = await _apiFetch("/admin/flows/list?" + params.toString(), {headers: hdrs()});
@@ -1577,8 +1607,8 @@ async function previewArchive() {
     _archiveFlowIds = (j.flows||[]).map(f => f.flowId);
     const summary = document.getElementById("archivePreviewSummary");
     const list = document.getElementById("archivePreviewList");
-    const filterLabel = inst ? ` · <span style="color:#9db0ff;">${inst}${dept?" / "+dept:""}</span>` : "";
-    summary.innerHTML = `<span style="color:#2dd4bf;">${escH(String(j.count||0))} fluxuri</span>${escH(filterLabel)} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${escH(String(j.totalMB||0))} MB</span> din baza de date`;
+    const filterLabel = inst ? ` · <span style="color:#9db0ff;">${escH(inst)}${dept?" / "+escH(dept):""}</span>` : "";
+    summary.innerHTML = `<span style="color:#2dd4bf;">${escH(String(j.count||0))} fluxuri</span>${filterLabel} eligibile pentru arhivare — eliberează <span style="color:#ffd580;font-weight:700;">${escH(String(j.totalMB||0))} MB</span> din baza de date`;
     list.innerHTML = (j.flows||[]).map(f =>
       `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
         📄 ${escH(f.docName||'—')} &nbsp;·&nbsp; ${escH(f.status||'')} &nbsp;·&nbsp; ${new Date(f.createdAt).toLocaleDateString("ro-RO")} &nbsp;·&nbsp; ${f.sizeMB} MB
@@ -2069,9 +2099,11 @@ const OP_LABELS_RO = {
   SIGNED_PDF_UPLOADED:            'PDF semnat încărcat',
   REFUSED:                        'Refuzat',
   REVIEW_REQUESTED:               'Trimis la revizuire',
+  FLOW_REINITIATED:               'Flux reinițiat după refuz',
   FLOW_REINITIATED_AFTER_REVIEW:  'Reinițiat după revizuire',
   REINITIATED_AFTER_REVIEW:       'Reinițiere marcată',
   FLOW_COMPLETED:                 'Flux finalizat',
+  FLOW_CANCELLED:                 'Flux anulat',
   DELEGATE:                       'Delegare semnătură',
   DELEGATED:                      'Delegare semnătură',
   YOUR_TURN:                      'Notificat',
@@ -2080,14 +2112,14 @@ const OP_LABELS_RO = {
 
 const OP_COLORS = {
   FLOW_CREATED: '#7c5cff', SIGNED_PDF_UPLOADED: '#2dd4bf', REFUSED: '#ff5050',
-  REVIEW_REQUESTED: '#ffd580', FLOW_REINITIATED_AFTER_REVIEW: '#ff9955',
-  FLOW_COMPLETED: '#26d07c', DELEGATE: '#9db0ff', YOUR_TURN: '#aaa',
+  REVIEW_REQUESTED: '#ffd580', FLOW_REINITIATED: '#ff9955', FLOW_REINITIATED_AFTER_REVIEW: '#ff9955',
+  FLOW_COMPLETED: '#26d07c', FLOW_CANCELLED: '#888888', DELEGATE: '#9db0ff', YOUR_TURN: '#aaa',
   REINITIATED_AFTER_REVIEW: '#ffaaaa', EMAIL_SENT: '#2dd4bf',
 };
 const OP_ICONS = {
   FLOW_CREATED: '📝', SIGNED_PDF_UPLOADED: '✅', REFUSED: '⛔',
-  REVIEW_REQUESTED: '🔄', FLOW_REINITIATED_AFTER_REVIEW: '🔁',
-  FLOW_COMPLETED: '🏁', DELEGATE: '👥', YOUR_TURN: '🔔',
+  REVIEW_REQUESTED: '🔄', FLOW_REINITIATED: '🔁', FLOW_REINITIATED_AFTER_REVIEW: '🔁',
+  FLOW_COMPLETED: '🏁', FLOW_CANCELLED: '🚫', DELEGATE: '👥', YOUR_TURN: '🔔',
   REINITIATED_AFTER_REVIEW: '🔁', EMAIL_SENT: '📧',
 };
 
@@ -2291,7 +2323,7 @@ async function exportFlowsCSV() {
   const statusF = document.getElementById('flowStatusFilter').value;
   const instF = document.getElementById('flowInstFilter').value;
   const deptF = document.getElementById('flowDeptFilter').value;
-  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', '': 'all' };
+  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', cancelled: 'cancelled', '': 'all' };
   const params = new URLSearchParams({ export: '1', limit: '2000', status: statusMap[statusF] || 'all' });
   if (search) params.set('search', search);
   if (instF) params.set('institutie', instF);
@@ -2333,7 +2365,7 @@ async function exportFlowsPDF() {
   const statusF = document.getElementById('flowStatusFilter').value;
   const instF = document.getElementById('flowInstFilter').value;
   const deptF = document.getElementById('flowDeptFilter').value;
-  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', '': 'all' };
+  const statusMap = { active: 'pending', done: 'completed', refused: 'refused', cancelled: 'cancelled', '': 'all' };
   const params = new URLSearchParams({ export: '1', limit: '2000', status: statusMap[statusF] || 'all' });
   if (search) params.set('search', search);
   if (instF) params.set('institutie', instF);
@@ -2408,7 +2440,7 @@ async function exportFlowsPDF() {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <script>window.onload = () => window.print();<\/script>
+
   </body></html>`;
     const w = window.open('', '_blank');
     w.document.write(html);
