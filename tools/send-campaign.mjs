@@ -24,7 +24,6 @@
 import pg      from 'pg';
 import fs      from 'fs';
 import path    from 'path';
-import { Resend } from 'resend';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -167,18 +166,27 @@ if (fs.existsSync(PDF_PATH)) {
   console.log(`ℹ️  PDF negăsit la ${PDF_PATH} — se trimite fără atașament.`);
 }
 
-const resend = new Resend(RESEND_API_KEY);
+async function sendEmailFetch({ to, subject, html, attachments, from: fromAddr }) {
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: fromAddr, to, subject, html, ...(attachments ? { attachments } : {}) }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.message || json?.name || `Resend error ${res.status}`);
+  return json;
+}
 let sentCount = 0, errorCount = 0;
 
 for (const recip of pending) {
   const html = buildHtml(campaign.html_body, recip.institutie, recip.tracking_id);
   try {
-    await resend.emails.send({
+    await sendEmailFetch({
       from: FROM_EMAIL,
       to: recip.email,
       subject: campaign.subject,
       html,
-      ...(attachment ? { attachments: [attachment] } : {}),
+      ...(attachment ? { attachments: [{ filename: attachment.filename, content: attachment.content.toString('base64') }] } : {}),
     });
     await pool.query(
       `UPDATE outreach_recipients SET status='sent', sent_at=NOW() WHERE id=$1`, [recip.id]

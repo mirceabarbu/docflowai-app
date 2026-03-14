@@ -17,21 +17,78 @@ import express from 'express';
 import crypto  from 'crypto';
 import fs      from 'fs';
 import path    from 'path';
-import { Resend } from 'resend';
+import { fileURLToPath } from 'url';
 import { pool, requireDb } from '../../db/index.mjs';
 import { requireAuth, requireAdmin, escHtml } from '../../middleware/auth.mjs';
 import { logger } from '../../middleware/logger.mjs';
 
 const router = express.Router();
+const __dirname_outreach = path.dirname(fileURLToPath(import.meta.url));
 
 const DAILY_SEND_LIMIT    = parseInt(process.env.OUTREACH_DAILY_LIMIT || '100');
 const FROM_EMAIL          = process.env.OUTREACH_FROM || 'DocFlowAI <contact@docflowai.ro>';
-const PDF_PATH            = process.env.OUTREACH_PDF_PATH || null; // path absolut spre PDF prezentare
+const PDF_PATH            = process.env.OUTREACH_PDF_PATH || null;
 const APP_URL             = process.env.APP_URL || '';
 
-function getResend() {
-  if (!process.env.RESEND_API_KEY) throw new Error('RESEND_API_KEY nu este setat');
-  return new Resend(process.env.RESEND_API_KEY);
+// ── Dataset primării (lazy-loaded, cached) ────────────────────────────────
+let _primarii = null;
+function getPrimarii() {
+  if (_primarii) return _primarii;
+  const candidates = [
+    path.join(__dirname_outreach, '../../../tools/primarii-romania.json'),
+    path.join(process.cwd(), 'tools/primarii-romania.json'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      _primarii = JSON.parse(fs.readFileSync(p, 'utf8'));
+      logger.info({ count: _primarii.length, path: p }, 'Primarii dataset loaded');
+      return _primarii;
+    }
+  }
+  _primarii = [];
+  logger.warn('primarii-romania.json not found');
+  return _primarii;
+}
+
+// ── GET /admin/outreach/primarii — dataset cu filtru + paginare ───────────
+router.get('/primarii', (req, res) => {
+  if (requireAdmin(req, res)) return;
+  const { judet = '', q = '', page = '1', limit = '50' } = req.query;
+  const pageN  = Math.max(1, parseInt(page));
+  const limitN = Math.min(200, Math.max(1, parseInt(limit)));
+  const qLow   = q.toLowerCase().trim();
+  const jLow   = judet.toLowerCase().trim();
+
+  let list = getPrimarii();
+  if (jLow) list = list.filter(p => p.judet.toLowerCase() === jLow);
+  if (qLow) list = list.filter(p =>
+    p.localitate.toLowerCase().includes(qLow) ||
+    p.institutie.toLowerCase().includes(qLow) ||
+    p.email.toLowerCase().includes(qLow)
+  );
+
+  const total = list.length;
+  const pages = Math.ceil(total / limitN) || 1;
+  const items = list.slice((pageN - 1) * limitN, pageN * limitN);
+  const judete = [...new Set(getPrimarii().map(p => p.judet))].sort();
+
+  res.json({ items, total, page: pageN, pages, limit: limitN, judete });
+});
+
+/** Trimite email via Resend REST API (fără SDK — consistente cu mailer.mjs) */
+async function sendEmail({ to, subject, html, attachments }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('RESEND_API_KEY nu este setat');
+  const body = { from: FROM_EMAIL, to, subject, html };
+  if (attachments?.length) body.attachments = attachments;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.message || json?.name || `Resend error ${res.status}`);
+  return json;
 }
 
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
@@ -322,18 +379,16 @@ router.post('/campaigns/:id/send', async (req, res) => {
       attachment = { filename: 'DocFlowAI_Prezentare.pdf', content: pdfBuf };
     }
 
-    const resend = getResend();
     let sentCount = 0, errorCount = 0;
 
     for (const recip of pending) {
       const html = buildHtml(campaign.html_body, recip.institutie, recip.tracking_id);
       try {
-        await resend.emails.send({
-          from: FROM_EMAIL,
+        await sendEmail({
           to: recip.email,
           subject: campaign.subject,
           html,
-          ...(attachment ? { attachments: [attachment] } : {}),
+          ...(attachment ? { attachments: [{ filename: attachment.filename, content: attachment.content.toString('base64') }] } : {}),
         });
         await pool.query(
           `UPDATE outreach_recipients SET status='sent', sent_at=NOW() WHERE id=$1`,
