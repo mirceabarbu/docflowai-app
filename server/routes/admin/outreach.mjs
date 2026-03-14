@@ -28,7 +28,15 @@ const __dirname_outreach = path.dirname(fileURLToPath(import.meta.url));
 const DAILY_SEND_LIMIT    = parseInt(process.env.OUTREACH_DAILY_LIMIT || '100');
 const FROM_EMAIL          = process.env.OUTREACH_FROM || 'DocFlowAI <contact@docflowai.ro>';
 const PDF_PATH            = process.env.OUTREACH_PDF_PATH || null;
-const APP_URL             = process.env.APP_URL || '';
+const APP_URL = process.env.APP_URL || ''; // opțional — se auto-detectează din request
+
+/** Returnează baza URL-ului din request (ex. https://docflowai-app.up.railway.app) */
+function getBaseUrl(req) {
+  if (APP_URL) return APP_URL.replace(/\/$/, '');
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host  = req.headers['x-forwarded-host'] || req.headers.host || '';
+  return `${proto}://${host}`;
+}
 
 // ── Dataset primării (lazy-loaded, cached) ────────────────────────────────
 let _primarii = null;
@@ -106,20 +114,47 @@ async function sentToday() {
   return parseInt(rows[0].cnt);
 }
 
-/** Email HTML de baza cu tracking pixel injectat */
-function buildHtml(template, institutie, trackingId) {
-  // Normalizare: "PRIMĂRIA COMUNEI BRAN" → "Primăria Comunei Bran"
+/** Email HTML de baza cu tracking pixel + click tracking injectat */
+function buildHtml(template, institutie, trackingId, baseUrl) {
   const displayInstitutie = institutie
     .toLowerCase()
     .replace(/(?:^|\s)\S/g, c => c.toUpperCase());
-  const pixel = APP_URL
-    ? `<img src="${APP_URL}/admin/outreach/track/${trackingId}" width="1" height="1" style="display:none" alt=""/>`
+  const pixel = baseUrl
+    ? `<img src="${baseUrl}/admin/outreach/track/${trackingId}" width="1" height="1" style="display:none" alt=""/>`
     : '';
-  return template
-    .replace(/\{\{institutie\}\}/g, escHtml(displayInstitutie))
-    .replace('</body>', `${pixel}</body>`)
+  let html = template
+    .replace(/\{\{institutie\}\}/g, escHtml(displayInstitutie));
+  if (baseUrl) {
+    html = html.replace(
+      /href="(https?:\/\/[^"]+)"/g,
+      (match, url) => {
+        if (url.includes('/admin/outreach/')) return match;
+        const encoded = encodeURIComponent(url);
+        return `href="${baseUrl}/admin/outreach/click/${trackingId}?u=${encoded}"`;
+      }
+    );
+  }
+  return html.replace('</body>', `${pixel}</body>`)
     + (template.includes('</body>') ? '' : pixel);
 }
+
+// ── Click tracking (public — fără auth) ───────────────────────────────────
+router.get('/click/:trackingId', async (req, res) => {
+  const { trackingId } = req.params;
+  const dest = req.query.u ? decodeURIComponent(req.query.u) : 'https://www.docflowai.ro';
+  // Validare URL destinație — permitem doar http/https
+  const safeDest = /^https?:\/\//.test(dest) ? dest : 'https://www.docflowai.ro';
+  // Redirect imediat — nu blocăm utilizatorul
+  res.redirect(302, safeDest);
+  // Actualizare async status opened
+  if (!trackingId || !/^[a-f0-9]{32}$/.test(trackingId)) return;
+  pool.query(`
+    UPDATE outreach_recipients
+    SET status = CASE WHEN status IN ('sent','pending') THEN 'opened' ELSE status END,
+        opened_at = CASE WHEN opened_at IS NULL THEN NOW() ELSE opened_at END
+    WHERE tracking_id = $1
+  `, [trackingId]).catch(e => logger.warn({ err: e }, 'outreach click track error'));
+});
 
 // ── Pixel tracking (public — fără auth) ───────────────────────────────────
 router.get('/track/:trackingId', async (req, res) => {
@@ -384,9 +419,10 @@ router.post('/campaigns/:id/send', async (req, res) => {
     }
 
     let sentCount = 0, errorCount = 0;
+    const baseUrl = getBaseUrl(req);
 
     for (const recip of pending) {
-      const html = buildHtml(campaign.html_body, recip.institutie, recip.tracking_id);
+      const html = buildHtml(campaign.html_body, recip.institutie, recip.tracking_id, baseUrl);
       try {
         await sendEmail({
           to: recip.email,
