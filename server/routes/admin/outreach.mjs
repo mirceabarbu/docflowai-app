@@ -108,11 +108,15 @@ async function sentToday() {
 
 /** Email HTML de baza cu tracking pixel injectat */
 function buildHtml(template, institutie, trackingId) {
+  // Normalizare: "PRIMĂRIA COMUNEI BRAN" → "Primăria Comunei Bran"
+  const displayInstitutie = institutie
+    .toLowerCase()
+    .replace(/(?:^|\s)\S/g, c => c.toUpperCase());
   const pixel = APP_URL
     ? `<img src="${APP_URL}/admin/outreach/track/${trackingId}" width="1" height="1" style="display:none" alt=""/>`
     : '';
   return template
-    .replace(/\{\{institutie\}\}/g, escHtml(institutie))
+    .replace(/\{\{institutie\}\}/g, escHtml(displayInstitutie))
     .replace('</body>', `${pixel}</body>`)
     + (template.includes('</body>') ? '' : pixel);
 }
