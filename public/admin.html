@@ -505,65 +505,6 @@
     <div id="activityReport" style="margin-top:18px;"></div>
   </div>
 
-  <!-- ──────────────────────────────────────────────────────── -->
-  <!-- IMPORT PRIMĂRII ROMÂNIA                                 -->
-  <!-- ──────────────────────────────────────────────────────── -->
-  <div class="card" style="margin-top:22px;">
-    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-      🏛 Import Primării România
-      <span id="pr-badge" style="font-size:.77rem;background:rgba(45,212,191,.12);color:#7cf0e0;padding:3px 10px;border-radius:10px;"></span>
-    </div>
-
-    <!-- Filtru -->
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
-      <div style="flex:1;min-width:160px;">
-        <label style="font-size:.77rem;color:var(--muted);display:block;margin-bottom:4px;">Județ</label>
-        <select id="pr-judet" onchange="prLoad(1)" style="width:100%;padding:8px 11px;background:rgba(15,23,49,.9);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;">
-          <option value="">Toate județele</option>
-        </select>
-      </div>
-      <div style="flex:2;min-width:200px;">
-        <label style="font-size:.77rem;color:var(--muted);display:block;margin-bottom:4px;">Caută</label>
-        <input id="pr-q" placeholder="Denumire localitate sau email..." oninput="prDebouncedLoad()" style="width:100%;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;"/>
-      </div>
-      <div style="display:flex;gap:8px;flex-shrink:0;">
-        <button onclick="prSelectAll()" style="padding:8px 14px;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.25);border-radius:8px;color:#9db0ff;font-size:.82rem;cursor:pointer;font-weight:600;">☑ Selectează pagina</button>
-        <button onclick="prDeselectAll()" style="padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);font-size:.82rem;cursor:pointer;">✕ Deselectează</button>
-      </div>
-    </div>
-
-    <!-- Target campanie + buton adaugă -->
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;">
-      <div style="flex:1;min-width:200px;">
-        <label style="font-size:.77rem;color:var(--muted);display:block;margin-bottom:4px;">Adaugă la campania</label>
-        <select id="pr-target-campaign" style="width:100%;padding:8px 11px;background:rgba(15,23,49,.9);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;">
-          <option value="">— selectează campanie —</option>
-        </select>
-      </div>
-      <button onclick="prAddSelected()" id="pr-btn-add" style="padding:9px 20px;background:rgba(45,212,191,.2);border:1px solid rgba(45,212,191,.4);border-radius:9px;color:#7cf0e0;font-weight:700;font-size:.88rem;cursor:pointer;white-space:nowrap;">➕ Adaugă selectate</button>
-      <span id="pr-add-status" style="font-size:.84rem;align-self:center;"></span>
-    </div>
-
-    <!-- Tabel rezultate -->
-    <div style="font-size:.77rem;color:var(--muted);margin-bottom:8px;" id="pr-info"></div>
-    <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:.79rem;">
-        <thead>
-          <tr style="border-bottom:1px solid rgba(255,255,255,.1);">
-            <th style="width:30px;padding:5px 8px;"></th>
-            <th style="text-align:left;padding:5px 8px;color:var(--muted);">Instituție</th>
-            <th style="text-align:left;padding:5px 8px;color:var(--muted);">Email</th>
-            <th style="text-align:left;padding:5px 8px;color:var(--muted);">Județ</th>
-          </tr>
-        </thead>
-        <tbody id="pr-tbody"></tbody>
-      </table>
-    </div>
-
-    <!-- Paginare -->
-    <div id="pr-pager" style="display:flex;gap:6px;align-items:center;margin-top:14px;flex-wrap:wrap;"></div>
-  </div>
-
 </div>
 <!-- ══════════════════════════════════════════════════════════════════ -->
 <div id="tab-outreach" style="display:none;">
@@ -677,6 +618,64 @@
         </table>
       </div>
     </div>
+  </div>
+  <!-- ──────────────────────────────────────────────────────── -->
+  <!-- IMPORT PRIMĂRII ROMÂNIA                                 -->
+  <!-- ──────────────────────────────────────────────────────── -->
+  <div class="card" style="margin-top:22px;">
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      🏛 Import Primării România
+      <span id="pr-badge" style="font-size:.77rem;background:rgba(45,212,191,.12);color:#7cf0e0;padding:3px 10px;border-radius:10px;"></span>
+    </div>
+
+    <!-- Filtru -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
+      <div style="flex:1;min-width:160px;">
+        <label style="font-size:.77rem;color:var(--muted);display:block;margin-bottom:4px;">Județ</label>
+        <select id="pr-judet" onchange="prLoad(1)" style="width:100%;padding:8px 11px;background:rgba(15,23,49,.9);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;">
+          <option value="">Toate județele</option>
+        </select>
+      </div>
+      <div style="flex:2;min-width:200px;">
+        <label style="font-size:.77rem;color:var(--muted);display:block;margin-bottom:4px;">Caută</label>
+        <input id="pr-q" placeholder="Denumire localitate sau email..." oninput="prDebouncedLoad()" style="width:100%;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;"/>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button onclick="prSelectAll()" style="padding:8px 14px;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.25);border-radius:8px;color:#9db0ff;font-size:.82rem;cursor:pointer;font-weight:600;">☑ Selectează pagina</button>
+        <button onclick="prDeselectAll()" style="padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);font-size:.82rem;cursor:pointer;">✕ Deselectează</button>
+      </div>
+    </div>
+
+    <!-- Target campanie + buton adaugă -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;">
+      <div style="flex:1;min-width:200px;">
+        <label style="font-size:.77rem;color:var(--muted);display:block;margin-bottom:4px;">Adaugă la campania</label>
+        <select id="pr-target-campaign" style="width:100%;padding:8px 11px;background:rgba(15,23,49,.9);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;">
+          <option value="">— selectează campanie —</option>
+        </select>
+      </div>
+      <button onclick="prAddSelected()" id="pr-btn-add" style="padding:9px 20px;background:rgba(45,212,191,.2);border:1px solid rgba(45,212,191,.4);border-radius:9px;color:#7cf0e0;font-weight:700;font-size:.88rem;cursor:pointer;white-space:nowrap;">➕ Adaugă selectate</button>
+      <span id="pr-add-status" style="font-size:.84rem;align-self:center;"></span>
+    </div>
+
+    <!-- Tabel rezultate -->
+    <div style="font-size:.77rem;color:var(--muted);margin-bottom:8px;" id="pr-info"></div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:.79rem;">
+        <thead>
+          <tr style="border-bottom:1px solid rgba(255,255,255,.1);">
+            <th style="width:30px;padding:5px 8px;"></th>
+            <th style="text-align:left;padding:5px 8px;color:var(--muted);">Instituție</th>
+            <th style="text-align:left;padding:5px 8px;color:var(--muted);">Email</th>
+            <th style="text-align:left;padding:5px 8px;color:var(--muted);">Județ</th>
+          </tr>
+        </thead>
+        <tbody id="pr-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Paginare -->
+    <div id="pr-pager" style="display:flex;gap:6px;align-items:center;margin-top:14px;flex-wrap:wrap;"></div>
   </div>
 
 </div>
@@ -2045,6 +2044,9 @@ fetch("/auth/me",{headers:hdrs()})
     if(u.role==="org_admin"){
       const gwsTab=document.querySelector('[onclick*="gws"]');
       if(gwsTab) gwsTab.style.display="none";
+      // Outreach vizibil doar pentru super-admin
+      const outreachTabBtn=$('outreach-tab-btn');
+      if(outreachTabBtn) outreachTabBtn.style.display="none";
     }
     if(u.role==="org_admin") window._orgAdminInstitutie = u.institutie || "";
     loadUsers();
