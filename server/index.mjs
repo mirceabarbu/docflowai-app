@@ -38,6 +38,7 @@ import { injectRateLimiter } from './routes/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
+import outreachRouter from './routes/admin/outreach.mjs';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -667,6 +668,7 @@ app.use('/', authRouter);
 app.use('/', notifRouter);
 app.use('/', adminRouter);
 app.use('/', flowsRouter);
+app.use('/admin/outreach', outreachRouter);
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);

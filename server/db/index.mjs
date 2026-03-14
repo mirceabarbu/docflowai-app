@@ -481,6 +481,35 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_flow_att_flow ON flow_attachments(flow_id);
     `
+  },
+  {
+    id: '026_outreach',
+    sql: `
+      CREATE TABLE IF NOT EXISTS outreach_campaigns (
+        id          SERIAL PRIMARY KEY,
+        name        TEXT        NOT NULL,
+        subject     TEXT        NOT NULL,
+        html_body   TEXT        NOT NULL,
+        created_by  TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS outreach_recipients (
+        id          SERIAL PRIMARY KEY,
+        campaign_id INTEGER     NOT NULL REFERENCES outreach_campaigns(id) ON DELETE CASCADE,
+        email       TEXT        NOT NULL,
+        institutie  TEXT        NOT NULL DEFAULT '',
+        status      TEXT        NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','sent','opened','error')),
+        tracking_id TEXT        NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text),
+        sent_at     TIMESTAMPTZ,
+        opened_at   TIMESTAMPTZ,
+        error_msg   TEXT,
+        UNIQUE (campaign_id, email)
+      );
+      CREATE INDEX IF NOT EXISTS idx_orecip_campaign ON outreach_recipients(campaign_id);
+      CREATE INDEX IF NOT EXISTS idx_orecip_status   ON outreach_recipients(status);
+      CREATE INDEX IF NOT EXISTS idx_orecip_tracking ON outreach_recipients(tracking_id);
+    `
   }
 ];
 
