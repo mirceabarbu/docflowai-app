@@ -174,6 +174,15 @@ export async function streamFromDrive(fileId, res) {
   });
 }
 
+export async function getBufferFromDrive(fileId) {
+  const drive = getDrive();
+  const response = await drive.files.get(
+    { fileId, alt: "media", supportsAllDrives: true },
+    { responseType: "arraybuffer" }
+  );
+  return Buffer.from(response.data);
+}
+
 // Verifică conexiunea Drive
 export async function verifyDrive() {
   const drive = getDrive();

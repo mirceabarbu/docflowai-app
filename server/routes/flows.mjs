@@ -1285,10 +1285,19 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     const senderName  = sender.nume  || actor.email;
     const senderTitle = [sender.functie, sender.compartiment, sender.institutie].filter(Boolean).join(' · ');
 
-    // PDF semnat
-    const pdfB64 = data.signedPdfB64 || data.pdfB64 || null;
+    // PDF semnat — din JSONB sau, dacă e arhivat, din Google Drive
+    let pdfB64 = data.signedPdfB64 || data.pdfB64 || null;
+    if (includeAttachment && !pdfB64 && data.storage === 'drive' && data.driveFileIdFinal) {
+      try {
+        const { getBufferFromDrive } = await import('../drive.mjs');
+        const buf = await getBufferFromDrive(data.driveFileIdFinal);
+        pdfB64 = buf.toString('base64');
+      } catch(driveErr) {
+        logger.warn({ err: driveErr, flowId }, 'send-email: failed to load PDF from Drive');
+      }
+    }
     if (includeAttachment && !pdfB64)
-      return res.status(409).json({ error: 'no_pdf', message: 'PDF-ul semnat nu este disponibil.' });
+      return res.status(409).json({ error: 'no_pdf', message: 'PDF-ul semnat nu este disponibil (nici local, nici în Drive).' });
 
     // Semnatari — pentru tabelul din mail
     const signers = (data.signers || []).map(s => ({

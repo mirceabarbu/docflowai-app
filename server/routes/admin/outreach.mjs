@@ -156,7 +156,28 @@ router.get('/click/:trackingId', async (req, res) => {
   `, [trackingId]).catch(e => logger.warn({ err: e }, 'outreach click track error'));
 });
 
-// ── Pixel tracking (public — fără auth) ───────────────────────────────────
+// ── Download tracking — servește PDF-ul cu tracking (public — fără auth) ──
+router.get('/download/:trackingId', async (req, res) => {
+  const { trackingId } = req.params;
+  const pdfPath = PDF_PATH || path.join(process.cwd(), 'tools', 'DocFlowAI_Prezentare.pdf');
+  if (!fs.existsSync(pdfPath)) {
+    return res.status(404).send('Prezentarea nu este disponibilă momentan.');
+  }
+  // Servim PDF-ul imediat
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename="DocFlowAI_Prezentare.pdf"');
+  res.sendFile(path.resolve(pdfPath));
+  // Înregistrare descărcare async
+  if (!trackingId || !/^[a-f0-9]{32}$/.test(trackingId)) return;
+  pool.query(`
+    UPDATE outreach_recipients
+    SET downloaded_at = CASE WHEN downloaded_at IS NULL THEN NOW() ELSE downloaded_at END,
+        download_count = COALESCE(download_count, 0) + 1,
+        status = CASE WHEN status IN ('sent','pending') THEN 'opened' ELSE status END,
+        opened_at = CASE WHEN opened_at IS NULL THEN NOW() ELSE opened_at END
+    WHERE tracking_id = $1
+  `, [trackingId]).catch(e => logger.warn({ err: e }, 'outreach download track error'));
+});
 router.get('/track/:trackingId', async (req, res) => {
   const { trackingId } = req.params;
   // GIF 1×1 transparent

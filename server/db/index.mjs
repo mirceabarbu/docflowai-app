@@ -503,6 +503,8 @@ const MIGRATIONS = [
         tracking_id TEXT        NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text),
         sent_at     TIMESTAMPTZ,
         opened_at   TIMESTAMPTZ,
+        downloaded_at TIMESTAMPTZ,
+        download_count INTEGER NOT NULL DEFAULT 0,
         error_msg   TEXT,
         UNIQUE (campaign_id, email)
       );

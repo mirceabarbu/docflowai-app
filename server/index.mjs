@@ -279,7 +279,7 @@ function stripSensitive(data, callerSignerToken = null) {
   const { pdfB64, signedPdfB64, ...rest } = data;
   return {
     ...rest, hasPdf: !!pdfB64,
-    hasSignedPdf: !!(signedPdfB64 || (data.storage === 'drive' && data.driveFileLinkFinal)),
+    hasSignedPdf: !!(signedPdfB64 || (data.storage === 'drive' && (data.driveFileLinkFinal || data.driveFileIdFinal))),
     signers: (data.signers || []).map(s => {
       const { token, ...signerRest } = s;
       return callerSignerToken && s.token === callerSignerToken ? { ...signerRest, token } : signerRest;
