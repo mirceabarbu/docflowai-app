@@ -175,7 +175,7 @@ app.get('/admin/health', async (req, res) => {
 
 // ── METRICS-01: /metrics — Prometheus scrape endpoint ────────────────────
 // Implicit: admin-only. Setați ENV METRICS_PUBLIC=1 pentru scrape extern.
-app.get('/metrics', (req, res) => {
+app.get('/metrics', async (req, res) => {
   const isPublic = process.env.METRICS_PUBLIC === '1';
   if (!isPublic && await requireAdmin(req, res)) return;
   // Actualizăm gauge-ul WS clients înainte de render

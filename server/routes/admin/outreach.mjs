@@ -59,7 +59,7 @@ function getPrimarii() {
 }
 
 // ── GET /admin/outreach/primarii — dataset cu filtru + paginare ───────────
-router.get('/primarii', (req, res) => {
+router.get('/primarii', async (req, res) => {
   if (await requireAdmin(req, res)) return;
   const { judet = '', q = '', page = '1', limit = '50' } = req.query;
   const pageN  = Math.max(1, parseInt(page));
