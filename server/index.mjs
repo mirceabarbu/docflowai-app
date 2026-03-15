@@ -34,6 +34,7 @@ import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, 
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
+import { openApiSpec } from './swagger.mjs';
 import { injectRateLimiter } from './routes/auth.mjs';
 import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
@@ -133,6 +134,47 @@ app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'noti
 app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
+// ── API Docs — OpenAPI 3.0 ───────────────────────────────────────────────────
+// GET /api-docs.json — spec JSON brut (Postman, Insomnia, integrări externe)
+// GET /api-docs      — Swagger UI interactiv (browser)
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.json(openApiSpec);
+});
+
+app.get('/api-docs', (req, res) => {
+  const specUrl = `${publicBaseUrl(req)}/api-docs.json`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DocFlowAI API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body { margin: 0; }
+    .topbar { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({
+      url: '${specUrl}',
+      dom_id: '#swagger-ui',
+      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+      layout: 'BaseLayout',
+      deepLinking: true,
+      defaultModelsExpandDepth: 1,
+      defaultModelExpandDepth: 1,
+    });
+  </script>
+</body>
+</html>`);
+});
+
 app.get('/health', (req, res) => {
   const mem = process.memoryUsage();
   res.json({
