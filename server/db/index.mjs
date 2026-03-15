@@ -512,6 +512,14 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_orecip_status   ON outreach_recipients(status);
       CREATE INDEX IF NOT EXISTS idx_orecip_tracking ON outreach_recipients(tracking_id);
     `
+  },
+  {
+    // SEC-01: Elimină coloana plain_password din tabelul users.
+    // Parola în clar nu trebuie stocată niciodată în DB — GDPR + securitate.
+    // Codul nu mai scrie în această coloană din v3.3.2; acum o ștergem definitiv.
+    // IF EXISTS: sigur pe DB-uri unde coloana a fost deja ștearsă manual.
+    id: '027_drop_plain_password',
+    sql: `ALTER TABLE users DROP COLUMN IF EXISTS plain_password;`
   }
 ];
 
@@ -527,6 +535,20 @@ async function runMigrations(client) {
   let ranCount = 0;
   for (const migration of MIGRATIONS) {
     if (appliedIds.has(migration.id)) continue;
+    // SEC-01: înainte de DROP plain_password, loghează câți useri aveau parola în clar
+    if (migration.id === '027_drop_plain_password') {
+      try {
+        const { rows: pwCheck } = await client.query(
+          `SELECT COUNT(*) AS cnt FROM users WHERE plain_password IS NOT NULL AND plain_password != ''`
+        );
+        const cnt = parseInt(pwCheck[0]?.cnt || '0');
+        if (cnt > 0) {
+          logger.warn({ count: cnt }, 'SEC-01: plain_password — există useri cu parolă în clar. Coloana va fi ștearsă acum. Asigurați-vă că toți userii au password_hash setat.');
+        } else {
+          logger.info('SEC-01: plain_password — coloana este goală. DROP sigur.');
+        }
+      } catch(_) { /* coloana poate să nu existe deloc — DROP IF EXISTS o gestionează */ }
+    }
     logger.info(`Migrare: ${migration.id}...`);
     await client.query(migration.sql);
     await client.query('INSERT INTO schema_migrations (id) VALUES ($1)', [migration.id]);
