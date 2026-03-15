@@ -8,7 +8,7 @@
 
 import { Router } from 'express';
 import { requireAuth, requireAdmin, hashPassword, generatePassword, escHtml } from '../middleware/auth.mjs';
-import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData } from '../db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData, invalidateOrgUserCache } from '../db/index.mjs';
 import { validatePhone } from '../whatsapp.mjs';
 import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
 import { archiveFlow, verifyDrive } from '../drive.mjs';
@@ -300,6 +300,7 @@ router.post('/admin/users', async (req, res) => {
       }).catch(e => logger.warn({ err: e, credsDest }, 'R-06: verificare email esuat'));
     }
 
+    invalidateOrgUserCache(insertOrgId);
     res.status(201).json({
       ...user,
       // Parola returnată în response pentru afișare în modal (o singură dată) — nu se stochează
@@ -430,6 +431,7 @@ router.put('/admin/users/:id', async (req, res) => {
       vals
     );
     if (!rows.length) return res.status(404).json({ error: 'user_not_found' });
+    invalidateOrgUserCache(rows[0].org_id || null);
     return res.json(rows[0]);
   } catch(e) {
     if (e.code === '23505') return res.status(409).json({ error: 'email_exists' });
@@ -495,6 +497,7 @@ router.delete('/admin/users/:id', async (req, res) => {
     const deleteParams = actorOrgId ? [targetId, actorOrgId] : [targetId];
     const { rowCount } = await pool.query(deleteWhere, deleteParams);
     if (!rowCount) return res.status(404).json({ error: 'user_not_found_or_forbidden' });
+    invalidateOrgUserCache(actorOrgId);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });

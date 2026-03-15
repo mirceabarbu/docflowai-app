@@ -753,7 +753,20 @@ export async function writeAuditEvent({ flowId, orgId, eventType, actorEmail, ac
  * Construieste un map de useri filtrat pe org_id (anti-leak multi-tenant).
  * Daca orgId e null/0, returneaza toti userii (backward compat pentru admini fara org).
  */
+// ARCH-04: Cache per org_id cu TTL 60s.
+// getUserMapForOrg e apelat la fiecare GET /flows/:id și GET /my-flows —
+// fără cache, face un SELECT pe users la fiecare request.
+// Map<orgId|'all', { map, cachedAt }>
+const _userMapCache = new Map();
+const USER_MAP_CACHE_TTL = 60_000; // 60 secunde
+
 export async function getUserMapForOrg(orgId) {
+  const cacheKey = (orgId && orgId > 0) ? String(orgId) : 'all';
+  const cached = _userMapCache.get(cacheKey);
+  if (cached && (Date.now() - cached.cachedAt) < USER_MAP_CACHE_TTL) {
+    return cached.map;
+  }
+
   let query, params;
   if (orgId && orgId > 0) {
     query = 'SELECT email,functie,compartiment,institutie FROM users WHERE org_id=$1';
@@ -765,5 +778,20 @@ export async function getUserMapForOrg(orgId) {
   const { rows } = await pool.query(query, params);
   const map = {};
   rows.forEach(u => { map[(u.email || '').toLowerCase()] = u; });
+
+  _userMapCache.set(cacheKey, { map, cachedAt: Date.now() });
   return map;
+}
+
+/**
+ * Invalidează cache-ul pentru o organizație specifică.
+ * Apelat după orice modificare de user (POST/PUT/DELETE /admin/users).
+ * Dacă orgId e null, invalidează tot cache-ul (fallback sigur).
+ */
+export function invalidateOrgUserCache(orgId) {
+  if (orgId && orgId > 0) {
+    _userMapCache.delete(String(orgId));
+  } else {
+    _userMapCache.clear();
+  }
 }
