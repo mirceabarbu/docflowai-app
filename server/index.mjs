@@ -143,7 +143,7 @@ app.get('/api-docs.json', (req, res) => {
 });
 
 app.get('/api-docs', (req, res) => {
-  const specUrl = `${publicBaseUrl(req)}/api-docs.json`;
+  // URL relativ — funcționează pe orice domeniu fără a depinde de publicBaseUrl
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html>
 <html lang="ro">
@@ -162,7 +162,7 @@ app.get('/api-docs', (req, res) => {
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
     SwaggerUIBundle({
-      url: '${specUrl}',
+      url: '/api-docs.json',
       dom_id: '#swagger-ui',
       presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
       layout: 'BaseLayout',
