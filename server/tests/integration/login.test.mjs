@@ -103,6 +103,10 @@ function makeV1Hash(password) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Resetăm explicit queue-ul mockResolvedValueOnce doar pentru pool.query.
+  // vi.clearAllMocks() resetează calls/results dar NU queue-ul one-time.
+  // vi.resetAllMocks() resetează și implementările altor mock-uri (requireDb etc.) — prea agresiv.
+  dbModule.pool.query.mockReset();
 });
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -219,13 +223,16 @@ describe('POST /auth/login', () => {
     const app = createTestApp();
     const res = await request(app)
       .post('/auth/login')
+      .set('host', 'localhost')
       .send({ email: user.email, password: plainPwd });
 
     // Cookie auth_token trebuie să existe
-    const cookies = res.headers['set-cookie'] || [];
-    const authCookie = cookies.find(c => c.startsWith('auth_token='));
+    // Notă: set-cookie poate fi string (1 cookie) sau array (multiple cookies)
+    const rawCookies = res.headers['set-cookie'];
+    const cookieList = Array.isArray(rawCookies) ? rawCookies : (rawCookies ? [rawCookies] : []);
+    const authCookie = cookieList.find(c => c.startsWith('auth_token='));
     expect(authCookie).toBeDefined();
-    expect(authCookie).toContain('HttpOnly');
+    expect(authCookie.toLowerCase()).toContain('httponly');
   });
 
   it('200 — force_password_change=true propagat în răspuns', async () => {

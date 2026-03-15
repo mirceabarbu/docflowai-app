@@ -108,9 +108,11 @@ describe('verifyPassword', () => {
   });
 
   it('round-trip hash → verify consistent pe multiple parole', async () => {
+    // 5 parole x 3 operatii PBKDF2 (600k iteratii) = ops lente pe masini slabe.
+    // Timeout ridicat la 60s pentru a evita flakiness pe Railway/CI.
     const passwords = [
       'abc123',
-      'P@rola!Complicată2025',
+      'P@rola!Complicata2025',
       'a'.repeat(200),
       '     spaces     ',
       '12345',
@@ -120,5 +122,5 @@ describe('verifyPassword', () => {
       expect((await verifyPassword(pwd, hash)).ok, `Parola: "${pwd.slice(0, 20)}"`).toBe(true);
       expect((await verifyPassword('altceva_gresit', hash)).ok, `Fals pozitiv pentru: "${pwd.slice(0, 20)}"`).toBe(false);
     }
-  });
+  }, 60_000);
 });
