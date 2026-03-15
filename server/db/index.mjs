@@ -520,6 +520,15 @@ const MIGRATIONS = [
     // IF EXISTS: sigur pe DB-uri unde coloana a fost deja ștearsă manual.
     id: '027_drop_plain_password',
     sql: `ALTER TABLE users DROP COLUMN IF EXISTS plain_password;`
+  },
+  {
+    // PERF-01: Index pe notifications(flow_id).
+    // DELETE/SELECT pe flow_id se apelează la fiecare acțiune din flux (sign, refuse,
+    // cancel, delegate) — fără index, PostgreSQL face full table scan pe întreaga tabelă.
+    // Notă: CREATE INDEX IF NOT EXISTS (non-CONCURRENT) — funcționează în tranzacție.
+    // Pe scala acestei instalări (sute de fluxuri) lock-ul e de ordinul milisecundelor.
+    id: '028_index_notifications_flow_id',
+    sql: `CREATE INDEX IF NOT EXISTS idx_notif_flow_id ON notifications(flow_id);`
   }
 ];
 
