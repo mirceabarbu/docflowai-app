@@ -535,19 +535,31 @@ async function runMigrations(client) {
   let ranCount = 0;
   for (const migration of MIGRATIONS) {
     if (appliedIds.has(migration.id)) continue;
-    // SEC-01: înainte de DROP plain_password, loghează câți useri aveau parola în clar
+    // SEC-01: pre-check înainte de DROP plain_password.
+    // IMPORTANT: verificăm existența coloanei via information_schema, NU direct cu SELECT pe users.
+    // Un SELECT pe o coloană inexistentă abortează întreaga tranzacție PG — bug în b62.
     if (migration.id === '027_drop_plain_password') {
       try {
-        const { rows: pwCheck } = await client.query(
-          `SELECT COUNT(*) AS cnt FROM users WHERE plain_password IS NOT NULL AND plain_password != ''`
+        const { rows: colExists } = await client.query(
+          `SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name   = 'users'
+             AND column_name  = 'plain_password'`
         );
-        const cnt = parseInt(pwCheck[0]?.cnt || '0');
-        if (cnt > 0) {
-          logger.warn({ count: cnt }, 'SEC-01: plain_password — există useri cu parolă în clar. Coloana va fi ștearsă acum. Asigurați-vă că toți userii au password_hash setat.');
+        if (colExists.length > 0) {
+          const { rows: pwCheck } = await client.query(
+            `SELECT COUNT(*) AS cnt FROM users WHERE plain_password IS NOT NULL AND plain_password != ''`
+          );
+          const cnt = parseInt(pwCheck[0]?.cnt || '0');
+          if (cnt > 0) {
+            logger.warn({ count: cnt }, 'SEC-01: plain_password — există useri cu parolă în clar. Coloana va fi ștearsă acum.');
+          } else {
+            logger.info('SEC-01: plain_password — coloana goală. DROP sigur.');
+          }
         } else {
-          logger.info('SEC-01: plain_password — coloana este goală. DROP sigur.');
+          logger.info('SEC-01: plain_password — coloana nu mai există (attempt anterior). ALTER IF EXISTS va fi no-op.');
         }
-      } catch(_) { /* coloana poate să nu existe deloc — DROP IF EXISTS o gestionează */ }
+      } catch(e) { logger.warn({ err: e }, 'SEC-01: pre-check eșuat (non-fatal)'); }
     }
     logger.info(`Migrare: ${migration.id}...`);
     await client.query(migration.sql);
