@@ -34,7 +34,7 @@ import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, 
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
-import { injectRateLimiter } from './routes/auth.mjs';
+import { injectRateLimiter, injectAdminRateLimiter } from './routes/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
@@ -149,7 +149,7 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/admin/health', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   let dbLatencyMs = null;
   if (pool && DB_READY) {
     const t0 = Date.now();
@@ -177,7 +177,7 @@ app.get('/admin/health', async (req, res) => {
 // Implicit: admin-only. Setați ENV METRICS_PUBLIC=1 pentru scrape extern.
 app.get('/metrics', (req, res) => {
   const isPublic = process.env.METRICS_PUBLIC === '1';
-  if (!isPublic && requireAdmin(req, res)) return;
+  if (!isPublic && await requireAdmin(req, res)) return;
   // Actualizăm gauge-ul WS clients înainte de render
   setGauge('ws_clients', wsClients.size);
   res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
@@ -659,6 +659,13 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
 
 // ── Inject dependencies ───────────────────────────────────────────────────
 injectRateLimiter(checkLoginRate, recordLoginFail, clearLoginRate);
+// SEC-03: rate limiter ADMIN_SECRET persistent în DB — reutilizează login_blocks
+// Cheia e IP-ul (al doilea parametru), nu email — compatibil cu signatura checkLoginRate(req, key)
+injectAdminRateLimiter(
+  (req, ip) => checkLoginRate(req, ip),
+  (req, ip) => recordLoginFail(req, ip),
+  (req, ip) => clearLoginRate(req, ip)
+);
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
 injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail });

@@ -297,7 +297,7 @@ router.get('/api/flows/:flowId', getFlowHandler);
 router.put('/flows/:flowId', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    if (requireAdmin(req, res)) return;
+    if (await requireAdmin(req, res)) return;
     const { flowId } = req.params;
     const existing = await getFlowData(flowId);
     if (!existing) return res.status(404).json({ error: 'not_found' });
@@ -559,7 +559,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
 router.post('/flows/:flowId/resend', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    if (requireAdmin(req, res)) return;
+    if (await requireAdmin(req, res)) return;
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
@@ -575,7 +575,7 @@ router.post('/flows/:flowId/resend', async (req, res) => {
 router.post('/flows/:flowId/regenerate-token', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    if (requireAdmin(req, res)) return;
+    if (await requireAdmin(req, res)) return;
     const { flowId } = req.params;
     const { signerEmail } = req.body || {};
     if (!signerEmail) return res.status(400).json({ error: 'signerEmail_required' });

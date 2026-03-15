@@ -27,40 +27,19 @@ export const JWT_REFRESH_GRACE_SEC = parseInt(process.env.JWT_REFRESH_GRACE_SEC 
 export const ADMIN_SECRET = process.env.ADMIN_SECRET || null;
 export const AUTH_COOKIE = 'auth_token';
 
-// ── SEC-02: ADMIN_SECRET rate limiting ─────────────────────────────────────
-const ADMIN_RL_MAX    = 5;
-const ADMIN_RL_WIN_MS = 60_000;
-const ADMIN_RL_BLK_MS = 5 * 60_000;
-const _adminAttempts = new Map();
+// ── SEC-03: ADMIN_SECRET rate limiting — persistent în DB ───────────────────
+// Înlocuiește Map in-memory (resetat la restart) cu login_blocks (persistent).
+// Funcțiile sunt injectate din index.mjs via injectAdminRateLimiter(),
+// același pattern ca injectRateLimiter() pentru login normal.
+// Fallback la no-op dacă nu sunt injectate (ex. în teste unde DB nu e disponibil).
+let _adminCheckRate   = async () => ({ blocked: false });
+let _adminRecordFail  = async () => {};
+let _adminClearRate   = async () => {};
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, e] of _adminAttempts) {
-    if ((e.blockedUntil && e.blockedUntil < now) ||
-        (!e.blockedUntil && e.firstAt < now - ADMIN_RL_WIN_MS * 2))
-      _adminAttempts.delete(ip);
-  }
-}, 10 * 60_000).unref();
-
-function _adminRlBlocked(ip) {
-  const now = Date.now();
-  const e = _adminAttempts.get(ip);
-  if (!e) return false;
-  if (e.blockedUntil && e.blockedUntil > now) return e.blockedUntil;
-  return false;
-}
-
-function _adminRlFail(ip) {
-  const now = Date.now();
-  let e = _adminAttempts.get(ip);
-  if (!e || e.firstAt < now - ADMIN_RL_WIN_MS) e = { count: 0, firstAt: now, blockedUntil: null };
-  e = { ...e, count: e.count + 1 };
-  if (e.count >= ADMIN_RL_MAX) {
-    e.blockedUntil = now + ADMIN_RL_BLK_MS;
-    logger.warn({ ip, count: e.count }, 'ADMIN_SECRET: IP blocat 5 min dupa prea multe incercari');
-  }
-  _adminAttempts.set(ip, e);
-  return e;
+export function injectAdminRateLimiter(check, record, clear) {
+  _adminCheckRate  = check;
+  _adminRecordFail = record;
+  _adminClearRate  = clear;
 }
 
 // ── Hashing parolă — PBKDF2 cu versionare ──────────────────────────────────
@@ -114,27 +93,29 @@ export function requireAuth(req, res) {
  * SEC-02: ADMIN_SECRET cu rate limiting + audit log.
  * Returnează true dacă accesul e respins, false dacă e permis.
  */
-export function requireAdmin(req, res) {
+export async function requireAdmin(req, res) {
   if (ADMIN_SECRET) {
     const ip = req.ip || 'unknown';
-    const blockedUntil = _adminRlBlocked(ip);
-    if (blockedUntil) {
-      const remainSec = Math.ceil((blockedUntil - Date.now()) / 1000);
-      res.status(429).json({ error: 'too_many_attempts', remainSec });
+    // SEC-03: rate check persistent în DB (via funcții injectate din index.mjs)
+    const rateCheck = await _adminCheckRate(req, ip);
+    if (rateCheck.blocked) {
+      res.status(429).json({ error: 'too_many_attempts', remainSec: rateCheck.remainSec || 300 });
       return true;
     }
     const provided = req.get('x-admin-secret');
     if (provided) {
       if (provided === ADMIN_SECRET) {
-        _adminAttempts.delete(ip); // reset on success
+        await _adminClearRate(req, ip);
         _writeAdminSecretAudit(req).catch(() => {});
         logger.warn({ ip, method: req.method, url: req.originalUrl }, 'ADMIN_SECRET bypass utilizat');
         return false;
       }
-      const entry = _adminRlFail(ip);
-      logger.warn({ ip, attempt: entry.count, url: req.originalUrl }, 'ADMIN_SECRET: secret incorect');
-      if (entry.blockedUntil) {
-        res.status(429).json({ error: 'too_many_attempts', remainSec: Math.ceil(ADMIN_RL_BLK_MS / 1000) });
+      await _adminRecordFail(req, ip);
+      logger.warn({ ip, url: req.originalUrl }, 'ADMIN_SECRET: secret incorect');
+      // Re-verificăm după înregistrare pentru a returna remainSec corect
+      const recheckAfterFail = await _adminCheckRate(req, ip);
+      if (recheckAfterFail.blocked) {
+        res.status(429).json({ error: 'too_many_attempts', remainSec: recheckAfterFail.remainSec || 300 });
       } else {
         res.status(403).json({ error: 'forbidden' });
       }

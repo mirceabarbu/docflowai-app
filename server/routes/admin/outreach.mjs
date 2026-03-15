@@ -60,7 +60,7 @@ function getPrimarii() {
 
 // ── GET /admin/outreach/primarii — dataset cu filtru + paginare ───────────
 router.get('/primarii', (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   const { judet = '', q = '', page = '1', limit = '50' } = req.query;
   const pageN  = Math.max(1, parseInt(page));
   const limitN = Math.min(200, Math.max(1, parseInt(limit)));
@@ -199,7 +199,7 @@ router.get('/track/:trackingId', async (req, res) => {
 
 // ── Stats ─────────────────────────────────────────────────────────────────
 router.get('/stats', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   if (requireDb(res)) return;
   try {
     const today = await sentToday();
@@ -226,7 +226,7 @@ router.get('/stats', async (req, res) => {
 // ── Campanii — CRUD ───────────────────────────────────────────────────────
 
 router.get('/campaigns', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   if (requireDb(res)) return;
   try {
     const { rows } = await pool.query(`
@@ -249,7 +249,7 @@ router.get('/campaigns', async (req, res) => {
 });
 
 router.post('/campaigns', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   const { name, subject, html_body } = req.body;
@@ -270,7 +270,7 @@ router.post('/campaigns', async (req, res) => {
 });
 
 router.get('/campaigns/:id', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   if (requireDb(res)) return;
   const id = parseInt(req.params.id);
   if (!id) return res.status(400).json({ error: 'bad_id' });
@@ -289,7 +289,7 @@ router.get('/campaigns/:id', async (req, res) => {
 });
 
 router.delete('/campaigns/:id', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   const id = parseInt(req.params.id);
@@ -309,7 +309,7 @@ router.delete('/campaigns/:id', async (req, res) => {
 // ── Destinatari ───────────────────────────────────────────────────────────
 
 router.post('/campaigns/:id/recipients', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   if (requireDb(res)) return;
   const id = parseInt(req.params.id);
   if (!id) return res.status(400).json({ error: 'bad_id' });
@@ -368,7 +368,7 @@ router.post('/campaigns/:id/recipients', async (req, res) => {
 });
 
 router.delete('/campaigns/:id/recipients/:rid', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   if (requireDb(res)) return;
   const id  = parseInt(req.params.id);
   const rid = parseInt(req.params.rid);
@@ -388,7 +388,7 @@ router.delete('/campaigns/:id/recipients/:rid', async (req, res) => {
 // ── Send batch ────────────────────────────────────────────────────────────
 
 router.post('/campaigns/:id/send', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
 
@@ -484,7 +484,7 @@ router.post('/campaigns/:id/send', async (req, res) => {
 
 // ── Reset destinatari cu eroare (retry) ────────────────────────────────────
 router.post('/campaigns/:id/reset-errors', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   if (requireDb(res)) return;
   const id = parseInt(req.params.id);
   if (!id) return res.status(400).json({ error: 'bad_id' });
