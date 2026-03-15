@@ -226,7 +226,7 @@ router.post('/admin/users', async (req, res) => {
                  personal_email, email_verified,
                  gws_email, gws_status`,
       [
-        loginEmail, hashPassword(plainPwd),
+        loginEmail, await hashPassword(plainPwd),
         numeComplet,
         prn, fam,
         (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(),
@@ -419,7 +419,7 @@ router.put('/admin/users/:id', async (req, res) => {
   if (notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!notif_whatsapp); }
   let newPlainPwd = null;
   if (password && password.length >= 4) {
-    updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password));
+    updates.push(`password_hash=$${i++}`); vals.push(await hashPassword(password));
     newPlainPwd = password;
   }
   if (!updates.length) return res.status(400).json({ error: 'nothing_to_update' });
@@ -455,7 +455,7 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
       return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
     const newPwd = generatePassword();
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [hashPassword(newPwd), targetId]);
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [await hashPassword(newPwd), targetId]);
     // SEC-02: parola trimisă EXCLUSIV pe email — nu returnată în response
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
@@ -516,7 +516,7 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
       if (!actorOrgId || actorOrgId !== u.org_id) return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
     const newPwd = generatePassword();
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [hashPassword(newPwd), targetId]);
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [await hashPassword(newPwd), targetId]);
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
       to: u.email, subject: 'Cont DocFlowAI — credențiale de acces',

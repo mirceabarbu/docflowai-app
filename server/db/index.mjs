@@ -11,6 +11,9 @@
 
 import pg from 'pg';
 import crypto from 'crypto';
+import util from 'util';
+
+const _pbkdf2 = util.promisify(crypto.pbkdf2);
 import { logger } from '../middleware/logger.mjs';
 
 const { Pool } = pg;
@@ -580,9 +583,9 @@ async function runMigrations(client) {
   else logger.info({ count: ranCount }, 'Migrari aplicate.');
 }
 
-function _hashPasswordLocal(password) {
+async function _hashPasswordLocal(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
+  const hash = (await _pbkdf2(password, salt, 100000, 64, 'sha256')).toString('hex');
   return `${salt}:${hash}`;
 }
 
@@ -605,7 +608,7 @@ async function initDbOnce() {
     const pwd = process.env.ADMIN_INIT_PASSWORD;
     await pool.query(
       "INSERT INTO users (email, password_hash, nume, functie, role) VALUES ($1,$2,$3,$4,'admin') ON CONFLICT DO NOTHING",
-      ['admin@docflowai.ro', _hashPasswordLocal(pwd), 'Administrator', 'Administrator sistem']
+      ['admin@docflowai.ro', await _hashPasswordLocal(pwd), 'Administrator', 'Administrator sistem']
     );
     logger.info('Admin user creat.');
   }

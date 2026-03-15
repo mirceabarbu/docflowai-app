@@ -10,6 +10,9 @@
  */
 
 import crypto from 'crypto';
+import util from 'util';
+
+const _pbkdf2 = util.promisify(crypto.pbkdf2);
 import jwt from 'jsonwebtoken';
 import { logger } from './logger.mjs';
 
@@ -66,9 +69,9 @@ function _adminRlFail(ip) {
 const PBKDF2_ITER_V1 = 100_000;
 const PBKDF2_ITER_V2 = 600_000;
 
-export function hashPassword(password) {
+export async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, PBKDF2_ITER_V2, 64, 'sha256').toString('hex');
+  const hash = (await _pbkdf2(password, salt, PBKDF2_ITER_V2, 64, 'sha256')).toString('hex');
   return `v2:${salt}:${hash}`;
 }
 
@@ -77,20 +80,20 @@ export function hashPassword(password) {
  * Returnează { ok: boolean, needsRehash: boolean }
  * needsRehash=true → caller trebuie să re-hasheze parola cu v2 și să salveze în DB.
  */
-export function verifyPassword(password, stored) {
+export async function verifyPassword(password, stored) {
   if (!stored) return { ok: false, needsRehash: false };
   if (stored.startsWith('v2:')) {
     const rest = stored.slice(3);
     const idx = rest.indexOf(':');
     if (idx === -1) return { ok: false, needsRehash: false };
     const salt = rest.slice(0, idx), hash = rest.slice(idx + 1);
-    const check = crypto.pbkdf2Sync(password, salt, PBKDF2_ITER_V2, 64, 'sha256').toString('hex');
+    const check = (await _pbkdf2(password, salt, PBKDF2_ITER_V2, 64, 'sha256')).toString('hex');
     return { ok: check === hash, needsRehash: false };
   }
-  // hash v1 (legacy)
+  // hash v1 (legacy) — migrare lazy la v2 la următorul login
   if (!stored.includes(':')) return { ok: false, needsRehash: false };
   const [salt, hash] = stored.split(':');
-  const check = crypto.pbkdf2Sync(password, salt, PBKDF2_ITER_V1, 64, 'sha256').toString('hex');
+  const check = (await _pbkdf2(password, salt, PBKDF2_ITER_V1, 64, 'sha256')).toString('hex');
   const ok = check === hash;
   return { ok, needsRehash: ok };
 }
