@@ -137,7 +137,7 @@ app.get('/health', (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.5',
+    version: '3.3.7',
     ts: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     memory: {
@@ -159,7 +159,7 @@ app.get('/admin/health', async (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.5',
+    version: '3.3.7',
     dbReady: !!DB_READY,
     dbLatencyMs,
     dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null,
@@ -774,7 +774,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT }, 'DocFlowAI v3.3.5 server pornit');
+  logger.info({ port: PORT }, 'DocFlowAI v3.3.7 server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry();
 });
