@@ -205,8 +205,7 @@ router.post('/primarii/import', async (req, res) => {
       if (!Array.isArray(rows)) return res.status(400).json({ error: 'json_must_be_array' });
     } else {
       // CSV: email,institutie[,judet[,localitate]]
-      rows = data.split('
-').slice(1).map(line => {
+      rows = data.split(/\r?\n/).slice(1).map(line => {
         const parts = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
         return { email: parts[0], institutie: parts[1] || parts[0], judet: parts[2] || '', localitate: parts[3] || parts[1] || '' };
       }).filter(r => r.email && r.institutie);
