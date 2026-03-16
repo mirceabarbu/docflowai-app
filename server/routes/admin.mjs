@@ -829,6 +829,7 @@ router.get('/admin/flows/list', async (req, res) => {
     const search = (req.query.search || '').trim().toLowerCase();
     const dateFrom = (req.query.dateFrom || '').trim();  // YYYY-MM-DD
     const dateTo   = (req.query.dateTo   || '').trim();  // YYYY-MM-DD
+    const storageFilter = (req.query.storage || '').trim(); // 'drive' = doar arhivate
     // FIX v3.2.2: escape caractere speciale LIKE
     const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
     // org_admin: filtrare strictă după org_id
@@ -850,6 +851,7 @@ router.get('/admin/flows/list', async (req, res) => {
     if (deptFilter) { params.push(deptFilter); conditions.push(`(data->>'compartiment' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.compartiment=$${params.length}))`); }
     if (dateFrom) { params.push(dateFrom + 'T00:00:00.000Z'); conditions.push(`(data->>'createdAt') >= $${params.length}`); }
     if (dateTo)   { params.push(dateTo   + 'T23:59:59.999Z'); conditions.push(`(data->>'createdAt') <= $${params.length}`); }
+    if (storageFilter === 'drive') conditions.push("(data->>'storage') = 'drive'");
     const whereClause = conditions.join(' AND ');
     const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
@@ -861,7 +863,9 @@ router.get('/admin/flows/list', async (req, res) => {
       return { flowId: d.flowId, docName: d.docName, initEmail: d.initEmail, initName: d.initName,
         status: d.status || 'active', completed: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
         urgent: !!(d.urgent),
-        storage: d.storage || 'db', createdAt: d.createdAt || r.created_at,
+        storage: d.storage || 'db', archivedAt: d.archivedAt || null,
+        driveFileLinkFinal: d.driveFileLinkFinal || null,
+        createdAt: d.createdAt || r.created_at,
         institutie: u.institutie || d.institutie || '', compartiment: u.compartiment || d.compartiment || '',
         signers: (d.signers || []).map(s => ({ name: s.name, email: s.email, rol: s.rol, status: s.status, tokenCreatedAt: s.tokenCreatedAt || null, signedAt: s.signedAt || null, refuseReason: s.refuseReason || null })) };
     });

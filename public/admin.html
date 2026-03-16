@@ -284,6 +284,7 @@
         <option value="done">Finalizate</option>
         <option value="refused">Refuzate</option>
         <option value="cancelled">Anulate</option>
+        <option value="archived">💾 Arhivate în Drive</option>
       </select>
       <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;">
         <option value="">Toate instituțiile</option>
@@ -1521,10 +1522,11 @@ async function loadFlowsList(forceReload = true, page) {
   area.innerHTML = '<span style="color:var(--muted);">⏳ Se incarca...</span>';
 
   // Mapeaza valorile locale la parametrii server
-  const statusMap = { active: "pending", done: "completed", refused: "refused", cancelled: "cancelled", "": "all" };
+  const statusMap = { active: "pending", done: "completed", refused: "refused", cancelled: "cancelled", archived: "all", "": "all" };
   const statusParam = statusMap[statusF] || "all";
 
   const params = new URLSearchParams({ page, limit: 10, status: statusParam });
+  if (statusF === "archived") params.set("storage", "drive");
   if (search) params.set("search", search);
   if (instF) params.set("institutie", instF);
   if (deptF) params.set("compartiment", deptF);
@@ -1584,6 +1586,7 @@ async function loadFlowsList(forceReload = true, page) {
             <td style="padding:7px 8px;color:var(--muted);">${f.createdAt?new Date(f.createdAt).toLocaleDateString("ro-RO"):"—"}</td>
             <td style="padding:7px 8px;">
               <a href="/flow.html?flow=${encodeURIComponent(f.flowId||'')}" target="_blank" style="padding:3px 10px;font-size:.75rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-right:4px;" title="Vizualizează flux">🔍</a>
+              ${f.storage==='drive' && f.driveFileLinkFinal ? `<a href="${f.driveFileLinkFinal}" target="_blank" style="padding:3px 10px;font-size:.75rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#2dd4bf;text-decoration:none;cursor:pointer;margin-right:4px;" title="Deschide în Google Drive">💾 Drive</a>` : ''}
               ${current&&!f.completed&&f.status!=="refused" ? `
                 <button onclick="resendNotif('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-right:4px;" title="Retrimite notificare">📨</button>
                 ${expired?`<button onclick="regenerateToken('${escH(f.flowId||'')}','${escH(current.email||'')}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;" title="Generează token nou">🔑</button>`:''}
