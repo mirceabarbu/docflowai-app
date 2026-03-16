@@ -53,7 +53,7 @@ router.post('/auth/login', async (req, res) => {
     const user = rows[0];
 
     // verifyPassword returnează { ok, needsRehash } în v3.3.4
-    const verification = user ? verifyPassword(password, user.password_hash) : { ok: false, needsRehash: false };
+    const verification = user ? await verifyPassword(password, user.password_hash) : { ok: false, needsRehash: false };
 
     if (!user || !verification.ok) {
       await _recordLoginFail(req, email);
@@ -66,7 +66,7 @@ router.post('/auth/login', async (req, res) => {
     // SEC-03: lazy re-hash PBKDF2 v1→v2 (100k→600k iterații)
     if (verification.needsRehash) {
       try {
-        const newHash = hashPassword(password);
+        const newHash = await hashPassword(password);
         await pool.query(
           "UPDATE users SET password_hash=$1, hash_algo='pbkdf2_v2' WHERE id=$2",
           [newHash, user.id]
@@ -200,9 +200,9 @@ router.post('/auth/change-password', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT password_hash FROM users WHERE id=$1', [actor.userId]);
     if (!rows[0]) return res.status(404).json({ error: 'user_not_found' });
-    const verif = verifyPassword(current_password, rows[0].password_hash);
+    const verif = await verifyPassword(current_password, rows[0].password_hash);
     if (!verif.ok) return res.status(401).json({ error: 'wrong_password', message: 'Parola curentă este incorectă.' });
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=FALSE WHERE id=$2', [hashPassword(new_password), actor.userId]);
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=FALSE WHERE id=$2', [await hashPassword(new_password), actor.userId]);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });

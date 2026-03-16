@@ -34,10 +34,13 @@ import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, 
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
+import { openApiSpec } from './swagger.mjs';
 import { injectRateLimiter } from './routes/auth.mjs';
+import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
+import outreachRouter from './routes/admin/outreach.mjs';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -131,12 +134,53 @@ app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'noti
 app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
+// ── API Docs — OpenAPI 3.0 ───────────────────────────────────────────────────
+// GET /api-docs.json — spec JSON brut (Postman, Insomnia, integrări externe)
+// GET /api-docs      — Swagger UI interactiv (browser)
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.json(openApiSpec);
+});
+
+app.get('/api-docs', (req, res) => {
+  // URL relativ — funcționează pe orice domeniu fără a depinde de publicBaseUrl
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DocFlowAI API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body { margin: 0; }
+    .topbar { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({
+      url: '/api-docs.json',
+      dom_id: '#swagger-ui',
+      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+      layout: 'BaseLayout',
+      deepLinking: true,
+      defaultModelsExpandDepth: 1,
+      defaultModelExpandDepth: 1,
+    });
+  </script>
+</body>
+</html>`);
+});
+
 app.get('/health', (req, res) => {
   const mem = process.memoryUsage();
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.5',
+    version: '3.3.7',
     ts: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     memory: {
@@ -148,7 +192,7 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/admin/health', async (req, res) => {
-  if (requireAdmin(req, res)) return;
+  if (await requireAdmin(req, res)) return;
   let dbLatencyMs = null;
   if (pool && DB_READY) {
     const t0 = Date.now();
@@ -158,7 +202,7 @@ app.get('/admin/health', async (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.5',
+    version: '3.3.7',
     dbReady: !!DB_READY,
     dbLatencyMs,
     dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null,
@@ -174,9 +218,9 @@ app.get('/admin/health', async (req, res) => {
 
 // ── METRICS-01: /metrics — Prometheus scrape endpoint ────────────────────
 // Implicit: admin-only. Setați ENV METRICS_PUBLIC=1 pentru scrape extern.
-app.get('/metrics', (req, res) => {
+app.get('/metrics', async (req, res) => {
   const isPublic = process.env.METRICS_PUBLIC === '1';
-  if (!isPublic && requireAdmin(req, res)) return;
+  if (!isPublic && await requireAdmin(req, res)) return;
   // Actualizăm gauge-ul WS clients înainte de render
   setGauge('ws_clients', wsClients.size);
   res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
@@ -210,14 +254,16 @@ app.post('/api/templates', async (req, res) => {
   if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
   if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
   try {
-    const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    // FIX b76: citim și org_id — FK obligatoriu pe templates în producție
+    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     const institutie = uRows[0]?.institutie || '';
+    const orgId = uRows[0]?.org_id || actor.orgId || null;
     const { rows } = await pool.query(
-      'INSERT INTO templates (user_email,institutie,name,signers,shared) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared]
+      'INSERT INTO templates (user_email,institutie,name,signers,shared,org_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared, orgId]
     );
     res.status(201).json({ ...rows[0], isOwner: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'POST /api/templates error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 app.put('/api/templates/:id', async (req, res) => {
@@ -235,7 +281,7 @@ app.put('/api/templates/:id', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found_or_not_owner' });
     res.json({ ...rows[0], isOwner: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'PUT /api/templates error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 app.delete('/api/templates/:id', async (req, res) => {
@@ -278,7 +324,7 @@ function stripSensitive(data, callerSignerToken = null) {
   const { pdfB64, signedPdfB64, ...rest } = data;
   return {
     ...rest, hasPdf: !!pdfB64,
-    hasSignedPdf: !!(signedPdfB64 || (data.storage === 'drive' && data.driveFileLinkFinal)),
+    hasSignedPdf: !!(signedPdfB64 || (data.storage === 'drive' && (data.driveFileLinkFinal || data.driveFileIdFinal))),
     signers: (data.signers || []).map(s => {
       const { token, ...signerRest } = s;
       return callerSignerToken && s.token === callerSignerToken ? { ...signerRest, token } : signerRest;
@@ -658,6 +704,13 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
 
 // ── Inject dependencies ───────────────────────────────────────────────────
 injectRateLimiter(checkLoginRate, recordLoginFail, clearLoginRate);
+// SEC-03: rate limiter ADMIN_SECRET persistent în DB — reutilizează login_blocks
+// Cheia e IP-ul (al doilea parametru), nu email — compatibil cu signatura checkLoginRate(req, key)
+injectAdminRateLimiter(
+  (req, ip) => checkLoginRate(req, ip),
+  (req, ip) => recordLoginFail(req, ip),
+  (req, ip) => clearLoginRate(req, ip)
+);
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
 injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail });
@@ -667,6 +720,7 @@ app.use('/', authRouter);
 app.use('/', notifRouter);
 app.use('/', adminRouter);
 app.use('/', flowsRouter);
+app.use('/admin/outreach', outreachRouter);
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
@@ -772,7 +826,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT }, 'DocFlowAI v3.3.5 server pornit');
+  logger.info({ port: PORT }, 'DocFlowAI v3.3.7 server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry();
 });

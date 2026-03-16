@@ -297,7 +297,7 @@ router.get('/api/flows/:flowId', getFlowHandler);
 router.put('/flows/:flowId', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    if (requireAdmin(req, res)) return;
+    if (await requireAdmin(req, res)) return;
     const { flowId } = req.params;
     const existing = await getFlowData(flowId);
     if (!existing) return res.status(404).json({ error: 'not_found' });
@@ -559,7 +559,7 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
 router.post('/flows/:flowId/resend', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    if (requireAdmin(req, res)) return;
+    if (await requireAdmin(req, res)) return;
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
@@ -575,7 +575,7 @@ router.post('/flows/:flowId/resend', async (req, res) => {
 router.post('/flows/:flowId/regenerate-token', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    if (requireAdmin(req, res)) return;
+    if (await requireAdmin(req, res)) return;
     const { flowId } = req.params;
     const { signerEmail } = req.body || {};
     if (!signerEmail) return res.status(400).json({ error: 'signerEmail_required' });
@@ -774,12 +774,12 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     await saveFlow(newFlowId2, newData);
     // Copiere atașamente (documente suport) din fluxul original
     try {
-      const attRows = await db.query(
+      const attRows = await pool.query(
         `SELECT filename, mime_type, size_bytes, data FROM flow_attachments WHERE flow_id = $1`,
         [flowId]
       );
       for (const att of attRows.rows) {
-        await db.query(
+        await pool.query(
           `INSERT INTO flow_attachments (flow_id, filename, mime_type, size_bytes, data) VALUES ($1, $2, $3, $4, $5)`,
           [newFlowId2, att.filename, att.mime_type, att.size_bytes, att.data]
         );
@@ -1285,17 +1285,26 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     const senderName  = sender.nume  || actor.email;
     const senderTitle = [sender.functie, sender.compartiment, sender.institutie].filter(Boolean).join(' · ');
 
-    // PDF semnat
-    const pdfB64 = data.signedPdfB64 || data.pdfB64 || null;
+    // PDF semnat — din JSONB sau, dacă e arhivat, din Google Drive
+    let pdfB64 = data.signedPdfB64 || data.pdfB64 || null;
+    if (includeAttachment && !pdfB64 && data.storage === 'drive' && data.driveFileIdFinal) {
+      try {
+        const { getBufferFromDrive } = await import('../drive.mjs');
+        const buf = await getBufferFromDrive(data.driveFileIdFinal);
+        pdfB64 = buf.toString('base64');
+      } catch(driveErr) {
+        logger.warn({ err: driveErr, flowId }, 'send-email: failed to load PDF from Drive');
+      }
+    }
     if (includeAttachment && !pdfB64)
-      return res.status(409).json({ error: 'no_pdf', message: 'PDF-ul semnat nu este disponibil.' });
+      return res.status(409).json({ error: 'no_pdf', message: 'PDF-ul semnat nu este disponibil (nici local, nici în Drive).' });
 
     // Semnatari — pentru tabelul din mail
     const signers = (data.signers || []).map(s => ({
       name: s.name || s.email,
       rol: s.rol || '',
       signedAt: s.signedAt || null,
-      status: s.signed ? 'semnat' : (s.refused ? 'refuzat' : 'în așteptare'),
+      status: s.status === 'signed' ? 'semnat' : s.status === 'refused' ? 'refuzat' : 'în așteptare',
     }));
 
     const statusColor = (st) => st === 'semnat' ? '#1a7a4a' : st === 'refuzat' ? '#b03030' : '#7c5cff';
@@ -1347,6 +1356,24 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
         <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Compartiment</td><td style="color:#1a1a1a;">${data.compartiment || '—'}</td></tr>
         <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Finalizat la</td><td style="color:#1a7a4a;font-weight:600;">${data.completedAt ? new Date(data.completedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td></tr>
         <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Flow ID</td><td style="color:#7c5cff;font-family:monospace;font-size:12px;">${flowId}</td></tr>
+      </table>
+    </div>
+
+    <!-- Tabel semnatari -->
+    <div style="background:#fff;border:1px solid #dde4f5;border-radius:10px;margin-bottom:20px;overflow:hidden;">
+      <div style="padding:10px 20px;background:#f8faff;border-bottom:1px solid #dde4f5;">
+        <span style="font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Semnatari</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f0f4ff;">
+            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Nume</th>
+            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Rol</th>
+            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Status</th>
+            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Data</th>
+          </tr>
+        </thead>
+        <tbody>${signersTable}</tbody>
       </table>
     </div>
 

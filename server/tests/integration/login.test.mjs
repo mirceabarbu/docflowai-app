@@ -75,12 +75,12 @@ function createTestApp({ rateLimited = false } = {}) {
 }
 
 /** Construiește un user row valid cu hash v2 */
-function makeUser(overrides = {}) {
+async function makeUser(overrides = {}) {
   const pwd = overrides.plainPwd || 'ParolaTest@2025';
   return {
     id:                    1,
     email:                 'test@primaria.ro',
-    password_hash:         hashPassword(pwd),
+    password_hash:         await hashPassword(pwd),
     hash_algo:             'pbkdf2_v2',
     role:                  'user',
     org_id:                1,
@@ -103,6 +103,10 @@ function makeV1Hash(password) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Resetăm explicit queue-ul mockResolvedValueOnce doar pentru pool.query.
+  // vi.clearAllMocks() resetează calls/results dar NU queue-ul one-time.
+  // vi.resetAllMocks() resetează și implementările altor mock-uri (requireDb etc.) — prea agresiv.
+  dbModule.pool.query.mockReset();
 });
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -170,7 +174,7 @@ describe('POST /auth/login', () => {
   });
 
   it('401 — parolă greșită (user există)', async () => {
-    const user = makeUser(); // hash generat pentru 'ParolaTest@2025'
+    const user = await makeUser(); // hash generat pentru 'ParolaTest@2025'
     dbModule.pool.query.mockResolvedValueOnce({ rows: [user] }); // SELECT user
 
     const app = createTestApp();
@@ -186,7 +190,7 @@ describe('POST /auth/login', () => {
 
   it('200 — login reușit cu hash v2', async () => {
     const plainPwd = 'ParolaCorecta@2025';
-    const user     = makeUser({ plainPwd });
+    const user     = await makeUser({ plainPwd });
 
     // SELECT user → UPDATE hash_algo nu e necesar (deja v2) → clearLoginRate (DELETE)
     dbModule.pool.query
@@ -210,7 +214,7 @@ describe('POST /auth/login', () => {
 
   it('200 — cookie JWT setat în răspuns (HttpOnly)', async () => {
     const plainPwd = 'ParolaCorecta@2025';
-    const user     = makeUser({ plainPwd });
+    const user     = await makeUser({ plainPwd });
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [user] })
@@ -219,18 +223,21 @@ describe('POST /auth/login', () => {
     const app = createTestApp();
     const res = await request(app)
       .post('/auth/login')
+      .set('host', 'localhost')
       .send({ email: user.email, password: plainPwd });
 
     // Cookie auth_token trebuie să existe
-    const cookies = res.headers['set-cookie'] || [];
-    const authCookie = cookies.find(c => c.startsWith('auth_token='));
+    // Notă: set-cookie poate fi string (1 cookie) sau array (multiple cookies)
+    const rawCookies = res.headers['set-cookie'];
+    const cookieList = Array.isArray(rawCookies) ? rawCookies : (rawCookies ? [rawCookies] : []);
+    const authCookie = cookieList.find(c => c.startsWith('auth_token='));
     expect(authCookie).toBeDefined();
-    expect(authCookie).toContain('HttpOnly');
+    expect(authCookie.toLowerCase()).toContain('httponly');
   });
 
   it('200 — force_password_change=true propagat în răspuns', async () => {
     const plainPwd = 'ParolaProvizie';
-    const user     = makeUser({ plainPwd, force_password_change: true });
+    const user     = await makeUser({ plainPwd, force_password_change: true });
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [user] })
@@ -248,7 +255,7 @@ describe('POST /auth/login', () => {
   it('200 — hash v1 legacy triggerează lazy re-hash (UPDATE în DB)', async () => {
     const plainPwd = 'ParolaVeche';
     const v1Hash   = makeV1Hash(plainPwd);
-    const user     = makeUser({ plainPwd, password_hash: v1Hash, hash_algo: 'pbkdf2_v1' });
+    const user     = await makeUser({ plainPwd, password_hash: v1Hash, hash_algo: 'pbkdf2_v1' });
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [user] })   // SELECT user
@@ -275,7 +282,7 @@ describe('POST /auth/login', () => {
 
   it('200 — email case-insensitive (normalizat la lowercase)', async () => {
     const plainPwd = 'Parola123';
-    const user     = makeUser({ plainPwd, email: 'user@primaria.ro' });
+    const user     = await makeUser({ plainPwd, email: 'user@primaria.ro' });
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [user] })

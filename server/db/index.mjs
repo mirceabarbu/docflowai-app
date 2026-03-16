@@ -11,6 +11,9 @@
 
 import pg from 'pg';
 import crypto from 'crypto';
+import util from 'util';
+
+const _pbkdf2 = util.promisify(crypto.pbkdf2);
 import { logger } from '../middleware/logger.mjs';
 
 const { Pool } = pg;
@@ -481,6 +484,54 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_flow_att_flow ON flow_attachments(flow_id);
     `
+  },
+  {
+    id: '026_outreach',
+    sql: `
+      CREATE TABLE IF NOT EXISTS outreach_campaigns (
+        id          SERIAL PRIMARY KEY,
+        name        TEXT        NOT NULL,
+        subject     TEXT        NOT NULL,
+        html_body   TEXT        NOT NULL,
+        created_by  TEXT        NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS outreach_recipients (
+        id          SERIAL PRIMARY KEY,
+        campaign_id INTEGER     NOT NULL REFERENCES outreach_campaigns(id) ON DELETE CASCADE,
+        email       TEXT        NOT NULL,
+        institutie  TEXT        NOT NULL DEFAULT '',
+        status      TEXT        NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','sent','opened','error')),
+        tracking_id TEXT        NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text),
+        sent_at     TIMESTAMPTZ,
+        opened_at   TIMESTAMPTZ,
+        downloaded_at TIMESTAMPTZ,
+        download_count INTEGER NOT NULL DEFAULT 0,
+        error_msg   TEXT,
+        UNIQUE (campaign_id, email)
+      );
+      CREATE INDEX IF NOT EXISTS idx_orecip_campaign ON outreach_recipients(campaign_id);
+      CREATE INDEX IF NOT EXISTS idx_orecip_status   ON outreach_recipients(status);
+      CREATE INDEX IF NOT EXISTS idx_orecip_tracking ON outreach_recipients(tracking_id);
+    `
+  },
+  {
+    // SEC-01: Elimină coloana plain_password din tabelul users.
+    // Parola în clar nu trebuie stocată niciodată în DB — GDPR + securitate.
+    // Codul nu mai scrie în această coloană din v3.3.2; acum o ștergem definitiv.
+    // IF EXISTS: sigur pe DB-uri unde coloana a fost deja ștearsă manual.
+    id: '027_drop_plain_password',
+    sql: `ALTER TABLE users DROP COLUMN IF EXISTS plain_password;`
+  },
+  {
+    // PERF-01: Index pe notifications(flow_id).
+    // DELETE/SELECT pe flow_id se apelează la fiecare acțiune din flux (sign, refuse,
+    // cancel, delegate) — fără index, PostgreSQL face full table scan pe întreaga tabelă.
+    // Notă: CREATE INDEX IF NOT EXISTS (non-CONCURRENT) — funcționează în tranzacție.
+    // Pe scala acestei instalări (sute de fluxuri) lock-ul e de ordinul milisecundelor.
+    id: '028_index_notifications_flow_id',
+    sql: `CREATE INDEX IF NOT EXISTS idx_notif_flow_id ON notifications(flow_id);`
   }
 ];
 
@@ -496,6 +547,32 @@ async function runMigrations(client) {
   let ranCount = 0;
   for (const migration of MIGRATIONS) {
     if (appliedIds.has(migration.id)) continue;
+    // SEC-01: pre-check înainte de DROP plain_password.
+    // IMPORTANT: verificăm existența coloanei via information_schema, NU direct cu SELECT pe users.
+    // Un SELECT pe o coloană inexistentă abortează întreaga tranzacție PG — bug în b62.
+    if (migration.id === '027_drop_plain_password') {
+      try {
+        const { rows: colExists } = await client.query(
+          `SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name   = 'users'
+             AND column_name  = 'plain_password'`
+        );
+        if (colExists.length > 0) {
+          const { rows: pwCheck } = await client.query(
+            `SELECT COUNT(*) AS cnt FROM users WHERE plain_password IS NOT NULL AND plain_password != ''`
+          );
+          const cnt = parseInt(pwCheck[0]?.cnt || '0');
+          if (cnt > 0) {
+            logger.warn({ count: cnt }, 'SEC-01: plain_password — există useri cu parolă în clar. Coloana va fi ștearsă acum.');
+          } else {
+            logger.info('SEC-01: plain_password — coloana goală. DROP sigur.');
+          }
+        } else {
+          logger.info('SEC-01: plain_password — coloana nu mai există (attempt anterior). ALTER IF EXISTS va fi no-op.');
+        }
+      } catch(e) { logger.warn({ err: e }, 'SEC-01: pre-check eșuat (non-fatal)'); }
+    }
     logger.info(`Migrare: ${migration.id}...`);
     await client.query(migration.sql);
     await client.query('INSERT INTO schema_migrations (id) VALUES ($1)', [migration.id]);
@@ -506,9 +583,9 @@ async function runMigrations(client) {
   else logger.info({ count: ranCount }, 'Migrari aplicate.');
 }
 
-function _hashPasswordLocal(password) {
+async function _hashPasswordLocal(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
+  const hash = (await _pbkdf2(password, salt, 100000, 64, 'sha256')).toString('hex');
   return `${salt}:${hash}`;
 }
 
@@ -531,7 +608,7 @@ async function initDbOnce() {
     const pwd = process.env.ADMIN_INIT_PASSWORD;
     await pool.query(
       "INSERT INTO users (email, password_hash, nume, functie, role) VALUES ($1,$2,$3,$4,'admin') ON CONFLICT DO NOTHING",
-      ['admin@docflowai.ro', _hashPasswordLocal(pwd), 'Administrator', 'Administrator sistem']
+      ['admin@docflowai.ro', await _hashPasswordLocal(pwd), 'Administrator', 'Administrator sistem']
     );
     logger.info('Admin user creat.');
   }
@@ -676,7 +753,20 @@ export async function writeAuditEvent({ flowId, orgId, eventType, actorEmail, ac
  * Construieste un map de useri filtrat pe org_id (anti-leak multi-tenant).
  * Daca orgId e null/0, returneaza toti userii (backward compat pentru admini fara org).
  */
+// ARCH-04: Cache per org_id cu TTL 60s.
+// getUserMapForOrg e apelat la fiecare GET /flows/:id și GET /my-flows —
+// fără cache, face un SELECT pe users la fiecare request.
+// Map<orgId|'all', { map, cachedAt }>
+const _userMapCache = new Map();
+const USER_MAP_CACHE_TTL = 60_000; // 60 secunde
+
 export async function getUserMapForOrg(orgId) {
+  const cacheKey = (orgId && orgId > 0) ? String(orgId) : 'all';
+  const cached = _userMapCache.get(cacheKey);
+  if (cached && (Date.now() - cached.cachedAt) < USER_MAP_CACHE_TTL) {
+    return cached.map;
+  }
+
   let query, params;
   if (orgId && orgId > 0) {
     query = 'SELECT email,functie,compartiment,institutie FROM users WHERE org_id=$1';
@@ -688,5 +778,20 @@ export async function getUserMapForOrg(orgId) {
   const { rows } = await pool.query(query, params);
   const map = {};
   rows.forEach(u => { map[(u.email || '').toLowerCase()] = u; });
+
+  _userMapCache.set(cacheKey, { map, cachedAt: Date.now() });
   return map;
+}
+
+/**
+ * Invalidează cache-ul pentru o organizație specifică.
+ * Apelat după orice modificare de user (POST/PUT/DELETE /admin/users).
+ * Dacă orgId e null, invalidează tot cache-ul (fallback sigur).
+ */
+export function invalidateOrgUserCache(orgId) {
+  if (orgId && orgId > 0) {
+    _userMapCache.delete(String(orgId));
+  } else {
+    _userMapCache.clear();
+  }
 }

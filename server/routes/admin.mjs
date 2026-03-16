@@ -8,7 +8,7 @@
 
 import { Router } from 'express';
 import { requireAuth, requireAdmin, hashPassword, generatePassword, escHtml } from '../middleware/auth.mjs';
-import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData } from '../db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData, invalidateOrgUserCache } from '../db/index.mjs';
 import { validatePhone } from '../whatsapp.mjs';
 import { sendSignerEmail, verifySmtp } from '../mailer.mjs';
 import { archiveFlow, verifyDrive } from '../drive.mjs';
@@ -226,7 +226,7 @@ router.post('/admin/users', async (req, res) => {
                  personal_email, email_verified,
                  gws_email, gws_status`,
       [
-        loginEmail, hashPassword(plainPwd),
+        loginEmail, await hashPassword(plainPwd),
         numeComplet,
         prn, fam,
         (functie || '').trim(), (institutie || '').trim(), (compartiment || '').trim(),
@@ -300,6 +300,7 @@ router.post('/admin/users', async (req, res) => {
       }).catch(e => logger.warn({ err: e, credsDest }, 'R-06: verificare email esuat'));
     }
 
+    invalidateOrgUserCache(insertOrgId);
     res.status(201).json({
       ...user,
       // Parola returnată în response pentru afișare în modal (o singură dată) — nu se stochează
@@ -419,7 +420,7 @@ router.put('/admin/users/:id', async (req, res) => {
   if (notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!notif_whatsapp); }
   let newPlainPwd = null;
   if (password && password.length >= 4) {
-    updates.push(`password_hash=$${i++}`); vals.push(hashPassword(password));
+    updates.push(`password_hash=$${i++}`); vals.push(await hashPassword(password));
     newPlainPwd = password;
   }
   if (!updates.length) return res.status(400).json({ error: 'nothing_to_update' });
@@ -430,6 +431,7 @@ router.put('/admin/users/:id', async (req, res) => {
       vals
     );
     if (!rows.length) return res.status(404).json({ error: 'user_not_found' });
+    invalidateOrgUserCache(rows[0].org_id || null);
     return res.json(rows[0]);
   } catch(e) {
     if (e.code === '23505') return res.status(409).json({ error: 'email_exists' });
@@ -455,7 +457,7 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
       return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
     const newPwd = generatePassword();
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [hashPassword(newPwd), targetId]);
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [await hashPassword(newPwd), targetId]);
     // SEC-02: parola trimisă EXCLUSIV pe email — nu returnată în response
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
@@ -481,7 +483,8 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
 router.delete('/admin/users/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  // FIX b75: org_admin poate șterge useri din propria organizație (consistent cu PUT/reset-password)
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
   if (actor.userId === targetId) return res.status(400).json({ error: 'cannot_delete_self' });
@@ -495,6 +498,7 @@ router.delete('/admin/users/:id', async (req, res) => {
     const deleteParams = actorOrgId ? [targetId, actorOrgId] : [targetId];
     const { rowCount } = await pool.query(deleteWhere, deleteParams);
     if (!rowCount) return res.status(404).json({ error: 'user_not_found_or_forbidden' });
+    invalidateOrgUserCache(actorOrgId);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
@@ -516,7 +520,7 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
       if (!actorOrgId || actorOrgId !== u.org_id) return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
     const newPwd = generatePassword();
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [hashPassword(newPwd), targetId]);
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [await hashPassword(newPwd), targetId]);
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
       to: u.email, subject: 'Cont DocFlowAI — credențiale de acces',
