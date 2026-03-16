@@ -483,7 +483,8 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
 router.delete('/admin/users/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  // FIX b75: org_admin poate șterge useri din propria organizație (consistent cu PUT/reset-password)
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
   if (actor.userId === targetId) return res.status(400).json({ error: 'cannot_delete_self' });
