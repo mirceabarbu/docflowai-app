@@ -992,6 +992,34 @@ function lockOrgAdminFilters(institutie) {
 // Patch: după ce se populează flowInstFilter, re-aplică lock dacă org_admin
 const _origPopulateFlowInst = window.onFlowInstChange;
 
+// BUG-FIX: org_admin poate crea/edita utilizatori doar cu rol 'user'.
+// Filtrăm dropdown-urile #nRole și #eRole să afișeze/permită doar 'user'.
+// Backends-ul enforced la linia 178 din admin.mjs, dar UI-ul trebuie să reflecte corect.
+function _lockRoleDropdownsForOrgAdmin() {
+  // Dropdown creare user (#nRole): păstrăm doar 'user', forțăm valoarea
+  const nRoleEl = $('nRole');
+  if (nRoleEl) {
+    // Eliminăm opțiunile 'org_admin' și 'admin'
+    for (let i = nRoleEl.options.length - 1; i >= 0; i--) {
+      if (nRoleEl.options[i].value !== 'user') nRoleEl.remove(i);
+    }
+    nRoleEl.value = 'user';
+    nRoleEl.disabled = true;
+    nRoleEl.style.background = 'rgba(45,212,191,.08)';
+    nRoleEl.style.borderColor = 'rgba(45,212,191,.3)';
+    nRoleEl.style.color = '#2dd4bf';
+    nRoleEl.style.cursor = 'not-allowed';
+  }
+  // Dropdown editare user (#eRole): eliminăm opțiunile superioare
+  const eRoleEl = $('eRole');
+  if (eRoleEl) {
+    for (let i = eRoleEl.options.length - 1; i >= 0; i--) {
+      if (eRoleEl.options[i].value !== 'user') eRoleEl.remove(i);
+    }
+    eRoleEl.value = 'user';
+  }
+}
+
 function onRoleChange(role) {
   const row = $('nOrgRow');
   if (!row) return;
@@ -2049,6 +2077,8 @@ fetch("/auth/me",{headers:hdrs()})
       if(outreachTabBtn) outreachTabBtn.style.display="none";
     }
     if(u.role==="org_admin") window._orgAdminInstitutie = u.institutie || "";
+    // BUG-FIX: org_admin poate vedea/selecta doar rol 'user' — filtrăm dropdown-urile
+    if(u.role==="org_admin") _lockRoleDropdownsForOrgAdmin();
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
     loadDbStats(); // auto-încarcă statistici DB
