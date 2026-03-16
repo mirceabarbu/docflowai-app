@@ -532,6 +532,26 @@ const MIGRATIONS = [
     // Pe scala acestei instalări (sute de fluxuri) lock-ul e de ordinul milisecundelor.
     id: '028_index_notifications_flow_id',
     sql: `CREATE INDEX IF NOT EXISTS idx_notif_flow_id ON notifications(flow_id);`
+  },
+  {
+    // CRUD Instituții Outreach — tabel persistent, editabil din UI și prin import
+    // Seeded automat la primul boot din primarii-romania.json
+    id: '029_outreach_primarii',
+    sql: `
+      CREATE TABLE IF NOT EXISTS outreach_primarii (
+        id          SERIAL PRIMARY KEY,
+        institutie  TEXT        NOT NULL,
+        email       TEXT        NOT NULL,
+        judet       TEXT        NOT NULL DEFAULT '',
+        localitate  TEXT        NOT NULL DEFAULT '',
+        activ       BOOLEAN     NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(email)
+      );
+      CREATE INDEX IF NOT EXISTS idx_oprm_judet  ON outreach_primarii(judet);
+      CREATE INDEX IF NOT EXISTS idx_oprm_activ  ON outreach_primarii(activ);
+    `
   }
 ];
 

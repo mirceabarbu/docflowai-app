@@ -59,28 +59,183 @@ function getPrimarii() {
 }
 
 // ── GET /admin/outreach/primarii — dataset cu filtru + paginare ───────────
+// ── CRUD Instituții Outreach ──────────────────────────────────────────────────
+// Tabel DB: outreach_primarii (migrare 029)
+// La primul acces, dacă tabelul e gol, face seed din primarii-romania.json
+
+let _primarii_seeded = false;
+
+async function ensurePrimariiSeeded() {
+  if (_primarii_seeded) return;
+  try {
+    const { rows } = await pool.query('SELECT COUNT(*) AS cnt FROM outreach_primarii');
+    if (parseInt(rows[0].cnt) > 0) { _primarii_seeded = true; return; }
+    // Seed din JSON
+    const jsonData = getPrimarii();
+    if (!jsonData.length) return;
+    const values = jsonData.map((p, i) => {
+      const base = i * 4;
+      return `($${base+1}, $${base+2}, $${base+3}, $${base+4})`;
+    }).join(',');
+    const flat = jsonData.flatMap(p => [p.institutie, p.email, p.judet || '', p.localitate || p.institutie]);
+    await pool.query(
+      `INSERT INTO outreach_primarii (institutie, email, judet, localitate) VALUES ${values}
+       ON CONFLICT (email) DO NOTHING`,
+      flat
+    );
+    _primarii_seeded = true;
+    logger.info({ count: jsonData.length }, 'outreach_primarii: seed din JSON efectuat');
+  } catch(e) { logger.error({ err: e }, 'ensurePrimariiSeeded error'); }
+}
+
+// GET /admin/outreach/primarii — lista cu filtru, paginare, judete
 router.get('/primarii', async (req, res) => {
   if (await requireAdmin(req, res)) return;
-  const { judet = '', q = '', page = '1', limit = '50' } = req.query;
+  if (requireDb(res)) return;
+  await ensurePrimariiSeeded();
+
+  const { judet = '', q = '', page = '1', limit = '50', activ = '' } = req.query;
   const pageN  = Math.max(1, parseInt(page));
   const limitN = Math.min(200, Math.max(1, parseInt(limit)));
-  const qLow   = q.toLowerCase().trim();
-  const jLow   = judet.toLowerCase().trim();
+  const offset = (pageN - 1) * limitN;
 
-  let list = getPrimarii();
-  if (jLow) list = list.filter(p => p.judet.toLowerCase() === jLow);
-  if (qLow) list = list.filter(p =>
-    p.localitate.toLowerCase().includes(qLow) ||
-    p.institutie.toLowerCase().includes(qLow) ||
-    p.email.toLowerCase().includes(qLow)
-  );
+  const conds = ['1=1']; const params = [];
+  if (judet.trim()) { params.push(judet.trim()); conds.push(`judet = $${params.length}`); }
+  if (activ === '0') conds.push("activ = FALSE");
+  else conds.push("activ = TRUE"); // default: doar active
+  if (q.trim()) {
+    const qp = `%${q.trim().toLowerCase()}%`;
+    params.push(qp);
+    conds.push(`(lower(institutie) LIKE $${params.length} OR lower(email) LIKE $${params.length} OR lower(judet) LIKE $${params.length})`);
+  }
+  const where = conds.join(' AND ');
 
-  const total = list.length;
-  const pages = Math.ceil(total / limitN) || 1;
-  const items = list.slice((pageN - 1) * limitN, pageN * limitN);
-  const judete = [...new Set(getPrimarii().map(p => p.judet))].sort();
+  try {
+    const { rows: cnt }  = await pool.query(`SELECT COUNT(*) AS c FROM outreach_primarii WHERE ${where}`, params);
+    const total = parseInt(cnt[0].c);
+    const { rows: items } = await pool.query(
+      `SELECT id, institutie, email, judet, localitate, activ FROM outreach_primarii WHERE ${where} ORDER BY judet ASC, institutie ASC LIMIT $${params.length+1} OFFSET $${params.length+2}`,
+      [...params, limitN, offset]
+    );
+    const { rows: jRows } = await pool.query(`SELECT DISTINCT judet FROM outreach_primarii WHERE activ=TRUE ORDER BY judet ASC`);
+    const judete = jRows.map(r => r.judet).filter(Boolean);
+    res.json({ items, total, page: pageN, pages: Math.ceil(total / limitN) || 1, limit: limitN, judete });
+  } catch(e) { logger.error({ err: e }, 'GET primarii error'); res.status(500).json({ error: 'server_error' }); }
+});
 
-  res.json({ items, total, page: pageN, pages, limit: limitN, judete });
+// POST /admin/outreach/primarii — adaugă o instituție
+router.post('/primarii', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  const { institutie, email, judet = '', localitate = '' } = req.body || {};
+  if (!institutie?.trim()) return res.status(400).json({ error: 'institutie_required' });
+  if (!email?.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))
+    return res.status(400).json({ error: 'email_invalid' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO outreach_primarii (institutie, email, judet, localitate)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [institutie.trim(), email.trim().toLowerCase(), judet.trim(), localitate.trim() || institutie.trim()]
+    );
+    res.status(201).json(rows[0]);
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'email_exists', message: 'Emailul există deja.' });
+    logger.error({ err: e }, 'POST primarii error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// PUT /admin/outreach/primarii/:id — editează o instituție
+router.put('/primarii/:id', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  const id = parseInt(req.params.id);
+  const { institutie, email, judet, localitate, activ } = req.body || {};
+  if (!institutie?.trim()) return res.status(400).json({ error: 'institutie_required' });
+  if (!email?.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))
+    return res.status(400).json({ error: 'email_invalid' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE outreach_primarii SET institutie=$1, email=$2, judet=$3, localitate=$4, activ=$5, updated_at=NOW()
+       WHERE id=$6 RETURNING *`,
+      [institutie.trim(), email.trim().toLowerCase(), (judet||'').trim(), (localitate||institutie).trim(), activ !== false, id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    res.json(rows[0]);
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'email_exists', message: 'Emailul există deja.' });
+    logger.error({ err: e }, 'PUT primarii error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// DELETE /admin/outreach/primarii/:id — dezactivează (soft delete)
+router.delete('/primarii/:id', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  const id = parseInt(req.params.id);
+  const hard = req.query.hard === '1';
+  try {
+    if (hard) {
+      const { rowCount } = await pool.query('DELETE FROM outreach_primarii WHERE id=$1', [id]);
+      if (!rowCount) return res.status(404).json({ error: 'not_found' });
+    } else {
+      const { rows } = await pool.query(
+        `UPDATE outreach_primarii SET activ=FALSE, updated_at=NOW() WHERE id=$1 RETURNING id`,
+        [id]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    }
+    res.json({ ok: true, hard });
+  } catch(e) { logger.error({ err: e }, 'DELETE primarii error'); res.status(500).json({ error: 'server_error' }); }
+});
+
+// POST /admin/outreach/primarii/import — import bulk JSON sau CSV
+// Body: { format: 'json'|'csv', data: '...' }
+router.post('/primarii/import', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  const { format = 'json', data, replace = false } = req.body || {};
+  if (!data) return res.status(400).json({ error: 'data_required' });
+
+  let rows = [];
+  try {
+    if (format === 'json') {
+      rows = JSON.parse(data);
+      if (!Array.isArray(rows)) return res.status(400).json({ error: 'json_must_be_array' });
+    } else {
+      // CSV: email,institutie[,judet[,localitate]]
+      rows = data.split('
+').slice(1).map(line => {
+        const parts = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+        return { email: parts[0], institutie: parts[1] || parts[0], judet: parts[2] || '', localitate: parts[3] || parts[1] || '' };
+      }).filter(r => r.email && r.institutie);
+    }
+  } catch(e) { return res.status(400).json({ error: 'parse_error', message: e.message }); }
+
+  // Validare și insert
+  const valid = rows.filter(r => r.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email.trim()));
+  if (!valid.length) return res.status(400).json({ error: 'no_valid_rows' });
+
+  let added = 0, skipped = 0;
+  try {
+    if (replace) {
+      await pool.query('DELETE FROM outreach_primarii');
+    }
+    for (const r of valid) {
+      try {
+        await pool.query(
+          `INSERT INTO outreach_primarii (institutie, email, judet, localitate)
+           VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO UPDATE
+           SET institutie=$1, judet=$3, localitate=$4, updated_at=NOW()`,
+          [r.institutie?.trim() || r.email, r.email.trim().toLowerCase(), (r.judet||'').trim(), (r.localitate||r.institutie||r.email).trim()]
+        );
+        added++;
+      } catch(_) { skipped++; }
+    }
+    logger.info({ added, skipped, replace }, 'outreach_primarii: import bulk');
+    res.json({ ok: true, added, skipped, total: valid.length });
+  } catch(e) { logger.error({ err: e }, 'import primarii error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 /** Trimite email via Resend REST API (fără SDK — consistente cu mailer.mjs) */
