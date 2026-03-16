@@ -254,14 +254,16 @@ app.post('/api/templates', async (req, res) => {
   if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
   if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
   try {
-    const { rows: uRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+    // FIX b76: citim și org_id — FK obligatoriu pe templates în producție
+    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     const institutie = uRows[0]?.institutie || '';
+    const orgId = uRows[0]?.org_id || actor.orgId || null;
     const { rows } = await pool.query(
-      'INSERT INTO templates (user_email,institutie,name,signers,shared) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared]
+      'INSERT INTO templates (user_email,institutie,name,signers,shared,org_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared, orgId]
     );
     res.status(201).json({ ...rows[0], isOwner: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'POST /api/templates error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 app.put('/api/templates/:id', async (req, res) => {
@@ -279,7 +281,7 @@ app.put('/api/templates/:id', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found_or_not_owner' });
     res.json({ ...rows[0], isOwner: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'PUT /api/templates error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 app.delete('/api/templates/:id', async (req, res) => {
