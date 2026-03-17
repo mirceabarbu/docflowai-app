@@ -239,3 +239,20 @@ deploy Railway.
 - Fail-open la erori DB tranzitorii — nu blochează utilizatori legitimi
 - Backward compat cu JWT-uri vechi (fără `tv`) — tratate ca `tv=1`
 - `injectTokenVersionChecker` injectat din `index.mjs` — evită dependency cycle
+
+---
+
+### 🔴 BUG-CARTUS01 — Tabelul de semnături se suprapune peste conținutul documentului
+
+**Fișier:** `public/semdoc-signer.html`
+
+**Problema:** Logica de detectare a spațiului liber via PDF.js calcula corect
+`lowestContentY`, dar **decizia de a adăuga pagină nouă lipsea complet** — codul
+sări direct la `drawPage.drawRectangle` fără să compare cu spațiul necesar.
+Cartușul era întotdeauna plasat pe pagina curentă, indiferent de conținut.
+
+**Fix:** Adăugare logică de decizie explicită:
+- `spatiuNecesar = cartusH + cartusBottom + 20pt` (margine siguranță)
+- Dacă `lowestContentY < spatiuNecesar` → `pdfDoc.addPage()` → cartuș jos pe pagina nouă
+- Dacă `lowestContentY === 0` (PDF.js indisponibil) → pagină nouă conservator
+- Dacă spațiu suficient → cartuș pe pagina curentă (comportament așteptat)

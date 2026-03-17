@@ -949,12 +949,30 @@ th{ color: var(--sub) !important; }
           lowestContentY = 0; // fallback: pagină nouă
         }
 
-        // Spațiu disponibil = de la cartusBottom până la cel mai jos conținut (cu 20pt margine)
-        // cellH=60 fix — tabel mereu pe pagina curentă jos
+        // Spațiu disponibil = de la cel mai jos conținut detectat până la cartusBottom (+ 20pt margine)
+        const cartusH = rows * cellH + titleH;
+
         let drawPage = lastPage;
         let actualCartusBottom = cartusBottom;
 
-        const cartusH = rows * cellH + titleH;
+        // FIX b80: decizie pagină nouă vs pagina curentă
+        // lowestContentY = Y-ul celui mai de jos rând de text (coordonate PDF, 0 = jos pagina)
+        // cartusH + cartusBottom = spațiul total necesar de jos în sus
+        // Dacă conținutul ajunge prea jos și nu încape cartușul → pagină nouă
+        const spatiuNecesar = cartusH + cartusBottom + 20; // 20pt margine de siguranță
+        if (lowestContentY > 0 && lowestContentY < spatiuNecesar) {
+          // Conținutul e prea jos — cartușul s-ar suprapune → pagină nouă
+          console.log('[DocFlowAI] Spațiu insuficient (' + lowestContentY + ' < ' + spatiuNecesar + ') → pagină nouă');
+          drawPage = pdfDoc.addPage([pW, pH]);
+          actualCartusBottom = cartusBottom; // jos pe pagina nouă
+        } else if (lowestContentY === 0) {
+          // PDF.js indisponibil sau eroare → conservator: pagină nouă
+          console.log('[DocFlowAI] lowestContentY=0 (fallback) → pagină nouă');
+          drawPage = pdfDoc.addPage([pW, pH]);
+          actualCartusBottom = cartusBottom;
+        } else {
+          console.log('[DocFlowAI] Spațiu suficient (' + lowestContentY + ' >= ' + spatiuNecesar + ') → pagina curentă');
+        }
 
         // Title bar — fundal alb, text negru (conform cerinta)
         drawPage.drawRectangle({ x: MARGIN, y: actualCartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
