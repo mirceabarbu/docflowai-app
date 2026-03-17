@@ -563,6 +563,15 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_oprm_unsub_token ON outreach_primarii(unsubscribe_token)
         WHERE unsubscribe_token IS NOT NULL;
     `
+  },
+  {
+    id: '031_token_version',
+    sql: `
+      -- SEC-04: token_version pentru invalidare JWT la reset parolă.
+      -- La reset: token_version++ → JWT-ul vechi are tv incompatibil → forțăm re-login.
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;
+    `
   }
 ];
 

@@ -457,7 +457,8 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
       return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
     const newPwd = generatePassword();
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [await hashPassword(newPwd), targetId]);
+    // SEC-04: increment token_version → invalidează JWT-urile active ale utilizatorului
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE, token_version=COALESCE(token_version,1)+1 WHERE id=$2', [await hashPassword(newPwd), targetId]);
     // SEC-02: parola trimisă EXCLUSIV pe email — nu returnată în response
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
@@ -520,7 +521,8 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
       if (!actorOrgId || actorOrgId !== u.org_id) return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
     const newPwd = generatePassword();
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [await hashPassword(newPwd), targetId]);
+    // SEC-04: increment token_version → invalidează JWT-urile active
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE, token_version=COALESCE(token_version,1)+1 WHERE id=$2', [await hashPassword(newPwd), targetId]);
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
       to: u.email, subject: 'Cont DocFlowAI — credențiale de acces',

@@ -207,3 +207,35 @@ Query-ul pentru org_admin folosea `JOIN users u ON u.id=n.user_id` — coloana n
 cauzând crash la fiecare încărcare a paginii de admin.
 
 **Fix:** JOIN corectat la `lower(u.email) = lower(n.user_email)`.
+
+---
+
+### FIX-8 · Graceful shutdown — închidere pool DB la SIGTERM
+
+**Fișier:** `server/index.mjs`
+
+`httpServer.close()` callback devine async și apelează `pool.end()` înainte de
+`process.exit(0)`. Elimină log-ul `Connection reset by peer` din Postgres la fiecare
+deploy Railway.
+
+---
+
+### SEC-04 · JWT revocation la reset parolă (token_version)
+
+**Fișiere:** `server/db/index.mjs`, `server/middleware/auth.mjs`,
+`server/routes/auth.mjs`, `server/routes/admin.mjs`, `server/index.mjs`
+
+**Migrare 031** — coloana `token_version INTEGER DEFAULT 1` în `users`.
+
+**Flux:**
+1. La login: `tv = user.token_version` inclus în payload JWT
+2. La refresh: `tv` propagat în noul token
+3. La `reset-password` și `send-credentials`: `token_version = token_version + 1`
+4. `checkTokenVersionValid(actor, res)` compară `actor.tv` (din JWT) cu DB —
+   dacă diferit → 401 `token_revoked` → utilizatorul este forțat la re-login
+
+**Caracteristici:**
+- Zero overhead pentru request-uri normale (verificarea nu e apelată pe toate rutele)
+- Fail-open la erori DB tranzitorii — nu blochează utilizatori legitimi
+- Backward compat cu JWT-uri vechi (fără `tv`) — tratate ca `tv=1`
+- `injectTokenVersionChecker` injectat din `index.mjs` — evită dependency cycle

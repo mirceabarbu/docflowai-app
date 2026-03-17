@@ -80,6 +80,7 @@ router.post('/auth/login', async (req, res) => {
     const payload = {
       userId: user.id, email: user.email, role: user.role, orgId: user.org_id,
       nume: user.nume, functie: user.functie, institutie: user.institutie,
+      tv: user.token_version ?? 1, // SEC-04: token version pentru invalidare la reset parolă
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
     setAuthCookie(res, token, jwtExpiresMs());
@@ -168,7 +169,9 @@ router.post('/auth/refresh', async (req, res) => {
       };
     }
     const newToken = jwt.sign(
-      { userId: decoded.userId, email: decoded.email, role: decoded.role, orgId: decoded.orgId, nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie },
+      { userId: decoded.userId, email: decoded.email, role: decoded.role, orgId: decoded.orgId,
+        nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie,
+        tv: decoded.tv ?? 1 }, // SEC-04: propagăm tv la refresh
       JWT_SECRET, { expiresIn: JWT_EXPIRES }
     );
     // SEC-01: noul token în cookie HttpOnly

@@ -36,7 +36,7 @@ let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
 
 import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
-import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml } from './middleware/auth.mjs';
+import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml, injectTokenVersionChecker } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
 import { openApiSpec } from './swagger.mjs';
@@ -725,6 +725,12 @@ injectAdminRateLimiter(
   (req, ip) => recordLoginFail(req, ip),
   (req, ip) => clearLoginRate(req, ip)
 );
+// SEC-04: injectează funcția de verificare token_version din pool DB
+injectTokenVersionChecker(async (userId) => {
+  if (!pool || !DB_READY) return null;
+  const { rows } = await pool.query('SELECT token_version FROM users WHERE id=$1', [userId]);
+  return rows[0]?.token_version ?? null;
+});
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
 injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail });
@@ -825,13 +831,19 @@ wss.on('connection', (ws, req) => {
 // ── Graceful shutdown ─────────────────────────────────────────────────────
 function shutdown(signal) {
   logger.info({ signal }, 'Shutdown signal received');
-  // FIX v3.2.3: oprim toate intervalele la shutdown
+  // Oprim toate intervalele
   clearInterval(_loginBlocksCleanupInterval);
   clearInterval(_notifsCleanupInterval);
   clearInterval(_reminderInterval);
   clearInterval(_archiveJobInterval);
   clearInterval(wsHeartbeat);
-  httpServer.close(() => { logger.info('Server closed.'); process.exit(0); });
+  // FIX b80: închidem pool-ul DB înainte de process.exit —
+  // previne "Connection reset by peer" în logurile Postgres la fiecare deploy Railway.
+  httpServer.close(async () => {
+    if (pool) { try { await pool.end(); } catch(_) {} }
+    logger.info('Server closed.');
+    process.exit(0);
+  });
   setTimeout(() => process.exit(0), 10_000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
