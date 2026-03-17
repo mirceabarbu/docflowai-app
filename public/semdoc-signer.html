@@ -819,14 +819,18 @@ th{ color: var(--sub) !important; }
           a.click();
           document.body.removeChild(a);
 
+          // Activăm upload-ul IMEDIAT după descărcare reușită —
+          // ÎNAINTE de register-download sau orice alt pas care poate eșua.
+          // FIX b80: dacă register-download sau buildCartusBlob aruncă excepție,
+          // butonul rămânea disabled și semnatarul nu putea încărca PDF-ul.
+          const chooseBtn = $("btnChooseSignedPdf");
+          if (chooseBtn) { chooseBtn.disabled = false; chooseBtn.title = ""; }
+
           // Nu deschidem în browser — lăsăm OS să deschidă cu aplicația implicită (Adobe)
           setTimeout(() => URL.revokeObjectURL(url), 30000);
 
           status.textContent = "✅ PDF descărcat în folderul Downloads. Deschide fișierul în Adobe Acrobat/Reader pentru a aplica semnătura electronică calificată.";
           btn.textContent = "⬇️ Descarcă din nou";
-          // Activeaza upload-ul dupa descarcare reusita
-          const chooseBtn = $("btnChooseSignedPdf");
-          if (chooseBtn) { chooseBtn.disabled = false; chooseBtn.title = ""; }
 
         } catch(err) {
           console.error("downloadPdfForSigning error:", err);
@@ -842,19 +846,28 @@ th{ color: var(--sub) !important; }
       async function buildCartusBlob() {
         if (!currentFlow) throw new Error("Date flux indisponibile — reîncarcă pagina.");
 
-        // Wait up to 10s for PDFLib to load
+        // FIX b80: fallback când pdf-lib nu e disponibil (timeout CDN, conexiune lentă etc.)
+        // În loc să arunce excepție (care bloca întreaga descărcare), returnăm PDF-ul simplu.
         if (!window.PDFLib) {
-          await new Promise((resolve, reject) => {
+          const waitResult = await new Promise((resolve) => {
             let waited = 0;
             const iv = setInterval(() => {
               waited += 200;
-              if (window.PDFLib) { clearInterval(iv); resolve(); }
+              if (window.PDFLib) { clearInterval(iv); resolve('loaded'); }
               else if (window._pdfLibFailed || waited > 10000) {
                 clearInterval(iv);
-                reject(new Error("Librăria PDF (pdf-lib) nu s-a putut încărca. Verifică conexiunea la internet și reîncarcă pagina."));
+                resolve('failed'); // nu reject — cădem pe fallback
               }
             }, 200);
           });
+          if (waitResult === 'failed') {
+            // Fallback: descarcă PDF-ul original simplu fără cartuș
+            console.warn('buildCartusBlob: pdf-lib indisponibil — fallback la PDF simplu');
+            const fbResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
+            if (!fbResp.ok) throw new Error("PDF original indisponibil pe server (cod " + fbResp.status + ").");
+            _uploadToken = fbResp.headers.get("X-Docflow-UploadToken") || _uploadToken;
+            return await fbResp.blob(); // returnează direct — fără cartuș
+          }
         }
 
         const { PDFDocument, PDFName, PDFString, PDFNumber, rgb, StandardFonts } = PDFLib;

@@ -109,3 +109,27 @@ fără să ascundă `adminFluxSection`. Aceasta conține: ⚠ Ștergere fluxuri 
 **Fix:** Ascunderea `adminFluxSection` mutată **înaintea** guard-ului `if (!institutie) return`,
 astfel încât să se execute întotdeauna pentru `org_admin`, indiferent de profilul utilizatorului.
 Linia duplicată de ascundere de la finalul funcției eliminată.
+
+---
+
+### 🔴 BUG-SIGNER01 — Buton upload blocat la reinițiere flux (signedPdfFile rămânea disabled)
+
+**Fișier:** `public/semdoc-signer.html`
+
+**Problema:** La reinițierea unui flux după refuz, semnatarul curent (primul semnatar) vedea pagina
+de semnare dar butonul **📂 Încarcă fișier PDF semnat calificat** rămânea `disabled` permanent,
+indiferent dacă descărcarea PDF-ului reușea sau nu.
+
+**Cauza:** `btnChooseSignedPdf.disabled = false` era plasat la finalul blocului `try` din
+`downloadPdfForSigning()`, după `buildCartusBlob()`. Dacă `buildCartusBlob()` arunca
+excepție (ex: timeout 10s așteptând `pdf-lib` de pe CDN), execuția sări în `catch` fără
+să activeze niciodată butonul.
+
+**Fix A — activare imediată:** `btnChooseSignedPdf.disabled = false` mutat imediat după
+`a.click()` (descărcarea reușită), **înainte** de operații care pot eșua (`register-download`,
+`setTimeout`).
+
+**Fix B — fallback pdf-lib:** `buildCartusBlob()` nu mai aruncă excepție când `pdf-lib`
+nu se încarcă în 10 secunde (CDN lent/blocat). În loc, descarcă PDF-ul simplu de la
+`/flows/:flowId/pdf` fără cartuș vizual și returnează blob-ul — semnatarul poate semna
+documentul și îl poate încărca înapoi normal.
