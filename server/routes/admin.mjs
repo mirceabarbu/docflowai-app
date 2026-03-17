@@ -653,6 +653,7 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
         return {
           flowId: d.flowId, docName: d.docName || '—',
           initEmail: d.initEmail || '—', initName: d.initName || '—',
+          flowType: d.flowType || 'tabel',
           createdAt: d.createdAt || r.created_at, status,
           storage: d.storage || 'db',
           sizeMB: Math.round(sizeBytes / 1024 / 1024 * 100) / 100,
@@ -952,6 +953,7 @@ router.get('/admin/flows/list', async (req, res) => {
     const flows = rows.map(r => {
       const d = r.data || {}; const initEmail = (d.initEmail || '').toLowerCase(); const u = userMap[initEmail] || {};
       return { flowId: d.flowId, docName: d.docName, initEmail: d.initEmail, initName: d.initName,
+        flowType: d.flowType || 'tabel', // FIX: flowType lipsea → badge afișa mereu 'Tabel'
         status: d.status || 'active', completed: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
         urgent: !!(d.urgent),
         storage: d.storage || 'db', archivedAt: d.archivedAt || null,
