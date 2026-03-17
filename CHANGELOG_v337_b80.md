@@ -290,3 +290,23 @@ Zero overhead pe request-urile normale — verificarea e în query-urile DB deja
 
 Înlocuit cu un singur LEFT JOIN pe cele 3 chei PDF.
 Reduce latența DB la jumătate pentru fiecare acces la date flux.
+
+---
+
+### 🟠 BUG-ADMIN01 — Dropdown instituții gol în Administrare Fluxuri (super-admin)
+
+**Fișiere:** `server/routes/admin.mjs`, `public/admin.html`
+
+**Bug 1 — Dropdown gol:** `populateFlowInstDropdown(flows)` construia lista de instituții
+din fluxurile paginii curente (max 10). Un super-admin cu sute de fluxuri vedea dropdown
+aproape gol sau cu doar câteva instituții.
+
+**Bug 2 — Filtrare parțială:** Consecința directă — filtrul de instituție funcționa corect
+la nivel server (parametru trimis ok), dar nu puteai selecta instituția din dropdown.
+
+**Fix:**
+- Endpoint nou `GET /admin/flows/institutions` — returnează lista distinctă de instituții
+  din toate fluxurile via JOIN DISTINCT (org-filtered pentru org_admin)
+- `loadFlowInstitutions()` — funcție async care apelează endpoint-ul și populează dropdown-ul
+- Apelat la inițializarea tab-ului Fluxuri (o singură dată)
+- `populateFlowInstDropdown(flows)` devine no-op (backward compat)

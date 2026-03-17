@@ -814,6 +814,35 @@ router.get('/admin/drive/verify', async (req, res) => {
   try { res.json(await verifyDrive()); } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
+// ── GET /admin/flows/institutions — lista distinctă de instituții (pentru dropdown) ──
+// Returnează toate instituțiile din fluxuri fără paginare — pentru dropdown filtru.
+router.get('/admin/flows/institutions', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    let actorOrgId = null;
+    if (actor.role === 'org_admin') {
+      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+      actorOrgId = aRows[0]?.org_id || null;
+      if (!actorOrgId) return res.status(403).json({ error: 'org_admin_no_org' });
+    }
+    // Colectăm instituții distincte din JSONB și din tabelul users (prin initEmail)
+    // Parametrizat — fără interpolarea directă a actorOrgId în SQL
+    const orgCondition = actorOrgId ? 'WHERE f.org_id = $1' : '';
+    const orgParams = actorOrgId ? [actorOrgId] : [];
+    const { rows } = await pool.query(`
+      SELECT DISTINCT COALESCE(NULLIF(u.institutie,''), NULLIF(f.data->>'institutie','')) AS institutie
+      FROM flows f
+      LEFT JOIN users u ON lower(u.email) = lower(f.data->>'initEmail')
+      ${orgCondition}
+      ORDER BY 1 ASC NULLS LAST
+    `, orgParams);
+    const institutions = rows.map(r => r.institutie).filter(Boolean);
+    return res.json({ institutions });
+  } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
+});
+
 router.get('/admin/flows/list', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;

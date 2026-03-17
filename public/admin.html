@@ -1524,28 +1524,36 @@ async function sendCredsNew(){
 // Cache global pentru fluxuri (pentru filtrare ierarhică)
 let _allFlows = null;
 
-function populateFlowInstDropdown(flows) {
+// FIX b80: dropdown instituții populat din endpoint dedicat (nu din pagina curentă).
+// Apelat o singură dată la init și la reload forțat.
+async function loadFlowInstitutions() {
   const sel = document.getElementById("flowInstFilter");
   const currentVal = sel.value;
-  // Colectează instituții unice
-  const institutions = [...new Set(flows.map(f => f.institutie||"").filter(Boolean))].sort();
-  sel.innerHTML = '<option value="">Toate instituțiile</option>';
-  institutions.forEach(inst => {
-    const opt = document.createElement("option");
-    opt.value = inst;
-    opt.textContent = inst;
-    sel.appendChild(opt);
-  });
-  if (currentVal) sel.value = currentVal;
+  try {
+    const r = await _apiFetch('/admin/flows/institutions', { headers: hdrs() });
+    if (!r.ok) return;
+    const { institutions } = await r.json();
+    sel.innerHTML = '<option value="">Toate instituțiile</option>';
+    (institutions || []).forEach(inst => {
+      const opt = document.createElement("option");
+      opt.value = inst;
+      opt.textContent = inst;
+      sel.appendChild(opt);
+    });
+    if (currentVal) sel.value = currentVal;
+  } catch(e) { console.warn('loadFlowInstitutions error:', e.message); }
   // org_admin: re-aplică lock după populare
   if (window._orgAdminInstitutie) {
-    let found=false; for(const o of sel.options){if(o.value===window._orgAdminInstitutie){found=true;break;}} 
+    let found=false; for(const o of sel.options){if(o.value===window._orgAdminInstitutie){found=true;break;}}
     if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);sel.appendChild(o);}
     sel.value=window._orgAdminInstitutie; sel.disabled=true;
     sel.style.cssText+=';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
     onFlowInstChange();
   }
 }
+
+// Compatibilitate — apelată din loadFlowsList cu flows (ignorată acum, instituțiile vin din server)
+function populateFlowInstDropdown(flows) { /* no-op — înlocuit cu loadFlowInstitutions() */ }
 
 function onFlowInstChange() {
   const instF = document.getElementById("flowInstFilter").value;
@@ -1612,11 +1620,8 @@ async function loadFlowsList(forceReload = true, page) {
     const total = resp.total || flows.length;
     const pages = resp.pages || 1;
 
-    // Populeaza dropdown institutii (prima incarcare)
-    if (forceReload || !_allFlows) {
-      _allFlows = flows; // pastram pentru populateFlowInstDropdown
-      populateFlowInstDropdown(flows);
-    }
+    // Dropdown instituții populat din /admin/flows/institutions (endpoint dedicat)
+    // — nu din datele paginii curente (ar arăta doar instituțiile din pag. curentă)
 
     if (!flows.length) {
       area.innerHTML = '<span style="color:var(--muted);">Niciun flux gasit.</span>';
@@ -2176,7 +2181,7 @@ function switchTab(tab) {
     btn.style.background = active ? 'rgba(124,92,255,.25)' : 'transparent';
     btn.style.color = active ? '#c4b5ff' : 'var(--muted)';
   });
-  if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); _fluxuriLoaded = true; }
+  if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); loadFlowInstitutions(); _fluxuriLoaded = true; }
   if (tab === 'outreach' && !_outreachLoaded) { orInit(); _outreachLoaded = true; }
 }
 let _fluxuriLoaded = false;
