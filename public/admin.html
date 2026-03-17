@@ -2258,6 +2258,7 @@ let _fluxuriLoaded = false;
 let _outreachLoaded = false;
 let _orgLoaded = false;
 let _currentOrgId = null;
+let _rptGenerated = false; // true după prima generare raport — activează auto-refresh la filtrare
 
 // ══════════════════════════════════════════════════════════════════
 // OUTREACH MODULE
@@ -2870,9 +2871,11 @@ function initActivityReport() {
   $('rptTo').value          = todayISO;
   $('rptFromDisplay').value = isoToDMY(fromISO);
   $('rptToDisplay').value   = isoToDMY(todayISO);
+  _rptGenerated = false; // reset la inițializare — trebuie apăsat Generează prima dată
 
   // Încarcă toți utilizatorii pentru cascadare
   _apiFetch('/admin/users', { headers: hdrs() }).then(r => r.json()).then(data => {
+    _rptGenerated = true; // permite auto-refresh la filtrare ulterioară
     window._rptUsers = data.users || data || [];
     _rebuildRptInst();
   }).catch(() => {});
@@ -2900,6 +2903,7 @@ function _rebuildRptInst() {
 function onRptInstChange() {
   _rebuildRptDept();
   _rebuildRptUser();
+  if (_rptGenerated) loadActivityReport();
 }
 
 function _rebuildRptDept() {
@@ -2920,7 +2924,7 @@ function _rebuildRptDept() {
   _rebuildRptUser();
 }
 
-function onRptDeptChange() { _rebuildRptUser(); }
+function onRptDeptChange() { _rebuildRptUser(); if (_rptGenerated) loadActivityReport(); }
 
 function _rebuildRptUser() {
   const inst = $('rptInst').value;
@@ -2944,16 +2948,15 @@ function _rebuildRptUser() {
 function onRptUserChange() {
   // Sincronizează filtrele invers dacă utilizatorul selectat e dintr-o instituție specifică
   const email = $('rptUser').value;
-  if (!email || !window._rptUsers) return;
-  const u = window._rptUsers.find(x => x.email === email);
-  if (!u) return;
-  // Dacă nu e deja filtrată pe instituția lui, filtrăm automat
-  if (u.institutie && !$('rptInst').value) {
-    $('rptInst').value = u.institutie;
-    _rebuildRptDept();
-    // Re-setăm userul după rebuild
-    $('rptUser').value = email;
+  if (email && window._rptUsers) {
+    const u = window._rptUsers.find(x => x.email === email);
+    if (u && u.institutie && !$('rptInst').value) {
+      $('rptInst').value = u.institutie;
+      _rebuildRptDept();
+      $('rptUser').value = email; // re-setăm după rebuild
+    }
   }
+  if (_rptGenerated) loadActivityReport();
 }
 
 async function loadActivityReport() {
