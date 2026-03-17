@@ -30,6 +30,7 @@ import jwt from 'jsonwebtoken';
 import { WebSocketServer } from 'ws';
 import { pushToUser } from './push.mjs';
 import { fireWebhook, injectWebhookPool, injectWebhookBaseUrl } from './webhook.mjs';
+import { emailYourTurn, emailGeneric } from './emailTemplates.mjs';
 import { logger } from './middleware/logger.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
@@ -625,76 +626,21 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
   const eventsToAdd = [];
   const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
 
-  // Construiește HTML email — template complet pentru YOUR_TURN, simplu pentru restul
-  let emailHtml;
+  // CODE-N01: template-uri extrase în emailTemplates.mjs
+  let emailSubject, emailHtml;
   if (type === 'YOUR_TURN' && waParams.signerToken) {
-    const signerLink = `${appUrl}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(waParams.signerToken)}`;
-    const flowUrl = `${appUrl}/flow.html?flow=${encodeURIComponent(flowId)}`;
-    emailHtml = `
-<div style="background:#0b1120;margin:0;padding:32px 16px;font-family:system-ui,-apple-system,sans-serif;">
-<div style="max-width:520px;margin:0 auto;background:#111827;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
-  <!-- Header -->
-  <div style="background:linear-gradient(135deg,#1e1460 0%,#0f2a4a 100%);padding:28px 32px 24px;text-align:center;">
-    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:10px;padding:10px 18px;font-size:1.1rem;font-weight:800;color:#fff;letter-spacing:.5px;">📋 DocFlowAI</div>
-    <div style="margin-top:14px;font-size:.8rem;color:rgba(255,255,255,.4);letter-spacing:1px;text-transform:uppercase;">Platformă documente electronice</div>
-  </div>
-  <!-- Body -->
-  <div style="padding:28px 32px;">
-    <p style="margin:0 0 6px;font-size:1rem;color:#cdd8ff;">Bună${waParams.signerName ? ', <strong>' + escHtml(waParams.signerName) + '</strong>' : ''},</p>
-    <p style="margin:0 0 20px;font-size:.9rem;color:#9db0ff;line-height:1.6;">
-      ${waParams.initName ? `<strong style="color:#eaf0ff;">${escHtml(waParams.initName)}</strong> te-a adăugat ca semnatar pe documentul de mai jos.` : 'Ești invitat să semnezi electronic un document.'}
-      ${waParams.initFunctie || waParams.institutie ? `<br><span style="font-size:.82rem;color:#7c8db0;">${[waParams.initFunctie, waParams.institutie].filter(Boolean).map(escHtml).join(' · ')}</span>` : ''}
-    </p>
-    <!-- Document card -->
-    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:18px 20px;margin-bottom:24px;">
-      <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:8px;">📄 ${escHtml(waParams.docName || 'Document de semnat')}</div>
-      ${waParams.institutie ? `<div style="font-size:.82rem;color:#9db0ff;margin-bottom:3px;">🏛 ${escHtml(waParams.institutie)}</div>` : ''}
-      ${waParams.compartiment ? `<div style="font-size:.82rem;color:#9db0ff;margin-bottom:3px;">📂 ${escHtml(waParams.compartiment)}</div>` : ''}
-      <div style="font-size:.8rem;color:#5a6a8a;margin-top:6px;">ID flux: <code style="color:#7c8db0;">${escHtml(flowId)}</code></div>
-    </div>
-    ${waParams.roundInfo ? `<div style="background:rgba(250,180,0,.08);border:1px solid rgba(250,180,0,.2);border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:.83rem;color:#ffd580;">🔄 ${escHtml(waParams.roundInfo)}</div>` : ''}
-    <!-- CTA -->
-    <div style="text-align:center;margin-bottom:20px;">
-      <a href="${signerLink}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;font-weight:700;font-size:1rem;letter-spacing:.3px;">✍️ Semnează documentul</a>
-    </div>
-    <div style="text-align:center;margin-bottom:8px;">
-      <a href="${flowUrl}" style="font-size:.8rem;color:#5a6a8a;text-decoration:none;">🔍 Vezi statusul fluxului</a>
-    </div>
-    <!-- Warning -->
-    <div style="background:rgba(255,100,100,.07);border:1px solid rgba(255,100,100,.18);border-radius:8px;padding:10px 14px;margin-top:16px;font-size:.8rem;color:#ffb3b3;">
-      ⚠️ Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi în aplicație.
-    </div>
-  </div>
-  <!-- Footer -->
-  <div style="border-top:1px solid rgba(255,255,255,.06);padding:14px 32px;text-align:center;">
-    <p style="margin:0;font-size:.72rem;color:rgba(255,255,255,.25);">Link valabil 90 de zile · DocFlowAI · Dacă nu ești semnatarul acestui document, ignoră acest email.</p>
-  </div>
-</div>
-</div>`;
+    const t = emailYourTurn({ appUrl, flowId, signerToken: waParams.signerToken,
+      signerName: waParams.signerName, docName: waParams.docName,
+      initName: waParams.initName, initFunctie: waParams.initFunctie,
+      institutie: waParams.institutie, compartiment: waParams.compartiment,
+      roundInfo: waParams.roundInfo, urgent });
+    emailSubject = t.subject; emailHtml = t.html;
   } else {
-    // Template generic pentru REFUSED, COMPLETED, REVIEW_REQUESTED etc.
-    const iconMap = { COMPLETED: '✅', REFUSED: '⛔', REVIEW_REQUESTED: '🔄', DELEGATED: '👥' };
-    const icon = iconMap[type] || 'ℹ️';
-    emailHtml = `
-<div style="background:#0b1120;margin:0;padding:32px 16px;font-family:system-ui,-apple-system,sans-serif;">
-<div style="max-width:520px;margin:0 auto;background:#111827;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
-  <div style="background:linear-gradient(135deg,#1e1460 0%,#0f2a4a 100%);padding:24px 32px;text-align:center;">
-    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:10px;padding:10px 18px;font-size:1.1rem;font-weight:800;color:#fff;">📋 DocFlowAI</div>
-  </div>
-  <div style="padding:28px 32px;">
-    <h2 style="margin:0 0 12px;font-size:1.05rem;color:#eaf0ff;">${icon} ${escHtml(title)}</h2>
-    <p style="margin:0 0 16px;font-size:.9rem;color:#9db0ff;line-height:1.6;">${escHtml(message)}</p>
-    ${flowId ? `<div style="text-align:center;margin-top:20px;"><a href="${appUrl}/flow.html?flow=${encodeURIComponent(flowId)}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:10px 24px;border-radius:8px;font-size:.88rem;font-weight:600;">🔍 Vezi detalii flux</a></div>` : ''}
-  </div>
-  <div style="border-top:1px solid rgba(255,255,255,.06);padding:12px 32px;text-align:center;">
-    <p style="margin:0;font-size:.72rem;color:rgba(255,255,255,.25);">DocFlowAI · Platformă documente electronice</p>
-  </div>
-</div>
-</div>`;
+    const t = emailGeneric({ appUrl, flowId, type, title, message, urgent });
+    emailSubject = t.subject; emailHtml = t.html;
   }
-
   const [emailResult, waResult] = await Promise.allSettled([
-    needsEmail ? sendSignerEmail({ to: email, subject: urgent ? `🚨 [URGENT] ${title}` : title, html: emailHtml }) : Promise.resolve({ ok: false, reason: 'disabled' }),
+    needsEmail ? sendSignerEmail({ to: email, subject: emailSubject, html: emailHtml }) : Promise.resolve({ ok: false, reason: 'disabled' }),
     needsWa ? (async () => {
       if (type === 'YOUR_TURN') return sendWaSignRequest({ phone: uRow.phone, signerName: waParams.signerName || '', docName: waParams.docName || '' });
       if (type === 'COMPLETED') return sendWaCompleted({ phone: uRow.phone, docName: waParams.docName || '' });

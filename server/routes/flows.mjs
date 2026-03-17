@@ -13,6 +13,7 @@
  */
 
 import { Router, json as expressJson } from 'express';
+import { emailDelegare } from '../emailTemplates.mjs';
 
 // PERF-03: middleware 50MB aplicat doar pe rutele care primesc pdfB64/signedPdfB64/dataB64.
 // Limita globala din index.mjs este 1MB.
@@ -333,7 +334,7 @@ router.delete('/flows/:flowId', async (req, res) => {
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate șterge acest flux.' });
     if (!isAdmin) {
@@ -573,7 +574,7 @@ router.post('/flows/:flowId/resend', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     // admin: acces global; org_admin: doar fluxuri din propria instituție; inițiator: flux propriu
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate retrimite notificarea.' });
     const current = (data.signers || []).find(s => s.status === 'current');
@@ -595,7 +596,7 @@ router.post('/flows/:flowId/regenerate-token', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     // admin: acces global; org_admin: doar fluxuri din propria instituție
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
     if (!isAdmin) return res.status(403).json({ error: 'forbidden', message: 'Doar un administrator poate regenera token-ul.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => (s.email || '').toLowerCase() === signerEmail.toLowerCase());
@@ -736,7 +737,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate reiniția fluxul.' });
     const hasRefused = (data.signers || []).some(s => s.status === 'refused');
@@ -899,7 +900,7 @@ router.post('/flows/:flowId/reinitiate-review', _largePdf, async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
 
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul poate reiniția după revizuire.' });
     if (data.status !== 'review_requested') return res.status(409).json({ error: 'not_in_review', message: 'Fluxul nu este în starea de revizuire.' });
@@ -1082,29 +1083,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
       try {
         await _sendSignerEmail({
           to: toEmail,
-          subject: `👥 Delegare semnătură — ${data.docName}`,
-          html: `
-<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-  <div style="text-align:center;margin-bottom:28px;">
-    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div>
-  </div>
-  <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${resolvedName ? ', ' + escHtml(resolvedName) : ''},</h2>
-  <p style="color:#9db0ff;margin:0 0 6px;line-height:1.6;">
-    <strong style="color:#ffd580;">${escHtml(originalName)}</strong> ți-a delegat semnarea electronică a documentului:
-  </p>
-  <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:16px 20px;margin:16px 0 20px;">
-    <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:6px;">📄 ${escHtml(data.docName || flowId)}</div>
-    <div style="font-size:.85rem;color:#9db0ff;margin-bottom:4px;">Inițiat de: ${escHtml(data.initName || data.initEmail || '')}</div>
-    <div style="font-size:.85rem;color:#ffd580;">Motiv delegare: ${escHtml(String(reason).trim())}</div>
-  </div>
-  <div style="background:rgba(255,100,100,.08);border:1px solid rgba(255,100,100,.2);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:.85rem;color:#ffb3b3;">
-    ⚠️ Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi.
-  </div>
-  <div style="text-align:center;">
-    <a href="${signerLink}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:1rem;">✍️ Deschide documentul pentru semnare</a>
-  </div>
-  <p style="margin-top:20px;font-size:.78rem;color:rgba(255,255,255,.3);text-align:center;">Link valid 90 de zile · DocFlowAI · ${escHtml(data.institutie || '')}</p>
-</div>`
+          ...emailDelegare({ signerLink, resolvedName, originalName, docName: data.docName, flowId, initName: data.initName, initEmail: data.initEmail, reason, institutie: data.institutie }),
         });
       } catch(emailErr) { logger.error({ err: emailErr }, 'Delegare email error'); }
     }
@@ -1123,7 +1102,7 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     const { reason } = req.body || {};
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un admin poate anula fluxul.' });
     if (data.completed) return res.status(409).json({ error: 'already_completed', message: 'Un flux finalizat nu poate fi anulat.' });
@@ -1179,7 +1158,7 @@ router.post('/flows/:flowId/attachments', _largePdf, async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
     // Doar inițiatorul sau admin poate atașa documente
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
     if (!isInit && !isAdmin) return res.status(403).json({ error: 'forbidden' });
     if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled' });
 
@@ -1265,7 +1244,7 @@ router.delete('/flows/:flowId/attachments/:attId', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
     if (!isInit && !isAdmin) return res.status(403).json({ error: 'forbidden' });
     const { rowCount } = await pool.query('DELETE FROM flow_attachments WHERE id=$1 AND flow_id=$2', [parseInt(attId), flowId]);
     if (!rowCount) return res.status(404).json({ error: 'not_found' });

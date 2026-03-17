@@ -8,6 +8,7 @@
 
 import { Router } from 'express';
 import crypto from 'crypto';
+import { emailResetPassword, emailCredentials, emailVerifyGws } from '../emailTemplates.mjs';
 import { requireAuth, requireAdmin, hashPassword, generatePassword, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData, invalidateOrgUserCache } from '../db/index.mjs';
 import { validatePhone } from '../whatsapp.mjs';
@@ -543,18 +544,7 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
       to: target.email,
-      subject: '🔑 Parolă resetată — DocFlowAI',
-      html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-        <div style="text-align:center;margin-bottom:28px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
-        <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${target.nume ? ', ' + escHtml(target.nume) : ''},</h2>
-        <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Parola contului tău a fost resetată de un administrator.</p>
-        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-          <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${escHtml(target.email)}</strong></div>
-          <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ TEMPORARĂ</span><strong style="color:#ffd580;font-family:monospace;">${escHtml(newPwd)}</strong></div>
-        </div>
-        <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Schimbă parola după prima autentificare.</p>
-        <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
-      </div>`
+      ...emailResetPassword({ appUrl, numeUser: target.nume, email: target.email, newPwd })
     }).catch(e => logger.warn({ err: e, email: target.email }, 'reset-password email esuat'));
     // Returnăm parola și emailul în response — afișate în modal ca fallback
     res.json({ ok: true, email: target.email, tempPassword: newPwd, message: `Parolă nouă trimisă pe email la ${target.email}` });
@@ -605,18 +595,8 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
     await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE, token_version=COALESCE(token_version,1)+1 WHERE id=$2', [await hashPassword(newPwd), targetId]);
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
-      to: u.email, subject: 'Cont DocFlowAI — credențiale de acces',
-      html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-        <div style="text-align:center;margin-bottom:28px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
-        <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${u.nume ? ', ' + u.nume : ''},</h2>
-        <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Contul tău în <strong style="color:#eaf0ff;">DocFlowAI</strong> a fost creat sau parola a fost resetată.</p>
-        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-          <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${u.email}</strong></div>
-          <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ TEMPORARĂ</span><strong style="color:#ffd580;font-family:monospace;">${newPwd}</strong></div>
-        </div>
-        <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Această parolă este valabilă pentru o singură utilizare. Recomandăm schimbarea ei după prima autentificare.</p>
-        <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
-      </div>`
+      to: u.email, ...emailCredentials({ appUrl, numeUser: u.nume, email: u.email, newPwd }),
+
     });
     // Returnăm parola și emailul către admin — afișate în modal ca fallback
     // dacă emailul nu ajunge la utilizator (parola este trimisă și pe email)
