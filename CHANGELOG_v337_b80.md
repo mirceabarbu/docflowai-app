@@ -256,3 +256,37 @@ Cartușul era întotdeauna plasat pe pagina curentă, indiferent de conținut.
 - Dacă `lowestContentY < spatiuNecesar` → `pdfDoc.addPage()` → cartuș jos pe pagina nouă
 - Dacă `lowestContentY === 0` (PDF.js indisponibil) → pagină nouă conservator
 - Dacă spațiu suficient → cartuș pe pagina curentă (comportament așteptat)
+
+---
+
+### SEC-04 complet — verificare token_version activă în /auth/me și /auth/refresh
+
+**Fișier:** `server/routes/auth.mjs`
+
+Token_version era incrementat la reset-password dar niciodată verificat.
+
+**Acum:** ambele endpoint-uri de sesiune verifică `tv` din JWT vs `token_version` din DB:
+
+- `GET /auth/me` — SELECT include `token_version`; dacă `jwtTv !== dbTv` → cookie șters + `401 token_revoked`
+- `POST /auth/refresh` — idem; utilizatorul e forțat la re-login
+
+**Fluxul complet:**
+1. Admin resetează parola → `token_version = token_version + 1` în DB
+2. Utilizatorul face orice request → `/auth/me` sau `/auth/refresh` detectează discrepanța
+3. Cookie șters → redirect la login → utilizatorul se autentifică cu parola nouă
+4. JWT nou include `tv` corect → acces normal
+
+Zero overhead pe request-urile normale — verificarea e în query-urile DB deja existente.
+
+---
+
+### ARCH-03 — getFlowData: 2 query-uri → 1 LEFT JOIN
+
+**Fișier:** `server/db/index.mjs`
+
+`getFlowData()` e apelată de 27 de ori în server. Fiecare apel făcea:
+- `SELECT data FROM flows WHERE id=$1`
+- `SELECT key, data FROM flows_pdfs WHERE flow_id=$1`
+
+Înlocuit cu un singur LEFT JOIN pe cele 3 chei PDF.
+Reduce latența DB la jumătate pentru fiecare acces la date flux.

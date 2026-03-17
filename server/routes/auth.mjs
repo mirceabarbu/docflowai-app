@@ -107,11 +107,11 @@ router.get('/auth/me', async (req, res) => {
   try {
     let row = null;
     if (decoded.userId) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id,force_password_change FROM users WHERE id=$1', [decoded.userId]);
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id,force_password_change,token_version FROM users WHERE id=$1', [decoded.userId]);
       row = rows[0] || null;
     }
     if (!row && decoded.email) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id,force_password_change FROM users WHERE lower(email)=lower($1)', [decoded.email]);
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id,force_password_change,token_version FROM users WHERE lower(email)=lower($1)', [decoded.email]);
       row = rows[0] || null;
       if (row) logger.warn({ userId: decoded.userId, email: decoded.email, dbId: row.id }, '[auth/me] User gasit prin email (id mismatch)');
     }
@@ -121,6 +121,13 @@ router.get('/auth/me', async (req, res) => {
         userId: decoded.userId, email: decoded.email, role: decoded.role,
         orgId: decoded.orgId, nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie
       });
+    }
+    // SEC-04: verifică token_version — invalidat la reset parolă
+    const dbTvMe = row.token_version ?? 1;
+    const jwtTvMe = decoded.tv ?? 1;
+    if (jwtTvMe !== dbTvMe) {
+      clearAuthCookie(res);
+      return res.status(401).json({ error: 'token_revoked', message: 'Sesiunea a fost invalidată. Te rugăm să te autentifici din nou.' });
     }
     res.json({
       userId: row.id, email: row.email, orgId: row.org_id,
@@ -161,11 +168,19 @@ router.post('/auth/refresh', async (req, res) => {
   if (!decoded?.userId) return res.status(401).json({ error: 'token_invalid' });
   try {
     if (pool && DB_READY) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id FROM users WHERE id=$1', [decoded.userId]);
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,role,org_id,token_version FROM users WHERE id=$1', [decoded.userId]);
       if (!rows[0]) { clearAuthCookie(res); return res.status(401).json({ error: 'user_not_found' }); }
+      // SEC-04: verifică token_version — invalidat la reset parolă
+      const dbTv = rows[0].token_version ?? 1;
+      const jwtTv = decoded.tv ?? 1;
+      if (jwtTv !== dbTv) {
+        clearAuthCookie(res);
+        return res.status(401).json({ error: 'token_revoked', message: 'Sesiunea a fost invalidată. Te rugăm să te autentifici din nou.' });
+      }
       decoded = {
         userId: rows[0].id, email: rows[0].email, orgId: rows[0].org_id,
         nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, role: rows[0].role,
+        tv: dbTv,
       };
     }
     const newToken = jwt.sign(

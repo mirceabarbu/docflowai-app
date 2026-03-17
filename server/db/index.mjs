@@ -758,15 +758,26 @@ export async function saveFlow(id, data) {
  * Șterge markerii _*Present (nu mai sunt necesari când avem datele reale).
  */
 export async function getFlowData(id) {
-  const r = await pool.query('SELECT data FROM flows WHERE id=$1', [id]);
+  // ARCH-03: un singur JOIN în loc de 2 query-uri separate — reduce latența DB la jumătate
+  const r = await pool.query(`
+    SELECT f.data,
+           fp_pdf.data  AS "pdfB64",
+           fp_spdf.data AS "signedPdfB64",
+           fp_opdf.data AS "originalPdfB64"
+    FROM flows f
+    LEFT JOIN flows_pdfs fp_pdf  ON fp_pdf.flow_id  = f.id AND fp_pdf.key  = 'pdfB64'
+    LEFT JOIN flows_pdfs fp_spdf ON fp_spdf.flow_id = f.id AND fp_spdf.key = 'signedPdfB64'
+    LEFT JOIN flows_pdfs fp_opdf ON fp_opdf.flow_id = f.id AND fp_opdf.key = 'originalPdfB64'
+    WHERE f.id = $1
+  `, [id]);
   if (!r.rows[0]) return null;
   const data = r.rows[0].data;
 
-  // Reataşează câmpurile PDF din flows_pdfs
-  const pdfs = await pool.query('SELECT key, data FROM flows_pdfs WHERE flow_id=$1', [id]);
-  for (const row of pdfs.rows) {
-    data[row.key] = row.data;
-  }
+  // Reataşează câmpurile PDF din JOIN (null dacă nu există)
+  if (r.rows[0].pdfB64)         data.pdfB64         = r.rows[0].pdfB64;
+  if (r.rows[0].signedPdfB64)   data.signedPdfB64   = r.rows[0].signedPdfB64;
+  if (r.rows[0].originalPdfB64) data.originalPdfB64 = r.rows[0].originalPdfB64;
+
   // Curăță markerii (inutili când avem datele reale)
   for (const key of _PDF_KEYS) delete data[`_${key}Present`];
 
