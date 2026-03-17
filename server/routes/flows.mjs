@@ -48,9 +48,10 @@ const _getIp = req => req.ip || req.socket?.remoteAddress || null;
 const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message: 'Prea multe cereri de semnare. Încearcă în 1 minut.' });
 const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
 
-let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired, _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64, _sendSignerEmail;
+let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired, _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64, _sendSignerEmail, _fireWebhook;
 export function injectFlowDeps(deps) {
   _notify = deps.notify;
+  _fireWebhook = deps.fireWebhook || null;
   _wsPush = deps.wsPush;
   _PDFLib = deps.PDFLib;
   _stampFooterOnPdf = deps.stampFooterOnPdf;
@@ -412,6 +413,8 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
     await saveFlow(flowId, data);
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'REFUSED', actorIp: _getIp(req), actorEmail: signers[idx].email, payload: { reason: refuseReason, signerName: refuserName, rol: refuserRol } });
+    // FEAT-N01: webhook flow.refused (fire-and-forget)
+    if (_fireWebhook && data.orgId) setImmediate(() => _fireWebhook(data.orgId, 'flow.refused', { ...data, refusedAt: new Date().toISOString() }).catch(() => {}));
     // Issue 5: Sterge notif YOUR_TURN ale celui care a refuzat
     const refuserEmail5 = (signers[idx].email || '').toLowerCase();
     if (refuserEmail5) {
@@ -552,6 +555,8 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
           // Issue 5: Sterge TOATE notif YOUR_TURN ramase pentru acest flux
           await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
           if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: 'Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName }, urgent: !!(data.urgent) });
+          // FEAT-N01: webhook flow.completed (fire-and-forget)
+          if (_fireWebhook && data.orgId) _fireWebhook(data.orgId, 'flow.completed', data).catch(() => {});
         }
         if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName, signerToken: nextSigner.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment }, urgent: !!(data.urgent) });
       } catch(notifErr) { logger.error({ err: notifErr, flowId }, 'Notificare async esuat'); }
@@ -1140,6 +1145,8 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     await saveFlow(flowId, data);
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_CANCELLED', actorIp: _getIp(req), actorEmail: actor.email, payload: { reason: data.cancelReason } });
+    // FEAT-N01: webhook flow.cancelled (fire-and-forget)
+    if (_fireWebhook && data.orgId) setImmediate(() => _fireWebhook(data.orgId, 'flow.cancelled', data).catch(() => {}));
     // Șterge notificările YOUR_TURN active pentru acest flux
     await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
     // Notifică inițiatorul (dacă admin a anulat) și semnatarii care au semnat deja

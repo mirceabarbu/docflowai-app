@@ -29,6 +29,7 @@ import { archiveFlow, verifyDrive } from './drive.mjs';
 import jwt from 'jsonwebtoken';
 import { WebSocketServer } from 'ws';
 import { pushToUser } from './push.mjs';
+import { fireWebhook, injectWebhookPool, injectWebhookBaseUrl } from './webhook.mjs';
 import { logger } from './middleware/logger.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
@@ -733,7 +734,10 @@ injectTokenVersionChecker(async (userId) => {
 });
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
-injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail });
+injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail, fireWebhook });
+// FEAT-N01: webhook — injectăm pool-ul și URL-ul de bază
+injectWebhookPool(pool);
+injectWebhookBaseUrl(process.env.PUBLIC_BASE_URL || '');
 
 // ── Mount routers ─────────────────────────────────────────────────────────
 app.use('/', authRouter);

@@ -168,6 +168,7 @@
   <button class="atab" data-tab="fluxuri" onclick="switchTab('fluxuri')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📁 Administrare fluxuri</button>
   <button class="atab" data-tab="rapoarte" onclick="switchTab('rapoarte')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📊 Rapoarte</button>
   <button class="atab" data-tab="outreach" onclick="switchTab('outreach')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="outreach-tab-btn">📧 Outreach</button>
+  <button class="atab" data-tab="organizatii" onclick="switchTab('organizatii')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="org-tab-btn">🏛 Organizații</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -508,6 +509,72 @@
 
 </div>
 <!-- ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-organizatii" style="display:none;">
+  <h2 style="color:#9db0ff;margin-bottom:6px;">🏛 Organizații & Webhook</h2>
+  <p style="color:var(--muted);font-size:.83rem;margin-bottom:20px;">
+    Configurați webhook-urile pentru integrarea cu sisteme externe (AvanDoc, iDocNet, aplicații proprii de registratură etc.)
+  </p>
+
+  <div id="org-list-area" style="display:grid;gap:16px;">
+    <div style="color:var(--muted);padding:24px;text-align:center;">⏳ Se încarcă...</div>
+  </div>
+
+  <!-- Modal editare organizație / webhook -->
+  <div id="orgEditModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div style="background:#0f1731;border:1px solid rgba(124,92,255,.3);border-radius:18px;padding:32px;max-width:580px;width:calc(100%-32px);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);">
+      <h3 style="margin:0 0 20px;color:#c4b5ff;font-size:1rem;">⚙️ Configurare Webhook — <span id="orgEditName"></span></h3>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;">URL Webhook</label>
+        <input id="orgWebhookUrl" type="url" placeholder="https://sistemul-vostru.ro/api/docflowai/webhook"
+          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;box-sizing:border-box;"/>
+        <div style="font-size:.73rem;color:var(--muted);margin-top:4px;">DocFlowAI va trimite un POST JSON la acest URL la evenimentele selectate.</div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;">Secret HMAC-SHA256 (opțional, recomandat)</label>
+        <div style="display:flex;gap:8px;">
+          <input id="orgWebhookSecret" type="password" placeholder="Lasă gol pentru a păstra secretul existent"
+            style="flex:1;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;"/>
+          <button onclick="orgGenSecret()" style="padding:9px 14px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-size:.82rem;white-space:nowrap;">🎲 Generează</button>
+        </div>
+        <div style="font-size:.73rem;color:var(--muted);margin-top:4px;">Header: <code>X-DocFlowAI-Signature: sha256=HMAC(secret, body)</code></div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:8px;">Evenimente</label>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="evtCompleted" value="flow.completed" style="accent-color:#7c5cff;"/> flow.completed
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="evtRefused" value="flow.refused" style="accent-color:#7c5cff;"/> flow.refused
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="evtCancelled" value="flow.cancelled" style="accent-color:#7c5cff;"/> flow.cancelled
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem;">
+          <input type="checkbox" id="orgWebhookEnabled" style="accent-color:#2dd4bf;width:16px;height:16px;"/>
+          <span>Webhook activ</span>
+        </label>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;">
+        <button onclick="orgTestWebhook()" style="padding:10px 18px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-size:.85rem;font-weight:600;">🧪 Test Webhook</button>
+        <div style="display:flex;gap:10px;">
+          <button onclick="closeOrgModal()" style="padding:10px 22px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+          <button onclick="saveOrgWebhook()" style="padding:10px 22px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;">💾 Salvează</button>
+        </div>
+      </div>
+      <div id="orgEditMsg" style="margin-top:12px;font-size:.83rem;"></div>
+    </div>
+  </div>
+</div>
+
 <div id="tab-outreach" style="display:none;">
 
   <h2 style="color:#9db0ff;margin-bottom:6px;">📧 Outreach — Campanii instituții</h2>
@@ -2154,6 +2221,8 @@ fetch("/auth/me",{headers:hdrs()})
       // Outreach vizibil doar pentru super-admin
       const outreachTabBtn=$('outreach-tab-btn');
       if(outreachTabBtn) outreachTabBtn.style.display="none";
+      const orgTabBtn=$('org-tab-btn');
+      if(orgTabBtn) orgTabBtn.style.display="none";
     }
     if(u.role==="org_admin") window._orgAdminInstitutie = u.institutie || "";
     // BUG-FIX: org_admin poate vedea/selecta doar rol 'user' — filtrăm dropdown-urile
@@ -2172,7 +2241,7 @@ let _activityData = null;
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  ['utilizatori','fluxuri','rapoarte','outreach'].forEach(t => {
+  ['utilizatori','fluxuri','rapoarte','outreach','organizatii'].forEach(t => {
     const el = $('tab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
@@ -2183,9 +2252,12 @@ function switchTab(tab) {
   });
   if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); loadFlowInstitutions(); _fluxuriLoaded = true; }
   if (tab === 'outreach' && !_outreachLoaded) { orInit(); _outreachLoaded = true; }
+  if (tab === 'organizatii' && !_orgLoaded) { loadOrganizations(); _orgLoaded = true; }
 }
 let _fluxuriLoaded = false;
 let _outreachLoaded = false;
+let _orgLoaded = false;
+let _currentOrgId = null;
 
 // ══════════════════════════════════════════════════════════════════
 // OUTREACH MODULE
@@ -3372,6 +3444,156 @@ async function exportActivityCSV() {
   a.href = URL.createObjectURL(blob);
   a.download = `activitate_utilizatori_${isoToDMY($('rptFrom').value)}_${isoToDMY($('rptTo').value)}.csv`;
   a.click();
+}
+
+// ── Tab Organizații & Webhook ─────────────────────────────────────────────
+
+async function loadOrganizations() {
+  const area = $('org-list-area');
+  if (!area) return;
+  try {
+    const r = await _apiFetch('/admin/organizations', { headers: hdrs() });
+    if (!r.ok) throw new Error('Eroare server');
+    const orgs = await r.json();
+    if (!orgs.length) {
+      area.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;">Nicio organizație găsită.</div>';
+      return;
+    }
+    area.innerHTML = orgs.map(org => `
+      <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:20px 24px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:4px;">🏛 ${escH(org.name)}</div>
+            <div style="font-size:.78rem;color:var(--muted);">
+              👥 ${org.user_count} utilizatori &nbsp;·&nbsp; 📁 ${org.flow_count} fluxuri
+              &nbsp;·&nbsp; ID: <span style="font-family:monospace;color:#7c5cff;">${org.id}</span>
+            </div>
+          </div>
+          <button onclick="openOrgModal(${org.id},'${escH(org.name)}')"
+            style="padding:8px 16px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-size:.83rem;font-weight:600;white-space:nowrap;">
+            ⚙️ Configurare Webhook
+          </button>
+        </div>
+        <!-- Status webhook -->
+        <div style="margin-top:14px;padding:12px 16px;background:rgba(0,0,0,.2);border-radius:10px;font-size:.8rem;">
+          ${org.webhook_url ? `
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="color:${org.webhook_enabled ? '#2dd4bf' : '#ffd580'};">
+                ${org.webhook_enabled ? '🟢 Webhook activ' : '🟡 Webhook dezactivat'}
+              </span>
+              <span style="color:var(--muted);font-family:monospace;font-size:.75rem;overflow:hidden;text-overflow:ellipsis;max-width:340px;" title="${escH(org.webhook_url)}">
+                → ${escH(org.webhook_url)}
+              </span>
+              ${org.webhook_has_secret ? '<span style="color:#2dd4bf;font-size:.72rem;">🔐 HMAC</span>' : '<span style="color:#ffd580;font-size:.72rem;">⚠ fără secret</span>'}
+            </div>
+            <div style="color:var(--muted);margin-top:6px;">
+              Evenimente: ${(org.webhook_events||[]).join(', ') || '—'}
+            </div>` : `
+            <span style="color:var(--muted);">⚪ Webhook neconfigurat</span>`}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    area.innerHTML = `<div style="color:#ffaaaa;">Eroare: ${escH(e.message)}</div>`;
+  }
+}
+
+function openOrgModal(id, name) {
+  _currentOrgId = id;
+  $('orgEditName').textContent = name;
+  $('orgWebhookUrl').value = '';
+  $('orgWebhookSecret').value = '';
+  $('orgWebhookEnabled').checked = false;
+  $('evtCompleted').checked = true;
+  $('evtRefused').checked = false;
+  $('evtCancelled').checked = false;
+  $('orgEditMsg').textContent = '';
+  // Încarcă config curentă
+  _apiFetch('/admin/organizations', { headers: hdrs() }).then(r => r.json()).then(orgs => {
+    const org = orgs.find(o => o.id === id);
+    if (!org) return;
+    $('orgWebhookUrl').value = org.webhook_url || '';
+    $('orgWebhookEnabled').checked = !!org.webhook_enabled;
+    const evts = org.webhook_events || [];
+    $('evtCompleted').checked = evts.includes('flow.completed');
+    $('evtRefused').checked = evts.includes('flow.refused');
+    $('evtCancelled').checked = evts.includes('flow.cancelled');
+  }).catch(() => {});
+  $('orgEditModal').style.display = 'flex';
+}
+
+function closeOrgModal() {
+  $('orgEditModal').style.display = 'none';
+  _currentOrgId = null;
+}
+
+function orgGenSecret() {
+  // Generare secret 32 bytes hex pe client
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  const hex = Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+  $('orgWebhookSecret').value = hex;
+  $('orgWebhookSecret').type = 'text';
+  setTimeout(() => { if($('orgWebhookSecret')) $('orgWebhookSecret').type = 'password'; }, 5000);
+}
+
+async function saveOrgWebhook() {
+  if (!_currentOrgId) return;
+  const msg = $('orgEditMsg');
+  const events = [];
+  if ($('evtCompleted').checked) events.push('flow.completed');
+  if ($('evtRefused').checked) events.push('flow.refused');
+  if ($('evtCancelled').checked) events.push('flow.cancelled');
+  const body = {
+    webhook_url:     $('orgWebhookUrl').value.trim() || null,
+    webhook_events:  events,
+    webhook_enabled: $('orgWebhookEnabled').checked,
+  };
+  const secret = $('orgWebhookSecret').value.trim();
+  if (secret) body.webhook_secret = secret;
+  msg.textContent = '⏳ Se salvează...';
+  try {
+    const r = await _apiFetch(`/admin/organizations/${_currentOrgId}`, {
+      method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (r.ok) {
+      msg.innerHTML = '<span style="color:#2dd4bf;">✅ Salvat cu succes.</span>';
+      setTimeout(() => { closeOrgModal(); loadOrganizations(); }, 800);
+    } else {
+      msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(j.error||'Eroare')}</span>`;
+    }
+  } catch(e) {
+    msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`;
+  }
+}
+
+async function orgTestWebhook() {
+  if (!_currentOrgId) return;
+  const msg = $('orgEditMsg');
+  // Salvăm mai întâi URL-ul curent dacă s-a modificat
+  const url = $('orgWebhookUrl').value.trim();
+  if (!url) { msg.innerHTML = '<span style="color:#ffd580;">⚠ Introduceți un URL înainte de test.</span>'; return; }
+  msg.textContent = '⏳ Se trimite eveniment de test...';
+  try {
+    // Salvăm URL-ul temporar pentru test
+    await _apiFetch(`/admin/organizations/${_currentOrgId}`, {
+      method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhook_url: url }),
+    });
+    const r = await _apiFetch(`/admin/organizations/${_currentOrgId}/test-webhook`, {
+      method: 'POST', headers: hdrs(),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      msg.innerHTML = `<span style="color:#2dd4bf;">✅ ${escH(j.message)} (HTTP ${j.status})</span>`;
+    } else {
+      msg.innerHTML = `<span style="color:#ffd580;">⚠ ${escH(j.message || j.error)}</span>`;
+    }
+  } catch(e) {
+    msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`;
+  }
 }
 
 </script>

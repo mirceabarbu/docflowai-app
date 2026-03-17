@@ -7,6 +7,7 @@
  */
 
 import { Router } from 'express';
+import crypto from 'crypto';
 import { requireAuth, requireAdmin, hashPassword, generatePassword, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData, invalidateOrgUserCache } from '../db/index.mjs';
 import { validatePhone } from '../whatsapp.mjs';
@@ -98,14 +99,93 @@ router.get('/users', async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
-// ── GET /admin/organizations — listă organizații (doar super-admin) ────────
+// ── GET /admin/organizations — listă organizații cu statistici și config webhook ──
 router.get('/admin/organizations', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   try {
-    const { rows } = await pool.query('SELECT id, name FROM organizations ORDER BY name ASC');
+    const { rows } = await pool.query(`
+      SELECT o.id, o.name, o.webhook_url, o.webhook_events, o.webhook_enabled,
+             o.webhook_secret IS NOT NULL AS webhook_has_secret,
+             o.created_at, o.updated_at,
+             COUNT(DISTINCT u.id)::int  AS user_count,
+             COUNT(DISTINCT f.id)::int  AS flow_count
+      FROM organizations o
+      LEFT JOIN users u  ON u.org_id  = o.id
+      LEFT JOIN flows f  ON f.org_id  = o.id
+      GROUP BY o.id
+      ORDER BY o.name ASC
+    `);
     res.json(rows);
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+// ── PUT /admin/organizations/:id — actualizare organizație + config webhook ──
+router.put('/admin/organizations/:id', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const orgId = parseInt(req.params.id);
+  if (!orgId) return res.status(400).json({ error: 'invalid_id' });
+  const { name, webhook_url, webhook_secret, webhook_events, webhook_enabled } = req.body || {};
+  try {
+    const updates = []; const params = [];
+    if (name !== undefined) { params.push(String(name).trim()); updates.push(`name=$${params.length}`); }
+    if (webhook_url !== undefined) { params.push(webhook_url ? String(webhook_url).trim() : null); updates.push(`webhook_url=$${params.length}`); }
+    if (webhook_secret !== undefined && webhook_secret !== '') { params.push(String(webhook_secret).trim()); updates.push(`webhook_secret=$${params.length}`); }
+    if (webhook_events !== undefined) { params.push(Array.isArray(webhook_events) ? webhook_events : []); updates.push(`webhook_events=$${params.length}`); }
+    if (webhook_enabled !== undefined) { params.push(!!webhook_enabled); updates.push(`webhook_enabled=$${params.length}`); }
+    if (!updates.length) return res.status(400).json({ error: 'no_fields' });
+    updates.push(`updated_at=NOW()`);
+    params.push(orgId);
+    const { rows } = await pool.query(
+      `UPDATE organizations SET ${updates.join(',')} WHERE id=$${params.length} RETURNING id, name, webhook_url, webhook_events, webhook_enabled, updated_at`,
+      params
+    );
+    if (!rows.length) return res.status(404).json({ error: 'org_not_found' });
+    res.json({ ok: true, org: rows[0] });
+  } catch(e) { res.status(500).json({ error: 'server_error', message: e.message }); }
+});
+
+// ── POST /admin/organizations/:id/test-webhook — trimite un eveniment de test ──
+router.post('/admin/organizations/:id/test-webhook', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const orgId = parseInt(req.params.id);
+  try {
+    const { rows } = await pool.query('SELECT webhook_url, webhook_secret, webhook_enabled FROM organizations WHERE id=$1', [orgId]);
+    const org = rows[0];
+    if (!org) return res.status(404).json({ error: 'org_not_found' });
+    if (!org.webhook_url) return res.status(400).json({ error: 'no_webhook_url', message: 'Configurați mai întâi URL-ul webhook.' });
+    // Payload de test
+    const testPayload = {
+      event: 'webhook.test',
+      flowId: 'TEST_' + Date.now(),
+      docName: 'Document test DocFlowAI',
+      institutie: 'Organizație test',
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+      signers: [{ name: 'Ion Popescu', email: 'test@example.com', rol: 'SEMNAT', status: 'signed', signedAt: new Date().toISOString() }],
+      sentAt: new Date().toISOString(),
+    };
+    const body = JSON.stringify(testPayload);
+    const sig = org.webhook_secret
+      ? crypto.createHmac('sha256', org.webhook_secret).update(body).digest('hex')
+      : 'unsigned';
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 10000);
+      const r = await fetch(org.webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-DocFlowAI-Event': 'webhook.test', 'X-DocFlowAI-Signature': `sha256=${sig}` },
+        body, signal: ctrl.signal,
+      });
+      res.json({ ok: r.ok, status: r.status, statusText: r.statusText, message: r.ok ? 'Webhook livrat cu succes.' : `Server-ul destinatar a returnat ${r.status}.` });
+    } catch(fetchErr) {
+      res.json({ ok: false, error: fetchErr.message, message: 'Eroare de rețea — verificați URL-ul.' });
+    }
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -185,7 +265,7 @@ router.post('/admin/users', async (req, res) => {
 
   const needsVerification = !skip_verification;
   const verificationToken = needsVerification
-    ? (await import('crypto')).default.randomBytes(32).toString('hex')
+    ? crypto.randomBytes(32).toString('hex')
     : null;
 
   // Determinăm org_id de folosit:

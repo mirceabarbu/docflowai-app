@@ -568,9 +568,20 @@ const MIGRATIONS = [
     id: '031_token_version',
     sql: `
       -- SEC-04: token_version pentru invalidare JWT la reset parolă.
-      -- La reset: token_version++ → JWT-ul vechi are tv incompatibil → forțăm re-login.
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;
+    `
+  },
+  {
+    id: '032_organization_webhooks',
+    sql: `
+      -- FEAT-N01: webhook generic per organizație (AvanDoc, registratură proprie, etc.)
+      ALTER TABLE organizations
+        ADD COLUMN IF NOT EXISTS webhook_url     TEXT,
+        ADD COLUMN IF NOT EXISTS webhook_secret  TEXT,
+        ADD COLUMN IF NOT EXISTS webhook_events  TEXT[]   NOT NULL DEFAULT '{flow.completed}',
+        ADD COLUMN IF NOT EXISTS webhook_enabled BOOLEAN  NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW();
     `
   }
 ];
