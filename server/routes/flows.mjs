@@ -12,7 +12,11 @@
  * FIX v3.2.2: LIKE injection escape, input length limits, originalPdfB64 pentru reinitiate curat
  */
 
-import { Router } from 'express';
+import { Router, json as expressJson } from 'express';
+
+// PERF-03: middleware 50MB aplicat doar pe rutele care primesc pdfB64/signedPdfB64/dataB64.
+// Limita globala din index.mjs este 1MB.
+const _largePdf = expressJson({ limit: '50mb' });
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
@@ -174,8 +178,8 @@ const createFlow = async (req, res) => {
   } catch(e) { logger.error({ err: e }, 'POST /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 };
 
-router.post('/flows', createFlow);
-router.post('/api/flows', createFlow);
+router.post('/flows', _largePdf, createFlow);
+router.post('/api/flows', _largePdf, createFlow);
 
 // ── GET /flows/:flowId/signed-pdf ──────────────────────────────────────────
 router.get('/flows/:flowId/signed-pdf', async (req, res) => {
@@ -294,7 +298,7 @@ router.get('/api/flows/:flowId', getFlowHandler);
 
 // ── PUT /flows/:flowId ─────────────────────────────────────────────────────
 // FIX: validare structura body — nu permite suprascrierea completa
-router.put('/flows/:flowId', async (req, res) => {
+router.put('/flows/:flowId', _largePdf, async (req, res) => {
   try {
     if (requireDb(res)) return;
     if (await requireAdmin(req, res)) return;
@@ -471,7 +475,7 @@ router.post('/flows/:flowId/register-download', async (req, res) => {
 });
 
 // ── POST /flows/:flowId/upload-signed-pdf ─────────────────────────────────
-router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
+router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
   try {
     if (requireDb(res)) return;
     const { flowId } = req.params;
@@ -559,10 +563,14 @@ router.post('/flows/:flowId/upload-signed-pdf', async (req, res) => {
 router.post('/flows/:flowId/resend', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    if (await requireAdmin(req, res)) return;
+    const actor = requireAuth(req, res); if (!actor) return;
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
+    // admin: acces global; org_admin: doar fluxuri din propria instituție; inițiator: flux propriu
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
+    if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate retrimite notificarea.' });
     const current = (data.signers || []).find(s => s.status === 'current');
     if (!current) return res.status(409).json({ error: 'no_current_signer' });
     if (!current.email) return res.status(400).json({ error: 'current_missing_email' });
@@ -575,12 +583,15 @@ router.post('/flows/:flowId/resend', async (req, res) => {
 router.post('/flows/:flowId/regenerate-token', async (req, res) => {
   try {
     if (requireDb(res)) return;
-    if (await requireAdmin(req, res)) return;
+    const actor = requireAuth(req, res); if (!actor) return;
     const { flowId } = req.params;
     const { signerEmail } = req.body || {};
     if (!signerEmail) return res.status(400).json({ error: 'signerEmail_required' });
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
+    // admin: acces global; org_admin: doar fluxuri din propria instituție
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
+    if (!isAdmin) return res.status(403).json({ error: 'forbidden', message: 'Doar un administrator poate regenera token-ul.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => (s.email || '').toLowerCase() === signerEmail.toLowerCase());
     if (idx === -1) return res.status(404).json({ error: 'signer_not_found' });
@@ -863,7 +874,7 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
 
 // ── POST /flows/:flowId/reinitiate-review ─────────────────────────────────
 // Issue 4: Reinitializeaza fluxul IN ACELASI ID — nu creeaza un flow nou
-router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
+router.post('/flows/:flowId/reinitiate-review', _largePdf, async (req, res) => {
   try {
     if (requireDb(res)) return;
     const actor = requireAuth(req, res); if (!actor) return;
@@ -1152,7 +1163,7 @@ const ATTACH_ALLOWED_MIME = new Set([
 const ATTACH_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 // POST /flows/:flowId/attachments — încarcă document suport
-router.post('/flows/:flowId/attachments', async (req, res) => {
+router.post('/flows/:flowId/attachments', _largePdf, async (req, res) => {
   try {
     if (requireDb(res)) return;
     const actor = requireAuth(req, res); if (!actor) return;

@@ -552,6 +552,17 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_oprm_judet  ON outreach_primarii(judet);
       CREATE INDEX IF NOT EXISTS idx_oprm_activ  ON outreach_primarii(activ);
     `
+  },
+  {
+    id: '030_outreach_unsubscribe',
+    sql: `
+      -- SEC-N01: GDPR compliance — dezabonare outreach
+      ALTER TABLE outreach_primarii
+        ADD COLUMN IF NOT EXISTS unsubscribed       BOOLEAN     NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS unsubscribe_token  TEXT        UNIQUE;
+      CREATE INDEX IF NOT EXISTS idx_oprm_unsub_token ON outreach_primarii(unsubscribe_token)
+        WHERE unsubscribe_token IS NOT NULL;
+    `
   }
 ];
 

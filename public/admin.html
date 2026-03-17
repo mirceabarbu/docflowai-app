@@ -2511,7 +2511,10 @@ async function prLoad(page) {
             style="cursor:pointer;accent-color:var(--accent2);" />
         </td>
         <td style="padding:5px 8px;color:var(--text);">${escH(p.institutie)}</td>
-        <td style="padding:5px 8px;color:var(--muted);">${escH(p.email)}</td>
+        <td style="padding:5px 8px;color:var(--muted);">
+          ${escH(p.email)}
+          ${p.unsubscribed ? '<span title="Dezabonat GDPR" style="margin-left:5px;font-size:.7rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.25);border-radius:4px;color:#ffaaaa;padding:1px 5px;">🚫 dezabonat</span>' : ''}
+        </td>
         <td style="padding:5px 8px;color:var(--muted);">${escH(p.judet)}</td>
         <td style="padding:5px 8px;text-align:right;white-space:nowrap;">
           <button onclick="prEditRow(${p.id},'${escH(p.institutie)}','${escH(p.email)}','${escH(p.judet)}','${escH(p.localitate||p.institutie)}')"

@@ -91,7 +91,9 @@ const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
   : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : true);
 app.use(cors({ origin: corsOrigins, credentials: true }));
-app.use(express.json({ limit: '50mb' }));
+// PERF-03: limita globala 1MB — previne body flood pe endpoint-urile cu JSON mic.
+// Rutele care primesc PDF (pdfB64/signedPdfB64/dataB64) au override 50MB in flows.mjs.
+app.use(express.json({ limit: '1mb' }));
 
 // ── Request ID + safe JSON error envelope ─────────────────────────────────
 app.use((req, res, next) => {

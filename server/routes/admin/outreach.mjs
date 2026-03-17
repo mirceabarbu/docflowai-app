@@ -73,13 +73,17 @@ async function ensurePrimariiSeeded() {
     // Seed din JSON
     const jsonData = getPrimarii();
     if (!jsonData.length) return;
+    // SEC-N01: includem unsubscribe_token la seed (5 parametri/rand)
     const values = jsonData.map((p, i) => {
-      const base = i * 4;
-      return `($${base+1}, $${base+2}, $${base+3}, $${base+4})`;
+      const base = i * 5;
+      return `($${base+1}, $${base+2}, $${base+3}, $${base+4}, $${base+5})`;
     }).join(',');
-    const flat = jsonData.flatMap(p => [p.institutie, p.email, p.judet || '', p.localitate || p.institutie]);
+    const flat = jsonData.flatMap(p => [
+      p.institutie, p.email, p.judet || '', p.localitate || p.institutie,
+      crypto.randomUUID(),
+    ]);
     await pool.query(
-      `INSERT INTO outreach_primarii (institutie, email, judet, localitate) VALUES ${values}
+      `INSERT INTO outreach_primarii (institutie, email, judet, localitate, unsubscribe_token) VALUES ${values}
        ON CONFLICT (email) DO NOTHING`,
       flat
     );
@@ -268,8 +272,8 @@ async function sentToday() {
   return parseInt(rows[0].cnt);
 }
 
-/** Email HTML de baza cu tracking pixel + click tracking injectat */
-function buildHtml(template, institutie, trackingId, baseUrl) {
+/** Email HTML de baza cu tracking pixel + click tracking injectat + footer dezabonare (GDPR) */
+function buildHtml(template, institutie, trackingId, baseUrl, unsubscribeUrl = null) {
   const displayInstitutie = institutie
     .toLowerCase()
     .replace(/(?:^|\s)\S/g, c => c.toUpperCase());
@@ -288,8 +292,18 @@ function buildHtml(template, institutie, trackingId, baseUrl) {
       }
     );
   }
-  return html.replace('</body>', `${pixel}</body>`)
-    + (template.includes('</body>') ? '' : pixel);
+  // SEC-N01 / GDPR: footer dezabonare obligatoriu în emailuri comerciale
+  const unsubFooter = unsubscribeUrl
+    ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;text-align:center;font-family:Arial,sans-serif;font-size:11px;color:#aaa;">
+        Dacă nu mai doriți să primiți comunicări de la DocFlowAI, puteți
+        <a href="${unsubscribeUrl}" style="color:#aaa;">dezabona această adresă de email</a>.
+       </div>`
+    : '';
+  const withFooter = html.includes('</body>')
+    ? html.replace('</body>', `${unsubFooter}</body>`)
+    : html + unsubFooter;
+  return withFooter.replace('</body>', `${pixel}</body>`)
+    + (withFooter.includes('</body>') ? '' : pixel);
 }
 
 // ── Click tracking (public — fără auth) ───────────────────────────────────
@@ -572,12 +586,16 @@ router.post('/campaigns/:id/send', async (req, res) => {
     }
     const toSend = Math.min(batchSize, remaining);
 
-    // Destinatari pending
+    // Destinatari pending — excludem dezabonații (JOIN cu outreach_primarii)
     const { rows: pending } = await pool.query(`
-      SELECT id, email, institutie, tracking_id
-      FROM outreach_recipients
-      WHERE campaign_id = $1 AND status = 'pending'
-      ORDER BY id ASC
+      SELECT r.id, r.email, r.institutie, r.tracking_id,
+             p.unsubscribe_token
+      FROM outreach_recipients r
+      LEFT JOIN outreach_primarii p ON lower(p.email) = lower(r.email)
+      WHERE r.campaign_id = $1
+        AND r.status = 'pending'
+        AND (p.unsubscribed IS NULL OR p.unsubscribed = FALSE)
+      ORDER BY r.id ASC
       LIMIT $2
     `, [campaignId, toSend]);
 
@@ -597,7 +615,11 @@ router.post('/campaigns/:id/send', async (req, res) => {
     const baseUrl = getBaseUrl(req);
 
     for (const recip of pending) {
-      const html = buildHtml(campaign.html_body, recip.institutie, recip.tracking_id, baseUrl);
+      // SEC-N01: link dezabonare unic per destinatar
+      const unsubUrl = recip.unsubscribe_token
+        ? `${baseUrl}/admin/outreach/unsubscribe/${recip.unsubscribe_token}`
+        : null;
+      const html = buildHtml(campaign.html_body, recip.institutie, recip.tracking_id, baseUrl, unsubUrl);
       try {
         await sendEmail({
           to: recip.email,
@@ -650,6 +672,72 @@ router.post('/campaigns/:id/reset-errors', async (req, res) => {
     res.json({ reset: rowCount });
   } catch(e) {
     logger.error({ err: e }, 'outreach reset errors error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── GET /admin/outreach/unsubscribe/:token — dezabonare publică (fără auth) ────
+// SEC-N01 / GDPR Art.21: link de dezabonare obligatoriu în emailuri comerciale.
+// Nu necesită autentificare — funcționează direct din clientul de email.
+router.get('/unsubscribe/:token', async (req, res) => {
+  const { token } = req.params;
+  if (!token || !/^[0-9a-f-]{36}$/.test(token)) {
+    return res.status(400).send('<h2>Link de dezabonare invalid.</h2>');
+  }
+  try {
+    const { rowCount, rows } = await pool.query(
+      `UPDATE outreach_primarii
+       SET unsubscribed = TRUE, updated_at = NOW()
+       WHERE unsubscribe_token = $1
+         AND unsubscribed = FALSE
+       RETURNING email, institutie`,
+      [token]
+    );
+    if (!rowCount) {
+      // Deja dezabonat sau token invalid
+      return res.status(200).send(`
+        <!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8"><title>Dezabonare</title>
+        <style>body{font-family:Arial,sans-serif;max-width:520px;margin:80px auto;text-align:center;color:#444;}</style></head>
+        <body><h2>✅ Adresa este deja dezabonată</h2>
+        <p>Nu veți mai primi comunicări de la DocFlowAI pe această adresă.</p></body></html>
+      `);
+    }
+    const { email, institutie } = rows[0];
+    logger.info({ email, institutie }, 'outreach: dezabonare reusita');
+    res.status(200).send(`
+      <!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8"><title>Dezabonare confirmată</title>
+      <style>body{font-family:Arial,sans-serif;max-width:520px;margin:80px auto;text-align:center;color:#444;}</style></head>
+      <body><h2>✅ Dezabonare confirmată</h2>
+      <p>Adresa <strong>${escHtml(email)}</strong> a fost dezabonată cu succes.<br>
+      Nu veți mai primi comunicări de la DocFlowAI.</p></body></html>
+    `);
+  } catch(e) {
+    logger.error({ err: e }, 'outreach unsubscribe error');
+    res.status(500).send('<h2>Eroare internă. Încercați din nou.</h2>');
+  }
+});
+
+// ── POST /admin/outreach/primarii/ensure-tokens — generare token lipsă ───────
+// Util după upgrade pentru rândurile existente fără unsubscribe_token.
+router.post('/primarii/ensure-tokens', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  try {
+    // Actualizează rândurile fără token
+    const { rows: missing } = await pool.query(
+      `SELECT id FROM outreach_primarii WHERE unsubscribe_token IS NULL LIMIT 5000`
+    );
+    let updated = 0;
+    for (const row of missing) {
+      await pool.query(
+        `UPDATE outreach_primarii SET unsubscribe_token = $1 WHERE id = $2`,
+        [crypto.randomUUID(), row.id]
+      );
+      updated++;
+    }
+    res.json({ ok: true, updated, remaining: missing.length === 5000 ? '5000+' : 0 });
+  } catch(e) {
+    logger.error({ err: e }, 'ensure-tokens error');
     res.status(500).json({ error: 'server_error' });
   }
 });

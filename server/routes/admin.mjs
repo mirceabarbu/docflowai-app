@@ -934,7 +934,7 @@ router.get('/admin/stats', async (req, res) => {
       const [flowsR, usersR, notifsR, archR] = await Promise.all([
         pool.query('SELECT COUNT(*) FROM flows WHERE org_id=$1', [orgId]),
         pool.query('SELECT COUNT(*) FROM users WHERE org_id=$1', [orgId]),
-        pool.query('SELECT COUNT(*) FROM notifications n JOIN users u ON u.id=n.user_id WHERE u.org_id=$1 AND n.read=FALSE', [orgId]),
+        pool.query('SELECT COUNT(*) FROM notifications n JOIN users u ON lower(u.email)=lower(n.user_email) WHERE u.org_id=$1 AND n.read=FALSE', [orgId]),
         pool.query("SELECT COUNT(*) FROM flows WHERE org_id=$1 AND data->>'storage'='drive'", [orgId]),
       ]);
       return res.json({ ok: true, stats: { flows: parseInt(flowsR.rows[0].count), flowsArchived: parseInt(archR.rows[0].count), users: parseInt(usersR.rows[0].count), unreadNotifications: parseInt(notifsR.rows[0].count), dbSize: null, dbBytes: null } });

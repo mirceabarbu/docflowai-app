@@ -133,3 +133,77 @@ să activeze niciodată butonul.
 nu se încarcă în 10 secunde (CDN lent/blocat). În loc, descarcă PDF-ul simplu de la
 `/flows/:flowId/pdf` fără cartuș vizual și returnează blob-ul — semnatarul poate semna
 documentul și îl poate încărca înapoi normal.
+
+---
+
+### 🟡 PERF-03 — express.json limit global 50MB → 1MB
+
+**Fișiere:** `server/index.mjs`, `server/routes/flows.mjs`
+
+Limita globală redusă la 1MB — previne body flood pe endpoint-urile care acceptă
+JSON mic (auth, notifications, sign, refuse, cancel, delegate etc.).
+
+Override 50MB aplicat explicit pe cele 6 rute din `flows.mjs` care primesc `pdfB64` /
+`signedPdfB64` / `dataB64`:
+- `POST /flows` + `POST /api/flows`
+- `PUT /flows/:flowId`
+- `POST /flows/:flowId/upload-signed-pdf`
+- `POST /flows/:flowId/reinitiate-review`
+- `POST /flows/:flowId/attachments`
+
+---
+
+### 🟠 SEC-N01 — Outreach: link dezabonare GDPR (Legea 506/2004 / GDPR Art.21)
+
+**Fișiere:** `server/db/index.mjs`, `server/routes/admin/outreach.mjs`, `public/admin.html`
+
+Emailurile comerciale trimise primăriilor nu aveau link de dezabonare — risc GDPR
+și risc de ban pe Resend.
+
+**Migrare 030** (`030_outreach_unsubscribe`): două coloane noi în `outreach_primarii`:
+- `unsubscribed BOOLEAN NOT NULL DEFAULT FALSE`
+- `unsubscribe_token TEXT UNIQUE` (UUID generat la seed/import)
+
+**`outreach.mjs`** — 5 modificări:
+1. **Seed**: generare `unsubscribe_token = randomUUID()` la inserarea inițială din JSON
+2. **`buildHtml()`**: parametru nou `unsubscribeUrl` → footer HTML cu link dezabonare
+3. **`/send`**: JOIN cu `outreach_primarii` pentru a exclude `unsubscribed = TRUE` din batch
+4. **`/send`**: generare `unsubUrl` per destinatar, injectat în email via `buildHtml()`
+5. **Endpoint nou `GET /admin/outreach/unsubscribe/:token`** — public (fără auth),
+   setează `unsubscribed = TRUE`, returnează pagină HTML de confirmare în română
+
+**Endpoint nou `POST /admin/outreach/primarii/ensure-tokens`** — admin only,
+generează `unsubscribe_token` pentru rândurile existente fără token (upgrade graceful).
+
+**`admin.html`**: badge `🚫 dezabonat` vizibil în tabelul instituțiilor outreach.
+
+---
+
+### 🟠 BUG-N04 — org_admin primea forbidden la Retrimite notificare și Regenerare token
+
+**Fișier:** `server/routes/flows.mjs`
+
+**Problema:** `POST /flows/:flowId/resend` și `POST /flows/:flowId/regenerate-token`
+foloseau `requireAdmin` strict (`role === admin`) — blocând complet `org_admin`.
+
+**Fix:**
+- `/resend` — înlocuit cu `requireAuth` + verificare tenant:
+  admin global / org_admin pe propria instituție / inițiatorul fluxului pot retrimite
+- `/regenerate-token` — înlocuit cu `requireAuth` + verificare tenant:
+  admin global / org_admin pe propria instituție pot regenera tokenul
+
+`PUT /flows/:flowId` (editare completă câmpuri sensibile) rămâne `requireAdmin` strict.
+
+---
+
+### 🔴 BUG-N05 — Crash la GET /admin/stats pentru org_admin (column n.user_id does not exist)
+
+**Fișier:** `server/routes/admin.mjs`, linia 937
+
+**Eroarea:** `ERROR: column n.user_id does not exist`
+
+Tabelul `notifications` stochează utilizatorul prin `user_email TEXT`, nu prin `user_id INTEGER`.
+Query-ul pentru org_admin folosea `JOIN users u ON u.id=n.user_id` — coloana nu există,
+cauzând crash la fiecare încărcare a paginii de admin.
+
+**Fix:** JOIN corectat la `lower(u.email) = lower(n.user_email)`.
