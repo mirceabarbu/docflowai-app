@@ -1018,6 +1018,13 @@ function renderPagination(total, current, totalPages){
 
 // ── org_admin: blochează toate filtrele de instituție ─────────────────────
 function lockOrgAdminFilters(institutie) {
+  // Ascunde secțiunile periculoase ÎNTOTDEAUNA pentru org_admin,
+  // indiferent dacă institutie e populat sau nu.
+  // BUG-FIX b80: if (!institutie) return era prea devreme — org_admin fără
+  // institutie vedea ⚠ Administrare fluxuri și 🧹 VACUUM.
+  const adminFluxSection = $('adminFluxSection');
+  if (adminFluxSection) adminFluxSection.style.display = 'none';
+
   if (!institutie) return;
   const lock = (el, val) => {
     if (!el) return;
@@ -1049,10 +1056,7 @@ function lockOrgAdminFilters(institutie) {
   lock($('archiveInstFilter'), institutie);
   // Tab Fluxuri — delInstFilter (ștergere vechi)
   lock($('delInstFilter'), institutie);
-  // Ascunde întreaga secțiune "Administrare fluxuri" — doar super-admin
-  const adminFluxSection = $('adminFluxSection');
-  if (adminFluxSection) adminFluxSection.style.display = 'none';
-  // (vacuumCard și delAllCard sunt în interiorul secțiunii — ascunse implicit)
+  // (vacuumCard și delAllCard sunt în interiorul adminFluxSection — ascunse la începutul funcției)
   // Tab Rapoarte — rptInst
   lock($('rptInst'), institutie);
 }

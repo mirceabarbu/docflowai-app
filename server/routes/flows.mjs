@@ -328,7 +328,7 @@ router.delete('/flows/:flowId', async (req, res) => {
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate șterge acest flux.' });
     if (!isAdmin) {
@@ -720,7 +720,7 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    const isAdmin = actor.role === 'admin';
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate reiniția fluxul.' });
     const hasRefused = (data.signers || []).some(s => s.status === 'refused');
@@ -818,7 +818,7 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     const idx = signers.findIndex(s => s.token === token);
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
     if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired', message: 'Link-ul de semnare a expirat (90 zile).' });
-    const isAdmin = actor?.role === 'admin';
+    const isAdmin = actor?.role === 'admin' || (actor?.role === 'org_admin' && Number(data.orgId) === Number(actor?.orgId));
     const isCurrentSignerActor = !!actor && ((signers[idx].email || '').toLowerCase() === (actor.email || '').toLowerCase());
     if (actor && !isAdmin && !isCurrentSignerActor) return res.status(403).json({ error: 'forbidden', message: 'Doar semnatarul curent sau un admin poate trimite spre revizuire.' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer' });
@@ -883,7 +883,7 @@ router.post('/flows/:flowId/reinitiate-review', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
 
-    const isAdmin = actor.role === 'admin';
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul poate reiniția după revizuire.' });
     if (data.status !== 'review_requested') return res.status(409).json({ error: 'not_in_review', message: 'Fluxul nu este în starea de revizuire.' });
@@ -999,7 +999,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     const currentSignerEmail = (signers[idx].email || '').toLowerCase();
     // FIX v3.3.3: delegarea trebuie să meargă și din link public (fără sesiune), pe baza fromToken.
     // Dacă există actor logat, îl validăm; dacă nu există, permitem doar fluxul token-based.
-    const isAdmin = actor?.role === 'admin';
+    const isAdmin = actor?.role === 'admin' || (actor?.role === 'org_admin' && Number(data.orgId) === Number(actor?.orgId));
     const isCurrentSigner = !!actor && currentSignerEmail === (actor.email || '').toLowerCase();
     if (actor && !isAdmin && !isCurrentSigner) return res.status(403).json({ error: 'forbidden', message: 'Doar semnatarul curent sau un admin poate delega.' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer', message: 'Se poate delega doar semnatarul curent.' });
@@ -1107,7 +1107,7 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     const { reason } = req.body || {};
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    const isAdmin = actor.role === 'admin';
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un admin poate anula fluxul.' });
     if (data.completed) return res.status(409).json({ error: 'already_completed', message: 'Un flux finalizat nu poate fi anulat.' });
@@ -1161,7 +1161,7 @@ router.post('/flows/:flowId/attachments', async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
     // Doar inițiatorul sau admin poate atașa documente
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
-    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
     if (!isInit && !isAdmin) return res.status(403).json({ error: 'forbidden' });
     if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled' });
 
@@ -1247,7 +1247,7 @@ router.delete('/flows/:flowId/attachments/:attId', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
-    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && Number(data.orgId) === Number(actor.orgId));
     if (!isInit && !isAdmin) return res.status(403).json({ error: 'forbidden' });
     const { rowCount } = await pool.query('DELETE FROM flow_attachments WHERE id=$1 AND flow_id=$2', [parseInt(attId), flowId]);
     if (!rowCount) return res.status(404).json({ error: 'not_found' });

@@ -20,7 +20,7 @@ const { Pool } = pg;
 
 export const DATABASE_URL = process.env.DATABASE_URL;
 export const pool = DATABASE_URL
-  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 10 })
+  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 20, idleTimeoutMillis: 30000 })
   : null;
 
 export let DB_READY = false;

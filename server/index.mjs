@@ -1,15 +1,15 @@
 /**
- * DocFlowAI v3.3.5 — Main entry point (orchestrator)
+ * DocFlowAI v3.3.7 — Main entry point (orchestrator)
  *
- * CHANGES v3.3.5:
- *  SEC-02: ADMIN_SECRET rate limiting + audit log (in auth.mjs)
- *  SEC-03: PBKDF2 600k + lazy re-hash (in auth.mjs + routes/auth.mjs)
- *  PERF-01: 3 indexuri JSONB noi (in db/index.mjs migration 021)
- *  LOG-01: Logging structurat JSON via middleware/logger.mjs (inlocuieste console.log)
- *  HEALTH: /health endpoint imbunatatit cu memory usage + DB latency
+ * CHANGES v3.3.7 b80:
+ *  FIX BUG-N01: archive_jobs recovery la startup (status='processing' > 30min → reset 'pending')
+ *  FIX BUG-N03: Swagger /api-docs + /api-docs.json protejate cu autentificare
+ *  FIX CODE-N02: APP_VERSION citit din package.json (single source of truth)
+ *  FIX PERF-04: Pool DB max: 10 → 20, idleTimeoutMillis: 30000
  */
 
 import express from 'express';
+import { readFileSync } from 'fs';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -18,6 +18,11 @@ import crypto from 'crypto';
 import path from 'path';
 import http from 'http';
 import { fileURLToPath } from 'url';
+
+// CODE-N02: versiune citită din package.json — single source of truth
+const _pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));
+const APP_VERSION = _pkg.version;
+
 import { sendSignerEmail } from './mailer.mjs';
 import { sendWaSignRequest, sendWaCompleted, sendWaRefused, isWhatsAppConfigured } from './whatsapp.mjs';
 import { archiveFlow, verifyDrive } from './drive.mjs';
@@ -135,14 +140,21 @@ app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'template
 
 // ── Health public ─────────────────────────────────────────────────────────
 // ── API Docs — OpenAPI 3.0 ───────────────────────────────────────────────────
-// GET /api-docs.json — spec JSON brut (Postman, Insomnia, integrări externe)
-// GET /api-docs      — Swagger UI interactiv (browser)
+// GET /api-docs.json — spec JSON brut (Postman, Insomnia, integrări externe) — auth required
+// GET /api-docs      — Swagger UI interactiv (browser) — auth required
+// BUG-N03: protejat cu cookie auth — structura API nu trebuie expusă public
 app.get('/api-docs.json', (req, res) => {
+  if (!req.cookies?.auth_token) {
+    return res.status(401).json({ error: 'auth_required', message: 'Autentificare necesară pentru API docs.' });
+  }
   res.setHeader('Content-Type', 'application/json');
   res.json(openApiSpec);
 });
 
 app.get('/api-docs', (req, res) => {
+  if (!req.cookies?.auth_token) {
+    return res.redirect('/login.html?redirect=/api-docs');
+  }
   // URL relativ — funcționează pe orice domeniu fără a depinde de publicBaseUrl
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html>
@@ -180,7 +192,7 @@ app.get('/health', (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.7',
+    version: APP_VERSION,
     ts: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     memory: {
@@ -202,7 +214,7 @@ app.get('/admin/health', async (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.7',
+    version: APP_VERSION,
     dbReady: !!DB_READY,
     dbLatencyMs,
     dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null,
@@ -826,7 +838,23 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT }, 'DocFlowAI v3.3.7 server pornit');
+  logger.info({ port: PORT, version: APP_VERSION }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
-  initDbWithRetry();
+  initDbWithRetry().then(async () => {
+    // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway
+    // Job-urile rămase în processing > 30min nu vor fi niciodată reluate fără acest reset.
+    try {
+      const { rowCount } = await pool.query(`
+        UPDATE archive_jobs
+        SET status = 'pending', started_at = NULL
+        WHERE status = 'processing'
+          AND started_at < NOW() - INTERVAL '30 minutes'
+      `);
+      if (rowCount > 0) {
+        logger.warn({ rowCount }, 'archive_jobs: reset jobs blocate (processing → pending)');
+      }
+    } catch(e) {
+      logger.warn({ err: e }, 'archive_jobs recovery: eroare la startup (non-fatal)');
+    }
+  }).catch(() => {}); // initDbWithRetry gestionează propriile erori intern
 });
