@@ -145,6 +145,24 @@ th{ color: var(--sub) !important; }
 #err{ border-color: rgba(251,113,133,.35) !important; }
 /* ===== End theme ===== */
 
+
+    /* ── Câmp AcroForm per semnatar (ancore) ───────────────────────────────── */
+    .ancore-field-col { display: none; width: 180px; }
+    .doctype-ancore .ancore-field-col { display: table-cell; }
+    select.ancoreField {
+      width: 100%; padding: 5px 8px;
+      background: rgba(45,212,191,.07);
+      border: 1px solid rgba(45,212,191,.25);
+      border-radius: 7px; color: #7cf0e0;
+      font-size: .82rem; cursor: pointer;
+    }
+    select.ancoreField option { background: #0d1020; color: #eaf0ff; }
+    select.ancoreField:disabled { opacity: .4; cursor: default; }
+    .ancore-field-hint {
+      font-size: .72rem; color: rgba(45,212,191,.55);
+      margin-top: 3px; display: none;
+    }
+    .doctype-ancore .ancore-field-hint { display: block; }
     /* ── E — b97: Mini-timeline orizontal în card flux ─────────────────────── */
     .mtl { display:flex; align-items:flex-start; gap:0; overflow-x:auto; padding:6px 0 2px; }
     .mtl::-webkit-scrollbar { height:4px; }
@@ -358,11 +376,29 @@ th{ color: var(--sub) !important; }
                     <th style="width:200px;">FUNCȚIE</th>
                     <th>NUME ȘI PRENUME</th>
                     <th style="width:280px;">EMAIL</th>
+                    <th class="ancore-field-col" title="Câmpul de semnătură din PDF (doar pentru fluxuri Ancore)">CÂMP SEMNĂTURĂ</th>
                     <th style="width:110px;"></th>
                   </tr>
                 </thead>
                 <tbody id="signersTbody"></tbody>
               </table>
+                <!-- Zona detectare câmpuri AcroForm — vizibilă doar pentru ancore -->
+                <div id="ancoreDetectArea" style="display:none; margin-top:10px; padding:12px 16px; background:rgba(45,212,191,.06); border:1px solid rgba(45,212,191,.2); border-radius:10px;">
+                  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <span style="font-size:.85rem; color:#7cf0e0; font-weight:600;">🔍 Câmpuri semnătură detectate în PDF:</span>
+                    <button id="btnDetectFields" type="button"
+                      style="padding:6px 14px; background:rgba(45,212,191,.15); border:1px solid rgba(45,212,191,.35); border-radius:7px; color:#2dd4bf; cursor:pointer; font-size:.82rem; font-weight:600;">
+                      🔄 Redetectează
+                    </button>
+                    <span id="detectStatus" style="font-size:.8rem; color:rgba(234,240,255,.5);"></span>
+                  </div>
+                  <div id="detectedFieldsList" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;"></div>
+                  <div style="margin-top:8px; font-size:.75rem; color:rgba(234,240,255,.35); line-height:1.5;">
+                    Asociază fiecare semnatar cu câmpul corespunzător din PDF folosind dropdown-ul din coloana <strong style="color:rgba(45,212,191,.6);">CÂMP SEMNĂTURĂ</strong>.
+                  </div>
+                </div>
+
+
             </div>
 
 
@@ -440,14 +476,22 @@ th{ color: var(--sub) !important; }
       function onDocTypeChange() {
         const isTabel = $("docTypeTabel").checked;
         const lbl1 = $("lblTip1"), lbl2 = $("lblTip2"), hint = $("docTypeHint");
+        // Adaugă/elimină clasa pe tabelul de semnatari — controlează vizibilitatea coloanei
+        const sigTable = $("signersTbody")?.closest("table");
+        if (sigTable) sigTable.classList.toggle("doctype-ancore", !isTabel);
         if (isTabel) {
           lbl1.style.borderColor = "rgba(124,92,255,.4)"; lbl1.style.background = "rgba(124,92,255,.1)";
           lbl2.style.borderColor = "rgba(255,255,255,.12)"; lbl2.style.background = "rgba(255,255,255,.03)";
           if (hint) hint.textContent = "DocFlowAI generează tabelul cu semnatari și ancora pentru semnătură";
+          // Ascundem zona de detectare câmpuri
+          const detectArea = $("ancoreDetectArea");
+          if (detectArea) detectArea.style.display = "none";
         } else {
           lbl2.style.borderColor = "rgba(45,212,191,.4)"; lbl2.style.background = "rgba(45,212,191,.08)";
           lbl1.style.borderColor = "rgba(255,255,255,.12)"; lbl1.style.background = "rgba(255,255,255,.03)";
           if (hint) hint.textContent = "PDF-ul are deja ancore create — se trimite pe flux fără modificări";
+          // Dacă există deja un PDF, afișăm zona de detectare
+          if (pdfB64) showAncoreDetectArea();
         }
       }
 
@@ -519,6 +563,8 @@ th{ color: var(--sub) !important; }
             box.style.display = "block";
             renderPdfJsInit(pdfB64);
           }
+          // Dacă tipul de flux e ancore — detectăm câmpurile automat
+          onPdfUploadedForAncore();
         };
         reader.readAsDataURL(f);
       });
@@ -664,6 +710,11 @@ th{ color: var(--sub) !important; }
             </select>
           </td>
           <td><input class="email" placeholder="—" readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);" /></td>
+          <td class="ancore-field-col">
+            <select class="ancoreField" disabled title="Câmpul AcroForm din PDF — disponibil după detectare">
+              <option value="">— Detectează câmpuri —</option>
+            </select>
+          </td>
           <td><button class="btn danger btnDel" type="button">Șterge</button></td>
         `;
         tr.querySelector(".rol").value = (s.rol || s.atribut || "ÎNTOCMIT");
@@ -671,6 +722,19 @@ th{ color: var(--sub) !important; }
         const nameSel = tr.querySelector(".name-select");
         if (nameSel) { nameSel.value = s.name || ""; } else { tr.querySelector(".name").value = (s.name || ""); }
         tr.querySelector(".email").value = (s.email || "");
+        // ancoreFieldName: pre-populat dacă rândul vine dintr-un șablon sau reinițiere
+        if (s.ancoreFieldName) {
+          const afSel = tr.querySelector(".ancoreField");
+          if (afSel) {
+            // Adaugă opțiunea dacă nu există deja (câmpurile se detectează ulterior)
+            if (![...afSel.options].some(o => o.value === s.ancoreFieldName)) {
+              const opt = document.createElement("option");
+              opt.value = s.ancoreFieldName; opt.textContent = s.ancoreFieldName;
+              afSel.appendChild(opt);
+            }
+            afSel.value = s.ancoreFieldName;
+          }
+        }
         tr.querySelector(".btnDel").addEventListener("click", () => { tr.remove(); refreshAllDropdowns?.(); });
 
         // Auto-fill name/email from initiator fields when ÎNTOCMIT is selected
@@ -842,7 +906,25 @@ th{ color: var(--sub) !important; }
         muts.forEach(m => m.addedNodes.forEach(n => { if (n.tagName === "TR") attachDragEvents(n); }));
       }).observe(tbody, { childList: true });
 
-      $("btnAdd").addEventListener("click", () => { tbody.appendChild(signerRowTemplate()); updateIntocmitVisibility(); validateForm(); });
+      $("btnAdd").addEventListener("click", () => {
+        const newRow = signerRowTemplate();
+        tbody.appendChild(newRow);
+        // Dacă avem câmpuri detectate, le populăm și în rândul nou
+        if (_detectedAncoreFields.length) {
+          const sel = newRow.querySelector(".ancoreField");
+          if (sel) {
+            sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
+            _detectedAncoreFields.forEach(f => {
+              const opt = document.createElement("option");
+              opt.value = f.name;
+              opt.textContent = f.name + (f.page ? ` (p.${f.page})` : "");
+              sel.appendChild(opt);
+            });
+            sel.disabled = false;
+          }
+        }
+        updateIntocmitVisibility(); validateForm();
+      });
       $("btnDefaults").addEventListener("click", setDefaults);
 
       // ── Sablon: aplica din sessionStorage sau deschide picker ──────────────
@@ -1614,19 +1696,114 @@ async function signFromFluxuri(flowId) {
         });
       });
 
+
+      // ── Detectare câmpuri AcroForm (flowType ancore) ─────────────────────
+      let _detectedAncoreFields = []; // cache câmpuri detectate
+
+      function showAncoreDetectArea() {
+        const area = $("ancoreDetectArea");
+        if (area) area.style.display = "";
+        // Clasă pe tabel pentru vizibilitate coloană
+        const sigTable = $("signersTbody")?.closest("table");
+        if (sigTable) sigTable.classList.add("doctype-ancore");
+      }
+
+      async function detectAncoreFields() {
+        if (!pdfB64) return;
+        const statusEl = $("detectStatus");
+        const listEl   = $("detectedFieldsList");
+        const btn      = $("btnDetectFields");
+        if (statusEl) statusEl.textContent = "⏳ Se detectează câmpurile...";
+        if (btn)      btn.disabled = true;
+        if (listEl)   listEl.innerHTML = "";
+        try {
+          const b64clean = pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64;
+          const r = await _apiFetch("/flows/detect-acroform-fields", {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ pdfB64: b64clean }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.message || j.error || "Eroare server");
+
+          _detectedAncoreFields = j.fields || [];
+
+          if (!_detectedAncoreFields.length) {
+            if (statusEl) statusEl.textContent = "⚠️ Nu s-au găsit câmpuri de semnătură în PDF.";
+            if (listEl)   listEl.innerHTML = "<span style='font-size:.78rem;color:rgba(255,200,50,.7);'>PDF-ul nu conține câmpuri de tip semnătură (AcroForm /Sig). Verificați că ați ales tipul corect de flux.</span>";
+            populateAncoreDropdowns([]);
+            return;
+          }
+
+          if (statusEl) statusEl.textContent = `✅ ${_detectedAncoreFields.length} câmp(uri) găsite.`;
+
+          // Afișăm badge-uri cu câmpurile detectate
+          if (listEl) {
+            listEl.innerHTML = _detectedAncoreFields.map(f =>
+              `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:12px;font-size:.77rem;color:#7cf0e0;">
+                <strong>${f.name}</strong>
+                ${f.page ? `<span style="color:rgba(234,240,255,.4);">· p.${f.page}</span>` : ""}
+              </span>`
+            ).join("");
+          }
+
+          populateAncoreDropdowns(_detectedAncoreFields);
+        } catch(e) {
+          if (statusEl) statusEl.textContent = "❌ Eroare detectare: " + e.message;
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      }
+
+      function populateAncoreDropdowns(fields) {
+        // Populează dropdown-ul ancoreField din fiecare rând al tabelului
+        const rows = [...$("signersTbody").querySelectorAll("tr")];
+        rows.forEach(tr => {
+          const sel = tr.querySelector(".ancoreField");
+          if (!sel) return;
+          const prevVal = sel.value;
+          sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
+          fields.forEach(f => {
+            const opt = document.createElement("option");
+            opt.value = f.name;
+            opt.textContent = f.name + (f.page ? ` (p.${f.page})` : "");
+            sel.appendChild(opt);
+          });
+          // Restaurăm selecția anterioară dacă câmpul există în continuare
+          if (prevVal && fields.some(f => f.name === prevVal)) sel.value = prevVal;
+          sel.disabled = fields.length === 0;
+        });
+      }
+
+      // Apelat din handler-ul de upload PDF (după ce pdfB64 e setat)
+      function onPdfUploadedForAncore() {
+        if (getDocType() !== "ancore") return;
+        showAncoreDetectArea();
+        detectAncoreFields();
+      }
+
       function readSigners() {
         const rows = [...tbody.querySelectorAll("tr")];
-        return rows.map((tr, i) => ({
-          order: i + 1,
-          rol: (() => { const sel = tr.querySelector(".rol"); if (sel.value === "__alt__") { return tr.querySelector(".rolCustom").value.trim().toUpperCase() || "__alt__"; } return sel.value; })(),
-          functie: tr.querySelector(".functie").value.trim(),
-          name: (tr.querySelector(".name-select") || tr.querySelector(".name"))?.value?.trim() || "",
-          email: tr.querySelector(".email").value.trim(),
-        })).filter(s => s.rol && (s.name || s.email));
+        return rows.map((tr, i) => {
+          const ancoreSel = tr.querySelector(".ancoreField");
+          const ancoreFieldName = ancoreSel?.value?.trim() || null;
+          return {
+            order: i + 1,
+            rol: (() => { const sel = tr.querySelector(".rol"); if (sel.value === "__alt__") { return tr.querySelector(".rolCustom").value.trim().toUpperCase() || "__alt__"; } return sel.value; })(),
+            functie: tr.querySelector(".functie").value.trim(),
+            name: (tr.querySelector(".name-select") || tr.querySelector(".name"))?.value?.trim() || "",
+            email: tr.querySelector(".email").value.trim(),
+            // ancoreFieldName: câmpul AcroForm — prezent doar pentru flowType='ancore'
+            ...(ancoreFieldName ? { ancoreFieldName } : {}),
+          };
+        }).filter(s => s.rol && (s.name || s.email));
       }
 
       // Create flow
       validateForm(); // inițializare stare buton
+      // Buton redetectare câmpuri AcroForm
+      const _btnDetectFields = $("btnDetectFields");
+      if (_btnDetectFields) _btnDetectFields.addEventListener("click", detectAncoreFields);
 
       // ── F-06: Attachment picker ─────────────────────────────────────────
       const _attachFiles = []; // [{file, name}]

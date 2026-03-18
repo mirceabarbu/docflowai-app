@@ -17,6 +17,7 @@ import { archiveFlow, verifyDrive } from '../drive.mjs';
 import { verifyWhatsApp, sendWaSignRequest } from '../whatsapp.mjs';
 import { gwsIsConfigured, findAvailableEmail, provisionGwsUser, verifyGws, buildLocalPart } from '../gws.mjs';
 import { logger } from '../middleware/logger.mjs';
+import { listAllProviders, getProvider, getOrgProviders, getOrgProviderConfig } from '../signing/index.mjs';
 
 // ── Helper: acceptă atât admin cât și org_admin ─────────────────────────────
 // org_admin vede/modifică doar propria organizație (orgId din JWT)
@@ -188,6 +189,105 @@ router.post('/admin/organizations/:id/test-webhook', async (req, res) => {
       res.json({ ok: false, error: fetchErr.message, message: 'Eroare de rețea — verificați URL-ul.' });
     }
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+
+
+
+// ── Signing Providers — API ──────────────────────────────────────────────
+// Arhitectură: provideri la nivel de org (ce e disponibil), ales per semnatar.
+
+// GET /admin/signing/providers — toți providerii disponibili în platformă
+router.get('/admin/signing/providers', async (req, res) => {
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  res.json(listAllProviders());
+});
+
+// GET /admin/organizations/:id/signing — configurația curentă de signing a unei org
+router.get('/admin/organizations/:id/signing', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  const orgId = parseInt(req.params.id);
+  if (!orgId) return res.status(400).json({ error: 'invalid_id' });
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, name, signing_providers_enabled, signing_providers_config FROM organizations WHERE id=$1',
+      [orgId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'org_not_found' });
+    const org = rows[0];
+    // Returnăm config fără API keys (securitate) — doar metadata
+    const configSafe = {};
+    for (const [pid, cfg] of Object.entries(org.signing_providers_config || {})) {
+      configSafe[pid] = { apiUrl: cfg.apiUrl || '', hasApiKey: !!(cfg.apiKey), hasWebhookSecret: !!(cfg.webhookSecret) };
+    }
+    res.json({
+      orgId:    org.id,
+      name:     org.name,
+      enabled:  org.signing_providers_enabled || ['local-upload'],
+      configSafe,
+      providers: getOrgProviders(org),
+    });
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+// PUT /admin/organizations/:id/signing — actualizează providerii activi + configurația
+// Doar super-admin — configurația conține API keys sensibile
+router.put('/admin/organizations/:id/signing', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden', message: 'Doar super-admin poate configura providerii de semnare.' });
+  const orgId = parseInt(req.params.id);
+  if (!orgId) return res.status(400).json({ error: 'invalid_id' });
+  const { enabled, config } = req.body || {};
+  if (!Array.isArray(enabled) || !enabled.length) {
+    return res.status(400).json({ error: 'enabled_required', message: 'Lista de provideri activi nu poate fi goală.' });
+  }
+  // Validăm că toți providerii din enabled există în platformă
+  const allIds = listAllProviders().map(p => p.id);
+  const unknown = enabled.filter(id => !allIds.includes(id));
+  if (unknown.length) return res.status(400).json({ error: 'unknown_providers', unknown, available: allIds });
+  // 'local-upload' trebuie să fie întotdeauna în listă (fallback obligatoriu)
+  const finalEnabled = enabled.includes('local-upload') ? enabled : ['local-upload', ...enabled];
+  try {
+    // Mergem config-ul nou cu cel existent (nu suprascrie API keys omise)
+    const { rows: existing } = await pool.query('SELECT signing_providers_config FROM organizations WHERE id=$1', [orgId]);
+    if (!existing.length) return res.status(404).json({ error: 'org_not_found' });
+    const existingConfig = existing[0].signing_providers_config || {};
+    const mergedConfig   = { ...existingConfig };
+    for (const [pid, cfg] of Object.entries(config || {})) {
+      mergedConfig[pid] = { ...(existingConfig[pid] || {}), ...cfg };
+    }
+    const { rows } = await pool.query(
+      `UPDATE organizations
+          SET signing_providers_enabled = $1,
+              signing_providers_config  = $2,
+              updated_at = NOW()
+        WHERE id = $3
+        RETURNING id, name, signing_providers_enabled, updated_at`,
+      [finalEnabled, JSON.stringify(mergedConfig), orgId]
+    );
+    logger.info({ orgId, enabled: finalEnabled, actor: actor.email }, 'Signing providers actualizați');
+    res.json({ ok: true, org: rows[0] });
+  } catch(e) { logger.error({ err: e }, 'PUT signing error'); res.status(500).json({ error: 'server_error' }); }
+});
+
+// POST /admin/signing/verify — verifică conexiunea cu un provider
+router.post('/admin/signing/verify', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const { providerId, config } = req.body || {};
+  if (!providerId) return res.status(400).json({ error: 'providerId_required' });
+  try {
+    const provider = getProvider(providerId);
+    const result   = await provider.verify(config || {});
+    res.json(result);
+  } catch(e) {
+    res.status(500).json({ ok: false, error: 'server_error', message: String(e.message) });
+  }
 });
 
 router.get('/admin/users', async (req, res) => {

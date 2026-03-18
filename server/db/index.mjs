@@ -1,4 +1,31 @@
 /**
+  {
+    id: '033_signing_providers',
+    sql: `
+      -- Arhitectură corectă: provider per semnatar, nu per organizație
+      --
+      -- signing_providers_enabled: ce provideri sunt contractați/activi în org
+      --   ex: ARRAY['local-upload', 'certsign', 'sts-cloud']
+      --
+      -- signing_providers_config: configurație per provider (API keys, URLs, secrets)
+      --   ex: { "certsign": { "apiKey": "...", "apiUrl": "...", "webhookSecret": "..." },
+      --          "sts-cloud": { "apiKey": "...", "apiUrl": "..." } }
+      --   NOTĂ: în producție, API keys trebuie criptate (pgcrypto sau vault extern)
+      --
+      -- preferred_signing_provider pe users: ce provider preferă utilizatorul
+      --   pre-selectat în UI semnatar, poate fi overridden la orice semnare
+
+      ALTER TABLE organizations
+        ADD COLUMN IF NOT EXISTS signing_providers_enabled TEXT[]  NOT NULL DEFAULT ARRAY['local-upload']::TEXT[],
+        ADD COLUMN IF NOT EXISTS signing_providers_config  JSONB   NOT NULL DEFAULT '{}';
+
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS preferred_signing_provider TEXT   DEFAULT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_org_signing_providers
+        ON organizations USING GIN (signing_providers_enabled);
+    `
+  },
  * DocFlowAI — DB layer v3.3.4
  * Pool PostgreSQL, migrări schema, helpers saveFlow / getFlowData / getUserMapForOrg.
  * NOTA: plain_password pastrat intentionat pentru workflow admin actual.

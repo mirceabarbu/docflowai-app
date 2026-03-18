@@ -274,6 +274,19 @@ th{ color: var(--sub) !important; }
 
           <div style="height:12px"></div>
 
+
+          <!-- Selecție provider semnare — afișat dacă org are multiple provideri -->
+          <div id="providerSelectBox" style="display:none; background:rgba(124,92,255,.07); border:1px solid rgba(124,92,255,.25); border-radius:14px; padding:16px; margin-bottom:12px;">
+            <div style="font-weight:700; margin-bottom:4px;">🔐 Cu ce semnezi?</div>
+            <div class="muted" style="font-size:.85rem; margin-bottom:14px; line-height:1.5;">
+              Alege provider-ul de semnătură electronică calificată pe care îl folosești.
+            </div>
+            <div class="provider-grid" id="providerGrid"></div>
+            <button id="btnProviderContinue" class="btn" style="width:100%; margin-top:12px; padding:13px; font-weight:700; background:linear-gradient(90deg,rgba(124,92,255,.9),rgba(45,212,191,.6)); border:none;" disabled>
+              Continuă cu provider-ul selectat →
+            </button>
+          </div>
+
           <!-- Semnătură electronică calificată — flux unic -->
           <div id="signBox" style="background:rgba(124,92,255,.08); border:1px solid rgba(124,92,255,.3); border-radius:14px; padding:16px;">
             <div style="font-weight:700; margin-bottom:10px;">✍️ Semnătură electronică calificată</div>
@@ -462,6 +475,157 @@ th{ color: var(--sub) !important; }
         } catch(e) { /* non-fatal */ }
       }
 
+
+      // ── Provider selecție ─────────────────────────────────────────────────
+      let _selectedProvider = 'local-upload';
+      let _orgProviders     = [{ id: 'local-upload', label: 'Upload local (orice certificat calificat)', mode: 'upload' }];
+
+      const PROVIDER_ICONS = {
+        'local-upload': '💻',
+        'sts-cloud':    '🏛️',
+        'certsign':     '📜',
+        'transsped':    '🔏',
+        'alfatrust':    '🛡️',
+        'namirial':     '✍️',
+      };
+      const PROVIDER_DESC = {
+        'local-upload': 'Descarcă PDF → semnează cu aplicație proprie → uploadează',
+        'sts-cloud':    'Semnare cloud direct în browser — certificat STS',
+        'certsign':     'Semnare cloud direct în browser — certificat certSIGN / Paperless',
+        'transsped':    'Semnare cloud direct în browser — certificat Trans Sped',
+        'alfatrust':    'Semnare cloud direct în browser — certificat AlfaTrust / AlfaSign',
+        'namirial':     'Semnare cloud direct în browser — certificat Namirial',
+      };
+
+      async function loadSigningProviders() {
+        try {
+          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/signing-providers?token=${encodeURIComponent(token)}`);
+          if (!r.ok) return; // non-fatal — rămânem pe local-upload
+          const j = await r.json();
+          _orgProviders = j.providers || _orgProviders;
+
+          // Dacă există un singur provider (local-upload) → sărim selecția
+          if (j.skipSelection) {
+            _selectedProvider = 'local-upload';
+            $('providerSelectBox').style.display = 'none';
+            return;
+          }
+
+          // Pre-selectăm preferința utilizatorului
+          if (j.preferred && _orgProviders.some(p => p.id === j.preferred)) {
+            _selectedProvider = j.preferred;
+          }
+
+          renderProviderGrid(_orgProviders, _selectedProvider);
+          $('providerSelectBox').style.display = '';
+          // Ascundem signBox până se alege providerul
+          $('signBox').style.display = 'none';
+        } catch(e) {
+          // Non-fatal — continuăm cu local-upload
+          _selectedProvider = 'local-upload';
+        }
+      }
+
+      function renderProviderGrid(providers, selectedId) {
+        const grid = $('providerGrid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        for (const p of providers) {
+          const card = document.createElement('div');
+          card.className = 'provider-card' + (p.id === selectedId ? ' selected' : '');
+          card.dataset.providerId = p.id;
+          card.innerHTML = `
+            <div class="p-icon">${PROVIDER_ICONS[p.id] || '🔐'}</div>
+            <div class="p-info">
+              <div class="p-label">${p.label}</div>
+              <div class="p-desc">${PROVIDER_DESC[p.id] || ''}</div>
+            </div>
+            <div class="p-check">${p.id === selectedId ? '✓' : ''}</div>
+          `;
+          card.addEventListener('click', () => selectProvider(p.id));
+          grid.appendChild(card);
+        }
+        $('btnProviderContinue').disabled = false;
+      }
+
+      function selectProvider(providerId) {
+        _selectedProvider = providerId;
+        // Actualizăm UI
+        document.querySelectorAll('.provider-card').forEach(c => {
+          const isSelected = c.dataset.providerId === providerId;
+          c.classList.toggle('selected', isSelected);
+          c.querySelector('.p-check').textContent = isSelected ? '✓' : '';
+        });
+        $('btnProviderContinue').disabled = false;
+      }
+
+      // Buton "Continuă" — aplică selecția și afișează signBox corect
+      document.addEventListener('DOMContentLoaded', () => {
+        const btnContinue = $('btnProviderContinue');
+        if (btnContinue) {
+          btnContinue.addEventListener('click', () => {
+            $('providerSelectBox').style.display = 'none';
+            applyProviderToSignBox(_selectedProvider);
+          });
+        }
+      });
+
+      function applyProviderToSignBox(providerId) {
+        $('signBox').style.display = '';
+        const p = _orgProviders.find(p => p.id === providerId);
+        if (!p) return;
+
+        if (p.mode === 'redirect') {
+          // Provider cloud: ascundem flow-ul de upload, afișăm buton redirect
+          $('btnDownloadForSigning').style.display = 'none';
+          $('btnChooseSignedPdf').style.display     = 'none';
+          $('btnUploadSignedPdf').style.display     = 'none';
+          // Instrucțiunile se actualizează
+          const desc = $('signBox').querySelector('.muted');
+          if (desc) desc.innerHTML = `<strong>${p.label}</strong><br>Vei fi redirectat la provider pentru semnare electronică calificată în browser. Documentul va fi returnat automat după semnare.`;
+          // Adaugă buton de redirect dacă nu există deja
+          if (!$('btnSignCloud')) {
+            const btn = document.createElement('button');
+            btn.id = 'btnSignCloud';
+            btn.className = 'btn';
+            btn.style.cssText = 'width:100%;padding:14px;font-weight:700;background:linear-gradient(90deg,#7c5cff,#2dd4bf);border:none;margin-bottom:8px;';
+            btn.textContent = `🔐 Semnează cu ${p.label}`;
+            btn.addEventListener('click', () => initiateCloudSigning(providerId));
+            $('signBox').insertBefore(btn, $('btnDownloadForSigning'));
+          }
+        } else {
+          // Provider local: flow normal de upload
+          $('btnDownloadForSigning').style.display = '';
+          $('btnChooseSignedPdf').style.display     = '';
+          $('btnUploadSignedPdf').style.display     = '';
+          const cloudBtn = $('btnSignCloud');
+          if (cloudBtn) cloudBtn.remove();
+        }
+      }
+
+      async function initiateCloudSigning(providerId) {
+        const btn = $('btnSignCloud');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Se inițiază sesiunea...'; }
+        try {
+          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/initiate-cloud-signing`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, providerId }),
+          });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.message || j.error || 'Eroare server');
+          if (j.signingUrl) {
+            // Redirect la provider
+            window.location.href = j.signingUrl;
+          } else {
+            throw new Error('Provider-ul nu a returnat URL de semnare.');
+          }
+        } catch(e) {
+          if (btn) { btn.disabled = false; btn.textContent = `🔐 Semnează cu provider`; }
+          showError('❌ ' + e.message);
+        }
+      }
+
       async function loadFlow() {
         if (!flow || !token) return;
 
@@ -570,6 +734,8 @@ th{ color: var(--sub) !important; }
             const warnEl = $("warnAncoreOnly");
             if (warnEl) warnEl.style.display = currentFlow?.flowType === "ancore" ? "inline" : "none";
             $("result").textContent = "";
+            // Încarcă providerii de semnare disponibili în org (non-blocking)
+            loadSigningProviders();
           }
         } catch (e) {
           $("result").textContent = "";

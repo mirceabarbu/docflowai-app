@@ -14,6 +14,7 @@
 
 import { Router, json as expressJson } from 'express';
 import { emailDelegare, emailSendExtern } from '../emailTemplates.mjs'; // A — b97
+import { getOrgProviders, getOrgProviderConfig, getProvider } from '../signing/index.mjs';
 
 // PERF-03: middleware 50MB aplicat doar pe rutele care primesc pdfB64/signedPdfB64/dataB64.
 // Limita globala din index.mjs este 1MB.
@@ -1356,5 +1357,380 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     return res.json({ ok: true, resendId: j.id });
   } catch(e) { logger.error({ err: e }, 'send-email error'); return res.status(500).json({ error: 'server_error', message: String(e.message) }); }
 });
+
+
+
+
+// ── POST /flows/detect-acroform-fields ───────────────────────────────────
+// Extrage câmpurile de semnătură (tip Sig) din PDF-ul uploadat.
+// Folosit de initiator la flowType='ancore' pentru a asocia câmpuri semnatarilor.
+// Endpoint public autentificat — nu necesită flowId (PDF e trimis direct).
+router.post('/flows/detect-acroform-fields', _largePdf, async (req, res) => {
+  try {
+    const actor = requireAuth(req, res); if (!actor) return;
+    const { pdfB64 } = req.body || {};
+    if (!pdfB64 || typeof pdfB64 !== 'string')
+      return res.status(400).json({ error: 'pdfB64_required' });
+
+    if (!_PDFLib)
+      return res.status(503).json({ error: 'pdf_lib_unavailable' });
+
+    const raw = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+
+    // Limită: max 50MB
+    if (Math.floor(raw.length * 0.75) > 50 * 1024 * 1024)
+      return res.status(413).json({ error: 'pdf_too_large' });
+
+    const { PDFDocument, PDFName, PDFArray, PDFDict } = _PDFLib;
+    const pdfBytes = Buffer.from(raw, 'base64');
+    const pdfDoc   = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+
+    // Construim un map pagină-ref → număr pagină (1-indexed)
+    const pages    = pdfDoc.getPages();
+    const pageNums = new Map();
+    pages.forEach((p, i) => pageNums.set(p.ref.toString(), i + 1));
+
+    const fields = [];
+
+    // Traversăm AcroForm Fields în mod recursiv
+    const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+    if (!acroFormRef) {
+      return res.json({ fields: [], message: 'PDF-ul nu conține un formular AcroForm.' });
+    }
+
+    const acroForm = pdfDoc.context.lookup(acroFormRef);
+    if (!acroForm || typeof acroForm.get !== 'function') {
+      return res.json({ fields: [], message: 'AcroForm invalid sau inaccessibil.' });
+    }
+
+    const topFieldsRef = acroForm.get(PDFName.of('Fields'));
+    if (!topFieldsRef) {
+      return res.json({ fields: [], message: 'AcroForm nu conține câmpuri.' });
+    }
+    const topFields = pdfDoc.context.lookup(topFieldsRef);
+    if (!topFields || typeof topFields.asArray !== 'function') {
+      return res.json({ fields: [] });
+    }
+
+    // Traversare recursivă câmpuri (suportă Kids/copii)
+    function traverseFields(fieldRefs, inheritedFT = null) {
+      const arr = Array.isArray(fieldRefs) ? fieldRefs : (fieldRefs?.asArray?.() || []);
+      for (const ref of arr) {
+        try {
+          const field = pdfDoc.context.lookup(ref);
+          if (!field || typeof field.get !== 'function') continue;
+
+          // FT poate fi moștenit de la părinte
+          const ftObj  = field.get(PDFName.of('FT'));
+          const ft     = ftObj ? ftObj.toString() : inheritedFT;
+
+          // Câmpuri copii (Kids) — traversăm recursiv
+          const kidsRef = field.get(PDFName.of('Kids'));
+          if (kidsRef) {
+            const kids = pdfDoc.context.lookup(kidsRef);
+            if (kids && typeof kids.asArray === 'function') {
+              traverseFields(kids.asArray(), ft);
+              continue; // container fără widget propriu
+            }
+          }
+
+          // Ne interesează doar câmpurile de tip semnătură (/Sig)
+          if (ft !== '/Sig') continue;
+
+          // Extrage numele câmpului (T)
+          const nameObj = field.get(PDFName.of('T'));
+          const name    = nameObj ? String(nameObj).replace(/^\//, '').replace(/^\(|\)$/g, '') : null;
+          if (!name) continue;
+
+          // Extrage numărul paginii din referința P (widget annotation)
+          let pageNum = null;
+          const pageRef = field.get(PDFName.of('P'));
+          if (pageRef) {
+            pageNum = pageNums.get(pageRef.toString()) || null;
+          }
+
+          // Extrage coordonatele din Rect (opțional — pentru previzualizare)
+          let rect = null;
+          const rectObj = field.get(PDFName.of('Rect'));
+          if (rectObj && typeof rectObj.asArray === 'function') {
+            const r = rectObj.asArray().map(n => {
+              const v = pdfDoc.context.lookup(n);
+              return typeof v?.asNumber === 'function' ? v.asNumber() : Number(String(v).replace(/[^0-9.\-]/g,'') || 0);
+            });
+            if (r.length === 4) rect = { x: r[0], y: r[1], width: r[2]-r[0], height: r[3]-r[1] };
+          }
+
+          fields.push({ name, page: pageNum, rect });
+        } catch(e) {
+          // câmp invalid — continuăm
+        }
+      }
+    }
+
+    traverseFields(topFields.asArray());
+
+    // Sortăm: pagină ASC, apoi y DESC (de sus în jos pe pagină)
+    fields.sort((a, b) => {
+      if ((a.page||0) !== (b.page||0)) return (a.page||0) - (b.page||0);
+      return (b.rect?.y || 0) - (a.rect?.y || 0);
+    });
+
+    logger.info({ actor: actor.email, fieldsCount: fields.length }, 'detect-acroform-fields');
+    return res.json({ fields, total: fields.length });
+  } catch(e) {
+    logger.error({ err: e }, 'detect-acroform-fields error');
+    return res.status(500).json({ error: 'server_error', message: String(e.message) });
+  }
+});
+
+// ── GET /flows/:flowId/signing-providers ──────────────────────────────────
+// Returnează providerii activi în org-ul fluxului, pentru dropdown-ul semnatarului.
+// Apelat de signer page la deschidere.
+router.get('/flows/:flowId/signing-providers', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const signerToken = req.query.token || req.headers['x-signer-token'] || null;
+    if (!signerToken) return res.status(403).json({ error: 'forbidden' });
+    const data = await getFlowData(req.params.flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    if (!(data.signers || []).some(s => s.token === signerToken))
+      return res.status(403).json({ error: 'forbidden' });
+
+    // Obținem org-ul pentru a citi signing_providers_enabled
+    let org = null;
+    if (data.orgId) {
+      const { rows } = await pool.query(
+        'SELECT signing_providers_enabled, signing_providers_config FROM organizations WHERE id=$1',
+        [data.orgId]
+      );
+      org = rows[0] || null;
+    }
+
+    const providers = getOrgProviders(org);
+    // Preferința semnatarului (dacă e logat și are preferred_signing_provider)
+    const signer = (data.signers || []).find(s => s.token === signerToken);
+    let preferredProvider = null;
+    if (signer?.email) {
+      const { rows: uRows } = await pool.query(
+        'SELECT preferred_signing_provider FROM users WHERE email=$1',
+        [signer.email.toLowerCase()]
+      );
+      preferredProvider = uRows[0]?.preferred_signing_provider || null;
+    }
+
+    res.json({
+      providers,
+      preferred:  preferredProvider,
+      flowType:   data.flowType || 'tabel',
+      // Dacă există un singur provider (local-upload) — UI poate sări pasul de selecție
+      skipSelection: providers.length === 1 && providers[0].id === 'local-upload',
+    });
+  } catch(e) { logger.error({ err: e }, 'signing-providers error'); res.status(500).json({ error: 'server_error' }); }
+});
+
+
+// ── POST /flows/:flowId/initiate-cloud-signing ────────────────────────────
+// Inițiază o sesiune de semnare cu un provider cloud.
+// Returnează URL de redirect la provider.
+router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const { flowId } = req.params;
+    const { token: signerToken, providerId } = req.body || {};
+    if (!signerToken) return res.status(400).json({ error: 'token_required' });
+    if (!providerId)  return res.status(400).json({ error: 'providerId_required' });
+
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled' });
+
+    const signers = Array.isArray(data.signers) ? data.signers : [];
+    const idx     = signers.findIndex(s => s.token === signerToken);
+    if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
+    if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired' });
+    if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer' });
+
+    // Verificăm că providerul ales e activ în org
+    let org = null;
+    if (data.orgId) {
+      const { rows } = await pool.query(
+        'SELECT signing_providers_enabled, signing_providers_config FROM organizations WHERE id=$1',
+        [data.orgId]
+      );
+      org = rows[0] || null;
+    }
+    const { getOrgProviderConfig, getOrgProvider } = await import('../signing/index.mjs');
+    const provider = getOrgProvider(org, providerId);
+    if (provider.id !== providerId) {
+      return res.status(400).json({ error: 'provider_not_available',
+        message: `Provider-ul "${providerId}" nu este activ în această organizație.` });
+    }
+
+    // Obținem PDF-ul de semnat (cu unlock aplicat)
+    const rawPdf = (data.pdfB64 || '').includes(',') ? data.pdfB64.split(',')[1] : (data.pdfB64 || '');
+    if (!rawPdf) return res.status(500).json({ error: 'pdf_missing' });
+    let pdfBuf = Buffer.from(rawPdf, 'base64');
+
+    // Unlock PDF pentru compatibilitate (același cod ca GET /pdf)
+    if (_PDFLib && data.flowType !== 'ancore') {
+      try {
+        const { PDFDocument, PDFName, PDFNumber } = _PDFLib;
+        const pdfDoc = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
+        try { delete pdfDoc.context.trailerInfo.Encrypt; } catch(e2) {}
+        try { pdfDoc.catalog.delete(PDFName.of('Perms')); } catch(e2) {}
+        try {
+          const af = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+          if (af) { const afObj = pdfDoc.context.lookup(af); if (afObj?.set) afObj.set(PDFName.of('SigFlags'), PDFNumber.of(1)); }
+        } catch(e2) {}
+        pdfBuf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
+      } catch(e) { logger.warn({ err: e }, 'initiate-cloud-signing: unlock error (non-fatal)'); }
+    }
+
+    const providerConfig = getOrgProviderConfig(org, providerId);
+    const appBaseUrl     = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
+
+    const session = await provider.initiateSession({
+      flowId, signer: signers[idx], pdfBytes: pdfBuf,
+      flowData: data, config: providerConfig, appBaseUrl,
+    });
+
+    const signingUrl = await provider.getSigningUrl(session);
+    if (!signingUrl) {
+      return res.status(400).json({ error: 'no_signing_url',
+        message: 'Provider-ul nu a returnat URL de semnare.' });
+    }
+
+    // Stocăm sessionId per semnatar pentru matching la callback
+    signers[idx].signingSessionId = session.sessionId;
+    signers[idx].signingProvider  = providerId;
+    data.signers  = signers;
+    data.updatedAt = new Date().toISOString();
+    await saveFlow(flowId, data);
+
+    logger.info({ flowId, providerId, signerEmail: signers[idx].email }, 'Cloud signing session inițiată');
+    return res.json({ ok: true, signingUrl, sessionId: session.sessionId, provider: provider.id });
+  } catch(e) {
+    logger.error({ err: e }, 'initiate-cloud-signing error');
+    return res.status(500).json({ error: 'server_error', message: String(e.message) });
+  }
+});
+
+// ── POST /flows/:flowId/signing-callback ──────────────────────────────────
+// Callback de la providerii cloud după semnare (webhook POST).
+// Providerul trimite PDF-ul semnat — DocFlowAI îl acceptă și avansează fluxul.
+router.post('/flows/:flowId/signing-callback', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const { flowId }   = req.params;
+    const providerId   = req.query.provider || req.body?.provider;
+    const sessionId    = req.query.session  || req.body?.sessionId;
+    if (!providerId) return res.status(400).json({ error: 'provider_required' });
+
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled' });
+
+    // Obținem configurația provider-ului din org
+    let orgConfig = {};
+    if (data.orgId) {
+      const { rows } = await pool.query(
+        'SELECT signing_providers_config FROM organizations WHERE id=$1', [data.orgId]
+      );
+      orgConfig = rows[0]?.signing_providers_config || {};
+    }
+    const providerConfig = orgConfig[providerId] || {};
+    const provider = getProvider(providerId);
+
+    // Raw body pentru verificare HMAC (express.json() l-a parsat deja — folosim JSON.stringify ca aproximare)
+    // TODO: pentru HMAC corect, adaugă middleware rawBody în express config
+    const rawBody     = JSON.stringify(req.body);
+    const sigHeader   = req.headers['x-docflowai-signature'] || req.headers['x-signature'] || '';
+
+    const result = await provider.handleCallback(req.body, rawBody, sigHeader, providerConfig);
+    if (!result.ok) {
+      logger.warn({ flowId, providerId, error: result.error }, 'signing-callback: provider a returnat eroare');
+      return res.status(400).json({ error: result.error || 'callback_failed' });
+    }
+
+    // Găsim semnatarul pe baza signerToken din callback
+    const signers = Array.isArray(data.signers) ? data.signers : [];
+    const idx = signers.findIndex(s => s.token === result.signerToken);
+    if (idx === -1) {
+      logger.warn({ flowId, providerId, signerToken: result.signerToken }, 'signing-callback: semnatar negăsit');
+      return res.status(400).json({ error: 'signer_not_found' });
+    }
+
+    // Acceptăm PDF-ul semnat
+    const signedPdfB64 = result.signedPdfBytes
+      ? result.signedPdfBytes.toString('base64')
+      : null;
+    if (!signedPdfB64) return res.status(400).json({ error: 'signed_pdf_missing_in_callback' });
+
+    // Stocăm metadata semnăturii per semnatar
+    signers[idx].pdfUploaded      = true;
+    signers[idx].uploadVerified   = true;
+    signers[idx].signingProvider  = providerId;
+    signers[idx].signatureMetadata = result.metadata || {};
+
+    if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions = [];
+    data.signedPdfVersions.push({
+      uploadedAt:  new Date().toISOString(),
+      uploadedBy:  signers[idx].email || 'callback',
+      signerIndex: idx,
+      provider:    providerId,
+      via:         'cloud-callback',
+    });
+    data.signedPdfB64          = signedPdfB64;
+    data.signedPdfUploadedAt   = new Date().toISOString();
+    data.signedPdfUploadedBy   = signers[idx].email || 'callback';
+    data.updatedAt             = new Date().toISOString();
+    if (!Array.isArray(data.events)) data.events = [];
+    data.events.push({ at: new Date().toISOString(), type: 'SIGNED_PDF_UPLOADED',
+                       by: signers[idx].email || 'callback', order: signers[idx].order,
+                       provider: providerId, via: 'cloud-callback' });
+
+    // Avansăm fluxul (același cod ca upload-signed-pdf)
+    const currentOrder = Number(signers[idx]?.order) || 0;
+    let nextIdx = -1, bestOrder = Infinity;
+    for (let i = 0; i < signers.length; i++) {
+      const o = Number(signers[i].order) || 0;
+      if (signers[i].status !== 'signed' && o > currentOrder && o < bestOrder) { bestOrder = o; nextIdx = i; }
+    }
+    if (nextIdx !== -1) signers.forEach((s, i) => { if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending'; });
+    data.signers = signers;
+    const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
+    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString();
+                   data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
+    const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
+    if (nextSigner) { nextSigner.emailSent = true; nextSigner.notifiedAt = new Date().toISOString(); }
+    await saveFlow(flowId, data);
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED_PDF_UPLOADED',
+                      actorEmail: signers[idx].email, actorIp: _getIp(req),
+                      payload: { provider: providerId, via: 'cloud-callback' } });
+    if (allDone) writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_COMPLETED',
+                                   actorEmail: 'system', payload: { docName: data.docName } });
+
+    res.json({ ok: true, flowId, completed: allDone });
+
+    // Notificări async (identic cu upload-signed-pdf)
+    setImmediate(async () => {
+      try {
+        if (allDone) {
+          await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
+          if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED',
+            title: 'Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`,
+            waParams: { docName: data.docName }, urgent: !!(data.urgent) });
+          if (_fireWebhook && data.orgId) _fireWebhook(data.orgId, 'flow.completed', data).catch(() => {});
+        }
+        if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN',
+          title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}".`,
+          waParams: { signerName: nextSigner.name, docName: data.docName, signerToken: nextSigner.token,
+                      initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie,
+                      compartiment: data.compartiment }, urgent: !!(data.urgent) });
+      } catch(e) { logger.error({ err: e, flowId }, 'signing-callback notify error'); }
+    });
+  } catch(e) { logger.error({ err: e }, 'signing-callback error'); res.status(500).json({ error: 'server_error' }); }
+});
+
 
 export default router;
