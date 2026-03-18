@@ -1148,7 +1148,7 @@ function renderPage(){
           <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})' title="Editează" style="padding:4px 8px">✏</button>
           <button class="btn btn-sm btn-w" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale" style="padding:4px 8px">✉</button>
           ${!u.gws_email?`<button class="btn btn-sm" onclick="gwsRetry(${u.id},this)" title="Creează cont Workspace" style="padding:4px 8px;background:rgba(66,133,244,.15);border-color:rgba(66,133,244,.4);color:#4285F4;">G+</button>`:''}
-          ${(window._currentUserRole==='admin' && !u.org_id)?`<button class="btn btn-sm" onclick="openAssignOrg(${u.id},'${esc(u.nume||u.email)}')" title="Asignează organizație (org_id lipsă)" style="padding:4px 8px;background:rgba(255,176,32,.15);border-color:rgba(255,176,32,.4);color:#ffd580;">🏛</button>`:''}
+          ${(window._currentUserRole==='admin' && !u.org_id && u.role!=='admin')?`<button class="btn btn-sm" onclick="openAssignOrg(${u.id},'${esc(u.nume||u.email)}')" title="Asignează organizație (org_id lipsă)" style="padding:4px 8px;background:rgba(255,176,32,.15);border-color:rgba(255,176,32,.4);color:#ffd580;">🏛</button>`:''}
           ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Șterge" style="padding:4px 8px">✕</button>`:""}
         </div>
       </td>`;
