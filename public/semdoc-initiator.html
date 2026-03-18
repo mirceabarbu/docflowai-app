@@ -1732,16 +1732,21 @@ async function signFromFluxuri(flowId) {
             return;
           }
 
-          if (statusEl) statusEl.textContent = `✅ ${_detectedAncoreFields.length} câmp(uri) găsite.`;
+          const xfaCount = _detectedAncoreFields.filter(f => f.source === 'xfa').length;
+          const acroCount = _detectedAncoreFields.length - xfaCount;
+          const typeInfo = xfaCount > 0 ? ` (XFA dinamic${acroCount > 0 ? ` + ${acroCount} AcroForm` : ''})` : '';
+          if (statusEl) statusEl.textContent = `✅ ${_detectedAncoreFields.length} câmp(uri) găsite${typeInfo}.`;
 
           // Afișăm badge-uri cu câmpurile detectate
           if (listEl) {
-            listEl.innerHTML = _detectedAncoreFields.map(f =>
-              `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:12px;font-size:.77rem;color:#7cf0e0;">
-                <strong>${f.name}</strong>
+            listEl.innerHTML = _detectedAncoreFields.map(f => {
+              const label = f.label || f.shortName || f.name;
+              const isXfa = f.source === 'xfa';
+              return `<span title="${f.name}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:${isXfa ? 'rgba(124,92,255,.12)' : 'rgba(45,212,191,.1)'};border:1px solid ${isXfa ? 'rgba(124,92,255,.3)' : 'rgba(45,212,191,.25)'};border-radius:12px;font-size:.77rem;color:${isXfa ? '#b39dff' : '#7cf0e0'};">
+                ${isXfa ? '✍️ ' : ''}<strong>${label}</strong>
                 ${f.page ? `<span style="color:rgba(234,240,255,.4);">· p.${f.page}</span>` : ""}
-              </span>`
-            ).join("");
+              </span>`;
+            }).join("");
           }
 
           populateAncoreDropdowns(_detectedAncoreFields);
@@ -1760,10 +1765,14 @@ async function signFromFluxuri(flowId) {
           if (!sel) return;
           const prevVal = sel.value;
           sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
-          fields.forEach(f => {
+          fields.forEach((f, i) => {
             const opt = document.createElement("option");
-            opt.value = f.name;
-            opt.textContent = f.name + (f.page ? ` (p.${f.page})` : "");
+            opt.value = f.name;  // calea completă XFA sau numele AcroForm
+            // Afișăm label (mai scurt) sau name cu pagina
+            const label = f.label || f.name;
+            const pageInfo = f.page ? ` (p.${f.page})` : "";
+            opt.textContent = label + pageInfo;
+            opt.title = f.name; // tooltip cu calea completă
             sel.appendChild(opt);
           });
           // Restaurăm selecția anterioară dacă câmpul există în continuare

@@ -1433,9 +1433,11 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
 
 
 // ── POST /flows/detect-acroform-fields ───────────────────────────────────
-// Extrage câmpurile de semnătură (/Sig) din PDF — formularele guvernamentale
-// românești (Ordonanță de Plată etc.) pot stoca câmpurile fie în AcroForm/Fields
-// fie direct în /Annots per pagină. Scanăm ambele locuri.
+// Extrage câmpurile de semnătură din PDF.
+// Suportă 3 formate:
+//   1. AcroForm/Fields cu FT=/Sig (PDF standard)
+//   2. Page/Annots cu Widget+FT=/Sig (formulare guvernamentale)
+//   3. XFA cu tag <signature> (Ordonanță de Plată, formulare dinamice Adobe)
 router.post('/flows/detect-acroform-fields', _largePdf, async (req, res) => {
   try {
     const actor = requireAuth(req, res); if (!actor) return;
@@ -1453,123 +1455,171 @@ router.post('/flows/detect-acroform-fields', _largePdf, async (req, res) => {
     const pdfBytes = Buffer.from(raw, 'base64');
     const pdfDoc   = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const pages    = pdfDoc.getPages();
+    const fieldsMap = new Map();
 
-    const fieldsMap = new Map(); // name → {name, page, rect}
-
-    // Helper: extrage numele câmpului dintr-un obiect PDF
-    function extractName(obj) {
-      try {
-        const tObj = obj.get(PDFName.of('T'));
-        if (!tObj) return null;
-        const raw = String(tObj);
-        return raw.replace(/^\//, '').replace(/^\(|\)$/g, '').trim() || null;
-      } catch { return null; }
-    }
-
-    // Helper: extrage rect-ul
-    function extractRect(obj, pageIndex) {
-      try {
-        const rectObj = obj.get(PDFName.of('Rect'));
-        if (!rectObj || typeof rectObj.asArray !== 'function') return null;
-        const arr = rectObj.asArray().map(n => {
-          const v = pdfDoc.context.lookup(n);
-          return typeof v?.asNumber === 'function' ? v.asNumber() : parseFloat(String(v).replace(/[^0-9.\-]/g,'') || '0');
-        });
-        if (arr.length !== 4) return null;
-        return { x: arr[0], y: arr[1], width: arr[2]-arr[0], height: arr[3]-arr[1] };
-      } catch { return null; }
-    }
-
-    // Helper: verifică dacă un obiect este câmp de semnătură /Sig
-    function isSigField(obj, inheritedFT = null) {
-      try {
-        const ftObj = obj.get(PDFName.of('FT'));
-        const ft    = ftObj ? String(ftObj) : inheritedFT;
-        // Acceptăm atât '/Sig' cât și 'Sig' sau variante
-        return ft === '/Sig' || ft === 'Sig';
-      } catch { return false; }
-    }
-
-    // ── METODA 1: AcroForm/Fields traversal recursiv ─────────────────────
+    // ── METODA 3: XFA (formulare dinamice Adobe) ─────────────────────────
+    // Ordonanță de Plată, formulare ANAF — câmpurile sunt în XML comprimat
     try {
       const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
       if (acroFormRef) {
         const acroForm = pdfDoc.context.lookup(acroFormRef);
-        const fieldsRef = acroForm?.get?.(PDFName.of('Fields'));
-        const topFields = fieldsRef ? pdfDoc.context.lookup(fieldsRef) : null;
-
-        function traverseFields(refs, inheritedFT = null) {
-          const arr = Array.isArray(refs) ? refs : (refs?.asArray?.() || []);
-          for (const ref of arr) {
+        const xfaRef   = acroForm?.get?.(PDFName.of('XFA'));
+        if (xfaRef) {
+          const xfa = pdfDoc.context.lookup(xfaRef);
+          const arr = xfa?.asArray?.() || [];
+          for (let i = 0; i < arr.length - 1; i += 2) {
             try {
-              const field = pdfDoc.context.lookup(ref);
-              if (!field?.get) continue;
-              const ftObj = field.get(PDFName.of('FT'));
-              const ft    = ftObj ? String(ftObj) : inheritedFT;
-              const kidsRef = field.get(PDFName.of('Kids'));
-              if (kidsRef) {
-                const kids = pdfDoc.context.lookup(kidsRef);
-                if (kids?.asArray) { traverseFields(kids.asArray(), ft); }
-                // Nu continuăm — un nod cu Kids POATE fi și el câmp sig (fără widget propriu)
+              const keyObj = pdfDoc.context.lookup(arr[i]);
+              const key    = String(keyObj).replace(/^\(|\)$/g, '');
+              if (key !== 'template') continue;
+              const stream  = pdfDoc.context.lookup(arr[i + 1]);
+              const rawBuf  = stream?.contents ? Buffer.from(stream.contents) : null;
+              if (!rawBuf) continue;
+              // Decompress FlateDecode
+              let xmlText = '';
+              try {
+                const { inflateSync } = await import('zlib');
+                xmlText = inflateSync(rawBuf).toString('utf8');
+              } catch {
+                xmlText = rawBuf.toString('utf8');
               }
-              if (ft !== '/Sig' && ft !== 'Sig') continue;
-              const name = extractName(field);
-              if (!name || fieldsMap.has(name)) continue;
-              // Pagina: din /P sau din context de traversare
-              let pageNum = null;
-              const pRef = field.get(PDFName.of('P'));
-              if (pRef) {
-                const pIdx = pages.findIndex(p => p.ref.toString() === pRef.toString());
-                if (pIdx >= 0) pageNum = pIdx + 1;
+              // Extrage căile câmpurilor signature din scripturi JavaScript
+              // ex: getField("form1[0].MainForm[0].SubformSemnaturaAB[0].SignatureField1[0]")
+              const getFieldRe = /getField\(["']([^"']+(?:[Ss]ign|[Ss]emn)[^"']*)["']\)/g;
+              let gm;
+              const seen = new Set();
+              while ((gm = getFieldRe.exec(xmlText)) !== null) {
+                const fullPath = gm[1];
+                if (seen.has(fullPath)) continue;
+                seen.add(fullPath);
+                // Numele scurt = ultimul segment fără [index]
+                const segments = fullPath.split('.');
+                const lastSeg  = segments[segments.length - 1];
+                const shortName = lastSeg.replace(/\[\d+\]$/, '');
+                // Subform-ul părinte pentru context vizual
+                const parentSeg = segments.length > 1
+                  ? segments[segments.length - 2].replace(/\[\d+\]$/, '') : '';
+                const displayName = parentSeg ? `${parentSeg} → ${shortName}` : shortName;
+                if (!fieldsMap.has(fullPath)) {
+                  fieldsMap.set(fullPath, {
+                    name:     fullPath,          // calea XFA completă — folosită la semnare
+                    label:    displayName,        // afișat în UI
+                    shortName,
+                    page:     null,
+                    rect:     null,
+                    source:   'xfa',
+                  });
+                }
               }
-              fieldsMap.set(name, { name, page: pageNum, rect: extractRect(field) });
-            } catch { /* continuăm */ }
+              // Fallback: caută <signature name="..."> direct
+              const sigTagRe = /<signature[^>]*name="([^"]+)"[^>]*>/g;
+              let sm;
+              while ((sm = sigTagRe.exec(xmlText)) !== null) {
+                const name = sm[1];
+                if (!fieldsMap.has(name)) {
+                  fieldsMap.set(name, { name, label: name, shortName: name,
+                                        page: null, rect: null, source: 'xfa' });
+                }
+              }
+            } catch(xfaErr) {
+              logger.warn({ err: xfaErr }, 'detect: XFA stream parse error (non-fatal)');
+            }
           }
         }
-        if (topFields?.asArray) traverseFields(topFields.asArray());
       }
-    } catch(e1) {
-      logger.warn({ err: e1 }, 'detect-acroform: AcroForm traversal error (non-fatal)');
+    } catch(xfaErr) {
+      logger.warn({ err: xfaErr }, 'detect: XFA traversal error (non-fatal)');
     }
 
-    // ── METODA 2: Scanare /Annots per pagină ─────────────────────────────
-    // Multe formulare guvernamentale românești (Ordonanță de Plată, Cereri etc.)
-    // stochează Widget-urile de semnătură direct în /Annots, nu în AcroForm/Fields.
-    for (let pi = 0; pi < pages.length; pi++) {
+    // ── METODA 1: AcroForm/Fields traversal recursiv ─────────────────────
+    if (fieldsMap.size === 0) {
       try {
-        const page     = pages[pi];
-        const annotsRef = page.node.get(PDFName.of('Annots'));
-        if (!annotsRef) continue;
-        const annots = pdfDoc.context.lookup(annotsRef);
-        if (!annots?.asArray) continue;
-        for (const aRef of annots.asArray()) {
-          try {
-            const ann = pdfDoc.context.lookup(aRef);
-            if (!ann?.get) continue;
-            // Verificăm /Subtype /Widget
-            const subtype = ann.get(PDFName.of('Subtype'));
-            if (String(subtype) !== '/Widget') continue;
-            // Verificăm /FT /Sig
-            if (!isSigField(ann)) continue;
-            const name = extractName(ann);
-            if (!name || fieldsMap.has(name)) continue;
-            fieldsMap.set(name, { name, page: pi + 1, rect: extractRect(ann, pi) });
-          } catch { /* continuăm */ }
+        const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+        if (acroFormRef) {
+          const acroForm  = pdfDoc.context.lookup(acroFormRef);
+          const fieldsRef = acroForm?.get?.(PDFName.of('Fields'));
+          const topFields = fieldsRef ? pdfDoc.context.lookup(fieldsRef) : null;
+          function traverseFields(refs, inheritedFT = null) {
+            const arr = Array.isArray(refs) ? refs : (refs?.asArray?.() || []);
+            for (const ref of arr) {
+              try {
+                const field = pdfDoc.context.lookup(ref);
+                if (!field?.get) continue;
+                const ftObj = field.get(PDFName.of('FT'));
+                const ft    = ftObj ? String(ftObj) : inheritedFT;
+                const kidsRef = field.get(PDFName.of('Kids'));
+                if (kidsRef) {
+                  const kids = pdfDoc.context.lookup(kidsRef);
+                  if (kids?.asArray) traverseFields(kids.asArray(), ft);
+                }
+                if (ft !== '/Sig' && ft !== 'Sig') continue;
+                const nameObj = field.get(PDFName.of('T'));
+                const name    = nameObj ? String(nameObj).replace(/^\//, '').replace(/^\(|\)$/g, '').trim() : null;
+                if (!name || fieldsMap.has(name)) continue;
+                let pageNum = null;
+                const pRef = field.get(PDFName.of('P'));
+                if (pRef) {
+                  const pIdx = pages.findIndex(p => p.ref.toString() === pRef.toString());
+                  if (pIdx >= 0) pageNum = pIdx + 1;
+                }
+                let rect = null;
+                const rectObj = field.get(PDFName.of('Rect'));
+                if (rectObj?.asArray) {
+                  const r = rectObj.asArray().map(n => {
+                    const v = pdfDoc.context.lookup(n);
+                    return typeof v?.asNumber === 'function' ? v.asNumber() : parseFloat(String(v).replace(/[^0-9.\-]/g,'') || '0');
+                  });
+                  if (r.length === 4) rect = { x: r[0], y: r[1], width: r[2]-r[0], height: r[3]-r[1] };
+                }
+                fieldsMap.set(name, { name, label: name, shortName: name, page: pageNum, rect, source: 'acroform' });
+              } catch { }
+            }
+          }
+          if (topFields?.asArray) traverseFields(topFields.asArray());
         }
-      } catch { /* pagina inaccessibilă */ }
+      } catch(e1) {
+        logger.warn({ err: e1 }, 'detect: AcroForm traversal error (non-fatal)');
+      }
+    }
+
+    // ── METODA 2: Page/Annots ─────────────────────────────────────────────
+    if (fieldsMap.size === 0) {
+      for (let pi = 0; pi < pages.length; pi++) {
+        try {
+          const annotsRef = pages[pi].node.get(PDFName.of('Annots'));
+          if (!annotsRef) continue;
+          const annots = pdfDoc.context.lookup(annotsRef);
+          if (!annots?.asArray) continue;
+          for (const aRef of annots.asArray()) {
+            try {
+              const ann = pdfDoc.context.lookup(aRef);
+              if (!ann?.get) continue;
+              if (String(ann.get(PDFName.of('Subtype'))) !== '/Widget') continue;
+              const ft = ann.get(PDFName.of('FT'));
+              if (String(ft) !== '/Sig' && String(ft) !== 'Sig') continue;
+              const nameObj = ann.get(PDFName.of('T'));
+              const name    = nameObj ? String(nameObj).replace(/^\//, '').replace(/^\(|\)$/g, '').trim() : null;
+              if (!name || fieldsMap.has(name)) continue;
+              fieldsMap.set(name, { name, label: name, shortName: name, page: pi + 1, rect: null, source: 'annots' });
+            } catch { }
+          }
+        } catch { }
+      }
     }
 
     const fields = [...fieldsMap.values()];
+    fields.sort((a, b) => (a.page||0) - (b.page||0));
 
-    // Sortăm: pagină ASC, y DESC (de sus în jos)
-    fields.sort((a, b) => {
-      if ((a.page||0) !== (b.page||0)) return (a.page||0) - (b.page||0);
-      return (b.rect?.y || 0) - (a.rect?.y || 0);
+    const isXfa = fields.some(f => f.source === 'xfa');
+    logger.info({ actor: actor.email, fieldsCount: fields.length, isXfa }, 'detect-acroform-fields');
+    return res.json({
+      fields,
+      total:  fields.length,
+      isXfa,
+      message: fields.length === 0
+        ? 'Nu s-au găsit câmpuri de semnătură în PDF. PDF-ul poate fi scanat sau fără câmpuri definite.'
+        : undefined,
     });
-
-    logger.info({ actor: actor.email, fieldsCount: fields.length,
-                  method1: 'AcroForm/Fields', method2: 'Page/Annots' }, 'detect-acroform-fields');
-    return res.json({ fields, total: fields.length });
   } catch(e) {
     logger.error({ err: e }, 'detect-acroform-fields error');
     return res.status(500).json({ error: 'server_error', message: String(e.message) });
