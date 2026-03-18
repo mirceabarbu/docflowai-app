@@ -12,12 +12,13 @@ export class AlfaTrustProvider extends CloudProviderBase {
   async _pingApi(config) {
     return { ok: false, message: 'AlfaTrust: necesită API credentials. TODO: implementează _pingApi().' };
   }
-  async _buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl }) {
+  async _buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl, ancoreFieldName }) {
     return {
       url: `${config.apiUrl}/signing/create`,
       headers: { 'Authorization': `Bearer ${config.apiKey}` },
       body: { sessionId, signerEmail: signer.email, documentName: flowData.docName,
-              callbackUrl: `${appBaseUrl}/flows/${flowId}/signing-callback?provider=alfatrust&session=${sessionId}` },
+              callbackUrl: `${appBaseUrl}/flows/${flowId}/signing-callback?provider=alfatrust&session=${sessionId}`,
+              ...(ancoreFieldName ? { signatureFieldName: ancoreFieldName } : {}) },
     };
   }
   async _parseSigningResponse(body) {

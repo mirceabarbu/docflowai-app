@@ -3555,6 +3555,11 @@ async function loadOrganizations() {
   }
 }
 
+// ── Signing Providers — variabile globale (declarate înainte de openOrgModal) ──
+let _allProviders      = [];                           // toți providerii din platformă
+let _selectedProviders = new Set(['local-upload']);    // provideri activi în org curentă
+let _activeConfigProvider = null;                      // providerul configurat activ
+
 function openOrgModal(id, name) {
   _currentOrgId = id;
   $('orgEditName').textContent = name;
@@ -3589,10 +3594,6 @@ function closeOrgModal() {
 }
 
 
-// ── Signing Providers — Admin ──────────────────────────────────────────────
-let _allProviders      = [];   // toți providerii din platformă
-let _selectedProviders = new Set(['local-upload']); // activi în org curentă
-let _activeConfigProvider = null; // providerul pentru care edităm config
 
 async function loadOrgSigningProviders(orgId) {
   try {
@@ -3607,7 +3608,7 @@ async function loadOrgSigningProviders(orgId) {
     const j = await r2.json();
     _selectedProviders = new Set(j.enabled || ['local-upload']);
     renderOrgProvidersGrid(j.configSafe || {});
-  } catch(e) { /* non-fatal */ }
+  } catch(e) { console.warn('[signing] loadOrgSigningProviders error:', e); }
 }
 
 function renderOrgProvidersGrid(configSafe = {}) {

@@ -33,13 +33,15 @@ export class CloudProviderBase extends SigningProvider {
     return { ok: false, message: `${this.label}: implementați _pingApi() cu endpoint real.` };
   }
 
-  async initiateSession({ flowId, signer, pdfBytes, flowData, config, appBaseUrl }) {
+  async initiateSession({ flowId, signer, pdfBytes, flowData, config, appBaseUrl, ancoreFieldName = null }) {
     const sessionId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 60 * 60_000).toISOString();
-    logger.info({ flowId, signerEmail: signer.email, provider: this.id }, 'CloudProvider: inițiere sesiune');
+    logger.info({ flowId, signerEmail: signer.email, provider: this.id, ancoreFieldName }, 'CloudProvider: inițiere sesiune');
     try {
-      const request  = await this._buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl });
+      // P4: ancoreFieldName pasat la _buildSigningRequest — fiecare provider
+      // îl include în request pentru a direcționa semnătura în câmpul corect
+      const request  = await this._buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl, ancoreFieldName });
       const response = await this._callApi(request, config);
       const parsed   = await this._parseSigningResponse(response);
       return { sessionId, flowId, signerToken: signer.token, provider: this.id,
@@ -105,6 +107,7 @@ export class CloudProviderBase extends SigningProvider {
   }
 
   // ── Abstracte ──────────────────────────────────────────────────────────
+  // _p include: { sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl, ancoreFieldName }
   async _buildSigningRequest(_p)   { throw new Error(`${this.id}._buildSigningRequest() not implemented`); }
   async _parseSigningResponse(_b)  { throw new Error(`${this.id}._parseSigningResponse() not implemented`); }
   async handleCallback(_p, _r, _s, _c) { throw new Error(`${this.id}.handleCallback() not implemented`); }

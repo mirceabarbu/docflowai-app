@@ -13,13 +13,14 @@ export class CertSignProvider extends CloudProviderBase {
     // TODO: endpoint health certSIGN
     return { ok: false, message: 'certSIGN: necesită API credentials. TODO: implementează _pingApi().' };
   }
-  async _buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl }) {
+  async _buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl, ancoreFieldName }) {
     // TODO: structura API certSIGN (Paperless API docs)
     return {
       url: `${config.apiUrl}/api/sign/initiate`,
       headers: { 'X-API-Key': config.apiKey },
       body: { sessionId, signerEmail: signer.email, documentName: flowData.docName,
-              callbackUrl: `${appBaseUrl}/flows/${flowId}/signing-callback?provider=certsign&session=${sessionId}` },
+              callbackUrl: `${appBaseUrl}/flows/${flowId}/signing-callback?provider=certsign&session=${sessionId}`,
+              ...(ancoreFieldName ? { signatureFieldName: ancoreFieldName } : {}) },
     };
   }
   async _parseSigningResponse(body) {

@@ -14,7 +14,7 @@ export class NamirialProvider extends CloudProviderBase {
     // TODO: GET ${config.apiUrl}/v6.0/session cu API key în header
     return { ok: false, message: 'Namirial: necesită API credentials. TODO: implementează cu eSignAnyWhere REST API.' };
   }
-  async _buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl }) {
+  async _buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl, ancoreFieldName }) {
     // Namirial eSignAnyWhere are documentație publică completă
     // TODO: implementează conform https://developers.esignanywhere.net/
     return {
@@ -24,6 +24,8 @@ export class NamirialProvider extends CloudProviderBase {
         // TODO: structura eSignAnyWhere Envelope
         name: flowData.docName,
         signer: { email: signer.email, name: signer.name },
+        // P4: câmpul AcroForm pentru plasarea semnăturii (eSignAnyWhere: signatureFieldName)
+        ...(ancoreFieldName ? { signatureFieldName: ancoreFieldName } : {}),
         callbackUrl: `${appBaseUrl}/flows/${flowId}/signing-callback?provider=namirial&session=${sessionId}`,
       },
     };

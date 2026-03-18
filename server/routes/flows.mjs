@@ -508,10 +508,81 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
     if (signers[idx].status !== 'signed') return res.status(409).json({ error: 'signer_not_signed_yet' });
 
     if (data.flowType === 'ancore') {
-      // ── ANCORE: zero verificari pe continutul PDF ────────────────────────
-      // Documentul a fost semnat cu certificat calificat local.
-      // Nu verificam hash, nu comparam cu originalul, nu modificam nimic.
-      // Marcam direct ca uploaded si continuam fluxul.
+      // ── ANCORE: P3 — verificare soft câmp AcroForm semnat ────────────────
+      // Dacă semnatarul are ancoreFieldName definit, verificăm că acel câmp
+      // există în PDF și are o valoare (/V) — adică a fost semnat efectiv.
+      // Non-blocking: dacă pdf-lib eșuează tehnic, acceptăm oricum (warn în log).
+      const ancoreFieldName = signers[idx].ancoreFieldName || null;
+      if (ancoreFieldName && _PDFLib) {
+        try {
+          const { PDFDocument, PDFName } = _PDFLib;
+          const signedBuf = Buffer.from(rawCheck, 'base64');
+          const pdfDoc    = await PDFDocument.load(signedBuf, { ignoreEncryption: true });
+
+          // Traversare recursivă câmpuri AcroForm — căutăm câmpul cu numele dat
+          let fieldFound  = false;
+          let fieldSigned = false;
+
+          const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+          if (acroFormRef) {
+            const acroForm  = pdfDoc.context.lookup(acroFormRef);
+            const fieldsRef = acroForm?.get?.(PDFName.of('Fields'));
+            const topFields = fieldsRef ? pdfDoc.context.lookup(fieldsRef) : null;
+
+            function findField(refs) {
+              const arr = Array.isArray(refs) ? refs : (refs?.asArray?.() || []);
+              for (const ref of arr) {
+                try {
+                  const field = pdfDoc.context.lookup(ref);
+                  if (!field?.get) continue;
+                  // Verificăm Kids recursiv
+                  const kidsRef = field.get(PDFName.of('Kids'));
+                  if (kidsRef) {
+                    const kids = pdfDoc.context.lookup(kidsRef);
+                    if (kids?.asArray) { findField(kids.asArray()); continue; }
+                  }
+                  // Verificăm numele câmpului (T)
+                  const nameObj = field.get(PDFName.of('T'));
+                  const name    = nameObj ? String(nameObj).replace(/^\//, '').replace(/^\(|\)$/g, '') : null;
+                  if (name === ancoreFieldName) {
+                    fieldFound = true;
+                    // /V prezent și diferit de null/empty → câmpul a fost semnat
+                    const vObj = field.get(PDFName.of('V'));
+                    fieldSigned = !!(vObj && String(vObj) !== 'null' && String(vObj) !== '/null');
+                  }
+                } catch(_) {}
+              }
+            }
+
+            if (topFields?.asArray) findField(topFields.asArray());
+          }
+
+          if (fieldFound && !fieldSigned) {
+            // Câmpul există dar NU e semnat → respingem cu mesaj clar
+            return res.status(422).json({
+              error:   'acroform_field_not_signed',
+              field:   ancoreFieldName,
+              message: `Câmpul de semnătură „${ancoreFieldName}" nu a fost semnat în documentul uploadat. Verificați că ați aplicat semnătura electronică calificată pe câmpul corect.`,
+            });
+          }
+
+          if (!fieldFound) {
+            // Câmpul nu a fost găsit — poate PDF-ul a fost modificat sau e alt format
+            // Acceptăm cu warn — nu blocăm fluxul
+            logger.warn({ flowId, ancoreFieldName, signerEmail: signers[idx].email },
+              'P3: câmpul AcroForm nu a fost găsit în PDF-ul uploadat (non-fatal)');
+          }
+
+          // Stocăm metadata verificare pentru audit
+          signers[idx].ancoreFieldVerified = fieldFound;
+          signers[idx].ancoreFieldSigned   = fieldSigned;
+        } catch(verifyErr) {
+          // Eroare pdf-lib → non-fatal, acceptăm și loggăm
+          logger.warn({ err: verifyErr, flowId, ancoreFieldName },
+            'P3: eroare verificare AcroForm (non-fatal — pdf acceptat)');
+        }
+      }
+
       signers[idx].pdfUploaded = true;
     } else {
       // ── TABEL: verificare uploadToken + hash integritate ─────────────────
@@ -1592,6 +1663,9 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     const session = await provider.initiateSession({
       flowId, signer: signers[idx], pdfBytes: pdfBuf,
       flowData: data, config: providerConfig, appBaseUrl,
+      // P4: câmpul AcroForm al acestui semnatar — folosit de provideri cloud
+      // pentru a plasa semnătura în câmpul corect din PDF
+      ancoreFieldName: signers[idx].ancoreFieldName || null,
     });
 
     const signingUrl = await provider.getSigningUrl(session);

@@ -13,7 +13,7 @@ export class STSCloudProvider extends CloudProviderBase {
     // TODO: GET ${config.apiUrl}/health cu Bearer ${config.apiKey}
     return { ok: false, message: 'STS Cloud: necesită documentație API STS. TODO: implementează _pingApi().' };
   }
-  async _buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl }) {
+  async _buildSigningRequest({ sessionId, flowId, signer, pdfBytes, flowData, config, appBaseUrl, ancoreFieldName }) {
     // TODO: structura exactă din documentația API STS
     // STS poate accepta: hash SHA-256 al documentului SAU PDF întreg — de confirmat
     return {
@@ -25,6 +25,8 @@ export class STSCloudProvider extends CloudProviderBase {
         documentName:  flowData.docName,
         signerEmail:   signer.email,
         callbackUrl:   `${appBaseUrl}/flows/${flowId}/signing-callback?provider=sts-cloud&session=${sessionId}`,
+        // P4: câmpul AcroForm — STS îl folosește pentru a plasa semnătura QES
+        ...(ancoreFieldName ? { signatureFieldName: ancoreFieldName } : {}),
       },
     };
   }

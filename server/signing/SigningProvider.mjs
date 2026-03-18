@@ -64,6 +64,8 @@ export class SigningProvider {
    * @param {object} p.config        — config specifică acestui provider din org
    * @param {string} p.jwtSecret     — pentru emitere uploadToken (local only)
    * @param {string} p.appBaseUrl    — ex: https://app.docflowai.ro
+   * @param {string|null} p.ancoreFieldName — câmpul AcroForm al semnătarului (flowType='ancore')
+   *                                          null pentru flowType='tabel' sau dacă nu e specificat
    * @returns {Promise<SigningSession>}
    */
   async initiateSession(p) {
