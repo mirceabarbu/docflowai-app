@@ -96,6 +96,15 @@ vi.mock('../../middleware/logger.mjs', () => ({
   },
 }));
 
+vi.mock('../../emailTemplates.mjs', () => ({
+  emailYourTurn:    vi.fn(() => ({ subject: 'Test subject', html: '<p>test</p>' })),
+  emailGeneric:     vi.fn(() => ({ subject: 'Test subject', html: '<p>test</p>' })),
+  emailDelegare:    vi.fn(() => ({ subject: 'Test delegare', html: '<p>test</p>' })),
+  emailResetPassword: vi.fn(() => ({ subject: 'Test reset', html: '<p>test</p>' })),
+  emailCredentials:   vi.fn(() => ({ subject: 'Test cred', html: '<p>test</p>' })),
+  emailVerifyGws:     vi.fn(() => ({ subject: 'Test gws', html: '<p>test</p>' })),
+}));
+
 // ── Imports după mock-uri ─────────────────────────────────────────────────────
 
 import * as dbModule from '../../db/index.mjs';
@@ -116,7 +125,7 @@ function makeToken(overrides = {}) {
 }
 
 function makeAdminToken() {
-  return makeToken({ role: 'admin', email: 'admin@primaria.ro' });
+  return makeToken({ role: 'admin', email: 'admin@primaria.ro', orgId: 999 });
 }
 
 /** Flux minimal valid pentru mock getFlowData */
@@ -801,3 +810,280 @@ describe('POST /flows/:flowId/cancel', () => {
   });
 
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /flows/:flowId/reinitiate
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /flows/:flowId/reinitiate', () => {
+
+  it('404 — flux inexistent', async () => {
+    dbModule.getFlowData.mockResolvedValue(null);
+    const app = createTestApp();
+    const res = await request(app).post('/flows/INEXISTENT/reinitiate')
+      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro' })}`)
+      .send({});
+    expect(res.status).toBe(404);
+  });
+
+  it('403 — user care nu e inițiatorul și nu e admin', async () => {
+    const flow = makeFlow({ signers: [
+      { order: 1, name: 'S1', email: 's1@ex.ro', rol: 'AVIZAT', token: 'tok1',
+        tokenCreatedAt: new Date().toISOString(), status: 'refused', signedAt: null },
+    ]});
+    dbModule.getFlowData.mockResolvedValue(flow);
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/reinitiate')
+      .set('Cookie', `auth_token=${makeToken({ email: 'altcineva@ex.ro' })}`)
+      .send({});
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('forbidden');
+  });
+
+  it('409 — niciun semnatar refuzat', async () => {
+    const flow = makeFlow(); // toți pending/current
+    dbModule.getFlowData.mockResolvedValue(flow);
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/reinitiate')
+      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro' })}`)
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('no_refused_signer');
+  });
+
+  it('200 — reinițiere reușită după refuz', async () => {
+    const flow = makeFlow({ signers: [
+      { order: 1, name: 'S1', email: 's1@ex.ro', rol: 'AVIZAT', token: 'tok1',
+        tokenCreatedAt: new Date().toISOString(), status: 'signed', signedAt: new Date().toISOString(), pdfUploaded: true },
+      { order: 2, name: 'S2', email: 's2@ex.ro', rol: 'VERIFICAT', token: 'tok2',
+        tokenCreatedAt: new Date().toISOString(), status: 'refused', signedAt: null },
+    ]});
+    dbModule.getFlowData.mockResolvedValue(flow);
+    dbModule.pool.query.mockResolvedValue({ rows: [] }); // attachments
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/reinitiate')
+      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro' })}`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.newFlowId).toBeTruthy();
+    expect(res.body.signers).toBe(1); // S2 eliminat (refused), rămâne S1
+  });
+
+  it('200 — admin poate reinițializa indiferent de inițiator', async () => {
+    // Admin global cu initEmail diferit de admin — signer1 signed, signer2 refused
+    const flow = makeFlow({
+      initEmail: 'altuser@primaria.ro', // initiatorul e alt user, nu admin
+      signers: [
+        { order: 1, name: 'S1', email: 's1@ex.ro', rol: 'AVIZAT', token: 'tok1',
+          tokenCreatedAt: new Date().toISOString(), status: 'signed',
+          signedAt: new Date().toISOString(), pdfUploaded: true },
+        { order: 2, name: 'S2', email: 's2@ex.ro', rol: 'VERIFICAT', token: 'tok2',
+          tokenCreatedAt: new Date().toISOString(), status: 'refused', signedAt: null },
+      ],
+    });
+    dbModule.getFlowData.mockResolvedValue(flow);
+    dbModule.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    dbModule.saveFlow.mockResolvedValue(undefined);
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/reinitiate')
+      .set('Cookie', `auth_token=${makeAdminToken()}`) // admin global
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /flows/:flowId/upload-signed-pdf
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /flows/:flowId/upload-signed-pdf', () => {
+
+  // PDF base64 mic valid (4 bytes)
+  const SMALL_PDF_B64 = Buffer.from('test').toString('base64');
+  // PDF diferit de original (hash diferit)
+  const SIGNED_PDF_B64 = Buffer.from('signed-test-content-different').toString('base64');
+
+  it('400 — token lipsă', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/upload-signed-pdf')
+      .send({ signedPdfB64: SIGNED_PDF_B64 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('token_missing');
+  });
+
+  it('400 — signedPdfB64 lipsă', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/upload-signed-pdf')
+      .send({ token: 'tok1' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('signedPdfB64_missing');
+  });
+
+  it('413 — PDF prea mare (>30MB)', async () => {
+    const bigB64 = 'A'.repeat(Math.ceil(30 * 1024 * 1024 * 1.34));
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/upload-signed-pdf')
+      .send({ token: 'tok1', signedPdfB64: bigB64 });
+    expect(res.status).toBe(413);
+    expect(res.body.error).toBe('pdf_too_large_max_30mb');
+  });
+
+  it('404 — flux inexistent', async () => {
+    dbModule.getFlowData.mockResolvedValue(null);
+    const app = createTestApp();
+    const res = await request(app).post('/flows/INEXISTENT/upload-signed-pdf')
+      .send({ token: 'tok1', signedPdfB64: SIGNED_PDF_B64 });
+    expect(res.status).toBe(404);
+  });
+
+  it('409 — flux anulat', async () => {
+    dbModule.getFlowData.mockResolvedValue(makeFlow({ status: 'cancelled' }));
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/upload-signed-pdf')
+      .send({ token: 'tok1', signedPdfB64: SIGNED_PDF_B64 });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('flow_cancelled');
+  });
+
+  it('400 — token invalid (nu corespunde niciunui semnatar)', async () => {
+    const flow = makeFlow();
+    dbModule.getFlowData.mockResolvedValue(flow);
+    dbModule.pool.query.mockResolvedValue({ rows: [] }); // rate limiter mock
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/upload-signed-pdf')
+      .send({ token: 'token-inexistent', signedPdfB64: SIGNED_PDF_B64 });
+    // 400 invalid_token sau 429 rate-limited — ambele sunt răspunsuri non-5xx corecte
+    expect([400, 429]).toContain(res.status);
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /my-flows — multi-tenant isolation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /my-flows — multi-tenant isolation', () => {
+
+  it('200 — user cu orgId primește query filtrat pe org_id', async () => {
+    // pool.query: COUNT + SELECT pentru my-flows
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] })  // COUNT
+      .mockResolvedValueOnce({ rows: [] });                 // SELECT
+    dbModule.getUserMapForOrg.mockResolvedValue({});
+    const app = createTestApp();
+    const res = await request(app).get('/my-flows')
+      .set('Cookie', `auth_token=${makeToken({ orgId: 42 })}`);
+    expect(res.status).toBe(200);
+    // Verificăm că query-ul COUNT conținea org_id = $2 (filtru tenant)
+    const callArgs = dbModule.pool.query.mock.calls[0];
+    expect(callArgs[0]).toContain('org_id');
+    expect(callArgs[1]).toContain(42); // orgId în params
+  });
+
+  it('200 — user fără orgId (legacy) primește query fără filtru org', async () => {
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+      .mockResolvedValueOnce({ rows: [] });
+    dbModule.getUserMapForOrg.mockResolvedValue({});
+    const app = createTestApp();
+    const res = await request(app).get('/my-flows')
+      .set('Cookie', `auth_token=${makeToken({ orgId: null })}`);
+    expect(res.status).toBe(200);
+    // Query fără org_id în params (doar email)
+    const callArgs = dbModule.pool.query.mock.calls[0];
+    expect(callArgs[1]).not.toContain(null);
+    expect(callArgs[1]).toHaveLength(1); // doar email
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /flows/:flowId/resend — org_admin tenant check
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /flows/:flowId/resend — org_admin tenant check', () => {
+
+  it('403 — org_admin din altă organizație', async () => {
+    // Flux din org 99, cu initEmail diferit de actorul org_admin
+    const flow = makeFlow({ orgId: 99, initEmail: 'alt_initiator@org99.ro' });
+    dbModule.getFlowData.mockResolvedValue(flow);
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/resend')
+      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .send({});
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('forbidden');
+  });
+
+  it('200 — org_admin din aceeași organizație poate retrimite', async () => {
+    const flow = makeFlow({ orgId: 1 }); // flux din org 1
+    dbModule.getFlowData.mockResolvedValue(flow);
+    dbModule.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/resend')
+      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('200 — inițiatorul poate retrimite indiferent de rol', async () => {
+    const flow = makeFlow({ orgId: 1, initEmail: 'init@primaria.ro' });
+    dbModule.getFlowData.mockResolvedValue(flow);
+    dbModule.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/resend')
+      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro', orgId: 999 })}`)
+      .send({});
+    expect(res.status).toBe(200);
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /flows/:flowId/cancel — org_admin tenant check
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /flows/:flowId/cancel — org_admin tenant check', () => {
+
+  it('403 — org_admin din altă organizație nu poate anula', async () => {
+    // Flux din org 99, initEmail diferit de actorul org_admin
+    const flow = makeFlow({ orgId: 99, initEmail: 'alt_initiator@org99.ro' });
+    dbModule.getFlowData.mockResolvedValue(flow);
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/cancel')
+      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .send({ reason: 'test' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('forbidden');
+  });
+
+  it('200 — org_admin din aceeași organizație poate anula', async () => {
+    const flow = makeFlow({ orgId: 1 });
+    dbModule.getFlowData.mockResolvedValue(flow);
+    dbModule.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/cancel')
+      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .send({ reason: 'Anulat de admin instituție' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('409 — org_admin nu poate anula flux deja finalizat', async () => {
+    const flow = makeFlow({ orgId: 1, completed: true });
+    dbModule.getFlowData.mockResolvedValue(flow);
+    const app = createTestApp();
+    const res = await request(app).post('/flows/TEST_ABCD1/cancel')
+      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('already_completed');
+  });
+
+});
+

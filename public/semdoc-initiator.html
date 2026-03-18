@@ -20,7 +20,7 @@ body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9ee
       main { padding: 18px 20px; max-width: 1100px; margin: 0 auto; }
       .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
       .grid { display:grid; gap:10px; grid-template-columns: repeat(12, 1fr); }
-      .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; } .col-6 { grid-column: span 6; } .col-12 { grid-column: span 12; }
+      .col-2 { grid-column: span 2; } .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; } .col-6 { grid-column: span 6; } .col-12 { grid-column: span 12; }
       label { display:block; font-size: 12px; opacity:.85; margin-bottom:6px; }
       input, select { width:100%; padding:10px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
       .row { display:flex; gap:10px; align-items:center; }
@@ -144,6 +144,56 @@ th{ color: var(--sub) !important; }
 .mono{ color: var(--text) !important; }
 #err{ border-color: rgba(251,113,133,.35) !important; }
 /* ===== End theme ===== */
+
+
+    /* ── Câmp AcroForm per semnatar (ancore) ───────────────────────────────── */
+    .ancore-field-col { display: none; width: 180px; }
+    .doctype-ancore .ancore-field-col { display: table-cell; }
+    select.ancoreField {
+      width: 100%; padding: 5px 8px;
+      background: rgba(45,212,191,.07);
+      border: 1px solid rgba(45,212,191,.25);
+      border-radius: 7px; color: #7cf0e0;
+      font-size: .82rem; cursor: pointer;
+    }
+    select.ancoreField option { background: #0d1020; color: #eaf0ff; }
+    select.ancoreField:disabled { opacity: .4; cursor: default; }
+    .ancore-field-hint {
+      font-size: .72rem; color: rgba(45,212,191,.55);
+      margin-top: 3px; display: none;
+    }
+    .doctype-ancore .ancore-field-hint { display: block; }
+    /* ── E — b97: Mini-timeline orizontal în card flux ─────────────────────── */
+    .mtl { display:flex; align-items:flex-start; gap:0; overflow-x:auto; padding:6px 0 2px; }
+    .mtl::-webkit-scrollbar { height:4px; }
+    .mtl::-webkit-scrollbar-thumb { background:rgba(255,255,255,.12); border-radius:4px; }
+    .mtl-step { display:flex; flex-direction:column; align-items:center; position:relative; min-width:72px; flex:1; }
+    .mtl-step:not(:last-child)::after {
+      content:''; position:absolute; top:13px; left:calc(50% + 13px);
+      right:calc(-50% + 13px); height:2px;
+      background:rgba(255,255,255,.10); z-index:0;
+    }
+    .mtl-step.ms-done:not(:last-child)::after  { background:rgba(38,208,124,.35); }
+    .mtl-step.ms-active:not(:last-child)::after{ background:rgba(124,92,255,.30); }
+    .mtl-dot {
+      width:26px; height:26px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:.8rem; border:2px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.05); position:relative; z-index:1;
+      flex-shrink:0;
+    }
+    .ms-done   .mtl-dot { border-color:rgba(38,208,124,.65);  background:rgba(38,208,124,.15); }
+    .ms-active .mtl-dot { border-color:rgba(124,92,255,.85);  background:rgba(124,92,255,.20); box-shadow:0 0 0 3px rgba(124,92,255,.15); }
+    .ms-bad    .mtl-dot { border-color:rgba(255,77,90,.65);   background:rgba(255,77,90,.12); }
+    .ms-warn   .mtl-dot { border-color:rgba(255,176,32,.55);  background:rgba(255,176,32,.10); }
+    .mtl-name { font-size:.67rem; color:rgba(234,240,255,.45); margin-top:4px; text-align:center; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ms-done   .mtl-name { color:rgba(38,208,124,.75); }
+    .ms-active .mtl-name { color:rgba(189,164,255,.9); font-weight:700; }
+    .ms-bad    .mtl-name { color:rgba(255,130,140,.75); }
+    .mtl-ts { font-size:.62rem; color:rgba(234,240,255,.25); text-align:center; margin-top:1px; }
+    .ms-done .mtl-ts { color:rgba(38,208,124,.50); }
+    @keyframes mtl-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(124,92,255,.4);} 50%{box-shadow:0 0 0 5px rgba(124,92,255,0);} }
+    .ms-active .mtl-dot { animation:mtl-pulse 2s ease-in-out infinite; }
 </style>
     <script>
     // Auth guard — redirect to login if no valid JWT
@@ -229,6 +279,7 @@ th{ color: var(--sub) !important; }
 
         <div class="card">
           <div class="grid">
+            <!-- Rând 1: Document · Inițiator · Funcție -->
             <div class="col-5">
               <label>Document (denumire)</label>
               <input id="docName" placeholder="Ex: Referat de necesitate..." />
@@ -238,35 +289,54 @@ th{ color: var(--sub) !important; }
               <input id="initName" placeholder="Ex: Mircea Barbu" readonly style="opacity:.7; cursor:default;" />
             </div>
             <div class="col-3">
-              <label>Inițiator (email)</label>
-              <input id="initEmail" placeholder="Ex: mircea@..." readonly style="opacity:.7; cursor:default;" />
+              <label>Funcție</label>
+              <input id="initFunctie" placeholder="—" readonly style="opacity:.7; cursor:default;" />
             </div>
+            <!-- Email — ascuns vizual, păstrat în DOM pentru funcționalitate -->
+            <input id="initEmail" type="hidden" placeholder="Ex: mircea@..." readonly />
 
+            <!-- Rând 2: PDF+Urgent · Compartiment · Instituție -->
             <div class="col-5">
               <label>PDF (atașament maxim 50MB)</label>
               <input id="pdfFile" type="file" accept="application/pdf" style="display:none;" />
               <div class="row" style="gap:8px; align-items:center; flex-wrap:nowrap; margin-top:2px;">
                 <button id="btnChoosePdf" class="btn secondary" type="button" style="width:auto; flex-shrink:0;">📎 Alege</button>
                 <button id="btnClearPdf" class="btn danger" type="button" disabled style="flex-shrink:0; opacity:.3; pointer-events:none; cursor:default;">Șterge</button>
+                <label id="urgentToggle" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:7px 12px;border-radius:10px;border:1px solid rgba(255,80,80,.25);background:rgba(255,80,80,.06);transition:all .2s;user-select:none;flex-shrink:0;" title="Marchează documentul ca URGENT — semnatarii vor fi notificați cu prioritate înaltă">
+                  <input type="checkbox" id="urgentCheck" style="width:16px;height:16px;cursor:pointer;accent-color:#ff4444;" />
+                  <span style="font-weight:700;font-size:.85rem;letter-spacing:.03em;white-space:nowrap;">🚨 URGENT</span>
+                </label>
               </div>
               <div class="muted" id="pdfInfo" title="" style="margin-top:5px; font-size:.82rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:3px 6px; background:rgba(255,255,255,.04); border-radius:5px;">Nu ai selectat încă un PDF.</div>
             </div>
             <div class="col-4">
-              <label>Inițiator (instituție)</label>
-              <input id="initInstitutie" placeholder="—" readonly style="opacity:.7; cursor:default;" />
+              <label>Compartiment</label>
+              <input id="initCompartiment" placeholder="—" readonly style="opacity:.7; cursor:default;" title="" />
             </div>
             <div class="col-3">
-              <label style="font-size:.76rem;color:var(--muted);">Prioritate</label>
-              <label id="urgentToggle" style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 14px;border-radius:10px;border:1px solid rgba(255,80,80,.25);background:rgba(255,80,80,.06);transition:all .2s;user-select:none;" title="Marchează documentul ca URGENT — semnatarii vor fi notificați cu prioritate înaltă">
-                <input type="checkbox" id="urgentCheck" style="width:18px;height:18px;cursor:pointer;accent-color:#ff4444;" />
-                <span style="font-weight:700;font-size:.9rem;letter-spacing:.03em;">🚨 URGENT</span>
-              </label>
+              <label>Instituție</label>
+              <input id="initInstitutie" placeholder="—" readonly style="opacity:.7; cursor:default;" title="" />
             </div>
 
             <div class="col-12">
               <div id="pdfPreviewBox" style="display:none; margin-top:4px;">
                 <div class="muted" style="margin-bottom:6px; font-size:.83rem;">Preview PDF:</div>
                 <div id="pdfPagesContainer" style="width:100%; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2); min-height:200px; max-height:90vh; padding:8px; overflow-y:auto;"><p style="color:rgba(255,255,255,.4);text-align:center;padding:40px 0;">Se incarca documentul...</p></div>
+              </div>
+            </div>
+
+            <!-- F-06: Documente suport -->
+            <div class="col-12">
+              <div style="border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 16px;background:rgba(255,255,255,.03);margin-bottom:4px;">
+                <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:8px;">📎 Documente suport <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional, max 5 fișiere × 10 MB (PDF, ZIP, RAR)</span></div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                  <label id="attachPickerLabel" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;cursor:pointer;font-size:.83rem;color:#b39dff;font-weight:600;">
+                    ➕ Adaugă fișier
+                    <input id="attachPicker" type="file" accept=".pdf,.zip,.rar,application/pdf,application/zip,application/x-rar-compressed" multiple style="display:none;" />
+                  </label>
+                  <span id="attachHint" style="font-size:.78rem;color:var(--muted);">Niciun fișier selectat</span>
+                </div>
+                <div id="attachList" style="margin-top:8px;display:flex;flex-direction:column;gap:4px;"></div>
               </div>
             </div>
 
@@ -305,28 +375,31 @@ th{ color: var(--sub) !important; }
                     <th style="width:140px;">ATRIBUT</th>
                     <th style="width:200px;">FUNCȚIE</th>
                     <th>NUME ȘI PRENUME</th>
-                    <th style="width:280px;">EMAIL</th>
+                    <th class="ancore-field-col" title="Câmpul de semnătură din PDF (doar pentru fluxuri Ancore)">CÂMP SEMNĂTURĂ</th>
                     <th style="width:110px;"></th>
                   </tr>
                 </thead>
                 <tbody id="signersTbody"></tbody>
               </table>
+                <!-- Zona detectare câmpuri AcroForm — vizibilă doar pentru ancore -->
+                <div id="ancoreDetectArea" style="display:none; margin-top:10px; padding:12px 16px; background:rgba(45,212,191,.06); border:1px solid rgba(45,212,191,.2); border-radius:10px;">
+                  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <span style="font-size:.85rem; color:#7cf0e0; font-weight:600;">🔍 Câmpuri semnătură detectate în PDF:</span>
+                    <button id="btnDetectFields" type="button"
+                      style="padding:6px 14px; background:rgba(45,212,191,.15); border:1px solid rgba(45,212,191,.35); border-radius:7px; color:#2dd4bf; cursor:pointer; font-size:.82rem; font-weight:600;">
+                      🔄 Redetectează
+                    </button>
+                    <span id="detectStatus" style="font-size:.8rem; color:rgba(234,240,255,.5);"></span>
+                  </div>
+                  <div id="detectedFieldsList" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;"></div>
+                  <div style="margin-top:8px; font-size:.75rem; color:rgba(234,240,255,.35); line-height:1.5;">
+                    Asociază fiecare semnatar cu câmpul corespunzător din PDF folosind dropdown-ul din coloana <strong style="color:rgba(45,212,191,.6);">CÂMP SEMNĂTURĂ</strong>.
+                  </div>
+                </div>
+
+
             </div>
 
-            <!-- F-06: Documente suport -->
-            <div class="col-12">
-              <div style="border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 16px;background:rgba(255,255,255,.03);margin-bottom:4px;">
-                <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:8px;">📎 Documente suport <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional, max 5 fișiere × 10 MB (PDF, ZIP, RAR)</span></div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                  <label id="attachPickerLabel" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;cursor:pointer;font-size:.83rem;color:#b39dff;font-weight:600;">
-                    ➕ Adaugă fișier
-                    <input id="attachPicker" type="file" accept=".pdf,.zip,.rar,application/pdf,application/zip,application/x-rar-compressed" multiple style="display:none;" />
-                  </label>
-                  <span id="attachHint" style="font-size:.78rem;color:var(--muted);">Niciun fișier selectat</span>
-                </div>
-                <div id="attachList" style="margin-top:8px;display:flex;flex-direction:column;gap:4px;"></div>
-              </div>
-            </div>
 
             <div class="col-12">
               <div class="row">
@@ -402,14 +475,22 @@ th{ color: var(--sub) !important; }
       function onDocTypeChange() {
         const isTabel = $("docTypeTabel").checked;
         const lbl1 = $("lblTip1"), lbl2 = $("lblTip2"), hint = $("docTypeHint");
+        // Adaugă/elimină clasa pe tabelul de semnatari — controlează vizibilitatea coloanei
+        const sigTable = $("signersTbody")?.closest("table");
+        if (sigTable) sigTable.classList.toggle("doctype-ancore", !isTabel);
         if (isTabel) {
           lbl1.style.borderColor = "rgba(124,92,255,.4)"; lbl1.style.background = "rgba(124,92,255,.1)";
           lbl2.style.borderColor = "rgba(255,255,255,.12)"; lbl2.style.background = "rgba(255,255,255,.03)";
           if (hint) hint.textContent = "DocFlowAI generează tabelul cu semnatari și ancora pentru semnătură";
+          // Ascundem zona de detectare câmpuri
+          const detectArea = $("ancoreDetectArea");
+          if (detectArea) detectArea.style.display = "none";
         } else {
           lbl2.style.borderColor = "rgba(45,212,191,.4)"; lbl2.style.background = "rgba(45,212,191,.08)";
           lbl1.style.borderColor = "rgba(255,255,255,.12)"; lbl1.style.background = "rgba(255,255,255,.03)";
           if (hint) hint.textContent = "PDF-ul are deja ancore create — se trimite pe flux fără modificări";
+          // Dacă există deja un PDF, afișăm zona de detectare
+          if (pdfB64) showAncoreDetectArea();
         }
       }
 
@@ -481,6 +562,8 @@ th{ color: var(--sub) !important; }
             box.style.display = "block";
             renderPdfJsInit(pdfB64);
           }
+          // Dacă tipul de flux e ancore — detectăm câmpurile automat
+          onPdfUploadedForAncore();
         };
         reader.readAsDataURL(f);
       });
@@ -625,14 +708,30 @@ th{ color: var(--sub) !important; }
               <option value="">— Alege utilizator —</option>
             </select>
           </td>
-          <td><input class="email" placeholder="—" readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);" /></td>
+          <td class="ancore-field-col">
+            <select class="ancoreField" disabled title="Câmpul AcroForm din PDF — disponibil după detectare">
+              <option value="">— Detectează câmpuri —</option>
+            </select>
+          </td>
           <td><button class="btn danger btnDel" type="button">Șterge</button></td>
         `;
         tr.querySelector(".rol").value = (s.rol || s.atribut || "ÎNTOCMIT");
         tr.querySelector(".functie").value = (s.functie || "");
         const nameSel = tr.querySelector(".name-select");
         if (nameSel) { nameSel.value = s.name || ""; } else { tr.querySelector(".name").value = (s.name || ""); }
-        tr.querySelector(".email").value = (s.email || "");
+        // ancoreFieldName: pre-populat dacă rândul vine dintr-un șablon sau reinițiere
+        if (s.ancoreFieldName) {
+          const afSel = tr.querySelector(".ancoreField");
+          if (afSel) {
+            // Adaugă opțiunea dacă nu există deja (câmpurile se detectează ulterior)
+            if (![...afSel.options].some(o => o.value === s.ancoreFieldName)) {
+              const opt = document.createElement("option");
+              opt.value = s.ancoreFieldName; opt.textContent = s.ancoreFieldName;
+              afSel.appendChild(opt);
+            }
+            afSel.value = s.ancoreFieldName;
+          }
+        }
         tr.querySelector(".btnDel").addEventListener("click", () => { tr.remove(); refreshAllDropdowns?.(); });
 
         // Auto-fill name/email from initiator fields when ÎNTOCMIT is selected
@@ -804,7 +903,25 @@ th{ color: var(--sub) !important; }
         muts.forEach(m => m.addedNodes.forEach(n => { if (n.tagName === "TR") attachDragEvents(n); }));
       }).observe(tbody, { childList: true });
 
-      $("btnAdd").addEventListener("click", () => { tbody.appendChild(signerRowTemplate()); updateIntocmitVisibility(); validateForm(); });
+      $("btnAdd").addEventListener("click", () => {
+        const newRow = signerRowTemplate();
+        tbody.appendChild(newRow);
+        // Dacă avem câmpuri detectate, le populăm și în rândul nou
+        if (_detectedAncoreFields.length) {
+          const sel = newRow.querySelector(".ancoreField");
+          if (sel) {
+            sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
+            _detectedAncoreFields.forEach(f => {
+              const opt = document.createElement("option");
+              opt.value = f.name;
+              opt.textContent = f.name + (f.page ? ` (p.${f.page})` : "");
+              sel.appendChild(opt);
+            });
+            sel.disabled = false;
+          }
+        }
+        updateIntocmitVisibility(); validateForm();
+      });
       $("btnDefaults").addEventListener("click", setDefaults);
 
       // ── Sablon: aplica din sessionStorage sau deschide picker ──────────────
@@ -946,9 +1063,13 @@ th{ color: var(--sub) !important; }
         const nameEl = $("initName");
         const emailEl = $("initEmail");
         const instEl = $("initInstitutie");
+        const functieEl = $("initFunctie");
+        const compartEl = $("initCompartiment");
         if (nameEl && u.nume) { nameEl.value = u.nume; nameEl.readOnly = true; nameEl.style.opacity = ".7"; nameEl.style.cursor = "default"; }
         if (emailEl && u.email) { emailEl.value = u.email; emailEl.readOnly = true; emailEl.style.opacity = ".7"; emailEl.style.cursor = "default"; }
-        if (instEl && u.institutie) { instEl.value = u.institutie; }
+        if (instEl && u.institutie) { instEl.value = u.institutie; instEl.title = u.institutie; }
+        if (functieEl && u.functie) { functieEl.value = u.functie; functieEl.title = u.functie; }
+        if (compartEl && u.compartiment) { compartEl.value = u.compartiment; compartEl.title = u.compartiment; }
         const tbody2 = document.getElementById("signersTbody");
         if (!tbody2) return;
         tbody2.querySelectorAll("tr").forEach(tr => {
@@ -1004,7 +1125,7 @@ th{ color: var(--sub) !important; }
           const isRefused = (f.signers || []).some(s => s.status === "refused");
           const refusedByAprobat = (f.signers || []).some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
           const isCancelled = f.status === "cancelled";
-          const canReinitiate = isRefused && !refusedByAprobat;
+          const canReinitiate = isRefused && !refusedByAprobat && !f.reinitiatedAs;
           const isReviewRequested = f.status === "review_requested";
           const isUrgent = !!(f.urgent);
           // Verifica daca userul curent trebuie sa semneze
@@ -1024,24 +1145,45 @@ th{ color: var(--sub) !important; }
             : allSigned
             ? '<span style="background:rgba(45,212,191,.2);color:#7cf0e0;border:1px solid rgba(45,212,191,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">✓ Finalizat</span>'
             : '<span style="background:rgba(255,180,50,.15);color:#ffd580;border:1px solid rgba(255,180,50,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⏳ În curs</span>';
+          // E — b97: mini-timeline orizontal în loc de lista plată de semnatari
           const isFlowRefused = f.signers.some(s => s.status === 'refused');
-          const signerRows = f.signers.map(s => {
-            const isCancelled = isFlowRefused && s.status === 'pending';
-            const icon = s.status === "signed" ? "✅" : s.status === "refused" ? "⛔" : s.status === "current" ? "✍" : (s.status === "cancelled" || isCancelled) ? "🚫" : "⏳";
-            const dt2 = s.signedAt ? ' <span style="color:var(--muted);font-size:.75rem;">(' + new Date(s.signedAt).toLocaleDateString("ro-RO") + ')</span>' : "";
-            const refuzLabel = s.status === "refused" ? ` <span style="color:#ffaaaa;font-size:.75rem;font-weight:700;">REFUZAT${s.refuseReason ? ': ' + s.refuseReason : ''}</span>` : "";
-            const infoExtra = [s.functie, s.compartiment].filter(Boolean).join(' · ');
-            const delegBadge = s.delegatedFrom
-              ? ` <span title="Delegat de ${(s.delegatedFrom.name||s.delegatedFrom.email||'').replace(/"/g,'&quot;')} — ${(s.delegatedFrom.reason||'').replace(/"/g,'&quot;')}" style="font-size:.69rem;padding:1px 7px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);cursor:help;">👥 delegat</span>`
-              : "";
-            return `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
-              <span>${icon}</span>
-              <span style="font-size:.82rem;color:var(--muted);min-width:100px;">${s.rol || ""}</span>
-              <span style="font-size:.83rem;font-weight:600;">${s.name || "—"}</span>
-              ${infoExtra ? `<span style="font-size:.78rem;color:var(--muted);">— ${infoExtra}</span>` : ''}
-              ${dt2}${refuzLabel}${delegBadge}
+          const _mtlSteps = f.signers.map(s => {
+            const isCancelled = (isFlowRefused && s.status === 'pending') || s.status === 'cancelled';
+            const st = s.status;
+            const cls = st==='signed' ? 'ms-done' : st==='current' ? 'ms-active' : st==='refused' ? 'ms-bad' : isCancelled ? 'ms-bad' : '';
+            const icon = st==='signed' ? '✅' : st==='refused' ? '⛔' : st==='current' ? '✍️' : isCancelled ? '🚫' : '⏸';
+            const nameShort = (s.name||'—').split(' ').slice(0,2).join(' ');
+            // Data relevantă per stare — afișată sub nume
+            // refusedAt vine acum din backend; cancelledAt per semnatar nu există —
+            // folosim f.cancelledAt (nivel flux) ca fallback pentru semnatarii anulați
+            const _tsRaw = st==='signed'   ? (s.signedAt  || null)
+                         : st==='refused'  ? (s.refusedAt || null)
+                         : st==='current'  ? (s.notifiedAt || null)
+                         : isCancelled     ? (f.cancelledAt || null)
+                         : null;
+            const ts = _tsRaw ? new Date(_tsRaw).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+            const rolTip = s.rol ? ` [${s.rol}]` : '';
+            const delegTip = s.delegatedFrom ? ` 👥 delegat de ${s.delegatedFrom.name||s.delegatedFrom.email}` : '';
+            const refuzTip = st==='refused' && s.refuseReason ? `\nMotiv: ${s.refuseReason}` : '';
+            const tipText = `${s.name||''}${rolTip}${delegTip}${refuzTip}`.replace(/"/g,'&quot;');
+            return `<div class="mtl-step ${cls}" title="${tipText}">
+              <div class="mtl-dot">${icon}</div>
+              <div class="mtl-name">${nameShort}</div>
+              ${ts ? `<div class="mtl-ts">${ts}</div>` : ''}
             </div>`;
-          }).join("");
+          });
+          // Pas final: flux finalizat / stare finală + timestamp
+          const _finalCls   = f.completed ? 'ms-done' : isFlowRefused ? 'ms-bad' : f.status==='cancelled' ? 'ms-bad' : '';
+          const _finalIcon  = f.completed ? '🏁' : isFlowRefused ? '⛔' : f.status==='cancelled' ? '🚫' : '🏁';
+          const _finalLabel = f.completed ? 'Finalizat' : isFlowRefused ? 'Refuzat' : f.status==='cancelled' ? 'Anulat' : 'Final';
+          const _finalColor = f.completed ? 'rgba(38,208,124,.65)' : (isFlowRefused||f.status==='cancelled') ? 'rgba(255,100,110,.6)' : 'rgba(234,240,255,.25)';
+          const _finalTsRaw = f.completedAt || f.refusedAt || f.cancelledAt || null;
+          const _finalTs    = _finalTsRaw ? new Date(_finalTsRaw).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+          // Cine a anulat (dacă există) — afișat ca sub-text sub 'Anulat'
+          const _finalByRaw = f.status==='cancelled' ? (f.cancelledBy || null) : null;
+          const _finalBy    = _finalByRaw ? (_finalByRaw.split('@')[0]) : '';
+          _mtlSteps.push(`<div class="mtl-step ${_finalCls}"><div class="mtl-dot">${_finalIcon}</div><div class="mtl-name" style="color:${_finalColor};">${_finalLabel}</div>${_finalBy ? `<div class="mtl-ts" style="max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_finalBy}</div>` : ''}${_finalTs ? `<div class="mtl-ts">${_finalTs}</div>` : ''}</div>`);
+          const signerRows = `<div class="mtl">${_mtlSteps.join('')}</div>`;
           const finalStatuses = ["completed", "done", "finalizat", "finished", "complete"];
           const successFinal = !!(f.allSigned && !isRefused && !isReviewRequested && !isCancelled);
           const pdfReady = !!(successFinal && (f.hasSignedPdf || f.completed || finalStatuses.includes(String(f.status || "").toLowerCase())));
@@ -1075,7 +1217,7 @@ th{ color: var(--sub) !important; }
                 ${refusedByAprobat && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<span style="color:#ffaaaa;font-size:.78rem;font-weight:600;">⛔ Refuzat de APROBATOR — flux nou necesar</span>` : ''}
                 ${!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" style="background:rgba(250,180,0,.18);border:1px solid rgba(250,180,0,.4);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Doc revizuit</button>` : ''}
                 ${!isCancelled && ((f.initEmail||'').toLowerCase() === currentUserEmail || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'admin' || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'org_admin') && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Sterge flux">🗑</button>` : ''}
-                ${!isCancelled && !f.allSigned && !f.completed && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(120,120,120,.1);border:1px solid rgba(120,120,120,.3);color:#aaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Anulează flux">🚫 Anulează</button>` : ''}
+                ${!isCancelled && (!isRefused || canReinitiate) && !f.allSigned && !f.completed && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(120,120,120,.1);border:1px solid rgba(120,120,120,.3);color:#aaa;padding:7px 12px;border-radius:8px;font-size:.82rem;cursor:pointer;" title="Anulează flux">🚫 Anulează</button>` : ''}
               </div>
             </div>
             <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
@@ -1551,19 +1693,126 @@ async function signFromFluxuri(flowId) {
         });
       });
 
+
+      // ── Detectare câmpuri AcroForm (flowType ancore) ─────────────────────
+      let _detectedAncoreFields = []; // cache câmpuri detectate
+
+      function showAncoreDetectArea() {
+        const area = $("ancoreDetectArea");
+        if (area) area.style.display = "";
+        // Clasă pe tabel pentru vizibilitate coloană
+        const sigTable = $("signersTbody")?.closest("table");
+        if (sigTable) sigTable.classList.add("doctype-ancore");
+      }
+
+      async function detectAncoreFields() {
+        if (!pdfB64) return;
+        const statusEl = $("detectStatus");
+        const listEl   = $("detectedFieldsList");
+        const btn      = $("btnDetectFields");
+        if (statusEl) statusEl.textContent = "⏳ Se detectează câmpurile...";
+        if (btn)      btn.disabled = true;
+        if (listEl)   listEl.innerHTML = "";
+        try {
+          const b64clean = pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64;
+          const r = await _apiFetch("/flows/detect-acroform-fields", {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ pdfB64: b64clean }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.message || j.error || "Eroare server");
+
+          _detectedAncoreFields = j.fields || [];
+
+          if (!_detectedAncoreFields.length) {
+            if (statusEl) statusEl.textContent = "⚠️ Nu s-au găsit câmpuri de semnătură în PDF.";
+            if (listEl)   listEl.innerHTML = "<span style='font-size:.78rem;color:rgba(255,200,50,.7);'>PDF-ul nu conține câmpuri de tip semnătură (AcroForm /Sig). Verificați că ați ales tipul corect de flux.</span>";
+            populateAncoreDropdowns([]);
+            return;
+          }
+
+          const xfaCount = _detectedAncoreFields.filter(f => f.source === 'xfa').length;
+          const acroCount = _detectedAncoreFields.length - xfaCount;
+          const typeInfo = xfaCount > 0 ? ` (XFA dinamic${acroCount > 0 ? ` + ${acroCount} AcroForm` : ''})` : '';
+          if (statusEl) statusEl.textContent = `✅ ${_detectedAncoreFields.length} câmp(uri) găsite${typeInfo}.`;
+
+          // Afișăm badge-uri cu câmpurile detectate
+          if (listEl) {
+            listEl.innerHTML = _detectedAncoreFields.map(f => {
+              const label = f.label || f.shortName || f.name;
+              const isXfa = f.source === 'xfa';
+              return `<span title="${f.name}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:${isXfa ? 'rgba(124,92,255,.12)' : 'rgba(45,212,191,.1)'};border:1px solid ${isXfa ? 'rgba(124,92,255,.3)' : 'rgba(45,212,191,.25)'};border-radius:12px;font-size:.77rem;color:${isXfa ? '#b39dff' : '#7cf0e0'};">
+                ${isXfa ? '✍️ ' : ''}<strong>${label}</strong>
+                ${f.page ? `<span style="color:rgba(234,240,255,.4);">· p.${f.page}</span>` : ""}
+              </span>`;
+            }).join("");
+          }
+
+          populateAncoreDropdowns(_detectedAncoreFields);
+        } catch(e) {
+          if (statusEl) statusEl.textContent = "❌ Eroare detectare: " + e.message;
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      }
+
+      function populateAncoreDropdowns(fields) {
+        // Populează dropdown-ul ancoreField din fiecare rând al tabelului
+        const rows = [...$("signersTbody").querySelectorAll("tr")];
+        rows.forEach(tr => {
+          const sel = tr.querySelector(".ancoreField");
+          if (!sel) return;
+          const prevVal = sel.value;
+          sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
+          fields.forEach((f, i) => {
+            const opt = document.createElement("option");
+            opt.value = f.name;  // calea completă XFA sau numele AcroForm
+            // Afișăm label (mai scurt) sau name cu pagina
+            const label = f.label || f.name;
+            const pageInfo = f.page ? ` (p.${f.page})` : "";
+            opt.textContent = label + pageInfo;
+            opt.title = f.name; // tooltip cu calea completă
+            sel.appendChild(opt);
+          });
+          // Restaurăm selecția anterioară dacă câmpul există în continuare
+          if (prevVal && fields.some(f => f.name === prevVal)) sel.value = prevVal;
+          sel.disabled = fields.length === 0;
+        });
+      }
+
+      // Apelat din handler-ul de upload PDF (după ce pdfB64 e setat)
+      function onPdfUploadedForAncore() {
+        if (getDocType() !== "ancore") return;
+        showAncoreDetectArea();
+        detectAncoreFields();
+      }
+
       function readSigners() {
         const rows = [...tbody.querySelectorAll("tr")];
-        return rows.map((tr, i) => ({
-          order: i + 1,
-          rol: (() => { const sel = tr.querySelector(".rol"); if (sel.value === "__alt__") { return tr.querySelector(".rolCustom").value.trim().toUpperCase() || "__alt__"; } return sel.value; })(),
-          functie: tr.querySelector(".functie").value.trim(),
-          name: (tr.querySelector(".name-select") || tr.querySelector(".name"))?.value?.trim() || "",
-          email: tr.querySelector(".email").value.trim(),
-        })).filter(s => s.rol && (s.name || s.email));
+        return rows.map((tr, i) => {
+          const ancoreSel = tr.querySelector(".ancoreField");
+          const ancoreFieldName = ancoreSel?.value?.trim() || null;
+          // Email citit din data-email al opțiunii selectate (nu mai avem input vizibil)
+          const nameSel2 = tr.querySelector(".name-select");
+          const emailVal = (nameSel2?.options[nameSel2?.selectedIndex]?.dataset?.email || '').trim();
+          return {
+            order: i + 1,
+            rol: (() => { const sel = tr.querySelector(".rol"); if (sel.value === "__alt__") { return tr.querySelector(".rolCustom").value.trim().toUpperCase() || "__alt__"; } return sel.value; })(),
+            functie: tr.querySelector(".functie").value.trim(),
+            name: (tr.querySelector(".name-select") || tr.querySelector(".name"))?.value?.trim() || "",
+            email: emailVal,
+            // ancoreFieldName: câmpul AcroForm — prezent doar pentru flowType='ancore'
+            ...(ancoreFieldName ? { ancoreFieldName } : {}),
+          };
+        }).filter(s => s.rol && (s.name || s.email));
       }
 
       // Create flow
       validateForm(); // inițializare stare buton
+      // Buton redetectare câmpuri AcroForm
+      const _btnDetectFields = $("btnDetectFields");
+      if (_btnDetectFields) _btnDetectFields.addEventListener("click", detectAncoreFields);
 
       // ── F-06: Attachment picker ─────────────────────────────────────────
       const _attachFiles = []; // [{file, name}]
@@ -1630,6 +1879,8 @@ async function signFromFluxuri(flowId) {
           initName: initNameVal,
           initEmail: initEmailVal,
           initInstitutie: institutieVal,
+          initFunctie: $("initFunctie")?.value?.trim() || _u.functie || '',
+          initCompartiment: $("initCompartiment")?.value?.trim() || _u.compartiment || '',
           signers: readSigners(),
           pdfB64: pdfB64 ? (pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64) : null,
           flowType: getDocType(),

@@ -7,6 +7,8 @@
  */
 
 import { Router } from 'express';
+import crypto from 'crypto';
+import { emailResetPassword, emailCredentials, emailVerifyGws } from '../emailTemplates.mjs';
 import { requireAuth, requireAdmin, hashPassword, generatePassword, escHtml } from '../middleware/auth.mjs';
 import { pool, DB_READY, DB_LAST_ERROR, requireDb, saveFlow, getFlowData, invalidateOrgUserCache } from '../db/index.mjs';
 import { validatePhone } from '../whatsapp.mjs';
@@ -15,6 +17,7 @@ import { archiveFlow, verifyDrive } from '../drive.mjs';
 import { verifyWhatsApp, sendWaSignRequest } from '../whatsapp.mjs';
 import { gwsIsConfigured, findAvailableEmail, provisionGwsUser, verifyGws, buildLocalPart } from '../gws.mjs';
 import { logger } from '../middleware/logger.mjs';
+import { listAllProviders, getProvider, getOrgProviders, getOrgProviderConfig } from '../signing/index.mjs';
 
 // ── Helper: acceptă atât admin cât și org_admin ─────────────────────────────
 // org_admin vede/modifică doar propria organizație (orgId din JWT)
@@ -98,15 +101,193 @@ router.get('/users', async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
-// ── GET /admin/organizations — listă organizații (doar super-admin) ────────
+// ── GET /admin/organizations — listă organizații cu statistici și config webhook ──
 router.get('/admin/organizations', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   try {
-    const { rows } = await pool.query('SELECT id, name FROM organizations ORDER BY name ASC');
+    const { rows } = await pool.query(`
+      SELECT o.id, o.name, o.webhook_url, o.webhook_events, o.webhook_enabled,
+             o.webhook_secret IS NOT NULL AS webhook_has_secret,
+             o.created_at, o.updated_at,
+             COUNT(DISTINCT u.id)::int  AS user_count,
+             COUNT(DISTINCT f.id)::int  AS flow_count
+      FROM organizations o
+      LEFT JOIN users u  ON u.org_id  = o.id
+      LEFT JOIN flows f  ON f.org_id  = o.id
+      GROUP BY o.id
+      ORDER BY o.name ASC
+    `);
     res.json(rows);
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+// ── PUT /admin/organizations/:id — actualizare organizație + config webhook ──
+router.put('/admin/organizations/:id', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const orgId = parseInt(req.params.id);
+  if (!orgId) return res.status(400).json({ error: 'invalid_id' });
+  const { name, webhook_url, webhook_secret, webhook_events, webhook_enabled } = req.body || {};
+  try {
+    const updates = []; const params = [];
+    if (name !== undefined) { params.push(String(name).trim()); updates.push(`name=$${params.length}`); }
+    if (webhook_url !== undefined) { params.push(webhook_url ? String(webhook_url).trim() : null); updates.push(`webhook_url=$${params.length}`); }
+    if (webhook_secret !== undefined && webhook_secret !== '') { params.push(String(webhook_secret).trim()); updates.push(`webhook_secret=$${params.length}`); }
+    if (webhook_events !== undefined) { params.push(Array.isArray(webhook_events) ? webhook_events : []); updates.push(`webhook_events=$${params.length}`); }
+    if (webhook_enabled !== undefined) { params.push(!!webhook_enabled); updates.push(`webhook_enabled=$${params.length}`); }
+    if (!updates.length) return res.status(400).json({ error: 'no_fields' });
+    updates.push(`updated_at=NOW()`);
+    params.push(orgId);
+    const { rows } = await pool.query(
+      `UPDATE organizations SET ${updates.join(',')} WHERE id=$${params.length} RETURNING id, name, webhook_url, webhook_events, webhook_enabled, updated_at`,
+      params
+    );
+    if (!rows.length) return res.status(404).json({ error: 'org_not_found' });
+    res.json({ ok: true, org: rows[0] });
+  } catch(e) { res.status(500).json({ error: 'server_error', message: e.message }); }
+});
+
+// ── POST /admin/organizations/:id/test-webhook — trimite un eveniment de test ──
+router.post('/admin/organizations/:id/test-webhook', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const orgId = parseInt(req.params.id);
+  try {
+    const { rows } = await pool.query('SELECT webhook_url, webhook_secret, webhook_enabled FROM organizations WHERE id=$1', [orgId]);
+    const org = rows[0];
+    if (!org) return res.status(404).json({ error: 'org_not_found' });
+    if (!org.webhook_url) return res.status(400).json({ error: 'no_webhook_url', message: 'Configurați mai întâi URL-ul webhook.' });
+    // Payload de test
+    const testPayload = {
+      event: 'webhook.test',
+      flowId: 'TEST_' + Date.now(),
+      docName: 'Document test DocFlowAI',
+      institutie: 'Organizație test',
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+      signers: [{ name: 'Ion Popescu', email: 'test@example.com', rol: 'SEMNAT', status: 'signed', signedAt: new Date().toISOString() }],
+      sentAt: new Date().toISOString(),
+    };
+    const body = JSON.stringify(testPayload);
+    const sig = org.webhook_secret
+      ? crypto.createHmac('sha256', org.webhook_secret).update(body).digest('hex')
+      : 'unsigned';
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 10000);
+      const r = await fetch(org.webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-DocFlowAI-Event': 'webhook.test', 'X-DocFlowAI-Signature': `sha256=${sig}` },
+        body, signal: ctrl.signal,
+      });
+      res.json({ ok: r.ok, status: r.status, statusText: r.statusText, message: r.ok ? 'Webhook livrat cu succes.' : `Server-ul destinatar a returnat ${r.status}.` });
+    } catch(fetchErr) {
+      res.json({ ok: false, error: fetchErr.message, message: 'Eroare de rețea — verificați URL-ul.' });
+    }
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+
+
+
+// ── Signing Providers — API ──────────────────────────────────────────────
+// Arhitectură: provideri la nivel de org (ce e disponibil), ales per semnatar.
+
+// GET /admin/signing/providers — toți providerii disponibili în platformă
+router.get('/admin/signing/providers', async (req, res) => {
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  res.json(listAllProviders());
+});
+
+// GET /admin/organizations/:id/signing — configurația curentă de signing a unei org
+router.get('/admin/organizations/:id/signing', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  const orgId = parseInt(req.params.id);
+  if (!orgId) return res.status(400).json({ error: 'invalid_id' });
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, name, signing_providers_enabled, signing_providers_config FROM organizations WHERE id=$1',
+      [orgId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'org_not_found' });
+    const org = rows[0];
+    // Returnăm config fără API keys (securitate) — doar metadata
+    const configSafe = {};
+    for (const [pid, cfg] of Object.entries(org.signing_providers_config || {})) {
+      configSafe[pid] = { apiUrl: cfg.apiUrl || '', hasApiKey: !!(cfg.apiKey), hasWebhookSecret: !!(cfg.webhookSecret) };
+    }
+    res.json({
+      orgId:    org.id,
+      name:     org.name,
+      enabled:  org.signing_providers_enabled || ['local-upload'],
+      configSafe,
+      providers: getOrgProviders(org),
+    });
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+// PUT /admin/organizations/:id/signing — actualizează providerii activi + configurația
+// Doar super-admin — configurația conține API keys sensibile
+router.put('/admin/organizations/:id/signing', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden', message: 'Doar super-admin poate configura providerii de semnare.' });
+  const orgId = parseInt(req.params.id);
+  if (!orgId) return res.status(400).json({ error: 'invalid_id' });
+  const { enabled, config } = req.body || {};
+  if (!Array.isArray(enabled) || !enabled.length) {
+    return res.status(400).json({ error: 'enabled_required', message: 'Lista de provideri activi nu poate fi goală.' });
+  }
+  // Validăm că toți providerii din enabled există în platformă
+  const allIds = listAllProviders().map(p => p.id);
+  const unknown = enabled.filter(id => !allIds.includes(id));
+  if (unknown.length) return res.status(400).json({ error: 'unknown_providers', unknown, available: allIds });
+  // 'local-upload' trebuie să fie întotdeauna în listă (fallback obligatoriu)
+  const finalEnabled = enabled.includes('local-upload') ? enabled : ['local-upload', ...enabled];
+  try {
+    // Mergem config-ul nou cu cel existent (nu suprascrie API keys omise)
+    const { rows: existing } = await pool.query('SELECT signing_providers_config FROM organizations WHERE id=$1', [orgId]);
+    if (!existing.length) return res.status(404).json({ error: 'org_not_found' });
+    const existingConfig = existing[0].signing_providers_config || {};
+    const mergedConfig   = { ...existingConfig };
+    for (const [pid, cfg] of Object.entries(config || {})) {
+      mergedConfig[pid] = { ...(existingConfig[pid] || {}), ...cfg };
+    }
+    const { rows } = await pool.query(
+      `UPDATE organizations
+          SET signing_providers_enabled = $1,
+              signing_providers_config  = $2,
+              updated_at = NOW()
+        WHERE id = $3
+        RETURNING id, name, signing_providers_enabled, updated_at`,
+      [finalEnabled, JSON.stringify(mergedConfig), orgId]
+    );
+    logger.info({ orgId, enabled: finalEnabled, actor: actor.email }, 'Signing providers actualizați');
+    res.json({ ok: true, org: rows[0] });
+  } catch(e) { logger.error({ err: e }, 'PUT signing error'); res.status(500).json({ error: 'server_error' }); }
+});
+
+// POST /admin/signing/verify — verifică conexiunea cu un provider
+router.post('/admin/signing/verify', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  const { providerId, config } = req.body || {};
+  if (!providerId) return res.status(400).json({ error: 'providerId_required' });
+  try {
+    const provider = getProvider(providerId);
+    const result   = await provider.verify(config || {});
+    res.json(result);
+  } catch(e) {
+    res.status(500).json({ ok: false, error: 'server_error', message: String(e.message) });
+  }
 });
 
 router.get('/admin/users', async (req, res) => {
@@ -120,12 +301,13 @@ router.get('/admin/users', async (req, res) => {
     // org_admin TREBUIE să aibă org_id setat — altfel nu poate accesa
     if (user.role === 'org_admin' && !orgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată. Contactați super-administratorul.' });
     let query, params;
-    if (orgId) {
-      // org_admin: filtrat strict la org_id propriu; admin cu org_id: la fel
+    // FIX: role='admin' (super-admin) vede TOȚI userii indiferent de org_id propriu.
+    // Filtrarea pe org_id se aplică DOAR pentru org_admin.
+    if (user.role === 'org_admin' && orgId) {
       query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [orgId];
     } else {
-      // admin fara org_id (super-admin global) — vede toti
+      // admin (super-admin) — vede toți userii din toate organizațiile
       query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [];
     }
@@ -185,21 +367,21 @@ router.post('/admin/users', async (req, res) => {
 
   const needsVerification = !skip_verification;
   const verificationToken = needsVerification
-    ? (await import('crypto')).default.randomBytes(32).toString('hex')
+    ? crypto.randomBytes(32).toString('hex')
     : null;
 
   // Determinăm org_id de folosit:
   // - org_admin: folosește propriul org_id din DB (nu poate crea în altă org)
-  // - admin (super-admin): dacă creează un org_admin, primește org_name → upsert în organizations
+  // - admin (super-admin): poate specifica org_name pentru ORICE rol (user, org_admin)
+  //   dacă nu specifică, org_id rămâne null (nu e greșit, dar util să fie setat)
   let insertOrgId = actor.orgId || null;
   if (actor.role === 'org_admin') {
     const { rows: actorOrgRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     insertOrgId = actorOrgRows[0]?.org_id || null;
     if (!insertOrgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată.' });
-  } else if (actor.role === 'admin' && validRole === 'org_admin') {
-    const orgNameTrimmed = (bodyOrgName || '').trim();
-    if (!orgNameTrimmed) return res.status(400).json({ error: 'org_name_required', message: 'Specificați organizația pentru Administrator Instituție.' });
-    // Upsert: creează organizație nouă sau reutilizează existentă cu același nume
+  } else if (actor.role === 'admin' && (bodyOrgName || '').trim()) {
+    // Super-admin a specificat o organizație — upsert și asociem userul indiferent de rol
+    const orgNameTrimmed = bodyOrgName.trim();
     const { rows: orgRows } = await pool.query(
       `INSERT INTO organizations (name) VALUES ($1)
        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
@@ -208,7 +390,10 @@ router.post('/admin/users', async (req, res) => {
     );
     insertOrgId = orgRows[0]?.id || null;
     if (!insertOrgId) return res.status(500).json({ error: 'org_create_failed' });
-    logger.info({ orgName: orgNameTrimmed, orgId: insertOrgId }, 'Organizatie upsert pentru org_admin');
+    logger.info({ orgName: orgNameTrimmed, orgId: insertOrgId, role: validRole }, 'Organizatie upsert pentru user nou');
+  } else if (actor.role === 'admin' && validRole === 'org_admin') {
+    // org_admin fără org_name specificat — eroare
+    return res.status(400).json({ error: 'org_name_required', message: 'Specificați organizația pentru Administrator Instituție.' });
   }
   try {
     const { rows } = await pool.query(
@@ -453,27 +638,18 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
     // Verifică că target aparține aceleiași organizații ca actorul
     const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
     const actorOrgId = actorRows[0]?.org_id || null;
-    if (actorOrgId && target.org_id && actorOrgId !== target.org_id) {
+    // FIX: role='admin' (super-admin) poate reseta parola oricărui user
+    if (actor.role === 'org_admin' && actorOrgId && target.org_id && actorOrgId !== target.org_id) {
       return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
     const newPwd = generatePassword();
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [await hashPassword(newPwd), targetId]);
+    // SEC-04: increment token_version → invalidează JWT-urile active ale utilizatorului
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE, token_version=COALESCE(token_version,1)+1 WHERE id=$2', [await hashPassword(newPwd), targetId]);
     // SEC-02: parola trimisă EXCLUSIV pe email — nu returnată în response
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
       to: target.email,
-      subject: '🔑 Parolă resetată — DocFlowAI',
-      html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-        <div style="text-align:center;margin-bottom:28px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
-        <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${target.nume ? ', ' + escHtml(target.nume) : ''},</h2>
-        <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Parola contului tău a fost resetată de un administrator.</p>
-        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-          <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${escHtml(target.email)}</strong></div>
-          <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ TEMPORARĂ</span><strong style="color:#ffd580;font-family:monospace;">${escHtml(newPwd)}</strong></div>
-        </div>
-        <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Schimbă parola după prima autentificare.</p>
-        <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
-      </div>`
+      ...emailResetPassword({ appUrl, numeUser: target.nume, email: target.email, newPwd })
     }).catch(e => logger.warn({ err: e, email: target.email }, 'reset-password email esuat'));
     // Returnăm parola și emailul în response — afișate în modal ca fallback
     res.json({ ok: true, email: target.email, tempPassword: newPwd, message: `Parolă nouă trimisă pe email la ${target.email}` });
@@ -489,18 +665,54 @@ router.delete('/admin/users/:id', async (req, res) => {
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
   if (actor.userId === targetId) return res.status(400).json({ error: 'cannot_delete_self' });
   try {
-    // SEC-07: verificare cross-tenant — DELETE doar în propria organizație
+    // SEC-07: verificare cross-tenant — org_admin poate șterge DOAR din propria org
+    // FIX: role='admin' (super-admin) poate șterge din orice org, indiferent de org_id propriu
     const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
     const actorOrgId = actorRows[0]?.org_id || null;
-    const deleteWhere = actorOrgId
-      ? 'DELETE FROM users WHERE id=$1 AND org_id=$2'
-      : 'DELETE FROM users WHERE id=$1';
-    const deleteParams = actorOrgId ? [targetId, actorOrgId] : [targetId];
+    let deleteWhere, deleteParams;
+    if (actor.role === 'org_admin' && actorOrgId) {
+      deleteWhere  = 'DELETE FROM users WHERE id=$1 AND org_id=$2';
+      deleteParams = [targetId, actorOrgId];
+    } else {
+      // super-admin: ștergere fără restricție de org
+      deleteWhere  = 'DELETE FROM users WHERE id=$1';
+      deleteParams = [targetId];
+    }
     const { rowCount } = await pool.query(deleteWhere, deleteParams);
     if (!rowCount) return res.status(404).json({ error: 'user_not_found_or_forbidden' });
     invalidateOrgUserCache(actorOrgId);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+
+// ── PUT /admin/users/:id/assign-org — asignează organizație unui user (super-admin only) ──
+router.put('/admin/users/:id/assign-org', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden', message: 'Doar super-admin poate reasigna organizații.' });
+  const targetId = parseInt(req.params.id);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
+  const { org_id, org_name } = req.body || {};
+  try {
+    let newOrgId = org_id ? parseInt(org_id) : null;
+    // Dacă s-a trimis org_name în loc de org_id, căutăm/creăm organizația
+    if (!newOrgId && org_name) {
+      const { rows } = await pool.query(
+        `INSERT INTO organizations (name) VALUES ($1)
+         ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+        [org_name.trim()]
+      );
+      newOrgId = rows[0]?.id || null;
+    }
+    const { rowCount } = await pool.query(
+      'UPDATE users SET org_id = $1 WHERE id = $2',
+      [newOrgId, targetId]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'user_not_found' });
+    logger.info({ targetId, newOrgId, actor: actor.email }, 'assign-org: org_id actualizat');
+    res.json({ ok: true, userId: targetId, org_id: newOrgId });
+  } catch(e) { logger.error({ err: e }, 'assign-org error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 router.post('/admin/users/:id/send-credentials', async (req, res) => {
@@ -520,21 +732,12 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
       if (!actorOrgId || actorOrgId !== u.org_id) return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
     const newPwd = generatePassword();
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE WHERE id=$2', [await hashPassword(newPwd), targetId]);
+    // SEC-04: increment token_version → invalidează JWT-urile active
+    await pool.query('UPDATE users SET password_hash=$1, force_password_change=TRUE, token_version=COALESCE(token_version,1)+1 WHERE id=$2', [await hashPassword(newPwd), targetId]);
     const appUrl = getAppUrl(req);
     await sendSignerEmail({
-      to: u.email, subject: 'Cont DocFlowAI — credențiale de acces',
-      html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-        <div style="text-align:center;margin-bottom:28px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
-        <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${u.nume ? ', ' + u.nume : ''},</h2>
-        <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Contul tău în <strong style="color:#eaf0ff;">DocFlowAI</strong> a fost creat sau parola a fost resetată.</p>
-        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-          <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${u.email}</strong></div>
-          <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ TEMPORARĂ</span><strong style="color:#ffd580;font-family:monospace;">${newPwd}</strong></div>
-        </div>
-        <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Această parolă este valabilă pentru o singură utilizare. Recomandăm schimbarea ei după prima autentificare.</p>
-        <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
-      </div>`
+      to: u.email, ...emailCredentials({ appUrl, numeUser: u.nume, email: u.email, newPwd }),
+
     });
     // Returnăm parola și emailul către admin — afișate în modal ca fallback
     // dacă emailul nu ajunge la utilizator (parola este trimisă și pe email)
@@ -544,6 +747,33 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
 
 // ── Flows admin ────────────────────────────────────────────────────────────
 // ── GET /admin/flows/clean-preview — preview fluxuri ce vor fi șterse ─────
+
+// ── F — b97: GET /admin/flows/stats — statistici rapide pentru badge header ──
+// Returnează contoare: active, completed, refused, cancelled, total
+router.get('/admin/flows/stats', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const orgFilter = actorOrgFilter(actor);
+    // FIX: query construit prin concatenare — evită interpolarea template literal cu ghilimele SQL
+    const whereCond = orgFilter ? " AND (data->>'orgId')::int = $1" : '';
+    const params = orgFilter ? [orgFilter] : [];
+    const sql =
+      'SELECT ' +
+      "COUNT(*) FILTER (WHERE data->>'completed' = 'true')::int AS completed, " +
+      "COUNT(*) FILTER (WHERE data->>'status' = 'refused')::int AS refused, " +
+      "COUNT(*) FILTER (WHERE data->>'status' = 'cancelled')::int AS cancelled, " +
+      "COUNT(*) FILTER (WHERE data->>'status' = 'review_requested')::int AS review_requested, " +
+      "COUNT(*) FILTER (WHERE data->>'completed' IS DISTINCT FROM 'true' " +
+        "AND (data->>'status' IS NULL OR data->>'status' NOT IN ('refused','cancelled','review_requested')))::int AS active, " +
+      'COUNT(*)::int AS total ' +
+      'FROM flows WHERE 1=1' + whereCond;
+    const { rows } = await pool.query(sql, params);
+    res.json(rows[0] || { active:0, completed:0, refused:0, cancelled:0, review_requested:0, total:0 });
+  } catch(e) { logger.error({ err: e }, '/admin/flows/stats error'); res.status(500).json({ error: 'server_error' }); }
+});
+
 router.get('/admin/flows/clean-preview', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -591,6 +821,7 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
         return {
           flowId: d.flowId, docName: d.docName || '—',
           initEmail: d.initEmail || '—', initName: d.initName || '—',
+          flowType: d.flowType || 'tabel',
           createdAt: d.createdAt || r.created_at, status,
           storage: d.storage || 'db',
           sizeMB: Math.round(sizeBytes / 1024 / 1024 * 100) / 100,
@@ -812,6 +1043,35 @@ router.get('/admin/drive/verify', async (req, res) => {
   try { res.json(await verifyDrive()); } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
+// ── GET /admin/flows/institutions — lista distinctă de instituții (pentru dropdown) ──
+// Returnează toate instituțiile din fluxuri fără paginare — pentru dropdown filtru.
+router.get('/admin/flows/institutions', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    let actorOrgId = null;
+    if (actor.role === 'org_admin') {
+      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
+      actorOrgId = aRows[0]?.org_id || null;
+      if (!actorOrgId) return res.status(403).json({ error: 'org_admin_no_org' });
+    }
+    // Colectăm instituții distincte din JSONB și din tabelul users (prin initEmail)
+    // Parametrizat — fără interpolarea directă a actorOrgId în SQL
+    const orgCondition = actorOrgId ? 'WHERE f.org_id = $1' : '';
+    const orgParams = actorOrgId ? [actorOrgId] : [];
+    const { rows } = await pool.query(`
+      SELECT DISTINCT COALESCE(NULLIF(u.institutie,''), NULLIF(f.data->>'institutie','')) AS institutie
+      FROM flows f
+      LEFT JOIN users u ON lower(u.email) = lower(f.data->>'initEmail')
+      ${orgCondition}
+      ORDER BY 1 ASC NULLS LAST
+    `, orgParams);
+    const institutions = rows.map(r => r.institutie).filter(Boolean);
+    return res.json({ institutions });
+  } catch(e) { return res.status(500).json({ error: String(e.message || e) }); }
+});
+
 router.get('/admin/flows/list', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -829,6 +1089,7 @@ router.get('/admin/flows/list', async (req, res) => {
     const search = (req.query.search || '').trim().toLowerCase();
     const dateFrom = (req.query.dateFrom || '').trim();  // YYYY-MM-DD
     const dateTo   = (req.query.dateTo   || '').trim();  // YYYY-MM-DD
+    const storageFilter = (req.query.storage || '').trim(); // 'drive' = doar arhivate
     // FIX v3.2.2: escape caractere speciale LIKE
     const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
     // org_admin: filtrare strictă după org_id
@@ -850,6 +1111,7 @@ router.get('/admin/flows/list', async (req, res) => {
     if (deptFilter) { params.push(deptFilter); conditions.push(`(data->>'compartiment' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.compartiment=$${params.length}))`); }
     if (dateFrom) { params.push(dateFrom + 'T00:00:00.000Z'); conditions.push(`(data->>'createdAt') >= $${params.length}`); }
     if (dateTo)   { params.push(dateTo   + 'T23:59:59.999Z'); conditions.push(`(data->>'createdAt') <= $${params.length}`); }
+    if (storageFilter === 'drive') conditions.push("(data->>'storage') = 'drive'");
     const whereClause = conditions.join(' AND ');
     const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
@@ -859,9 +1121,12 @@ router.get('/admin/flows/list', async (req, res) => {
     const flows = rows.map(r => {
       const d = r.data || {}; const initEmail = (d.initEmail || '').toLowerCase(); const u = userMap[initEmail] || {};
       return { flowId: d.flowId, docName: d.docName, initEmail: d.initEmail, initName: d.initName,
+        flowType: d.flowType || 'tabel', // FIX: flowType lipsea → badge afișa mereu 'Tabel'
         status: d.status || 'active', completed: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
         urgent: !!(d.urgent),
-        storage: d.storage || 'db', createdAt: d.createdAt || r.created_at,
+        storage: d.storage || 'db', archivedAt: d.archivedAt || null,
+        driveFileLinkFinal: d.driveFileLinkFinal || null,
+        createdAt: d.createdAt || r.created_at,
         institutie: u.institutie || d.institutie || '', compartiment: u.compartiment || d.compartiment || '',
         signers: (d.signers || []).map(s => ({ name: s.name, email: s.email, rol: s.rol, status: s.status, tokenCreatedAt: s.tokenCreatedAt || null, signedAt: s.signedAt || null, refuseReason: s.refuseReason || null })) };
     });
@@ -930,7 +1195,7 @@ router.get('/admin/stats', async (req, res) => {
       const [flowsR, usersR, notifsR, archR] = await Promise.all([
         pool.query('SELECT COUNT(*) FROM flows WHERE org_id=$1', [orgId]),
         pool.query('SELECT COUNT(*) FROM users WHERE org_id=$1', [orgId]),
-        pool.query('SELECT COUNT(*) FROM notifications n JOIN users u ON u.id=n.user_id WHERE u.org_id=$1 AND n.read=FALSE', [orgId]),
+        pool.query('SELECT COUNT(*) FROM notifications n JOIN users u ON lower(u.email)=lower(n.user_email) WHERE u.org_id=$1 AND n.read=FALSE', [orgId]),
         pool.query("SELECT COUNT(*) FROM flows WHERE org_id=$1 AND data->>'storage'='drive'", [orgId]),
       ]);
       return res.json({ ok: true, stats: { flows: parseInt(flowsR.rows[0].count), flowsArchived: parseInt(archR.rows[0].count), users: parseInt(usersR.rows[0].count), unreadNotifications: parseInt(notifsR.rows[0].count), dbSize: null, dbBytes: null } });

@@ -121,6 +121,8 @@
     <a href="/?tab=flows" class="btn" style="text-decoration:none;font-size:.88rem;">📂 Fluxuri mele</a>
     <a href="/templates" class="btn" style="text-decoration:none;font-size:.88rem;">📋 Șabloane</a>
     <span id="adminBadge" style="padding:8px 12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:10px;font-size:.85rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
+    <!-- F — b97: badge live fluxuri active -->
+    <span id="activeFlowsBadge" title="Fluxuri active în acest moment" style="display:none;padding:6px 12px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:10px;font-size:.82rem;color:#c4b5fd;font-weight:700;cursor:default;">⏳ <span id="activeFlowsCount">—</span> active</span>
   </div>
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
     <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
@@ -168,6 +170,7 @@
   <button class="atab" data-tab="fluxuri" onclick="switchTab('fluxuri')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📁 Administrare fluxuri</button>
   <button class="atab" data-tab="rapoarte" onclick="switchTab('rapoarte')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📊 Rapoarte</button>
   <button class="atab" data-tab="outreach" onclick="switchTab('outreach')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="outreach-tab-btn">📧 Outreach</button>
+  <button class="atab" data-tab="organizatii" onclick="switchTab('organizatii')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="org-tab-btn">🏛 Organizații</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -284,6 +287,7 @@
         <option value="done">Finalizate</option>
         <option value="refused">Refuzate</option>
         <option value="cancelled">Anulate</option>
+        <option value="archived">💾 Arhivate în Drive</option>
       </select>
       <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;">
         <option value="">Toate instituțiile</option>
@@ -507,6 +511,137 @@
 
 </div>
 <!-- ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-organizatii" style="display:none;">
+  <h2 style="color:#9db0ff;margin-bottom:6px;">🏛 Organizații & Webhook</h2>
+  <p style="color:var(--muted);font-size:.83rem;margin-bottom:20px;">
+    Configurați webhook-urile pentru integrarea cu sisteme externe (AvanDoc, iDocNet, aplicații proprii de registratură etc.)
+  </p>
+
+  <div id="org-list-area" style="display:grid;gap:16px;">
+    <div style="color:var(--muted);padding:24px;text-align:center;">⏳ Se încarcă...</div>
+  </div>
+
+  <!-- Modal editare organizație / webhook -->
+
+
+  <!-- Modal Asignare Organizație User -->
+  <div id="assignOrgModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeAssignOrg()">
+    <div style="background:#0f1731;border:1px solid rgba(255,176,32,.3);border-radius:18px;padding:28px 32px;max-width:440px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);">
+      <h3 style="margin:0 0 6px;color:#ffd580;font-size:1rem;">🏛 Asignează organizație</h3>
+      <div id="assignOrgTitle" style="font-size:.82rem;color:var(--muted);margin-bottom:16px;"></div>
+      <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:6px;">Organizație</label>
+      <input id="assignOrgInput" type="text" list="orgNameList" placeholder="Primaria Test"
+        style="width:100%;box-sizing:border-box;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:.95rem;margin-bottom:12px;"
+        onkeydown="if(event.key==='Enter')doAssignOrg()"/>
+      <div id="assignOrgMsg" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="closeAssignOrg()" style="padding:9px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+        <button onclick="doAssignOrg()" style="padding:9px 22px;background:linear-gradient(135deg,#ffd580,#ff9e40);border:none;border-radius:8px;color:#1a1a00;cursor:pointer;font-weight:700;">💾 Salvează</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Redenumire Organizație -->
+  <div id="renameOrgModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeRenameOrgModal()">
+    <div style="background:#0f1731;border:1px solid rgba(45,212,191,.3);border-radius:18px;padding:28px 32px;max-width:440px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);">
+      <h3 style="margin:0 0 18px;color:#7cf0e0;font-size:1rem;">✏️ Redenumește organizația</h3>
+      <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:6px;">Nume nou</label>
+      <input id="renameOrgInput" type="text" maxlength="120"
+        style="width:100%;box-sizing:border-box;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:.95rem;margin-bottom:14px;"
+        onkeydown="if(event.key==='Enter')doRenameOrg()"/>
+      <div id="renameOrgMsg" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="closeRenameOrgModal()" style="padding:9px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+        <button onclick="doRenameOrg()" style="padding:9px 22px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;">💾 Salvează</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="orgEditModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div style="background:#0f1731;border:1px solid rgba(124,92,255,.3);border-radius:18px;padding:32px;max-width:580px;width:calc(100%-32px);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);">
+      <h3 style="margin:0 0 20px;color:#c4b5ff;font-size:1rem;">⚙️ Configurare Webhook — <span id="orgEditName"></span></h3>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;">URL Webhook</label>
+        <input id="orgWebhookUrl" type="url" placeholder="https://sistemul-vostru.ro/api/docflowai/webhook"
+          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;box-sizing:border-box;"/>
+        <div style="font-size:.73rem;color:var(--muted);margin-top:4px;">DocFlowAI va trimite un POST JSON la acest URL la evenimentele selectate.</div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;">Secret HMAC-SHA256 (opțional, recomandat)</label>
+        <div style="display:flex;gap:8px;">
+          <input id="orgWebhookSecret" type="password" placeholder="Lasă gol pentru a păstra secretul existent"
+            style="flex:1;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;"/>
+          <button onclick="orgGenSecret()" style="padding:9px 14px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-size:.82rem;white-space:nowrap;">🎲 Generează</button>
+        </div>
+        <div style="font-size:.73rem;color:var(--muted);margin-top:4px;">Header: <code>X-DocFlowAI-Signature: sha256=HMAC(secret, body)</code></div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:8px;">Evenimente</label>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="evtCompleted" value="flow.completed" style="accent-color:#7c5cff;"/> flow.completed
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="evtRefused" value="flow.refused" style="accent-color:#7c5cff;"/> flow.refused
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="evtCancelled" value="flow.cancelled" style="accent-color:#7c5cff;"/> flow.cancelled
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem;">
+          <input type="checkbox" id="orgWebhookEnabled" style="accent-color:#2dd4bf;width:16px;height:16px;"/>
+          <span>Webhook activ</span>
+        </label>
+      </div>
+
+      <!-- 🔐 Provideri Semnare Electronică — în interiorul modalului -->
+      <div id="orgSigningSection" style="margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08);">
+        <div style="font-size:.8rem;color:#b39dff;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">🔐 Provideri Semnare Electronică</div>
+        <div style="font-size:.77rem;color:rgba(234,240,255,.4);margin-bottom:12px;line-height:1.5;">
+          Bifează providerii contractați de organizație. Semnatarul va putea alege la semnare.<br>
+          <strong style="color:rgba(234,240,255,.6);">Upload local</strong> este întotdeauna disponibil (nu poate fi dezactivat).
+        </div>
+        <div id="orgProvidersGrid" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+          <!-- populat din JS -->
+        </div>
+        <!-- Config API per provider — apare la click ⚙ Config -->
+        <div id="orgProviderConfigArea" style="display:none;background:rgba(0,0,0,.2);border-radius:10px;padding:14px;margin-bottom:14px;">
+          <div id="orgProviderConfigTitle" style="font-size:.8rem;color:#b39dff;font-weight:700;margin-bottom:10px;"></div>
+          <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">API URL</label>
+          <input id="orgProviderApiUrl" type="text" placeholder="https://api.provider.ro/v1"
+            style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;"/>
+          <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">API Key</label>
+          <input id="orgProviderApiKey" type="password" placeholder="API key provider"
+            style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;" autocomplete="off"/>
+          <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Webhook Secret (HMAC)</label>
+          <input id="orgProviderWebhookSecret" type="password" placeholder="Secret pentru verificare callback"
+            style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:10px;" autocomplete="off"/>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button onclick="verifyProviderConfig()" style="padding:7px 14px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-size:.82rem;font-weight:600;">🔍 Verifică</button>
+            <div id="orgProviderVerifyStatus" style="font-size:.77rem;flex:1;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Butoane finale -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06);">
+        <button onclick="orgTestWebhook()" style="padding:10px 18px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-size:.85rem;font-weight:600;">🧪 Test Webhook</button>
+        <div style="display:flex;gap:10px;">
+          <button onclick="closeOrgModal()" style="padding:10px 22px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+          <button onclick="saveOrgWebhook()" style="padding:10px 22px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;">💾 Salvează</button>
+        </div>
+      </div>
+      <div id="orgEditMsg" style="margin-top:12px;font-size:.83rem;"></div>
+    </div>
+  </div>
+</div>
+
 <div id="tab-outreach" style="display:none;">
 
   <h2 style="color:#9db0ff;margin-bottom:6px;">📧 Outreach — Campanii instituții</h2>
@@ -624,8 +759,12 @@
   <!-- ──────────────────────────────────────────────────────── -->
   <div class="card" style="margin-top:22px;">
     <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-      🏛 Import Primării România
-      <span id="pr-badge" style="font-size:.77rem;background:rgba(45,212,191,.12);color:#7cf0e0;padding:3px 10px;border-radius:10px;"></span>
+      🏛 Instituții — Baza de date Outreach
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span id="pr-badge" style="font-size:.77rem;background:rgba(45,212,191,.12);color:#7cf0e0;padding:3px 10px;border-radius:10px;"></span>
+        <button onclick="prShowAddModal()" style="padding:6px 14px;font-size:.8rem;background:rgba(45,212,191,.2);border:1px solid rgba(45,212,191,.4);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:700;">➕ Adaugă</button>
+        <button onclick="prShowImportModal()" style="padding:6px 14px;font-size:.8rem;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.3);border-radius:8px;color:#9db0ff;cursor:pointer;font-weight:600;">📥 Import JSON/CSV</button>
+      </div>
     </div>
 
     <!-- Filtru -->
@@ -668,6 +807,7 @@
             <th style="text-align:left;padding:5px 8px;color:var(--muted);">Instituție</th>
             <th style="text-align:left;padding:5px 8px;color:var(--muted);">Email</th>
             <th style="text-align:left;padding:5px 8px;color:var(--muted);">Județ</th>
+            <th style="text-align:right;padding:5px 8px;color:var(--muted);">Acțiuni</th>
           </tr>
         </thead>
         <tbody id="pr-tbody"></tbody>
@@ -676,6 +816,68 @@
 
     <!-- Paginare -->
     <div id="pr-pager" style="display:flex;gap:6px;align-items:center;margin-top:14px;flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- Modal Adaugă Instituție -->
+  <div id="pr-add-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;align-items:center;justify-content:center;">
+    <div style="background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:28px 32px;width:100%;max-width:460px;margin:20px;">
+      <h3 style="margin:0 0 20px;color:#eaf0ff;font-size:1rem;">🏛 Adaugă / Editează instituție</h3>
+      <input type="hidden" id="pr-edit-id" value="">
+      <div style="margin-bottom:12px;">
+        <label style="font-size:.78rem;color:var(--muted);display:block;margin-bottom:4px;">Instituție *</label>
+        <input id="pr-f-institutie" type="text" placeholder="ex: Primăria Municipiului Cluj-Napoca" style="width:100%;box-sizing:border-box;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:.78rem;color:var(--muted);display:block;margin-bottom:4px;">Email *</label>
+        <input id="pr-f-email" type="email" placeholder="office@primarie.ro" style="width:100%;box-sizing:border-box;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;">
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:20px;">
+        <div style="flex:1;">
+          <label style="font-size:.78rem;color:var(--muted);display:block;margin-bottom:4px;">Județ</label>
+          <input id="pr-f-judet" type="text" placeholder="ex: Cluj" style="width:100%;box-sizing:border-box;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:.78rem;color:var(--muted);display:block;margin-bottom:4px;">Localitate</label>
+          <input id="pr-f-localitate" type="text" placeholder="ex: Cluj-Napoca" style="width:100%;box-sizing:border-box;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;">
+        </div>
+      </div>
+      <div id="pr-modal-msg" style="font-size:.82rem;margin-bottom:12px;min-height:18px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="prCloseAddModal()" style="padding:8px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+        <button onclick="prSaveInstitutie()" style="padding:8px 20px;background:rgba(45,212,191,.2);border:1px solid rgba(45,212,191,.4);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:700;">💾 Salvează</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Import JSON/CSV -->
+  <div id="pr-import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;align-items:center;justify-content:center;">
+    <div style="background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:28px 32px;width:100%;max-width:520px;margin:20px;">
+      <h3 style="margin:0 0 8px;color:#eaf0ff;font-size:1rem;">📥 Import instituții</h3>
+      <p style="margin:0 0 16px;font-size:.8rem;color:var(--muted);">Format JSON: <code>[{"email","institutie","judet"}]</code> sau CSV: <code>email,institutie,judet</code> (cu header pe prima linie).</p>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:.78rem;color:var(--muted);display:block;margin-bottom:4px;">Format</label>
+        <select id="pr-import-format" style="padding:8px 11px;background:rgba(15,23,49,.9);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;">
+          <option value="json">JSON</option>
+          <option value="csv">CSV</option>
+        </select>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:.78rem;color:var(--muted);display:block;margin-bottom:4px;">Date (paste text sau încarcă fișier)</label>
+        <input type="file" id="pr-import-file" accept=".json,.csv,.txt" onchange="prImportFileChange()" style="font-size:.78rem;color:var(--muted);margin-bottom:6px;display:block;">
+        <textarea id="pr-import-data" rows="6" placeholder="Paste JSON sau CSV..." style="width:100%;box-sizing:border-box;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.8rem;font-family:monospace;resize:vertical;"></textarea>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;color:var(--muted);">
+          <input type="checkbox" id="pr-import-replace" style="accent-color:#ff8888;">
+          <span>Înlocuiește tot (șterge toate intrările existente)</span>
+        </label>
+      </div>
+      <div id="pr-import-msg" style="font-size:.82rem;margin-bottom:12px;min-height:18px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="prCloseImportModal()" style="padding:8px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+        <button onclick="prDoImport()" style="padding:8px 20px;background:rgba(157,176,255,.2);border:1px solid rgba(157,176,255,.4);border-radius:8px;color:#c4b5ff;cursor:pointer;font-weight:700;">📥 Importă</button>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -796,6 +998,17 @@ fetch('/auth/me', { credentials: 'include' })
       localStorage.removeItem('docflow_user');
       localStorage.removeItem('docflow_force_pwd');
       location.href = '/login?next=/admin';
+    } else {
+      loadActiveFlowsBadge(); // F — b97
+    // Stocăm rolul curent pentru onRoleChange
+    try {
+      const _me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
+      window._currentUserRole = _me.role || 'user';
+    } catch(e) { window._currentUserRole = 'user'; }
+    // Super-admin: afișăm org selector de la deschiderea modalului
+    if (window._currentUserRole === 'admin') {
+      onRoleChange(($('nRole')?.value) || 'user');
+    }
     }
   })
   .catch(() => { location.href = '/login?next=/admin'; });
@@ -805,6 +1018,26 @@ function logout(){
   localStorage.removeItem('docflow_user');
   localStorage.removeItem('docflow_force_pwd');
   location.href='/login';
+}
+
+async function loadActiveFlowsBadge() {
+  try {
+    // Folosim endpoint-ul de statistici admin dacă există,
+    // altfel un query simplu pe lista de fluxuri cu status activ
+    const r = await _apiFetch('/admin/flows/stats', { headers: hdrs() });
+    if (!r.ok) return;
+    const j = await r.json().catch(() => ({}));
+    const count = j.activeCount ?? j.active ?? null;
+    if (count !== null) {
+      const badge = document.getElementById('activeFlowsBadge');
+      const countEl = document.getElementById('activeFlowsCount');
+      if (badge && countEl) {
+        countEl.textContent = count;
+        badge.style.display = '';
+        badge.title = `${count} fluxuri active (nesemnate complet)`;
+      }
+    }
+  } catch(e) { /* non-fatal */ }
 }
 
 function openChangePwdModal(){
@@ -915,6 +1148,7 @@ function renderPage(){
           <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})' title="Editează" style="padding:4px 8px">✏</button>
           <button class="btn btn-sm btn-w" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale" style="padding:4px 8px">✉</button>
           ${!u.gws_email?`<button class="btn btn-sm" onclick="gwsRetry(${u.id},this)" title="Creează cont Workspace" style="padding:4px 8px;background:rgba(66,133,244,.15);border-color:rgba(66,133,244,.4);color:#4285F4;">G+</button>`:''}
+          ${(window._currentUserRole==='admin' && !u.org_id && u.role!=='admin')?`<button class="btn btn-sm" onclick="openAssignOrg(${u.id},'${esc(u.nume||u.email)}')" title="Asignează organizație (org_id lipsă)" style="padding:4px 8px;background:rgba(255,176,32,.15);border-color:rgba(255,176,32,.4);color:#ffd580;">🏛</button>`:''}
           ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Șterge" style="padding:4px 8px">✕</button>`:""}
         </div>
       </td>`;
@@ -950,6 +1184,13 @@ function renderPagination(total, current, totalPages){
 
 // ── org_admin: blochează toate filtrele de instituție ─────────────────────
 function lockOrgAdminFilters(institutie) {
+  // Ascunde secțiunile periculoase ÎNTOTDEAUNA pentru org_admin,
+  // indiferent dacă institutie e populat sau nu.
+  // BUG-FIX b80: if (!institutie) return era prea devreme — org_admin fără
+  // institutie vedea ⚠ Administrare fluxuri și 🧹 VACUUM.
+  const adminFluxSection = $('adminFluxSection');
+  if (adminFluxSection) adminFluxSection.style.display = 'none';
+
   if (!institutie) return;
   const lock = (el, val) => {
     if (!el) return;
@@ -981,10 +1222,7 @@ function lockOrgAdminFilters(institutie) {
   lock($('archiveInstFilter'), institutie);
   // Tab Fluxuri — delInstFilter (ștergere vechi)
   lock($('delInstFilter'), institutie);
-  // Ascunde întreaga secțiune "Administrare fluxuri" — doar super-admin
-  const adminFluxSection = $('adminFluxSection');
-  if (adminFluxSection) adminFluxSection.style.display = 'none';
-  // (vacuumCard și delAllCard sunt în interiorul secțiunii — ascunse implicit)
+  // (vacuumCard și delAllCard sunt în interiorul adminFluxSection — ascunse la începutul funcției)
   // Tab Rapoarte — rptInst
   lock($('rptInst'), institutie);
 }
@@ -1023,8 +1261,20 @@ function _lockRoleDropdownsForOrgAdmin() {
 function onRoleChange(role) {
   const row = $('nOrgRow');
   if (!row) return;
-  if (role === 'org_admin') {
+  // Super-admin vede selectorul de org pentru ORICE rol (user, org_admin, admin)
+  // org_admin vede selectorul doar pentru org_admin (nu poate crea în altă org)
+  const isSuperAdmin = window._currentUserRole === 'admin';
+  if (role === 'org_admin' || isSuperAdmin) {
     row.style.display = '';
+    // Actualizăm label-ul — obligatoriu doar pentru org_admin
+    const lbl = row.querySelector('label');
+    if (lbl) {
+      if (role === 'org_admin') {
+        lbl.innerHTML = 'Organizație <span style="color:#ff8080;">*</span> <span style="color:var(--muted);font-size:.71rem;">— existentă sau nouă</span>';
+      } else {
+        lbl.innerHTML = 'Organizație <span style="color:var(--muted);font-size:.71rem;">— opțional, asociază userul la o org</span>';
+      }
+    }
     loadOrganizationsAutocomplete();
   } else {
     row.style.display = 'none';
@@ -1452,28 +1702,36 @@ async function sendCredsNew(){
 // Cache global pentru fluxuri (pentru filtrare ierarhică)
 let _allFlows = null;
 
-function populateFlowInstDropdown(flows) {
+// FIX b80: dropdown instituții populat din endpoint dedicat (nu din pagina curentă).
+// Apelat o singură dată la init și la reload forțat.
+async function loadFlowInstitutions() {
   const sel = document.getElementById("flowInstFilter");
   const currentVal = sel.value;
-  // Colectează instituții unice
-  const institutions = [...new Set(flows.map(f => f.institutie||"").filter(Boolean))].sort();
-  sel.innerHTML = '<option value="">Toate instituțiile</option>';
-  institutions.forEach(inst => {
-    const opt = document.createElement("option");
-    opt.value = inst;
-    opt.textContent = inst;
-    sel.appendChild(opt);
-  });
-  if (currentVal) sel.value = currentVal;
+  try {
+    const r = await _apiFetch('/admin/flows/institutions', { headers: hdrs() });
+    if (!r.ok) return;
+    const { institutions } = await r.json();
+    sel.innerHTML = '<option value="">Toate instituțiile</option>';
+    (institutions || []).forEach(inst => {
+      const opt = document.createElement("option");
+      opt.value = inst;
+      opt.textContent = inst;
+      sel.appendChild(opt);
+    });
+    if (currentVal) sel.value = currentVal;
+  } catch(e) { console.warn('loadFlowInstitutions error:', e.message); }
   // org_admin: re-aplică lock după populare
   if (window._orgAdminInstitutie) {
-    let found=false; for(const o of sel.options){if(o.value===window._orgAdminInstitutie){found=true;break;}} 
+    let found=false; for(const o of sel.options){if(o.value===window._orgAdminInstitutie){found=true;break;}}
     if(!found){const o=new Option(window._orgAdminInstitutie,window._orgAdminInstitutie);sel.appendChild(o);}
     sel.value=window._orgAdminInstitutie; sel.disabled=true;
     sel.style.cssText+=';background:rgba(45,212,191,.08);border-color:rgba(45,212,191,.3);color:#2dd4bf;cursor:not-allowed;';
     onFlowInstChange();
   }
 }
+
+// Compatibilitate — apelată din loadFlowsList cu flows (ignorată acum, instituțiile vin din server)
+function populateFlowInstDropdown(flows) { /* no-op — înlocuit cu loadFlowInstitutions() */ }
 
 function onFlowInstChange() {
   const instF = document.getElementById("flowInstFilter").value;
@@ -1521,10 +1779,11 @@ async function loadFlowsList(forceReload = true, page) {
   area.innerHTML = '<span style="color:var(--muted);">⏳ Se incarca...</span>';
 
   // Mapeaza valorile locale la parametrii server
-  const statusMap = { active: "pending", done: "completed", refused: "refused", cancelled: "cancelled", "": "all" };
+  const statusMap = { active: "pending", done: "completed", refused: "refused", cancelled: "cancelled", archived: "all", "": "all" };
   const statusParam = statusMap[statusF] || "all";
 
   const params = new URLSearchParams({ page, limit: 10, status: statusParam });
+  if (statusF === "archived") params.set("storage", "drive");
   if (search) params.set("search", search);
   if (instF) params.set("institutie", instF);
   if (deptF) params.set("compartiment", deptF);
@@ -1539,11 +1798,8 @@ async function loadFlowsList(forceReload = true, page) {
     const total = resp.total || flows.length;
     const pages = resp.pages || 1;
 
-    // Populeaza dropdown institutii (prima incarcare)
-    if (forceReload || !_allFlows) {
-      _allFlows = flows; // pastram pentru populateFlowInstDropdown
-      populateFlowInstDropdown(flows);
-    }
+    // Dropdown instituții populat din /admin/flows/institutions (endpoint dedicat)
+    // — nu din datele paginii curente (ar arăta doar instituțiile din pag. curentă)
 
     if (!flows.length) {
       area.innerHTML = '<span style="color:var(--muted);">Niciun flux gasit.</span>';
@@ -1584,6 +1840,7 @@ async function loadFlowsList(forceReload = true, page) {
             <td style="padding:7px 8px;color:var(--muted);">${f.createdAt?new Date(f.createdAt).toLocaleDateString("ro-RO"):"—"}</td>
             <td style="padding:7px 8px;">
               <a href="/flow.html?flow=${encodeURIComponent(f.flowId||'')}" target="_blank" style="padding:3px 10px;font-size:.75rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:6px;color:#7cf0e0;text-decoration:none;cursor:pointer;margin-right:4px;" title="Vizualizează flux">🔍</a>
+              ${f.storage==='drive' && f.driveFileLinkFinal ? `<a href="${f.driveFileLinkFinal}" target="_blank" style="padding:3px 10px;font-size:.75rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#2dd4bf;text-decoration:none;cursor:pointer;margin-right:4px;" title="Deschide în Google Drive">💾 Drive</a>` : ''}
               ${current&&!f.completed&&f.status!=="refused" ? `
                 <button onclick="resendNotif('${f.flowId}')" style="padding:3px 10px;font-size:.75rem;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-right:4px;" title="Retrimite notificare">📨</button>
                 ${expired?`<button onclick="regenerateToken('${escH(f.flowId||'')}','${escH(current.email||'')}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;" title="Generează token nou">🔑</button>`:''}
@@ -2075,6 +2332,8 @@ fetch("/auth/me",{headers:hdrs()})
       // Outreach vizibil doar pentru super-admin
       const outreachTabBtn=$('outreach-tab-btn');
       if(outreachTabBtn) outreachTabBtn.style.display="none";
+      const orgTabBtn=$('org-tab-btn');
+      if(orgTabBtn) orgTabBtn.style.display="none";
     }
     if(u.role==="org_admin") window._orgAdminInstitutie = u.institutie || "";
     // BUG-FIX: org_admin poate vedea/selecta doar rol 'user' — filtrăm dropdown-urile
@@ -2093,7 +2352,7 @@ let _activityData = null;
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  ['utilizatori','fluxuri','rapoarte','outreach'].forEach(t => {
+  ['utilizatori','fluxuri','rapoarte','outreach','organizatii'].forEach(t => {
     const el = $('tab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
@@ -2102,11 +2361,15 @@ function switchTab(tab) {
     btn.style.background = active ? 'rgba(124,92,255,.25)' : 'transparent';
     btn.style.color = active ? '#c4b5ff' : 'var(--muted)';
   });
-  if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); _fluxuriLoaded = true; }
+  if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); loadFlowInstitutions(); _fluxuriLoaded = true; }
   if (tab === 'outreach' && !_outreachLoaded) { orInit(); _outreachLoaded = true; }
+  if (tab === 'organizatii' && !_orgLoaded) { loadOrganizations(); _orgLoaded = true; }
 }
 let _fluxuriLoaded = false;
 let _outreachLoaded = false;
+let _orgLoaded = false;
+let _currentOrgId = null;
+let _rptGenerated = false; // true după prima generare raport — activează auto-refresh la filtrare
 
 // ══════════════════════════════════════════════════════════════════
 // OUTREACH MODULE
@@ -2425,7 +2688,7 @@ async function prLoad(page) {
       });
     }
 
-    $('pr-badge').textContent = `${d.total.toLocaleString('ro-RO')} localități`;
+    $('pr-badge').textContent = `${d.total.toLocaleString('ro-RO')} instituții`;
     $('pr-info').textContent  = `Pagina ${d.page} din ${d.pages} · ${d.total} rezultate`;
 
     const tbody = $('pr-tbody');
@@ -2437,10 +2700,19 @@ async function prLoad(page) {
             style="cursor:pointer;accent-color:var(--accent2);" />
         </td>
         <td style="padding:5px 8px;color:var(--text);">${escH(p.institutie)}</td>
-        <td style="padding:5px 8px;color:var(--muted);">${escH(p.email)}</td>
+        <td style="padding:5px 8px;color:var(--muted);">
+          ${escH(p.email)}
+          ${p.unsubscribed ? '<span title="Dezabonat GDPR" style="margin-left:5px;font-size:.7rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.25);border-radius:4px;color:#ffaaaa;padding:1px 5px;">🚫 dezabonat</span>' : ''}
+        </td>
         <td style="padding:5px 8px;color:var(--muted);">${escH(p.judet)}</td>
+        <td style="padding:5px 8px;text-align:right;white-space:nowrap;">
+          <button onclick="prEditRow(${p.id},'${escH(p.institutie)}','${escH(p.email)}','${escH(p.judet)}','${escH(p.localitate||p.institutie)}')"
+            style="padding:3px 9px;font-size:.73rem;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.25);border-radius:6px;color:#9db0ff;cursor:pointer;margin-right:4px;" title="Editează">✏️</button>
+          <button onclick="prDeleteRow(${p.id},'${escH(p.institutie)}')"
+            style="padding:3px 9px;font-size:.73rem;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);border-radius:6px;color:#ffaaaa;cursor:pointer;" title="Dezactivează">🗑</button>
+        </td>
       </tr>`).join('') :
-      '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--muted);">Niciun rezultat.</td></tr>';
+      '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--muted);">Niciun rezultat.</td></tr>';
 
     // Paginare
     const pager = $('pr-pager');
@@ -2536,6 +2808,112 @@ async function prAddSelected() {
   }
 }
 
+// ── CRUD Instituții ──────────────────────────────────────────────────────
+
+function prShowAddModal() {
+  $('pr-edit-id').value = '';
+  $('pr-f-institutie').value = '';
+  $('pr-f-email').value = '';
+  $('pr-f-judet').value = '';
+  $('pr-f-localitate').value = '';
+  $('pr-modal-msg').textContent = '';
+  $('pr-add-modal').style.display = 'flex';
+  setTimeout(() => $('pr-f-institutie').focus(), 50);
+}
+
+function prCloseAddModal() { $('pr-add-modal').style.display = 'none'; }
+
+function prEditRow(id, institutie, email, judet, localitate) {
+  $('pr-edit-id').value = id;
+  $('pr-f-institutie').value = institutie;
+  $('pr-f-email').value = email;
+  $('pr-f-judet').value = judet;
+  $('pr-f-localitate').value = localitate;
+  $('pr-modal-msg').textContent = '';
+  $('pr-add-modal').style.display = 'flex';
+  setTimeout(() => $('pr-f-institutie').focus(), 50);
+}
+
+async function prSaveInstitutie() {
+  const id   = $('pr-edit-id').value;
+  const body = {
+    institutie: $('pr-f-institutie').value.trim(),
+    email:      $('pr-f-email').value.trim().toLowerCase(),
+    judet:      $('pr-f-judet').value.trim(),
+    localitate: $('pr-f-localitate').value.trim(),
+  };
+  const msgEl = $('pr-modal-msg');
+  if (!body.institutie) { msgEl.textContent = '⚠ Completează instituția.'; msgEl.style.color = '#ffaaaa'; return; }
+  if (!body.email || !body.email.includes('@')) { msgEl.textContent = '⚠ Email invalid.'; msgEl.style.color = '#ffaaaa'; return; }
+
+  try {
+    const url    = id ? `/admin/outreach/primarii/${id}` : '/admin/outreach/primarii';
+    const method = id ? 'PUT' : 'POST';
+    const r = await fetch(url, { method, credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) { msgEl.textContent = '⚠ ' + (d.message || d.error); msgEl.style.color = '#ffaaaa'; return; }
+    prCloseAddModal();
+    prLoad(_prPage);
+  } catch(e) { msgEl.textContent = '⚠ Eroare rețea.'; msgEl.style.color = '#ffaaaa'; }
+}
+
+async function prDeleteRow(id, institutie) {
+  if (!confirm(`Dezactivează "${institutie}"?
+
+Instituția nu va mai apărea în listă dar nu se șterge definitiv.`)) return;
+  try {
+    const r = await fetch(`/admin/outreach/primarii/${id}`, { method: 'DELETE', credentials: 'include' });
+    if (!r.ok) { alert('Eroare la dezactivare.'); return; }
+    prLoad(_prPage);
+  } catch(e) { alert('Eroare rețea.'); }
+}
+
+function prShowImportModal() {
+  $('pr-import-data').value = '';
+  $('pr-import-msg').textContent = '';
+  $('pr-import-replace').checked = false;
+  $('pr-import-modal').style.display = 'flex';
+}
+
+function prCloseImportModal() { $('pr-import-modal').style.display = 'none'; }
+
+function prImportFileChange() {
+  const file = $('pr-import-file').files?.[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'json') $('pr-import-format').value = 'json';
+  else if (ext === 'csv' || ext === 'txt') $('pr-import-format').value = 'csv';
+  const reader = new FileReader();
+  reader.onload = e => { $('pr-import-data').value = e.target.result; };
+  reader.readAsText(file, 'UTF-8');
+}
+
+async function prDoImport() {
+  const data    = $('pr-import-data').value.trim();
+  const format  = $('pr-import-format').value;
+  const replace = $('pr-import-replace').checked;
+  const msgEl   = $('pr-import-msg');
+  if (!data) { msgEl.textContent = '⚠ Paste date sau încarcă fișier.'; msgEl.style.color = '#ffaaaa'; return; }
+  if (replace && !confirm('Atenție: Această acțiune va șterge TOATE instituțiile existente și le va înlocui cu cele din fișier. Continui?')) return;
+
+  msgEl.textContent = '⏳ Se importă...'; msgEl.style.color = 'var(--muted)';
+  try {
+    const r = await fetch('/admin/outreach/primarii/import', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format, data, replace }),
+    });
+    const d = await r.json();
+    if (!r.ok) { msgEl.textContent = '⚠ ' + (d.message || d.error); msgEl.style.color = '#ffaaaa'; return; }
+    msgEl.textContent = `✅ ${d.added} adăugate / actualizate${d.skipped ? `, ${d.skipped} erori` : ''} din ${d.total} rânduri.`;
+    msgEl.style.color = '#a3e6a3';
+    // Resetăm dropdown județe (se va repopula la prLoad)
+    const judetSel = $('pr-judet');
+    while (judetSel.options.length > 1) judetSel.remove(1);
+    setTimeout(() => { prCloseImportModal(); prLoad(1); }, 1800);
+  } catch(e) { msgEl.textContent = '⚠ Eroare rețea.'; msgEl.style.color = '#ffaaaa'; }
+}
+
 // ── Date helpers ─────────────────────────────────────────────────────────
 /** Escape HTML pentru output sigur în innerHTML */
 function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -2604,9 +2982,11 @@ function initActivityReport() {
   $('rptTo').value          = todayISO;
   $('rptFromDisplay').value = isoToDMY(fromISO);
   $('rptToDisplay').value   = isoToDMY(todayISO);
+  _rptGenerated = false; // reset la inițializare — trebuie apăsat Generează prima dată
 
   // Încarcă toți utilizatorii pentru cascadare
   _apiFetch('/admin/users', { headers: hdrs() }).then(r => r.json()).then(data => {
+    _rptGenerated = true; // permite auto-refresh la filtrare ulterioară
     window._rptUsers = data.users || data || [];
     _rebuildRptInst();
   }).catch(() => {});
@@ -2634,6 +3014,7 @@ function _rebuildRptInst() {
 function onRptInstChange() {
   _rebuildRptDept();
   _rebuildRptUser();
+  if (_rptGenerated) loadActivityReport();
 }
 
 function _rebuildRptDept() {
@@ -2654,7 +3035,7 @@ function _rebuildRptDept() {
   _rebuildRptUser();
 }
 
-function onRptDeptChange() { _rebuildRptUser(); }
+function onRptDeptChange() { _rebuildRptUser(); if (_rptGenerated) loadActivityReport(); }
 
 function _rebuildRptUser() {
   const inst = $('rptInst').value;
@@ -2678,16 +3059,15 @@ function _rebuildRptUser() {
 function onRptUserChange() {
   // Sincronizează filtrele invers dacă utilizatorul selectat e dintr-o instituție specifică
   const email = $('rptUser').value;
-  if (!email || !window._rptUsers) return;
-  const u = window._rptUsers.find(x => x.email === email);
-  if (!u) return;
-  // Dacă nu e deja filtrată pe instituția lui, filtrăm automat
-  if (u.institutie && !$('rptInst').value) {
-    $('rptInst').value = u.institutie;
-    _rebuildRptDept();
-    // Re-setăm userul după rebuild
-    $('rptUser').value = email;
+  if (email && window._rptUsers) {
+    const u = window._rptUsers.find(x => x.email === email);
+    if (u && u.institutie && !$('rptInst').value) {
+      $('rptInst').value = u.institutie;
+      _rebuildRptDept();
+      $('rptUser').value = email; // re-setăm după rebuild
+    }
   }
+  if (_rptGenerated) loadActivityReport();
 }
 
 async function loadActivityReport() {
@@ -3178,6 +3558,484 @@ async function exportActivityCSV() {
   a.href = URL.createObjectURL(blob);
   a.download = `activitate_utilizatori_${isoToDMY($('rptFrom').value)}_${isoToDMY($('rptTo').value)}.csv`;
   a.click();
+}
+
+// ── Tab Organizații & Webhook ─────────────────────────────────────────────
+
+async function loadOrganizations() {
+  const area = $('org-list-area');
+  if (!area) return;
+  try {
+    const r = await _apiFetch('/admin/organizations', { headers: hdrs() });
+    if (!r.ok) throw new Error('Eroare server');
+    const orgs = await r.json();
+    if (!orgs.length) {
+      area.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;">Nicio organizație găsită.</div>';
+      return;
+    }
+    area.innerHTML = orgs.map(org => `
+      <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:20px 24px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+              <div style="font-size:1rem;font-weight:700;color:#eaf0ff;">🏛 ${escH(org.name)}</div>
+              ${org.name === 'Default Organization' ? '<span style="font-size:.72rem;padding:2px 8px;background:rgba(255,176,32,.15);border:1px solid rgba(255,176,32,.35);border-radius:10px;color:#ffd580;">⚠ organizație principală — redenumește</span>' : ''}
+            </div>
+            <div style="font-size:.78rem;color:var(--muted);">
+              👥 ${org.user_count} utilizatori &nbsp;·&nbsp; 📁 ${org.flow_count} fluxuri
+              &nbsp;·&nbsp; ID: <span style="font-family:monospace;color:#7c5cff;">${org.id}</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button onclick="openRenameOrgModal(${org.id},'${escH(org.name)}')"
+              style="padding:7px 12px;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-size:.8rem;font-weight:600;">
+              ✏️ Redenumește
+            </button>
+            <button onclick="openOrgModal(${org.id},'${escH(org.name)}')"
+              style="padding:8px 16px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-size:.83rem;font-weight:600;white-space:nowrap;">
+              ⚙️ Configurare Webhook
+            </button>
+          </div>
+        </div>
+        <!-- Status webhook -->
+        <div style="margin-top:14px;padding:12px 16px;background:rgba(0,0,0,.2);border-radius:10px;font-size:.8rem;">
+          ${org.webhook_url ? `
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="color:${org.webhook_enabled ? '#2dd4bf' : '#ffd580'};">
+                ${org.webhook_enabled ? '🟢 Webhook activ' : '🟡 Webhook dezactivat'}
+              </span>
+              <span style="color:var(--muted);font-family:monospace;font-size:.75rem;overflow:hidden;text-overflow:ellipsis;max-width:340px;" title="${escH(org.webhook_url)}">
+                → ${escH(org.webhook_url)}
+              </span>
+              ${org.webhook_has_secret ? '<span style="color:#2dd4bf;font-size:.72rem;">🔐 HMAC</span>' : '<span style="color:#ffd580;font-size:.72rem;">⚠ fără secret</span>'}
+            </div>
+            <div style="color:var(--muted);margin-top:6px;">
+              Evenimente: ${(org.webhook_events||[]).join(', ') || '—'}
+            </div>` : `
+            <span style="color:var(--muted);">⚪ Webhook neconfigurat</span>`}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    area.innerHTML = `<div style="color:#ffaaaa;">Eroare: ${escH(e.message)}</div>`;
+  }
+}
+
+// ── Signing Providers — variabile globale (declarate înainte de openOrgModal) ──
+let _allProviders      = [];                           // toți providerii din platformă
+let _selectedProviders = new Set(['local-upload']);    // provideri activi în org curentă
+let _activeConfigProvider = null;                      // providerul configurat activ
+
+function openOrgModal(id, name) {
+  _currentOrgId = id;
+  $('orgEditName').textContent = name;
+  $('orgWebhookUrl').value = '';
+  $('orgWebhookSecret').value = '';
+  $('orgWebhookEnabled').checked = false;
+  $('evtCompleted').checked = true;
+  $('evtRefused').checked = false;
+  $('evtCancelled').checked = false;
+  $('orgEditMsg').textContent = '';
+  // Încarcă config curentă
+  _apiFetch('/admin/organizations', { headers: hdrs() }).then(r => r.json()).then(orgs => {
+    const org = orgs.find(o => o.id === id);
+    if (!org) return;
+    $('orgWebhookUrl').value = org.webhook_url || '';
+    $('orgWebhookEnabled').checked = !!org.webhook_enabled;
+    const evts = org.webhook_events || [];
+    $('evtCompleted').checked = evts.includes('flow.completed');
+    $('evtRefused').checked = evts.includes('flow.refused');
+    $('evtCancelled').checked = evts.includes('flow.cancelled');
+  }).catch(() => {});
+  // Încarcă providerii de semnare ai org-ului
+  _selectedProviders = new Set(['local-upload']);
+  _activeConfigProvider = null;
+  loadOrgSigningProviders(id);
+  $('orgEditModal').style.display = 'flex';
+}
+
+function closeOrgModal() {
+  $('orgEditModal').style.display = 'none';
+  _currentOrgId = null;
+}
+
+// ── Asignare organizație user existent (super-admin) ─────────────────────
+let _assignOrgUserId = null;
+function openAssignOrg(userId, userName) {
+  _assignOrgUserId = userId;
+  const msg = document.getElementById('assignOrgMsg');
+  if (msg) msg.textContent = '';
+  const inp = document.getElementById('assignOrgInput');
+  if (inp) inp.value = '';
+  const title = document.getElementById('assignOrgTitle');
+  if (title) title.textContent = `Asignează organizație pentru: ${userName}`;
+  loadOrganizationsAutocomplete();
+  document.getElementById('assignOrgModal').style.display = 'flex';
+  setTimeout(() => inp?.focus(), 100);
+}
+function closeAssignOrg() {
+  document.getElementById('assignOrgModal').style.display = 'none';
+  _assignOrgUserId = null;
+}
+async function doAssignOrg() {
+  const orgName = (document.getElementById('assignOrgInput')?.value || '').trim();
+  const msg = document.getElementById('assignOrgMsg');
+  if (!orgName) { if (msg) { msg.style.color='#ffaaaa'; msg.textContent='Selectați sau scrieți o organizație.'; } return; }
+  if (!_assignOrgUserId) return;
+  const btn = document.querySelector('#assignOrgModal button[onclick="doAssignOrg()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+  try {
+    const r = await _apiFetch(`/admin/users/${_assignOrgUserId}/assign-org`, {
+      method: 'PUT',
+      headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_name: orgName }),
+    });
+    const j = await r.json();
+    if (r.ok) {
+      if (msg) { msg.style.color='#2dd4bf'; msg.textContent='✅ Organizație asignată cu succes.'; }
+      setTimeout(() => { closeAssignOrg(); loadUsers(); }, 700);
+    } else {
+      if (msg) { msg.style.color='#ffaaaa'; msg.textContent='❌ ' + (j.error || 'Eroare.'); }
+    }
+  } catch(e) {
+    if (msg) { msg.style.color='#ffaaaa'; msg.textContent='❌ Eroare rețea.'; }
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent='💾 Salvează'; }
+  }
+}
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape' && document.getElementById('assignOrgModal')?.style.display==='flex') closeAssignOrg();
+});
+
+// ── Redenumire organizație ────────────────────────────────────────────────
+let _renameOrgId = null;
+function openRenameOrgModal(id, currentName) {
+  _renameOrgId = id;
+  const input = document.getElementById('renameOrgInput');
+  if (input) input.value = currentName;
+  const msg = document.getElementById('renameOrgMsg');
+  if (msg) msg.textContent = '';
+  document.getElementById('renameOrgModal').style.display = 'flex';
+  setTimeout(() => { input?.focus(); input?.select(); }, 100);
+}
+function closeRenameOrgModal() {
+  document.getElementById('renameOrgModal').style.display = 'none';
+  _renameOrgId = null;
+}
+async function doRenameOrg() {
+  const name = (document.getElementById('renameOrgInput')?.value || '').trim();
+  const msg  = document.getElementById('renameOrgMsg');
+  if (!name) { if (msg) { msg.style.color='#ffaaaa'; msg.textContent='Numele nu poate fi gol.'; } return; }
+  if (!_renameOrgId) return;
+  const btn = document.querySelector('#renameOrgModal button[onclick="doRenameOrg()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+  try {
+    const r = await _apiFetch(`/admin/organizations/${_renameOrgId}`, {
+      method: 'PUT',
+      headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const j = await r.json();
+    if (r.ok) {
+      if (msg) { msg.style.color = '#2dd4bf'; msg.textContent = '✅ Redenumit cu succes.'; }
+      setTimeout(() => { closeRenameOrgModal(); loadOrganizations(); }, 700);
+    } else {
+      if (msg) { msg.style.color = '#ffaaaa'; msg.textContent = '❌ ' + (j.error || 'Eroare.'); }
+    }
+  } catch(e) {
+    if (msg) { msg.style.color='#ffaaaa'; msg.textContent='❌ Eroare rețea.'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Salvează'; }
+  }
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('renameOrgModal')?.style.display === 'flex')
+    closeRenameOrgModal();
+});
+
+
+
+
+
+// Lista fallback — statică, identică cu ce returnează serverul
+const _PROVIDERS_FALLBACK = [
+  { id: 'local-upload', label: 'Upload local (orice certificat calificat)', mode: 'upload' },
+  { id: 'sts-cloud',   label: 'STS Cloud QES (Serviciul de Telecomunicații Speciale)', mode: 'redirect' },
+  { id: 'certsign',   label: 'certSIGN / Paperless QES', mode: 'redirect' },
+  { id: 'transsped',  label: 'Trans Sped QES', mode: 'redirect' },
+  { id: 'alfatrust',  label: 'AlfaTrust / AlfaSign QES', mode: 'redirect' },
+  { id: 'namirial',   label: 'Namirial eSignAnyWhere QES', mode: 'redirect' },
+];
+
+async function loadOrgSigningProviders(orgId) {
+  try {
+    // Încarcă lista tuturor provideri din platformă
+    if (!_allProviders.length) {
+      try {
+        const r = await _apiFetch('/admin/signing/providers', { headers: hdrs() });
+        if (r.ok) {
+          const data = await r.json();
+          _allProviders = Array.isArray(data) && data.length ? data : _PROVIDERS_FALLBACK;
+        } else {
+          _allProviders = _PROVIDERS_FALLBACK;
+        }
+      } catch(apiErr) {
+        console.warn('[signing] /admin/signing/providers fetch error — using fallback:', apiErr);
+        _allProviders = _PROVIDERS_FALLBACK;
+      }
+    }
+
+    // Încarcă config curentă a org-ului (non-fatal dacă migrarea 033 nu e încă aplicată)
+    let configSafe = {}, enabledProviders = ['local-upload'];
+    try {
+      const r2 = await _apiFetch(`/admin/organizations/${orgId}/signing`, { headers: hdrs() });
+      if (r2.ok) {
+        const j = await r2.json();
+        enabledProviders = j.enabled || ['local-upload'];
+        configSafe = j.configSafe || {};
+      }
+    } catch(e2) { /* non-fatal — DB poate nu are încă coloana signing_providers_enabled */ }
+
+    _selectedProviders = new Set(enabledProviders);
+    renderOrgProvidersGrid(configSafe);
+  } catch(e) { console.warn('[signing] loadOrgSigningProviders error:', e); }
+}
+
+function renderOrgProvidersGrid(configSafe = {}) {
+  const grid = document.getElementById('orgProvidersGrid');
+  // Dacă _allProviders e gol din orice motiv, folosim fallback-ul direct
+  if (!_allProviders.length) _allProviders = _PROVIDERS_FALLBACK;
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  const ICONS = {
+    'local-upload': '💻', 'sts-cloud': '🏛️', 'certsign': '📜',
+    'transsped': '🔏', 'alfatrust': '🛡️', 'namirial': '✍️',
+  };
+
+  for (const p of _allProviders) {
+    const isEnabled  = _selectedProviders.has(p.id);
+    const isLocal    = p.id === 'local-upload';
+    const hasConfig  = configSafe[p.id]?.hasApiKey;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);';
+
+    const checkId = `provChk_${p.id}`;
+    row.innerHTML = `
+      <input type="checkbox" id="${checkId}" ${isEnabled ? 'checked' : ''} ${isLocal ? 'disabled' : ''}
+        style="width:16px;height:16px;accent-color:#7c5cff;flex-shrink:0;cursor:${isLocal?'not-allowed':'pointer'};"
+        onchange="toggleOrgProvider('${p.id}', this.checked)"/>
+      <span style="font-size:1.1rem;">${ICONS[p.id]||'🔐'}</span>
+      <span style="flex:1;font-size:.87rem;font-weight:${isEnabled?'700':'400'};color:${isEnabled?'#eaf0ff':'rgba(234,240,255,.45)'};">${p.label}</span>
+      ${!isLocal ? `
+        <span style="font-size:.72rem;padding:2px 8px;border-radius:10px;background:${hasConfig?'rgba(45,212,191,.12)':'rgba(255,255,255,.05)'};color:${hasConfig?'#2dd4bf':'rgba(234,240,255,.35)'};border:1px solid ${hasConfig?'rgba(45,212,191,.3)':'rgba(255,255,255,.08)'};">
+          ${hasConfig ? '✓ configurat' : 'neconfigurat'}
+        </span>
+        ${isEnabled ? `<button onclick="openProviderConfig('${p.id}','${p.label}')"
+          style="padding:4px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;font-size:.78rem;white-space:nowrap;">⚙ Config</button>` : ''}
+      ` : '<span style="font-size:.72rem;color:rgba(234,240,255,.3);">implicit</span>'}
+    `;
+    grid.appendChild(row);
+  }
+}
+
+function toggleOrgProvider(providerId, checked) {
+  if (checked) _selectedProviders.add(providerId);
+  else         _selectedProviders.delete(providerId);
+  _selectedProviders.add('local-upload'); // întotdeauna prezent
+}
+
+function openProviderConfig(providerId, label) {
+  _activeConfigProvider = providerId;
+  const area = document.getElementById('orgProviderConfigArea');
+  if (area) area.style.display = '';
+  const title = document.getElementById('orgProviderConfigTitle');
+  if (title) title.textContent = `⚙ Configurare: ${label}`;
+  // Curăță câmpurile — nu pre-populăm cu API keys (securitate)
+  ['orgProviderApiUrl','orgProviderApiKey','orgProviderWebhookSecret'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const status = document.getElementById('orgProviderVerifyStatus');
+  if (status) status.textContent = '';
+  area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function verifyProviderConfig() {
+  if (!_activeConfigProvider) return;
+  const apiUrl     = document.getElementById('orgProviderApiUrl')?.value || '';
+  const apiKey     = document.getElementById('orgProviderApiKey')?.value || '';
+  const statusEl   = document.getElementById('orgProviderVerifyStatus');
+  if (statusEl) { statusEl.textContent = '⏳ Se verifică...'; statusEl.style.color = '#9db0ff'; }
+  try {
+    const r = await _apiFetch('/admin/signing/verify', {
+      method: 'POST', headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ providerId: _activeConfigProvider, config: { apiUrl, apiKey } }),
+    });
+    const j = await r.json();
+    if (statusEl) {
+      statusEl.textContent = j.ok ? ('✅ ' + (j.message || 'Conexiune OK')) : ('❌ ' + (j.message || j.error));
+      statusEl.style.color = j.ok ? '#2dd4bf' : '#ff8a94';
+    }
+  } catch(e) {
+    if (statusEl) { statusEl.textContent = '❌ ' + e.message; statusEl.style.color = '#ff8a94'; }
+  }
+}
+
+// Salvează providerii activi + config (apelat din saveOrgWebhook)
+async function saveOrgSigningProviders(orgId) {
+  if (!orgId) return;
+  // Asigurăm că local-upload e mereu în listă
+  _selectedProviders.add('local-upload');
+  const enabled = [..._selectedProviders];
+  // Construiește config doar pentru providerul activ editat
+  const config = {};
+  if (_activeConfigProvider) {
+    const apiUrl     = document.getElementById('orgProviderApiUrl')?.value || '';
+    const apiKey     = document.getElementById('orgProviderApiKey')?.value || '';
+    const wSecret    = document.getElementById('orgProviderWebhookSecret')?.value || '';
+    if (apiUrl || apiKey) {
+      config[_activeConfigProvider] = {};
+      if (apiUrl)    config[_activeConfigProvider].apiUrl = apiUrl;
+      if (apiKey)    config[_activeConfigProvider].apiKey = apiKey;
+      if (wSecret)   config[_activeConfigProvider].webhookSecret = wSecret;
+    }
+  }
+  try {
+    await _apiFetch(`/admin/organizations/${orgId}/signing`, {
+      method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, config }),
+    });
+  } catch(e) { /* non-fatal — webhook e salvat oricum */ }
+}
+
+
+
+async function verifySigningProvider() {
+  const providerId = document.getElementById('orgSigningProvider')?.value;
+  const apiKey     = document.getElementById('orgSigningApiKey')?.value || '';
+  const apiUrl     = document.getElementById('orgSigningApiUrl')?.value || '';
+  const statusEl   = document.getElementById('orgSigningProviderStatus');
+  if (!statusEl) return;
+  statusEl.textContent = '⏳ Se verifică...'; statusEl.style.color = '#9db0ff';
+  try {
+    const r = await _apiFetch('/admin/signing/verify', {
+      method: 'POST',
+      headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ providerId, config: { apiKey, apiUrl } })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      statusEl.textContent = '✅ ' + (j.details?.message || 'Provider verificat cu succes.');
+      statusEl.style.color = '#2dd4bf';
+    } else {
+      statusEl.textContent = '❌ ' + (j.message || j.error || 'Eroare verificare.');
+      statusEl.style.color = '#ff8a94';
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ Eroare rețea: ' + e.message;
+    statusEl.style.color = '#ff8a94';
+  }
+}
+
+// Arată/ascunde config area în funcție de provider selectat
+document.addEventListener('change', e => {
+  if (e.target.id === 'orgSigningProvider') {
+    const area = document.getElementById('orgSigningConfigArea');
+    if (area) area.style.display = e.target.value === 'local-upload' ? 'none' : '';
+  }
+});
+
+// Extinde saveOrgWebhook să salveze și signing provider
+const _origSaveOrgWebhook = typeof saveOrgWebhook === 'function' ? saveOrgWebhook : null;
+async function saveOrgWebhookWithSigning() {
+  // Salvăm mai întâi webhook-ul (funcția originală)
+  if (_origSaveOrgWebhook) await _origSaveOrgWebhook();
+  // Salvăm signing provider dacă e selectat și diferit de default
+  const providerId = document.getElementById('orgSigningProvider')?.value;
+  if (!providerId || !_currentOrgId) return;
+  const apiKey = document.getElementById('orgSigningApiKey')?.value || '';
+  const apiUrl = document.getElementById('orgSigningApiUrl')?.value || '';
+  try {
+    await _apiFetch(`/admin/organizations/${_currentOrgId}/signing`, {
+      method: 'PUT',
+      headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        signing_provider: providerId,
+        signing_provider_config: { apiKey: apiKey || undefined, apiUrl: apiUrl || undefined }
+      })
+    });
+  } catch(e) { /* non-fatal — webhook e salvat deja */ }
+}
+
+
+function orgGenSecret() {
+  // Generare secret 32 bytes hex pe client
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  const hex = Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+  $('orgWebhookSecret').value = hex;
+  $('orgWebhookSecret').type = 'text';
+  setTimeout(() => { if($('orgWebhookSecret')) $('orgWebhookSecret').type = 'password'; }, 5000);
+}
+
+async function saveOrgWebhook() {
+  if (!_currentOrgId) return;
+  const msg = $('orgEditMsg');
+  const events = [];
+  if ($('evtCompleted').checked) events.push('flow.completed');
+  if ($('evtRefused').checked) events.push('flow.refused');
+  if ($('evtCancelled').checked) events.push('flow.cancelled');
+  const body = {
+    webhook_url:     $('orgWebhookUrl').value.trim() || null,
+    webhook_events:  events,
+    webhook_enabled: $('orgWebhookEnabled').checked,
+  };
+  const secret = $('orgWebhookSecret').value.trim();
+  if (secret) body.webhook_secret = secret;
+  msg.textContent = '⏳ Se salvează...';
+  try {
+    const r = await _apiFetch(`/admin/organizations/${_currentOrgId}`, {
+      method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (r.ok) {
+      saveOrgSigningProviders(_currentOrgId).catch(() => {});
+      msg.innerHTML = '<span style="color:#2dd4bf;">✅ Salvat cu succes.</span>';
+      setTimeout(() => { closeOrgModal(); loadOrganizations(); }, 800);
+    } else {
+      msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(j.error||'Eroare')}</span>`;
+    }
+  } catch(e) {
+    msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`;
+  }
+}
+
+async function orgTestWebhook() {
+  if (!_currentOrgId) return;
+  const msg = $('orgEditMsg');
+  // Salvăm mai întâi URL-ul curent dacă s-a modificat
+  const url = $('orgWebhookUrl').value.trim();
+  if (!url) { msg.innerHTML = '<span style="color:#ffd580;">⚠ Introduceți un URL înainte de test.</span>'; return; }
+  msg.textContent = '⏳ Se trimite eveniment de test...';
+  try {
+    // Salvăm URL-ul temporar pentru test
+    await _apiFetch(`/admin/organizations/${_currentOrgId}`, {
+      method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhook_url: url }),
+    });
+    const r = await _apiFetch(`/admin/organizations/${_currentOrgId}/test-webhook`, {
+      method: 'POST', headers: hdrs(),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      msg.innerHTML = `<span style="color:#2dd4bf;">✅ ${escH(j.message)} (HTTP ${j.status})</span>`;
+    } else {
+      msg.innerHTML = `<span style="color:#ffd580;">⚠ ${escH(j.message || j.error)}</span>`;
+    }
+  } catch(e) {
+    msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`;
+  }
 }
 
 </script>

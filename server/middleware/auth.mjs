@@ -88,6 +88,33 @@ export function requireAuth(req, res) {
   catch(e) { res.status(401).json({ error: 'token_invalid_or_expired' }); return null; }
 }
 
+// ── SEC-04: verificare token_version la endpoint-uri post-reset ───────────
+// Funcția DB e injectată din index.mjs pentru a evita dependency cycle.
+// Apelată explicit în admin.mjs după operații de reset parolă.
+let _checkTokenVersion = null;
+export function injectTokenVersionChecker(fn) { _checkTokenVersion = fn; }
+
+/**
+ * Verifică că token-ul JWT al actorului logat corespunde cu token_version din DB.
+ * Apelat în endpoint-urile care cer invalidare imediată (reset-password, disable user).
+ * Returnează true dacă tokenul e valid, false (și trimite 401) dacă e invalidat.
+ */
+export async function checkTokenVersionValid(actor, res) {
+  if (!_checkTokenVersion || !actor?.userId || actor.tv == null) return true; // no-op dacă nu e injectat
+  try {
+    const dbVersion = await _checkTokenVersion(actor.userId);
+    if (dbVersion == null) return true; // user nou fără coloană — backward compat
+    if (Number(actor.tv) !== Number(dbVersion)) {
+      res.status(401).json({ error: 'token_revoked', message: 'Sesiunea a expirat. Te rugăm să te autentifici din nou.' });
+      return false;
+    }
+    return true;
+  } catch(e) {
+    logger.warn({ err: e }, 'checkTokenVersionValid: eroare DB (non-fatal, permitem)');
+    return true; // fail-open — nu blocăm utilizatorul la erori DB tranzitorii
+  }
+}
+
 /**
  * requireAdmin — verifică rol admin.
  * SEC-02: ADMIN_SECRET cu rate limiting + audit log.

@@ -28,7 +28,8 @@ const __dirname_outreach = path.dirname(fileURLToPath(import.meta.url));
 const DAILY_SEND_LIMIT    = parseInt(process.env.OUTREACH_DAILY_LIMIT || '100');
 const FROM_EMAIL          = process.env.OUTREACH_FROM || 'DocFlowAI <contact@docflowai.ro>';
 const PDF_PATH            = process.env.OUTREACH_PDF_PATH || null;
-const APP_URL = process.env.APP_URL || ''; // opțional — se auto-detectează din request
+// B — b97: aliniat cu restul aplicației — PUBLIC_BASE_URL în loc de APP_URL
+const APP_URL = process.env.PUBLIC_BASE_URL || process.env.APP_URL || '';
 
 /** Returnează baza URL-ului din request (ex. https://docflowai-app.up.railway.app) */
 function getBaseUrl(req) {
@@ -59,28 +60,186 @@ function getPrimarii() {
 }
 
 // ── GET /admin/outreach/primarii — dataset cu filtru + paginare ───────────
+// ── CRUD Instituții Outreach ──────────────────────────────────────────────────
+// Tabel DB: outreach_primarii (migrare 029)
+// La primul acces, dacă tabelul e gol, face seed din primarii-romania.json
+
+let _primarii_seeded = false;
+
+async function ensurePrimariiSeeded() {
+  if (_primarii_seeded) return;
+  try {
+    const { rows } = await pool.query('SELECT COUNT(*) AS cnt FROM outreach_primarii');
+    if (parseInt(rows[0].cnt) > 0) { _primarii_seeded = true; return; }
+    // Seed din JSON
+    const jsonData = getPrimarii();
+    if (!jsonData.length) return;
+    // SEC-N01: includem unsubscribe_token la seed (5 parametri/rand)
+    const values = jsonData.map((p, i) => {
+      const base = i * 5;
+      return `($${base+1}, $${base+2}, $${base+3}, $${base+4}, $${base+5})`;
+    }).join(',');
+    const flat = jsonData.flatMap(p => [
+      p.institutie, p.email, p.judet || '', p.localitate || p.institutie,
+      crypto.randomUUID(),
+    ]);
+    await pool.query(
+      `INSERT INTO outreach_primarii (institutie, email, judet, localitate, unsubscribe_token) VALUES ${values}
+       ON CONFLICT (email) DO NOTHING`,
+      flat
+    );
+    _primarii_seeded = true;
+    logger.info({ count: jsonData.length }, 'outreach_primarii: seed din JSON efectuat');
+  } catch(e) { logger.error({ err: e }, 'ensurePrimariiSeeded error'); }
+}
+
+// GET /admin/outreach/primarii — lista cu filtru, paginare, judete
 router.get('/primarii', async (req, res) => {
   if (await requireAdmin(req, res)) return;
-  const { judet = '', q = '', page = '1', limit = '50' } = req.query;
+  if (requireDb(res)) return;
+  await ensurePrimariiSeeded();
+
+  const { judet = '', q = '', page = '1', limit = '50', activ = '' } = req.query;
   const pageN  = Math.max(1, parseInt(page));
   const limitN = Math.min(200, Math.max(1, parseInt(limit)));
-  const qLow   = q.toLowerCase().trim();
-  const jLow   = judet.toLowerCase().trim();
+  const offset = (pageN - 1) * limitN;
 
-  let list = getPrimarii();
-  if (jLow) list = list.filter(p => p.judet.toLowerCase() === jLow);
-  if (qLow) list = list.filter(p =>
-    p.localitate.toLowerCase().includes(qLow) ||
-    p.institutie.toLowerCase().includes(qLow) ||
-    p.email.toLowerCase().includes(qLow)
-  );
+  const conds = ['1=1']; const params = [];
+  if (judet.trim()) { params.push(judet.trim()); conds.push(`judet = $${params.length}`); }
+  if (activ === '0') conds.push("activ = FALSE");
+  else conds.push("activ = TRUE"); // default: doar active
+  if (q.trim()) {
+    const qp = `%${q.trim().toLowerCase()}%`;
+    params.push(qp);
+    conds.push(`(lower(institutie) LIKE $${params.length} OR lower(email) LIKE $${params.length} OR lower(judet) LIKE $${params.length})`);
+  }
+  const where = conds.join(' AND ');
 
-  const total = list.length;
-  const pages = Math.ceil(total / limitN) || 1;
-  const items = list.slice((pageN - 1) * limitN, pageN * limitN);
-  const judete = [...new Set(getPrimarii().map(p => p.judet))].sort();
+  try {
+    const { rows: cnt }  = await pool.query(`SELECT COUNT(*) AS c FROM outreach_primarii WHERE ${where}`, params);
+    const total = parseInt(cnt[0].c);
+    const { rows: items } = await pool.query(
+      `SELECT id, institutie, email, judet, localitate, activ FROM outreach_primarii WHERE ${where} ORDER BY judet ASC, institutie ASC LIMIT $${params.length+1} OFFSET $${params.length+2}`,
+      [...params, limitN, offset]
+    );
+    const { rows: jRows } = await pool.query(`SELECT DISTINCT judet FROM outreach_primarii WHERE activ=TRUE ORDER BY judet ASC`);
+    const judete = jRows.map(r => r.judet).filter(Boolean);
+    res.json({ items, total, page: pageN, pages: Math.ceil(total / limitN) || 1, limit: limitN, judete });
+  } catch(e) { logger.error({ err: e }, 'GET primarii error'); res.status(500).json({ error: 'server_error' }); }
+});
 
-  res.json({ items, total, page: pageN, pages, limit: limitN, judete });
+// POST /admin/outreach/primarii — adaugă o instituție
+router.post('/primarii', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  const { institutie, email, judet = '', localitate = '' } = req.body || {};
+  if (!institutie?.trim()) return res.status(400).json({ error: 'institutie_required' });
+  if (!email?.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))
+    return res.status(400).json({ error: 'email_invalid' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO outreach_primarii (institutie, email, judet, localitate)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [institutie.trim(), email.trim().toLowerCase(), judet.trim(), localitate.trim() || institutie.trim()]
+    );
+    res.status(201).json(rows[0]);
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'email_exists', message: 'Emailul există deja.' });
+    logger.error({ err: e }, 'POST primarii error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// PUT /admin/outreach/primarii/:id — editează o instituție
+router.put('/primarii/:id', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  const id = parseInt(req.params.id);
+  const { institutie, email, judet, localitate, activ } = req.body || {};
+  if (!institutie?.trim()) return res.status(400).json({ error: 'institutie_required' });
+  if (!email?.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))
+    return res.status(400).json({ error: 'email_invalid' });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE outreach_primarii SET institutie=$1, email=$2, judet=$3, localitate=$4, activ=$5, updated_at=NOW()
+       WHERE id=$6 RETURNING *`,
+      [institutie.trim(), email.trim().toLowerCase(), (judet||'').trim(), (localitate||institutie).trim(), activ !== false, id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    res.json(rows[0]);
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'email_exists', message: 'Emailul există deja.' });
+    logger.error({ err: e }, 'PUT primarii error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// DELETE /admin/outreach/primarii/:id — dezactivează (soft delete)
+router.delete('/primarii/:id', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  const id = parseInt(req.params.id);
+  const hard = req.query.hard === '1';
+  try {
+    if (hard) {
+      const { rowCount } = await pool.query('DELETE FROM outreach_primarii WHERE id=$1', [id]);
+      if (!rowCount) return res.status(404).json({ error: 'not_found' });
+    } else {
+      const { rows } = await pool.query(
+        `UPDATE outreach_primarii SET activ=FALSE, updated_at=NOW() WHERE id=$1 RETURNING id`,
+        [id]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    }
+    res.json({ ok: true, hard });
+  } catch(e) { logger.error({ err: e }, 'DELETE primarii error'); res.status(500).json({ error: 'server_error' }); }
+});
+
+// POST /admin/outreach/primarii/import — import bulk JSON sau CSV
+// Body: { format: 'json'|'csv', data: '...' }
+router.post('/primarii/import', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  const { format = 'json', data, replace = false } = req.body || {};
+  if (!data) return res.status(400).json({ error: 'data_required' });
+
+  let rows = [];
+  try {
+    if (format === 'json') {
+      rows = JSON.parse(data);
+      if (!Array.isArray(rows)) return res.status(400).json({ error: 'json_must_be_array' });
+    } else {
+      // CSV: email,institutie[,judet[,localitate]]
+      rows = data.split(/\r?\n/).slice(1).map(line => {
+        const parts = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+        return { email: parts[0], institutie: parts[1] || parts[0], judet: parts[2] || '', localitate: parts[3] || parts[1] || '' };
+      }).filter(r => r.email && r.institutie);
+    }
+  } catch(e) { return res.status(400).json({ error: 'parse_error', message: e.message }); }
+
+  // Validare și insert
+  const valid = rows.filter(r => r.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email.trim()));
+  if (!valid.length) return res.status(400).json({ error: 'no_valid_rows' });
+
+  let added = 0, skipped = 0;
+  try {
+    if (replace) {
+      await pool.query('DELETE FROM outreach_primarii');
+    }
+    for (const r of valid) {
+      try {
+        await pool.query(
+          `INSERT INTO outreach_primarii (institutie, email, judet, localitate)
+           VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO UPDATE
+           SET institutie=$1, judet=$3, localitate=$4, updated_at=NOW()`,
+          [r.institutie?.trim() || r.email, r.email.trim().toLowerCase(), (r.judet||'').trim(), (r.localitate||r.institutie||r.email).trim()]
+        );
+        added++;
+      } catch(_) { skipped++; }
+    }
+    logger.info({ added, skipped, replace }, 'outreach_primarii: import bulk');
+    res.json({ ok: true, added, skipped, total: valid.length });
+  } catch(e) { logger.error({ err: e }, 'import primarii error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 /** Trimite email via Resend REST API (fără SDK — consistente cu mailer.mjs) */
@@ -114,8 +273,8 @@ async function sentToday() {
   return parseInt(rows[0].cnt);
 }
 
-/** Email HTML de baza cu tracking pixel + click tracking injectat */
-function buildHtml(template, institutie, trackingId, baseUrl) {
+/** Email HTML de baza cu tracking pixel + click tracking injectat + footer dezabonare (GDPR) */
+function buildHtml(template, institutie, trackingId, baseUrl, unsubscribeUrl = null) {
   const displayInstitutie = institutie
     .toLowerCase()
     .replace(/(?:^|\s)\S/g, c => c.toUpperCase());
@@ -134,8 +293,18 @@ function buildHtml(template, institutie, trackingId, baseUrl) {
       }
     );
   }
-  return html.replace('</body>', `${pixel}</body>`)
-    + (template.includes('</body>') ? '' : pixel);
+  // SEC-N01 / GDPR: footer dezabonare obligatoriu în emailuri comerciale
+  const unsubFooter = unsubscribeUrl
+    ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;text-align:center;font-family:Arial,sans-serif;font-size:11px;color:#aaa;">
+        Dacă nu mai doriți să primiți comunicări de la DocFlowAI, puteți
+        <a href="${unsubscribeUrl}" style="color:#aaa;">dezabona această adresă de email</a>.
+       </div>`
+    : '';
+  const withFooter = html.includes('</body>')
+    ? html.replace('</body>', `${unsubFooter}</body>`)
+    : html + unsubFooter;
+  return withFooter.replace('</body>', `${pixel}</body>`)
+    + (withFooter.includes('</body>') ? '' : pixel);
 }
 
 // ── Click tracking (public — fără auth) ───────────────────────────────────
@@ -418,12 +587,16 @@ router.post('/campaigns/:id/send', async (req, res) => {
     }
     const toSend = Math.min(batchSize, remaining);
 
-    // Destinatari pending
+    // Destinatari pending — excludem dezabonații (JOIN cu outreach_primarii)
     const { rows: pending } = await pool.query(`
-      SELECT id, email, institutie, tracking_id
-      FROM outreach_recipients
-      WHERE campaign_id = $1 AND status = 'pending'
-      ORDER BY id ASC
+      SELECT r.id, r.email, r.institutie, r.tracking_id,
+             p.unsubscribe_token
+      FROM outreach_recipients r
+      LEFT JOIN outreach_primarii p ON lower(p.email) = lower(r.email)
+      WHERE r.campaign_id = $1
+        AND r.status = 'pending'
+        AND (p.unsubscribed IS NULL OR p.unsubscribed = FALSE)
+      ORDER BY r.id ASC
       LIMIT $2
     `, [campaignId, toSend]);
 
@@ -443,7 +616,11 @@ router.post('/campaigns/:id/send', async (req, res) => {
     const baseUrl = getBaseUrl(req);
 
     for (const recip of pending) {
-      const html = buildHtml(campaign.html_body, recip.institutie, recip.tracking_id, baseUrl);
+      // SEC-N01: link dezabonare unic per destinatar
+      const unsubUrl = recip.unsubscribe_token
+        ? `${baseUrl}/admin/outreach/unsubscribe/${recip.unsubscribe_token}`
+        : null;
+      const html = buildHtml(campaign.html_body, recip.institutie, recip.tracking_id, baseUrl, unsubUrl);
       try {
         await sendEmail({
           to: recip.email,
@@ -496,6 +673,72 @@ router.post('/campaigns/:id/reset-errors', async (req, res) => {
     res.json({ reset: rowCount });
   } catch(e) {
     logger.error({ err: e }, 'outreach reset errors error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── GET /admin/outreach/unsubscribe/:token — dezabonare publică (fără auth) ────
+// SEC-N01 / GDPR Art.21: link de dezabonare obligatoriu în emailuri comerciale.
+// Nu necesită autentificare — funcționează direct din clientul de email.
+router.get('/unsubscribe/:token', async (req, res) => {
+  const { token } = req.params;
+  if (!token || !/^[0-9a-f-]{36}$/.test(token)) {
+    return res.status(400).send('<h2>Link de dezabonare invalid.</h2>');
+  }
+  try {
+    const { rowCount, rows } = await pool.query(
+      `UPDATE outreach_primarii
+       SET unsubscribed = TRUE, updated_at = NOW()
+       WHERE unsubscribe_token = $1
+         AND unsubscribed = FALSE
+       RETURNING email, institutie`,
+      [token]
+    );
+    if (!rowCount) {
+      // Deja dezabonat sau token invalid
+      return res.status(200).send(`
+        <!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8"><title>Dezabonare</title>
+        <style>body{font-family:Arial,sans-serif;max-width:520px;margin:80px auto;text-align:center;color:#444;}</style></head>
+        <body><h2>✅ Adresa este deja dezabonată</h2>
+        <p>Nu veți mai primi comunicări de la DocFlowAI pe această adresă.</p></body></html>
+      `);
+    }
+    const { email, institutie } = rows[0];
+    logger.info({ email, institutie }, 'outreach: dezabonare reusita');
+    res.status(200).send(`
+      <!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8"><title>Dezabonare confirmată</title>
+      <style>body{font-family:Arial,sans-serif;max-width:520px;margin:80px auto;text-align:center;color:#444;}</style></head>
+      <body><h2>✅ Dezabonare confirmată</h2>
+      <p>Adresa <strong>${escHtml(email)}</strong> a fost dezabonată cu succes.<br>
+      Nu veți mai primi comunicări de la DocFlowAI.</p></body></html>
+    `);
+  } catch(e) {
+    logger.error({ err: e }, 'outreach unsubscribe error');
+    res.status(500).send('<h2>Eroare internă. Încercați din nou.</h2>');
+  }
+});
+
+// ── POST /admin/outreach/primarii/ensure-tokens — generare token lipsă ───────
+// Util după upgrade pentru rândurile existente fără unsubscribe_token.
+router.post('/primarii/ensure-tokens', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+  try {
+    // Actualizează rândurile fără token
+    const { rows: missing } = await pool.query(
+      `SELECT id FROM outreach_primarii WHERE unsubscribe_token IS NULL LIMIT 5000`
+    );
+    let updated = 0;
+    for (const row of missing) {
+      await pool.query(
+        `UPDATE outreach_primarii SET unsubscribe_token = $1 WHERE id = $2`,
+        [crypto.randomUUID(), row.id]
+      );
+      updated++;
+    }
+    res.json({ ok: true, updated, remaining: missing.length === 5000 ? '5000+' : 0 });
+  } catch(e) {
+    logger.error({ err: e }, 'ensure-tokens error');
     res.status(500).json({ error: 'server_error' });
   }
 });

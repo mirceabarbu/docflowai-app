@@ -1,15 +1,15 @@
 /**
- * DocFlowAI v3.3.5 — Main entry point (orchestrator)
+ * DocFlowAI v3.3.7 — Main entry point (orchestrator)
  *
- * CHANGES v3.3.5:
- *  SEC-02: ADMIN_SECRET rate limiting + audit log (in auth.mjs)
- *  SEC-03: PBKDF2 600k + lazy re-hash (in auth.mjs + routes/auth.mjs)
- *  PERF-01: 3 indexuri JSONB noi (in db/index.mjs migration 021)
- *  LOG-01: Logging structurat JSON via middleware/logger.mjs (inlocuieste console.log)
- *  HEALTH: /health endpoint imbunatatit cu memory usage + DB latency
+ * CHANGES v3.3.7 b80:
+ *  FIX BUG-N01: archive_jobs recovery la startup (status='processing' > 30min → reset 'pending')
+ *  FIX BUG-N03: Swagger /api-docs + /api-docs.json protejate cu autentificare
+ *  FIX CODE-N02: APP_VERSION citit din package.json (single source of truth)
+ *  FIX PERF-04: Pool DB max: 10 → 20, idleTimeoutMillis: 30000
  */
 
 import express from 'express';
+import { readFileSync } from 'fs';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -18,12 +18,19 @@ import crypto from 'crypto';
 import path from 'path';
 import http from 'http';
 import { fileURLToPath } from 'url';
+
+// CODE-N02: versiune citită din package.json — single source of truth
+const _pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));
+const APP_VERSION = _pkg.version;
+
 import { sendSignerEmail } from './mailer.mjs';
 import { sendWaSignRequest, sendWaCompleted, sendWaRefused, isWhatsAppConfigured } from './whatsapp.mjs';
 import { archiveFlow, verifyDrive } from './drive.mjs';
 import jwt from 'jsonwebtoken';
 import { WebSocketServer } from 'ws';
 import { pushToUser } from './push.mjs';
+import { fireWebhook, injectWebhookPool, injectWebhookBaseUrl } from './webhook.mjs';
+import { emailYourTurn, emailGeneric } from './emailTemplates.mjs';
 import { logger } from './middleware/logger.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
@@ -31,7 +38,7 @@ let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
 
 import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
-import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml } from './middleware/auth.mjs';
+import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml, injectTokenVersionChecker } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
 import { openApiSpec } from './swagger.mjs';
@@ -41,6 +48,7 @@ import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
+import templatesRouter from './routes/templates.mjs'; // Q-06: extras din index.mjs
 
 const app = express();
 app.set('trust proxy', 1);
@@ -82,11 +90,19 @@ app.use((req, res, next) => {
 // ── CORS ──────────────────────────────────────────────────────────────────
 // FIX v3.2.2: origin:true cu credentials:true e periculos (accept orice domeniu).
 // Fallback la domeniu explicit din PUBLIC_BASE_URL dacă CORS_ORIGIN nu e setat.
+// FIX Q-01: fallback false în loc de true — blochează origini necunoscute.
+//           Dacă nici CORS_ORIGIN nici PUBLIC_BASE_URL nu sunt setate în producție,
+//           se loghează WARN (nu exit — Railway poate restarta înainte de env inject).
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-  : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : true);
+  : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : false);
+if (corsOrigins === false) {
+  logger.warn('CORS_ORIGIN și PUBLIC_BASE_URL lipsesc — CORS blocat pentru toate originile externe. Setați cel puțin PUBLIC_BASE_URL.');
+}
 app.use(cors({ origin: corsOrigins, credentials: true }));
-app.use(express.json({ limit: '50mb' }));
+// PERF-03: limita globala 1MB — previne body flood pe endpoint-urile cu JSON mic.
+// Rutele care primesc PDF (pdfB64/signedPdfB64/dataB64) au override 50MB in flows.mjs.
+app.use(express.json({ limit: '1mb' }));
 
 // ── Request ID + safe JSON error envelope ─────────────────────────────────
 app.use((req, res, next) => {
@@ -135,14 +151,29 @@ app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'template
 
 // ── Health public ─────────────────────────────────────────────────────────
 // ── API Docs — OpenAPI 3.0 ───────────────────────────────────────────────────
-// GET /api-docs.json — spec JSON brut (Postman, Insomnia, integrări externe)
-// GET /api-docs      — Swagger UI interactiv (browser)
+// GET /api-docs.json — spec JSON brut (Postman, Insomnia, integrări externe) — auth required
+// GET /api-docs      — Swagger UI interactiv (browser) — auth required
+// BUG-N03: protejat cu cookie auth — structura API nu trebuie expusă public
+// FIX Q-02: verificare JWT completă (verify), nu doar existența cookie-ului.
+//           Un cookie expirat sau manipulat era suficient pentru acces înainte.
+function _isApiDocsAuthed(req) {
+  const token = req.cookies?.auth_token;
+  if (!token) return false;
+  try { jwt.verify(token, JWT_SECRET); return true; } catch(e) { return false; }
+}
+
 app.get('/api-docs.json', (req, res) => {
+  if (!_isApiDocsAuthed(req)) {
+    return res.status(401).json({ error: 'auth_required', message: 'Autentificare necesară pentru API docs.' });
+  }
   res.setHeader('Content-Type', 'application/json');
   res.json(openApiSpec);
 });
 
 app.get('/api-docs', (req, res) => {
+  if (!_isApiDocsAuthed(req)) {
+    return res.redirect('/login.html?redirect=/api-docs');
+  }
   // URL relativ — funcționează pe orice domeniu fără a depinde de publicBaseUrl
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html>
@@ -180,7 +211,7 @@ app.get('/health', (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.7',
+    version: APP_VERSION,
     ts: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     memory: {
@@ -202,7 +233,7 @@ app.get('/admin/health', async (req, res) => {
   res.json({
     ok: true,
     service: 'DocFlowAI',
-    version: '3.3.7',
+    version: APP_VERSION,
     dbReady: !!DB_READY,
     dbLatencyMs,
     dbLastError: DB_LAST_ERROR ? String(DB_LAST_ERROR?.message || DB_LAST_ERROR) : null,
@@ -227,74 +258,8 @@ app.get('/metrics', async (req, res) => {
   res.send(renderMetrics());
 });
 
-// ── Template API ──────────────────────────────────────────────────────────
-app.get('/api/templates', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const institutie = uRows[0]?.institutie || '';
-    const orgId = uRows[0]?.org_id || actor.orgId || null;
-    // FIX v3.2.3: filtrare pe org_id pentru sabloane partajate (nu doar pe institutie text)
-    const { rows } = await pool.query(
-      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='' AND ($3::integer IS NULL OR org_id=$3))
-       ORDER BY user_email=$1 DESC, name ASC`,
-      [actor.email.toLowerCase(), institutie, orgId]
-    );
-    res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
-});
-
-app.post('/api/templates', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  const { name, signers, shared } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
-  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
-  if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
-  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
-  try {
-    // FIX b76: citim și org_id — FK obligatoriu pe templates în producție
-    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const institutie = uRows[0]?.institutie || '';
-    const orgId = uRows[0]?.org_id || actor.orgId || null;
-    const { rows } = await pool.query(
-      'INSERT INTO templates (user_email,institutie,name,signers,shared,org_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
-      [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared, orgId]
-    );
-    res.status(201).json({ ...rows[0], isOwner: true });
-  } catch(e) { logger.error({ err: e }, 'POST /api/templates error'); res.status(500).json({ error: 'server_error' }); }
-});
-
-app.put('/api/templates/:id', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  const { name, signers, shared } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
-  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
-  if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
-  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
-  try {
-    const { rows } = await pool.query(
-      'UPDATE templates SET name=$1,signers=$2,shared=$3,updated_at=NOW() WHERE id=$4 AND user_email=$5 RETURNING *',
-      [name?.trim(), JSON.stringify(signers), !!shared, parseInt(req.params.id), actor.email.toLowerCase()]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'not_found_or_not_owner' });
-    res.json({ ...rows[0], isOwner: true });
-  } catch(e) { logger.error({ err: e }, 'PUT /api/templates error'); res.status(500).json({ error: 'server_error' }); }
-});
-
-app.delete('/api/templates/:id', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rowCount } = await pool.query('DELETE FROM templates WHERE id=$1 AND user_email=$2', [parseInt(req.params.id), actor.email.toLowerCase()]);
-    if (!rowCount) return res.status(404).json({ error: 'not_found_or_not_owner' });
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
-});
-
 // ── Helpers ────────────────────────────────────────────────────────────────
+// Q-06: Template API extras în server/routes/templates.mjs (montat mai jos)
 // FIX v3.3.2: escHtml importat din middleware/auth.mjs — eliminat duplicatul local
 
 function publicBaseUrl(req) {
@@ -471,7 +436,12 @@ async function _runReminderJob() {
         [current.email.toLowerCase(), flowId]
       );
       const lastSentAt = lastRows[0]?.created_at ? new Date(lastRows[0].created_at).getTime() : 0;
-      const inactiveSince = current.notifiedAt ? new Date(current.notifiedAt).getTime() : (Date.now() - R1_MS);
+      // FIX Q-04: fallback la data crearii fluxului, nu la Date.now()-R1_MS.
+      // Anterior: daca notifiedAt lipsea, inactiveMs era exact R1_MS => reminder trimis imediat
+      // chiar si pe fluxuri create cu cateva minute in urma.
+      const inactiveSince = current.notifiedAt
+        ? new Date(current.notifiedAt).getTime()
+        : new Date(data.createdAt || Date.now()).getTime();
       const inactiveMs = Date.now() - inactiveSince;
       const minGap = R1_MS - 3600_000; // anti-spam: minim R1-1h intre remindere
 
@@ -610,76 +580,21 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
   const eventsToAdd = [];
   const appUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
 
-  // Construiește HTML email — template complet pentru YOUR_TURN, simplu pentru restul
-  let emailHtml;
+  // CODE-N01: template-uri extrase în emailTemplates.mjs
+  let emailSubject, emailHtml;
   if (type === 'YOUR_TURN' && waParams.signerToken) {
-    const signerLink = `${appUrl}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(waParams.signerToken)}`;
-    const flowUrl = `${appUrl}/flow.html?flow=${encodeURIComponent(flowId)}`;
-    emailHtml = `
-<div style="background:#0b1120;margin:0;padding:32px 16px;font-family:system-ui,-apple-system,sans-serif;">
-<div style="max-width:520px;margin:0 auto;background:#111827;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
-  <!-- Header -->
-  <div style="background:linear-gradient(135deg,#1e1460 0%,#0f2a4a 100%);padding:28px 32px 24px;text-align:center;">
-    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:10px;padding:10px 18px;font-size:1.1rem;font-weight:800;color:#fff;letter-spacing:.5px;">📋 DocFlowAI</div>
-    <div style="margin-top:14px;font-size:.8rem;color:rgba(255,255,255,.4);letter-spacing:1px;text-transform:uppercase;">Platformă documente electronice</div>
-  </div>
-  <!-- Body -->
-  <div style="padding:28px 32px;">
-    <p style="margin:0 0 6px;font-size:1rem;color:#cdd8ff;">Bună${waParams.signerName ? ', <strong>' + escHtml(waParams.signerName) + '</strong>' : ''},</p>
-    <p style="margin:0 0 20px;font-size:.9rem;color:#9db0ff;line-height:1.6;">
-      ${waParams.initName ? `<strong style="color:#eaf0ff;">${escHtml(waParams.initName)}</strong> te-a adăugat ca semnatar pe documentul de mai jos.` : 'Ești invitat să semnezi electronic un document.'}
-      ${waParams.initFunctie || waParams.institutie ? `<br><span style="font-size:.82rem;color:#7c8db0;">${[waParams.initFunctie, waParams.institutie].filter(Boolean).map(escHtml).join(' · ')}</span>` : ''}
-    </p>
-    <!-- Document card -->
-    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:18px 20px;margin-bottom:24px;">
-      <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:8px;">📄 ${escHtml(waParams.docName || 'Document de semnat')}</div>
-      ${waParams.institutie ? `<div style="font-size:.82rem;color:#9db0ff;margin-bottom:3px;">🏛 ${escHtml(waParams.institutie)}</div>` : ''}
-      ${waParams.compartiment ? `<div style="font-size:.82rem;color:#9db0ff;margin-bottom:3px;">📂 ${escHtml(waParams.compartiment)}</div>` : ''}
-      <div style="font-size:.8rem;color:#5a6a8a;margin-top:6px;">ID flux: <code style="color:#7c8db0;">${escHtml(flowId)}</code></div>
-    </div>
-    ${waParams.roundInfo ? `<div style="background:rgba(250,180,0,.08);border:1px solid rgba(250,180,0,.2);border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:.83rem;color:#ffd580;">🔄 ${escHtml(waParams.roundInfo)}</div>` : ''}
-    <!-- CTA -->
-    <div style="text-align:center;margin-bottom:20px;">
-      <a href="${signerLink}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;font-weight:700;font-size:1rem;letter-spacing:.3px;">✍️ Semnează documentul</a>
-    </div>
-    <div style="text-align:center;margin-bottom:8px;">
-      <a href="${flowUrl}" style="font-size:.8rem;color:#5a6a8a;text-decoration:none;">🔍 Vezi statusul fluxului</a>
-    </div>
-    <!-- Warning -->
-    <div style="background:rgba(255,100,100,.07);border:1px solid rgba(255,100,100,.18);border-radius:8px;padding:10px 14px;margin-top:16px;font-size:.8rem;color:#ffb3b3;">
-      ⚠️ Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi în aplicație.
-    </div>
-  </div>
-  <!-- Footer -->
-  <div style="border-top:1px solid rgba(255,255,255,.06);padding:14px 32px;text-align:center;">
-    <p style="margin:0;font-size:.72rem;color:rgba(255,255,255,.25);">Link valabil 90 de zile · DocFlowAI · Dacă nu ești semnatarul acestui document, ignoră acest email.</p>
-  </div>
-</div>
-</div>`;
+    const t = emailYourTurn({ appUrl, flowId, signerToken: waParams.signerToken,
+      signerName: waParams.signerName, docName: waParams.docName,
+      initName: waParams.initName, initFunctie: waParams.initFunctie,
+      institutie: waParams.institutie, compartiment: waParams.compartiment,
+      roundInfo: waParams.roundInfo, urgent });
+    emailSubject = t.subject; emailHtml = t.html;
   } else {
-    // Template generic pentru REFUSED, COMPLETED, REVIEW_REQUESTED etc.
-    const iconMap = { COMPLETED: '✅', REFUSED: '⛔', REVIEW_REQUESTED: '🔄', DELEGATED: '👥' };
-    const icon = iconMap[type] || 'ℹ️';
-    emailHtml = `
-<div style="background:#0b1120;margin:0;padding:32px 16px;font-family:system-ui,-apple-system,sans-serif;">
-<div style="max-width:520px;margin:0 auto;background:#111827;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
-  <div style="background:linear-gradient(135deg,#1e1460 0%,#0f2a4a 100%);padding:24px 32px;text-align:center;">
-    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:10px;padding:10px 18px;font-size:1.1rem;font-weight:800;color:#fff;">📋 DocFlowAI</div>
-  </div>
-  <div style="padding:28px 32px;">
-    <h2 style="margin:0 0 12px;font-size:1.05rem;color:#eaf0ff;">${icon} ${escHtml(title)}</h2>
-    <p style="margin:0 0 16px;font-size:.9rem;color:#9db0ff;line-height:1.6;">${escHtml(message)}</p>
-    ${flowId ? `<div style="text-align:center;margin-top:20px;"><a href="${appUrl}/flow.html?flow=${encodeURIComponent(flowId)}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:10px 24px;border-radius:8px;font-size:.88rem;font-weight:600;">🔍 Vezi detalii flux</a></div>` : ''}
-  </div>
-  <div style="border-top:1px solid rgba(255,255,255,.06);padding:12px 32px;text-align:center;">
-    <p style="margin:0;font-size:.72rem;color:rgba(255,255,255,.25);">DocFlowAI · Platformă documente electronice</p>
-  </div>
-</div>
-</div>`;
+    const t = emailGeneric({ appUrl, flowId, type, title, message, urgent });
+    emailSubject = t.subject; emailHtml = t.html;
   }
-
   const [emailResult, waResult] = await Promise.allSettled([
-    needsEmail ? sendSignerEmail({ to: email, subject: urgent ? `🚨 [URGENT] ${title}` : title, html: emailHtml }) : Promise.resolve({ ok: false, reason: 'disabled' }),
+    needsEmail ? sendSignerEmail({ to: email, subject: emailSubject, html: emailHtml }) : Promise.resolve({ ok: false, reason: 'disabled' }),
     needsWa ? (async () => {
       if (type === 'YOUR_TURN') return sendWaSignRequest({ phone: uRow.phone, signerName: waParams.signerName || '', docName: waParams.docName || '' });
       if (type === 'COMPLETED') return sendWaCompleted({ phone: uRow.phone, docName: waParams.docName || '' });
@@ -711,9 +626,18 @@ injectAdminRateLimiter(
   (req, ip) => recordLoginFail(req, ip),
   (req, ip) => clearLoginRate(req, ip)
 );
+// SEC-04: injectează funcția de verificare token_version din pool DB
+injectTokenVersionChecker(async (userId) => {
+  if (!pool || !DB_READY) return null;
+  const { rows } = await pool.query('SELECT token_version FROM users WHERE id=$1', [userId]);
+  return rows[0]?.token_version ?? null;
+});
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
-injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail });
+injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail, fireWebhook });
+// FEAT-N01: webhook — injectăm pool-ul și URL-ul de bază
+injectWebhookPool(pool);
+injectWebhookBaseUrl(process.env.PUBLIC_BASE_URL || '');
 
 // ── Mount routers ─────────────────────────────────────────────────────────
 app.use('/', authRouter);
@@ -721,6 +645,7 @@ app.use('/', notifRouter);
 app.use('/', adminRouter);
 app.use('/', flowsRouter);
 app.use('/admin/outreach', outreachRouter);
+app.use('/', templatesRouter);         // Q-06: Template CRUD
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
@@ -811,13 +736,19 @@ wss.on('connection', (ws, req) => {
 // ── Graceful shutdown ─────────────────────────────────────────────────────
 function shutdown(signal) {
   logger.info({ signal }, 'Shutdown signal received');
-  // FIX v3.2.3: oprim toate intervalele la shutdown
+  // Oprim toate intervalele
   clearInterval(_loginBlocksCleanupInterval);
   clearInterval(_notifsCleanupInterval);
   clearInterval(_reminderInterval);
   clearInterval(_archiveJobInterval);
   clearInterval(wsHeartbeat);
-  httpServer.close(() => { logger.info('Server closed.'); process.exit(0); });
+  // FIX b80: închidem pool-ul DB înainte de process.exit —
+  // previne "Connection reset by peer" în logurile Postgres la fiecare deploy Railway.
+  httpServer.close(async () => {
+    if (pool) { try { await pool.end(); } catch(_) {} }
+    logger.info('Server closed.');
+    process.exit(0);
+  });
   setTimeout(() => process.exit(0), 10_000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
@@ -826,7 +757,23 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT }, 'DocFlowAI v3.3.7 server pornit');
+  logger.info({ port: PORT, version: APP_VERSION }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
-  initDbWithRetry();
+  initDbWithRetry().then(async () => {
+    // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway
+    // Job-urile rămase în processing > 30min nu vor fi niciodată reluate fără acest reset.
+    try {
+      const { rowCount } = await pool.query(`
+        UPDATE archive_jobs
+        SET status = 'pending', started_at = NULL
+        WHERE status = 'processing'
+          AND started_at < NOW() - INTERVAL '30 minutes'
+      `);
+      if (rowCount > 0) {
+        logger.warn({ rowCount }, 'archive_jobs: reset jobs blocate (processing → pending)');
+      }
+    } catch(e) {
+      logger.warn({ err: e }, 'archive_jobs recovery: eroare la startup (non-fatal)');
+    }
+  }).catch(() => {}); // initDbWithRetry gestionează propriile erori intern
 });

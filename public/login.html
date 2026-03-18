@@ -96,7 +96,7 @@
       }
       // SEC-01: token-ul este în cookie HttpOnly setat de server — nu în d.token
       // Stocăm doar datele non-sensibile pentru UI
-      localStorage.setItem("docflow_user",JSON.stringify({email:d.email,role:d.role,nume:d.nume,functie:d.functie,institutie:d.institutie||""}));
+      localStorage.setItem("docflow_user",JSON.stringify({email:d.email,role:d.role,nume:d.nume,functie:d.functie,institutie:d.institutie||"",compartiment:d.compartiment||""}));
       // Curățăm orice token vechi din localStorage (migrare de la versiunile anterioare)
       localStorage.removeItem("docflow_token");
       if(d.force_password_change) localStorage.setItem("docflow_force_pwd","1");

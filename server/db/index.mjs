@@ -1,4 +1,31 @@
 /**
+  {
+    id: '033_signing_providers',
+    sql: `
+      -- Arhitectură corectă: provider per semnatar, nu per organizație
+      --
+      -- signing_providers_enabled: ce provideri sunt contractați/activi în org
+      --   ex: ARRAY['local-upload', 'certsign', 'sts-cloud']
+      --
+      -- signing_providers_config: configurație per provider (API keys, URLs, secrets)
+      --   ex: { "certsign": { "apiKey": "...", "apiUrl": "...", "webhookSecret": "..." },
+      --          "sts-cloud": { "apiKey": "...", "apiUrl": "..." } }
+      --   NOTĂ: în producție, API keys trebuie criptate (pgcrypto sau vault extern)
+      --
+      -- preferred_signing_provider pe users: ce provider preferă utilizatorul
+      --   pre-selectat în UI semnatar, poate fi overridden la orice semnare
+
+      ALTER TABLE organizations
+        ADD COLUMN IF NOT EXISTS signing_providers_enabled TEXT[]  NOT NULL DEFAULT ARRAY['local-upload']::TEXT[],
+        ADD COLUMN IF NOT EXISTS signing_providers_config  JSONB   NOT NULL DEFAULT '{}';
+
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS preferred_signing_provider TEXT   DEFAULT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_org_signing_providers
+        ON organizations USING GIN (signing_providers_enabled);
+    `
+  },
  * DocFlowAI — DB layer v3.3.4
  * Pool PostgreSQL, migrări schema, helpers saveFlow / getFlowData / getUserMapForOrg.
  * NOTA: plain_password pastrat intentionat pentru workflow admin actual.
@@ -20,7 +47,7 @@ const { Pool } = pg;
 
 export const DATABASE_URL = process.env.DATABASE_URL;
 export const pool = DATABASE_URL
-  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 10 })
+  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 20, idleTimeoutMillis: 30000 })
   : null;
 
 export let DB_READY = false;
@@ -532,6 +559,57 @@ const MIGRATIONS = [
     // Pe scala acestei instalări (sute de fluxuri) lock-ul e de ordinul milisecundelor.
     id: '028_index_notifications_flow_id',
     sql: `CREATE INDEX IF NOT EXISTS idx_notif_flow_id ON notifications(flow_id);`
+  },
+  {
+    // CRUD Instituții Outreach — tabel persistent, editabil din UI și prin import
+    // Seeded automat la primul boot din primarii-romania.json
+    id: '029_outreach_primarii',
+    sql: `
+      CREATE TABLE IF NOT EXISTS outreach_primarii (
+        id          SERIAL PRIMARY KEY,
+        institutie  TEXT        NOT NULL,
+        email       TEXT        NOT NULL,
+        judet       TEXT        NOT NULL DEFAULT '',
+        localitate  TEXT        NOT NULL DEFAULT '',
+        activ       BOOLEAN     NOT NULL DEFAULT TRUE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(email)
+      );
+      CREATE INDEX IF NOT EXISTS idx_oprm_judet  ON outreach_primarii(judet);
+      CREATE INDEX IF NOT EXISTS idx_oprm_activ  ON outreach_primarii(activ);
+    `
+  },
+  {
+    id: '030_outreach_unsubscribe',
+    sql: `
+      -- SEC-N01: GDPR compliance — dezabonare outreach
+      ALTER TABLE outreach_primarii
+        ADD COLUMN IF NOT EXISTS unsubscribed       BOOLEAN     NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS unsubscribe_token  TEXT        UNIQUE;
+      CREATE INDEX IF NOT EXISTS idx_oprm_unsub_token ON outreach_primarii(unsubscribe_token)
+        WHERE unsubscribe_token IS NOT NULL;
+    `
+  },
+  {
+    id: '031_token_version',
+    sql: `
+      -- SEC-04: token_version pentru invalidare JWT la reset parolă.
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;
+    `
+  },
+  {
+    id: '032_organization_webhooks',
+    sql: `
+      -- FEAT-N01: webhook generic per organizație (AvanDoc, registratură proprie, etc.)
+      ALTER TABLE organizations
+        ADD COLUMN IF NOT EXISTS webhook_url     TEXT,
+        ADD COLUMN IF NOT EXISTS webhook_secret  TEXT,
+        ADD COLUMN IF NOT EXISTS webhook_events  TEXT[]   NOT NULL DEFAULT '{flow.completed}',
+        ADD COLUMN IF NOT EXISTS webhook_enabled BOOLEAN  NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    `
   }
 ];
 
@@ -718,15 +796,26 @@ export async function saveFlow(id, data) {
  * Șterge markerii _*Present (nu mai sunt necesari când avem datele reale).
  */
 export async function getFlowData(id) {
-  const r = await pool.query('SELECT data FROM flows WHERE id=$1', [id]);
+  // ARCH-03: un singur JOIN în loc de 2 query-uri separate — reduce latența DB la jumătate
+  const r = await pool.query(`
+    SELECT f.data,
+           fp_pdf.data  AS "pdfB64",
+           fp_spdf.data AS "signedPdfB64",
+           fp_opdf.data AS "originalPdfB64"
+    FROM flows f
+    LEFT JOIN flows_pdfs fp_pdf  ON fp_pdf.flow_id  = f.id AND fp_pdf.key  = 'pdfB64'
+    LEFT JOIN flows_pdfs fp_spdf ON fp_spdf.flow_id = f.id AND fp_spdf.key = 'signedPdfB64'
+    LEFT JOIN flows_pdfs fp_opdf ON fp_opdf.flow_id = f.id AND fp_opdf.key = 'originalPdfB64'
+    WHERE f.id = $1
+  `, [id]);
   if (!r.rows[0]) return null;
   const data = r.rows[0].data;
 
-  // Reataşează câmpurile PDF din flows_pdfs
-  const pdfs = await pool.query('SELECT key, data FROM flows_pdfs WHERE flow_id=$1', [id]);
-  for (const row of pdfs.rows) {
-    data[row.key] = row.data;
-  }
+  // Reataşează câmpurile PDF din JOIN (null dacă nu există)
+  if (r.rows[0].pdfB64)         data.pdfB64         = r.rows[0].pdfB64;
+  if (r.rows[0].signedPdfB64)   data.signedPdfB64   = r.rows[0].signedPdfB64;
+  if (r.rows[0].originalPdfB64) data.originalPdfB64 = r.rows[0].originalPdfB64;
+
   // Curăță markerii (inutili când avem datele reale)
   for (const key of _PDF_KEYS) delete data[`_${key}Present`];
 
