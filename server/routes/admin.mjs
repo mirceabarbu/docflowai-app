@@ -615,20 +615,20 @@ router.get('/admin/flows/stats', async (req, res) => {
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
     const orgFilter = actorOrgFilter(actor);
+    // FIX: query construit prin concatenare — evită interpolarea template literal cu ghilimele SQL
+    const whereCond = orgFilter ? " AND (data->>'orgId')::int = $1" : '';
     const params = orgFilter ? [orgFilter] : [];
-    const orgCond = orgFilter ? 'AND (data->>'orgId')::int = $1' : '';
-    const { rows } = await pool.query(`
-      SELECT
-        COUNT(*) FILTER (WHERE data->>'completed' = 'true')::int                             AS completed,
-        COUNT(*) FILTER (WHERE data->>'status' = 'refused')::int                             AS refused,
-        COUNT(*) FILTER (WHERE data->>'status' = 'cancelled')::int                           AS cancelled,
-        COUNT(*) FILTER (WHERE data->>'status' = 'review_requested')::int                    AS review_requested,
-        COUNT(*) FILTER (WHERE data->>'completed' IS DISTINCT FROM 'true'
-                           AND data->>'status' NOT IN ('refused','cancelled','review_requested'))::int AS active,
-        COUNT(*)::int                                                                          AS total
-      FROM flows
-      WHERE 1=1 ${orgCond}
-    `.replace('${orgCond}', orgCond), params);
+    const sql =
+      'SELECT ' +
+      "COUNT(*) FILTER (WHERE data->>'completed' = 'true')::int AS completed, " +
+      "COUNT(*) FILTER (WHERE data->>'status' = 'refused')::int AS refused, " +
+      "COUNT(*) FILTER (WHERE data->>'status' = 'cancelled')::int AS cancelled, " +
+      "COUNT(*) FILTER (WHERE data->>'status' = 'review_requested')::int AS review_requested, " +
+      "COUNT(*) FILTER (WHERE data->>'completed' IS DISTINCT FROM 'true' " +
+        "AND data->>'status' NOT IN ('refused','cancelled','review_requested'))::int AS active, " +
+      'COUNT(*)::int AS total ' +
+      'FROM flows WHERE 1=1' + whereCond;
+    const { rows } = await pool.query(sql, params);
     res.json(rows[0] || { active:0, completed:0, refused:0, cancelled:0, review_requested:0, total:0 });
   } catch(e) { logger.error({ err: e }, '/admin/flows/stats error'); res.status(500).json({ error: 'server_error' }); }
 });
