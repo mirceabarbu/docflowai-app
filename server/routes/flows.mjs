@@ -678,7 +678,10 @@ router.get('/my-flows', async (req, res) => {
     const myFlows = rows.map(r => r.data).filter(Boolean).map(d => ({
       flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
       createdAt: d.createdAt, updatedAt: d.updatedAt,
-      completedAt: d.completedAt || null,
+      completedAt:  d.completedAt  || null,
+      refusedAt:    d.refusedAt    || null,  // nivel flux — pentru pasul Final
+      cancelledAt:  d.cancelledAt  || null,  // nivel flux — fallback semnatari anulați
+      cancelledBy:  d.cancelledBy  || null,
       institutie: d.institutie || '',
       compartiment: d.compartiment || '',
       initEmail: d.initEmail || '',

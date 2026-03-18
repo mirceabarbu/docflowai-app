@@ -1100,7 +1100,10 @@ th{ color: var(--sub) !important; }
           const _finalColor = f.completed ? 'rgba(38,208,124,.65)' : (isFlowRefused||f.status==='cancelled') ? 'rgba(255,100,110,.6)' : 'rgba(234,240,255,.25)';
           const _finalTsRaw = f.completedAt || f.refusedAt || f.cancelledAt || null;
           const _finalTs    = _finalTsRaw ? new Date(_finalTsRaw).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-          _mtlSteps.push(`<div class="mtl-step ${_finalCls}"><div class="mtl-dot">${_finalIcon}</div><div class="mtl-name" style="color:${_finalColor};">${_finalLabel}</div>${_finalTs ? `<div class="mtl-ts">${_finalTs}</div>` : ''}</div>`);
+          // Cine a anulat (dacă există) — afișat ca sub-text sub 'Anulat'
+          const _finalByRaw = f.status==='cancelled' ? (f.cancelledBy || null) : null;
+          const _finalBy    = _finalByRaw ? (_finalByRaw.split('@')[0]) : '';
+          _mtlSteps.push(`<div class="mtl-step ${_finalCls}"><div class="mtl-dot">${_finalIcon}</div><div class="mtl-name" style="color:${_finalColor};">${_finalLabel}</div>${_finalBy ? `<div class="mtl-ts" style="max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_finalBy}</div>` : ''}${_finalTs ? `<div class="mtl-ts">${_finalTs}</div>` : ''}</div>`);
           const signerRows = `<div class="mtl">${_mtlSteps.join('')}</div>`;
           const finalStatuses = ["completed", "done", "finalizat", "finished", "complete"];
           const successFinal = !!(f.allSigned && !isRefused && !isReviewRequested && !isCancelled);
