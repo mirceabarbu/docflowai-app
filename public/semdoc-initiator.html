@@ -1075,10 +1075,12 @@ th{ color: var(--sub) !important; }
             const icon = st==='signed' ? '✅' : st==='refused' ? '⛔' : st==='current' ? '✍️' : isCancelled ? '🚫' : '⏸';
             const nameShort = (s.name||'—').split(' ').slice(0,2).join(' ');
             // Data relevantă per stare — afișată sub nume
-            const _tsRaw = st==='signed'   ? (s.signedAt   || null)
-                         : st==='refused'  ? (s.refusedAt  || s.signedAt || null)
+            // refusedAt vine acum din backend; cancelledAt per semnatar nu există —
+            // folosim f.cancelledAt (nivel flux) ca fallback pentru semnatarii anulați
+            const _tsRaw = st==='signed'   ? (s.signedAt  || null)
+                         : st==='refused'  ? (s.refusedAt || null)
                          : st==='current'  ? (s.notifiedAt || null)
-                         : isCancelled     ? (s.cancelledAt || null)
+                         : isCancelled     ? (f.cancelledAt || null)
                          : null;
             const ts = _tsRaw ? new Date(_tsRaw).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
             const rolTip = s.rol ? ` [${s.rol}]` : '';
@@ -1096,7 +1098,7 @@ th{ color: var(--sub) !important; }
           const _finalIcon  = f.completed ? '🏁' : isFlowRefused ? '⛔' : f.status==='cancelled' ? '🚫' : '🏁';
           const _finalLabel = f.completed ? 'Finalizat' : isFlowRefused ? 'Refuzat' : f.status==='cancelled' ? 'Anulat' : 'Final';
           const _finalColor = f.completed ? 'rgba(38,208,124,.65)' : (isFlowRefused||f.status==='cancelled') ? 'rgba(255,100,110,.6)' : 'rgba(234,240,255,.25)';
-          const _finalTsRaw = f.completedAt || f.cancelledAt || f.refusedAt || null;
+          const _finalTsRaw = f.completedAt || f.refusedAt || f.cancelledAt || null;
           const _finalTs    = _finalTsRaw ? new Date(_finalTsRaw).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
           _mtlSteps.push(`<div class="mtl-step ${_finalCls}"><div class="mtl-dot">${_finalIcon}</div><div class="mtl-name" style="color:${_finalColor};">${_finalLabel}</div>${_finalTs ? `<div class="mtl-ts">${_finalTs}</div>` : ''}</div>`);
           const signerRows = `<div class="mtl">${_mtlSteps.join('')}</div>`;

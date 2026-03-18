@@ -686,7 +686,7 @@ router.get('/my-flows', async (req, res) => {
       flowType: d.flowType || 'tabel', // FIX: flowType lipsea → badge afișa mereu 'Tabel'
       status: d.status || 'active',
       urgent: !!(d.urgent),
-      signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refuseReason: s.refuseReason }; }),
+      signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refusedAt: s.refusedAt || null, notifiedAt: s.notifiedAt || null, refuseReason: s.refuseReason }; }),
       hasSignedPdf: !!(
         d.signedPdfB64
         || d._signedPdfB64Present
