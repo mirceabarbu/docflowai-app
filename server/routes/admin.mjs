@@ -635,7 +635,8 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
     // Verifică că target aparține aceleiași organizații ca actorul
     const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
     const actorOrgId = actorRows[0]?.org_id || null;
-    if (actorOrgId && target.org_id && actorOrgId !== target.org_id) {
+    // FIX: role='admin' (super-admin) poate reseta parola oricărui user
+    if (actor.role === 'org_admin' && actorOrgId && target.org_id && actorOrgId !== target.org_id) {
       return res.status(403).json({ error: 'forbidden_cross_tenant' });
     }
     const newPwd = generatePassword();
@@ -661,13 +662,19 @@ router.delete('/admin/users/:id', async (req, res) => {
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
   if (actor.userId === targetId) return res.status(400).json({ error: 'cannot_delete_self' });
   try {
-    // SEC-07: verificare cross-tenant — DELETE doar în propria organizație
+    // SEC-07: verificare cross-tenant — org_admin poate șterge DOAR din propria org
+    // FIX: role='admin' (super-admin) poate șterge din orice org, indiferent de org_id propriu
     const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
     const actorOrgId = actorRows[0]?.org_id || null;
-    const deleteWhere = actorOrgId
-      ? 'DELETE FROM users WHERE id=$1 AND org_id=$2'
-      : 'DELETE FROM users WHERE id=$1';
-    const deleteParams = actorOrgId ? [targetId, actorOrgId] : [targetId];
+    let deleteWhere, deleteParams;
+    if (actor.role === 'org_admin' && actorOrgId) {
+      deleteWhere  = 'DELETE FROM users WHERE id=$1 AND org_id=$2';
+      deleteParams = [targetId, actorOrgId];
+    } else {
+      // super-admin: ștergere fără restricție de org
+      deleteWhere  = 'DELETE FROM users WHERE id=$1';
+      deleteParams = [targetId];
+    }
     const { rowCount } = await pool.query(deleteWhere, deleteParams);
     if (!rowCount) return res.status(404).json({ error: 'user_not_found_or_forbidden' });
     invalidateOrgUserCache(actorOrgId);
