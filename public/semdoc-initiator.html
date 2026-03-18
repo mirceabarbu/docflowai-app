@@ -375,7 +375,6 @@ th{ color: var(--sub) !important; }
                     <th style="width:140px;">ATRIBUT</th>
                     <th style="width:200px;">FUNCȚIE</th>
                     <th>NUME ȘI PRENUME</th>
-                    <th style="width:280px;">EMAIL</th>
                     <th class="ancore-field-col" title="Câmpul de semnătură din PDF (doar pentru fluxuri Ancore)">CÂMP SEMNĂTURĂ</th>
                     <th style="width:110px;"></th>
                   </tr>
@@ -709,7 +708,6 @@ th{ color: var(--sub) !important; }
               <option value="">— Alege utilizator —</option>
             </select>
           </td>
-          <td><input class="email" placeholder="—" readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);" /></td>
           <td class="ancore-field-col">
             <select class="ancoreField" disabled title="Câmpul AcroForm din PDF — disponibil după detectare">
               <option value="">— Detectează câmpuri —</option>
@@ -721,7 +719,6 @@ th{ color: var(--sub) !important; }
         tr.querySelector(".functie").value = (s.functie || "");
         const nameSel = tr.querySelector(".name-select");
         if (nameSel) { nameSel.value = s.name || ""; } else { tr.querySelector(".name").value = (s.name || ""); }
-        tr.querySelector(".email").value = (s.email || "");
         // ancoreFieldName: pre-populat dacă rândul vine dintr-un șablon sau reinițiere
         if (s.ancoreFieldName) {
           const afSel = tr.querySelector(".ancoreField");
@@ -1787,12 +1784,15 @@ async function signFromFluxuri(flowId) {
         return rows.map((tr, i) => {
           const ancoreSel = tr.querySelector(".ancoreField");
           const ancoreFieldName = ancoreSel?.value?.trim() || null;
+          // Email citit din data-email al opțiunii selectate (nu mai avem input vizibil)
+          const nameSel2 = tr.querySelector(".name-select");
+          const emailVal = (nameSel2?.options[nameSel2?.selectedIndex]?.dataset?.email || '').trim();
           return {
             order: i + 1,
             rol: (() => { const sel = tr.querySelector(".rol"); if (sel.value === "__alt__") { return tr.querySelector(".rolCustom").value.trim().toUpperCase() || "__alt__"; } return sel.value; })(),
             functie: tr.querySelector(".functie").value.trim(),
             name: (tr.querySelector(".name-select") || tr.querySelector(".name"))?.value?.trim() || "",
-            email: tr.querySelector(".email").value.trim(),
+            email: emailVal,
             // ancoreFieldName: câmpul AcroForm — prezent doar pentru flowType='ancore'
             ...(ancoreFieldName ? { ancoreFieldName } : {}),
           };

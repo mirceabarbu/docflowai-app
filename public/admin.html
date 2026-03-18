@@ -3714,7 +3714,9 @@ async function loadOrgSigningProviders(orgId) {
 
 function renderOrgProvidersGrid(configSafe = {}) {
   const grid = document.getElementById('orgProvidersGrid');
-  if (!grid || !_allProviders.length) return;
+  // Dacă _allProviders e gol din orice motiv, folosim fallback-ul direct
+  if (!_allProviders.length) _allProviders = _PROVIDERS_FALLBACK;
+  if (!grid) return;
   grid.innerHTML = '';
 
   const ICONS = {
@@ -3792,7 +3794,9 @@ async function verifyProviderConfig() {
 
 // Salvează providerii activi + config (apelat din saveOrgWebhook)
 async function saveOrgSigningProviders(orgId) {
-  if (!orgId || !_allProviders.length) return;
+  if (!orgId) return;
+  // Asigurăm că local-upload e mereu în listă
+  _selectedProviders.add('local-upload');
   const enabled = [..._selectedProviders];
   // Construiește config doar pentru providerul activ editat
   const config = {};

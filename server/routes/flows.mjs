@@ -1433,120 +1433,142 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
 
 
 // ── POST /flows/detect-acroform-fields ───────────────────────────────────
-// Extrage câmpurile de semnătură (tip Sig) din PDF-ul uploadat.
-// Folosit de initiator la flowType='ancore' pentru a asocia câmpuri semnatarilor.
-// Endpoint public autentificat — nu necesită flowId (PDF e trimis direct).
+// Extrage câmpurile de semnătură (/Sig) din PDF — formularele guvernamentale
+// românești (Ordonanță de Plată etc.) pot stoca câmpurile fie în AcroForm/Fields
+// fie direct în /Annots per pagină. Scanăm ambele locuri.
 router.post('/flows/detect-acroform-fields', _largePdf, async (req, res) => {
   try {
     const actor = requireAuth(req, res); if (!actor) return;
     const { pdfB64 } = req.body || {};
     if (!pdfB64 || typeof pdfB64 !== 'string')
       return res.status(400).json({ error: 'pdfB64_required' });
-
     if (!_PDFLib)
       return res.status(503).json({ error: 'pdf_lib_unavailable' });
 
     const raw = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-
-    // Limită: max 50MB
     if (Math.floor(raw.length * 0.75) > 50 * 1024 * 1024)
       return res.status(413).json({ error: 'pdf_too_large' });
 
-    const { PDFDocument, PDFName, PDFArray, PDFDict } = _PDFLib;
+    const { PDFDocument, PDFName } = _PDFLib;
     const pdfBytes = Buffer.from(raw, 'base64');
     const pdfDoc   = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-
-    // Construim un map pagină-ref → număr pagină (1-indexed)
     const pages    = pdfDoc.getPages();
-    const pageNums = new Map();
-    pages.forEach((p, i) => pageNums.set(p.ref.toString(), i + 1));
 
-    const fields = [];
+    const fieldsMap = new Map(); // name → {name, page, rect}
 
-    // Traversăm AcroForm Fields în mod recursiv
-    const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-    if (!acroFormRef) {
-      return res.json({ fields: [], message: 'PDF-ul nu conține un formular AcroForm.' });
+    // Helper: extrage numele câmpului dintr-un obiect PDF
+    function extractName(obj) {
+      try {
+        const tObj = obj.get(PDFName.of('T'));
+        if (!tObj) return null;
+        const raw = String(tObj);
+        return raw.replace(/^\//, '').replace(/^\(|\)$/g, '').trim() || null;
+      } catch { return null; }
     }
 
-    const acroForm = pdfDoc.context.lookup(acroFormRef);
-    if (!acroForm || typeof acroForm.get !== 'function') {
-      return res.json({ fields: [], message: 'AcroForm invalid sau inaccessibil.' });
+    // Helper: extrage rect-ul
+    function extractRect(obj, pageIndex) {
+      try {
+        const rectObj = obj.get(PDFName.of('Rect'));
+        if (!rectObj || typeof rectObj.asArray !== 'function') return null;
+        const arr = rectObj.asArray().map(n => {
+          const v = pdfDoc.context.lookup(n);
+          return typeof v?.asNumber === 'function' ? v.asNumber() : parseFloat(String(v).replace(/[^0-9.\-]/g,'') || '0');
+        });
+        if (arr.length !== 4) return null;
+        return { x: arr[0], y: arr[1], width: arr[2]-arr[0], height: arr[3]-arr[1] };
+      } catch { return null; }
     }
 
-    const topFieldsRef = acroForm.get(PDFName.of('Fields'));
-    if (!topFieldsRef) {
-      return res.json({ fields: [], message: 'AcroForm nu conține câmpuri.' });
+    // Helper: verifică dacă un obiect este câmp de semnătură /Sig
+    function isSigField(obj, inheritedFT = null) {
+      try {
+        const ftObj = obj.get(PDFName.of('FT'));
+        const ft    = ftObj ? String(ftObj) : inheritedFT;
+        // Acceptăm atât '/Sig' cât și 'Sig' sau variante
+        return ft === '/Sig' || ft === 'Sig';
+      } catch { return false; }
     }
-    const topFields = pdfDoc.context.lookup(topFieldsRef);
-    if (!topFields || typeof topFields.asArray !== 'function') {
-      return res.json({ fields: [] });
-    }
 
-    // Traversare recursivă câmpuri (suportă Kids/copii)
-    function traverseFields(fieldRefs, inheritedFT = null) {
-      const arr = Array.isArray(fieldRefs) ? fieldRefs : (fieldRefs?.asArray?.() || []);
-      for (const ref of arr) {
-        try {
-          const field = pdfDoc.context.lookup(ref);
-          if (!field || typeof field.get !== 'function') continue;
+    // ── METODA 1: AcroForm/Fields traversal recursiv ─────────────────────
+    try {
+      const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+      if (acroFormRef) {
+        const acroForm = pdfDoc.context.lookup(acroFormRef);
+        const fieldsRef = acroForm?.get?.(PDFName.of('Fields'));
+        const topFields = fieldsRef ? pdfDoc.context.lookup(fieldsRef) : null;
 
-          // FT poate fi moștenit de la părinte
-          const ftObj  = field.get(PDFName.of('FT'));
-          const ft     = ftObj ? ftObj.toString() : inheritedFT;
-
-          // Câmpuri copii (Kids) — traversăm recursiv
-          const kidsRef = field.get(PDFName.of('Kids'));
-          if (kidsRef) {
-            const kids = pdfDoc.context.lookup(kidsRef);
-            if (kids && typeof kids.asArray === 'function') {
-              traverseFields(kids.asArray(), ft);
-              continue; // container fără widget propriu
-            }
+        function traverseFields(refs, inheritedFT = null) {
+          const arr = Array.isArray(refs) ? refs : (refs?.asArray?.() || []);
+          for (const ref of arr) {
+            try {
+              const field = pdfDoc.context.lookup(ref);
+              if (!field?.get) continue;
+              const ftObj = field.get(PDFName.of('FT'));
+              const ft    = ftObj ? String(ftObj) : inheritedFT;
+              const kidsRef = field.get(PDFName.of('Kids'));
+              if (kidsRef) {
+                const kids = pdfDoc.context.lookup(kidsRef);
+                if (kids?.asArray) { traverseFields(kids.asArray(), ft); }
+                // Nu continuăm — un nod cu Kids POATE fi și el câmp sig (fără widget propriu)
+              }
+              if (ft !== '/Sig' && ft !== 'Sig') continue;
+              const name = extractName(field);
+              if (!name || fieldsMap.has(name)) continue;
+              // Pagina: din /P sau din context de traversare
+              let pageNum = null;
+              const pRef = field.get(PDFName.of('P'));
+              if (pRef) {
+                const pIdx = pages.findIndex(p => p.ref.toString() === pRef.toString());
+                if (pIdx >= 0) pageNum = pIdx + 1;
+              }
+              fieldsMap.set(name, { name, page: pageNum, rect: extractRect(field) });
+            } catch { /* continuăm */ }
           }
-
-          // Ne interesează doar câmpurile de tip semnătură (/Sig)
-          if (ft !== '/Sig') continue;
-
-          // Extrage numele câmpului (T)
-          const nameObj = field.get(PDFName.of('T'));
-          const name    = nameObj ? String(nameObj).replace(/^\//, '').replace(/^\(|\)$/g, '') : null;
-          if (!name) continue;
-
-          // Extrage numărul paginii din referința P (widget annotation)
-          let pageNum = null;
-          const pageRef = field.get(PDFName.of('P'));
-          if (pageRef) {
-            pageNum = pageNums.get(pageRef.toString()) || null;
-          }
-
-          // Extrage coordonatele din Rect (opțional — pentru previzualizare)
-          let rect = null;
-          const rectObj = field.get(PDFName.of('Rect'));
-          if (rectObj && typeof rectObj.asArray === 'function') {
-            const r = rectObj.asArray().map(n => {
-              const v = pdfDoc.context.lookup(n);
-              return typeof v?.asNumber === 'function' ? v.asNumber() : Number(String(v).replace(/[^0-9.\-]/g,'') || 0);
-            });
-            if (r.length === 4) rect = { x: r[0], y: r[1], width: r[2]-r[0], height: r[3]-r[1] };
-          }
-
-          fields.push({ name, page: pageNum, rect });
-        } catch(e) {
-          // câmp invalid — continuăm
         }
+        if (topFields?.asArray) traverseFields(topFields.asArray());
       }
+    } catch(e1) {
+      logger.warn({ err: e1 }, 'detect-acroform: AcroForm traversal error (non-fatal)');
     }
 
-    traverseFields(topFields.asArray());
+    // ── METODA 2: Scanare /Annots per pagină ─────────────────────────────
+    // Multe formulare guvernamentale românești (Ordonanță de Plată, Cereri etc.)
+    // stochează Widget-urile de semnătură direct în /Annots, nu în AcroForm/Fields.
+    for (let pi = 0; pi < pages.length; pi++) {
+      try {
+        const page     = pages[pi];
+        const annotsRef = page.node.get(PDFName.of('Annots'));
+        if (!annotsRef) continue;
+        const annots = pdfDoc.context.lookup(annotsRef);
+        if (!annots?.asArray) continue;
+        for (const aRef of annots.asArray()) {
+          try {
+            const ann = pdfDoc.context.lookup(aRef);
+            if (!ann?.get) continue;
+            // Verificăm /Subtype /Widget
+            const subtype = ann.get(PDFName.of('Subtype'));
+            if (String(subtype) !== '/Widget') continue;
+            // Verificăm /FT /Sig
+            if (!isSigField(ann)) continue;
+            const name = extractName(ann);
+            if (!name || fieldsMap.has(name)) continue;
+            fieldsMap.set(name, { name, page: pi + 1, rect: extractRect(ann, pi) });
+          } catch { /* continuăm */ }
+        }
+      } catch { /* pagina inaccessibilă */ }
+    }
 
-    // Sortăm: pagină ASC, apoi y DESC (de sus în jos pe pagină)
+    const fields = [...fieldsMap.values()];
+
+    // Sortăm: pagină ASC, y DESC (de sus în jos)
     fields.sort((a, b) => {
       if ((a.page||0) !== (b.page||0)) return (a.page||0) - (b.page||0);
       return (b.rect?.y || 0) - (a.rect?.y || 0);
     });
 
-    logger.info({ actor: actor.email, fieldsCount: fields.length }, 'detect-acroform-fields');
+    logger.info({ actor: actor.email, fieldsCount: fields.length,
+                  method1: 'AcroForm/Fields', method2: 'Page/Annots' }, 'detect-acroform-fields');
     return res.json({ fields, total: fields.length });
   } catch(e) {
     logger.error({ err: e }, 'detect-acroform-fields error');
