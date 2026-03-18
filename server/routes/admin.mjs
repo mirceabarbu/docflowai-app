@@ -372,16 +372,16 @@ router.post('/admin/users', async (req, res) => {
 
   // Determinăm org_id de folosit:
   // - org_admin: folosește propriul org_id din DB (nu poate crea în altă org)
-  // - admin (super-admin): dacă creează un org_admin, primește org_name → upsert în organizations
+  // - admin (super-admin): poate specifica org_name pentru ORICE rol (user, org_admin)
+  //   dacă nu specifică, org_id rămâne null (nu e greșit, dar util să fie setat)
   let insertOrgId = actor.orgId || null;
   if (actor.role === 'org_admin') {
     const { rows: actorOrgRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
     insertOrgId = actorOrgRows[0]?.org_id || null;
     if (!insertOrgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată.' });
-  } else if (actor.role === 'admin' && validRole === 'org_admin') {
-    const orgNameTrimmed = (bodyOrgName || '').trim();
-    if (!orgNameTrimmed) return res.status(400).json({ error: 'org_name_required', message: 'Specificați organizația pentru Administrator Instituție.' });
-    // Upsert: creează organizație nouă sau reutilizează existentă cu același nume
+  } else if (actor.role === 'admin' && (bodyOrgName || '').trim()) {
+    // Super-admin a specificat o organizație — upsert și asociem userul indiferent de rol
+    const orgNameTrimmed = bodyOrgName.trim();
     const { rows: orgRows } = await pool.query(
       `INSERT INTO organizations (name) VALUES ($1)
        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
@@ -390,7 +390,10 @@ router.post('/admin/users', async (req, res) => {
     );
     insertOrgId = orgRows[0]?.id || null;
     if (!insertOrgId) return res.status(500).json({ error: 'org_create_failed' });
-    logger.info({ orgName: orgNameTrimmed, orgId: insertOrgId }, 'Organizatie upsert pentru org_admin');
+    logger.info({ orgName: orgNameTrimmed, orgId: insertOrgId, role: validRole }, 'Organizatie upsert pentru user nou');
+  } else if (actor.role === 'admin' && validRole === 'org_admin') {
+    // org_admin fără org_name specificat — eroare
+    return res.status(400).json({ error: 'org_name_required', message: 'Specificați organizația pentru Administrator Instituție.' });
   }
   try {
     const { rows } = await pool.query(
@@ -680,6 +683,36 @@ router.delete('/admin/users/:id', async (req, res) => {
     invalidateOrgUserCache(actorOrgId);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+
+// ── PUT /admin/users/:id/assign-org — asignează organizație unui user (super-admin only) ──
+router.put('/admin/users/:id/assign-org', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden', message: 'Doar super-admin poate reasigna organizații.' });
+  const targetId = parseInt(req.params.id);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
+  const { org_id, org_name } = req.body || {};
+  try {
+    let newOrgId = org_id ? parseInt(org_id) : null;
+    // Dacă s-a trimis org_name în loc de org_id, căutăm/creăm organizația
+    if (!newOrgId && org_name) {
+      const { rows } = await pool.query(
+        `INSERT INTO organizations (name) VALUES ($1)
+         ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+        [org_name.trim()]
+      );
+      newOrgId = rows[0]?.id || null;
+    }
+    const { rowCount } = await pool.query(
+      'UPDATE users SET org_id = $1 WHERE id = $2',
+      [newOrgId, targetId]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'user_not_found' });
+    logger.info({ targetId, newOrgId, actor: actor.email }, 'assign-org: org_id actualizat');
+    res.json({ ok: true, userId: targetId, org_id: newOrgId });
+  } catch(e) { logger.error({ err: e }, 'assign-org error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 router.post('/admin/users/:id/send-credentials', async (req, res) => {

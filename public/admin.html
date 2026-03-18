@@ -523,6 +523,24 @@
 
   <!-- Modal editare organizație / webhook -->
 
+
+  <!-- Modal Asignare Organizație User -->
+  <div id="assignOrgModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeAssignOrg()">
+    <div style="background:#0f1731;border:1px solid rgba(255,176,32,.3);border-radius:18px;padding:28px 32px;max-width:440px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);">
+      <h3 style="margin:0 0 6px;color:#ffd580;font-size:1rem;">🏛 Asignează organizație</h3>
+      <div id="assignOrgTitle" style="font-size:.82rem;color:var(--muted);margin-bottom:16px;"></div>
+      <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:6px;">Organizație</label>
+      <input id="assignOrgInput" type="text" list="orgNameList" placeholder="Primaria Test"
+        style="width:100%;box-sizing:border-box;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:.95rem;margin-bottom:12px;"
+        onkeydown="if(event.key==='Enter')doAssignOrg()"/>
+      <div id="assignOrgMsg" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="closeAssignOrg()" style="padding:9px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+        <button onclick="doAssignOrg()" style="padding:9px 22px;background:linear-gradient(135deg,#ffd580,#ff9e40);border:none;border-radius:8px;color:#1a1a00;cursor:pointer;font-weight:700;">💾 Salvează</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal Redenumire Organizație -->
   <div id="renameOrgModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeRenameOrgModal()">
     <div style="background:#0f1731;border:1px solid rgba(45,212,191,.3);border-radius:18px;padding:28px 32px;max-width:440px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);">
@@ -982,6 +1000,15 @@ fetch('/auth/me', { credentials: 'include' })
       location.href = '/login?next=/admin';
     } else {
       loadActiveFlowsBadge(); // F — b97
+    // Stocăm rolul curent pentru onRoleChange
+    try {
+      const _me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
+      window._currentUserRole = _me.role || 'user';
+    } catch(e) { window._currentUserRole = 'user'; }
+    // Super-admin: afișăm org selector de la deschiderea modalului
+    if (window._currentUserRole === 'admin') {
+      onRoleChange(($('nRole')?.value) || 'user');
+    }
     }
   })
   .catch(() => { location.href = '/login?next=/admin'; });
@@ -1121,6 +1148,7 @@ function renderPage(){
           <button class="btn btn-sm btn-s" onclick='openEdit(${JSON.stringify(u)})' title="Editează" style="padding:4px 8px">✏</button>
           <button class="btn btn-sm btn-w" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale" style="padding:4px 8px">✉</button>
           ${!u.gws_email?`<button class="btn btn-sm" onclick="gwsRetry(${u.id},this)" title="Creează cont Workspace" style="padding:4px 8px;background:rgba(66,133,244,.15);border-color:rgba(66,133,244,.4);color:#4285F4;">G+</button>`:''}
+          ${(window._currentUserRole==='admin' && !u.org_id)?`<button class="btn btn-sm" onclick="openAssignOrg(${u.id},'${esc(u.nume||u.email)}')" title="Asignează organizație (org_id lipsă)" style="padding:4px 8px;background:rgba(255,176,32,.15);border-color:rgba(255,176,32,.4);color:#ffd580;">🏛</button>`:''}
           ${!isMe?`<button class="btn btn-sm btn-d" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Șterge" style="padding:4px 8px">✕</button>`:""}
         </div>
       </td>`;
@@ -1233,8 +1261,20 @@ function _lockRoleDropdownsForOrgAdmin() {
 function onRoleChange(role) {
   const row = $('nOrgRow');
   if (!row) return;
-  if (role === 'org_admin') {
+  // Super-admin vede selectorul de org pentru ORICE rol (user, org_admin, admin)
+  // org_admin vede selectorul doar pentru org_admin (nu poate crea în altă org)
+  const isSuperAdmin = window._currentUserRole === 'admin';
+  if (role === 'org_admin' || isSuperAdmin) {
     row.style.display = '';
+    // Actualizăm label-ul — obligatoriu doar pentru org_admin
+    const lbl = row.querySelector('label');
+    if (lbl) {
+      if (role === 'org_admin') {
+        lbl.innerHTML = 'Organizație <span style="color:#ff8080;">*</span> <span style="color:var(--muted);font-size:.71rem;">— existentă sau nouă</span>';
+      } else {
+        lbl.innerHTML = 'Organizație <span style="color:var(--muted);font-size:.71rem;">— opțional, asociază userul la o org</span>';
+      }
+    }
     loadOrganizationsAutocomplete();
   } else {
     row.style.display = 'none';
@@ -3618,6 +3658,55 @@ function closeOrgModal() {
   $('orgEditModal').style.display = 'none';
   _currentOrgId = null;
 }
+
+// ── Asignare organizație user existent (super-admin) ─────────────────────
+let _assignOrgUserId = null;
+function openAssignOrg(userId, userName) {
+  _assignOrgUserId = userId;
+  const msg = document.getElementById('assignOrgMsg');
+  if (msg) msg.textContent = '';
+  const inp = document.getElementById('assignOrgInput');
+  if (inp) inp.value = '';
+  const title = document.getElementById('assignOrgTitle');
+  if (title) title.textContent = `Asignează organizație pentru: ${userName}`;
+  loadOrganizationsAutocomplete();
+  document.getElementById('assignOrgModal').style.display = 'flex';
+  setTimeout(() => inp?.focus(), 100);
+}
+function closeAssignOrg() {
+  document.getElementById('assignOrgModal').style.display = 'none';
+  _assignOrgUserId = null;
+}
+async function doAssignOrg() {
+  const orgName = (document.getElementById('assignOrgInput')?.value || '').trim();
+  const msg = document.getElementById('assignOrgMsg');
+  if (!orgName) { if (msg) { msg.style.color='#ffaaaa'; msg.textContent='Selectați sau scrieți o organizație.'; } return; }
+  if (!_assignOrgUserId) return;
+  const btn = document.querySelector('#assignOrgModal button[onclick="doAssignOrg()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+  try {
+    const r = await _apiFetch(`/admin/users/${_assignOrgUserId}/assign-org`, {
+      method: 'PUT',
+      headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_name: orgName }),
+    });
+    const j = await r.json();
+    if (r.ok) {
+      if (msg) { msg.style.color='#2dd4bf'; msg.textContent='✅ Organizație asignată cu succes.'; }
+      setTimeout(() => { closeAssignOrg(); loadUsers(); }, 700);
+    } else {
+      if (msg) { msg.style.color='#ffaaaa'; msg.textContent='❌ ' + (j.error || 'Eroare.'); }
+    }
+  } catch(e) {
+    if (msg) { msg.style.color='#ffaaaa'; msg.textContent='❌ Eroare rețea.'; }
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent='💾 Salvează'; }
+  }
+}
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape' && document.getElementById('assignOrgModal')?.style.display==='flex') closeAssignOrg();
+});
+
 // ── Redenumire organizație ────────────────────────────────────────────────
 let _renameOrgId = null;
 function openRenameOrgModal(id, currentName) {
