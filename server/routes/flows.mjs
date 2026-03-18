@@ -691,6 +691,8 @@ router.get('/my-flows', async (req, res) => {
         || (d.storage === 'drive' && (d.driveFileLinkFinal || d.driveFileIdFinal))
       ),
       allSigned: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
+      reinitiatedAs: d.reinitiatedAs || null, // prezent dacă fluxul a fost reinițializat — blochează al doilea Reinițiază
+      parentFlowId: d.parentFlowId || null,
     }));
     res.json({ flows: myFlows, total, page, limit, pages });
   } catch(e) { logger.error({ err: e }, 'my-flows error:'); res.status(500).json({ error: 'server_error' }); }
@@ -790,6 +792,10 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     const first = remainingSigners[0];
     if (first) first.notifiedAt = new Date().toISOString();
     await saveFlow(newFlowId2, newData);
+    // FIX: Marchează fluxul original cu reinitiatedAs — previne reinițializare dublă
+    data.reinitiatedAs = newFlowId2;
+    data.updatedAt = new Date().toISOString();
+    await saveFlow(flowId, data);
     // Copiere atașamente (documente suport) din fluxul original
     try {
       const attRows = await pool.query(
