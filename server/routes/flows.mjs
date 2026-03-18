@@ -48,6 +48,9 @@ function getOptionalActor(req) {
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
 const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message: 'Prea multe cereri de semnare. Încearcă în 1 minut.' });
 const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
+// Q-05: rate limit pe read endpoints cu token — previne enumerare/timing attacks
+// 60 req/min per IP e mai mult decat suficient pentru orice utilizator normal.
+const _readRateLimit   = createRateLimiter({ windowMs: 60_000, max: 60,  message: 'Prea multe cereri. Încearcă în 1 minut.' });
 
 let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired, _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64, _sendSignerEmail, _fireWebhook;
 export function injectFlowDeps(deps) {
@@ -184,7 +187,8 @@ router.post('/flows', _largePdf, createFlow);
 router.post('/api/flows', _largePdf, createFlow);
 
 // ── GET /flows/:flowId/signed-pdf ──────────────────────────────────────────
-router.get('/flows/:flowId/signed-pdf', async (req, res) => {
+// Q-05: rate limit citire — previne enumerare token via timing attacks
+router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
   try {
     if (requireDb(res)) return;
     // R-05: acceptăm token și din header X-Signer-Token (alternativă la query string)
@@ -215,7 +219,7 @@ router.get('/flows/:flowId/signed-pdf', async (req, res) => {
 });
 
 // ── GET /flows/:flowId/pdf ─────────────────────────────────────────────────
-router.get('/flows/:flowId/pdf', async (req, res) => {
+router.get('/flows/:flowId/pdf', _readRateLimit, async (req, res) => {
   try {
     if (requireDb(res)) return;
     // R-05: acceptăm token și din header X-Signer-Token (alternativă la query string)
@@ -295,8 +299,8 @@ const getFlowHandler = async (req, res) => {
     return res.json(_stripSensitive(enriched, signerToken));
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 };
-router.get('/flows/:flowId', getFlowHandler);
-router.get('/api/flows/:flowId', getFlowHandler);
+router.get('/flows/:flowId', _readRateLimit, getFlowHandler);
+router.get('/api/flows/:flowId', _readRateLimit, getFlowHandler);
 
 // ── PUT /flows/:flowId ─────────────────────────────────────────────────────
 // FIX: validare structura body — nu permite suprascrierea completa

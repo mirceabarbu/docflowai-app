@@ -48,6 +48,7 @@ import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
+import templatesRouter from './routes/templates.mjs'; // Q-06: extras din index.mjs
 
 const app = express();
 app.set('trust proxy', 1);
@@ -89,9 +90,15 @@ app.use((req, res, next) => {
 // ── CORS ──────────────────────────────────────────────────────────────────
 // FIX v3.2.2: origin:true cu credentials:true e periculos (accept orice domeniu).
 // Fallback la domeniu explicit din PUBLIC_BASE_URL dacă CORS_ORIGIN nu e setat.
+// FIX Q-01: fallback false în loc de true — blochează origini necunoscute.
+//           Dacă nici CORS_ORIGIN nici PUBLIC_BASE_URL nu sunt setate în producție,
+//           se loghează WARN (nu exit — Railway poate restarta înainte de env inject).
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-  : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : true);
+  : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : false);
+if (corsOrigins === false) {
+  logger.warn('CORS_ORIGIN și PUBLIC_BASE_URL lipsesc — CORS blocat pentru toate originile externe. Setați cel puțin PUBLIC_BASE_URL.');
+}
 app.use(cors({ origin: corsOrigins, credentials: true }));
 // PERF-03: limita globala 1MB — previne body flood pe endpoint-urile cu JSON mic.
 // Rutele care primesc PDF (pdfB64/signedPdfB64/dataB64) au override 50MB in flows.mjs.
@@ -147,8 +154,16 @@ app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'template
 // GET /api-docs.json — spec JSON brut (Postman, Insomnia, integrări externe) — auth required
 // GET /api-docs      — Swagger UI interactiv (browser) — auth required
 // BUG-N03: protejat cu cookie auth — structura API nu trebuie expusă public
+// FIX Q-02: verificare JWT completă (verify), nu doar existența cookie-ului.
+//           Un cookie expirat sau manipulat era suficient pentru acces înainte.
+function _isApiDocsAuthed(req) {
+  const token = req.cookies?.auth_token;
+  if (!token) return false;
+  try { jwt.verify(token, JWT_SECRET); return true; } catch(e) { return false; }
+}
+
 app.get('/api-docs.json', (req, res) => {
-  if (!req.cookies?.auth_token) {
+  if (!_isApiDocsAuthed(req)) {
     return res.status(401).json({ error: 'auth_required', message: 'Autentificare necesară pentru API docs.' });
   }
   res.setHeader('Content-Type', 'application/json');
@@ -156,7 +171,7 @@ app.get('/api-docs.json', (req, res) => {
 });
 
 app.get('/api-docs', (req, res) => {
-  if (!req.cookies?.auth_token) {
+  if (!_isApiDocsAuthed(req)) {
     return res.redirect('/login.html?redirect=/api-docs');
   }
   // URL relativ — funcționează pe orice domeniu fără a depinde de publicBaseUrl
@@ -243,74 +258,8 @@ app.get('/metrics', async (req, res) => {
   res.send(renderMetrics());
 });
 
-// ── Template API ──────────────────────────────────────────────────────────
-app.get('/api/templates', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const institutie = uRows[0]?.institutie || '';
-    const orgId = uRows[0]?.org_id || actor.orgId || null;
-    // FIX v3.2.3: filtrare pe org_id pentru sabloane partajate (nu doar pe institutie text)
-    const { rows } = await pool.query(
-      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='' AND ($3::integer IS NULL OR org_id=$3))
-       ORDER BY user_email=$1 DESC, name ASC`,
-      [actor.email.toLowerCase(), institutie, orgId]
-    );
-    res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
-});
-
-app.post('/api/templates', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  const { name, signers, shared } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
-  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
-  if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
-  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
-  try {
-    // FIX b76: citim și org_id — FK obligatoriu pe templates în producție
-    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const institutie = uRows[0]?.institutie || '';
-    const orgId = uRows[0]?.org_id || actor.orgId || null;
-    const { rows } = await pool.query(
-      'INSERT INTO templates (user_email,institutie,name,signers,shared,org_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
-      [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared, orgId]
-    );
-    res.status(201).json({ ...rows[0], isOwner: true });
-  } catch(e) { logger.error({ err: e }, 'POST /api/templates error'); res.status(500).json({ error: 'server_error' }); }
-});
-
-app.put('/api/templates/:id', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  const { name, signers, shared } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
-  if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
-  if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
-  if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
-  try {
-    const { rows } = await pool.query(
-      'UPDATE templates SET name=$1,signers=$2,shared=$3,updated_at=NOW() WHERE id=$4 AND user_email=$5 RETURNING *',
-      [name?.trim(), JSON.stringify(signers), !!shared, parseInt(req.params.id), actor.email.toLowerCase()]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'not_found_or_not_owner' });
-    res.json({ ...rows[0], isOwner: true });
-  } catch(e) { logger.error({ err: e }, 'PUT /api/templates error'); res.status(500).json({ error: 'server_error' }); }
-});
-
-app.delete('/api/templates/:id', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rowCount } = await pool.query('DELETE FROM templates WHERE id=$1 AND user_email=$2', [parseInt(req.params.id), actor.email.toLowerCase()]);
-    if (!rowCount) return res.status(404).json({ error: 'not_found_or_not_owner' });
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
-});
-
 // ── Helpers ────────────────────────────────────────────────────────────────
+// Q-06: Template API extras în server/routes/templates.mjs (montat mai jos)
 // FIX v3.3.2: escHtml importat din middleware/auth.mjs — eliminat duplicatul local
 
 function publicBaseUrl(req) {
@@ -487,7 +436,12 @@ async function _runReminderJob() {
         [current.email.toLowerCase(), flowId]
       );
       const lastSentAt = lastRows[0]?.created_at ? new Date(lastRows[0].created_at).getTime() : 0;
-      const inactiveSince = current.notifiedAt ? new Date(current.notifiedAt).getTime() : (Date.now() - R1_MS);
+      // FIX Q-04: fallback la data crearii fluxului, nu la Date.now()-R1_MS.
+      // Anterior: daca notifiedAt lipsea, inactiveMs era exact R1_MS => reminder trimis imediat
+      // chiar si pe fluxuri create cu cateva minute in urma.
+      const inactiveSince = current.notifiedAt
+        ? new Date(current.notifiedAt).getTime()
+        : new Date(data.createdAt || Date.now()).getTime();
       const inactiveMs = Date.now() - inactiveSince;
       const minGap = R1_MS - 3600_000; // anti-spam: minim R1-1h intre remindere
 
@@ -691,6 +645,7 @@ app.use('/', notifRouter);
 app.use('/', adminRouter);
 app.use('/', flowsRouter);
 app.use('/admin/outreach', outreachRouter);
+app.use('/', templatesRouter);         // Q-06: Template CRUD
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
