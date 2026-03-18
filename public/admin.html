@@ -565,28 +565,9 @@
         </label>
       </div>
 
-
-      
-
-        <div id="orgSigningConfigArea" style="display:none;margin-bottom:12px;">
-          <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:6px;">API Key</label>
-          <input type="password" id="orgSigningApiKey" placeholder="API key provider" autocomplete="off"
-            style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;"/>
-          <label style="display:block;font-size:.78rem;color:var(--muted);margin-top:10px;margin-bottom:6px;">API URL</label>
-          <input type="text" id="orgSigningApiUrl" placeholder="https://api.provider.ro/v1"
-            style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;"/>
-        </div>
-
-        <div style="font-size:.74rem;color:rgba(234,240,255,.35);margin-top:4px;line-height:1.5;">
-          Provider-ul configurat se aplică tuturor fluxurilor noi ale organizației.<br>
-          Fluxurile în desfășurare continuă cu provider-ul cu care au fost create.
-        </div>
-      </div>
-
-
-      <!-- Signing Providers — arhitectură corectă ──────────────────── -->
+      <!-- 🔐 Provideri Semnare Electronică — în interiorul modalului -->
       <div id="orgSigningSection" style="margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08);">
-        <div style="font-size:.8rem;color:#b39dff;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;">🔐 Provideri Semnare Electronică</div>
+        <div style="font-size:.8rem;color:#b39dff;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">🔐 Provideri Semnare Electronică</div>
         <div style="font-size:.77rem;color:rgba(234,240,255,.4);margin-bottom:12px;line-height:1.5;">
           Bifează providerii contractați de organizație. Semnatarul va putea alege la semnare.<br>
           <strong style="color:rgba(234,240,255,.6);">Upload local</strong> este întotdeauna disponibil (nu poate fi dezactivat).
@@ -594,24 +575,27 @@
         <div id="orgProvidersGrid" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
           <!-- populat din JS -->
         </div>
-        <!-- Config per provider (API key, URL) — apare când se bifează un provider cloud -->
+        <!-- Config API per provider — apare la click ⚙ Config -->
         <div id="orgProviderConfigArea" style="display:none;background:rgba(0,0,0,.2);border-radius:10px;padding:14px;margin-bottom:14px;">
           <div id="orgProviderConfigTitle" style="font-size:.8rem;color:#b39dff;font-weight:700;margin-bottom:10px;"></div>
           <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">API URL</label>
           <input id="orgProviderApiUrl" type="text" placeholder="https://api.provider.ro/v1"
             style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;"/>
           <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">API Key</label>
-          <input id="orgProviderApiKey" type="password" placeholder="API key (stocat criptat)"
+          <input id="orgProviderApiKey" type="password" placeholder="API key provider"
             style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;" autocomplete="off"/>
           <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Webhook Secret (HMAC)</label>
           <input id="orgProviderWebhookSecret" type="password" placeholder="Secret pentru verificare callback"
             style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:10px;" autocomplete="off"/>
-          <button onclick="verifyProviderConfig()" style="padding:8px 16px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-size:.82rem;font-weight:600;">🔍 Verifică conexiunea</button>
-          <div id="orgProviderVerifyStatus" style="margin-top:6px;font-size:.77rem;"></div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button onclick="verifyProviderConfig()" style="padding:7px 14px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-size:.82rem;font-weight:600;">🔍 Verifică</button>
+            <div id="orgProviderVerifyStatus" style="font-size:.77rem;flex:1;"></div>
+          </div>
         </div>
       </div>
 
-      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;">
+      <!-- Butoane finale -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06);">
         <button onclick="orgTestWebhook()" style="padding:10px 18px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-size:.85rem;font-weight:600;">🧪 Test Webhook</button>
         <div style="display:flex;gap:10px;">
           <button onclick="closeOrgModal()" style="padding:10px 22px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
@@ -996,7 +980,7 @@ async function loadActiveFlowsBadge() {
   try {
     // Folosim endpoint-ul de statistici admin dacă există,
     // altfel un query simplu pe lista de fluxuri cu status activ
-    const r = await apiFetch('/admin/flows/stats');
+    const r = await _apiFetch('/admin/flows/stats', { headers: hdrs() });
     if (!r.ok) return;
     const j = await r.json().catch(() => ({}));
     const count = j.activeCount ?? j.active ?? null;
@@ -3614,11 +3598,11 @@ async function loadOrgSigningProviders(orgId) {
   try {
     // Încarcă lista tuturor provideri din platformă
     if (!_allProviders.length) {
-      const r = await apiFetch('/admin/signing/providers');
+      const r = await _apiFetch('/admin/signing/providers', { headers: hdrs() });
       if (r.ok) _allProviders = await r.json();
     }
     // Încarcă config curentă a org-ului
-    const r2 = await apiFetch(`/admin/organizations/${orgId}/signing`);
+    const r2 = await _apiFetch(`/admin/organizations/${orgId}/signing`, { headers: hdrs() });
     if (!r2.ok) return;
     const j = await r2.json();
     _selectedProviders = new Set(j.enabled || ['local-upload']);
@@ -3690,8 +3674,8 @@ async function verifyProviderConfig() {
   const statusEl   = document.getElementById('orgProviderVerifyStatus');
   if (statusEl) { statusEl.textContent = '⏳ Se verifică...'; statusEl.style.color = '#9db0ff'; }
   try {
-    const r = await apiFetch('/admin/signing/verify', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const r = await _apiFetch('/admin/signing/verify', {
+      method: 'POST', headers: { ...hdrs(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ providerId: _activeConfigProvider, config: { apiUrl, apiKey } }),
     });
     const j = await r.json();
@@ -3722,8 +3706,8 @@ async function saveOrgSigningProviders(orgId) {
     }
   }
   try {
-    await apiFetch(`/admin/organizations/${orgId}/signing`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    await _apiFetch(`/admin/organizations/${orgId}/signing`, {
+      method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled, config }),
     });
   } catch(e) { /* non-fatal — webhook e salvat oricum */ }
@@ -3739,9 +3723,9 @@ async function verifySigningProvider() {
   if (!statusEl) return;
   statusEl.textContent = '⏳ Se verifică...'; statusEl.style.color = '#9db0ff';
   try {
-    const r = await apiFetch('/admin/signing/verify', {
+    const r = await _apiFetch('/admin/signing/verify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...hdrs(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ providerId, config: { apiKey, apiUrl } })
     });
     const j = await r.json();
@@ -3777,9 +3761,9 @@ async function saveOrgWebhookWithSigning() {
   const apiKey = document.getElementById('orgSigningApiKey')?.value || '';
   const apiUrl = document.getElementById('orgSigningApiUrl')?.value || '';
   try {
-    await apiFetch(`/admin/organizations/${_currentOrgId}/signing`, {
+    await _apiFetch(`/admin/organizations/${_currentOrgId}/signing`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...hdrs(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         signing_provider: providerId,
         signing_provider_config: { apiKey: apiKey || undefined, apiUrl: apiUrl || undefined }
