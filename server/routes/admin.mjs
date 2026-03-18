@@ -733,7 +733,7 @@ router.get('/admin/flows/stats', async (req, res) => {
       "COUNT(*) FILTER (WHERE data->>'status' = 'cancelled')::int AS cancelled, " +
       "COUNT(*) FILTER (WHERE data->>'status' = 'review_requested')::int AS review_requested, " +
       "COUNT(*) FILTER (WHERE data->>'completed' IS DISTINCT FROM 'true' " +
-        "AND data->>'status' NOT IN ('refused','cancelled','review_requested'))::int AS active, " +
+        "AND (data->>'status' IS NULL OR data->>'status' NOT IN ('refused','cancelled','review_requested')))::int AS active, " +
       'COUNT(*)::int AS total ' +
       'FROM flows WHERE 1=1' + whereCond;
     const { rows } = await pool.query(sql, params);
