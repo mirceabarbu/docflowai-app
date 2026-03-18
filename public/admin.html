@@ -522,6 +522,23 @@
   </div>
 
   <!-- Modal editare organizație / webhook -->
+
+  <!-- Modal Redenumire Organizație -->
+  <div id="renameOrgModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeRenameOrgModal()">
+    <div style="background:#0f1731;border:1px solid rgba(45,212,191,.3);border-radius:18px;padding:28px 32px;max-width:440px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);">
+      <h3 style="margin:0 0 18px;color:#7cf0e0;font-size:1rem;">✏️ Redenumește organizația</h3>
+      <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:6px;">Nume nou</label>
+      <input id="renameOrgInput" type="text" maxlength="120"
+        style="width:100%;box-sizing:border-box;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:.95rem;margin-bottom:14px;"
+        onkeydown="if(event.key==='Enter')doRenameOrg()"/>
+      <div id="renameOrgMsg" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="closeRenameOrgModal()" style="padding:9px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+        <button onclick="doRenameOrg()" style="padding:9px 22px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;">💾 Salvează</button>
+      </div>
+    </div>
+  </div>
+
   <div id="orgEditModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
     <div style="background:#0f1731;border:1px solid rgba(124,92,255,.3);border-radius:18px;padding:32px;max-width:580px;width:calc(100%-32px);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);">
       <h3 style="margin:0 0 20px;color:#c4b5ff;font-size:1rem;">⚙️ Configurare Webhook — <span id="orgEditName"></span></h3>
@@ -3520,16 +3537,25 @@ async function loadOrganizations() {
       <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:20px 24px;">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
           <div>
-            <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:4px;">🏛 ${escH(org.name)}</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+              <div style="font-size:1rem;font-weight:700;color:#eaf0ff;">🏛 ${escH(org.name)}</div>
+              ${org.name === 'Default Organization' ? '<span style="font-size:.72rem;padding:2px 8px;background:rgba(255,176,32,.15);border:1px solid rgba(255,176,32,.35);border-radius:10px;color:#ffd580;">⚠ organizație principală — redenumește</span>' : ''}
+            </div>
             <div style="font-size:.78rem;color:var(--muted);">
               👥 ${org.user_count} utilizatori &nbsp;·&nbsp; 📁 ${org.flow_count} fluxuri
               &nbsp;·&nbsp; ID: <span style="font-family:monospace;color:#7c5cff;">${org.id}</span>
             </div>
           </div>
-          <button onclick="openOrgModal(${org.id},'${escH(org.name)}')"
-            style="padding:8px 16px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-size:.83rem;font-weight:600;white-space:nowrap;">
-            ⚙️ Configurare Webhook
-          </button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button onclick="openRenameOrgModal(${org.id},'${escH(org.name)}')"
+              style="padding:7px 12px;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-size:.8rem;font-weight:600;">
+              ✏️ Redenumește
+            </button>
+            <button onclick="openOrgModal(${org.id},'${escH(org.name)}')"
+              style="padding:8px 16px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-size:.83rem;font-weight:600;white-space:nowrap;">
+              ⚙️ Configurare Webhook
+            </button>
+          </div>
         </div>
         <!-- Status webhook -->
         <div style="margin-top:14px;padding:12px 16px;background:rgba(0,0,0,.2);border-radius:10px;font-size:.8rem;">
@@ -3592,6 +3618,53 @@ function closeOrgModal() {
   $('orgEditModal').style.display = 'none';
   _currentOrgId = null;
 }
+// ── Redenumire organizație ────────────────────────────────────────────────
+let _renameOrgId = null;
+function openRenameOrgModal(id, currentName) {
+  _renameOrgId = id;
+  const input = document.getElementById('renameOrgInput');
+  if (input) input.value = currentName;
+  const msg = document.getElementById('renameOrgMsg');
+  if (msg) msg.textContent = '';
+  document.getElementById('renameOrgModal').style.display = 'flex';
+  setTimeout(() => { input?.focus(); input?.select(); }, 100);
+}
+function closeRenameOrgModal() {
+  document.getElementById('renameOrgModal').style.display = 'none';
+  _renameOrgId = null;
+}
+async function doRenameOrg() {
+  const name = (document.getElementById('renameOrgInput')?.value || '').trim();
+  const msg  = document.getElementById('renameOrgMsg');
+  if (!name) { if (msg) { msg.style.color='#ffaaaa'; msg.textContent='Numele nu poate fi gol.'; } return; }
+  if (!_renameOrgId) return;
+  const btn = document.querySelector('#renameOrgModal button[onclick="doRenameOrg()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+  try {
+    const r = await _apiFetch(`/admin/organizations/${_renameOrgId}`, {
+      method: 'PUT',
+      headers: { ...hdrs(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const j = await r.json();
+    if (r.ok) {
+      if (msg) { msg.style.color = '#2dd4bf'; msg.textContent = '✅ Redenumit cu succes.'; }
+      setTimeout(() => { closeRenameOrgModal(); loadOrganizations(); }, 700);
+    } else {
+      if (msg) { msg.style.color = '#ffaaaa'; msg.textContent = '❌ ' + (j.error || 'Eroare.'); }
+    }
+  } catch(e) {
+    if (msg) { msg.style.color='#ffaaaa'; msg.textContent='❌ Eroare rețea.'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Salvează'; }
+  }
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('renameOrgModal')?.style.display === 'flex')
+    closeRenameOrgModal();
+});
+
+
 
 
 
