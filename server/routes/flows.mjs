@@ -13,7 +13,7 @@
  */
 
 import { Router, json as expressJson } from 'express';
-import { emailDelegare } from '../emailTemplates.mjs';
+import { emailDelegare, emailSendExtern } from '../emailTemplates.mjs'; // A — b97
 
 // PERF-03: middleware 50MB aplicat doar pe rutele care primesc pdfB64/signedPdfB64/dataB64.
 // Limita globala din index.mjs este 1MB.
@@ -1307,99 +1307,14 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     if (includeAttachment && !pdfB64)
       return res.status(409).json({ error: 'no_pdf', message: 'PDF-ul semnat nu este disponibil (nici local, nici în Drive).' });
 
-    // Semnatari — pentru tabelul din mail
-    const signers = (data.signers || []).map(s => ({
+    // A — b97: template HTML extras în emailTemplates.mjs::emailSendExtern
+    const signersForTemplate = (data.signers || []).map(s => ({
       name: s.name || s.email,
       rol: s.rol || '',
       signedAt: s.signedAt || null,
       status: s.status === 'signed' ? 'semnat' : s.status === 'refused' ? 'refuzat' : 'în așteptare',
     }));
-
-    const statusColor = (st) => st === 'semnat' ? '#1a7a4a' : st === 'refuzat' ? '#b03030' : '#7c5cff';
-    const statusBg    = (st) => st === 'semnat' ? '#d4f5e5' : st === 'refuzat' ? '#fde8e8' : '#ede8ff';
-    const signersTable = signers.map(s => `
-      <tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#1a2340;font-weight:500;">${s.name}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#3d5299;font-weight:600;">${s.rol}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;">
-          <span style="background:${statusBg(s.status)};color:${statusColor(s.status)};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">${s.status.toUpperCase()}</span>
-        </td>
-        <td style="padding:8px 12px;border-bottom:1px solid #dde4f5;color:#5a6a9a;font-size:12px;">${s.signedAt ? new Date(s.signedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td>
-      </tr>`).join('');
-
-    // Corp mesaj — text negru pe fundal alb, newline -> <br>
-    const customBody = bodyText
-      ? `<p style="margin:0 0 24px;line-height:1.8;color:#1a1a1a;font-size:14px;white-space:pre-line;">${bodyText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</p>`
-      : '';
-
-    // Secțiune "Document disponibil în platformă" — fond cald albastru deschis
-    const linkSection = `
-      <div style="margin:20px 0;padding:16px 20px;background:#f0f4ff;border:1px solid #c5d0f0;border-radius:10px;border-left:4px solid #7c5cff;">
-        <p style="margin:0 0 6px;font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Document disponibil în platformă</p>
-        <p style="margin:0;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong> · Platformă: <strong>DocFlowAI</strong></p>
-      </div>`;
-
-    const html = `<!DOCTYPE html>
-<html lang="ro"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f5f7fc;font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a;">
-  <div style="max-width:620px;margin:0 auto;padding:32px 16px;">
-
-    <!-- Header gradient — table layout (no flex/gap, email client compatibility) -->
-    <div style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:14px 14px 0 0;padding:24px 32px;">
-      <table role="presentation" style="width:100%;border-collapse:collapse;"><tr>
-        <td style="width:52px;vertical-align:middle;">
-          <div style="width:40px;height:40px;background:rgba(255,255,255,.2);border-radius:10px;text-align:center;line-height:40px;font-size:20px;">&#128203;</div>
-        </td>
-        <td style="vertical-align:middle;padding-left:12px;">
-          <div style="font-size:11px;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:4px;">Document semnat electronic</div>
-          <div style="font-size:17px;font-weight:700;color:#fff;">${data.docName || flowId}</div>
-        </td>
-      </tr></table>
-    </div>
-
-    <!-- Info card -->
-    <div style="background:#fff;border:1px solid #dde4f5;border-top:none;border-radius:0 0 14px 14px;padding:20px 32px 24px;margin-bottom:20px;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <tr><td style="padding:4px 0;color:#5a6a9a;width:140px;font-weight:600;">Instituție</td><td style="color:#1a1a1a;">${data.institutie || '—'}</td></tr>
-        <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Compartiment</td><td style="color:#1a1a1a;">${data.compartiment || '—'}</td></tr>
-        <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Finalizat la</td><td style="color:#1a7a4a;font-weight:600;">${data.completedAt ? new Date(data.completedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—'}</td></tr>
-        <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Flow ID</td><td style="color:#7c5cff;font-family:monospace;font-size:12px;">${flowId}</td></tr>
-      </table>
-    </div>
-
-    <!-- Tabel semnatari -->
-    <div style="background:#fff;border:1px solid #dde4f5;border-radius:10px;margin-bottom:20px;overflow:hidden;">
-      <div style="padding:10px 20px;background:#f8faff;border-bottom:1px solid #dde4f5;">
-        <span style="font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Semnatari</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead>
-          <tr style="background:#f0f4ff;">
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Nume</th>
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Rol</th>
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Status</th>
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Data</th>
-          </tr>
-        </thead>
-        <tbody>${signersTable}</tbody>
-      </table>
-    </div>
-
-    <!-- Corp personalizat (text negru) -->
-    <div style="background:#fff;border:1px solid #dde4f5;border-radius:10px;padding:20px 24px;margin-bottom:20px;">
-      ${customBody || '<p style="margin:0;color:#1a1a1a;font-size:14px;">Vă transmitem atașat documentul semnat electronic.</p>'}
-    </div>
-
-    <!-- Document disponibil în platformă -->
-    ${linkSection}
-
-    <!-- Footer -->
-    <div style="border-top:1px solid #dde4f5;padding-top:16px;margin-top:4px;text-align:center;">
-      <p style="margin:0 0 4px;font-size:12px;color:#5a6a9a;">Trimis prin <strong>DocFlowAI</strong> · noreply@docflowai.ro</p>
-    </div>
-
-  </div>
-</body></html>`;
+    const { html } = emailSendExtern({ flowId, data, signers: signersForTemplate, bodyText });
 
     // Construim payload Resend
     const { sendSignerEmail } = await import('../mailer.mjs');

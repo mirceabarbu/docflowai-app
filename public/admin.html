@@ -121,6 +121,8 @@
     <a href="/?tab=flows" class="btn" style="text-decoration:none;font-size:.88rem;">📂 Fluxuri mele</a>
     <a href="/templates" class="btn" style="text-decoration:none;font-size:.88rem;">📋 Șabloane</a>
     <span id="adminBadge" style="padding:8px 12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:10px;font-size:.85rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
+    <!-- F — b97: badge live fluxuri active -->
+    <span id="activeFlowsBadge" title="Fluxuri active în acest moment" style="display:none;padding:6px 12px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:10px;font-size:.82rem;color:#c4b5fd;font-weight:700;cursor:default;">⏳ <span id="activeFlowsCount">—</span> active</span>
   </div>
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
     <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
@@ -931,6 +933,8 @@ fetch('/auth/me', { credentials: 'include' })
       localStorage.removeItem('docflow_user');
       localStorage.removeItem('docflow_force_pwd');
       location.href = '/login?next=/admin';
+    } else {
+      loadActiveFlowsBadge(); // F — b97
     }
   })
   .catch(() => { location.href = '/login?next=/admin'; });
@@ -940,6 +944,27 @@ function logout(){
   localStorage.removeItem('docflow_user');
   localStorage.removeItem('docflow_force_pwd');
   location.href='/login';
+}
+
+// F — b97: badge live număr fluxuri active în header
+async function loadActiveFlowsBadge() {
+  try {
+    // Folosim endpoint-ul de statistici admin dacă există,
+    // altfel un query simplu pe lista de fluxuri cu status activ
+    const r = await apiFetch('/admin/flows/stats');
+    if (!r.ok) return;
+    const j = await r.json().catch(() => ({}));
+    const count = j.activeCount ?? j.active ?? null;
+    if (count !== null) {
+      const badge = document.getElementById('activeFlowsBadge');
+      const countEl = document.getElementById('activeFlowsCount');
+      if (badge && countEl) {
+        countEl.textContent = count;
+        badge.style.display = '';
+        badge.title = `${count} fluxuri active (nesemnate complet)`;
+      }
+    }
+  } catch(e) { /* non-fatal */ }
 }
 
 function openChangePwdModal(){

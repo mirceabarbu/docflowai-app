@@ -28,7 +28,8 @@ const __dirname_outreach = path.dirname(fileURLToPath(import.meta.url));
 const DAILY_SEND_LIMIT    = parseInt(process.env.OUTREACH_DAILY_LIMIT || '100');
 const FROM_EMAIL          = process.env.OUTREACH_FROM || 'DocFlowAI <contact@docflowai.ro>';
 const PDF_PATH            = process.env.OUTREACH_PDF_PATH || null;
-const APP_URL = process.env.APP_URL || ''; // opțional — se auto-detectează din request
+// B — b97: aliniat cu restul aplicației — PUBLIC_BASE_URL în loc de APP_URL
+const APP_URL = process.env.PUBLIC_BASE_URL || process.env.APP_URL || '';
 
 /** Returnează baza URL-ului din request (ex. https://docflowai-app.up.railway.app) */
 function getBaseUrl(req) {
