@@ -121,7 +121,128 @@
       background:rgba(255,77,90,.08);
       color:rgba(255,240,242,.95);
     }
-  </style>
+  
+    /* ── P-05: Timeline vizual ────────────────────────────────────────────── */
+    .tl-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      padding: 4px 0 4px 0;
+      position: relative;
+    }
+    .tl-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      position: relative;
+      min-height: 52px;
+    }
+    .tl-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 17px;
+      top: 36px;
+      bottom: -2px;
+      width: 2px;
+      background: rgba(255,255,255,.09);
+      z-index: 0;
+    }
+    .tl-step.tl-done:not(:last-child)::after   { background: rgba(38,208,124,.35); }
+    .tl-step.tl-active:not(:last-child)::after { background: rgba(124,92,255,.25); }
+    .tl-dot {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+      position: relative; z-index: 1;
+      border: 2px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.05);
+      transition: box-shadow .3s ease;
+    }
+    .tl-step.tl-done  .tl-dot { border-color:rgba(38,208,124,.60); background:rgba(38,208,124,.12); }
+    .tl-step.tl-active .tl-dot {
+      border-color: rgba(124,92,255,.80);
+      background: rgba(124,92,255,.18);
+      box-shadow: 0 0 0 4px rgba(124,92,255,.12), 0 0 16px rgba(124,92,255,.25);
+    }
+    .tl-step.tl-bad   .tl-dot { border-color:rgba(255,77,90,.60); background:rgba(255,77,90,.12); }
+    .tl-step.tl-warn  .tl-dot { border-color:rgba(255,176,32,.55); background:rgba(255,176,32,.10); }
+    .tl-body {
+      flex: 1;
+      padding: 6px 0 14px 0;
+      min-width: 0;
+    }
+    .tl-label {
+      font-weight: 700;
+      font-size: .88rem;
+      line-height: 1.3;
+      color: var(--txt);
+    }
+    .tl-step.tl-pending .tl-label { color: rgba(234,240,255,.40); }
+    .tl-meta {
+      font-size: .78rem;
+      color: var(--sub);
+      margin-top: 2px;
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    }
+    .tl-step.tl-pending .tl-meta { color: rgba(234,240,255,.25); }
+    .tl-ts {
+      font-size: .74rem;
+      color: rgba(234,240,255,.38);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .tl-step.tl-done .tl-ts { color: rgba(38,208,124,.65); }
+    .tl-actor {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: 20px;
+      padding: 1px 8px;
+      font-size: .74rem;
+      color: rgba(234,240,255,.65);
+      max-width: 220px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .tl-step.tl-done .tl-actor {
+      background: rgba(38,208,124,.08);
+      border-color: rgba(38,208,124,.22);
+      color: rgba(38,208,124,.85);
+    }
+    .tl-reason {
+      margin-top: 5px;
+      font-size: .78rem;
+      padding: 5px 10px;
+      background: rgba(255,77,90,.08);
+      border-left: 2px solid rgba(255,77,90,.45);
+      border-radius: 0 6px 6px 0;
+      color: rgba(255,160,170,.85);
+    }
+    .tl-sub {
+      display: flex; flex-direction: column; gap: 3px;
+      margin-top: 4px;
+      padding: 6px 10px;
+      background: rgba(0,0,0,.15);
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.07);
+    }
+    .tl-sub-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: .76rem; color: rgba(234,240,255,.50);
+    }
+    .tl-sub-row .tl-sub-dot {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+      background: rgba(255,255,255,.18);
+    }
+    .tl-sub-row.done .tl-sub-dot { background: rgba(38,208,124,.65); }
+    .tl-sub-row.done { color: rgba(234,240,255,.72); }
+    @keyframes tl-pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(124,92,255,.4), 0 0 16px rgba(124,92,255,.2); }
+      50%      { box-shadow: 0 0 0 6px rgba(124,92,255,0), 0 0 20px rgba(124,92,255,.35); }
+    }
+    .tl-step.tl-active .tl-dot { animation: tl-pulse 2s ease-in-out infinite; }
+</style>
 <script src="/notif-widget.js"></script>
 
   <script>
@@ -213,6 +334,16 @@
           <span class="muted small">atașate la crearea fluxului</span>
         </div>
         <div id="attachmentsList" style="display:flex;flex-direction:column;gap:5px;margin-top:8px;"></div>
+      </div>
+
+
+      <!-- P-05: Timeline vizual — jaloane principale flux -->
+      <div class="card" id="timelineCard" style="display:none;">
+        <div class="row" style="margin-bottom:12px;">
+          <h3 style="margin:0">🗓 Progres flux</h3>
+          <span class="muted small" id="tlSummary"></span>
+        </div>
+        <div class="tl-wrap" id="tlWrap"></div>
       </div>
 
       <!-- Evenimente — full width -->
@@ -307,6 +438,177 @@
 
   function roleLabel(s){
     return (s||"").toString().toUpperCase();
+  }
+
+
+  // ── P-05: renderTimeline — jaloane principale ale fluxului ────────────────
+  function renderTimeline(flow) {
+    const card   = $('timelineCard');
+    const wrap   = $('tlWrap');
+    const tlSum  = $('tlSummary');
+    if (!card || !wrap) return;
+
+    const data    = flow.data || flow;
+    const signers = data.signers || [];
+    const evs     = (flow.events || data.events || []).slice().sort(
+      (a, b) => new Date(a.at || a.ts || 0) - new Date(b.at || b.ts || 0)
+    );
+
+    // nameMap: email → nume afișat
+    const nameMap = {};
+    if (data.initEmail) nameMap[data.initEmail.toLowerCase()] = data.initName || data.initEmail;
+    signers.forEach(s => {
+      if (s.email) nameMap[s.email.toLowerCase()] = s.name || s.email;
+    });
+    const resolveName = (email) => nameMap[(email||'').toLowerCase()] || email || '—';
+
+    const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    // Evenimentele-cheie pentru timeline
+    const EV_SHOW = new Set([
+      'FLOW_CREATED','SIGNED','SIGNED_PDF_UPLOADED','FLOW_COMPLETED',
+      'REFUSED','FLOW_CANCELLED','REVIEW_REQUESTED','DELEGATED',
+      'FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW'
+    ]);
+
+    // Filtrăm și grupăm evenimentele relevante (ignorăm moștenite din flux-parent)
+    const relevant = evs.filter(e => EV_SHOW.has(e.type) && !e._inheritedFrom);
+
+    // Construim pașii timeline
+    const steps = [];
+
+    // ── PASUL 1: FLOW_CREATED ────────────────────────────────────────────────
+    const evCreated = relevant.find(e => e.type === 'FLOW_CREATED');
+    steps.push({
+      icon: '🚀', label: 'Flux creat',
+      actor: data.initName || data.initEmail || '—',
+      ts: evCreated?.at || data.createdAt || null,
+      state: evCreated ? 'done' : 'active',
+      extra: null
+    });
+
+    // ── PAȘI PER SEMNATAR ────────────────────────────────────────────────────
+    const signedOrder = [...signers].sort((a, b) => (Number(a.order)||0) - (Number(b.order)||0));
+    for (const s of signedOrder) {
+      const st = (s.status || '').toLowerCase();
+      const evSigned     = relevant.filter(e => e.type === 'SIGNED'              && (e.by||'').toLowerCase() === (s.email||'').toLowerCase());
+      const evUploaded   = relevant.filter(e => e.type === 'SIGNED_PDF_UPLOADED' && (e.by||'').toLowerCase() === (s.email||'').toLowerCase());
+      const evDelegated  = relevant.filter(e => e.type === 'DELEGATED'           && (e.to||'').toLowerCase() === (s.email||'').toLowerCase());
+      const evRefused    = relevant.filter(e => e.type === 'REFUSED'             && (e.by||'').toLowerCase() === (s.email||'').toLowerCase());
+
+      let state = 'pending';
+      if      (st === 'signed')   state = 'done';
+      else if (st === 'refused')  state = 'bad';
+      else if (st === 'current')  state = 'active';
+      else if (st === 'cancelled')state = 'bad';
+
+      const delegBadge = s.delegatedFrom
+        ? `<span class="tl-actor" title="Delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)}">👥 delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)}</span>`
+        : '';
+
+      // Sub-pași: semnare + upload (dacă sunt distincte)
+      const subRows = [];
+      if (evSigned.length) {
+        subRows.push({ done: true, icon: '✍️', label: 'Semnat', ts: evSigned[0].at });
+      }
+      if (evUploaded.length) {
+        subRows.push({ done: true, icon: '📤', label: 'PDF încărcat', ts: evUploaded[0].at });
+      }
+
+      const mainTs = st === 'refused'
+        ? (s.refusedAt || evRefused[0]?.at || null)
+        : (s.signedAt   || evSigned[0]?.at  || null);
+
+      const mainLabel = st === 'refused'
+        ? `⛔ ${esc(s.name || s.email)} — Refuzat`
+        : st === 'signed'
+          ? `✅ ${esc(s.name || s.email)}`
+          : st === 'current'
+            ? `⏳ ${esc(s.name || s.email)} — Așteaptă semnătura`
+            : st === 'cancelled'
+              ? `🚫 ${esc(s.name || s.email)} — Anulat`
+              : `⏸ ${esc(s.name || s.email)} — În așteptare`;
+
+      const rolLabel = s.rol ? `<span style="font-size:.72rem;color:rgba(234,240,255,.45);margin-left:4px;">${esc(s.rol)}</span>` : '';
+      const refuseBlock = (st === 'refused' && s.refuseReason)
+        ? `<div class="tl-reason">Motiv: ${esc(s.refuseReason)}</div>` : '';
+
+      steps.push({
+        icon: st === 'signed' ? '✍️' : st === 'refused' ? '⛔' : st === 'current' ? '👤' : st === 'cancelled' ? '🚫' : '⏸',
+        labelHtml: mainLabel + rolLabel,
+        actorHtml: delegBadge,
+        ts: mainTs,
+        state,
+        subRows: subRows.length >= 2 ? subRows : [],   // afișăm sub-pași doar dacă sunt ambii
+        extra: refuseBlock
+      });
+    }
+
+    // ── PAS FINAL: stare finală a fluxului ───────────────────────────────────
+    const flowStatus = data.status || '';
+    const evCompleted = relevant.find(e => e.type === 'FLOW_COMPLETED');
+    const evCancelled = relevant.find(e => e.type === 'FLOW_CANCELLED');
+    const evReview    = relevant.find(e => e.type === 'REVIEW_REQUESTED');
+    const evReinit    = relevant.find(e => e.type === 'FLOW_REINITIATED' || e.type === 'FLOW_REINITIATED_AFTER_REVIEW');
+
+    if (data.completed || flowStatus === 'completed') {
+      steps.push({ icon:'🏁', label:'Flux finalizat', actor: null, ts: data.completedAt || evCompleted?.at, state:'done', extra:null });
+    } else if (flowStatus === 'cancelled') {
+      steps.push({ icon:'🚫', label:'Flux anulat', actor: data.cancelledBy ? resolveName(data.cancelledBy) : null, ts: data.cancelledAt || evCancelled?.at, state:'bad', extra: data.cancelReason ? `<div class="tl-reason">Motiv: ${esc(data.cancelReason)}</div>` : null });
+    } else if (flowStatus === 'review_requested') {
+      steps.push({ icon:'🔄', label:'Trimis spre revizuire', actor: data.reviewRequestedBy ? resolveName(data.reviewRequestedBy) : null, ts: data.reviewRequestedAt || evReview?.at, state:'warn', extra: data.reviewReason ? `<div class="tl-reason">Motiv: ${esc(data.reviewReason)}</div>` : null });
+    } else if (signers.some(s => s.status === 'refused')) {
+      steps.push({ icon:'⛔', label:'Flux refuzat', actor: null, ts: null, state:'bad', extra:null });
+    } else {
+      // flux activ — pasul final e pending
+      steps.push({ icon:'🏁', label:'Flux finalizat', actor: null, ts: null, state:'pending', extra:null });
+    }
+
+    // ── Render ───────────────────────────────────────────────────────────────
+    wrap.innerHTML = '';
+    for (const step of steps) {
+      const div = document.createElement('div');
+      div.className = `tl-step tl-${step.state}`;
+
+      const labelHtml = step.labelHtml || esc(step.label || '');
+      const actorHtml = step.actorHtml || (step.actor ? `<span class="tl-actor">${esc(step.actor)}</span>` : '');
+      const tsHtml    = step.ts ? `<span class="tl-ts">${prettyTs(step.ts)}</span>` : '';
+      const metaItems = [actorHtml, tsHtml].filter(Boolean).join(' ');
+
+      let subHtml = '';
+      if (step.subRows && step.subRows.length) {
+        subHtml = `<div class="tl-sub">` +
+          step.subRows.map(r =>
+            `<div class="tl-sub-row ${r.done?'done':''}">
+               <div class="tl-sub-dot"></div>
+               <span>${r.icon} ${esc(r.label)}</span>
+               ${r.ts ? `<span class="tl-ts" style="margin-left:auto;">${prettyTs(r.ts)}</span>` : ''}
+             </div>`
+          ).join('') + `</div>`;
+      }
+
+      div.innerHTML = `
+        <div class="tl-dot">${step.icon}</div>
+        <div class="tl-body">
+          <div class="tl-label">${labelHtml}</div>
+          ${metaItems ? `<div class="tl-meta">${metaItems}</div>` : ''}
+          ${subHtml}
+          ${step.extra || ''}
+        </div>
+      `;
+      wrap.appendChild(div);
+    }
+
+    // Sumar: "3/5 semnatari · Finalizat / În curs"
+    const signedCount  = signers.filter(s => s.status === 'signed').length;
+    const totalSigners = signers.length;
+    const statusLabel  = data.completed ? 'Finalizat' :
+      flowStatus === 'cancelled' ? 'Anulat' :
+      flowStatus === 'review_requested' ? 'Spre revizuire' :
+      signers.some(s => s.status === 'refused') ? 'Refuzat' : 'În curs';
+    tlSum.textContent = `${signedCount}/${totalSigners} semnatari · ${statusLabel}`;
+
+    card.style.display = '';
   }
 
   function renderSigners(flow){
@@ -702,6 +1004,7 @@
       }
 
       renderSigners(j);
+      renderTimeline(j); // P-05
       renderEvents(j);
       loadAttachments(); // F-06
 
