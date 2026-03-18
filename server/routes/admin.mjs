@@ -301,12 +301,13 @@ router.get('/admin/users', async (req, res) => {
     // org_admin TREBUIE să aibă org_id setat — altfel nu poate accesa
     if (user.role === 'org_admin' && !orgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată. Contactați super-administratorul.' });
     let query, params;
-    if (orgId) {
-      // org_admin: filtrat strict la org_id propriu; admin cu org_id: la fel
+    // FIX: role='admin' (super-admin) vede TOȚI userii indiferent de org_id propriu.
+    // Filtrarea pe org_id se aplică DOAR pentru org_admin.
+    if (user.role === 'org_admin' && orgId) {
       query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [orgId];
     } else {
-      // admin fara org_id (super-admin global) — vede toti
+      // admin (super-admin) — vede toți userii din toate organizațiile
       query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [];
     }

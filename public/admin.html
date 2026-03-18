@@ -3668,19 +3668,47 @@ document.addEventListener('keydown', e => {
 
 
 
+// Lista fallback — statică, identică cu ce returnează serverul
+const _PROVIDERS_FALLBACK = [
+  { id: 'local-upload', label: 'Upload local (orice certificat calificat)', mode: 'upload' },
+  { id: 'sts-cloud',   label: 'STS Cloud QES (Serviciul de Telecomunicații Speciale)', mode: 'redirect' },
+  { id: 'certsign',   label: 'certSIGN / Paperless QES', mode: 'redirect' },
+  { id: 'transsped',  label: 'Trans Sped QES', mode: 'redirect' },
+  { id: 'alfatrust',  label: 'AlfaTrust / AlfaSign QES', mode: 'redirect' },
+  { id: 'namirial',   label: 'Namirial eSignAnyWhere QES', mode: 'redirect' },
+];
+
 async function loadOrgSigningProviders(orgId) {
   try {
     // Încarcă lista tuturor provideri din platformă
     if (!_allProviders.length) {
-      const r = await _apiFetch('/admin/signing/providers', { headers: hdrs() });
-      if (r.ok) _allProviders = await r.json();
+      try {
+        const r = await _apiFetch('/admin/signing/providers', { headers: hdrs() });
+        if (r.ok) {
+          const data = await r.json();
+          _allProviders = Array.isArray(data) && data.length ? data : _PROVIDERS_FALLBACK;
+        } else {
+          _allProviders = _PROVIDERS_FALLBACK;
+        }
+      } catch(apiErr) {
+        console.warn('[signing] /admin/signing/providers fetch error — using fallback:', apiErr);
+        _allProviders = _PROVIDERS_FALLBACK;
+      }
     }
-    // Încarcă config curentă a org-ului
-    const r2 = await _apiFetch(`/admin/organizations/${orgId}/signing`, { headers: hdrs() });
-    if (!r2.ok) return;
-    const j = await r2.json();
-    _selectedProviders = new Set(j.enabled || ['local-upload']);
-    renderOrgProvidersGrid(j.configSafe || {});
+
+    // Încarcă config curentă a org-ului (non-fatal dacă migrarea 033 nu e încă aplicată)
+    let configSafe = {}, enabledProviders = ['local-upload'];
+    try {
+      const r2 = await _apiFetch(`/admin/organizations/${orgId}/signing`, { headers: hdrs() });
+      if (r2.ok) {
+        const j = await r2.json();
+        enabledProviders = j.enabled || ['local-upload'];
+        configSafe = j.configSafe || {};
+      }
+    } catch(e2) { /* non-fatal — DB poate nu are încă coloana signing_providers_enabled */ }
+
+    _selectedProviders = new Set(enabledProviders);
+    renderOrgProvidersGrid(configSafe);
   } catch(e) { console.warn('[signing] loadOrgSigningProviders error:', e); }
 }
 
