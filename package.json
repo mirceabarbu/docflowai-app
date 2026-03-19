@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.3.89",
+  "version": "3.3.90",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -23,6 +23,7 @@
     "pg": "^8.12.0",
     "pkijs": "^3.4.0",
     "pvutils": "^1.1.5",
+    "qrcode": "^1.5.4",
     "web-push": "^3.6.7",
     "ws": "^8.17.0"
   },

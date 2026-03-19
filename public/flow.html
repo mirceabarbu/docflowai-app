@@ -277,6 +277,7 @@
         <button class="btn primary" id="btnDownloadSigned">⬇️ PDF semnat</button>
         <button class="btn" id="btnDownloadOriginal" title="Descarcă PDF original (dacă există)">📎 PDF original</button>
         <button class="btn" id="btnSendEmail" style="display:none;background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.35);color:#7cf0e0;" title="Trimite PDF semnat pe email extern">📧 Trimite</button>
+        <button class="btn" id="btnTrustReport" style="display:none;background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.35);color:#b39dff;" title="Generează Raport de Conformitate (Signing Trust Report)">📜 Raport</button>
         <button class="btn" id="btnReinitiate" style="display:none;background:rgba(255,200,50,.12);border-color:rgba(255,200,50,.35);color:#ffd580;" title="Reinițiază fluxul după refuz">🔄 Reinițiază</button>
         <button class="btn" id="btnReinitiateReview" style="display:none;background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.35);color:#7cf0e0;" title="Reinițiază fluxul după revizuire (re-upload document)">🔄 Reinițiază după revizuire</button>
         <button class="btn" id="btnCancelFlow" style="display:none;background:rgba(120,120,120,.1);border-color:rgba(120,120,120,.3);color:#aaa;" title="Anulează fluxul">🚫 Anulează</button>
@@ -870,6 +871,8 @@
       // Buton Trimite email — vizibil doar când PDF-ul semnat e disponibil
       const btnSendEmail = $("btnSendEmail");
       if (btnSendEmail) btnSendEmail.style.display = hasSigned ? "" : "none";
+      const btnReport = $("btnTrustReport");
+      if (btnReport) btnReport.style.display = (d.completed) ? "" : "none";
 
       const hasPdf = !!(j.hasPdf || data.hasPdf);
       $("btnDownloadOriginal").disabled = !hasPdf;
@@ -1048,6 +1051,32 @@
   $("btnBack").addEventListener("click", ()=>{ window.location.href = "/?tab=flows"; });
 
   // Buton Trimite email
+  // Buton Raport Trust
+  const _btnReport = $("btnTrustReport");
+  if (_btnReport) {
+    _btnReport.style.display = (window._flowData?.completed) ? "" : "none";
+    _btnReport.addEventListener("click", async () => {
+      _btnReport.disabled = true;
+      _btnReport.textContent = "⏳ Se generează...";
+      try {
+        const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report`);
+        if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.message || j.error || "Eroare server"); }
+        const blob = await r.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement("a");
+        a.href     = url;
+        a.download = `TrustReport_${flowId}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch(e) {
+        alert("❌ Eroare generare raport: " + e.message);
+      } finally {
+        _btnReport.disabled = false;
+        _btnReport.textContent = "📜 Raport";
+      }
+    });
+  }
+
   const _btnSendEmail = $("btnSendEmail");
   if (_btnSendEmail) _btnSendEmail.addEventListener("click", () => {
     const d = window._flowData || {};

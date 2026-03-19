@@ -47,7 +47,8 @@ import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
-import verifyRouter from './routes/verify.mjs';
+import verifyRouter  from './routes/verify.mjs';
+import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
 import templatesRouter from './routes/templates.mjs'; // Q-06: extras din index.mjs
 
@@ -647,6 +648,7 @@ app.use('/', notifRouter);
 app.use('/', adminRouter);
 // Rute publice verificare (fără autentificare)
 app.use('/', verifyRouter);
+app.use('/', reportRouter);
 app.use('/', flowsRouter);
 app.use('/admin/outreach', outreachRouter);
 app.use('/', templatesRouter);         // Q-06: Template CRUD
