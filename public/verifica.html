@@ -447,7 +447,7 @@ function loadFile(f) {
     _pdfB64 = e.target.result;
     $('fileName').textContent = f.name;
     $('fileSize').textContent = (f.size / 1024).toFixed(0) + ' KB';
-    $('fileInfo').style.display = '';
+    $('fileInfo').style.display = 'block';
     $('dropZone').style.display = 'none';
     clearResult();
   };
@@ -500,7 +500,7 @@ async function verifyByPdf() {
 
 // ── Render DB result (verificare după flow ID) ─────────────────────────────
 function renderDbResult(data) {
-  $('result').style.display = '';
+  $('result').style.display = 'block';
 
   // Verdict
   const isComplete = data.status === 'completed';
@@ -525,7 +525,7 @@ function renderDbResult(data) {
   renderLevels(levels);
 
   // Date document
-  $('dbSection').style.display = '';
+  $('dbSection').style.display = 'block';
   $('dbInfoGrid').innerHTML = [
     { lbl: 'Document', val: data.docName },
     { lbl: 'Flow ID',  val: data.flowId, mono: true },
@@ -539,7 +539,7 @@ function renderDbResult(data) {
 
   // Semnatari
   if (data.signers.length > 0) {
-    $('signersSection').style.display = '';
+    $('signersSection').style.display = 'block';
     $('signersTbody').innerHTML = data.signers.map(s => `
       <tr>
         <td>${esc(s.name)}</td>
@@ -552,7 +552,7 @@ function renderDbResult(data) {
 
 // ── Render Crypto result (verificare criptografică PDF) ────────────────────
 function renderCryptoResult(data) {
-  $('result').style.display = '';
+  $('result').style.display = 'block';
 
   const sig  = data.signatures?.[0];
   const sum  = data.summary;
@@ -595,7 +595,7 @@ function renderCryptoResult(data) {
 
   // Certificat
   if (sig.certificate) {
-    $('cryptoSection').style.display = '';
+    $('cryptoSection').style.display = 'block';
     const c = sig.certificate;
     $('certInfoGrid').innerHTML = [
       { lbl: 'Semnatar (CN)', val: c.subject?.CN || '—' },
@@ -611,7 +611,7 @@ function renderCryptoResult(data) {
 
   // Lanț certificare
   if (sig.chain?.length > 0) {
-    $('chainSection').style.display = '';
+    $('chainSection').style.display = 'block';
     $('chainBox').innerHTML = sig.chain.map((c, i) => {
       const type = c.isSelfSigned ? 'root' : (i === 0 ? 'end' : 'ca');
       const icon = type === 'root' ? '🏛' : (type === 'end' ? '👤' : '🔗');
@@ -629,7 +629,7 @@ function renderCryptoResult(data) {
 
   // Date din DB (dacă au fost corelate)
   if (data.dbData) {
-    $('dbSection').style.display = '';
+    $('dbSection').style.display = 'block';
     $('dbInfoGrid').innerHTML = [
       { lbl: 'Document',   val: data.dbData.docName },
       { lbl: 'Instituție', val: data.dbData.institutie || '—' },
@@ -638,7 +638,7 @@ function renderCryptoResult(data) {
     ].map(i => `<div class="info-box"><div class="lbl">${i.lbl}</div><div class="val">${esc(i.val)}</div></div>`).join('');
 
     if (data.dbData.signers?.length > 0) {
-      $('signersSection').style.display = '';
+      $('signersSection').style.display = 'block';
       $('signersTbody').innerHTML = data.dbData.signers.map(s => `
         <tr>
           <td>${esc(s.name)}</td>
@@ -717,7 +717,7 @@ function clearResult() {
 }
 
 function setLoading(on) {
-  $('loading').style.display = on ? '' : 'none';
+  $('loading').style.display = on ? 'block' : 'none';
 }
 </script>
 </body>
