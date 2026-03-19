@@ -1830,7 +1830,7 @@ async function loadFlowsList(forceReload = true, page) {
             : '<span style="color:#b39dff;font-size:.75rem;">✍ activ</span>';
           return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
             <td style="padding:7px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(f.flowId||'')}"> ${f.urgent ? '<span style="color:#ff8888;font-weight:700;margin-right:4px;">🚨</span>' : ''}${escH(f.docName||"—")}</td>
-            <td style="padding:7px 8px;color:var(--muted);">${escH(f.initEmail||"—")}</td>
+            <td style="padding:7px 8px;color:var(--muted);" title="${escH(f.initEmail||'')}">${escH(f.initName||f.initEmail||"—")}</td>
             <td style="padding:7px 8px;">${statusBadge}</td>
             <td style="padding:7px 8px;">
               ${current ? `<span style="color:${expired?'#ffaaaa':'var(--sub)'};">${escH(current.name||current.email||"—")}</span>
@@ -3985,10 +3985,13 @@ async function saveOrgWebhook() {
   if ($('evtCompleted').checked) events.push('flow.completed');
   if ($('evtRefused').checked) events.push('flow.refused');
   if ($('evtCancelled').checked) events.push('flow.cancelled');
+  // Includem providerii de semnare în același request (atomic — un singur PUT)
+  _selectedProviders.add('local-upload');
   const body = {
-    webhook_url:     $('orgWebhookUrl').value.trim() || null,
-    webhook_events:  events,
-    webhook_enabled: $('orgWebhookEnabled').checked,
+    webhook_url:               $('orgWebhookUrl').value.trim() || null,
+    webhook_events:            events,
+    webhook_enabled:           $('orgWebhookEnabled').checked,
+    signing_providers_enabled: [..._selectedProviders],
   };
   const secret = $('orgWebhookSecret').value.trim();
   if (secret) body.webhook_secret = secret;
@@ -4000,7 +4003,6 @@ async function saveOrgWebhook() {
     });
     const j = await r.json();
     if (r.ok) {
-      saveOrgSigningProviders(_currentOrgId).catch(() => {});
       msg.innerHTML = '<span style="color:#2dd4bf;">✅ Salvat cu succes.</span>';
       setTimeout(() => { closeOrgModal(); loadOrganizations(); }, 800);
     } else {

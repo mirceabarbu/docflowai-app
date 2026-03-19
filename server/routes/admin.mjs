@@ -130,7 +130,8 @@ router.put('/admin/organizations/:id', async (req, res) => {
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const orgId = parseInt(req.params.id);
   if (!orgId) return res.status(400).json({ error: 'invalid_id' });
-  const { name, webhook_url, webhook_secret, webhook_events, webhook_enabled } = req.body || {};
+  const { name, webhook_url, webhook_secret, webhook_events, webhook_enabled,
+          signing_providers_enabled, signing_providers_config } = req.body || {};
   try {
     const updates = []; const params = [];
     if (name !== undefined) { params.push(String(name).trim()); updates.push(`name=$${params.length}`); }
@@ -138,6 +139,15 @@ router.put('/admin/organizations/:id', async (req, res) => {
     if (webhook_secret !== undefined && webhook_secret !== '') { params.push(String(webhook_secret).trim()); updates.push(`webhook_secret=$${params.length}`); }
     if (webhook_events !== undefined) { params.push(Array.isArray(webhook_events) ? webhook_events : []); updates.push(`webhook_events=$${params.length}`); }
     if (webhook_enabled !== undefined) { params.push(!!webhook_enabled); updates.push(`webhook_enabled=$${params.length}`); }
+    // Signing providers — salvate direct în același PUT pentru atomicitate
+    if (signing_providers_enabled !== undefined && Array.isArray(signing_providers_enabled)) {
+      const enabled = signing_providers_enabled.includes('local-upload')
+        ? signing_providers_enabled : ['local-upload', ...signing_providers_enabled];
+      params.push(enabled); updates.push(`signing_providers_enabled=$${params.length}`);
+    }
+    if (signing_providers_config !== undefined && typeof signing_providers_config === 'object') {
+      params.push(JSON.stringify(signing_providers_config)); updates.push(`signing_providers_config=$${params.length}`);
+    }
     if (!updates.length) return res.status(400).json({ error: 'no_fields' });
     updates.push(`updated_at=NOW()`);
     params.push(orgId);

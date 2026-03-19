@@ -635,6 +635,48 @@ th{ color: var(--sub) !important; }
       const tbody = $("signersTbody");
 
       // ── Funcții globale pentru dropdown-urile de utilizatori ───────────────
+      // Returnează setul câmpurilor ancore deja selectate în alte rânduri
+      function getUsedAncoreFields(currentSel) {
+        const used = new Set();
+        tbody.querySelectorAll(".ancoreField").forEach(sel => {
+          if (sel === currentSel) return;
+          if (sel.value) used.add(sel.value);
+        });
+        return used;
+      }
+
+      // Repopulează toate dropdown-urile ancoreField (exclusiv câmpurile deja selectate)
+      function refreshAllAncoreDropdowns() {
+        if (!_detectedAncoreFields.length) return;
+        tbody.querySelectorAll(".ancoreField").forEach(sel => {
+          const prevVal    = sel.value;
+          const usedFields = getUsedAncoreFields(sel);
+          sel.innerHTML    = "<option value=''>— Alege câmpul —</option>";
+          _detectedAncoreFields.forEach(f => {
+            if (usedFields.has(f.name)) return; // deja folosit în alt rând
+            const opt      = document.createElement("option");
+            opt.value      = f.name;
+            const label    = f.label || f.shortName || f.name;
+            const pageInfo = f.page ? ` (p.${f.page})` : "";
+            opt.textContent = label + pageInfo;
+            opt.title      = f.name;
+            sel.appendChild(opt);
+          });
+          // Restaurăm selecția curentă
+          if (prevVal) {
+            // Adăugăm înapoi opțiunea proprie dacă a dispărut
+            if (![...sel.options].some(o => o.value === prevVal)) {
+              const f   = _detectedAncoreFields.find(f => f.name === prevVal);
+              const opt = document.createElement("option");
+              opt.value = prevVal;
+              opt.textContent = (f ? (f.label || f.shortName || f.name) : prevVal);
+              sel.appendChild(opt);
+            }
+            sel.value = prevVal;
+          }
+        });
+      }
+
       function getUsedEmails(currentSel) {
         const used = new Set();
         tbody.querySelectorAll('.name-select').forEach(s => {
@@ -908,16 +950,11 @@ th{ color: var(--sub) !important; }
         tbody.appendChild(newRow);
         // Dacă avem câmpuri detectate, le populăm și în rândul nou
         if (_detectedAncoreFields.length) {
+          // Adăugăm rândul nou și apoi refreshăm toate (deduplicare automată)
+          refreshAllAncoreDropdowns();
           const sel = newRow.querySelector(".ancoreField");
           if (sel) {
-            sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
-            _detectedAncoreFields.forEach(f => {
-              const opt = document.createElement("option");
-              opt.value = f.name;
-              opt.textContent = f.name + (f.page ? ` (p.${f.page})` : "");
-              sel.appendChild(opt);
-            });
-            sel.disabled = false;
+            sel.onchange = () => refreshAllAncoreDropdowns();
           }
         }
         updateIntocmitVisibility(); validateForm();
@@ -1758,27 +1795,30 @@ async function signFromFluxuri(flowId) {
       }
 
       function populateAncoreDropdowns(fields) {
-        // Populează dropdown-ul ancoreField din fiecare rând al tabelului
+        // Populare inițială — toate câmpurile în toate dropdown-urile
         const rows = [...$("signersTbody").querySelectorAll("tr")];
         rows.forEach(tr => {
           const sel = tr.querySelector(".ancoreField");
           if (!sel) return;
           const prevVal = sel.value;
           sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
-          fields.forEach((f, i) => {
-            const opt = document.createElement("option");
-            opt.value = f.name;  // calea completă XFA sau numele AcroForm
-            // Afișăm label (mai scurt) sau name cu pagina
-            const label = f.label || f.name;
-            const pageInfo = f.page ? ` (p.${f.page})` : "";
+          fields.forEach(f => {
+            const opt       = document.createElement("option");
+            opt.value       = f.name;
+            const label     = f.label || f.shortName || f.name;
+            const pageInfo  = f.page ? ` (p.${f.page})` : "";
             opt.textContent = label + pageInfo;
-            opt.title = f.name; // tooltip cu calea completă
+            opt.title       = f.name;
             sel.appendChild(opt);
           });
-          // Restaurăm selecția anterioară dacă câmpul există în continuare
           if (prevVal && fields.some(f => f.name === prevVal)) sel.value = prevVal;
           sel.disabled = fields.length === 0;
+
+          // La schimbarea selecției, actualizăm toate celelalte dropdown-uri
+          sel.onchange = () => refreshAllAncoreDropdowns();
         });
+        // Aplicăm deduplicarea după populare
+        refreshAllAncoreDropdowns();
       }
 
       // Apelat din handler-ul de upload PDF (după ce pdfB64 e setat)
