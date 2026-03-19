@@ -483,8 +483,7 @@ th{ color: var(--sub) !important; }
           lbl2.style.borderColor = "rgba(255,255,255,.12)"; lbl2.style.background = "rgba(255,255,255,.03)";
           if (hint) hint.textContent = "DocFlowAI generează tabelul cu semnatari și ancora pentru semnătură";
           // Ascundem zona de detectare câmpuri
-          const detectArea = $("ancoreDetectArea");
-          if (detectArea) detectArea.style.display = "none";
+          resetAncoreState();
         } else {
           lbl2.style.borderColor = "rgba(45,212,191,.4)"; lbl2.style.background = "rgba(45,212,191,.08)";
           lbl1.style.borderColor = "rgba(255,255,255,.12)"; lbl1.style.background = "rgba(255,255,255,.03)";
@@ -1587,6 +1586,26 @@ async function signFromFluxuri(flowId) {
         idb.clear();
       }
 
+      // Resetează tot ce ține de detecția câmpurilor ancore
+      function resetAncoreState() {
+        _detectedAncoreFields = [];
+        const detectArea = $("ancoreDetectArea");
+        if (detectArea) detectArea.style.display = "none";
+        const listEl   = $("detectedFieldsList");
+        const statusEl = $("detectStatus");
+        if (listEl)   listEl.innerHTML = "";
+        if (statusEl) statusEl.textContent = "";
+        // Resetăm și clasa de pe tabel
+        const sigTable = $("signersTbody")?.closest("table");
+        if (sigTable) sigTable.classList.remove("doctype-ancore");
+        // Resetăm toate dropdown-urile ancoreField
+        $("signersTbody")?.querySelectorAll(".ancoreField").forEach(sel => {
+          sel.innerHTML = "<option value=''>— Detectează câmpuri —</option>";
+          sel.disabled = true;
+          sel.value = "";
+        });
+      }
+
       async function restoreFormState() {
         try {
           const raw = sessionStorage.getItem(FORM_KEY);
@@ -1659,6 +1678,7 @@ async function signFromFluxuri(flowId) {
       $("btnRenunta").addEventListener("click", () => {
         if (!confirm("Renunți la fluxul curent? PDF-ul și semnătarii configurați vor fi șterși.")) return;
         clearFormState();
+        resetAncoreState();
         pdfB64 = null;
         setPdfInfo("Nu ai selectat încă un PDF.");
         const clearBtn = $("btnClearPdf");
@@ -1939,6 +1959,7 @@ async function signFromFluxuri(flowId) {
           localStorage.setItem("lastInitName", $("initName").value.trim());
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
           clearFormState(); // flux creat cu succes — sterge draft + IDB
+          resetAncoreState(); // resetează câmpurile ancore detectate
 
           // F-06: Upload documente suport (async, non-blocking pentru UX)
           if (_attachFiles.length) {

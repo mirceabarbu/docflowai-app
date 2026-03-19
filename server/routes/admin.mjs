@@ -139,14 +139,24 @@ router.put('/admin/organizations/:id', async (req, res) => {
     if (webhook_secret !== undefined && webhook_secret !== '') { params.push(String(webhook_secret).trim()); updates.push(`webhook_secret=$${params.length}`); }
     if (webhook_events !== undefined) { params.push(Array.isArray(webhook_events) ? webhook_events : []); updates.push(`webhook_events=$${params.length}`); }
     if (webhook_enabled !== undefined) { params.push(!!webhook_enabled); updates.push(`webhook_enabled=$${params.length}`); }
-    // Signing providers — salvate direct în același PUT pentru atomicitate
+    // Signing providers — salvate doar dacă coloana există în DB (migrarea 033)
+    // Dacă coloana lipsește, ignorăm silențios (non-fatal — webhook se salvează oricum)
     if (signing_providers_enabled !== undefined && Array.isArray(signing_providers_enabled)) {
-      const enabled = signing_providers_enabled.includes('local-upload')
-        ? signing_providers_enabled : ['local-upload', ...signing_providers_enabled];
-      params.push(enabled); updates.push(`signing_providers_enabled=$${params.length}`);
-    }
-    if (signing_providers_config !== undefined && typeof signing_providers_config === 'object') {
-      params.push(JSON.stringify(signing_providers_config)); updates.push(`signing_providers_config=$${params.length}`);
+      try {
+        const { rows: colCheck } = await pool.query(
+          `SELECT 1 FROM information_schema.columns
+           WHERE table_name='organizations' AND column_name='signing_providers_enabled' LIMIT 1`
+        );
+        if (colCheck.length > 0) {
+          const enabled = signing_providers_enabled.includes('local-upload')
+            ? signing_providers_enabled : ['local-upload', ...signing_providers_enabled];
+          params.push(enabled); updates.push(`signing_providers_enabled=$${params.length}`);
+          if (signing_providers_config !== undefined && typeof signing_providers_config === 'object') {
+            params.push(JSON.stringify(signing_providers_config));
+            updates.push(`signing_providers_config=$${params.length}`);
+          }
+        }
+      } catch(colErr) { /* coloana nu există — ignorăm */ }
     }
     if (!updates.length) return res.status(400).json({ error: 'no_fields' });
     updates.push(`updated_at=NOW()`);
