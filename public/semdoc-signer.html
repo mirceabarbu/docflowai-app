@@ -179,6 +179,32 @@ th{ color: var(--sub) !important; }
 .mono{ color: var(--text) !important; }
 #err{ border-color: rgba(251,113,133,.35) !important; }
 /* ===== End theme ===== */
+
+    /* ── Provider selecție semnare ─────────────────────────────────────────── */
+    .provider-grid { display:flex; flex-direction:column; gap:10px; margin:12px 0; }
+    .provider-card {
+      display:flex; align-items:center; gap:14px;
+      padding:14px 16px; border-radius:12px;
+      border:2px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      cursor:pointer; transition:all .15s ease;
+      user-select:none;
+    }
+    .provider-card:hover { border-color:rgba(124,92,255,.45); background:rgba(124,92,255,.08); }
+    .provider-card.selected { border-color:rgba(124,92,255,.85); background:rgba(124,92,255,.15);
+      box-shadow:0 0 0 3px rgba(124,92,255,.12); }
+    .provider-card .p-icon { font-size:1.5rem; flex-shrink:0; }
+    .provider-card .p-info { flex:1; }
+    .provider-card .p-label { font-weight:700; font-size:.9rem; }
+    .provider-card .p-desc  { font-size:.78rem; color:rgba(234,240,255,.50); margin-top:2px; }
+    .provider-card .p-check {
+      width:22px; height:22px; border-radius:50%; flex-shrink:0;
+      border:2px solid rgba(255,255,255,.25);
+      display:flex; align-items:center; justify-content:center;
+      font-size:.75rem; font-weight:700;
+    }
+    .provider-card.selected .p-check { background:#7c5cff; border-color:#7c5cff; color:#fff; }
+
 </style>
     <script>
     // Auth guard — semnarea strict in-app, cookie HttpOnly obligatoriu
