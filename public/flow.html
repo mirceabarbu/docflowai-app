@@ -872,7 +872,7 @@
       const btnSendEmail = $("btnSendEmail");
       if (btnSendEmail) btnSendEmail.style.display = hasSigned ? "" : "none";
       const btnReport = $("btnTrustReport");
-      if (btnReport) btnReport.style.display = (d.completed) ? "" : "none";
+      if (btnReport) btnReport.style.display = (d.completed) ? "block" : "none";
 
       const hasPdf = !!(j.hasPdf || data.hasPdf);
       $("btnDownloadOriginal").disabled = !hasPdf;
@@ -1054,7 +1054,7 @@
   // Buton Raport Trust
   const _btnReport = $("btnTrustReport");
   if (_btnReport) {
-    _btnReport.style.display = (window._flowData?.completed) ? "" : "none";
+    // Vizibilitatea se setează în loadFlow() unde avem datele
     _btnReport.addEventListener("click", async () => {
       _btnReport.disabled = true;
       _btnReport.textContent = "⏳ Se generează...";
@@ -1062,11 +1062,14 @@
         const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report`);
         if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.message || j.error || "Eroare server"); }
         const blob = await r.blob();
+        if (!blob || blob.size < 100) throw new Error('PDF gol returnat de server');
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement("a");
         a.href     = url;
         a.download = `TrustReport_${flowId}.pdf`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } catch(e) {
         alert("❌ Eroare generare raport: " + e.message);

@@ -1892,7 +1892,7 @@ async function loadFlowsList(forceReload = true, page) {
                 ${expired?`<button onclick="regenerateToken('${escH(f.flowId||'')}','${escH(current.email||'')}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,170,50,.15);border:1px solid rgba(255,170,50,.3);border-radius:6px;color:#ffd580;cursor:pointer;margin-right:4px;" title="Generează token nou">🔑</button>`:''}
               ` : ''}
               <button onclick="adminDeleteFlow('${escH(f.flowId||'')}')" style="padding:3px 10px;font-size:.75rem;background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);border-radius:6px;color:#ffaaaa;cursor:pointer;" title="Șterge flux definitiv (ireversibil)">🗑</button>
-              <button onclick="downloadAudit('${escH(f.flowId||'')}','txt')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;" title="Export audit TXT">📋</button><button onclick="downloadAudit('${escH(f.flowId||'')}','pdf')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</button>${f.completed ? `<button onclick="downloadTrustReport('${escH(f.flowId||'')}')" style="padding:3px 8px;font-size:.72rem;background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-left:4px;" title="Signing Trust Report">📜</button>` : ''}
+              <button onclick="downloadAudit('${escH(f.flowId||'')}','txt')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;" title="Export audit TXT">📋</button><button onclick="downloadAudit('${escH(f.flowId||'')}','pdf')" style="padding:3px 8px;font-size:.72rem;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.2);border-radius:6px;color:#7cf0e0;cursor:pointer;margin-left:4px;" title="Export audit PDF">📄</button>${f.completed ? `<button onclick="downloadTrustReport('${escH(f.flowId||'')}', this)" style="padding:3px 8px;font-size:.72rem;background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;margin-left:4px;" title="Signing Trust Report">📜</button>` : ''}
             </td>
           </tr>`;
         }).join("")}
@@ -4148,19 +4148,21 @@ async function orgTestWebhook() {
 
 </script>
 <script src="/notif-widget.js">
-async function downloadTrustReport(flowId) {
+async function downloadTrustReport(flowId, btnEl) {
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳'; }
   try {
-    const btn = event.target;
-    btn.disabled = true; btn.textContent = '⏳';
     const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report`);
-    if (!r.ok) { const j = await r.json().catch(()=>{}); throw new Error(j?.message || 'Eroare'); }
+    if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j?.message || `Eroare ${r.status}`); }
     const blob = await r.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url; a.download = `TrustReport_${flowId}.pdf`; a.click();
     URL.revokeObjectURL(url);
-    btn.textContent = '📜'; btn.disabled = false;
-  } catch(e) { alert('❌ ' + e.message); event.target.textContent = '📜'; event.target.disabled = false; }
+  } catch(e) {
+    alert('❌ Eroare generare raport: ' + e.message);
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = '📜'; }
+  }
 }
 </script>
 </body>
