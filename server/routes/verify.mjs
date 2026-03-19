@@ -11,6 +11,10 @@ const router = Router();
 
 // ── GET /verify/:flowId ────────────────────────────────────────────────────
 router.get('/verify/:flowId', async (req, res) => {
+  // Dezactivăm cache — răspunsul JSON trebuie să fie mereu proaspăt
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   try {
     const { flowId } = req.params;
     if (!flowId || flowId.length > 60)
@@ -57,6 +61,7 @@ router.get('/verify/:flowId', async (req, res) => {
 
 // ── POST /verify/signature ─────────────────────────────────────────────────
 router.post('/verify/signature', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   try {
     const { pdfB64, flowId } = req.body || {};
     if (!pdfB64) return res.status(400).json({ error: 'pdfB64_required' });

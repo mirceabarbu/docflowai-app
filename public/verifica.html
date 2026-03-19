@@ -467,9 +467,15 @@ async function verifyById() {
   if (!flowId) { showErr('Introduceți ID-ul fluxului.'); return; }
   clearResult(); setLoading(true);
   try {
-    const r = await fetch('/verify/' + encodeURIComponent(flowId));
-    const j = await r.json();
-    if (!r.ok) { showErr(j.message || j.error || 'Eroare server.'); return; }
+    const r = await fetch('/verify/' + encodeURIComponent(flowId), {
+      cache: 'no-store',
+      headers: { 'Accept': 'application/json' }
+    });
+    let j;
+    try { j = await r.json(); } catch(parseErr) {
+      showErr('Eroare: răspuns invalid de la server (status ' + r.status + '). Verificați consola.'); return;
+    }
+    if (!r.ok) { showErr(j.message || j.error || 'Eroare server: ' + r.status); return; }
     renderDbResult(j);
   } catch(e) { showErr('Eroare de rețea: ' + e.message); }
   finally { setLoading(false); }
