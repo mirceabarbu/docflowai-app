@@ -415,11 +415,15 @@ th{ color: var(--sub) !important; }
       <!-- FLUXURI MELE -->
       <section id="viewFluxuri" class="hidden">
         <div class="card">
-          <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <div style="font-weight:700; font-size:1rem; color:var(--sub);">📂 Fluxurile mele</div>
+          <!-- Linia 1: Titlu + contor + buton refresh -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="font-weight:700;font-size:1rem;color:var(--sub);">📂 Fluxurile mele</div>
+              <span id="fluxCounter" style="display:none;padding:3px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:20px;font-size:.8rem;color:#c4b5ff;font-weight:700;"></span>
+            </div>
             <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows(1)">🔄 Actualizează</button>
           </div>
-          <!-- Filtre + search -->
+          <!-- Linia 2: Search + filtru status -->
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
             <input type="text" tabindex="-1" autocomplete="username" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
             <input type="password" tabindex="-1" autocomplete="new-password" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
@@ -1453,11 +1457,36 @@ async function signFromFluxuri(flowId) {
           const pages = isClientSearch ? 1 : (resp.pages || 1);
           _allFlows = flows;
           if (!flows.length) {
-            el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux gasit.</div>';
+            el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
             const pg = $("fluxPagination"); if (pg) pg.style.display = "none";
+            const counter = $("fluxCounter");
+            if (counter) { counter.textContent = "0 fluxuri"; counter.style.display = ""; counter.style.color = "rgba(234,240,255,.4)"; }
             return;
           }
           renderFluxuri(flows);
+          // Actualizăm contorul din header
+          const counter = $("fluxCounter");
+          if (counter) {
+            const filterVal = $("fluxStatusFilter")?.value || "all";
+            const searchVal = $("fluxSearch")?.value?.trim() || "";
+            const isFiltered = filterVal !== "all" || searchVal;
+            counter.style.display = "";
+            if (isFiltered) {
+              const filterLabel = {
+                "pending": "În curs", "completed": "Finalizate",
+                "refused": "Refuzate", "cancelled": "Anulate", "all": ""
+              }[filterVal] || filterVal;
+              counter.textContent = `${total} ${total === 1 ? "flux" : "fluxuri"}${filterLabel ? " · " + filterLabel : ""}`;
+              counter.style.background = "rgba(124,92,255,.15)";
+              counter.style.borderColor = "rgba(124,92,255,.3)";
+              counter.style.color = "#c4b5ff";
+            } else {
+              counter.textContent = `${total} ${total === 1 ? "flux" : "fluxuri"}`;
+              counter.style.background = "rgba(255,255,255,.06)";
+              counter.style.borderColor = "rgba(255,255,255,.12)";
+              counter.style.color = "rgba(234,240,255,.5)";
+            }
+          }
           // Actualizeaza paginarea
           const pg = $("fluxPagination");
           if (pg) {
