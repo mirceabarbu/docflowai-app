@@ -1747,7 +1747,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     // Nota: PDF-ul complet semnat PAdES necesită embedding CMS în PDF (implementare viitoare)
     // Deocamdată stocăm signByte + PDF original pentru integritate
     const signedPdfB64 = Buffer.from(JSON.stringify({
-      originalPdfHash:  require('crypto').createHash('sha256')
+      originalPdfHash:  crypto.createHash('sha256')
                           .update(Buffer.from((data.pdfB64||'').includes(',')
                             ? data.pdfB64.split(',')[1] : (data.pdfB64||''), 'base64'))
                           .digest('base64'),
@@ -1957,9 +1957,12 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
         message: 'Provider-ul nu a returnat URL de semnare.' });
     }
 
-    // Stocăm sessionId per semnatar pentru matching la callback
+    // Stocăm sessionId + providerData per semnatar (necesar la OAuth callback STS)
     signers[idx].signingSessionId = session.sessionId;
     signers[idx].signingProvider  = providerId;
+    if (session.providerData && Object.keys(session.providerData).length > 0) {
+      signers[idx].stsProviderData = session.providerData;
+    }
     data.signers  = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
