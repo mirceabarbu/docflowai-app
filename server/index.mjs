@@ -47,6 +47,7 @@ import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
+import verifyRouter, { injectVerifyDeps } from './routes/verify.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
 import templatesRouter from './routes/templates.mjs'; // Q-06: extras din index.mjs
 
@@ -634,6 +635,7 @@ injectTokenVersionChecker(async (userId) => {
 });
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
+injectVerifyDeps({ pool, getFlowData });
 injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail, fireWebhook });
 // FEAT-N01: webhook — injectăm pool-ul și URL-ul de bază
 injectWebhookPool(pool);
@@ -643,6 +645,8 @@ injectWebhookBaseUrl(process.env.PUBLIC_BASE_URL || '');
 app.use('/', authRouter);
 app.use('/', notifRouter);
 app.use('/', adminRouter);
+// Rute publice verificare (fără autentificare)
+app.use('/', verifyRouter);
 app.use('/', flowsRouter);
 app.use('/admin/outreach', outreachRouter);
 app.use('/', templatesRouter);         // Q-06: Template CRUD
