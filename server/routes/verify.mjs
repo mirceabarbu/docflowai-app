@@ -1,40 +1,32 @@
 /**
  * Rute publice de verificare — fără autentificare.
- * GET  /verify/:flowId    — verificare după Flow ID
- * POST /verify/signature  — verificare criptografică PDF
+ * GET  /verify/:flowId    — verificare după Flow ID (date din DB)
+ * POST /verify/signature  — verificare criptografică PDF (6 niveluri)
  */
 import { Router } from 'express';
+// Import direct din DB — nu prin injecție (pool disponibil imediat la import)
+import { getFlowData } from '../db/index.mjs';
+
 const router = Router();
-
-let _pool = null;
-let _getFlowData = null;
-let _verifyPdfSignatures = null;
-let _formatVerificationResult = null;
-
-export function injectVerifyDeps(deps) {
-  _pool            = deps.pool;
-  _getFlowData     = deps.getFlowData;
-}
 
 // ── GET /verify/:flowId ────────────────────────────────────────────────────
 router.get('/verify/:flowId', async (req, res) => {
   try {
     const { flowId } = req.params;
-    if (!flowId) return res.status(400).json({ error: 'flowId_required' });
-    if (!_pool || !_getFlowData)
-      return res.status(503).json({ error: 'service_unavailable' });
+    if (!flowId || flowId.length > 60)
+      return res.status(400).json({ error: 'flowId_invalid' });
 
-    const data = await _getFlowData(flowId);
+    const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({
       error: 'not_found',
       message: 'Documentul cu acest ID nu a fost găsit în platformă.',
     });
 
     const signers = (data.signers || []).map(s => ({
-      name:      s.name || s.email,
-      rol:       s.rol || '',
-      status:    s.status,
-      signedAt:  s.signedAt || null,
+      name:            s.name || s.email,
+      rol:             s.rol || '',
+      status:          s.status,
+      signedAt:        s.signedAt || null,
       signingProvider: s.signingProvider || 'local-upload',
     }));
 
@@ -58,7 +50,8 @@ router.get('/verify/:flowId', async (req, res) => {
       events,
     });
   } catch(e) {
-    return res.status(500).json({ error: 'server_error' });
+    console.error('verify GET error:', e.message);
+    return res.status(500).json({ error: 'server_error', message: e.message });
   }
 });
 
@@ -73,28 +66,25 @@ router.post('/verify/signature', async (req, res) => {
     if (pdfBytes.length > 50 * 1024 * 1024)
       return res.status(413).json({ error: 'pdf_too_large' });
 
-    // Import lazy (pkijs instalat prin npm)
-    if (!_verifyPdfSignatures) {
-      try {
-        const mod = await import('../verify.mjs');
-        _verifyPdfSignatures       = mod.verifyPdfSignatures;
-        _formatVerificationResult  = mod.formatVerificationResult;
-      } catch(e) {
-        return res.status(503).json({
-          error: 'crypto_unavailable',
-          message: 'Modulul de verificare criptografică nu este disponibil. ' + e.message,
-        });
-      }
+    let verifyFn, formatFn;
+    try {
+      const mod = await import('../verify.mjs');
+      verifyFn  = mod.verifyPdfSignatures;
+      formatFn  = mod.formatVerificationResult;
+    } catch(e) {
+      return res.status(503).json({
+        error:   'crypto_unavailable',
+        message: 'Modulul de verificare nu este disponibil: ' + e.message,
+      });
     }
 
-    const rawResult = await _verifyPdfSignatures(pdfBytes);
-    const result    = _formatVerificationResult(rawResult);
+    const rawResult = await verifyFn(pdfBytes);
+    const result    = formatFn(rawResult);
 
-    // Corelăm cu DB dacă avem flowId
     let dbData = null;
-    if (flowId && _getFlowData) {
+    if (flowId) {
       try {
-        const data = await _getFlowData(flowId);
+        const data = await getFlowData(flowId);
         if (data) dbData = {
           docName:      data.docName,
           institutie:   data.institutie,
@@ -111,6 +101,7 @@ router.post('/verify/signature', async (req, res) => {
 
     return res.json({ ...result, dbData });
   } catch(e) {
+    console.error('verify POST error:', e.message);
     return res.status(500).json({ error: 'server_error', message: e.message });
   }
 });

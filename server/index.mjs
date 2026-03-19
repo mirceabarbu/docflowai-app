@@ -47,7 +47,7 @@ import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
-import verifyRouter, { injectVerifyDeps } from './routes/verify.mjs';
+import verifyRouter from './routes/verify.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
 import templatesRouter from './routes/templates.mjs'; // Q-06: extras din index.mjs
 
@@ -636,7 +636,6 @@ injectTokenVersionChecker(async (userId) => {
 });
 injectWsPush(wsPush);
 injectWsSize(() => wsClients.size);
-injectVerifyDeps({ pool, getFlowData });
 injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail, fireWebhook });
 // FEAT-N01: webhook — injectăm pool-ul și URL-ul de bază
 injectWebhookPool(pool);
