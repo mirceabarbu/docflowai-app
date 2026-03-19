@@ -652,6 +652,83 @@ th{ color: var(--sub) !important; }
         }
       }
 
+
+      // ── STS Cloud Polling ─────────────────────────────────────────────────
+      let _stsPollInterval = null;
+      let _stsPollCount    = 0;
+      const STS_POLL_MAX   = 60; // max 3 minute
+
+      function startStsPolling() {
+        if (_stsPollInterval) return;
+        // Afișăm UI de așteptare
+        const signBox = $('signBox');
+        if (signBox) {
+          signBox.innerHTML = `
+            <div style="text-align:center;padding:24px;">
+              <div style="font-size:2rem;margin-bottom:12px;">📱</div>
+              <div style="font-weight:700;font-size:1rem;margin-bottom:8px;color:#b39dff;">
+                Așteptăm aprobarea ta pe email / PUSH
+              </div>
+              <div class="muted" style="font-size:.88rem;margin-bottom:16px;line-height:1.6;">
+                STS a trimis o notificare pe adresa ta de email sau pe telefon.<br>
+                Aprobă semnarea din aplicația STS sau emailul primit.
+              </div>
+              <div id="stsPollStatus" style="font-size:.82rem;color:rgba(234,240,255,.5);margin-bottom:16px;">
+                ⏳ Verificăm statusul...
+              </div>
+              <div style="display:flex;justify-content:center;">
+                <div style="width:40px;height:4px;background:rgba(124,92,255,.3);border-radius:2px;overflow:hidden;">
+                  <div id="stsPollBar" style="width:0%;height:100%;background:#7c5cff;transition:width .3s;"></div>
+                </div>
+              </div>
+              <button onclick="cancelStsPolling()" style="margin-top:16px;padding:8px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;font-size:.82rem;">
+                Anulează
+              </button>
+            </div>
+          `;
+        }
+
+        _stsPollCount = 0;
+        _stsPollInterval = setInterval(async () => {
+          _stsPollCount++;
+          const bar = $('stsPollBar');
+          if (bar) bar.style.width = Math.min(100, (_stsPollCount / STS_POLL_MAX) * 100) + '%';
+
+          if (_stsPollCount >= STS_POLL_MAX) {
+            cancelStsPolling();
+            showError('⏱ Timeout — utilizatorul nu a aprobat în 3 minute. Reîncearcă semnarea.');
+            return;
+          }
+
+          try {
+            const r = await _apiFetch(
+              `/flows/${encodeURIComponent(flow)}/sts-poll?token=${encodeURIComponent(token)}`);
+            const j = await r.json();
+
+            const statusEl = $('stsPollStatus');
+
+            if (j.status === 'waiting') {
+              if (statusEl) statusEl.textContent = '⏳ ' + (j.message || 'Așteptăm aprobarea...');
+            } else if (j.status === 'signed') {
+              clearInterval(_stsPollInterval); _stsPollInterval = null;
+              if (statusEl) statusEl.textContent = '✅ Semnat cu succes!';
+              setTimeout(() => loadFlow(), 1000);
+            } else if (j.status === 'error') {
+              cancelStsPolling();
+              showError('❌ ' + (j.message || 'Eroare la semnare STS.'));
+            }
+          } catch(e) {
+            const statusEl = $('stsPollStatus');
+            if (statusEl) statusEl.textContent = '⚠ Eroare rețea — reîncercăm...';
+          }
+        }, 3000);
+      }
+
+      function cancelStsPolling() {
+        if (_stsPollInterval) { clearInterval(_stsPollInterval); _stsPollInterval = null; }
+        loadFlow();
+      }
+
       async function loadFlow() {
         if (!flow || !token) return;
 
@@ -1268,7 +1345,16 @@ th{ color: var(--sub) !important; }
       // ── End PDF Generator ──────────────────────────────────────────────────
 
       if (flow && token) {
-        loadFlow().catch((e) => showError(String(e.message || e)));
+        // Verificăm dacă revenim de la STS IDP (OAuth callback)
+        const _stsParams = new URLSearchParams(window.location.search);
+        const _stsPending = _stsParams.get('sts_pending');
+        const _stsError   = _stsParams.get('sts_error');
+        if (_stsError) {
+          showError('❌ Eroare STS: ' + decodeURIComponent(_stsError));
+        }
+        loadFlow().catch((e) => showError(String(e.message || e))).then(() => {
+          if (_stsPending === '1') startStsPolling();
+        });
       }
 
       // ── Refuz semnare — modal inline (fără prompt/confirm nativ) ─────────

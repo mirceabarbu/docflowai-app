@@ -215,6 +215,32 @@ router.post('/admin/organizations/:id/test-webhook', async (req, res) => {
 
 
 // ── Signing Providers — API ──────────────────────────────────────────────
+// ── POST /admin/signing/sts/generate-keypair — generează pereche chei RSA pentru STS ──
+// Super-admin generează cheia publică de trimis la STS + cheia privată de configurat.
+router.post('/admin/signing/sts/generate-keypair', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { generateKeyPairSync } = await import('crypto');
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength:     2048,
+      publicKeyEncoding:  { type: 'pkcs1', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+    });
+    logger.info({ actor: actor.email }, 'STS: pereche chei RSA generată');
+    res.json({
+      ok:            true,
+      publicKeyPem:  publicKey,
+      privateKeyPem: privateKey,
+      instructions:  'Trimiteți publicKeyPem la STS (contact@sts.ro) pentru a primi client_id și kid. Stocați privateKeyPem în configurația providerului STS.',
+    });
+  } catch(e) {
+    res.status(500).json({ error: 'keygen_failed', message: e.message });
+  }
+});
+
+
 // Arhitectură: provideri la nivel de org (ce e disponibil), ales per semnatar.
 
 // GET /admin/signing/providers — toți providerii disponibili în platformă
