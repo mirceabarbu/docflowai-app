@@ -148,6 +148,7 @@ app.get('/', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'semdoc-initiator.
 app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
 app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'notifications.html')));
+app.get('/verifica', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'verifica.html')));
 app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
