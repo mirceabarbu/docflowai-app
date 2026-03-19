@@ -612,17 +612,63 @@
         </div>
         <!-- Config API per provider — apare la click ⚙ Config -->
         <div id="orgProviderConfigArea" style="display:none;background:rgba(0,0,0,.2);border-radius:10px;padding:14px;margin-bottom:14px;">
-          <div id="orgProviderConfigTitle" style="font-size:.8rem;color:#b39dff;font-weight:700;margin-bottom:10px;"></div>
-          <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">API URL</label>
-          <input id="orgProviderApiUrl" type="text" placeholder="https://api.provider.ro/v1"
-            style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;"/>
-          <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">API Key</label>
-          <input id="orgProviderApiKey" type="password" placeholder="API key provider"
-            style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;" autocomplete="off"/>
-          <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Webhook Secret (HMAC)</label>
-          <input id="orgProviderWebhookSecret" type="password" placeholder="Secret pentru verificare callback"
-            style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:10px;" autocomplete="off"/>
-          <div style="display:flex;align-items:center;gap:10px;">
+          <div id="orgProviderConfigTitle" style="font-size:.8rem;color:#b39dff;font-weight:700;margin-bottom:12px;"></div>
+
+          <!-- Config generic (non-STS) -->
+          <div id="configGeneric">
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">API URL</label>
+            <input id="orgProviderApiUrl" type="text" placeholder="https://api.provider.ro/v1"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;"/>
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">API Key</label>
+            <input id="orgProviderApiKey" type="password" placeholder="API key provider"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;" autocomplete="off"/>
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Webhook Secret (HMAC)</label>
+            <input id="orgProviderWebhookSecret" type="password" placeholder="Secret pentru verificare callback"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:10px;" autocomplete="off"/>
+          </div>
+
+          <!-- Config STS — câmpuri specifice conform documentației STS -->
+          <div id="configSts" style="display:none;">
+            <div style="font-size:.75rem;color:rgba(45,212,191,.7);margin-bottom:10px;line-height:1.5;padding:8px;background:rgba(45,212,191,.06);border-radius:6px;border:1px solid rgba(45,212,191,.15);">
+              ℹ️ STS necesită înregistrare prin <strong>formulare.sts.ro</strong> de către reprezentantul instituției.
+              Generați perechea de chei, trimiteți cheia publică la STS și completați câmpurile după ce primiți răspuns.
+            </div>
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">IDP URL <span style="color:rgba(234,240,255,.35);">(default: https://idp.stsisp.ro)</span></label>
+            <input id="stsIdpUrl" type="text" placeholder="https://idp.stsisp.ro"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;"/>
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Sign API URL <span style="color:rgba(234,240,255,.35);">(default: https://sign.stsisp.ro)</span></label>
+            <input id="stsApiUrl" type="text" placeholder="https://sign.stsisp.ro"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;"/>
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Client ID <span style="color:#ff8080;">*</span> <span style="color:rgba(234,240,255,.35);">— primit de la STS</span></label>
+            <input id="stsClientId" type="text" placeholder="Ex: docflowai-primaria-test"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;"/>
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Key ID (kid) <span style="color:#ff8080;">*</span> <span style="color:rgba(234,240,255,.35);">— primit de la STS prin email</span></label>
+            <input id="stsKid" type="text" placeholder="Ex: key-abc123"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;"/>
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Redirect URI <span style="color:#ff8080;">*</span> <span style="color:rgba(234,240,255,.35);">— înregistrat la STS</span></label>
+            <input id="stsRedirectUri" type="text" placeholder="https://app.docflowai.ro/flows/sts-oauth-callback"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;margin-bottom:8px;"/>
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Cheie privată RSA (PEM) <span style="color:#ff8080;">*</span></label>
+            <textarea id="stsPrivateKeyPem" rows="4" placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.78rem;font-family:monospace;margin-bottom:10px;resize:vertical;" autocomplete="off"></textarea>
+
+            <!-- Generator pereche chei -->
+            <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:10px;margin-bottom:10px;">
+              <div style="font-size:.77rem;color:#b39dff;font-weight:600;margin-bottom:6px;">🔑 Generator pereche chei RSA</div>
+              <div style="font-size:.73rem;color:rgba(234,240,255,.4);margin-bottom:8px;">Generați o pereche de chei RSA-2048. Cheia publică se trimite la STS, cea privată rămâne confidențială.</div>
+              <button onclick="generateStsKeyPair()" style="padding:7px 14px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;font-size:.82rem;font-weight:600;">
+                ⚙ Generează pereche chei RSA-2048
+              </button>
+              <div id="stsKeyGenResult" style="display:none;margin-top:10px;">
+                <div style="font-size:.75rem;color:#2dd4bf;font-weight:600;margin-bottom:4px;">✅ Cheie publică (trimiteți aceasta la STS):</div>
+                <textarea id="stsPublicKeyDisplay" rows="6" readonly
+                  style="width:100%;box-sizing:border-box;padding:8px;background:rgba(0,0,0,.3);border:1px solid rgba(45,212,191,.3);border-radius:6px;color:#7cf0e0;font-size:.72rem;font-family:monospace;resize:none;margin-bottom:6px;"></textarea>
+                <button onclick="copyPublicKey()" style="padding:5px 12px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:6px;color:#2dd4bf;cursor:pointer;font-size:.78rem;">📋 Copiază cheia publică</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
             <button onclick="verifyProviderConfig()" style="padding:7px 14px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);border-radius:8px;color:#2dd4bf;cursor:pointer;font-size:.82rem;font-weight:600;">🔍 Verifică</button>
             <div id="orgProviderVerifyStatus" style="font-size:.77rem;flex:1;"></div>
           </div>
@@ -3847,17 +3893,77 @@ function toggleOrgProvider(providerId, checked) {
 
 function openProviderConfig(providerId, label) {
   _activeConfigProvider = providerId;
-  const area = document.getElementById('orgProviderConfigArea');
-  if (area) area.style.display = '';
+  const area  = document.getElementById('orgProviderConfigArea');
   const title = document.getElementById('orgProviderConfigTitle');
+  const isSts = providerId === 'sts-cloud';
+
+  if (area)  area.style.display = '';
   if (title) title.textContent = `⚙ Configurare: ${label}`;
-  // Curăță câmpurile — nu pre-populăm cu API keys (securitate)
-  ['orgProviderApiUrl','orgProviderApiKey','orgProviderWebhookSecret'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
-  });
+
+  // Afișăm panoul corect
+  const configGeneric = document.getElementById('configGeneric');
+  const configSts     = document.getElementById('configSts');
+  if (configGeneric) configGeneric.style.display = isSts ? 'none' : '';
+  if (configSts)     configSts.style.display     = isSts ? ''     : 'none';
+
+  // Curăță câmpuri
+  if (isSts) {
+    ['stsIdpUrl','stsApiUrl','stsClientId','stsKid','stsRedirectUri','stsPrivateKeyPem'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const keyGenResult = document.getElementById('stsKeyGenResult');
+    if (keyGenResult) keyGenResult.style.display = 'none';
+    // Pre-populăm redirect URI cu URL-ul aplicației
+    const rdEl = document.getElementById('stsRedirectUri');
+    if (rdEl) rdEl.value = window.location.origin + '/flows/sts-oauth-callback';
+  } else {
+    ['orgProviderApiUrl','orgProviderApiKey','orgProviderWebhookSecret'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+  }
+
   const status = document.getElementById('orgProviderVerifyStatus');
   if (status) status.textContent = '';
   area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function generateStsKeyPair() {
+  const btn = document.querySelector('button[onclick="generateStsKeyPair()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Se generează...'; }
+  try {
+    const r = await _apiFetch('/admin/signing/sts/generate-keypair', {
+      method: 'POST', headers: hdrs(),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.message || j.error || 'Eroare generare chei');
+
+    // Populăm automat cheia privată în câmpul de config
+    const privEl = document.getElementById('stsPrivateKeyPem');
+    if (privEl) privEl.value = j.privateKeyPem;
+
+    // Afișăm cheia publică pentru copiere
+    const pubEl = document.getElementById('stsPublicKeyDisplay');
+    if (pubEl) pubEl.value = j.publicKeyPem;
+    const result = document.getElementById('stsKeyGenResult');
+    if (result) result.style.display = '';
+
+    const status = document.getElementById('orgProviderVerifyStatus');
+    if (status) { status.style.color = '#2dd4bf'; status.textContent = '✅ Chei generate. Copiați cheia publică și trimiteți-o la STS.'; }
+  } catch(e) {
+    const status = document.getElementById('orgProviderVerifyStatus');
+    if (status) { status.style.color = '#ffaaaa'; status.textContent = '❌ ' + e.message; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⚙ Generează pereche chei RSA-2048'; }
+  }
+}
+
+function copyPublicKey() {
+  const el = document.getElementById('stsPublicKeyDisplay');
+  if (!el) return;
+  navigator.clipboard.writeText(el.value).then(() => {
+    const btn = document.querySelector('button[onclick="copyPublicKey()"]');
+    if (btn) { const orig = btn.textContent; btn.textContent = '✅ Copiat!'; setTimeout(() => btn.textContent = orig, 2000); }
+  }).catch(() => { el.select(); document.execCommand('copy'); });
 }
 
 async function verifyProviderConfig() {
