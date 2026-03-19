@@ -415,11 +415,15 @@ th{ color: var(--sub) !important; }
       <!-- FLUXURI MELE -->
       <section id="viewFluxuri" class="hidden">
         <div class="card">
-          <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <div style="font-weight:700; font-size:1rem; color:var(--sub);">📂 Fluxurile mele</div>
+          <!-- Linia 1: Titlu + contor + buton refresh -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="font-weight:700;font-size:1rem;color:var(--sub);">📂 Fluxurile mele</div>
+              <span id="fluxCounter" style="display:none;padding:3px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:20px;font-size:.8rem;color:#c4b5ff;font-weight:700;"></span>
+            </div>
             <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows(1)">🔄 Actualizează</button>
           </div>
-          <!-- Filtre + search -->
+          <!-- Linia 2: Search + filtru status -->
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
             <input type="text" tabindex="-1" autocomplete="username" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
             <input type="password" tabindex="-1" autocomplete="new-password" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
@@ -483,8 +487,7 @@ th{ color: var(--sub) !important; }
           lbl2.style.borderColor = "rgba(255,255,255,.12)"; lbl2.style.background = "rgba(255,255,255,.03)";
           if (hint) hint.textContent = "DocFlowAI generează tabelul cu semnatari și ancora pentru semnătură";
           // Ascundem zona de detectare câmpuri
-          const detectArea = $("ancoreDetectArea");
-          if (detectArea) detectArea.style.display = "none";
+          resetAncoreState();
         } else {
           lbl2.style.borderColor = "rgba(45,212,191,.4)"; lbl2.style.background = "rgba(45,212,191,.08)";
           lbl1.style.borderColor = "rgba(255,255,255,.12)"; lbl1.style.background = "rgba(255,255,255,.03)";
@@ -635,6 +638,48 @@ th{ color: var(--sub) !important; }
       const tbody = $("signersTbody");
 
       // ── Funcții globale pentru dropdown-urile de utilizatori ───────────────
+      // Returnează setul câmpurilor ancore deja selectate în alte rânduri
+      function getUsedAncoreFields(currentSel) {
+        const used = new Set();
+        tbody.querySelectorAll(".ancoreField").forEach(sel => {
+          if (sel === currentSel) return;
+          if (sel.value) used.add(sel.value);
+        });
+        return used;
+      }
+
+      // Repopulează toate dropdown-urile ancoreField (exclusiv câmpurile deja selectate)
+      function refreshAllAncoreDropdowns() {
+        if (!_detectedAncoreFields.length) return;
+        tbody.querySelectorAll(".ancoreField").forEach(sel => {
+          const prevVal    = sel.value;
+          const usedFields = getUsedAncoreFields(sel);
+          sel.innerHTML    = "<option value=''>— Alege câmpul —</option>";
+          _detectedAncoreFields.forEach(f => {
+            if (usedFields.has(f.name)) return; // deja folosit în alt rând
+            const opt      = document.createElement("option");
+            opt.value      = f.name;
+            const label    = f.label || f.shortName || f.name;
+            const pageInfo = f.page ? ` (p.${f.page})` : "";
+            opt.textContent = label + pageInfo;
+            opt.title      = f.name;
+            sel.appendChild(opt);
+          });
+          // Restaurăm selecția curentă
+          if (prevVal) {
+            // Adăugăm înapoi opțiunea proprie dacă a dispărut
+            if (![...sel.options].some(o => o.value === prevVal)) {
+              const f   = _detectedAncoreFields.find(f => f.name === prevVal);
+              const opt = document.createElement("option");
+              opt.value = prevVal;
+              opt.textContent = (f ? (f.label || f.shortName || f.name) : prevVal);
+              sel.appendChild(opt);
+            }
+            sel.value = prevVal;
+          }
+        });
+      }
+
       function getUsedEmails(currentSel) {
         const used = new Set();
         tbody.querySelectorAll('.name-select').forEach(s => {
@@ -908,16 +953,11 @@ th{ color: var(--sub) !important; }
         tbody.appendChild(newRow);
         // Dacă avem câmpuri detectate, le populăm și în rândul nou
         if (_detectedAncoreFields.length) {
+          // Adăugăm rândul nou și apoi refreshăm toate (deduplicare automată)
+          refreshAllAncoreDropdowns();
           const sel = newRow.querySelector(".ancoreField");
           if (sel) {
-            sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
-            _detectedAncoreFields.forEach(f => {
-              const opt = document.createElement("option");
-              opt.value = f.name;
-              opt.textContent = f.name + (f.page ? ` (p.${f.page})` : "");
-              sel.appendChild(opt);
-            });
-            sel.disabled = false;
+            sel.onchange = () => refreshAllAncoreDropdowns();
           }
         }
         updateIntocmitVisibility(); validateForm();
@@ -1417,11 +1457,36 @@ async function signFromFluxuri(flowId) {
           const pages = isClientSearch ? 1 : (resp.pages || 1);
           _allFlows = flows;
           if (!flows.length) {
-            el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux gasit.</div>';
+            el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
             const pg = $("fluxPagination"); if (pg) pg.style.display = "none";
+            const counter = $("fluxCounter");
+            if (counter) { counter.textContent = "0 fluxuri"; counter.style.display = ""; counter.style.color = "rgba(234,240,255,.4)"; }
             return;
           }
           renderFluxuri(flows);
+          // Actualizăm contorul din header
+          const counter = $("fluxCounter");
+          if (counter) {
+            const filterVal = $("fluxStatusFilter")?.value || "all";
+            const searchVal = $("fluxSearch")?.value?.trim() || "";
+            const isFiltered = filterVal !== "all" || searchVal;
+            counter.style.display = "";
+            if (isFiltered) {
+              const filterLabel = {
+                "pending": "În curs", "completed": "Finalizate",
+                "refused": "Refuzate", "cancelled": "Anulate", "all": ""
+              }[filterVal] || filterVal;
+              counter.textContent = `${total} ${total === 1 ? "flux" : "fluxuri"}${filterLabel ? " · " + filterLabel : ""}`;
+              counter.style.background = "rgba(124,92,255,.15)";
+              counter.style.borderColor = "rgba(124,92,255,.3)";
+              counter.style.color = "#c4b5ff";
+            } else {
+              counter.textContent = `${total} ${total === 1 ? "flux" : "fluxuri"}`;
+              counter.style.background = "rgba(255,255,255,.06)";
+              counter.style.borderColor = "rgba(255,255,255,.12)";
+              counter.style.color = "rgba(234,240,255,.5)";
+            }
+          }
           // Actualizeaza paginarea
           const pg = $("fluxPagination");
           if (pg) {
@@ -1550,6 +1615,26 @@ async function signFromFluxuri(flowId) {
         idb.clear();
       }
 
+      // Resetează tot ce ține de detecția câmpurilor ancore
+      function resetAncoreState() {
+        _detectedAncoreFields = [];
+        const detectArea = $("ancoreDetectArea");
+        if (detectArea) detectArea.style.display = "none";
+        const listEl   = $("detectedFieldsList");
+        const statusEl = $("detectStatus");
+        if (listEl)   listEl.innerHTML = "";
+        if (statusEl) statusEl.textContent = "";
+        // Resetăm și clasa de pe tabel
+        const sigTable = $("signersTbody")?.closest("table");
+        if (sigTable) sigTable.classList.remove("doctype-ancore");
+        // Resetăm toate dropdown-urile ancoreField
+        $("signersTbody")?.querySelectorAll(".ancoreField").forEach(sel => {
+          sel.innerHTML = "<option value=''>— Detectează câmpuri —</option>";
+          sel.disabled = true;
+          sel.value = "";
+        });
+      }
+
       async function restoreFormState() {
         try {
           const raw = sessionStorage.getItem(FORM_KEY);
@@ -1622,6 +1707,7 @@ async function signFromFluxuri(flowId) {
       $("btnRenunta").addEventListener("click", () => {
         if (!confirm("Renunți la fluxul curent? PDF-ul și semnătarii configurați vor fi șterși.")) return;
         clearFormState();
+        resetAncoreState();
         pdfB64 = null;
         setPdfInfo("Nu ai selectat încă un PDF.");
         const clearBtn = $("btnClearPdf");
@@ -1758,27 +1844,30 @@ async function signFromFluxuri(flowId) {
       }
 
       function populateAncoreDropdowns(fields) {
-        // Populează dropdown-ul ancoreField din fiecare rând al tabelului
+        // Populare inițială — toate câmpurile în toate dropdown-urile
         const rows = [...$("signersTbody").querySelectorAll("tr")];
         rows.forEach(tr => {
           const sel = tr.querySelector(".ancoreField");
           if (!sel) return;
           const prevVal = sel.value;
           sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
-          fields.forEach((f, i) => {
-            const opt = document.createElement("option");
-            opt.value = f.name;  // calea completă XFA sau numele AcroForm
-            // Afișăm label (mai scurt) sau name cu pagina
-            const label = f.label || f.name;
-            const pageInfo = f.page ? ` (p.${f.page})` : "";
+          fields.forEach(f => {
+            const opt       = document.createElement("option");
+            opt.value       = f.name;
+            const label     = f.label || f.shortName || f.name;
+            const pageInfo  = f.page ? ` (p.${f.page})` : "";
             opt.textContent = label + pageInfo;
-            opt.title = f.name; // tooltip cu calea completă
+            opt.title       = f.name;
             sel.appendChild(opt);
           });
-          // Restaurăm selecția anterioară dacă câmpul există în continuare
           if (prevVal && fields.some(f => f.name === prevVal)) sel.value = prevVal;
           sel.disabled = fields.length === 0;
+
+          // La schimbarea selecției, actualizăm toate celelalte dropdown-uri
+          sel.onchange = () => refreshAllAncoreDropdowns();
         });
+        // Aplicăm deduplicarea după populare
+        refreshAllAncoreDropdowns();
       }
 
       // Apelat din handler-ul de upload PDF (după ce pdfB64 e setat)
@@ -1899,6 +1988,7 @@ async function signFromFluxuri(flowId) {
           localStorage.setItem("lastInitName", $("initName").value.trim());
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
           clearFormState(); // flux creat cu succes — sterge draft + IDB
+          resetAncoreState(); // resetează câmpurile ancore detectate
 
           // F-06: Upload documente suport (async, non-blocking pentru UX)
           if (_attachFiles.length) {

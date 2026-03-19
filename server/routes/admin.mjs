@@ -130,7 +130,8 @@ router.put('/admin/organizations/:id', async (req, res) => {
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   const orgId = parseInt(req.params.id);
   if (!orgId) return res.status(400).json({ error: 'invalid_id' });
-  const { name, webhook_url, webhook_secret, webhook_events, webhook_enabled } = req.body || {};
+  const { name, webhook_url, webhook_secret, webhook_events, webhook_enabled,
+          signing_providers_enabled, signing_providers_config } = req.body || {};
   try {
     const updates = []; const params = [];
     if (name !== undefined) { params.push(String(name).trim()); updates.push(`name=$${params.length}`); }
@@ -138,6 +139,25 @@ router.put('/admin/organizations/:id', async (req, res) => {
     if (webhook_secret !== undefined && webhook_secret !== '') { params.push(String(webhook_secret).trim()); updates.push(`webhook_secret=$${params.length}`); }
     if (webhook_events !== undefined) { params.push(Array.isArray(webhook_events) ? webhook_events : []); updates.push(`webhook_events=$${params.length}`); }
     if (webhook_enabled !== undefined) { params.push(!!webhook_enabled); updates.push(`webhook_enabled=$${params.length}`); }
+    // Signing providers — salvate doar dacă coloana există în DB (migrarea 033)
+    // Dacă coloana lipsește, ignorăm silențios (non-fatal — webhook se salvează oricum)
+    if (signing_providers_enabled !== undefined && Array.isArray(signing_providers_enabled)) {
+      try {
+        const { rows: colCheck } = await pool.query(
+          `SELECT 1 FROM information_schema.columns
+           WHERE table_name='organizations' AND column_name='signing_providers_enabled' LIMIT 1`
+        );
+        if (colCheck.length > 0) {
+          const enabled = signing_providers_enabled.includes('local-upload')
+            ? signing_providers_enabled : ['local-upload', ...signing_providers_enabled];
+          params.push(enabled); updates.push(`signing_providers_enabled=$${params.length}`);
+          if (signing_providers_config !== undefined && typeof signing_providers_config === 'object') {
+            params.push(JSON.stringify(signing_providers_config));
+            updates.push(`signing_providers_config=$${params.length}`);
+          }
+        }
+      } catch(colErr) { /* coloana nu există — ignorăm */ }
+    }
     if (!updates.length) return res.status(400).json({ error: 'no_fields' });
     updates.push(`updated_at=NOW()`);
     params.push(orgId);
@@ -195,6 +215,32 @@ router.post('/admin/organizations/:id/test-webhook', async (req, res) => {
 
 
 // ── Signing Providers — API ──────────────────────────────────────────────
+// ── POST /admin/signing/sts/generate-keypair — generează pereche chei RSA pentru STS ──
+// Super-admin generează cheia publică de trimis la STS + cheia privată de configurat.
+router.post('/admin/signing/sts/generate-keypair', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { generateKeyPairSync } = await import('crypto');
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength:     2048,
+      publicKeyEncoding:  { type: 'pkcs1', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+    });
+    logger.info({ actor: actor.email }, 'STS: pereche chei RSA generată');
+    res.json({
+      ok:            true,
+      publicKeyPem:  publicKey,
+      privateKeyPem: privateKey,
+      instructions:  'Trimiteți publicKeyPem la STS (contact@sts.ro) pentru a primi client_id și kid. Stocați privateKeyPem în configurația providerului STS.',
+    });
+  } catch(e) {
+    res.status(500).json({ error: 'keygen_failed', message: e.message });
+  }
+});
+
+
 // Arhitectură: provideri la nivel de org (ce e disponibil), ales per semnatar.
 
 // GET /admin/signing/providers — toți providerii disponibili în platformă
