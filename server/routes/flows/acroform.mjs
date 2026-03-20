@@ -38,8 +38,6 @@ export function _injectDeps(d) {
 const router = Router();
 
 
-  });
-});
 
 // ── POST /flows/detect-acroform-fields ───────────────────────────────────
 // Extrage câmpurile de semnătură din PDF.

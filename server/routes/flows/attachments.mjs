@@ -38,7 +38,6 @@ export function _injectDeps(d) {
 const router = Router();
 
 
-});
 
 // ── F-06: Documente suport ────────────────────────────────────────────────
 // Tipuri MIME acceptate: PDF, ZIP, RAR
