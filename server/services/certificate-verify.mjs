@@ -216,18 +216,39 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
       result.levels.L3.ok = true;
       result.levels.L3.note = `CN: ${certInfo.subject.CN}`;
 
-      // Signing time
+      // Signing time — din atributul CMS sau fallback la data curentă
       const stAttr = si?.signedAttrs?.attributes?.find(a => a.type === OID.SIGNING_TIME);
       if (stAttr) {
         result.signingTime = stAttr.values?.[0]?.toDate?.() || null;
-        result.certificate.validAtSigning = result.signingTime
-          ? (new Date(certInfo.notBefore) <= result.signingTime && result.signingTime <= new Date(certInfo.notAfter))
-          : null;
       }
+      // validAtSigning: folosim signingTime din CMS dacă există, altfel verificăm că cert e valid acum
+      const checkTime = result.signingTime || new Date();
+      result.certificate.validAtSigning =
+        (new Date(certInfo.notBefore) <= checkTime && checkTime <= new Date(certInfo.notAfter));
 
       // ── L4: Lanț certificare ────────────────────────────────────────
       result.levels.L4 = { name: 'Lanț de certificare', ok: false };
-      const chain = certs.map(c => c instanceof pkijs.Certificate ? _extractCertInfo(c, pkijs) : null).filter(Boolean);
+      // Construim lanțul pornind de la signerCert → issueri succesivi
+      const chainCerts = [];
+      let currentCert = signerCert;
+      const visited = new Set();
+      while (currentCert && chainCerts.length < 10) {
+        const certInfo2 = _extractCertInfo(currentCert, pkijs);
+        const isEndEntity = currentCert === signerCert;
+        chainCerts.push({ ...certInfo2, isEndEntity });
+        const serialKey = certInfo2.serialNumber;
+        if (visited.has(serialKey) || certInfo2.isSelfSigned) break;
+        visited.add(serialKey);
+        // Găsim issuer-ul în celelalte certs
+        const issuerCN2 = certInfo2.issuer?.CN || '';
+        const next = certs.find(cert => {
+          if (!(cert instanceof pkijs.Certificate) || cert === currentCert) return false;
+          const subj = cert.subject?.typesAndValues?.find(tv => tv.type === OID.CN)?.value?.valueBlock?.value || '';
+          return subj === issuerCN2 && !visited.has(Buffer.from(cert.serialNumber.valueBlock.valueHex).toString('hex').toUpperCase());
+        });
+        currentCert = next || null;
+      }
+      const chain = chainCerts.length > 0 ? chainCerts : certs.map(c => c instanceof pkijs.Certificate ? _extractCertInfo(c, pkijs) : null).filter(Boolean);
       result.chain = chain;
       result.levels.L4.ok   = chain.length >= 2;
       result.levels.L4.note = `${chain.length} certificate în lanț`;

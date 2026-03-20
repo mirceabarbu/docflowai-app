@@ -62,8 +62,11 @@ router.get('/api/flows/:flowId/report', async (req, res) => {
     return res.end(pdfOutput);
 
   } catch(e) {
-    logger.error({ err: e }, 'report generation error');
-    return res.status(500).json({ error: 'server_error', message: e.message });
+    logger.error({ err: e, stack: e.stack }, 'report generation error');
+    // Asigurăm că răspundem cu JSON indiferent de circumstanțe
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'server_error', message: e.message, stack: e.stack?.split('\n')[0] });
+    }
   }
 });
 

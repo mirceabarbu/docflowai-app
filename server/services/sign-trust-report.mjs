@@ -412,7 +412,7 @@ async function _generateReportPdf(report) {
         page.drawText('Lant de certificare:', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 12;
         for (let i = 0; i < cert.chain.length; i++) {
           const ch = cert.chain[i];
-          const role = ch.isSelfSigned ? 'Root CA' : i === 0 ? 'Semnatar' : 'CA Intermediar';
+          const role = ch.isEndEntity ? 'Semnatar' : ch.isSelfSigned ? 'Root CA' : 'CA Intermediar';
           page.drawText(`${'  '.repeat(i)}${i+1}. ${ro(ch.subject?.CN || '?')} [${role}]`,
             { x: MARGIN + 8, y, size: 7.5, font: fontR, color: COL.text, maxWidth: COL_W - 20 });
           y -= 11;
@@ -517,33 +517,37 @@ async function _generateReportPdf(report) {
   y = lineY - 12;
 
   // ══════════════════════════════════════════════════════════════════════
-  // ── §7 QR CODE ────────────────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════
-  ensureSpace(100);
+  // ── §7 VERIFICARE ONLINE + QR CODE ─────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════
+  ensureSpace(120);
   y -= 8;
   try {
     const QRCode = (await import('qrcode')).default;
     const qrDataUrl = await QRCode.toDataURL(report.verifyUrl, {
-      width: 90, margin: 1, color: { dark: '#0d1020', light: '#ffffff' }
+      width: 100, margin: 1, color: { dark: '#0d1020', light: '#ffffff' }
     });
-    const qrB64   = qrDataUrl.split(',')[1];
-    const qrImage = await pdf.embedPng(Buffer.from(qrB64, 'base64'));
-    const QR_SIZE = 80;
-    const qrX     = PAGE_W - MARGIN - QR_SIZE;
-
-    page.drawRectangle({ x: qrX - 8, y: y - QR_SIZE - 8, width: QR_SIZE + 16, height: QR_SIZE + 16, color: COL.white, borderColor: COL.border, borderWidth: 1, borderRadius: 4 });
+    const qrImage = await pdf.embedPng(Buffer.from(qrDataUrl.split(',')[1], 'base64'));
+    const QR_SIZE = 72;
+    const qrX = PAGE_W - MARGIN - QR_SIZE;
+    // QR în colțul dreapta
+    page.drawRectangle({ x: qrX - 6, y: y - QR_SIZE - 6, width: QR_SIZE + 12, height: QR_SIZE + 12,
+      color: COL.white, borderColor: COL.border, borderWidth: 0.8, borderRadius: 4 });
     page.drawImage(qrImage, { x: qrX, y: y - QR_SIZE, width: QR_SIZE, height: QR_SIZE });
-    page.drawText('Scaneaza pentru verificare', { x: qrX - 4, y: y - QR_SIZE - 12, size: 7, font: fontR, color: COL.muted });
-
-    page.drawText('Verificare online:', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 12;
-    page.drawText(report.verifyUrl, { x: MARGIN, y, size: 8, font: fontR, color: COL.accent, maxWidth: COL_W - QR_SIZE - 20 }); y -= 16;
-    page.drawText('Documentul poate fi verificat online introducand Flow ID-ul pe platforma DocFlowAI.', { x: MARGIN, y, size: 7.5, font: fontR, color: COL.muted, maxWidth: COL_W - QR_SIZE - 20 });
+    page.drawText('Scaneaza pentru verificare online',
+      { x: qrX - 12, y: y - QR_SIZE - 16, size: 6.5, font: fontR, color: COL.muted, maxWidth: QR_SIZE + 20 });
+    // Text verificare la stânga QR-ului
+    const textW = qrX - MARGIN - 12;
+    page.drawText('Verificare online:', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 13;
+    page.drawText(report.verifyUrl, { x: MARGIN, y, size: 7.5, font: fontR, color: COL.accent, maxWidth: textW }); y -= 13;
+    page.drawText('Introduceti Flow ID-ul la adresa de mai sus pentru a verifica autenticitatea documentului.',
+      { x: MARGIN, y, size: 7.5, font: fontR, color: COL.muted, maxWidth: textW, lineHeight: 11 });
   } catch(e) {
-    page.drawText('URL verificare:', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 12;
+    ensureSpace(30);
+    page.drawText('Verificare online:', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 13;
     page.drawText(report.verifyUrl, { x: MARGIN, y, size: 8, font: fontR, color: COL.accent });
   }
 
-  // Footer ultima pagina
   _drawFooter(page, pdf.getPageCount(), fontR, COL, PAGE_W, MARGIN);
 
   const pdfBytes = await pdf.save();

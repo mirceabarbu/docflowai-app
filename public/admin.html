@@ -4151,18 +4151,18 @@ async function orgTestWebhook() {
 async function downloadTrustReport(flowId, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳'; }
   try {
-    // Folosim fetch direct cu credentials:include (cookie JWT) dar fără Content-Type JSON
     const r = await fetch(`/api/flows/${encodeURIComponent(flowId)}/report`, {
       credentials: 'include',
-      headers: { 'Accept': 'application/pdf' },
+      headers: { 'Accept': 'application/pdf, application/json' },
     });
-    if (!r.ok) {
+    const ct = r.headers.get('content-type') || '';
+    if (!r.ok || ct.includes('json')) {
       let msg = `Eroare ${r.status}`;
-      try { const ct = r.headers.get('content-type') || ''; if (ct.includes('json')) { const j = await r.json(); msg = j?.message || j?.error || msg; } } catch {}
+      try { const j = await r.json(); msg = j?.message || j?.error || msg; } catch {}
       throw new Error(msg);
     }
     const blob = await r.blob();
-    if (!blob || blob.size < 100) throw new Error('PDF gol returnat de server');
+    if (!blob || blob.size < 200) throw new Error(`PDF invalid (${blob?.size || 0} bytes)`);
     const url = URL.createObjectURL(blob);
     const a   = document.createElement('a');
     a.href = url; a.download = `TrustReport_${flowId}.pdf`;
