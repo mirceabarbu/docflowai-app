@@ -109,6 +109,13 @@
     .events .ev:hover{background:rgba(255,255,255,.04)}
     .events .ts{color:rgba(234,240,255,.55);font-variant-numeric:tabular-nums;min-width:140px}
     .events .txt{color:var(--sub)}
+    /* ── Layout 2 coloane Detalii/Semnatari — responsive ── */
+    .two-col-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+    @media(max-width:600px){
+      .two-col-grid{grid-template-columns:1fr !important}
+      .events{max-height:none !important;overflow:visible !important}
+      .tl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    }
     .alert{
       border:1px solid rgba(124,92,255,.30);
       background:rgba(124,92,255,.08);
@@ -294,7 +301,7 @@
     <div class="grid">
 
       <!-- Detalii + Semnatari — 2 coloane -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start;">
+      <div class="two-col-grid">
 
         <!-- Coloana stanga: Detalii -->
         <div class="card" style="height:100%">
@@ -360,6 +367,8 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
+  // esc global — folosit in loadFlow si orice alt context
+  const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const qs = new URLSearchParams(location.search);
   const flowId = qs.get("flow") || qs.get("id") || "";
   const linkToken = qs.get("token") || "";

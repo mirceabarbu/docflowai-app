@@ -455,13 +455,4 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
 });
 
 // ── F-06: Documente suport ────────────────────────────────────────────────
-// Tipuri MIME acceptate: PDF, ZIP, RAR
-const ATTACH_ALLOWED_MIME = new Set([
-  'application/pdf',
-  'application/zip', 'application/x-zip-compressed', 'application/x-zip',
-  'application/x-rar-compressed', 'application/vnd.rar', 'application/x-rar',
-]);
-const ATTACH_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
-
-
 export default router;

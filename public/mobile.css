@@ -138,6 +138,24 @@
     width: 100% !important;
   }
 
+  /* ── flow.html — 2 coloane Detalii/Semnatari → 1 coloana pe telefon ── */
+  .two-col-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── flow.html — Evenimente: max-height off, scroll vertical full ── */
+  .events {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* ── flow.html — Timeline progres: scroll orizontal ── */
+  .tl-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 8px !important;
+  }
+
   /* ── Modal ── */
   .modal {
     max-width: calc(100vw - 24px) !important;
