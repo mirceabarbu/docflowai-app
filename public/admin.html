@@ -4151,15 +4151,21 @@ async function orgTestWebhook() {
 async function downloadTrustReport(flowId, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳'; }
   try {
-    const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report`);
-    if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j?.message || `Eroare ${r.status}`); }
+    const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report`, { headers: hdrs() });
+    if (!r.ok) {
+      let msg = `Eroare ${r.status}`;
+      try { const jj = await r.json(); msg = jj?.message || jj?.error || msg; } catch {}
+      throw new Error(msg);
+    }
     const blob = await r.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = `TrustReport_${flowId}.pdf`; a.click();
+    if (!blob || blob.size < 100) throw new Error('PDF gol — verificati logurile server');
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url; a.download = `TrustReport_${flowId}.pdf`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch(e) {
-    alert('❌ Eroare generare raport: ' + e.message);
+    alert('❌ Eroare raport: ' + e.message);
   } finally {
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = '📜'; }
   }

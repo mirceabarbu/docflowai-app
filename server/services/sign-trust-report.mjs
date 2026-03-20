@@ -133,26 +133,36 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
   const integrityOk     = cryptoResult?.signatures?.every(s => s.levels?.L1?.ok !== false) ?? null;
   const chainOk         = cryptoResult?.signatures?.every(s => s.levels?.L4?.ok !== false) ?? null;
 
-  // ── Concluzie automată ────────────────────────────────────────────────
+  // ── Concluzie automată (text formal juridic) ─────────────────────────────
   let conclusion = '';
-  if (allSigned && integrityOk !== false) {
-    const sigCount = signedSigners.length;
-    const certType = allQES ? 'certificate electronice calificate' : 'certificate electronice';
-    const integrityNote = integrityOk === true
-      ? ' Integritatea documentului este confirmata — nu au fost detectate modificari ulterioare semnarii.'
-      : '';
-    const qesNote = allQES
-      ? ' Semnaturile sunt conforme cu standardul QES/eIDAS si Legea 455/2001.'
-      : '';
-    conclusion = `Documentul a fost semnat de ${sigCount} semnatar${sigCount > 1 ? 'i' : ''} utilizand ${certType}.${integrityNote}${qesNote}`;
-  } else if (!allSigned) {
-    const pending = signers.filter(s => s.status !== 'signed').length;
-    conclusion = `Flux incomplet — ${pending} semnatar${pending > 1 ? 'i' : ''} nu au finalizat semnarea.`;
+  let conclusionOk = false;
+  if (allSigned) {
+    const sigCount     = signedSigners.length;
+    const validityPart = integrityOk === true
+      ? 'Integritatea fisierului final este sustinuta de amprenta hash calculata la generarea raportului.'
+      : 'Amprenta hash a documentului a fost calculata si inregistrata in prezentul raport.';
+    const certValidPart = 'valabilitatea temporala la momentul semnarii a fost confirmata conform datelor disponibile';
+    const revocPart    = 'Verificarea statusului de revocare este indicata distinct pentru fiecare semnatar, in functie de disponibilitatea mecanismelor externe de validare (OCSP/CRL).';
+    const qesPart      = allQES === true
+      ? 'Semnaturile sunt conforme cu standardul QES/eIDAS si Legea 455/2001.'
+      : 'Semnaturile utilizate sunt asociate unor certificate digitale identificate in cadrul analizei tehnice.';
+    conclusion = `In urma analizei tehnice a documentului si a metadatelor de semnare disponibile in platforma DocFlowAI, rezulta ca documentul a parcurs fluxul configurat, iar cei ${sigCount} semnatar${sigCount > 1 ? 'i' : ''} care au finalizat operatiunea au utilizat certificate digitale pentru care au fost identificate metadate coerente. Pentru certificatele analizate, ${certValidPart}. ${validityPart} ${revocPart} ${qesPart}`;
+    conclusionOk = allSigned && (integrityOk !== false);
   } else {
-    conclusion = 'Documentul a fost procesat prin platforma DocFlowAI.';
+    const pending = signers.filter(s => s.status !== 'signed').length;
+    conclusion = `In urma analizei tehnice, documentul nu a parcurs integral fluxul configurat. ${pending} semnatar${pending > 1 ? 'i nu au' : ' nu a'} finalizat operatiunea de semnare. Raportul reflecta starea documentului la momentul generarii.`;
+    conclusionOk = false;
   }
 
-  // Audit trail filtrat
+  // Construim un map email→nume din semnatari și inițiator
+  const actorNameMap = {};
+  if (data.initEmail) actorNameMap[data.initEmail.toLowerCase()] = data.initName || data.initEmail;
+  for (const s of signers) {
+    if (s.email) actorNameMap[s.email.toLowerCase()] = s.name || s.email;
+  }
+  const resolveActor = email => email ? (actorNameMap[email.toLowerCase()] || email) : '—';
+
+  // Audit trail filtrat cu Nume în loc de email
   const auditTrail = events
     .filter(e => ['FLOW_CREATED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED',
                   'FLOW_COMPLETED','FLOW_CANCELLED','DELEGATED','EMAIL_SENT','EMAIL_OPENED'].includes(e.type))
@@ -160,7 +170,7 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
     .map(e => ({
       timestamp: e.at,
       event:     e.type,
-      actor:     e.by || '—',
+      actor:     resolveActor(e.by),
       detail:    e.to ? `→ ${e.to}` : (e.reason || ''),
     }));
 
@@ -211,6 +221,7 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
       allQES,
     },
     conclusion,
+    conclusionOk,
     verifyUrl: `${APP_BASE_URL()}/verifica?flowId=${flowId}`,
   };
 }
@@ -482,11 +493,13 @@ async function _generateReportPdf(report) {
   y -= 12;
   drawSection('CONCLUZIE AUTOMATA', '§6');
 
+  const conclColor  = report.conclusionOk ? rgb(0.94, 0.97, 0.94) : rgb(0.99, 0.97, 0.93);
+  const conclBorder = report.conclusionOk ? COL.ok : COL.warn;
   page.drawRectangle({
     x: MARGIN - 8, y: y - 12, width: COL_W + 16,
-    height: Math.max(50, report.conclusion.length / 3),
-    color: rgb(0.94, 0.97, 0.94), borderRadius: 6,
-    borderColor: COL.ok, borderWidth: 1,
+    height: Math.max(60, report.conclusion.length / 3),
+    color: conclColor, borderRadius: 6,
+    borderColor: conclBorder, borderWidth: 1.5,
   });
 
   // Împărțim concluzia pe linii

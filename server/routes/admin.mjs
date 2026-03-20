@@ -1569,7 +1569,14 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         return lines;
       };
       const renderEvent = (e, dimmed) => {
-        const detail = [e.by ? `de:${e.by}` : '', e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `catre:${e.to}` : ''].filter(Boolean).join('  ');
+        // Înlocuim email cu Nume Prenume din userMap dacă există
+        const resolveActor = (email) => {
+          if (!email) return '';
+          const u = userMap[(email || '').toLowerCase()];
+          return u?.nume || email;
+        };
+        const actorLabel = e.by ? `de:${resolveActor(e.by)}` : '';
+        const detail = [actorLabel, e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `catre:${e.to}` : ''].filter(Boolean).join('  ');
         const detailLines = detail ? estimateLines(ro(detail), EVENT_DETAIL_MAX_W, fontR, EVENT_FONT_SIZE) : 0;
         const rowH = EVENT_LINE_H + detailLines * EVENT_LINE_H + 3;
         ensureSpace(rowH + 2);
