@@ -128,30 +128,67 @@ export async function generateTrustReport({ flowId, flowData, pdfBytes, pool }) 
 // ── Construiește structura datelor raportului ─────────────────────────────
 function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
   const signedSigners   = signers.filter(s => s.status === 'signed');
-  const allSigned       = signedSigners.length === signers.length && signers.length > 0;
-  const allQES          = cryptoResult?.signatures?.every(s => s.isQES) ?? null;
-  const integrityOk     = cryptoResult?.signatures?.every(s => s.levels?.L1?.ok !== false) ?? null;
-  const chainOk         = cryptoResult?.signatures?.every(s => s.levels?.L4?.ok !== false) ?? null;
+  const allSigned   = signedSigners.length === signers.length && signers.length > 0;
 
-  // ── Concluzie automată (text formal juridic) ─────────────────────────────
+  // ── Citim rezultatele REALE L1-L6 din semnăturile verificate ─────────────
+  const sigs         = cryptoResult?.signatures || [];
+  const L1_fail      = sigs.some(s => s.levels?.L1?.ok === false);
+  const L1_ok        = sigs.length > 0 && !L1_fail && sigs.every(s => s.levels?.L1?.ok !== null);
+  const L5_revoked   = sigs.some(s => s.levels?.L5?.status === 'revoked');
+  const L5_ok        = sigs.some(s => s.levels?.L5?.ok === true);
+  const L6_ok        = sigs.length > 0 ? sigs.every(s => s.levels?.L6?.ok === true) : null;
+  const hasCrypto    = sigs.length > 0;
+  const integrityOk  = L1_ok && !L1_fail;
+  const allQES       = L6_ok === true;
+
+  // ── Concluzie bazată pe rezultate reale L1-L6 ─────────────────────────────
   let conclusion = '';
   let conclusionOk = false;
-  if (allSigned) {
-    const sigCount     = signedSigners.length;
-    const validityPart = integrityOk === true
-      ? 'Integritatea fisierului final este sustinuta de amprenta hash calculata la generarea raportului.'
-      : 'Amprenta hash a documentului a fost calculata si inregistrata in prezentul raport.';
-    const certValidPart = 'valabilitatea temporala la momentul semnarii a fost confirmata conform datelor disponibile';
-    const revocPart    = 'Verificarea statusului de revocare este indicata distinct pentru fiecare semnatar, in functie de disponibilitatea mecanismelor externe de validare (OCSP/CRL).';
-    const qesPart      = allQES === true
-      ? 'Semnaturile sunt conforme cu standardul QES/eIDAS si Legea 455/2001.'
-      : 'Semnaturile utilizate sunt asociate unor certificate digitale identificate in cadrul analizei tehnice.';
-    conclusion = `In urma analizei tehnice a documentului si a metadatelor de semnare disponibile in platforma DocFlowAI, rezulta ca documentul a parcurs fluxul configurat, iar cei ${sigCount} semnatar${sigCount > 1 ? 'i' : ''} care au finalizat operatiunea au utilizat certificate digitale pentru care au fost identificate metadate coerente. Pentru certificatele analizate, ${certValidPart}. ${validityPart} ${revocPart} ${qesPart}`;
-    conclusionOk = allSigned && (integrityOk !== false);
-  } else {
+
+  if (!allSigned) {
     const pending = signers.filter(s => s.status !== 'signed').length;
-    conclusion = `In urma analizei tehnice, documentul nu a parcurs integral fluxul configurat. ${pending} semnatar${pending > 1 ? 'i nu au' : ' nu a'} finalizat operatiunea de semnare. Raportul reflecta starea documentului la momentul generarii.`;
+    conclusion = `In urma analizei tehnice, documentul nu a parcurs integral fluxul configurat. ${pending} semnatar${pending > 1 ? 'i nu au' : ' nu a'} finalizat operatiunea de semnare. Raportul reflecta starea la momentul generarii.`;
     conclusionOk = false;
+  } else if (!hasCrypto) {
+    conclusion = `In urma analizei datelor din platforma DocFlowAI, documentul a parcurs integral fluxul de semnare configurat. ${signedSigners.length} semnatar${signedSigners.length > 1 ? 'i au' : ' a'} finalizat operatiunea. Verificarea criptografica nu a putut fi efectuata — PDF-ul semnat nu a fost disponibil pentru analiza. Autenticitatea se bazeaza exclusiv pe datele inregistrate in platforma.`;
+    conclusionOk = true;
+  } else {
+    const parts = [];
+    const sigCount = signedSigners.length;
+
+    if (L1_fail) {
+      parts.push('ATENTIE: Analiza criptografica indica faptul ca documentul a fost MODIFICAT dupa aplicarea semnaturii. Hash-ul calculat la verificare nu corespunde cu cel inregistrat la semnare.');
+    } else if (integrityOk) {
+      parts.push('Integritatea documentului este confirmata — hash-ul calculat corespunde cu cel de la semnare, documentul nu a fost modificat.');
+    } else {
+      parts.push('Integritatea documentului nu a putut fi verificata complet — a se vedea detaliile din Sectiunea 4.');
+    }
+
+    if (allQES) {
+      parts.push(`Cei ${sigCount} semnatar${sigCount > 1 ? 'i' : ''} au utilizat certificate electronice calificate (QES), conforme cu eIDAS si Legea 455/2001, emise de furnizori QTSP acreditati.`);
+    } else if (L6_ok === false) {
+      parts.push(`Certificatele analizate NU au putut fi confirmate ca QES — QTSP-ul emitent nu a fost recunoscut in lista furnizorilor acreditati sau lipseste extensia QcStatements. Semnatura poate fi valabila tehnic, dar nu este calificata in sensul eIDAS.`);
+    } else {
+      parts.push(`Cei ${sigCount} semnatar${sigCount > 1 ? 'i' : ''} au utilizat certificate digitale pentru care au fost identificate metadate coerente.`);
+    }
+
+    const validAtSigning = sigs.length > 0 && sigs.every(s => s.certificate?.validAtSigning === true);
+    if (validAtSigning) {
+      parts.push('Valabilitatea temporala a certificatelor la momentul semnarii a fost confirmata.');
+    } else {
+      parts.push('Valabilitatea temporala a certificatelor la momentul semnarii nu a putut fi confirmata integral — a se vedea Sectiunea 3.');
+    }
+
+    if (L5_revoked) {
+      parts.push('ATENTIE: Cel putin un certificat a fost identificat ca REVOCAT la momentul verificarii OCSP.');
+    } else if (L5_ok) {
+      parts.push('Statusul de nerevocare a fost confirmat prin interogare OCSP.');
+    } else {
+      parts.push('Verificarea revocarii (OCSP/CRL) nu a putut fi efectuata pentru toate certificatele — a se vedea detaliile individuale.');
+    }
+
+    conclusion = parts.join(' ');
+    conclusionOk = allSigned && !L1_fail && !L5_revoked && (L6_ok !== false);
   }
 
   // Construim un map email→nume din semnatari și inițiator
@@ -200,7 +237,6 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
       delegatedTo:  s.delegatedTo || null,
       uploadedHash: s.uploadedHash || null,
       signerIP:     (events || []).find(e => e.type === 'SIGNED' && (e.by||'').toLowerCase() === (s.email||'').toLowerCase())?.ip || null,
-      uploadedHash: s.uploadedHash || null,
     })),
     certificates: (cryptoResult?.signatures || []).map(sig => ({
       signerIndex:        sig.index,
@@ -363,15 +399,7 @@ async function _generateReportPdf(report) {
     if (s.uploadedHash) {
       ensureSpace(26);
       page.drawText('Hash PDF semnat (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 11;
-      page.drawText(s.uploadedHash.substring(0,42), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
-      if (s.uploadedHash.length > 42) { page.drawText(s.uploadedHash.substring(42), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9; }
-    }
-    if (s.uploadedHash) {
-      ensureSpace(26);
-      page.drawText('Hash PDF semnat (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 11;
-      page.drawText(s.uploadedHash.substring(0,40), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
-      page.drawText(s.uploadedHash.substring(40), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
-    }
+      page.drawText(s.uploadedHash, { x: MARGIN, y, size: 6, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 10;
     y -= 4;
     drawLine();
   }
@@ -379,7 +407,9 @@ async function _generateReportPdf(report) {
   // ══════════════════════════════════════════════════════════════════════
   // ── §3 CERTIFICATE X.509 ──────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════
+  ensureSpace(160);  // §3 — asigurăm că header + primul cert încap
   if (report.certificates.length > 0) {
+    newPage();
     drawSection('CERTIFICATE ELECTRONICE', '§3');
 
     for (const cert of report.certificates) {
@@ -418,8 +448,7 @@ async function _generateReportPdf(report) {
       if (cert.docHash) {
         ensureSpace(26);
         page.drawText('Hash document (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 11;
-        page.drawText(cert.docHash.substring(0,40), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
-        page.drawText(cert.docHash.substring(40), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
+        page.drawText(cert.docHash, { x: MARGIN, y, size: 6, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 10;
       }
 
       // Lanț certificare
@@ -445,7 +474,7 @@ async function _generateReportPdf(report) {
   // ══════════════════════════════════════════════════════════════════════
   // ── §4 VERIFICARI AUTOMATE ────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════
-  ensureSpace(180);
+  ensureSpace(220);  // §4 — 6 niveluri + spațiu
   drawSection('VERIFICARI AUTOMATE', '§4');
 
   const levels6 = report.certificates[0]?.levels || {};
@@ -532,7 +561,7 @@ async function _generateReportPdf(report) {
   // Spațiu necesar: titlu secțiune (24) + chenar concluzie + 16 + QR (100)
   ensureSpace(28 + conclBoxH + 16 + 100);
   y -= 8;
-  drawSection('CONCLUZIE AUTOMATA', '\u00a77');  // §6 via §
+  drawSection('CONCLUZIE AUTOMATA', '§7');  // §6 via §
 
   // Chenar concluzie — desenat cu dimensiuni exacte
   const conclColor  = report.conclusionOk ? rgb(0.94, 0.97, 0.94) : rgb(0.99, 0.97, 0.93);
@@ -589,19 +618,12 @@ async function _generateReportPdf(report) {
       { x: MARGIN, y, size: 8, font: fontR, color: COL.accent, maxWidth: COL_W });
   }
 
-
-  // ══════════════════════════════════════════════════════════════════════
-  // ── §6 CONCLUZIE ─────────────────────────────────────────────────
-  // ══════════════════════════════════════════════════════════════════════
-  ensureSpace(80);
-  y -= 12;
-  drawSection('CONCLUZIE AUTOMATA', '§6');
-
-  // Calculăm înălțimea reală a textului înainte de chenar
   _drawFooter(page, pdf.getPageCount(), fontR, COL, PAGE_W, MARGIN);
 
   const pdfBytes = await pdf.save();
   return Buffer.from(pdfBytes);
+}
+
 }
 
 function _drawFooter(page, pageNum, fontR, COL, PAGE_W, MARGIN) {

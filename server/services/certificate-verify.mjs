@@ -240,18 +240,33 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
         const isEndEntity = currentCert === signerCert;
         chainCerts.push({ ...certInfo2, isEndEntity });
         const serialKey = certInfo2.serialNumber;
-        if (visited.has(serialKey) || certInfo2.isSelfSigned) break;
+        if (visited.has(serialKey)) break;
         visited.add(serialKey);
+        // Self-signed strict: subject DN = issuer DN (nu doar CN)
+        const getDN = rdn => (rdn?.typesAndValues || []).map(tv => tv.value?.valueBlock?.value || '').join('|');
+        if (getDN(currentCert.subject) === getDN(currentCert.issuer)) break;
         // Găsim issuer-ul în celelalte certs
         const issuerCN2 = certInfo2.issuer?.CN || '';
         const next = certs.find(cert => {
           if (!(cert instanceof pkijs.Certificate) || cert === currentCert) return false;
           const subj = cert.subject?.typesAndValues?.find(tv => tv.type === OID.CN)?.value?.valueBlock?.value || '';
-          return subj === issuerCN2 && !visited.has(Buffer.from(cert.serialNumber.valueBlock.valueHex).toString('hex').toUpperCase());
+          const certSerial = Buffer.from(cert.serialNumber.valueBlock.valueHex).toString('hex').toUpperCase();
+          return subj === issuerCN2 && !visited.has(certSerial);
         });
         currentCert = next || null;
       }
-      const chain = chainCerts.length > 0 ? chainCerts : certs.map(c => c instanceof pkijs.Certificate ? _extractCertInfo(c, pkijs) : null).filter(Boolean);
+      // Fallback: dacă chainCerts are < 2 elemente, includem toate certurile non-OCSP
+      const nonOCSP = certs.filter(cert => {
+        if (!(cert instanceof pkijs.Certificate)) return false;
+        const getCN = rdn => rdn?.typesAndValues?.find(tv => tv.type === OID.CN)?.value?.valueBlock?.value || '';
+        return !getCN(cert.subject).toUpperCase().includes('OCSP');
+      });
+      const chain = chainCerts.length >= 2 ? chainCerts :
+        nonOCSP.map(cert => {
+          const ci = _extractCertInfo(cert, pkijs);
+          ci.isEndEntity = cert === signerCert;
+          return ci;
+        });
       result.chain = chain;
       result.levels.L4.ok   = chain.length >= 2;
       result.levels.L4.note = `${chain.length} certificate în lanț`;
