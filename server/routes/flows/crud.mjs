@@ -178,7 +178,7 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
     if (!b64 || typeof b64 !== 'string') {
       if (data.storage === 'drive' && data.driveFileIdFinal) {
         try {
-          const { streamFromDrive } = await import('../drive.mjs');
+          const { streamFromDrive } = await import('../../drive.mjs');
           res.setHeader('Content-Type', 'application/pdf');
           res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
           await streamFromDrive(data.driveFileIdFinal, res); return;
@@ -432,7 +432,7 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
     if (!d.signedPdfB64) {
       if (d.storage === 'drive' && d.driveFileIdFinal) {
         try {
-          const { streamFromDrive } = await import('../drive.mjs');
+          const { streamFromDrive } = await import('../../drive.mjs');
           const safeName2 = (d.docName || 'document').replace(/[^\w\-]+/g, '_');
           res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${safeName2}_semnat.pdf"`);
           await streamFromDrive(d.driveFileIdFinal, res); return;

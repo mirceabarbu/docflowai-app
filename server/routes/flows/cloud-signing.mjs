@@ -91,7 +91,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
       providerData: signer.stsProviderData || {},
     };
 
-    const { STSCloudProvider } = await import('../signing/providers/STSCloudProvider.mjs');
+    const { STSCloudProvider } = await import('../../signing/providers/STSCloudProvider.mjs');
     const provider = new STSCloudProvider();
     const result   = await provider.processOAuthCallback(req.query, session, pdfBytes);
 
@@ -139,7 +139,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     const signer = signers[idx];
     if (!signer.stsPending) return res.json({ status: 'not_pending' });
 
-    const { STSCloudProvider } = await import('../signing/providers/STSCloudProvider.mjs');
+    const { STSCloudProvider } = await import('../../signing/providers/STSCloudProvider.mjs');
     const provider = new STSCloudProvider();
     const pollResult = await provider.pollSignatureResult(
       signer.stsOpId, signer.stsToken, signer.stsSignUrl);

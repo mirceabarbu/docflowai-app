@@ -402,9 +402,10 @@ async function _generateReportPdf(report) {
       ensureSpace(26);
       page.drawText('Hash PDF semnat (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 11;
       page.drawText(s.uploadedHash, { x: MARGIN, y, size: 6, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 10;
+    }
     y -= 4;
     drawLine();
-  }
+  }  // end for signer
 
   // ══════════════════════════════════════════════════════════════════════
   // ── §3 CERTIFICATE X.509 ──────────────────────────────────────────

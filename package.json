@@ -8,7 +8,9 @@
     "start": "node server/index.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "check": "node --check server/index.mjs && node --check server/routes/flows/index.mjs && node --check server/routes/flows/crud.mjs && node --check server/routes/flows/signing.mjs && node --check server/routes/flows/lifecycle.mjs && node --check server/routes/flows/attachments.mjs && node --check server/routes/flows/email.mjs && node --check server/routes/flows/acroform.mjs && node --check server/routes/flows/cloud-signing.mjs",
+    "prebuild": "npm run check"
   },
   "dependencies": {
     "asn1js": "^3.0.7",

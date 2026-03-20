@@ -80,7 +80,7 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     let pdfB64 = data.signedPdfB64 || data.pdfB64 || null;
     if (includeAttachment && !pdfB64 && data.storage === 'drive' && data.driveFileIdFinal) {
       try {
-        const { getBufferFromDrive } = await import('../drive.mjs');
+        const { getBufferFromDrive } = await import('../../drive.mjs');
         const buf = await getBufferFromDrive(data.driveFileIdFinal);
         pdfB64 = buf.toString('base64');
       } catch(driveErr) {
@@ -100,7 +100,7 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     const { html } = emailSendExtern({ flowId, data, signers: signersForTemplate, bodyText, trackingId, appBase });
 
     // Construim payload Resend
-    const { sendSignerEmail } = await import('../mailer.mjs');
+    const { sendSignerEmail } = await import('../../mailer.mjs');
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
     const MAIL_FROM = process.env.MAIL_FROM || 'DocFlowAI <noreply@docflowai.ro>';
 
