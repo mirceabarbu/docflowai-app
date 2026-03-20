@@ -203,7 +203,17 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
   const linkSection = `
       <div style="margin:20px 0;padding:16px 20px;background:#f0f4ff;border:1px solid #c5d0f0;border-radius:10px;border-left:4px solid #7c5cff;">
         <p style="margin:0 0 6px;font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Document disponibil în platformă</p>
-        <p style="margin:0;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong> · Platformă: <a href="${trackedUrl}" style="color:#7c5cff;font-weight:700;text-decoration:none;">DocFlowAI</a></p>
+        <p style="margin:0 0 12px;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong></p>
+        <a href="${trackedUrl}"
+           style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;
+                  padding:10px 24px;border-radius:8px;font-size:13px;font-weight:700;letter-spacing:.3px;"
+           target="_blank">
+          &#128203; Vizitează DocFlowAI
+        </a>
+        <p style="margin:8px 0 0;font-size:11px;color:#5a6a9a;">
+          Dacă butonul nu funcționează, copiați linkul:
+          <span style="color:#7c5cff;word-break:break-all;">${trackedUrl}</span>
+        </p>
       </div>`;
 
   const html = `<!DOCTYPE html>
