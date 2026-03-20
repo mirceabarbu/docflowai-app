@@ -176,8 +176,38 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
     }
 
     // ── L3: Certificat semnatar ──────────────────────────────────────
-    const certs    = sd.certificates || [];
-    const signerCert = certs[0];
+    const certs = sd.certificates || [];
+
+    // Găsim end-entity cert — cel care corespunde signerInfo
+    // (nu CA-ul, nu OCSP responder — cel cu keyUsage digitalSignature și fără isCA)
+    let signerCert = null;
+    const si0 = sd.signerInfos?.[0];
+
+    // Metodă 1: potrivire issuer+serialNumber din signerInfo
+    if (si0?.sid?.issuerAndSerialNumber) {
+      const { issuer, serialNumber } = si0.sid.issuerAndSerialNumber;
+      const targetSerial = Buffer.from(serialNumber.valueBlock.valueHex).toString('hex').toLowerCase();
+      for (const cert of certs) {
+        if (!(cert instanceof pkijs.Certificate)) continue;
+        const certSerial = Buffer.from(cert.serialNumber.valueBlock.valueHex).toString('hex').toLowerCase();
+        if (certSerial === targetSerial) { signerCert = cert; break; }
+      }
+    }
+
+    // Metodă 2: primul cert care NU e CA și NU e self-signed
+    if (!signerCert) {
+      for (const cert of certs) {
+        if (!(cert instanceof pkijs.Certificate)) continue;
+        const isCA = !!cert.extensions?.find(e => e.extnID === OID.BASIC_CONSTR)?.parsedValue?.cA;
+        const get = (rdn, oid) => rdn?.typesAndValues?.find(tv => tv.type === oid)?.value?.valueBlock?.value || '';
+        const isSelf = get(cert.subject, OID.CN) === get(cert.issuer, OID.CN);
+        if (!isCA && !isSelf) { signerCert = cert; break; }
+      }
+    }
+
+    // Fallback: primul cert din listă
+    if (!signerCert) signerCert = certs[0];
+
     result.levels.L3 = { name: 'Certificat semnatar', ok: false };
 
     if (signerCert instanceof pkijs.Certificate) {
@@ -206,7 +236,15 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
       result.levels.L5 = { name: 'Validitate la semnare (OCSP/CRL)', ok: null };
       if (certInfo.ocspUrl) {
         try {
-          const ocsp = await _checkOCSP(signerCert, certs[1], certInfo.ocspUrl, pkijs, asn1js);
+          // Găsim CA-ul direct al signerCert (issuer match)
+        const getIssuerCN = cert => cert?.issuer?.typesAndValues?.find(tv => tv.type === OID.CN)?.value?.valueBlock?.value || '';
+        const signerIssuerCN = getIssuerCN(signerCert);
+        const issuerCertForOCSP = certs.find(cert => {
+          if (!(cert instanceof pkijs.Certificate)) return false;
+          const subjectCN = cert.subject?.typesAndValues?.find(tv => tv.type === OID.CN)?.value?.valueBlock?.value || '';
+          return subjectCN === signerIssuerCN && cert !== signerCert;
+        }) || certs.find(c => c !== signerCert && c instanceof pkijs.Certificate);
+        const ocsp = await _checkOCSP(signerCert, issuerCertForOCSP, certInfo.ocspUrl, pkijs, asn1js);
           result.levels.L5.ok     = ocsp.good;
           result.levels.L5.status = ocsp.status;
           result.levels.L5.note   = ocsp.note;

@@ -41,7 +41,7 @@
     }
     .brand .t{display:flex;flex-direction:column;min-width:0}
     .brand .t .h{font-weight:800;letter-spacing:.2px;line-height:1.05}
-    .brand .t .s{font-size:.82rem;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .brand .t .s{overflow:visible;white-space:nowrap;font-size:.82rem;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
     .btn{
       border:1px solid var(--stroke);
@@ -266,7 +266,7 @@
         <div class="logo">🛡️</div>
         <div class="t">
           <div class="h">DocFlowAI</div>
-          <div class="s" id="subtitle">Vizualizare flow</div>
+          <div id="subtitle" style="font-size:.78rem;color:rgba(234,240,255,.55);white-space:nowrap;overflow:visible;">Vizualizare flow</div>
         </div>
       </div>
       <div class="actions">

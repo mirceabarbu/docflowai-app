@@ -4151,14 +4151,18 @@ async function orgTestWebhook() {
 async function downloadTrustReport(flowId, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳'; }
   try {
-    const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report`, { headers: hdrs() });
+    // Folosim fetch direct cu credentials:include (cookie JWT) dar fără Content-Type JSON
+    const r = await fetch(`/api/flows/${encodeURIComponent(flowId)}/report`, {
+      credentials: 'include',
+      headers: { 'Accept': 'application/pdf' },
+    });
     if (!r.ok) {
       let msg = `Eroare ${r.status}`;
-      try { const jj = await r.json(); msg = jj?.message || jj?.error || msg; } catch {}
+      try { const ct = r.headers.get('content-type') || ''; if (ct.includes('json')) { const j = await r.json(); msg = j?.message || j?.error || msg; } } catch {}
       throw new Error(msg);
     }
     const blob = await r.blob();
-    if (!blob || blob.size < 100) throw new Error('PDF gol — verificati logurile server');
+    if (!blob || blob.size < 100) throw new Error('PDF gol returnat de server');
     const url = URL.createObjectURL(blob);
     const a   = document.createElement('a');
     a.href = url; a.download = `TrustReport_${flowId}.pdf`;

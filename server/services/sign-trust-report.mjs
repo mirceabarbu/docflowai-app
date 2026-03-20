@@ -428,7 +428,7 @@ async function _generateReportPdf(report) {
   // ══════════════════════════════════════════════════════════════════════
   // ── §4 VERIFICARI AUTOMATE ────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════
-  newPage();
+  ensureSpace(180);
   drawSection('VERIFICARI AUTOMATE', '§4');
 
   const levels6 = report.certificates[0]?.levels || {};
@@ -493,27 +493,28 @@ async function _generateReportPdf(report) {
   y -= 12;
   drawSection('CONCLUZIE AUTOMATA', '§6');
 
+  // Calculăm înălțimea reală a textului înainte de chenar
+  const conclWords = report.conclusion.split(' ');
+  const conclLines = []; let cLine = '';
+  for (const w of conclWords) {
+    const t = cLine ? cLine + ' ' + w : w;
+    if (t.length > 82 && cLine) { conclLines.push(cLine); cLine = w; } else { cLine = t; }
+  }
+  if (cLine) conclLines.push(cLine);
+  const conclH = conclLines.length * 14 + 24;
+  ensureSpace(conclH + 20);
   const conclColor  = report.conclusionOk ? rgb(0.94, 0.97, 0.94) : rgb(0.99, 0.97, 0.93);
   const conclBorder = report.conclusionOk ? COL.ok : COL.warn;
   page.drawRectangle({
-    x: MARGIN - 8, y: y - 12, width: COL_W + 16,
-    height: Math.max(60, report.conclusion.length / 3),
-    color: conclColor, borderRadius: 6,
-    borderColor: conclBorder, borderWidth: 1.5,
+    x: MARGIN - 8, y: y - conclH - 4, width: COL_W + 16, height: conclH + 8,
+    color: conclColor, borderRadius: 6, borderColor: conclBorder, borderWidth: 1.5,
   });
-
-  // Împărțim concluzia pe linii
-  const words     = report.conclusion.split(' ');
-  let line = '', lineY = y - 2;
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (test.length > 80 && line) {
-      page.drawText(ro(line), { x: MARGIN, y: lineY, size: 9, font: fontR, color: COL.text, maxWidth: COL_W });
-      lineY -= 13; line = word;
-    } else { line = test; }
+  let lineY = y - 10;
+  for (const ln of conclLines) {
+    page.drawText(ro(ln), { x: MARGIN, y: lineY, size: 8.5, font: fontR, color: rgb(0.08,0.12,0.22), maxWidth: COL_W });
+    lineY -= 14;
   }
-  if (line) page.drawText(ro(line), { x: MARGIN, y: lineY, size: 9, font: fontR, color: COL.text, maxWidth: COL_W });
-  y = lineY - 20;
+  y = lineY - 12;
 
   // ══════════════════════════════════════════════════════════════════════
   // ── §7 QR CODE ────────────────────────────────────────────────────
