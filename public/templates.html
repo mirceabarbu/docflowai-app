@@ -369,7 +369,7 @@ function addSignerRow(target='create', data={}) {
       readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);"/></td>
     <td>
       <select class="s-name-sel" style="width:100%;"><option value="">— Alege utilizator —</option></select>
-
+      <input type="hidden" class="s-email" value="${esc(data.email||'')}"/>
     </td>
         <td><button class="btn danger btnDel" type="button" style="padding:6px 10px;font-size:.8rem;">Șterge</button></td>
   `;
