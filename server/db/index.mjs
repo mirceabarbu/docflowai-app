@@ -26,7 +26,81 @@
         ON organizations USING GIN (signing_providers_enabled);
     `
   },
- * DocFlowAI — DB layer v3.3.4
+
+  {
+    id: '034_signing_trust_tables',
+    sql: `
+      -- Tabel semnături per semnatar (detalii semnare)
+      CREATE TABLE IF NOT EXISTS flow_signatures (
+        id              TEXT        PRIMARY KEY,
+        flow_id         TEXT        NOT NULL,
+        signer_id       TEXT,
+        signer_name     TEXT        NOT NULL,
+        signer_email    TEXT,
+        signer_role     TEXT,
+        signing_order   INTEGER,
+        status          TEXT        NOT NULL DEFAULT 'pending',
+        signed_at       TIMESTAMPTZ,
+        signature_method TEXT,
+        source_file_name TEXT,
+        signed_file_hash TEXT,
+        signature_hash  TEXT,
+        certificate_id  TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_flow_signatures_flow_id
+        ON flow_signatures(flow_id);
+      CREATE INDEX IF NOT EXISTS idx_flow_signatures_certificate_id
+        ON flow_signatures(certificate_id);
+
+      -- Tabel certificate (metadate X.509 per semnătură)
+      CREATE TABLE IF NOT EXISTS signature_certificates (
+        id                      TEXT        PRIMARY KEY,
+        flow_id                 TEXT        NOT NULL,
+        signer_email            TEXT,
+        signer_name             TEXT,
+        certificate_type        TEXT        DEFAULT 'unknown',
+        issuer_name             TEXT,
+        issuer_cn               TEXT,
+        subject_cn              TEXT,
+        subject_serial          TEXT,
+        subject_identifier      TEXT,
+        serial_number           TEXT,
+        valid_from              TIMESTAMPTZ,
+        valid_to                TIMESTAMPTZ,
+        was_valid_at_signing    BOOLEAN     DEFAULT FALSE,
+        revocation_status       TEXT        DEFAULT 'unknown',
+        chain_status            TEXT        DEFAULT 'unknown',
+        trust_status            TEXT        DEFAULT 'unknown',
+        qc_statement_present    BOOLEAN     DEFAULT FALSE,
+        key_usage               TEXT,
+        signature_algorithm     TEXT,
+        digest_algorithm        TEXT,
+        timestamp_present       BOOLEAN     DEFAULT FALSE,
+        timestamp_time          TIMESTAMPTZ,
+        ocsp_url                TEXT,
+        raw_json                JSONB,
+        created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_signature_certificates_flow_id
+        ON signature_certificates(flow_id);
+
+      -- Tabel rapoarte generate (link PDF în Drive sau base64 mic)
+      CREATE TABLE IF NOT EXISTS trust_reports (
+        id          TEXT        PRIMARY KEY,
+        flow_id     TEXT        NOT NULL UNIQUE,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        pdf_url     TEXT,
+        pdf_size    INTEGER,
+        conclusion  TEXT,
+        report_json JSONB
+      );
+      CREATE INDEX IF NOT EXISTS idx_trust_reports_flow_id
+        ON trust_reports(flow_id);
+    \`,
+  }, * DocFlowAI — DB layer v3.3.4
  * Pool PostgreSQL, migrări schema, helpers saveFlow / getFlowData / getUserMapForOrg.
  * NOTA: plain_password pastrat intentionat pentru workflow admin actual.
  *       Migrarea la securitate fara plain_password se face intr-o versiune viitoare.
@@ -609,6 +683,14 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS webhook_events  TEXT[]   NOT NULL DEFAULT '{flow.completed}',
         ADD COLUMN IF NOT EXISTS webhook_enabled BOOLEAN  NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    `
+  },
+  {
+    id: '035_trust_report_pdf_cache',
+    sql: `
+      -- BUG-01 fix: adaugă coloana BYTEA pentru cache PDF raport
+      -- (anterior se stoca doar report_json, PDF-ul era regenerat la fiecare cerere)
+      ALTER TABLE trust_reports ADD COLUMN IF NOT EXISTS report_pdf BYTEA;
     `
   }
 ];

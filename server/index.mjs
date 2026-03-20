@@ -1,5 +1,17 @@
 /**
- * DocFlowAI v3.3.7 — Main entry point (orchestrator)
+ * DocFlowAI v3.3.9 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.3.9 (build din 20.03.2026):
+ *  FIX SEC-02:  rawBody middleware pentru HMAC real pe /signing-callback
+ *
+ * CHANGES v3.3.8 (build din 20.03.2026):
+ *  FIX BUG-01:  chainOk is not defined — crash la generare trust report
+ *  FIX BUG-01b: Cache trust_reports ignorat — regenerare inutila la fiecare cerere
+ *  FIX BUG-03:  createFlow fara requireAuth
+ *  FIX BUG-04:  Stack trace expus in raspuns 500 la /report
+ *  OPT-05:      Buton Raport conformitate adaugat in pagina semnatarului
+ *  OPT-07:      Dynamic import → static import in report.mjs
+ *  DB-033:      Migrare trust_reports — coloana report_pdf BYTEA pentru cache PDF
  *
  * CHANGES v3.3.7 b80:
  *  FIX BUG-N01: archive_jobs recovery la startup (status='processing' > 30min → reset 'pending')
@@ -9,7 +21,7 @@
  */
 
 import express from 'express';
-import { readFileSync } from 'fs';
+import { readFileSync, readFile as _readFile } from 'fs';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -46,7 +58,9 @@ import { injectRateLimiter } from './routes/auth.mjs';
 import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
-import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
+import flowsRouter, { injectFlowDeps } from './routes/flows/index.mjs'; // ARCH-01: modularizat
+import verifyRouter  from './routes/verify.mjs';
+import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
 import templatesRouter from './routes/templates.mjs'; // Q-06: extras din index.mjs
 
@@ -64,8 +78,11 @@ try {
     contentSecurityPolicy: {
       directives: {
         defaultSrc:  ["'self'"],
-        scriptSrc:   ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'],  // staging: permite CDN-urile folosite de pdf-lib/pdf.js
-        styleSrc:    ["'self'", "'unsafe-inline'"],
+        // SEC-03: nonce-based CSP — elimina 'unsafe-inline' din scriptSrc
+        // scriptSrcAttr pastreaza 'unsafe-inline' pentru onclick= etc. (130+ handlere in admin.html)
+        // Eliminarea completa a inline handlers ramane ca tech debt — sprint dedicat
+        scriptSrc:    ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'],
+        styleSrc:     ["'self'", "'unsafe-inline'"],
         scriptSrcAttr:["'unsafe-inline'"],
         imgSrc:      ["'self'", 'data:', 'blob:'],
         connectSrc:  ["'self'", 'wss:', 'ws:'],
@@ -100,6 +117,28 @@ if (corsOrigins === false) {
   logger.warn('CORS_ORIGIN și PUBLIC_BASE_URL lipsesc — CORS blocat pentru toate originile externe. Setați cel puțin PUBLIC_BASE_URL.');
 }
 app.use(cors({ origin: corsOrigins, credentials: true }));
+
+// SEC-02: rawBody capture pentru HMAC real pe /signing-callback
+// Trebuie să ruleze ÎNAINTE de express.json(), altfel body e deja parsat și bytes originali pierduți.
+// Se salvează în req.rawBody DOAR pentru endpoint-ul callback — nu pentru tot traficul.
+app.use((req, res, next) => {
+  if (req.path && req.path.includes('/signing-callback')) {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      req.rawBody = Buffer.concat(chunks);
+      // Re-parse JSON manual ca să nu rupem express.json() downstream
+      if (req.headers['content-type']?.includes('application/json') && req.rawBody.length > 0) {
+        try { req.body = JSON.parse(req.rawBody.toString('utf8')); } catch { req.body = {}; }
+      }
+      next();
+    });
+    req.on('error', next);
+  } else {
+    next();
+  }
+});
+
 // PERF-03: limita globala 1MB — previne body flood pe endpoint-urile cu JSON mic.
 // Rutele care primesc PDF (pdfB64/signedPdfB64/dataB64) au override 50MB in flows.mjs.
 app.use(express.json({ limit: '1mb' }));
@@ -143,11 +182,29 @@ const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, '../public');
 app.use(express.static(PUBLIC_DIR));
 
-app.get('/', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
-app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
-app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'notifications.html')));
-app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
+// SEC-03: Helper — injectează nonce în toate <script> blocurile inline ale unui HTML
+// fs.readFile e disponibil din importul static de la top (import { readFileSync } from 'fs')
+// Folosim varianta async (callback) pentru a nu bloca event loop.
+function sendHtmlWithNonce(res, filePath) {
+  _readFile(filePath, 'utf8', (err, html) => {
+    if (err) { res.status(500).send('Internal Server Error'); return; }
+    const nonce = res.locals.cspNonce || '';
+    // Injectam nonce DOAR pe <script> fara src (inline scripts) — nu pe <script src=...>
+    const patched = html.replace(/<script(?!\s+src=)(\s[^>]*)?>/gi, (match, attrs) => {
+      if (match.includes('nonce=')) return match;
+      return `<script nonce="${nonce}"${attrs || ''}>`;
+    });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(patched);
+  });
+}
+
+app.get('/', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
+app.get('/login', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'login.html')));
+app.get('/admin', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'admin.html')));
+app.get('/notifications', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'notifications.html')));
+app.get('/verifica', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'verifica.html')));
+app.get('/templates', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'templates.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
 // ── API Docs — OpenAPI 3.0 ───────────────────────────────────────────────────
@@ -643,7 +700,87 @@ injectWebhookBaseUrl(process.env.PUBLIC_BASE_URL || '');
 app.use('/', authRouter);
 app.use('/', notifRouter);
 app.use('/', adminRouter);
+// Rute publice verificare (fără autentificare)
+app.use('/', verifyRouter);
+app.use('/', reportRouter);
 app.use('/', flowsRouter);
+
+// ── Tracking routes neutre (fara 'email'/'click' in path — mai putin blocate de Yahoo/Outlook) ──
+// /d/:trackingId — click tracking (d = document)
+// /p/:trackingId — pixel tracking (p = pixel)
+// Ambele sunt aliases pentru endpoint-urile din flows/email.mjs
+app.get('/d/:trackingId', async (req, res) => {
+  // Forward catre handler-ul email-click
+  req.params.trackingId = req.params.trackingId;
+  const safeDest = 'https://www.docflowai.ro';
+  res.redirect(302, safeDest);
+  // Procesam tracking async
+  setImmediate(async () => {
+    try {
+      const { trackingId } = req.params;
+      if (!trackingId) return;
+      const { rows } = await pool.query(
+        `SELECT flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        [JSON.stringify([{ trackingId }])]
+      );
+      if (!rows.length) return;
+      const flowId = rows[0].flow_id;
+      const data = await getFlowData(flowId);
+      if (!data) return;
+      const events = Array.isArray(data.events) ? data.events : [];
+      const emailEv = events.find(e => e.trackingId === trackingId);
+      if (!emailEv) return;
+      if (events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId)) return;
+      const now = new Date().toISOString();
+      const ip  = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
+      const ua  = (req.headers['user-agent'] || '').substring(0, 200);
+      data.events.push({ at: now, type: 'EMAIL_OPENED', trackingId, to: emailEv.to, by: emailEv.by, ip, userAgent: ua });
+      data.updatedAt = now;
+      await saveFlow(flowId, data);
+      writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
+        actorEmail: emailEv.to, actorIp: ip,
+        payload: { trackingId, sentBy: emailEv.by, via: 'click', userAgent: ua } });
+      logger.info({ flowId, trackingId, ip }, '📬 Email deschis (click /d/)');
+    } catch(e) { logger.warn({ err: e }, '/d/ tracking error'); }
+  });
+});
+
+app.get('/p/:trackingId', async (req, res) => {
+  // Pixel GIF 1x1 transparent
+  const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64');
+  res.setHeader('Content-Type','image/gif');
+  res.setHeader('Cache-Control','no-store,no-cache,must-revalidate');
+  res.setHeader('Pragma','no-cache');
+  res.end(GIF);
+  setImmediate(async () => {
+    try {
+      const { trackingId } = req.params;
+      if (!trackingId) return;
+      const { rows } = await pool.query(
+        `SELECT flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        [JSON.stringify([{ trackingId }])]
+      );
+      if (!rows.length) return;
+      const flowId = rows[0].flow_id;
+      const data = await getFlowData(flowId);
+      if (!data) return;
+      const events = Array.isArray(data.events) ? data.events : [];
+      const emailEv = events.find(e => e.trackingId === trackingId);
+      if (!emailEv) return;
+      if (events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId)) return;
+      const now = new Date().toISOString();
+      const ip  = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
+      const ua  = (req.headers['user-agent'] || '').substring(0, 200);
+      data.events.push({ at: now, type: 'EMAIL_OPENED', trackingId, to: emailEv.to, by: emailEv.by, ip, userAgent: ua });
+      data.updatedAt = now;
+      await saveFlow(flowId, data);
+      writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
+        actorEmail: emailEv.to, actorIp: ip,
+        payload: { trackingId, sentBy: emailEv.by, via: 'pixel', userAgent: ua } });
+      logger.info({ flowId, trackingId, ip }, '📬 Email deschis (pixel /p/)');
+    } catch(e) { logger.warn({ err: e }, '/p/ tracking error'); }
+  });
+});
 app.use('/admin/outreach', outreachRouter);
 app.use('/', templatesRouter);         // Q-06: Template CRUD
 

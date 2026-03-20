@@ -175,7 +175,7 @@ export function emailVerifyGws({ verifyUrl, numeUser }) {
  * @param {Array}  p.signers     — lista semnatarilor normalizată [{name,rol,status,signedAt}]
  * @param {string} p.bodyText    — textul personalizat al mesajului (opțional)
  */
-export function emailSendExtern({ flowId, data, signers = [], bodyText = '' }) {
+export function emailSendExtern({ flowId, data, signers = [], bodyText = '', trackingId = null, appBase = '' }) {
   const statusColor = (st) => st === 'semnat' ? '#1a7a4a' : st === 'refuzat' ? '#b03030' : '#7c5cff';
   const statusBg    = (st) => st === 'semnat' ? '#d4f5e5' : st === 'refuzat' ? '#fde8e8' : '#ede8ff';
 
@@ -193,10 +193,35 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '' }) {
     ? `<p style="margin:0 0 24px;line-height:1.8;color:#1a1a1a;font-size:14px;white-space:pre-line;">${bodyText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</p>`
     : '';
 
+  // Click tracking — link-ul "DocFlowAI" duce la docflowai.ro (site public)
+  // Destinatarul emailului extern nu are cont în platformă
+  const platformUrl = 'https://www.docflowai.ro';
+  // URL tracking neutral — /d/:id nu contine "click"/"track"/"email" => mai putin blocat de Yahoo/Outlook
+  const trackedUrl  = trackingId && appBase
+    ? `${appBase}/d/${trackingId}`
+    : platformUrl;
+
   const linkSection = `
       <div style="margin:20px 0;padding:16px 20px;background:#f0f4ff;border:1px solid #c5d0f0;border-radius:10px;border-left:4px solid #7c5cff;">
         <p style="margin:0 0 6px;font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Document disponibil în platformă</p>
-        <p style="margin:0;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong> · Platformă: <strong>DocFlowAI</strong></p>
+        <p style="margin:0 0 14px;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong></p>
+        <!-- Buton compatibil email clients (table-based — funcționează în Yahoo, Outlook, Gmail) -->
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+          <tr>
+            <td style="border-radius:8px;background:#7c5cff;">
+              <a href="${trackedUrl}" target="_blank"
+                 style="display:inline-block;padding:11px 28px;font-family:'Segoe UI',Arial,sans-serif;
+                        font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;
+                        border-radius:8px;border:1px solid #7c5cff;">
+                &#128203; Vizitează DocFlowAI
+              </a>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:10px 0 0;font-size:11px;color:#5a6a9a;">
+          Dacă butonul nu funcționează, accesați direct:
+          <a href="${trackedUrl}" style="color:#7c5cff;word-break:break-all;">${trackedUrl}</a>
+        </p>
       </div>`;
 
   const html = `<!DOCTYPE html>
@@ -222,22 +247,7 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '' }) {
         <tr><td style="padding:4px 0;color:#5a6a9a;font-weight:600;">Flow ID</td><td style="color:#7c5cff;font-family:monospace;font-size:12px;">${flowId}</td></tr>
       </table>
     </div>
-    <div style="background:#fff;border:1px solid #dde4f5;border-radius:10px;margin-bottom:20px;overflow:hidden;">
-      <div style="padding:10px 20px;background:#f8faff;border-bottom:1px solid #dde4f5;">
-        <span style="font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Semnatari</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead>
-          <tr style="background:#f0f4ff;">
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Nume</th>
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Rol</th>
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Status</th>
-            <th style="padding:8px 12px;text-align:left;color:#5a6a9a;font-size:11px;font-weight:700;border-bottom:1px solid #dde4f5;">Data</th>
-          </tr>
-        </thead>
-        <tbody>${signersTable}</tbody>
-      </table>
-    </div>
+    <!-- Tabelul semnatarilor eliminat din emailul extern — detalii disponibile în PDF-ul atașat și în platformă -->
     <div style="background:#fff;border:1px solid #dde4f5;border-radius:10px;padding:20px 24px;margin-bottom:20px;">
       ${customBody || '<p style="margin:0;color:#1a1a1a;font-size:14px;">Vă transmitem atașat documentul semnat electronic.</p>'}
     </div>

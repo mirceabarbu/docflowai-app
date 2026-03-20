@@ -72,6 +72,8 @@ export function injectFlowDeps(deps) {
 const createFlow = async (req, res) => {
   try {
     if (requireDb(res)) return;
+    // BUG-03 fix: createFlow necesita autentificare — orice utilizator autentificat poate crea fluxuri
+    const actor = requireAuth(req, res); if (!actor) return;
     const body = req.body || {};
     const docName = String(body.docName || '').trim();
     const initName = String(body.initName || '').trim();
@@ -1344,9 +1346,15 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { flowId } = req.params;
-    const { to, subject, bodyText } = req.body || {};
-    const includeAttachment = true;  // întotdeauna atașăm PDF-ul semnat
-    const includeLink = true;        // întotdeauna includem referința Flow ID
+    const { to, subject, bodyText, extraAttachments = [] } = req.body || {};
+    // extraAttachments: [{ filename, dataB64 }] — fișiere suplimentare alese de user
+    // Nu se salvează în DB, doar atașate la email
+    const includeAttachment = true;
+    const includeLink = true;
+
+    // Generăm un tracking ID unic pentru acest email
+    const trackingId = crypto.randomUUID();
+    const appBase    = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
 
     // Validare
     if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()))
@@ -1389,7 +1397,7 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
       signedAt: s.signedAt || null,
       status: s.status === 'signed' ? 'semnat' : s.status === 'refused' ? 'refuzat' : 'în așteptare',
     }));
-    const { html } = emailSendExtern({ flowId, data, signers: signersForTemplate, bodyText });
+    const { html } = emailSendExtern({ flowId, data, signers: signersForTemplate, bodyText, trackingId, appBase });
 
     // Construim payload Resend
     const { sendSignerEmail } = await import('../mailer.mjs');
@@ -1398,13 +1406,28 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
 
     if (!RESEND_API_KEY) return res.status(503).json({ error: 'mail_not_configured', message: 'Email-ul nu este configurat pe server.' });
 
-    const payload = { from: MAIL_FROM, to: to.trim(), subject: subject.trim(), html };
+    // Tracking primar: click pe link-ul "DocFlowAI" din email (funcționează și cu imagini blocate)
+    // Tracking secundar: pixel GIF 1x1 ca fallback (blocat de mulți clienți de email instituționali)
+    const trackingPixelUrl = `${appBase}/flows/${flowId}/email-open/${trackingId}`;
+    const htmlWithTracking = html.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none;border:0;" alt="" /></body>`);
+
+    const payload = { from: MAIL_FROM, to: to.trim(), subject: subject.trim(), html: htmlWithTracking };
+    const attachments = [];
+
     if (includeAttachment && pdfB64) {
       const pdfName = `${(data.docName || flowId).replace(/[^a-zA-Z0-9_\-\.]/g, '_')}_semnat.pdf`;
-      // Strip data URL prefix dacă există (Resend necesită base64 curat)
       const cleanPdfB64 = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-      payload.attachments = [{ filename: pdfName, content: cleanPdfB64 }];
+      attachments.push({ filename: pdfName, content: cleanPdfB64 });
     }
+
+    // Atașamente suplimentare trimise de user (max 20MB total, verificat în frontend)
+    for (const att of extraAttachments) {
+      if (!att.filename || !att.dataB64) continue;
+      const clean = att.dataB64.includes(',') ? att.dataB64.split(',')[1] : att.dataB64;
+      attachments.push({ filename: att.filename, content: clean });
+    }
+
+    if (attachments.length > 0) payload.attachments = attachments;
 
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -1417,20 +1440,147 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
       return res.status(502).json({ error: 'send_failed', message: j?.message || 'Eroare la trimiterea emailului.' });
     }
 
-    // Audit log
+    // Audit log cu trackingId
     const now = new Date().toISOString();
     if (!Array.isArray(data.events)) data.events = [];
-    data.events.push({ at: now, type: 'EMAIL_SENT', by: actor.email, to: to.trim(), subject: subject.trim() });
+    data.events.push({
+      at: now, type: 'EMAIL_SENT', by: actor.email,
+      to: to.trim(), subject: subject.trim(),
+      trackingId,
+      extraAttachmentsCount: extraAttachments.length,
+    });
     await saveFlow(flowId, data);
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_SENT', actorIp: _getIp(req), actorEmail: actor.email, payload: { to: to.trim(), subject: subject.trim(), resendId: j.id } });
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_SENT',
+      actorIp: _getIp(req), actorEmail: actor.email,
+      payload: { to: to.trim(), subject: subject.trim(), resendId: j.id, trackingId } });
 
-    logger.info(`📧 Flow ${flowId} trimis extern către ${to} de ${actor.email}`);
-    return res.json({ ok: true, resendId: j.id });
+    logger.info({ flowId, to, actor: actor.email, trackingId }, '📧 Email extern trimis');
+    return res.json({ ok: true, resendId: j.id, trackingId });
   } catch(e) { logger.error({ err: e }, 'send-email error'); return res.status(500).json({ error: 'server_error', message: String(e.message) }); }
 });
 
 
 
+
+
+// ── GET /flows/:flowId/email-open/:trackingId — pixel tracking deschidere email ──
+// Apelat automat de clientul de email când deschide mesajul (img 1x1).
+// Non-autentificat, răspunde cu GIF transparent 1x1.
+router.get('/flows/:flowId/email-open/:trackingId', async (req, res) => {
+  // GIF transparent 1x1 px
+  const gif1x1 = Buffer.from(
+    'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.setHeader('Content-Type',  'image/gif');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma',        'no-cache');
+  res.setHeader('Expires',       '0');
+  res.end(gif1x1);
+
+  // Procesăm async — nu blocăm răspunsul
+  setImmediate(async () => {
+    try {
+      if (requireDb({ status: () => {} })) return;
+      const { flowId, trackingId } = req.params;
+      const data = await getFlowData(flowId);
+      if (!data) return;
+
+      const events = Array.isArray(data.events) ? data.events : [];
+      // Găsim evenimentul EMAIL_SENT cu acest trackingId
+      const emailEv = events.find(e => e.type === 'EMAIL_SENT' && e.trackingId === trackingId);
+      if (!emailEv) return;
+
+      // Nu înregistrăm deschideri multiple (de-duplicare simplă pe trackingId)
+      const alreadyOpened = events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId);
+      if (alreadyOpened) return;
+
+      const now = new Date().toISOString();
+      const ip  = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
+      const ua  = (req.headers['user-agent'] || '').substring(0, 200);
+
+      data.events.push({
+        at:         now,
+        type:       'EMAIL_OPENED',
+        trackingId,
+        to:         emailEv.to,
+        by:         emailEv.by,       // cel care a trimis
+        ip,
+        userAgent:  ua,
+      });
+      data.updatedAt = now;
+      await saveFlow(flowId, data);
+
+      // Scriem și în audit_log pentru accesuri înregistrate
+      writeAuditEvent({
+        flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
+        actorEmail: emailEv.to,   // destinatarul care a deschis
+        actorIp: ip,
+        payload: { trackingId, sentBy: emailEv.by, userAgent: ua },
+      });
+
+      logger.info({ flowId, trackingId, to: emailEv.to, ip }, '📬 Email deschis');
+    } catch(e) {
+      logger.warn({ err: e }, 'email-open tracking error (non-fatal)');
+    }
+  });
+});
+
+
+// ── GET /flows/email-click/:trackingId — click tracking email extern ──────
+// Link-ul "DocFlowAI" din email trece prin acest endpoint → redirect 302 → URL original.
+// Nu necesită autentificare. Înregistrează EMAIL_OPENED la primul click.
+router.get('/flows/email-click/:trackingId', async (req, res) => {
+  const { trackingId } = req.params;
+  const dest    = req.query.u ? decodeURIComponent(req.query.u) : (process.env.PUBLIC_BASE_URL || '/');
+  const safeDest = /^https?:\/\//.test(dest) ? dest : (process.env.PUBLIC_BASE_URL || '/');
+
+  // Redirect imediat — nu blocăm utilizatorul
+  res.redirect(302, safeDest);
+
+  // Procesăm async
+  setImmediate(async () => {
+    try {
+      if (!trackingId) return;
+      // Găsim fluxul după trackingId
+      const { rows } = await pool.query(
+        `SELECT flow_id FROM flows
+         WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        [JSON.stringify([{ trackingId }])]
+      );
+      if (!rows.length) return;
+      const flowId = rows[0].flow_id;
+      const data   = await getFlowData(flowId);
+      if (!data) return;
+
+      const events = Array.isArray(data.events) ? data.events : [];
+      const emailEv = events.find(e => e.trackingId === trackingId);
+      if (!emailEv) return;
+
+      // Deduplicare — înregistrăm o singură dată per trackingId
+      const alreadyOpened = events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId);
+      if (alreadyOpened) return;
+
+      const now = new Date().toISOString();
+      const ip  = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
+      const ua  = (req.headers['user-agent'] || '').substring(0, 200);
+
+      data.events.push({
+        at: now, type: 'EMAIL_OPENED', trackingId,
+        to: emailEv.to, by: emailEv.by, ip, userAgent: ua,
+      });
+      data.updatedAt = now;
+      await saveFlow(flowId, data);
+
+      writeAuditEvent({
+        flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
+        actorEmail: emailEv.to, actorIp: ip,
+        payload: { trackingId, sentBy: emailEv.by, via: 'click', userAgent: ua },
+      });
+      logger.info({ flowId, trackingId, to: emailEv.to, ip }, '📬 Email deschis (click)');
+    } catch(e) {
+      logger.warn({ err: e }, 'email-click tracking error (non-fatal)');
+    }
+  });
+});
 
 // ── POST /flows/detect-acroform-fields ───────────────────────────────────
 // Extrage câmpurile de semnătură din PDF.
@@ -1625,6 +1775,10 @@ router.post('/flows/detect-acroform-fields', _largePdf, async (req, res) => {
     return res.status(500).json({ error: 'server_error', message: String(e.message) });
   }
 });
+
+
+
+
 
 
 // ── GET /flows/sts-oauth-callback — callback OAuth2 de la STS IDP ─────────
@@ -2001,9 +2155,9 @@ router.post('/flows/:flowId/signing-callback', async (req, res) => {
     const providerConfig = orgConfig[providerId] || {};
     const provider = getProvider(providerId);
 
-    // Raw body pentru verificare HMAC (express.json() l-a parsat deja — folosim JSON.stringify ca aproximare)
-    // TODO: pentru HMAC corect, adaugă middleware rawBody în express config
-    const rawBody     = JSON.stringify(req.body);
+    // Raw body pentru verificare HMAC — dacă middleware-ul l-a capturat îl folosim direct,
+    // altfel fallback la JSON.stringify (aproximare — corect 99% dacă body e simplu JSON).
+    const rawBody     = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
     const sigHeader   = req.headers['x-docflowai-signature'] || req.headers['x-signature'] || '';
 
     const result = await provider.handleCallback(req.body, rawBody, sigHeader, providerConfig);

@@ -388,7 +388,10 @@ th{ color: var(--sub) !important; }
           <div id="completedBox" style="display:none; margin-top:16px; background:rgba(45,212,191,.08); border:1px solid rgba(45,212,191,.3); border-radius:14px; padding:16px;">
             <div style="font-weight:700; margin-bottom:8px;">✅ Document semnat complet de toți semnatarii!</div>
             <div class="muted" style="margin-bottom:12px;">Inițiatorul a fost notificat și poate descărca PDF-ul final semnat calificat.</div>
-            <a id="btnDownloadFinalPdf" href="#" class="btn" style="display:inline-block; text-decoration:none;" target="_blank">🏅 Descarcă PDF final semnat calificat</a>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+              <a id="btnDownloadFinalPdf" href="#" class="btn" style="display:inline-block; text-decoration:none;" target="_blank">🏅 Descarcă PDF final semnat calificat</a>
+              <button id="btnTrustReportSigner" class="btn" style="background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.35);color:#b39dff;" title="Generează Raport de Conformitate (Signing Trust Report)">📜 Raport conformitate</button>
+            </div>
             <div id="pdfGenStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
           </div>
 
@@ -398,6 +401,8 @@ th{ color: var(--sub) !important; }
 
     <script>
       const $ = (id) => document.getElementById(id);
+      // SEC-01: esc pentru innerHTML cu date externe
+      function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
       function showError(msg) {
         $("err").classList.remove("hidden");
@@ -844,6 +849,31 @@ th{ color: var(--sub) !important; }
           $("result").textContent = "";
           throw e;
         }
+      }
+
+      // OPT-05: Buton Raport Trust în pagina semnatarului
+      const _btnReportSigner = $("btnTrustReportSigner");
+      if (_btnReportSigner) {
+        _btnReportSigner.addEventListener("click", async () => {
+          _btnReportSigner.disabled = true;
+          _btnReportSigner.textContent = "⏳ Se generează...";
+          try {
+            const r = await _apiFetch(`/api/flows/${encodeURIComponent(flow)}/report?force=1`);
+            if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || j.error || "Eroare server"); }
+            const blob = await r.blob();
+            if (!blob || blob.size < 100) throw new Error("PDF gol returnat de server");
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = `TrustReport_${flow}.pdf`;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a); URL.revokeObjectURL(url);
+          } catch (e) {
+            alert("❌ Eroare generare raport: " + e.message);
+          } finally {
+            _btnReportSigner.disabled = false;
+            _btnReportSigner.textContent = "📜 Raport conformitate";
+          }
+        });
       }
 
       $("btnRefresh").addEventListener("click", async () => {
@@ -1467,7 +1497,7 @@ th{ color: var(--sub) !important; }
             await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
           }
         } catch(e) {
-          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + e.message + '</p>';
+          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + esc(e.message) + '</p>';
         }
       }
       // ── End PDF.js renderer ────────────────────────────────────────────────

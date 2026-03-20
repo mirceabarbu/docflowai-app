@@ -1339,6 +1339,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         'FLOW_COMPLETED': 'FLUX FINALIZAT', 'FLOW_CANCELLED': 'FLUX ANULAT', 'REFUSED': 'REFUZAT',
         'DELEGATED': 'DELEGAT', 'PDF_DOWNLOADED': 'PDF DESCARCAT', 'REMINDER': 'REMINDER TRIMIS',
         'YOUR_TURN': 'NOTIFICARE RAND', 'EMAIL_SENT': 'EMAIL EXTERN TRIMIS',
+        'EMAIL_OPENED': 'EMAIL DESCHIS DE DESTINATAR',
       };
       const evLabel = (type) => EVENT_LABELS_RO[type] || (type||'').replace(/_/g, ' ');
       const pdfDoc = await PDFDocument.create();
@@ -1567,8 +1568,26 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         }
         return lines;
       };
+      // Construim userMap ÎNAINTE de renderEvent (evităm TDZ cu let)
+      const userMap = {};
+      try {
+        const { rows: uRows } = await pool.query('SELECT email, nume FROM users WHERE org_id = $1', [data.orgId]);
+        uRows.forEach(u => { if (u.email) userMap[u.email.toLowerCase()] = u; });
+        for (const s of (data.signers || [])) {
+          if (s.email && !userMap[s.email.toLowerCase()])
+            userMap[s.email.toLowerCase()] = { email: s.email, nume: s.name || s.email };
+        }
+      } catch { /* non-fatal */ }
+
       const renderEvent = (e, dimmed) => {
-        const detail = [e.by ? `de:${e.by}` : '', e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `catre:${e.to}` : ''].filter(Boolean).join('  ');
+        // Înlocuim email cu Nume Prenume din userMap dacă există
+        const resolveActor = (email) => {
+          if (!email) return '';
+          const u = userMap[(email || '').toLowerCase()];
+          return u?.nume || email;
+        };
+        const actorLabel = e.by ? `de:${resolveActor(e.by)}` : '';
+        const detail = [actorLabel, e.channel ? `via:${e.channel}` : '', e.reason ? `motiv:${e.reason}` : '', e.to ? `catre:${e.to}` : ''].filter(Boolean).join('  ');
         const detailLines = detail ? estimateLines(ro(detail), EVENT_DETAIL_MAX_W, fontR, EVENT_FONT_SIZE) : 0;
         const rowH = EVENT_LINE_H + detailLines * EVENT_LINE_H + 3;
         ensureSpace(rowH + 2);
@@ -1624,7 +1643,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           `SELECT event_type, actor_email, actor_ip, created_at, payload
            FROM audit_log
            WHERE flow_id = $1
-             AND event_type IN ('PDF_DOWNLOADED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED','DELEGATED','FLOW_CANCELLED','FLOW_CREATED','FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW','EMAIL_SENT')
+             AND event_type IN ('PDF_DOWNLOADED','SIGNED','SIGNED_PDF_UPLOADED','REFUSED','DELEGATED','FLOW_CANCELLED','FLOW_CREATED','FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW','EMAIL_SENT','EMAIL_OPENED')
            ORDER BY created_at ASC`,
           [flowId]
         );
@@ -1648,11 +1667,15 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
           ensureSpace(14);
           const ts = fmtDate(ar.created_at);
           const evType = evLabel(ar.event_type || '');
-          const actor = (ar.actor_email || '').slice(0, 30);
+          // Afișăm Nume Prenume dacă există în userMap, altfel emailul
+          const actorUser = userMap[(ar.actor_email || '').toLowerCase()] || {};
+          const actor = (actorUser.nume || ar.actor_email || '—').slice(0, 30);
           const ip = ar.actor_ip || '—';
           const rowColor = ar.event_type === 'REFUSED' || ar.event_type === 'FLOW_CANCELLED'
             ? rgb(0.6,0.1,0.1)
-            : ar.event_type === 'FLOW_CREATED' ? rgb(0.1,0.4,0.1) : rgb(0.25,0.25,0.35);
+            : ar.event_type === 'FLOW_CREATED' ? rgb(0.1,0.4,0.1)
+            : ar.event_type === 'EMAIL_OPENED' ? rgb(0.1,0.45,0.3)
+            : rgb(0.25,0.25,0.35);
           page.drawText(ro(ts),     { x:MARGIN,     y, size:7.5, font:fontR, color:rgb(0.3,0.3,0.3), maxWidth:125 });
           page.drawText(ro(evType), { x:MARGIN+130, y, size:7.5, font:fontB, color:rowColor, maxWidth:115 });
           page.drawText(ro(actor),  { x:MARGIN+250, y, size:7,   font:fontR, color:rgb(0.3,0.3,0.3), maxWidth:135 });

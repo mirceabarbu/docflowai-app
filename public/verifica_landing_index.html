@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DocFlowAI – Platformă instituțională de management documentar — Circuit documente & semnare electronică</title>
+  <meta name="description" content="DocFlowAI – Platformă instituțională de management documentar automatizează circuitul documentelor: fluxuri multi-semnatar, notificări live, audit complet și arhivare electronică securizată. Pregătit pentru integrare cu un provider de semnătură electronică calificată." />
+  <meta name="robots" content="index,follow" />
+  <link rel="preload" as="image" href="/Logo.png" />
+
+  <style>
+    :root{
+      --bg:#070c1a;
+      --card:rgba(12,20,40,.78);
+      --card2:rgba(12,20,40,.62);
+      --text:#e8eeff;
+      --sub:#b8c8f0;
+      --muted:#6b82b8;
+      --line:rgba(255,255,255,.08);
+      --line2:rgba(255,255,255,.14);
+      --v:#6c4ff0;
+      --t:#1ec8ae;
+      --o:#f06c4f;
+      --shadow:0 24px 70px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+      background:var(--bg); color:var(--text); overflow-x:hidden; line-height:1.6;
+    }
+    body::before{
+      content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+      background:
+        radial-gradient(900px 600px at 15% 0%, rgba(108,79,240,.22), transparent 65%),
+        radial-gradient(700px 500px at 88% 15%, rgba(30,200,174,.16), transparent 60%),
+        radial-gradient(600px 400px at 50% 100%, rgba(108,79,240,.12), transparent 60%);
+    }
+    body::after{
+      content:""; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.55;
+      background-image:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cg fill='%23ffffff' fill-opacity='0.015'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    .wrap{max-width:1120px;margin:0 auto;padding:0 22px;position:relative;z-index:1}
+    .divider{height:1px;background:var(--line);margin:0}
+
+    /* Nav */
+    nav{
+      position:sticky; top:0; z-index:100;
+      background:rgba(7,12,26,.82);
+      backdrop-filter: blur(18px) saturate(1.4);
+      border-bottom:1px solid var(--line);
+      padding:16px 0;
+    }
+    .nav-inner{max-width:1120px;margin:0 auto;padding:0 22px;display:flex;gap:16px;align-items:center;justify-content:space-between}
+    .brand{display:flex;align-items:center;gap:12px;text-decoration:none}
+    .brand img{height:44px;width:auto;opacity:.95}
+    .nav-links{display:flex;gap:6px;flex-wrap:wrap}
+    .nav-link{
+      padding:7px 14px;border-radius:999px;border:1px solid transparent;
+      color:var(--sub);text-decoration:none;font-size:14px;transition:all .2s;
+    }
+    .nav-link:hover{border-color:var(--line2);color:var(--text)}
+    .nav-cta{
+      padding:8px 18px;border-radius:999px;
+      background:linear-gradient(135deg,var(--v),var(--t));
+      color:#fff;text-decoration:none;font-size:14px;font-weight:700;
+      box-shadow:0 0 24px rgba(108,79,240,.35);
+      transition:filter .2s, box-shadow .2s;
+      white-space:nowrap;
+    }
+    .nav-cta:hover{filter:brightness(1.07);box-shadow:0 0 34px rgba(108,79,240,.55)}
+    @media(max-width:640px){.nav-links{display:none}}
+
+    /* Hero */
+    .hero{
+      padding:92px 0 70px;
+      display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:center;
+    }
+    @media(max-width:900px){.hero{grid-template-columns:1fr;padding:64px 0 54px}}
+    .eyebrow{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:6px 14px;border-radius:999px;
+      border:1px solid rgba(108,79,240,.35);
+      background:rgba(108,79,240,.10);
+      font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+      color:#a898ff;margin-bottom:20px;
+    }
+    .eyebrow span{width:6px;height:6px;border-radius:50%;background:var(--v);display:inline-block;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+
+    h1{font-size:clamp(38px,5vw,56px);font-weight:900;line-height:1.05;letter-spacing:-.02em;margin-bottom:18px}
+    .grad{
+      background:linear-gradient(135deg,#a898ff 0%, var(--t) 60%, #7ef8ea 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .lead{font-size:17px;color:var(--sub);line-height:1.7;margin-bottom:28px;max-width:540px}
+    .hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+    .btn{
+      display:inline-flex;align-items:center;justify-content:center;gap:9px;
+      padding:13px 22px;border-radius:14px;border:1px solid var(--line2);
+      background:rgba(255,255,255,.04);
+      color:var(--text);text-decoration:none;font-weight:750;
+      transition:transform .15s, background .2s, border-color .2s;
+    }
+    .btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.22)}
+    .btn.primary{
+      border:none;
+      background:linear-gradient(135deg,var(--v),var(--t));
+      box-shadow:0 10px 34px rgba(108,79,240,.35);
+    }
+    .badges{display:flex;gap:10px;flex-wrap:wrap}
+    .badge{
+      display:inline-flex;align-items:center;gap:7px;
+      padding:6px 12px;border-radius:999px;
+      border:1px solid var(--line);background:rgba(255,255,255,.04);
+      font-size:12.5px;color:var(--sub);
+    }
+    .dot{width:7px;height:7px;border-radius:50%}
+    .dot.v{background:var(--v)} .dot.t{background:var(--t)} .dot.o{background:var(--o)}
+
+    /* Product preview */
+    .preview{
+      background:var(--card);
+      border:1px solid var(--line2);
+      border-radius:22px;
+      padding:22px;
+      box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.07);
+      backdrop-filter: blur(12px);
+    }
+    .pv-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+    .pv-title{font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--sub)}
+    .pv-live{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid rgba(30,200,174,.25);background:rgba(30,200,174,.12);font-size:11px;color:var(--t);font-weight:800}
+    .pv-live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--t);display:inline-block;animation:pulse 2s infinite}
+    .steps{display:flex;flex-direction:column;gap:10px}
+    .step{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.03)}
+    .step.done{border-color:rgba(30,200,174,.22);background:rgba(30,200,174,.05)}
+    .step.active{border-color:rgba(108,79,240,.38);background:rgba(108,79,240,.08)}
+    .ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+    .ic.done{background:rgba(30,200,174,.18)} .ic.active{background:rgba(108,79,240,.22)} .ic.wait{background:rgba(255,255,255,.06)}
+    .sinfo{flex:1;min-width:0}
+    .sl{font-size:13px;font-weight:800}
+    .ss{font-size:11.5px;color:var(--muted);margin-top:1px}
+    .sb{font-size:10.5px;font-weight:900;padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:rgba(255,255,255,.05);letter-spacing:.04em}
+    .sb.done{border-color:rgba(30,200,174,.25);color:var(--t);background:rgba(30,200,174,.14)}
+    .sb.active{border-color:rgba(108,79,240,.35);color:#b0a0ff;background:rgba(108,79,240,.20)}
+    .hint{margin-top:12px;padding:10px 14px;border-radius:12px;border:1px solid rgba(108,79,240,.20);background:rgba(108,79,240,.10);color:#c0b8ff;font-size:12px;display:flex;gap:8px;align-items:center}
+
+    /* Sections */
+    section{padding:72px 0}
+    .label{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:5px 13px;border-radius:999px;
+      border:1px solid var(--line2);
+      background:rgba(255,255,255,.04);
+      font-size:11px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
+      color:var(--muted);margin-bottom:14px;
+    }
+    h2{font-size:clamp(26px,3.5vw,36px);font-weight:900;line-height:1.15;margin-bottom:12px}
+    .slead{font-size:17px;color:var(--sub);max-width:640px;line-height:1.7}
+
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:42px}
+    @media(max-width:900px){.grid3{grid-template-columns:1fr 1fr}}
+    @media(max-width:580px){.grid3{grid-template-columns:1fr}}
+    .card{
+      padding:22px;border-radius:18px;border:1px solid var(--line);
+      background:var(--card2);backdrop-filter: blur(10px);
+      transition:transform .25s,border-color .25s, box-shadow .25s;
+      position:relative;overflow:hidden;
+    }
+    .card:hover{transform:translateY(-3px);border-color:var(--line2);box-shadow:0 20px 50px rgba(0,0,0,.30)}
+    .card::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--v),var(--t));opacity:0;transition:opacity .25s}
+    .card:hover::before{opacity:1}
+    .cic{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:12px}
+    .cic.v{background:rgba(108,79,240,.18)}
+    .cic.t{background:rgba(30,200,174,.15)}
+    .cic.o{background:rgba(240,108,79,.15)}
+    .ct{font-size:15px;font-weight:900;margin-bottom:7px}
+    .cd{font-size:13.5px;color:var(--muted);line-height:1.6}
+    .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+    .tag{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:rgba(255,255,255,.03)}
+
+    /* Two-col blocks */
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:34px}
+    @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+    .rowcard{
+      padding:20px;border-radius:16px;border:1px solid var(--line);
+      background:var(--card2);display:flex;gap:14px;align-items:flex-start;
+    }
+    .ric{font-size:22px;flex:0 0 auto;margin-top:2px}
+    .rt{font-size:14px;font-weight:900;margin-bottom:4px}
+    .rd{font-size:13px;color:var(--muted);line-height:1.55}
+
+    /* FAQ */
+    .faq{margin-top:34px;display:grid;grid-template-columns:1fr;gap:10px}
+    details{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+      border-radius:14px;
+      padding:12px 14px;
+    }
+    summary{cursor:pointer;font-weight:900;color:var(--sub)}
+    details p{margin-top:8px;color:var(--muted);font-size:13.5px}
+
+    /* CTA */
+    .cta{padding:80px 0;text-align:center}
+    .cta-card{
+      padding:56px 40px;border-radius:26px;
+      background:rgba(12,20,40,.82);
+      border:1px solid rgba(108,79,240,.22);
+      position:relative;overflow:hidden;
+      backdrop-filter: blur(16px);
+    }
+    .cta-card::before{
+      content:"";position:absolute;top:-60px;left:50%;transform:translateX(-50%);
+      width:320px;height:320px;border-radius:50%;
+      background:radial-gradient(circle, rgba(108,79,240,.22), transparent 70%);
+      pointer-events:none;
+    }
+    .cta-lead{font-size:17px;color:var(--sub);margin:0 auto 28px;max-width:660px}
+    .cta-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+
+    /* Footer */
+    footer{border-top:1px solid var(--line);padding:28px 0}
+    .footer-inner{max-width:1120px;margin:0 auto;padding:0 22px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .copy{font-size:13px;color:var(--muted)}
+    .flinks{display:flex;gap:18px;flex-wrap:wrap}
+    .flinks a{font-size:13px;color:var(--muted);text-decoration:none}
+    .flinks a:hover{color:var(--sub)}
+    .hl-v{color:#a898ff}
+    .hl-t{color:var(--t)}
+  </style>
+</head>
+
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a class="brand" href="#top" aria-label="DocFlowAI – Platformă instituțională de management documentar">
+        <img src="/Logo.png" alt="DocFlowAI – Platformă instituțională de management documentar" />
+      </a>
+      <div class="nav-links">
+        <a class="nav-link" href="#functionalitati">Funcționalități</a>
+        <a class="nav-link" href="#securitate">Securitate</a>
+        <a class="nav-link" href="#verificare">Verificare</a>
+        <a class="nav-link" href="#arhivare">Arhivare</a>
+        <a class="nav-link" href="#faq">FAQ</a>
+        <a class="nav-link" href="#contact">Contact</a>
+        <a class="nav-link" href="https://app.docflowai.ro/verifica" style="color:var(--t);border-color:rgba(30,200,174,.25);">🔍 Verifică document</a>
+      </div>
+      <a class="nav-cta" href="https://app.docflowai.ro/login">Intră în aplicație →</a>
+    </div>
+  </nav>
+
+  <div id="top" class="wrap">
+    <div class="hero">
+      <div>
+        <div class="eyebrow"><span></span> Pilot activ · Administrație publică</div>
+        <h1>
+          Circuit documente.<br>
+          <span class="grad">Semnat. Arhivat.<br>Trasat.</span>
+        </h1>
+        <p class="lead">
+          DocFlowAI digitalizează fluxurile de aprobare și semnare: inițiere rapidă, notificări live,
+          audit complet și arhivare electronică securizată — cu <span class="hl-v">semnătură electronică calificată QES</span> prin <span class="hl-t">STS Cloud, certSIGN, Trans Sped</span> și alți provideri acreditați.
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn primary" href="https://app.docflowai.ro/login">🚀 Accesează aplicația</a>
+          <a class="btn" href="#contact">Solicită demo</a>
+          <a class="btn" href="https://app.docflowai.ro/verifica" style="border-color:rgba(30,200,174,.35);color:var(--t);">🔍 Verifică document</a>
+        </div>
+
+        <div class="badges">
+          <span class="badge"><span class="dot v"></span>Fluxuri multi-semnatar</span>
+          <span class="badge"><span class="dot t"></span>Notificări în timp real</span>
+          <span class="badge"><span class="dot v"></span>Audit trail complet</span>
+          <span class="badge"><span class="dot o"></span>Arhivare electronică securizată</span>
+          <span class="badge"><span class="dot t"></span>Semnătură electronică calificată QES</span>
+        </div>
+      </div>
+
+      <div class="preview" aria-label="Preview flux">
+        <div class="pv-top">
+          <span class="pv-title">Flux în desfășurare</span>
+          <span class="pv-live">Live</span>
+        </div>
+
+        <div class="steps">
+          <div class="step done">
+            <div class="ic done">✅</div>
+            <div class="sinfo">
+              <div class="sl">Inițiator — ÎNTOCMIT</div>
+              <div class="ss">Document încărcat și pornit</div>
+            </div>
+            <span class="sb done">Semnat</span>
+          </div>
+
+          <div class="step done">
+            <div class="ic done">✅</div>
+            <div class="sinfo">
+              <div class="sl">Avizator — VIZĂ</div>
+              <div class="ss">Semnat calificat</div>
+            </div>
+            <span class="sb done">Semnat</span>
+          </div>
+
+          <div class="step active">
+            <div class="ic active">✍️</div>
+            <div class="sinfo">
+              <div class="sl">Semnatar curent — APROBAT</div>
+              <div class="ss">Notificat (In-app + Email + WhatsApp)</div>
+            </div>
+            <span class="sb active">Curent</span>
+          </div>
+
+          <div class="step">
+            <div class="ic wait">⏳</div>
+            <div class="sinfo">
+              <div class="sl">Finalizare & Arhivare</div>
+              <div class="ss">PDF semnat + audit JSON în Drive</div>
+            </div>
+            <span class="sb">Pending</span>
+          </div>
+        </div>
+
+        <div class="hint">🔔 Notificări live · WebSocket · badge pe taburi</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <section id="functionalitati">
+    <div class="wrap">
+      <div class="label">⚡ Funcționalități</div>
+      <h2>Tot ce ai nevoie pentru circuitul documentelor</h2>
+      <p class="slead">Construit pentru fluxurile reale (întocmit → avize → aprobat), cu trasabilitate completă și export verificabil.</p>
+
+      <div class="grid3">
+        <div class="card">
+          <div class="cic v">🔄</div>
+          <div class="ct">Fluxuri configurabile</div>
+          <div class="cd">Definești semnatari, ordine și roluri. Sistemul blochează re-inițierea pe același flow și păstrează istoricul.</div>
+          <div class="tags"><span class="tag">Ordine strictă</span><span class="tag">Roluri</span><span class="tag">Timeline</span></div>
+        </div>
+
+        <div class="card">
+          <div class="cic t">🔔</div>
+          <div class="ct">Notificări pe 3 canale</div>
+          <div class="cd">In-app (WebSocket), Email (Resend) și WhatsApp (Meta Business API). Fiecare user își alege preferințele.</div>
+          <div class="tags"><span class="tag">In-app</span><span class="tag">Email</span><span class="tag">WhatsApp</span></div>
+        </div>
+
+        <div class="card">
+          <div class="cic v">📋</div>
+          <div class="ct">Audit trail complet</div>
+          <div class="cd">Log imutabil: cine, când, ce a făcut (semnat/refuzat/notificat/arhivat). Util pentru control intern / Curtea de Conturi.</div>
+          <div class="tags"><span class="tag">Timestamp</span><span class="tag">Identitate</span><span class="tag">Export</span></div>
+        </div>
+
+        <div class="card">
+          <div class="cic t">📄</div>
+          <div class="ct">Semnare calificată, securizată</div>
+          <div class="cd">Semnare în aplicație, pe bază de autentificare și autorizare (roluri, permisiuni), cu verificare de integritate (hash) și jurnalizare completă.</div>
+          <div class="tags"><span class="tag">Autentificare</span><span class="tag">Autorizare</span><span class="tag">Integritate</span></div>
+        </div>
+
+        <div class="card">
+          <div class="cic o">🗂</div>
+          <div class="ct">Arhivare arhivă electronică securizată</div>
+          <div class="cd">Arhivare la final: PDF semnat + original + audit JSON. Proxy stream — fără link public Drive expus.</div>
+          <div class="tags"><span class="tag">Drive</span><span class="tag">Proxy stream</span><span class="tag">Cleanup DB</span></div>
+        </div>
+
+        <div class="card">
+          <div class="cic v">🧩</div>
+          <div class="ct">Șabloane reutilizabile</div>
+          <div class="cd">Salvezi liste de semnatari ca “template” (personal / instituție) și pornești un flow nou în 30 secunde.</div>
+          <div class="tags"><span class="tag">Templates</span><span class="tag">Shared</span><span class="tag">Rapid</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section id="securitate">
+    <div class="wrap">
+      <div class="label">🔒 Securitate</div>
+      <h2>Construit securizat de la fundație</h2>
+      <p class="slead">Acces pe bază de roluri și reguli clare: utilizatorii văd doar flow-urile în care sunt inițiator sau semnatar.</p>
+
+      <div class="grid2">
+        <div class="rowcard">
+          <div class="ric">🔑</div>
+          <div>
+            <div class="rt">JWT + roluri</div>
+            <div class="rd">Autentificare JWT, rol admin/user. Endpoint-urile sensibile (PDF, arhivare, admin) cer token valid.</div>
+          </div>
+        </div>
+        <div class="rowcard">
+          <div class="ric">🧱</div>
+          <div>
+            <div class="rt">Control de acces pe flow</div>
+            <div class="rd">Regula: inițiator sau semnatar. Elimină “status la alt utilizator” și previne acces neautorizat la documente.</div>
+          </div>
+        </div>
+        <div class="rowcard">
+          <div class="ric">🔏</div>
+          <div>
+            <div class="rt">Integritate PDF la upload</div>
+            <div class="rd">Serverul poate valida că PDF-ul încărcat corespunde flow-ului (token/hashes) — reduce riscul de substituție.</div>
+          </div>
+        </div>
+        <div class="rowcard">
+          <div class="ric">⏱️</div>
+          <div>
+            <div class="rt">Acces controlat la semnare</div>
+            <div class="rd">Semnarea se face doar după autentificare (in-app / SSO) și validarea drepturilor pe flux. Documentele nu sunt expuse prin link-uri publice.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="faq" style="margin-top:18px">
+        <details>
+          <summary>Ce provideri de semnătură electronică calificată sunt suportați?</summary>
+          <p>DocFlowAI integreaza nativ <strong>STS Cloud QES</strong> (Serviciul de Telecomunicatii Speciale) cu flux complet OpenID Connect PKCE. Providerii certSIGN/Paperless, Trans Sped, AlfaTrust si Namirial sunt in integrare. Documentul ramane exclusiv pe serverul institutiei &mdash; la STS se trimite doar hash-ul SHA-256.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section id="verificare">
+    <div class="wrap">
+      <div class="label">🔍 Verificare</div>
+      <h2>Verifică autenticitatea oricărui document</h2>
+      <p class="slead">Orice persoană — instituție, instanță, cetățean — poate verifica un document semnat prin DocFlowAI fără să aibă cont în platformă.</p>
+
+      <div class="grid2" style="margin-top:34px">
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div class="rowcard">
+            <div class="ric">🔎</div>
+            <div>
+              <div class="rt">Verificare după ID flux</div>
+              <div class="rd">Introdu ID-ul documentului (ex: PT_9C076D0236) și verifici instant: cine a semnat, în ce ordine, la ce dată — direct din baza de date DocFlowAI.</div>
+            </div>
+          </div>
+          <div class="rowcard">
+            <div class="ric">📄</div>
+            <div>
+              <div class="rt">Verificare criptografică PDF</div>
+              <div class="rd">Încarcă PDF-ul semnat pentru verificare completă în 6 niveluri: integritate hash, semnătură CMS/PKCS#7, certificat, lanț X.509, OCSP/CRL și conformitate QES/eIDAS.</div>
+            </div>
+          </div>
+          <div class="rowcard">
+            <div class="ric">⚖️</div>
+            <div>
+              <div class="rt">Valoare juridică</div>
+              <div class="rd">Raportul de verificare confirmă: cine a semnat, cu ce certificat QTSP acreditat, că documentul nu a fost modificat după semnare și că semnătura e conformă eIDAS.</div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <!-- Preview verificator -->
+          <div class="preview" style="font-size:13px;">
+            <div class="pv-top">
+              <span class="pv-title">Verificator document</span>
+              <span class="pv-live">Public · Fără cont</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+              <div style="padding:10px 14px;background:rgba(30,200,174,.08);border:1px solid rgba(30,200,174,.2);border-radius:10px;display:flex;align-items:center;gap:10px;">
+                <span style="font-size:1.1rem;">✅</span>
+                <div><div style="font-weight:800;color:var(--t);">Document autentic — QES confirmat</div><div style="color:var(--muted);font-size:11px;margin-top:1px;">Semnătură calificată · STS Cloud · certSIGN</div></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <div style="padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:8px;">
+                  <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">L1 · Integritate</div>
+                  <div style="font-size:11px;font-weight:800;color:var(--t);">✅ Hash intact</div>
+                </div>
+                <div style="padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:8px;">
+                  <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">L2 · Semnătură CMS</div>
+                  <div style="font-size:11px;font-weight:800;color:var(--t);">✅ Validă</div>
+                </div>
+                <div style="padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:8px;">
+                  <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">L4 · Lanț certificare</div>
+                  <div style="font-size:11px;font-weight:800;color:var(--t);">✅ 3 niveluri</div>
+                </div>
+                <div style="padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:8px;">
+                  <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">L6 · QES/eIDAS</div>
+                  <div style="font-size:11px;font-weight:800;color:var(--t);">✅ Conform</div>
+                </div>
+              </div>
+            </div>
+            <a href="https://app.docflowai.ro/verifica"
+              style="display:block;text-align:center;padding:10px;background:linear-gradient(135deg,var(--v),var(--t));border-radius:10px;color:#fff;font-weight:800;font-size:13px;text-decoration:none;">
+              🔍 Deschide verificatorul →
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section id="arhivare">
+    <div class="wrap">
+      <div class="label">🗄️ Arhivare</div>
+      <h2>Arhivare automată în arhivă electronică securizată</h2>
+      <p class="slead">Fluxurile finalizate se pot arhiva (manual sau automat), eliberând baza de date. Rămâne un “pointer” + auditul.</p>
+
+      <div class="grid2">
+        <div class="rowcard">
+          <div class="ric">📦</div>
+          <div>
+            <div class="rt">Ce se arhivează</div>
+            <div class="rd">PDF semnat final, PDF original, audit JSON (events, timestamps, semnatari). Structură: Instituție/An/Lună.</div>
+          </div>
+        </div>
+        <div class="rowcard">
+          <div class="ric">🧹</div>
+          <div>
+            <div class="rt">Curățenie DB controlată</div>
+            <div class="rd">După arhivare, documentele pot fi eliminate din DB (sau păstrate doar metadatele), reducând costuri și riscuri.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="faq" style="margin-top:18px">
+        <details>
+          <summary>Cum descarcă utilizatorul PDF-ul dacă e arhivat?</summary>
+          <p>Descărcarea se face prin server (proxy stream). Nu expunem link public Drive. Pentru user, experiența rămâne identică.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section id="faq">
+    <div class="wrap">
+      <div class="label">❓ FAQ</div>
+      <h2>Întrebări frecvente</h2>
+      <p class="slead">Cele mai comune întrebări din instituții (și răspunsurile care contează).</p>
+
+      <div class="faq">
+        <details open>
+          <summary>Pot rula mai multe instituții pe aceeași instanță?</summary>
+          <p>Da. Recomandat este un model “org/instituție” pentru izolare (utilizatori, templates, arhivă). Te ajut să-l formalizăm ca multi-tenant.</p>
+        </details>
+        <details>
+          <summary>Ce se întâmplă dacă un semnatar refuză?</summary>
+          <p>Flow-ul se oprește, se loghează evenimentul, se notifică inițiatorul și se păstrează auditul. Poți porni un flow nou pe versiune actualizată.</p>
+        </details>
+        <details>
+          <summary>Pot bloca re-inițierea pe același flow?</summary>
+          <p>Da — după pornire, încărcarea PDF-ului / re-inițierea sunt blocate. Pentru un document nou se face flow nou.</p>
+        </details>
+        <details>
+          <summary>Există export pentru audit?</summary>
+          <p>Da. Auditul (events + timeline) se poate exporta ca JSON (și la nevoie PDF “Audit Report”).</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section id="contact" class="cta">
+    <div class="wrap">
+      <div class="cta-card">
+        <div class="label" style="display:inline-flex">✉️ Contact</div>
+        <h2>Solicită un demo pentru instituția ta</h2>
+        <p class="cta-lead">Îți configurăm un flux real (cu semnatari, roluri, notificări și arhivare). Dacă vrei, îl conectăm ulterior la un provider de semnătură electronică calificată.</p>
+        <div class="cta-actions">
+          <a class="btn primary" href="https://app.docflowai.ro/login">Intră în aplicație</a>
+          <a class="btn" href="/cdn-cgi/l/email-protection#bad9d5d4cedbd9cefaded5d9dcd6d5cddbd394c8d585c9cfd8d0dfd9ce87fedfd7d59f888afed5d9fcd6d5cdfbf39a583a299aead6dbcedcd5c8d77e399ad3d4c9ced3cecf7221d3d5d4dbd67e399adedf9ad7dbd4dbdddfd7dfd4ce9aded5d9cfd7dfd4cedbc8">Trimite email</a>
+        </div>
+        <p style="margin-top:14px;color:var(--muted);font-size:12.5px">Email: <a style="color:var(--sub);text-decoration:none" href="/cdn-cgi/l/email-protection#b8dbd7d6ccd9dbccf8dcd7dbded4d7cfd9d196cad7"><span class="__cf_email__" data-cfemail="40232f2e3421233400242f23262c2f3721296e322f">[email&#160;protected]</span></a></p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-inner">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <img src="/Logo.png" alt="DocFlowAI – Platformă instituțională de management documentar" style="height:32px;width:auto;opacity:.75" />
+        <span class="copy">© <span id="y"></span> DocFlowAI – Platformă instituțională de management documentar · Build: landing-v3</span>
+      </div>
+      <div class="flinks">
+        <a href="https://app.docflowai.ro/verifica">🔍 Verifică document</a>
+        <a href="https://app.docflowai.ro/login">Aplicaț

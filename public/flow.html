@@ -41,7 +41,7 @@
     }
     .brand .t{display:flex;flex-direction:column;min-width:0}
     .brand .t .h{font-weight:800;letter-spacing:.2px;line-height:1.05}
-    .brand .t .s{font-size:.82rem;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .brand .t .s{overflow:visible;white-space:nowrap;font-size:.82rem;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
     .btn{
       border:1px solid var(--stroke);
@@ -109,6 +109,13 @@
     .events .ev:hover{background:rgba(255,255,255,.04)}
     .events .ts{color:rgba(234,240,255,.55);font-variant-numeric:tabular-nums;min-width:140px}
     .events .txt{color:var(--sub)}
+    /* ── Layout 2 coloane Detalii/Semnatari — responsive ── */
+    .two-col-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+    @media(max-width:600px){
+      .two-col-grid{grid-template-columns:1fr !important}
+      .events{max-height:none !important;overflow:visible !important}
+      .tl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    }
     .alert{
       border:1px solid rgba(124,92,255,.30);
       background:rgba(124,92,255,.08);
@@ -266,7 +273,7 @@
         <div class="logo">🛡️</div>
         <div class="t">
           <div class="h">DocFlowAI</div>
-          <div class="s" id="subtitle">Vizualizare flow</div>
+          <div id="subtitle" style="font-size:.78rem;color:rgba(234,240,255,.55);white-space:nowrap;overflow:visible;">Vizualizare flow</div>
         </div>
       </div>
       <div class="actions">
@@ -277,6 +284,7 @@
         <button class="btn primary" id="btnDownloadSigned">⬇️ PDF semnat</button>
         <button class="btn" id="btnDownloadOriginal" title="Descarcă PDF original (dacă există)">📎 PDF original</button>
         <button class="btn" id="btnSendEmail" style="display:none;background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.35);color:#7cf0e0;" title="Trimite PDF semnat pe email extern">📧 Trimite</button>
+        <button class="btn" id="btnTrustReport" style="display:none;background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.35);color:#b39dff;" title="Generează Raport de Conformitate (Signing Trust Report)">📜 Raport</button>
         <button class="btn" id="btnReinitiate" style="display:none;background:rgba(255,200,50,.12);border-color:rgba(255,200,50,.35);color:#ffd580;" title="Reinițiază fluxul după refuz">🔄 Reinițiază</button>
         <button class="btn" id="btnReinitiateReview" style="display:none;background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.35);color:#7cf0e0;" title="Reinițiază fluxul după revizuire (re-upload document)">🔄 Reinițiază după revizuire</button>
         <button class="btn" id="btnCancelFlow" style="display:none;background:rgba(120,120,120,.1);border-color:rgba(120,120,120,.3);color:#aaa;" title="Anulează fluxul">🚫 Anulează</button>
@@ -293,7 +301,7 @@
     <div class="grid">
 
       <!-- Detalii + Semnatari — 2 coloane -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start;">
+      <div class="two-col-grid">
 
         <!-- Coloana stanga: Detalii -->
         <div class="card" style="height:100%">
@@ -359,6 +367,8 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
+  // esc global — folosit in loadFlow si orice alt context
+  const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const qs = new URLSearchParams(location.search);
   const flowId = qs.get("flow") || qs.get("id") || "";
   const linkToken = qs.get("token") || "";
@@ -731,17 +741,28 @@
         'FLOW_COMPLETED':'FLUX FINALIZAT','FLOW_CANCELLED':'FLUX ANULAT','REFUSED':'REFUZAT',
         'DELEGATED':'DELEGAT','PDF_DOWNLOADED':'PDF DESCĂRCAT','REVIEW_REQUESTED':'TRIMIS SPRE REVIZUIRE',
         'FLOW_REINITIATED':'REINIȚIAT','FLOW_REINITIATED_AFTER_REVIEW':'REINIȚIAT DUPĂ REVIZUIRE',
-        'EMAIL_SENT':'📧 EMAIL TRIMIS EXTERN',
+        'EMAIL_SENT':   '📧 EMAIL TRIMIS EXTERN',
+        'EMAIL_OPENED': '📬 EMAIL DESCHIS DE DESTINATAR',
       };
-      const kindLabel = EVENT_LABELS[kind] || kind.replace(/_/g,' ');
-      const extra = kind === 'EMAIL_SENT'
-        ? `către: ${esc(e.to||'')} · subiect: ${esc(e.subject||'')}`
-        : (e.msg || e.message || e.detail || e.reason || "");
-      const line = [kindLabel, who].filter(Boolean).join(' · ');
+      const kindLabel = EVENT_LABELS[kind] || esc(kind.replace(/_/g,' '));
+      let extra = '';
+      if (kind === 'EMAIL_SENT') {
+        extra = `către: ${esc(e.to||'')}`;
+        if (e.subject) extra += ` · subiect: ${esc(e.subject)}`;
+        if (e.extraAttachmentsCount > 0) extra += ` · +${e.extraAttachmentsCount} fișier(e) extra`;
+      } else if (kind === 'EMAIL_OPENED') {
+        // who = destinatarul (e.to), sentBy = cel care a trimis
+        const sentBy = e.by ? (nameMap[e.by] || e.by) : '';
+        extra = `destinatar: ${esc(e.to||'')}${sentBy ? ' · trimis de: ' + esc(sentBy) : ''}`;
+      } else {
+        extra = esc(e.msg || e.message || e.detail || e.reason || '');
+      }
+      const line = [kindLabel, kind === 'EMAIL_OPENED' ? '' : who].filter(Boolean).join(' · ');
       const txt = extra ? `${line} — ${extra}` : line;
       const d = document.createElement("div");
       d.className = "ev";
-      if (kind === 'EMAIL_SENT') d.style.cssText = "border-left:2px solid rgba(45,212,191,.6);padding-left:8px;";
+      if (kind === 'EMAIL_SENT')   d.style.cssText = "border-left:2px solid rgba(45,212,191,.6);padding-left:8px;";
+      if (kind === 'EMAIL_OPENED') d.style.cssText = "border-left:2px solid rgba(52,211,153,.8);padding-left:8px;background:rgba(52,211,153,.04);";
       if (isInherited) d.style.cssText = "opacity:.65;border-left:2px solid rgba(124,92,255,.35);padding-left:8px;";
       d.innerHTML = `<div class="ts">${ts}</div><div class="txt">${txt}</div>`;
       evBox.appendChild(d);
@@ -859,6 +880,8 @@
       // Buton Trimite email — vizibil doar când PDF-ul semnat e disponibil
       const btnSendEmail = $("btnSendEmail");
       if (btnSendEmail) btnSendEmail.style.display = hasSigned ? "" : "none";
+      const btnReport = $("btnTrustReport");
+      if (btnReport) btnReport.style.display = (data.completed) ? "block" : "none";
 
       const hasPdf = !!(j.hasPdf || data.hasPdf);
       $("btnDownloadOriginal").disabled = !hasPdf;
@@ -870,7 +893,7 @@
         const bar = document.getElementById('userBarFlow');
         if (!bar) return;
         const label = currentUser.nume || currentUser.email || '';
-        if (label) bar.innerHTML = `Conectat: <strong>${label}</strong>` +
+        if (label) bar.innerHTML = `Conectat: <strong>${esc(label)}</strong>` +
           ((currentUser.role === 'admin' || currentUser.role === 'org_admin') ? ` &nbsp;<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
       })();
       const isRefused = computedStatus === "refused";
@@ -903,7 +926,7 @@
             });
             const j = await r.json();
             if (j.ok) { setMsg('ok', '🚫 Flux anulat cu succes.'); setTimeout(() => loadFlow(), 800); }
-            else setMsg('error', j.message || j.error || 'Eroare la anulare.');
+            else setMsg('error', esc(j.message || j.error || 'Eroare la anulare.'));
           } catch(e) { setMsg('error', 'Eroare rețea.'); }
           finally { btnCancelFlow.disabled = false; btnCancelFlow.textContent = '🚫 Anulează'; }
         };
@@ -1009,7 +1032,7 @@
       loadAttachments(); // F-06
 
     }catch(e){
-      setMsg("error", "❌ " + (e.message || e));
+      setMsg("error", "❌ " + esc(String(e.message || e)));
     }
   }
 
@@ -1018,7 +1041,7 @@
       const blob = await apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/signed-pdf`);
       downloadBlob(blob, `DocFlowAI_${flowId}_signed.pdf`);
     }catch(e){
-      setMsg("error", "❌ Nu am putut descărca PDF-ul semnat: " + (e.message || e));
+      setMsg("error", "❌ Nu am putut descărca PDF-ul semnat: " + esc(String(e.message || e)));
     }
   }
 
@@ -1027,7 +1050,7 @@
       const blob = await apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/pdf`);
       downloadBlob(blob, `DocFlowAI_${flowId}.pdf`);
     }catch(e){
-      setMsg("error", "❌ Nu am putut descărca PDF-ul original: " + (e.message || e));
+      setMsg("error", "❌ Nu am putut descărca PDF-ul original: " + esc(String(e.message || e)));
     }
   }
 
@@ -1037,6 +1060,36 @@
   $("btnBack").addEventListener("click", ()=>{ window.location.href = "/?tab=flows"; });
 
   // Buton Trimite email
+  // Buton Raport Trust
+  const _btnReport = $("btnTrustReport");
+  if (_btnReport) {
+    // Vizibilitatea se setează în loadFlow() unde avem datele
+    _btnReport.addEventListener("click", async () => {
+      _btnReport.disabled = true;
+      _btnReport.textContent = "⏳ Se generează...";
+      try {
+        // ?force=1 = ignora cache, regenereaza cu semnatarii actuali
+        const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report?force=1`);
+        if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.message || j.error || "Eroare server"); }
+        const blob = await r.blob();
+        if (!blob || blob.size < 100) throw new Error('PDF gol returnat de server');
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement("a");
+        a.href     = url;
+        a.download = `TrustReport_${flowId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch(e) {
+        alert("❌ Eroare generare raport: " + e.message);
+      } finally {
+        _btnReport.disabled = false;
+        _btnReport.textContent = "📜 Raport";
+      }
+    });
+  }
+
   const _btnSendEmail = $("btnSendEmail");
   if (_btnSendEmail) _btnSendEmail.addEventListener("click", () => {
     const d = window._flowData || {};
@@ -1051,9 +1104,9 @@
       if (j.ok) {
         setMsg("ok", `✅ Flux reinițiat! ID nou: <strong>${j.newFlowId}</strong> — <a href="/flow.html?flow=${j.newFlowId}" style="color:#7cf0e0;">Deschide noul flux</a>`);
       } else {
-        setMsg("error", "❌ " + (j.message || j.error || "Eroare la reinițiere"));
+        setMsg("error", "❌ " + esc(j.message || j.error || 'Eroare la reinițiere'));
       }
-    } catch(e) { setMsg("error", "❌ " + e.message); }
+    } catch(e) { setMsg("error", '❌ ' + esc(String(e.message))); }
   });
 
   const _btnReiReview = $("btnReinitiateReview");
@@ -1094,6 +1147,22 @@
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Mesaj personalizat <span style="color:var(--muted);font-size:.72rem;">— opțional</span></label>
         <textarea id="flowSemBody" rows="14" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
+      <!-- Atașamente suplimentare (opțional, max 20MB total) -->
+      <div>
+        <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">
+          📎 Atașamente suplimentare <span style="color:var(--muted);font-size:.72rem;">— opțional, max 20 MB total</span>
+        </label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button type="button" onclick="document.getElementById('emailExtraFiles').click()"
+            style="padding:7px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#9db0ff;cursor:pointer;font-size:.82rem;font-weight:600;">
+            + Adaugă fișier
+          </button>
+          <span id="emailExtraInfo" style="font-size:.78rem;color:var(--muted);">PDF semnat inclus automat</span>
+        </div>
+        <input id="emailExtraFiles" type="file" multiple accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" style="display:none;"
+          onchange="onEmailExtraFilesChange(this)" />
+        <div id="emailExtraList" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;"></div>
+      </div>
       <!-- PDF semnat și referință Flow ID incluse automat -->
       <div id="flowSemMsg" style="font-size:.82rem;min-height:18px;"></div>
       <button id="flowSemSendBtn" onclick="doFlowSendEmail()" style="background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;color:#fff;padding:11px 24px;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;width:100%;">📤 Trimite email</button>
@@ -1116,6 +1185,15 @@ function openFlowSendEmailModal(flowId, docName, institutie, compartiment, compl
   const functieStr      = u.functie                               ? `\nFuncție: ${u.functie}`                               : '';
   const institutieStr   = (u.institutie   || institutie)          ? `\nInstituție: ${u.institutie   || institutie}`          : '';
   const compartimentStr = (u.compartiment || compartiment)        ? `\nCompartiment: ${u.compartiment || compartiment}`     : '';
+  // Reset atașamente extra
+  window._emailExtraFiles = [];
+  const extraList = document.getElementById('emailExtraList');
+  const extraInfo = document.getElementById('emailExtraInfo');
+  if (extraList) extraList.innerHTML = '';
+  if (extraInfo) extraInfo.textContent = 'PDF semnat inclus automat';
+  const extraInput = document.getElementById('emailExtraFiles');
+  if (extraInput) extraInput.value = '';
+
   document.getElementById('flowSemBody').value =
 `Stimată/e Doamnă/Domnule,
 
@@ -1131,6 +1209,39 @@ function closeFlowSendEmailModal() {
   document.getElementById('flowSendEmailModal').style.display = 'none';
   _flowSemId = null;
 }
+window._emailExtraFiles = [];
+
+function onEmailExtraFilesChange(input) {
+  const MAX_TOTAL = 20 * 1024 * 1024; // 20 MB
+  const list  = document.getElementById('emailExtraList');
+  const info  = document.getElementById('emailExtraInfo');
+  const files = Array.from(input.files || []);
+  for (const f of files) {
+    const totalSize = window._emailExtraFiles.reduce((s, x) => s + x.size, 0) + f.size;
+    if (totalSize > MAX_TOTAL) { alert(`Depășești limita de 20 MB. "${f.name}" nu a fost adăugat.`); continue; }
+    if (window._emailExtraFiles.some(x => x.name === f.name && x.size === f.size)) continue;
+    window._emailExtraFiles.push(f);
+  }
+  input.value = '';
+  // Randăm lista
+  list.innerHTML = window._emailExtraFiles.map((f, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(157,176,255,.08);border-radius:6px;font-size:.78rem;">
+      <span style="color:#9db0ff;">📄</span>
+      <span style="flex:1;color:var(--sub);">${f.name}</span>
+      <span style="color:var(--muted);">${(f.size/1024).toFixed(0)} KB</span>
+      <button onclick="removeEmailExtra(${i})" style="background:none;border:none;color:#ff8080;cursor:pointer;font-size:.82rem;padding:0 2px;">✕</button>
+    </div>`).join('');
+  const totalKB = (window._emailExtraFiles.reduce((s, x) => s + x.size, 0) / 1024).toFixed(0);
+  info.textContent = window._emailExtraFiles.length
+    ? `PDF semnat + ${window._emailExtraFiles.length} fișier(e) extra (${totalKB} KB)`
+    : 'PDF semnat inclus automat';
+}
+
+function removeEmailExtra(idx) {
+  window._emailExtraFiles.splice(idx, 1);
+  onEmailExtraFilesChange({ files: [], value: '' });
+}
+
 async function doFlowSendEmail() {
   const to      = (document.getElementById('flowSemTo').value||'').trim();
   const subject = (document.getElementById('flowSemSubject').value||'').trim();
@@ -1141,10 +1252,20 @@ async function doFlowSendEmail() {
   if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { msg.style.color='#ffaaaa'; msg.textContent='Introduceți o adresă de email validă.'; return; }
   if (!subject) { msg.style.color='#ffaaaa'; msg.textContent='Subiectul este obligatoriu.'; return; }
   btn.disabled=true; btn.textContent='⏳ Se trimite...'; msg.textContent='';
+
+  // Codificăm fișierele extra în base64
+  const extraAttachments = [];
+  for (const f of (window._emailExtraFiles || [])) {
+    const b64 = await new Promise((res, rej) => {
+      const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(f);
+    });
+    extraAttachments.push({ filename: f.name, dataB64: b64 });
+  }
+
   try {
     const r = await _apiFetch(`/flows/${encodeURIComponent(_flowSemId)}/send-email`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ to, subject, bodyText }),
+      body: JSON.stringify({ to, subject, bodyText, extraAttachments }),
     });
     const d = await r.json();
     if (r.ok) { msg.style.color='#2dd4bf'; msg.textContent=`✅ Email trimis cu succes către ${to}`; btn.textContent='✅ Trimis!'; setTimeout(()=>closeFlowSendEmailModal(),2000); }

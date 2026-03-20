@@ -220,6 +220,7 @@ describe('POST /flows — validare input', () => {
   it('400 — docName lipsă', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('docName_required');
@@ -228,6 +229,7 @@ describe('POST /flows — validare input', () => {
   it('400 — docName prea scurt (1 char)', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ docName: 'X', initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('docName_required');
@@ -236,6 +238,7 @@ describe('POST /flows — validare input', () => {
   it('400 — docName prea lung (>500 chars)', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ docName: 'A'.repeat(501), initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('docName_too_long');
@@ -245,6 +248,7 @@ describe('POST /flows — validare input', () => {
   it('400 — initName lipsă', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ docName: 'Referat', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('initName_required');
@@ -253,6 +257,7 @@ describe('POST /flows — validare input', () => {
   it('400 — initEmail invalid', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion Popescu', initEmail: 'nu-e-email', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('initEmail_invalid');
@@ -261,6 +266,7 @@ describe('POST /flows — validare input', () => {
   it('400 — signers lipsă (array gol)', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers: [] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('signers_required');
@@ -269,6 +275,7 @@ describe('POST /flows — validare input', () => {
   it('400 — signer email invalid', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'nu-email' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('signer_email_invalid');
@@ -278,6 +285,7 @@ describe('POST /flows — validare input', () => {
   it('400 — signer name prea scurt', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('signer_name_required');
@@ -286,6 +294,7 @@ describe('POST /flows — validare input', () => {
   it('400 — semnatari duplicați', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({
         docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com',
         signers: [
@@ -301,6 +310,7 @@ describe('POST /flows — validare input', () => {
     const app = createTestApp();
     const signers = Array.from({ length: 51 }, (_, i) => ({ name: `Semnatar ${i}`, email: `s${i}@b.com` }));
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('too_many_signers');
@@ -313,6 +323,7 @@ describe('POST /flows — validare input', () => {
     const app = createTestApp({ jsonLimit: '200mb' });
     const bigPdf = 'A'.repeat(67 * 1024 * 1024);
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }], pdfB64: bigPdf });
     expect(res.status).toBe(413);
     expect(res.body.error).toBe('pdf_too_large_max_50mb');
@@ -321,6 +332,7 @@ describe('POST /flows — validare input', () => {
   it('200 — creare reușită, răspuns corect', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({
         docName: 'Referat aprobare buget',
         initName: 'Ion Popescu',
@@ -338,6 +350,7 @@ describe('POST /flows — validare input', () => {
   it('200 — inițiatorul este și semnatar → signerToken inclus', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
+      .set('Cookie', `auth_token=${makeToken()}`)
       .send({
         docName: 'Referat',
         initName: 'Ion Popescu',
