@@ -858,7 +858,7 @@ th{ color: var(--sub) !important; }
           _btnReportSigner.disabled = true;
           _btnReportSigner.textContent = "⏳ Se generează...";
           try {
-            const r = await _apiFetch(`/api/flows/${encodeURIComponent(flow)}/report`);
+            const r = await _apiFetch(`/api/flows/${encodeURIComponent(flow)}/report?force=1`);
             if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || j.error || "Eroare server"); }
             const blob = await r.blob();
             if (!blob || blob.size < 100) throw new Error("PDF gol returnat de server");

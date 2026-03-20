@@ -35,7 +35,8 @@ router.get('/api/flows/:flowId/report', async (req, res) => {
 
     // Verificăm cache în trust_reports (BUG-01 fix: cache era citit dar ignorat)
     // ?force=1 permite admin să regenereze explicit raportul
-    const forceRegen = req.query.force === '1' && isAdmin;
+    // ?force=1 disponibil pentru admin SAU inițiator — permite regenerare manuala
+    const forceRegen = req.query.force === '1' && (isAdmin || isInit);
     if (!forceRegen) {
       const cache = await pool.query(
         `SELECT report_pdf, generated_at FROM trust_reports WHERE flow_id = $1`, [flowId]

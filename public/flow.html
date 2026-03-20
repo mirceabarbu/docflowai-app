@@ -1068,7 +1068,8 @@
       _btnReport.disabled = true;
       _btnReport.textContent = "⏳ Se generează...";
       try {
-        const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report`);
+        // ?force=1 = ignora cache, regenereaza cu semnatarii actuali
+        const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report?force=1`);
         if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.message || j.error || "Eroare server"); }
         const blob = await r.blob();
         if (!blob || blob.size < 100) throw new Error('PDF gol returnat de server');
