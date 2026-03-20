@@ -248,8 +248,11 @@ th{ color: var(--sub) !important; }
         <a href="/templates" class="tabbtn" style="text-decoration:none;">📋 Șabloane</a>
         <span class="tabbtn signer-active">✍️ Semnare</span>
       </div>
-      <div id="userBar" style="display:flex;align-items:center;gap:10px;font-size:.82rem;">
-        <!-- populated by JS -->
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button id="btnTrustReportHeader" class="tabbtn" style="display:none;background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.35);color:#b39dff;" title="Raport de Conformitate">📜 Raport</button>
+        <div id="userBar" style="display:flex;align-items:center;gap:10px;font-size:.82rem;">
+          <!-- populated by JS -->
+        </div>
       </div>
     </header>
 
@@ -816,6 +819,9 @@ th{ color: var(--sub) !important; }
 
           // Check if fully completed (all signed + all PDFs uploaded)
           const flowCompleted = j.completed || (j.signers && j.signers.every(x => x.status === "signed" && x.pdfUploaded));
+          // Aratam butonul Raport in header daca fluxul e finalizat sau userul a semnat deja
+          const iHaveSigned = (j.signers || []).some(s => (s.email||'').toLowerCase() === (JSON.parse(localStorage.getItem('docflow_user')||'{}').email||'').toLowerCase() && s.status === 'signed');
+          if (_btnReportHeader) _btnReportHeader.style.display = (flowCompleted || iHaveSigned) ? "" : "none";
           const thisSigned = s.status === "signed" && s.pdfUploaded;
           const signBox = $("signBox");
 
@@ -851,8 +857,34 @@ th{ color: var(--sub) !important; }
         }
       }
 
-      // OPT-05: Buton Raport Trust în pagina semnatarului
+      // OPT-05: Buton Raport Trust — atat in header cat si in completedBox
+      const _btnReportHeader = $("btnTrustReportHeader");
       const _btnReportSigner = $("btnTrustReportSigner");
+
+      // Handler comun pentru ambele butoane
+      async function downloadTrustReportSigner() {
+        const btn = document.activeElement && document.activeElement.id ? $(document.activeElement.id) : _btnReportHeader;
+        if (_btnReportHeader) { _btnReportHeader.disabled = true; _btnReportHeader.textContent = "⏳..."; }
+        if (_btnReportSigner) { _btnReportSigner.disabled = true; _btnReportSigner.textContent = "⏳ Se generează..."; }
+        try {
+          const r = await _apiFetch(`/api/flows/${encodeURIComponent(flow)}/report?force=1`);
+          if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || j.error || "Eroare server"); }
+          const blob = await r.blob();
+          if (!blob || blob.size < 100) throw new Error("PDF gol returnat de server");
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = `TrustReport_${flow}.pdf`;
+          document.body.appendChild(a); a.click();
+          document.body.removeChild(a); URL.revokeObjectURL(url);
+        } catch (e) {
+          alert("❌ Eroare generare raport: " + e.message);
+        } finally {
+          if (_btnReportHeader) { _btnReportHeader.disabled = false; _btnReportHeader.textContent = "📜 Raport"; }
+          if (_btnReportSigner) { _btnReportSigner.disabled = false; _btnReportSigner.textContent = "📜 Raport conformitate"; }
+        }
+      }
+
+      if (_btnReportHeader) _btnReportHeader.addEventListener("click", downloadTrustReportSigner);
       if (_btnReportSigner) {
         _btnReportSigner.addEventListener("click", async () => {
           _btnReportSigner.disabled = true;
@@ -1009,6 +1041,8 @@ th{ color: var(--sub) !important; }
             const completedBox = $("completedBox");
             if (completedBox) {
               completedBox.style.display = "block";
+              // Ascundem butonul din header cand completedBox e vizibil (evitam duplicate)
+              if (_btnReportHeader) _btnReportHeader.style.display = "none";
               const dlBtn = $("btnDownloadFinalPdf");
               if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`;
             }

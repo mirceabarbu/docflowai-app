@@ -689,7 +689,19 @@ const MIGRATIONS = [
     id: '035_trust_report_pdf_cache',
     sql: `
       -- BUG-01 fix: adaugă coloana BYTEA pentru cache PDF raport
-      -- (anterior se stoca doar report_json, PDF-ul era regenerat la fiecare cerere)
+      -- CREATE TABLE IF NOT EXISTS — producția poate să nu aibă tabela din 034
+      CREATE TABLE IF NOT EXISTS trust_reports (
+        id           TEXT        PRIMARY KEY,
+        flow_id      TEXT        NOT NULL UNIQUE,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        pdf_url      TEXT,
+        pdf_size     INTEGER,
+        conclusion   TEXT,
+        report_json  JSONB,
+        report_pdf   BYTEA
+      );
+      CREATE INDEX IF NOT EXISTS idx_trust_reports_flow_id ON trust_reports(flow_id);
+      -- Adaugă coloana dacă tabela exista deja fără ea
       ALTER TABLE trust_reports ADD COLUMN IF NOT EXISTS report_pdf BYTEA;
     `
   }

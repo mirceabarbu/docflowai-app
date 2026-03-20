@@ -21,7 +21,7 @@
  */
 
 import express from 'express';
-import { readFileSync, readFile as _readFile } from 'fs';
+import { readFileSync } from 'fs';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -182,29 +182,14 @@ const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, '../public');
 app.use(express.static(PUBLIC_DIR));
 
-// SEC-03: Helper — injectează nonce în toate <script> blocurile inline ale unui HTML
-// fs.readFile e disponibil din importul static de la top (import { readFileSync } from 'fs')
-// Folosim varianta async (callback) pentru a nu bloca event loop.
-function sendHtmlWithNonce(res, filePath) {
-  _readFile(filePath, 'utf8', (err, html) => {
-    if (err) { res.status(500).send('Internal Server Error'); return; }
-    const nonce = res.locals.cspNonce || '';
-    // Injectam nonce DOAR pe <script> fara src (inline scripts) — nu pe <script src=...>
-    const patched = html.replace(/<script(?!\s+src=)(\s[^>]*)?>/gi, (match, attrs) => {
-      if (match.includes('nonce=')) return match;
-      return `<script nonce="${nonce}"${attrs || ''}>`;
-    });
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(patched);
-  });
-}
+// SEC-03: sendHtmlWithNonce eliminat — revenit la sendFile simplu
 
-app.get('/', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
-app.get('/login', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'login.html')));
-app.get('/admin', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'admin.html')));
-app.get('/notifications', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'notifications.html')));
-app.get('/verifica', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'verifica.html')));
-app.get('/templates', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'templates.html')));
+app.get('/', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
+app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
+app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
+app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'notifications.html')));
+app.get('/verifica', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'verifica.html')));
+app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
 // ── API Docs — OpenAPI 3.0 ───────────────────────────────────────────────────
