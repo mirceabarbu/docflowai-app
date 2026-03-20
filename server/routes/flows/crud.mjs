@@ -2,32 +2,32 @@
  * DocFlowAI — flows/crud.mjs
  * CRUD fluxuri: creare, citire, actualizare, ștergere, my-flows
  */
-import {{ Router, json as expressJson }} from 'express';
-import {{ AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml }} from '../middleware/auth.mjs';
-import {{ pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent }} from '../db/index.mjs';
-import {{ createRateLimiter }} from '../middleware/rateLimiter.mjs';
-import {{ logger }} from '../middleware/logger.mjs';
+import { Router, json as expressJson } from 'express';
+import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
+import { createRateLimiter } from '../middleware/rateLimiter.mjs';
+import { logger } from '../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
-const _largePdf = expressJson({{ limit: '50mb' }});
+const _largePdf = expressJson({ limit: '50mb' });
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
-const _signRateLimit   = createRateLimiter({{ windowMs: 60_000, max: 20, message: 'Prea multe cereri de semnare. Încearcă în 1 minut.' }});
-const _uploadRateLimit = createRateLimiter({{ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' }});
-const _readRateLimit   = createRateLimiter({{ windowMs: 60_000, max: 60, message: 'Prea multe cereri. Încearcă în 1 minut.' }});
+const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message: 'Prea multe cereri de semnare. Încearcă în 1 minut.' });
+const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
+const _readRateLimit   = createRateLimiter({ windowMs: 60_000, max: 60, message: 'Prea multe cereri. Încearcă în 1 minut.' });
 
-function getOptionalActor(req) {{
+function getOptionalActor(req) {
   const cookieToken = req.cookies?.[AUTH_COOKIE] || null;
-  if (cookieToken) {{ try {{ return jwt.verify(cookieToken, JWT_SECRET); }} catch (e) {{}} }}
+  if (cookieToken) { try { return jwt.verify(cookieToken, JWT_SECRET); } catch (e) {} }
   const authHeader = req.headers['authorization'] || '';
-  if (authHeader.startsWith('Bearer ')) {{ try {{ return jwt.verify(authHeader.slice(7), JWT_SECRET); }} catch (e) {{}} }}
+  if (authHeader.startsWith('Bearer ')) { try { return jwt.verify(authHeader.slice(7), JWT_SECRET); } catch (e) {} }
   return null;
 }}
 
 // Deps injectate din flows/index.mjs
 let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired;
 let _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64, _sendSignerEmail, _fireWebhook;
-export function _injectDeps(d) {{
+export function _injectDeps(d) {
   _notify = d.notify; _fireWebhook = d.fireWebhook || null; _wsPush = d.wsPush;
   _PDFLib = d.PDFLib; _stampFooterOnPdf = d.stampFooterOnPdf;
   _isSignerTokenExpired = d.isSignerTokenExpired; _newFlowId = d.newFlowId;
