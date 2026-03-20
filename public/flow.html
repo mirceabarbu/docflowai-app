@@ -872,7 +872,7 @@
       const btnSendEmail = $("btnSendEmail");
       if (btnSendEmail) btnSendEmail.style.display = hasSigned ? "" : "none";
       const btnReport = $("btnTrustReport");
-      if (btnReport) btnReport.style.display = (d.completed) ? "block" : "none";
+      if (btnReport) btnReport.style.display = (data.completed) ? "block" : "none";
 
       const hasPdf = !!(j.hasPdf || data.hasPdf);
       $("btnDownloadOriginal").disabled = !hasPdf;

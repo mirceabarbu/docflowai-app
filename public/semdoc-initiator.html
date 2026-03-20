@@ -1230,7 +1230,8 @@ th{ color: var(--sub) !important; }
           // Salvăm datele fluxului pentru modalul de email (stocăm orice flux finalizat)
           if (successFinal || pdfReady) { window._flowsEmailData = window._flowsEmailData || {}; window._flowsEmailData[f.flowId] = f; }
           const dlBtn = pdfReady
-            ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>`
+            ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">⬇ Descarcă PDF semnat</a>
+               <button onclick="downloadTrustReportInit('${f.flowId}', this)" style="background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);color:#b39dff;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">📜 Raport</button>`
             : successFinal
             ? `<span style="color:var(--warn);font-size:.8rem;">⏳ Se procesează PDF...</span>`
             : isReviewRequested
@@ -1396,6 +1397,21 @@ async function signFromFluxuri(flowId) {
       let _fluxPage = 1;
       let _fluxDebounce = null;
 
+
+      async function downloadTrustReportInit(flowId, btn) {
+        if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+        try {
+          const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report`);
+          if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j?.message || `Eroare ${r.status}`); }
+          const blob = await r.blob();
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement('a');
+          a.href = url; a.download = `TrustReport_${flowId}.pdf`;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch(e) { alert('❌ Eroare raport: ' + e.message); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = '📜 Raport'; } }
+      }
       function debounceLoadFlows() {
         clearTimeout(_fluxDebounce);
         _fluxDebounce = setTimeout(() => loadMyFlows(1), 350);

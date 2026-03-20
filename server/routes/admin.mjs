@@ -1618,6 +1618,19 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
       }
 
       // ── F-05: ACCESURI ÎNREGISTRATE (din audit_log) ───────────────────────
+      // Construim userMap pentru rezolvarea email → nume
+      let userMap = {};
+      try {
+        const { rows: uRows } = await pool.query('SELECT email, nume FROM users WHERE org_id = $1', [data.orgId || null]);
+        uRows.forEach(u => { if (u.email) userMap[u.email.toLowerCase()] = u; });
+        // Adăugăm și semnatarii din flux (pot fi din org diferite)
+        for (const s of (data.signers || [])) {
+          if (s.email && !userMap[s.email.toLowerCase()]) {
+            userMap[s.email.toLowerCase()] = { email: s.email, nume: s.name || s.email };
+          }
+        }
+      } catch { /* non-fatal */ }
+
       // Citim evenimentele cu IP din audit_log — semnat, descarcat, incarcat
       let accessRows = [];
       try {
