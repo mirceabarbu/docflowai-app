@@ -1,15 +1,18 @@
 /**
  * DocFlowAI — Report Routes
  *
- * GET  /api/flows/:flowId/report        — generează și returnează PDF raport
+ * GET  /api/flows/:flowId/report        — generează și returnează PDF raport (cu cache BYTEA)
  * GET  /api/flows/:flowId/report/json   — returnează structura JSON a raportului
  * GET  /api/flows/:flowId/report/status — verifică dacă raportul există în cache
+ *
+ * ?force=1 (admin only) — ignoră cache-ul și regenerează raportul
  */
 
 import { Router }   from 'express';
 import { getFlowData, pool } from '../db/index.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
 import { logger } from '../middleware/logger.mjs';
+import { generateTrustReport } from '../services/sign-trust-report.mjs';
 
 const router = Router();
 
@@ -30,10 +33,27 @@ router.get('/api/flows/:flowId/report', async (req, res) => {
     if (!isAdmin && !isInit && !isSigner)
       return res.status(403).json({ error: 'forbidden', message: 'Acces permis doar inițiatorului sau semnatarilor.' });
 
-    // Verificăm cache în trust_reports
-    const cache = await pool.query(
-      `SELECT report_json, generated_at FROM trust_reports WHERE flow_id = $1`, [flowId]
-    ).catch(() => ({ rows: [] }));
+    // Verificăm cache în trust_reports (BUG-01 fix: cache era citit dar ignorat)
+    // ?force=1 permite admin să regenereze explicit raportul
+    const forceRegen = req.query.force === '1' && isAdmin;
+    if (!forceRegen) {
+      const cache = await pool.query(
+        `SELECT report_pdf, generated_at FROM trust_reports WHERE flow_id = $1`, [flowId]
+      ).catch(() => ({ rows: [] }));
+      if (cache.rows.length > 0 && cache.rows[0].report_pdf) {
+        logger.info({ flowId, actor: actor.email }, 'Trust report servit din cache');
+        const pdfBuf = Buffer.isBuffer(cache.rows[0].report_pdf)
+          ? cache.rows[0].report_pdf
+          : Buffer.from(cache.rows[0].report_pdf);
+        const filename = `TrustReport_${flowId}_${new Date(cache.rows[0].generated_at).toISOString().slice(0,10)}.pdf`;
+        res.setHeader('Content-Type',        'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length',      pdfBuf.length);
+        res.setHeader('Cache-Control',       'no-store');
+        res.setHeader('X-Report-Cached',     'true');
+        return res.end(pdfBuf);
+      }
+    }
 
     // Obținem PDF-ul semnat pentru verificare criptografică
     let pdfBytes = null;
@@ -46,7 +66,6 @@ router.get('/api/flows/:flowId/report', async (req, res) => {
     } catch { /* non-fatal */ }
 
     // Generăm raportul
-    const { generateTrustReport } = await import('../services/sign-trust-report.mjs');
     const { pdfBytes: pdfOutput, report, conclusion } = await generateTrustReport({
       flowId, flowData: data, pdfBytes, pool,
     });
@@ -103,10 +122,9 @@ router.get('/api/flows/:flowId/report', async (req, res) => {
     return res.end(pdfOutput);
 
   } catch(e) {
-    logger.error({ err: e, stack: e.stack }, 'report generation error');
-    // Asigurăm că răspundem cu JSON indiferent de circumstanțe
+    logger.error({ err: e, stack: e.stack, flowId }, 'report generation error');
     if (!res.headersSent) {
-      return res.status(500).json({ error: 'server_error', message: e.message, stack: e.stack?.split('\n')[0] });
+      return res.status(500).json({ error: 'server_error', message: 'Eroare la generarea raportului. Verificați log-urile serverului.', requestId: req.requestId });
     }
   }
 });
@@ -132,7 +150,6 @@ router.get('/api/flows/:flowId/report/json', async (req, res) => {
       if (raw) pdfBytes = Buffer.from(raw.includes(',') ? raw.split(',')[1] : raw, 'base64');
     } catch { }
 
-    const { generateTrustReport } = await import('../services/sign-trust-report.mjs');
     const { report } = await generateTrustReport({ flowId, flowData: data, pdfBytes, pool });
 
     res.setHeader('Cache-Control', 'no-store');

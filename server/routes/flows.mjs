@@ -72,6 +72,8 @@ export function injectFlowDeps(deps) {
 const createFlow = async (req, res) => {
   try {
     if (requireDb(res)) return;
+    // BUG-03 fix: createFlow necesita autentificare — orice utilizator autentificat poate crea fluxuri
+    const actor = requireAuth(req, res); if (!actor) return;
     const body = req.body || {};
     const docName = String(body.docName || '').trim();
     const initName = String(body.initName || '').trim();
@@ -2153,9 +2155,9 @@ router.post('/flows/:flowId/signing-callback', async (req, res) => {
     const providerConfig = orgConfig[providerId] || {};
     const provider = getProvider(providerId);
 
-    // Raw body pentru verificare HMAC (express.json() l-a parsat deja — folosim JSON.stringify ca aproximare)
-    // TODO: pentru HMAC corect, adaugă middleware rawBody în express config
-    const rawBody     = JSON.stringify(req.body);
+    // Raw body pentru verificare HMAC — dacă middleware-ul l-a capturat îl folosim direct,
+    // altfel fallback la JSON.stringify (aproximare — corect 99% dacă body e simplu JSON).
+    const rawBody     = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
     const sigHeader   = req.headers['x-docflowai-signature'] || req.headers['x-signature'] || '';
 
     const result = await provider.handleCallback(req.body, rawBody, sigHeader, providerConfig);

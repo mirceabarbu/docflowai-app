@@ -1,5 +1,17 @@
 /**
- * DocFlowAI v3.3.7 — Main entry point (orchestrator)
+ * DocFlowAI v3.3.9 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.3.9 (build din 20.03.2026):
+ *  FIX SEC-02:  rawBody middleware pentru HMAC real pe /signing-callback
+ *
+ * CHANGES v3.3.8 (build din 20.03.2026):
+ *  FIX BUG-01:  chainOk is not defined — crash la generare trust report
+ *  FIX BUG-01b: Cache trust_reports ignorat — regenerare inutila la fiecare cerere
+ *  FIX BUG-03:  createFlow fara requireAuth
+ *  FIX BUG-04:  Stack trace expus in raspuns 500 la /report
+ *  OPT-05:      Buton Raport conformitate adaugat in pagina semnatarului
+ *  OPT-07:      Dynamic import → static import in report.mjs
+ *  DB-033:      Migrare trust_reports — coloana report_pdf BYTEA pentru cache PDF
  *
  * CHANGES v3.3.7 b80:
  *  FIX BUG-N01: archive_jobs recovery la startup (status='processing' > 30min → reset 'pending')
@@ -102,6 +114,28 @@ if (corsOrigins === false) {
   logger.warn('CORS_ORIGIN și PUBLIC_BASE_URL lipsesc — CORS blocat pentru toate originile externe. Setați cel puțin PUBLIC_BASE_URL.');
 }
 app.use(cors({ origin: corsOrigins, credentials: true }));
+
+// SEC-02: rawBody capture pentru HMAC real pe /signing-callback
+// Trebuie să ruleze ÎNAINTE de express.json(), altfel body e deja parsat și bytes originali pierduți.
+// Se salvează în req.rawBody DOAR pentru endpoint-ul callback — nu pentru tot traficul.
+app.use((req, res, next) => {
+  if (req.path && req.path.includes('/signing-callback')) {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      req.rawBody = Buffer.concat(chunks);
+      // Re-parse JSON manual ca să nu rupem express.json() downstream
+      if (req.headers['content-type']?.includes('application/json') && req.rawBody.length > 0) {
+        try { req.body = JSON.parse(req.rawBody.toString('utf8')); } catch { req.body = {}; }
+      }
+      next();
+    });
+    req.on('error', next);
+  } else {
+    next();
+  }
+});
+
 // PERF-03: limita globala 1MB — previne body flood pe endpoint-urile cu JSON mic.
 // Rutele care primesc PDF (pdfB64/signedPdfB64/dataB64) au override 50MB in flows.mjs.
 app.use(express.json({ limit: '1mb' }));

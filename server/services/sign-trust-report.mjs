@@ -71,16 +71,16 @@ export async function generateTrustReport({ flowId, flowData, pdfBytes, pool }) 
   // ── 4. Generare PDF ───────────────────────────────────────────────────
   const pdfOutput = await _generateReportPdf(report);
 
-  // ── 5. Salvare în trust_reports ──────────────────────────────────────
+  // ── 5. Salvare în trust_reports (inclusiv PDF bytes pentru cache) ────────
   if (pool) {
     try {
       const reportId = `TR_${flowId}`;
       await pool.query(`
-        INSERT INTO trust_reports (id, flow_id, generated_at, conclusion, report_json)
-        VALUES ($1, $2, NOW(), $3, $4)
+        INSERT INTO trust_reports (id, flow_id, generated_at, conclusion, report_json, report_pdf)
+        VALUES ($1, $2, NOW(), $3, $4, $5)
         ON CONFLICT (flow_id) DO UPDATE SET
-          generated_at = NOW(), conclusion = $3, report_json = $4
-      `, [reportId, flowId, report.conclusion, JSON.stringify(report)]);
+          generated_at = NOW(), conclusion = $3, report_json = $4, report_pdf = $5
+      `, [reportId, flowId, report.conclusion, JSON.stringify(report), pdfOutput]);
     } catch(e) {
       logger.warn({ err: e, flowId }, 'trust-report: DB save failed (non-fatal)');
     }
@@ -136,9 +136,11 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
   const L1_ok        = sigs.length > 0 && !L1_fail && sigs.every(s => s.levels?.L1?.ok !== null);
   const L5_revoked   = sigs.some(s => s.levels?.L5?.status === 'revoked');
   const L5_ok        = sigs.some(s => s.levels?.L5?.ok === true);
+  const L4_ok        = sigs.length > 0 ? sigs.every(s => s.levels?.L4?.ok === true) : null;
   const L6_ok        = sigs.length > 0 ? sigs.every(s => s.levels?.L6?.ok === true) : null;
   const hasCrypto    = sigs.length > 0;
   const integrityOk  = L1_ok && !L1_fail;
+  const chainOk      = L4_ok;   // L4 = lanț de certificare complet (cert → CA → Root)
   const allQES       = L6_ok === true;
 
   // ── Concluzie bazată pe rezultate reale L1-L6 ─────────────────────────────

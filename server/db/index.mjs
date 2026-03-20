@@ -684,6 +684,14 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS webhook_enabled BOOLEAN  NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW();
     `
+  },
+  {
+    id: '035_trust_report_pdf_cache',
+    sql: `
+      -- BUG-01 fix: adaugă coloana BYTEA pentru cache PDF raport
+      -- (anterior se stoca doar report_json, PDF-ul era regenerat la fiecare cerere)
+      ALTER TABLE trust_reports ADD COLUMN IF NOT EXISTS report_pdf BYTEA;
+    `
   }
 ];
 
