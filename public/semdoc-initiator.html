@@ -2182,6 +2182,22 @@ async function submitChangePwd(){
         <textarea id="semBody" rows="7" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
       <!-- PDF semnat și referință Flow ID incluse automat -->
+      <!-- Atașamente suplimentare (opțional, max 20MB total) -->
+      <div>
+        <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">
+          📎 Atașamente suplimentare <span style="color:rgba(255,255,255,.35);font-size:.72rem;">— opțional, max 20 MB total</span>
+        </label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button type="button" onclick="document.getElementById('semExtraFiles').click()"
+            style="padding:7px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#9db0ff;cursor:pointer;font-size:.82rem;font-weight:600;">
+            + Adaugă fișier
+          </button>
+          <span id="semExtraInfo" style="font-size:.78rem;color:#888;">PDF semnat inclus automat</span>
+        </div>
+        <input id="semExtraFiles" type="file" multiple accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" style="display:none;"
+          onchange="onSemExtraFilesChange(this)" />
+        <div id="semExtraList" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;"></div>
+      </div>
       <div id="semMsg" style="font-size:.82rem;min-height:18px;"></div>
       <button id="semSendBtn" onclick="doSendEmail()" style="background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;color:#fff;padding:11px 24px;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;width:100%;">📤 Trimite email</button>
     </div>
@@ -2227,6 +2243,14 @@ Vă transmitem atașat documentul „${f.docName || flowId}", în vederea aplic�
 Cu stimă,
 Nume: ${senderName}${functieStr}${institutieStr}${compartimentStr}
 Data: ${today}`;
+  // Reset atașamente extra
+  window._semExtraFiles = [];
+  const semExtraList = document.getElementById('semExtraList');
+  const semExtraInfo = document.getElementById('semExtraInfo');
+  const semExtraInput = document.getElementById('semExtraFiles');
+  if (semExtraList) semExtraList.innerHTML = '';
+  if (semExtraInfo) semExtraInfo.textContent = 'PDF semnat inclus automat';
+  if (semExtraInput) semExtraInput.value = '';
   document.getElementById('sendEmailModal').style.display = 'flex';
   setTimeout(() => document.getElementById('semTo').focus(), 100);
 }
@@ -2248,13 +2272,22 @@ async function doSendEmail() {
 
   btn.disabled = true; btn.textContent = '⏳ Se trimite...'; msg.textContent = '';
 
+  // Codificăm fișierele extra în base64
+  const extraAttachments = [];
+  for (const f of (window._semExtraFiles || [])) {
+    const b64 = await new Promise((res, rej) => {
+      const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(f);
+    });
+    extraAttachments.push({ filename: f.name, dataB64: b64 });
+  }
+
   try {
     const jwt = localStorage.getItem('docflow_token') || localStorage.getItem('jwt') || '';
     const r = await fetch(`/flows/${encodeURIComponent(_semFlowId)}/send-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(jwt ? { 'Authorization': 'Bearer ' + jwt } : {}) },
       credentials: 'include',
-      body: JSON.stringify({ to, subject, bodyText }),
+      body: JSON.stringify({ to, subject, bodyText, extraAttachments }),
     });
     const d = await r.json();
     if (r.ok) {
@@ -2269,6 +2302,38 @@ async function doSendEmail() {
 }
 
 document.addEventListener('keydown', e => { if (e.key==='Escape' && document.getElementById('sendEmailModal').style.display==='flex') closeSendEmailModal(); });
+
+window._semExtraFiles = [];
+
+function onSemExtraFilesChange(input) {
+  const MAX_TOTAL = 20 * 1024 * 1024; // 20 MB
+  const list  = document.getElementById('semExtraList');
+  const info  = document.getElementById('semExtraInfo');
+  const files = Array.from(input.files || []);
+  for (const f of files) {
+    const totalSize = window._semExtraFiles.reduce((s, x) => s + x.size, 0) + f.size;
+    if (totalSize > MAX_TOTAL) { alert(`Depășești limita de 20 MB. "${f.name}" nu a fost adăugat.`); continue; }
+    if (window._semExtraFiles.some(x => x.name === f.name && x.size === f.size)) continue;
+    window._semExtraFiles.push(f);
+  }
+  input.value = '';
+  list.innerHTML = window._semExtraFiles.map((f, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(157,176,255,.08);border-radius:6px;font-size:.78rem;">
+      <span style="color:#9db0ff;">📄</span>
+      <span style="flex:1;color:rgba(234,240,255,.7);">${esc(f.name)}</span>
+      <span style="color:#888;">${(f.size/1024).toFixed(0)} KB</span>
+      <button onclick="removeSemExtra(${i})" style="background:none;border:none;color:#ff8080;cursor:pointer;font-size:.82rem;padding:0 2px;">✕</button>
+    </div>`).join('');
+  const totalKB = (window._semExtraFiles.reduce((s, x) => s + x.size, 0) / 1024).toFixed(0);
+  info.textContent = window._semExtraFiles.length
+    ? `PDF semnat + ${window._semExtraFiles.length} fișier(e) extra (${totalKB} KB)`
+    : 'PDF semnat inclus automat';
+}
+
+function removeSemExtra(idx) {
+  window._semExtraFiles.splice(idx, 1);
+  onSemExtraFilesChange({ files: [], value: '' });
+}
 </script>
 
 </html>
