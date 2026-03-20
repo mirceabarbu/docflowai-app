@@ -3,10 +3,10 @@
  * Detectare câmpuri AcroForm/XFA din PDF-uri cu ancore existente
  */
 import { Router, json as expressJson } from 'express';
-import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
-import { createRateLimiter } from '../middleware/rateLimiter.mjs';
-import { logger } from '../middleware/logger.mjs';
+import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../../middleware/auth.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
+import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
+import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 

@@ -3,10 +3,10 @@
  * Semnare cloud: STS OAuth callback/poll, provideri, inițiere sesiune, callback
  */
 import { Router, json as expressJson } from 'express';
-import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
-import { createRateLimiter } from '../middleware/rateLimiter.mjs';
-import { logger } from '../middleware/logger.mjs';
+import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../../middleware/auth.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
+import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
+import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -37,7 +37,7 @@ export function _injectDeps(d) {
 
 const router = Router();
 
-import { getOrgProviders, getOrgProviderConfig, getProvider } from '../signing/index.mjs';
+import { getOrgProviders, getOrgProviderConfig, getProvider } from '../../signing/index.mjs';
 
 
 // ── GET /flows/sts-oauth-callback — callback OAuth2 de la STS IDP ─────────
@@ -326,7 +326,7 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
       );
       org = rows[0] || null;
     }
-    const { getOrgProviderConfig, getOrgProvider } = await import('../signing/index.mjs');
+    const { getOrgProviderConfig, getOrgProvider } = await import('../../signing/index.mjs');
     const provider = getOrgProvider(org, providerId);
     if (provider.id !== providerId) {
       return res.status(400).json({ error: 'provider_not_available',

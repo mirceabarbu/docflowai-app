@@ -3,10 +3,10 @@
  * Ciclu de viață: reinitiere, revizuire, delegare, anulare
  */
 import { Router, json as expressJson } from 'express';
-import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
-import { createRateLimiter } from '../middleware/rateLimiter.mjs';
-import { logger } from '../middleware/logger.mjs';
+import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../../middleware/auth.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
+import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
+import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -36,7 +36,7 @@ export function _injectDeps(d) {
 }
 
 const router = Router();
-import { emailDelegare } from '../emailTemplates.mjs';
+import { emailDelegare } from '../../emailTemplates.mjs';
 
 
 

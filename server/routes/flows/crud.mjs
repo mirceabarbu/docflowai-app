@@ -3,10 +3,10 @@
  * CRUD fluxuri: creare, citire, actualizare, ștergere, my-flows
  */
 import { Router, json as expressJson } from 'express';
-import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../db/index.mjs';
-import { createRateLimiter } from '../middleware/rateLimiter.mjs';
-import { logger } from '../middleware/logger.mjs';
+import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../../middleware/auth.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
+import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
+import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -37,8 +37,8 @@ export function _injectDeps(d) {
 
 const router = Router();
 
-import { emailDelegare, emailSendExtern } from '../emailTemplates.mjs';
-import { getOrgProviders, getOrgProviderConfig, getProvider } from '../signing/index.mjs';
+import { emailDelegare, emailSendExtern } from '../../emailTemplates.mjs';
+import { getOrgProviders, getOrgProviderConfig, getProvider } from '../../signing/index.mjs';
 
 // ── POST /flows — creare flux ──────────────────────────────────────────────
 const createFlow = async (req, res) => {
