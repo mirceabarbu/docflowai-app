@@ -22,7 +22,7 @@ function getOptionalActor(req) {
   const authHeader = req.headers['authorization'] || '';
   if (authHeader.startsWith('Bearer ')) { try { return jwt.verify(authHeader.slice(7), JWT_SECRET); } catch (e) {} }
   return null;
-}}
+}
 
 // Deps injectate din flows/index.mjs
 let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired;
@@ -33,7 +33,7 @@ export function _injectDeps(d) {
   _isSignerTokenExpired = d.isSignerTokenExpired; _newFlowId = d.newFlowId;
   _buildSignerLink = d.buildSignerLink; _stripSensitive = d.stripSensitive;
   _stripPdfB64 = d.stripPdfB64; _sendSignerEmail = d.sendSignerEmail;
-}}
+}
 
 const router = Router();
 
