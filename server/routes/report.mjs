@@ -53,6 +53,47 @@ router.get('/api/flows/:flowId/report', async (req, res) => {
 
     logger.info({ flowId, actor: actor.email, size: pdfOutput.length }, 'Trust report generat');
 
+    // Logăm TRUST_REPORT_GENERATED + CERTIFICATE_EXTRACTED în flow_events
+    try {
+      const certEvents = [];
+      for (const sig of (report.certificates || [])) {
+        if (!sig.certificate) continue;
+        const c = sig.certificate;
+        certEvents.push({
+          type: 'CERTIFICATE_EXTRACTED',
+          at: new Date().toISOString(),
+          by: actor.email,
+          signerIndex: sig.signerIndex,
+          certificateType: c.certificateType || 'unknown',
+          issuer: c.issuer?.CN || c.issuer?.O || '—',
+          subjectCN: c.subject?.CN || '—',
+          wasValidAtSigning: c.validAtSigning,
+          revocationStatus: c.revocationStatus || 'unknown',
+          isQES: sig.isQES || false,
+        });
+      }
+      const trustEvent = {
+        type: 'TRUST_REPORT_GENERATED',
+        at: new Date().toISOString(),
+        by: actor.email,
+        conclusion: report.conclusion?.substring(0, 200),
+        signatureCount: report.verification?.signatureCount || 0,
+        allQES: report.verification?.allQES ?? null,
+        integrityOk: report.verification?.integrityOk ?? null,
+      };
+      // Inserăm în flow_events (JSONB append)
+      await pool.query(
+        `UPDATE flows SET data = jsonb_set(
+          data,
+          '{events}',
+          (COALESCE(data->'events', '[]'::jsonb) || $2::jsonb)
+        ) WHERE flow_id = $1`,
+        [flowId, JSON.stringify([...certEvents, trustEvent])]
+      );
+    } catch(evErr) {
+      logger.warn({ err: evErr, flowId }, 'flow_events update failed (non-fatal)');
+    }
+
     // Returnăm PDF
     const filename = `TrustReport_${flowId}_${new Date().toISOString().slice(0,10)}.pdf`;
     res.setHeader('Content-Type',        'application/pdf');

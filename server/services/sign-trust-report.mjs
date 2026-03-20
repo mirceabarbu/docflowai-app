@@ -190,14 +190,17 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
       status:       data.completed ? 'FINALIZAT' : (data.status || 'activ').toUpperCase(),
     },
     signers: signers.map((s, i) => ({
-      order:       s.order || i + 1,
-      name:        s.name || s.email,
-      email:       s.email,
-      rol:         s.rol || '—',
-      status:      s.status,
-      signedAt:    s.signedAt || null,
-      provider:    s.signingProvider || 'local-upload',
-      delegatedTo: s.delegatedTo || null,
+      order:        s.order || i + 1,
+      name:         s.name || s.email,
+      email:        s.email,
+      rol:          s.rol || '—',
+      status:       s.status,
+      signedAt:     s.signedAt || null,
+      provider:     s.signingProvider || 'local-upload',
+      delegatedTo:  s.delegatedTo || null,
+      uploadedHash: s.uploadedHash || null,
+      signerIP:     (events || []).find(e => e.type === 'SIGNED' && (e.by||'').toLowerCase() === (s.email||'').toLowerCase())?.ip || null,
+      uploadedHash: s.uploadedHash || null,
     })),
     certificates: (cryptoResult?.signatures || []).map(sig => ({
       signerIndex:        sig.index,
@@ -324,6 +327,7 @@ async function _generateReportPdf(report) {
   drawSection('DATE DOCUMENT', '§1');
   drawKV('Nume document', report.document.name);
   drawKV('Flow ID', report.flowId);
+  drawKV('Status', report.document.status);
   drawKV('Tip flux', report.document.flowType === 'ancore' ? 'Ancore existente (PDF extern)' : 'Tabel generat');
   drawKV('Institutie', report.document.institutie);
   drawKV('Compartiment', report.document.compartiment);
@@ -331,17 +335,7 @@ async function _generateReportPdf(report) {
   drawKV('Data initierii', fmtDate(report.document.createdAt));
   drawKV('Data finalizarii', report.document.completedAt ? fmtDate(report.document.completedAt) : 'In procesare');
 
-  // Hash document (dacă avem)
-  if (report.certificates[0]?.docHash) {
-    ensureSpace(30);
-    y -= 4;
-    page.drawText('Hash document (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted });
-    y -= 12;
-    page.drawText(report.certificates[0].docHash.substring(0, 40), { x: MARGIN, y, size: 7, font: fontR, color: COL.text, maxWidth: COL_W });
-    y -= 10;
-    page.drawText(report.certificates[0].docHash.substring(40), { x: MARGIN, y, size: 7, font: fontR, color: COL.text, maxWidth: COL_W });
-    y -= 10;
-  }
+
 
   // ══════════════════════════════════════════════════════════════════════
   // ── §2 SEMNATARI ───────────────────────────────────────────────────
@@ -360,10 +354,24 @@ async function _generateReportPdf(report) {
     page.drawRectangle({ x: PAGE_W - MARGIN - 70, y: y - 2, width: 68, height: 14, color: statusColor, borderRadius: 3 });
     page.drawText(statusLabel, { x: PAGE_W - MARGIN - 65, y: y + 1, size: 7, font: fontB, color: COL.white });
     y -= 22;
+    drawKV('Ordine in flux', `${s.order}`);
     drawKV('Email', s.email);
     drawKV('Rol', s.rol);
-    drawKV('Metoda semnare', s.provider === 'local-upload' ? 'Upload PDF semnat local' : s.provider);
+    drawKV('Metoda semnare', s.provider === 'local-upload' ? 'Upload PDF semnat local' : s.provider === 'sts-cloud' ? 'STS Cloud QES' : s.provider);
     drawKV('Semnat la', s.signedAt ? fmtDate(s.signedAt) : '—');
+    if (s.signerIP) drawKV('IP semnare', s.signerIP);
+    if (s.uploadedHash) {
+      ensureSpace(26);
+      page.drawText('Hash PDF semnat (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 11;
+      page.drawText(s.uploadedHash.substring(0,42), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
+      if (s.uploadedHash.length > 42) { page.drawText(s.uploadedHash.substring(42), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9; }
+    }
+    if (s.uploadedHash) {
+      ensureSpace(26);
+      page.drawText('Hash PDF semnat (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 11;
+      page.drawText(s.uploadedHash.substring(0,40), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
+      page.drawText(s.uploadedHash.substring(40), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
+    }
     y -= 4;
     drawLine();
   }
@@ -391,10 +399,11 @@ async function _generateReportPdf(report) {
       }
       y -= 20;
 
-      drawKV('Subject (CN)', c.subject?.CN);
+      drawKV('Titular (CN)', c.subject?.CN);
+      if (c.subject?.serial) drawKV('CNP / Identificator', c.subject.serial);
       drawKV('Organizatie', c.subject?.O || c.issuer?.O);
       drawKV('Emitent (CA)', c.issuer?.CN);
-      drawKV('Serial Number', c.serialNumber);
+      drawKV('Serial Number certificat', c.serialNumber);
       drawKV('Valabil de la', fmtDateShort(c.notBefore));
       drawKV('Valabil pana la', fmtDateShort(c.notAfter));
       drawKV('Valid la semnare', c.validAtSigning === true ? 'DA' : c.validAtSigning === false ? 'NU' : 'Neverificat',
@@ -404,6 +413,14 @@ async function _generateReportPdf(report) {
       drawKV('Algoritm semnatura', c.signatureAlgorithm);
       drawKV('QcStatements', c.hasQcStatements ? 'Prezent (QES confirmed)' : 'Absent');
       if (c.ocspUrl) drawKV('OCSP URL', c.ocspUrl);
+      // Timestamp CMS și hash document
+      if (cert.signingTime) drawKV('Timestamp CMS', fmtDate(cert.signingTime));
+      if (cert.docHash) {
+        ensureSpace(26);
+        page.drawText('Hash document (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 11;
+        page.drawText(cert.docHash.substring(0,40), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
+        page.drawText(cert.docHash.substring(40), { x: MARGIN, y, size: 6.5, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 9;
+      }
 
       // Lanț certificare
       if (cert.chain?.length > 1) {
