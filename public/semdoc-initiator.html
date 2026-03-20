@@ -466,6 +466,8 @@ th{ color: var(--sub) !important; }
 
     <script>
       const $ = (id) => document.getElementById(id);
+      // SEC-01: esc globala pentru toate innerHTML cu date de la server
+      function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
       function authHeaders(extra = {}) {
         // SEC-01: token din cookie HttpOnly — nu mai citim din localStorage
         return extra;  // SEC-01: cookie trimis automat
@@ -1208,7 +1210,7 @@ th{ color: var(--sub) !important; }
             const tipText = `${s.name||''}${rolTip}${delegTip}${refuzTip}`.replace(/"/g,'&quot;');
             return `<div class="mtl-step ${cls}" title="${tipText}">
               <div class="mtl-dot">${icon}</div>
-              <div class="mtl-name">${nameShort}</div>
+              <div class="mtl-name">${esc(nameShort)}</div>
               ${ts ? `<div class="mtl-ts">${ts}</div>` : ''}
             </div>`;
           });
@@ -1222,7 +1224,7 @@ th{ color: var(--sub) !important; }
           // Cine a anulat (dacă există) — afișat ca sub-text sub 'Anulat'
           const _finalByRaw = f.status==='cancelled' ? (f.cancelledBy || null) : null;
           const _finalBy    = _finalByRaw ? (_finalByRaw.split('@')[0]) : '';
-          _mtlSteps.push(`<div class="mtl-step ${_finalCls}"><div class="mtl-dot">${_finalIcon}</div><div class="mtl-name" style="color:${_finalColor};">${_finalLabel}</div>${_finalBy ? `<div class="mtl-ts" style="max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_finalBy}</div>` : ''}${_finalTs ? `<div class="mtl-ts">${_finalTs}</div>` : ''}</div>`);
+          _mtlSteps.push(`<div class="mtl-step ${_finalCls}"><div class="mtl-dot">${_finalIcon}</div><div class="mtl-name" style="color:${_finalColor};">${_finalLabel}</div>${_finalBy ? `<div class="mtl-ts" style="max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_finalBy)}</div>` : ''}${_finalTs ? `<div class="mtl-ts">${_finalTs}</div>` : ''}</div>`);
           const signerRows = `<div class="mtl">${_mtlSteps.join('')}</div>`;
           const finalStatuses = ["completed", "done", "finalizat", "finished", "complete"];
           const successFinal = !!(f.allSigned && !isRefused && !isReviewRequested && !isCancelled);
@@ -1244,8 +1246,8 @@ th{ color: var(--sub) !important; }
           return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:12px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
               <div>
-                <div style="font-weight:700;font-size:.95rem;margin-bottom:4px;">${f.docName}</div>
-                <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; ${f.flowType === 'ancore' ? '<span title="PDF cu ancore existente — fără tabel generat" style="color:#7cf0e0;font-weight:600;">⚓ Ancore</span>' : '<span title="PDF cu tabel generat de DocFlowAI" style="color:#b39dff;font-weight:600;">📋 Tabel</span>'} &nbsp;·&nbsp; Inițiator: ${f.initName || f.initEmail} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span>${f.parentFlowId ? ` &nbsp;·&nbsp; <a href="/flow.html?flow=${encodeURIComponent(f.parentFlowId)}" style="color:#ffd580;font-size:.76rem;text-decoration:underline;" title="Flux reinițiat după refuz — vezi fluxul anterior">🔁 Reinițiat din ${f.parentFlowId}</a>` : ''}</div>
+                <div style="font-weight:700;font-size:.95rem;margin-bottom:4px;">${esc(f.docName)}</div>
+                <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; ${f.flowType === 'ancore' ? '<span title="PDF cu ancore existente — fără tabel generat" style="color:#7cf0e0;font-weight:600;">⚓ Ancore</span>' : '<span title="PDF cu tabel generat de DocFlowAI" style="color:#b39dff;font-weight:600;">📋 Tabel</span>'} &nbsp;·&nbsp; Inițiator: ${esc(f.initName || f.initEmail)} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span>${f.parentFlowId ? ` &nbsp;·&nbsp; <a href="/flow.html?flow=${encodeURIComponent(f.parentFlowId)}" style="color:#ffd580;font-size:.76rem;text-decoration:underline;" title="Flux reinițiat după refuz — vezi fluxul anterior">🔁 Reinițiat din ${f.parentFlowId}</a>` : ''}</div>
               </div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 ${isUrgent ? '<span style="background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>' : ''}
@@ -2082,7 +2084,7 @@ async function signFromFluxuri(flowId) {
             await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
           }
         } catch(e) {
-          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + e.message + '</p>';
+          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + esc(e.message) + '</p>';
         }
       }
       // ── End PDF.js renderer ────────────────────────────────────────────────

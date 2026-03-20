@@ -735,7 +735,7 @@
         'EMAIL_SENT':   '📧 EMAIL TRIMIS EXTERN',
         'EMAIL_OPENED': '📬 EMAIL DESCHIS DE DESTINATAR',
       };
-      const kindLabel = EVENT_LABELS[kind] || kind.replace(/_/g,' ');
+      const kindLabel = EVENT_LABELS[kind] || esc(kind.replace(/_/g,' '));
       let extra = '';
       if (kind === 'EMAIL_SENT') {
         extra = `către: ${esc(e.to||'')}`;
@@ -746,7 +746,7 @@
         const sentBy = e.by ? (nameMap[e.by] || e.by) : '';
         extra = `destinatar: ${esc(e.to||'')}${sentBy ? ' · trimis de: ' + esc(sentBy) : ''}`;
       } else {
-        extra = e.msg || e.message || e.detail || e.reason || '';
+        extra = esc(e.msg || e.message || e.detail || e.reason || '');
       }
       const line = [kindLabel, kind === 'EMAIL_OPENED' ? '' : who].filter(Boolean).join(' · ');
       const txt = extra ? `${line} — ${extra}` : line;
@@ -884,7 +884,7 @@
         const bar = document.getElementById('userBarFlow');
         if (!bar) return;
         const label = currentUser.nume || currentUser.email || '';
-        if (label) bar.innerHTML = `Conectat: <strong>${label}</strong>` +
+        if (label) bar.innerHTML = `Conectat: <strong>${esc(label)}</strong>` +
           ((currentUser.role === 'admin' || currentUser.role === 'org_admin') ? ` &nbsp;<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
       })();
       const isRefused = computedStatus === "refused";
@@ -917,7 +917,7 @@
             });
             const j = await r.json();
             if (j.ok) { setMsg('ok', '🚫 Flux anulat cu succes.'); setTimeout(() => loadFlow(), 800); }
-            else setMsg('error', j.message || j.error || 'Eroare la anulare.');
+            else setMsg('error', esc(j.message || j.error || 'Eroare la anulare.'));
           } catch(e) { setMsg('error', 'Eroare rețea.'); }
           finally { btnCancelFlow.disabled = false; btnCancelFlow.textContent = '🚫 Anulează'; }
         };
@@ -1023,7 +1023,7 @@
       loadAttachments(); // F-06
 
     }catch(e){
-      setMsg("error", "❌ " + (e.message || e));
+      setMsg("error", "❌ " + esc(String(e.message || e)));
     }
   }
 
@@ -1032,7 +1032,7 @@
       const blob = await apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/signed-pdf`);
       downloadBlob(blob, `DocFlowAI_${flowId}_signed.pdf`);
     }catch(e){
-      setMsg("error", "❌ Nu am putut descărca PDF-ul semnat: " + (e.message || e));
+      setMsg("error", "❌ Nu am putut descărca PDF-ul semnat: " + esc(String(e.message || e)));
     }
   }
 
@@ -1041,7 +1041,7 @@
       const blob = await apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/pdf`);
       downloadBlob(blob, `DocFlowAI_${flowId}.pdf`);
     }catch(e){
-      setMsg("error", "❌ Nu am putut descărca PDF-ul original: " + (e.message || e));
+      setMsg("error", "❌ Nu am putut descărca PDF-ul original: " + esc(String(e.message || e)));
     }
   }
 
@@ -1094,9 +1094,9 @@
       if (j.ok) {
         setMsg("ok", `✅ Flux reinițiat! ID nou: <strong>${j.newFlowId}</strong> — <a href="/flow.html?flow=${j.newFlowId}" style="color:#7cf0e0;">Deschide noul flux</a>`);
       } else {
-        setMsg("error", "❌ " + (j.message || j.error || "Eroare la reinițiere"));
+        setMsg("error", "❌ " + esc(j.message || j.error || 'Eroare la reinițiere'));
       }
-    } catch(e) { setMsg("error", "❌ " + e.message); }
+    } catch(e) { setMsg("error", '❌ ' + esc(String(e.message))); }
   });
 
   const _btnReiReview = $("btnReinitiateReview");

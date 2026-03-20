@@ -58,7 +58,7 @@ import { injectRateLimiter } from './routes/auth.mjs';
 import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
-import flowsRouter, { injectFlowDeps } from './routes/flows.mjs';
+import flowsRouter, { injectFlowDeps } from './routes/flows/index.mjs'; // ARCH-01: modularizat
 import verifyRouter  from './routes/verify.mjs';
 import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
@@ -78,8 +78,11 @@ try {
     contentSecurityPolicy: {
       directives: {
         defaultSrc:  ["'self'"],
-        scriptSrc:   ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'],  // staging: permite CDN-urile folosite de pdf-lib/pdf.js
-        styleSrc:    ["'self'", "'unsafe-inline'"],
+        // SEC-03: nonce-based CSP — elimina 'unsafe-inline' din scriptSrc
+        // scriptSrcAttr pastreaza 'unsafe-inline' pentru onclick= etc. (130+ handlere in admin.html)
+        // Eliminarea completa a inline handlers ramane ca tech debt — sprint dedicat
+        scriptSrc:    ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'],
+        styleSrc:     ["'self'", "'unsafe-inline'"],
         scriptSrcAttr:["'unsafe-inline'"],
         imgSrc:      ["'self'", 'data:', 'blob:'],
         connectSrc:  ["'self'", 'wss:', 'ws:'],
@@ -179,12 +182,33 @@ const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, '../public');
 app.use(express.static(PUBLIC_DIR));
 
-app.get('/', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
-app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
-app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'notifications.html')));
-app.get('/verifica', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'verifica.html')));
-app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
+// SEC-03: Helper — injectează nonce în toate <script> blocurile inline ale unui HTML
+// Middleware-ul nonce e deja setat pe res.locals.cspNonce de helmet custom below.
+// Paginile servite via sendFile trec prin acest wrapper care injectează nonce.
+function sendHtmlWithNonce(res, filePath) {
+  const { readFileSync } = await import === undefined ? { readFileSync: (await import('fs')).readFileSync } : { readFileSync: null };
+  // Folosim readFile async pentru a nu bloca event loop
+  import('fs').then(({ readFile }) => {
+    readFile(filePath, 'utf8', (err, html) => {
+      if (err) { res.status(500).send('Internal Server Error'); return; }
+      const nonce = res.locals.cspNonce || '';
+      // Injectam nonce DOAR pe <script> fara src (inline scripts) — nu pe <script src=...>
+      const patched = html.replace(/<script(?!\s+src=)(\s[^>]*)?>/gi, (match, attrs) => {
+        if (match.includes('nonce=')) return match; // deja are nonce
+        return `<script nonce="${nonce}"${attrs || ''}>`;
+      });
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(patched);
+    });
+  });
+}
+
+app.get('/', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'semdoc-initiator.html')));
+app.get('/login', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'login.html')));
+app.get('/admin', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'admin.html')));
+app.get('/notifications', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'notifications.html')));
+app.get('/verifica', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'verifica.html')));
+app.get('/templates', (req, res) => sendHtmlWithNonce(res, path.join(PUBLIC_DIR, 'templates.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
 // ── API Docs — OpenAPI 3.0 ───────────────────────────────────────────────────

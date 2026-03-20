@@ -401,6 +401,8 @@ th{ color: var(--sub) !important; }
 
     <script>
       const $ = (id) => document.getElementById(id);
+      // SEC-01: esc pentru innerHTML cu date externe
+      function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
       function showError(msg) {
         $("err").classList.remove("hidden");
@@ -1495,7 +1497,7 @@ th{ color: var(--sub) !important; }
             await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
           }
         } catch(e) {
-          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + e.message + '</p>';
+          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + esc(e.message) + '</p>';
         }
       }
       // ── End PDF.js renderer ────────────────────────────────────────────────
