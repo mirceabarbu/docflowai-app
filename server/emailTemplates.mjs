@@ -196,8 +196,9 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
   // Click tracking — link-ul "DocFlowAI" duce la docflowai.ro (site public)
   // Destinatarul emailului extern nu are cont în platformă
   const platformUrl = 'https://www.docflowai.ro';
+  // URL tracking neutral — /d/:id nu contine "click"/"track"/"email" => mai putin blocat de Yahoo/Outlook
   const trackedUrl  = trackingId && appBase
-    ? `${appBase}/flows/email-click/${trackingId}?u=${encodeURIComponent(platformUrl)}`
+    ? `${appBase}/d/${trackingId}`
     : platformUrl;
 
   const linkSection = `

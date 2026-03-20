@@ -704,6 +704,83 @@ app.use('/', adminRouter);
 app.use('/', verifyRouter);
 app.use('/', reportRouter);
 app.use('/', flowsRouter);
+
+// ── Tracking routes neutre (fara 'email'/'click' in path — mai putin blocate de Yahoo/Outlook) ──
+// /d/:trackingId — click tracking (d = document)
+// /p/:trackingId — pixel tracking (p = pixel)
+// Ambele sunt aliases pentru endpoint-urile din flows/email.mjs
+app.get('/d/:trackingId', async (req, res) => {
+  // Forward catre handler-ul email-click
+  req.params.trackingId = req.params.trackingId;
+  const safeDest = 'https://www.docflowai.ro';
+  res.redirect(302, safeDest);
+  // Procesam tracking async
+  setImmediate(async () => {
+    try {
+      const { trackingId } = req.params;
+      if (!trackingId) return;
+      const { rows } = await pool.query(
+        `SELECT flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        [JSON.stringify([{ trackingId }])]
+      );
+      if (!rows.length) return;
+      const flowId = rows[0].flow_id;
+      const data = await getFlowData(flowId);
+      if (!data) return;
+      const events = Array.isArray(data.events) ? data.events : [];
+      const emailEv = events.find(e => e.trackingId === trackingId);
+      if (!emailEv) return;
+      if (events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId)) return;
+      const now = new Date().toISOString();
+      const ip  = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
+      const ua  = (req.headers['user-agent'] || '').substring(0, 200);
+      data.events.push({ at: now, type: 'EMAIL_OPENED', trackingId, to: emailEv.to, by: emailEv.by, ip, userAgent: ua });
+      data.updatedAt = now;
+      await saveFlow(flowId, data);
+      writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
+        actorEmail: emailEv.to, actorIp: ip,
+        payload: { trackingId, sentBy: emailEv.by, via: 'click', userAgent: ua } });
+      logger.info({ flowId, trackingId, ip }, '📬 Email deschis (click /d/)');
+    } catch(e) { logger.warn({ err: e }, '/d/ tracking error'); }
+  });
+});
+
+app.get('/p/:trackingId', async (req, res) => {
+  // Pixel GIF 1x1 transparent
+  const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64');
+  res.setHeader('Content-Type','image/gif');
+  res.setHeader('Cache-Control','no-store,no-cache,must-revalidate');
+  res.setHeader('Pragma','no-cache');
+  res.end(GIF);
+  setImmediate(async () => {
+    try {
+      const { trackingId } = req.params;
+      if (!trackingId) return;
+      const { rows } = await pool.query(
+        `SELECT flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        [JSON.stringify([{ trackingId }])]
+      );
+      if (!rows.length) return;
+      const flowId = rows[0].flow_id;
+      const data = await getFlowData(flowId);
+      if (!data) return;
+      const events = Array.isArray(data.events) ? data.events : [];
+      const emailEv = events.find(e => e.trackingId === trackingId);
+      if (!emailEv) return;
+      if (events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId)) return;
+      const now = new Date().toISOString();
+      const ip  = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
+      const ua  = (req.headers['user-agent'] || '').substring(0, 200);
+      data.events.push({ at: now, type: 'EMAIL_OPENED', trackingId, to: emailEv.to, by: emailEv.by, ip, userAgent: ua });
+      data.updatedAt = now;
+      await saveFlow(flowId, data);
+      writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
+        actorEmail: emailEv.to, actorIp: ip,
+        payload: { trackingId, sentBy: emailEv.by, via: 'pixel', userAgent: ua } });
+      logger.info({ flowId, trackingId, ip }, '📬 Email deschis (pixel /p/)');
+    } catch(e) { logger.warn({ err: e }, '/p/ tracking error'); }
+  });
+});
 app.use('/admin/outreach', outreachRouter);
 app.use('/', templatesRouter);         // Q-06: Template CRUD
 

@@ -108,7 +108,7 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
 
     // Tracking primar: click pe link-ul "DocFlowAI" din email (funcționează și cu imagini blocate)
     // Tracking secundar: pixel GIF 1x1 ca fallback (blocat de mulți clienți de email instituționali)
-    const trackingPixelUrl = `${appBase}/flows/${flowId}/email-open/${trackingId}`;
+    const trackingPixelUrl = `${appBase}/p/${trackingId}`;
     const htmlWithTracking = html.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none;border:0;" alt="" /></body>`);
 
     const payload = { from: MAIL_FROM, to: to.trim(), subject: subject.trim(), html: htmlWithTracking };
@@ -226,12 +226,12 @@ router.get('/flows/:flowId/email-open/:trackingId', async (req, res) => {
 
 
 // ── GET /flows/email-click/:trackingId — click tracking email extern ──────
-// Link-ul "DocFlowAI" din email trece prin acest endpoint → redirect 302 → URL original.
-// Nu necesită autentificare. Înregistrează EMAIL_OPENED la primul click.
+// Montat si ca /d/:trackingId din server/index.mjs (URL neutral, mai putin blocat de Yahoo/Outlook)
+// Destinatia e intotdeauna https://www.docflowai.ro — eliminat ?u= open redirect
 router.get('/flows/email-click/:trackingId', async (req, res) => {
   const { trackingId } = req.params;
-  const dest    = req.query.u ? decodeURIComponent(req.query.u) : (process.env.PUBLIC_BASE_URL || '/');
-  const safeDest = /^https?:\/\//.test(dest) ? dest : (process.env.PUBLIC_BASE_URL || '/');
+  // Destinatie fixa — nu mai avem ?u= vizibil in URL => mai putin blocat de filtrele antispam
+  const safeDest = 'https://www.docflowai.ro';
 
   // Redirect imediat — nu blocăm utilizatorul
   res.redirect(302, safeDest);
