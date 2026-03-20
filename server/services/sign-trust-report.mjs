@@ -487,6 +487,93 @@ async function _generateReportPdf(report) {
   }
 
   // ══════════════════════════════════════════════════════════════════════
+  // ── §6 CONCLUZIE AUTOMATA + §7 QR CODE ──────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════
+  // Estimăm înălțimea textului folosind lățimea reală în pixeli
+  const CONCL_FONT_SIZE = 8.5;
+  const CONCL_MAX_W     = COL_W - 16; // 16px padding chenar
+  const conclWordsArr   = report.conclusion.split(' ');
+  const conclLinesArr   = [];
+  let conclCurLine = '';
+  for (const w of conclWordsArr) {
+    const test = conclCurLine ? conclCurLine + ' ' + w : w;
+    // Estimăm: Helvetica ~0.5 * fontSize per char medie
+    if (fontR.widthOfTextAtSize(test, CONCL_FONT_SIZE) > CONCL_MAX_W && conclCurLine) {
+      conclLinesArr.push(conclCurLine);
+      conclCurLine = w;
+    } else {
+      conclCurLine = test;
+    }
+  }
+  if (conclCurLine) conclLinesArr.push(conclCurLine);
+
+  const CONCL_LINE_H  = CONCL_FONT_SIZE + 5;
+  const CONCL_PAD     = 12;
+  const conclTextH    = conclLinesArr.length * CONCL_LINE_H;
+  const conclBoxH     = conclTextH + CONCL_PAD * 2;
+
+  // Spațiu necesar: titlu secțiune (24) + chenar concluzie + 16 + QR (100)
+  ensureSpace(28 + conclBoxH + 16 + 100);
+  y -= 8;
+  drawSection('CONCLUZIE AUTOMATA', '\u00a77');  // §6 via §
+
+  // Chenar concluzie — desenat cu dimensiuni exacte
+  const conclColor  = report.conclusionOk ? rgb(0.94, 0.97, 0.94) : rgb(0.99, 0.97, 0.93);
+  const conclBorder = report.conclusionOk ? COL.ok : COL.warn;
+  const conclBoxY   = y - conclBoxH;
+  page.drawRectangle({
+    x: MARGIN - 8, y: conclBoxY, width: COL_W + 16, height: conclBoxH,
+    color: conclColor, borderRadius: 5, borderColor: conclBorder, borderWidth: 1.5,
+  });
+
+  // Text în chenar
+  let conclLineY = y - CONCL_PAD;
+  for (const ln of conclLinesArr) {
+    page.drawText(ro(ln), {
+      x: MARGIN, y: conclLineY,
+      size: CONCL_FONT_SIZE, font: fontR,
+      color: rgb(0.08, 0.12, 0.22),
+      maxWidth: CONCL_MAX_W,
+    });
+    conclLineY -= CONCL_LINE_H;
+  }
+  y = conclBoxY - 14;  // y acum sub chenar
+
+  // ── §7 QR + verificare online ─────────────────────────────────────
+  ensureSpace(95);
+  y -= 4;
+  try {
+    const QRCode    = (await import('qrcode')).default;
+    const qrDataUrl = await QRCode.toDataURL(report.verifyUrl, {
+      width: 100, margin: 1, color: { dark: '#0d1020', light: '#ffffff' }
+    });
+    const qrImage = await pdf.embedPng(Buffer.from(qrDataUrl.split(',')[1], 'base64'));
+    const QR_SIZE = 70;
+    const qrX     = PAGE_W - MARGIN - QR_SIZE;
+    const qrTopY  = y;
+
+    // QR dreptunghi + imagine
+    page.drawRectangle({ x: qrX - 5, y: qrTopY - QR_SIZE - 5, width: QR_SIZE + 10, height: QR_SIZE + 10,
+      color: COL.white, borderColor: COL.border, borderWidth: 0.7, borderRadius: 3 });
+    page.drawImage(qrImage, { x: qrX, y: qrTopY - QR_SIZE, width: QR_SIZE, height: QR_SIZE });
+    page.drawText('Scaneaza pentru verificare',
+      { x: qrX - 2, y: qrTopY - QR_SIZE - 14, size: 6.5, font: fontR, color: COL.muted, maxWidth: QR_SIZE + 10 });
+
+    // Text verificare — stânga QR
+    const tW = qrX - MARGIN - 10;
+    page.drawText('Verificare online:',
+      { x: MARGIN, y: qrTopY, size: 8, font: fontB, color: COL.muted });
+    page.drawText(ro(report.verifyUrl),
+      { x: MARGIN, y: qrTopY - 13, size: 7.5, font: fontR, color: COL.accent, maxWidth: tW });
+    page.drawText('Introduceti Flow ID-ul la adresa de mai sus pentru a verifica autenticitatea documentului.',
+      { x: MARGIN, y: qrTopY - 27, size: 7.5, font: fontR, color: COL.muted, maxWidth: tW, lineHeight: 11 });
+  } catch(e) {
+    page.drawText('Verificare: ' + ro(report.verifyUrl),
+      { x: MARGIN, y, size: 8, font: fontR, color: COL.accent, maxWidth: COL_W });
+  }
+
+
+  // ══════════════════════════════════════════════════════════════════════
   // ── §6 CONCLUZIE ─────────────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════
   ensureSpace(80);
@@ -494,60 +581,6 @@ async function _generateReportPdf(report) {
   drawSection('CONCLUZIE AUTOMATA', '§6');
 
   // Calculăm înălțimea reală a textului înainte de chenar
-  const conclWords = report.conclusion.split(' ');
-  const conclLines = []; let cLine = '';
-  for (const w of conclWords) {
-    const t = cLine ? cLine + ' ' + w : w;
-    if (t.length > 82 && cLine) { conclLines.push(cLine); cLine = w; } else { cLine = t; }
-  }
-  if (cLine) conclLines.push(cLine);
-  const conclH = conclLines.length * 14 + 24;
-  ensureSpace(conclH + 20);
-  const conclColor  = report.conclusionOk ? rgb(0.94, 0.97, 0.94) : rgb(0.99, 0.97, 0.93);
-  const conclBorder = report.conclusionOk ? COL.ok : COL.warn;
-  page.drawRectangle({
-    x: MARGIN - 8, y: y - conclH - 4, width: COL_W + 16, height: conclH + 8,
-    color: conclColor, borderRadius: 6, borderColor: conclBorder, borderWidth: 1.5,
-  });
-  let lineY = y - 10;
-  for (const ln of conclLines) {
-    page.drawText(ro(ln), { x: MARGIN, y: lineY, size: 8.5, font: fontR, color: rgb(0.08,0.12,0.22), maxWidth: COL_W });
-    lineY -= 14;
-  }
-  y = lineY - 12;
-
-  // ══════════════════════════════════════════════════════════════════════
-  // ══════════════════════════════════════════════════════════════════════
-  // ── §7 VERIFICARE ONLINE + QR CODE ─────────────────────────────────
-  // ══════════════════════════════════════════════════════════════════════
-  ensureSpace(120);
-  y -= 8;
-  try {
-    const QRCode = (await import('qrcode')).default;
-    const qrDataUrl = await QRCode.toDataURL(report.verifyUrl, {
-      width: 100, margin: 1, color: { dark: '#0d1020', light: '#ffffff' }
-    });
-    const qrImage = await pdf.embedPng(Buffer.from(qrDataUrl.split(',')[1], 'base64'));
-    const QR_SIZE = 72;
-    const qrX = PAGE_W - MARGIN - QR_SIZE;
-    // QR în colțul dreapta
-    page.drawRectangle({ x: qrX - 6, y: y - QR_SIZE - 6, width: QR_SIZE + 12, height: QR_SIZE + 12,
-      color: COL.white, borderColor: COL.border, borderWidth: 0.8, borderRadius: 4 });
-    page.drawImage(qrImage, { x: qrX, y: y - QR_SIZE, width: QR_SIZE, height: QR_SIZE });
-    page.drawText('Scaneaza pentru verificare online',
-      { x: qrX - 12, y: y - QR_SIZE - 16, size: 6.5, font: fontR, color: COL.muted, maxWidth: QR_SIZE + 20 });
-    // Text verificare la stânga QR-ului
-    const textW = qrX - MARGIN - 12;
-    page.drawText('Verificare online:', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 13;
-    page.drawText(report.verifyUrl, { x: MARGIN, y, size: 7.5, font: fontR, color: COL.accent, maxWidth: textW }); y -= 13;
-    page.drawText('Introduceti Flow ID-ul la adresa de mai sus pentru a verifica autenticitatea documentului.',
-      { x: MARGIN, y, size: 7.5, font: fontR, color: COL.muted, maxWidth: textW, lineHeight: 11 });
-  } catch(e) {
-    ensureSpace(30);
-    page.drawText('Verificare online:', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 13;
-    page.drawText(report.verifyUrl, { x: MARGIN, y, size: 8, font: fontR, color: COL.accent });
-  }
-
   _drawFooter(page, pdf.getPageCount(), fontR, COL, PAGE_W, MARGIN);
 
   const pdfBytes = await pdf.save();

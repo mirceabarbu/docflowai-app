@@ -194,14 +194,17 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
       }
     }
 
-    // Metodă 2: primul cert care NU e CA și NU e self-signed
+    // Metodă 2: primul cert care NU e CA, NU e OCSP responder, NU e self-signed
     if (!signerCert) {
       for (const cert of certs) {
         if (!(cert instanceof pkijs.Certificate)) continue;
         const isCA = !!cert.extensions?.find(e => e.extnID === OID.BASIC_CONSTR)?.parsedValue?.cA;
-        const get = (rdn, oid) => rdn?.typesAndValues?.find(tv => tv.type === oid)?.value?.valueBlock?.value || '';
-        const isSelf = get(cert.subject, OID.CN) === get(cert.issuer, OID.CN);
-        if (!isCA && !isSelf) { signerCert = cert; break; }
+        const getCN = rdn => rdn?.typesAndValues?.find(tv => tv.type === OID.CN)?.value?.valueBlock?.value || '';
+        const subjectCN = getCN(cert.subject);
+        const isSelf = subjectCN === getCN(cert.issuer);
+        // Excludem OCSP responders (CN conține "OCSP")
+        const isOCSP = subjectCN.toUpperCase().includes('OCSP');
+        if (!isCA && !isSelf && !isOCSP) { signerCert = cert; break; }
       }
     }
 
