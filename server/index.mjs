@@ -21,7 +21,7 @@
  */
 
 import express from 'express';
-import { readFileSync } from 'fs';
+import { readFileSync, readFile as _readFile } from 'fs';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -183,23 +183,19 @@ const PUBLIC_DIR = path.join(__dirname, '../public');
 app.use(express.static(PUBLIC_DIR));
 
 // SEC-03: Helper — injectează nonce în toate <script> blocurile inline ale unui HTML
-// Middleware-ul nonce e deja setat pe res.locals.cspNonce de helmet custom below.
-// Paginile servite via sendFile trec prin acest wrapper care injectează nonce.
+// fs.readFile e disponibil din importul static de la top (import { readFileSync } from 'fs')
+// Folosim varianta async (callback) pentru a nu bloca event loop.
 function sendHtmlWithNonce(res, filePath) {
-  const { readFileSync } = await import === undefined ? { readFileSync: (await import('fs')).readFileSync } : { readFileSync: null };
-  // Folosim readFile async pentru a nu bloca event loop
-  import('fs').then(({ readFile }) => {
-    readFile(filePath, 'utf8', (err, html) => {
-      if (err) { res.status(500).send('Internal Server Error'); return; }
-      const nonce = res.locals.cspNonce || '';
-      // Injectam nonce DOAR pe <script> fara src (inline scripts) — nu pe <script src=...>
-      const patched = html.replace(/<script(?!\s+src=)(\s[^>]*)?>/gi, (match, attrs) => {
-        if (match.includes('nonce=')) return match; // deja are nonce
-        return `<script nonce="${nonce}"${attrs || ''}>`;
-      });
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.send(patched);
+  _readFile(filePath, 'utf8', (err, html) => {
+    if (err) { res.status(500).send('Internal Server Error'); return; }
+    const nonce = res.locals.cspNonce || '';
+    // Injectam nonce DOAR pe <script> fara src (inline scripts) — nu pe <script src=...>
+    const patched = html.replace(/<script(?!\s+src=)(\s[^>]*)?>/gi, (match, attrs) => {
+      if (match.includes('nonce=')) return match;
+      return `<script nonce="${nonce}"${attrs || ''}>`;
     });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(patched);
   });
 }
 
