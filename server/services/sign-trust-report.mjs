@@ -627,8 +627,6 @@ async function _generateReportPdf(report) {
   return Buffer.from(pdfBytes);
 }
 
-}
-
 function _drawFooter(page, pageNum, fontR, COL, PAGE_W, MARGIN) {
   const y = 24;
   page.drawLine({ start: { x: MARGIN, y: y + 10 }, end: { x: PAGE_W - MARGIN, y: y + 10 }, thickness: 0.4, color: COL.border });
