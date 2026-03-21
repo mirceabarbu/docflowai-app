@@ -410,9 +410,8 @@ async function _generateReportPdf(report) {
   // ══════════════════════════════════════════════════════════════════════
   // ── §3 CERTIFICATE X.509 ──────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════
-  ensureSpace(160);  // §3 — asigurăm că header + primul cert încap
+  ensureSpace(60);  // §3 — header + primul cert
   if (report.certificates.length > 0) {
-    newPage();
     drawSection('CERTIFICATE ELECTRONICE', '§3');
 
     for (const cert of report.certificates) {
@@ -454,16 +453,17 @@ async function _generateReportPdf(report) {
         page.drawText(cert.docHash, { x: MARGIN, y, size: 6, font: fontR, color: COL.text, maxWidth: COL_W }); y -= 10;
       }
 
-      // Lanț certificare
-      if (cert.chain?.length > 1) {
-        ensureSpace(cert.chain.length * 14 + 20);
+      // Lanț certificare — complet
+      if (cert.chain?.length > 0) {
+        ensureSpace(cert.chain.length * 12 + 20);
         y -= 4;
         page.drawText('Lant de certificare:', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 12;
         for (let i = 0; i < cert.chain.length; i++) {
           const ch = cert.chain[i];
           const role = ch.isEndEntity ? 'Semnatar' : ch.isSelfSigned ? 'Root CA' : 'CA Intermediar';
-          page.drawText(`${'  '.repeat(i)}${i+1}. ${ro(ch.subject?.CN || '?')} [${role}]`,
-            { x: MARGIN + 8, y, size: 7.5, font: fontR, color: COL.text, maxWidth: COL_W - 20 });
+          const col  = ch.isEndEntity ? COL.text : COL.muted;
+          page.drawText(`${i+1}. ${ro(ch.subject?.CN || '?')} [${role}]`,
+            { x: MARGIN + 8, y, size: 7.5, font: fontR, color: col, maxWidth: COL_W - 20 });
           y -= 11;
         }
       }
@@ -477,7 +477,7 @@ async function _generateReportPdf(report) {
   // ══════════════════════════════════════════════════════════════════════
   // ── §4 VERIFICARI AUTOMATE ────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════
-  ensureSpace(220);  // §4 — 6 niveluri + spațiu
+  ensureSpace(60);
   drawSection('VERIFICARI AUTOMATE', '§4');
 
   const levels6 = report.certificates[0]?.levels || {};
