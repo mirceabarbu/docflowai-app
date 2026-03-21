@@ -1166,8 +1166,9 @@ th{ color: var(--sub) !important; }
           const allSigned = f.allSigned;
           const isRefused = (f.signers || []).some(s => s.status === "refused");
           const refusedByAprobat = (f.signers || []).some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
+          const refusedByInitiator = (f.signers || []).some(s => s.status === "refused" && (s.email || "").toLowerCase() === (f.initEmail || "").toLowerCase());
           const isCancelled = f.status === "cancelled";
-          const canReinitiate = isRefused && !refusedByAprobat && !f.reinitiatedAs;
+          const canReinitiate = isRefused && !refusedByAprobat && !refusedByInitiator && !f.reinitiatedAs;
           const isReviewRequested = f.status === "review_requested";
           const isUrgent = !!(f.urgent);
           // Verifica daca userul curent trebuie sa semneze

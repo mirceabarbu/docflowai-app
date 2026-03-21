@@ -898,11 +898,14 @@
       })();
       const isRefused = computedStatus === "refused";
       const refusedByAprobat = signers.some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
+      // Daca initiatorul (INTOCMIT) a refuzat el insusi, reinitializarea nu are sens
+      const refusedByInitiator = signers.some(s => s.status === "refused" &&
+        (s.email || "").toLowerCase() === (data.initEmail || "").toLowerCase());
       const isReviewRequested = data.status === "review_requested";
       const isInitiator = (data.initEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
       const isAdmin = currentUser.role === "admin" || currentUser.role === "org_admin";
       const btnRei = $("btnReinitiate");
-      if (btnRei) btnRei.style.display = (isRefused && !refusedByAprobat && (isInitiator || isAdmin)) ? "" : "none";
+      if (btnRei) btnRei.style.display = (isRefused && !refusedByAprobat && !refusedByInitiator && (isInitiator || isAdmin)) ? "" : "none";
       btnRei._flowId = flowId;
 
       // Buton Reinitiere după revizuire — vizibil dacă fluxul e în review_requested și user e inițiator
