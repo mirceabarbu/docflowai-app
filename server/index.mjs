@@ -113,10 +113,14 @@ app.use((req, res, next) => {
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
   : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : false);
+// Adaugam intotdeauna docflowai.ro pentru formularul de contact de pe landing
+const corsOriginsWithLanding = Array.isArray(corsOrigins)
+  ? [...new Set([...corsOrigins, 'https://docflowai.ro', 'https://www.docflowai.ro'])]
+  : corsOrigins;
 if (corsOrigins === false) {
   logger.warn('CORS_ORIGIN și PUBLIC_BASE_URL lipsesc — CORS blocat pentru toate originile externe. Setați cel puțin PUBLIC_BASE_URL.');
 }
-app.use(cors({ origin: corsOrigins, credentials: true }));
+app.use(cors({ origin: corsOriginsWithLanding, credentials: true }));
 
 // SEC-02: rawBody capture pentru HMAC real pe /signing-callback
 // Trebuie să ruleze ÎNAINTE de express.json(), altfel body e deja parsat și bytes originali pierduți.
