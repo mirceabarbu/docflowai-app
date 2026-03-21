@@ -27,7 +27,7 @@ router.get('/api/flows/:flowId/report', async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
 
     // Verificăm că actorul e inițiatorul sau admin
-    const isAdmin = actor.role === 'admin';
+    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
     const isInit  = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     const isSigner = (data.signers || []).some(s => (s.email || '').toLowerCase() === actor.email.toLowerCase());
     if (!isAdmin && !isInit && !isSigner)
@@ -139,7 +139,7 @@ router.get('/api/flows/:flowId/report/json', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
 
-    const isAdmin  = actor.role === 'admin';
+    const isAdmin  = actor.role === 'admin' || actor.role === 'org_admin';
     const isInit   = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     const isSigner = (data.signers || []).some(s => (s.email||'').toLowerCase() === actor.email.toLowerCase());
     if (!isAdmin && !isInit && !isSigner)

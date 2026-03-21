@@ -390,7 +390,8 @@ async function _generateReportPdf(report) {
     page.drawText(`${s.order}.`, { x: MARGIN, y: y + 1, size: 9, font: fontB, color: COL.accent2 });
     page.drawText(ro(s.name), { x: MARGIN + 16, y: y + 1, size: 9, font: fontB, color: COL.text });
     page.drawRectangle({ x: PAGE_W - MARGIN - 70, y: y - 2, width: 68, height: 14, color: statusColor, borderRadius: 3 });
-    page.drawText(statusLabel, { x: PAGE_W - MARGIN - 65, y: y + 1, size: 7, font: fontB, color: COL.white });
+    { const tw = fontB.widthOfTextAtSize(statusLabel, 7); const bx = PAGE_W - MARGIN - 70 + Math.max(0, (68 - tw) / 2);
+      page.drawText(statusLabel, { x: bx, y: y + 1, size: 7, font: fontB, color: COL.white }); }
     y -= 22;
     drawKV('Ordine in flux', `${s.order}`);
     drawKV('Email', s.email);
@@ -418,7 +419,7 @@ async function _generateReportPdf(report) {
       const c = cert.certificate;
       if (!c) { drawKV(`Semnatura #${cert.signerIndex}`, 'Certificate neextrase (PDF nesemnat electronic calificat)'); continue; }
 
-      ensureSpace(120);
+      ensureSpace(50);
       page.drawText(ro(`Semnatura #${cert.signerIndex} — ${c.subject?.CN || 'Necunoscut'}`), { x: MARGIN, y, size: 9, font: fontB, color: COL.text }); y -= 16;
 
       // Tip certificat + QTSP
@@ -497,7 +498,8 @@ async function _generateReportPdf(report) {
     const col = levelColor(ok);
     const lbl = levelText(ok);
     page.drawRectangle({ x: MARGIN, y: y - 3, width: 62, height: 14, color: col, borderRadius: 3 });
-    page.drawText(lbl, { x: MARGIN + 4, y: y + 1, size: 7, font: fontB, color: COL.white });
+    { const tw = fontB.widthOfTextAtSize(lbl, 7); const bx = MARGIN + Math.max(0, (62 - tw) / 2);
+      page.drawText(lbl, { x: bx, y: y + 1, size: 7, font: fontB, color: COL.white }); }
     page.drawText(`${item.key}: ${ro(item.label)}`, { x: MARGIN + 70, y: y + 1, size: 8, font: fontR, color: COL.text, maxWidth: COL_W - 75 });
     if (lvl?.note) {
       y -= 13;

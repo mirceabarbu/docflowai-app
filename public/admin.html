@@ -13,7 +13,7 @@
         radial-gradient(700px 450px at 82% 80%,rgba(45,212,191,.18),transparent 55%),var(--bg);
       color:var(--text);}
     header{background:rgba(15,23,49,.8);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
-      padding:14px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+      padding:10px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;gap:12px;}
     .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.1rem;}
     .logo-icon{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
       display:flex;align-items:center;justify-content:center;font-size:17px;}
@@ -117,17 +117,17 @@
     <img src="/Logo.png" alt="DocFlowAI" style="height:87px;width:auto;object-fit:contain;" />
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
-    <a href="/" class="btn" style="text-decoration:none;font-size:.88rem;">📝 Flux nou</a>
-    <a href="/?tab=flows" class="btn" style="text-decoration:none;font-size:.88rem;">📂 Fluxuri mele</a>
-    <a href="/templates" class="btn" style="text-decoration:none;font-size:.88rem;">📋 Șabloane</a>
-    <span id="adminBadge" style="padding:8px 12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:10px;font-size:.85rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
+    <a href="/" class="btn" style="text-decoration:none;font-size:.82rem;padding:6px 10px;">📝 Flux nou</a>
+    <a href="/?tab=flows" class="btn" style="text-decoration:none;font-size:.82rem;padding:6px 10px;">📂 Fluxuri mele</a>
+    <a href="/templates" class="btn" style="text-decoration:none;font-size:.82rem;padding:6px 10px;">📋 Șabloane</a>
+    <span id="adminBadge" style="padding:5px 10px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:8px;font-size:.78rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
     <!-- F — b97: badge live fluxuri active -->
-    <span id="activeFlowsBadge" title="Fluxuri active în acest moment" style="display:none;padding:6px 12px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:10px;font-size:.82rem;color:#c4b5fd;font-weight:700;cursor:default;">⏳ <span id="activeFlowsCount">—</span> active</span>
+    <span id="activeFlowsBadge" title="Fluxuri active în acest moment" style="display:none;padding:5px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;font-size:.78rem;color:#c4b5fd;font-weight:700;cursor:default;">⏳ <span id="activeFlowsCount">—</span> active</span>
   </div>
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
-    <span style="color:var(--muted);font-size:.83rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
-    <button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;">🔑 Parolă</button>
-    <button class="btn-logout" onclick="logout()">Ieși</button>
+    <span style="color:var(--muted);font-size:.78rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
+    <button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 10px;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:600;">🔑 Parolă</button>
+    <button class="btn-logout" onclick="logout()" style="font-size:.78rem;padding:5px 10px;">Ieșire</button>
   </div>
 </header>
 
