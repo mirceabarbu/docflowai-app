@@ -898,11 +898,14 @@
       })();
       const isRefused = computedStatus === "refused";
       const refusedByAprobat = signers.some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
+      // Daca initiatorul (INTOCMIT) a refuzat el insusi, reinitializarea nu are sens
+      const refusedByInitiator = signers.some(s => s.status === "refused" &&
+        (s.email || "").toLowerCase() === (data.initEmail || "").toLowerCase());
       const isReviewRequested = data.status === "review_requested";
       const isInitiator = (data.initEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
       const isAdmin = currentUser.role === "admin" || currentUser.role === "org_admin";
       const btnRei = $("btnReinitiate");
-      if (btnRei) btnRei.style.display = (isRefused && !refusedByAprobat && (isInitiator || isAdmin)) ? "" : "none";
+      if (btnRei) btnRei.style.display = (isRefused && !refusedByAprobat && !refusedByInitiator && (isInitiator || isAdmin)) ? "" : "none";
       btnRei._flowId = flowId;
 
       // Buton Reinitiere după revizuire — vizibil dacă fluxul e în review_requested și user e inițiator
@@ -1130,11 +1133,11 @@
 
 <!-- ── Modal Trimite Email Extern ────────────────────────────────────── -->
 <div id="flowSendEmailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;padding:16px;">
-  <div style="background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:22px 28px;width:100%;max-width:600px;max-height:92vh;overflow-y:auto;position:relative;">
+  <div style="background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:22px 28px;width:100%;max-width:520px;position:relative;">
     <button onclick="closeFlowSendEmailModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
     <div style="font-size:1.05rem;font-weight:700;color:#eaf0ff;margin-bottom:4px;">📧 Trimite document pe email</div>
-    <div id="flowSemDocLabel" style="font-size:.8rem;color:#9db0ff;margin-bottom:20px;"></div>
-    <div style="display:flex;flex-direction:column;gap:14px;">
+    <div id="flowSemDocLabel" style="font-size:.8rem;color:#9db0ff;margin-bottom:16px;"></div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
       <div>
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Destinatar <span style="color:#ff8080;">*</span></label>
         <input id="flowSemTo" type="email" placeholder="ex: primar@primarie.ro" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;outline:none;"/>
@@ -1145,9 +1148,9 @@
       </div>
       <div>
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">Mesaj personalizat <span style="color:var(--muted);font-size:.72rem;">— opțional</span></label>
-        <textarea id="flowSemBody" rows="14" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
+        <textarea id="flowSemBody" rows="6" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;resize:vertical;font-family:inherit;"></textarea>
       </div>
-      <!-- Atașamente suplimentare (opțional, max 20MB total) -->
+      <!-- Atașamente suplimentare -->
       <div>
         <label style="font-size:.78rem;color:#888;display:block;margin-bottom:5px;">
           📎 Atașamente suplimentare <span style="color:var(--muted);font-size:.72rem;">— opțional, max 20 MB total</span>
@@ -1163,7 +1166,6 @@
           onchange="onEmailExtraFilesChange(this)" />
         <div id="emailExtraList" style="margin-top:6px;display:flex;flex-direction:column;gap:4px;"></div>
       </div>
-      <!-- PDF semnat și referință Flow ID incluse automat -->
       <div id="flowSemMsg" style="font-size:.82rem;min-height:18px;"></div>
       <button id="flowSemSendBtn" onclick="doFlowSendEmail()" style="background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;color:#fff;padding:11px 24px;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;width:100%;">📤 Trimite email</button>
     </div>
