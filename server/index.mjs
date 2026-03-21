@@ -767,6 +767,59 @@ app.get('/p/:trackingId', async (req, res) => {
   });
 });
 app.use('/admin/outreach', outreachRouter);
+
+// ── POST /api/contact — formular contact landing page ─────────────────────
+// Trimite email la contact@docflowai.ro via Resend, fara autentificare
+app.post('/api/contact', async (req, res) => {
+  try {
+    const { inst, name, email, phone, subject, msg } = req.body || {};
+    if (!inst || !name || !email || !subject)
+      return res.status(400).json({ error: 'Câmpuri obligatorii lipsesc.' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return res.status(400).json({ error: 'Email invalid.' });
+
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    const MAIL_FROM = process.env.MAIL_FROM || 'DocFlowAI <noreply@docflowai.ro>';
+    if (!RESEND_API_KEY) return res.status(503).json({ error: 'Email neconfigurat pe server.' });
+
+    const htmlBody = `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+        <h2 style="color:#6c4ff0;">📋 Solicitare nouă — DocFlowAI Landing</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <tr><td style="padding:8px;color:#666;width:160px;font-weight:600;">Instituție:</td><td style="padding:8px;">${inst}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Persoană contact:</td><td style="padding:8px;">${name}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Email:</td><td style="padding:8px;"><a href="mailto:${email}">${email}</a></td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Telefon:</td><td style="padding:8px;">${phone || '—'}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Solicitare:</td><td style="padding:8px;font-weight:700;color:#6c4ff0;">${subject}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;vertical-align:top;">Detalii:</td><td style="padding:8px;">${msg || '—'}</td></tr>
+        </table>
+        <hr style="margin:20px 0;border:none;border-top:1px solid #eee;" />
+        <p style="color:#999;font-size:12px;">Trimis automat din formularul de contact DocFlowAI · ${new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })}</p>
+      </div>`;
+
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: MAIL_FROM,
+        to: 'contact@docflowai.ro',
+        reply_to: email,
+        subject: '[DocFlowAI Demo] ' + subject + ' — ' + inst,
+        html: htmlBody,
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      logger.error({ err: j }, 'contact form send failed');
+      return res.status(502).json({ error: 'Eroare la trimiterea emailului.' });
+    }
+    logger.info({ inst, email, subject }, '📋 Contact form trimis');
+    return res.json({ ok: true });
+  } catch(e) {
+    logger.error({ err: e }, 'contact form error');
+    return res.status(500).json({ error: 'Eroare server.' });
+  }
+});
 app.use('/', templatesRouter);         // Q-06: Template CRUD
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
