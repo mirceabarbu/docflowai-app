@@ -1060,14 +1060,63 @@ router.get('/admin/analytics', async (req, res) => {
       FROM users WHERE 1=1 ${orgFilter ? 'AND org_id=$1' : ''}
     `, params);
 
+    // Distributie tip flux (tabel vs ancore)
+    const { rows: byFlowType } = await pool.query(`
+      SELECT (data->>'flowType') AS flow_type, COUNT(*)::int AS cnt
+      FROM flows WHERE 1=1 ${whereOrgDel}
+      GROUP BY flow_type ORDER BY cnt DESC
+    `, params);
+
+    // Timp mediu de semnare per semnatar (cat asteapta fiecare)
+    const { rows: avgSignTime } = await pool.query(`
+      SELECT
+        ROUND(AVG(
+          CASE WHEN s->>'signedAt' IS NOT NULL AND s->>'notifiedAt' IS NOT NULL
+          THEN EXTRACT(EPOCH FROM (
+            (s->>'signedAt')::timestamptz - (s->>'notifiedAt')::timestamptz
+          ))/3600
+          END
+        )::numeric, 1) AS avg_sign_hours,
+        COUNT(*) FILTER (WHERE s->>'status'='signed')::int AS total_signed
+      FROM flows f,
+           jsonb_array_elements(f.data->'signers') s
+      WHERE 1=1 ${whereOrgDel}
+    `, params);
+
+    // Fluxuri urgente finalizate vs nerezolvate
+    const { rows: urgentStats } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE (data->>'urgent')='true')::int AS total_urgent,
+        COUNT(*) FILTER (WHERE (data->>'urgent')='true' AND (data->>'completed')='true')::int AS urgent_completed,
+        COUNT(*) FILTER (WHERE (data->>'urgent')='true' AND (data->>'status')='refused')::int AS urgent_refused
+      FROM flows WHERE 1=1 ${whereOrgDel}
+    `, params);
+
+    // Top 5 semnatari (cel mai des solicitati)
+    const { rows: topSigners } = await pool.query(`
+      SELECT lower(s->>'email') AS email, (s->>'name') AS name,
+             COUNT(*)::int AS appearances,
+             COUNT(*) FILTER (WHERE s->>'status'='signed')::int AS signed,
+             COUNT(*) FILTER (WHERE s->>'status'='refused')::int AS refused
+      FROM flows f,
+           jsonb_array_elements(f.data->'signers') s
+      WHERE s->>'email' IS NOT NULL ${whereOrgDel.replace('WHERE 1=1', '')}
+      GROUP BY lower(s->>'email'), name
+      ORDER BY appearances DESC LIMIT 5
+    `, params);
+
     res.json({
       ok: true,
-      flows:       flowStats[0] || {},
+      flows:         flowStats[0] || {},
       byMonth,
-      signers:     signerStats[0] || {},
+      signers:       signerStats[0] || {},
       topInitiatori,
-      users:       userStats[0] || {},
-      generatedAt: new Date().toISOString(),
+      topSigners,
+      users:         userStats[0] || {},
+      byFlowType,
+      avgSignTime:   avgSignTime[0] || {},
+      urgentStats:   urgentStats[0] || {},
+      generatedAt:   new Date().toISOString(),
     });
   } catch(e) {
     logger.error({ err: e }, '/admin/analytics error');
