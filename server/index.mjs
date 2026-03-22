@@ -55,6 +55,7 @@ import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verif
 import authRouter from './routes/auth.mjs';
 import { openApiSpec } from './swagger.mjs';
 import { injectRateLimiter } from './routes/auth.mjs';
+import { createRateLimiter } from './middleware/rateLimiter.mjs';
 import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
@@ -74,6 +75,7 @@ app.use(cookieParser());
 // Fallback manual dacă helmet nu e instalat încă (graceful degradation)
 try {
   app.use(helmet({
+    hidePoweredBy: true,  // ascunde X-Powered-By: Express (fingerprinting prevention)
     // SEC-05: CSP activat — protecție XSS
     contentSecurityPolicy: {
       directives: {
@@ -773,8 +775,10 @@ app.get('/p/:trackingId', async (req, res) => {
 app.use('/admin/outreach', outreachRouter);
 
 // ── POST /api/contact — formular contact landing page ─────────────────────
-// Trimite email la contact@docflowai.ro via Resend, fara autentificare
-app.post('/api/contact', async (req, res) => {
+// Rate limiting: 5 cereri/ora per IP — previne spam si abuz
+const _contactRateLimit = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5,
+  message: 'Prea multe solicitări. Încearcă din nou în 60 de minute.' });
+app.post('/api/contact', _contactRateLimit, async (req, res) => {
   try {
     const { inst, name, email, phone, subject, msg } = req.body || {};
     if (!inst || !name || !email || !subject)
