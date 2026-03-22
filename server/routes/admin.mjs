@@ -622,6 +622,114 @@ router.get('/admin/gws/verify', async (req, res) => {
   res.status(result.ok ? 200 : 503).json(result);
 });
 
+// ── POST /admin/users/bulk-import — import CSV utilizatori ──────────────────
+// Format CSV: email,nume,functie,compartiment (header opțional)
+// Disponibil pentru admin și org_admin (org_admin importă doar în org sa)
+router.post('/admin/users/bulk-import', csrfMiddleware, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+
+  const { csvData, send_credentials = false } = req.body || {};
+  if (!csvData || !String(csvData).trim())
+    return res.status(400).json({ error: 'csv_required' });
+
+  // Determinam org_id
+  let targetOrgId = null;
+  let targetInstitutie = '';
+  if (actor.role === 'org_admin') {
+    const { rows } = await pool.query('SELECT org_id, institutie FROM users WHERE id=$1', [actor.userId]);
+    targetOrgId = rows[0]?.org_id || null;
+    targetInstitutie = rows[0]?.institutie || '';
+    if (!targetOrgId) return res.status(403).json({ error: 'no_org' });
+  }
+
+  // Parsam CSV
+  const lines = String(csvData).trim().split(/\r?\n/);
+  const results = { created: [], skipped: [], errors: [] };
+  let isFirstLine = true;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+    const [emailCol, numeCol, functieCol, compartimentCol] = cols;
+
+    // Skip header dacă prima linie conține 'email' ca text
+    if (isFirstLine && emailCol.toLowerCase() === 'email') { isFirstLine = false; continue; }
+    isFirstLine = false;
+
+    const email = (emailCol || '').toLowerCase();
+    const nume  = (numeCol || '').trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      results.errors.push({ line: rawLine, reason: 'email invalid' });
+      continue;
+    }
+    if (!nume) {
+      results.errors.push({ line: rawLine, reason: 'numele lipsește' });
+      continue;
+    }
+
+    try {
+      // Verificam daca exista deja
+      const { rows: existing } = await pool.query(
+        'SELECT id FROM users WHERE lower(email)=$1', [email]
+      );
+      if (existing.length > 0) {
+        results.skipped.push({ email, reason: 'există deja' });
+        continue;
+      }
+
+      const tempPwd = generatePassword();
+      const hash    = await hashPassword(tempPwd);
+      const functie = (functieCol || '').trim();
+      const comp    = (compartimentCol || '').trim();
+
+      const { rows: newUser } = await pool.query(
+        `INSERT INTO users (email, password_hash, nume, functie, compartiment, institutie,
+          role, org_id, notif_inapp, notif_email, force_password_change, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,'user',$7,true,true,true,NOW())
+         RETURNING id, email`,
+        [email, hash, nume, functie, comp, targetInstitutie || '', targetOrgId]
+      );
+
+      if (send_credentials) {
+        try {
+          const appUrl = getAppUrl(req);
+          await sendSignerEmail({
+            to: email,
+            ...emailCredentials({ appUrl, numeUser: nume, email, newPwd: tempPwd }),
+          });
+        } catch(mailErr) {
+          logger.warn({ err: mailErr, email }, 'bulk-import: email credentiale esuat');
+        }
+      }
+
+      results.created.push({ email, nume, tempPassword: send_credentials ? undefined : tempPwd });
+    } catch(e) {
+      results.errors.push({ line: rawLine, reason: String(e.message || e).substring(0, 100) });
+    }
+  }
+
+  logger.info({
+    actor: actor.email, created: results.created.length,
+    skipped: results.skipped.length, errors: results.errors.length
+  }, 'Bulk import utilizatori');
+
+  res.json({
+    ok: true,
+    summary: {
+      total: lines.filter(l => l.trim()).length,
+      created: results.created.length,
+      skipped: results.skipped.length,
+      errors:  results.errors.length,
+    },
+    results,
+  });
+});
+
 router.put('/admin/users/:id', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -875,6 +983,95 @@ router.post('/admin/onboarding', csrfMiddleware, async (req, res) => {
   } catch(e) {
     logger.error({ err: e }, 'Onboarding error');
     res.status(500).json({ error: 'server_error', message: String(e.message || e) });
+  }
+});
+
+// ── GET /admin/analytics — dashboard analytics per organizație ───────────────
+// Returnează statistici agregate: fluxuri, semnatari, timpii medii, activitate
+// Super-admin: vede toate org. org_admin: vede doar propria org.
+router.get('/admin/analytics', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+
+  try {
+    const orgFilter = actorOrgFilter(actor);
+    const params    = orgFilter ? [orgFilter] : [];
+    const whereOrg  = orgFilter ? `AND (data->>'orgId')::int = $1` : '';
+    const whereOrgDel = orgFilter ? `AND (data->>'orgId')::int = $1 AND deleted_at IS NULL` : 'AND deleted_at IS NULL';
+
+    // Statistici generale fluxuri
+    const { rows: flowStats } = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE (data->>'completed')='true')::int AS completed,
+        COUNT(*) FILTER (WHERE (data->>'status')='refused')::int AS refused,
+        COUNT(*) FILTER (WHERE (data->>'status')='cancelled')::int AS cancelled,
+        COUNT(*) FILTER (WHERE (data->>'completed') IS DISTINCT FROM 'true'
+          AND (data->>'status') NOT IN ('refused','cancelled','review_requested'))::int AS active,
+        COUNT(*) FILTER (WHERE (data->>'urgent')='true')::int AS urgent,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS last_7_days,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS last_30_days,
+        ROUND(AVG(
+          CASE WHEN (data->>'completed')='true' AND (data->>'completedAt') IS NOT NULL
+          THEN EXTRACT(EPOCH FROM (
+            (data->>'completedAt')::timestamptz - created_at
+          ))/3600
+          END
+        )::numeric, 1) AS avg_completion_hours
+      FROM flows WHERE 1=1 ${whereOrgDel}
+    `, params);
+
+    // Fluxuri pe luni - ultimele 6 luni
+    const { rows: byMonth } = await pool.query(`
+      SELECT
+        TO_CHAR(created_at, 'YYYY-MM') AS month,
+        COUNT(*)::int AS created,
+        COUNT(*) FILTER (WHERE (data->>'completed')='true')::int AS completed
+      FROM flows
+      WHERE created_at >= NOW() - INTERVAL '6 months' ${whereOrgDel.replace('AND deleted_at IS NULL', 'AND deleted_at IS NULL')}
+      GROUP BY month ORDER BY month ASC
+    `, params);
+
+    // Semnatari per status
+    const { rows: signerStats } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE s->>'status'='signed')::int AS signed,
+        COUNT(*) FILTER (WHERE s->>'status'='refused')::int AS refused,
+        COUNT(*) FILTER (WHERE s->>'status'='current')::int AS pending
+      FROM flows f,
+           jsonb_array_elements(f.data->'signers') s
+      WHERE 1=1 ${whereOrgDel}
+    `, params);
+
+    // Top 5 initiatori (cele mai multe fluxuri)
+    const { rows: topInitiatori } = await pool.query(`
+      SELECT (data->>'initEmail') AS email, (data->>'initName') AS name,
+             COUNT(*)::int AS flows
+      FROM flows WHERE 1=1 ${whereOrgDel}
+      GROUP BY email, name ORDER BY flows DESC LIMIT 5
+    `, params);
+
+    // Utilizatori activi
+    const { rows: userStats } = await pool.query(`
+      SELECT COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE role='org_admin')::int AS admins,
+             COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS new_last_30
+      FROM users WHERE 1=1 ${orgFilter ? 'AND org_id=$1' : ''}
+    `, params);
+
+    res.json({
+      ok: true,
+      flows:       flowStats[0] || {},
+      byMonth,
+      signers:     signerStats[0] || {},
+      topInitiatori,
+      users:       userStats[0] || {},
+      generatedAt: new Date().toISOString(),
+    });
+  } catch(e) {
+    logger.error({ err: e }, '/admin/analytics error');
+    res.status(500).json({ error: 'server_error', message: String(e.message) });
   }
 });
 

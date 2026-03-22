@@ -84,6 +84,23 @@ router.post('/auth/login', async (req, res) => {
       tv: user.token_version ?? 1, // SEC-04: token version pentru invalidare la reset parolă
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    // 2FA: dacă userul are TOTP activat, NU setăm auth_token complet
+    // Returnăm pending_token cu flag requires2fa — frontend va cere codul TOTP
+    if (user.totp_enabled) {
+      const pendingToken = jwt.sign(
+        {
+          userId: user.id, email: user.email, role: user.role, orgId: user.org_id,
+          nume: user.nume, functie: user.functie, institutie: user.institutie,
+          compartiment: user.compartiment || '', tv: user.token_version ?? 1,
+          requires2fa: true,
+        },
+        JWT_SECRET,
+        { expiresIn: '10m' } // 10 minute să introducă codul
+      );
+      logger.info({ userId: user.id, email: user.email }, '2FA: login parțial, codul TOTP necesar');
+      return res.json({ ok: false, requires2fa: true, pending_token: pendingToken });
+    }
+
     setAuthCookie(res, token, jwtExpiresMs());
     // CSRF: cookie non-HttpOnly citit de frontend si trimis ca header x-csrf-token
     const csrfToken = generateCsrfToken();

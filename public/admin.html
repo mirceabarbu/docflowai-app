@@ -133,6 +133,7 @@
   <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
     <span style="color:var(--muted);font-size:.78rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
     <button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 10px;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:600;">🔑 Parolă</button>
+    <button id="hdr2faBtn" onclick="load2FAStatus()" style="background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);color:#c4b5ff;padding:5px 10px;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:600;display:none;">🔐 2FA</button>
     <button class="btn-logout" onclick="logout()" style="font-size:.78rem;padding:5px 10px;">Ieșire</button>
   </div>
 </header>
@@ -177,6 +178,7 @@
   <button class="atab" data-tab="rapoarte" onclick="switchTab('rapoarte')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📊 Rapoarte</button>
   <button class="atab" data-tab="outreach" onclick="switchTab('outreach')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="outreach-tab-btn">📧 Outreach</button>
   <button class="atab" data-tab="organizatii" onclick="switchTab('organizatii')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="org-tab-btn">🏛 Organizații</button>
+      <button class="atab" data-tab="analytics" onclick="switchTab('analytics');loadAnalytics();" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="analytics-tab-btn">📊 Analytics</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -269,7 +271,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><div style="display:flex;gap:6px;"><button onclick="exportUsersCSV()" style="padding:7px 14px;font-size:.82rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:600;">📥 CSV</button><button onclick="exportUsersPDF()" style="padding:7px 14px;font-size:.82rem;background:rgba(157,176,255,.1);border:1px solid rgba(157,176,255,.25);border-radius:8px;color:#9db0ff;cursor:pointer;font-weight:600;">📄 PDF</button></div></div>
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><div style="display:flex;gap:6px;"><button onclick="exportUsersCSV()" style="padding:7px 14px;font-size:.82rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:600;">📥 CSV</button><button onclick="exportUsersPDF()" style="padding:7px 14px;font-size:.82rem;background:rgba(157,176,255,.1);border:1px solid rgba(157,176,255,.25);border-radius:8px;color:#9db0ff;cursor:pointer;font-weight:600;">📄 PDF</button><button onclick="openBulkImportModal()" style="padding:7px 14px;font-size:.82rem;background:rgba(255,176,32,.1);border:1px solid rgba(255,176,32,.25);border-radius:8px;color:#ffd580;cursor:pointer;font-weight:600;">📤 Import CSV</button></div></div>
     <div class="tbl-wrap" id="tblScroll"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
     <div id="pgBarWrapper"></div>
   </div>
@@ -981,6 +983,15 @@
 
 </div>
 
+<!-- Tab Analytics -->
+<div id="tab-analytics" style="display:none;">
+  <h2 style="color:#9db0ff;margin-bottom:6px;">📊 Analytics</h2>
+  <p style="color:var(--muted);font-size:.83rem;margin-bottom:20px;">Statistici agregate pentru organizația ta.</p>
+  <div id="analyticsArea" style="display:grid;gap:16px;">
+    <div style="color:var(--muted);padding:24px;text-align:center;">⏳ Apasă pe tab pentru a încărca...</div>
+  </div>
+</div>
+
 </main>
 
 
@@ -1103,6 +1114,11 @@ fetch('/auth/me', { credentials: 'include' })
     try {
       const _me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
       window._currentUserRole = _me.role || 'user';
+    // Afisam butonul 2FA in header doar pentru conturi privilegiate
+    if (_me.role === 'admin' || _me.role === 'org_admin') {
+      const btn2fa = document.getElementById('hdr2faBtn');
+      if (btn2fa) btn2fa.style.display = 'inline-block';
+    }
     } catch(e) { window._currentUserRole = 'user'; }
     // Super-admin: afișăm org selector de la deschiderea modalului
     if (window._currentUserRole === 'admin') {
@@ -3866,6 +3882,225 @@ async function doOnboarding() {
   }
 }
 
+// ── Bulk Import CSV Utilizatori ──────────────────────────────────────────────
+function openBulkImportModal() {
+  const m = document.getElementById('bulkImportModal');
+  if (m) { document.getElementById('bulkCsvData').value = '';
+    document.getElementById('bulkImportMsg').textContent = '';
+    document.getElementById('bulkImportResult').style.display = 'none';
+    const btn = document.getElementById('bulkImportBtn');
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Importă utilizatori'; }
+    m.style.display = 'flex'; }
+}
+function closeBulkImportModal() {
+  const m = document.getElementById('bulkImportModal');
+  if (m) m.style.display = 'none';
+}
+async function doBulkImport() {
+  const csvData = (document.getElementById('bulkCsvData')?.value || '').trim();
+  const sendCreds = document.getElementById('bulkSendCreds')?.checked || false;
+  const msg = document.getElementById('bulkImportMsg');
+  const btn = document.getElementById('bulkImportBtn');
+  if (!csvData) { msg.style.color='#ff8080'; msg.textContent='Introduceți datele CSV.'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Se importă...';
+  try {
+    const r = await _apiFetch('/admin/users/bulk-import', {
+      method: 'POST', headers: hdrs(),
+      body: JSON.stringify({ csvData, send_credentials: sendCreds })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error || 'Eroare server');
+    const s = d.summary;
+    msg.style.color = '#2dd4bf';
+    msg.textContent = `✅ ${s.created} creați, ${s.skipped} existenți, ${s.errors} erori din ${s.total} linii.`;
+    const resultDiv = document.getElementById('bulkImportResult');
+    let html = '';
+    if (d.results.created.length) {
+      html += `<div style="color:#2dd4bf;font-weight:700;margin-bottom:6px;">✅ Creați (${d.results.created.length}):</div>`;
+      d.results.created.forEach(u => { html += `<div style="font-family:monospace;font-size:.8rem;">${esc(u.email)} — ${esc(u.nume)}${u.tempPassword ? ` <span style="color:#ffd580;">[pwd: ${esc(u.tempPassword)}]</span>` : ''}</div>`; });
+    }
+    if (d.results.errors.length) {
+      html += `<div style="color:#ff8080;font-weight:700;margin:8px 0 4px;">❌ Erori (${d.results.errors.length}):</div>`;
+      d.results.errors.forEach(e => { html += `<div style="font-size:.79rem;color:#ff8080;">${esc(e.line)} — ${esc(e.reason)}</div>`; });
+    }
+    resultDiv.innerHTML = html; resultDiv.style.display = 'block';
+    btn.textContent = '✅ Import finalizat';
+    loadUsers && loadUsers();
+  } catch(e) {
+    msg.style.color = '#ff8080'; msg.textContent = '❌ ' + e.message;
+    btn.disabled = false; btn.textContent = '📤 Importă utilizatori';
+  }
+}
+
+// ── load2FAStatus ──────────────────────────────────────────────────────────
+async function load2FAStatus() {
+  try {
+    const r = await _apiFetch('/auth/totp/status', { headers: hdrs() });
+    const d = await r.json();
+    if (d.enabled) {
+      // Are 2FA activ — oferim optiunea de dezactivare
+      if (confirm(`2FA este ACTIV (${d.backupCodesRemaining} coduri backup rămase).
+
+Vrei să îl dezactivezi?`)) {
+        open2FADisable();
+      }
+    } else {
+      // Nu are 2FA — deschidem wizard de activare
+      open2FASetup();
+    }
+  } catch(e) { alert('Eroare: ' + e.message); }
+}
+
+// ── 2FA TOTP Management ───────────────────────────────────────────────────────
+let _totpPendingSecret = null;
+
+async function open2FASetup() {
+  const m = document.getElementById('twoFaModal');
+  if (!m) return;
+  ['twoFaStep1','twoFaStep2','twoFaDisable'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
+  document.getElementById('twoFaStep1').style.display = 'block';
+  document.getElementById('twoFaCode1').value = '';
+  document.getElementById('twoFaMsg1').textContent = '';
+  document.getElementById('twoFaQrArea').innerHTML = '<div style="color:var(--muted);font-size:.83rem;">⏳ Se generează...</div>';
+  m.style.display = 'flex';
+  try {
+    const r = await _apiFetch('/auth/totp/setup', { method: 'POST', headers: hdrs() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error);
+    _totpPendingSecret = d.secret;
+    // QR code via Google Charts API (nu trimite date sensibile — doar URL-ul otpauth)
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(d.otpauthUrl)}`;
+    document.getElementById('twoFaQrArea').innerHTML = `<img src="${qrUrl}" style="border-radius:8px;border:3px solid rgba(124,92,255,.3);" width="180" height="180" alt="QR 2FA"/>`;
+    document.getElementById('twoFaSecretText').textContent = d.secret;
+    document.getElementById('twoFaSecretArea').style.display = 'block';
+    setTimeout(() => document.getElementById('twoFaCode1')?.focus(), 200);
+  } catch(e) {
+    document.getElementById('twoFaMsg1').style.color = '#ff8080';
+    document.getElementById('twoFaMsg1').textContent = '❌ ' + e.message;
+  }
+}
+async function confirm2FASetup() {
+  const code = (document.getElementById('twoFaCode1')?.value || '').trim();
+  const msg = document.getElementById('twoFaMsg1');
+  if (!code || code.length < 6) { msg.style.color='#ff8080'; msg.textContent='Introduceți codul de 6 cifre.'; return; }
+  try {
+    const r = await _apiFetch('/auth/totp/confirm', { method: 'POST', headers: hdrs(), body: JSON.stringify({ code }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error);
+    document.getElementById('twoFaStep1').style.display = 'none';
+    document.getElementById('twoFaStep2').style.display = 'block';
+    const codesDiv = document.getElementById('twoFaBackupCodes');
+    if (codesDiv) codesDiv.innerHTML = d.backupCodes.map(c => `<span style="background:rgba(255,255,255,.07);padding:4px 8px;border-radius:4px;">${esc(c)}</span>`).join('');
+  } catch(e) { msg.style.color='#ff8080'; msg.textContent='❌ ' + e.message; }
+}
+async function open2FADisable() {
+  const m = document.getElementById('twoFaModal');
+  if (!m) return;
+  ['twoFaStep1','twoFaStep2','twoFaDisable'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
+  document.getElementById('twoFaDisable').style.display = 'block';
+  document.getElementById('twoFaDisableCode').value = '';
+  document.getElementById('twoFaMsgDisable').textContent = '';
+  m.style.display = 'flex';
+  setTimeout(() => document.getElementById('twoFaDisableCode')?.focus(), 100);
+}
+async function do2FADisable() {
+  const code = (document.getElementById('twoFaDisableCode')?.value || '').trim().toUpperCase();
+  const msg = document.getElementById('twoFaMsgDisable');
+  if (!code) { msg.style.color='#ff8080'; msg.textContent='Introduceți codul.'; return; }
+  try {
+    const r = await _apiFetch('/auth/totp/disable', { method: 'POST', headers: hdrs(), body: JSON.stringify({ code }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error);
+    close2FA(); location.reload();
+  } catch(e) { msg.style.color='#ff8080'; msg.textContent='❌ ' + e.message; }
+}
+function close2FA() { const m = document.getElementById('twoFaModal'); if (m) m.style.display = 'none'; }
+
+// ── Analytics Dashboard ──────────────────────────────────────────────────────
+async function loadAnalytics() {
+  const area = document.getElementById('analyticsArea');
+  if (!area) return;
+  area.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;">⏳ Se încarcă...</div>';
+  try {
+    const r = await _apiFetch('/admin/analytics', { headers: hdrs() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error);
+    const f = d.flows, s = d.signers, u = d.users;
+    const pct = (a,b) => b ? Math.round(a/b*100) : 0;
+
+    area.innerHTML = `
+      <!-- Carduri principale -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">
+        ${[
+          ['📋 Total fluxuri', f.total, '#9db0ff'],
+          ['✅ Finalizate', f.completed, '#2dd4bf'],
+          ['⚡ Active', f.active, '#ffd580'],
+          ['⛔ Refuzate', f.refused, '#ff8080'],
+          ['🚨 Urgente', f.urgent, '#ff9e40'],
+          ['👥 Utilizatori', u.total, '#c4b5ff'],
+        ].map(([lbl,val,col]) => `
+          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;text-align:center;">
+            <div style="font-size:1.6rem;font-weight:800;color:${col};">${val??0}</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:4px;">${lbl}</div>
+          </div>`).join('')}
+      </div>
+
+      <!-- Timp mediu + rată finalizare -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;">
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px;">⏱ Timp mediu finalizare</div>
+          <div style="font-size:1.4rem;font-weight:700;color:#ffd580;">${f.avg_completion_hours != null ? f.avg_completion_hours+'h' : '—'}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;">
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px;">📈 Rată finalizare</div>
+          <div style="font-size:1.4rem;font-weight:700;color:#2dd4bf;">${pct(f.completed,f.total)}%</div>
+          <div style="font-size:.72rem;color:var(--muted);">${f.last_30_days} fluxuri în ultimele 30 zile</div>
+        </div>
+      </div>
+
+      <!-- Activitate ultimele 6 luni -->
+      ${d.byMonth.length ? `
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;">
+        <div style="font-size:.82rem;font-weight:700;color:#9db0ff;margin-bottom:12px;">📅 Activitate — ultimele 6 luni</div>
+        <div style="display:flex;align-items:flex-end;gap:8px;height:80px;">
+          ${d.byMonth.map(m => {
+            const maxVal = Math.max(...d.byMonth.map(x => x.created), 1);
+            const h = Math.round(m.created/maxVal*70);
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+              <div style="width:100%;background:rgba(157,176,255,.3);border-radius:4px 4px 0 0;height:${h}px;min-height:4px;position:relative;">
+                <div style="width:100%;background:#2dd4bf;border-radius:4px 4px 0 0;height:${Math.round(m.completed/maxVal*70)}px;min-height:2px;position:absolute;bottom:0;"></div>
+              </div>
+              <div style="font-size:.65rem;color:var(--muted);text-align:center;">${m.month.slice(5)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;gap:14px;margin-top:8px;font-size:.72rem;color:var(--muted);">
+          <span><span style="display:inline-block;width:10px;height:10px;background:rgba(157,176,255,.3);border-radius:2px;margin-right:4px;"></span>Create</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#2dd4bf;border-radius:2px;margin-right:4px;"></span>Finalizate</span>
+        </div>
+      </div>` : ''}
+
+      <!-- Top initiatori -->
+      ${d.topInitiatori.length ? `
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;">
+        <div style="font-size:.82rem;font-weight:700;color:#9db0ff;margin-bottom:10px;">🏆 Top inițiatori</div>
+        ${d.topInitiatori.map((t,i) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;${i>0?'border-top:1px solid rgba(255,255,255,.05)':''}">
+            <div style="font-size:.83rem;color:#eaf0ff;">${esc(t.name||t.email)}</div>
+            <div style="font-size:.78rem;color:#ffd580;font-weight:700;">${t.flows} fluxuri</div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <div style="font-size:.72rem;color:var(--muted);text-align:right;">
+        Generat la: ${new Date(d.generatedAt).toLocaleString('ro-RO')}
+        <button onclick="loadAnalytics()" style="margin-left:10px;padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:var(--muted);cursor:pointer;font-size:.72rem;">🔄 Refresh</button>
+      </div>
+    `;
+  } catch(e) {
+    if (area) area.innerHTML = `<div style="color:#ff8080;padding:24px;text-align:center;">❌ ${esc(e.message)}</div>`;
+  }
+}
+
 document.addEventListener('keydown', e => {
   if (e.key==='Escape' && document.getElementById('assignOrgModal')?.style.display==='flex') closeAssignOrg();
 });
@@ -4269,7 +4504,7 @@ async function orgTestWebhook() {
 async function downloadTrustReport(flowId, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳'; }
   try {
-    const r = await fetch(`/api/flows/${encodeURIComponent(flowId)}/report`, {
+    const r = await fetch(`/api/flows/${encodeURIComponent(flowId)}/report?force=1`, {
       credentials: 'include',
       headers: { 'Accept': 'application/pdf, application/json' },
     });
@@ -4293,5 +4528,71 @@ async function downloadTrustReport(flowId, btnEl) {
   }
 }
 </script>
+
+<!-- ── Modal Bulk Import CSV Utilizatori ─────────────────────────────────── -->
+<div id="bulkImportModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeBulkImportModal()">
+  <div style="background:#0f1731;border:1px solid rgba(255,176,32,.3);border-radius:18px;padding:32px;max-width:560px;width:calc(100%-32px);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);position:relative;">
+    <button onclick="closeBulkImportModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
+    <div style="font-size:1.05rem;font-weight:800;color:#ffd580;margin-bottom:4px;">📤 Import utilizatori din CSV</div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px;">Format: <code style="background:rgba(255,255,255,.07);padding:2px 6px;border-radius:4px;">email,nume,functie,compartiment</code> — un utilizator per linie. Header opțional.</div>
+
+    <textarea id="bulkCsvData" rows="10" placeholder="ion.popescu@primarie.ro,Popescu Ion,Referent,Secretariat&#10;ana.ionescu@primarie.ro,Ionescu Ana,Consilier juridic,Juridic&#10;..." style="width:100%;box-sizing:border-box;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.83rem;font-family:monospace;resize:vertical;margin-bottom:12px;"></textarea>
+
+    <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--muted);margin-bottom:16px;cursor:pointer;">
+      <input type="checkbox" id="bulkSendCreds" style="width:16px;height:16px;accent-color:#ffd580;"/>
+      Trimite credențiale pe email la fiecare utilizator creat
+    </label>
+
+    <div id="bulkImportMsg" style="font-size:.83rem;min-height:18px;margin-bottom:12px;"></div>
+    <div id="bulkImportResult" style="display:none;background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.2);border-radius:10px;padding:14px;font-size:.82rem;margin-bottom:14px;"></div>
+
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeBulkImportModal()" style="flex:1;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+      <button id="bulkImportBtn" onclick="doBulkImport()" style="flex:2;padding:10px;background:linear-gradient(135deg,#ffd580,#ff9e40);border:none;border-radius:8px;color:#1a1200;font-weight:700;cursor:pointer;">📤 Importă utilizatori</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal 2FA TOTP ─────────────────────────────────────────────────────── -->
+<div id="twoFaModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)close2FA()">
+  <div style="background:#0f1731;border:1px solid rgba(124,92,255,.3);border-radius:18px;padding:32px;max-width:460px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);position:relative;">
+    <button onclick="close2FA()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
+    <div id="twoFaStep1" style="display:block;">
+      <div style="font-size:1.05rem;font-weight:800;color:#c4b5ff;margin-bottom:4px;">🔐 Activare 2FA</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px;">Scanează QR-ul cu Google Authenticator, Authy sau orice aplicație TOTP.</div>
+      <div id="twoFaQrArea" style="text-align:center;margin-bottom:16px;min-height:80px;">
+        <div style="color:var(--muted);font-size:.83rem;">⏳ Se generează...</div>
+      </div>
+      <div id="twoFaSecretArea" style="margin-bottom:16px;display:none;">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;">Sau introdu manual secretul:</div>
+        <code id="twoFaSecretText" style="background:rgba(255,255,255,.07);padding:6px 10px;border-radius:6px;font-size:.85rem;color:#ffd580;display:block;word-break:break-all;"></code>
+      </div>
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:8px;">Confirmă cu primul cod generat:</div>
+      <input id="twoFaCode1" type="text" inputmode="numeric" placeholder="123456" maxlength="6"
+        style="width:100%;box-sizing:border-box;padding:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:1.2rem;text-align:center;letter-spacing:.3em;font-family:monospace;margin-bottom:10px;"
+        onkeydown="if(event.key==='Enter')confirm2FASetup()"/>
+      <div id="twoFaMsg1" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
+      <button onclick="confirm2FASetup()" style="width:100%;padding:11px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">✅ Activează 2FA</button>
+    </div>
+    <div id="twoFaStep2" style="display:none;">
+      <div style="font-size:1.05rem;font-weight:800;color:#2dd4bf;margin-bottom:12px;">✅ 2FA activat cu succes!</div>
+      <div style="font-size:.82rem;color:#ffd580;font-weight:700;margin-bottom:8px;">⚠️ Salvează aceste coduri de backup — fiecare e valabil o singură dată:</div>
+      <div id="twoFaBackupCodes" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:14px;font-family:monospace;font-size:.9rem;color:#eaf0ff;display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;"></div>
+      <button onclick="close2FA();location.reload();" style="width:100%;padding:11px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">Am salvat codurile — Închide</button>
+    </div>
+    <div id="twoFaDisable" style="display:none;">
+      <div style="font-size:1.05rem;font-weight:800;color:#ff8080;margin-bottom:8px;">🔓 Dezactivare 2FA</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px;">Introdu un cod TOTP sau un cod de backup pentru confirmare.</div>
+      <input id="twoFaDisableCode" type="text" placeholder="Cod TOTP sau backup" maxlength="8"
+        style="width:100%;box-sizing:border-box;padding:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:1.1rem;text-align:center;font-family:monospace;margin-bottom:10px;"
+        onkeydown="if(event.key==='Enter')do2FADisable()"/>
+      <div id="twoFaMsgDisable" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:10px;">
+        <button onclick="close2FA()" style="flex:1;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+        <button onclick="do2FADisable()" style="flex:2;padding:10px;background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);border-radius:8px;color:#ff8080;font-weight:700;cursor:pointer;">Dezactivează 2FA</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>

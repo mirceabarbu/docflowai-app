@@ -63,7 +63,8 @@ import flowsRouter, { injectFlowDeps } from './routes/flows/index.mjs'; // ARCH-
 import verifyRouter  from './routes/verify.mjs';
 import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
-import templatesRouter from './routes/templates.mjs'; // Q-06: extras din index.mjs
+import templatesRouter from './routes/templates.mjs';
+import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
 const app = express();
 app.set('trust proxy', 1);
@@ -732,6 +733,7 @@ injectWebhookBaseUrl(process.env.PUBLIC_BASE_URL || '');
 
 // ── Mount routers ─────────────────────────────────────────────────────────
 app.use('/', authRouter);
+app.use('/', totpRouter);  // 2FA TOTP
 app.use('/', notifRouter);
 app.use('/', adminRouter);
 // Rute publice verificare (fără autentificare)

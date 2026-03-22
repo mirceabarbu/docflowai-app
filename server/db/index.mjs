@@ -735,6 +735,15 @@ const MIGRATIONS = [
       ALTER TABLE flows ADD COLUMN IF NOT EXISTS deleted_by TEXT DEFAULT NULL;
       CREATE INDEX IF NOT EXISTS idx_flows_deleted_at ON flows(deleted_at) WHERE deleted_at IS NULL;
     `
+  },
+  {
+    id: '038_users_totp_2fa',
+    sql: `
+      -- 2FA TOTP pentru conturi privilegiate (admin, org_admin)
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret      TEXT    DEFAULT NULL;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled     BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT[]  DEFAULT NULL;
+    `
   }
 ];
 
