@@ -130,11 +130,15 @@
     <!-- F — b97: badge live fluxuri active -->
     <span id="activeFlowsBadge" title="Fluxuri active în acest moment" style="display:none;padding:5px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;font-size:.78rem;color:#c4b5fd;font-weight:700;cursor:default;">⏳ <span id="activeFlowsCount">—</span> active</span>
   </div>
-  <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
-    <span style="color:var(--muted);font-size:.78rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
-    <button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 10px;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:600;">🔑 Parolă</button>
-    <button id="hdr2faBtn" onclick="load2FAStatus()" style="background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);color:#c4b5ff;padding:5px 10px;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:600;display:none;">🔐 2FA</button>
-    <button class="btn-logout" onclick="logout()" style="font-size:.78rem;padding:5px 10px;">Ieșire</button>
+  <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:6px;">
+    <span style="color:var(--muted);font-size:.76rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="">
+      <strong id="hdrUser" style="color:var(--sub);"></strong>
+    </span>
+    <div style="display:flex;gap:5px;align-items:center;">
+      <button onclick="openChangePwdModal()" title="Schimbă parola" style="background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:5px 9px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:600;white-space:nowrap;">🔑</button>
+      <button id="hdr2faBtn" onclick="load2FAStatus()" title="Configurare 2FA" style="background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.25);color:#c4b5ff;padding:5px 9px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:600;display:none;white-space:nowrap;">🔐</button>
+      <button class="btn-logout" onclick="logout()" title="Ieșire" style="font-size:.76rem;padding:5px 9px;white-space:nowrap;">⏻ Ieșire</button>
+    </div>
   </div>
 </header>
 
@@ -1101,7 +1105,13 @@ const $=id=>document.getElementById(id);
 // Citim doar datele UI non-sensibile din localStorage
 const me=JSON.parse(localStorage.getItem("docflow_user")||"{}");
 const hdrEl=$("hdrUser");
-if(hdrEl) hdrEl.textContent=me.nume||me.email||"—";
+if(hdrEl) {
+  hdrEl.textContent=me.nume||me.email||"—";
+  // Tooltip cu rolul pe containerul span parinte
+  const roleLabel = me.role === 'admin' ? 'Super Admin' : me.role === 'org_admin' ? 'Admin Instituție' : 'Utilizator';
+  const parentSpan = hdrEl.closest('span');
+  if (parentSpan) parentSpan.title = roleLabel + ': ' + (me.email||'');
+}
 fetch('/auth/me', { credentials: 'include' })
   .then(r => {
     if (!r.ok) {
@@ -2467,7 +2477,7 @@ let _activityData = null;
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  ['utilizatori','fluxuri','rapoarte','outreach','organizatii'].forEach(t => {
+  ['utilizatori','fluxuri','rapoarte','outreach','organizatii','analytics'].forEach(t => {
     const el = $('tab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
