@@ -56,7 +56,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
 
     // Găsim fluxul prin sessionId stocat în signers[i].signingSessionId
     const { rows } = await pool.query(
-      `SELECT flow_id, data FROM flows
+      `SELECT id AS flow_id, data FROM flows
        WHERE data->'signers' @> $1::jsonb LIMIT 1`,
       [JSON.stringify([{ signingSessionId: sessionId }])]
     );

@@ -261,6 +261,12 @@
       // Tranziție: dacă există token vechi în localStorage, îl trimitem ca fallback Bearer
       const legacyToken = localStorage.getItem('docflow_token');
       if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
+      // CSRF: citim csrf_token din cookie și îl trimitem ca header pentru mutații
+      const method = (options?.method || 'GET').toUpperCase();
+      if (!['GET','HEAD','OPTIONS'].includes(method)) {
+        const csrfCookie = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+        if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
+      }
       return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>

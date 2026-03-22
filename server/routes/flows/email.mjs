@@ -242,7 +242,7 @@ router.get('/flows/email-click/:trackingId', async (req, res) => {
       if (!trackingId) return;
       // Găsim fluxul după trackingId
       const { rows } = await pool.query(
-        `SELECT flow_id FROM flows
+        `SELECT id AS flow_id FROM flows
          WHERE data->'events' @> $1::jsonb LIMIT 1`,
         [JSON.stringify([{ trackingId }])]
       );

@@ -709,7 +709,7 @@ app.get('/d/:trackingId', async (req, res) => {
       const { trackingId } = req.params;
       if (!trackingId) return;
       const { rows } = await pool.query(
-        `SELECT flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
         [JSON.stringify([{ trackingId }])]
       );
       if (!rows.length) return;
@@ -746,7 +746,7 @@ app.get('/p/:trackingId', async (req, res) => {
       const { trackingId } = req.params;
       if (!trackingId) return;
       const { rows } = await pool.query(
-        `SELECT flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
         [JSON.stringify([{ trackingId }])]
       );
       if (!rows.length) return;

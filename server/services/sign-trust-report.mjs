@@ -243,6 +243,11 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
     certificates: (cryptoResult?.signatures || []).map(sig => ({
       signerIndex:        sig.index,
       docHash:            sig.docHash,
+      // ── Compliance fields ─────────────────────────────────────────────
+      validation_time:       sig.validation_time || null,
+      validation_source:     sig.validation_source || 'local',
+      ltv_ready:             sig.ltv_ready || false,
+      certificate_qc_status: sig.certificate_qc_status || 'unknown',
       signingTime:        sig.signingTime,
       isValid:            sig.isValid,
       isQES:              sig.isQES,
@@ -445,6 +450,16 @@ async function _generateReportPdf(report) {
              c.revocationStatus === 'valid' ? COL.ok : c.revocationStatus === 'revoked' ? COL.fail : COL.warn);
       drawKV('Algoritm semnatura', c.signatureAlgorithm);
       drawKV('QcStatements', c.hasQcStatements ? 'Prezent (QES confirmed)' : 'Absent');
+      // ── Compliance fields ──────────────────────────────────────────────
+      drawKV('Status QC', cert.certificate_qc_status === 'qualified' ? 'CALIFICAT (QES)' :
+             cert.certificate_qc_status === 'non-qualified' ? 'NECALIFICAT' : 'Necunoscut',
+             cert.certificate_qc_status === 'qualified' ? COL.ok :
+             cert.certificate_qc_status === 'non-qualified' ? COL.warn : COL.muted);
+      drawKV('Sursa validare', cert.validation_source === 'ocsp' ? 'OCSP (live)' :
+             cert.validation_source === 'crl' ? 'CRL' : 'Local (offline)');
+      drawKV('LTV Ready', cert.ltv_ready ? 'DA — timestamp + OCSP prezente' : 'NU',
+             cert.ltv_ready ? COL.ok : COL.warn);
+      if (cert.validation_time) drawKV('Data verificare', fmtDate(cert.validation_time));
       if (c.ocspUrl) drawKV('OCSP URL', c.ocspUrl);
       // Timestamp CMS și hash document
       if (cert.signingTime) drawKV('Timestamp CMS', fmtDate(cert.signingTime));

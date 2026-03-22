@@ -6,6 +6,7 @@
  */
 
 import { Router } from 'express';
+import { generateCsrfToken } from '../middleware/csrf.mjs';
 import jwt from 'jsonwebtoken';
 import {
   JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC,
@@ -84,6 +85,15 @@ router.post('/auth/login', async (req, res) => {
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
     setAuthCookie(res, token, jwtExpiresMs());
+    // CSRF: cookie non-HttpOnly citit de frontend si trimis ca header x-csrf-token
+    const csrfToken = generateCsrfToken();
+    res.cookie('csrf_token', csrfToken, {
+      httpOnly: false,       // frontend trebuie sa-l poata citi
+      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: jwtExpiresMs(),
+      path: '/',
+    });
 
     logger.info({ userId: user.id, email: user.email, role: user.role }, 'Login reusit');
 
@@ -191,6 +201,12 @@ router.post('/auth/refresh', async (req, res) => {
     );
     // SEC-01: noul token în cookie HttpOnly
     setAuthCookie(res, newToken, jwtExpiresMs());
+    const csrfTokenRefresh = generateCsrfToken();
+    res.cookie('csrf_token', csrfTokenRefresh, {
+      httpOnly: false, sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: jwtExpiresMs(), path: '/',
+    });
     return res.json({
       ok: true,
       email: decoded.email, role: decoded.role, orgId: decoded.orgId,
@@ -224,6 +240,10 @@ router.post('/auth/change-password', async (req, res) => {
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
+
+// ── Endpoint-uri debug/recovery — DEZACTIVATE în producție ────────────────────
+// Disponibile doar în development (NODE_ENV !== 'production')
+if (process.env.NODE_ENV !== 'production') {
 
 // ── GET /auth/debug — diagnostic endpoint (ADMIN ONLY) ───────────────────────
 router.get('/auth/debug', async (req, res) => {
@@ -342,6 +362,8 @@ router.get('/auth/fix-admin', async (req, res) => {
     res.status(500).send(`<h2>❌ Eroare.</h2>`);
   }
 });
+
+} // end development-only routes
 
 // ── GET /auth/verify-email/:token ─────────────────────────────────────────────
 router.get('/auth/verify-email/:token', async (req, res) => {

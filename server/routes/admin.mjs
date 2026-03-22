@@ -7,6 +7,7 @@
  */
 
 import { Router } from 'express';
+import { csrfMiddleware } from '../middleware/csrf.mjs';
 import crypto from 'crypto';
 import { emailResetPassword, emailCredentials, emailVerifyGws } from '../emailTemplates.mjs';
 import { requireAuth, requireAdmin, hashPassword, generatePassword, escHtml } from '../middleware/auth.mjs';
@@ -362,7 +363,7 @@ router.get('/admin/users', async (req, res) => {
   } catch(e) { logger.error({ err: e }, 'GET /admin/users error:'); res.status(500).json({ error: 'server_error', detail: e.message }); }
 });
 
-router.post('/admin/users', async (req, res) => {
+router.post('/admin/users', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
@@ -621,7 +622,7 @@ router.get('/admin/gws/verify', async (req, res) => {
   res.status(result.ok ? 200 : 503).json(result);
 });
 
-router.put('/admin/users/:id', async (req, res) => {
+router.put('/admin/users/:id', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
@@ -702,7 +703,7 @@ router.post('/admin/users/:id/reset-password', async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
-router.delete('/admin/users/:id', async (req, res) => {
+router.delete('/admin/users/:id', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   // FIX b75: org_admin poate șterge useri din propria organizație (consistent cu PUT/reset-password)

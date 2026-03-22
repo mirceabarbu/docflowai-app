@@ -107,7 +107,7 @@ router.get('/api/flows/:flowId/report', async (req, res) => {
           data,
           '{events}',
           (COALESCE(data->'events', '[]'::jsonb) || $2::jsonb)
-        ) WHERE flow_id = $1`,
+        ) WHERE id = $1`,
         [flowId, JSON.stringify([...certEvents, trustEvent])]
       );
     } catch(evErr) {
