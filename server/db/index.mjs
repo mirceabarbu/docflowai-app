@@ -725,6 +725,16 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_flows_init_org
         ON flows ((data->>'initEmail'), (data->>'orgId'));
     `
+  },
+  {
+    id: '037_flows_soft_delete',
+    sql: `
+      -- Soft delete: flows nu se mai sterg fizic — se marcheaza ca sterse
+      -- Permite audit complet si recuperare in caz de accident
+      ALTER TABLE flows ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
+      ALTER TABLE flows ADD COLUMN IF NOT EXISTS deleted_by TEXT DEFAULT NULL;
+      CREATE INDEX IF NOT EXISTS idx_flows_deleted_at ON flows(deleted_at) WHERE deleted_at IS NULL;
+    `
   }
 ];
 
@@ -921,7 +931,7 @@ export async function getFlowData(id) {
     LEFT JOIN flows_pdfs fp_pdf  ON fp_pdf.flow_id  = f.id AND fp_pdf.key  = 'pdfB64'
     LEFT JOIN flows_pdfs fp_spdf ON fp_spdf.flow_id = f.id AND fp_spdf.key = 'signedPdfB64'
     LEFT JOIN flows_pdfs fp_opdf ON fp_opdf.flow_id = f.id AND fp_opdf.key = 'originalPdfB64'
-    WHERE f.id = $1
+    WHERE f.id = $1 AND f.deleted_at IS NULL
   `, [id]);
   if (!r.rows[0]) return null;
   const data = r.rows[0].data;

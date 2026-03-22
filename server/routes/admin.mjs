@@ -792,6 +792,92 @@ router.post('/admin/users/:id/send-credentials', async (req, res) => {
   } catch(e) { res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
 
+// ── POST /admin/onboarding — Wizard creare instituție nouă ──────────────────
+// Crează în un singur pas: organizație nouă + utilizator org_admin + trimite credențiale
+// Disponibil doar pentru super-admin
+router.post('/admin/onboarding', csrfMiddleware, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden', message: 'Doar super-adminul poate crea instituții noi.' });
+
+  const { org_name, admin_email, admin_name, admin_functie, admin_phone } = req.body || {};
+
+  if (!org_name || !String(org_name).trim())
+    return res.status(400).json({ error: 'org_name_required' });
+  if (!admin_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(admin_email))
+    return res.status(400).json({ error: 'admin_email_invalid' });
+  if (!admin_name || !String(admin_name).trim())
+    return res.status(400).json({ error: 'admin_name_required' });
+
+  const orgName    = String(org_name).trim();
+  const adminEmail = admin_email.trim().toLowerCase();
+  const adminName  = String(admin_name).trim();
+  const adminFunctie = (admin_functie || 'Administrator Instituție').trim();
+  const adminPhone = (admin_phone || '').trim();
+
+  try {
+    // 1. Verificam ca emailul nu exista deja
+    const { rows: existingUser } = await pool.query(
+      'SELECT id FROM users WHERE lower(email)=$1', [adminEmail]
+    );
+    if (existingUser.length > 0)
+      return res.status(409).json({ error: 'email_exists', message: `Utilizatorul ${adminEmail} există deja.` });
+
+    // 2. Cream sau gasim organizatia
+    const { rows: existingOrg } = await pool.query(
+      'SELECT id FROM organizations WHERE lower(name)=lower($1)', [orgName]
+    );
+    let orgId;
+    if (existingOrg.length > 0) {
+      orgId = existingOrg[0].id;
+      logger.info({ orgName, orgId }, 'Onboarding: org existenta refolosita');
+    } else {
+      const { rows: newOrg } = await pool.query(
+        'INSERT INTO organizations (name) VALUES ($1) RETURNING id', [orgName]
+      );
+      orgId = newOrg[0].id;
+      logger.info({ orgName, orgId }, 'Onboarding: org noua creata');
+    }
+
+    // 3. Cream utilizatorul org_admin cu parola temporara
+    const tempPassword = generatePassword();
+    const passwordHash = await hashPassword(tempPassword);
+    const { rows: newUser } = await pool.query(
+      `INSERT INTO users (email, password_hash, nume, functie, institutie, role, org_id,
+        notif_inapp, notif_email, force_password_change, created_at)
+       VALUES ($1,$2,$3,$4,$5,'org_admin',$6,true,true,true,NOW())
+       RETURNING id, email, nume`,
+      [adminEmail, passwordHash, adminName, adminFunctie, orgName, orgId]
+    );
+    const userId = newUser[0].id;
+
+    // 4. Trimitem email cu credentiale
+    const appUrl = getAppUrl(req);
+    try {
+      await sendSignerEmail({
+        to: adminEmail,
+        ...emailCredentials({ appUrl, numeUser: adminName, email: adminEmail, newPwd: tempPassword }),
+      });
+      logger.info({ adminEmail, orgName }, 'Onboarding: credentiale trimise');
+    } catch(mailErr) {
+      logger.warn({ err: mailErr, adminEmail }, 'Onboarding: email credentiale esuat (non-fatal)');
+    }
+
+    res.json({
+      ok: true,
+      orgId,
+      orgName,
+      userId,
+      adminEmail,
+      tempPassword, // returnat catre super-admin ca fallback
+      message: `Instituția „${orgName}" a fost creată. Credențialele au fost trimise la ${adminEmail}.`,
+    });
+  } catch(e) {
+    logger.error({ err: e }, 'Onboarding error');
+    res.status(500).json({ error: 'server_error', message: String(e.message || e) });
+  }
+});
+
 // ── Flows admin ────────────────────────────────────────────────────────────
 // ── GET /admin/flows/clean-preview — preview fluxuri ce vor fi șterse ─────
 
@@ -815,7 +901,7 @@ router.get('/admin/flows/stats', async (req, res) => {
       "COUNT(*) FILTER (WHERE data->>'completed' IS DISTINCT FROM 'true' " +
         "AND (data->>'status' IS NULL OR data->>'status' NOT IN ('refused','cancelled','review_requested')))::int AS active, " +
       'COUNT(*)::int AS total ' +
-      'FROM flows WHERE 1=1' + whereCond;
+      'FROM flows WHERE 1=1 AND deleted_at IS NULL' + whereCond;
     const { rows } = await pool.query(sql, params);
     res.json(rows[0] || { active:0, completed:0, refused:0, cancelled:0, review_requested:0, total:0 });
   } catch(e) { logger.error({ err: e }, '/admin/flows/stats error'); res.status(500).json({ error: 'server_error' }); }
@@ -1160,9 +1246,9 @@ router.get('/admin/flows/list', async (req, res) => {
     if (dateTo)   { params.push(dateTo   + 'T23:59:59.999Z'); conditions.push(`(data->>'createdAt') <= $${params.length}`); }
     if (storageFilter === 'drive') conditions.push("(data->>'storage') = 'drive'");
     const whereClause = conditions.join(' AND ');
-    const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
+    const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause} AND deleted_at IS NULL`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
-    const { rows } = await pool.query(`SELECT id,data,created_at FROM flows WHERE ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]);
+    const { rows } = await pool.query(`SELECT id,data,created_at FROM flows WHERE ${whereClause} AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]);
     const { rows: userRows } = await pool.query('SELECT email,institutie,compartiment FROM users');
     const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
     const flows = rows.map(r => {

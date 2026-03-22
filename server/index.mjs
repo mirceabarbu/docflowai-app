@@ -270,6 +270,49 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ── GET /admin/reminder-status — status job reminder si configuratie ────────
+app.get('/admin/reminder-status', async (req, res) => {
+  try {
+    const actor = req.cookies?.auth_token ? (() => { try { return jwt.verify(req.cookies.auth_token, JWT_SECRET); } catch { return null; } })() : null;
+    if (!actor || (actor.role !== 'admin' && actor.role !== 'org_admin'))
+      return res.status(403).json({ error: 'forbidden' });
+
+    let pendingCount = 0, overdueCount = 0;
+    if (pool && DB_READY) {
+      try {
+        const orgFilter = actor.role === 'org_admin' ? `AND (data->>'orgId')::int = ${Number(actor.orgId)}` : '';
+        const { rows } = await pool.query(`
+          SELECT COUNT(*) FILTER (
+            WHERE (data->>'completed') IS DISTINCT FROM 'true'
+            AND (data->>'status') NOT IN ('cancelled','refused')
+            AND deleted_at IS NULL
+          ) AS pending,
+          COUNT(*) FILTER (
+            WHERE (data->>'completed') IS DISTINCT FROM 'true'
+            AND (data->>'status') NOT IN ('cancelled','refused')
+            AND deleted_at IS NULL
+            AND updated_at < NOW() - INTERVAL '24 hours'
+          ) AS overdue
+          FROM flows WHERE 1=1 ${orgFilter}
+        `);
+        pendingCount = parseInt(rows[0]?.pending || 0);
+        overdueCount = parseInt(rows[0]?.overdue || 0);
+      } catch(e) { /* non-fatal */ }
+    }
+
+    res.json({
+      ok: true,
+      config: {
+        intervalH:  parseInt(process.env.REMINDER_INTERVAL_HOURS || '6'),
+        reminder1H: parseInt(process.env.REMINDER_1_HOURS || '24'),
+        reminder2H: parseInt(process.env.REMINDER_2_HOURS || '48'),
+        reminder3H: parseInt(process.env.REMINDER_3_HOURS || '72'),
+      },
+      stats: { pendingFlows: pendingCount, overdueFlows: overdueCount },
+    });
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
 app.get('/admin/health', async (req, res) => {
   if (await requireAdmin(req, res)) return;
   let dbLatencyMs = null;

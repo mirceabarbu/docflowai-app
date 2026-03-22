@@ -320,10 +320,16 @@ router.delete('/flows/:flowId', async (req, res) => {
       const hasAnySignature = (data.signers || []).some(s => s.status === 'signed' || s.status === 'refused');
       if (hasAnySignature) return res.status(409).json({ error: 'flow_in_progress', message: 'Fluxul nu poate fi șters deoarece cel puțin un semnatar a acționat deja. Contactează un administrator.' });
     }
-    await pool.query('DELETE FROM flows WHERE id=$1', [flowId]);
+    // Soft delete — nu stergem fizic, marcam deleted_at + deleted_by
+    // Permite audit complet si recuperare de urgenta de catre super-admin
+    const now = new Date().toISOString();
+    await pool.query(
+      'UPDATE flows SET deleted_at=$1, deleted_by=$2 WHERE id=$3',
+      [now, actor.email, flowId]
+    );
     await pool.query('DELETE FROM notifications WHERE flow_id=$1', [flowId]).catch(() => {});
-    logger.info(`🗑 Flow ${flowId} șters de ${actor.email}`);
-    return res.json({ ok: true, flowId, deletedBy: actor.email });
+    logger.info(`🗑 Flow ${flowId} marcat ca sters (soft) de ${actor.email}`);
+    return res.json({ ok: true, flowId, deletedBy: actor.email, deletedAt: now });
   } catch(e) { logger.error({ err: e }, 'DELETE /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -347,11 +353,11 @@ router.get('/my-flows', async (req, res) => {
     // FIX: filtru org_id strict — fara "OR $2 = 0"
     let baseWhere, params;
     if (orgId) {
-      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND org_id = $2`;
+      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND org_id = $2 AND deleted_at IS NULL`;
       params = [email, orgId];
     } else {
       // User fara org (legacy) — vede doar fluxurile proprii fara filtrare org
-      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1))`;
+      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND deleted_at IS NULL`;
       params = [email];
     }
 
