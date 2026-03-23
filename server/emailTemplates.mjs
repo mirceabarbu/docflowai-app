@@ -201,26 +201,23 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
     ? `${appBase}/d/${trackingId}`
     : platformUrl;
 
+  // Link simplu text — mai puțin probabil să fie blocat de Yahoo/Gmail/Outlook
+  // Trackingul se face prin /d/:trackingId care redirect-ează la docflowai.ro
+  const verifyUrl = appBase ? `${appBase}/verifica` : 'https://www.docflowai.ro/verifica';
   const linkSection = `
       <div style="margin:20px 0;padding:16px 20px;background:#f0f4ff;border:1px solid #c5d0f0;border-radius:10px;border-left:4px solid #7c5cff;">
         <p style="margin:0 0 6px;font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Document disponibil în platformă</p>
-        <p style="margin:0 0 14px;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong></p>
-        <!-- Buton compatibil email clients (table-based — funcționează în Yahoo, Outlook, Gmail) -->
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
-          <tr>
-            <td style="border-radius:8px;background:#7c5cff;">
-              <a href="${trackedUrl}" target="_blank"
-                 style="display:inline-block;padding:11px 28px;font-family:'Segoe UI',Arial,sans-serif;
-                        font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;
-                        border-radius:8px;border:1px solid #7c5cff;">
-                &#128203; Vizitează DocFlowAI
-              </a>
-            </td>
-          </tr>
-        </table>
-        <p style="margin:10px 0 0;font-size:11px;color:#5a6a9a;">
-          Dacă butonul nu funcționează, accesați direct:
-          <a href="${trackedUrl}" style="color:#7c5cff;word-break:break-all;">${trackedUrl}</a>
+        <p style="margin:0 0 10px;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong></p>
+        <p style="margin:0 0 6px;font-size:13px;color:#1a2340;">
+          <a href="${trackedUrl}" target="_blank"
+             style="color:#7c5cff;font-weight:600;text-decoration:underline;">
+            Verifică autenticitatea unui document semnat electronic prin DocFlowAI
+          </a>
+        </p>
+        <p style="margin:8px 0 0;font-size:11px;color:#5a6a9a;">
+          Sau accesează direct pagina de verificare:
+          <a href="${verifyUrl}" style="color:#7c5cff;">${verifyUrl}</a>
+          și introdu ID-ul: <strong>${flowId}</strong>
         </p>
       </div>`;
 
