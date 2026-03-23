@@ -209,7 +209,7 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
         <p style="margin:0 0 6px;font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Document disponibil în platformă</p>
         <p style="margin:0 0 10px;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong></p>
         <p style="margin:0;font-size:13px;color:#1a2340;">
-          Accesează direct pagina de verificare:<br>
+          Accesează direct pagina de verificare:
           <a href="${trackedUrl}" target="_blank" style="color:#7c5cff;">verifica</a>
         </p>
       </div>`;
@@ -243,7 +243,7 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
     </div>
     ${linkSection}
     <div style="border-top:1px solid #dde4f5;padding-top:16px;margin-top:4px;text-align:center;">
-      <p style="margin:0 0 4px;font-size:12px;color:#5a6a9a;">Trimis prin <strong>DocFlowAI</strong> · noreply@docflowai.ro</p>
+      <p style="margin:0 0 4px;font-size:12px;color:#5a6a9a;">Trimis prin <a href="https://www.docflowai.ro" style="color:#7c5cff;text-decoration:none;font-weight:700;">DocFlowAI</a> · contact@docflowai.ro</p>
     </div>
   </div>
 </body></html>`;
