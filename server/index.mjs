@@ -756,7 +756,10 @@ app.get('/d/:trackingId', async (req, res) => {
       [JSON.stringify([{ trackingId: req.params.trackingId }])]
     ).catch(() => ({ rows: [] }));
     if (qr.length) {
-      const appBase = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      // Asiguram ca appBase are schema https:// — fara ea URL-ul devine relativ
+      let appBase = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      if (appBase && !appBase.startsWith('http')) appBase = 'https://' + appBase;
+      appBase = appBase.replace(/\/+$/, ''); // eliminam trailing slash
       safeDest = `${appBase}/verifica?id=${encodeURIComponent(qr[0].flow_id)}`;
     }
   } catch { /* fallback la docflowai.ro */ }

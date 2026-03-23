@@ -210,7 +210,7 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
         <p style="margin:0 0 10px;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong></p>
         <p style="margin:0;font-size:13px;color:#1a2340;">
           Accesează direct pagina de verificare:<br>
-          <a href="${trackedUrl}" target="_blank" style="color:#7c5cff;word-break:break-all;">${verifyUrl}</a>
+          <a href="${trackedUrl}" target="_blank" style="color:#7c5cff;">verifica</a>
         </p>
       </div>`;
 
