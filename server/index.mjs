@@ -1,5 +1,10 @@
 /**
- * DocFlowAI v3.3.9 — Main entry point (orchestrator)
+ * DocFlowAI v3.4.0 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.4.0 (build b170, 23.03.2026):
+ *  FIX BUG-PDF-01: 413 Content Too Large la reinitiate-review si upload-signed-pdf
+ *                  app-level express.json({limit:1mb}) respingea body INAINTE ca
+ *                  route-level _largePdf sa ruleze. Fix: middleware adaptiv per path.
  *
  * CHANGES v3.3.9 (build din 20.03.2026):
  *  FIX SEC-02:  rawBody middleware pentru HMAC real pe /signing-callback
@@ -147,8 +152,19 @@ app.use((req, res, next) => {
 });
 
 // PERF-03: limita globala 1MB — previne body flood pe endpoint-urile cu JSON mic.
-// Rutele care primesc PDF (pdfB64/signedPdfB64/dataB64) au override 50MB in flows.mjs.
-app.use(express.json({ limit: '1mb' }));
+// FIX BUG-PDF-01: route-level expressJson({ limit:'50mb' }) NU funcționează dacă
+// app-level parser a respins deja body-ul cu 413 înainte ca ruta să ruleze.
+// Soluție: middleware adaptiv — detectăm path-urile PDF și aplicăm limita corectă.
+const _LARGE_PDF_PATHS = [
+  '/reinitiate-review',   // POST — upload document revizuit după review
+  '/upload-signed-pdf',   // POST — upload PDF semnat de semnatar
+  '/signing-callback',    // POST — callback provider cloud signing
+  '/sign',                // POST — poate conține signedPdfB64
+];
+app.use((req, res, next) => {
+  const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));
+  return express.json({ limit: needsLarge ? '50mb' : '1mb' })(req, res, next);
+});
 
 // ── Request ID + safe JSON error envelope ─────────────────────────────────
 app.use((req, res, next) => {
