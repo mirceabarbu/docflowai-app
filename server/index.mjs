@@ -1,5 +1,32 @@
 /**
- * DocFlowAI v3.4.0 — Main entry point (orchestrator)
+ * DocFlowAI v3.4.3 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.4.3 (build b173, 23.03.2026):
+ *  SEC-04: CSRF complet — 3 rute ramase (generate-keypair, gws-provision, send-credentials)
+ *  SEC-05: e.message eliminat din 500 responses in toate fisierele (outreach, report, acroform,
+ *          cloud-signing, email, auth) — zero expuneri interne in tot proiectul
+ *  BUG:    archive-preview exclude fluxuri soft-deleted (deleted_at IS NULL)
+ *
+ * CHANGES v3.4.2 (build b172, 23.03.2026):
+ *  BUG-04: getOptionalActor extras in auth.mjs — eliminat din 4 module flows/ duplicate
+ *  BUG-05: Cross-org userMap fix — users filtrati per org_id in admin flows list
+ *  PERF-01: LEFT JOIN users in SQL (admin/flows/list) — elimina SELECT ALL users in-memory
+ *  SEC-05: e.message eliminat din toate raspunsurile 500 din admin.mjs
+ *  FEAT-05: Cleanup notificari citite >90 zile la startup (non-fatal, logged)
+ *  FEAT-07: Express upgrade 4.19.2 → 4.22.1 (latest 4.x, security patches)
+ *  ARCH-04: pdf-lib import static in sign-trust-report.mjs (eliminat dynamic import)
+ *
+ * CHANGES v3.4.1 (build b171, 23.03.2026):
+ *  SEC-01: flows/clean → soft delete (UPDATE deleted_at) — nu mai stergem fizic
+ *  SEC-02: Rate limit 5/min pe POST /verify/signature (endpoint public, CPU-intensiv)
+ *  SEC-04: csrfMiddleware adaugat pe 8 rute admin critice (orgs, signing, reset-pwd, etc.)
+ *  SEC-05: e.message eliminat din raspunsuri 500 in verify.mjs — logat server-side
+ *  BUG-01: Versiune citita din package.json in admin.mjs (nu mai e hardcodata 3.2.2)
+ *  BUG-02: COUNT(*) flows cu deleted_at IS NULL in toate stats endpoints
+ *  BUG-03: Date filter pe coloana TIMESTAMPTZ created_at (nu JSONB string)
+ *  ARCH-01: Sters flows.legacy.mjs (2260 linii cod mort, -130KB din repo)
+ *  ARCH-05: .railwayignore actualizat — tools/*.json/pdf/py excluse din deployment
+ *  DB-039:  GIN index pe data->'signers' pentru STS OAuth callback (PERF-04)
  *
  * CHANGES v3.4.0 (build b170, 23.03.2026):
  *  FIX BUG-PDF-01: 413 Content Too Large la reinitiate-review si upload-signed-pdf
@@ -1032,6 +1059,21 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
       }
     } catch(e) {
       logger.warn({ err: e }, 'archive_jobs recovery: eroare la startup (non-fatal)');
+    }
+
+    // FEAT-05: Cleanup notificări vechi — șterge notificările citite > 90 zile
+    // Previne acumularea nelimitată în tabelul notifications pe instanțe longevive.
+    try {
+      const { rowCount: notifDeleted } = await pool.query(`
+        DELETE FROM notifications
+        WHERE read = TRUE
+          AND created_at < NOW() - INTERVAL '90 days'
+      `);
+      if (notifDeleted > 0) {
+        logger.info({ notifDeleted }, 'startup: cleanup notificări vechi (>90 zile citite)');
+      }
+    } catch(e) {
+      logger.warn({ err: e }, 'startup: cleanup notificări vechi — eroare (non-fatal)');
     }
   }).catch(() => {}); // initDbWithRetry gestionează propriile erori intern
 });

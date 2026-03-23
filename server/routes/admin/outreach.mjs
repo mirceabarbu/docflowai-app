@@ -655,7 +655,7 @@ router.post('/campaigns/:id/send', async (req, res) => {
 
   } catch(e) {
     logger.error({ err: e }, 'outreach send batch error');
-    res.status(500).json({ error: 'server_error', message: e.message });
+    res.status(500).json({ error: 'server_error' });
   }
 });
 

@@ -22,6 +22,8 @@
 import crypto from 'crypto';
 import { logger } from '../middleware/logger.mjs';
 import { verifyPdfSignatures, extractPdfSignatures } from './certificate-verify.mjs';
+// ARCH-04: import static în loc de dynamic await import() la fiecare apel _generateReportPdf
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const APP_BASE_URL = () => process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
 
@@ -274,7 +276,7 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
 
 // ── Generare PDF cu pdf-lib ────────────────────────────────────────────────
 async function _generateReportPdf(report) {
-  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  // pdf-lib importat static la nivelul modulului (ARCH-04)
 
   const pdf  = await PDFDocument.create();
   const fontB = await pdf.embedFont(StandardFonts.HelveticaBold);

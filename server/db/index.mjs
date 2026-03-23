@@ -744,6 +744,16 @@ const MIGRATIONS = [
       ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled     BOOLEAN NOT NULL DEFAULT FALSE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT[]  DEFAULT NULL;
     `
+  },
+  {
+    id: '039_flows_signers_gin_index',
+    sql: `
+      -- PERF-04: GIN index pe data->'signers' pentru query-ul STS OAuth callback
+      -- SELECT ... FROM flows WHERE data->'signers' @> $1::jsonb LIMIT 1
+      -- Fără index: sequential scan pe toate fluxurile active. Cu GIN: lookup direct.
+      CREATE INDEX IF NOT EXISTS idx_flows_signers_gin
+        ON flows USING GIN ((data->'signers'));
+    `
   }
 ];
 

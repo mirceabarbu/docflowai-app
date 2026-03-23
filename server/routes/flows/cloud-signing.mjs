@@ -3,7 +3,7 @@
  * Semnare cloud: STS OAuth callback/poll, provideri, inițiere sesiune, callback
  */
 import { Router, json as expressJson } from 'express';
-import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../../middleware/auth.mjs';
+import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
@@ -16,13 +16,6 @@ const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message:
 const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
 const _readRateLimit   = createRateLimiter({ windowMs: 60_000, max: 60, message: 'Prea multe cereri. Încearcă în 1 minut.' });
 
-function getOptionalActor(req) {
-  const cookieToken = req.cookies?.[AUTH_COOKIE] || null;
-  if (cookieToken) { try { return jwt.verify(cookieToken, JWT_SECRET); } catch (e) {} }
-  const authHeader = req.headers['authorization'] || '';
-  if (authHeader.startsWith('Bearer ')) { try { return jwt.verify(authHeader.slice(7), JWT_SECRET); } catch (e) {} }
-  return null;
-}
 
 // Deps injectate din flows/index.mjs
 let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired;
@@ -246,7 +239,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
 
   } catch(e) {
     logger.error({ err: e }, 'STS poll error');
-    res.status(500).json({ error: 'server_error', message: e.message });
+    res.status(500).json({ error: 'server_error' });
   }
 });
 
@@ -384,7 +377,7 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     return res.json({ ok: true, signingUrl, sessionId: session.sessionId, provider: provider.id });
   } catch(e) {
     logger.error({ err: e }, 'initiate-cloud-signing error');
-    return res.status(500).json({ error: 'server_error', message: String(e.message) });
+    return res.status(500).json({ error: 'server_error' });
   }
 });
 

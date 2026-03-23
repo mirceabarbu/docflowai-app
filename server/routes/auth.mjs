@@ -326,7 +326,7 @@ router.post('/auth/fix-admin-role', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'user_not_found', email: targetEmail });
     res.json({ ok: true, fixed: rows[0], message: `✅ ${rows[0].email} are acum role='admin'` });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── GET /auth/fix-admin?secret=XXX ───────────────────────────────────────────

@@ -199,3 +199,14 @@ export function sha256Hex(buf) {
 export function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+// BUG-04: getOptionalActor extras din 4 module flows/ în auth.mjs — single source of truth.
+// Returnează payload JWT dacă există token valid (cookie sau Bearer), altfel null.
+// Nu trimite eroare — folosit pe rute publice unde autentificarea e opțională.
+export function getOptionalActor(req) {
+  const cookieToken = req.cookies?.[AUTH_COOKIE] || null;
+  if (cookieToken) { try { return jwt.verify(cookieToken, JWT_SECRET); } catch (_) {} }
+  const authHeader = req.headers['authorization'] || '';
+  if (authHeader.startsWith('Bearer ')) { try { return jwt.verify(authHeader.slice(7), JWT_SECRET); } catch (_) {} }
+  return null;
+}

@@ -156,7 +156,7 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
 
     logger.info({ flowId, to, actor: actor.email, trackingId }, '📧 Email extern trimis');
     return res.json({ ok: true, resendId: j.id, trackingId });
-  } catch(e) { logger.error({ err: e }, 'send-email error'); return res.status(500).json({ error: 'server_error', message: String(e.message) }); }
+  } catch(e) { logger.error({ err: e }, 'send-email error'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 

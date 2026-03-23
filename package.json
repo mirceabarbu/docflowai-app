@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.4.0",
+  "version": "3.4.3",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -16,7 +16,7 @@
     "asn1js": "^3.0.7",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "express": "^4.19.2",
+    "express": "^4.22.1",
     "googleapis": "^144.0.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",

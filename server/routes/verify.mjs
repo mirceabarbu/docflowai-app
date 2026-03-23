@@ -4,14 +4,21 @@
  * POST /verify/signature  — verificare criptografică PDF (6 niveluri)
  */
 import { Router } from 'express';
-// Import direct din DB — nu prin injecție (pool disponibil imediat la import)
 import { getFlowData } from '../db/index.mjs';
+import { logger } from '../middleware/logger.mjs';
+import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 
 const router = Router();
 
+// SEC-02: Rate limit pe verify/signature — endpoint public, operații criptografice costisitoare
+// 5 verificări/minut per IP — suficient pentru utilizare normală
+const _verifyRateLimit = createRateLimiter({
+  windowMs: 60_000, max: 5,
+  message: 'Prea multe verificări. Încercați din nou în 1 minut.'
+});
+
 // ── GET /verify/:flowId ────────────────────────────────────────────────────
 router.get('/verify/:flowId', async (req, res) => {
-  // Dezactivăm cache — răspunsul JSON trebuie să fie mereu proaspăt
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
@@ -54,13 +61,15 @@ router.get('/verify/:flowId', async (req, res) => {
       events,
     });
   } catch(e) {
-    console.error('verify GET error:', e.message);
-    return res.status(500).json({ error: 'server_error', message: e.message });
+    // SEC-05: nu expunem e.message — logăm server-side, returnăm requestId
+    logger.error({ err: e, flowId: req.params.flowId }, 'verify GET error');
+    return res.status(500).json({ error: 'server_error', requestId: req.requestId });
   }
 });
 
 // ── POST /verify/signature ─────────────────────────────────────────────────
-router.post('/verify/signature', async (req, res) => {
+// SEC-02: Rate limit aplicat — operație criptografică costisitoare, endpoint public
+router.post('/verify/signature', _verifyRateLimit, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   try {
     const { pdfB64, flowId } = req.body || {};
@@ -77,9 +86,11 @@ router.post('/verify/signature', async (req, res) => {
       verifyFn  = mod.verifyPdfSignatures;
       formatFn  = mod.formatVerificationResult;
     } catch(e) {
+      // Eroarea de import e sigură de expus — indică config, nu date interne
+      logger.error({ err: e }, 'verify: modul crypto indisponibil');
       return res.status(503).json({
         error:   'crypto_unavailable',
-        message: 'Modulul de verificare nu este disponibil: ' + e.message,
+        message: 'Modulul de verificare nu este disponibil temporar.',
       });
     }
 
@@ -106,8 +117,9 @@ router.post('/verify/signature', async (req, res) => {
 
     return res.json({ ...result, dbData });
   } catch(e) {
-    console.error('verify POST error:', e.message);
-    return res.status(500).json({ error: 'server_error', message: e.message });
+    // SEC-05: nu expunem e.message
+    logger.error({ err: e }, 'verify POST error');
+    return res.status(500).json({ error: 'server_error', requestId: req.requestId });
   }
 });
 

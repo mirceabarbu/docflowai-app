@@ -156,7 +156,7 @@ router.get('/api/flows/:flowId/report/json', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     return res.json({ ok: true, report });
   } catch(e) {
-    return res.status(500).json({ error: 'server_error', message: e.message });
+    return res.status(500).json({ error: 'server_error' });
   }
 });
 
