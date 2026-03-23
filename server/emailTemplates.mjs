@@ -201,23 +201,16 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
     ? `${appBase}/d/${trackingId}`
     : platformUrl;
 
-  // Link simplu text — mai puțin probabil să fie blocat de Yahoo/Gmail/Outlook
-  // Trackingul se face prin /d/:trackingId care redirect-ează la docflowai.ro
-  const verifyUrl = appBase ? `${appBase}/verifica` : 'https://www.docflowai.ro/verifica';
+  // Link direct cu ID precompletat — tracking via /d/:trackingId, redirect la /verifica?id=FLOWID
+  // URL-ul final dupa redirect: /verifica?id=FLOWID — se autocompleaza si se verifica automat
+  const verifyUrl = appBase ? `${appBase}/verifica?id=${encodeURIComponent(flowId)}` : `https://www.docflowai.ro/verifica?id=${encodeURIComponent(flowId)}`;
   const linkSection = `
       <div style="margin:20px 0;padding:16px 20px;background:#f0f4ff;border:1px solid #c5d0f0;border-radius:10px;border-left:4px solid #7c5cff;">
         <p style="margin:0 0 6px;font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Document disponibil în platformă</p>
         <p style="margin:0 0 10px;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong></p>
-        <p style="margin:0 0 6px;font-size:13px;color:#1a2340;">
-          <a href="${trackedUrl}" target="_blank"
-             style="color:#7c5cff;font-weight:600;text-decoration:underline;">
-            Verifică autenticitatea unui document semnat electronic prin DocFlowAI
-          </a>
-        </p>
-        <p style="margin:8px 0 0;font-size:11px;color:#5a6a9a;">
-          Sau accesează direct pagina de verificare:
-          <a href="${verifyUrl}" style="color:#7c5cff;">${verifyUrl}</a>
-          și introdu ID-ul: <strong>${flowId}</strong>
+        <p style="margin:0;font-size:13px;color:#1a2340;">
+          Accesează direct pagina de verificare:<br>
+          <a href="${trackedUrl}" target="_blank" style="color:#7c5cff;word-break:break-all;">${verifyUrl}</a>
         </p>
       </div>`;
 

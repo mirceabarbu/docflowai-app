@@ -719,6 +719,20 @@ function clearResult() {
 function setLoading(on) {
   $('loading').style.display = on ? 'block' : 'none';
 }
+
+// Precompletare ID din URL: /verifica?id=PT_XXXX sau /verifica#PT_XXXX
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const idFromUrl = params.get('id') || params.get('flow') || window.location.hash.replace('#','');
+  if (idFromUrl) {
+    const inp = document.getElementById('inputFlowId');
+    if (inp) {
+      inp.value = idFromUrl.trim().toUpperCase();
+      // Triggeram verificarea automat dupa 300ms
+      setTimeout(() => { verifyById && verifyById(); }, 300);
+    }
+  }
+})();
 </script>
 </body>
 </html>

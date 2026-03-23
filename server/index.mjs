@@ -748,7 +748,18 @@ app.use('/', flowsRouter);
 app.get('/d/:trackingId', async (req, res) => {
   // Forward catre handler-ul email-click
   req.params.trackingId = req.params.trackingId;
-  const safeDest = 'https://www.docflowai.ro';
+  // Redirect cu flowId precompletat in /verifica?id= daca il gasim rapid
+  let safeDest = 'https://www.docflowai.ro';
+  try {
+    const { rows: qr } = await pool.query(
+      `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+      [JSON.stringify([{ trackingId: req.params.trackingId }])]
+    ).catch(() => ({ rows: [] }));
+    if (qr.length) {
+      const appBase = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      safeDest = `${appBase}/verifica?id=${encodeURIComponent(qr[0].flow_id)}`;
+    }
+  } catch { /* fallback la docflowai.ro */ }
   res.redirect(302, safeDest);
   // Procesam tracking async
   setImmediate(async () => {
