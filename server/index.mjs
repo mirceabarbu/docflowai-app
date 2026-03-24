@@ -1,5 +1,17 @@
 /**
- * DocFlowAI v3.4.5 — Main entry point (orchestrator)
+ * DocFlowAI v3.4.7 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.4.7 (build b177, 23.03.2026):
+ *  UI: Semnatura email outreach — Departamentul tehnic + 0722.663.961
+ *
+ * CHANGES v3.4.6 (build b176, 23.03.2026):
+ *  OUTREACH: Click tracking separat de deschideri (pixel)
+ *    DB-040: coloane clicked_at + click_count in outreach_recipients
+ *    Backend: click handler populeaza clicked_at/click_count distinct
+ *    Backend: query campanii returneaza click_count ca metrica separata
+ *    UI: coloana Clickuri in lista campanii + tabel recipients
+ *    UI: banner explicativ pixel vs click (fiabilitate)
+ *    UI: template conversational nou + 5 subiecte sugerate cu dropdown
  *
  * CHANGES v3.4.5 (build b175, 23.03.2026):
  *  SEC-03: TOTP backup codes stocate ca SHA-256 hash in DB (nu in clar)

@@ -754,6 +754,17 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_flows_signers_gin
         ON flows USING GIN ((data->'signers'));
     `
+  },
+  {
+    id: '040_outreach_click_tracking',
+    sql: `
+      -- Tracking click-uri separat de deschideri (pixel) — click-urile sunt metrica reala
+      -- clicked_at: momentul primului click pe orice link din email
+      -- click_count: numarul total de click-uri (acelasi utilizator poate da click de mai multe ori)
+      ALTER TABLE outreach_recipients ADD COLUMN IF NOT EXISTS clicked_at   TIMESTAMPTZ DEFAULT NULL;
+      ALTER TABLE outreach_recipients ADD COLUMN IF NOT EXISTS click_count  INTEGER     NOT NULL DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_orecip_clicked ON outreach_recipients(clicked_at) WHERE clicked_at IS NOT NULL;
+    `
   }
 ];
 

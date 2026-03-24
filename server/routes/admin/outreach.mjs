@@ -315,12 +315,14 @@ router.get('/click/:trackingId', async (req, res) => {
   const safeDest = /^https?:\/\//.test(dest) ? dest : 'https://www.docflowai.ro';
   // Redirect imediat — nu blocăm utilizatorul
   res.redirect(302, safeDest);
-  // Actualizare async status opened
+  // Actualizare async — click_count + clicked_at separat de status opened (pixel)
   if (!trackingId || !/^[a-f0-9]{32}$/.test(trackingId)) return;
   pool.query(`
     UPDATE outreach_recipients
-    SET status = CASE WHEN status IN ('sent','pending') THEN 'opened' ELSE status END,
-        opened_at = CASE WHEN opened_at IS NULL THEN NOW() ELSE opened_at END
+    SET status      = CASE WHEN status IN ('sent','pending') THEN 'opened' ELSE status END,
+        opened_at   = CASE WHEN opened_at IS NULL THEN NOW() ELSE opened_at END,
+        clicked_at  = CASE WHEN clicked_at IS NULL THEN NOW() ELSE clicked_at END,
+        click_count = COALESCE(click_count, 0) + 1
     WHERE tracking_id = $1
   `, [trackingId]).catch(e => logger.warn({ err: e }, 'outreach click track error'));
 });
@@ -403,6 +405,7 @@ router.get('/campaigns', async (req, res) => {
         COUNT(r.id)                                          AS total_recipients,
         COUNT(r.id) FILTER (WHERE r.status IN ('sent','opened')) AS sent_count,
         COUNT(r.id) FILTER (WHERE r.status = 'opened')      AS opened_count,
+        COUNT(r.id) FILTER (WHERE r.clicked_at IS NOT NULL) AS click_count,
         COUNT(r.id) FILTER (WHERE r.status = 'error')       AS error_count,
         COUNT(r.id) FILTER (WHERE r.status = 'pending')     AS pending_count
       FROM outreach_campaigns c
@@ -447,7 +450,7 @@ router.get('/campaigns/:id', async (req, res) => {
     const { rows: camps } = await pool.query('SELECT * FROM outreach_campaigns WHERE id=$1', [id]);
     if (!camps.length) return res.status(404).json({ error: 'not_found' });
     const { rows: recips } = await pool.query(
-      'SELECT id, email, institutie, status, sent_at, opened_at, error_msg FROM outreach_recipients WHERE campaign_id=$1 ORDER BY id ASC',
+      'SELECT id, email, institutie, status, sent_at, opened_at, clicked_at, click_count, error_msg FROM outreach_recipients WHERE campaign_id=$1 ORDER BY id ASC',
       [id]
     );
     res.json({ campaign: camps[0], recipients: recips });
