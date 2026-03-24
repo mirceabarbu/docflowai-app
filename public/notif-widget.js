@@ -177,7 +177,8 @@
     // CSRF: citim csrf_token din cookie și îl trimitem ca header pentru mutații
     // Necesar pentru POST/PUT/DELETE — același mecanism ca în _apiFetch din admin.html
     const method = (options?.method || 'GET').toUpperCase();
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+    if (isMutation) {
       const csrfCookie = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
       if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
     }
@@ -187,7 +188,7 @@
 
     let res = await fetch(url, { ...options, headers, credentials: 'include' });
 
-    // Refresh reactiv la 401
+    // Refresh reactiv la 401 (token expirat)
     if (res.status === 401) {
       let body = {};
       try { body = await res.clone().json(); } catch(e) {}
@@ -198,6 +199,23 @@
           // Cookie nou setat de /auth/refresh — retry automat
           // Reluăm cu headers actualizat (CSRF poate fi același — cookie nu s-a schimbat)
           res = await fetch(url, { ...options, headers, credentials: 'include' });
+        }
+      }
+    }
+
+    // Retry automat la 403 csrf_invalid — /auth/refresh resetează și csrf_token cookie
+    // Acoperă cazul: csrf_token cookie expirat/lipsă fără a reîncărca pagina
+    if (res.status === 403 && isMutation) {
+      let body = {};
+      try { body = await res.clone().json(); } catch(e) {}
+      if (body?.error === 'csrf_invalid') {
+        const ok = await refreshToken(); // /auth/refresh setează csrf_token nou
+        if (ok) {
+          // Citim noul csrf_token din cookie și reîncercăm
+          const newHeaders = { ...headers };
+          const newCsrf = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+          if (newCsrf) newHeaders['x-csrf-token'] = newCsrf.split('=')[1];
+          res = await fetch(url, { ...options, headers: newHeaders, credentials: 'include' });
         }
       }
     }

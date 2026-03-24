@@ -103,16 +103,30 @@
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
       const headers = Object.assign({}, (options||{}).headers || {});
-      // Tranziție: dacă există token vechi în localStorage, îl trimitem ca fallback Bearer
       const legacyToken = localStorage.getItem('docflow_token');
       if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
       // CSRF: citim csrf_token din cookie și îl trimitem ca header pentru mutații
       const method = (options?.method || 'GET').toUpperCase();
-      if (!['GET','HEAD','OPTIONS'].includes(method)) {
-        const csrfCookie = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
-        if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
+      const isMutation = !['GET','HEAD','OPTIONS'].includes(method);
+      function injectCsrf(h) {
+        const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+        if (c) h['x-csrf-token'] = c.split('=')[1];
+        return h;
       }
-      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
+      if (isMutation) injectCsrf(headers);
+      let res = await fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
+      // Retry automat la 403 csrf_invalid — /auth/refresh reseteaza csrf_token cookie
+      if (res.status === 403 && isMutation) {
+        let body = {};
+        try { body = await res.clone().json(); } catch(e) {}
+        if (body?.error === 'csrf_invalid') {
+          // Facem refresh token — serverul seteaza un csrf_token cookie nou
+          try { await fetch('/auth/refresh', { method: 'POST', credentials: 'include' }); } catch(e) {}
+          const retryHeaders = injectCsrf(Object.assign({}, headers));
+          res = await fetch(url, Object.assign({}, options||{}, { headers: retryHeaders, credentials: 'include' }));
+        }
+      }
+      return res;
     };
   </script>
   <link rel="stylesheet" href="/mobile.css">

@@ -1,5 +1,11 @@
 /**
- * DocFlowAI v3.5.2 — Main entry point (orchestrator)
+ * DocFlowAI v3.5.3 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.5.3 (build b183, 23.03.2026):
+ *  FIX BUG-CSRF-02: csrf_invalid nu mai necesita refresh manual al paginii
+ *    apiFetch (notif-widget.js + shim admin.html) detecteaza 403 csrf_invalid
+ *    si face automat /auth/refresh (care reseteaza csrf_token cookie) + retry
+ *    Utilizatorul nu mai vede niciodata eroarea CSRF — totul e transparent
  *
  * CHANGES v3.5.2 (build b182, 23.03.2026):
  *  FIX BUG-JOIN-01: 'Eroare server' la org_admin pe /admin/flows/list
