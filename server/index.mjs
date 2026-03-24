@@ -1,5 +1,9 @@
 /**
- * DocFlowAI v3.6.0 — Main entry point (orchestrator)
+ * DocFlowAI v3.6.1 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.6.1 (build b191, 24.03.2026):
+ *  DEBUG: logging providerConfig in initiate-cloud-signing
+ *    client_id=undefined -> configKeys va arata ce e efectiv in DB
  *
  * CHANGES v3.6.0 (build b190, 24.03.2026):
  *  FIX BUG-STS-06: dupa selectare STS si Continua, aparea tot upload local

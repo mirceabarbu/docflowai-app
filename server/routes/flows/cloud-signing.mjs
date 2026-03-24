@@ -347,6 +347,16 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     }
 
     const providerConfig = getOrgProviderConfig(org, providerId);
+    // DEBUG temporar: logăm câmpurile non-sensitive din config pentru diagnosticare
+    logger.info({
+      providerId,
+      orgId: data.orgId,
+      hasClientId: !!providerConfig.clientId,
+      hasKid: !!providerConfig.kid,
+      hasPrivateKey: !!providerConfig.privateKeyPem,
+      hasRedirectUri: !!providerConfig.redirectUri,
+      configKeys: Object.keys(providerConfig),
+    }, 'initiate-cloud-signing: providerConfig diagnostic');
     const appBaseUrl     = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
 
     const session = await provider.initiateSession({
