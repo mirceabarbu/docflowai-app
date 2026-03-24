@@ -1762,20 +1762,32 @@ function closeMod(){$("mBg").classList.remove("open");editU=null;}
 
 async function genPwd(){
   if(!editU)return;
-  const r=await _apiFetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
-  const d=await r.json();
-  if(r.ok){
-    $("ePwd").value = d.tempPassword || d.temporaryPassword || "";
-    $("eMsg").className="msg ok";
-    $("eMsg").textContent = d.message || "✅ Parolă nouă generată și trimisă pe emailul utilizatorului.";
-    window._lastCreatedId = editU.id;
-    window._lastCreatedEmail = d.email || editU.email;
-    showPwdModal({
-      email: d.email || editU.email,
-      tempPassword: d.tempPassword || d.temporaryPassword || '',
-      credentials_sent_to: d.credentials_sent_to || d.email || editU.email,
-      _isSend: true
-    });
+  const btn = document.querySelector('button[onclick="genPwd()"]');
+  if(btn){ btn.disabled=true; btn.textContent='⏳...'; }
+  try {
+    const r=await _apiFetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
+    const d=await r.json();
+    if(r.ok){
+      $("ePwd").value = d.tempPassword || d.temporaryPassword || "";
+      $("eMsg").className="msg ok";
+      $("eMsg").textContent = d.message || "✅ Parolă nouă generată și trimisă pe emailul utilizatorului.";
+      window._lastCreatedId = editU.id;
+      window._lastCreatedEmail = d.email || editU.email;
+      showPwdModal({
+        email: d.email || editU.email,
+        tempPassword: d.tempPassword || d.temporaryPassword || '',
+        credentials_sent_to: d.credentials_sent_to || d.email || editU.email,
+        _isSend: true
+      });
+    } else {
+      $("eMsg").className="msg err";
+      $("eMsg").textContent = "❌ " + (d.message || d.error || "Eroare la generare parolă.");
+    }
+  } catch(e) {
+    $("eMsg").className="msg err";
+    $("eMsg").textContent = "❌ " + e.message;
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='🔄 Generează parolă'; }
   }
 }
 
@@ -3954,6 +3966,8 @@ async function doOnboarding() {
       <span style="color:#888;font-size:.78rem;">Credențialele au fost trimise și pe email. Administratorul va trebui să schimbe parola la prima logare.</span>
     `;
     btn.textContent = '✅ Creat';
+    btn.disabled = false;
+    btn.onclick = () => { closeOnboardingWizard(); loadOrganizations && loadOrganizations(); };
     msg.textContent = '';
     // Reincarcam lista de organizatii
     setTimeout(() => { loadOrganizations && loadOrganizations(); }, 500);

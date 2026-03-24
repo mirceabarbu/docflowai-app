@@ -1,5 +1,15 @@
 /**
- * DocFlowAI v3.4.9 — Main entry point (orchestrator)
+ * DocFlowAI v3.5.1 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.5.1 (build b181, 23.03.2026):
+ *  FIX BUG-UI-02: genPwd() esua silentios fara mesaj de eroare
+ *    Adaugat try/catch + else branch + loading state pe buton
+ *    Eroarea (CSRF sau alta) e acum vizibila in campul eMsg din modal
+ *
+ * CHANGES v3.5.0 (build b180, 23.03.2026):
+ *  FIX BUG-UI-01: Butonul Creat din Onboarding Wizard ramanea disabled dupa succes
+ *    Dupa creare institutie, butonul e re-enabled si inchide modalul la click
+ *    + reincarca lista organizatii
  *
  * CHANGES v3.4.9 (build b179, 23.03.2026):
  *  FIX BUG-CSRF-01: notif-widget.js apiFetch nu adauga CSRF token la POST/PUT/DELETE
