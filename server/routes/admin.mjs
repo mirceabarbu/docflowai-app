@@ -348,8 +348,20 @@ router.post('/admin/signing/verify', async (req, res) => {
   const { providerId, config } = req.body || {};
   if (!providerId) return res.status(400).json({ error: 'providerId_required' });
   try {
+    let effectiveConfig = { ...(config || {}) };
+    // Dacă frontend-ul semnalează că trebuie folosită cheia stocată în DB (câmp gol = nu s-a introdus una nouă)
+    if (effectiveConfig._useStoredPrivateKey && actor.orgId) {
+      try {
+        const { rows: orgRows } = await pool.query(
+          'SELECT signing_providers_config FROM organizations WHERE id=$1', [actor.orgId]
+        );
+        const storedKey = orgRows[0]?.signing_providers_config?.[providerId]?.privateKeyPem;
+        if (storedKey) effectiveConfig.privateKeyPem = storedKey;
+      } catch(_) { /* non-fatal — continuăm fără cheie */ }
+    }
+    delete effectiveConfig._useStoredPrivateKey;
     const provider = getProvider(providerId);
-    const result   = await provider.verify(config || {});
+    const result   = await provider.verify(effectiveConfig);
     res.json(result);
   } catch(e) {
     res.status(500).json({ ok: false, error: 'server_error' });

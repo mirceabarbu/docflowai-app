@@ -1,5 +1,12 @@
 /**
- * DocFlowAI v3.5.5 — Main entry point (orchestrator)
+ * DocFlowAI v3.5.6 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.5.6 (build b186, 23.03.2026):
+ *  FIX BUG-STS-04: Butonul Verifica returna clientId lipsa desi era completat
+ *    verifyProviderConfig() citea orgProviderApiUrl/apiKey (campuri generice)
+ *    in loc de campurile STS-specifice (stsClientId, stsKid, stsPrivateKeyPem)
+ *    Backend: verify endpoint incarca cheia privata din DB cand campul e gol
+ *    (util dupa Salvare — nu trebuie reintrodusa cheia la fiecare Verificare)
  *
  * CHANGES v3.5.5 (build b185, 23.03.2026):
  *  FIX BUG-STS-03: Cheie publica RSA adaugata in configuratia STS

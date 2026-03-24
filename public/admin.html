@@ -4736,14 +4736,34 @@ function copyPublicKey() {
 
 async function verifyProviderConfig() {
   if (!_activeConfigProvider) return;
-  const apiUrl     = document.getElementById('orgProviderApiUrl')?.value || '';
-  const apiKey     = document.getElementById('orgProviderApiKey')?.value || '';
-  const statusEl   = document.getElementById('orgProviderVerifyStatus');
+  const statusEl = document.getElementById('orgProviderVerifyStatus');
   if (statusEl) { statusEl.textContent = '⏳ Se verifică...'; statusEl.style.color = '#9db0ff'; }
   try {
+    let config = {};
+    if (_activeConfigProvider === 'sts-cloud') {
+      config = {
+        clientId:      document.getElementById('stsClientId')?.value?.trim()     || '',
+        kid:           document.getElementById('stsKid')?.value?.trim()           || '',
+        redirectUri:   document.getElementById('stsRedirectUri')?.value?.trim()   || '',
+        privateKeyPem: document.getElementById('stsPrivateKeyPem')?.value?.trim() || '',
+        idpUrl:        document.getElementById('stsIdpUrl')?.value?.trim()        || '',
+        apiUrl:        document.getElementById('stsApiUrl')?.value?.trim()        || '',
+      };
+      // Daca cheia privata e goala (utilizatorul nu a introdus una noua),
+      // semnalam backend-ului sa foloseasca cheia stocata in DB
+      if (!config.privateKeyPem) {
+        const saved = (window._orgConfigSafe || {})['sts-cloud'] || {};
+        if (saved.hasPrivateKey) config._useStoredPrivateKey = true;
+      }
+    } else {
+      config = {
+        apiUrl: document.getElementById('orgProviderApiUrl')?.value || '',
+        apiKey: document.getElementById('orgProviderApiKey')?.value || '',
+      };
+    }
     const r = await _apiFetch('/admin/signing/verify', {
       method: 'POST', headers: { ...hdrs(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ providerId: _activeConfigProvider, config: { apiUrl, apiKey } }),
+      body: JSON.stringify({ providerId: _activeConfigProvider, config }),
     });
     const j = await r.json();
     if (statusEl) {
