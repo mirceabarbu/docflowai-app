@@ -42,8 +42,9 @@ export class STSCloudProvider {
     if (!config?.redirectUri)   return { ok: false, message: 'redirectUri lipsă — URL callback DocFlowAI înregistrat la STS.' };
     try {
       const idpUrl = config.idpUrl || IDP_DEFAULT;
+      // Timeout mărit la 20s — Railway staging poate avea latență mai mare la conexiuni externe
       const r = await fetch(`${idpUrl}/.well-known/openid-configuration`,
-        { signal: AbortSignal.timeout(8000) });
+        { signal: AbortSignal.timeout(20_000) });
       if (!r.ok) return { ok: false, message: `STS IDP inaccesibil: HTTP ${r.status}` };
       const cfg = await r.json();
       return {

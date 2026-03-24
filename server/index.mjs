@@ -1,5 +1,8 @@
 /**
- * DocFlowAI v3.5.6 — Main entry point (orchestrator)
+ * DocFlowAI v3.5.7 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.5.7 (build b187, 24.03.2026):
+ *  FIX: STS verify timeout 8s → 20s (Railway staging latenta mai mare)
  *
  * CHANGES v3.5.6 (build b186, 23.03.2026):
  *  FIX BUG-STS-04: Butonul Verifica returna clientId lipsa desi era completat
