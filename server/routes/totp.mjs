@@ -3,6 +3,12 @@
  *
  * Folosește otplib cu API-ul nou: generateSecret, generateSync, verifySync
  * Compatibil Google Authenticator, Authy, orice app TOTP (RFC 6238 / SHA1)
+ *
+ * SEC-03 (b175): backup codes stocate ca SHA-256 hash în DB — nu în clar.
+ *   La activare: generăm codurile raw, le returnăm utilizatorului O SINGURĂ DATĂ,
+ *   salvăm doar hash-urile. La verificare: hash(input) === hash_stocat.
+ *   Codurile existente în DB (plaintext) sunt detectate automat prin lungime/format
+ *   și tratate cu fallback pentru backward-compat (upgrade lazy la primul login).
  */
 
 import { Router } from 'express';
@@ -31,7 +37,6 @@ function totpGenerate(secret) {
 function totpVerify(token, secret) {
   try {
     const result = verifySync({ secret, token: String(token).trim(), ...TOTP_OPTS });
-    // verifySync returnează { valid, delta } sau false
     if (result && typeof result === 'object') return result.valid === true;
     return result === true;
   } catch { return false; }
@@ -41,6 +46,27 @@ function generateBackupCodes() {
   return Array.from({ length: BACKUP_COUNT }, () =>
     crypto.randomBytes(4).toString('hex').toUpperCase()
   );
+}
+
+// SEC-03: hash SHA-256 pentru stocare backup codes
+function hashBackupCode(code) {
+  return crypto.createHash('sha256').update(code.toUpperCase().trim()).digest('hex');
+}
+
+// SEC-03: verificare backup code față de lista de hash-uri stocate
+// Returnează indexul din array dacă găsit, -1 altfel.
+// Backward-compat: dacă hash-ul stocat are lungime 8 (plaintext hex vechi), comparăm direct.
+function findBackupCode(inputCode, storedCodes) {
+  if (!Array.isArray(storedCodes)) return -1;
+  const input = inputCode.toUpperCase().trim();
+  const inputHash = hashBackupCode(input);
+  return storedCodes.findIndex(stored => {
+    if (!stored) return false;
+    // Hash nou (64 chars hex SHA-256)
+    if (stored.length === 64) return stored === inputHash;
+    // Plaintext vechi (8 chars hex uppercase) — fallback backward-compat
+    return stored.toUpperCase() === input;
+  });
 }
 
 // ── POST /auth/totp/setup ─────────────────────────────────────────────────────
@@ -89,12 +115,14 @@ router.post('/auth/totp/confirm', async (req, res) => {
     if (!totpVerify(code, user.totp_secret))
       return res.status(400).json({ error: 'invalid_code', message: 'Cod incorect. Verificați că ora dispozitivului este sincronizată.' });
 
-    const backupCodes = generateBackupCodes();
+    // SEC-03: generăm coduri raw, salvăm hash-urile, returnăm raw O SINGURĂ DATĂ
+    const rawCodes = generateBackupCodes();
+    const hashedCodes = rawCodes.map(hashBackupCode);
     await pool.query('UPDATE users SET totp_enabled=true, totp_backup_codes=$1 WHERE id=$2',
-      [backupCodes, actor.userId]);
+      [hashedCodes, actor.userId]);
 
-    logger.info({ userId: actor.userId }, '2FA TOTP: activat');
-    res.json({ ok: true, message: '2FA activat cu succes.', backupCodes });
+    logger.info({ userId: actor.userId }, '2FA TOTP: activat (backup codes hashed)');
+    res.json({ ok: true, message: '2FA activat cu succes.', backupCodes: rawCodes });
   } catch(e) {
     logger.error({ err: e }, 'totp/confirm error');
     res.status(500).json({ error: 'server_error' });
@@ -117,10 +145,10 @@ router.post('/auth/totp/disable', async (req, res) => {
     if (!user?.totp_enabled)
       return res.status(400).json({ error: 'not_enabled' });
 
-    const codeStr   = String(code).trim().toUpperCase();
-    const totpOk    = totpVerify(codeStr, user.totp_secret);
-    const backups   = user.totp_backup_codes || [];
-    const backupIdx = backups.indexOf(codeStr);
+    const codeStr  = String(code).trim().toUpperCase();
+    const totpOk   = totpVerify(codeStr, user.totp_secret);
+    // SEC-03: folosim findBackupCode cu suport backward-compat
+    const backupIdx = totpOk ? -1 : findBackupCode(codeStr, user.totp_backup_codes || []);
 
     if (!totpOk && backupIdx === -1)
       return res.status(400).json({ error: 'invalid_code', message: 'Cod incorect.' });
@@ -161,10 +189,11 @@ router.post('/auth/totp/verify', async (req, res) => {
     if (!user || !user.totp_enabled)
       return res.status(400).json({ error: 'totp_not_enabled' });
 
-    const codeStr   = String(code).trim().toUpperCase();
-    const totpOk    = totpVerify(codeStr, user.totp_secret);
+    const codeStr  = String(code).trim().toUpperCase();
+    const totpOk   = totpVerify(codeStr, user.totp_secret);
+    // SEC-03: verificare cu hash + backward-compat pentru coduri vechi plaintext
     const backups   = user.totp_backup_codes || [];
-    const backupIdx = backups.indexOf(codeStr);
+    const backupIdx = totpOk ? -1 : findBackupCode(codeStr, backups);
 
     if (!totpOk && backupIdx === -1)
       return res.status(400).json({ error: 'invalid_code', message: 'Cod incorect.' });

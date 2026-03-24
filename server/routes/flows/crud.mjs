@@ -253,6 +253,18 @@ const getFlowHandler = async (req, res) => {
       return res.status(401).json({ error: 'unauthorized' });
     }
 
+    // FEAT-06: ETag bazat pe flowId + updatedAt — permite cache client-side
+    // Fluxurile completed sunt imuabile — ETag-ul nu se mai schimbă niciodată
+    // Fluxurile active se schimbă la fiecare semnare — ETag-ul se actualizează
+    const etag = `"${data.flowId}-${data.updatedAt || data.createdAt}"`;
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+    res.setHeader('ETag', etag);
+    // Cache scurt (30s) pentru fluxuri active, lung (1h) pentru cele finalizate
+    const isCompleted = data.completed || data.status === 'cancelled' || data.status === 'refused';
+    res.setHeader('Cache-Control', isCompleted ? 'private, max-age=3600' : 'private, max-age=30');
+
     // FIX: getUserMapForOrg — nu leak-uieste useri intre organizatii
     const orgId = actor?.orgId || data?.orgId || null;
     const uMap = await getUserMapForOrg(orgId);

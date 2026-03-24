@@ -4047,6 +4047,16 @@ async function loadAnalytics() {
 function renderAnalytics(d, area) {
   const f = d.flows, s = d.signers, u = d.users;
   const pct = (a,b) => b ? Math.round(a/b*100) : 0;
+  // Formatează ore zecimale → "X h și Y min" / "Y min" / "X h"
+  const fmtDuration = h => {
+    if (h == null) return '—';
+    const totalMin = Math.round(h * 60);
+    const ore = Math.floor(totalMin / 60);
+    const min = totalMin % 60;
+    if (ore === 0) return `${min} min`;
+    if (min === 0) return `${ore} h`;
+    return `${ore} h și ${min} min`;
+  };
   const months = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'];
   const fmtMonth = m => { const [y,mo] = m.split('-'); return months[parseInt(mo)-1]+' '+y.slice(2); };
 
@@ -4087,7 +4097,7 @@ function renderAnalytics(d, area) {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
         <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;">⏱ Timp mediu finalizare</div>
-        <div style="font-size:1.5rem;font-weight:800;color:#ffd580;">${f.avg_completion_hours!=null?f.avg_completion_hours+'h':'—'}</div>
+        <div style="font-size:1.5rem;font-weight:800;color:#ffd580;">${fmtDuration(f.avg_completion_hours)}</div>
       </div>
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
         <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;">📈 Rată finalizare</div>
@@ -4221,6 +4231,15 @@ function exportAnalyticsHTML() {
   const d = _analyticsData;
   const f = d.flows, u = d.users;
   const pct = (a,b) => b ? Math.round(a/b*100) : 0;
+  const fmtDuration = h => {
+    if (h == null) return '—';
+    const totalMin = Math.round(h * 60);
+    const ore = Math.floor(totalMin / 60);
+    const min = totalMin % 60;
+    if (ore === 0) return `${min} min`;
+    if (min === 0) return `${ore} h`;
+    return `${ore} h și ${min} min`;
+  };
   const months = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
   const fmtMonth = m => { const [y,mo] = m.split('-'); return months[parseInt(mo)-1]+' '+y; };
   const now = new Date(d.generatedAt).toLocaleString('ro-RO', { dateStyle:'full', timeStyle:'short' });
@@ -4298,7 +4317,7 @@ function exportAnalyticsHTML() {
 <div class="section">
   <h2>⚡ Performanță</h2>
   <div class="metric-grid">
-    <div class="metric"><div class="metric-lbl">Timp mediu finalizare</div><div class="metric-val" style="color:#f59e0b;">${f.avg_completion_hours!=null?f.avg_completion_hours+'h':'—'}</div></div>
+    <div class="metric"><div class="metric-lbl">Timp mediu finalizare</div><div class="metric-val" style="color:#f59e0b;">${fmtDuration(f.avg_completion_hours)}</div></div>
     <div class="metric"><div class="metric-lbl">Rată finalizare</div><div class="metric-val" style="color:#2dd4bf;">${pct(f.completed,f.total)}%</div></div>
     <div class="metric"><div class="metric-lbl">Fluxuri (7 zile)</div><div class="metric-val" style="color:#7c5cff;">${f.last_7_days||0}</div></div>
     <div class="metric"><div class="metric-lbl">Urgente rezolvate</div><div class="metric-val" style="color:#dc2626;">${pct(d.urgentStats?.urgent_completed,d.urgentStats?.total_urgent)}%</div></div>

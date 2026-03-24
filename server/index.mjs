@@ -1,5 +1,16 @@
 /**
- * DocFlowAI v3.4.3 — Main entry point (orchestrator)
+ * DocFlowAI v3.4.5 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.4.5 (build b175, 23.03.2026):
+ *  SEC-03: TOTP backup codes stocate ca SHA-256 hash in DB (nu in clar)
+ *          backward-compat: coduri plaintext vechi acceptate in continuare
+ *  FEAT-06: ETag pe GET /flows/:flowId — cache 30s activ, 1h finalizat
+ *           304 Not Modified cand fluxul nu s-a schimbat
+ *  README: versiune actualizata la 3.4.5
+ *
+ * CHANGES v3.4.4 (build b174, 23.03.2026):
+ *  UI: Timp mediu finalizare afisat ca 'X h si Y min' in loc de '2.1h'
+ *      fmtDuration() adaugata in renderAnalytics() si exportAnalyticsHTML()
  *
  * CHANGES v3.4.3 (build b173, 23.03.2026):
  *  SEC-04: CSRF complet — 3 rute ramase (generate-keypair, gws-provision, send-credentials)
