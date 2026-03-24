@@ -725,6 +725,10 @@
             <textarea id="stsPrivateKeyPem" rows="4" placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
               style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.78rem;font-family:monospace;margin-bottom:10px;resize:vertical;" autocomplete="off"></textarea>
 
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Cheie publică RSA (PEM) <span style="color:rgba(234,240,255,.35);">— trimisă la STS, stocată ca referință</span></label>
+            <textarea id="stsPublicKeyPem" rows="4" placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(45,212,191,.2);border-radius:8px;color:#7cf0e0;font-size:.78rem;font-family:monospace;margin-bottom:10px;resize:vertical;" autocomplete="off"></textarea>
+
             <!-- Generator pereche chei -->
             <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:10px;margin-bottom:10px;">
               <div style="font-size:.77rem;color:#b39dff;font-weight:600;margin-bottom:6px;">🔑 Generator pereche chei RSA</div>
@@ -4590,6 +4594,7 @@ async function loadOrgSigningProviders(orgId) {
 }
 
 function renderOrgProvidersGrid(configSafe = {}) {
+  window._orgConfigSafe = configSafe; // FIX: stocat global pentru openProviderConfig
   const grid = document.getElementById('orgProvidersGrid');
   // Dacă _allProviders e gol din orice motiv, folosim fallback-ul direct
   if (!_allProviders.length) _allProviders = _PROVIDERS_FALLBACK;
@@ -4604,7 +4609,10 @@ function renderOrgProvidersGrid(configSafe = {}) {
   for (const p of _allProviders) {
     const isEnabled  = _selectedProviders.has(p.id);
     const isLocal    = p.id === 'local-upload';
-    const hasConfig  = configSafe[p.id]?.hasApiKey;
+    // FIX: STS e "configurat" dacă are clientId sau hasPrivateKey
+    const hasConfig  = p.id === 'sts-cloud'
+      ? !!(configSafe[p.id]?.clientId || configSafe[p.id]?.hasPrivateKey)
+      : !!(configSafe[p.id]?.hasApiKey);
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);';
 
@@ -4648,16 +4656,31 @@ function openProviderConfig(providerId, label) {
   if (configGeneric) configGeneric.style.display = isSts ? 'none' : '';
   if (configSts)     configSts.style.display     = isSts ? ''     : 'none';
 
-  // Curăță câmpuri
   if (isSts) {
-    ['stsIdpUrl','stsApiUrl','stsClientId','stsKid','stsRedirectUri','stsPrivateKeyPem'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.value = '';
-    });
+    // FIX: repopulăm câmpurile STS din configSafe (non-sensitive)
+    const saved = (window._orgConfigSafe || {})['sts-cloud'] || {};
+    const el = id => document.getElementById(id);
+
+    if (el('stsClientId'))   el('stsClientId').value   = saved.clientId   || '';
+    if (el('stsKid'))        el('stsKid').value         = saved.kid        || '';
+    if (el('stsIdpUrl'))     el('stsIdpUrl').value      = saved.idpUrl     || '';
+    if (el('stsApiUrl'))     el('stsApiUrl').value      = saved.apiUrl     || '';
+    // redirectUri: din config salvat sau fallback la URL curent
+    if (el('stsRedirectUri')) el('stsRedirectUri').value = saved.redirectUri || (window.location.origin + '/flows/sts-oauth-callback');
+    // Cheia privată nu se returnează din server — afișăm placeholder dacă există
+    if (el('stsPrivateKeyPem')) {
+      el('stsPrivateKeyPem').value = '';
+      el('stsPrivateKeyPem').placeholder = saved.hasPrivateKey
+        ? '● ● ● Cheie privată salvată — introduceți o nouă cheie doar dacă doriți să o schimbați'
+        : '-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----';
+    }
+    // Cheia publică — non-sensitivă, afișată complet
+    if (el('stsPublicKeyPem')) {
+      el('stsPublicKeyPem').value = saved.publicKeyPem || '';
+    }
+
     const keyGenResult = document.getElementById('stsKeyGenResult');
     if (keyGenResult) keyGenResult.style.display = 'none';
-    // Pre-populăm redirect URI cu URL-ul aplicației
-    const rdEl = document.getElementById('stsRedirectUri');
-    if (rdEl) rdEl.value = window.location.origin + '/flows/sts-oauth-callback';
   } else {
     ['orgProviderApiUrl','orgProviderApiKey','orgProviderWebhookSecret'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
@@ -4686,6 +4709,9 @@ async function generateStsKeyPair() {
     // Afișăm cheia publică pentru copiere
     const pubEl = document.getElementById('stsPublicKeyDisplay');
     if (pubEl) pubEl.value = j.publicKeyPem;
+    // Populăm și câmpul de stocare cheie publică
+    const pubStoreEl = document.getElementById('stsPublicKeyPem');
+    if (pubStoreEl) pubStoreEl.value = j.publicKeyPem;
     const result = document.getElementById('stsKeyGenResult');
     if (result) result.style.display = '';
 
@@ -4735,17 +4761,41 @@ async function saveOrgSigningProviders(orgId) {
   // Asigurăm că local-upload e mereu în listă
   _selectedProviders.add('local-upload');
   const enabled = [..._selectedProviders];
-  // Construiește config doar pentru providerul activ editat
+  // Construiește config pentru providerul activ editat
   const config = {};
   if (_activeConfigProvider) {
-    const apiUrl     = document.getElementById('orgProviderApiUrl')?.value || '';
-    const apiKey     = document.getElementById('orgProviderApiKey')?.value || '';
-    const wSecret    = document.getElementById('orgProviderWebhookSecret')?.value || '';
-    if (apiUrl || apiKey) {
-      config[_activeConfigProvider] = {};
-      if (apiUrl)    config[_activeConfigProvider].apiUrl = apiUrl;
-      if (apiKey)    config[_activeConfigProvider].apiKey = apiKey;
-      if (wSecret)   config[_activeConfigProvider].webhookSecret = wSecret;
+    if (_activeConfigProvider === 'sts-cloud') {
+      // FIX: câmpuri specifice STS — salvate complet
+      const clientId     = document.getElementById('stsClientId')?.value?.trim()     || '';
+      const kid          = document.getElementById('stsKid')?.value?.trim()           || '';
+      const redirectUri  = document.getElementById('stsRedirectUri')?.value?.trim()   || '';
+      const privateKeyPem= document.getElementById('stsPrivateKeyPem')?.value?.trim() || '';
+      const idpUrl       = document.getElementById('stsIdpUrl')?.value?.trim()        || '';
+      const apiUrl       = document.getElementById('stsApiUrl')?.value?.trim()        || '';
+      if (clientId || kid || privateKeyPem) {
+        config['sts-cloud'] = {};
+        if (clientId)      config['sts-cloud'].clientId      = clientId;
+        if (kid)           config['sts-cloud'].kid           = kid;
+        if (redirectUri)   config['sts-cloud'].redirectUri   = redirectUri;
+        // FIX: trimitem privateKeyPem DOAR dacă userul a introdus o valoare nouă
+        // Dacă e gol, backend-ul păstrează cheia existentă prin merge
+        if (privateKeyPem && !privateKeyPem.startsWith('●')) config['sts-cloud'].privateKeyPem = privateKeyPem;
+        // Cheia publică — stocată ca referință, non-sensitivă
+        const publicKeyPem = document.getElementById('stsPublicKeyPem')?.value?.trim() || '';
+        if (publicKeyPem && !publicKeyPem.startsWith('●')) config['sts-cloud'].publicKeyPem = publicKeyPem;
+        if (idpUrl)        config['sts-cloud'].idpUrl        = idpUrl;
+        if (apiUrl)        config['sts-cloud'].apiUrl        = apiUrl;
+      }
+    } else {
+      const apiUrl  = document.getElementById('orgProviderApiUrl')?.value || '';
+      const apiKey  = document.getElementById('orgProviderApiKey')?.value || '';
+      const wSecret = document.getElementById('orgProviderWebhookSecret')?.value || '';
+      if (apiUrl || apiKey) {
+        config[_activeConfigProvider] = {};
+        if (apiUrl)   config[_activeConfigProvider].apiUrl = apiUrl;
+        if (apiKey)   config[_activeConfigProvider].apiKey = apiKey;
+        if (wSecret)  config[_activeConfigProvider].webhookSecret = wSecret;
+      }
     }
   }
   try {

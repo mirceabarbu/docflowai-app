@@ -1,5 +1,22 @@
 /**
- * DocFlowAI v3.5.3 — Main entry point (orchestrator)
+ * DocFlowAI v3.5.5 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.5.5 (build b185, 23.03.2026):
+ *  FIX BUG-STS-03: Cheie publica RSA adaugata in configuratia STS
+ *    UI: camp nou stsPublicKeyPem in formularul STS (teal, non-sensitiv)
+ *    Backend: publicKeyPem inclus in configSafe (returnat complet, non-sensitiv)
+ *    Backend: publicKeyPem salvat/restaurat prin acelasi mecanism ca ceilalti
+ *    Generator: la generare pereche chei, populeaza si campul de stocare pubkey
+ *
+ * CHANGES v3.5.4 (build b184, 23.03.2026):
+ *  FIX BUG-STS-02: Configuratia STS (clientId, kid, redirectUri) nu se salva/restora
+ *    Backend: configSafe returneaza acum campurile non-sensitive STS (clientId, kid,
+ *             redirectUri, idpUrl, apiUrl) + hasPrivateKey boolean
+ *    Frontend: openProviderConfig repopuleaza campurile STS din configSafe la deschidere
+ *    Frontend: saveOrgSigningProviders salveaza toate campurile STS-specifice
+ *    Frontend: privateKeyPem trimis doar daca userul introduce o valoare noua
+ *             (camp gol = pastreaza cheia existenta din DB)
+ *    Frontend: placeholder indica daca exista cheie privata salvata
  *
  * CHANGES v3.5.3 (build b183, 23.03.2026):
  *  FIX BUG-CSRF-02: csrf_invalid nu mai necesita refresh manual al paginii

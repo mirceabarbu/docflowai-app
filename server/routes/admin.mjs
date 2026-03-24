@@ -274,7 +274,20 @@ router.get('/admin/organizations/:id/signing', async (req, res) => {
     // Returnăm config fără API keys (securitate) — doar metadata
     const configSafe = {};
     for (const [pid, cfg] of Object.entries(org.signing_providers_config || {})) {
-      configSafe[pid] = { apiUrl: cfg.apiUrl || '', hasApiKey: !!(cfg.apiKey), hasWebhookSecret: !!(cfg.webhookSecret) };
+      if (pid === 'sts-cloud') {
+        // STS: returnăm câmpurile non-sensitive complet, mascăm cheia privată
+        configSafe[pid] = {
+          clientId:       cfg.clientId      || '',
+          kid:            cfg.kid            || '',
+          redirectUri:    cfg.redirectUri    || '',
+          idpUrl:         cfg.idpUrl         || '',
+          apiUrl:         cfg.apiUrl         || '',
+          publicKeyPem:   cfg.publicKeyPem   || '',  // non-sensitivă, returnată complet
+          hasPrivateKey:  !!(cfg.privateKeyPem),      // boolean — nu returnăm cheia privată
+        };
+      } else {
+        configSafe[pid] = { apiUrl: cfg.apiUrl || '', hasApiKey: !!(cfg.apiKey), hasWebhookSecret: !!(cfg.webhookSecret) };
+      }
     }
     res.json({
       orgId:    org.id,
