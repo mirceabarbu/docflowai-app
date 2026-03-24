@@ -28,13 +28,13 @@ import cloudRouter,       { _injectDeps as _injCloud }        from './cloud-sign
 const router = Router();
 
 // ── Montăm toate sub-routerele ────────────────────────────────────────────
+router.use('/', cloudRouter);    // cloud-signing primul — /flows/sts-oauth-callback nu trebuie prins de :flowId
 router.use('/', crudRouter);
 router.use('/', signingRouter);
 router.use('/', lifecycleRouter);
 router.use('/', attachmentsRouter);
 router.use('/', emailRouter);
 router.use('/', acroformRouter);
-router.use('/', cloudRouter);
 
 // ── injectFlowDeps — compatibilitate cu server/index.mjs existent ─────────
 // Propagă deps injectate la toate sub-modulele simultan.

@@ -1,5 +1,12 @@
 /**
- * DocFlowAI v3.6.4 — Main entry point (orchestrator)
+ * DocFlowAI v3.6.5 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.6.5 (build b195, 24.03.2026):
+ *  FIX BUG-ROUTE-01: GET /flows/sts-oauth-callback returna not_found
+ *    Cauza: crudRouter montat primul, Express prindea 'sts-oauth-callback'
+ *    ca :flowId parametru -> getFlowData('sts-oauth-callback') -> not_found
+ *    Fix: cloudRouter mutat primul in flows/index.mjs
+ *    Callback STS OAuth functioneaza acum corect
  *
  * CHANGES v3.6.4 (build b194, 24.03.2026):
  *  FIX BUG-ROOT-01: signing_providers_config mereu gol in DB
