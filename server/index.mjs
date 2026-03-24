@@ -1,5 +1,14 @@
 /**
- * DocFlowAI v3.5.9 — Main entry point (orchestrator)
+ * DocFlowAI v3.6.0 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.6.0 (build b190, 24.03.2026):
+ *  FIX BUG-STS-06: dupa selectare STS si Continua, aparea tot upload local
+ *    Cauza: applyProviderToSignBox verifica p.mode === 'redirect'
+ *    dar STSCloudProvider.mode returneaza 'hash-redirect'
+ *    Fix: conditie extinsa la mode === 'redirect' || mode === 'hash-redirect'
+ *  FIX BUG-CSRF-04: auto-retry CSRF adaugat in semdoc-signer.html si semdoc-initiator.html
+ *    Paginile de semnare si initiere flux aveau shim-ul vechi fara auto-retry
+ *    Acum toate paginile (admin, signer, initiator) au acelasi mecanism
  *
  * CHANGES v3.5.9 (build b189, 24.03.2026):
  *  FIX BUG-STS-05: STS Cloud aparea in UI dar nu era activat in signing_providers_enabled

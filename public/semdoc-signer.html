@@ -234,11 +234,31 @@ th{ color: var(--sub) !important; }
       if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
       // CSRF: citim csrf_token din cookie și îl trimitem ca header pentru mutații
       const method = (options?.method || 'GET').toUpperCase();
-      if (!['GET','HEAD','OPTIONS'].includes(method)) {
-        const csrfCookie = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
-        if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
+      const isMutation = !['GET','HEAD','OPTIONS'].includes(method);
+      function injectCsrf(h) {
+        const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+        if (c) h['x-csrf-token'] = c.split('=')[1];
+        return h;
       }
-      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
+      if (isMutation) injectCsrf(headers);
+      let res = await fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
+      // Auto-retry la 403 csrf_invalid — /auth/refresh returnează csrfToken și în body
+      if (res.status === 403 && isMutation) {
+        let body = {};
+        try { body = await res.clone().json(); } catch(e) {}
+        if (body?.error === 'csrf_invalid') {
+          let freshCsrf = null;
+          try {
+            const rr = await fetch('/auth/refresh', { method: 'POST', credentials: 'include' });
+            if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
+          } catch(e) {}
+          const retryHeaders = Object.assign({}, headers);
+          if (freshCsrf) retryHeaders['x-csrf-token'] = freshCsrf;
+          else injectCsrf(retryHeaders);
+          res = await fetch(url, Object.assign({}, options||{}, { headers: retryHeaders, credentials: 'include' }));
+        }
+      }
+      return res;
     };
   </script>
   <link rel="stylesheet" href="/mobile.css">
@@ -615,7 +635,7 @@ th{ color: var(--sub) !important; }
         const p = _orgProviders.find(p => p.id === providerId);
         if (!p) return;
 
-        if (p.mode === 'redirect') {
+        if (p.mode === 'redirect' || p.mode === 'hash-redirect') {
           // Provider cloud: ascundem flow-ul de upload, afișăm buton redirect
           $('btnDownloadForSigning').style.display = 'none';
           $('btnChooseSignedPdf').style.display     = 'none';
