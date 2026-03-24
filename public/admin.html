@@ -4800,6 +4800,8 @@ async function saveOrgSigningProviders(orgId) {
       const idpUrl       = document.getElementById('stsIdpUrl')?.value?.trim()        || '';
       const apiUrl       = document.getElementById('stsApiUrl')?.value?.trim()        || '';
       if (clientId || kid || privateKeyPem) {
+        // FIX: provider-ul configurat trebuie activat automat în lista enabled
+        _selectedProviders.add('sts-cloud');
         config['sts-cloud'] = {};
         if (clientId)      config['sts-cloud'].clientId      = clientId;
         if (kid)           config['sts-cloud'].kid           = kid;

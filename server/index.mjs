@@ -1,5 +1,11 @@
 /**
- * DocFlowAI v3.5.8 — Main entry point (orchestrator)
+ * DocFlowAI v3.5.9 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.5.9 (build b189, 24.03.2026):
+ *  FIX BUG-STS-05: STS Cloud aparea in UI dar nu era activat in signing_providers_enabled
+ *    Cauza: saveOrgSigningProviders nu adauga sts-cloud in _selectedProviders cand
+ *    se salveaza config-ul — endpoint signing-providers returna doar local-upload
+ *    Fix: sts-cloud adaugat automat in _selectedProviders la salvarea config-ului
  *
  * CHANGES v3.5.8 (build b188, 24.03.2026):
  *  FIX BUG-CSRF-03: auto-retry csrf_invalid esua si la al 2-lea request
