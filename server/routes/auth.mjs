@@ -226,9 +226,9 @@ router.post('/auth/refresh', async (req, res) => {
     });
     return res.json({
       ok: true,
+      csrfToken: csrfTokenRefresh,  // returnat în body — frontend îl citește direct, fără să aștepte cookie
       email: decoded.email, role: decoded.role, orgId: decoded.orgId,
       nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie, compartiment: decoded.compartiment || '',
-      // token ELIMINAT din response
     });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });

@@ -110,6 +110,8 @@
    * Dacă eșuează → șterge sesiunea și redirectează la login.
    * Apelurile simultane sunt deduplicate (un singur request în zbor).
    */
+  let _lastCsrfToken = null; // stocat după refresh pentru retry imediat
+
   async function refreshToken() {
     if (_refreshPromise) return _refreshPromise;
     _refreshPromise = (async () => {
@@ -125,6 +127,8 @@
         });
         if (r.ok) {
           const d = await r.json();
+          // Stocăm csrfToken din body — disponibil imediat, fără să așteptăm cookie
+          if (d.csrfToken) _lastCsrfToken = d.csrfToken;
           // SEC-01: token-ul NU mai este stocat în localStorage
           // Actualizează datele user (non-sensibile) pentru UI
           const existing = JSON.parse(localStorage.getItem('docflow_user') || '{}');
@@ -209,12 +213,13 @@
       let body = {};
       try { body = await res.clone().json(); } catch(e) {}
       if (body?.error === 'csrf_invalid') {
-        const ok = await refreshToken(); // /auth/refresh setează csrf_token nou
+        const ok = await refreshToken(); // /auth/refresh setează csrf_token nou + returnează în body
         if (ok) {
-          // Citim noul csrf_token din cookie și reîncercăm
+          // Preferăm _lastCsrfToken din body (disponibil imediat) față de document.cookie (timing incert)
           const newHeaders = { ...headers };
-          const newCsrf = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
-          if (newCsrf) newHeaders['x-csrf-token'] = newCsrf.split('=')[1];
+          const freshToken = _lastCsrfToken
+            || (document.cookie.split('; ').find(r => r.startsWith('csrf_token='))?.split('=')[1]);
+          if (freshToken) newHeaders['x-csrf-token'] = freshToken;
           res = await fetch(url, { ...options, headers: newHeaders, credentials: 'include' });
         }
       }

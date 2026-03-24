@@ -115,14 +115,21 @@
       }
       if (isMutation) injectCsrf(headers);
       let res = await fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
-      // Retry automat la 403 csrf_invalid — /auth/refresh reseteaza csrf_token cookie
+      // Retry automat la 403 csrf_invalid — /auth/refresh reseteaza csrf_token cookie + body
       if (res.status === 403 && isMutation) {
         let body = {};
         try { body = await res.clone().json(); } catch(e) {}
         if (body?.error === 'csrf_invalid') {
-          // Facem refresh token — serverul seteaza un csrf_token cookie nou
-          try { await fetch('/auth/refresh', { method: 'POST', credentials: 'include' }); } catch(e) {}
-          const retryHeaders = injectCsrf(Object.assign({}, headers));
+          // Facem refresh token — serverul seteaza csrf_token NOU in cookie SI in body JSON
+          let freshCsrf = null;
+          try {
+            const rr = await fetch('/auth/refresh', { method: 'POST', credentials: 'include' });
+            if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
+          } catch(e) {}
+          // Preferăm csrfToken din body (disponibil imediat) față de cookie (timing incert)
+          const retryHeaders = Object.assign({}, headers);
+          if (freshCsrf) retryHeaders['x-csrf-token'] = freshCsrf;
+          else injectCsrf(retryHeaders);
           res = await fetch(url, Object.assign({}, options||{}, { headers: retryHeaders, credentials: 'include' }));
         }
       }

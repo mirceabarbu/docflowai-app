@@ -1,5 +1,14 @@
 /**
- * DocFlowAI v3.5.7 — Main entry point (orchestrator)
+ * DocFlowAI v3.5.8 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.5.8 (build b188, 24.03.2026):
+ *  FIX BUG-CSRF-03: auto-retry csrf_invalid esua si la al 2-lea request
+ *    Cauza: document.cookie nu era actualizat la timp dupa /auth/refresh
+ *    (SameSite=Strict + timing async = cookie nou invizibil la citire imediata)
+ *    Fix server: /auth/refresh returneaza csrfToken si in body JSON
+ *    Fix client: notif-widget.js stocheaza _lastCsrfToken din body refresh
+ *    Fix client: admin.html shim citeste csrfToken din response refresh
+ *    Ambele preferă tokenul din body fata de document.cookie
  *
  * CHANGES v3.5.7 (build b187, 24.03.2026):
  *  FIX: STS verify timeout 8s → 20s (Railway staging latenta mai mare)
