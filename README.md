@@ -1,4 +1,4 @@
-# DocFlowAI v3.5.1
+# DocFlowAI v3.5.2
 
 **Platformă SaaS de circulație și semnare electronică calificată pentru administrația publică din România.**
 

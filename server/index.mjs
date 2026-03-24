@@ -1,5 +1,12 @@
 /**
- * DocFlowAI v3.5.1 — Main entry point (orchestrator)
+ * DocFlowAI v3.5.2 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.5.2 (build b182, 23.03.2026):
+ *  FIX BUG-JOIN-01: 'Eroare server' la org_admin pe /admin/flows/list
+ *    Cauza: LEFT JOIN users u (b172) facea org_id = $1 ambiguu intre
+ *    flows.org_id si users.org_id — PostgreSQL returna eroare de ambiguitate
+ *    Fix: conditions folosesc f.org_id explicit
+ *    Fix: COUNT query foloseste alias f (FROM flows f) pentru consistenta
  *
  * CHANGES v3.5.1 (build b181, 23.03.2026):
  *  FIX BUG-UI-02: genPwd() esua silentios fara mesaj de eroare

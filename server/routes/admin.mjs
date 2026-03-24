@@ -1502,7 +1502,8 @@ router.get('/admin/flows/list', async (req, res) => {
     }
     const conditions = ['1=1']; const params = [];
     // Org filter aplicat primul — cel mai restrictiv
-    if (actorOrgId) { params.push(actorOrgId); conditions.push(`org_id = $${params.length}`); }
+    // FIX BUG-JOIN-01: f.org_id explicit — LEFT JOIN users u face org_id ambiguu
+    if (actorOrgId) { params.push(actorOrgId); conditions.push(`f.org_id = $${params.length}`); }
     if (statusFilter === 'pending') conditions.push("(data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'refused' AND (data->>'status') IS DISTINCT FROM 'cancelled'");
     else if (statusFilter === 'completed') conditions.push("(data->>'completed') = 'true'");
     else if (statusFilter === 'refused') conditions.push("(data->>'status') = 'refused'");
@@ -1515,7 +1516,7 @@ router.get('/admin/flows/list', async (req, res) => {
     if (dateTo)   { params.push(dateTo   + 'T23:59:59.999Z'); conditions.push(`created_at <= $${params.length}::timestamptz`); }
     if (storageFilter === 'drive') conditions.push("(data->>'storage') = 'drive'");
     const whereClause = conditions.join(' AND ');
-    const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause} AND deleted_at IS NULL`, params);
+    const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows f WHERE ${whereClause} AND f.deleted_at IS NULL`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
     // PERF-01 + BUG-05: LEFT JOIN users — elimină SELECT ALL users in-memory + cross-org leak
     // Folosim LEFT JOIN ca să nu pierdem fluxuri ai căror inițiatori au fost șterși din users
