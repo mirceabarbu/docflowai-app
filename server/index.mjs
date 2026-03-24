@@ -1,5 +1,12 @@
 /**
- * DocFlowAI v3.4.8 — Main entry point (orchestrator)
+ * DocFlowAI v3.4.9 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.4.9 (build b179, 23.03.2026):
+ *  FIX BUG-CSRF-01: notif-widget.js apiFetch nu adauga CSRF token la POST/PUT/DELETE
+ *    Cauza radacina: window.docflow.apiFetch (din widget) suprascria shim-ul din
+ *    admin.html — versiunea din widget omitea x-csrf-token pentru mutatii.
+ *    Fix: adaugat CSRF injection in notif-widget.js apiFetch (identic cu admin.html).
+ *    Afectat: Salvează org, Test Webhook, orice mutatie POST/PUT/DELETE din admin.
  *
  * CHANGES v3.4.8 (build b178, 23.03.2026):
  *  FIX BUG-STS-01: csrfMiddleware eliminat de pe generate-keypair

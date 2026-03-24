@@ -174,6 +174,14 @@
     // Eliminăm Authorization header dacă a rămas din cod vechi (tranziție)
     delete headers['Authorization'];
 
+    // CSRF: citim csrf_token din cookie și îl trimitem ca header pentru mutații
+    // Necesar pentru POST/PUT/DELETE — același mecanism ca în _apiFetch din admin.html
+    const method = (options?.method || 'GET').toUpperCase();
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const csrfCookie = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+      if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
+    }
+
     // Refresh proactiv periodic (bazat pe timp, nu pe token local)
     // La fiecare 10 min, scheduleProactiveRefresh() apelează refreshToken()
 
@@ -188,6 +196,7 @@
         const ok = await refreshToken();
         if (ok) {
           // Cookie nou setat de /auth/refresh — retry automat
+          // Reluăm cu headers actualizat (CSRF poate fi același — cookie nu s-a schimbat)
           res = await fetch(url, { ...options, headers, credentials: 'include' });
         }
       }
