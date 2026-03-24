@@ -4949,6 +4949,8 @@ async function saveOrgWebhook() {
     });
     const j = await r.json();
     if (r.ok) {
+      // Salvăm și config-ul de signing (STS keys etc.) — request separat la /signing
+      await saveOrgSigningProviders(_currentOrgId);
       msg.innerHTML = '<span style="color:#2dd4bf;">✅ Salvat cu succes.</span>';
       setTimeout(() => { closeOrgModal(); loadOrganizations(); }, 800);
     } else {

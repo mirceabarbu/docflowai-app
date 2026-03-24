@@ -1,5 +1,13 @@
 /**
- * DocFlowAI v3.6.3 — Main entry point (orchestrator)
+ * DocFlowAI v3.6.4 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.6.4 (build b194, 24.03.2026):
+ *  FIX BUG-ROOT-01: signing_providers_config mereu gol in DB
+ *    Cauza radacina: saveOrgWebhook() nu apela saveOrgSigningProviders()
+ *    dupa succes — config STS (clientId, kid, privateKeyPem) nu era
+ *    niciodata trimis la server, indiferent cate ori apasai Salveaza
+ *    Fix: un singur apel la saveOrgSigningProviders(_currentOrgId)
+ *    adaugat in handler-ul de succes al saveOrgWebhook
  *
  * CHANGES v3.6.3 (build b193, 24.03.2026):
  *  FIX: logger.mjs citeste versiunea din package.json direct
