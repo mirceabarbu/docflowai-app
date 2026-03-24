@@ -223,7 +223,8 @@ router.post('/admin/organizations/:id/test-webhook', csrfMiddleware, async (req,
 // ── Signing Providers — API ──────────────────────────────────────────────
 // ── POST /admin/signing/sts/generate-keypair — generează pereche chei RSA pentru STS ──
 // Super-admin generează cheia publică de trimis la STS + cheia privată de configurat.
-router.post('/admin/signing/sts/generate-keypair', csrfMiddleware, async (req, res) => {
+// Nu necesită CSRF — nu modifică stare în DB, generează chei RSA în memorie și le returnează.
+router.post('/admin/signing/sts/generate-keypair', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });

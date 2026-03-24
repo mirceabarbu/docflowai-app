@@ -1,5 +1,10 @@
 /**
- * DocFlowAI v3.4.7 — Main entry point (orchestrator)
+ * DocFlowAI v3.4.8 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.4.8 (build b178, 23.03.2026):
+ *  FIX BUG-STS-01: csrfMiddleware eliminat de pe generate-keypair
+ *    Endpoint genereaza chei RSA in memorie (zero modificari DB) — CSRF nu e necesar
+ *    Cauza: butonul Generează chei returna eroare CSRF care aparea langa Verifică
  *
  * CHANGES v3.4.7 (build b177, 23.03.2026):
  *  UI: Semnatura email outreach — Departamentul tehnic + 0722.663.961
