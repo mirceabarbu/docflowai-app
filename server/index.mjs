@@ -1,5 +1,18 @@
 /**
- * DocFlowAI v3.6.1 — Main entry point (orchestrator)
+ * DocFlowAI v3.6.3 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.6.3 (build b193, 24.03.2026):
+ *  FIX: logger.mjs citeste versiunea din package.json direct
+ *    npm_package_version nu e setat de Railway → fallback 3.3.4 era mereu afisat
+ *    Acum Railway logs arata versiunea corecta dupa fiecare deploy
+ *
+ * CHANGES v3.6.2 (build b192, 24.03.2026):
+ *  FIX CSRF definitiv:
+ *    - csrf_token cookie: expiry 2h → 24h (nu mai expira in timpul zilei)
+ *    - GET /auth/csrf-token: endpoint nou — emite token proaspat fara side effects
+ *    - window._csrfToken: variabila globala init la incarcarea paginii
+ *    - Toate paginile (admin, signer, initiator, widget) folosesc getCsrf()
+ *    - Retry csrf_invalid: /auth/csrf-token (rapid) → /auth/refresh (fallback)
  *
  * CHANGES v3.6.1 (build b191, 24.03.2026):
  *  DEBUG: logging providerConfig in initiate-cloud-signing

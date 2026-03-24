@@ -15,7 +15,12 @@
  */
 
 const SERVICE = 'docflowai';
-const VERSION = process.env.npm_package_version || '3.3.4';
+// Citim versiunea direct din package.json — npm_package_version nu e setat de Railway
+import { createRequire } from 'module';
+const _require = createRequire(import.meta.url);
+const VERSION = (() => {
+  try { return _require('../../package.json').version; } catch(e) { return '0.0.0'; }
+})();
 
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
 const LEVEL_NAMES = { 10: 'debug', 20: 'info', 30: 'warn', 40: 'error' };

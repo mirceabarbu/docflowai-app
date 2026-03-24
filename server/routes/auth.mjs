@@ -105,10 +105,10 @@ router.post('/auth/login', async (req, res) => {
     // CSRF: cookie non-HttpOnly citit de frontend si trimis ca header x-csrf-token
     const csrfToken = generateCsrfToken();
     res.cookie('csrf_token', csrfToken, {
-      httpOnly: false,       // frontend trebuie sa-l poata citi
+      httpOnly: false,
       sameSite: 'strict',
       secure: process.env.NODE_ENV === 'production',
-      maxAge: jwtExpiresMs(),
+      maxAge: 24 * 60 * 60 * 1000, // 24h — nu mai expira in timpul unei zile de lucru
       path: '/',
     });
 
@@ -124,6 +124,23 @@ router.post('/auth/login', async (req, res) => {
     logger.error({ err: e }, 'Login error');
     return res.status(500).json({ error: 'server_error' });
   }
+});
+
+// ── GET /auth/csrf-token — emite token CSRF proaspăt ─────────────────────────
+// Apelat de frontend la deschiderea paginii pentru a garanta că are un token valid.
+// Nu necesită autentificare — setează cookie și returnează token în body.
+router.get('/auth/csrf-token', (req, res) => {
+  // Reutilizăm token-ul existent dacă există și e valid, altfel generăm unul nou
+  const existing = req.cookies?.csrf_token;
+  const token = existing || generateCsrfToken();
+  if (!existing) {
+    res.cookie('csrf_token', token, {
+      httpOnly: false, sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 24 * 60 * 60 * 1000, path: '/',
+    });
+  }
+  res.json({ csrfToken: token });
 });
 
 // ── GET /auth/me ─────────────────────────────────────────────────────────────
@@ -222,7 +239,8 @@ router.post('/auth/refresh', async (req, res) => {
     res.cookie('csrf_token', csrfTokenRefresh, {
       httpOnly: false, sameSite: 'strict',
       secure: process.env.NODE_ENV === 'production',
-      maxAge: jwtExpiresMs(), path: '/',
+      maxAge: 24 * 60 * 60 * 1000, // 24h
+      path: '/',
     });
     return res.json({
       ok: true,

@@ -172,56 +172,54 @@
    * La 401 după refresh eșuat: redirect login.
    */
   async function apiFetch(url, options = {}) {
-    // SEC-01: token-ul e în cookie HttpOnly — trimis automat cu credentials: 'include'
-    // Nu mai citim/scriem localStorage pentru token
     const headers = { ...(options.headers || {}) };
-    // Eliminăm Authorization header dacă a rămas din cod vechi (tranziție)
     delete headers['Authorization'];
 
-    // CSRF: citim csrf_token din cookie și îl trimitem ca header pentru mutații
-    // Necesar pentru POST/PUT/DELETE — același mecanism ca în _apiFetch din admin.html
     const method = (options?.method || 'GET').toUpperCase();
     const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method);
-    if (isMutation) {
-      const csrfCookie = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
-      if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
+
+    // getCsrf: preferinta window._csrfToken (setat la init pagina) > cookie
+    function getCsrf() {
+      if (window._csrfToken) return window._csrfToken;
+      const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+      return c ? c.split('=')[1] : null;
     }
 
-    // Refresh proactiv periodic (bazat pe timp, nu pe token local)
-    // La fiecare 10 min, scheduleProactiveRefresh() apelează refreshToken()
+    if (isMutation) { const t = getCsrf(); if (t) headers['x-csrf-token'] = t; }
 
     let res = await fetch(url, { ...options, headers, credentials: 'include' });
 
-    // Refresh reactiv la 401 (token expirat)
+    // Refresh reactiv la 401
     if (res.status === 401) {
       let body = {};
       try { body = await res.clone().json(); } catch(e) {}
       const err = body?.error || '';
       if (err === 'token_invalid_or_expired' || err === 'unauthorized' || err === 'token_invalid') {
         const ok = await refreshToken();
-        if (ok) {
-          // Cookie nou setat de /auth/refresh — retry automat
-          // Reluăm cu headers actualizat (CSRF poate fi același — cookie nu s-a schimbat)
-          res = await fetch(url, { ...options, headers, credentials: 'include' });
-        }
+        if (ok) res = await fetch(url, { ...options, headers, credentials: 'include' });
       }
     }
 
-    // Retry automat la 403 csrf_invalid — /auth/refresh resetează și csrf_token cookie
-    // Acoperă cazul: csrf_token cookie expirat/lipsă fără a reîncărca pagina
+    // Retry la 403 csrf_invalid — cere token nou de la /auth/csrf-token, apoi retry
     if (res.status === 403 && isMutation) {
       let body = {};
       try { body = await res.clone().json(); } catch(e) {}
       if (body?.error === 'csrf_invalid') {
-        const ok = await refreshToken(); // /auth/refresh setează csrf_token nou + returnează în body
-        if (ok) {
-          // Preferăm _lastCsrfToken din body (disponibil imediat) față de document.cookie (timing incert)
-          const newHeaders = { ...headers };
-          const freshToken = _lastCsrfToken
-            || (document.cookie.split('; ').find(r => r.startsWith('csrf_token='))?.split('=')[1]);
-          if (freshToken) newHeaders['x-csrf-token'] = freshToken;
-          res = await fetch(url, { ...options, headers: newHeaders, credentials: 'include' });
+        let freshCsrf = null;
+        // Primul fallback: /auth/csrf-token (fara side effects, simplu si rapid)
+        try {
+          const rr = await fetch('/auth/csrf-token', { credentials: 'include' });
+          if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
+        } catch(e) {}
+        // Al doilea fallback: /auth/refresh (reinnoire completa sesiune)
+        if (!freshCsrf) {
+          const ok = await refreshToken();
+          if (ok) freshCsrf = _lastCsrfToken || getCsrf();
         }
+        if (freshCsrf) window._csrfToken = freshCsrf;
+        const newHeaders = { ...headers };
+        const t2 = getCsrf(); if (t2) newHeaders['x-csrf-token'] = t2;
+        res = await fetch(url, { ...options, headers: newHeaders, credentials: 'include' });
       }
     }
 
