@@ -49,8 +49,8 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
 
     // Găsim fluxul prin sessionId stocat în signers[i].signingSessionId
     const { rows } = await pool.query(
-      `SELECT id AS flow_id, data FROM flows
-       WHERE data->'signers' @> $1::jsonb LIMIT 1`,
+      `SELECT id AS flow_id FROM flows
+       WHERE data->'signers' @> $1::jsonb AND deleted_at IS NULL LIMIT 1`,
       [JSON.stringify([{ signingSessionId: sessionId }])]
     );
 
@@ -59,7 +59,12 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
       return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Sesiune expirată sau inexistentă')}`);
     }
 
-    const { flow_id: flowId, data } = rows[0];
+    const flowId = rows[0].flow_id;
+    // Folosim getFlowData — face JOIN cu flows_pdfs și returnează pdfB64 corect
+    const data = await getFlowData(flowId);
+    if (!data) {
+      return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Flux negăsit')}`);
+    }
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const signerIdx = signers.findIndex(s => s.signingSessionId === sessionId);
     if (signerIdx === -1) {

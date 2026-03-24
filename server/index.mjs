@@ -1,5 +1,11 @@
 /**
- * DocFlowAI v3.6.5 — Main entry point (orchestrator)
+ * DocFlowAI v3.6.6 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.6.6 (build b196, 24.03.2026):
+ *  FIX BUG-STS-07: 'PDF lipsa' in callback STS OAuth
+ *    Cauza: callback facea SELECT direct din flows (fara JOIN flows_pdfs)
+ *    pdfB64 e stocat in flows_pdfs (R-01 arhitectura) nu in JSONB data
+ *    Fix: inlocuit SELECT raw cu getFlowData() care face JOIN corect
  *
  * CHANGES v3.6.5 (build b195, 24.03.2026):
  *  FIX BUG-ROUTE-01: GET /flows/sts-oauth-callback returna not_found
