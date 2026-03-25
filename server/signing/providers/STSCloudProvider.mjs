@@ -260,10 +260,11 @@ export class STSCloudProvider {
         return { ready: false, error: true, message: 'Utilizatorul a refuzat operațiunea de semnare.' };
       }
 
-      // Găsim signByte-ul pentru operațiunea noastră
-      const sigItem = (json.signList || []).find(s => s.id === stsOpId);
+      // Găsim signByte-ul — STS folosește propriul UUID în signList.id,
+      // diferit de id-ul trimis de noi. Luăm primul element cu signByte prezent.
+      const sigItem = (json.signList || []).find(s => s.signByte) 
+                   || (json.signList || [])[0];
       if (!sigItem?.signByte) {
-        // Logăm răspunsul complet pentru diagnosticare
         logger.warn({
           stsOpId,
           signListLength: (json.signList || []).length,

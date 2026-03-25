@@ -1,5 +1,12 @@
 /**
- * DocFlowAI v3.7.4 — Main entry point (orchestrator)
+ * DocFlowAI v3.7.5 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.7.5 (build b204, 25.03.2026):
+ *  FIX BUG-STS-SIGNBYTE: signByte mereu lipsă din raspuns STS
+ *    Cauza: cautam signList[i] unde i.id === stsOpId (JWT)
+ *    dar STS returneaza signList cu propriul UUID intern, nu JWT-ul nostru
+ *    Fix: luam primul element din signList care are signByte prezent
+ *    (singleDocumentSigning — intotdeauna un singur element in signList)
  *
  * CHANGES v3.7.4 (build b203, 25.03.2026):
  *  FIX BUG-TLS: ERR_TLS_CERT_ALTNAME_INVALID la token exchange STS
