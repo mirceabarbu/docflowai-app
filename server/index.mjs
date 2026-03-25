@@ -1,5 +1,17 @@
 /**
- * DocFlowAI v3.6.6 — Main entry point (orchestrator)
+ * DocFlowAI v3.6.8 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.6.8 (build b198, 25.03.2026):
+ *  FIX BUG-STS-NET: fetch failed la token exchange STS
+ *    Cauza suspectata: Railway outbound IPv6, idp.stsisp.ro nu suporta IPv6
+ *    Fix: _fetchIPv4() rezolva DNS hostname explicit la IPv4 (family:4)
+ *    si inlocuieste hostname cu IP in URL + seteaza Host header
+ *    Aplicat pe toate request-urile STS: verify, token, sign, poll
+ *
+ * CHANGES v3.6.7 (build b197, 25.03.2026):
+ *  DEBUG: logging detaliat pentru fetch failed la token exchange STS
+ *    Logam fetchErr.cause.code (ECONNREFUSED/ENOTFOUND/etc) si idpUrl
+ *    pentru a determina cauza exacta a erorii de retea pe Railway
  *
  * CHANGES v3.6.6 (build b196, 24.03.2026):
  *  FIX BUG-STS-07: 'PDF lipsa' in callback STS OAuth

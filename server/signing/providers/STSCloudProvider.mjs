@@ -23,7 +23,27 @@
  */
 
 import crypto from 'crypto';
+import dns from 'dns/promises';
 import { logger } from '../../middleware/logger.mjs';
+
+// FIX: Railway face conexiuni outbound pe IPv6 implicit
+// idp.stsisp.ro și sign.stsisp.ro nu suportă IPv6 (servicii gov RO)
+// Rezolvăm manual hostname-ul la IPv4 și înlocuim în URL
+async function _fetchIPv4(url, opts = {}) {
+  try {
+    const parsed = new URL(url);
+    // Rezolvăm hostname la IPv4 explicit
+    const { address } = await dns.lookup(parsed.hostname, { family: 4 });
+    // Înlocuim hostname cu IP-ul IPv4 și setăm Host header
+    const ipUrl = url.replace(parsed.hostname, address);
+    const headers = { ...(opts.headers || {}), Host: parsed.hostname };
+    return await fetch(ipUrl, { ...opts, headers });
+  } catch(e) {
+    // Fallback la fetch normal dacă DNS lookup eșuează
+    logger.warn({ url, cause: e.cause?.code || e.code, msg: e.message }, 'STS _fetchIPv4 fallback to direct fetch');
+    return await fetch(url, opts);
+  }
+}
 
 const IDP_DEFAULT   = 'https://idp.stsisp.ro';
 const SIGN_DEFAULT  = 'https://sign.stsisp.ro';
@@ -43,7 +63,7 @@ export class STSCloudProvider {
     try {
       const idpUrl = config.idpUrl || IDP_DEFAULT;
       // Timeout mărit la 20s — Railway staging poate avea latență mai mare la conexiuni externe
-      const r = await fetch(`${idpUrl}/.well-known/openid-configuration`,
+      const r = await _fetchIPv4(`${idpUrl}/.well-known/openid-configuration`,
         { signal: AbortSignal.timeout(20_000) });
       if (!r.ok) return { ok: false, message: `STS IDP inaccesibil: HTTP ${r.status}` };
       const cfg = await r.json();
@@ -138,24 +158,35 @@ export class STSCloudProvider {
 
     try {
       // PASUL 1: code → access token
-      logger.info({ sessionId: session.sessionId }, 'STS: schimb code → token');
+      logger.info({ sessionId: session.sessionId, idpUrl: pd.idpUrl }, 'STS: schimb code → token');
       const clientAssertion = this._buildClientAssertion(
         pd.clientId, pd.kid, pd.privateKeyPem, pd.idpUrl);
 
-      const tokenResp = await fetch(`${pd.idpUrl}/oauth2/token`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    new URLSearchParams({
-          grant_type:            'authorization_code',
-          client_id:             pd.clientId,
-          code,
-          redirect_uri:          pd.redirectUri,
-          client_assertion:      clientAssertion,
-          client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-          code_verifier:         pd.codeVerifier,
-        }).toString(),
-        signal: AbortSignal.timeout(15_000),
-      });
+      let tokenResp;
+      try {
+        tokenResp = await _fetchIPv4(`${pd.idpUrl}/oauth2/token`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body:    new URLSearchParams({
+            grant_type:            'authorization_code',
+            client_id:             pd.clientId,
+            code,
+            redirect_uri:          pd.redirectUri,
+            client_assertion:      clientAssertion,
+            client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+            code_verifier:         pd.codeVerifier,
+          }).toString(),
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch(fetchErr) {
+        // Logăm cauza exactă a erorii de rețea (ECONNREFUSED, ENOTFOUND, etc.)
+        logger.error({
+          cause: fetchErr.cause?.code || fetchErr.cause?.message || fetchErr.cause,
+          msg: fetchErr.message,
+          idpUrl: pd.idpUrl,
+        }, 'STS: fetch token exchange FAILED — eroare retea');
+        return { ok: false, error: 'sts_fetch_failed', message: `Eroare rețea STS token: ${fetchErr.cause?.code || fetchErr.message}` };
+      }
 
       if (!tokenResp.ok) {
         const errText = await tokenResp.text();
@@ -169,7 +200,7 @@ export class STSCloudProvider {
 
       // PASUL 2: trimitem hash la /api/v1/signature
       logger.info({ sessionId: session.sessionId }, 'STS: trimit hash SHA-256 la /api/v1/signature');
-      const signResp = await fetch(`${pd.signUrl}/api/v1/signature`, {
+      const signResp = await _fetchIPv4(`${pd.signUrl}/api/v1/signature`, {
         method:  'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -215,7 +246,7 @@ export class STSCloudProvider {
   // ── Polling /api/v1/callback ───────────────────────────────────────────
   async pollSignatureResult(stsOpId, accessToken, signUrl) {
     try {
-      const resp = await fetch(`${signUrl}/api/v1/callback`, {
+      const resp = await _fetchIPv4(`${signUrl}/api/v1/callback`, {
         method:  'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
