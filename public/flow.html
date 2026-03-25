@@ -484,7 +484,8 @@
     const EV_SHOW = new Set([
       'FLOW_CREATED','SIGNED','SIGNED_PDF_UPLOADED','FLOW_COMPLETED',
       'REFUSED','FLOW_CANCELLED','REVIEW_REQUESTED','DELEGATED',
-      'FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW'
+      'FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW',
+      'EMAIL_SENT','EMAIL_OPENED'
     ]);
 
     // Filtrăm și grupăm evenimentele relevante (ignorăm moștenite din flux-parent)
@@ -560,6 +561,28 @@
       });
     }
 
+    // ── PAȘI EMAIL EXTERN ────────────────────────────────────────────────────
+    // Grupăm EMAIL_SENT + EMAIL_OPENED corespunzătoare, sortate cronologic
+    const emailSentEvs = relevant.filter(e => e.type === 'EMAIL_SENT');
+    for (const ev of emailSentEvs) {
+      // Verificăm dacă există un EMAIL_OPENED corespunzător (același trackingId)
+      const openEv = relevant.find(e => e.type === 'EMAIL_OPENED' && e.trackingId === ev.trackingId);
+      const toShort = ev.to ? ev.to.split('@')[0] + '@…' : '—';
+      const subjectShort = ev.subject ? (ev.subject.length > 50 ? ev.subject.substring(0,50) + '…' : ev.subject) : '';
+      const openedPart = openEv
+        ? `<div class="tl-sub"><div class="tl-sub-row done"><div class="tl-sub-dot"></div><span>📬 Deschis de destinatar</span><span class="tl-ts" style="margin-left:auto;">${prettyTs(openEv.at)}</span></div></div>`
+        : '';
+      steps.push({
+        icon: '✉️',
+        labelHtml: `📧 Email extern trimis <span style="font-size:.72rem;color:rgba(234,240,255,.45);margin-left:4px;">către ${esc(toShort)}</span>`,
+        actorHtml: `<span class="tl-actor">${esc(ev.by || '—')}</span>${subjectShort ? `<span style="font-size:.72rem;color:rgba(234,240,255,.35);margin-left:6px;">"${esc(subjectShort)}"</span>` : ''}`,
+        ts: ev.at,
+        state: 'done',
+        subRows: [],
+        extra: openedPart
+      });
+    }
+
     // ── PAS FINAL: stare finală a fluxului ───────────────────────────────────
     const flowStatus = data.status || '';
     const evCompleted = relevant.find(e => e.type === 'FLOW_COMPLETED');
@@ -581,8 +604,24 @@
     }
 
     // ── Render ───────────────────────────────────────────────────────────────
+    // Sortăm pașii cu timestamp cronologic (FLOW_CREATED primul, final ultimul)
+    // Pașii fără timestamp (pending) rămân la poziția lor originală
+    const stepsWithTs  = steps.filter(s => s.ts);
+    const stepsWithout = steps.filter(s => !s.ts);
+    // Păstrăm FLOW_CREATED primul și pasul final ultimul, sortăm restul cronologic
+    const firstStep = steps[0];                          // FLOW_CREATED
+    const lastStep  = steps[steps.length - 1];           // stare finală
+    const middleSteps = steps.slice(1, -1);
+    const sortedMiddle = middleSteps.sort((a, b) => {
+      if (!a.ts && !b.ts) return 0;
+      if (!a.ts) return 1;
+      if (!b.ts) return -1;
+      return new Date(a.ts) - new Date(b.ts);
+    });
+    const sortedSteps = [firstStep, ...sortedMiddle, lastStep];
+
     wrap.innerHTML = '';
-    for (const step of steps) {
+    for (const step of sortedSteps) {
       const div = document.createElement('div');
       div.className = `tl-step tl-${step.state}`;
 

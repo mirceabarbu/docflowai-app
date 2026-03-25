@@ -1,5 +1,11 @@
 /**
- * DocFlowAI v3.7.0 — Main entry point (orchestrator)
+ * DocFlowAI v3.7.1 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.7.1 (build b200, 25.03.2026):
+ *  FEAT: EMAIL_SENT + EMAIL_OPENED vizibile in timeline flux (flow.html)
+ *    Afiseaza: catre cine, subiect, data trimitere
+ *    Sub-pas: 'Deschis de destinatar' cu timestamp (cand pixelul a functionat)
+ *    Sortare cronologica a pasilor intermediari dupa timestamp
  *
  * CHANGES v3.7.0 (build b199, 25.03.2026):
  *  FEAT: Badge email extern pe cardul fluxului din Fluxuri mele
