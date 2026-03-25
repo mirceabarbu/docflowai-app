@@ -1300,6 +1300,7 @@ th{ color: var(--sub) !important; }
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 ${isUrgent ? '<span style="background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>' : ''}
                 ${statusBadge}
+                <span id="emailBadge_${f.flowId}" style="display:none;"></span>
                 ${!isCancelled && mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#ff6b6b);border:none;color:#fff;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">✍ Semnează</button>` : ''}
                 <a href="/flow.html?flow=${f.flowId}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">🔍 Vezi flow</a>
                 ${!isCancelled ? dlBtn : ''}
@@ -1318,7 +1319,25 @@ th{ color: var(--sub) !important; }
           </div>`;
         }).join("");
 
-        // F-06: Fetch asincron documente suport pentru fluxurile vizibile
+        // F-07: Fetch asincron statistici email extern pentru fluxurile vizibile
+        flows.forEach(f => {
+          const badge = document.getElementById(`emailBadge_${f.flowId}`);
+          if (!badge) return;
+          _apiFetch(`/flows/${encodeURIComponent(f.flowId)}/email-stats`)
+            .then(r => r.ok ? r.json() : null)
+            .then(j => {
+              if (!j || j.sent === 0) return;
+              const sentStr = j.sent === 1 ? '1 email trimis' : `${j.sent} emailuri trimise`;
+              const openedPart = j.opened > 0
+                ? `<span style="color:#a3e6a3;" title="Număr deschideri tracking pixel (estimativ)"> · ${j.opened} deschis${j.opened > 1 ? 'e' : ''}</span>`
+                : '';
+              const lastAt = j.lastSentAt
+                ? new Date(j.lastSentAt).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+                : '';
+              badge.style.display = '';
+              badge.innerHTML = `<span title="Email extern trimis${lastAt ? ' la ' + lastAt : ''}" style="background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);color:#7cf0e0;padding:2px 9px;border-radius:20px;font-size:.73rem;font-weight:600;white-space:nowrap;">✉️ ${sentStr}${openedPart}</span>`;
+            }).catch(() => {});
+        });
         flows.forEach(f => {
           _apiFetch(`/flows/${encodeURIComponent(f.flowId)}/attachments`).then(r => r.ok ? r.json() : null).then(j => {
             const atts = j?.attachments || [];

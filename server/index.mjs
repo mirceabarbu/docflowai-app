@@ -1,5 +1,12 @@
 /**
- * DocFlowAI v3.6.8 — Main entry point (orchestrator)
+ * DocFlowAI v3.7.0 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.7.0 (build b199, 25.03.2026):
+ *  FEAT: Badge email extern pe cardul fluxului din Fluxuri mele
+ *    Backend: GET /flows/:flowId/email-stats -> { sent, opened, lastSentAt }
+ *    Frontend: fetch asincron post-render, badge ✉️ apare doar daca s-a trimis
+ *    Badge arata: nr emailuri trimise + nr deschideri (estimativ pixel tracking)
+ *    Tooltip cu data ultimului email trimis
  *
  * CHANGES v3.6.8 (build b198, 25.03.2026):
  *  FIX BUG-STS-NET: fetch failed la token exchange STS
