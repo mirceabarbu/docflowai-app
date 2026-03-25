@@ -67,13 +67,15 @@ export class STSCloudProvider {
   }
 
   // ── Inițiere sesiune — PKCE + URL redirect IDP ────────────────────────
-  async initiateSession({ flowId, signer, pdfBytes, flowData, config, appBaseUrl }) {
+  async initiateSession({ flowId, signer, pdfBytes, flowData, config, appBaseUrl, padesHashBase64 }) {
     const sessionId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
 
-    // Hash SHA-256 al PDF-ului — acesta se trimite la STS (nu documentul)
-    const hashBase64 = crypto.createHash('sha256').update(pdfBytes).digest('base64');
+    // Hash PAdES SHA-256 — calculat pe bytes-ii din afara câmpului Contents (ByteRange)
+    // Dacă e furnizat explicit (PAdES flow), îl folosim direct.
+    // Fallback la hash simplu pentru provideri non-STS.
+    const hashBase64 = padesHashBase64 || crypto.createHash('sha256').update(pdfBytes).digest('base64');
 
     // PKCE
     const codeVerifier  = crypto.randomBytes(32).toString('base64url');

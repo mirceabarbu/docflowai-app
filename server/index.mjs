@@ -1,5 +1,19 @@
 /**
- * DocFlowAI v3.7.6 — Main entry point (orchestrator)
+ * DocFlowAI v3.8.0 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.8.0 (build b206, 25.03.2026):
+ *  FEAT PRIORITY-0: PAdES (PDF Advanced Electronic Signatures) embedded
+ *    server/signing/pades.mjs — modul nou:
+ *      buildSignaturePdf() — PDF cu cartuș tabel server-side + ByteRange placeholder
+ *      calcPadesHash() — SHA-256 pe bytes din afara Contents (standard PAdES)
+ *      injectCmsSignature() — CMS STS injectat în placeholder → PDF QES valid
+ *    cloud-signing.mjs:
+ *      initiate: buildSignaturePdf + calcPadesHash → hash PAdES trimis la STS
+ *      PDF cu placeholder stocat în flows_pdfs (nu JSONB — prea mare)
+ *      poll: injectCmsSignature → signedPdfB64 conține PDF semnat real
+ *      semnatar 2+: foloseste signedPdfB64 (cu sig anterioara) ca baza
+ *    STSCloudProvider: foloseste padesHashBase64 in loc de hash simplu
+ *    Trust Report: L1-L6 verificabil dupa implementarea PAdES
  *
  * CHANGES v3.7.6 (build b205, 25.03.2026):
  *  FIX: dupa poll STS signed, redirect complet la URL curat
