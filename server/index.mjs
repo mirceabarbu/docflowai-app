@@ -1,5 +1,9 @@
 /**
- * DocFlowAI v3.8.0 — Main entry point (orchestrator)
+ * DocFlowAI v3.8.1 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.8.1 (build b207, 25.03.2026):
+ *  FIX: migrare 041 - extinde constraint flows_pdfs_key_check
+ *    Permite chei 'padesPdf_N' (temporare PAdES) in plus fata de cele 3 fixe
  *
  * CHANGES v3.8.0 (build b206, 25.03.2026):
  *  FEAT PRIORITY-0: PAdES (PDF Advanced Electronic Signatures) embedded
