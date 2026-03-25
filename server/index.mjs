@@ -1,5 +1,10 @@
 /**
- * DocFlowAI v3.7.5 — Main entry point (orchestrator)
+ * DocFlowAI v3.7.6 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.7.6 (build b205, 25.03.2026):
+ *  FIX: dupa poll STS signed, redirect complet la URL curat
+ *    Cauza: loadFlow() in-page returna date vechi (semnatar inca current)
+ *    window.location.replace forteaza fetch fresh — semnatar apare semnat
  *
  * CHANGES v3.7.5 (build b204, 25.03.2026):
  *  FIX BUG-STS-SIGNBYTE: signByte mereu lipsă din raspuns STS

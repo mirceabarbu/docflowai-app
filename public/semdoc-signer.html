@@ -767,7 +767,10 @@ th{ color: var(--sub) !important; }
             } else if (j.status === 'signed') {
               clearInterval(_stsPollInterval); _stsPollInterval = null;
               if (statusEl) statusEl.textContent = '✅ Semnat cu succes!';
-              setTimeout(() => loadFlow(), 1000);
+              // FIX: redirect complet la URL curat — evită date vechi din in-page reload
+              setTimeout(() => {
+                window.location.replace(`/semdoc-signer.html?flow=${encodeURIComponent(flow)}&token=${encodeURIComponent(token)}`);
+              }, 1200);
             } else if (j.status === 'error') {
               cancelStsPolling();
               showError('❌ ' + (j.message || 'Eroare la semnare STS.'));
