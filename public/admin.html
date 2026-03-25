@@ -103,11 +103,57 @@
     window._apiFetch = async function(url, options) {
       if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
       const headers = Object.assign({}, (options||{}).headers || {});
-      // Tranziție: dacă există token vechi în localStorage, îl trimitem ca fallback Bearer
       const legacyToken = localStorage.getItem('docflow_token');
       if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
-      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
+      const method = (options?.method || 'GET').toUpperCase();
+      const isMutation = !['GET','HEAD','OPTIONS'].includes(method);
+      function getCsrf() {
+        // Preferinta: variabila globala > cookie
+        if (window._csrfToken) return window._csrfToken;
+        const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+        return c ? c.split('=')[1] : null;
+      }
+      if (isMutation) { const t = getCsrf(); if (t) headers['x-csrf-token'] = t; }
+      let res = await fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
+      if (res.status === 403 && isMutation) {
+        let body = {};
+        try { body = await res.clone().json(); } catch(e) {}
+        if (body?.error === 'csrf_invalid') {
+          let freshCsrf = null;
+          try {
+            const rr = await fetch('/auth/csrf-token', { credentials: 'include' });
+            if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
+          } catch(e) {}
+          if (!freshCsrf) {
+            try {
+              const rr = await fetch('/auth/refresh', { method: 'POST', credentials: 'include' });
+              if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
+            } catch(e) {}
+          }
+          if (freshCsrf) { window._csrfToken = freshCsrf; }
+          const retryHeaders = Object.assign({}, headers);
+          const t2 = getCsrf(); if (t2) retryHeaders['x-csrf-token'] = t2;
+          res = await fetch(url, Object.assign({}, options||{}, { headers: retryHeaders, credentials: 'include' }));
+        }
+      }
+      return res;
     };
+    // ── CSRF: incarcare token la deschiderea paginii ──────────────────────────
+    // Citim token din /auth/csrf-token (sigur, nu depinde de timing cookie)
+    // Stocat in window._csrfToken — folosit de toti apiFetch shim-ii
+    window._csrfToken = null;
+    (async function initCsrf() {
+      try {
+        const r = await fetch('/auth/csrf-token', { credentials: 'include' });
+        if (r.ok) { const d = await r.json(); window._csrfToken = d.csrfToken || null; }
+      } catch(e) {}
+      // Fallback la cookie daca fetch esueaza
+      if (!window._csrfToken) {
+        const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+        if (c) window._csrfToken = c.split('=')[1];
+      }
+    })();
+
   </script>
   <link rel="stylesheet" href="/mobile.css">
 </head>
@@ -124,10 +170,15 @@
     <!-- F — b97: badge live fluxuri active -->
     <span id="activeFlowsBadge" title="Fluxuri active în acest moment" style="display:none;padding:5px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;font-size:.78rem;color:#c4b5fd;font-weight:700;cursor:default;">⏳ <span id="activeFlowsCount">—</span> active</span>
   </div>
-  <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:10px;">
-    <span style="color:var(--muted);font-size:.78rem;">Conectat: <strong id="hdrUser" style="color:var(--sub);"></strong></span>
-    <button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 10px;border-radius:8px;cursor:pointer;font-size:.78rem;font-weight:600;">🔑 Parolă</button>
-    <button class="btn-logout" onclick="logout()" style="font-size:.78rem;padding:5px 10px;">Ieșire</button>
+  <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:6px;">
+    <span style="color:var(--muted);font-size:.76rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="">
+      <strong id="hdrUser" style="color:var(--sub);"></strong>
+    </span>
+    <div style="display:flex;gap:5px;align-items:center;">
+      <button onclick="openChangePwdModal()" title="Schimbă parola" style="background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:5px 9px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:600;white-space:nowrap;">🔑</button>
+      <button id="hdr2faBtn" onclick="load2FAStatus()" title="Configurare 2FA" style="background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.25);color:#c4b5ff;padding:5px 9px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:600;display:none;white-space:nowrap;">🔐</button>
+      <button class="btn-logout" onclick="logout()" title="Ieșire" style="font-size:.76rem;padding:5px 9px;white-space:nowrap;">⏻ Ieșire</button>
+    </div>
   </div>
 </header>
 
@@ -171,6 +222,7 @@
   <button class="atab" data-tab="rapoarte" onclick="switchTab('rapoarte')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📊 Rapoarte</button>
   <button class="atab" data-tab="outreach" onclick="switchTab('outreach')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="outreach-tab-btn">📧 Outreach</button>
   <button class="atab" data-tab="organizatii" onclick="switchTab('organizatii')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="org-tab-btn">🏛 Organizații</button>
+      <button class="atab" data-tab="analytics" onclick="switchTab('analytics');loadAnalytics();" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="analytics-tab-btn">📊 Analytics</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -263,7 +315,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><div style="display:flex;gap:6px;"><button onclick="exportUsersCSV()" style="padding:7px 14px;font-size:.82rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:600;">📥 CSV</button><button onclick="exportUsersPDF()" style="padding:7px 14px;font-size:.82rem;background:rgba(157,176,255,.1);border:1px solid rgba(157,176,255,.25);border-radius:8px;color:#9db0ff;cursor:pointer;font-weight:600;">📄 PDF</button></div></div>
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><div style="display:flex;gap:6px;"><button onclick="exportUsersCSV()" style="padding:7px 14px;font-size:.82rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:600;">📥 CSV</button><button onclick="exportUsersPDF()" style="padding:7px 14px;font-size:.82rem;background:rgba(157,176,255,.1);border:1px solid rgba(157,176,255,.25);border-radius:8px;color:#9db0ff;cursor:pointer;font-weight:600;">📄 PDF</button><button onclick="openBulkImportModal()" style="padding:7px 14px;font-size:.82rem;background:rgba(255,176,32,.1);border:1px solid rgba(255,176,32,.25);border-radius:8px;color:#ffd580;cursor:pointer;font-weight:600;">📤 Import CSV</button></div></div>
     <div class="tbl-wrap" id="tblScroll"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
     <div id="pgBarWrapper"></div>
   </div>
@@ -512,10 +564,57 @@
 </div>
 <!-- ══════════════════════════════════════════════════════════════════ -->
 <div id="tab-organizatii" style="display:none;">
-  <h2 style="color:#9db0ff;margin-bottom:6px;">🏛 Organizații & Webhook</h2>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:6px;">
+    <h2 style="color:#9db0ff;margin:0;">🏛 Organizații & Webhook</h2>
+    <button onclick="openOnboardingWizard()" style="padding:9px 18px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:10px;color:#fff;font-size:.85rem;font-weight:700;cursor:pointer;">
+      ➕ Instituție nouă
+    </button>
+  </div>
   <p style="color:var(--muted);font-size:.83rem;margin-bottom:20px;">
     Configurați webhook-urile pentru integrarea cu sisteme externe (AvanDoc, iDocNet, aplicații proprii de registratură etc.)
   </p>
+
+  <!-- Modal Onboarding Wizard -->
+  <div id="onboardingModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeOnboardingWizard()">
+    <div style="background:#0f1731;border:1px solid rgba(45,212,191,.3);border-radius:18px;padding:32px;max-width:500px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);position:relative;">
+      <button onclick="closeOnboardingWizard()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
+      <div style="font-size:1.1rem;font-weight:800;color:#7cf0e0;margin-bottom:4px;">🏛 Instituție nouă</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:22px;">Creează organizație + administrator instituție + trimite credențiale automat.</div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <label style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">Numele instituției *</label>
+          <input id="owOrgName" type="text" placeholder="ex: Primăria Municipiului Brașov" maxlength="120"
+            style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;font-family:inherit;"/>
+        </div>
+        <div>
+          <label style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">Email administrator instituție *</label>
+          <input id="owAdminEmail" type="email" placeholder="secretar@primarie.ro"
+            style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;font-family:inherit;"/>
+        </div>
+        <div>
+          <label style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">Nume complet administrator *</label>
+          <input id="owAdminName" type="text" placeholder="Popescu Ion"
+            style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;font-family:inherit;"/>
+        </div>
+        <div>
+          <label style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">Funcție</label>
+          <input id="owAdminFunctie" type="text" placeholder="Administrator Instituție" value="Administrator Instituție"
+            style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;font-family:inherit;"/>
+        </div>
+        <div id="owMsg" style="font-size:.83rem;min-height:18px;"></div>
+        <!-- Rezultat succes -->
+        <div id="owResult" style="display:none;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.3);border-radius:10px;padding:14px;font-size:.83rem;">
+          <div style="font-weight:700;color:#2dd4bf;margin-bottom:8px;">✅ Instituție creată cu succes!</div>
+          <div id="owResultDetails" style="color:var(--sub);line-height:1.7;"></div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button onclick="closeOnboardingWizard()" style="flex:1;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+          <button id="owSubmitBtn" onclick="doOnboarding()" style="flex:2;padding:10px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">🏛 Creează instituția</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="org-list-area" style="display:grid;gap:16px;">
     <div style="color:var(--muted);padding:24px;text-align:center;">⏳ Se încarcă...</div>
@@ -652,6 +751,10 @@
             <textarea id="stsPrivateKeyPem" rows="4" placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
               style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.78rem;font-family:monospace;margin-bottom:10px;resize:vertical;" autocomplete="off"></textarea>
 
+            <label style="display:block;font-size:.77rem;color:var(--muted);margin-bottom:5px;">Cheie publică RSA (PEM) <span style="color:rgba(234,240,255,.35);">— trimisă la STS, stocată ca referință</span></label>
+            <textarea id="stsPublicKeyPem" rows="4" placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
+              style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(45,212,191,.2);border-radius:8px;color:#7cf0e0;font-size:.78rem;font-family:monospace;margin-bottom:10px;resize:vertical;" autocomplete="off"></textarea>
+
             <!-- Generator pereche chei -->
             <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:10px;margin-bottom:10px;">
               <div style="font-size:.77rem;color:#b39dff;font-weight:600;margin-bottom:6px;">🔑 Generator pereche chei RSA</div>
@@ -726,9 +829,18 @@
       <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:5px;">Corp email HTML * <span style="color:var(--muted);font-weight:400;">(folosește <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;">{{institutie}}</code> pentru personalizare)</span></label>
       <textarea id="or-c-body" rows="10" style="width:100%;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text);font-size:.84rem;font-family:monospace;resize:vertical;"></textarea>
     </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap;">
       <button onclick="orCreateCampaign()" style="padding:9px 22px;background:rgba(124,92,255,.3);border:1px solid rgba(124,92,255,.5);border-radius:9px;color:#c4b5ff;font-weight:700;font-size:.88rem;cursor:pointer;">✅ Crează campanie</button>
-      <button onclick="orFillDefaultTemplate()" style="padding:9px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--muted);font-size:.83rem;cursor:pointer;">📋 Template implicit</button>
+      <button onclick="orFillDefaultTemplate()" style="padding:9px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--muted);font-size:.83rem;cursor:pointer;">📋 Template broșură</button>
+      <button onclick="orFillConvTemplate()" title="Ton direct, personal — mai eficient pentru factori de decizie" style="padding:9px 16px;background:rgba(255,213,128,.08);border:1px solid rgba(255,213,128,.25);border-radius:9px;color:#ffd580;font-size:.83rem;cursor:pointer;">✉️ Template conversațional ★</button>
+      <select onchange="if(this.value){$('or-c-subject').value=this.value;this.value='';}" style="padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--muted);font-size:.82rem;cursor:pointer;max-width:240px;">
+        <option value="">💡 Subiecte sugerate…</option>
+        <option value="Propunere digitalizare flux documente – DocFlowAI">Propunere digitalizare (generic)</option>
+        <option value="Semnături electronice calificate pentru {{institutie}} — demonstrație gratuită">Semnături calificate + demo</option>
+        <option value="Cum elimină {{institutie}} hârtia din circuitul intern de documente">Eliminare hârtie (conversațional)</option>
+        <option value="DocFlowAI — flux electronic ÎNTOCMIT→VIZAT→APROBAT pentru instituții publice">Flux ÎNTOCMIT→APROBAT</option>
+        <option value="O întrebare despre circuitul de documente din {{institutie}}">Întrebare directă (cel mai personal)</option>
+      </select>
       <span id="or-c-status" style="font-size:.85rem;"></span>
     </div>
   </div>
@@ -791,7 +903,8 @@
               <th style="text-align:left;padding:6px 10px;color:var(--muted);">Instituție</th>
               <th style="text-align:center;padding:6px 10px;color:var(--muted);">Status</th>
               <th style="text-align:center;padding:6px 10px;color:var(--muted);">Trimis</th>
-              <th style="text-align:center;padding:6px 10px;color:var(--muted);">Deschis</th>
+              <th style="text-align:center;padding:6px 10px;color:var(--muted);">Deschis ⚠</th>
+              <th style="text-align:center;padding:6px 10px;color:#ffd580;font-weight:700;">Click ★</th>
               <th style="padding:6px 10px;"></th>
             </tr>
           </thead>
@@ -928,6 +1041,15 @@
 
 </div>
 
+<!-- Tab Analytics -->
+<div id="tab-analytics" style="display:none;">
+  <h2 style="color:#9db0ff;margin-bottom:6px;">📊 Analytics</h2>
+  <p style="color:var(--muted);font-size:.83rem;margin-bottom:20px;">Statistici agregate pentru organizația ta.</p>
+  <div id="analyticsArea" style="display:grid;gap:16px;">
+    <div style="color:var(--muted);padding:24px;text-align:center;">⏳ Apasă pe tab pentru a încărca...</div>
+  </div>
+</div>
+
 </main>
 
 
@@ -1037,7 +1159,13 @@ const $=id=>document.getElementById(id);
 // Citim doar datele UI non-sensibile din localStorage
 const me=JSON.parse(localStorage.getItem("docflow_user")||"{}");
 const hdrEl=$("hdrUser");
-if(hdrEl) hdrEl.textContent=me.nume||me.email||"—";
+if(hdrEl) {
+  hdrEl.textContent=me.nume||me.email||"—";
+  // Tooltip cu rolul pe containerul span parinte
+  const roleLabel = me.role === 'admin' ? 'Super Admin' : me.role === 'org_admin' ? 'Admin Instituție' : 'Utilizator';
+  const parentSpan = hdrEl.closest('span');
+  if (parentSpan) parentSpan.title = roleLabel + ': ' + (me.email||'');
+}
 fetch('/auth/me', { credentials: 'include' })
   .then(r => {
     if (!r.ok) {
@@ -1050,6 +1178,11 @@ fetch('/auth/me', { credentials: 'include' })
     try {
       const _me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
       window._currentUserRole = _me.role || 'user';
+    // Afisam butonul 2FA in header doar pentru conturi privilegiate
+    if (_me.role === 'admin' || _me.role === 'org_admin') {
+      const btn2fa = document.getElementById('hdr2faBtn');
+      if (btn2fa) btn2fa.style.display = 'inline-block';
+    }
     } catch(e) { window._currentUserRole = 'user'; }
     // Super-admin: afișăm org selector de la deschiderea modalului
     if (window._currentUserRole === 'admin') {
@@ -1673,20 +1806,32 @@ function closeMod(){$("mBg").classList.remove("open");editU=null;}
 
 async function genPwd(){
   if(!editU)return;
-  const r=await _apiFetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
-  const d=await r.json();
-  if(r.ok){
-    $("ePwd").value = d.tempPassword || d.temporaryPassword || "";
-    $("eMsg").className="msg ok";
-    $("eMsg").textContent = d.message || "✅ Parolă nouă generată și trimisă pe emailul utilizatorului.";
-    window._lastCreatedId = editU.id;
-    window._lastCreatedEmail = d.email || editU.email;
-    showPwdModal({
-      email: d.email || editU.email,
-      tempPassword: d.tempPassword || d.temporaryPassword || '',
-      credentials_sent_to: d.credentials_sent_to || d.email || editU.email,
-      _isSend: true
-    });
+  const btn = document.querySelector('button[onclick="genPwd()"]');
+  if(btn){ btn.disabled=true; btn.textContent='⏳...'; }
+  try {
+    const r=await _apiFetch("/admin/users/"+editU.id+"/reset-password",{method:"POST",headers:hdrs()});
+    const d=await r.json();
+    if(r.ok){
+      $("ePwd").value = d.tempPassword || d.temporaryPassword || "";
+      $("eMsg").className="msg ok";
+      $("eMsg").textContent = d.message || "✅ Parolă nouă generată și trimisă pe emailul utilizatorului.";
+      window._lastCreatedId = editU.id;
+      window._lastCreatedEmail = d.email || editU.email;
+      showPwdModal({
+        email: d.email || editU.email,
+        tempPassword: d.tempPassword || d.temporaryPassword || '',
+        credentials_sent_to: d.credentials_sent_to || d.email || editU.email,
+        _isSend: true
+      });
+    } else {
+      $("eMsg").className="msg err";
+      $("eMsg").textContent = "❌ " + (d.message || d.error || "Eroare la generare parolă.");
+    }
+  } catch(e) {
+    $("eMsg").className="msg err";
+    $("eMsg").textContent = "❌ " + e.message;
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='🔄 Generează parolă'; }
   }
 }
 
@@ -2398,7 +2543,7 @@ let _activityData = null;
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  ['utilizatori','fluxuri','rapoarte','outreach','organizatii'].forEach(t => {
+  ['utilizatori','fluxuri','rapoarte','outreach','organizatii','analytics'].forEach(t => {
     const el = $('tab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
@@ -2450,14 +2595,62 @@ const OR_DEFAULT_TEMPLATE = `<div style="font-family:system-ui,Arial,sans-serif;
   </div>
   <p style="color:#64748b;font-size:13px;margin-top:28px;border-top:1px solid #e2e8f0;padding-top:16px;">
     Cu stimă,<br>
-    <strong>Mircea Barbu</strong><br>
-    DocFlowAI · <a href="https://www.docflowai.ro" style="color:#1A56DB;">www.docflowai.ro</a>
+    <strong>Departamentul tehnic</strong><br>
+    DocFlowAI · <a href="https://www.docflowai.ro" style="color:#1A56DB;">www.docflowai.ro</a> · 0722.663.961
   </p>
 </div>`;
 
+// Template conversațional — ton direct, scurt, mai eficient pentru factori de decizie
+const OR_CONV_TEMPLATE = `<div style="font-family:Georgia,serif;max-width:580px;margin:0 auto;background:#ffffff;padding:40px 36px;border-radius:4px;border-top:4px solid #1A56DB;">
+  <p style="color:#1e293b;font-size:16px;line-height:1.8;margin:0 0 18px 0;">Bună ziua,</p>
+  <p style="color:#1e293b;font-size:15px;line-height:1.8;margin:0 0 16px 0;">
+    Lucrez cu mai multe instituții publice din România pe o problemă concretă:
+    <strong>circuitul intern de documente care necesită semnături multiple</strong> —
+    referate, dispoziții, ordine de plată — care circulă în continuare pe hârtie sau prin email,
+    fără trasabilitate și fără arhivă sigură.
+  </p>
+  <p style="color:#1e293b;font-size:15px;line-height:1.8;margin:0 0 16px 0;">
+    Am construit <strong>DocFlowAI</strong> ca răspuns la această nevoie:
+    un sistem în care inițiatorul încarcă documentul, sistemul îl trimite automat
+    fiecărui semnatar în ordine, iar la final totul este arhivat cu jurnal de audit complet.
+  </p>
+  <div style="background:#f0f4ff;padding:16px 20px;border-radius:8px;margin:20px 0;">
+    <p style="margin:0;font-size:14px;color:#1e293b;">
+      📋 <strong>{{institutie}}</strong> ar putea digitaliza circuitul de documente în mai puțin de o zi de implementare.
+      Nicio infrastructură suplimentară — funcționează complet online, cu certificate calificate eIDAS.
+    </p>
+  </div>
+  <p style="color:#1e293b;font-size:15px;line-height:1.8;margin:0 0 24px 0;">
+    Vă propun un apel de 15 minute pentru a vedea cum arată concret pentru o instituție ca a dumneavoastră.
+    Când ar fi convenabil?
+  </p>
+  <div style="text-align:left;margin:24px 0;">
+    <a href="https://www.docflowai.ro" style="background:#1A56DB;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;">Programează o demonstrație</a>
+  </div>
+  <p style="color:#64748b;font-size:13px;margin-top:28px;border-top:1px solid #e8ecf0;padding-top:16px;">
+    Departamentul tehnic<br>
+    <a href="https://www.docflowai.ro" style="color:#1A56DB;">DocFlowAI</a> · 0722.663.961
+  </p>
+</div>`;
+
+// Subiecte sugerate — de la generic la personalizat
+const OR_SUBJECT_SUGGESTIONS = [
+  'Propunere digitalizare flux documente – DocFlowAI',
+  'Semnături electronice calificate pentru {{institutie}} — demonstrație gratuită',
+  'Cum elimină {{institutie}} hârtia din circuitul intern de documente',
+  'DocFlowAI — flux electronic ÎNTOCMIT→VIZAT→APROBAT pentru instituții publice',
+  'O întrebare despre circuitul de documente din {{institutie}}',
+];
+
 function orFillDefaultTemplate() {
   $('or-c-body').value = OR_DEFAULT_TEMPLATE;
-  $('or-c-subject').value = $('or-c-subject').value || 'Propunere digitalizare flux documente – DocFlowAI';
+  $('or-c-subject').value = $('or-c-subject').value || OR_SUBJECT_SUGGESTIONS[0];
+}
+
+function orFillConvTemplate() {
+  $('or-c-body').value = OR_CONV_TEMPLATE;
+  $('or-c-subject').value = OR_SUBJECT_SUGGESTIONS[4];
+  $('or-c-body').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 async function orInit() {
@@ -2492,6 +2685,7 @@ async function orLoadCampaigns() {
     el.innerHTML = d.campaigns.map(c => {
       const pct = c.total_recipients > 0 ? Math.round((+c.sent_count / +c.total_recipients) * 100) : 0;
       const openPct = c.sent_count > 0 ? Math.round((+c.opened_count / +c.sent_count) * 100) : 0;
+      const clickPct = c.sent_count > 0 ? Math.round((+c.click_count / +c.sent_count) * 100) : 0;
       return `<div onclick="orSelectCampaign(${c.id})" style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:${_orCurrentCampaignId===c.id?'rgba(124,92,255,.12)':'rgba(255,255,255,.02)'};cursor:pointer;margin-bottom:8px;transition:background .15s;">
         <div style="flex:1;min-width:0;">
           <div style="font-weight:700;font-size:.88rem;color:var(--text);">${escH(c.name)}</div>
@@ -2501,7 +2695,8 @@ async function orLoadCampaigns() {
         <div style="display:flex;gap:14px;text-align:center;flex-shrink:0;">
           <div><div style="font-size:1.1rem;font-weight:700;color:#9db0ff;">${c.total_recipients}</div><div style="font-size:.7rem;color:var(--muted);">destinatari</div></div>
           <div><div style="font-size:1.1rem;font-weight:700;color:#7cf0e0;">${c.sent_count}</div><div style="font-size:.7rem;color:var(--muted);">trimiși ${pct}%</div></div>
-          <div><div style="font-size:1.1rem;font-weight:700;color:#a3e6a3;">${c.opened_count}</div><div style="font-size:.7rem;color:var(--muted);">deschis ${openPct}%</div></div>
+          <div title="Deschideri via pixel — nesigure, blocate de Gmail/Outlook/Apple Mail"><div style="font-size:1.1rem;font-weight:700;color:#a3e6a3;">${c.opened_count}</div><div style="font-size:.7rem;color:var(--muted);">deschis ${openPct}% ⚠</div></div>
+          <div title="Click-uri pe linkuri — metrica reala, fiabila 100%"><div style="font-size:1.1rem;font-weight:700;color:#ffd580;">${c.click_count}</div><div style="font-size:.7rem;color:#ffd580;font-weight:700;">clickuri ${clickPct}% ★</div></div>
           ${+c.pending_count > 0 ? `<div><div style="font-size:1.1rem;font-weight:700;color:#ffd580;">${c.pending_count}</div><div style="font-size:.7rem;color:var(--muted);">pending</div></div>` : ''}
           ${+c.error_count > 0   ? `<div><div style="font-size:1.1rem;font-weight:700;color:#ffaaaa;">${c.error_count}</div><div style="font-size:.7rem;color:var(--muted);">erori</div></div>` : ''}
         </div>
@@ -2531,15 +2726,26 @@ async function orLoadDetail(id) {
     const total   = recipients.length;
     const sent    = recipients.filter(r => r.status === 'sent' || r.status === 'opened').length;
     const opened  = recipients.filter(r => r.status === 'opened').length;
+    const clicked = recipients.filter(r => r.clicked_at).length;
     const pending = recipients.filter(r => r.status === 'pending').length;
     const errors  = recipients.filter(r => r.status === 'error').length;
     $('or-detail-stats').innerHTML = [
       ['Total', total, '#9db0ff'],
-      ['Pending', pending, '#ffd580'],
+      ['Pending', pending, '#b0b0b0'],
       ['Trimiși', sent, '#7cf0e0'],
-      ['Deschis', opened, '#a3e6a3'],
+      ['Deschis ⚠', opened, '#a3e6a3'],
+      ['Clickuri ★', clicked, '#ffd580'],
       ['Erori', errors, '#ffaaaa'],
     ].map(([l, v, col]) => `<span style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);padding:5px 14px;border-radius:20px;font-size:.8rem;"><strong style="color:${col};">${v}</strong> <span style="color:var(--muted);">${l}</span></span>`).join('');
+
+    // Banner informativ tracking
+    $('or-detail-stats').insertAdjacentHTML('afterend', `
+      <div style="background:rgba(255,213,128,.07);border:1px solid rgba(255,213,128,.2);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:.78rem;color:#ffd580;line-height:1.5;">
+        <strong>⚠ Despre acuratețea metricilor:</strong> Deschiderile (pixel GIF) sunt blocate de Gmail, Outlook și Apple Mail — cifrele sunt <em>sub-raportate</em>.
+        <strong style="color:#ffd580;">Click-urile ★ sunt metrica fiabilă</strong> — înseamnă că destinatarul a acționat efectiv pe un link din email.
+        Raportul <strong>clickuri/trimiși</strong> este indicatorul real de interes.
+      </div>
+    `);
 
     $('or-recip-count').textContent = `${total} destinatar${total !== 1 ? 'i' : ''}`;
 
@@ -2561,6 +2767,7 @@ async function orLoadDetail(id) {
       <td style="padding:7px 10px;text-align:center;">${statusBadge[r.status] || r.status}</td>
       <td style="padding:7px 10px;text-align:center;color:var(--muted);font-size:.75rem;">${r.sent_at ? new Date(r.sent_at).toLocaleString('ro-RO') : '—'}</td>
       <td style="padding:7px 10px;text-align:center;color:var(--muted);font-size:.75rem;">${r.opened_at ? new Date(r.opened_at).toLocaleString('ro-RO') : '—'}</td>
+      <td style="padding:7px 10px;text-align:center;font-size:.75rem;">${r.clicked_at ? `<span style="color:#ffd580;font-weight:700;">★ ${r.click_count}x</span><br><span style="color:var(--muted);font-size:.7rem;">${new Date(r.clicked_at).toLocaleString('ro-RO')}</span>` : '<span style="color:var(--muted);">—</span>'}</td>
       <td style="padding:7px 10px;text-align:center;">${r.status === 'pending' ? `<button onclick="orDeleteRecipient(${r.id})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:.8rem;" title="Șterge">✕</button>` : ''}</td>
     </tr>`).join('');
   } catch(e) {
@@ -3749,6 +3956,571 @@ async function doAssignOrg() {
     if (btn) { btn.disabled=false; btn.textContent='💾 Salvează'; }
   }
 }
+// ── Onboarding Wizard ────────────────────────────────────────────────────────
+function openOnboardingWizard() {
+  const m = document.getElementById('onboardingModal');
+  if (!m) return;
+  // Reset
+  ['owOrgName','owAdminEmail','owAdminName'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  const functieEl = document.getElementById('owAdminFunctie');
+  if (functieEl) functieEl.value = 'Administrator Instituție';
+  const msg = document.getElementById('owMsg');
+  if (msg) msg.textContent = '';
+  const result = document.getElementById('owResult');
+  if (result) result.style.display = 'none';
+  const btn = document.getElementById('owSubmitBtn');
+  if (btn) { btn.disabled = false; btn.textContent = '🏛 Creează instituția'; }
+  m.style.display = 'flex';
+  setTimeout(() => { const el = document.getElementById('owOrgName'); if(el) el.focus(); }, 100);
+}
+function closeOnboardingWizard() {
+  const m = document.getElementById('onboardingModal');
+  if (m) m.style.display = 'none';
+}
+async function doOnboarding() {
+  const orgName    = (document.getElementById('owOrgName')?.value || '').trim();
+  const adminEmail = (document.getElementById('owAdminEmail')?.value || '').trim();
+  const adminName  = (document.getElementById('owAdminName')?.value || '').trim();
+  const adminFunctie = (document.getElementById('owAdminFunctie')?.value || '').trim();
+  const msg = document.getElementById('owMsg');
+  const btn = document.getElementById('owSubmitBtn');
+
+  msg.style.color = '#ff8080'; msg.textContent = '';
+  if (!orgName)    { msg.textContent = 'Completați numele instituției.'; return; }
+  if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) { msg.textContent = 'Introduceți un email valid.'; return; }
+  if (!adminName)  { msg.textContent = 'Completați numele administratorului.'; return; }
+
+  btn.disabled = true; btn.textContent = '⏳ Se creează...';
+  try {
+    const r = await _apiFetch('/admin/onboarding', {
+      method: 'POST', headers: hdrs(),
+      body: JSON.stringify({ org_name: orgName, admin_email: adminEmail, admin_name: adminName, admin_functie: adminFunctie })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error || 'Eroare server');
+
+    // Succes
+    const result = document.getElementById('owResult');
+    const details = document.getElementById('owResultDetails');
+    if (result) result.style.display = 'block';
+    if (details) details.innerHTML = `
+      <strong>Instituție:</strong> ${esc(d.orgName)} (ID: ${d.orgId})<br>
+      <strong>Administrator:</strong> ${esc(adminName)} — ${esc(adminEmail)}<br>
+      <strong>Parolă temporară:</strong> <code style="background:rgba(255,255,255,.1);padding:2px 6px;border-radius:4px;">${esc(d.tempPassword)}</code><br>
+      <span style="color:#888;font-size:.78rem;">Credențialele au fost trimise și pe email. Administratorul va trebui să schimbe parola la prima logare.</span>
+    `;
+    btn.textContent = '✅ Creat';
+    btn.disabled = false;
+    btn.onclick = () => { closeOnboardingWizard(); loadOrganizations && loadOrganizations(); };
+    msg.textContent = '';
+    // Reincarcam lista de organizatii
+    setTimeout(() => { loadOrganizations && loadOrganizations(); }, 500);
+  } catch(e) {
+    msg.style.color = '#ff8080';
+    msg.textContent = '❌ ' + e.message;
+    btn.disabled = false; btn.textContent = '🏛 Creează instituția';
+  }
+}
+
+// ── Bulk Import CSV Utilizatori ──────────────────────────────────────────────
+function openBulkImportModal() {
+  const m = document.getElementById('bulkImportModal');
+  if (m) { document.getElementById('bulkCsvData').value = '';
+    document.getElementById('bulkImportMsg').textContent = '';
+    document.getElementById('bulkImportResult').style.display = 'none';
+    const btn = document.getElementById('bulkImportBtn');
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Importă utilizatori'; }
+    m.style.display = 'flex'; }
+}
+function closeBulkImportModal() {
+  const m = document.getElementById('bulkImportModal');
+  if (m) m.style.display = 'none';
+}
+async function doBulkImport() {
+  const csvData = (document.getElementById('bulkCsvData')?.value || '').trim();
+  const sendCreds = document.getElementById('bulkSendCreds')?.checked || false;
+  const msg = document.getElementById('bulkImportMsg');
+  const btn = document.getElementById('bulkImportBtn');
+  if (!csvData) { msg.style.color='#ff8080'; msg.textContent='Introduceți datele CSV.'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Se importă...';
+  try {
+    const r = await _apiFetch('/admin/users/bulk-import', {
+      method: 'POST', headers: hdrs(),
+      body: JSON.stringify({ csvData, send_credentials: sendCreds })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error || 'Eroare server');
+    const s = d.summary;
+    msg.style.color = '#2dd4bf';
+    msg.textContent = `✅ ${s.created} creați, ${s.skipped} existenți, ${s.errors} erori din ${s.total} linii.`;
+    const resultDiv = document.getElementById('bulkImportResult');
+    let html = '';
+    if (d.results.created.length) {
+      html += `<div style="color:#2dd4bf;font-weight:700;margin-bottom:6px;">✅ Creați (${d.results.created.length}):</div>`;
+      d.results.created.forEach(u => { html += `<div style="font-family:monospace;font-size:.8rem;">${esc(u.email)} — ${esc(u.nume)}${u.tempPassword ? ` <span style="color:#ffd580;">[pwd: ${esc(u.tempPassword)}]</span>` : ''}</div>`; });
+    }
+    if (d.results.errors.length) {
+      html += `<div style="color:#ff8080;font-weight:700;margin:8px 0 4px;">❌ Erori (${d.results.errors.length}):</div>`;
+      d.results.errors.forEach(e => { html += `<div style="font-size:.79rem;color:#ff8080;">${esc(e.line)} — ${esc(e.reason)}</div>`; });
+    }
+    resultDiv.innerHTML = html; resultDiv.style.display = 'block';
+    btn.textContent = '✅ Import finalizat';
+    loadUsers && loadUsers();
+  } catch(e) {
+    msg.style.color = '#ff8080'; msg.textContent = '❌ ' + e.message;
+    btn.disabled = false; btn.textContent = '📤 Importă utilizatori';
+  }
+}
+
+// ── load2FAStatus ──────────────────────────────────────────────────────────
+async function load2FAStatus() {
+  try {
+    const r = await _apiFetch('/auth/totp/status', { headers: hdrs() });
+    const d = await r.json();
+    if (d.enabled) {
+      // Are 2FA activ — oferim optiunea de dezactivare
+      if (confirm(`2FA este ACTIV (${d.backupCodesRemaining} coduri backup rămase).
+
+Vrei să îl dezactivezi?`)) {
+        open2FADisable();
+      }
+    } else {
+      // Nu are 2FA — deschidem wizard de activare
+      open2FASetup();
+    }
+  } catch(e) { alert('Eroare: ' + e.message); }
+}
+
+// ── 2FA TOTP Management ───────────────────────────────────────────────────────
+let _totpPendingSecret = null;
+
+async function open2FASetup() {
+  const m = document.getElementById('twoFaModal');
+  if (!m) return;
+  ['twoFaStep1','twoFaStep2','twoFaDisable'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
+  document.getElementById('twoFaStep1').style.display = 'block';
+  document.getElementById('twoFaCode1').value = '';
+  document.getElementById('twoFaMsg1').textContent = '';
+  document.getElementById('twoFaQrArea').innerHTML = '<div style="color:var(--muted);font-size:.83rem;">⏳ Se generează...</div>';
+  m.style.display = 'flex';
+  try {
+    const r = await _apiFetch('/auth/totp/setup', { method: 'POST', headers: hdrs() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error);
+    _totpPendingSecret = d.secret;
+    // QR code via Google Charts API (nu trimite date sensibile — doar URL-ul otpauth)
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(d.otpauthUrl)}`;
+    document.getElementById('twoFaQrArea').innerHTML = `<img src="${qrUrl}" style="border-radius:8px;border:3px solid rgba(124,92,255,.3);" width="180" height="180" alt="QR 2FA"/>`;
+    document.getElementById('twoFaSecretText').textContent = d.secret;
+    document.getElementById('twoFaSecretArea').style.display = 'block';
+    setTimeout(() => document.getElementById('twoFaCode1')?.focus(), 200);
+  } catch(e) {
+    document.getElementById('twoFaMsg1').style.color = '#ff8080';
+    document.getElementById('twoFaMsg1').textContent = '❌ ' + e.message;
+  }
+}
+async function confirm2FASetup() {
+  const code = (document.getElementById('twoFaCode1')?.value || '').trim();
+  const msg = document.getElementById('twoFaMsg1');
+  if (!code || code.length < 6) { msg.style.color='#ff8080'; msg.textContent='Introduceți codul de 6 cifre.'; return; }
+  try {
+    const r = await _apiFetch('/auth/totp/confirm', { method: 'POST', headers: hdrs(), body: JSON.stringify({ code }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error);
+    document.getElementById('twoFaStep1').style.display = 'none';
+    document.getElementById('twoFaStep2').style.display = 'block';
+    const codesDiv = document.getElementById('twoFaBackupCodes');
+    if (codesDiv) codesDiv.innerHTML = d.backupCodes.map(c => `<span style="background:rgba(255,255,255,.07);padding:4px 8px;border-radius:4px;">${esc(c)}</span>`).join('');
+  } catch(e) { msg.style.color='#ff8080'; msg.textContent='❌ ' + e.message; }
+}
+async function open2FADisable() {
+  const m = document.getElementById('twoFaModal');
+  if (!m) return;
+  ['twoFaStep1','twoFaStep2','twoFaDisable'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
+  document.getElementById('twoFaDisable').style.display = 'block';
+  document.getElementById('twoFaDisableCode').value = '';
+  document.getElementById('twoFaMsgDisable').textContent = '';
+  m.style.display = 'flex';
+  setTimeout(() => document.getElementById('twoFaDisableCode')?.focus(), 100);
+}
+async function do2FADisable() {
+  const code = (document.getElementById('twoFaDisableCode')?.value || '').trim().toUpperCase();
+  const msg = document.getElementById('twoFaMsgDisable');
+  if (!code) { msg.style.color='#ff8080'; msg.textContent='Introduceți codul.'; return; }
+  try {
+    const r = await _apiFetch('/auth/totp/disable', { method: 'POST', headers: hdrs(), body: JSON.stringify({ code }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error);
+    close2FA(); location.reload();
+  } catch(e) { msg.style.color='#ff8080'; msg.textContent='❌ ' + e.message; }
+}
+function close2FA() { const m = document.getElementById('twoFaModal'); if (m) m.style.display = 'none'; }
+
+// ── Analytics Dashboard ──────────────────────────────────────────────────────
+let _analyticsData = null;
+
+async function loadAnalytics() {
+  const area = document.getElementById('analyticsArea');
+  if (!area) return;
+  area.innerHTML = '<div style="color:var(--muted);padding:40px;text-align:center;font-size:.9rem;">⏳ Se încarcă datele...</div>';
+  try {
+    const r = await _apiFetch('/admin/analytics', { headers: hdrs() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.message || d.error);
+    _analyticsData = d;
+    renderAnalytics(d, area);
+  } catch(e) {
+    area.innerHTML = `<div style="color:#ff8080;padding:24px;text-align:center;">❌ ${esc(e.message)}</div>`;
+  }
+}
+
+function renderAnalytics(d, area) {
+  const f = d.flows, s = d.signers, u = d.users;
+  const pct = (a,b) => b ? Math.round(a/b*100) : 0;
+  // Formatează ore zecimale → "X h și Y min" / "Y min" / "X h"
+  const fmtDuration = h => {
+    if (h == null) return '—';
+    const totalMin = Math.round(h * 60);
+    const ore = Math.floor(totalMin / 60);
+    const min = totalMin % 60;
+    if (ore === 0) return `${min} min`;
+    if (min === 0) return `${ore} h`;
+    return `${ore} h și ${min} min`;
+  };
+  const months = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'];
+  const fmtMonth = m => { const [y,mo] = m.split('-'); return months[parseInt(mo)-1]+' '+y.slice(2); };
+
+  // Chart bara - max per serie
+  const maxCreated = Math.max(...(d.byMonth||[]).map(x=>x.created), 1);
+
+  // Top semnatari pentru tabel
+  const topSignersRows = (d.topSigners||[]).map((t,i) => `
+    <tr style="${i%2===0?'background:rgba(255,255,255,.02)':''}">
+      <td style="padding:7px 10px;color:#eaf0ff;font-size:.83rem;">${esc(t.name||t.email)}</td>
+      <td style="padding:7px 10px;color:var(--muted);font-size:.78rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;">${esc(t.email)}</td>
+      <td style="padding:7px 10px;text-align:center;color:#9db0ff;font-weight:700;">${t.appearances}</td>
+      <td style="padding:7px 10px;text-align:center;color:#2dd4bf;">${t.signed}</td>
+      <td style="padding:7px 10px;text-align:center;color:#ff8080;">${t.refused}</td>
+      <td style="padding:7px 10px;text-align:center;color:#ffd580;font-size:.8rem;">${t.appearances>0?Math.round(t.signed/t.appearances*100)+'%':'—'}</td>
+    </tr>`).join('');
+
+  area.innerHTML = `
+    <!-- KPI carduri -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;">
+      ${[
+        ['📋','Total',f.total||0,'#9db0ff'],
+        ['✅','Finalizate',f.completed||0,'#2dd4bf'],
+        ['⚡','Active',f.active||0,'#ffd580'],
+        ['⛔','Refuzate',f.refused||0,'#ff8080'],
+        ['🚫','Anulate',f.cancelled||0,'#ff9e40'],
+        ['🚨','Urgente',(d.urgentStats?.total_urgent||0),'#ff6b6b'],
+        ['👥','Utilizatori',u.total||0,'#c4b5ff'],
+        ['🆕','Noi (30z)',u.new_last_30||0,'#7cf0e0'],
+      ].map(([ic,lbl,val,col])=>`
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 12px;text-align:center;">
+          <div style="font-size:1.4rem;font-weight:800;color:${col};">${val}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">${ic} ${lbl}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- Metrici performanta -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;">⏱ Timp mediu finalizare</div>
+        <div style="font-size:1.5rem;font-weight:800;color:#ffd580;">${fmtDuration(f.avg_completion_hours)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;">📈 Rată finalizare</div>
+        <div style="font-size:1.5rem;font-weight:800;color:#2dd4bf;">${pct(f.completed,f.total)}%</div>
+        <div style="font-size:.72rem;color:var(--muted);">${f.total||0} total fluxuri</div>
+      </div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;">📅 Ultimele 30 zile</div>
+        <div style="font-size:1.5rem;font-weight:800;color:#9db0ff;">${f.last_30_days||0}</div>
+        <div style="font-size:.72rem;color:var(--muted);">fluxuri create</div>
+      </div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;">🚨 Urgente finalizate</div>
+        <div style="font-size:1.5rem;font-weight:800;color:#ff6b6b;">${d.urgentStats?.total_urgent||0}</div>
+        <div style="font-size:.72rem;color:var(--muted);">${pct(d.urgentStats?.urgent_completed,d.urgentStats?.total_urgent)}% rezolvate</div>
+      </div>
+    </div>
+
+    <!-- Chart activitate 6 luni -->
+    ${(d.byMonth&&d.byMonth.length) ? `
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px;">
+      <div style="font-size:.85rem;font-weight:700;color:#9db0ff;margin-bottom:14px;">📅 Activitate — ultimele 6 luni</div>
+      <div style="display:flex;align-items:flex-end;gap:6px;height:100px;padding:0 4px;">
+        ${d.byMonth.map(m => {
+          const barH = Math.max(6, Math.round(m.created/maxCreated*90));
+          const compH = m.created ? Math.max(2, Math.round(m.completed/m.created*barH)) : 0;
+          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;">
+            <div style="font-size:.68rem;color:#9db0ff;font-weight:700;">${m.created}</div>
+            <div style="width:100%;position:relative;height:${barH}px;background:rgba(157,176,255,.2);border-radius:4px 4px 0 0;overflow:hidden;">
+              <div style="position:absolute;bottom:0;width:100%;height:${compH}px;background:#2dd4bf;border-radius:0;"></div>
+            </div>
+            <div style="font-size:.62rem;color:var(--muted);text-align:center;white-space:nowrap;">${fmtMonth(m.month)}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:16px;margin-top:10px;font-size:.72rem;color:var(--muted);">
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:rgba(157,176,255,.2);border-radius:2px;display:inline-block;"></span>Create</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;background:#2dd4bf;border-radius:2px;display:inline-block;"></span>Finalizate</span>
+      </div>
+    </div>` : ''}
+
+    <!-- Semnatari + Tip flux -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
+        <div style="font-size:.82rem;font-weight:700;color:#9db0ff;margin-bottom:12px;">✍️ Semnatari</div>
+        ${[
+          ['Semnate',s.signed||0,'#2dd4bf'],
+          ['În așteptare',s.pending||0,'#ffd580'],
+          ['Refuzate',s.refused||0,'#ff8080'],
+        ].map(([lbl,val,col])=>{
+          const total = (s.signed||0)+(s.pending||0)+(s.refused||0);
+          const w = total ? Math.round(val/total*100) : 0;
+          return `<div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:3px;">
+              <span style="color:var(--muted);">${lbl}</span>
+              <span style="color:${col};font-weight:700;">${val}</span>
+            </div>
+            <div style="height:6px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${w}%;background:${col};border-radius:3px;transition:width .4s;"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
+        <div style="font-size:.82rem;font-weight:700;color:#9db0ff;margin-bottom:12px;">📄 Tip flux</div>
+        ${(d.byFlowType&&d.byFlowType.length) ? d.byFlowType.map(t => {
+          const total = d.flows.total||1;
+          const w = Math.round(t.cnt/total*100);
+          const col = t.flow_type==='ancore'?'#c4b5ff':'#7cf0e0';
+          return `<div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:3px;">
+              <span style="color:var(--muted);">${esc(t.flow_type||'tabel')}</span>
+              <span style="color:${col};font-weight:700;">${t.cnt} (${w}%)</span>
+            </div>
+            <div style="height:6px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${w}%;background:${col};border-radius:3px;"></div>
+            </div>
+          </div>`;
+        }).join('') : '<div style="color:var(--muted);font-size:.8rem;">Fără date</div>'}
+      </div>
+    </div>
+
+    <!-- Top initiatori -->
+    ${d.topInitiatori&&d.topInitiatori.length ? `
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
+      <div style="font-size:.82rem;font-weight:700;color:#9db0ff;margin-bottom:10px;">🏆 Top inițiatori</div>
+      ${d.topInitiatori.map((t,i)=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;${i>0?'border-top:1px solid rgba(255,255,255,.04)':''}">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:.72rem;color:var(--muted);width:16px;text-align:right;">${i+1}.</span>
+            <span style="font-size:.83rem;color:#eaf0ff;">${esc(t.name||t.email)}</span>
+          </div>
+          <span style="font-size:.78rem;color:#ffd580;font-weight:700;">${t.flows} fluxuri</span>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <!-- Top semnatari -->
+    ${d.topSigners&&d.topSigners.length ? `
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px;">
+      <div style="font-size:.82rem;font-weight:700;color:#9db0ff;margin-bottom:10px;">✍️ Top semnatari solicitați</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:.8rem;">
+          <thead>
+            <tr style="border-bottom:1px solid rgba(255,255,255,.1);">
+              <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Nume</th>
+              <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;display:none;" class="hide-sm">Email</th>
+              <th style="padding:6px 10px;text-align:center;color:var(--muted);font-weight:600;">Apariții</th>
+              <th style="padding:6px 10px;text-align:center;color:#2dd4bf;font-weight:600;">Semnate</th>
+              <th style="padding:6px 10px;text-align:center;color:#ff8080;font-weight:600;">Refuzate</th>
+              <th style="padding:6px 10px;text-align:center;color:#ffd580;font-weight:600;">Rată</th>
+            </tr>
+          </thead>
+          <tbody>${topSignersRows}</tbody>
+        </table>
+      </div>
+    </div>` : ''}
+
+    <!-- Footer + Export -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:.72rem;color:var(--muted);">
+      <span>Generat la: ${new Date(d.generatedAt).toLocaleString('ro-RO')}</span>
+      <div style="display:flex;gap:8px;">
+        <button onclick="loadAnalytics()" style="padding:5px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--muted);cursor:pointer;font-size:.72rem;">🔄 Refresh</button>
+        <button onclick="exportAnalyticsHTML()" style="padding:5px 12px;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:6px;color:#2dd4bf;cursor:pointer;font-size:.72rem;font-weight:700;">📄 Export HTML</button>
+      </div>
+    </div>
+  `;
+}
+
+function exportAnalyticsHTML() {
+  if (!_analyticsData) { alert('Încărcați mai întâi datele.'); return; }
+  const d = _analyticsData;
+  const f = d.flows, u = d.users;
+  const pct = (a,b) => b ? Math.round(a/b*100) : 0;
+  const fmtDuration = h => {
+    if (h == null) return '—';
+    const totalMin = Math.round(h * 60);
+    const ore = Math.floor(totalMin / 60);
+    const min = totalMin % 60;
+    if (ore === 0) return `${min} min`;
+    if (min === 0) return `${ore} h`;
+    return `${ore} h și ${min} min`;
+  };
+  const months = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
+  const fmtMonth = m => { const [y,mo] = m.split('-'); return months[parseInt(mo)-1]+' '+y; };
+  const now = new Date(d.generatedAt).toLocaleString('ro-RO', { dateStyle:'full', timeStyle:'short' });
+  const orgName = (localStorage.getItem('docflow_user') ? JSON.parse(localStorage.getItem('docflow_user')||'{}').institutie : '') || 'DocFlowAI';
+
+  const html = `<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<title>Raport Analytics — ${esc(orgName)}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:system-ui,Arial,sans-serif;background:#f8faff;color:#1a2340;padding:40px;}
+  .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;padding-bottom:20px;border-bottom:2px solid #e0e8ff;}
+  .logo{font-size:1.4rem;font-weight:900;color:#7c5cff;}
+  .subtitle{font-size:.85rem;color:#6b7a99;margin-top:2px;}
+  .date{font-size:.8rem;color:#6b7a99;text-align:right;}
+  .section{margin-bottom:28px;}
+  h2{font-size:1rem;font-weight:700;color:#3a4a6b;margin-bottom:14px;padding-bottom:6px;border-bottom:1px solid #e0e8ff;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;}
+  .kpi{background:#fff;border:1px solid #e0e8ff;border-radius:10px;padding:16px;text-align:center;}
+  .kpi-val{font-size:1.8rem;font-weight:800;}
+  .kpi-lbl{font-size:.72rem;color:#6b7a99;margin-top:4px;}
+  .metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;}
+  .metric{background:#fff;border:1px solid #e0e8ff;border-radius:10px;padding:14px;}
+  .metric-val{font-size:1.4rem;font-weight:800;margin-top:4px;}
+  .metric-lbl{font-size:.75rem;color:#6b7a99;}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e0e8ff;}
+  th{padding:10px 14px;text-align:left;background:#f0f4ff;font-size:.78rem;color:#6b7a99;font-weight:600;}
+  td{padding:9px 14px;font-size:.83rem;border-top:1px solid #f0f4ff;}
+  .bar-wrap{background:#e8eeff;border-radius:4px;height:8px;overflow:hidden;margin-top:4px;}
+  .bar-fill{height:100%;border-radius:4px;}
+  .chart-row{display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 4px;margin-bottom:8px;}
+  .chart-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .chart-bar-wrap{width:100%;position:relative;background:#e8eeff;border-radius:4px 4px 0 0;}
+  .chart-bar-comp{position:absolute;bottom:0;width:100%;background:#2dd4bf;border-radius:0;}
+  .chart-lbl{font-size:.65rem;color:#6b7a99;text-align:center;}
+  .chart-num{font-size:.7rem;color:#3a4a6b;font-weight:700;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.72rem;font-weight:600;}
+  .footer{margin-top:40px;padding-top:16px;border-top:1px solid #e0e8ff;font-size:.75rem;color:#9ba8c0;text-align:center;}
+  @media print{body{padding:20px;}button{display:none!important;}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <div class="logo">📊 DocFlowAI — Raport Analytics</div>
+    <div class="subtitle">${esc(orgName)}</div>
+  </div>
+  <div class="date">
+    <div>Generat la:</div>
+    <strong>${now}</strong>
+    <div style="margin-top:8px;">
+      <button onclick="window.print()" style="padding:6px 14px;background:#7c5cff;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:.8rem;font-weight:700;">🖨️ Printează / PDF</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📋 Sumar fluxuri</h2>
+  <div class="kpi-grid">
+    ${[
+      ['Total',f.total||0,'#7c5cff'],
+      ['Finalizate',f.completed||0,'#2dd4bf'],
+      ['Active',f.active||0,'#f59e0b'],
+      ['Refuzate',f.refused||0,'#ef4444'],
+      ['Anulate',f.cancelled||0,'#f97316'],
+      ['Urgente',d.urgentStats?.total_urgent||0,'#dc2626'],
+      ['Utilizatori',u.total||0,'#8b5cf6'],
+      ['Noi (30 zile)',u.new_last_30||0,'#0d9488'],
+    ].map(([l,v,c])=>`<div class="kpi"><div class="kpi-val" style="color:${c};">${v}</div><div class="kpi-lbl">${l}</div></div>`).join('')}
+  </div>
+</div>
+
+<div class="section">
+  <h2>⚡ Performanță</h2>
+  <div class="metric-grid">
+    <div class="metric"><div class="metric-lbl">Timp mediu finalizare</div><div class="metric-val" style="color:#f59e0b;">${fmtDuration(f.avg_completion_hours)}</div></div>
+    <div class="metric"><div class="metric-lbl">Rată finalizare</div><div class="metric-val" style="color:#2dd4bf;">${pct(f.completed,f.total)}%</div></div>
+    <div class="metric"><div class="metric-lbl">Fluxuri (7 zile)</div><div class="metric-val" style="color:#7c5cff;">${f.last_7_days||0}</div></div>
+    <div class="metric"><div class="metric-lbl">Urgente rezolvate</div><div class="metric-val" style="color:#dc2626;">${pct(d.urgentStats?.urgent_completed,d.urgentStats?.total_urgent)}%</div></div>
+  </div>
+</div>
+
+${d.byMonth&&d.byMonth.length ? `
+<div class="section">
+  <h2>📅 Activitate — ultimele 6 luni</h2>
+  <div class="chart-row">
+    ${(() => {
+      const maxV = Math.max(...d.byMonth.map(x=>x.created),1);
+      return d.byMonth.map(m => {
+        const bh = Math.max(8, Math.round(m.created/maxV*110));
+        const ch = m.created ? Math.max(2,Math.round(m.completed/m.created*bh)) : 0;
+        return `<div class="chart-col">
+          <div class="chart-num">${m.created}</div>
+          <div class="chart-bar-wrap" style="height:${bh}px;">
+            <div class="chart-bar-comp" style="height:${ch}px;"></div>
+          </div>
+          <div class="chart-lbl">${fmtMonth(m.month)}</div>
+        </div>`;
+      }).join('');
+    })()}
+  </div>
+  <div style="display:flex;gap:16px;font-size:.75rem;color:#6b7a99;">
+    <span>■ <span style="color:#b0bcdd;">Create</span></span>
+    <span>■ <span style="color:#2dd4bf;">Finalizate</span></span>
+  </div>
+</div>` : ''}
+
+${d.topInitiatori&&d.topInitiatori.length ? `
+<div class="section">
+  <h2>🏆 Top inițiatori</h2>
+  <table>
+    <thead><tr><th>#</th><th>Nume</th><th>Email</th><th>Fluxuri</th></tr></thead>
+    <tbody>${d.topInitiatori.map((t,i)=>`<tr><td>${i+1}</td><td>${esc(t.name||'—')}</td><td>${esc(t.email)}</td><td><strong>${t.flows}</strong></td></tr>`).join('')}</tbody>
+  </table>
+</div>` : ''}
+
+${d.topSigners&&d.topSigners.length ? `
+<div class="section">
+  <h2>✍️ Top semnatari solicitați</h2>
+  <table>
+    <thead><tr><th>Nume</th><th>Email</th><th>Apariții</th><th>Semnate</th><th>Refuzate</th><th>Rată semnare</th></tr></thead>
+    <tbody>${d.topSigners.map(t=>`<tr>
+      <td>${esc(t.name||'—')}</td>
+      <td>${esc(t.email)}</td>
+      <td style="text-align:center;">${t.appearances}</td>
+      <td style="text-align:center;color:#2dd4bf;font-weight:700;">${t.signed}</td>
+      <td style="text-align:center;color:#ef4444;">${t.refused}</td>
+      <td style="text-align:center;"><strong>${t.appearances?Math.round(t.signed/t.appearances*100)+'%':'—'}</strong></td>
+    </tr>`).join('')}</tbody>
+  </table>
+</div>` : ''}
+
+<div class="footer">
+  DocFlowAI · Raport generat automat la ${now} · Confidențial — uz intern
+</div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStr = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `Analytics_DocFlowAI_${dateStr}.html`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+
 document.addEventListener('keydown', e => {
   if (e.key==='Escape' && document.getElementById('assignOrgModal')?.style.display==='flex') closeAssignOrg();
 });
@@ -3848,6 +4620,7 @@ async function loadOrgSigningProviders(orgId) {
 }
 
 function renderOrgProvidersGrid(configSafe = {}) {
+  window._orgConfigSafe = configSafe; // FIX: stocat global pentru openProviderConfig
   const grid = document.getElementById('orgProvidersGrid');
   // Dacă _allProviders e gol din orice motiv, folosim fallback-ul direct
   if (!_allProviders.length) _allProviders = _PROVIDERS_FALLBACK;
@@ -3862,7 +4635,10 @@ function renderOrgProvidersGrid(configSafe = {}) {
   for (const p of _allProviders) {
     const isEnabled  = _selectedProviders.has(p.id);
     const isLocal    = p.id === 'local-upload';
-    const hasConfig  = configSafe[p.id]?.hasApiKey;
+    // FIX: STS e "configurat" dacă are clientId sau hasPrivateKey
+    const hasConfig  = p.id === 'sts-cloud'
+      ? !!(configSafe[p.id]?.clientId || configSafe[p.id]?.hasPrivateKey)
+      : !!(configSafe[p.id]?.hasApiKey);
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);';
 
@@ -3906,16 +4682,31 @@ function openProviderConfig(providerId, label) {
   if (configGeneric) configGeneric.style.display = isSts ? 'none' : '';
   if (configSts)     configSts.style.display     = isSts ? ''     : 'none';
 
-  // Curăță câmpuri
   if (isSts) {
-    ['stsIdpUrl','stsApiUrl','stsClientId','stsKid','stsRedirectUri','stsPrivateKeyPem'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.value = '';
-    });
+    // FIX: repopulăm câmpurile STS din configSafe (non-sensitive)
+    const saved = (window._orgConfigSafe || {})['sts-cloud'] || {};
+    const el = id => document.getElementById(id);
+
+    if (el('stsClientId'))   el('stsClientId').value   = saved.clientId   || '';
+    if (el('stsKid'))        el('stsKid').value         = saved.kid        || '';
+    if (el('stsIdpUrl'))     el('stsIdpUrl').value      = saved.idpUrl     || '';
+    if (el('stsApiUrl'))     el('stsApiUrl').value      = saved.apiUrl     || '';
+    // redirectUri: din config salvat sau fallback la URL curent
+    if (el('stsRedirectUri')) el('stsRedirectUri').value = saved.redirectUri || (window.location.origin + '/flows/sts-oauth-callback');
+    // Cheia privată nu se returnează din server — afișăm placeholder dacă există
+    if (el('stsPrivateKeyPem')) {
+      el('stsPrivateKeyPem').value = '';
+      el('stsPrivateKeyPem').placeholder = saved.hasPrivateKey
+        ? '● ● ● Cheie privată salvată — introduceți o nouă cheie doar dacă doriți să o schimbați'
+        : '-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----';
+    }
+    // Cheia publică — non-sensitivă, afișată complet
+    if (el('stsPublicKeyPem')) {
+      el('stsPublicKeyPem').value = saved.publicKeyPem || '';
+    }
+
     const keyGenResult = document.getElementById('stsKeyGenResult');
     if (keyGenResult) keyGenResult.style.display = 'none';
-    // Pre-populăm redirect URI cu URL-ul aplicației
-    const rdEl = document.getElementById('stsRedirectUri');
-    if (rdEl) rdEl.value = window.location.origin + '/flows/sts-oauth-callback';
   } else {
     ['orgProviderApiUrl','orgProviderApiKey','orgProviderWebhookSecret'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
@@ -3944,6 +4735,9 @@ async function generateStsKeyPair() {
     // Afișăm cheia publică pentru copiere
     const pubEl = document.getElementById('stsPublicKeyDisplay');
     if (pubEl) pubEl.value = j.publicKeyPem;
+    // Populăm și câmpul de stocare cheie publică
+    const pubStoreEl = document.getElementById('stsPublicKeyPem');
+    if (pubStoreEl) pubStoreEl.value = j.publicKeyPem;
     const result = document.getElementById('stsKeyGenResult');
     if (result) result.style.display = '';
 
@@ -3968,14 +4762,34 @@ function copyPublicKey() {
 
 async function verifyProviderConfig() {
   if (!_activeConfigProvider) return;
-  const apiUrl     = document.getElementById('orgProviderApiUrl')?.value || '';
-  const apiKey     = document.getElementById('orgProviderApiKey')?.value || '';
-  const statusEl   = document.getElementById('orgProviderVerifyStatus');
+  const statusEl = document.getElementById('orgProviderVerifyStatus');
   if (statusEl) { statusEl.textContent = '⏳ Se verifică...'; statusEl.style.color = '#9db0ff'; }
   try {
+    let config = {};
+    if (_activeConfigProvider === 'sts-cloud') {
+      config = {
+        clientId:      document.getElementById('stsClientId')?.value?.trim()     || '',
+        kid:           document.getElementById('stsKid')?.value?.trim()           || '',
+        redirectUri:   document.getElementById('stsRedirectUri')?.value?.trim()   || '',
+        privateKeyPem: document.getElementById('stsPrivateKeyPem')?.value?.trim() || '',
+        idpUrl:        document.getElementById('stsIdpUrl')?.value?.trim()        || '',
+        apiUrl:        document.getElementById('stsApiUrl')?.value?.trim()        || '',
+      };
+      // Daca cheia privata e goala (utilizatorul nu a introdus una noua),
+      // semnalam backend-ului sa foloseasca cheia stocata in DB
+      if (!config.privateKeyPem) {
+        const saved = (window._orgConfigSafe || {})['sts-cloud'] || {};
+        if (saved.hasPrivateKey) config._useStoredPrivateKey = true;
+      }
+    } else {
+      config = {
+        apiUrl: document.getElementById('orgProviderApiUrl')?.value || '',
+        apiKey: document.getElementById('orgProviderApiKey')?.value || '',
+      };
+    }
     const r = await _apiFetch('/admin/signing/verify', {
       method: 'POST', headers: { ...hdrs(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ providerId: _activeConfigProvider, config: { apiUrl, apiKey } }),
+      body: JSON.stringify({ providerId: _activeConfigProvider, config }),
     });
     const j = await r.json();
     if (statusEl) {
@@ -3993,17 +4807,43 @@ async function saveOrgSigningProviders(orgId) {
   // Asigurăm că local-upload e mereu în listă
   _selectedProviders.add('local-upload');
   const enabled = [..._selectedProviders];
-  // Construiește config doar pentru providerul activ editat
+  // Construiește config pentru providerul activ editat
   const config = {};
   if (_activeConfigProvider) {
-    const apiUrl     = document.getElementById('orgProviderApiUrl')?.value || '';
-    const apiKey     = document.getElementById('orgProviderApiKey')?.value || '';
-    const wSecret    = document.getElementById('orgProviderWebhookSecret')?.value || '';
-    if (apiUrl || apiKey) {
-      config[_activeConfigProvider] = {};
-      if (apiUrl)    config[_activeConfigProvider].apiUrl = apiUrl;
-      if (apiKey)    config[_activeConfigProvider].apiKey = apiKey;
-      if (wSecret)   config[_activeConfigProvider].webhookSecret = wSecret;
+    if (_activeConfigProvider === 'sts-cloud') {
+      // FIX: câmpuri specifice STS — salvate complet
+      const clientId     = document.getElementById('stsClientId')?.value?.trim()     || '';
+      const kid          = document.getElementById('stsKid')?.value?.trim()           || '';
+      const redirectUri  = document.getElementById('stsRedirectUri')?.value?.trim()   || '';
+      const privateKeyPem= document.getElementById('stsPrivateKeyPem')?.value?.trim() || '';
+      const idpUrl       = document.getElementById('stsIdpUrl')?.value?.trim()        || '';
+      const apiUrl       = document.getElementById('stsApiUrl')?.value?.trim()        || '';
+      if (clientId || kid || privateKeyPem) {
+        // FIX: provider-ul configurat trebuie activat automat în lista enabled
+        _selectedProviders.add('sts-cloud');
+        config['sts-cloud'] = {};
+        if (clientId)      config['sts-cloud'].clientId      = clientId;
+        if (kid)           config['sts-cloud'].kid           = kid;
+        if (redirectUri)   config['sts-cloud'].redirectUri   = redirectUri;
+        // FIX: trimitem privateKeyPem DOAR dacă userul a introdus o valoare nouă
+        // Dacă e gol, backend-ul păstrează cheia existentă prin merge
+        if (privateKeyPem && !privateKeyPem.startsWith('●')) config['sts-cloud'].privateKeyPem = privateKeyPem;
+        // Cheia publică — stocată ca referință, non-sensitivă
+        const publicKeyPem = document.getElementById('stsPublicKeyPem')?.value?.trim() || '';
+        if (publicKeyPem && !publicKeyPem.startsWith('●')) config['sts-cloud'].publicKeyPem = publicKeyPem;
+        if (idpUrl)        config['sts-cloud'].idpUrl        = idpUrl;
+        if (apiUrl)        config['sts-cloud'].apiUrl        = apiUrl;
+      }
+    } else {
+      const apiUrl  = document.getElementById('orgProviderApiUrl')?.value || '';
+      const apiKey  = document.getElementById('orgProviderApiKey')?.value || '';
+      const wSecret = document.getElementById('orgProviderWebhookSecret')?.value || '';
+      if (apiUrl || apiKey) {
+        config[_activeConfigProvider] = {};
+        if (apiUrl)   config[_activeConfigProvider].apiUrl = apiUrl;
+        if (apiKey)   config[_activeConfigProvider].apiKey = apiKey;
+        if (wSecret)  config[_activeConfigProvider].webhookSecret = wSecret;
+      }
     }
   }
   try {
@@ -4109,6 +4949,8 @@ async function saveOrgWebhook() {
     });
     const j = await r.json();
     if (r.ok) {
+      // Salvăm și config-ul de signing (STS keys etc.) — request separat la /signing
+      await saveOrgSigningProviders(_currentOrgId);
       msg.innerHTML = '<span style="color:#2dd4bf;">✅ Salvat cu succes.</span>';
       setTimeout(() => { closeOrgModal(); loadOrganizations(); }, 800);
     } else {
@@ -4152,7 +4994,7 @@ async function orgTestWebhook() {
 async function downloadTrustReport(flowId, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳'; }
   try {
-    const r = await fetch(`/api/flows/${encodeURIComponent(flowId)}/report`, {
+    const r = await fetch(`/api/flows/${encodeURIComponent(flowId)}/report?force=1`, {
       credentials: 'include',
       headers: { 'Accept': 'application/pdf, application/json' },
     });
@@ -4176,5 +5018,71 @@ async function downloadTrustReport(flowId, btnEl) {
   }
 }
 </script>
+
+<!-- ── Modal Bulk Import CSV Utilizatori ─────────────────────────────────── -->
+<div id="bulkImportModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeBulkImportModal()">
+  <div style="background:#0f1731;border:1px solid rgba(255,176,32,.3);border-radius:18px;padding:32px;max-width:560px;width:calc(100%-32px);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);position:relative;">
+    <button onclick="closeBulkImportModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
+    <div style="font-size:1.05rem;font-weight:800;color:#ffd580;margin-bottom:4px;">📤 Import utilizatori din CSV</div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px;">Format: <code style="background:rgba(255,255,255,.07);padding:2px 6px;border-radius:4px;">email,nume,functie,compartiment</code> — un utilizator per linie. Header opțional.</div>
+
+    <textarea id="bulkCsvData" rows="10" placeholder="ion.popescu@primarie.ro,Popescu Ion,Referent,Secretariat&#10;ana.ionescu@primarie.ro,Ionescu Ana,Consilier juridic,Juridic&#10;..." style="width:100%;box-sizing:border-box;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.83rem;font-family:monospace;resize:vertical;margin-bottom:12px;"></textarea>
+
+    <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;color:var(--muted);margin-bottom:16px;cursor:pointer;">
+      <input type="checkbox" id="bulkSendCreds" style="width:16px;height:16px;accent-color:#ffd580;"/>
+      Trimite credențiale pe email la fiecare utilizator creat
+    </label>
+
+    <div id="bulkImportMsg" style="font-size:.83rem;min-height:18px;margin-bottom:12px;"></div>
+    <div id="bulkImportResult" style="display:none;background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.2);border-radius:10px;padding:14px;font-size:.82rem;margin-bottom:14px;"></div>
+
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeBulkImportModal()" style="flex:1;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+      <button id="bulkImportBtn" onclick="doBulkImport()" style="flex:2;padding:10px;background:linear-gradient(135deg,#ffd580,#ff9e40);border:none;border-radius:8px;color:#1a1200;font-weight:700;cursor:pointer;">📤 Importă utilizatori</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal 2FA TOTP ─────────────────────────────────────────────────────── -->
+<div id="twoFaModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)close2FA()">
+  <div style="background:#0f1731;border:1px solid rgba(124,92,255,.3);border-radius:18px;padding:32px;max-width:460px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);position:relative;">
+    <button onclick="close2FA()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
+    <div id="twoFaStep1" style="display:block;">
+      <div style="font-size:1.05rem;font-weight:800;color:#c4b5ff;margin-bottom:4px;">🔐 Activare 2FA</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px;">Scanează QR-ul cu Google Authenticator, Authy sau orice aplicație TOTP.</div>
+      <div id="twoFaQrArea" style="text-align:center;margin-bottom:16px;min-height:80px;">
+        <div style="color:var(--muted);font-size:.83rem;">⏳ Se generează...</div>
+      </div>
+      <div id="twoFaSecretArea" style="margin-bottom:16px;display:none;">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;">Sau introdu manual secretul:</div>
+        <code id="twoFaSecretText" style="background:rgba(255,255,255,.07);padding:6px 10px;border-radius:6px;font-size:.85rem;color:#ffd580;display:block;word-break:break-all;"></code>
+      </div>
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:8px;">Confirmă cu primul cod generat:</div>
+      <input id="twoFaCode1" type="text" inputmode="numeric" placeholder="123456" maxlength="6"
+        style="width:100%;box-sizing:border-box;padding:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:1.2rem;text-align:center;letter-spacing:.3em;font-family:monospace;margin-bottom:10px;"
+        onkeydown="if(event.key==='Enter')confirm2FASetup()"/>
+      <div id="twoFaMsg1" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
+      <button onclick="confirm2FASetup()" style="width:100%;padding:11px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">✅ Activează 2FA</button>
+    </div>
+    <div id="twoFaStep2" style="display:none;">
+      <div style="font-size:1.05rem;font-weight:800;color:#2dd4bf;margin-bottom:12px;">✅ 2FA activat cu succes!</div>
+      <div style="font-size:.82rem;color:#ffd580;font-weight:700;margin-bottom:8px;">⚠️ Salvează aceste coduri de backup — fiecare e valabil o singură dată:</div>
+      <div id="twoFaBackupCodes" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:14px;font-family:monospace;font-size:.9rem;color:#eaf0ff;display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;"></div>
+      <button onclick="close2FA();location.reload();" style="width:100%;padding:11px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;">Am salvat codurile — Închide</button>
+    </div>
+    <div id="twoFaDisable" style="display:none;">
+      <div style="font-size:1.05rem;font-weight:800;color:#ff8080;margin-bottom:8px;">🔓 Dezactivare 2FA</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px;">Introdu un cod TOTP sau un cod de backup pentru confirmare.</div>
+      <input id="twoFaDisableCode" type="text" placeholder="Cod TOTP sau backup" maxlength="8"
+        style="width:100%;box-sizing:border-box;padding:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:1.1rem;text-align:center;font-family:monospace;margin-bottom:10px;"
+        onkeydown="if(event.key==='Enter')do2FADisable()"/>
+      <div id="twoFaMsgDisable" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:10px;">
+        <button onclick="close2FA()" style="flex:1;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
+        <button onclick="do2FADisable()" style="flex:2;padding:10px;background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);border-radius:8px;color:#ff8080;font-weight:700;cursor:pointer;">Dezactivează 2FA</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>

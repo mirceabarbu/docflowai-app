@@ -3,7 +3,7 @@
  * Semnare cloud: STS OAuth callback/poll, provideri, inițiere sesiune, callback
  */
 import { Router, json as expressJson } from 'express';
-import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../../middleware/auth.mjs';
+import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
@@ -16,13 +16,6 @@ const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message:
 const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
 const _readRateLimit   = createRateLimiter({ windowMs: 60_000, max: 60, message: 'Prea multe cereri. Încearcă în 1 minut.' });
 
-function getOptionalActor(req) {
-  const cookieToken = req.cookies?.[AUTH_COOKIE] || null;
-  if (cookieToken) { try { return jwt.verify(cookieToken, JWT_SECRET); } catch (e) {} }
-  const authHeader = req.headers['authorization'] || '';
-  if (authHeader.startsWith('Bearer ')) { try { return jwt.verify(authHeader.slice(7), JWT_SECRET); } catch (e) {} }
-  return null;
-}
 
 // Deps injectate din flows/index.mjs
 let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired;
@@ -56,8 +49,8 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
 
     // Găsim fluxul prin sessionId stocat în signers[i].signingSessionId
     const { rows } = await pool.query(
-      `SELECT flow_id, data FROM flows
-       WHERE data->'signers' @> $1::jsonb LIMIT 1`,
+      `SELECT id AS flow_id FROM flows
+       WHERE data->'signers' @> $1::jsonb AND deleted_at IS NULL LIMIT 1`,
       [JSON.stringify([{ signingSessionId: sessionId }])]
     );
 
@@ -66,7 +59,12 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
       return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Sesiune expirată sau inexistentă')}`);
     }
 
-    const { flow_id: flowId, data } = rows[0];
+    const flowId = rows[0].flow_id;
+    // Folosim getFlowData — face JOIN cu flows_pdfs și returnează pdfB64 corect
+    const data = await getFlowData(flowId);
+    if (!data) {
+      return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Flux negăsit')}`);
+    }
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const signerIdx = signers.findIndex(s => s.signingSessionId === sessionId);
     if (signerIdx === -1) {
@@ -246,7 +244,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
 
   } catch(e) {
     logger.error({ err: e }, 'STS poll error');
-    res.status(500).json({ error: 'server_error', message: e.message });
+    res.status(500).json({ error: 'server_error' });
   }
 });
 
@@ -354,6 +352,16 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     }
 
     const providerConfig = getOrgProviderConfig(org, providerId);
+    // DEBUG temporar: logăm câmpurile non-sensitive din config pentru diagnosticare
+    logger.info({
+      providerId,
+      orgId: data.orgId,
+      hasClientId: !!providerConfig.clientId,
+      hasKid: !!providerConfig.kid,
+      hasPrivateKey: !!providerConfig.privateKeyPem,
+      hasRedirectUri: !!providerConfig.redirectUri,
+      configKeys: Object.keys(providerConfig),
+    }, 'initiate-cloud-signing: providerConfig diagnostic');
     const appBaseUrl     = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
 
     const session = await provider.initiateSession({
@@ -384,7 +392,7 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     return res.json({ ok: true, signingUrl, sessionId: session.sessionId, provider: provider.id });
   } catch(e) {
     logger.error({ err: e }, 'initiate-cloud-signing error');
-    return res.status(500).json({ error: 'server_error', message: String(e.message) });
+    return res.status(500).json({ error: 'server_error' });
   }
 });
 

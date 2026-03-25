@@ -704,6 +704,67 @@ const MIGRATIONS = [
       -- Adaugă coloana dacă tabela exista deja fără ea
       ALTER TABLE trust_reports ADD COLUMN IF NOT EXISTS report_pdf BYTEA;
     `
+  },
+  {
+    id: '036_flows_indexes',
+    sql: `
+      -- Indexuri JSONB pentru query-uri frecvente — fara impact la scriere, query-uri ~10x mai rapide
+      -- status: filtru cel mai comun in admin si listings
+      CREATE INDEX IF NOT EXISTS idx_flows_status
+        ON flows ((data->>'status'));
+
+      -- orgId: izolare multi-tenant — fiecare query filtreaza per organizatie
+      CREATE INDEX IF NOT EXISTS idx_flows_org_id
+        ON flows ((data->>'orgId'));
+
+      -- completed: filtru fluxuri finalizate vs active
+      CREATE INDEX IF NOT EXISTS idx_flows_completed
+        ON flows ((data->>'completed'));
+
+      -- initEmail + orgId combinat: query-ul my-flows (cel mai frecvent)
+      CREATE INDEX IF NOT EXISTS idx_flows_init_org
+        ON flows ((data->>'initEmail'), (data->>'orgId'));
+    `
+  },
+  {
+    id: '037_flows_soft_delete',
+    sql: `
+      -- Soft delete: flows nu se mai sterg fizic — se marcheaza ca sterse
+      -- Permite audit complet si recuperare in caz de accident
+      ALTER TABLE flows ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
+      ALTER TABLE flows ADD COLUMN IF NOT EXISTS deleted_by TEXT DEFAULT NULL;
+      CREATE INDEX IF NOT EXISTS idx_flows_deleted_at ON flows(deleted_at) WHERE deleted_at IS NULL;
+    `
+  },
+  {
+    id: '038_users_totp_2fa',
+    sql: `
+      -- 2FA TOTP pentru conturi privilegiate (admin, org_admin)
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret      TEXT    DEFAULT NULL;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled     BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT[]  DEFAULT NULL;
+    `
+  },
+  {
+    id: '039_flows_signers_gin_index',
+    sql: `
+      -- PERF-04: GIN index pe data->'signers' pentru query-ul STS OAuth callback
+      -- SELECT ... FROM flows WHERE data->'signers' @> $1::jsonb LIMIT 1
+      -- Fără index: sequential scan pe toate fluxurile active. Cu GIN: lookup direct.
+      CREATE INDEX IF NOT EXISTS idx_flows_signers_gin
+        ON flows USING GIN ((data->'signers'));
+    `
+  },
+  {
+    id: '040_outreach_click_tracking',
+    sql: `
+      -- Tracking click-uri separat de deschideri (pixel) — click-urile sunt metrica reala
+      -- clicked_at: momentul primului click pe orice link din email
+      -- click_count: numarul total de click-uri (acelasi utilizator poate da click de mai multe ori)
+      ALTER TABLE outreach_recipients ADD COLUMN IF NOT EXISTS clicked_at   TIMESTAMPTZ DEFAULT NULL;
+      ALTER TABLE outreach_recipients ADD COLUMN IF NOT EXISTS click_count  INTEGER     NOT NULL DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_orecip_clicked ON outreach_recipients(clicked_at) WHERE clicked_at IS NOT NULL;
+    `
   }
 ];
 
@@ -900,7 +961,7 @@ export async function getFlowData(id) {
     LEFT JOIN flows_pdfs fp_pdf  ON fp_pdf.flow_id  = f.id AND fp_pdf.key  = 'pdfB64'
     LEFT JOIN flows_pdfs fp_spdf ON fp_spdf.flow_id = f.id AND fp_spdf.key = 'signedPdfB64'
     LEFT JOIN flows_pdfs fp_opdf ON fp_opdf.flow_id = f.id AND fp_opdf.key = 'originalPdfB64'
-    WHERE f.id = $1
+    WHERE f.id = $1 AND f.deleted_at IS NULL
   `, [id]);
   if (!r.rows[0]) return null;
   const data = r.rows[0].data;

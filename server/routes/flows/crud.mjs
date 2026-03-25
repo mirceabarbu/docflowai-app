@@ -3,7 +3,7 @@
  * CRUD fluxuri: creare, citire, actualizare, ștergere, my-flows
  */
 import { Router, json as expressJson } from 'express';
-import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../../middleware/auth.mjs';
+import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
@@ -16,13 +16,6 @@ const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message:
 const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
 const _readRateLimit   = createRateLimiter({ windowMs: 60_000, max: 60, message: 'Prea multe cereri. Încearcă în 1 minut.' });
 
-function getOptionalActor(req) {
-  const cookieToken = req.cookies?.[AUTH_COOKIE] || null;
-  if (cookieToken) { try { return jwt.verify(cookieToken, JWT_SECRET); } catch (e) {} }
-  const authHeader = req.headers['authorization'] || '';
-  if (authHeader.startsWith('Bearer ')) { try { return jwt.verify(authHeader.slice(7), JWT_SECRET); } catch (e) {} }
-  return null;
-}
 
 // Deps injectate din flows/index.mjs
 let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired;
@@ -260,6 +253,18 @@ const getFlowHandler = async (req, res) => {
       return res.status(401).json({ error: 'unauthorized' });
     }
 
+    // FEAT-06: ETag bazat pe flowId + updatedAt — permite cache client-side
+    // Fluxurile completed sunt imuabile — ETag-ul nu se mai schimbă niciodată
+    // Fluxurile active se schimbă la fiecare semnare — ETag-ul se actualizează
+    const etag = `"${data.flowId}-${data.updatedAt || data.createdAt}"`;
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+    res.setHeader('ETag', etag);
+    // Cache scurt (30s) pentru fluxuri active, lung (1h) pentru cele finalizate
+    const isCompleted = data.completed || data.status === 'cancelled' || data.status === 'refused';
+    res.setHeader('Cache-Control', isCompleted ? 'private, max-age=3600' : 'private, max-age=30');
+
     // FIX: getUserMapForOrg — nu leak-uieste useri intre organizatii
     const orgId = actor?.orgId || data?.orgId || null;
     const uMap = await getUserMapForOrg(orgId);
@@ -320,10 +325,16 @@ router.delete('/flows/:flowId', async (req, res) => {
       const hasAnySignature = (data.signers || []).some(s => s.status === 'signed' || s.status === 'refused');
       if (hasAnySignature) return res.status(409).json({ error: 'flow_in_progress', message: 'Fluxul nu poate fi șters deoarece cel puțin un semnatar a acționat deja. Contactează un administrator.' });
     }
-    await pool.query('DELETE FROM flows WHERE id=$1', [flowId]);
+    // Soft delete — nu stergem fizic, marcam deleted_at + deleted_by
+    // Permite audit complet si recuperare de urgenta de catre super-admin
+    const now = new Date().toISOString();
+    await pool.query(
+      'UPDATE flows SET deleted_at=$1, deleted_by=$2 WHERE id=$3',
+      [now, actor.email, flowId]
+    );
     await pool.query('DELETE FROM notifications WHERE flow_id=$1', [flowId]).catch(() => {});
-    logger.info(`🗑 Flow ${flowId} șters de ${actor.email}`);
-    return res.json({ ok: true, flowId, deletedBy: actor.email });
+    logger.info(`🗑 Flow ${flowId} marcat ca sters (soft) de ${actor.email}`);
+    return res.json({ ok: true, flowId, deletedBy: actor.email, deletedAt: now });
   } catch(e) { logger.error({ err: e }, 'DELETE /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -347,11 +358,11 @@ router.get('/my-flows', async (req, res) => {
     // FIX: filtru org_id strict — fara "OR $2 = 0"
     let baseWhere, params;
     if (orgId) {
-      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND org_id = $2`;
+      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND org_id = $2 AND deleted_at IS NULL`;
       params = [email, orgId];
     } else {
       // User fara org (legacy) — vede doar fluxurile proprii fara filtrare org
-      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1))`;
+      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND deleted_at IS NULL`;
       params = [email];
     }
 

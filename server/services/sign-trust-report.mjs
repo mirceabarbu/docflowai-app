@@ -22,6 +22,8 @@
 import crypto from 'crypto';
 import { logger } from '../middleware/logger.mjs';
 import { verifyPdfSignatures, extractPdfSignatures } from './certificate-verify.mjs';
+// ARCH-04: import static în loc de dynamic await import() la fiecare apel _generateReportPdf
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const APP_BASE_URL = () => process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
 
@@ -167,7 +169,7 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
     }
 
     if (allQES) {
-      parts.push(`Cei ${sigCount} semnatar${sigCount > 1 ? 'i' : ''} au utilizat certificate electronice calificate (QES), conforme cu eIDAS si Legea 455/2001, emise de furnizori QTSP acreditati.`);
+      parts.push(`Cei ${sigCount} semnatar${sigCount > 1 ? 'i' : ''} au utilizat certificate electronice calificate (QES), conforme cu Regulamentul eIDAS (UE) 910/2014, Legea 455/2001 si Legea 214/2024, emise de furnizori QTSP acreditati.`);
     } else if (L6_ok === false) {
       parts.push(`Certificatele analizate NU au putut fi confirmate ca QES — QTSP-ul emitent nu a fost recunoscut in lista furnizorilor acreditati sau lipseste extensia QcStatements. Semnatura poate fi valabila tehnic, dar nu este calificata in sensul eIDAS.`);
     } else {
@@ -243,6 +245,11 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
     certificates: (cryptoResult?.signatures || []).map(sig => ({
       signerIndex:        sig.index,
       docHash:            sig.docHash,
+      // ── Compliance fields ─────────────────────────────────────────────
+      validation_time:       sig.validation_time || null,
+      validation_source:     sig.validation_source || 'local',
+      ltv_ready:             sig.ltv_ready || false,
+      certificate_qc_status: sig.certificate_qc_status || 'unknown',
       signingTime:        sig.signingTime,
       isValid:            sig.isValid,
       isQES:              sig.isQES,
@@ -269,7 +276,7 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
 
 // ── Generare PDF cu pdf-lib ────────────────────────────────────────────────
 async function _generateReportPdf(report) {
-  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  // pdf-lib importat static la nivelul modulului (ARCH-04)
 
   const pdf  = await PDFDocument.create();
   const fontB = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -366,6 +373,7 @@ async function _generateReportPdf(report) {
   drawKV('Nume document', report.document.name);
   drawKV('Flow ID', report.flowId);
   drawKV('Status', report.document.status);
+  drawKV('Cadru legal', 'eIDAS Reg. 910/2014 · Legea 455/2001 · Legea 214/2024 · OUG 38/2020');
   drawKV('Tip flux', report.document.flowType === 'ancore' ? 'Ancore existente (PDF extern)' : 'Tabel generat');
   drawKV('Institutie', report.document.institutie);
   drawKV('Compartiment', report.document.compartiment);
@@ -445,6 +453,16 @@ async function _generateReportPdf(report) {
              c.revocationStatus === 'valid' ? COL.ok : c.revocationStatus === 'revoked' ? COL.fail : COL.warn);
       drawKV('Algoritm semnatura', c.signatureAlgorithm);
       drawKV('QcStatements', c.hasQcStatements ? 'Prezent (QES confirmed)' : 'Absent');
+      // ── Compliance fields ──────────────────────────────────────────────
+      drawKV('Status QC', cert.certificate_qc_status === 'qualified' ? 'CALIFICAT (QES)' :
+             cert.certificate_qc_status === 'non-qualified' ? 'NECALIFICAT' : 'Necunoscut',
+             cert.certificate_qc_status === 'qualified' ? COL.ok :
+             cert.certificate_qc_status === 'non-qualified' ? COL.warn : COL.muted);
+      drawKV('Sursa validare', cert.validation_source === 'ocsp' ? 'OCSP (live)' :
+             cert.validation_source === 'crl' ? 'CRL' : 'Local (offline)');
+      drawKV('LTV Ready', cert.ltv_ready ? 'DA — timestamp + OCSP prezente' : 'NU',
+             cert.ltv_ready ? COL.ok : COL.warn);
+      if (cert.validation_time) drawKV('Data verificare', fmtDate(cert.validation_time));
       if (c.ocspUrl) drawKV('OCSP URL', c.ocspUrl);
       // Timestamp CMS și hash document
       if (cert.signingTime) drawKV('Timestamp CMS', fmtDate(cert.signingTime));
@@ -632,6 +650,6 @@ async function _generateReportPdf(report) {
 function _drawFooter(page, pageNum, fontR, COL, PAGE_W, MARGIN) {
   const y = 24;
   page.drawLine({ start: { x: MARGIN, y: y + 10 }, end: { x: PAGE_W - MARGIN, y: y + 10 }, thickness: 0.4, color: COL.border });
-  page.drawText(`DocFlowAI Signing Trust Report · Pagina ${pageNum} · Generat automat · Valabil conform eIDAS si Legii 455/2001`,
+  page.drawText(`DocFlowAI Signing Trust Report · Pagina ${pageNum} · Generat automat · eIDAS 910/2014 · Legea 455/2001 · Legea 214/2024`,
     { x: MARGIN, y, size: 7, font: fontR, color: COL.muted });
 }

@@ -229,7 +229,7 @@ router.post('/flows/detect-acroform-fields', _largePdf, async (req, res) => {
     });
   } catch(e) {
     logger.error({ err: e }, 'detect-acroform-fields error');
-    return res.status(500).json({ error: 'server_error', message: String(e.message) });
+    return res.status(500).json({ error: 'server_error' });
   }
 });
 

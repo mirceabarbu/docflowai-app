@@ -1,9 +1,14 @@
 /**
  * DocFlowAI — Script reparare rol admin
- * Rulare: node scripts/fix-admin.mjs
- * 
- * Setează role='admin' pentru admin@docflowai.ro și afișează toți adminii.
- * Necesită DATABASE_URL în variabilele de mediu (Railway îl setează automat).
+ *
+ * Utilizare:
+ *   node scripts/fix-admin.mjs                        # fix admin@docflowai.ro (default)
+ *   node scripts/fix-admin.mjs user@institutie.ro     # fix email specificat
+ *   node scripts/fix-admin.mjs --list                 # afișează toți adminii fără modificări
+ *
+ * Pe Railway:
+ *   railway run node scripts/fix-admin.mjs
+ *   railway run node scripts/fix-admin.mjs user@institutie.ro
  */
 
 import pg from 'pg';
@@ -15,60 +20,98 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
+const args = process.argv.slice(2);
+const listOnly = args.includes('--list');
+const targetEmail = args.find(a => a.includes('@')) || 'admin@docflowai.ro';
+
 const pool = new pg.Pool({
   connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
+let exitCode = 0;
+
 try {
   console.log('🔗 Conectare la baza de date...');
-  
-  // 1. Arată starea curentă
-  const { rows: before } = await pool.query(
-    "SELECT id, email, nume, role FROM users WHERE email LIKE '%admin%' OR role='admin' ORDER BY id"
-  );
-  console.log('\n📋 Utilizatori admin/admin@ înainte de fix:');
-  if (before.length === 0) {
-    console.log('   (niciun utilizator găsit cu email admin@ sau role=admin)');
-  } else {
-    before.forEach(u => console.log(`   id=${u.id} | ${u.email} | ${u.nume} | role=${u.role}`));
-  }
+  await pool.query('SELECT 1'); // test conexiune
+  console.log('✅ Conectat.\n');
 
-  // 2. Setează role='admin' pentru admin@docflowai.ro
-  const { rows: fixed } = await pool.query(
-    "UPDATE users SET role='admin' WHERE lower(email)='admin@docflowai.ro' RETURNING id, email, role"
-  );
-  
-  if (fixed.length === 0) {
-    console.log('\n⚠️  admin@docflowai.ro nu există în baza de date!');
-    
-    // Arată toți userii existenți
-    const { rows: all } = await pool.query('SELECT id, email, role FROM users ORDER BY id LIMIT 20');
-    console.log('\n📋 Toți utilizatorii din DB:');
-    all.forEach(u => console.log(`   id=${u.id} | ${u.email} | role=${u.role}`));
-    
-    if (all.length === 0) {
-      console.log('   (tabela users este goală — setează ADMIN_INIT_PASSWORD în Railway și repornește serverul)');
+  // ── Mod --list ──────────────────────────────────────────────────────────────
+  if (listOnly) {
+    const { rows } = await pool.query(
+      "SELECT id, email, nume, role, org_id FROM users WHERE role IN ('admin','org_admin') ORDER BY role, id"
+    );
+    console.log(`📋 Administratori în DB (${rows.length}):`);
+    if (rows.length === 0) {
+      console.log('   ❌ Niciun administrator găsit!');
+      exitCode = 1;
+    } else {
+      rows.forEach(u =>
+        console.log(`   [${u.role.padEnd(9)}] id=${String(u.id).padEnd(4)} | ${u.email} | ${u.nume || '—'}`)
+      );
     }
-  } else {
-    console.log(`\n✅ Fix aplicat: ${fixed[0].email} → role='${fixed[0].role}'`);
+    process.exit(exitCode);
   }
 
-  // 3. Arată starea finală a tuturor adminilor
-  const { rows: after } = await pool.query(
-    "SELECT id, email, nume, role FROM users WHERE role='admin' ORDER BY id"
+  // ── Fix rol ─────────────────────────────────────────────────────────────────
+  console.log(`🎯 Target: ${targetEmail}`);
+
+  // 1. Verificam ca userul exista
+  const { rows: found } = await pool.query(
+    'SELECT id, email, nume, role FROM users WHERE lower(email) = lower($1)',
+    [targetEmail]
   );
-  console.log('\n📋 Administratori după fix:');
-  if (after.length === 0) {
-    console.log('   ❌ Niciun administrator în baza de date!');
-  } else {
-    after.forEach(u => console.log(`   ✅ id=${u.id} | ${u.email} | ${u.nume} | role=${u.role}`));
+
+  if (found.length === 0) {
+    console.error(`❌ Utilizatorul "${targetEmail}" nu există în baza de date!`);
+    console.log('\n📋 Utilizatori existenți (primii 20):');
+    const { rows: all } = await pool.query(
+      'SELECT id, email, role FROM users ORDER BY id LIMIT 20'
+    );
+    if (all.length === 0) {
+      console.log('   (tabela users este goală — setează ADMIN_INIT_PASSWORD și repornește serverul)');
+    } else {
+      all.forEach(u => console.log(`   id=${u.id} | ${u.email} | role=${u.role}`));
+    }
+    exitCode = 1;
+    process.exit(exitCode);
   }
 
-  console.log('\n🏁 Script terminat. Acum te poți loga cu admin@docflowai.ro.');
-  
+  const before = found[0];
+  console.log(`📋 Stare curentă: id=${before.id} | ${before.email} | role=${before.role}`);
+
+  if (before.role === 'admin') {
+    console.log('✅ Utilizatorul are deja role=admin. Nicio modificare necesară.');
+    process.exit(0);
+  }
+
+  // 2. Aplicam fix
+  const { rows: fixed } = await pool.query(
+    "UPDATE users SET role='admin' WHERE lower(email) = lower($1) RETURNING id, email, role, nume",
+    [targetEmail]
+  );
+
+  if (fixed.length === 0) {
+    console.error('❌ UPDATE nu a afectat niciun rând — situație neașteptată.');
+    exitCode = 1;
+  } else {
+    console.log(`✅ Fix aplicat: ${fixed[0].email} → role='${fixed[0].role}'`);
+    console.log('\n🏁 Acum te poți loga cu acest cont.');
+  }
+
+  // 3. Stare finala administratori
+  const { rows: admins } = await pool.query(
+    "SELECT id, email, nume, role FROM users WHERE role IN ('admin','org_admin') ORDER BY role, id"
+  );
+  console.log(`\n📋 Administratori după fix (${admins.length}):`);
+  admins.forEach(u =>
+    console.log(`   [${u.role.padEnd(9)}] id=${u.id} | ${u.email} | ${u.nume || '—'}`)
+  );
+
 } catch(e) {
   console.error('❌ Eroare:', e.message);
+  exitCode = 1;
 } finally {
-  await pool.end();
+  await pool.end().catch(() => {});
+  process.exit(exitCode);
 }

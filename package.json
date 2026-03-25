@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.3.9",
+  "version": "3.7.2",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -9,18 +9,19 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check": "node --check server/db/index.mjs && node --check server/drive.mjs && node --check server/emailTemplates.mjs && node --check server/gws.mjs && node --check server/index.mjs && node --check server/mailer.mjs && node --check server/middleware/auth.mjs && node --check server/middleware/logger.mjs && node --check server/middleware/metrics.mjs && node --check server/middleware/rateLimiter.mjs && node --check server/push.mjs && node --check server/routes/admin.mjs && node --check server/routes/admin/outreach.mjs && node --check server/routes/auth.mjs && node --check server/routes/flows.mjs && node --check server/routes/flows/acroform.mjs && node --check server/routes/flows/attachments.mjs && node --check server/routes/flows/cloud-signing.mjs && node --check server/routes/flows/crud.mjs && node --check server/routes/flows/email.mjs && node --check server/routes/flows/index.mjs && node --check server/routes/flows/lifecycle.mjs && node --check server/routes/flows/signing.mjs && node --check server/routes/notifications.mjs && node --check server/routes/report.mjs && node --check server/routes/templates.mjs && node --check server/routes/verify.mjs && node --check server/services/certificate-verify.mjs && node --check server/services/sign-trust-report.mjs && node --check server/signing/SigningProvider.mjs && node --check server/signing/index.mjs && node --check server/signing/providers/AlfaTrustProvider.mjs && node --check server/signing/providers/CertSignProvider.mjs && node --check server/signing/providers/CloudProviderBase.mjs && node --check server/signing/providers/LocalUploadProvider.mjs && node --check server/signing/providers/NamirialProvider.mjs && node --check server/signing/providers/STSCloudProvider.mjs && node --check server/signing/providers/TransSpedProvider.mjs && node --check server/swagger.mjs && node --check server/tests/integration/flows.test.mjs && node --check server/tests/integration/login.test.mjs && node --check server/tests/setup.mjs && node --check server/tests/unit/auth-crypto.test.mjs && node --check server/tests/unit/metrics.test.mjs && node --check server/verify.mjs && node --check server/webhook.mjs && node --check server/whatsapp.mjs",
+    "check": "node --check server/db/index.mjs && node --check server/drive.mjs && node --check server/emailTemplates.mjs && node --check server/gws.mjs && node --check server/index.mjs && node --check server/mailer.mjs && node --check server/middleware/auth.mjs && node --check server/middleware/logger.mjs && node --check server/middleware/metrics.mjs && node --check server/middleware/rateLimiter.mjs && node --check server/push.mjs && node --check server/routes/admin.mjs && node --check server/routes/admin/outreach.mjs && node --check server/routes/auth.mjs && node --check server/routes/flows/acroform.mjs && node --check server/routes/flows/attachments.mjs && node --check server/routes/flows/cloud-signing.mjs && node --check server/routes/flows/crud.mjs && node --check server/routes/flows/email.mjs && node --check server/routes/flows/index.mjs && node --check server/routes/flows/lifecycle.mjs && node --check server/routes/flows/signing.mjs && node --check server/routes/notifications.mjs && node --check server/routes/report.mjs && node --check server/routes/templates.mjs && node --check server/routes/verify.mjs && node --check server/services/certificate-verify.mjs && node --check server/services/sign-trust-report.mjs && node --check server/signing/SigningProvider.mjs && node --check server/signing/index.mjs && node --check server/signing/providers/AlfaTrustProvider.mjs && node --check server/signing/providers/CertSignProvider.mjs && node --check server/signing/providers/CloudProviderBase.mjs && node --check server/signing/providers/LocalUploadProvider.mjs && node --check server/signing/providers/NamirialProvider.mjs && node --check server/signing/providers/STSCloudProvider.mjs && node --check server/signing/providers/TransSpedProvider.mjs && node --check server/swagger.mjs && node --check server/tests/integration/flows.test.mjs && node --check server/tests/integration/login.test.mjs && node --check server/tests/setup.mjs && node --check server/tests/unit/auth-crypto.test.mjs && node --check server/tests/unit/metrics.test.mjs && node --check server/verify.mjs && node --check server/webhook.mjs && node --check server/whatsapp.mjs",
     "prebuild": "npm run check"
   },
   "dependencies": {
     "asn1js": "^3.0.7",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "express": "^4.19.2",
+    "express": "^4.22.1",
     "googleapis": "^144.0.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "node-forge": "^1.3.3",
+    "otplib": "^13.4.0",
     "pdf-lib": "^1.17.1",
     "pg": "^8.12.0",
     "pkijs": "^3.4.0",
@@ -30,8 +31,8 @@
     "ws": "^8.17.0"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^2.1.0",
+    "@vitest/coverage-v8": "^4.1.0",
     "supertest": "^7.0.0",
-    "vitest": "^2.1.0"
+    "vitest": "^4.1.0"
   }
 }

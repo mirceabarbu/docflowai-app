@@ -1,5 +1,215 @@
 /**
- * DocFlowAI v3.3.9 — Main entry point (orchestrator)
+ * DocFlowAI v3.7.2 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.7.2 (build b201, 25.03.2026):
+ *  FIX timeline email extern (flow.html):
+ *    - Ordine cronologica corecta: Flux finalizat inainte de email daca asa s-a intamplat
+ *    - Email complet afisat (nu trunchiat cu @...)
+ *    - Nume expeditor in loc de email (din nameMap: initName + signers names)
+ *
+ * CHANGES v3.7.1 (build b200, 25.03.2026):
+ *  FEAT: EMAIL_SENT + EMAIL_OPENED vizibile in timeline flux (flow.html)
+ *    Afiseaza: catre cine, subiect, data trimitere
+ *    Sub-pas: 'Deschis de destinatar' cu timestamp (cand pixelul a functionat)
+ *    Sortare cronologica a pasilor intermediari dupa timestamp
+ *
+ * CHANGES v3.7.0 (build b199, 25.03.2026):
+ *  FEAT: Badge email extern pe cardul fluxului din Fluxuri mele
+ *    Backend: GET /flows/:flowId/email-stats -> { sent, opened, lastSentAt }
+ *    Frontend: fetch asincron post-render, badge ✉️ apare doar daca s-a trimis
+ *    Badge arata: nr emailuri trimise + nr deschideri (estimativ pixel tracking)
+ *    Tooltip cu data ultimului email trimis
+ *
+ * CHANGES v3.6.8 (build b198, 25.03.2026):
+ *  FIX BUG-STS-NET: fetch failed la token exchange STS
+ *    Cauza suspectata: Railway outbound IPv6, idp.stsisp.ro nu suporta IPv6
+ *    Fix: _fetchIPv4() rezolva DNS hostname explicit la IPv4 (family:4)
+ *    si inlocuieste hostname cu IP in URL + seteaza Host header
+ *    Aplicat pe toate request-urile STS: verify, token, sign, poll
+ *
+ * CHANGES v3.6.7 (build b197, 25.03.2026):
+ *  DEBUG: logging detaliat pentru fetch failed la token exchange STS
+ *    Logam fetchErr.cause.code (ECONNREFUSED/ENOTFOUND/etc) si idpUrl
+ *    pentru a determina cauza exacta a erorii de retea pe Railway
+ *
+ * CHANGES v3.6.6 (build b196, 24.03.2026):
+ *  FIX BUG-STS-07: 'PDF lipsa' in callback STS OAuth
+ *    Cauza: callback facea SELECT direct din flows (fara JOIN flows_pdfs)
+ *    pdfB64 e stocat in flows_pdfs (R-01 arhitectura) nu in JSONB data
+ *    Fix: inlocuit SELECT raw cu getFlowData() care face JOIN corect
+ *
+ * CHANGES v3.6.5 (build b195, 24.03.2026):
+ *  FIX BUG-ROUTE-01: GET /flows/sts-oauth-callback returna not_found
+ *    Cauza: crudRouter montat primul, Express prindea 'sts-oauth-callback'
+ *    ca :flowId parametru -> getFlowData('sts-oauth-callback') -> not_found
+ *    Fix: cloudRouter mutat primul in flows/index.mjs
+ *    Callback STS OAuth functioneaza acum corect
+ *
+ * CHANGES v3.6.4 (build b194, 24.03.2026):
+ *  FIX BUG-ROOT-01: signing_providers_config mereu gol in DB
+ *    Cauza radacina: saveOrgWebhook() nu apela saveOrgSigningProviders()
+ *    dupa succes — config STS (clientId, kid, privateKeyPem) nu era
+ *    niciodata trimis la server, indiferent cate ori apasai Salveaza
+ *    Fix: un singur apel la saveOrgSigningProviders(_currentOrgId)
+ *    adaugat in handler-ul de succes al saveOrgWebhook
+ *
+ * CHANGES v3.6.3 (build b193, 24.03.2026):
+ *  FIX: logger.mjs citeste versiunea din package.json direct
+ *    npm_package_version nu e setat de Railway → fallback 3.3.4 era mereu afisat
+ *    Acum Railway logs arata versiunea corecta dupa fiecare deploy
+ *
+ * CHANGES v3.6.2 (build b192, 24.03.2026):
+ *  FIX CSRF definitiv:
+ *    - csrf_token cookie: expiry 2h → 24h (nu mai expira in timpul zilei)
+ *    - GET /auth/csrf-token: endpoint nou — emite token proaspat fara side effects
+ *    - window._csrfToken: variabila globala init la incarcarea paginii
+ *    - Toate paginile (admin, signer, initiator, widget) folosesc getCsrf()
+ *    - Retry csrf_invalid: /auth/csrf-token (rapid) → /auth/refresh (fallback)
+ *
+ * CHANGES v3.6.1 (build b191, 24.03.2026):
+ *  DEBUG: logging providerConfig in initiate-cloud-signing
+ *    client_id=undefined -> configKeys va arata ce e efectiv in DB
+ *
+ * CHANGES v3.6.0 (build b190, 24.03.2026):
+ *  FIX BUG-STS-06: dupa selectare STS si Continua, aparea tot upload local
+ *    Cauza: applyProviderToSignBox verifica p.mode === 'redirect'
+ *    dar STSCloudProvider.mode returneaza 'hash-redirect'
+ *    Fix: conditie extinsa la mode === 'redirect' || mode === 'hash-redirect'
+ *  FIX BUG-CSRF-04: auto-retry CSRF adaugat in semdoc-signer.html si semdoc-initiator.html
+ *    Paginile de semnare si initiere flux aveau shim-ul vechi fara auto-retry
+ *    Acum toate paginile (admin, signer, initiator) au acelasi mecanism
+ *
+ * CHANGES v3.5.9 (build b189, 24.03.2026):
+ *  FIX BUG-STS-05: STS Cloud aparea in UI dar nu era activat in signing_providers_enabled
+ *    Cauza: saveOrgSigningProviders nu adauga sts-cloud in _selectedProviders cand
+ *    se salveaza config-ul — endpoint signing-providers returna doar local-upload
+ *    Fix: sts-cloud adaugat automat in _selectedProviders la salvarea config-ului
+ *
+ * CHANGES v3.5.8 (build b188, 24.03.2026):
+ *  FIX BUG-CSRF-03: auto-retry csrf_invalid esua si la al 2-lea request
+ *    Cauza: document.cookie nu era actualizat la timp dupa /auth/refresh
+ *    (SameSite=Strict + timing async = cookie nou invizibil la citire imediata)
+ *    Fix server: /auth/refresh returneaza csrfToken si in body JSON
+ *    Fix client: notif-widget.js stocheaza _lastCsrfToken din body refresh
+ *    Fix client: admin.html shim citeste csrfToken din response refresh
+ *    Ambele preferă tokenul din body fata de document.cookie
+ *
+ * CHANGES v3.5.7 (build b187, 24.03.2026):
+ *  FIX: STS verify timeout 8s → 20s (Railway staging latenta mai mare)
+ *
+ * CHANGES v3.5.6 (build b186, 23.03.2026):
+ *  FIX BUG-STS-04: Butonul Verifica returna clientId lipsa desi era completat
+ *    verifyProviderConfig() citea orgProviderApiUrl/apiKey (campuri generice)
+ *    in loc de campurile STS-specifice (stsClientId, stsKid, stsPrivateKeyPem)
+ *    Backend: verify endpoint incarca cheia privata din DB cand campul e gol
+ *    (util dupa Salvare — nu trebuie reintrodusa cheia la fiecare Verificare)
+ *
+ * CHANGES v3.5.5 (build b185, 23.03.2026):
+ *  FIX BUG-STS-03: Cheie publica RSA adaugata in configuratia STS
+ *    UI: camp nou stsPublicKeyPem in formularul STS (teal, non-sensitiv)
+ *    Backend: publicKeyPem inclus in configSafe (returnat complet, non-sensitiv)
+ *    Backend: publicKeyPem salvat/restaurat prin acelasi mecanism ca ceilalti
+ *    Generator: la generare pereche chei, populeaza si campul de stocare pubkey
+ *
+ * CHANGES v3.5.4 (build b184, 23.03.2026):
+ *  FIX BUG-STS-02: Configuratia STS (clientId, kid, redirectUri) nu se salva/restora
+ *    Backend: configSafe returneaza acum campurile non-sensitive STS (clientId, kid,
+ *             redirectUri, idpUrl, apiUrl) + hasPrivateKey boolean
+ *    Frontend: openProviderConfig repopuleaza campurile STS din configSafe la deschidere
+ *    Frontend: saveOrgSigningProviders salveaza toate campurile STS-specifice
+ *    Frontend: privateKeyPem trimis doar daca userul introduce o valoare noua
+ *             (camp gol = pastreaza cheia existenta din DB)
+ *    Frontend: placeholder indica daca exista cheie privata salvata
+ *
+ * CHANGES v3.5.3 (build b183, 23.03.2026):
+ *  FIX BUG-CSRF-02: csrf_invalid nu mai necesita refresh manual al paginii
+ *    apiFetch (notif-widget.js + shim admin.html) detecteaza 403 csrf_invalid
+ *    si face automat /auth/refresh (care reseteaza csrf_token cookie) + retry
+ *    Utilizatorul nu mai vede niciodata eroarea CSRF — totul e transparent
+ *
+ * CHANGES v3.5.2 (build b182, 23.03.2026):
+ *  FIX BUG-JOIN-01: 'Eroare server' la org_admin pe /admin/flows/list
+ *    Cauza: LEFT JOIN users u (b172) facea org_id = $1 ambiguu intre
+ *    flows.org_id si users.org_id — PostgreSQL returna eroare de ambiguitate
+ *    Fix: conditions folosesc f.org_id explicit
+ *    Fix: COUNT query foloseste alias f (FROM flows f) pentru consistenta
+ *
+ * CHANGES v3.5.1 (build b181, 23.03.2026):
+ *  FIX BUG-UI-02: genPwd() esua silentios fara mesaj de eroare
+ *    Adaugat try/catch + else branch + loading state pe buton
+ *    Eroarea (CSRF sau alta) e acum vizibila in campul eMsg din modal
+ *
+ * CHANGES v3.5.0 (build b180, 23.03.2026):
+ *  FIX BUG-UI-01: Butonul Creat din Onboarding Wizard ramanea disabled dupa succes
+ *    Dupa creare institutie, butonul e re-enabled si inchide modalul la click
+ *    + reincarca lista organizatii
+ *
+ * CHANGES v3.4.9 (build b179, 23.03.2026):
+ *  FIX BUG-CSRF-01: notif-widget.js apiFetch nu adauga CSRF token la POST/PUT/DELETE
+ *    Cauza radacina: window.docflow.apiFetch (din widget) suprascria shim-ul din
+ *    admin.html — versiunea din widget omitea x-csrf-token pentru mutatii.
+ *    Fix: adaugat CSRF injection in notif-widget.js apiFetch (identic cu admin.html).
+ *    Afectat: Salvează org, Test Webhook, orice mutatie POST/PUT/DELETE din admin.
+ *
+ * CHANGES v3.4.8 (build b178, 23.03.2026):
+ *  FIX BUG-STS-01: csrfMiddleware eliminat de pe generate-keypair
+ *    Endpoint genereaza chei RSA in memorie (zero modificari DB) — CSRF nu e necesar
+ *    Cauza: butonul Generează chei returna eroare CSRF care aparea langa Verifică
+ *
+ * CHANGES v3.4.7 (build b177, 23.03.2026):
+ *  UI: Semnatura email outreach — Departamentul tehnic + 0722.663.961
+ *
+ * CHANGES v3.4.6 (build b176, 23.03.2026):
+ *  OUTREACH: Click tracking separat de deschideri (pixel)
+ *    DB-040: coloane clicked_at + click_count in outreach_recipients
+ *    Backend: click handler populeaza clicked_at/click_count distinct
+ *    Backend: query campanii returneaza click_count ca metrica separata
+ *    UI: coloana Clickuri in lista campanii + tabel recipients
+ *    UI: banner explicativ pixel vs click (fiabilitate)
+ *    UI: template conversational nou + 5 subiecte sugerate cu dropdown
+ *
+ * CHANGES v3.4.5 (build b175, 23.03.2026):
+ *  SEC-03: TOTP backup codes stocate ca SHA-256 hash in DB (nu in clar)
+ *          backward-compat: coduri plaintext vechi acceptate in continuare
+ *  FEAT-06: ETag pe GET /flows/:flowId — cache 30s activ, 1h finalizat
+ *           304 Not Modified cand fluxul nu s-a schimbat
+ *  README: versiune actualizata la 3.4.5
+ *
+ * CHANGES v3.4.4 (build b174, 23.03.2026):
+ *  UI: Timp mediu finalizare afisat ca 'X h si Y min' in loc de '2.1h'
+ *      fmtDuration() adaugata in renderAnalytics() si exportAnalyticsHTML()
+ *
+ * CHANGES v3.4.3 (build b173, 23.03.2026):
+ *  SEC-04: CSRF complet — 3 rute ramase (generate-keypair, gws-provision, send-credentials)
+ *  SEC-05: e.message eliminat din 500 responses in toate fisierele (outreach, report, acroform,
+ *          cloud-signing, email, auth) — zero expuneri interne in tot proiectul
+ *  BUG:    archive-preview exclude fluxuri soft-deleted (deleted_at IS NULL)
+ *
+ * CHANGES v3.4.2 (build b172, 23.03.2026):
+ *  BUG-04: getOptionalActor extras in auth.mjs — eliminat din 4 module flows/ duplicate
+ *  BUG-05: Cross-org userMap fix — users filtrati per org_id in admin flows list
+ *  PERF-01: LEFT JOIN users in SQL (admin/flows/list) — elimina SELECT ALL users in-memory
+ *  SEC-05: e.message eliminat din toate raspunsurile 500 din admin.mjs
+ *  FEAT-05: Cleanup notificari citite >90 zile la startup (non-fatal, logged)
+ *  FEAT-07: Express upgrade 4.19.2 → 4.22.1 (latest 4.x, security patches)
+ *  ARCH-04: pdf-lib import static in sign-trust-report.mjs (eliminat dynamic import)
+ *
+ * CHANGES v3.4.1 (build b171, 23.03.2026):
+ *  SEC-01: flows/clean → soft delete (UPDATE deleted_at) — nu mai stergem fizic
+ *  SEC-02: Rate limit 5/min pe POST /verify/signature (endpoint public, CPU-intensiv)
+ *  SEC-04: csrfMiddleware adaugat pe 8 rute admin critice (orgs, signing, reset-pwd, etc.)
+ *  SEC-05: e.message eliminat din raspunsuri 500 in verify.mjs — logat server-side
+ *  BUG-01: Versiune citita din package.json in admin.mjs (nu mai e hardcodata 3.2.2)
+ *  BUG-02: COUNT(*) flows cu deleted_at IS NULL in toate stats endpoints
+ *  BUG-03: Date filter pe coloana TIMESTAMPTZ created_at (nu JSONB string)
+ *  ARCH-01: Sters flows.legacy.mjs (2260 linii cod mort, -130KB din repo)
+ *  ARCH-05: .railwayignore actualizat — tools/*.json/pdf/py excluse din deployment
+ *  DB-039:  GIN index pe data->'signers' pentru STS OAuth callback (PERF-04)
+ *
+ * CHANGES v3.4.0 (build b170, 23.03.2026):
+ *  FIX BUG-PDF-01: 413 Content Too Large la reinitiate-review si upload-signed-pdf
+ *                  app-level express.json({limit:1mb}) respingea body INAINTE ca
+ *                  route-level _largePdf sa ruleze. Fix: middleware adaptiv per path.
  *
  * CHANGES v3.3.9 (build din 20.03.2026):
  *  FIX SEC-02:  rawBody middleware pentru HMAC real pe /signing-callback
@@ -55,6 +265,7 @@ import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verif
 import authRouter from './routes/auth.mjs';
 import { openApiSpec } from './swagger.mjs';
 import { injectRateLimiter } from './routes/auth.mjs';
+import { createRateLimiter } from './middleware/rateLimiter.mjs';
 import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
@@ -62,7 +273,8 @@ import flowsRouter, { injectFlowDeps } from './routes/flows/index.mjs'; // ARCH-
 import verifyRouter  from './routes/verify.mjs';
 import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
-import templatesRouter from './routes/templates.mjs'; // Q-06: extras din index.mjs
+import templatesRouter from './routes/templates.mjs';
+import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
 const app = express();
 app.set('trust proxy', 1);
@@ -74,6 +286,7 @@ app.use(cookieParser());
 // Fallback manual dacă helmet nu e instalat încă (graceful degradation)
 try {
   app.use(helmet({
+    hidePoweredBy: true,  // ascunde X-Powered-By: Express (fingerprinting prevention)
     // SEC-05: CSP activat — protecție XSS
     contentSecurityPolicy: {
       directives: {
@@ -144,8 +357,19 @@ app.use((req, res, next) => {
 });
 
 // PERF-03: limita globala 1MB — previne body flood pe endpoint-urile cu JSON mic.
-// Rutele care primesc PDF (pdfB64/signedPdfB64/dataB64) au override 50MB in flows.mjs.
-app.use(express.json({ limit: '1mb' }));
+// FIX BUG-PDF-01: route-level expressJson({ limit:'50mb' }) NU funcționează dacă
+// app-level parser a respins deja body-ul cu 413 înainte ca ruta să ruleze.
+// Soluție: middleware adaptiv — detectăm path-urile PDF și aplicăm limita corectă.
+const _LARGE_PDF_PATHS = [
+  '/reinitiate-review',   // POST — upload document revizuit după review
+  '/upload-signed-pdf',   // POST — upload PDF semnat de semnatar
+  '/signing-callback',    // POST — callback provider cloud signing
+  '/sign',                // POST — poate conține signedPdfB64
+];
+app.use((req, res, next) => {
+  const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));
+  return express.json({ limit: needsLarge ? '50mb' : '1mb' })(req, res, next);
+});
 
 // ── Request ID + safe JSON error envelope ─────────────────────────────────
 app.use((req, res, next) => {
@@ -266,6 +490,49 @@ app.get('/health', (req, res) => {
       heapTotal: Math.round(mem.heapTotal / 1024 / 1024) + 'MB',
     },
   });
+});
+
+// ── GET /admin/reminder-status — status job reminder si configuratie ────────
+app.get('/admin/reminder-status', async (req, res) => {
+  try {
+    const actor = req.cookies?.auth_token ? (() => { try { return jwt.verify(req.cookies.auth_token, JWT_SECRET); } catch { return null; } })() : null;
+    if (!actor || (actor.role !== 'admin' && actor.role !== 'org_admin'))
+      return res.status(403).json({ error: 'forbidden' });
+
+    let pendingCount = 0, overdueCount = 0;
+    if (pool && DB_READY) {
+      try {
+        const orgFilter = actor.role === 'org_admin' ? `AND (data->>'orgId')::int = ${Number(actor.orgId)}` : '';
+        const { rows } = await pool.query(`
+          SELECT COUNT(*) FILTER (
+            WHERE (data->>'completed') IS DISTINCT FROM 'true'
+            AND (data->>'status') NOT IN ('cancelled','refused')
+            AND deleted_at IS NULL
+          ) AS pending,
+          COUNT(*) FILTER (
+            WHERE (data->>'completed') IS DISTINCT FROM 'true'
+            AND (data->>'status') NOT IN ('cancelled','refused')
+            AND deleted_at IS NULL
+            AND updated_at < NOW() - INTERVAL '24 hours'
+          ) AS overdue
+          FROM flows WHERE 1=1 ${orgFilter}
+        `);
+        pendingCount = parseInt(rows[0]?.pending || 0);
+        overdueCount = parseInt(rows[0]?.overdue || 0);
+      } catch(e) { /* non-fatal */ }
+    }
+
+    res.json({
+      ok: true,
+      config: {
+        intervalH:  parseInt(process.env.REMINDER_INTERVAL_HOURS || '6'),
+        reminder1H: parseInt(process.env.REMINDER_1_HOURS || '24'),
+        reminder2H: parseInt(process.env.REMINDER_2_HOURS || '48'),
+        reminder3H: parseInt(process.env.REMINDER_3_HOURS || '72'),
+      },
+      stats: { pendingFlows: pendingCount, overdueFlows: overdueCount },
+    });
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
 app.get('/admin/health', async (req, res) => {
@@ -687,6 +954,7 @@ injectWebhookBaseUrl(process.env.PUBLIC_BASE_URL || '');
 
 // ── Mount routers ─────────────────────────────────────────────────────────
 app.use('/', authRouter);
+app.use('/', totpRouter);  // 2FA TOTP
 app.use('/', notifRouter);
 app.use('/', adminRouter);
 // Rute publice verificare (fără autentificare)
@@ -701,7 +969,21 @@ app.use('/', flowsRouter);
 app.get('/d/:trackingId', async (req, res) => {
   // Forward catre handler-ul email-click
   req.params.trackingId = req.params.trackingId;
-  const safeDest = 'https://www.docflowai.ro';
+  // Redirect cu flowId precompletat in /verifica?id= daca il gasim rapid
+  let safeDest = 'https://www.docflowai.ro';
+  try {
+    const { rows: qr } = await pool.query(
+      `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+      [JSON.stringify([{ trackingId: req.params.trackingId }])]
+    ).catch(() => ({ rows: [] }));
+    if (qr.length) {
+      // Asiguram ca appBase are schema https:// — fara ea URL-ul devine relativ
+      let appBase = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      if (appBase && !appBase.startsWith('http')) appBase = 'https://' + appBase;
+      appBase = appBase.replace(/\/+$/, ''); // eliminam trailing slash
+      safeDest = `${appBase}/verifica?id=${encodeURIComponent(qr[0].flow_id)}`;
+    }
+  } catch { /* fallback la docflowai.ro */ }
   res.redirect(302, safeDest);
   // Procesam tracking async
   setImmediate(async () => {
@@ -709,7 +991,7 @@ app.get('/d/:trackingId', async (req, res) => {
       const { trackingId } = req.params;
       if (!trackingId) return;
       const { rows } = await pool.query(
-        `SELECT flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
         [JSON.stringify([{ trackingId }])]
       );
       if (!rows.length) return;
@@ -746,7 +1028,7 @@ app.get('/p/:trackingId', async (req, res) => {
       const { trackingId } = req.params;
       if (!trackingId) return;
       const { rows } = await pool.query(
-        `SELECT flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
         [JSON.stringify([{ trackingId }])]
       );
       if (!rows.length) return;
@@ -773,8 +1055,10 @@ app.get('/p/:trackingId', async (req, res) => {
 app.use('/admin/outreach', outreachRouter);
 
 // ── POST /api/contact — formular contact landing page ─────────────────────
-// Trimite email la contact@docflowai.ro via Resend, fara autentificare
-app.post('/api/contact', async (req, res) => {
+// Rate limiting: 5 cereri/ora per IP — previne spam si abuz
+const _contactRateLimit = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5,
+  message: 'Prea multe solicitări. Încearcă din nou în 60 de minute.' });
+app.post('/api/contact', _contactRateLimit, async (req, res) => {
   try {
     const { inst, name, email, phone, subject, msg } = req.body || {};
     if (!inst || !name || !email || !subject)
@@ -953,6 +1237,21 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
       }
     } catch(e) {
       logger.warn({ err: e }, 'archive_jobs recovery: eroare la startup (non-fatal)');
+    }
+
+    // FEAT-05: Cleanup notificări vechi — șterge notificările citite > 90 zile
+    // Previne acumularea nelimitată în tabelul notifications pe instanțe longevive.
+    try {
+      const { rowCount: notifDeleted } = await pool.query(`
+        DELETE FROM notifications
+        WHERE read = TRUE
+          AND created_at < NOW() - INTERVAL '90 days'
+      `);
+      if (notifDeleted > 0) {
+        logger.info({ notifDeleted }, 'startup: cleanup notificări vechi (>90 zile citite)');
+      }
+    } catch(e) {
+      logger.warn({ err: e }, 'startup: cleanup notificări vechi — eroare (non-fatal)');
     }
   }).catch(() => {}); // initDbWithRetry gestionează propriile erori intern
 });

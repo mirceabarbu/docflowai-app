@@ -6,6 +6,7 @@
  */
 
 import { Router } from 'express';
+import { generateCsrfToken } from '../middleware/csrf.mjs';
 import jwt from 'jsonwebtoken';
 import {
   JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC,
@@ -83,7 +84,33 @@ router.post('/auth/login', async (req, res) => {
       tv: user.token_version ?? 1, // SEC-04: token version pentru invalidare la reset parolă
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    // 2FA: dacă userul are TOTP activat, NU setăm auth_token complet
+    // Returnăm pending_token cu flag requires2fa — frontend va cere codul TOTP
+    if (user.totp_enabled) {
+      const pendingToken = jwt.sign(
+        {
+          userId: user.id, email: user.email, role: user.role, orgId: user.org_id,
+          nume: user.nume, functie: user.functie, institutie: user.institutie,
+          compartiment: user.compartiment || '', tv: user.token_version ?? 1,
+          requires2fa: true,
+        },
+        JWT_SECRET,
+        { expiresIn: '10m' } // 10 minute să introducă codul
+      );
+      logger.info({ userId: user.id, email: user.email }, '2FA: login parțial, codul TOTP necesar');
+      return res.json({ ok: false, requires2fa: true, pending_token: pendingToken });
+    }
+
     setAuthCookie(res, token, jwtExpiresMs());
+    // CSRF: cookie non-HttpOnly citit de frontend si trimis ca header x-csrf-token
+    const csrfToken = generateCsrfToken();
+    res.cookie('csrf_token', csrfToken, {
+      httpOnly: false,
+      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 24 * 60 * 60 * 1000, // 24h — nu mai expira in timpul unei zile de lucru
+      path: '/',
+    });
 
     logger.info({ userId: user.id, email: user.email, role: user.role }, 'Login reusit');
 
@@ -97,6 +124,23 @@ router.post('/auth/login', async (req, res) => {
     logger.error({ err: e }, 'Login error');
     return res.status(500).json({ error: 'server_error' });
   }
+});
+
+// ── GET /auth/csrf-token — emite token CSRF proaspăt ─────────────────────────
+// Apelat de frontend la deschiderea paginii pentru a garanta că are un token valid.
+// Nu necesită autentificare — setează cookie și returnează token în body.
+router.get('/auth/csrf-token', (req, res) => {
+  // Reutilizăm token-ul existent dacă există și e valid, altfel generăm unul nou
+  const existing = req.cookies?.csrf_token;
+  const token = existing || generateCsrfToken();
+  if (!existing) {
+    res.cookie('csrf_token', token, {
+      httpOnly: false, sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 24 * 60 * 60 * 1000, path: '/',
+    });
+  }
+  res.json({ csrfToken: token });
 });
 
 // ── GET /auth/me ─────────────────────────────────────────────────────────────
@@ -191,11 +235,18 @@ router.post('/auth/refresh', async (req, res) => {
     );
     // SEC-01: noul token în cookie HttpOnly
     setAuthCookie(res, newToken, jwtExpiresMs());
+    const csrfTokenRefresh = generateCsrfToken();
+    res.cookie('csrf_token', csrfTokenRefresh, {
+      httpOnly: false, sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 24 * 60 * 60 * 1000, // 24h
+      path: '/',
+    });
     return res.json({
       ok: true,
+      csrfToken: csrfTokenRefresh,  // returnat în body — frontend îl citește direct, fără să aștepte cookie
       email: decoded.email, role: decoded.role, orgId: decoded.orgId,
       nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie, compartiment: decoded.compartiment || '',
-      // token ELIMINAT din response
     });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
@@ -224,6 +275,10 @@ router.post('/auth/change-password', async (req, res) => {
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
+
+// ── Endpoint-uri debug/recovery — DEZACTIVATE în producție ────────────────────
+// Disponibile doar în development (NODE_ENV !== 'production')
+if (process.env.NODE_ENV !== 'production') {
 
 // ── GET /auth/debug — diagnostic endpoint (ADMIN ONLY) ───────────────────────
 router.get('/auth/debug', async (req, res) => {
@@ -289,7 +344,7 @@ router.post('/auth/fix-admin-role', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'user_not_found', email: targetEmail });
     res.json({ ok: true, fixed: rows[0], message: `✅ ${rows[0].email} are acum role='admin'` });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── GET /auth/fix-admin?secret=XXX ───────────────────────────────────────────
@@ -342,6 +397,8 @@ router.get('/auth/fix-admin', async (req, res) => {
     res.status(500).send(`<h2>❌ Eroare.</h2>`);
   }
 });
+
+} // end development-only routes
 
 // ── GET /auth/verify-email/:token ─────────────────────────────────────────────
 router.get('/auth/verify-email/:token', async (req, res) => {

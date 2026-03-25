@@ -114,16 +114,21 @@ export async function verifyPdfSignatures(pdfBytes) {
 
 async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js) {
   const result = {
-    index:       index + 1,
-    isValid:     false,
-    isQES:       false,
-    certificate: null,
-    chain:       [],
-    signingTime: null,
-    docHash:     null,
-    levels:      { L1: null, L2: null, L3: null, L4: null, L5: null, L6: null },
-    errors:      [],
-    warnings:    [],
+    index:          index + 1,
+    isValid:        false,
+    isQES:          false,
+    certificate:    null,
+    chain:          [],
+    signingTime:    null,
+    docHash:        null,
+    levels:         { L1: null, L2: null, L3: null, L4: null, L5: null, L6: null },
+    errors:         [],
+    warnings:       [],
+    // ── Câmpuri compliance ──────────────────────────────────────────────
+    validation_time:       new Date().toISOString(),  // momentul verificării
+    validation_source:     'local',                   // 'local' | 'ocsp' | 'crl'
+    ltv_ready:             false,                     // true dacă avem timestamp CMS + OCSP
+    certificate_qc_status: 'unknown',                 // 'qualified' | 'non-qualified' | 'unknown'
   };
 
   try {
@@ -288,6 +293,7 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
           result.levels.L5.status = ocsp.status;
           result.levels.L5.note   = ocsp.note;
           result.certificate.revocationStatus = ocsp.status;
+          result.validation_source = 'ocsp';
         } catch(e) {
           result.levels.L5.ok   = null;
           result.levels.L5.note = `OCSP neverificat: ${e.message.substring(0, 60)}`;
@@ -308,6 +314,11 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
         : 'QTSP nerecunoscut — posibil certificat necalificat';
       result.certificate.certificateType = result.isQES ? 'qualified' : 'unknown';
       result.certificate.qtspName        = qtsp.name;
+
+      // ── Campuri compliance derivate ──────────────────────────────────
+      result.certificate_qc_status = result.isQES ? 'qualified' : 'non-qualified';
+      // ltv_ready: avem timestamp CMS + OCSP verificat cu succes
+      result.ltv_ready = !!(result.signingTime && result.levels.L5?.ok === true);
     }
 
   } catch(e) {

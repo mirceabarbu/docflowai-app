@@ -110,6 +110,8 @@
    * Dacă eșuează → șterge sesiunea și redirectează la login.
    * Apelurile simultane sunt deduplicate (un singur request în zbor).
    */
+  let _lastCsrfToken = null; // stocat după refresh pentru retry imediat
+
   async function refreshToken() {
     if (_refreshPromise) return _refreshPromise;
     _refreshPromise = (async () => {
@@ -125,6 +127,8 @@
         });
         if (r.ok) {
           const d = await r.json();
+          // Stocăm csrfToken din body — disponibil imediat, fără să așteptăm cookie
+          if (d.csrfToken) _lastCsrfToken = d.csrfToken;
           // SEC-01: token-ul NU mai este stocat în localStorage
           // Actualizează datele user (non-sensibile) pentru UI
           const existing = JSON.parse(localStorage.getItem('docflow_user') || '{}');
@@ -168,14 +172,20 @@
    * La 401 după refresh eșuat: redirect login.
    */
   async function apiFetch(url, options = {}) {
-    // SEC-01: token-ul e în cookie HttpOnly — trimis automat cu credentials: 'include'
-    // Nu mai citim/scriem localStorage pentru token
     const headers = { ...(options.headers || {}) };
-    // Eliminăm Authorization header dacă a rămas din cod vechi (tranziție)
     delete headers['Authorization'];
 
-    // Refresh proactiv periodic (bazat pe timp, nu pe token local)
-    // La fiecare 10 min, scheduleProactiveRefresh() apelează refreshToken()
+    const method = (options?.method || 'GET').toUpperCase();
+    const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+
+    // getCsrf: preferinta window._csrfToken (setat la init pagina) > cookie
+    function getCsrf() {
+      if (window._csrfToken) return window._csrfToken;
+      const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+      return c ? c.split('=')[1] : null;
+    }
+
+    if (isMutation) { const t = getCsrf(); if (t) headers['x-csrf-token'] = t; }
 
     let res = await fetch(url, { ...options, headers, credentials: 'include' });
 
@@ -186,10 +196,30 @@
       const err = body?.error || '';
       if (err === 'token_invalid_or_expired' || err === 'unauthorized' || err === 'token_invalid') {
         const ok = await refreshToken();
-        if (ok) {
-          // Cookie nou setat de /auth/refresh — retry automat
-          res = await fetch(url, { ...options, headers, credentials: 'include' });
+        if (ok) res = await fetch(url, { ...options, headers, credentials: 'include' });
+      }
+    }
+
+    // Retry la 403 csrf_invalid — cere token nou de la /auth/csrf-token, apoi retry
+    if (res.status === 403 && isMutation) {
+      let body = {};
+      try { body = await res.clone().json(); } catch(e) {}
+      if (body?.error === 'csrf_invalid') {
+        let freshCsrf = null;
+        // Primul fallback: /auth/csrf-token (fara side effects, simplu si rapid)
+        try {
+          const rr = await fetch('/auth/csrf-token', { credentials: 'include' });
+          if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
+        } catch(e) {}
+        // Al doilea fallback: /auth/refresh (reinnoire completa sesiune)
+        if (!freshCsrf) {
+          const ok = await refreshToken();
+          if (ok) freshCsrf = _lastCsrfToken || getCsrf();
         }
+        if (freshCsrf) window._csrfToken = freshCsrf;
+        const newHeaders = { ...headers };
+        const t2 = getCsrf(); if (t2) newHeaders['x-csrf-token'] = t2;
+        res = await fetch(url, { ...options, headers: newHeaders, credentials: 'include' });
       }
     }
 

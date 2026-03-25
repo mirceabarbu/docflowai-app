@@ -156,7 +156,7 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
 
     logger.info({ flowId, to, actor: actor.email, trackingId }, '📧 Email extern trimis');
     return res.json({ ok: true, resendId: j.id, trackingId });
-  } catch(e) { logger.error({ err: e }, 'send-email error'); return res.status(500).json({ error: 'server_error', message: String(e.message) }); }
+  } catch(e) { logger.error({ err: e }, 'send-email error'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 
@@ -242,7 +242,7 @@ router.get('/flows/email-click/:trackingId', async (req, res) => {
       if (!trackingId) return;
       // Găsim fluxul după trackingId
       const { rows } = await pool.query(
-        `SELECT flow_id FROM flows
+        `SELECT id AS flow_id FROM flows
          WHERE data->'events' @> $1::jsonb LIMIT 1`,
         [JSON.stringify([{ trackingId }])]
       );
@@ -280,6 +280,46 @@ router.get('/flows/email-click/:trackingId', async (req, res) => {
       logger.warn({ err: e }, 'email-click tracking error (non-fatal)');
     }
   });
+});
+
+// ── GET /flows/:flowId/email-stats — statistici email extern pentru cardul fluxului ──
+// Returnează nr. emailuri trimise, deschise și timestamp-ul ultimului trimis.
+// Apelat asincron după randarea cardurilor — nu blochează lista.
+router.get('/flows/:flowId/email-stats', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { flowId } = req.params;
+  try {
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    // Verificare acces: inițiator, semnatar sau admin/org_admin
+    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+    const isInitiator = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
+    const isSigner = (data.signers || []).some(s => (s.email || '').toLowerCase() === actor.email.toLowerCase());
+    if (!isAdmin && !isInitiator && !isSigner) return res.status(403).json({ error: 'forbidden' });
+
+    const { rows } = await pool.query(`
+      SELECT
+        event_type,
+        COUNT(*)::int AS cnt,
+        MAX(created_at) AS last_at
+      FROM audit_log
+      WHERE flow_id = $1
+        AND event_type IN ('EMAIL_SENT', 'EMAIL_OPENED')
+      GROUP BY event_type
+    `, [flowId]);
+
+    const sent   = rows.find(r => r.event_type === 'EMAIL_SENT');
+    const opened = rows.find(r => r.event_type === 'EMAIL_OPENED');
+
+    res.json({
+      sent:       sent?.cnt   || 0,
+      opened:     opened?.cnt || 0,
+      lastSentAt: sent?.last_at || null,
+    });
+  } catch(e) {
+    res.status(500).json({ error: 'server_error' });
+  }
 });
 
 // ── POST /flows/detect-acroform-fields ───────────────────────────────────

@@ -261,6 +261,12 @@
       // Tranziție: dacă există token vechi în localStorage, îl trimitem ca fallback Bearer
       const legacyToken = localStorage.getItem('docflow_token');
       if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
+      // CSRF: citim csrf_token din cookie și îl trimitem ca header pentru mutații
+      const method = (options?.method || 'GET').toUpperCase();
+      if (!['GET','HEAD','OPTIONS'].includes(method)) {
+        const csrfCookie = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+        if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
+      }
       return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
@@ -478,7 +484,8 @@
     const EV_SHOW = new Set([
       'FLOW_CREATED','SIGNED','SIGNED_PDF_UPLOADED','FLOW_COMPLETED',
       'REFUSED','FLOW_CANCELLED','REVIEW_REQUESTED','DELEGATED',
-      'FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW'
+      'FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW',
+      'EMAIL_SENT','EMAIL_OPENED'
     ]);
 
     // Filtrăm și grupăm evenimentele relevante (ignorăm moștenite din flux-parent)
@@ -554,6 +561,28 @@
       });
     }
 
+    // ── PAȘI EMAIL EXTERN ────────────────────────────────────────────────────
+    const emailSentEvs = relevant.filter(e => e.type === 'EMAIL_SENT');
+    for (const ev of emailSentEvs) {
+      const openEv = relevant.find(e => e.type === 'EMAIL_OPENED' && e.trackingId === ev.trackingId);
+      // FIX: email complet (nu trunchiat) + nume din nameMap în loc de email
+      const toFull   = ev.to || '—';
+      const byName   = resolveName(ev.by);  // FIX: nume în loc de email
+      const subjectShort = ev.subject ? (ev.subject.length > 60 ? ev.subject.substring(0,60) + '…' : ev.subject) : '';
+      const openedPart = openEv
+        ? `<div class="tl-sub"><div class="tl-sub-row done"><div class="tl-sub-dot"></div><span>📬 Deschis de destinatar</span><span class="tl-ts" style="margin-left:auto;">${prettyTs(openEv.at)}</span></div></div>`
+        : '';
+      steps.push({
+        icon: '✉️',
+        labelHtml: `📧 Email extern trimis <span style="font-size:.72rem;color:rgba(234,240,255,.45);margin-left:4px;">către ${esc(toFull)}</span>`,
+        actorHtml: `<span class="tl-actor">${esc(byName)}</span>${subjectShort ? `<span style="font-size:.72rem;color:rgba(234,240,255,.35);margin-left:6px;">"${esc(subjectShort)}"</span>` : ''}`,
+        ts: ev.at,
+        state: 'done',
+        subRows: [],
+        extra: openedPart
+      });
+    }
+
     // ── PAS FINAL: stare finală a fluxului ───────────────────────────────────
     const flowStatus = data.status || '';
     const evCompleted = relevant.find(e => e.type === 'FLOW_COMPLETED');
@@ -575,8 +604,17 @@
     }
 
     // ── Render ───────────────────────────────────────────────────────────────
+    // FIX: sortăm TOȚI pașii cu timestamp cronologic
+    // FLOW_CREATED rămâne primul (nu are rival), restul inclusiv finalul — după timestamp
+    const firstStep    = steps[0];  // FLOW_CREATED — mereu primul
+    const restSteps    = steps.slice(1);
+    // Pașii fără timestamp (pending fără dată) rămân la final
+    const withTs    = restSteps.filter(s => s.ts).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    const withoutTs = restSteps.filter(s => !s.ts);
+    const sortedSteps = [firstStep, ...withTs, ...withoutTs];
+
     wrap.innerHTML = '';
-    for (const step of steps) {
+    for (const step of sortedSteps) {
       const div = document.createElement('div');
       div.className = `tl-step tl-${step.state}`;
 

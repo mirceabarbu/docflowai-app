@@ -201,26 +201,16 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
     ? `${appBase}/d/${trackingId}`
     : platformUrl;
 
+  // Link direct cu ID precompletat — tracking via /d/:trackingId, redirect la /verifica?id=FLOWID
+  // URL-ul final dupa redirect: /verifica?id=FLOWID — se autocompleaza si se verifica automat
+  const verifyUrl = appBase ? `${appBase}/verifica?id=${encodeURIComponent(flowId)}` : `https://www.docflowai.ro/verifica?id=${encodeURIComponent(flowId)}`;
   const linkSection = `
       <div style="margin:20px 0;padding:16px 20px;background:#f0f4ff;border:1px solid #c5d0f0;border-radius:10px;border-left:4px solid #7c5cff;">
         <p style="margin:0 0 6px;font-size:11px;color:#5a6a9a;text-transform:uppercase;letter-spacing:.6px;font-weight:700;">Document disponibil în platformă</p>
-        <p style="margin:0 0 14px;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong></p>
-        <!-- Buton compatibil email clients (table-based — funcționează în Yahoo, Outlook, Gmail) -->
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
-          <tr>
-            <td style="border-radius:8px;background:#7c5cff;">
-              <a href="${trackedUrl}" target="_blank"
-                 style="display:inline-block;padding:11px 28px;font-family:'Segoe UI',Arial,sans-serif;
-                        font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;
-                        border-radius:8px;border:1px solid #7c5cff;">
-                &#128203; Vizitează DocFlowAI
-              </a>
-            </td>
-          </tr>
-        </table>
-        <p style="margin:10px 0 0;font-size:11px;color:#5a6a9a;">
-          Dacă butonul nu funcționează, accesați direct:
-          <a href="${trackedUrl}" style="color:#7c5cff;word-break:break-all;">${trackedUrl}</a>
+        <p style="margin:0 0 10px;font-size:13px;color:#1a2340;">Flow ID: <strong style="color:#7c5cff;">${flowId}</strong></p>
+        <p style="margin:0;font-size:13px;color:#1a2340;">
+          Accesează direct pagina de verificare:
+          <a href="${trackedUrl}" target="_blank" style="color:#7c5cff;">verifica</a>
         </p>
       </div>`;
 
@@ -253,7 +243,7 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
     </div>
     ${linkSection}
     <div style="border-top:1px solid #dde4f5;padding-top:16px;margin-top:4px;text-align:center;">
-      <p style="margin:0 0 4px;font-size:12px;color:#5a6a9a;">Trimis prin <strong>DocFlowAI</strong> · noreply@docflowai.ro</p>
+      <p style="margin:0 0 4px;font-size:12px;color:#5a6a9a;">Trimis prin <a href="https://www.docflowai.ro" style="color:#7c5cff;text-decoration:none;font-weight:700;">DocFlowAI</a> · contact@docflowai.ro</p>
     </div>
   </div>
 </body></html>`;

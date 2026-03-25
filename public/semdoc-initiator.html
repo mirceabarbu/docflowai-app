@@ -222,8 +222,55 @@ th{ color: var(--sub) !important; }
       const headers = Object.assign({}, (options||{}).headers || {});
       const legacyToken = localStorage.getItem('docflow_token');
       if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
-      return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
+      const method = (options?.method || 'GET').toUpperCase();
+      const isMutation = !['GET','HEAD','OPTIONS'].includes(method);
+      function getCsrf() {
+        // Preferinta: variabila globala > cookie
+        if (window._csrfToken) return window._csrfToken;
+        const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+        return c ? c.split('=')[1] : null;
+      }
+      if (isMutation) { const t = getCsrf(); if (t) headers['x-csrf-token'] = t; }
+      let res = await fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
+      if (res.status === 403 && isMutation) {
+        let body = {};
+        try { body = await res.clone().json(); } catch(e) {}
+        if (body?.error === 'csrf_invalid') {
+          let freshCsrf = null;
+          try {
+            const rr = await fetch('/auth/csrf-token', { credentials: 'include' });
+            if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
+          } catch(e) {}
+          if (!freshCsrf) {
+            try {
+              const rr = await fetch('/auth/refresh', { method: 'POST', credentials: 'include' });
+              if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
+            } catch(e) {}
+          }
+          if (freshCsrf) { window._csrfToken = freshCsrf; }
+          const retryHeaders = Object.assign({}, headers);
+          const t2 = getCsrf(); if (t2) retryHeaders['x-csrf-token'] = t2;
+          res = await fetch(url, Object.assign({}, options||{}, { headers: retryHeaders, credentials: 'include' }));
+        }
+      }
+      return res;
     };
+    // ── CSRF: incarcare token la deschiderea paginii ──────────────────────────
+    // Citim token din /auth/csrf-token (sigur, nu depinde de timing cookie)
+    // Stocat in window._csrfToken — folosit de toti apiFetch shim-ii
+    window._csrfToken = null;
+    (async function initCsrf() {
+      try {
+        const r = await fetch('/auth/csrf-token', { credentials: 'include' });
+        if (r.ok) { const d = await r.json(); window._csrfToken = d.csrfToken || null; }
+      } catch(e) {}
+      // Fallback la cookie daca fetch esueaza
+      if (!window._csrfToken) {
+        const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
+        if (c) window._csrfToken = c.split('=')[1];
+      }
+    })();
+
   </script>
   <link rel="stylesheet" href="/mobile.css">
 </head>
@@ -1253,6 +1300,7 @@ th{ color: var(--sub) !important; }
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 ${isUrgent ? '<span style="background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>' : ''}
                 ${statusBadge}
+                <span id="emailBadge_${f.flowId}" style="display:none;"></span>
                 ${!isCancelled && mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#ff6b6b);border:none;color:#fff;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">✍ Semnează</button>` : ''}
                 <a href="/flow.html?flow=${f.flowId}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;">🔍 Vezi flow</a>
                 ${!isCancelled ? dlBtn : ''}
@@ -1271,7 +1319,25 @@ th{ color: var(--sub) !important; }
           </div>`;
         }).join("");
 
-        // F-06: Fetch asincron documente suport pentru fluxurile vizibile
+        // F-07: Fetch asincron statistici email extern pentru fluxurile vizibile
+        flows.forEach(f => {
+          const badge = document.getElementById(`emailBadge_${f.flowId}`);
+          if (!badge) return;
+          _apiFetch(`/flows/${encodeURIComponent(f.flowId)}/email-stats`)
+            .then(r => r.ok ? r.json() : null)
+            .then(j => {
+              if (!j || j.sent === 0) return;
+              const sentStr = j.sent === 1 ? '1 email trimis' : `${j.sent} emailuri trimise`;
+              const openedPart = j.opened > 0
+                ? `<span style="color:#a3e6a3;" title="Număr deschideri tracking pixel (estimativ)"> · ${j.opened} deschis${j.opened > 1 ? 'e' : ''}</span>`
+                : '';
+              const lastAt = j.lastSentAt
+                ? new Date(j.lastSentAt).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+                : '';
+              badge.style.display = '';
+              badge.innerHTML = `<span title="Email extern trimis${lastAt ? ' la ' + lastAt : ''}" style="background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);color:#7cf0e0;padding:2px 9px;border-radius:20px;font-size:.73rem;font-weight:600;white-space:nowrap;">✉️ ${sentStr}${openedPart}</span>`;
+            }).catch(() => {});
+        });
         flows.forEach(f => {
           _apiFetch(`/flows/${encodeURIComponent(f.flowId)}/attachments`).then(r => r.ok ? r.json() : null).then(j => {
             const atts = j?.attachments || [];
