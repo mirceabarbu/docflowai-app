@@ -1,5 +1,11 @@
 /**
- * DocFlowAI v3.7.1 — Main entry point (orchestrator)
+ * DocFlowAI v3.7.2 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.7.2 (build b201, 25.03.2026):
+ *  FIX timeline email extern (flow.html):
+ *    - Ordine cronologica corecta: Flux finalizat inainte de email daca asa s-a intamplat
+ *    - Email complet afisat (nu trunchiat cu @...)
+ *    - Nume expeditor in loc de email (din nameMap: initName + signers names)
  *
  * CHANGES v3.7.1 (build b200, 25.03.2026):
  *  FEAT: EMAIL_SENT + EMAIL_OPENED vizibile in timeline flux (flow.html)
