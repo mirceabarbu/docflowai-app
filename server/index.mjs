@@ -1,5 +1,44 @@
 /**
- * DocFlowAI v3.8.1 — Main entry point (orchestrator)
+ * DocFlowAI v3.8.6 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.8.6 (build b212, 25.03.2026):
+ *  FIX: sub-pasii (Semnat + PDF incarcat) apar si cu un singur eveniment
+ *    Inainte: subRows afisat doar daca existau AMBII (>= 2)
+ *    Acum: afisat daca exista cel putin unul (>= 1)
+ *    Fluxuri STS vechi (fara SIGNED) vor arata cel putin PDF incarcat
+ *
+ * CHANGES v3.8.5 (build b211, 25.03.2026):
+ *  ARHITECTURA PAdES corecta:
+ *    stampFooterOnPdf() — extins:
+ *      Genereaza cartusul O SINGURA DATA la creare flux
+ *      Adauga camp AcroForm /Sig per semnatar (SIG_ROL_N)
+ *      Returneaza { pdfB64, signersFieldNames } → salveaza padesFieldName per semnatar
+ *    crud.mjs — aplica padesFieldName din stampResult la signers[i]
+ *    pades.mjs — rescris:
+ *      buildSignaturePdf() foloseste campul AcroForm existent (padesFieldName)
+ *      Nu mai genereaza cartus la semnare — semnatura in celula corecta din tabel
+ *      Fallback la camp nou invizibil pentru fluxuri fara padesFieldName
+ *
+ * CHANGES v3.8.4 (build b210, 25.03.2026):
+ *  FIX: semnaturi suprapuse in PDF la flux cu 2+ semnatari STS
+ *    Cauza: buildSignaturePdf() adauga pagina noua cu cartus la fiecare semnatar
+ *    Fix: detectam hasChainedSignatures (semnatari anteriori semnati)
+ *    Semnatar 1: pagina noua + cartus complet
+ *    Semnatar 2+: ultima pagina existenta (cartusul e deja acolo)
+ *  FIX: evenimentul SIGNED lipsea din audit (STS poll)
+ *    Adaugam SIGNED + SIGNED_PDF_UPLOADED (consistent cu local upload flow)
+ *
+ * CHANGES v3.8.3 (build b209, 25.03.2026):
+ *  FIX: dupa semnare STS, redirect la flow.html dupa 2.5s (ca upload local)
+ *    Mesaj: 'Semnatură aplicată cu succes! Redirecționăm către Status...'
+ *
+ * CHANGES v3.8.2 (build b208, 25.03.2026):
+ *  FIX: race condition la reincarcarea paginii dupa semnare STS
+ *    Cauza: window.location.replace imediat → GET /flows poate citi date vechi
+ *    Fix: parametru sts_signed=1 in URL de redirect
+ *    La incarcare: daca sts_signed=1, blocam signBox si afisam mesaj succes
+ *    indiferent de ce returneaza DB (evita race condition)
+ *    URL curatat cu history.replaceState (fara reload)
  *
  * CHANGES v3.8.1 (build b207, 25.03.2026):
  *  FIX: migrare 041 - extinde constraint flows_pdfs_key_check
@@ -665,14 +704,15 @@ function isSignerTokenExpired(signer) {
 async function stampFooterOnPdf(pdfB64, flowData) {
   if (!pdfB64 || !PDFLib) return pdfB64;
   try {
-    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const { PDFDocument, PDFName, PDFNumber, PDFString, rgb, StandardFonts } = PDFLib;
     const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
     function ro(t) { return String(t || '').split('').map(ch => diacr[ch] || ch).join(''); }
     const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
     const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
     const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
-    const { width: pW } = lastPage.getSize();
+    const { width: pW, height: pH } = lastPage.getSize();
     const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
     const createdDate = flowData.createdAt
       ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
@@ -689,9 +729,112 @@ async function stampFooterOnPdf(pdfB64, flowData) {
     lastPage.drawText(footerLeft, { x: MARGIN, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth });
     lastPage.drawText(footerRight, { x: rightX, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
 
-    // ancore: useObjectStreams:false pastreaza structura AcroForm intacta pentru aplicatiile de semnare calificata
+    // ── TABEL: generăm cartușul cu celule + câmpuri AcroForm /Sig ────────────
+    // Câmpurile sunt create O SINGURĂ DATĂ la creare flux.
+    // La semnare STS, PAdES se injectează în câmpul celulei semnătarului curent.
+    const signers = Array.isArray(flowData.signers) ? flowData.signers : [];
+    const signersFieldNames = {};  // idx → fieldName
+
+    if (signers.length > 0 && flowData.flowType !== 'ancore') {
+      const n    = signers.length;
+      const cols = Math.min(n, 3);
+      const rows = Math.ceil(n / cols);
+      const cellW = (pW - MARGIN * 2) / cols;
+      const cellH = 48;
+      const titleH = 20;
+      const cartusBottom = 36;
+      const cartusH = rows * cellH + titleH;
+
+      // Pagină nouă pentru cartuș
+      const cartusPage = pdfDoc.addPage([pW, pH]);
+
+      // Bară titlu
+      cartusPage.drawRectangle({
+        x: MARGIN, y: cartusBottom + cartusH - titleH,
+        width: pW - MARGIN * 2, height: titleH,
+        color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8,
+      });
+      cartusPage.drawText('SEMNAT SI APROBAT', {
+        x: MARGIN + 8, y: cartusBottom + cartusH - titleH + 6,
+        size: 7, font: fontB, color: rgb(0,0,0),
+      });
+
+      // AcroForm
+      let acroForm;
+      const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+      if (acroFormRef) {
+        acroForm = pdfDoc.context.lookup(acroFormRef);
+        try { acroForm.set(PDFName.of('SigFlags'), PDFNumber.of(3)); } catch(e2) {}
+      } else {
+        const afObj = pdfDoc.context.obj({
+          Fields:   pdfDoc.context.obj([]),
+          SigFlags: PDFNumber.of(3),
+          DA:       PDFString.of('/Helv 0 Tf 0 g'),
+        });
+        const afRef = pdfDoc.context.register(afObj);
+        pdfDoc.catalog.set(PDFName.of('AcroForm'), afRef);
+        acroForm = afObj;
+      }
+
+      signers.forEach((s, idx) => {
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        const cx  = MARGIN + col * cellW;
+        const cy  = cartusBottom + (rows - 1 - row) * cellH;
+
+        // Celulă vizuală
+        cartusPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: rgb(.96,.96,.96), borderColor: rgb(.2,.2,.2), borderWidth: 1 });
+        cartusPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: rgb(.96,.96,.96), borderColor: rgb(.2,.2,.2), borderWidth: .35 });
+
+        cartusPage.drawText(ro(s.rol) || '—', { x: cx+6, y: cy+cellH-13, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
+        const nameFunc = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
+        if (nameFunc) cartusPage.drawText(nameFunc, { x: cx+6, y: cy+cellH-24, size: 7, font: fontR, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
+
+        const midY = cy + cellH/2 - 6;
+        cartusPage.drawText('L.S.', { x: cx+6, y: midY+4, size: 6.5, font: fontB, color: rgb(.5,.5,.6) });
+        cartusPage.drawText('Semnatura electronica', { x: cx+6, y: midY-5, size: 5.5, font: fontR, color: rgb(.6,.6,.6), maxWidth: cellW-12 });
+
+        // Câmp AcroForm /Sig dedicat acestui semnatar
+        const fieldName = `SIG_${(s.rol||'SEM').replace(/[^A-Za-z0-9]/g,'_').toUpperCase()}_${idx+1}`;
+        signersFieldNames[idx] = fieldName;
+
+        const sigRect = [cx, cy, cx + cellW, cy + cellH];
+        const widgetRef = pdfDoc.context.register(pdfDoc.context.obj({
+          Type:    PDFName.of('Annot'),
+          Subtype: PDFName.of('Widget'),
+          FT:      PDFName.of('Sig'),
+          T:       PDFString.of(fieldName),
+          Rect:    pdfDoc.context.obj(sigRect.map(n => PDFNumber.of(n))),
+          F:       PDFNumber.of(132),
+          P:       cartusPage.ref,
+        }));
+
+        // Adăugăm widget la pagina cartuș
+        const existing = cartusPage.node.get(PDFName.of('Annots'));
+        if (existing) {
+          try { const arr = pdfDoc.context.lookup(existing); arr.push && arr.push(widgetRef); } catch(e2) {
+            cartusPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef]));
+          }
+        } else {
+          cartusPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef]));
+        }
+
+        // Adăugăm câmpul la AcroForm.Fields
+        try {
+          const fieldsRef = acroForm.get(PDFName.of('Fields'));
+          if (fieldsRef) { const arr = pdfDoc.context.lookup(fieldsRef); arr.push && arr.push(widgetRef); }
+          else acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj([widgetRef]));
+        } catch(e2) {}
+      });
+    }
+
     const isAncore = flowData.flowType === 'ancore';
-    return Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
+    const pdfBytes = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
+
+    if (Object.keys(signersFieldNames).length > 0) {
+      return { pdfB64: pdfBytes, signersFieldNames };
+    }
+    return pdfBytes;
   } catch(e) { logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)'); return pdfB64; }
 }
 

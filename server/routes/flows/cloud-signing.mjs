@@ -197,7 +197,11 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     data.signedPdfUploadedBy = signer.email;
     data.updatedAt           = new Date().toISOString();
     if (!Array.isArray(data.events)) data.events = [];
-    data.events.push({ at: new Date().toISOString(), type: 'SIGNED_PDF_UPLOADED',
+    const _evNow = new Date().toISOString();
+    // SIGNED: înregistrăm semnătura (consistent cu local upload flow)
+    data.events.push({ at: _evNow, type: 'SIGNED',
+      by: signer.email, order: signer.order, provider: 'sts-cloud' });
+    data.events.push({ at: _evNow, type: 'SIGNED_PDF_UPLOADED',
       by: signer.email, order: signer.order, provider: 'sts-cloud', via: 'sts-poll' });
 
     // Avansăm fluxul
