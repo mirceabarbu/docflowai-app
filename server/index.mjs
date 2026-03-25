@@ -1,5 +1,16 @@
 /**
- * DocFlowAI v3.7.2 — Main entry point (orchestrator)
+ * DocFlowAI v3.7.4 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.7.4 (build b203, 25.03.2026):
+ *  FIX BUG-TLS: ERR_TLS_CERT_ALTNAME_INVALID la token exchange STS
+ *    Cauza: b198 inlocuia hostname cu IP in URL -> certificat TLS invalid
+ *    Certificatul STS e emis pe hostname (sign.stsisp.ro), nu pe IP
+ *    Fix: dns.setDefaultResultOrder('ipv4first') — URL intact, DNS prefera IPv4
+ *
+ * CHANGES v3.7.3 (build b202, 25.03.2026):
+ *  DEBUG: logging detaliat cand signByte lipseste din raspunsul STS
+ *    Logam: signListLength, signListIds, eligible, errorCode
+ *    pentru a intelege de ce STS nu returneaza signByte
  *
  * CHANGES v3.7.2 (build b201, 25.03.2026):
  *  FIX timeline email extern (flow.html):

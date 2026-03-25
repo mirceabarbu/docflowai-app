@@ -23,27 +23,16 @@
  */
 
 import crypto from 'crypto';
-import dns from 'dns/promises';
+import dns from 'dns';
 import { logger } from '../../middleware/logger.mjs';
 
-// FIX: Railway face conexiuni outbound pe IPv6 implicit
-// idp.stsisp.ro și sign.stsisp.ro nu suportă IPv6 (servicii gov RO)
-// Rezolvăm manual hostname-ul la IPv4 și înlocuim în URL
-async function _fetchIPv4(url, opts = {}) {
-  try {
-    const parsed = new URL(url);
-    // Rezolvăm hostname la IPv4 explicit
-    const { address } = await dns.lookup(parsed.hostname, { family: 4 });
-    // Înlocuim hostname cu IP-ul IPv4 și setăm Host header
-    const ipUrl = url.replace(parsed.hostname, address);
-    const headers = { ...(opts.headers || {}), Host: parsed.hostname };
-    return await fetch(ipUrl, { ...opts, headers });
-  } catch(e) {
-    // Fallback la fetch normal dacă DNS lookup eșuează
-    logger.warn({ url, cause: e.cause?.code || e.code, msg: e.message }, 'STS _fetchIPv4 fallback to direct fetch');
-    return await fetch(url, opts);
-  }
-}
+// FIX: Railway face conexiuni pe IPv6 implicit; serviciile gov RO (STS) nu suportă IPv6.
+// Setăm preferința globală IPv4 pentru toate rezolvările DNS din acest provider.
+// Nu modificăm URL-ul — certificatul TLS rămâne valid (emis pe hostname, nu pe IP).
+dns.setDefaultResultOrder('ipv4first');
+
+// Wrapper simplu — folosim fetch normal, DNS-ul returnează IPv4
+const _fetchIPv4 = (url, opts = {}) => fetch(url, opts);
 
 const IDP_DEFAULT   = 'https://idp.stsisp.ro';
 const SIGN_DEFAULT  = 'https://sign.stsisp.ro';
@@ -274,6 +263,15 @@ export class STSCloudProvider {
       // Găsim signByte-ul pentru operațiunea noastră
       const sigItem = (json.signList || []).find(s => s.id === stsOpId);
       if (!sigItem?.signByte) {
+        // Logăm răspunsul complet pentru diagnosticare
+        logger.warn({
+          stsOpId,
+          signListLength: (json.signList || []).length,
+          signListIds: (json.signList || []).map(s => s.id),
+          eligible: json.eligible,
+          errorCode: json.errorCode,
+          hasSignList: !!json.signList,
+        }, 'STS: signByte lipsă — raspuns complet loggat');
         return { ready: false, error: true, message: 'signByte lipsă din răspunsul STS.' };
       }
 
