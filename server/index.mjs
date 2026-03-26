@@ -1,5 +1,16 @@
 /**
- * DocFlowAI v3.9.2 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.3 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.3 (build b217, 26.03.2026):
+ *  FIX CRITIC: hash mismatch intre calcPadesHash si SignPdf.sign()
+ *    Cauza: calcPadesHash calcula hash pe bytes cu /ByteRange placeholder
+ *    SignPdf.sign() rescrie /ByteRange cu valorile reale INAINTE de hash
+ *    => bytes diferiti => CMS de la STS nu corespunde cu hash-ul final
+ *    Fix: calcPadesHash reproduce exact SignPdf.sign() pasi 1+2:
+ *      1. Rescrie /ByteRange placeholder cu valorile reale
+ *      2. Extrage bytes fara /Contents
+ *      3. SHA-256(bytes extrase) = hash trimis la STS
+ *    Rezultat: CMS de la STS corespunde cu hash-ul verificat de Adobe
  *
  * CHANGES v3.9.2 (build b216, 26.03.2026):
  *  FIX: semnatura in Signature1 (invisible) in loc de SIG_ROL_N din cartus

@@ -159,17 +159,18 @@ function _addInvisibleField(pdfDoc, page, sigDict, PDFName, PDFNumber, PDFString
 
 // ── calcPadesHash ────────────────────────────────────────────────────────────
 /**
- * SHA-256 al bytes-ilor din afara placeholder-ului /Contents.
- * @signpdf/signpdf localizează automat ByteRange — calculăm la fel.
+ * Reproduce EXACT logica din SignPdf.sign() pentru hash corect.
+ *
+ * SignPdf.sign() înainte de signer.sign(bytes):
+ *   1. Rescrie /ByteRange placeholder cu valorile reale
+ *   2. Extrage bytes fără /Contents
+ *   3. Apelează signer.sign(bytesExtrase)
+ *
+ * STSSigner ignoră bytesExtrase și returnează CMS-ul de la STS.
+ * Deci STS trebuie să semneze SHA-256(bytesExtrase cu ByteRange real).
+ * calcPadesHash reproduce exact pașii 1+2 pentru hash-ul corect.
  */
 export function calcPadesHash(pdfBytes) {
-  // Găsim ByteRange în PDF (patternat de pdflibAddPlaceholder)
-  // @signpdf/signpdf calculeaza ByteRange astfel:
-  // 1. Gaseste /ByteRange cu placeholder-ul
-  // 2. Dupa ByteRange gaseste /Contents <...placeholder zeros...>
-  // 3. Hash = bytes[0..contentsStart] + bytes[contentsEnd..end]
-  // Reproducem exact aceeasi logica pentru hash-ul trimis la STS
-
   const { removeTrailingNewLine, convertBuffer, findByteRange } = _require('@signpdf/utils');
   let pdf = removeTrailingNewLine(convertBuffer(pdfBytes, 'PDF'));
 
@@ -179,21 +180,34 @@ export function calcPadesHash(pdfBytes) {
     return crypto.createHash('sha256').update(pdfBytes).digest('base64');
   }
 
-  // Exact aceeasi logica ca SignPdf.sign pentru a determina pozitia /Contents
-  const byteRangeEnd   = byteRangePlaceholderPosition + byteRangePlaceholder.length;
-  const contentsTagPos = pdf.indexOf('/Contents ', byteRangeEnd);
-  const placeholderPos = pdf.indexOf('<', contentsTagPos);
-  const placeholderEnd = pdf.indexOf('>', placeholderPos);
+  // Calculăm poziția /Contents
+  const byteRangeEnd            = byteRangePlaceholderPosition + byteRangePlaceholder.length;
+  const contentsTagPos          = pdf.indexOf('/Contents ', byteRangeEnd);
+  const placeholderPos          = pdf.indexOf('<', contentsTagPos);
+  const placeholderEnd          = pdf.indexOf('>', placeholderPos);
+  const placeholderLenWithBrack = placeholderEnd + 1 - placeholderPos;
 
-  const b1 = placeholderPos;
-  const b2 = placeholderEnd + 1;
-  const b3 = pdf.length - b2;
+  const byteRange = [0, 0, 0, 0];
+  byteRange[1] = placeholderPos;
+  byteRange[2] = byteRange[1] + placeholderLenWithBrack;
+  byteRange[3] = pdf.length - byteRange[2];
 
-  // PDF-ul fara /Contents placeholder (exact ce semneaza STS)
-  const hash = crypto.createHash('sha256');
-  hash.update(pdf.slice(0, b1));
-  hash.update(pdf.slice(b2, b2 + b3));
-  return hash.digest('base64');
+  // ── Pasul 1: rescrie /ByteRange cu valorile reale (exact SignPdf.sign) ──
+  let actualByteRange = `/ByteRange [${byteRange.join(' ')}]`;
+  actualByteRange += ' '.repeat(byteRangePlaceholder.length - actualByteRange.length);
+  pdf = Buffer.concat([
+    pdf.slice(0, byteRangePlaceholderPosition),
+    Buffer.from(actualByteRange),
+    pdf.slice(byteRangeEnd),
+  ]);
+
+  // ── Pasul 2: extrage bytes fără /Contents (exact SignPdf.sign) ──────────
+  const pdfWithoutContents = Buffer.concat([
+    pdf.slice(0, byteRange[1]),
+    pdf.slice(byteRange[2], byteRange[2] + byteRange[3]),
+  ]);
+
+  return crypto.createHash('sha256').update(pdfWithoutContents).digest('base64');
 }
 
 // ── injectCms ────────────────────────────────────────────────────────────────
