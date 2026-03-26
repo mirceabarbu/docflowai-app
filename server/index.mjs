@@ -1,5 +1,164 @@
 /**
- * DocFlowAI v3.7.2 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.6 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.6 (build b220, 26.03.2026):
+ *  FIX ROOT CAUSE: STS returneaza raw signature bytes, NU CMS complet
+ *    Documentatia STS confirma: signByte = byte[] (raw sig, Base64)
+ *    SigDict /Contents illegal data = raw bytes in loc de CMS DER
+ *    Solutie:
+ *      OAuth callback: fetch /userinfo -> salveaza stsCertPem in signers[i]
+ *      initiate: salveaza padesHashBase64 in signers[i] (pt CMS authAttrs)
+ *      pades.mjs: buildCmsFromRawSignature() cu node-forge:
+ *        construieste CMS/PKCS#7 SignedData complet RFC 5652
+ *        - IssuerAndSerialNumber din cert PEM
+ *        - AuthenticatedAttributes: contentType, signingTime, messageDigest
+ *        - signatureAlgorithm: RSA
+ *        - signature: raw bytes de la STS
+ *        - certificates: cert PEM al semnatarului
+ *      injectCms(pdfBytes, signByteB64, certPem, hashBase64)
+ *
+ * CHANGES v3.9.5 (build b219, 26.03.2026):
+ *  FIX CRITIC: SigDict error — dict /Sig construit manual nu era parsabil de @signpdf
+ *    pades.mjs — preparePadesDoc rescris:
+ *      Citeste Rect-ul campului SIG_ROL_N existent (zona JOS a celulei)
+ *      Sterge campul vechi din AcroForm
+ *      Apeleaza pdflibAddPlaceholder cu widgetRect = Rect celula
+ *      pdflibAddPlaceholder genereaza ByteRange/Contents in formatul exact
+ *      cerut de @signpdf/signpdf → no more SigDict error
+ *    Rezultat: semnatura vizibila in celula corecta, format valid Adobe
+ *
+ * CHANGES v3.9.4 (build b218, 26.03.2026):
+ *  FEAT: layout sus/jos pentru celulele cartusului
+ *    SUS (58%): ROL / Nume - Functie (text pur, fara camp /Sig)
+ *    JOS (42%): 'Semnatura electronica calificata' + L.S. + camp /Sig
+ *    Camp /Sig pozitionat DOAR in zona JOS — fara overlap cu text
+ *    Celula mai inalta (64px) pentru lizibilitate
+ *
+ * CHANGES v3.9.3 (build b217, 26.03.2026):
+ *  FIX CRITIC: hash mismatch intre calcPadesHash si SignPdf.sign()
+ *    Cauza: calcPadesHash calcula hash pe bytes cu /ByteRange placeholder
+ *    SignPdf.sign() rescrie /ByteRange cu valorile reale INAINTE de hash
+ *    => bytes diferiti => CMS de la STS nu corespunde cu hash-ul final
+ *    Fix: calcPadesHash reproduce exact SignPdf.sign() pasi 1+2:
+ *      1. Rescrie /ByteRange placeholder cu valorile reale
+ *      2. Extrage bytes fara /Contents
+ *      3. SHA-256(bytes extrase) = hash trimis la STS
+ *    Rezultat: CMS de la STS corespunde cu hash-ul verificat de Adobe
+ *
+ * CHANGES v3.9.2 (build b216, 26.03.2026):
+ *  FIX: semnatura in Signature1 (invisible) in loc de SIG_ROL_N din cartus
+ *    Cauza: pdflibAddPlaceholder adauga camp nou in loc sa foloseasca existentul
+ *    Fix: preparePadesDoc seteaza /V cu placeholder ByteRange pe campul SIG_ROL_N
+ *    Rezultat: semnatura apare in celula vizuala din cartus in Adobe Signature Panel
+ *
+ * CHANGES v3.9.1 (build b215, 26.03.2026):
+ *  FIX: byteRange is not defined in cloud-signing.mjs
+ *    Noul API pades.mjs nu mai returneaza byteRange extern
+ *    Eliminat padesRange din signers JSONB si din poll handler
+ *    injectCms() si calcPadesHash() nu mai au nevoie de byteRange explicit
+ *
+ * CHANGES v3.9.0 (build b214, 26.03.2026):
+ *  FEAT: PAdES corect cu @signpdf/signpdf (incremental update)
+ *    pades.mjs rescris complet:
+ *      preparePadesDoc() — placeholder ByteRange via pdflibAddPlaceholder
+ *      calcPadesHash() — hash corect (reproduce logica SignPdf.sign)
+ *      injectCms() — STSSigner custom + SignPdf.sign = incremental update
+ *      Semnatura anterioara ramane valida la semnarea urmatoare
+ *    stampFooterOnPdf extins:
+ *      Genereaza cartus vizual server-side la creare flux
+ *      Campuri AcroForm /Sig vizibile in celulele cartusului
+ *      Returneaza signersFieldNames -> signers[i].padesFieldName
+ *    Rezultat asteptat: Adobe Signature Panel valid per semnatar
+ *
+ * CHANGES v3.8.7 (build b213, 25.03.2026):
+ *  FIX ARHITECTURA PAdES: semnaturi invalide + cartus pe pagina gresita
+ *    Problema: pdf-lib nu suporta incremental update → rescriere totala
+ *    → ByteRange-ul semnaturii 1 devine invalid la semnarea 2
+ *    Solutie: campuri AcroForm /Sig INVIZIBILE (Rect=[0,0,0,0]) per semnatar
+ *    Fiecare semnare e independenta — nu se invalideaza reciproc
+ *    Cartusul vizual ramane generat client-side (buildCartusBlob + PDF.js)
+ *    stampFooterOnPdf: footer + campuri invizibile (nu mai genereaza cartuș)
+ *    pades.mjs: simplificat — foloseste campul existent sau nou invizibil
+ *
+ * CHANGES v3.8.6 (build b212, 25.03.2026):
+ *  FIX: sub-pasii (Semnat + PDF incarcat) apar si cu un singur eveniment
+ *    Inainte: subRows afisat doar daca existau AMBII (>= 2)
+ *    Acum: afisat daca exista cel putin unul (>= 1)
+ *    Fluxuri STS vechi (fara SIGNED) vor arata cel putin PDF incarcat
+ *
+ * CHANGES v3.8.5 (build b211, 25.03.2026):
+ *  ARHITECTURA PAdES corecta:
+ *    stampFooterOnPdf() — extins:
+ *      Genereaza cartusul O SINGURA DATA la creare flux
+ *      Adauga camp AcroForm /Sig per semnatar (SIG_ROL_N)
+ *      Returneaza { pdfB64, signersFieldNames } → salveaza padesFieldName per semnatar
+ *    crud.mjs — aplica padesFieldName din stampResult la signers[i]
+ *    pades.mjs — rescris:
+ *      buildSignaturePdf() foloseste campul AcroForm existent (padesFieldName)
+ *      Nu mai genereaza cartus la semnare — semnatura in celula corecta din tabel
+ *      Fallback la camp nou invizibil pentru fluxuri fara padesFieldName
+ *
+ * CHANGES v3.8.4 (build b210, 25.03.2026):
+ *  FIX: semnaturi suprapuse in PDF la flux cu 2+ semnatari STS
+ *    Cauza: buildSignaturePdf() adauga pagina noua cu cartus la fiecare semnatar
+ *    Fix: detectam hasChainedSignatures (semnatari anteriori semnati)
+ *    Semnatar 1: pagina noua + cartus complet
+ *    Semnatar 2+: ultima pagina existenta (cartusul e deja acolo)
+ *  FIX: evenimentul SIGNED lipsea din audit (STS poll)
+ *    Adaugam SIGNED + SIGNED_PDF_UPLOADED (consistent cu local upload flow)
+ *
+ * CHANGES v3.8.3 (build b209, 25.03.2026):
+ *  FIX: dupa semnare STS, redirect la flow.html dupa 2.5s (ca upload local)
+ *    Mesaj: 'Semnatură aplicată cu succes! Redirecționăm către Status...'
+ *
+ * CHANGES v3.8.2 (build b208, 25.03.2026):
+ *  FIX: race condition la reincarcarea paginii dupa semnare STS
+ *    Cauza: window.location.replace imediat → GET /flows poate citi date vechi
+ *    Fix: parametru sts_signed=1 in URL de redirect
+ *    La incarcare: daca sts_signed=1, blocam signBox si afisam mesaj succes
+ *    indiferent de ce returneaza DB (evita race condition)
+ *    URL curatat cu history.replaceState (fara reload)
+ *
+ * CHANGES v3.8.1 (build b207, 25.03.2026):
+ *  FIX: migrare 041 - extinde constraint flows_pdfs_key_check
+ *    Permite chei 'padesPdf_N' (temporare PAdES) in plus fata de cele 3 fixe
+ *
+ * CHANGES v3.8.0 (build b206, 25.03.2026):
+ *  FEAT PRIORITY-0: PAdES (PDF Advanced Electronic Signatures) embedded
+ *    server/signing/pades.mjs — modul nou:
+ *      buildSignaturePdf() — PDF cu cartuș tabel server-side + ByteRange placeholder
+ *      calcPadesHash() — SHA-256 pe bytes din afara Contents (standard PAdES)
+ *      injectCmsSignature() — CMS STS injectat în placeholder → PDF QES valid
+ *    cloud-signing.mjs:
+ *      initiate: buildSignaturePdf + calcPadesHash → hash PAdES trimis la STS
+ *      PDF cu placeholder stocat în flows_pdfs (nu JSONB — prea mare)
+ *      poll: injectCmsSignature → signedPdfB64 conține PDF semnat real
+ *      semnatar 2+: foloseste signedPdfB64 (cu sig anterioara) ca baza
+ *    STSCloudProvider: foloseste padesHashBase64 in loc de hash simplu
+ *    Trust Report: L1-L6 verificabil dupa implementarea PAdES
+ *
+ * CHANGES v3.7.6 (build b205, 25.03.2026):
+ *  FIX: dupa poll STS signed, redirect complet la URL curat
+ *    Cauza: loadFlow() in-page returna date vechi (semnatar inca current)
+ *    window.location.replace forteaza fetch fresh — semnatar apare semnat
+ *
+ * CHANGES v3.7.5 (build b204, 25.03.2026):
+ *  FIX BUG-STS-SIGNBYTE: signByte mereu lipsă din raspuns STS
+ *    Cauza: cautam signList[i] unde i.id === stsOpId (JWT)
+ *    dar STS returneaza signList cu propriul UUID intern, nu JWT-ul nostru
+ *    Fix: luam primul element din signList care are signByte prezent
+ *    (singleDocumentSigning — intotdeauna un singur element in signList)
+ *
+ * CHANGES v3.7.4 (build b203, 25.03.2026):
+ *  FIX BUG-TLS: ERR_TLS_CERT_ALTNAME_INVALID la token exchange STS
+ *    Cauza: b198 inlocuia hostname cu IP in URL -> certificat TLS invalid
+ *    Certificatul STS e emis pe hostname (sign.stsisp.ro), nu pe IP
+ *    Fix: dns.setDefaultResultOrder('ipv4first') — URL intact, DNS prefera IPv4
+ *
+ * CHANGES v3.7.3 (build b202, 25.03.2026):
+ *  DEBUG: logging detaliat cand signByte lipseste din raspunsul STS
+ *    Logam: signListLength, signListIds, eligible, errorCode
+ *    pentru a intelege de ce STS nu returneaza signByte
  *
  * CHANGES v3.7.2 (build b201, 25.03.2026):
  *  FIX timeline email extern (flow.html):
@@ -624,34 +783,131 @@ function isSignerTokenExpired(signer) {
 async function stampFooterOnPdf(pdfB64, flowData) {
   if (!pdfB64 || !PDFLib) return pdfB64;
   try {
-    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const { PDFDocument, PDFName, PDFNumber, PDFString, rgb, StandardFonts } = PDFLib;
     const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-    function ro(t) { return String(t || '').split('').map(ch => diacr[ch] || ch).join(''); }
-    const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
-    const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
-    const { width: pW } = lastPage.getSize();
-    const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
+    function ro(t) { return String(t||'').split('').map(ch => diacr[ch]||ch).join(''); }
+    const clean  = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const pdfDoc = await PDFDocument.load(Buffer.from(clean,'base64'),{ignoreEncryption:true});
+    const fontR  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontB  = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
+    const { width:pW, height:pH } = lastPage.getSize();
+
+    // ── Footer ────────────────────────────────────────────────────────────
+    const MARGIN=40, footerY=14, FS=7;
     const createdDate = flowData.createdAt
-      ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
-      : new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
-    const parts = [ro(flowData.initName || ''), flowData.initFunctie ? ro(flowData.initFunctie) : null, flowData.institutie ? ro(flowData.institutie) : null, flowData.compartiment ? ro(flowData.compartiment) : null].filter(Boolean).join(', ');
-    const footerLeft = createdDate + (parts ? '  |  ' + parts : '');
-    const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
+      ? new Date(flowData.createdAt).toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'})
+      : new Date().toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'});
+    const parts = [ro(flowData.initName||''),flowData.initFunctie?ro(flowData.initFunctie):null,
+      flowData.institutie?ro(flowData.institutie):null,flowData.compartiment?ro(flowData.compartiment):null
+    ].filter(Boolean).join(', ');
+    const footerLeft  = createdDate+(parts?'  |  '+parts:'');
+    const footerRight = ro(flowData.flowId||'')+'  |  DocFlowAI';
+    const rW  = fontR.widthOfTextAtSize(footerRight, FS);
+    const rX  = pW-MARGIN-rW;
+    lastPage.drawLine({start:{x:MARGIN,y:footerY+10},end:{x:pW-MARGIN,y:footerY+10},thickness:0.4,color:rgb(.75,.75,.75)});
+    lastPage.drawText(footerLeft, {x:MARGIN,y:footerY,size:FS,font:fontR,color:rgb(.5,.5,.5),opacity:.8,maxWidth:rX-MARGIN-8});
+    lastPage.drawText(footerRight,{x:rX,    y:footerY,size:FS,font:fontR,color:rgb(.5,.5,.5),opacity:.8});
 
-    const rightWidth = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
-    const rightX = pW - MARGIN - rightWidth;
-    const leftMaxWidth = rightX - MARGIN - 8;
+    // ── Cartuș cu celule split SUS/JOS ────────────────────────────────────
+    // SUS (60% din înălțime): ROL / Nume - Funcție  (text pur, fără câmp /Sig)
+    // JOS (40% din înălțime): "Semnătură electronică" + câmp AcroForm /Sig
+    //   → câmpul /Sig e în zona fără text → Adobe poate plasa vizualizarea semnăturii
+    const signers = Array.isArray(flowData.signers)?flowData.signers:[];
+    const signersFieldNames = {};
 
-    lastPage.drawLine({ start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 }, thickness: 0.4, color: rgb(0.75, 0.75, 0.75) });
-    lastPage.drawText(footerLeft, { x: MARGIN, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth });
-    lastPage.drawText(footerRight, { x: rightX, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
+    if (signers.length > 0 && flowData.flowType !== 'ancore') {
+      const n    = signers.length;
+      const cols = Math.min(n, 3);
+      const rows = Math.ceil(n/cols);
+      const cellW  = (pW-MARGIN*2)/cols;
+      const cellH  = 64;           // înălțime totală celulă
+      const infoH  = cellH*0.58;   // sus: text info
+      const sigH   = cellH*0.42;   // jos: zona semnătură
+      const titleH = 20;
+      const cartusBottom = 36;
+      const cartusH = rows*cellH+titleH;
 
-    // ancore: useObjectStreams:false pastreaza structura AcroForm intacta pentru aplicatiile de semnare calificata
-    const isAncore = flowData.flowType === 'ancore';
-    return Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
-  } catch(e) { logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)'); return pdfB64; }
+      // Pagina cartuș
+      const cp = pdfDoc.addPage([pW,pH]);
+
+      // Footer pe pagina cartuș
+      cp.drawLine({start:{x:MARGIN,y:footerY+10},end:{x:pW-MARGIN,y:footerY+10},thickness:0.4,color:rgb(.75,.75,.75)});
+      cp.drawText(footerLeft, {x:MARGIN,y:footerY,size:FS,font:fontR,color:rgb(.5,.5,.5),opacity:.8,maxWidth:rX-MARGIN-8});
+      cp.drawText(footerRight,{x:rX,    y:footerY,size:FS,font:fontR,color:rgb(.5,.5,.5),opacity:.8});
+
+      // Bara titlu
+      cp.drawRectangle({x:MARGIN,y:cartusBottom+cartusH-titleH,width:pW-MARGIN*2,height:titleH,
+        color:rgb(1,1,1),borderColor:rgb(0,0,0),borderWidth:0.8});
+      cp.drawText('SEMNAT SI APROBAT',{x:MARGIN+8,y:cartusBottom+cartusH-titleH+6,
+        size:7,font:fontB,color:rgb(0,0,0)});
+
+      // AcroForm
+      let acroForm;
+      const afRef0 = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+      if (afRef0) {
+        acroForm = pdfDoc.context.lookup(afRef0);
+        try { acroForm.set(PDFName.of('SigFlags'),PDFNumber.of(3)); } catch(e2){}
+      } else {
+        const afObj = pdfDoc.context.obj({Fields:pdfDoc.context.obj([]),SigFlags:PDFNumber.of(3),DA:PDFString.of('/Helv 0 Tf 0 g')});
+        pdfDoc.catalog.set(PDFName.of('AcroForm'),pdfDoc.context.register(afObj));
+        acroForm = afObj;
+      }
+
+      signers.forEach((s,idx)=>{
+        const row = Math.floor(idx/cols);
+        const col = idx%cols;
+        const cx  = MARGIN+col*cellW;
+        const cy  = cartusBottom+(rows-1-row)*cellH;
+
+        // ── Borduri celulă completă
+        cp.drawRectangle({x:cx,y:cy,width:cellW,height:cellH,
+          color:rgb(.97,.97,.97),borderColor:rgb(.2,.2,.2),borderWidth:1});
+
+        // ── Zona SUS (text info) — fără câmp /Sig
+        const infoY = cy+sigH;
+        // Linie separatoare sus/jos
+        cp.drawLine({start:{x:cx,y:infoY},end:{x:cx+cellW,y:infoY},
+          thickness:0.5,color:rgb(.3,.3,.3)});
+
+        // Text zona sus
+        cp.drawText(ro(s.rol)||'—',{x:cx+5,y:infoY+infoH-12,size:7,font:fontB,color:rgb(.1,.1,.1),maxWidth:cellW-10});
+        const nameFunc=[ro(s.name),ro(s.functie)].filter(Boolean).join(' - ');
+        if (nameFunc) cp.drawText(nameFunc,{x:cx+5,y:infoY+infoH-23,size:6.5,font:fontR,color:rgb(.15,.15,.15),maxWidth:cellW-10});
+
+        // ── Zona JOS (semnătură) — câmpul /Sig e AICI
+        const sigY = cy;
+        cp.drawText('Semnatura electronica calificata',{x:cx+5,y:sigY+sigH-10,
+          size:5.5,font:fontR,color:rgb(.55,.55,.65),maxWidth:cellW-10});
+        cp.drawText('L.S.',{x:cx+5,y:sigY+4,size:7,font:fontB,color:rgb(.5,.5,.6)});
+
+        // Câmp /Sig poziționat în zona JOS
+        const fieldName = `SIG_${(s.rol||'SEM').replace(/[^A-Za-z0-9]/g,'_').toUpperCase()}_${idx+1}`;
+        signersFieldNames[idx] = fieldName;
+
+        const sigRect = [cx+1, sigY+1, cx+cellW-1, sigY+sigH-1];
+        const widgetRef = pdfDoc.context.register(pdfDoc.context.obj({
+          Type:PDFName.of('Annot'), Subtype:PDFName.of('Widget'), FT:PDFName.of('Sig'),
+          T:PDFString.of(fieldName),
+          Rect:pdfDoc.context.obj(sigRect.map(v=>PDFNumber.of(v))),
+          F:PDFNumber.of(132), P:cp.ref,
+        }));
+        const ea = cp.node.get(PDFName.of('Annots'));
+        if (ea) { try{ pdfDoc.context.lookup(ea).push(widgetRef); }catch(e2){ cp.node.set(PDFName.of('Annots'),pdfDoc.context.obj([widgetRef])); }}
+        else cp.node.set(PDFName.of('Annots'),pdfDoc.context.obj([widgetRef]));
+        try {
+          const fr=acroForm.get(PDFName.of('Fields'));
+          if(fr) pdfDoc.context.lookup(fr).push(widgetRef);
+          else acroForm.set(PDFName.of('Fields'),pdfDoc.context.obj([widgetRef]));
+        } catch(e2){}
+      });
+    }
+
+    const isAncore = flowData.flowType==='ancore';
+    const pdfBytes = Buffer.from(await pdfDoc.save({useObjectStreams:!isAncore})).toString('base64');
+    if (Object.keys(signersFieldNames).length>0) return {pdfB64:pdfBytes,signersFieldNames};
+    return pdfBytes;
+  } catch(e){ logger.warn({err:e},'stampFooterOnPdf error (non-fatal)'); return pdfB64; }
 }
 
 // ── WebSocket ──────────────────────────────────────────────────────────────

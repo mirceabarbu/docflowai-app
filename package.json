@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.7.2",
+  "version": "3.9.6",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -13,6 +13,8 @@
     "prebuild": "npm run check"
   },
   "dependencies": {
+    "@signpdf/placeholder-pdf-lib": "^3.3.0",
+    "@signpdf/signpdf": "^3.3.0",
     "asn1js": "^3.0.7",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

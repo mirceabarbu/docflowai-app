@@ -23,27 +23,16 @@
  */
 
 import crypto from 'crypto';
-import dns from 'dns/promises';
+import dns from 'dns';
 import { logger } from '../../middleware/logger.mjs';
 
-// FIX: Railway face conexiuni outbound pe IPv6 implicit
-// idp.stsisp.ro și sign.stsisp.ro nu suportă IPv6 (servicii gov RO)
-// Rezolvăm manual hostname-ul la IPv4 și înlocuim în URL
-async function _fetchIPv4(url, opts = {}) {
-  try {
-    const parsed = new URL(url);
-    // Rezolvăm hostname la IPv4 explicit
-    const { address } = await dns.lookup(parsed.hostname, { family: 4 });
-    // Înlocuim hostname cu IP-ul IPv4 și setăm Host header
-    const ipUrl = url.replace(parsed.hostname, address);
-    const headers = { ...(opts.headers || {}), Host: parsed.hostname };
-    return await fetch(ipUrl, { ...opts, headers });
-  } catch(e) {
-    // Fallback la fetch normal dacă DNS lookup eșuează
-    logger.warn({ url, cause: e.cause?.code || e.code, msg: e.message }, 'STS _fetchIPv4 fallback to direct fetch');
-    return await fetch(url, opts);
-  }
-}
+// FIX: Railway face conexiuni pe IPv6 implicit; serviciile gov RO (STS) nu suportă IPv6.
+// Setăm preferința globală IPv4 pentru toate rezolvările DNS din acest provider.
+// Nu modificăm URL-ul — certificatul TLS rămâne valid (emis pe hostname, nu pe IP).
+dns.setDefaultResultOrder('ipv4first');
+
+// Wrapper simplu — folosim fetch normal, DNS-ul returnează IPv4
+const _fetchIPv4 = (url, opts = {}) => fetch(url, opts);
 
 const IDP_DEFAULT   = 'https://idp.stsisp.ro';
 const SIGN_DEFAULT  = 'https://sign.stsisp.ro';
@@ -78,13 +67,15 @@ export class STSCloudProvider {
   }
 
   // ── Inițiere sesiune — PKCE + URL redirect IDP ────────────────────────
-  async initiateSession({ flowId, signer, pdfBytes, flowData, config, appBaseUrl }) {
+  async initiateSession({ flowId, signer, pdfBytes, flowData, config, appBaseUrl, padesHashBase64 }) {
     const sessionId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
 
-    // Hash SHA-256 al PDF-ului — acesta se trimite la STS (nu documentul)
-    const hashBase64 = crypto.createHash('sha256').update(pdfBytes).digest('base64');
+    // Hash PAdES SHA-256 — calculat pe bytes-ii din afara câmpului Contents (ByteRange)
+    // Dacă e furnizat explicit (PAdES flow), îl folosim direct.
+    // Fallback la hash simplu pentru provideri non-STS.
+    const hashBase64 = padesHashBase64 || crypto.createHash('sha256').update(pdfBytes).digest('base64');
 
     // PKCE
     const codeVerifier  = crypto.randomBytes(32).toString('base64url');
@@ -271,9 +262,19 @@ export class STSCloudProvider {
         return { ready: false, error: true, message: 'Utilizatorul a refuzat operațiunea de semnare.' };
       }
 
-      // Găsim signByte-ul pentru operațiunea noastră
-      const sigItem = (json.signList || []).find(s => s.id === stsOpId);
+      // Găsim signByte-ul — STS folosește propriul UUID în signList.id,
+      // diferit de id-ul trimis de noi. Luăm primul element cu signByte prezent.
+      const sigItem = (json.signList || []).find(s => s.signByte) 
+                   || (json.signList || [])[0];
       if (!sigItem?.signByte) {
+        logger.warn({
+          stsOpId,
+          signListLength: (json.signList || []).length,
+          signListIds: (json.signList || []).map(s => s.id),
+          eligible: json.eligible,
+          errorCode: json.errorCode,
+          hasSignList: !!json.signList,
+        }, 'STS: signByte lipsă — raspuns complet loggat');
         return { ready: false, error: true, message: 'signByte lipsă din răspunsul STS.' };
       }
 

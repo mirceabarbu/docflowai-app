@@ -765,6 +765,17 @@ const MIGRATIONS = [
       ALTER TABLE outreach_recipients ADD COLUMN IF NOT EXISTS click_count  INTEGER     NOT NULL DEFAULT 0;
       CREATE INDEX IF NOT EXISTS idx_orecip_clicked ON outreach_recipients(clicked_at) WHERE clicked_at IS NOT NULL;
     `
+  },
+  {
+    id: '041_flows_pdfs_pades_keys',
+    sql: `
+      -- PAdES: extindem constraint-ul pe flows_pdfs.key pentru a permite chei temporare PAdES
+      -- padesPdf_N: PDF-ul cu ByteRange placeholder pentru semnatarul N (stocat temporar la initiate, șters după poll)
+      ALTER TABLE flows_pdfs DROP CONSTRAINT IF EXISTS flows_pdfs_key_check;
+      ALTER TABLE flows_pdfs ADD CONSTRAINT flows_pdfs_key_check
+        CHECK (key IN ('pdfB64','signedPdfB64','originalPdfB64')
+               OR key LIKE 'padesPdf_%');
+    `
   }
 ];
 

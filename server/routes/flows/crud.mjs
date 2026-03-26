@@ -115,11 +115,25 @@ const createFlow = async (req, res) => {
 
     if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
       try {
-        finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
+        // stampFooterOnPdf poate returna { pdfB64, signersFieldNames }
+        // dacă generează și cartușul cu câmpuri AcroForm /Sig
+        const stampResult = await _stampFooterOnPdf(finalPdfB64, {
           flowId, createdAt, initName, initFunctie,
           institutie: initInstitutie, compartiment: initCompartiment,
-          flowType: body.flowType || 'tabel'
+          flowType: body.flowType || 'tabel',
+          signers: normalizedSigners,
         });
+        if (stampResult && typeof stampResult === 'object' && stampResult.pdfB64) {
+          finalPdfB64 = stampResult.pdfB64;
+          // Aplicăm padesFieldName per semnatar dacă a fost generat
+          if (stampResult.signersFieldNames) {
+            normalizedSigners.forEach((s, i) => {
+              if (stampResult.signersFieldNames[i]) s.padesFieldName = stampResult.signersFieldNames[i];
+            });
+          }
+        } else {
+          finalPdfB64 = stampResult; // returnare simplă (string) — fallback
+        }
       } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }
 

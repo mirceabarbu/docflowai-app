@@ -767,7 +767,10 @@ th{ color: var(--sub) !important; }
             } else if (j.status === 'signed') {
               clearInterval(_stsPollInterval); _stsPollInterval = null;
               if (statusEl) statusEl.textContent = '✅ Semnat cu succes!';
-              setTimeout(() => loadFlow(), 1000);
+              // FIX: redirect complet la URL curat — evită date vechi din in-page reload
+              setTimeout(() => {
+                window.location.replace(`/semdoc-signer.html?flow=${encodeURIComponent(flow)}&token=${encodeURIComponent(token)}&sts_signed=1`);
+              }, 1200);
             } else if (j.status === 'error') {
               cancelStsPolling();
               showError('❌ ' + (j.message || 'Eroare la semnare STS.'));
@@ -1457,14 +1460,32 @@ th{ color: var(--sub) !important; }
 
       if (flow && token) {
         // Verificăm dacă revenim de la STS IDP (OAuth callback)
-        const _stsParams = new URLSearchParams(window.location.search);
+        const _stsParams  = new URLSearchParams(window.location.search);
         const _stsPending = _stsParams.get('sts_pending');
         const _stsError   = _stsParams.get('sts_error');
+        const _stsSigned  = _stsParams.get('sts_signed');  // set după semnare STS reușită
         if (_stsError) {
           showError('❌ Eroare STS: ' + decodeURIComponent(_stsError));
         }
+        // Curățăm sts_signed din URL (fără reload) — evităm confuzie la refresh
+        if (_stsSigned === '1') {
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete('sts_signed');
+          window.history.replaceState({}, '', cleanUrl.toString());
+        }
         loadFlow().catch((e) => showError(String(e.message || e))).then(() => {
           if (_stsPending === '1') startStsPolling();
+          // sts_signed=1: dacă fluxul încă arată semnatarul ca 'current' (race condition DB),
+          // forțăm starea vizuală corectă — semnatarul a semnat cu succes
+          if (_stsSigned === '1') {
+            const signBox = $('signBox');
+            if (signBox) {
+              signBox.style.opacity = '0.5';
+              signBox.style.pointerEvents = 'none';
+            }
+            $('result').innerHTML = '<span style="color:#2dd4bf;font-weight:700;">✅ Semnătura electronică calificată a fost aplicată cu succes! Redirecționăm către Status...</span>';
+            setTimeout(() => { location.href = `/flow.html?flow=${encodeURIComponent(flow)}`; }, 2500);
+          }
         });
       }
 
