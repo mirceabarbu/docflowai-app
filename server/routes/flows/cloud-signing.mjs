@@ -187,10 +187,9 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
         startsWithHex3082: _sbBuf.slice(0,2).toString('hex') === '3082',
       }, 'DEBUG signByte analysis');
       // Recuperăm hash-ul PAdES salvat la initiate (necesar pentru CMS authAttrs)
-      const padesHashB64 = signer.padesHashBase64 || '';
-      const certPem      = signer.stsCertPem || '';
-      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: certificat PEM lipsă — CMS poate fi invalid');
-      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem, padesHashB64);
+      const certPem = signer.stsCertPem || '';
+      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: certificat PEM lipsă — identitate neverificabilă, semnătură ok');
+      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem);
       signedPdfB64 = signedPdfBuf.toString('base64');
       // Curățăm PDF-ul temporar cu placeholder
       await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);

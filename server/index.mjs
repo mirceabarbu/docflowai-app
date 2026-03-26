@@ -1,5 +1,18 @@
 /**
- * DocFlowAI v3.9.11 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.12 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.12 (build b226, 26.03.2026):
+ *  FIX ROOT: CMS fara signedAttrs — singurul format compatibil cu STS
+ *    STS semneaza ECDSA(SHA256(pdfBytes)) direct
+ *    Adobe fara signedAttrs verifica: ECDSA.verify(key, signByte, SHA256(pdfBytes)) = match
+ *    Adobe cu signedAttrs verifica: ECDSA.verify(key, signByte, SHA256(DER(attrs))) = FAIL
+ *  FEAT: flux tabel+STS — cartuș pe aceeasi pagina daca incape (ca buildCartusBlob)
+ *    Detectie spatiu: ultimii 25% din inaltime liberi = cartus pe loc
+ *    Altfel pagina noua (comportament anterior)
+ *  FEAT: flux ancore+STS — semnatura pe ancora semnătarului (ancoreFieldName)
+ *    Rect câmpului AcroForm existent folosit ca widgetRect
+ *    Fallback: câmp invizibil daca ancoreFieldName lipseste
+ *  FIX: injectCms — eliminat parametrul hashBase64 (nu mai e necesar)
  *
  * CHANGES v3.9.11 (build b225, 26.03.2026):
  *  FIX: flux ancore + STS — camp /Sig invizibil, fara cartuș, fara addPage
