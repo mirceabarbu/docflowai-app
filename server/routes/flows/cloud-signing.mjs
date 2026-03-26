@@ -98,20 +98,11 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
       return res.redirect(`/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(signer.token)}&sts_error=${errMsg}`);
     }
 
-    // Obținem certificatul semnatarului din /userinfo (necesar pentru construirea CMS)
-    let stsCertPem = null;
-    try {
-      const uiRes = await fetch('https://idp.stsisp.ro/userinfo', {
-        headers: { Authorization: `Bearer ${result.accessToken}` }
-      });
-      if (uiRes.ok) {
-        const ui = await uiRes.json();
-        stsCertPem = ui?.signingCertificate?.pemCertificate || null;
-        logger.info({ flowId, signerIdx, hasCert: !!stsCertPem }, 'STS: certificat semnatarului obținut din /userinfo');
-      }
-    } catch(certErr) {
-      logger.warn({ err: certErr }, 'STS: nu s-a putut obține certificatul din /userinfo');
-    }
+    // Certificatul PEM e obținut în processOAuthCallback (unde avem accessToken)
+    const stsCertPem = result.certPem || null;
+    logger.info({ flowId, signerIdx: signerIdx,
+      hasCert: !!stsCertPem, certLen: stsCertPem?.length||0 },
+      'STS: certificat PEM din processOAuthCallback');
 
     // Stocăm datele de polling în semnatar
     signers[signerIdx].stsOpId      = result.stsOpId;
@@ -196,10 +187,9 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
         startsWithHex3082: _sbBuf.slice(0,2).toString('hex') === '3082',
       }, 'DEBUG signByte analysis');
       // Recuperăm hash-ul PAdES salvat la initiate (necesar pentru CMS authAttrs)
-      const padesHashB64 = signer.padesHashBase64 || '';
-      const certPem      = signer.stsCertPem || '';
-      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: certificat PEM lipsă — CMS poate fi invalid');
-      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem, padesHashB64);
+      const certPem = signer.stsCertPem || '';
+      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: certificat PEM lipsă — identitate neverificabilă, semnătură ok');
+      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem);
       signedPdfB64 = signedPdfBuf.toString('base64');
       // Curățăm PDF-ul temporar cu placeholder
       await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);

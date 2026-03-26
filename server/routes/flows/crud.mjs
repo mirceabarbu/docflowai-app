@@ -121,7 +121,6 @@ const createFlow = async (req, res) => {
           flowId, createdAt, initName, initFunctie,
           institutie: initInstitutie, compartiment: initCompartiment,
           flowType: body.flowType || 'tabel',
-          signers: normalizedSigners,
         });
         if (stampResult && typeof stampResult === 'object' && stampResult.pdfB64) {
           finalPdfB64 = stampResult.pdfB64;
