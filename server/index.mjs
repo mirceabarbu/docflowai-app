@@ -1,5 +1,14 @@
 /**
- * DocFlowAI v3.9.6 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.7 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.7 (build b221, 26.03.2026):
+ *  FIX: STS foloseste ECDSA P-256, nu RSA
+ *    signByte incepe cu 30440220 = ECDSA DER (SEQUENCE { r INT32, s INT32 })
+ *    CMS: detectam automat algoritmul din structura DER a signByte
+ *    signatureAlgorithm = ecdsa-with-SHA256 (1.2.840.10045.4.3.2) daca ECDSA
+ *  FIX: userinfo fetch mai robust
+ *    Log complet raspuns /userinfo pentru diagnosticare
+ *    Fallback la otherCertificates[0] daca signingCertificate lipseste
  *
  * CHANGES v3.9.6 (build b220, 26.03.2026):
  *  FIX ROOT CAUSE: STS returneaza raw signature bytes, NU CMS complet

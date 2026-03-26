@@ -104,13 +104,24 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
       const uiRes = await fetch('https://idp.stsisp.ro/userinfo', {
         headers: { Authorization: `Bearer ${result.accessToken}` }
       });
+      const uiText = await uiRes.text();
+      logger.info({ flowId, signerIdx: signerIdx,
+        status: uiRes.status, bodyLen: uiText.length,
+        bodyPreview: uiText.substring(0, 200)
+      }, 'STS: /userinfo raspuns complet');
       if (uiRes.ok) {
-        const ui = await uiRes.json();
-        stsCertPem = ui?.signingCertificate?.pemCertificate || null;
-        logger.info({ flowId, signerIdx, hasCert: !!stsCertPem }, 'STS: certificat semnatarului obținut din /userinfo');
+        const ui = JSON.parse(uiText);
+        stsCertPem = ui?.signingCertificate?.pemCertificate
+                  || ui?.otherCertificates?.[0]?.pemCertificate
+                  || null;
+        logger.info({ flowId, signerIdx: signerIdx,
+          hasCert: !!stsCertPem,
+          certLen: stsCertPem?.length || 0,
+          keys: Object.keys(ui || {}),
+        }, 'STS: certificat semnatarului din /userinfo');
       }
     } catch(certErr) {
-      logger.warn({ err: certErr }, 'STS: nu s-a putut obține certificatul din /userinfo');
+      logger.warn({ err: certErr, flowId, signerIdx: signerIdx }, 'STS: /userinfo fetch eroare');
     }
 
     // Stocăm datele de polling în semnatar

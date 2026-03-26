@@ -290,9 +290,21 @@ async function buildCmsFromRawSignature(signByteBase64, certPem, hashBase64) {
   const OID_PKCS7_DATA           = '2a864886f70d010701'; // 1.2.840.113549.1.7.1
   const OID_SHA256               = '608648016503040201'; // 2.16.840.1.101.3.4.2.1
   const OID_RSA                  = '2a864886f70d010101'; // 1.2.840.113549.1.1.1
+  const OID_ECDSA_SHA256         = '2a8648ce3d040302'; // 1.2.840.10045.4.3.2 ecdsa-with-SHA256
+  const OID_EC_PUBLIC_KEY        = '2a8648ce3d0201';   // 1.2.840.10045.2.1
   const OID_CONTENT_TYPE         = '2a864886f70d010903'; // 1.2.840.113549.1.9.3
   const OID_MESSAGE_DIGEST       = '2a864886f70d010904'; // 1.2.840.113549.1.9.4
   const OID_SIGNING_TIME         = '2a864886f70d010905'; // 1.2.840.113549.1.9.5
+
+  // Detectăm algoritmul din semnătură:
+  // ECDSA DER începe cu 0x30 (SEQUENCE) urmat de length + 0x02 (INTEGER) = r
+  // RSA raw bytes nu au această structură DER internă
+  // STS returnează ECDSA P-256: 30440220...0220... (68-72 bytes tipic)
+  const isECDSA = signatureBytes[0] === 0x30 && signatureBytes[2] === 0x02;
+  const sigAlgOid = isECDSA ? OID_ECDSA_SHA256 : OID_RSA;
+  logger.info({ sigLen: signatureBytes.length, isECDSA,
+    first4Hex: signatureBytes.slice(0,4).toString('hex').toUpperCase(),
+  }, 'CMS: algoritm detectat automat');
 
   function encLen(len) {
     if (len < 128) return Buffer.from([len]);
@@ -337,7 +349,7 @@ async function buildCmsFromRawSignature(signByteBase64, certPem, hashBase64) {
     issuerAndSerial,                                      // sid
     seq(Buffer.concat([oid(OID_SHA256)])),                // digestAlgorithm
     authAttrs,                                            // authenticatedAttributes
-    seq(Buffer.concat([oid(OID_RSA), Buffer.from([0x05,0x00])])), // signatureAlgorithm
+    seq(Buffer.concat([oid(sigAlgOid), ...(isECDSA ? [] : [Buffer.from([0x05,0x00])])])), // signatureAlgorithm (RSA cu NULL params, ECDSA fara)
     octstr(signatureBytes),                               // signature (raw bytes de la STS)
   ]));
 
