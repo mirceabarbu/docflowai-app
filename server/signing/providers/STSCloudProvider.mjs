@@ -226,14 +226,26 @@ export class STSCloudProvider {
         });
         const uiText = await uiResp.text();
         logger.info({ status: uiResp.status, len: uiText.length,
-          preview: uiText.substring(0,300) }, 'STS: /userinfo raspuns');
+          preview: uiText.substring(0,500) }, 'STS: /userinfo raspuns COMPLET');
         if (uiResp.ok) {
           const ui = JSON.parse(uiText);
+          // STS poate returna cert in mai multe locuri — incercam toate
           certPem = ui?.signingCertificate?.pemCertificate
-                 || ui?.otherCertificates?.[0]?.pemCertificate
+                 || ui?.certificate?.pemCertificate
+                 || ui?.cert
+                 || ui?.pemCertificate
                  || null;
+          // Fallback: primul cert din otherCertificates
+          if (!certPem && Array.isArray(ui?.otherCertificates)) {
+            certPem = ui.otherCertificates[0]?.pemCertificate || null;
+          }
           logger.info({ hasCert: !!certPem, certLen: certPem?.length||0,
-            keys: Object.keys(ui||{}) }, 'STS: certificat din /userinfo');
+            allKeys: JSON.stringify(Object.keys(ui||{})),
+            sigCertKeys: ui?.signingCertificate ? JSON.stringify(Object.keys(ui.signingCertificate)) : 'N/A',
+          }, 'STS: certificat din /userinfo');
+        } else {
+          logger.warn({ status: uiResp.status, body: uiText.substring(0,200) },
+            'STS: /userinfo raspuns non-OK');
         }
       } catch(uiErr) {
         logger.warn({ err: uiErr }, 'STS: /userinfo fetch eroare (non-fatal)');

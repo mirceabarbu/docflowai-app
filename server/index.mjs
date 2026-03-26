@@ -1,5 +1,15 @@
 /**
- * DocFlowAI v3.9.8 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.9 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.9 (build b223, 26.03.2026):
+ *  FIX CRITIC: cartus server-side generat pentru TOATE fluxurile, inclusiv upload local
+ *    Cauza: stampFooterOnPdf genera cartus+AcroForm indiferent de provider
+ *    Fix: generateCartus=true DOAR daca org are 'sts-cloud' in signing_providers_enabled
+ *    crud.mjs: query DB organizations.signing_providers_enabled -> orgHasSts
+ *    stampFooterOnPdf: flag generateCartus controleaza generarea cartusului
+ *    Upload local: revine la comportamentul original (footer only, cartus client-side)
+ *  FIX: /userinfo log complet pentru diagnosticare certificat lipsa
+ *    Log toate campurile returnate de STS pentru a gasi certPem
  *
  * CHANGES v3.9.8 (build b222, 26.03.2026):
  *  FIX: certificat PEM obtinut in processOAuthCallback (nu la callback route)
@@ -832,7 +842,8 @@ async function stampFooterOnPdf(pdfB64, flowData) {
     const signers = Array.isArray(flowData.signers)?flowData.signers:[];
     const signersFieldNames = {};
 
-    if (signers.length > 0 && flowData.flowType !== 'ancore') {
+    const generateCartus = !!flowData.generateCartus;  // true DOAR pentru org cu STS activ
+    if (generateCartus && signers.length > 0 && flowData.flowType !== 'ancore') {
       const n    = signers.length;
       const cols = Math.min(n, 3);
       const rows = Math.ceil(n/cols);

@@ -113,15 +113,29 @@ const createFlow = async (req, res) => {
     // ale autoritatii emitente. Orice modificare (chiar si pdf-lib save) le invalideaza.
     // Campurile de semnatura predefinite (AcroForm) raman intacte.
 
+    // Detectăm dacă org-ul are STS activ — cartușul server-side se generează DOAR pentru STS
+    // Upload local: cartușul se generează client-side (buildCartusBlob) cu detecție spațiu PDF.js
+    let orgHasSts = false;
+    if (orgId) {
+      try {
+        const orgRow = await pool.query('SELECT signing_providers_enabled FROM organizations WHERE id=$1', [orgId]);
+        const enabled = orgRow.rows[0]?.signing_providers_enabled || [];
+        orgHasSts = Array.isArray(enabled) && enabled.includes('sts-cloud');
+      } catch(e2) { logger.warn({ err: e2 }, 'crud: orgHasSts check error'); }
+    }
+    logger.info({ orgId, orgHasSts }, 'crud: cartus server-side generat pentru STS');
+
     if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
       try {
-        // stampFooterOnPdf poate returna { pdfB64, signersFieldNames }
-        // dacă generează și cartușul cu câmpuri AcroForm /Sig
+        // stampFooterOnPdf returneaza { pdfB64, signersFieldNames } DOAR daca orgHasSts=true
+        // (cartus server-side cu campuri AcroForm /Sig pentru PAdES)
+        // Upload local: returneaza string simplu (doar footer, fara cartus)
         const stampResult = await _stampFooterOnPdf(finalPdfB64, {
           flowId, createdAt, initName, initFunctie,
           institutie: initInstitutie, compartiment: initCompartiment,
           flowType: body.flowType || 'tabel',
           signers: normalizedSigners,
+          generateCartus: orgHasSts,   // ← CHEIE: cartuș server-side DOAR pentru STS
         });
         if (stampResult && typeof stampResult === 'object' && stampResult.pdfB64) {
           finalPdfB64 = stampResult.pdfB64;
