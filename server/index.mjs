@@ -1,5 +1,12 @@
 /**
- * DocFlowAI v3.9.7 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.8 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.8 (build b222, 26.03.2026):
+ *  FIX: certificat PEM obtinut in processOAuthCallback (nu la callback route)
+ *    Cauza: fetch /userinfo la OAuth callback route nu salva corect certPem
+ *    Fix: /userinfo fetch mutat in STSCloudProvider.processOAuthCallback
+ *    Avantaj: acelasi accessToken, acelasi context, log complet raspuns
+ *    result.certPem transmis la callback route si salvat in signers[i].stsCertPem
  *
  * CHANGES v3.9.7 (build b221, 26.03.2026):
  *  FIX: STS foloseste ECDSA P-256, nu RSA

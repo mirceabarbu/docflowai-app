@@ -217,6 +217,28 @@ export class STSCloudProvider {
       logger.info({ stsOpId, sessionId: session.sessionId },
         'STS: hash trimis — utilizatorul trebuie să aprobe pe email/PUSH');
 
+      // PASUL 3: obținem certificatul din /userinfo (necesar pentru CMS PAdES)
+      let certPem = null;
+      try {
+        const uiResp = await _fetchIPv4('https://idp.stsisp.ro/userinfo', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const uiText = await uiResp.text();
+        logger.info({ status: uiResp.status, len: uiText.length,
+          preview: uiText.substring(0,300) }, 'STS: /userinfo raspuns');
+        if (uiResp.ok) {
+          const ui = JSON.parse(uiText);
+          certPem = ui?.signingCertificate?.pemCertificate
+                 || ui?.otherCertificates?.[0]?.pemCertificate
+                 || null;
+          logger.info({ hasCert: !!certPem, certLen: certPem?.length||0,
+            keys: Object.keys(ui||{}) }, 'STS: certificat din /userinfo');
+        }
+      } catch(uiErr) {
+        logger.warn({ err: uiErr }, 'STS: /userinfo fetch eroare (non-fatal)');
+      }
+
       // Returnăm stare PENDING — polling-ul se face separat
       return {
         ok:           true,
@@ -225,6 +247,7 @@ export class STSCloudProvider {
         accessToken,
         signUrl:      pd.signUrl,
         sessionId:    session.sessionId,
+        certPem,      // certificat PEM al semnatarului (pentru CMS PAdES)
         message:      'Hash transmis la STS. Utilizatorul va primi email/notificare PUSH pentru aprobare.',
       };
 
