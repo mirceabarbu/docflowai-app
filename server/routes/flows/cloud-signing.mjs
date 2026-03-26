@@ -164,8 +164,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
         'SELECT data FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]
       );
       const padesPdfBuf = padesRows[0]?.data ? Buffer.from(padesRows[0].data, 'base64') : Buffer.alloc(0);
-      const byteRange   = signer.padesRange || [0,0,0,0];
-      if (!padesPdfBuf.length || !byteRange[1]) throw new Error('PAdES PDF placeholder lipsă');
+      if (!padesPdfBuf.length) throw new Error('PAdES PDF placeholder lipsă — stocarea flows_pdfs a eșuat');
       const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte);
       signedPdfB64 = signedPdfBuf.toString('base64');
       // Curățăm PDF-ul temporar cu placeholder
@@ -185,7 +184,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     signers[idx].signingProvider = 'sts-cloud';
     // Curățăm datele PAdES temporare (nu mai sunt necesare)
     delete signers[idx].padesB64;
-    delete signers[idx].padesRange;
+    // padesRange eliminat din arhitectura @signpdf/signpdf
     signers[idx].signatureMetadata = {
       level: 'QES', provider: 'sts-cloud',
       qualifiedCertificate: true,
@@ -385,7 +384,7 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
       hasKid: !!providerConfig.kid,
       hasPrivateKey: !!providerConfig.privateKeyPem,
       hasRedirectUri: !!providerConfig.redirectUri,
-      byteRange, padesHashLen: padesHashBase64.length,
+      padesHashLen: padesHashBase64.length,
     }, 'initiate-cloud-signing: PAdES pregătit');
     const appBaseUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
 
@@ -416,7 +415,7 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
        ON CONFLICT (flow_id, key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
       [flowId, padesKey, padesPdfB64]
     );
-    signers[idx].padesRange = byteRange;  // byteRange e mic — rămâne în JSONB
+    // padesRange eliminat — @signpdf/signpdf nu mai necesita byteRange extern
     data.signers  = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);

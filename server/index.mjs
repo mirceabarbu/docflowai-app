@@ -1,5 +1,11 @@
 /**
- * DocFlowAI v3.9.0 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.1 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.1 (build b215, 26.03.2026):
+ *  FIX: byteRange is not defined in cloud-signing.mjs
+ *    Noul API pades.mjs nu mai returneaza byteRange extern
+ *    Eliminat padesRange din signers JSONB si din poll handler
+ *    injectCms() si calcPadesHash() nu mai au nevoie de byteRange explicit
  *
  * CHANGES v3.9.0 (build b214, 26.03.2026):
  *  FEAT: PAdES corect cu @signpdf/signpdf (incremental update)
