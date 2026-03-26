@@ -1,175 +1,170 @@
 /**
- * DocFlowAI — PAdES (PDF Advanced Electronic Signatures) / adbe.pkcs7.detached
+ * DocFlowAI — PAdES cu @signpdf/signpdf (incremental update corect)
  *
- * Arhitectura simplificată (compatibilă cu pdf-lib care nu suportă incremental update):
+ * Arhitectura:
+ *   CREARE FLUX (stampFooterOnPdf):
+ *     - Generează cartuș vizual server-side cu câmpuri AcroForm /Sig per semnatar
+ *     - signers[i].padesFieldName salvat în DB
  *
- * La creare flux (stampFooterOnPdf):
- *   - Footer vizual + câmpuri AcroForm /Sig invizibile (Rect=[0,0,0,0]) per semnatar
- *   - signers[i].padesFieldName = 'SIG_ROL_N'
+ *   SEMNARE STS:
+ *     1. preparePadesDoc(pdfBuf, signer, signerIdx) → pdfBytes cu placeholder
+ *        - Adaugă placeholder ByteRange în câmpul AcroForm al semnătarului
+ *        - Returnează Buffer gata de hashing
+ *     2. calcPadesHash(pdfBytes) → SHA-256 base64 → trimis la STS
+ *     3. injectCms(pdfBytes, cmsBase64) → PDF semnat final
+ *        - CMS de la STS injectat în placeholder prin @signpdf/signpdf
+ *        - Incremental update → semnăturile anterioare rămân valide
  *
- * La semnare STS (buildSignaturePdf):
- *   - Folosim câmpul existent sau creăm unul nou invizibil
- *   - Adăugăm ByteRange placeholder CAFEBABECAFEBABE
- *   - calcPadesHash → hash trimis la STS
- *   - injectCmsSignature → CMS embedded → PDF valid în Adobe
- *
- * Fiecare semnare e independentă (nu chain) → semnăturile nu se invalidează reciproc.
- * Cartușul vizual cu celulele e generat client-side (buildCartusBlob + PDF.js detecție spațiu).
+ *   Semnatar 2: baza = signedPdfB64 (PDF cu semnătura semnatarului 1) → incremental append
  */
 
 import crypto from 'node:crypto';
 import dns from 'dns';
+import { createRequire } from 'module';
 import { logger } from '../middleware/logger.mjs';
 
 dns.setDefaultResultOrder('ipv4first');
 
-const PLACEHOLDER_BYTES   = 32768;
-const PLACEHOLDER_HEX_LEN = PLACEHOLDER_BYTES * 2;
-const MARKER_VALUE        = 'CAFEBABECAFEBABE' + '0'.repeat(PLACEHOLDER_HEX_LEN - 16);
-const MARKER_SEARCH       = Buffer.from('<CAFEBABECAFEBABE');
+const _require = createRequire(import.meta.url);
+const { SignPdf }              = _require('@signpdf/signpdf');
+const { pdflibAddPlaceholder } = _require('@signpdf/placeholder-pdf-lib');
+const { Signer, DEFAULT_BYTE_RANGE_PLACEHOLDER, SUBFILTER_ADOBE_PKCS7_DETACHED } = _require('@signpdf/utils');
 
-function ro(t) {
-  const m = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-  return String(t||'').split('').map(c => m[c]||c).join('');
+// Placeholder mai mare pentru STS QES (tipic 4-12KB DER)
+const STS_SIGNATURE_LENGTH = 32768;
+
+// ── STSSigner — wrapper Signer care injectează CMS extern de la STS ──────────
+class STSSigner extends Signer {
+  constructor(cmsBuffer) {
+    super();
+    this._cmsBuffer = cmsBuffer; // Buffer cu CMS DER de la STS
+  }
+  async sign(_pdfBuffer, _signingTime) {
+    return this._cmsBuffer; // SignPdf va injecta asta în placeholder
+  }
 }
 
-// ── buildSignaturePdf ────────────────────────────────────────────────────────
-export async function buildSignaturePdf(pdfBuf, flowData, signerIdx) {
-  const { PDFDocument, PDFName, PDFNumber, PDFString, PDFHexString } =
-    await import('pdf-lib');
+// ── preparePadesDoc ───────────────────────────────────────────────────────────
+/**
+ * Adaugă placeholder ByteRange în câmpul AcroForm al semnătarului curent.
+ * Returnează pdfBytes cu placeholder — gata de hash și semnare.
+ *
+ * @param {Buffer} pdfBuf  PDF din DB (cu câmpuri AcroForm create la flux)
+ * @param {object} signer  signers[signerIdx] — trebuie să aibă padesFieldName
+ * @param {number} signerIdx
+ * @returns {Promise<Buffer>} pdfBytes cu placeholder
+ */
+export async function preparePadesDoc(pdfBuf, signer, signerIdx) {
+  const { PDFDocument, PDFName } = await import('pdf-lib');
 
-  const signers = Array.isArray(flowData.signers) ? flowData.signers : [];
-  const signer  = signers[signerIdx];
-  if (!signer) throw new Error(`PAdES: semnătarul la indexul ${signerIdx} lipsește`);
+  const pdfDoc   = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
+  const pages    = pdfDoc.getPages();
+  const lastPage = pages[pages.length - 1];
 
-  const pdfDoc = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
-  const pages  = pdfDoc.getPages();
-  const page   = pages[pages.length - 1];
+  // Găsim câmpul AcroForm al semnătarului (creat la flux de stampFooterOnPdf)
+  const fieldName = signer.padesFieldName;
+  let targetPage  = lastPage;
 
-  const now = new Date();
-  const p2  = n => String(n).padStart(2,'0');
-  const pdfDate = `D:${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}` +
-                  `${p2(now.getHours())}${p2(now.getMinutes())}${p2(now.getSeconds())}+00'00'`;
-
-  // AcroForm
-  let acroForm;
-  const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-  if (acroFormRef) {
-    acroForm = pdfDoc.context.lookup(acroFormRef);
-    try { acroForm.set(PDFName.of('SigFlags'), PDFNumber.of(3)); } catch(e) {}
-  } else {
-    const afObj = pdfDoc.context.obj({
-      Fields: pdfDoc.context.obj([]), SigFlags: PDFNumber.of(3),
-      DA: PDFString.of('/Helv 0 Tf 0 g'),
-    });
-    pdfDoc.catalog.set(PDFName.of('AcroForm'), pdfDoc.context.register(afObj));
-    acroForm = afObj;
-  }
-
-  // Găsim câmpul existent (padesFieldName) sau creăm unul nou invizibil
-  const fieldName = signer.padesFieldName || `SIG_QES_${signerIdx+1}_${Date.now()}`;
-  let existingWidget = null;
-
-  if (signer.padesFieldName) {
-    const fref = acroForm.get(PDFName.of('Fields'));
-    if (fref) {
-      const farr = pdfDoc.context.lookup(fref);
-      for (let i = 0; i < (farr.size ? farr.size() : 0); i++) {
-        try {
-          const f = pdfDoc.context.lookup(farr.get(i));
-          const tObj = f?.get(PDFName.of('T'));
-          const tStr = tObj?.decodeText ? tObj.decodeText() : tObj?.asString?.();
-          if (tStr === signer.padesFieldName) { existingWidget = f; break; }
-        } catch(e2) {}
+  if (fieldName) {
+    // Găsim pagina pe care e câmpul
+    const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+    if (acroFormRef) {
+      const acroForm = pdfDoc.context.lookup(acroFormRef);
+      const fRef = acroForm.get(PDFName.of('Fields'));
+      if (fRef) {
+        const fArr = pdfDoc.context.lookup(fRef);
+        for (let i = 0; i < (fArr.size ? fArr.size() : 0); i++) {
+          try {
+            const f    = pdfDoc.context.lookup(fArr.get(i));
+            const tObj = f?.get(PDFName.of('T'));
+            const tStr = tObj?.decodeText ? tObj.decodeText() : tObj?.asString?.();
+            if (tStr === fieldName) {
+              const pRef = f.get(PDFName.of('P'));
+              if (pRef) {
+                const idx = pages.findIndex(p => p.ref === pRef || p.ref?.objectNumber === pRef?.objectNumber);
+                if (idx >= 0) targetPage = pages[idx];
+              }
+              break;
+            }
+          } catch(e2) {}
+        }
       }
     }
   }
 
-  // Dict /Sig cu placeholder
-  const sigValRef = pdfDoc.context.register(pdfDoc.context.obj({
-    Type:      PDFName.of('Sig'),
-    Filter:    PDFName.of('Adobe.PPKLite'),
-    SubFilter: PDFName.of('adbe.pkcs7.detached'),
-    ByteRange: pdfDoc.context.obj([0,999999999,999999999,999999999].map(n => PDFNumber.of(n))),
-    Contents:  PDFHexString.of(MARKER_VALUE),
-    Reason:    PDFString.of('Semnatura electronica calificata QES - DocFlowAI'),
-    Name:      PDFString.of(ro(signer.name || '')),
-    Location:  PDFString.of('Romania'),
-    M:         PDFString.of(pdfDate),
-  }));
-
-  if (existingWidget) {
-    // Actualizăm câmpul existent cu /V = dict Sig
-    existingWidget.set(PDFName.of('V'), sigValRef);
-    logger.info({ signerIdx, fieldName }, 'PAdES: câmp existent actualizat');
-  } else {
-    // Câmp nou invizibil
-    const widgetRef = pdfDoc.context.register(pdfDoc.context.obj({
-      Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
-      T: PDFString.of(fieldName),
-      Rect: pdfDoc.context.obj([0,0,0,0].map(n => PDFNumber.of(n))),
-      V: sigValRef, F: PDFNumber.of(132), P: page.ref,
-    }));
-    const ea = page.node.get(PDFName.of('Annots'));
-    if (ea) { try { pdfDoc.context.lookup(ea).push(widgetRef); } catch(e2) { page.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef])); } }
-    else page.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef]));
-    try {
-      const fref = acroForm.get(PDFName.of('Fields'));
-      if (fref) pdfDoc.context.lookup(fref).push(widgetRef);
-      else acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj([widgetRef]));
-    } catch(e2) {}
-    logger.info({ signerIdx, fieldName }, 'PAdES: câmp nou invizibil creat');
-  }
+  // Adăugăm placeholder via pdflibAddPlaceholder
+  pdflibAddPlaceholder({
+    pdfDoc,
+    pdfPage:         targetPage,
+    reason:          'Semnatura electronica calificata QES - DocFlowAI',
+    contactInfo:     signer.email || '',
+    name:            signer.name  || '',
+    location:        'Romania',
+    signatureLength: STS_SIGNATURE_LENGTH,
+    subFilter:       SUBFILTER_ADOBE_PKCS7_DETACHED,
+    widgetRect:      [0, 0, 0, 0], // invizibil — câmpul vizual e deja în cartuș
+  });
 
   const savedBytes = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-
-  const markerIdx = savedBytes.indexOf(MARKER_SEARCH);
-  if (markerIdx < 0) throw new Error('PAdES: marker CAFEBABECAFEBABE nu a fost găsit');
-
-  const contentsStart = markerIdx;
-  const contentsEnd   = markerIdx + 1 + PLACEHOLDER_HEX_LEN + 1;
-  const byteRange     = [0, contentsStart, contentsEnd, savedBytes.length - contentsEnd];
-
-  _patchByteRange(savedBytes, byteRange);
-  logger.info({ signerIdx, byteRange, pdfSize: savedBytes.length }, 'PAdES: PDF pregătit cu succes');
-  return { pdfBytes: savedBytes, byteRange };
+  logger.info({ signerIdx, fieldName, pdfSize: savedBytes.length }, 'PAdES: placeholder adăugat');
+  return savedBytes;
 }
 
 // ── calcPadesHash ────────────────────────────────────────────────────────────
-export function calcPadesHash(pdfBytes, byteRange) {
-  const [b0, b1, b2, b3] = byteRange;
+/**
+ * SHA-256 al bytes-ilor din afara placeholder-ului /Contents.
+ * @signpdf/signpdf localizează automat ByteRange — calculăm la fel.
+ */
+export function calcPadesHash(pdfBytes) {
+  // Găsim ByteRange în PDF (patternat de pdflibAddPlaceholder)
+  // @signpdf/signpdf calculeaza ByteRange astfel:
+  // 1. Gaseste /ByteRange cu placeholder-ul
+  // 2. Dupa ByteRange gaseste /Contents <...placeholder zeros...>
+  // 3. Hash = bytes[0..contentsStart] + bytes[contentsEnd..end]
+  // Reproducem exact aceeasi logica pentru hash-ul trimis la STS
+
+  const { removeTrailingNewLine, convertBuffer, findByteRange } = _require('@signpdf/utils');
+  let pdf = removeTrailingNewLine(convertBuffer(pdfBytes, 'PDF'));
+
+  const { byteRangePlaceholder, byteRangePlaceholderPosition } = findByteRange(pdf);
+  if (!byteRangePlaceholder) {
+    logger.warn('PAdES: ByteRange placeholder negăsit — hash simplu');
+    return crypto.createHash('sha256').update(pdfBytes).digest('base64');
+  }
+
+  // Exact aceeasi logica ca SignPdf.sign pentru a determina pozitia /Contents
+  const byteRangeEnd   = byteRangePlaceholderPosition + byteRangePlaceholder.length;
+  const contentsTagPos = pdf.indexOf('/Contents ', byteRangeEnd);
+  const placeholderPos = pdf.indexOf('<', contentsTagPos);
+  const placeholderEnd = pdf.indexOf('>', placeholderPos);
+
+  const b1 = placeholderPos;
+  const b2 = placeholderEnd + 1;
+  const b3 = pdf.length - b2;
+
+  // PDF-ul fara /Contents placeholder (exact ce semneaza STS)
   const hash = crypto.createHash('sha256');
-  hash.update(pdfBytes.slice(b0, b0 + b1));
-  hash.update(pdfBytes.slice(b2, b2 + b3));
+  hash.update(pdf.slice(0, b1));
+  hash.update(pdf.slice(b2, b2 + b3));
   return hash.digest('base64');
 }
 
-// ── injectCmsSignature ───────────────────────────────────────────────────────
-export function injectCmsSignature(pdfBytes, byteRange, cmsBase64) {
-  const cmsHex = Buffer.from(cmsBase64, 'base64').toString('hex').toUpperCase();
-  if (cmsHex.length > PLACEHOLDER_HEX_LEN) {
-    throw new Error(`PAdES: CMS prea mare (${cmsHex.length} > ${PLACEHOLDER_HEX_LEN} hex chars)`);
+// ── injectCms ────────────────────────────────────────────────────────────────
+/**
+ * Injectează CMS-ul de la STS în placeholder.
+ * Folosește @signpdf/signpdf care face incremental update corect.
+ * @param {Buffer} pdfBytes  PDF cu placeholder
+ * @param {string} cmsBase64 CMS DER base64 de la STS
+ * @returns {Promise<Buffer>} PDF semnat final
+ */
+export async function injectCms(pdfBytes, cmsBase64) {
+  const cmsBuffer = Buffer.from(cmsBase64, 'base64');
+  if (cmsBuffer.length > STS_SIGNATURE_LENGTH) {
+    throw new Error(`PAdES: CMS prea mare (${cmsBuffer.length} > ${STS_SIGNATURE_LENGTH} bytes)`);
   }
-  const paddedHex = cmsHex + '0'.repeat(PLACEHOLDER_HEX_LEN - cmsHex.length);
-  const markerIdx = pdfBytes.indexOf(MARKER_SEARCH);
-  if (markerIdx < 0) throw new Error('PAdES: marker CAFEBABECAFEBABE nu a fost găsit');
-  Buffer.from(paddedHex, 'ascii').copy(pdfBytes, markerIdx + 1);
-  logger.info({ cmsHexLen: cmsHex.length, pdfSize: pdfBytes.length }, 'PAdES: CMS injectat cu succes');
-  return pdfBytes;
-}
-
-function _patchByteRange(pdfBuf, byteRange) {
-  const search = Buffer.from('/ByteRange [');
-  const pos    = pdfBuf.indexOf(search);
-  if (pos < 0) { logger.warn('PAdES: /ByteRange [ nu a fost găsit'); return; }
-  const startIdx = pos + search.length;
-  let endIdx = startIdx;
-  while (endIdx < pdfBuf.length && pdfBuf[endIdx] !== 0x5D) endIdx++;
-  const oldLen = endIdx - startIdx;
-  const newContent = ` ${byteRange[0]} ${byteRange[1]} ${byteRange[2]} ${byteRange[3]} `;
-  if (newContent.length <= oldLen) {
-    Buffer.from(newContent.padEnd(oldLen, ' '), 'ascii').copy(pdfBuf, startIdx);
-  } else {
-    logger.error({ oldLen, newLen: newContent.length }, 'PAdES: ByteRange nou prea lung');
-  }
+  const signer    = new STSSigner(cmsBuffer);
+  const signPdf   = new SignPdf();
+  const signedPdf = await signPdf.sign(pdfBytes, signer);
+  logger.info({ cmsLen: cmsBuffer.length, pdfSize: signedPdf.length }, 'PAdES: CMS injectat cu succes');
+  return signedPdf;
 }

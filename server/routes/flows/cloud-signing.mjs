@@ -157,7 +157,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     // ── PAdES: injectăm CMS în PDF-ul cu placeholder ByteRange ────────────
     let signedPdfB64;
     try {
-      const { injectCmsSignature } = await import('../../signing/pades.mjs');
+      const { injectCms } = await import('../../signing/pades.mjs');
       // Citim PDF-ul cu placeholder din flows_pdfs
       const padesKey = `padesPdf_${idx}`;
       const { rows: padesRows } = await pool.query(
@@ -166,7 +166,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       const padesPdfBuf = padesRows[0]?.data ? Buffer.from(padesRows[0].data, 'base64') : Buffer.alloc(0);
       const byteRange   = signer.padesRange || [0,0,0,0];
       if (!padesPdfBuf.length || !byteRange[1]) throw new Error('PAdES PDF placeholder lipsă');
-      const signedPdfBuf = injectCmsSignature(padesPdfBuf, byteRange, pollResult.signByte);
+      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte);
       signedPdfB64 = signedPdfBuf.toString('base64');
       // Curățăm PDF-ul temporar cu placeholder
       await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);
@@ -371,16 +371,12 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
       } catch(e) { logger.warn({ err: e }, 'initiate-cloud-signing: unlock error (non-fatal)'); }
     }
 
-    // ── PAdES: generăm PDF cu ByteRange placeholder ─────────────────────
-    // Înlocuiește hash-ul simplu al PDF-ului cu hash-ul PAdES corect
-    // (calculat pe bytes-ii din afara câmpului Contents)
-    const { buildSignaturePdf, calcPadesHash } = await import('../../signing/pades.mjs');
-    const { pdfBytes: pdfBufPades, byteRange } = await buildSignaturePdf(pdfBuf, data, idx);
-    const padesHashBase64 = calcPadesHash(pdfBufPades, byteRange);
-
-    // Stocăm pdfBufPades (cu placeholder) în flows_pdfs cheia 'padesPdfB64'
-    // pentru a-l recupera exact la callback (injectăm CMS în același bytes array)
-    const padesPdfB64 = pdfBufPades.toString('base64');
+    // ── PAdES: adăugăm placeholder ByteRange + calculăm hash corect ────
+    const { preparePadesDoc, calcPadesHash } = await import('../../signing/pades.mjs');
+    const pdfBufPades     = await preparePadesDoc(pdfBuf, signers[idx], idx);
+    const padesHashBase64 = calcPadesHash(pdfBufPades);
+    const padesPdfB64     = pdfBufPades.toString('base64');
+    logger.info({ flowId, signerIdx: idx, hashLen: padesHashBase64.length }, 'PAdES: placeholder generat');
 
     const providerConfig = getOrgProviderConfig(org, providerId);
     logger.info({

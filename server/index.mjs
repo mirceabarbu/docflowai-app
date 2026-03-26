@@ -1,5 +1,18 @@
 /**
- * DocFlowAI v3.8.7 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.0 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.0 (build b214, 26.03.2026):
+ *  FEAT: PAdES corect cu @signpdf/signpdf (incremental update)
+ *    pades.mjs rescris complet:
+ *      preparePadesDoc() — placeholder ByteRange via pdflibAddPlaceholder
+ *      calcPadesHash() — hash corect (reproduce logica SignPdf.sign)
+ *      injectCms() — STSSigner custom + SignPdf.sign = incremental update
+ *      Semnatura anterioara ramane valida la semnarea urmatoare
+ *    stampFooterOnPdf extins:
+ *      Genereaza cartus vizual server-side la creare flux
+ *      Campuri AcroForm /Sig vizibile in celulele cartusului
+ *      Returneaza signersFieldNames -> signers[i].padesFieldName
+ *    Rezultat asteptat: Adobe Signature Panel valid per semnatar
  *
  * CHANGES v3.8.7 (build b213, 25.03.2026):
  *  FIX ARHITECTURA PAdES: semnaturi invalide + cartus pe pagina gresita
@@ -720,8 +733,9 @@ async function stampFooterOnPdf(pdfB64, flowData) {
     const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
     const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
     const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
-    const { width: pW } = lastPage.getSize();
+    const { width: pW, height: pH } = lastPage.getSize();
     const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
     const createdDate = flowData.createdAt
       ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
@@ -729,70 +743,89 @@ async function stampFooterOnPdf(pdfB64, flowData) {
     const parts = [ro(flowData.initName || ''), flowData.initFunctie ? ro(flowData.initFunctie) : null, flowData.institutie ? ro(flowData.institutie) : null, flowData.compartiment ? ro(flowData.compartiment) : null].filter(Boolean).join(', ');
     const footerLeft = createdDate + (parts ? '  |  ' + parts : '');
     const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
-
     const rightWidth = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
     const rightX = pW - MARGIN - rightWidth;
     const leftMaxWidth = rightX - MARGIN - 8;
-
     lastPage.drawLine({ start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 }, thickness: 0.4, color: rgb(0.75, 0.75, 0.75) });
     lastPage.drawText(footerLeft, { x: MARGIN, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth });
     lastPage.drawText(footerRight, { x: rightX, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
 
-    // ── Câmpuri AcroForm /Sig INVIZIBILE per semnatar ─────────────────────
-    // Poziționate la (0,0,0,0) — nu vizibile dar necesare pentru PAdES embedding.
-    // Cartușul vizual e generat client-side (buildCartusBlob) cu detecție spațiu PDF.js.
-    // Fiecare câmp e independent — semnăturile nu se invalidează reciproc.
+    // ── CARTUȘ VIZUAL + câmpuri AcroForm /Sig per semnatar (pentru STS PAdES) ─
+    // Generat server-side O SINGURĂ DATĂ la creare flux.
+    // Câmpurile /Sig sunt necesare pentru PAdES valid (incremental update).
+    // Upload local: câmpurile /Sig sunt ignorate (utilizatorul semnează cu aplicație proprie).
     const signers = Array.isArray(flowData.signers) ? flowData.signers : [];
     const signersFieldNames = {};
 
     if (signers.length > 0 && flowData.flowType !== 'ancore') {
+      const n     = signers.length;
+      const cols  = Math.min(n, 3);
+      const rows  = Math.ceil(n / cols);
+      const cellW = (pW - MARGIN * 2) / cols;
+      const cellH = 48;
+      const titleH = 20;
+      const cartusBottom = 36;
+      const cartusH = rows * cellH + titleH;
+
+      // Pagina nouă pentru cartuș
+      const cartusPage = pdfDoc.addPage([pW, pH]);
+
+      // Footer pe pagina cartuș
+      cartusPage.drawLine({ start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 }, thickness: 0.4, color: rgb(0.75, 0.75, 0.75) });
+      cartusPage.drawText(footerLeft, { x: MARGIN, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth });
+      cartusPage.drawText(footerRight, { x: rightX, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
+
+      // Bară titlu cartuș
+      cartusPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH, width: pW - MARGIN * 2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
+      cartusPage.drawText('SEMNAT SI APROBAT', { x: MARGIN + 8, y: cartusBottom + cartusH - titleH + 6, size: 7, font: fontB, color: rgb(0,0,0) });
+
+      // AcroForm pentru câmpurile /Sig
       let acroForm;
       const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
       if (acroFormRef) {
         acroForm = pdfDoc.context.lookup(acroFormRef);
         try { acroForm.set(PDFName.of('SigFlags'), PDFNumber.of(3)); } catch(e2) {}
       } else {
-        const afObj = pdfDoc.context.obj({
-          Fields:   pdfDoc.context.obj([]),
-          SigFlags: PDFNumber.of(3),
-          DA:       PDFString.of('/Helv 0 Tf 0 g'),
-        });
+        const afObj = pdfDoc.context.obj({ Fields: pdfDoc.context.obj([]), SigFlags: PDFNumber.of(3), DA: PDFString.of('/Helv 0 Tf 0 g') });
         pdfDoc.catalog.set(PDFName.of('AcroForm'), pdfDoc.context.register(afObj));
         acroForm = afObj;
       }
 
-      for (let idx = 0; idx < signers.length; idx++) {
-        const s = signers[idx];
+      signers.forEach((s, idx) => {
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        const cx  = MARGIN + col * cellW;
+        const cy  = cartusBottom + (rows - 1 - row) * cellH;
+
+        // Celulă vizuală
+        cartusPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: rgb(.96,.96,.96), borderColor: rgb(.2,.2,.2), borderWidth: 1 });
+        cartusPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: rgb(.96,.96,.96), borderColor: rgb(.2,.2,.2), borderWidth: .35 });
+        cartusPage.drawText(ro(s.rol) || '—', { x: cx+6, y: cy+cellH-13, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
+        const nameFunc = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
+        if (nameFunc) cartusPage.drawText(nameFunc, { x: cx+6, y: cy+cellH-24, size: 7, font: fontR, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
+        const midY = cy + cellH/2 - 6;
+        cartusPage.drawText('L.S.', { x: cx+6, y: midY+4, size: 6.5, font: fontB, color: rgb(.5,.5,.6) });
+        cartusPage.drawText('Semnatura electronica', { x: cx+6, y: midY-5, size: 5.5, font: fontR, color: rgb(.6,.6,.6), maxWidth: cellW-12 });
+
+        // Câmp AcroForm /Sig vizibil în celulă — necesar pentru PAdES
         const fieldName = `SIG_${(s.rol||'SEM').replace(/[^A-Za-z0-9]/g,'_').toUpperCase()}_${idx+1}`;
         signersFieldNames[idx] = fieldName;
-
-        // Widget invizibil (Rect = [0,0,0,0]) — valabil PAdES, nu interferează cu cartușul vizual
+        const sigRect = [cx, cy, cx + cellW, cy + cellH];
         const widgetRef = pdfDoc.context.register(pdfDoc.context.obj({
-          Type:    PDFName.of('Annot'),
-          Subtype: PDFName.of('Widget'),
-          FT:      PDFName.of('Sig'),
-          T:       PDFString.of(fieldName),
-          Rect:    pdfDoc.context.obj([0,0,0,0].map(n => PDFNumber.of(n))),
-          F:       PDFNumber.of(132),
-          P:       lastPage.ref,
+          Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
+          T: PDFString.of(fieldName),
+          Rect: pdfDoc.context.obj(sigRect.map(n2 => PDFNumber.of(n2))),
+          F: PDFNumber.of(132), P: cartusPage.ref,
         }));
-
-        // Adăugăm la pagina (Annots)
-        const existing = lastPage.node.get(PDFName.of('Annots'));
-        if (existing) {
-          try { const arr = pdfDoc.context.lookup(existing); arr.push && arr.push(widgetRef); }
-          catch(e2) { lastPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef])); }
-        } else {
-          lastPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef]));
-        }
-
-        // Adăugăm la AcroForm.Fields
+        const ea = cartusPage.node.get(PDFName.of('Annots'));
+        if (ea) { try { pdfDoc.context.lookup(ea).push(widgetRef); } catch(e2) { cartusPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef])); } }
+        else cartusPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef]));
         try {
           const fref = acroForm.get(PDFName.of('Fields'));
-          if (fref) { const arr = pdfDoc.context.lookup(fref); arr.push && arr.push(widgetRef); }
+          if (fref) pdfDoc.context.lookup(fref).push(widgetRef);
           else acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj([widgetRef]));
         } catch(e2) {}
-      }
+      });
     }
 
     const isAncore = flowData.flowType === 'ancore';
