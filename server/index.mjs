@@ -837,15 +837,18 @@ function isSignerTokenExpired(signer) {
 async function stampFooterOnPdf(pdfB64, flowData) {
   if (!pdfB64 || !PDFLib) return pdfB64;
   try {
-    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const { PDFDocument, PDFName, PDFNumber, PDFString, rgb, StandardFonts } = PDFLib;
     const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-    function ro(t) { return String(t || '').split('').map(ch => diacr[ch] || ch).join(''); }
-    const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
-    const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
-    const { width: pW } = lastPage.getSize();
-    const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
+    function ro(t) { return String(t||'').split('').map(ch => diacr[ch]||ch).join(''); }
+    const clean  = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const pdfDoc = await PDFDocument.load(Buffer.from(clean,'base64'),{ignoreEncryption:true});
+    const fontR  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontB  = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
+    const { width:pW, height:pH } = lastPage.getSize();
+
+    // ── Footer ────────────────────────────────────────────────────────────
+    const MARGIN=40, footerY=14, FS=7;
     const createdDate = flowData.createdAt
       ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
       : new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
