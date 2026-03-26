@@ -1,5 +1,21 @@
 /**
- * DocFlowAI v3.9.5 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.6 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.6 (build b220, 26.03.2026):
+ *  FIX ROOT CAUSE: STS returneaza raw signature bytes, NU CMS complet
+ *    Documentatia STS confirma: signByte = byte[] (raw sig, Base64)
+ *    SigDict /Contents illegal data = raw bytes in loc de CMS DER
+ *    Solutie:
+ *      OAuth callback: fetch /userinfo -> salveaza stsCertPem in signers[i]
+ *      initiate: salveaza padesHashBase64 in signers[i] (pt CMS authAttrs)
+ *      pades.mjs: buildCmsFromRawSignature() cu node-forge:
+ *        construieste CMS/PKCS#7 SignedData complet RFC 5652
+ *        - IssuerAndSerialNumber din cert PEM
+ *        - AuthenticatedAttributes: contentType, signingTime, messageDigest
+ *        - signatureAlgorithm: RSA
+ *        - signature: raw bytes de la STS
+ *        - certificates: cert PEM al semnatarului
+ *      injectCms(pdfBytes, signByteB64, certPem, hashBase64)
  *
  * CHANGES v3.9.5 (build b219, 26.03.2026):
  *  FIX CRITIC: SigDict error — dict /Sig construit manual nu era parsabil de @signpdf

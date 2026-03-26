@@ -98,11 +98,27 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
       return res.redirect(`/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(signer.token)}&sts_error=${errMsg}`);
     }
 
+    // Obținem certificatul semnatarului din /userinfo (necesar pentru construirea CMS)
+    let stsCertPem = null;
+    try {
+      const uiRes = await fetch('https://idp.stsisp.ro/userinfo', {
+        headers: { Authorization: `Bearer ${result.accessToken}` }
+      });
+      if (uiRes.ok) {
+        const ui = await uiRes.json();
+        stsCertPem = ui?.signingCertificate?.pemCertificate || null;
+        logger.info({ flowId, signerIdx, hasCert: !!stsCertPem }, 'STS: certificat semnatarului obținut din /userinfo');
+      }
+    } catch(certErr) {
+      logger.warn({ err: certErr }, 'STS: nu s-a putut obține certificatul din /userinfo');
+    }
+
     // Stocăm datele de polling în semnatar
     signers[signerIdx].stsOpId      = result.stsOpId;
     signers[signerIdx].stsToken     = result.accessToken;
     signers[signerIdx].stsSignUrl   = result.signUrl;
     signers[signerIdx].stsPending   = true;
+    signers[signerIdx].stsCertPem   = stsCertPem;  // certificat PEM pentru CMS
     data.signers   = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
@@ -165,7 +181,25 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       );
       const padesPdfBuf = padesRows[0]?.data ? Buffer.from(padesRows[0].data, 'base64') : Buffer.alloc(0);
       if (!padesPdfBuf.length) throw new Error('PAdES PDF placeholder lipsă — stocarea flows_pdfs a eșuat');
-      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte);
+      // DEBUG: analizam signByte inainte de inject
+      const _sb = pollResult.signByte || '';
+      const _sbBuf = Buffer.from(_sb, 'base64');
+      logger.info({
+        flowId, signerIdx: idx,
+        signByteLen: _sb.length,
+        signByteBufLen: _sbBuf.length,
+        first4Hex: _sbBuf.slice(0,4).toString('hex').toUpperCase(),
+        isBase64Valid: /^[A-Za-z0-9+/]+=*$/.test(_sb.substring(0,20)),
+        // CMS/PKCS#7 DER incepe cu 0x30 0x82 (SEQUENCE)
+        looksLikeDER: _sbBuf[0] === 0x30,
+        // Daca incepe cu '3082' hex = DER SEQUENCE
+        startsWithHex3082: _sbBuf.slice(0,2).toString('hex') === '3082',
+      }, 'DEBUG signByte analysis');
+      // Recuperăm hash-ul PAdES salvat la initiate (necesar pentru CMS authAttrs)
+      const padesHashB64 = signer.padesHashBase64 || '';
+      const certPem      = signer.stsCertPem || '';
+      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: certificat PEM lipsă — CMS poate fi invalid');
+      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem, padesHashB64);
       signedPdfB64 = signedPdfBuf.toString('base64');
       // Curățăm PDF-ul temporar cu placeholder
       await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);
@@ -416,6 +450,7 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
       [flowId, padesKey, padesPdfB64]
     );
     // padesRange eliminat — @signpdf/signpdf nu mai necesita byteRange extern
+    signers[idx].padesHashBase64 = padesHashBase64;  // salvat pentru CMS authAttrs la poll
     data.signers  = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
