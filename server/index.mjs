@@ -1,5 +1,11 @@
 /**
- * DocFlowAI v3.9.1 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.2 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.2 (build b216, 26.03.2026):
+ *  FIX: semnatura in Signature1 (invisible) in loc de SIG_ROL_N din cartus
+ *    Cauza: pdflibAddPlaceholder adauga camp nou in loc sa foloseasca existentul
+ *    Fix: preparePadesDoc seteaza /V cu placeholder ByteRange pe campul SIG_ROL_N
+ *    Rezultat: semnatura apare in celula vizuala din cartus in Adobe Signature Panel
  *
  * CHANGES v3.9.1 (build b215, 26.03.2026):
  *  FIX: byteRange is not defined in cloud-signing.mjs

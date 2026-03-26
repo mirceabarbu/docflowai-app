@@ -33,6 +33,11 @@ const { Signer, DEFAULT_BYTE_RANGE_PLACEHOLDER, SUBFILTER_ADOBE_PKCS7_DETACHED }
 // Placeholder mai mare pentru STS QES (tipic 4-12KB DER)
 const STS_SIGNATURE_LENGTH = 32768;
 
+function ro(t) {
+  const m = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
+  return String(t||'').split('').map(ch => m[ch]||ch).join('');
+}
+
 // ── STSSigner — wrapper Signer care injectează CMS extern de la STS ──────────
 class STSSigner extends Signer {
   constructor(cmsBuffer) {
@@ -55,21 +60,43 @@ class STSSigner extends Signer {
  * @returns {Promise<Buffer>} pdfBytes cu placeholder
  */
 export async function preparePadesDoc(pdfBuf, signer, signerIdx) {
-  const { PDFDocument, PDFName } = await import('pdf-lib');
+  const { PDFDocument, PDFName, PDFArray, PDFNumber, PDFHexString, PDFString } = await import('pdf-lib');
+  const { DEFAULT_BYTE_RANGE_PLACEHOLDER } = _require('@signpdf/utils');
 
   const pdfDoc   = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
   const pages    = pdfDoc.getPages();
   const lastPage = pages[pages.length - 1];
-
-  // Găsim câmpul AcroForm al semnătarului (creat la flux de stampFooterOnPdf)
   const fieldName = signer.padesFieldName;
-  let targetPage  = lastPage;
+
+  // ── Construim dict /Sig cu ByteRange placeholder ─────────────────────────
+  // Același format pe care @signpdf/signpdf îl caută în PDF bytes
+  const byteRangeArr = PDFArray.withContext(pdfDoc.context);
+  byteRangeArr.push(PDFNumber.of(0));
+  byteRangeArr.push(PDFName.of(DEFAULT_BYTE_RANGE_PLACEHOLDER));
+  byteRangeArr.push(PDFName.of(DEFAULT_BYTE_RANGE_PLACEHOLDER));
+  byteRangeArr.push(PDFName.of(DEFAULT_BYTE_RANGE_PLACEHOLDER));
+
+  const sigDict = pdfDoc.context.register(pdfDoc.context.obj({
+    Type:        PDFName.of('Sig'),
+    Filter:      PDFName.of('Adobe.PPKLite'),
+    SubFilter:   PDFName.of('adbe.pkcs7.detached'),
+    ByteRange:   byteRangeArr,
+    Contents:    PDFHexString.of(String.fromCharCode(0).repeat(STS_SIGNATURE_LENGTH)),
+    Reason:      PDFString.of('Semnatura electronica calificata QES - DocFlowAI'),
+    Name:        PDFString.of(ro(signer.name || '')),
+    Location:    PDFString.of('Romania'),
+    M:           PDFString.fromDate(new Date()),
+    ContactInfo: PDFString.of(signer.email || ''),
+  }));
 
   if (fieldName) {
-    // Găsim pagina pe care e câmpul
+    // ── Caz NORMAL: setăm /V pe câmpul existent din cartuș (SIG_ROL_N) ────
+    // Semnătura apare în celula vizuală din cartuș în Adobe Signature Panel
+    let found = false;
     const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
     if (acroFormRef) {
       const acroForm = pdfDoc.context.lookup(acroFormRef);
+      try { acroForm.set(PDFName.of('SigFlags'), PDFNumber.of(3)); } catch(e2) {}
       const fRef = acroForm.get(PDFName.of('Fields'));
       if (fRef) {
         const fArr = pdfDoc.context.lookup(fRef);
@@ -79,35 +106,55 @@ export async function preparePadesDoc(pdfBuf, signer, signerIdx) {
             const tObj = f?.get(PDFName.of('T'));
             const tStr = tObj?.decodeText ? tObj.decodeText() : tObj?.asString?.();
             if (tStr === fieldName) {
-              const pRef = f.get(PDFName.of('P'));
-              if (pRef) {
-                const idx = pages.findIndex(p => p.ref === pRef || p.ref?.objectNumber === pRef?.objectNumber);
-                if (idx >= 0) targetPage = pages[idx];
-              }
+              f.set(PDFName.of('V'), sigDict);
+              found = true;
+              logger.info({ signerIdx, fieldName }, 'PAdES: /V setat pe câmpul existent din cartuș');
               break;
             }
           } catch(e2) {}
         }
       }
     }
+    if (!found) {
+      logger.warn({ signerIdx, fieldName }, 'PAdES: câmpul nu a fost găsit — fallback câmp nou invizibil');
+      _addInvisibleField(pdfDoc, lastPage, sigDict, PDFName, PDFNumber, PDFString, signerIdx);
+    }
+  } else {
+    // ── FALLBACK: flux fără padesFieldName (creat înainte de b214) ─────────
+    logger.info({ signerIdx }, 'PAdES: fără padesFieldName — câmp nou invizibil');
+    _addInvisibleField(pdfDoc, lastPage, sigDict, PDFName, PDFNumber, PDFString, signerIdx);
   }
-
-  // Adăugăm placeholder via pdflibAddPlaceholder
-  pdflibAddPlaceholder({
-    pdfDoc,
-    pdfPage:         targetPage,
-    reason:          'Semnatura electronica calificata QES - DocFlowAI',
-    contactInfo:     signer.email || '',
-    name:            signer.name  || '',
-    location:        'Romania',
-    signatureLength: STS_SIGNATURE_LENGTH,
-    subFilter:       SUBFILTER_ADOBE_PKCS7_DETACHED,
-    widgetRect:      [0, 0, 0, 0], // invizibil — câmpul vizual e deja în cartuș
-  });
 
   const savedBytes = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
   logger.info({ signerIdx, fieldName, pdfSize: savedBytes.length }, 'PAdES: placeholder adăugat');
   return savedBytes;
+}
+
+function _addInvisibleField(pdfDoc, page, sigDict, PDFName, PDFNumber, PDFString, signerIdx) {
+  let acroForm;
+  const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+  if (acroFormRef) {
+    acroForm = pdfDoc.context.lookup(acroFormRef);
+    try { acroForm.set(PDFName.of('SigFlags'), PDFNumber.of(3)); } catch(e) {}
+  } else {
+    const afObj = pdfDoc.context.obj({ Fields: pdfDoc.context.obj([]), SigFlags: PDFNumber.of(3), DA: PDFString.of('/Helv 0 Tf 0 g') });
+    pdfDoc.catalog.set(PDFName.of('AcroForm'), pdfDoc.context.register(afObj));
+    acroForm = afObj;
+  }
+  const widgetRef = pdfDoc.context.register(pdfDoc.context.obj({
+    Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
+    T: PDFString.of(`SIG_QES_FB_${signerIdx+1}`),
+    Rect: pdfDoc.context.obj([0,0,0,0].map(n => PDFNumber.of(n))),
+    V: sigDict, F: PDFNumber.of(132), P: page.ref,
+  }));
+  const ea = page.node.get(PDFName.of('Annots'));
+  if (ea) { try { pdfDoc.context.lookup(ea).push(widgetRef); } catch(e2) { page.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef])); } }
+  else page.node.set(PDFName.of('Annots'), pdfDoc.context.obj([widgetRef]));
+  try {
+    const fref = acroForm.get(PDFName.of('Fields'));
+    if (fref) pdfDoc.context.lookup(fref).push(widgetRef);
+    else acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj([widgetRef]));
+  } catch(e2) {}
 }
 
 // ── calcPadesHash ────────────────────────────────────────────────────────────
