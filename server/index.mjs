@@ -1,5 +1,15 @@
 /**
- * DocFlowAI v3.9.4 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.5 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.5 (build b219, 26.03.2026):
+ *  FIX CRITIC: SigDict error — dict /Sig construit manual nu era parsabil de @signpdf
+ *    pades.mjs — preparePadesDoc rescris:
+ *      Citeste Rect-ul campului SIG_ROL_N existent (zona JOS a celulei)
+ *      Sterge campul vechi din AcroForm
+ *      Apeleaza pdflibAddPlaceholder cu widgetRect = Rect celula
+ *      pdflibAddPlaceholder genereaza ByteRange/Contents in formatul exact
+ *      cerut de @signpdf/signpdf → no more SigDict error
+ *    Rezultat: semnatura vizibila in celula corecta, format valid Adobe
  *
  * CHANGES v3.9.4 (build b218, 26.03.2026):
  *  FEAT: layout sus/jos pentru celulele cartusului
