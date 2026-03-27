@@ -776,8 +776,37 @@ const MIGRATIONS = [
         CHECK (key IN ('pdfB64','signedPdfB64','originalPdfB64')
                OR key LIKE 'padesPdf_%');
     `
+  },
+  {
+    id: '042_bulk_signing_sessions',
+    sql: `
+      -- Bulk signing: sesiuni de semnare în masă (un utilizator semnează N documente
+      -- printr-un singur flux OAuth + o singură aprobare email/PUSH la STS)
+      CREATE TABLE IF NOT EXISTS bulk_signing_sessions (
+        id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id        INTEGER      REFERENCES organizations(id) ON DELETE SET NULL,
+        signer_email  TEXT         NOT NULL,
+        provider_id   TEXT         NOT NULL DEFAULT 'sts-cloud',
+        status        TEXT         NOT NULL DEFAULT 'initiated'
+                                   CHECK (status IN ('initiated','oauth_pending','signing_pending','completed','error')),
+        items         JSONB        NOT NULL DEFAULT '[]',
+        sts_provider_data JSONB,
+        sts_op_id     TEXT,
+        sts_token     TEXT,
+        sts_sign_url  TEXT,
+        sts_cert_pem  TEXT,
+        error_message TEXT,
+        created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        expires_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW() + INTERVAL '2 hours',
+        completed_at  TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_bulk_sessions_signer
+        ON bulk_signing_sessions(signer_email, status);
+      CREATE INDEX IF NOT EXISTS idx_bulk_sessions_expires
+        ON bulk_signing_sessions(expires_at)
+        WHERE status NOT IN ('completed','error');
+    `
   }
-];
 
 async function runMigrations(client) {
   await client.query(`

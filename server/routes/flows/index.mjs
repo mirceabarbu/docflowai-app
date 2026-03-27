@@ -24,11 +24,13 @@ import attachmentsRouter, { _injectDeps as _injAttachments }  from './attachment
 import emailRouter,       { _injectDeps as _injEmail }        from './email.mjs';
 import acroformRouter,    { _injectDeps as _injAcroform }     from './acroform.mjs';
 import cloudRouter,       { _injectDeps as _injCloud }        from './cloud-signing.mjs';
+import bulkRouter,        { _injectDeps as _injBulk }         from './bulk-signing.mjs';
 
 const router = Router();
 
 // ── Montăm toate sub-routerele ────────────────────────────────────────────
 router.use('/', cloudRouter);    // cloud-signing primul — /flows/sts-oauth-callback nu trebuie prins de :flowId
+router.use('/', bulkRouter);     // bulk-signing — /bulk-signing/* înaintea :flowId
 router.use('/', crudRouter);
 router.use('/', signingRouter);
 router.use('/', lifecycleRouter);
@@ -46,6 +48,7 @@ export function injectFlowDeps(deps) {
   _injEmail(deps);
   _injAcroform(deps);
   _injCloud(deps);
+  _injBulk(deps);
 }
 
 export default router;

@@ -468,7 +468,10 @@ th{ color: var(--sub) !important; }
               <div style="font-weight:700;font-size:1rem;color:var(--sub);">📂 Fluxurile mele</div>
               <span id="fluxCounter" style="display:none;padding:3px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:20px;font-size:.8rem;color:#c4b5ff;font-weight:700;"></span>
             </div>
-            <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows(1)">🔄 Actualizează</button>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <a href="/bulk-signer.html" style="display:inline-flex;align-items:center;gap:6px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);color:#b39dff;padding:7px 14px;border-radius:10px;font-size:.82rem;font-weight:700;text-decoration:none;cursor:pointer;" title="Semnează mai multe documente dintr-o singură operațiune">✍️ Semnare în masă</a>
+              <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows(1)">🔄 Actualizează</button>
+            </div>
           </div>
           <!-- Linia 2: Search + filtru status -->
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">

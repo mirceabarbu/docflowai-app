@@ -188,7 +188,81 @@ export class STSCloudProvider {
       const accessToken = tokenJson.access_token;
       if (!accessToken) return { ok: false, error: 'sts_no_token' };
 
-      // ── PASUL 2: /userinfo ÎNAINTE de /signature — avem nevoie de cert pentru signedAttrs ──
+      // ── PASUL 2: trimitem SHA256(doc) la /api/v1/signature ────────────────
+      // pd.hashBase64 = SHA256(bytesOutsideContents) calculat în initiate-cloud-signing
+      // STS semnează acest hash → signByte = RSA_PKCS1v15_sign(privKey, documentDigest)
+      // CMS va fi construit fără signedAttrs — Adobe verifică direct:
+      //   hash = SHA256(bytes per ByteRange) → RSA_verify(pubKey, hash, signByte) ✓
+      logger.info({ sessionId: session.sessionId, hashLen: pd.hashBase64?.length },
+        'STS: trimit SHA256(doc) la /api/v1/signature');
+      const signResp = await _fetchIPv4(`${pd.signUrl}/api/v1/signature`, {
+        method:  'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify([{
+          id:            session.sessionId,
+          hashByte:      pd.hashBase64,   // SHA256(bytesOutsideContents) — documentDigest direct
+          algorithmName: 'SHA256',
+          docName:       pd.docName,
+        }]),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      const signJson = await signResp.json();
+      if (!signResp.ok || signJson.errorCode !== 0) {
+        logger.error({ resp: signJson }, 'STS: /api/v1/signature error');
+        return { ok: false, error: 'sts_sign_failed',
+          message: signJson.errorMessage || `Eroare STS cod: ${signJson.errorCode}` };
+      }
+
+      const stsOpId = signJson.id;
+      logger.info({ stsOpId, sessionId: session.sessionId },
+        'STS: hash trimis — utilizatorul trebuie să aprobe pe email/PUSH');
+
+      // ── PASUL 3: /userinfo pentru certificat (pentru CMS embedding) ───────
+      let certPem = null;
+      try {
+        const uiResp = await _fetchIPv4(`${pd.idpUrl}/userinfo`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const uiText = await uiResp.text();
+        logger.info({ status: uiResp.status, len: uiText.length,
+          preview: uiText.substring(0, 300) }, 'STS: /userinfo raspuns');
+        if (uiResp.ok) {
+          const ui = JSON.parse(uiText);
+          certPem = ui?.signingCertificate?.pemCertificate
+                 || ui?.certificate?.pemCertificate
+                 || ui?.cert || ui?.pemCertificate || null;
+          if (!certPem && Array.isArray(ui?.otherCertificates))
+            certPem = ui.otherCertificates[0]?.pemCertificate || null;
+          logger.info({ hasCert: !!certPem, certLen: certPem?.length || 0,
+            allKeys: JSON.stringify(Object.keys(ui || {})) }, 'STS: certificat din /userinfo');
+        } else {
+          logger.warn({ status: uiResp.status, body: uiText.substring(0, 200) },
+            'STS: /userinfo non-OK');
+        }
+      } catch(uiErr) {
+        logger.warn({ err: uiErr }, 'STS: /userinfo eroare (non-fatal)');
+      }
+
+      return {
+        ok:        true,
+        pending:   true,
+        stsOpId,
+        accessToken,
+        signUrl:   pd.signUrl,
+        sessionId: session.sessionId,
+        certPem,
+        message:   'Hash transmis la STS. Utilizatorul va primi email/notificare PUSH pentru aprobare.',
+      };
+
+    } catch(e) {
+      logger.error({ err: e }, 'STS: processOAuthCallback error');
+      return { ok: false, error: 'sts_error', message: e.message };
+    }
       // FIX b230: /userinfo era apelat DUPĂ /signature → nu puteam construi signedAttrs cu certHash
       let certPem = null;
       try {

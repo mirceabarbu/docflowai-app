@@ -41,10 +41,19 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
     if (requireDb(res)) return;
     const { code, state, error } = req.query;
 
-    // Extragem sessionId din state (format: `${sessionId}___${randomState}`)
+    // Extragem sessionId din state
+    // Format single: `${sessionId}___${randomState}`
+    // Format bulk:   `BULK_${bulkSessionId}___${randomState}`
     const sessionId = state?.split('___')[0];
     if (!sessionId) {
       return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('State invalid')}`);
+    }
+
+    // b231: detectam sesiune bulk și delegăm
+    if (sessionId.startsWith('BULK_')) {
+      const bulkSessionId = sessionId.replace('BULK_', '');
+      const { processBulkOAuthCallback } = await import('./bulk-signing.mjs');
+      return processBulkOAuthCallback(bulkSessionId, req.query, res);
     }
 
     // Găsim fluxul prin sessionId stocat în signers[i].signingSessionId
@@ -98,21 +107,12 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
       return res.redirect(`/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(signer.token)}&sts_error=${errMsg}`);
     }
 
-    // Certificatul PEM e obținut în processOAuthCallback (unde avem accessToken)
-    const stsCertPem = result.certPem || null;
-    logger.info({ flowId, signerIdx: signerIdx,
-      hasCert: !!stsCertPem, certLen: stsCertPem?.length||0 },
-      'STS: certificat PEM din processOAuthCallback');
-
     // Stocăm datele de polling în semnatar
-    signers[signerIdx].stsOpId       = result.stsOpId;
-    signers[signerIdx].stsToken      = result.accessToken;
-    signers[signerIdx].stsSignUrl    = result.signUrl;
-    signers[signerIdx].stsPending    = true;
-    signers[signerIdx].stsCertPem    = result.certPem || null;
-    // FIX b230: salvăm signedAttrsDer (hex) pentru construcția CMS la polling
-    // signedAttrsDer conține [0] IMPLICIT DER al atributelor signedAttrs (PAdES-B-B)
-    signers[signerIdx].stsSignedAttrsDerHex = result.signedAttrsDer || null;
+    signers[signerIdx].stsOpId    = result.stsOpId;
+    signers[signerIdx].stsToken   = result.accessToken;
+    signers[signerIdx].stsSignUrl = result.signUrl;
+    signers[signerIdx].stsPending = true;
+    signers[signerIdx].stsCertPem = result.certPem || null;
     data.signers   = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
@@ -191,11 +191,8 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       }, 'DEBUG signByte analysis');
       // Recuperăm hash-ul PAdES salvat la initiate (necesar pentru CMS authAttrs)
       const certPem = signer.stsCertPem || '';
-      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: certificat PEM lipsă — identitate neverificabilă, semnătură ok');
-      // FIX b230: transmitem și signedAttrsDer (hex stocat) pentru CMS cu signedAttrs PAdES-B-B
-      const signedAttrsDerHex = signer.stsSignedAttrsDerHex || null;
-      const signedAttrsDer = signedAttrsDerHex ? Buffer.from(signedAttrsDerHex, 'hex') : null;
-      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem, signedAttrsDer);
+      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: cert PEM lipsă — semnătură fără identitate verificabilă');
+      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem);
       signedPdfB64 = signedPdfBuf.toString('base64');
       // Curățăm PDF-ul temporar cu placeholder
       await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);
