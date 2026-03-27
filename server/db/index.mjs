@@ -807,6 +807,7 @@ const MIGRATIONS = [
         WHERE status NOT IN ('completed','error');
     `
   }
+];
 
 async function runMigrations(client) {
   await client.query(`
