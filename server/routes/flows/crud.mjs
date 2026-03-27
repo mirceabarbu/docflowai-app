@@ -276,7 +276,11 @@ const getFlowHandler = async (req, res) => {
     res.setHeader('ETag', etag);
     // Cache scurt (30s) pentru fluxuri active, lung (1h) pentru cele finalizate
     const isCompleted = data.completed || data.status === 'cancelled' || data.status === 'refused';
-    res.setHeader('Cache-Control', isCompleted ? 'private, max-age=3600' : 'private, max-age=30');
+    // FIX b232: max-age=3600 pentru fluxuri finalizate cauza browser sa serveasca
+    // raspunsul din cache dupa trimiteri email, ascunzand evenimentul EMAIL_SENT.
+    // no-cache = browser revalideaza intotdeauna via ETag (bandwidth ok), dar NU
+    // serveste din cache fara sa contacteze serverul.
+    res.setHeader('Cache-Control', isCompleted ? 'private, no-cache' : 'private, max-age=30');
 
     // FIX: getUserMapForOrg — nu leak-uieste useri intre organizatii
     const orgId = actor?.orgId || data?.orgId || null;
