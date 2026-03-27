@@ -1,5 +1,10 @@
 /**
- * DocFlowAI v3.9.14 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.15 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.15 (build b229, 27.03.2026):
+ *  FIX CRITIC: HTTP 500 la incarcarea PDF in semdoc-signer.html
+ *    Cauza: safeDocName(data.docName, flowId) — flowId nedefinit in scope-ul routelor GET
+ *    Fix: inlocuit cu req.params.flowId || data.flowId in toate rutele PDF
  *
  * CHANGES v3.9.14 (build b228, 27.03.2026):
  *  SEC: npm audit fix — 0 vulnerabilitati
