@@ -39,7 +39,7 @@ class STSSigner extends Signer {
 }
 
 // ── preparePadesDoc ─────────────────────────────────────────────────────────
-export async function preparePadesDoc(pdfBuf, flowData, signerIdx) {
+export async function preparePadesDoc(pdfBuf, flowData, signerIdx, opts = {}) {
   const { PDFDocument, PDFName, PDFNumber, PDFString, rgb, StandardFonts } =
     await import('pdf-lib');
 
@@ -134,7 +134,12 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx) {
   // Detectăm spațiu disponibil pe ultima pagină (ca buildCartusBlob)
   // Estimăm conținutul textual al ultimei pagini: PDF.js nu e disponibil server-side
   // dar putem verifica dacă pagina are suficient spațiu în zona de jos
-  const isFirstSigner = signers.slice(0, signerIdx).every(s => s.status !== 'signed');
+  // isFirstSigner: true → desenăm cartușul + footer ID
+  // opts.alwaysDrawCartus: true → forțăm redesenarea, indiferent de statusul semnătarilor
+  // (folosit de cloud-signing STS pentru că sursa e mereu pdfB64 original, fără cartuș)
+  const isFirstSigner = opts.alwaysDrawCartus
+    ? true
+    : signers.slice(0, signerIdx).every(s => s.status !== 'signed');
   let cartusPage;
 
   if (!isFirstSigner) {

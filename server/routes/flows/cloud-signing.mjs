@@ -372,13 +372,13 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
         message: `Provider-ul "${providerId}" nu este activ în această organizație.` });
     }
 
-    // Obținem PDF-ul de semnat:
-    // - semnatarul 1: pdfB64 (PDF original cu footer)
-    // - semnatarul 2+: signedPdfB64 (PDF semnat de semnatarii anteriori, cu CMS embedded)
-    // Aceasta permite semnături multiple pe același PDF (PAdES incremental)
-    const signedCount = signers.filter((s, i) => i < idx && s.status === 'signed').length;
-    const sourcePdfB64 = (signedCount > 0 && data.signedPdfB64) ? data.signedPdfB64 : (data.pdfB64 || '');
-    const rawPdf = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
+    // FIX b232: pentru cloud (STS), sursa este MEREU pdfB64 original — NU signedPdfB64.
+    // Motivul: signedPdfB64 conține CMS binar (32KB hex) embedded pe care pdf-lib îl poate
+    // corupe la load+save, cauzând pierderea cartușului vizual în PDF-ul final.
+    // alwaysDrawCartus=true în preparePadesDoc redesenează cartușul fresh pentru fiecare semnatar.
+    const rawPdf = (data.pdfB64 || '').includes(',')
+      ? data.pdfB64.split(',')[1]
+      : (data.pdfB64 || '');
     if (!rawPdf) return res.status(500).json({ error: 'pdf_missing' });
     let pdfBuf = Buffer.from(rawPdf, 'base64');
 
@@ -399,12 +399,9 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
 
     // ── PAdES: adăugăm placeholder ByteRange + calculăm hash corect ────
     const { preparePadesDoc, calcPadesHash } = await import('../../signing/pades.mjs');
-    // FIX b230: preparePadesDoc(pdfBuf, flowData, signerIdx) — al 2-lea arg trebuie data, NU signers[idx]
-    // Bug anterior: signers[idx].signers = undefined → signers[] = [] → throw PAdES semnătarul lipsește → 500
-    const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx);
-    // calcPadesHash returnează SHA256(bytes_outside_contents) = documentDigest
-    // ATENȚIE: acest hash NU mai este trimis direct la STS — STSCloudProvider îl folosește
-    // doar ca messageDigest în signedAttrs; la STS merge SHA256(DER(signedAttrs)) — fix în STSCloudProvider
+    // FIX b232: alwaysDrawCartus=true — sursa e pdfB64 original, deci cartușul trebuie
+    // redesenat de preparePadesDoc indiferent de statusul semnătarilor anteriori
+    const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx, { alwaysDrawCartus: true });
     const padesHashBase64 = calcPadesHash(pdfBufPades);
     const padesPdfB64     = pdfBufPades.toString('base64');
     logger.info({ flowId, signerIdx: idx, hashLen: padesHashBase64.length }, 'PAdES: placeholder generat');

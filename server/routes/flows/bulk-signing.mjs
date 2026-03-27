@@ -138,9 +138,10 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
       if (!orgId && data.orgId) { orgId = data.orgId; org = await _getOrg(orgId); }
 
       // Citim PDF-ul de semnat (semnat de predecesori sau original)
-      const signedCount = signers.filter((s, i) => i < idx && s.status === 'signed').length;
-      const sourcePdfB64 = (signedCount > 0 && data.signedPdfB64) ? data.signedPdfB64 : (data.pdfB64 || '');
-      const rawPdf = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
+      // FIX b232: bulk cloud — mereu pdfB64 original, nu signedPdfB64 (CMS binar corupe pdf-lib)
+      const rawPdf = (data.pdfB64 || '').includes(',')
+        ? data.pdfB64.split(',')[1]
+        : (data.pdfB64 || '');
       if (!rawPdf)
         return res.status(500).json({ error: 'pdf_missing', message: `PDF lipsă pentru ${flowId}.` });
       let pdfBuf = Buffer.from(rawPdf, 'base64');
@@ -160,7 +161,7 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
       }
 
       // Pregătim PAdES placeholder
-      const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx);
+      const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx, { alwaysDrawCartus: true });
       const padesHashBase64 = calcPadesHash(pdfBufPades);  // SHA256(bytesOutsideContents)
       const padesPdfB64     = pdfBufPades.toString('base64');
 
