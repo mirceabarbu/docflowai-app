@@ -1373,7 +1373,7 @@ router.post('/admin/flows/archive', csrfMiddleware, async (req, res) => {
           results.push({ flowId, ok: true, warning: 'No PDF available — marked archived without Drive upload' });
           continue;
         }
-        driveResult = await archiveFlow(data);
+        driveResult = await archiveFlow(data, pool);
         data.pdfB64 = null; data.signedPdfB64 = null; data.originalPdfB64 = null; data.storage = 'drive';
         data.archivedAt = new Date().toISOString();
         data.driveFileIdFinal = driveResult.driveFileIdFinal || null;

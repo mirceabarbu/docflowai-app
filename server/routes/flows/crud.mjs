@@ -6,6 +6,11 @@ import { Router, json as expressJson } from 'express';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
+
+// Helper: denumire consistenta pentru PDF descarcat
+function safeDocName(docName, flowId) {
+  return (docName || flowId || 'document').replace(/[^\w\-\.\s]/g, '_').replace(/\s+/g, '-').substring(0, 80);
+}
 import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -115,24 +120,19 @@ const createFlow = async (req, res) => {
 
     if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
       try {
-        // stampFooterOnPdf poate returna { pdfB64, signersFieldNames }
-        // dacă generează și cartușul cu câmpuri AcroForm /Sig
-        const stampResult = await _stampFooterOnPdf(finalPdfB64, {
+        const _stampResult = await _stampFooterOnPdf(finalPdfB64, {
           flowId, createdAt, initName, initFunctie,
           institutie: initInstitutie, compartiment: initCompartiment,
           flowType: body.flowType || 'tabel',
         });
-        if (stampResult && typeof stampResult === 'object' && stampResult.pdfB64) {
-          finalPdfB64 = stampResult.pdfB64;
-          // Aplicăm padesFieldName per semnatar dacă a fost generat
-          if (stampResult.signersFieldNames) {
-            normalizedSigners.forEach((s, i) => {
-              if (stampResult.signersFieldNames[i]) s.padesFieldName = stampResult.signersFieldNames[i];
-            });
-          }
-        } else {
-          finalPdfB64 = stampResult; // returnare simplă (string) — fallback
+        // stampFooterOnPdf returneaza intotdeauna string (footer only)
+        // Daca cumva returneaza obiect (regresie), extragem pdfB64
+        if (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) {
+          finalPdfB64 = _stampResult.pdfB64;
+        } else if (typeof _stampResult === 'string' && _stampResult.length > 0) {
+          finalPdfB64 = _stampResult;
         }
+        // Altfel pastrăm finalPdfB64 original (non-fatal)
       } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }
 
@@ -179,7 +179,7 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
-    const safeName = (data.docName || 'document').replace(/[^\w\-]+/g, '_');
+    const safeName = safeDocName(data.docName, flowId);
     const b64 = data.signedPdfB64;
     if (!b64 || typeof b64 !== 'string') {
       if (data.storage === 'drive' && data.driveFileIdFinal) {
@@ -246,7 +246,7 @@ router.get('/flows/:flowId/pdf', _readRateLimit, async (req, res) => {
     }
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${(data.docName || 'document').replace(/[^\w\-]+/g, '_')}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="${safeDocName(data.docName, flowId)}.pdf"`);
     return res.status(200).send(pdfBuf);
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
@@ -457,15 +457,15 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
       if (d.storage === 'drive' && d.driveFileIdFinal) {
         try {
           const { streamFromDrive } = await import('../../drive.mjs');
-          const safeName2 = (d.docName || 'document').replace(/[^\w\-]+/g, '_');
-          res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${safeName2}_semnat.pdf"`);
+          const safeName = safeDocName(data.docName, flowId);
+          res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
           await streamFromDrive(d.driveFileIdFinal, res); return;
         } catch(driveErr) { return res.status(502).json({ error: 'drive_unavailable' }); }
       }
       return res.status(404).json({ error: 'no_signed_pdf' });
     }
     const buf = Buffer.from(d.signedPdfB64.split(',')[1] || d.signedPdfB64, 'base64');
-    const safeName = (d.docName || 'document').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+    const safeName = safeDocName(data.docName, flowId);
     res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
     res.send(buf);
   } catch(e) { res.status(500).json({ error: 'server_error' }); }

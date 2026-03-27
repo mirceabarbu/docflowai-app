@@ -1,5 +1,20 @@
 /**
- * DocFlowAI v3.9.12 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.14 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.14 (build b228, 27.03.2026):
+ *  SEC: npm audit fix — 0 vulnerabilitati
+ *    node-forge 1.3.3 → 1.4.0 (4 CVE-uri high: DoS, cert bypass, sig forgery)
+ *    picomatch 4.0.x → 4.0.4+ (2 CVE-uri high: ReDoS, method injection)
+ *
+ * CHANGES v3.9.13 (build b227, 27.03.2026):
+ *  FIX: footer upload local - crud.mjs gestiona gresit return stampFooterOnPdf
+ *  FIX: CSRF admin - hdrs() nu includea x-csrf-token
+ *  FIX: Refresh flow.html - feedback vizual + spinner
+ *  FIX: Denumire document consistenta - safeDocName() centralizat
+ *  FIX: Arhivare Drive - archiveFlow din admin.mjs apelat fara pool
+ *       -> documentele suport nu se arhivau
+ *  FIX: EMAIL_SENT in progress/evenimente - loadFlow() dupa trimitere
+ *       -> evenimentul aparea doar dupa refresh manual
  *
  * CHANGES v3.9.12 (build b226, 26.03.2026):
  *  FIX ROOT: CMS fara signedAttrs — singurul format compatibil cu STS
@@ -837,18 +852,15 @@ function isSignerTokenExpired(signer) {
 async function stampFooterOnPdf(pdfB64, flowData) {
   if (!pdfB64 || !PDFLib) return pdfB64;
   try {
-    const { PDFDocument, PDFName, PDFNumber, PDFString, rgb, StandardFonts } = PDFLib;
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
     const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-    function ro(t) { return String(t||'').split('').map(ch => diacr[ch]||ch).join(''); }
-    const clean  = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    const pdfDoc = await PDFDocument.load(Buffer.from(clean,'base64'),{ignoreEncryption:true});
-    const fontR  = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontB  = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
-    const { width:pW, height:pH } = lastPage.getSize();
-
-    // ── Footer ────────────────────────────────────────────────────────────
-    const MARGIN=40, footerY=14, FS=7;
+    function ro(t) { return String(t || '').split('').map(ch => diacr[ch] || ch).join(''); }
+    const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
+    const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+    const { width: pW } = lastPage.getSize();
+    const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
     const createdDate = flowData.createdAt
       ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
       : new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });

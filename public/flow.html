@@ -1095,7 +1095,16 @@
     }
   }
 
-  $("btnRefresh").addEventListener("click", loadFlow);
+  $("btnRefresh").addEventListener("click", async () => {
+    const btn = $("btnRefresh");
+    const orig = btn.textContent;
+    btn.textContent = '⏳ Se încarcă...';
+    btn.disabled = true;
+    try { await loadFlow(); } finally {
+      btn.textContent = orig;
+      btn.disabled = false;
+    }
+  });
   $("btnDownloadSigned").addEventListener("click", downloadSigned);
   $("btnDownloadOriginal").addEventListener("click", downloadOriginal);
   $("btnBack").addEventListener("click", ()=>{ window.location.href = "/?tab=flows"; });
@@ -1308,7 +1317,7 @@ async function doFlowSendEmail() {
       body: JSON.stringify({ to, subject, bodyText, extraAttachments }),
     });
     const d = await r.json();
-    if (r.ok) { msg.style.color='#2dd4bf'; msg.textContent=`✅ Email trimis cu succes către ${to}`; btn.textContent='✅ Trimis!'; setTimeout(()=>closeFlowSendEmailModal(),2000); }
+    if (r.ok) { msg.style.color='#2dd4bf'; msg.textContent=`✅ Email trimis cu succes către ${to}`; btn.textContent='✅ Trimis!'; setTimeout(()=>{ closeFlowSendEmailModal(); loadFlow(); },2000); }
     else { msg.style.color='#ffaaaa'; msg.textContent=`❌ ${d.message||d.error||'Eroare.'}`; btn.disabled=false; btn.textContent='📤 Trimite email'; }
   } catch(e) { msg.style.color='#ffaaaa'; msg.textContent='❌ Eroare de rețea.'; btn.disabled=false; btn.textContent='📤 Trimite email'; }
 }
