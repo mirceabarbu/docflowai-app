@@ -2362,9 +2362,14 @@ async function doSendEmail() {
     });
     const d = await r.json();
     if (r.ok) {
-      msg.style.color = '#2dd4bf'; msg.textContent = `✅ Email trimis cu succes către ${to}`;
+      msg.style.color = '#2dd4bf';
+      msg.textContent = `✅ Email trimis cu succes către ${to}`;
       btn.textContent = '✅ Trimis!';
-      setTimeout(() => closeSendEmailModal(), 2000);
+      // b232: reîmprospătăm lista de fluxuri pentru a actualiza badge-ul email și evenimentele
+      setTimeout(() => {
+        closeSendEmailModal();
+        loadMyFlows(_fluxPage);  // refresh card → evenimentul EMAIL_SENT apare imediat
+      }, 1500);
     } else {
       msg.style.color = '#ffaaaa'; msg.textContent = `❌ ${d.message || d.error || 'Eroare la trimitere.'}`;
       btn.disabled = false; btn.textContent = '📤 Trimite email';
