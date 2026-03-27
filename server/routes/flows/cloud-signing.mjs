@@ -105,11 +105,14 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
       'STS: certificat PEM din processOAuthCallback');
 
     // Stocăm datele de polling în semnatar
-    signers[signerIdx].stsOpId      = result.stsOpId;
-    signers[signerIdx].stsToken     = result.accessToken;
-    signers[signerIdx].stsSignUrl   = result.signUrl;
-    signers[signerIdx].stsPending   = true;
-    signers[signerIdx].stsCertPem   = stsCertPem;  // certificat PEM pentru CMS
+    signers[signerIdx].stsOpId       = result.stsOpId;
+    signers[signerIdx].stsToken      = result.accessToken;
+    signers[signerIdx].stsSignUrl    = result.signUrl;
+    signers[signerIdx].stsPending    = true;
+    signers[signerIdx].stsCertPem    = result.certPem || null;
+    // FIX b230: salvăm signedAttrsDer (hex) pentru construcția CMS la polling
+    // signedAttrsDer conține [0] IMPLICIT DER al atributelor signedAttrs (PAdES-B-B)
+    signers[signerIdx].stsSignedAttrsDerHex = result.signedAttrsDer || null;
     data.signers   = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
@@ -189,7 +192,10 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       // Recuperăm hash-ul PAdES salvat la initiate (necesar pentru CMS authAttrs)
       const certPem = signer.stsCertPem || '';
       if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: certificat PEM lipsă — identitate neverificabilă, semnătură ok');
-      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem);
+      // FIX b230: transmitem și signedAttrsDer (hex stocat) pentru CMS cu signedAttrs PAdES-B-B
+      const signedAttrsDerHex = signer.stsSignedAttrsDerHex || null;
+      const signedAttrsDer = signedAttrsDerHex ? Buffer.from(signedAttrsDerHex, 'hex') : null;
+      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem, signedAttrsDer);
       signedPdfB64 = signedPdfBuf.toString('base64');
       // Curățăm PDF-ul temporar cu placeholder
       await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);
@@ -396,7 +402,12 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
 
     // ── PAdES: adăugăm placeholder ByteRange + calculăm hash corect ────
     const { preparePadesDoc, calcPadesHash } = await import('../../signing/pades.mjs');
-    const pdfBufPades     = await preparePadesDoc(pdfBuf, signers[idx], idx);
+    // FIX b230: preparePadesDoc(pdfBuf, flowData, signerIdx) — al 2-lea arg trebuie data, NU signers[idx]
+    // Bug anterior: signers[idx].signers = undefined → signers[] = [] → throw PAdES semnătarul lipsește → 500
+    const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx);
+    // calcPadesHash returnează SHA256(bytes_outside_contents) = documentDigest
+    // ATENȚIE: acest hash NU mai este trimis direct la STS — STSCloudProvider îl folosește
+    // doar ca messageDigest în signedAttrs; la STS merge SHA256(DER(signedAttrs)) — fix în STSCloudProvider
     const padesHashBase64 = calcPadesHash(pdfBufPades);
     const padesPdfB64     = pdfBufPades.toString('base64');
     logger.info({ flowId, signerIdx: idx, hashLen: padesHashBase64.length }, 'PAdES: placeholder generat');

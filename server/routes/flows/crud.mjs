@@ -384,6 +384,8 @@ router.get('/my-flows', async (req, res) => {
     else if (statusFilter === 'completed') statusWhere = " AND (data->>'completed') = 'true'";
     else if (statusFilter === 'refused') statusWhere = " AND (data->>'status') = 'refused'";
     else if (statusFilter === 'cancelled') statusWhere = " AND (data->>'status') = 'cancelled'";
+    // b230: "De semnat" — fluxuri active unde userul curent e semnatar cu status=current
+    else if (statusFilter === 'to_sign') statusWhere = ` AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'cancelled' AND EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1 AND s->>'status' = 'current')`;
     let searchWhere = '';
     if (search) {
       params.push(`%${escapedSearch}%`);
@@ -403,7 +405,7 @@ router.get('/my-flows', async (req, res) => {
     const whereClause = baseWhere + statusWhere + searchWhere;
     const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
-    const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows WHERE ${whereClause} ORDER BY updated_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]);
+    const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows WHERE ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]);
 
     // FIX: getUserMapForOrg — fara leak intre organizatii
     const userMap = await getUserMapForOrg(orgId);

@@ -148,7 +148,7 @@ export class STSCloudProvider {
     }
 
     try {
-      // PASUL 1: code → access token
+      // ── PASUL 1: code → access token ────────────────────────────────────
       logger.info({ sessionId: session.sessionId, idpUrl: pd.idpUrl }, 'STS: schimb code → token');
       const clientAssertion = this._buildClientAssertion(
         pd.clientId, pd.kid, pd.privateKeyPem, pd.idpUrl);
@@ -170,7 +170,6 @@ export class STSCloudProvider {
           signal: AbortSignal.timeout(15_000),
         });
       } catch(fetchErr) {
-        // Logăm cauza exactă a erorii de rețea (ECONNREFUSED, ENOTFOUND, etc.)
         logger.error({
           cause: fetchErr.cause?.code || fetchErr.cause?.message || fetchErr.cause,
           msg: fetchErr.message,
@@ -189,8 +188,67 @@ export class STSCloudProvider {
       const accessToken = tokenJson.access_token;
       if (!accessToken) return { ok: false, error: 'sts_no_token' };
 
-      // PASUL 2: trimitem hash la /api/v1/signature
-      logger.info({ sessionId: session.sessionId }, 'STS: trimit hash SHA-256 la /api/v1/signature');
+      // ── PASUL 2: /userinfo ÎNAINTE de /signature — avem nevoie de cert pentru signedAttrs ──
+      // FIX b230: /userinfo era apelat DUPĂ /signature → nu puteam construi signedAttrs cu certHash
+      let certPem = null;
+      try {
+        const uiResp = await _fetchIPv4(`${pd.idpUrl}/userinfo`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const uiText = await uiResp.text();
+        logger.info({ status: uiResp.status, len: uiText.length,
+          preview: uiText.substring(0,500) }, 'STS: /userinfo raspuns COMPLET');
+        if (uiResp.ok) {
+          const ui = JSON.parse(uiText);
+          certPem = ui?.signingCertificate?.pemCertificate
+                 || ui?.certificate?.pemCertificate
+                 || ui?.cert
+                 || ui?.pemCertificate
+                 || null;
+          if (!certPem && Array.isArray(ui?.otherCertificates)) {
+            certPem = ui.otherCertificates[0]?.pemCertificate || null;
+          }
+          logger.info({ hasCert: !!certPem, certLen: certPem?.length||0,
+            allKeys: JSON.stringify(Object.keys(ui||{})),
+          }, 'STS: certificat din /userinfo');
+        } else {
+          logger.warn({ status: uiResp.status, body: uiText.substring(0,200) },
+            'STS: /userinfo raspuns non-OK');
+        }
+      } catch(uiErr) {
+        logger.warn({ err: uiErr }, 'STS: /userinfo fetch eroare (non-fatal)');
+      }
+
+      // ── PASUL 3: construim signedAttrs PAdES-B-B și calculăm hash-ul corect ──
+      // FIX b230: ARHITECTURAL — motivul pentru care semnătura era invalidă:
+      //
+      // VECHI (GREȘIT):
+      //   hashTrimis = SHA256(bytesOutsideContents)   ← documentDigest
+      //   STS semnează documentDigest
+      //   CMS fără signedAttrs: signature acoperă documentDigest
+      //   Validatorul PDF: ECDSA_verify(pubKey, documentDigest, signByte) → FAIL
+      //   Fail pentru că ECDSA intern face SHA256(message) din nou!
+      //
+      // NOU (CORECT — PAdES-B-B cu signedAttrs):
+      //   documentDigest = SHA256(bytesOutsideContents) — calculat de calcPadesHash, stocat în pd.hashBase64
+      //   signedAttrs = SET { contentType=id-data, messageDigest=documentDigest, signingCertV2=SHA256(cert) }
+      //   hashTrimis = SHA256(DER(signedAttrs ca SET))  ← signedAttrsDigest
+      //   STS semnează signedAttrsDigest → signByte
+      //   CMS cu signedAttrs: signature acoperă SHA256(DER(signedAttrs))
+      //   Validatorul PDF:
+      //     1. documentDigest = SHA256(bytes per ByteRange) ✓
+      //     2. messageDigest in signedAttrs == documentDigest ✓
+      //     3. ECDSA_verify(pubKey, SHA256(DER(signedAttrs)), signByte) ✓
+      //
+      const documentDigestB64 = pd.hashBase64;  // SHA256(bytesOutsideContents) Base64 — calculat la initiate
+      const { signedAttrsDer, signedAttrsHashB64 } = this._buildSignedAttrs(
+        documentDigestB64, certPem
+      );
+      logger.info({ signedAttrsLen: signedAttrsDer.length, signedAttrsHashLen: signedAttrsHashB64.length,
+        hasCert: !!certPem }, 'STS: signedAttrs construiți — trimitem SHA256(signedAttrs) la /api/v1/signature');
+
+      // ── PASUL 4: trimitem SHA256(DER(signedAttrs)) la /api/v1/signature ──
       const signResp = await _fetchIPv4(`${pd.signUrl}/api/v1/signature`, {
         method:  'POST',
         headers: {
@@ -199,7 +257,7 @@ export class STSCloudProvider {
         },
         body: JSON.stringify([{
           id:            session.sessionId,
-          hashByte:      pd.hashBase64,
+          hashByte:      signedAttrsHashB64,  // FIX: SHA256(signedAttrs) nu SHA256(doc)
           algorithmName: 'SHA256',
           docName:       pd.docName,
         }]),
@@ -215,58 +273,111 @@ export class STSCloudProvider {
 
       const stsOpId = signJson.id;
       logger.info({ stsOpId, sessionId: session.sessionId },
-        'STS: hash trimis — utilizatorul trebuie să aprobe pe email/PUSH');
-
-      // PASUL 3: obținem certificatul din /userinfo (necesar pentru CMS PAdES)
-      let certPem = null;
-      try {
-        const uiResp = await _fetchIPv4('https://idp.stsisp.ro/userinfo', {
-          headers: { 'Authorization': `Bearer ${accessToken}` },
-          signal: AbortSignal.timeout(10_000),
-        });
-        const uiText = await uiResp.text();
-        logger.info({ status: uiResp.status, len: uiText.length,
-          preview: uiText.substring(0,500) }, 'STS: /userinfo raspuns COMPLET');
-        if (uiResp.ok) {
-          const ui = JSON.parse(uiText);
-          // STS poate returna cert in mai multe locuri — incercam toate
-          certPem = ui?.signingCertificate?.pemCertificate
-                 || ui?.certificate?.pemCertificate
-                 || ui?.cert
-                 || ui?.pemCertificate
-                 || null;
-          // Fallback: primul cert din otherCertificates
-          if (!certPem && Array.isArray(ui?.otherCertificates)) {
-            certPem = ui.otherCertificates[0]?.pemCertificate || null;
-          }
-          logger.info({ hasCert: !!certPem, certLen: certPem?.length||0,
-            allKeys: JSON.stringify(Object.keys(ui||{})),
-            sigCertKeys: ui?.signingCertificate ? JSON.stringify(Object.keys(ui.signingCertificate)) : 'N/A',
-          }, 'STS: certificat din /userinfo');
-        } else {
-          logger.warn({ status: uiResp.status, body: uiText.substring(0,200) },
-            'STS: /userinfo raspuns non-OK');
-        }
-      } catch(uiErr) {
-        logger.warn({ err: uiErr }, 'STS: /userinfo fetch eroare (non-fatal)');
-      }
+        'STS: hash signedAttrs trimis — utilizatorul trebuie să aprobe pe email/PUSH');
 
       // Returnăm stare PENDING — polling-ul se face separat
+      // signedAttrsDer este stocat ca hex pentru a evita probleme de serializare JSON
       return {
-        ok:           true,
-        pending:      true,
+        ok:              true,
+        pending:         true,
         stsOpId,
         accessToken,
-        signUrl:      pd.signUrl,
-        sessionId:    session.sessionId,
-        certPem,      // certificat PEM al semnatarului (pentru CMS PAdES)
-        message:      'Hash transmis la STS. Utilizatorul va primi email/notificare PUSH pentru aprobare.',
+        signUrl:         pd.signUrl,
+        sessionId:       session.sessionId,
+        certPem,
+        signedAttrsDer:  signedAttrsDer.toString('hex'),  // stocat pentru CMS construction la poll
+        message:         'Hash signedAttrs transmis la STS. Utilizatorul va primi email/notificare PUSH pentru aprobare.',
       };
 
     } catch(e) {
       logger.error({ err: e }, 'STS: processOAuthCallback error');
       return { ok: false, error: 'sts_error', message: e.message };
     }
+  }
+
+  // ── buildSignedAttrs — construiește signedAttrs PAdES-B-B (DER) ─────────
+  // Returnează: { signedAttrsDer: Buffer, signedAttrsHashB64: string }
+  // signedAttrsDer = DER ca [0] IMPLICIT (pentru embedded în CMS SignerInfo)
+  // La calcul SHA256: rehash cu tag SET 0x31 (nu ctx0 0xa0)
+  _buildSignedAttrs(documentDigestB64, certPem) {
+    // Helpers DER (duplicat local pentru a nu depinde de pades.mjs)
+    const encLen = len => {
+      if (len < 128) return Buffer.from([len]);
+      const h = len.toString(16).padStart(len > 0xffff ? 6 : 4, '0');
+      const b = Buffer.from(h, 'hex');
+      return Buffer.concat([Buffer.from([0x80 | b.length]), b]);
+    };
+    const tlv  = (tag, c) => Buffer.concat([Buffer.from([tag]), encLen(c.length), c]);
+    const seq  = c => tlv(0x30, c);
+    const set  = c => tlv(0x31, c);
+    const oid  = h => { const b = Buffer.from(h,'hex'); return Buffer.concat([Buffer.from([0x06,b.length]),b]); };
+    const oct  = d => Buffer.concat([Buffer.from([0x04]), encLen(d.length), d]);
+    const ctx0 = c => tlv(0xa0, c);  // [0] IMPLICIT
+
+    // OID-uri
+    const OID_CONTENT_TYPE      = '2a864886f70d010903'; // id-contentType
+    const OID_MESSAGE_DIGEST    = '2a864886f70d010904'; // id-messageDigest
+    const OID_ID_DATA           = '2a864886f70d010701'; // id-data
+    const OID_SHA256            = '608648016503040201'; // sha-256
+    const OID_SIGNING_CERT_V2   = '2a864886f70d010910020e'; // id-aa-signingCertificateV2
+
+    // Atribut 1: contentType = id-data
+    const attrContentType = seq(Buffer.concat([
+      oid(OID_CONTENT_TYPE),
+      set(oid(OID_ID_DATA)),
+    ]));
+
+    // Atribut 2: messageDigest = SHA256(bytesOutsideContents)
+    const documentDigest = Buffer.from(documentDigestB64, 'base64');
+    const attrMessageDigest = seq(Buffer.concat([
+      oid(OID_MESSAGE_DIGEST),
+      set(oct(documentDigest)),
+    ]));
+
+    // Atribut 3: signingCertificateV2 (opțional dar recomandat pentru PAdES-B-B)
+    let attrSigningCert = Buffer.alloc(0);
+    if (certPem) {
+      try {
+        // Parsăm cert PEM → DER → SHA256
+        const pemBody = certPem.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s/g, '');
+        const certDer = Buffer.from(pemBody, 'base64');
+        const certHash = crypto.createHash('sha256').update(certDer).digest();
+        // ESSCertIDv2 = SEQUENCE { hashAlg SEQUENCE { OID sha256 }, certHash OCTET STRING }
+        const hashAlg = seq(oid(OID_SHA256));  // AlgorithmIdentifier fără params
+        const essCertId = seq(Buffer.concat([hashAlg, oct(certHash)]));
+        // SigningCertificateV2 = SEQUENCE { SEQUENCE OF ESSCertIDv2 }
+        const signingCertV2 = seq(seq(essCertId));
+        attrSigningCert = seq(Buffer.concat([
+          oid(OID_SIGNING_CERT_V2),
+          set(signingCertV2),
+        ]));
+        logger.info({ certHashHex: certHash.toString('hex').substring(0,16) }, 'STS: signingCertV2 construit');
+      } catch(e) {
+        logger.warn({ err: e }, 'STS: signingCertV2 build error (non-fatal, omis)');
+        attrSigningCert = Buffer.alloc(0);
+      }
+    } else {
+      logger.warn('STS: certificat lipsă — signedAttrs fără signingCertV2 (PAdES sub-optimal)');
+    }
+
+    // Conținut signedAttrs (fără tag, doar atributele concatenate)
+    const attrsContent = Buffer.concat([attrContentType, attrMessageDigest, attrSigningCert]);
+
+    // Pentru embedding în CMS SignerInfo: [0] IMPLICIT
+    const signedAttrsDer = ctx0(attrsContent);   // 0xa0 len content
+
+    // Pentru SHA256: trebuie recodificat ca SET (0x31) — nu [0] IMPLICIT!
+    // Conform RFC 5652 §5.4: "the complete DER encoding of the signedAttrs value as a SET"
+    const signedAttrsForHash = set(attrsContent);  // 0x31 len content
+    const signedAttrsHashB64 = crypto.createHash('sha256').update(signedAttrsForHash).digest('base64');
+
+    logger.info({
+      attrsContentLen: attrsContent.length,
+      signedAttrsDerLen: signedAttrsDer.length,
+      signedAttrsHashB64,
+    }, 'STS: signedAttrs construiți cu succes');
+
+    return { signedAttrsDer, signedAttrsHashB64 };
   }
 
   // ── Polling /api/v1/callback ───────────────────────────────────────────

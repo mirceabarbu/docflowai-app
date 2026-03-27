@@ -493,6 +493,7 @@ th{ color: var(--sub) !important; }
             <select id="fluxStatusFilter" onchange="loadMyFlows(1)"
               style="padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.85rem;cursor:pointer;">
               <option value="all">Toate statusurile</option>
+              <option value="to_sign">✍️ De semnat</option>
               <option value="pending">⏳ În curs</option>
               <option value="completed">✅ Finalizate</option>
               <option value="refused">⛔ Refuzate</option>
@@ -1209,7 +1210,7 @@ th{ color: var(--sub) !important; }
       const dlToken = ""; // unused — cookie trimis automat cu credentials: include
         const currentUserEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
         el.innerHTML = flows.map(f => {
-          const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
+          const dt = new Date(f.createdAt).toLocaleString("ro-RO", {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
           const allSigned = f.allSigned;
           const isRefused = (f.signers || []).some(s => s.status === "refused");
           const refusedByAprobat = (f.signers || []).some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
@@ -1559,7 +1560,7 @@ async function signFromFluxuri(flowId) {
             if (isFiltered) {
               const filterLabel = {
                 "pending": "În curs", "completed": "Finalizate",
-                "refused": "Refuzate", "cancelled": "Anulate", "all": ""
+                "refused": "Refuzate", "cancelled": "Anulate", "to_sign": "De semnat", "all": ""
               }[filterVal] || filterVal;
               counter.textContent = `${total} ${total === 1 ? "flux" : "fluxuri"}${filterLabel ? " · " + filterLabel : ""}`;
               counter.style.background = "rgba(124,92,255,.15)";
