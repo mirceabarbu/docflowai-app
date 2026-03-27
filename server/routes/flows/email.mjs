@@ -141,15 +141,19 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     }
 
     // Audit log cu trackingId
+    // FIX b232: re-citim flow-ul fresh înainte de push events pentru a evita suprascrierea
+    // dacă între getFlowData() de la început și acest moment alt request a salvat flow-ul.
     const now = new Date().toISOString();
-    if (!Array.isArray(data.events)) data.events = [];
-    data.events.push({
+    const freshData = await getFlowData(flowId);
+    const dataToSave = freshData || data;
+    if (!Array.isArray(dataToSave.events)) dataToSave.events = [];
+    dataToSave.events.push({
       at: now, type: 'EMAIL_SENT', by: actor.email,
       to: to.trim(), subject: subject.trim(),
       trackingId,
       extraAttachmentsCount: extraAttachments.length,
     });
-    await saveFlow(flowId, data);
+    await saveFlow(flowId, dataToSave);
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_SENT',
       actorIp: _getIp(req), actorEmail: actor.email,
       payload: { to: to.trim(), subject: subject.trim(), resendId: j.id, trackingId } });
