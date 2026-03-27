@@ -149,6 +149,10 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
       trackingId,
       extraAttachmentsCount: extraAttachments.length,
     });
+    // FIX b232: updatedAt trebuie actualizat pentru ca ETag-ul sa se schimbe.
+    // Fara aceasta linie, ETag = flowId+updatedAt ramane identic dupa trimitere email
+    // → browser primeste 304 Not Modified → evenimentul EMAIL_SENT nu apare in UI.
+    data.updatedAt = now;
     await saveFlow(flowId, data);
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_SENT',
       actorIp: _getIp(req), actorEmail: actor.email,
