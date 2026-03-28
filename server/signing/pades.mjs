@@ -197,11 +197,32 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx, opts = {}) {
       if (nf) cartusPage.drawText(nf, {
         x: cx+5, y: infoY+infoH-23, size: 6.5, font: fontR,
         color: rgb(.15,.15,.15), maxWidth: cellW-10 });
-      cartusPage.drawText('Semnatura electronica calificata', {
-        x: cx+5, y: cy+sigH-10, size: 5.5, font: fontR,
-        color: rgb(.55,.55,.65), maxWidth: cellW-10 });
-      cartusPage.drawText('L.S.', { x: cx+5, y: cy+4, size: 7, font: fontB,
-        color: rgb(.5,.5,.6) });
+
+      // Zona de semnătură (jos): dată + L.S.
+      // - Semnatar deja semnat (s.status==='signed'): folosim s.signedAt (data reală)
+      // - Semnatar curent (i===signerIdx): folosim data aproximativă (now) — inclusă în hash-ul STS
+      // - Semnatar viitor: placeholder gol + "Semnătură electronică calificată"
+      const isSigned  = s.status === 'signed' && s.signedAt;
+      const isCurrent = i === signerIdx;
+      if (isSigned || isCurrent) {
+        const signDate = isSigned
+          ? new Date(s.signedAt).toLocaleString('ro-RO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Bucharest' })
+          : new Date().toLocaleString('ro-RO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Bucharest' });
+        cartusPage.drawText(ro(signDate), {
+          x: cx+5, y: cy+sigH-10, size: 5.5, font: fontR,
+          color: rgb(.15,.15,.35), maxWidth: cellW-10 });
+        cartusPage.drawText('L.S.', { x: cx+5, y: cy+4, size: 8, font: fontB,
+          color: rgb(.1,.1,.4) });
+        // Linie decorativa sub L.S.
+        cartusPage.drawLine({ start: { x: cx+5, y: cy+3 }, end: { x: cx+cellW*0.45, y: cy+3 },
+          thickness: 0.6, color: rgb(.2,.2,.5) });
+      } else {
+        cartusPage.drawText('Semnatura electronica calificata', {
+          x: cx+5, y: cy+sigH-10, size: 5.5, font: fontR,
+          color: rgb(.55,.55,.65), maxWidth: cellW-10 });
+        cartusPage.drawText('L.S.', { x: cx+5, y: cy+4, size: 7, font: fontB,
+          color: rgb(.5,.5,.6) });
+      }
     });
   }
 

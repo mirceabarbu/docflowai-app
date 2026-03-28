@@ -208,9 +208,10 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);
       logger.info({ flowId, signerEmail: signer.email, pdfSize: signedPdfBuf.length }, 'PAdES: PDF semnat QES generat cu succes');
     } catch(padesErr) {
-      // Fallback grazios: stocăm PDF-ul original cu CMS separat (ca înainte)
-      logger.error({ err: padesErr, flowId }, 'PAdES inject error — fallback la PDF original');
-      signedPdfB64 = (data.pdfB64 || '').includes(',') ? data.pdfB64.split(',')[1] : (data.pdfB64 || '');
+      // Nu mai facem fallback la pdfB64 — acesta nu are tabel și ascunde eroarea.
+      // Aruncăm eroarea explicit → 500 → semnatarul vede eroare și poate reîncerca.
+      logger.error({ err: padesErr, flowId }, 'PAdES inject FAILED — nu se mai face fallback la pdfB64');
+      throw padesErr;
     }
 
     // Marcăm semnatarul ca semnat
