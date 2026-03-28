@@ -138,16 +138,19 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
       if (!orgId && data.orgId) { orgId = data.orgId; org = await _getOrg(orgId); }
 
       // Citim PDF-ul de semnat (semnat de predecesori sau original)
-      // FIX b232: bulk cloud — mereu pdfB64 original, nu signedPdfB64 (CMS binar corupe pdf-lib)
-      const rawPdf = (data.pdfB64 || '').includes(',')
-        ? data.pdfB64.split(',')[1]
-        : (data.pdfB64 || '');
+      // ARHITECTURA PAdES INCREMENTAL b233 (bulk):
+      // Semnatar 1: pdfB64 original → unlock → cartuș nou
+      // Semnatar 2+: signedPdfB64 → NU unlock → doar placeholder (cartuș existent)
+      const signedCount = signers.filter((s, i) => i < idx && s.status === 'signed').length;
+      const isSubsequentSigner = signedCount > 0 && !!data.signedPdfB64;
+      const sourcePdfB64 = isSubsequentSigner ? data.signedPdfB64 : (data.pdfB64 || '');
+      const rawPdf = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
       if (!rawPdf)
         return res.status(500).json({ error: 'pdf_missing', message: `PDF lipsă pentru ${flowId}.` });
       let pdfBuf = Buffer.from(rawPdf, 'base64');
 
-      // Unlock PDF (identic cu initiate-cloud-signing)
-      if (data.flowType !== 'ancore') {
+      // Unlock DOAR pentru semnatar 1
+      if (!isSubsequentSigner && data.flowType !== 'ancore') {
         try {
           const pdfDoc = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
           try { delete pdfDoc.context.trailerInfo.Encrypt; } catch(e2) {}
@@ -161,7 +164,8 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
       }
 
       // Pregătim PAdES placeholder
-      const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx, { alwaysDrawCartus: true });
+      const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx,
+        { alwaysDrawCartus: !isSubsequentSigner });
       const padesHashBase64 = calcPadesHash(pdfBufPades);  // SHA256(bytesOutsideContents)
       const padesPdfB64     = pdfBufPades.toString('base64');
 
@@ -173,7 +177,7 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
         [flowId, padesKey, padesPdfB64]
       );
 
-      // Salvam signerIdx și hash în signer (signedAttrsDer se construieste după ce avem cert)
+      // Salvam signerIdx și hash în signer pentru polling
       signers[idx].bulkPadesHashBase64 = padesHashBase64;
       signers[idx].bulkPadesKey        = padesKey;
       data.signers   = signers;
@@ -186,7 +190,7 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
         signerIdx:        idx,
         docName:          data.docName || flowId,
         padesHashBase64,  // SHA256(doc) — devine messageDigest în signedAttrs
-        signedAttrsDerHex: null,  // completat în callback după obținerea cert
+
         status:           'pending',
       });
     }
@@ -317,18 +321,15 @@ export async function processBulkOAuthCallback(sessionId, query, res) {
       }
     } catch(e) { logger.warn({ err: e }, 'bulk STS: /userinfo non-fatal'); }
 
-    // PASUL 3: construim signedAttrs PAdES-B-B per flux și colectam hash-urile
+    // PASUL 3: colectam hash-urile SHA256(doc) per flux — trimise direct la STS
+    // (identic cu single signing — fara signedAttrs, STS semneaza documentDigest direct)
     const items = Array.isArray(session.items) ? session.items : [];
     const signatureRequests = [];
 
     for (const item of items) {
-      const { signedAttrsDer, signedAttrsHashB64 } = provider._buildSignedAttrs(
-        item.padesHashBase64, certPem
-      );
-      item.signedAttrsDerHex = signedAttrsDer.toString('hex');
       signatureRequests.push({
-        id:            item.flowId,   // STS îl returneaza în signList[].id
-        hashByte:      signedAttrsHashB64,
+        id:            item.flowId,   // STS returneaza acest id in signList[].id
+        hashByte:      item.padesHashBase64,  // SHA256(bytesOutsideContents)
         algorithmName: 'SHA256',
         docName:       item.docName,
       });
@@ -475,11 +476,8 @@ router.get('/bulk-signing/:sessionId/poll', async (req, res) => {
         if (!padesPdfBuf)
           throw new Error('PAdES PDF placeholder lipsă din flows_pdfs');
 
-        // Injectam CMS cu signedAttrs PAdES-B-B
-        const signedAttrsDer = item.signedAttrsDerHex
-          ? Buffer.from(item.signedAttrsDerHex, 'hex') : null;
         const signedPdfBuf = await injectCms(padesPdfBuf, signByte,
-          session.sts_cert_pem || null, signedAttrsDer);
+          session.sts_cert_pem || null);
         const signedPdfB64 = signedPdfBuf.toString('base64');
 
         // Curatam placeholder temporar

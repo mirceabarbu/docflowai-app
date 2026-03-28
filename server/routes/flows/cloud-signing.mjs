@@ -372,18 +372,21 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
         message: `Provider-ul "${providerId}" nu este activ în această organizație.` });
     }
 
-    // FIX b232: pentru cloud (STS), sursa este MEREU pdfB64 original — NU signedPdfB64.
-    // Motivul: signedPdfB64 conține CMS binar (32KB hex) embedded pe care pdf-lib îl poate
-    // corupe la load+save, cauzând pierderea cartușului vizual în PDF-ul final.
-    // alwaysDrawCartus=true în preparePadesDoc redesenează cartușul fresh pentru fiecare semnatar.
-    const rawPdf = (data.pdfB64 || '').includes(',')
-      ? data.pdfB64.split(',')[1]
-      : (data.pdfB64 || '');
+    // ARHITECTURA PAdES INCREMENTAL b233:
+    // Semnatar 1: pdfB64 original → unlock → preparePadesDoc (desenează cartuș) → injectCms → revision 1
+    // Semnatar 2+: signedPdfB64 (conține cartuș + CMS sem.1) → NU unlock → preparePadesDoc
+    //              (adaugă doar placeholder, NU redesenează cartușul) → injectCms → revision 2
+    //              pdf-lib.save({useObjectStreams:false}) = incremental update = PAdES cu 2 semnături
+    const signedCount = signers.filter((s, i) => i < idx && s.status === 'signed').length;
+    const isSubsequentSigner = signedCount > 0 && !!data.signedPdfB64;
+    const sourcePdfB64 = isSubsequentSigner ? data.signedPdfB64 : (data.pdfB64 || '');
+    const rawPdf = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
     if (!rawPdf) return res.status(500).json({ error: 'pdf_missing' });
     let pdfBuf = Buffer.from(rawPdf, 'base64');
 
-    // Unlock PDF pentru compatibilitate (același cod ca GET /pdf)
-    if (_PDFLib && data.flowType !== 'ancore') {
+    // Unlock DOAR pentru semnatar 1 — pe PDF deja semnat (sem.2+) NU facem unlock
+    // (pdf-lib re-save pe un PDF cu CMS binar embedded poate corupe semnătura anterioară)
+    if (!isSubsequentSigner && _PDFLib && data.flowType !== 'ancore') {
       try {
         const { PDFDocument, PDFName, PDFNumber } = _PDFLib;
         const pdfDoc = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
@@ -399,12 +402,14 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
 
     // ── PAdES: adăugăm placeholder ByteRange + calculăm hash corect ────
     const { preparePadesDoc, calcPadesHash } = await import('../../signing/pades.mjs');
-    // FIX b232: alwaysDrawCartus=true — sursa e pdfB64 original, deci cartușul trebuie
-    // redesenat de preparePadesDoc indiferent de statusul semnătarilor anteriori
-    const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx, { alwaysDrawCartus: true });
+    // Semnatar 1: alwaysDrawCartus=true → desenează cartuș nou
+    // Semnatar 2+: alwaysDrawCartus=false → cartușul există deja în signedPdfB64, adaugă doar placeholder
+    const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx,
+      { alwaysDrawCartus: !isSubsequentSigner });
     const padesHashBase64 = calcPadesHash(pdfBufPades);
     const padesPdfB64     = pdfBufPades.toString('base64');
-    logger.info({ flowId, signerIdx: idx, hashLen: padesHashBase64.length }, 'PAdES: placeholder generat');
+    logger.info({ flowId, signerIdx: idx, isSubsequentSigner,
+      hashLen: padesHashBase64.length }, 'PAdES: placeholder generat');
 
     const providerConfig = getOrgProviderConfig(org, providerId);
     logger.info({

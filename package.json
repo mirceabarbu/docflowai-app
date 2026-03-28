@@ -32,6 +32,9 @@
     "web-push": "^3.6.7",
     "ws": "^8.17.0"
   },
+  "overrides": {
+    "path-to-regexp": ">=0.1.13"
+  },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.0",
     "supertest": "^7.0.0",

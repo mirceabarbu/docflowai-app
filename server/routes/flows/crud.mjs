@@ -186,7 +186,7 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
         try {
           const { streamFromDrive } = await import('../../drive.mjs');
           res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
+          res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
           await streamFromDrive(data.driveFileIdFinal, res); return;
         } catch(driveErr) { return res.status(502).json({ error: 'drive_unavailable' }); }
       }
@@ -194,7 +194,7 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
     }
     const raw = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
     return res.status(200).send(Buffer.from(raw, 'base64'));
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
@@ -464,7 +464,7 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
         try {
           const { streamFromDrive } = await import('../../drive.mjs');
           const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
-          res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
+          res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
           await streamFromDrive(d.driveFileIdFinal, res); return;
         } catch(driveErr) { return res.status(502).json({ error: 'drive_unavailable' }); }
       }
@@ -472,7 +472,7 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
     }
     const buf = Buffer.from(d.signedPdfB64.split(',')[1] || d.signedPdfB64, 'base64');
     const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
-    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
     res.send(buf);
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
