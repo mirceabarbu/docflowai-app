@@ -413,6 +413,21 @@ router.get('/my-flows', async (req, res) => {
 
     // FIX: getUserMapForOrg — fara leak intre organizatii
     const userMap = await getUserMapForOrg(orgId);
+
+    // b233: provider default al org-ului — afișat ca badge în mini-timeline
+    let orgDefaultProvider = 'local-upload';
+    let orgEnabledProviders = ['local-upload'];
+    if (orgId) {
+      const { rows: orgRows } = await pool.query(
+        'SELECT signing_providers_enabled FROM organizations WHERE id=$1', [orgId]
+      );
+      const enabled = orgRows[0]?.signing_providers_enabled;
+      if (Array.isArray(enabled) && enabled.length > 0) {
+        orgEnabledProviders = enabled;
+        // Provider default = primul non-local-upload (dacă există), altfel local-upload
+        orgDefaultProvider = enabled.find(p => p !== 'local-upload') || 'local-upload';
+      }
+    }
     const myFlows = rows.map(r => r.data).filter(Boolean).map(d => ({
       flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
       createdAt: d.createdAt, updatedAt: d.updatedAt,
@@ -427,7 +442,7 @@ router.get('/my-flows', async (req, res) => {
       flowType: d.flowType || 'tabel', // FIX: flowType lipsea → badge afișa mereu 'Tabel'
       status: d.status || 'active',
       urgent: !!(d.urgent),
-      signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refusedAt: s.refusedAt || null, notifiedAt: s.notifiedAt || null, refuseReason: s.refuseReason }; }),
+      signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refusedAt: s.refusedAt || null, notifiedAt: s.notifiedAt || null, refuseReason: s.refuseReason, signingProvider: s.signingProvider || null }; }),
       hasSignedPdf: !!(
         d.signedPdfB64
         || d._signedPdfB64Present
@@ -438,6 +453,8 @@ router.get('/my-flows', async (req, res) => {
       allSigned: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
       reinitiatedAs: d.reinitiatedAs || null, // prezent dacă fluxul a fost reinițializat — blochează al doilea Reinițiază
       parentFlowId: d.parentFlowId || null,
+      orgDefaultProvider,
+      orgEnabledProviders,
     }));
     res.json({ flows: myFlows, total, page, limit, pages });
   } catch(e) { logger.error({ err: e }, 'my-flows error:'); res.status(500).json({ error: 'server_error' }); }

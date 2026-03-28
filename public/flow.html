@@ -319,6 +319,7 @@
           <div class="kv">
             <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
             <span class="pill"><strong>Tip flux</strong> <span id="flowTypePill">—</span></span>
+            <span class="pill"><strong>Semnare</strong> <span id="signingProviderPill">—</span></span>
             <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
             <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
             <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
@@ -458,6 +459,20 @@
 
 
   // ── P-05: renderTimeline — jaloane principale ale fluxului ────────────────
+  // b233: provider badge helper
+  const _PROV_BADGE = {
+    'local-upload': { icon: '💻', label: 'Upload local', color: 'rgba(157,176,255,.8)',  bg: 'rgba(157,176,255,.1)', border: 'rgba(157,176,255,.25)' },
+    'sts-cloud':    { icon: '🏛️', label: 'STS Cloud',   color: 'rgba(45,212,191,.9)',   bg: 'rgba(45,212,191,.1)',  border: 'rgba(45,212,191,.25)' },
+    'certsign':     { icon: '🔐', label: 'certSIGN',    color: 'rgba(255,176,32,.9)',   bg: 'rgba(255,176,32,.1)',  border: 'rgba(255,176,32,.25)' },
+    'transsped':    { icon: '🔐', label: 'Trans Sped',  color: 'rgba(255,176,32,.9)',   bg: 'rgba(255,176,32,.1)',  border: 'rgba(255,176,32,.25)' },
+    'alfatrust':    { icon: '🔐', label: 'AlfaTrust',   color: 'rgba(255,176,32,.9)',   bg: 'rgba(255,176,32,.1)',  border: 'rgba(255,176,32,.25)' },
+    'namirial':     { icon: '🔐', label: 'Namirial',    color: 'rgba(255,176,32,.9)',   bg: 'rgba(255,176,32,.1)',  border: 'rgba(255,176,32,.25)' },
+  };
+  function _provBadge(pid) {
+    const p = _PROV_BADGE[pid] || { icon: '🔏', label: pid || '?', color: 'rgba(234,240,255,.5)', bg: 'rgba(255,255,255,.06)', border: 'rgba(255,255,255,.15)' };
+    return `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:20px;font-size:.7rem;font-weight:600;background:${p.bg};border:1px solid ${p.border};color:${p.color};">${p.icon} ${p.label}</span>`;
+  }
+
   function renderTimeline(flow) {
     const card   = $('timelineCard');
     const wrap   = $('tlWrap');
@@ -550,10 +565,16 @@
       const refuseBlock = (st === 'refused' && s.refuseReason)
         ? `<div class="tl-reason">Motiv: ${esc(s.refuseReason)}</div>` : '';
 
+      // Provider: dacă a semnat → real; dacă pending/current → default org
+      const _sProvId = s.signingProvider ||
+        (st === 'current' || st === 'pending' || st === 'signed'
+          ? (data.orgDefaultProvider || null) : null);
+      const _provBadgeHtml = _sProvId ? `<div style="margin-top:4px;">${_provBadge(_sProvId)}</div>` : '';
+
       steps.push({
         icon: st === 'signed' ? '✍️' : st === 'refused' ? '⛔' : st === 'current' ? '👤' : st === 'cancelled' ? '🚫' : '⏸',
         labelHtml: mainLabel + rolLabel,
-        actorHtml: delegBadge,
+        actorHtml: delegBadge + _provBadgeHtml,
         ts: mainTs,
         state,
         subRows: subRows.length >= 1 ? subRows : [],   // afișăm sub-pași dacă există cel puțin unul
@@ -871,6 +892,23 @@
       $("docName").textContent = (data.docName || data.documentName || data.name || data.title || "—");
       const ftPill = $("flowTypePill");
       if (ftPill) ftPill.innerHTML = data.flowType === 'ancore' ? '<span title="PDF cu ancore existente" style="color:#7cf0e0;font-weight:600;">⚓ Ancore</span>' : '<span title="PDF cu tabel generat" style="color:#b39dff;font-weight:600;">📋 Tabel generat</span>';
+      // Badge metodă semnare
+      const spPill = $("signingProviderPill");
+      if (spPill) {
+        const _PROV = {
+          'sts-cloud':    { icon: '🏛️', label: 'STS Cloud QES',    color: '#7cf0e0' },
+          'certsign':     { icon: '🔐', label: 'certSIGN Cloud',   color: '#b39dff' },
+          'transsped':    { icon: '🔐', label: 'Trans Sped Cloud', color: '#b39dff' },
+          'alfatrust':    { icon: '🔐', label: 'AlfaTrust Cloud',  color: '#b39dff' },
+          'namirial':     { icon: '🔐', label: 'Namirial Cloud',   color: '#b39dff' },
+          'local-upload': { icon: '⬆️', label: 'Upload local',     color: 'rgba(234,240,255,.55)' },
+        };
+        const _usedProv = (data.signers || [])
+          .filter(s => s.signingProvider).map(s => s.signingProvider).find(Boolean)
+          || 'local-upload';
+        const _pd = _PROV[_usedProv] || _PROV['local-upload'];
+        spPill.innerHTML = `<span style="color:${_pd.color};font-weight:600;">${_pd.icon} ${_pd.label}</span>`;
+      }
       // URGENT badge
       const badgeUrgent = $("badgeUrgent");
       if (badgeUrgent) badgeUrgent.style.display = data.urgent ? "" : "none";
