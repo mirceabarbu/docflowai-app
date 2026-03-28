@@ -113,125 +113,43 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx, opts = {}) {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // FLUX TABEL: cartuș ca la buildCartusBlob — pe aceeași pagină dacă încape
+  // FLUX TABEL: tabelul e deja în pdfB64 (desenat la crearea fluxului în stampFooterOnPdf)
+  // Calculăm doar coordonatele celulei semnătarului curent pentru ByteRange placeholder.
+  // Nu redesenăm tabelul — evităm probleme cu flows_pdfs constraint și double-drawing.
   // ════════════════════════════════════════════════════════════════════════
+
   const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const MARGIN = 40;
   const n     = signers.length;
   const cols  = Math.min(n, 3);
   const rows  = Math.ceil(n / cols);
   const cellW = (pW - MARGIN * 2) / cols;
   const cellH = 64;
-  const infoH = cellH * 0.58;
   const sigH  = cellH * 0.42;
-  const titleH    = 20;
-  const cartusH   = rows * cellH + titleH;
-  const footerH   = 28;  // spațiu footer jos
+  const titleH     = 20;
+  const cartusH    = rows * cellH + titleH;
+  const footerH    = 28;
   const cartusBottom = footerH + 8;
-  const cartusTotal  = cartusH + cartusBottom + 10;  // înălțime totală cartuș
 
-  // Detectăm spațiu disponibil pe ultima pagină (ca buildCartusBlob)
-  // Estimăm conținutul textual al ultimei pagini: PDF.js nu e disponibil server-side
-  // dar putem verifica dacă pagina are suficient spațiu în zona de jos
-  // isFirstSigner: true → desenăm cartușul + footer ID
-  // opts.alwaysDrawCartus: true → forțăm redesenarea, indiferent de statusul semnătarilor
-  // (folosit de cloud-signing STS pentru că sursa e mereu pdfB64 original, fără cartuș)
-  const isFirstSigner = opts.alwaysDrawCartus
-    ? true
-    : signers.slice(0, signerIdx).every(s => s.status !== 'signed');
+  // Verificam daca tabelul incape pe ultima pagina (aceeasi logica ca stampFooterOnPdf)
+  // Daca nu, adaugam o pagina noua
+  const cartusTotal = cartusH + cartusBottom + 10;
+  const freeSpace   = pH * 0.25;
   let cartusPage;
-
-  if (!isFirstSigner) {
-    // Semnatar 2+: cartușul există deja pe ultima pagină
+  if (freeSpace >= cartusTotal) {
     cartusPage = lastPage;
   } else {
-    // Semnatar 1: detectăm spațiu disponibil
-    // Verificăm dacă ultima pagină are suficient spațiu în zona de jos
-    // Pragul: dacă pagina e mai înaltă de 400pt și cartușul încape în ultimii 25%
-    const freeSpace = pH * 0.25; // ~25% din pagina de jos ca estimare conservatoare
-    const hasSpace  = freeSpace >= cartusTotal;
-
-    if (hasSpace) {
-      cartusPage = lastPage;
-      logger.info({ signerIdx, pdfSize: pdfBuf.length, freeSpace, cartusTotal },
-        'PAdES tabel: cartuș pe ultima pagină existentă');
-    } else {
-      cartusPage = pdfDoc.addPage([pW, pH]);
-      logger.info({ signerIdx }, 'PAdES tabel: pagină nouă pentru cartuș');
-    }
-
-    const footerY = footerH - 14;
-    const flowId  = flowData.flowId || '';
-    const rTxt    = ro(flowId) + '  |  DocFlowAI';
-    const rW      = fontR.widthOfTextAtSize(rTxt, 7);
-    cartusPage.drawLine({ start: { x: MARGIN, y: footerY + 10 },
-      end: { x: pW - MARGIN, y: footerY + 10 }, thickness: 0.4, color: rgb(.75,.75,.75) });
-    cartusPage.drawText(rTxt, { x: pW-MARGIN-rW, y: footerY, size: 7, font: fontR,
-      color: rgb(.5,.5,.5), opacity: .8 });
-
-    // Bara titlu
-    cartusPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH,
-      width: pW - MARGIN * 2, height: titleH,
-      color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
-    cartusPage.drawText('SEMNAT SI APROBAT', {
-      x: MARGIN + 8, y: cartusBottom + cartusH - titleH + 6,
-      size: 7, font: fontB, color: rgb(0,0,0) });
-
-    // Celule pentru toți semnatarii
-    signers.forEach((s, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const cx  = MARGIN + col * cellW;
-      const cy  = cartusBottom + (rows - 1 - row) * cellH;
-      const infoY = cy + sigH;
-
-      cartusPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH,
-        color: rgb(.97,.97,.97), borderColor: rgb(.2,.2,.2), borderWidth: 1 });
-      cartusPage.drawLine({ start: { x: cx, y: infoY }, end: { x: cx+cellW, y: infoY },
-        thickness: 0.5, color: rgb(.3,.3,.3) });
-      cartusPage.drawText(ro(s.rol)||'—', {
-        x: cx+5, y: infoY+infoH-12, size: 7, font: fontB,
-        color: rgb(.1,.1,.1), maxWidth: cellW-10 });
-      const nf = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
-      if (nf) cartusPage.drawText(nf, {
-        x: cx+5, y: infoY+infoH-23, size: 6.5, font: fontR,
-        color: rgb(.15,.15,.15), maxWidth: cellW-10 });
-
-      // Zona de semnătură (jos): dată + L.S.
-      // - Semnatar deja semnat (s.status==='signed'): folosim s.signedAt (data reală)
-      // - Semnatar curent (i===signerIdx): folosim data aproximativă (now) — inclusă în hash-ul STS
-      // - Semnatar viitor: placeholder gol + "Semnătură electronică calificată"
-      const isSigned  = s.status === 'signed' && s.signedAt;
-      const isCurrent = i === signerIdx;
-      if (isSigned || isCurrent) {
-        const signDate = isSigned
-          ? new Date(s.signedAt).toLocaleString('ro-RO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Bucharest' })
-          : new Date().toLocaleString('ro-RO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Bucharest' });
-        cartusPage.drawText(ro(signDate), {
-          x: cx+5, y: cy+sigH-10, size: 5.5, font: fontR,
-          color: rgb(.15,.15,.35), maxWidth: cellW-10 });
-        cartusPage.drawText('L.S.', { x: cx+5, y: cy+4, size: 8, font: fontB,
-          color: rgb(.1,.1,.4) });
-        // Linie decorativa sub L.S.
-        cartusPage.drawLine({ start: { x: cx+5, y: cy+3 }, end: { x: cx+cellW*0.45, y: cy+3 },
-          thickness: 0.6, color: rgb(.2,.2,.5) });
-      } else {
-        cartusPage.drawText('Semnatura electronica calificata', {
-          x: cx+5, y: cy+sigH-10, size: 5.5, font: fontR,
-          color: rgb(.55,.55,.65), maxWidth: cellW-10 });
-        cartusPage.drawText('L.S.', { x: cx+5, y: cy+4, size: 7, font: fontB,
-          color: rgb(.5,.5,.6) });
-      }
-    });
+    // Pagina noua — cartusul nu incapea. In mod normal stampFooterOnPdf a desenat deja
+    // pe o pagina noua, deci aceasta ramura e fallback de siguranta.
+    cartusPage = pdfDoc.addPage([pW, pH]);
+    logger.info({ signerIdx }, 'PAdES tabel: fallback pagina noua');
   }
 
-  // Rect zona JOS a celulei semnătarului curent
   const col = signerIdx % cols;
   const row = Math.floor(signerIdx / cols);
   const cx  = MARGIN + col * cellW;
   const cy  = cartusBottom + (rows - 1 - row) * cellH;
-  const widgetRect = [cx+1, cy+1, cx+cellW-1, cy+sigH-1];
+  const widgetRect = [cx+1, cy+1, cx+cellW-1, cy+sigH-1]
 
   pdflibAddPlaceholder({
     pdfDoc, pdfPage: cartusPage,
