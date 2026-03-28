@@ -1219,19 +1219,20 @@ th{ color: var(--sub) !important; }
       function renderFluxuri(flows) {
         // Helper: badge provider semnare
         function providerBadge(f) {
-          // Determinam providerul efectiv: din signatarii care au semnat (cel mai relevant),
-          // altfel orgDefaultProvider, altfel local-upload
+          // Determinam providerul efectiv din signatarii care au semnat
+          // IMPORTANT: fallback = 'local-upload', NU orgDefaultProvider
+          // orgDefaultProvider e ce e configurat in org, nu neaparat cum s-a semnat
           const usedProvider = (f.signers || [])
             .filter(s => s.signingProvider)
             .map(s => s.signingProvider)
-            .find(Boolean) || f.orgDefaultProvider || 'local-upload';
+            .find(Boolean) || 'local-upload';
           const PROV = {
             'sts-cloud':    { icon: '🏛️', label: 'STS Cloud QES', color: 'rgba(45,212,191,.15)', border: 'rgba(45,212,191,.35)', text: '#7cf0e0' },
             'certsign':     { icon: '🔐', label: 'certSIGN Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
             'transsped':    { icon: '🔐', label: 'Trans Sped Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
             'alfatrust':    { icon: '🔐', label: 'AlfaTrust Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
             'namirial':     { icon: '🔐', label: 'Namirial Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
-            'local-upload': { icon: '⬆️', label: 'Upload local', color: 'rgba(255,255,255,.06)', border: 'rgba(255,255,255,.15)', text: 'rgba(234,240,255,.55)' },
+            'local-upload': { icon: '⬆️', label: 'Upload local', color: 'rgba(255,200,50,.1)', border: 'rgba(255,200,50,.3)', text: '#ffd580' },
           };
           const p = PROV[usedProvider] || PROV['local-upload'];
           return `<span title="Metodă semnare: ${p.label}" style="background:${p.color};border:1px solid ${p.border};color:${p.text};padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;">${p.icon} ${p.label}</span>`;
