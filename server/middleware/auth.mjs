@@ -172,7 +172,8 @@ export function setAuthCookie(res, token, maxAgeMs) {
   res.cookie(AUTH_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV !== 'test',
-    sameSite: 'strict',
+    sameSite: 'lax',   // FIX b233: 'strict' bloca cookie-ul la redirect OAuth (cross-site GET)
+                       // 'lax' permite cookie pe GET redirect (OAuth), blochează POST cross-site (CSRF ok)
     path: '/',
     maxAge: maxAgeMs || (2 * 60 * 60 * 1000),
   });
@@ -181,7 +182,7 @@ export function setAuthCookie(res, token, maxAgeMs) {
 export function clearAuthCookie(res) {
   res.cookie(AUTH_COOKIE, '', {
     httpOnly: true, secure: process.env.NODE_ENV !== 'test',
-    sameSite: 'strict', path: '/', maxAge: 0,
+    sameSite: 'lax', path: '/', maxAge: 0,
   });
 }
 
