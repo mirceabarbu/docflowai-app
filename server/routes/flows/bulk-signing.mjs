@@ -442,11 +442,13 @@ router.get('/bulk-signing/:sessionId/poll', async (req, res) => {
     const { injectCms } = await import('../../signing/pades.mjs');
     const items = Array.isArray(session.items) ? session.items : [];
 
-    // Construim map flowId → signByte din signList
-    const signMap = new Map();
-    for (const sig of (pollResult.signList || [])) {
-      if (sig.signByte) signMap.set(sig.id, sig.signByte);
-    }
+    // FIX b233: STS returneaza signList[].id = UUID propriu (diferit de item.flowId trimis de noi)
+    // Nu putem face map dupa id — luam signByte in ordinea in care am trimis hash-urile.
+    // Documentatia STS: "Luăm primul element cu signByte prezent" per solicitare.
+    // Pentru bulk: am trimis N hash-uri -> signList are N elemente in aceeasi ordine.
+    const signList = pollResult.signList || [];
+    logger.info({ signListLen: signList.length, itemsLen: items.length,
+      signListIds: signList.map(s=>s.id).slice(0,5) }, 'bulk STS: signList primit');
 
     const now = new Date().toISOString();
     let allCompleted = true;
@@ -454,13 +456,18 @@ router.get('/bulk-signing/:sessionId/poll', async (req, res) => {
     for (const item of items) {
       if (item.status === 'signed') continue;  // deja procesat
 
-      const signByte = signMap.get(item.flowId);
+      // Luam signByte in ordinea indexului — STS returneaza in aceeasi ordine cu request-ul
+      const itemIdx = items.indexOf(item);
+      const sigItem = signList[itemIdx];
+      const signByte = sigItem?.signByte
+        // Fallback: cauta primul semn cu signByte daca ordinea e diferita
+        || signList.find(s => s.signByte && !items.slice(0, itemIdx).some((_,i) => signList[i]?.signByte === s.signByte))?.signByte
+        || null;
       if (!signByte) {
-        // STS nu a returnat semnătura pentru acest flux — eroare parțială
         item.status = 'error';
-        item.error  = 'signByte lipsă din răspunsul STS';
+        item.error  = `signByte lipsă (sigItem=${JSON.stringify(sigItem)}, idx=${itemIdx})`;
         allCompleted = false;
-        logger.warn({ flowId: item.flowId }, 'bulk: signByte lipsă');
+        logger.warn({ flowId: item.flowId, itemIdx, sigItem }, 'bulk: signByte lipsă');
         continue;
       }
 

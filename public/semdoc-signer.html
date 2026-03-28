@@ -507,8 +507,16 @@ th{ color: var(--sub) !important; }
       function renderSignersList(j) {
         const whoEl = $("whoSigners");
         if (!whoEl) return;
-        const esc3 = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const esc3 = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const isRefused = (j.signers||[]).some(x => x.status === 'refused');
+        const _SP = {
+          'sts-cloud':    { icon: '🏛️', label: 'STS QES',     col: 'rgba(45,212,191,.15)', brd: 'rgba(45,212,191,.3)', txt: '#7cf0e0' },
+          'certsign':     { icon: '🔐', label: 'certSIGN',    col: 'rgba(124,92,255,.12)', brd: 'rgba(124,92,255,.3)', txt: '#b39dff' },
+          'transsped':    { icon: '🔐', label: 'Trans Sped',  col: 'rgba(124,92,255,.12)', brd: 'rgba(124,92,255,.3)', txt: '#b39dff' },
+          'alfatrust':    { icon: '🔐', label: 'AlfaTrust',   col: 'rgba(124,92,255,.12)', brd: 'rgba(124,92,255,.3)', txt: '#b39dff' },
+          'namirial':     { icon: '🔐', label: 'Namirial',    col: 'rgba(124,92,255,.12)', brd: 'rgba(124,92,255,.3)', txt: '#b39dff' },
+          'local-upload': { icon: '⬆️', label: 'Upload cert', col: 'rgba(255,200,50,.12)', brd: 'rgba(255,200,50,.3)', txt: '#ffd580' },
+        };
         whoEl.innerHTML = (j.signers||[]).map(x => {
           const st = x.status==='signed'&&!x.pdfUploaded?'current':x.status;
           const isCancelled = isRefused && st === 'pending';
@@ -518,17 +526,22 @@ th{ color: var(--sub) !important; }
           const textColor = st==='signed'?'#7cf0e0':st==='refused'?'#ffaaaa':st==='current'?'#b39dff':isCancelled?'#ff9999':'#9db0ff';
           const extra = [x.functie, x.compartiment].filter(Boolean).join(' · ');
           const isMe = x.token === token;
-          // Badge delegare — vizibil daca semnatarul e delegat
           const delegBadge = x.delegatedFrom
-            ? `<span title="Delegat de ${esc3(x.delegatedFrom.name||x.delegatedFrom.email)} — ${esc3(x.delegatedFrom.reason||'')}" style="font-size:.69rem;padding:1px 7px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);cursor:help;">👥 delegat</span>`
+            ? `<span title="Delegat de ${esc3(x.delegatedFrom.name||x.delegatedFrom.email)}" style="font-size:.69rem;padding:1px 7px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);">👥 delegat</span>`
             : '';
-          return `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;${isMe?'font-weight:700;':'opacity:.75;'}">
+          // Badge tip semnătură — doar pentru semnatarii care au semnat deja
+          let provBadge = '';
+          if (st === 'signed') {
+            const pd = _SP[x.signingProvider] || _SP['local-upload'];
+            provBadge = `<span title="Semnat cu ${pd.label}" style="font-size:.69rem;padding:1px 7px;border-radius:10px;background:${pd.col};color:${pd.txt};font-weight:700;border:1px solid ${pd.brd};margin-left:2px;">${pd.icon} ${pd.label}</span>`;
+          }
+          return `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;flex-wrap:wrap;${isMe?'font-weight:700;':'opacity:.75;'}">
             <span>${icon}</span>
             <span style="font-size:.8rem;color:var(--muted);min-width:90px;">${esc3(x.rol||'')}</span>
             <span style="font-size:.83rem;">${esc3(x.name||'—')}</span>
             ${extra?`<span style="font-size:.77rem;color:var(--muted);">— ${esc3(extra)}</span>`:''}
             <span style="font-size:.71rem;padding:1px 7px;border-radius:10px;background:${badgeColor};color:${textColor};font-weight:700;">${badgeText}</span>
-            ${delegBadge}
+            ${provBadge}${delegBadge}
           </div>`;
         }).join('');
       }
