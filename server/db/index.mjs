@@ -806,6 +806,18 @@ const MIGRATIONS = [
         ON bulk_signing_sessions(expires_at)
         WHERE status NOT IN ('completed','error');
     `
+  },
+  {
+    id: '043_flows_pdfs_pades_fix',
+    sql: `
+      -- b233: refacem explicit constraint-ul flows_pdfs.key pentru a include padesPdf_%
+      -- Migration 041 a putut rula in medii unde constraint-ul deja exista (DROP IF EXISTS ok
+      -- dar ADD CONSTRAINT putea eșua silențios sau nu a inclus padesPdf_% corect).
+      ALTER TABLE flows_pdfs DROP CONSTRAINT IF EXISTS flows_pdfs_key_check;
+      ALTER TABLE flows_pdfs ADD CONSTRAINT flows_pdfs_key_check
+        CHECK (key IN ('pdfB64','signedPdfB64','originalPdfB64')
+               OR key LIKE 'padesPdf_%');
+    `
   }
 ];
 

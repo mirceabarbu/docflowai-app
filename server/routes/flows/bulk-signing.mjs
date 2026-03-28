@@ -169,9 +169,13 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
       const padesHashBase64 = calcPadesHash(pdfBufPades);  // SHA256(bytesOutsideContents)
       const padesPdfB64     = pdfBufPades.toString('base64');
 
-      // FIX b233: stocăm padesPdfB64 direct în item (salvat în bulk_signing_sessions.items)
-
-      // Salvam signerIdx și hash în signer pentru polling
+      // Stocam PDF-ul cu placeholder în flows_pdfs (migration 043 garantează constraint ok)
+      const padesKey = `padesPdf_${idx}`;
+      await pool.query(
+        `INSERT INTO flows_pdfs (flow_id, key, data, updated_at) VALUES ($1,$2,$3,NOW())
+         ON CONFLICT (flow_id, key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
+        [flowId, padesKey, padesPdfB64]
+      );
       signers[idx].bulkPadesHashBase64 = padesHashBase64;
 
       data.signers   = signers;
@@ -184,8 +188,7 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
         signerIdx:        idx,
         docName:          data.docName || flowId,
         padesHashBase64,  // SHA256(doc)
-        padesPdfB64tmp:   padesPdfB64,  // FIX b233: PDF cu placeholder, stocat direct în item
-
+        bulkPadesKey:     padesKey,
         status:           'pending',
       });
     }
@@ -462,19 +465,23 @@ router.get('/bulk-signing/:sessionId/poll', async (req, res) => {
       }
 
       try {
-        // FIX b233: citim padesPdfB64tmp direct din item
-        const padesPdfBuf = item.padesPdfB64tmp
-          ? Buffer.from(item.padesPdfB64tmp, 'base64')
-          : null;
+        // Citim PDF-ul cu placeholder din flows_pdfs
+        const { rows: _padesRows } = await pool.query(
+          'SELECT data FROM flows_pdfs WHERE flow_id=$1 AND key=$2',
+          [item.flowId, item.bulkPadesKey || `padesPdf_${item.signerIdx}`]
+        );
+        const padesPdfBuf = _padesRows[0]?.data ? Buffer.from(_padesRows[0].data, 'base64') : null;
         if (!padesPdfBuf)
-          throw new Error('PAdES PDF placeholder lipsă în item.padesPdfB64tmp');
+          throw new Error(`PAdES PDF placeholder lipsă în flows_pdfs (key=${item.bulkPadesKey})`);
 
         const signedPdfBuf = await injectCms(padesPdfBuf, signByte,
           session.sts_cert_pem || null);
         const signedPdfB64 = signedPdfBuf.toString('base64');
 
         // Curatam placeholder temporar
-        // padesPdfB64tmp a fost în item, nu flows_pdfs — nu e nevoie de DELETE
+        // Ștergem placeholder-ul din flows_pdfs
+        await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2',
+          [item.flowId, item.bulkPadesKey || `padesPdf_${item.signerIdx}`]);
 
         // Actualizam fluxul
         const data    = await getFlowData(item.flowId);

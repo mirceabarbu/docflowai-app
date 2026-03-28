@@ -168,11 +168,13 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     let signedPdfB64;
     try {
       const { injectCms } = await import('../../signing/pades.mjs');
-      // FIX b233: citim padesPdfB64tmp direct din signers[idx] (JSONB), nu din flows_pdfs
-      const padesPdfB64tmp = signer.padesPdfB64tmp || '';
-      if (!padesPdfB64tmp) throw new Error('PAdES PDF placeholder lipsă în signers[idx].padesPdfB64tmp');
-      const padesPdfBuf = Buffer.from(padesPdfB64tmp, 'base64');
-      if (!padesPdfBuf.length) throw new Error('PAdES PDF placeholder gol');
+      // Citim PDF-ul cu placeholder din flows_pdfs (migration 043 garantează constraint ok)
+      const padesKey = `padesPdf_${idx}`;
+      const { rows: padesRows } = await pool.query(
+        'SELECT data FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]
+      );
+      const padesPdfBuf = padesRows[0]?.data ? Buffer.from(padesRows[0].data, 'base64') : Buffer.alloc(0);
+      if (!padesPdfBuf.length) throw new Error(`PAdES PDF placeholder lipsă în flows_pdfs (key=${padesKey})`);
       // DEBUG: analizam signByte inainte de inject
       const _sb = pollResult.signByte || '';
       const _sbBuf = Buffer.from(_sb, 'base64');
@@ -193,8 +195,8 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem);
       signedPdfB64 = signedPdfBuf.toString('base64');
       // Curățăm PDF-ul temporar cu placeholder
-      // Ștergem padesPdfB64tmp din signer (nu mai e necesar după inject)
-      delete signers[idx].padesPdfB64tmp;
+      // Ștergem placeholder-ul din flows_pdfs (nu mai e necesar)
+      await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);
       logger.info({ flowId, signerEmail: signer.email, pdfSize: signedPdfBuf.length }, 'PAdES: PDF semnat QES generat cu succes');
     } catch(padesErr) {
       // Fallback grazios: stocăm PDF-ul original cu CMS separat (ca înainte)
@@ -440,13 +442,14 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     if (session.providerData && Object.keys(session.providerData).length > 0) {
       signers[idx].stsProviderData = session.providerData;
     }
-    // FIX b233: stocăm padesPdfB64 DIRECT în signers[idx] (JSONB), nu în flows_pdfs.
-    // Motivul: flows_pdfs.key are un CHECK constraint care în unele medii nu include
-    // 'padesPdf_%', cauzând INSERT silent-fail → padesPdfBuf gol la poll → fallback pdfB64.
-    // JSONB nu are constraint pe câmpuri individuale — întotdeauna funcționează.
-    // padesPdfB64 e ~200-400KB base64 per semnatar — acceptabil pentru tranzitoriu (șters la poll).
-    signers[idx].padesPdfB64tmp  = padesPdfB64;       // PDF cu ByteRange placeholder
-    signers[idx].padesHashBase64 = padesHashBase64;   // SHA256(bytesOutsideContents)
+    // Stocăm PDF-ul cu ByteRange placeholder în flows_pdfs (migration 043 garantează constraint ok)
+    const padesKey = `padesPdf_${idx}`;
+    await pool.query(
+      `INSERT INTO flows_pdfs (flow_id, key, data, updated_at) VALUES ($1,$2,$3,NOW())
+       ON CONFLICT (flow_id, key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
+      [flowId, padesKey, padesPdfB64]
+    );
+    signers[idx].padesHashBase64 = padesHashBase64;
     data.signers  = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
