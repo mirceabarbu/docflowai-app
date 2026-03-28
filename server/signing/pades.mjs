@@ -113,36 +113,111 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx, opts = {}) {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // FLUX TABEL: tabelul e deja în pdfB64 (desenat la crearea fluxului în stampFooterOnPdf)
-  // Calculăm doar coordonatele celulei semnătarului curent pentru ByteRange placeholder.
-  // Nu redesenăm tabelul — evităm probleme cu flows_pdfs constraint și double-drawing.
+  // FLUX TABEL: cartuș „SEMNAT SI APROBAT" — desenat direct în PDF cu placeholder
+  // Migration 044 garantează că flows_pdfs acceptă cheia padesPdf_N (constraint eliminat)
   // ════════════════════════════════════════════════════════════════════════
 
   const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
   const MARGIN = 40;
   const n     = signers.length;
   const cols  = Math.min(n, 3);
   const rows  = Math.ceil(n / cols);
   const cellW = (pW - MARGIN * 2) / cols;
   const cellH = 64;
+  const infoH = cellH * 0.58;
   const sigH  = cellH * 0.42;
   const titleH     = 20;
   const cartusH    = rows * cellH + titleH;
   const footerH    = 28;
   const cartusBottom = footerH + 8;
+  const cartusTotal  = cartusH + cartusBottom + 10;
 
-  // Verificam daca tabelul incape pe ultima pagina (aceeasi logica ca stampFooterOnPdf)
-  // Daca nu, adaugam o pagina noua
-  const cartusTotal = cartusH + cartusBottom + 10;
-  const freeSpace   = pH * 0.25;
+  const isFirstSigner = opts.alwaysDrawCartus
+    ? true
+    : signers.slice(0, signerIdx).every(s => s.status !== 'signed');
+
   let cartusPage;
-  if (freeSpace >= cartusTotal) {
+  if (!isFirstSigner) {
     cartusPage = lastPage;
   } else {
-    // Pagina noua — cartusul nu incapea. In mod normal stampFooterOnPdf a desenat deja
-    // pe o pagina noua, deci aceasta ramura e fallback de siguranta.
-    cartusPage = pdfDoc.addPage([pW, pH]);
-    logger.info({ signerIdx }, 'PAdES tabel: fallback pagina noua');
+    const freeSpace = pH * 0.25;
+    if (freeSpace >= cartusTotal) {
+      cartusPage = lastPage;
+      logger.info({ signerIdx, freeSpace, cartusTotal }, 'PAdES tabel: cartuș pe ultima pagină');
+    } else {
+      cartusPage = pdfDoc.addPage([pW, pH]);
+      logger.info({ signerIdx }, 'PAdES tabel: pagină nouă pentru cartuș');
+    }
+
+    const footerY = footerH - 14;
+    const flowId  = flowData.flowId || '';
+    const rTxt    = ro(flowId) + '  |  DocFlowAI';
+    const rW      = fontR.widthOfTextAtSize(rTxt, 7);
+    cartusPage.drawLine({ start: { x: MARGIN, y: footerY + 10 },
+      end: { x: pW - MARGIN, y: footerY + 10 }, thickness: 0.4, color: rgb(.75,.75,.75) });
+    cartusPage.drawText(rTxt, { x: pW-MARGIN-rW, y: footerY, size: 7, font: fontR,
+      color: rgb(.5,.5,.5), opacity: .8 });
+
+    // Bara titlu
+    cartusPage.drawRectangle({ x: MARGIN, y: cartusBottom + cartusH - titleH,
+      width: pW - MARGIN * 2, height: titleH,
+      color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
+    cartusPage.drawText('SEMNAT SI APROBAT', {
+      x: MARGIN + 8, y: cartusBottom + cartusH - titleH + 6,
+      size: 7, font: fontB, color: rgb(0,0,0) });
+
+    // Celule semnatari
+    signers.forEach((s, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const cx  = MARGIN + col * cellW;
+      const cy  = cartusBottom + (rows - 1 - row) * cellH;
+      const infoY = cy + sigH;
+      cartusPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH,
+        color: rgb(.97,.97,.97), borderColor: rgb(.2,.2,.2), borderWidth: 1 });
+      cartusPage.drawLine({ start: { x: cx, y: infoY }, end: { x: cx+cellW, y: infoY },
+        thickness: 0.5, color: rgb(.3,.3,.3) });
+      cartusPage.drawText(ro(s.rol)||'—', {
+        x: cx+5, y: infoY+infoH-12, size: 7, font: fontB,
+        color: rgb(.1,.1,.1), maxWidth: cellW-10 });
+      const nf = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
+      if (nf) cartusPage.drawText(nf, {
+        x: cx+5, y: infoY+infoH-23, size: 6.5, font: fontR,
+        color: rgb(.15,.15,.15), maxWidth: cellW-10 });
+
+      if (i === signerIdx) {
+        // Semnatar CURENT — fundal teal + text fix semnat digital QES
+        // Acesta e conținutul semnat de STS — data reală e în certificatul CMS / Raport Trust
+        cartusPage.drawRectangle({ x: cx+1, y: cy+1, width: cellW-2, height: sigH-2,
+          color: rgb(0.88, 0.97, 0.96), borderColor: rgb(0.27, 0.75, 0.7), borderWidth: 0.5 });
+        cartusPage.drawText('Semnat digital QES', {
+          x: cx+5, y: cy+sigH-11, size: 6, font: fontB,
+          color: rgb(0.1, 0.45, 0.42), maxWidth: cellW-10 });
+        cartusPage.drawText('STS Cloud', {
+          x: cx+5, y: cy+sigH-20, size: 5.5, font: fontR,
+          color: rgb(0.2, 0.5, 0.5), maxWidth: cellW-10 });
+        cartusPage.drawText('Data: Raport Trust', {
+          x: cx+5, y: cy+4, size: 5, font: fontR,
+          color: rgb(0.3, 0.5, 0.5), maxWidth: cellW-10 });
+      } else {
+        // Orice alt semnatar (trecut sau viitor) — același text QES, fără fundal colorat
+        // Cel care a semnat deja are textul din runda lui (revision anterioară)
+        // Cel care urmează va primi textul QES când va fi rândul lui
+        cartusPage.drawRectangle({ x: cx+1, y: cy+1, width: cellW-2, height: sigH-2,
+          color: rgb(0.97, 0.97, 0.97) });
+        cartusPage.drawText('Semnat digital QES', {
+          x: cx+5, y: cy+sigH-11, size: 6, font: fontB,
+          color: rgb(.35,.35,.55), maxWidth: cellW-10 });
+        cartusPage.drawText('STS Cloud', {
+          x: cx+5, y: cy+sigH-20, size: 5.5, font: fontR,
+          color: rgb(.45,.45,.6), maxWidth: cellW-10 });
+        cartusPage.drawText('Data: Raport Trust', {
+          x: cx+5, y: cy+4, size: 5, font: fontR,
+          color: rgb(.5,.5,.6), maxWidth: cellW-10 });
+      }
+    });
   }
 
   const col = signerIdx % cols;
@@ -162,7 +237,7 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx, opts = {}) {
   });
 
   const savedBytes = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-  logger.info({ signerIdx, widgetRect, pdfSize: savedBytes.length, isFirstSigner },
+  logger.info({ signerIdx, widgetRect, pdfSize: savedBytes.length },
     'PAdES tabel: gata');
   return savedBytes;
 }

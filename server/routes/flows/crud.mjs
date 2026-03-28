@@ -124,6 +124,7 @@ const createFlow = async (req, res) => {
           flowId, createdAt, initName, initFunctie,
           institutie: initInstitutie, compartiment: initCompartiment,
           flowType: body.flowType || 'tabel',
+          signers: normalizedSigners,
         });
         // stampFooterOnPdf returneaza intotdeauna string (footer only)
         // Daca cumva returneaza obiect (regresie), extragem pdfB64

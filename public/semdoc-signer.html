@@ -598,6 +598,38 @@ th{ color: var(--sub) !important; }
           const j = await r.json();
           _orgProviders = j.providers || _orgProviders;
 
+          // ── FIX b233: dacă un semnatar anterior a folosit STS (sau alt provider cloud),
+          // forțăm același provider pentru toți semnatarii următori.
+          // Nu permitem mix upload local + cloud pe același flux.
+          const flowData = window._flowData || {};
+          const signers  = flowData.signers || [];
+          const prevCloudProvider = signers
+            .filter(s => s.status === 'signed' && s.signingProvider && s.signingProvider !== 'local-upload')
+            .map(s => s.signingProvider)
+            .find(Boolean);
+
+          if (prevCloudProvider) {
+            // Fluxul e deja în modul cloud — forțăm același provider
+            const matchedProvider = _orgProviders.find(p => p.id === prevCloudProvider);
+            if (matchedProvider) {
+              _selectedProvider = prevCloudProvider;
+              _orgProviders = [matchedProvider]; // Ascundem celelalte opțiuni
+              const provName = matchedProvider.label || prevCloudProvider;
+              // Afișăm mesaj informativ
+              const infoBox = $('providerSelectBox');
+              if (infoBox) {
+                infoBox.innerHTML = `
+                  <div style="background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.3);
+                    border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:#7cf0e0;">
+                    🔒 Fluxul a fost inițiat cu <strong>${provName}</strong>. 
+                    Toți semnatarii trebuie să folosească același provider de semnare.
+                  </div>`;
+                infoBox.style.display = '';
+              }
+              return;
+            }
+          }
+
           // Dacă există un singur provider (local-upload) → sărim selecția
           if (j.skipSelection) {
             _selectedProvider = 'local-upload';

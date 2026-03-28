@@ -203,8 +203,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: cert PEM lipsă — semnătură fără identitate verificabilă');
       const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem);
       signedPdfB64 = signedPdfBuf.toString('base64');
-      // Curățăm PDF-ul temporar cu placeholder
-      // Ștergem placeholder-ul din flows_pdfs (nu mai e necesar)
+      // Ștergem placeholder-ul din flows_pdfs
       await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);
       logger.info({ flowId, signerEmail: signer.email, pdfSize: signedPdfBuf.length }, 'PAdES: PDF semnat QES generat cu succes');
     } catch(padesErr) {
