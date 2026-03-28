@@ -168,13 +168,22 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     let signedPdfB64;
     try {
       const { injectCms } = await import('../../signing/pades.mjs');
-      // Citim PDF-ul cu placeholder din flows_pdfs (migration 043 garantează constraint ok)
+      // Citim PDF-ul cu placeholder din flows_pdfs (migration 044 a eliminat constraint-ul)
       const padesKey = `padesPdf_${idx}`;
       const { rows: padesRows } = await pool.query(
         'SELECT data FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]
       );
+      logger.info({ flowId, padesKey, found: padesRows.length > 0,
+        dataLen: padesRows[0]?.data?.length || 0 }, 'PAdES: citire flows_pdfs');
       const padesPdfBuf = padesRows[0]?.data ? Buffer.from(padesRows[0].data, 'base64') : Buffer.alloc(0);
-      if (!padesPdfBuf.length) throw new Error(`PAdES PDF placeholder lipsă în flows_pdfs (key=${padesKey})`);
+      if (!padesPdfBuf.length) {
+        // Verificam daca exista vreo cheie padesPdf_* pentru acest flux
+        const { rows: allKeys } = await pool.query(
+          "SELECT key FROM flows_pdfs WHERE flow_id=$1 AND key LIKE 'padesPdf_%'", [flowId]);
+        logger.error({ flowId, padesKey, allPadesKeys: allKeys.map(r=>r.key) },
+          'PAdES PDF placeholder LIPSĂ din flows_pdfs — INSERT a eșuat (constraint?)');
+        throw new Error(`PAdES PDF placeholder lipsă în flows_pdfs (key=${padesKey})`);
+      }
       // DEBUG: analizam signByte inainte de inject
       const _sb = pollResult.signByte || '';
       const _sbBuf = Buffer.from(_sb, 'base64');
@@ -444,11 +453,18 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     }
     // Stocăm PDF-ul cu ByteRange placeholder în flows_pdfs (migration 043 garantează constraint ok)
     const padesKey = `padesPdf_${idx}`;
-    await pool.query(
-      `INSERT INTO flows_pdfs (flow_id, key, data, updated_at) VALUES ($1,$2,$3,NOW())
-       ON CONFLICT (flow_id, key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
-      [flowId, padesKey, padesPdfB64]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO flows_pdfs (flow_id, key, data, updated_at) VALUES ($1,$2,$3,NOW())
+         ON CONFLICT (flow_id, key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
+        [flowId, padesKey, padesPdfB64]
+      );
+      logger.info({ flowId, padesKey, pdfLen: padesPdfB64.length }, 'PAdES: flows_pdfs INSERT ok');
+    } catch(insertErr) {
+      // Constraint sau alta eroare — logam si continuam (va eșua la poll)
+      logger.error({ err: insertErr, flowId, padesKey }, 'PAdES flows_pdfs INSERT FAILED');
+      throw insertErr; // re-throw — initiate nu poate continua fara placeholder
+    }
     signers[idx].padesHashBase64 = padesHashBase64;
     data.signers  = signers;
     data.updatedAt = new Date().toISOString();
