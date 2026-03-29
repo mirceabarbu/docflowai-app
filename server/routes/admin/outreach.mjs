@@ -275,7 +275,7 @@ async function sentToday() {
 
 /** Email HTML de baza cu tracking pixel + click tracking injectat + footer dezabonare (GDPR) */
 function buildHtml(template, institutie, trackingId, baseUrl, unsubscribeUrl = null) {
-  const displayInstitutie = institutie
+  const displayInstitutie = (institutie || 'instituția dumneavoastră')
     .toLowerCase()
     .replace(/(?:^|\s)\S/g, c => c.toUpperCase());
   const pixel = baseUrl
@@ -624,10 +624,13 @@ router.post('/campaigns/:id/send', async (req, res) => {
         ? `${baseUrl}/admin/outreach/unsubscribe/${recip.unsubscribe_token}`
         : null;
       const html = buildHtml(campaign.html_body, recip.institutie, recip.tracking_id, baseUrl, unsubUrl);
+      const displayInstitutie = (recip.institutie || 'instituția dumneavoastră')
+        .toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+      const subject = (campaign.subject || '').replace(/\{\{institutie\}\}/g, displayInstitutie);
       try {
         await sendEmail({
           to: recip.email,
-          subject: campaign.subject,
+          subject,
           html,
           ...(attachment ? { attachments: [{ filename: attachment.filename, content: attachment.content.toString('base64') }] } : {}),
         });
