@@ -598,34 +598,35 @@ th{ color: var(--sub) !important; }
           const j = await r.json();
           _orgProviders = j.providers || _orgProviders;
 
-          // ── FIX b233: dacă un semnatar anterior a folosit STS (sau alt provider cloud),
+          // ── FIX b233: dacă un semnatar anterior a semnat deja,
           // forțăm același provider pentru toți semnatarii următori.
           // Nu permitem mix upload local + cloud pe același flux.
-          const flowData = currentFlow || {};  // currentFlow e setat de loadFlow() înainte de apelul nostru
+          const flowData = currentFlow || {};
           const signers  = flowData.signers || [];
-          const prevCloudProvider = signers
-            .filter(s => s.status === 'signed' && s.signingProvider && s.signingProvider !== 'local-upload')
+          const prevProvider = signers
+            .filter(s => s.status === 'signed' && s.signingProvider)
             .map(s => s.signingProvider)
-            .find(Boolean);
+            .find(Boolean)
+            // Dacă signingProvider e null (upload local vechi), detectăm după pdfUploaded
+            || (signers.some(s => s.status === 'signed' && !s.signingProvider) ? 'local-upload' : null);
 
-          if (prevCloudProvider) {
-            // Fluxul e deja în modul cloud — forțăm același provider
-            const matchedProvider = _orgProviders.find(p => p.id === prevCloudProvider);
+          if (prevProvider) {
+            const matchedProvider = _orgProviders.find(p => p.id === prevProvider);
             if (matchedProvider) {
-              _selectedProvider = prevCloudProvider;
-              _orgProviders = [matchedProvider]; // Ascundem celelalte opțiuni
-              const provName = matchedProvider.label || prevCloudProvider;
-              // Afișăm mesaj informativ
+              _selectedProvider = prevProvider;
+              _orgProviders = [matchedProvider];
+              const provName = matchedProvider.label || prevProvider;
               const infoBox = $('providerSelectBox');
               if (infoBox) {
                 infoBox.innerHTML = `
                   <div style="background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.3);
                     border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:#7cf0e0;">
-                    🔒 Fluxul a fost inițiat cu <strong>${provName}</strong>. 
+                    🔒 Fluxul a fost inițiat cu <strong>${provName}</strong>.
                     Toți semnatarii trebuie să folosească același provider de semnare.
                   </div>`;
                 infoBox.style.display = '';
               }
+              applyProviderToSignBox(prevProvider);
               return;
             }
           }
