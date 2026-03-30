@@ -187,11 +187,19 @@ export class STSCloudProvider {
             certPem = (typeof oc === 'string' ? oc : null)
                    || oc?.pemCertificate || oc?.pem || oc?.certificate || null;
           }
-          // Log structura completa a signingCertificate pentru diagnosticare
-          logger.info({ hasCert: !!certPem, certLen: certPem?.length || 0,
+          // Log complet pentru diagnosticare structură exactă STS
+          logger.info({
+            hasCert: !!certPem,
+            certLen: certPem?.length || 0,
             allKeys: JSON.stringify(Object.keys(ui || {})),
             signingCertType: typeof sc,
-            signingCertKeys: sc && typeof sc === 'object' ? JSON.stringify(Object.keys(sc)) : String(sc)?.substring(0,50),
+            signingCertKeys: sc && typeof sc === 'object' && !Array.isArray(sc)
+              ? JSON.stringify(Object.keys(sc))
+              : Array.isArray(sc) ? `array[${sc.length}]` : String(sc)?.substring(0, 100),
+            signingCertPreview: typeof sc === 'string'
+              ? sc.substring(0, 80)
+              : JSON.stringify(sc)?.substring(0, 200),
+            otherCertsLen: Array.isArray(ui?.otherCertificates) ? ui.otherCertificates.length : 0,
           }, 'STS: cert din /userinfo');
         } else {
           logger.warn({ status: uiResp.status }, 'STS: /userinfo non-OK');
