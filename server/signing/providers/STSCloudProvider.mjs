@@ -177,29 +177,24 @@ export class STSCloudProvider {
           // 3. { certificate: "...", ... }
           // 4. în otherCertificates[]
           const sc = ui?.signingCertificate;
+          // STS folosește chei românești: pemCertificat (nu pemCertificate)
           certPem = (typeof sc === 'string' && sc.includes('CERTIFICATE') ? sc : null)
-                 || sc?.pemCertificate || sc?.pem || sc?.certificate || sc?.cert
-                 || ui?.certificate?.pemCertificate || ui?.certificate?.pem
+                 || sc?.pemCertificat    // ← cheia reală STS (română, fără 'e' la final)
+                 || sc?.pemCertificate
+                 || sc?.pem || sc?.certificate || sc?.cert
+                 || ui?.certificate?.pemCertificat
+                 || ui?.certificate?.pemCertificate
                  || (typeof ui?.certificate === 'string' ? ui.certificate : null)
-                 || ui?.cert || ui?.pemCertificate || null;
+                 || ui?.cert || ui?.pemCertificate || ui?.pemCertificat || null;
           if (!certPem && Array.isArray(ui?.otherCertificates)) {
             const oc = ui.otherCertificates[0];
             certPem = (typeof oc === 'string' ? oc : null)
-                   || oc?.pemCertificate || oc?.pem || oc?.certificate || null;
+                   || oc?.pemCertificat || oc?.pemCertificate
+                   || oc?.pem || oc?.certificate || null;
           }
-          // Log complet pentru diagnosticare structură exactă STS
           logger.info({
-            hasCert: !!certPem,
-            certLen: certPem?.length || 0,
+            hasCert: !!certPem, certLen: certPem?.length || 0,
             allKeys: JSON.stringify(Object.keys(ui || {})),
-            signingCertType: typeof sc,
-            signingCertKeys: sc && typeof sc === 'object' && !Array.isArray(sc)
-              ? JSON.stringify(Object.keys(sc))
-              : Array.isArray(sc) ? `array[${sc.length}]` : String(sc)?.substring(0, 100),
-            signingCertPreview: typeof sc === 'string'
-              ? sc.substring(0, 80)
-              : JSON.stringify(sc)?.substring(0, 200),
-            otherCertsLen: Array.isArray(ui?.otherCertificates) ? ui.otherCertificates.length : 0,
           }, 'STS: cert din /userinfo');
         } else {
           logger.warn({ status: uiResp.status }, 'STS: /userinfo non-OK');
