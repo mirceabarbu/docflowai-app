@@ -248,11 +248,10 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
 
       signedPdfB64 = finalPdfBuf.toString('base64');
       delete data[`_padesPdf_${idx}`];  // curățăm după inject
-      logger.info({ flowId, signerEmail: signer.email, pdfSize: signedPdfBuf.length }, 'PAdES: PDF semnat QES generat cu succes');
+      logger.info({ flowId, signerEmail: signer.email, pdfSize: finalPdfBuf.length }, 'PAdES: PDF semnat QES generat cu succes');
     } catch(padesErr) {
-      // Fallback: pdfB64 are deja tabelul (desenat la creare în stampFooterOnPdf b233)
-      // Deci fallback-ul produce un PDF vizual corect, fără semnătură digitală embedded.
       logger.error({ err: padesErr, flowId }, 'PAdES inject error — fallback la pdfB64 (cu tabel)');
+      delete data[`_padesPdf_${idx}`];  // curățăm și în caz de eroare — evităm JSONB bloat
       signedPdfB64 = (data.pdfB64 || '').includes(',') ? data.pdfB64.split(',')[1] : (data.pdfB64 || '');
     }
 

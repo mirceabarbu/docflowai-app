@@ -820,6 +820,16 @@ const MIGRATIONS = [
     `
   },
   {
+    id: '045_cleanup_pades_jsonb',
+    sql: `
+      -- b233: curățăm cheile _padesPdf_N rămase în JSONB din fluxuri existente
+      -- Acestea sunt PDF-uri de ~300KB care blochează app-ul dacă nu sunt șterse la poll
+      UPDATE flows SET data = data - '_padesPdf_0' - '_padesPdf_1' - '_padesPdf_2' - '_padesPdf_3'
+        - 'padesPdfs'
+      WHERE data ? '_padesPdf_0' OR data ? '_padesPdf_1' OR data ? 'padesPdfs';
+    `
+  },
+  {
     id: '044_flows_pdfs_no_constraint',
     sql: `
       -- b233: eliminam COMPLET constraint-ul pe flows_pdfs.key.
