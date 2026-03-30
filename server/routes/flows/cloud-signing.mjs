@@ -202,7 +202,61 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       const certPem = signer.stsCertPem || '';
       if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: cert PEM lipsă — semnătură fără identitate verificabilă');
       const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem);
-      signedPdfB64 = signedPdfBuf.toString('base64');
+
+      // ── Appearance stream incremental — metoda Adobe (PAdES validă) ──────
+      // Adăugăm o revizie nouă la PDF-ul deja semnat, care conține DOAR
+      // textul vizual în celula cartușului. ByteRange-ul semnăturii STS
+      // acoperă revizia 1 — revizia 2 (appearance) nu e acoperită de hash,
+      // deci nu invalidează semnătura. Adobe Reader validează ambele revizii.
+      let finalPdfBuf = signedPdfBuf;
+      try {
+        const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
+        const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
+        const ro = t => String(t||'').split('').map(ch=>diacr[ch]||ch).join('');
+
+        const annDoc = await PDFDocument.load(signedPdfBuf, { ignoreEncryption: true });
+        const fontR  = await annDoc.embedFont(StandardFonts.Helvetica);
+        const fontB  = await annDoc.embedFont(StandardFonts.HelveticaBold);
+        const pages  = annDoc.getPages();
+        const pg     = pages[pages.length - 1];
+        const { width: pW } = pg.getSize();
+
+        // Coordonate celulă — identic cu preparePadesDoc
+        const MARGIN = 40;
+        const n      = signers.length;
+        const cols   = Math.min(n, 3);
+        const nRows  = Math.ceil(n / cols);
+        const cellW  = (pW - MARGIN * 2) / cols;
+        const cellH  = 64;
+        const sigH   = cellH * 0.42;
+        const cartusBottom = 36;  // footerH(28) + 8
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        const cx  = MARGIN + col * cellW;
+        const cy  = cartusBottom + (nRows - 1 - row) * cellH;
+
+        // Suprascriem zona de semnătură cu fundal teal + text
+        pg.drawRectangle({ x: cx+1, y: cy+1, width: cellW-2, height: sigH-2,
+          color: rgb(0.88, 0.97, 0.96),
+          borderColor: rgb(0.27, 0.75, 0.7), borderWidth: 0.5 });
+        pg.drawText('Semnat digital QES', {
+          x: cx+5, y: cy+sigH-11, size: 6, font: fontB,
+          color: rgb(0.1, 0.45, 0.42), maxWidth: cellW-10 });
+        pg.drawText('STS Cloud', {
+          x: cx+5, y: cy+sigH-20, size: 5.5, font: fontR,
+          color: rgb(0.2, 0.5, 0.5), maxWidth: cellW-10 });
+        pg.drawText('Data: Raport Trust', {
+          x: cx+5, y: cy+4, size: 5, font: fontR,
+          color: rgb(0.3, 0.5, 0.5), maxWidth: cellW-10 });
+
+        // Salvare incrementală — adaugă revision 2 fără a modifica ByteRange rev.1
+        finalPdfBuf = Buffer.from(await annDoc.save({ useObjectStreams: false }));
+        logger.info({ flowId, signerIdx: idx }, 'PAdES: appearance stream incremental adăugat OK');
+      } catch(appErr) {
+        logger.warn({ err: appErr, flowId }, 'PAdES: appearance incremental eșuat (non-fatal) — PDF semnat rămâne valid');
+      }
+
+      signedPdfB64 = finalPdfBuf.toString('base64');
       // Ștergem placeholder-ul din flows_pdfs
       await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1 AND key=$2', [flowId, padesKey]);
       logger.info({ flowId, signerEmail: signer.email, pdfSize: signedPdfBuf.length }, 'PAdES: PDF semnat QES generat cu succes');

@@ -601,7 +601,7 @@ th{ color: var(--sub) !important; }
           // ── FIX b233: dacă un semnatar anterior a folosit STS (sau alt provider cloud),
           // forțăm același provider pentru toți semnatarii următori.
           // Nu permitem mix upload local + cloud pe același flux.
-          const flowData = window._flowData || {};
+          const flowData = currentFlow || {};  // currentFlow e setat de loadFlow() înainte de apelul nostru
           const signers  = flowData.signers || [];
           const prevCloudProvider = signers
             .filter(s => s.status === 'signed' && s.signingProvider && s.signingProvider !== 'local-upload')
