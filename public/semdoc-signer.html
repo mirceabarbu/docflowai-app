@@ -1519,6 +1519,41 @@ th{ color: var(--sub) !important; }
           cleanUrl.searchParams.delete('sts_signed');
           window.history.replaceState({}, '', cleanUrl.toString());
         }
+
+        // ── Loading state profesionist când sts_pending=1 ─────────────────
+        // Afișăm imediat, înainte ca loadFlow să termine, pentru că backend-ul
+        // procesează injectCms + appearance stream (2-4 secunde de așteptare)
+        if (_stsPending === '1') {
+          const signBox = $('signBox');
+          if (signBox) {
+            signBox.innerHTML = `
+              <div style="text-align:center;padding:32px 24px;">
+                <div style="font-size:2.5rem;margin-bottom:16px;animation:pulse-urgent 1.2s ease-in-out infinite;">🔏</div>
+                <div style="font-weight:700;font-size:1.05rem;margin-bottom:10px;color:#7cf0e0;">
+                  Semnătura electronică calificată se aplică
+                </div>
+                <div style="font-size:.88rem;color:rgba(234,240,255,.55);margin-bottom:20px;line-height:1.6;">
+                  STS procesează și returnează semnătura digitală.<br>
+                  Documentul este semnat criptografic și se pregătește pentru arhivare.
+                </div>
+                <div style="display:flex;justify-content:center;margin-bottom:8px;">
+                  <div style="width:180px;height:4px;background:rgba(45,212,191,.2);border-radius:2px;overflow:hidden;">
+                    <div style="width:100%;height:100%;background:linear-gradient(90deg,#7c5cff,#2dd4bf);
+                      animation:progressIndeterminate 1.5s ease-in-out infinite;border-radius:2px;"></div>
+                  </div>
+                </div>
+                <div style="font-size:.75rem;color:rgba(234,240,255,.35);">Vă rugăm nu închideți pagina</div>
+              </div>
+              <style>
+                @keyframes progressIndeterminate {
+                  0%   { transform: translateX(-100%); }
+                  100% { transform: translateX(200%); }
+                }
+              </style>
+            `;
+          }
+        }
+
         loadFlow().catch((e) => showError(String(e.message || e))).then(() => {
           if (_stsPending === '1') startStsPolling();
           // sts_signed=1: dacă fluxul încă arată semnatarul ca 'current' (race condition DB),
