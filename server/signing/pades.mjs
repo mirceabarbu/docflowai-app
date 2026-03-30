@@ -390,57 +390,97 @@ async function buildCmsFromRawSignature(signByteBase64, certPem) {
     hasCert: !!certPem,
   }, 'CMS: construire PAdES signature');
 
+  // ── Extrage URL caIssuers din AIA extension ──────────────────────────────
+  function extractAiaIssuers(certDer) {
+    const urls = [];
+    try {
+      // caIssuers OID bytes: 2b 06 01 05 05 07 30 02
+      const needle = Buffer.from('2b06010505073002', 'hex');
+      let pos = 0;
+      while (pos < certDer.length - needle.length) {
+        if (certDer.slice(pos, pos + needle.length).equals(needle)) {
+          const after = pos + needle.length;
+          // IA5String tag = 0x86
+          if (after + 1 < certDer.length && certDer[after] === 0x86) {
+            const urlLen = certDer[after + 1];
+            const url = certDer.slice(after + 2, after + 2 + urlLen).toString('ascii');
+            if (url.startsWith('http')) urls.push(url);
+          }
+        }
+        pos++;
+      }
+    } catch(e) {}
+    return urls;
+  }
+
+  async function fetchCaCert(url) {
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) return null;
+      const arr = await resp.arrayBuffer();
+      const buf = Buffer.from(arr);
+      // PEM → DER dacă e nevoie
+      if (buf.length > 0 && buf[0] === 0x2d) {
+        const pem = buf.toString('ascii').replace(/-----[^-]+-----|?
+/g, '');
+        return Buffer.from(pem, 'base64');
+      }
+      return buf;
+    } catch(e) { return null; }
+  }
+
+  async function buildChain(endEntityDer) {
+    const chain = [endEntityDer];
+    let current = endEntityDer;
+    for (let i = 0; i < 3; i++) {
+      const urls = extractAiaIssuers(current);
+      if (!urls.length) break;
+      const ca = await fetchCaCert(urls[0]);
+      if (!ca || ca.length < 100 || ca.equals(current)) break;
+      chain.push(ca);
+      current = ca;
+      if (!extractAiaIssuers(ca).length) break; // root
+    }
+    logger.info({ chainLen: chain.length }, 'CMS: CA chain');
+    return chain;
+  }
+
   if (certPem) {
     try {
-      // ── Cert DER: extragere directă din PEM (fără forge re-encodare) ────
       const pemBody = certPem.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\r?\n/g, '');
       const certDer = Buffer.from(pemBody, 'base64');
+      if (!certDer.length) throw new Error('Cert DER gol');
 
-      if (!certDer.length) throw new Error('Cert DER gol după base64 decode');
+      // Descărcăm CA chain din AIA
+      const chain = await buildChain(certDer);
+      const allCertsDer = Buffer.concat(chain);
 
-      // ── Issuer + Serial: parsate direct din DER (bytes identici cu cert original) ─
       const parsed = parseCertComponents(certDer);
       let issuerAndSerial;
-
       if (parsed) {
-        // issuerBytes și serialBytes sunt slices EXACTE din certDer — nicio re-encodare
         issuerAndSerial = seq(Buffer.concat([parsed.issuerBytes, parsed.serialBytes]));
-        logger.info({
-          issuerLen: parsed.issuerBytes.length,
-          serialLen: parsed.serialBytes.length,
-          serialHex: parsed.serialBytes.toString('hex').substring(0, 20),
-        }, 'CMS: issuer+serial extrase direct din DER');
+        logger.info({ issuerLen: parsed.issuerBytes.length, serialLen: parsed.serialBytes.length,
+          serialHex: parsed.serialBytes.toString('hex').substring(0, 20) }, 'CMS: issuer+serial OK');
       } else {
-        // Fallback: issuer și serial gol — CMS valid dar Adobe nu găsește cert-ul prin sid
-        // Totuși, certificatul e prezent în CMS.certificates, Adobe poate să-l găsească
-        logger.warn('CMS: parseCertComponents a eșuat — sid gol, cert în certificates');
+        logger.warn('CMS: parseCertComponents eșuat');
         issuerAndSerial = seq(Buffer.concat([
-          Buffer.from([0x30, 0x00]),   // issuer: SEQUENCE gol
-          Buffer.from([0x02, 0x01, 0x01]),  // serial: INTEGER 1
+          Buffer.from([0x30, 0x00]),
+          Buffer.from([0x02, 0x01, 0x01]),
         ]));
       }
 
-      // ── SignerInfo — fără signedAttrs (SHA256(doc) trimis la STS) ────────
       const signerInfo = seq(Buffer.concat([
-        int1(1),                                    // version CMSVersion
-        issuerAndSerial,                            // sid IssuerAndSerialNumber
-        algId(OID_SHA256),                          // digestAlgorithm cu NULL
-        // ← fără signedAttrs — STS a semnat SHA256(doc) direct
-        sigAlgId,                                   // signatureAlgorithm
-        octst(signatureBytes),                      // signature
+        int1(1), issuerAndSerial, algId(OID_SHA256), sigAlgId, octst(signatureBytes),
       ]));
 
-      // ── SignedData ────────────────────────────────────────────────────────
       const signedData = seq(Buffer.concat([
-        int1(1),                                    // version
-        set(algId(OID_SHA256)),                     // digestAlgorithms SET
-        seq(oid(OID_DATA)),                         // encapContentInfo (detached)
-        ctx0(certDer),                              // certificates [0] — bytes ORIGINALI
-        set(signerInfo),                            // signerInfos
+        int1(1), set(algId(OID_SHA256)), seq(oid(OID_DATA)),
+        ctx0(allCertsDer),   // chain complet: end-entity + CA + root
+        set(signerInfo),
       ]));
 
       const cms = seq(Buffer.concat([oid(OID_SIGNED_DATA), ctx0(signedData)]));
-      logger.info({ cmsLen: cms.length, certDerLen: certDer.length }, 'CMS: construit cu succes ✓');
+      logger.info({ cmsLen: cms.length, certDerLen: certDer.length, chainLen: chain.length }, 'CMS: construit cu succes ✓');
       return cms;
 
     } catch(e) {
