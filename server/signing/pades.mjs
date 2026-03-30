@@ -474,4 +474,5 @@ export async function injectCms(pdfBytes, signByteB64, certPem) {
     throw new Error(`PAdES: CMS prea mare (${cmsBuffer.length} > ${STS_SIGNATURE_LENGTH})`);
   const signedPdf = await new SignPdf().sign(pdfBytes, new STSSigner(cmsBuffer));
   logger.info({ cmsLen: cmsBuffer.length, pdfSize: signedPdf.length }, 'PAdES: injectat OK ✓');
+  return signedPdf;
 }
