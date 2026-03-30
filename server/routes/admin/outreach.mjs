@@ -311,12 +311,11 @@ function buildHtml(template, institutie, trackingId, baseUrl, unsubscribeUrl = n
 router.get('/click/:trackingId', async (req, res) => {
   const { trackingId } = req.params;
   const dest = req.query.u ? decodeURIComponent(req.query.u) : 'https://www.docflowai.ro';
-  // Validare URL destinație — permitem doar http/https
   const safeDest = /^https?:\/\//.test(dest) ? dest : 'https://www.docflowai.ro';
-  // Redirect imediat — nu blocăm utilizatorul
   res.redirect(302, safeDest);
-  // Actualizare async — click_count + clicked_at separat de status opened (pixel)
-  if (!trackingId || !/^[a-f0-9]{32}$/.test(trackingId)) return;
+  // FIX b233: UUID format = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (cu liniuțe)
+  // Vechea regex /^[a-f0-9]{32}$/ refuza UUIDs → click-urile nu se înregistrau niciodata
+  if (!trackingId || !/^[a-f0-9-]{32,36}$/.test(trackingId)) return;
   pool.query(`
     UPDATE outreach_recipients
     SET status      = CASE WHEN status IN ('sent','pending') THEN 'opened' ELSE status END,
@@ -339,7 +338,7 @@ router.get('/download/:trackingId', async (req, res) => {
   res.setHeader('Content-Disposition', 'attachment; filename="DocFlowAI_Prezentare.pdf"');
   res.sendFile(path.resolve(pdfPath));
   // Înregistrare descărcare async
-  if (!trackingId || !/^[a-f0-9]{32}$/.test(trackingId)) return;
+  if (!trackingId || !/^[a-f0-9-]{32,36}$/.test(trackingId)) return;
   pool.query(`
     UPDATE outreach_recipients
     SET downloaded_at = CASE WHEN downloaded_at IS NULL THEN NOW() ELSE downloaded_at END,
@@ -359,7 +358,7 @@ router.get('/track/:trackingId', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.end(GIF1x1);
   // Actualizare async — nu blocăm răspunsul
-  if (!trackingId || !/^[a-f0-9]{32}$/.test(trackingId)) return;
+  if (!trackingId || !/^[a-f0-9-]{32,36}$/.test(trackingId)) return;
   pool.query(`
     UPDATE outreach_recipients
     SET status = CASE WHEN status = 'sent' THEN 'opened' ELSE status END,
