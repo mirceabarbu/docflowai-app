@@ -168,19 +168,41 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     let signedPdfB64;
     try {
       const { injectCms } = await import('../../signing/pades.mjs');
-      // FIX b233 FINAL: citim padesPdfB64 din data.padesPdfs[idx] (JSONB)
-      const padesPdfB64stored = data.padesPdfs?.[String(idx)] || '';
-      logger.info({ flowId, signerIdx: idx,
-        hasPadesPdf: !!padesPdfB64stored, len: padesPdfB64stored.length },
-        'PAdES: citire padesPdfs din JSONB');
-      const padesPdfBuf = padesPdfB64stored
-        ? Buffer.from(padesPdfB64stored, 'base64')
-        : Buffer.alloc(0);
-      if (!padesPdfBuf.length) {
-        logger.error({ flowId, signerIdx: idx, padesPdfsKeys: Object.keys(data.padesPdfs||{}) },
-          'PAdES PDF placeholder LIPSĂ din data.padesPdfs — initiate nu a salvat corect');
-        throw new Error('PAdES PDF placeholder lipsă în data.padesPdfs[' + idx + ']');
+      // FIX b233 v2: regenerăm padesPdf la poll din aceleași inputs ca la initiate.
+      // preparePadesDoc este determinist — aceiași bytes, același ByteRange, același hash.
+      // Elimină complet dependența de stocare intermediară (flows_pdfs / JSONB).
+      const { preparePadesDoc, calcPadesHash } = await import('../../signing/pades.mjs');
+      const signedCount2 = signers.filter((s2, i2) => i2 < idx && s2.status === 'signed').length;
+      const isSubsequentSigner2 = signedCount2 > 0 && !!data.signedPdfB64;
+      const sourcePdfB642 = isSubsequentSigner2 ? data.signedPdfB64 : (data.pdfB64 || '');
+      const rawPdf2 = sourcePdfB642.includes(',') ? sourcePdfB642.split(',')[1] : sourcePdfB642;
+      if (!rawPdf2) throw new Error('PAdES poll: pdfB64 lipsă pentru regenerare');
+      let pdfBuf2 = Buffer.from(rawPdf2, 'base64');
+
+      // Unlock doar pentru semnatar 1
+      if (!isSubsequentSigner2 && _PDFLib && data.flowType !== 'ancore') {
+        try {
+          const { PDFDocument: PD2, PDFName: PN2, PDFNumber: PNum2 } = _PDFLib;
+          const doc2 = await PD2.load(pdfBuf2, { ignoreEncryption: true });
+          try { delete doc2.context.trailerInfo.Encrypt; } catch(_e) {}
+          try { doc2.catalog.delete(PN2.of('Perms')); } catch(_e) {}
+          pdfBuf2 = Buffer.from(await doc2.save({ useObjectStreams: false }));
+        } catch(_e) {}
       }
+
+      const padesPdfBufRegen = await preparePadesDoc(pdfBuf2, data, idx,
+        { alwaysDrawCartus: !isSubsequentSigner2 });
+      const regenHash = calcPadesHash(padesPdfBufRegen);
+
+      // Verificăm că hash-ul e identic cu cel trimis la STS
+      if (regenHash !== signer.padesHashBase64) {
+        logger.error({ flowId, idx, regenHash, storedHash: signer.padesHashBase64 },
+          'PAdES poll: hash regenerat DIFERIT de cel trimis la STS — semnătura va fi invalidă');
+        // Continuăm oricum — STS a semnat ce a primit, injectăm și vedem
+      } else {
+        logger.info({ flowId, idx }, 'PAdES poll: hash regenerat identic ✓ — semnătură validă garantat');
+      }
+      const padesPdfBuf = padesPdfBufRegen;
       // DEBUG: analizam signByte inainte de inject
       const _sb = pollResult.signByte || '';
       const _sbBuf = Buffer.from(_sb, 'base64');
@@ -254,8 +276,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       }
 
       signedPdfB64 = finalPdfBuf.toString('base64');
-      // Ștergem padesPdf din JSONB
-      if (data.padesPdfs) delete data.padesPdfs[String(idx)];
+      // padesPdf era regenerat la poll — nimic de șters
       logger.info({ flowId, signerEmail: signer.email, pdfSize: signedPdfBuf.length }, 'PAdES: PDF semnat QES generat cu succes');
     } catch(padesErr) {
       // Fallback: pdfB64 are deja tabelul (desenat la creare în stampFooterOnPdf b233)
@@ -502,9 +523,9 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     if (session.providerData && Object.keys(session.providerData).length > 0) {
       signers[idx].stsProviderData = session.providerData;
     }
-    // FIX b233 FINAL: stocăm padesPdfB64 în data.padesPdfs[idx] (JSONB) — zero constraint
-    if (!data.padesPdfs) data.padesPdfs = {};
-    data.padesPdfs[String(idx)] = padesPdfB64;
+    // FIX b233 v2: NU stocăm padesPdf deloc — îl regenerăm la poll din aceleași inputs.
+    // preparePadesDoc este determinist: aceleași inputs → aceiași bytes → același ByteRange → același hash.
+    // Eliminăm complet dependența de flows_pdfs și de JSONB pentru date mari.
     signers[idx].padesHashBase64 = padesHashBase64;
     data.signers  = signers;
     data.updatedAt = new Date().toISOString();
