@@ -171,13 +171,28 @@ export class STSCloudProvider {
           preview: uiText.substring(0, 300) }, 'STS: /userinfo raspuns');
         if (uiResp.ok) {
           const ui = JSON.parse(uiText);
-          certPem = ui?.signingCertificate?.pemCertificate
-                 || ui?.certificate?.pemCertificate
+          // FIX b233: STS poate returna signingCertificate ca:
+          // 1. { pemCertificate: "-----BEGIN..." }
+          // 2. "-----BEGIN CERTIFICATE..."  (string direct)
+          // 3. { certificate: "...", ... }
+          // 4. în otherCertificates[]
+          const sc = ui?.signingCertificate;
+          certPem = (typeof sc === 'string' && sc.includes('CERTIFICATE') ? sc : null)
+                 || sc?.pemCertificate || sc?.pem || sc?.certificate || sc?.cert
+                 || ui?.certificate?.pemCertificate || ui?.certificate?.pem
+                 || (typeof ui?.certificate === 'string' ? ui.certificate : null)
                  || ui?.cert || ui?.pemCertificate || null;
-          if (!certPem && Array.isArray(ui?.otherCertificates))
-            certPem = ui.otherCertificates[0]?.pemCertificate || null;
+          if (!certPem && Array.isArray(ui?.otherCertificates)) {
+            const oc = ui.otherCertificates[0];
+            certPem = (typeof oc === 'string' ? oc : null)
+                   || oc?.pemCertificate || oc?.pem || oc?.certificate || null;
+          }
+          // Log structura completa a signingCertificate pentru diagnosticare
           logger.info({ hasCert: !!certPem, certLen: certPem?.length || 0,
-            allKeys: JSON.stringify(Object.keys(ui || {})) }, 'STS: cert din /userinfo');
+            allKeys: JSON.stringify(Object.keys(ui || {})),
+            signingCertType: typeof sc,
+            signingCertKeys: sc && typeof sc === 'object' ? JSON.stringify(Object.keys(sc)) : String(sc)?.substring(0,50),
+          }, 'STS: cert din /userinfo');
         } else {
           logger.warn({ status: uiResp.status }, 'STS: /userinfo non-OK');
         }

@@ -626,7 +626,12 @@ th{ color: var(--sub) !important; }
                   </div>`;
                 infoBox.style.display = '';
               }
-              applyProviderToSignBox(prevProvider);
+              // NU apelăm applyProviderToSignBox dacă suntem în stare pending (revenire de la STS)
+              // — polling-ul sau loading state-ul ar fi suprascrис
+              const _urlP = new URLSearchParams(window.location.search);
+              if (!_urlP.get('sts_pending') && !_urlP.get('sts_signed')) {
+                applyProviderToSignBox(prevProvider);
+              }
               return;
             }
           }

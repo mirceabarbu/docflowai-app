@@ -669,12 +669,11 @@ th{ color: var(--sub) !important; }
         $("tabInit").classList.toggle("active", name === "init");
         $("tabFluxuri").classList.toggle("active", name === "fluxuri");
         if (name === "fluxuri") {
-          // Nu pre-populăm search-ul — backend filtrează automat după userul logat
           const fs = $("fluxSearch");
-          if (fs && !fs._userTyped) {
-            fs.value = "";
-            fs.setAttribute("value", "");
-          }
+          if (fs && !fs._userTyped) { fs.value = ""; fs.setAttribute("value", ""); }
+          // Resetăm filtrul la "Toate statusurile" la fiecare deschidere tab
+          const sf = $("fluxStatusFilter");
+          if (sf) sf.value = "all";
           loadMyFlows();
         }
       }
