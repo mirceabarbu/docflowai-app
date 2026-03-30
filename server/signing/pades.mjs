@@ -26,7 +26,7 @@ const { SignPdf }              = _require('@signpdf/signpdf');
 const { pdflibAddPlaceholder } = _require('@signpdf/placeholder-pdf-lib');
 const { Signer, DEFAULT_BYTE_RANGE_PLACEHOLDER, SUBFILTER_ADOBE_PKCS7_DETACHED } = _require('@signpdf/utils');
 
-const STS_SIGNATURE_LENGTH = 32768;
+const STS_SIGNATURE_LENGTH = 8192;  // suficient pentru CMS cu chain 3 certuri (~5KB)
 
 function ro(t) {
   const m = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
@@ -562,7 +562,44 @@ export async function injectCms(pdfBytes, signByteB64, certPem, signedAttrsDer =
   const cmsBuffer = await buildCmsFromRawSignature(signByteB64, certPem, signedAttrsDer);
   if (cmsBuffer.length > STS_SIGNATURE_LENGTH)
     throw new Error(`PAdES: CMS prea mare (${cmsBuffer.length} > ${STS_SIGNATURE_LENGTH})`);
-  const signedPdf = await new SignPdf().sign(pdfBytes, new STSSigner(cmsBuffer));
-  logger.info({ cmsLen: cmsBuffer.length, pdfSize: signedPdf.length, hasSignedAttrs: !!signedAttrsDer }, 'PAdES: injectat OK ✓');
+
+  // ── Injectare manuală /Contents — padding exact cu zeros ──────────────────
+  // @signpdf/signpdf face padding cu zeros dar Adobe parser strict refuză zeros după DER.
+  // Soluție: găsim /Contents în PDF și scriem hex-ul CMS-ului fără padding suplimentar,
+  // ajustând placeholder-ul să fie exact cât CMS-ul * 2 (hex encoding).
+  const { removeTrailingNewLine, convertBuffer, findByteRange } = _require('@signpdf/utils');
+  let pdf = removeTrailingNewLine(convertBuffer(pdfBytes, 'PDF'));
+
+  // Găsim /Contents <placeholder_hex>
+  const contentsTag = Buffer.from('/Contents ');
+  const contentsIdx = (() => {
+    for (let i = pdf.length - 1; i >= 0; i--) {
+      if (pdf.slice(i, i + contentsTag.length).equals(contentsTag)) return i;
+    }
+    return -1;
+  })();
+
+  if (contentsIdx === -1) throw new Error('injectCms: /Contents negăsit în PDF');
+
+  const ltIdx  = pdf.indexOf(0x3c, contentsIdx + contentsTag.length); // '<'
+  const gtIdx  = pdf.indexOf(0x3e, ltIdx);                             // '>'
+  if (ltIdx === -1 || gtIdx === -1) throw new Error('injectCms: /Contents hex negăsit');
+
+  const placeholderLen = gtIdx - ltIdx - 1; // lungimea hex-ului placeholder (fără < >)
+  const cmsHex = cmsBuffer.toString('hex');
+
+  if (cmsHex.length > placeholderLen)
+    throw new Error(`injectCms: CMS hex (${cmsHex.length}) > placeholder (${placeholderLen})`);
+
+  // Scriem CMS hex + zeros padding la dreapta până la placeholderLen
+  const paddedHex = Buffer.from(cmsHex.padEnd(placeholderLen, '0'));
+  const signedPdf = Buffer.concat([
+    pdf.slice(0, ltIdx + 1),
+    paddedHex,
+    pdf.slice(gtIdx),
+  ]);
+
+  logger.info({ cmsLen: cmsBuffer.length, pdfSize: signedPdf.length,
+    hasSignedAttrs: !!signedAttrsDer, placeholderLen, cmsHexLen: cmsHex.length }, 'PAdES: injectat OK ✓');
   return signedPdf;
 }
