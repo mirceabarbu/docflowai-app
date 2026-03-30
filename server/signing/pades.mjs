@@ -421,8 +421,7 @@ async function buildCmsFromRawSignature(signByteBase64, certPem) {
       const buf = Buffer.from(arr);
       // PEM → DER dacă e nevoie
       if (buf.length > 0 && buf[0] === 0x2d) {
-        const pem = buf.toString('ascii').replace(/-----[^-]+-----|?
-/g, '');
+        const pem = buf.toString('ascii').replace(/-----[^-]+-----/g, '').replace(/\s/g, '');
         return Buffer.from(pem, 'base64');
       }
       return buf;
@@ -447,7 +446,7 @@ async function buildCmsFromRawSignature(signByteBase64, certPem) {
 
   if (certPem) {
     try {
-      const pemBody = certPem.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\r?\n/g, '');
+            const pemBody = certPem.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----/g, '').replace(/[\r\n\s]/g, '');
       const certDer = Buffer.from(pemBody, 'base64');
       if (!certDer.length) throw new Error('Cert DER gol');
 
