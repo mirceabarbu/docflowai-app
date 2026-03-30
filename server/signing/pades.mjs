@@ -267,6 +267,7 @@ export function calcPadesHash(pdfBytes) {
   return crypto.createHash('sha256').update(
     Buffer.concat([pdf.slice(0, byteRange[1]), pdf.slice(byteRange[2], byteRange[2]+byteRange[3])])
   ).digest('base64');
+}
 
 // ── buildSignedAttrs + calcSignedAttrsHash — PAdES-B-B conform RFC 5652 ────
 // signedAttrs conține contentType + messageDigest (documentDigest = SHA256(bytesOutsideContents))
