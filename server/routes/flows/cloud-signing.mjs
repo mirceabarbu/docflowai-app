@@ -31,6 +31,7 @@ export function _injectDeps(d) {
 const router = Router();
 
 import { getOrgProviders, getOrgProviderConfig, getProvider } from '../../signing/index.mjs';
+import { javaPreparePades, javaFinalizePades, hasJavaSigningService } from '../../signing/java-pades-client.mjs';
 
 
 // ── GET /flows/sts-oauth-callback — callback OAuth2 de la STS IDP ─────────
@@ -161,38 +162,56 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       return res.json({ status: 'waiting', message: pollResult.message });
     }
 
-    // ✅ Semnătura e disponibilă — salvăm ca PDF semnat
-    logger.info({ flowId, signerEmail: signer.email }, 'STS: semnătură recepționată — injectăm CMS PAdES');
+    // ✅ Semnătura e disponibilă — finalizăm PDF-ul semnat
+    logger.info({ flowId, signerEmail: signer.email }, 'STS: semnătură recepționată — finalizăm PAdES');
 
-    // ── PAdES: injectăm CMS în PDF-ul cu placeholder ByteRange ────────────
     let signedPdfB64;
+    const padesPdfB64stored = data[`_padesPdf_${idx}`] || '';
+    const signedAttrsHex = data[`_signedAttrs_${idx}`] || '';
+    const certPem = signer.stsCertPem || '';
+
     try {
-      const { injectCms } = await import('../../signing/pades.mjs');
-      const padesPdfB64stored = data[`_padesPdf_${idx}`] || '';
-      logger.info({ flowId, signerIdx: idx, hasPadesPdf: !!padesPdfB64stored },
-        'PAdES poll: citire padesPdf din JSONB top-level');
-      if (!padesPdfB64stored) throw new Error(`padesPdf lipsă în data._padesPdf_${idx}`);
-      const padesPdfBuf = Buffer.from(padesPdfB64stored, 'base64');
+      if (hasJavaSigningService()) {
+        logger.info({ flowId, signerIdx: idx }, 'PAdES poll: finalize prin Java signing service');
+        if (!padesPdfB64stored) throw new Error(`padesPdf lipsă în data._padesPdf_${idx}`);
+        if (!certPem) throw new Error('Certificatul STS lipsește pentru finalizarea Java PAdES');
 
-      // Citim signedAttrsDer stocat la initiate
-      const signedAttrsHex = data[`_signedAttrs_${idx}`] || '';
-      const signedAttrsDer = signedAttrsHex ? Buffer.from(signedAttrsHex, 'hex') : null;
-      if (!signedAttrsDer) logger.warn({ flowId, signerIdx: idx }, 'signedAttrsDer lipsă — CMS fără signedAttrs');
+        const finalizeRes = await javaFinalizePades({
+          preparedPdfBase64: padesPdfB64stored,
+          fieldName: `sig_${idx + 1}`,
+          signByteBase64: pollResult.signByte,
+          certificatePem: certPem,
+          certificateChainPem: [],
+          useSignedAttributes: true,
+          subFilter: 'ETSI.CAdES.detached',
+        });
 
-      const certPem = signer.stsCertPem || '';
-      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: cert PEM lipsă');
-      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem, signedAttrsDer);
+        if (!finalizeRes?.signedPdfBase64) {
+          throw new Error('Java signing service nu a returnat signedPdfBase64');
+        }
 
-      // Appearance stream eliminat — pdf-lib.save() face full rewrite și corupe /Contents (CMS binar)
-      // Vizualul "Semnat digital QES" e deja în cartușul desenat de preparePadesDoc (parte din hash)
-            signedPdfB64 = signedPdfBuf.toString('base64');
-      delete data[`_padesPdf_${idx}`];      // curățăm după inject
-      delete data[`_signedAttrs_${idx}`];   // curățăm după inject
-      logger.info({ flowId, signerEmail: signer.email, pdfSize: finalPdfBuf.length }, 'PAdES: PDF semnat QES generat cu succes');
+        signedPdfB64 = finalizeRes.signedPdfBase64;
+        logger.info({ flowId, signerEmail: signer.email, pdfSize: Buffer.from(signedPdfB64, 'base64').length },
+          'PAdES: PDF semnat QES generat prin Java service');
+      } else {
+        logger.warn({ flowId, signerIdx: idx }, 'PAdES poll: SIGNING_SERVICE_URL lipsește — fallback local');
+        const { injectCms } = await import('../../signing/pades.mjs');
+        if (!padesPdfB64stored) throw new Error(`padesPdf lipsă în data._padesPdf_${idx}`);
+        const padesPdfBuf = Buffer.from(padesPdfB64stored, 'base64');
+        const signedAttrsDer = signedAttrsHex ? Buffer.from(signedAttrsHex, 'hex') : null;
+        if (!signedAttrsDer) logger.warn({ flowId, signerIdx: idx }, 'signedAttrsDer lipsă — CMS fără signedAttrs');
+        if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: cert PEM lipsă');
+        const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem, signedAttrsDer);
+        signedPdfB64 = signedPdfBuf.toString('base64');
+        logger.info({ flowId, signerEmail: signer.email, pdfSize: signedPdfBuf.length },
+          'PAdES: PDF semnat QES generat local (fallback)');
+      }
     } catch(padesErr) {
-      logger.error({ err: padesErr, flowId }, 'PAdES inject error — fallback la pdfB64 (cu tabel)');
-      delete data[`_padesPdf_${idx}`];  // curățăm și în caz de eroare — evităm JSONB bloat
+      logger.error({ err: padesErr, flowId }, 'PAdES finalize error — fallback la pdfB64 (cu tabel)');
       signedPdfB64 = (data.pdfB64 || '').includes(',') ? data.pdfB64.split(',')[1] : (data.pdfB64 || '');
+    } finally {
+      delete data[`_padesPdf_${idx}`];
+      delete data[`_signedAttrs_${idx}`];
     }
 
     // Marcăm semnatarul ca semnat
@@ -394,21 +413,71 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
       } catch(e) { logger.warn({ err: e }, 'initiate-cloud-signing: unlock error (non-fatal)'); }
     }
 
-    // ── PAdES: adăugăm placeholder ByteRange + calculăm hash corect ────
-    const { preparePadesDoc, calcPadesHash, buildSignedAttrs, calcSignedAttrsHash } =
-      await import('../../signing/pades.mjs');
-    const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx,
-      { alwaysDrawCartus: !isSubsequentSigner });
-    const documentDigest  = calcPadesHash(pdfBufPades);   // SHA256(bytesOutsideContents)
-    const padesPdfB64     = pdfBufPades.toString('base64');
+    // ── PAdES: pregătim placeholder + hash (Java service dacă e disponibil) ────
+    let pdfBufPades;
+    let padesPdfB64;
+    let documentDigest;
+    let signedAttrsDer;
+    let signedAttrsHashB64;
 
-    // PAdES-B-B: construim signedAttrs și trimitem SHA256(signedAttrs) la STS
-    // STS semnează SHA256(signedAttrs) → semnătura acoperă signedAttrs → Adobe validează ✓
-    const signedAttrsDer     = buildSignedAttrs(documentDigest);
-    const signedAttrsHashB64 = calcSignedAttrsHash(signedAttrsDer);
-    logger.info({ flowId, signerIdx: idx, isSubsequentSigner,
-      documentDigestLen: documentDigest.length,
-      signedAttrsHashLen: signedAttrsHashB64.length }, 'PAdES: placeholder + signedAttrs generate');
+    if (hasJavaSigningService()) {
+      try {
+        logger.info({ flowId, signerIdx: idx, isSubsequentSigner }, 'PAdES initiate: prepare prin Java signing service');
+        const prepareRes = await javaPreparePades({
+          pdfBase64: pdfBuf.toString('base64'),
+          fieldName: `sig_${idx + 1}`,
+          signerName: signers[idx]?.name || signers[idx]?.fullName || 'Semnatar',
+          signerRole: signers[idx]?.role || signers[idx]?.atribut || 'SEMNATAR',
+          reason: 'Semnare DocFlowAI',
+          location: 'Romania',
+          contactInfo: signers[idx]?.email || '',
+          page: 1,
+          x: 100,
+          y: 100,
+          width: 180,
+          height: 50,
+          useSignedAttributes: true,
+          subFilter: 'ETSI.CAdES.detached',
+        });
+
+        if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
+          throw new Error('Java signing service nu a returnat preparedPdfBase64/toBeSignedDigestBase64');
+        }
+
+        padesPdfB64 = prepareRes.preparedPdfBase64;
+        pdfBufPades = Buffer.from(padesPdfB64, 'base64');
+        documentDigest = prepareRes.documentDigestBase64 || null;
+        signedAttrsHashB64 = prepareRes.toBeSignedDigestBase64;
+        signedAttrsDer = null; // finalizarea se face în Java service
+
+        logger.info({ flowId, signerIdx: idx, hasDocumentDigest: !!documentDigest,
+          signedAttrsHashLen: signedAttrsHashB64.length }, 'PAdES: prepare generat prin Java service');
+      } catch (javaErr) {
+        logger.error({ err: javaErr, flowId, signerIdx: idx }, 'PAdES initiate: Java service a eșuat — fallback local');
+        const { preparePadesDoc, calcPadesHash, buildSignedAttrs, calcSignedAttrsHash } =
+          await import('../../signing/pades.mjs');
+        pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx, { alwaysDrawCartus: !isSubsequentSigner });
+        documentDigest  = calcPadesHash(pdfBufPades);
+        padesPdfB64     = pdfBufPades.toString('base64');
+        signedAttrsDer  = buildSignedAttrs(documentDigest);
+        signedAttrsHashB64 = calcSignedAttrsHash(signedAttrsDer);
+        logger.info({ flowId, signerIdx: idx, isSubsequentSigner,
+          documentDigestLen: documentDigest.length,
+          signedAttrsHashLen: signedAttrsHashB64.length }, 'PAdES: placeholder + signedAttrs generate (fallback local)');
+      }
+    } else {
+      const { preparePadesDoc, calcPadesHash, buildSignedAttrs, calcSignedAttrsHash } =
+        await import('../../signing/pades.mjs');
+      pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx,
+        { alwaysDrawCartus: !isSubsequentSigner });
+      documentDigest  = calcPadesHash(pdfBufPades);   // SHA256(bytesOutsideContents)
+      padesPdfB64     = pdfBufPades.toString('base64');
+      signedAttrsDer     = buildSignedAttrs(documentDigest);
+      signedAttrsHashB64 = calcSignedAttrsHash(signedAttrsDer);
+      logger.info({ flowId, signerIdx: idx, isSubsequentSigner,
+        documentDigestLen: documentDigest.length,
+        signedAttrsHashLen: signedAttrsHashB64.length }, 'PAdES: placeholder + signedAttrs generate');
+    }
 
     const providerConfig = getOrgProviderConfig(org, providerId);
     logger.info({
@@ -442,8 +511,8 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     }
     // Stocăm padesPdf și signedAttrsDer (hex) în JSONB
     data[`_padesPdf_${idx}`] = padesPdfB64;
-    data[`_signedAttrs_${idx}`] = signedAttrsDer.toString('hex');
-    signers[idx].padesHashBase64 = documentDigest;  // documentDigest stocat pentru referință
+    if (signedAttrsDer) data[`_signedAttrs_${idx}`] = signedAttrsDer.toString('hex');
+    signers[idx].padesHashBase64 = documentDigest || null;  // documentDigest stocat pentru referință
     data.signers  = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
