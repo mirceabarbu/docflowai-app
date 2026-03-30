@@ -267,6 +267,49 @@ export function calcPadesHash(pdfBytes) {
   return crypto.createHash('sha256').update(
     Buffer.concat([pdf.slice(0, byteRange[1]), pdf.slice(byteRange[2], byteRange[2]+byteRange[3])])
   ).digest('base64');
+
+// ── buildSignedAttrs + calcSignedAttrsHash — PAdES-B-B conform RFC 5652 ────
+// signedAttrs conține contentType + messageDigest (documentDigest = SHA256(bytesOutsideContents))
+// Semnătura STS trebuie să acopere SHA256(DER(signedAttrs ca SET 0x31))
+export function buildSignedAttrs(documentDigestB64) {
+  function encLen(len) {
+    if (len < 128) return Buffer.from([len]);
+    const h = len.toString(16).padStart(len > 0xffff ? 6 : 4, '0');
+    const b = Buffer.from(h, 'hex');
+    return Buffer.concat([Buffer.from([0x80 | b.length]), b]);
+  }
+  function tlv(tag, c) { return Buffer.concat([Buffer.from([tag]), encLen(c.length), c]); }
+  const seq  = c => tlv(0x30, c);
+  const set  = c => tlv(0x31, c);
+  const oid  = h => { const b = Buffer.from(h, 'hex'); return Buffer.concat([Buffer.from([0x06, b.length]), b]); };
+  const octst = d => Buffer.concat([Buffer.from([0x04]), encLen(d.length), d]);
+
+  const OID_DATA          = '2a864886f70d010701';
+  const OID_CONTENT_TYPE  = '2a864886f70d010903';
+  const OID_MSG_DIGEST    = '2a864886f70d010904';
+
+  const digestBytes = Buffer.from(documentDigestB64, 'base64');
+
+  const contentTypeAttr = seq(Buffer.concat([
+    oid(OID_CONTENT_TYPE),
+    set(seq(oid(OID_DATA))),
+  ]));
+  const msgDigestAttr = seq(Buffer.concat([
+    oid(OID_MSG_DIGEST),
+    set(octst(digestBytes)),
+  ]));
+
+  // SignedAttrs ca [0] IMPLICIT pentru embed în CMS SignerInfo
+  const innerSet = Buffer.concat([contentTypeAttr, msgDigestAttr]);
+  const signedAttrsImplicit = Buffer.concat([Buffer.from([0xa0]), encLen(innerSet.length), innerSet]);
+
+  return signedAttrsImplicit;
+}
+
+export function calcSignedAttrsHash(signedAttrsImplicit) {
+  // Pentru hashing: inlocuim tag [0] IMPLICIT (0xa0) cu SET (0x31)
+  const hashable = Buffer.concat([Buffer.from([0x31]), signedAttrsImplicit.slice(1)]);
+  return crypto.createHash('sha256').update(hashable).digest('base64');
 }
 
 // ── parseCertComponents — extrage issuer+serial direct din DER, fără re-encodare ──
@@ -349,7 +392,7 @@ function parseCertComponents(certDer) {
  * @param {string} signByteBase64 - signByte de la STS (Base64)
  * @param {string|null} certPem   - certificat PEM din /userinfo
  */
-async function buildCmsFromRawSignature(signByteBase64, certPem) {
+async function buildCmsFromRawSignature(signByteBase64, certPem, signedAttrsDer = null) {
   const signatureBytes = Buffer.from(signByteBase64, 'base64');
 
   // ── Helpers DER minimali ─────────────────────────────────────────────────
@@ -468,9 +511,16 @@ async function buildCmsFromRawSignature(signByteBase64, certPem) {
         ]));
       }
 
-      const signerInfo = seq(Buffer.concat([
-        int1(1), issuerAndSerial, algId(OID_SHA256), sigAlgId, octst(signatureBytes),
-      ]));
+      // signedAttrs: inclus dacă avem — semnătura e validă PAdES-B-B
+      const signerInfo = signedAttrsDer
+        ? seq(Buffer.concat([
+            int1(1), issuerAndSerial, algId(OID_SHA256),
+            signedAttrsDer,   // [0] IMPLICIT signedAttrs
+            sigAlgId, octst(signatureBytes),
+          ]))
+        : seq(Buffer.concat([
+            int1(1), issuerAndSerial, algId(OID_SHA256), sigAlgId, octst(signatureBytes),
+          ]));
 
       const signedData = seq(Buffer.concat([
         int1(1), set(algId(OID_SHA256)), seq(oid(OID_DATA)),
@@ -507,11 +557,11 @@ async function buildCmsFromRawSignature(signByteBase64, certPem) {
 }
 
 // ── injectCms ───────────────────────────────────────────────────────────────
-export async function injectCms(pdfBytes, signByteB64, certPem) {
-  const cmsBuffer = await buildCmsFromRawSignature(signByteB64, certPem);
+export async function injectCms(pdfBytes, signByteB64, certPem, signedAttrsDer = null) {
+  const cmsBuffer = await buildCmsFromRawSignature(signByteB64, certPem, signedAttrsDer);
   if (cmsBuffer.length > STS_SIGNATURE_LENGTH)
     throw new Error(`PAdES: CMS prea mare (${cmsBuffer.length} > ${STS_SIGNATURE_LENGTH})`);
   const signedPdf = await new SignPdf().sign(pdfBytes, new STSSigner(cmsBuffer));
-  logger.info({ cmsLen: cmsBuffer.length, pdfSize: signedPdf.length }, 'PAdES: injectat OK ✓');
+  logger.info({ cmsLen: cmsBuffer.length, pdfSize: signedPdf.length, hasSignedAttrs: !!signedAttrsDer }, 'PAdES: injectat OK ✓');
   return signedPdf;
 }

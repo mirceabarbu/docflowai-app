@@ -168,30 +168,20 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     let signedPdfB64;
     try {
       const { injectCms } = await import('../../signing/pades.mjs');
-      // Citim padesPdf din JSONB top-level (stocat la initiate)
       const padesPdfB64stored = data[`_padesPdf_${idx}`] || '';
       logger.info({ flowId, signerIdx: idx, hasPadesPdf: !!padesPdfB64stored },
         'PAdES poll: citire padesPdf din JSONB top-level');
       if (!padesPdfB64stored) throw new Error(`padesPdf lipsă în data._padesPdf_${idx}`);
       const padesPdfBuf = Buffer.from(padesPdfB64stored, 'base64');
-      // DEBUG: analizam signByte inainte de inject
-      const _sb = pollResult.signByte || '';
-      const _sbBuf = Buffer.from(_sb, 'base64');
-      logger.info({
-        flowId, signerIdx: idx,
-        signByteLen: _sb.length,
-        signByteBufLen: _sbBuf.length,
-        first4Hex: _sbBuf.slice(0,4).toString('hex').toUpperCase(),
-        isBase64Valid: /^[A-Za-z0-9+/]+=*$/.test(_sb.substring(0,20)),
-        // CMS/PKCS#7 DER incepe cu 0x30 0x82 (SEQUENCE)
-        looksLikeDER: _sbBuf[0] === 0x30,
-        // Daca incepe cu '3082' hex = DER SEQUENCE
-        startsWithHex3082: _sbBuf.slice(0,2).toString('hex') === '3082',
-      }, 'DEBUG signByte analysis');
-      // Recuperăm hash-ul PAdES salvat la initiate (necesar pentru CMS authAttrs)
+
+      // Citim signedAttrsDer stocat la initiate
+      const signedAttrsHex = data[`_signedAttrs_${idx}`] || '';
+      const signedAttrsDer = signedAttrsHex ? Buffer.from(signedAttrsHex, 'hex') : null;
+      if (!signedAttrsDer) logger.warn({ flowId, signerIdx: idx }, 'signedAttrsDer lipsă — CMS fără signedAttrs');
+
       const certPem = signer.stsCertPem || '';
-      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: cert PEM lipsă — semnătură fără identitate verificabilă');
-      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem);
+      if (!certPem) logger.warn({ flowId, signerIdx: idx }, 'PAdES: cert PEM lipsă');
+      const signedPdfBuf = await injectCms(padesPdfBuf, pollResult.signByte, certPem, signedAttrsDer);
 
       // ── Appearance stream incremental — metoda Adobe (PAdES validă) ──────
       // Adăugăm o revizie nouă la PDF-ul deja semnat, care conține DOAR
@@ -247,7 +237,8 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
       }
 
       signedPdfB64 = finalPdfBuf.toString('base64');
-      delete data[`_padesPdf_${idx}`];  // curățăm după inject
+      delete data[`_padesPdf_${idx}`];      // curățăm după inject
+      delete data[`_signedAttrs_${idx}`];   // curățăm după inject
       logger.info({ flowId, signerEmail: signer.email, pdfSize: finalPdfBuf.length }, 'PAdES: PDF semnat QES generat cu succes');
     } catch(padesErr) {
       logger.error({ err: padesErr, flowId }, 'PAdES inject error — fallback la pdfB64 (cu tabel)');
@@ -304,6 +295,8 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     }
 
     await saveFlow(flowId, data);
+    // Invalidăm cache-ul Trust Report — semnătura s-a schimbat
+    pool.query('DELETE FROM trust_reports WHERE flow_id=$1', [flowId]).catch(() => {});
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED_PDF_UPLOADED',
       actorEmail: signer.email, payload: { provider: 'sts-cloud', via: 'sts-poll' } });
 
@@ -453,15 +446,20 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     }
 
     // ── PAdES: adăugăm placeholder ByteRange + calculăm hash corect ────
-    const { preparePadesDoc, calcPadesHash } = await import('../../signing/pades.mjs');
-    // Semnatar 1: alwaysDrawCartus=true → desenează cartuș nou
-    // Semnatar 2+: alwaysDrawCartus=false → cartușul există deja în signedPdfB64, adaugă doar placeholder
+    const { preparePadesDoc, calcPadesHash, buildSignedAttrs, calcSignedAttrsHash } =
+      await import('../../signing/pades.mjs');
     const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx,
       { alwaysDrawCartus: !isSubsequentSigner });
-    const padesHashBase64 = calcPadesHash(pdfBufPades);
+    const documentDigest  = calcPadesHash(pdfBufPades);   // SHA256(bytesOutsideContents)
     const padesPdfB64     = pdfBufPades.toString('base64');
+
+    // PAdES-B-B: construim signedAttrs și trimitem SHA256(signedAttrs) la STS
+    // STS semnează SHA256(signedAttrs) → semnătura acoperă signedAttrs → Adobe validează ✓
+    const signedAttrsDer     = buildSignedAttrs(documentDigest);
+    const signedAttrsHashB64 = calcSignedAttrsHash(signedAttrsDer);
     logger.info({ flowId, signerIdx: idx, isSubsequentSigner,
-      hashLen: padesHashBase64.length }, 'PAdES: placeholder generat');
+      documentDigestLen: documentDigest.length,
+      signedAttrsHashLen: signedAttrsHashB64.length }, 'PAdES: placeholder + signedAttrs generate');
 
     const providerConfig = getOrgProviderConfig(org, providerId);
     logger.info({
@@ -470,7 +468,7 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
       hasKid: !!providerConfig.kid,
       hasPrivateKey: !!providerConfig.privateKeyPem,
       hasRedirectUri: !!providerConfig.redirectUri,
-      padesHashLen: padesHashBase64.length,
+      padesHashLen: signedAttrsHashB64.length,
     }, 'initiate-cloud-signing: PAdES pregătit');
     const appBaseUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
 
@@ -478,7 +476,7 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
       flowId, signer: signers[idx], pdfBytes: pdfBufPades,
       flowData: data, config: providerConfig, appBaseUrl,
       ancoreFieldName: signers[idx].ancoreFieldName || null,
-      padesHashBase64,
+      padesHashBase64: signedAttrsHashB64,  // trimitem SHA256(signedAttrs) la STS
     });
 
     const signingUrl = await provider.getSigningUrl(session);
@@ -493,9 +491,10 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     if (session.providerData && Object.keys(session.providerData).length > 0) {
       signers[idx].stsProviderData = session.providerData;
     }
-    // Stocăm padesPdf în JSONB top-level — zero constraint, funcționează garantat
+    // Stocăm padesPdf și signedAttrsDer (hex) în JSONB
     data[`_padesPdf_${idx}`] = padesPdfB64;
-    signers[idx].padesHashBase64 = padesHashBase64;
+    data[`_signedAttrs_${idx}`] = signedAttrsDer.toString('hex');
+    signers[idx].padesHashBase64 = documentDigest;  // documentDigest stocat pentru referință
     data.signers  = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
