@@ -111,28 +111,27 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
     if (hasJavaSigningService()) {
       try {
         logger.info({ flowId, signerIdx, hasCert: !!certPem }, 'STS callback: Java prepare cu signing-cert-v2');
-        // Calculăm coordonate per semnatar pentru a evita suprapunerea
-        // b237: coordonate simple bazate pe index — TODO tabel row coordinates
-        // PDF coordonate: y=0 la baza paginii, A4 = 842pt înălțime
-        // Plasăm semnăturile de jos în sus (semnatar 0 = cel mai jos)
-        const sigX = 30;
-        const sigY = 30 + signerIdx * 75;  // 75pt spațiu vertical între semnături
-        const sigW = 250;
-        const sigH = 60;
+        // b242: câmpul /Sig e pre-creat la creare flux (signer.padesFieldName)
+        // Java PdfSigner găsește câmpul existent — NICIO modificare AcroForm/Annots
+        // Rect-ul e cel din câmpul pre-creat; x/y/w/h sunt ignorate de iText dacă câmpul există
+        const fieldName = signer?.padesFieldName || `sig_${signerIdx + 1}`;
+        logger.info({ flowId, signerIdx, fieldName, hasPadesFieldName: !!signer?.padesFieldName },
+          'STS callback: folosim câmp AcroForm pre-creat la flow creation');
 
         const prepareRes = await javaPreparePades({
           pdfBase64: rawPdf,
-          fieldName: `sig_${signerIdx + 1}`,
+          fieldName,
           signerName: signer?.name || signer?.fullName || 'Semnatar',
-          signerRole: signer?.role || signer?.atribut || 'SEMNATAR',
+          signerRole: signer?.rol || signer?.role || signer?.atribut || 'SEMNATAR',
           reason: 'Semnare DocFlowAI',
           location: 'Romania',
           contactInfo: signer?.email || '',
-          page: 1, x: sigX, y: sigY, width: sigW, height: sigH,
+          page: 1, x: 0, y: 0, width: 0, height: 0,  // ignorat — câmp există deja
           useSignedAttributes: true,
           subFilter: 'ETSI.CAdES.detached',
           signerCertificatePem: certPem || null,
           signerIndex: signerIdx,
+          fieldAlreadyExists: true,  // b242: nu recrea câmpul
         });
         if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
           throw new Error('Java prepare: câmpuri lipsă în răspuns');
@@ -145,17 +144,11 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
         return errRedirect('Eroare pregătire document PAdES');
       }
     } else {
-      // Fallback local (fără signing-cert-v2)
-      const { preparePadesDoc, calcPadesHash, buildSignedAttrs, calcSignedAttrsHash } =
-        await import('../../signing/pades.mjs');
-      const isSubsequentSigner = signers.filter((s, i) => i < signerIdx && s.status === 'signed').length > 0;
-      const pdfBuf = Buffer.from(rawPdf, 'base64');
-      const pdfBufPades = await preparePadesDoc(pdfBuf, data, signerIdx, { alwaysDrawCartus: !isSubsequentSigner });
-      const documentDigest = calcPadesHash(pdfBufPades);
-      padesPdfB64 = pdfBufPades.toString('base64');
-      const signedAttrsDer = buildSignedAttrs(documentDigest);
-      signedAttrsHashB64 = calcSignedAttrsHash(signedAttrsDer);
-      data[`_signedAttrs_${signerIdx}`] = signedAttrsDer.toString('hex');
+      // Fallback: SIGNING_SERVICE_URL nedisponibil
+      // b242: Nu mai folosim preparePadesDoc care redesenează cartușul.
+      // Returnam eroare — fără Java service arhitectura multi-semnatar nu poate fi garantată.
+      logger.error({ flowId, signerIdx }, 'STS callback: SIGNING_SERVICE_URL lipsește — imposibil fără Java service');
+      return errRedirect('Serviciul de semnare nu este disponibil. Contactați administratorul.');
     }
 
     // PDF pregătit e gata — curățăm rawPdf temporar și salvăm cel nou
@@ -460,20 +453,10 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     if (!rawPdfStr) return res.status(500).json({ error: 'pdf_missing' });
     let pdfBuf = Buffer.from(rawPdfStr, 'base64');
 
-    // Unlock DOAR pentru semnatar 1 (neschimbat față de b235)
-    if (!isSubsequentSigner && _PDFLib && data.flowType !== 'ancore') {
-      try {
-        const { PDFDocument, PDFName, PDFNumber } = _PDFLib;
-        const pdfDoc = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
-        try { delete pdfDoc.context.trailerInfo.Encrypt; } catch(e2) {}
-        try { pdfDoc.catalog.delete(PDFName.of('Perms')); } catch(e2) {}
-        try {
-          const af = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-          if (af) { const afObj = pdfDoc.context.lookup(af); if (afObj?.set) afObj.set(PDFName.of('SigFlags'), PDFNumber.of(1)); }
-        } catch(e2) {}
-        pdfBuf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-      } catch(e) { logger.warn({ err: e }, 'initiate-cloud-signing: unlock error (non-fatal)'); }
-    }
+    // b242: Unlock ELIMINAT — pdf-lib.save() corupe SigFlags=3 și câmpurile /Sig pre-create
+    // stampFooterOnPdf a setat deja SigFlags=3 și a salvat cu useObjectStreams:false
+    // Java signExternalContainer face append pur fără re-save pdf-lib
+    // NICIO modificare pdf-lib după creare flux
 
     // Salvăm PDF-ul (unlock aplicat, fără placeholder) — va fi folosit la OAuth callback
     data[`_rawPdf_${idx}`] = pdfBuf.toString('base64');
