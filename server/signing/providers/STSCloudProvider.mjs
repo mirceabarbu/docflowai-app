@@ -159,8 +159,9 @@ export class STSCloudProvider {
       logger.info({ stsOpId, sessionId: session.sessionId },
         'STS: hash trimis — utilizatorul trebuie să aprobe pe email/PUSH');
 
-      // PASUL 3: /userinfo pentru certificat (embedding în CMS)
+      // PASUL 3: /userinfo pentru certificat + lanț CA (embedding în CMS)
       let certPem = null;
+      let certChainPem = []; // CA intermediar(i) din otherCertificates — necesar pentru Adobe path building
       try {
         const uiResp = await _fetchIPv4(`${pd.idpUrl}/userinfo`, {
           headers: { 'Authorization': `Bearer ${accessToken}` },
@@ -171,8 +172,9 @@ export class STSCloudProvider {
           preview: uiText.substring(0, 300) }, 'STS: /userinfo raspuns');
         if (uiResp.ok) {
           const ui = JSON.parse(uiText);
-          // b234: STS returnează efectiv "pemCertificat" (fără 'e') — confirmat în producție
-          // Documentația STS scrie "pemCertificate" dar API-ul real folosește varianta română
+
+          // Certificat leaf al semnatarului
+          // STS returnează "pemCertificat" (fără 'e') — confirmat în producție
           const sc = ui?.signingCertificate;
           certPem = (typeof sc === 'string' && sc.includes('CERTIFICATE') ? sc : null)
                  || sc?.pemCertificat    // ← cheia reală STS (română, fără 'e') — prioritate
@@ -182,16 +184,32 @@ export class STSCloudProvider {
                  || ui?.certificate?.pemCertificate
                  || (typeof ui?.certificate === 'string' ? ui.certificate : null)
                  || ui?.cert || ui?.pemCertificate || ui?.pemCertificat || null;
-          if (!certPem && Array.isArray(ui?.otherCertificates)) {
-            const oc = ui.otherCertificates[0];
-            certPem = (typeof oc === 'string' ? oc : null)
-                   || oc?.pemCertificat || oc?.pemCertificate
-                   || oc?.pem || oc?.certificate || null;
+
+          // CA intermediar(i) din otherCertificates[]
+          // Necesari pentru ca Adobe să poată construi path-ul până la root-ul EUTL
+          // Fără ei: "There were errors building the path from the signer's certificate to an issuer certificate"
+          if (Array.isArray(ui?.otherCertificates) && ui.otherCertificates.length > 0) {
+            certChainPem = ui.otherCertificates
+              .map(oc => {
+                if (typeof oc === 'string' && oc.includes('CERTIFICATE')) return oc;
+                return oc?.pemCertificat || oc?.pemCertificate || oc?.pem || oc?.certificate || null;
+              })
+              .filter(Boolean);
+            logger.info({ chainLen: certChainPem.length }, 'STS: CA intermediar(i) extrași din otherCertificates');
+          } else {
+            logger.warn('STS: otherCertificates lipsă sau gol — lanțul CA nu va fi inclus în CMS');
           }
+
+          // Fallback: dacă nu am găsit certPem în signingCertificate, luăm primul din otherCertificates
+          if (!certPem && certChainPem.length > 0) {
+            certPem = certChainPem.shift(); // primul e leaf-ul, restul rămân în chain
+          }
+
           logger.info({
             hasCert: !!certPem, certLen: certPem?.length || 0,
+            chainCerts: certChainPem.length,
             allKeys: JSON.stringify(Object.keys(ui || {})),
-          }, 'STS: cert din /userinfo');
+          }, 'STS: certificate extrase din /userinfo');
         } else {
           logger.warn({ status: uiResp.status }, 'STS: /userinfo non-OK');
         }
@@ -201,7 +219,7 @@ export class STSCloudProvider {
 
       return {
         ok: true, pending: true, stsOpId, accessToken,
-        signUrl: pd.signUrl, sessionId: session.sessionId, certPem,
+        signUrl: pd.signUrl, sessionId: session.sessionId, certPem, certChainPem,
         message: 'Hash transmis la STS. Utilizatorul va primi email/notificare PUSH pentru aprobare.',
       };
 

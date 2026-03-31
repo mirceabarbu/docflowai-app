@@ -109,11 +109,12 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
     }
 
     // Stocăm datele de polling în semnatar
-    signers[signerIdx].stsOpId    = result.stsOpId;
-    signers[signerIdx].stsToken   = result.accessToken;
-    signers[signerIdx].stsSignUrl = result.signUrl;
-    signers[signerIdx].stsPending = true;
-    signers[signerIdx].stsCertPem = result.certPem || null;
+    signers[signerIdx].stsOpId       = result.stsOpId;
+    signers[signerIdx].stsToken      = result.accessToken;
+    signers[signerIdx].stsSignUrl    = result.signUrl;
+    signers[signerIdx].stsPending    = true;
+    signers[signerIdx].stsCertPem    = result.certPem || null;
+    signers[signerIdx].stsCertChain  = result.certChainPem || []; // CA intermediar(i) pentru path building
     data.signers   = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
@@ -169,10 +170,12 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     const padesPdfB64stored = data[`_padesPdf_${idx}`] || '';
     const signedAttrsHex = data[`_signedAttrs_${idx}`] || '';
     const certPem = signer.stsCertPem || '';
+    const certChainPem = Array.isArray(signer.stsCertChain) ? signer.stsCertChain : [];
 
     try {
       if (hasJavaSigningService()) {
-        logger.info({ flowId, signerIdx: idx }, 'PAdES poll: finalize prin Java signing service');
+        logger.info({ flowId, signerIdx: idx, chainCerts: certChainPem.length },
+          'PAdES poll: finalize prin Java signing service');
         if (!padesPdfB64stored) throw new Error(`padesPdf lipsă în data._padesPdf_${idx}`);
         if (!certPem) throw new Error('Certificatul STS lipsește pentru finalizarea Java PAdES');
 
@@ -181,7 +184,7 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
           fieldName: `sig_${idx + 1}`,
           signByteBase64: pollResult.signByte,
           certificatePem: certPem,
-          certificateChainPem: [],
+          certificateChainPem: certChainPem,  // CA intermediar(i) din otherCertificates — fix chain building
           useSignedAttributes: true,
           subFilter: 'ETSI.CAdES.detached',
         });
