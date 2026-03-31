@@ -132,6 +132,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
           useSignedAttributes: true,
           subFilter: 'ETSI.CAdES.detached',
           signerCertificatePem: certPem || null,
+          signerIndex: signerIdx,
         });
         if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
           throw new Error('Java prepare: câmpuri lipsă în răspuns');

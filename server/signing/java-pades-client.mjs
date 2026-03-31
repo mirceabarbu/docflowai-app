@@ -37,11 +37,13 @@ export async function javaPreparePades({
   useSignedAttributes = true,
   subFilter = 'ETSI.CAdES.detached',
   signerCertificatePem = null,  // b236: furnizat DUPĂ OAuth pentru signing-certificate-v2
+  signerIndex = 0,               // b240: 0=primul semnatar, 1=al doilea etc (diagnostic)
 }) {
   return postJson('/api/pades/prepare', {
     pdfBase64, fieldName, signerName, signerRole, reason, location, contactInfo,
     page, x, y, width, height, useSignedAttributes, subFilter,
     signerCertificatePem,  // null → no signing-cert-v2; string → inclus în signedAttrs
+    signerIndex,
   });
 }
 
