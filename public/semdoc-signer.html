@@ -817,11 +817,26 @@ th{ color: var(--sub) !important; }
               if (statusEl) statusEl.textContent = '⏳ ' + (j.message || 'Așteptăm aprobarea...');
             } else if (j.status === 'signed') {
               clearInterval(_stsPollInterval); _stsPollInterval = null;
-              if (statusEl) statusEl.textContent = '✅ Semnat cu succes!';
-              // FIX: redirect complet la URL curat — evită date vechi din in-page reload
+              if (statusEl) statusEl.textContent = '✅ Semnătură aplicată cu succes!';
+              // Redirect direct la flow.html — eliminăm bounce-ul prin semdoc-signer cu sts_signed=1
+              // j.completed=true → toți semnatarii au semnat → flow complet
+              // j.completed=false → mai sunt semnatari → tot mergem la flow pentru status
+              const signBox = document.getElementById('signBox');
+              if (signBox) {
+                signBox.innerHTML = `
+                  <div style="text-align:center;padding:32px 24px;">
+                    <div style="font-size:2.5rem;margin-bottom:12px;">✅</div>
+                    <div style="font-weight:700;font-size:1.05rem;color:#2dd4bf;margin-bottom:8px;">
+                      Semnătură electronică calificată aplicată
+                    </div>
+                    <div style="font-size:.85rem;color:rgba(234,240,255,.55);">
+                      Redirecționăm către statusul documentului...
+                    </div>
+                  </div>`;
+              }
               setTimeout(() => {
-                window.location.replace(`/semdoc-signer.html?flow=${encodeURIComponent(flow)}&token=${encodeURIComponent(token)}&sts_signed=1`);
-              }, 1200);
+                window.location.replace(`/flow.html?flow=${encodeURIComponent(flow)}`);
+              }, 1500);
             } else if (j.status === 'error') {
               cancelStsPolling();
               showError('❌ ' + (j.message || 'Eroare la semnare STS.'));
