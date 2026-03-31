@@ -1449,7 +1449,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT, version: APP_VERSION }, 'DocFlowAI server pornit');
+  logger.info({ port: PORT, version: APP_VERSION, build: 'b239', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry().then(async () => {
     // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway
