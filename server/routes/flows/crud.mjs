@@ -123,23 +123,20 @@ const createFlow = async (req, res) => {
         // b242: stampFooterOnPdf returnează { pdfB64, signerFields }
         // signerFields = [{fieldName, pageIndex}] — câmpurile /Sig pre-create
         const _stampResult = await _stampFooterOnPdf(finalPdfB64, {
-          flowId, createdAt, initName, initFunctie,
-          institutie: initInstitutie, compartiment: initCompartiment,
+          flowId,
+          createdAt,
+          initName,
+          initFunctie,
+          institutie: initInstitutie,
+          compartiment: initCompartiment,
           flowType: body.flowType || 'tabel',
           signers: normalizedSigners,
+          preventRewriteIfSigned: true,
         });
         if (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) {
           finalPdfB64 = _stampResult.pdfB64;
-          // Stocăm padesFieldName pe fiecare semnatar (ordinea e garantată de sort anterior)
-          if (Array.isArray(_stampResult.signerFields) && _stampResult.signerFields.length > 0) {
-            _stampResult.signerFields.forEach((sf, i) => {
-              if (normalizedSigners[i]) {
-                normalizedSigners[i].padesFieldName = sf.fieldName;
-              }
-            });
-          }
         } else if (typeof _stampResult === 'string' && _stampResult.length > 0) {
-          finalPdfB64 = _stampResult;  // fallback backward compat
+          finalPdfB64 = _stampResult;
         }
       } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }

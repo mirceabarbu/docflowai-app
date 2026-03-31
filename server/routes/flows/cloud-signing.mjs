@@ -104,19 +104,34 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
     if (!rawPdfB64stored) {
       logger.warn({ flowId, signerIdx }, 'STS callback: _rawPdf lipsă — folosim pdfB64 curent');
     }
-    const sourcePdfB64 = rawPdfB64stored || (data.signedPdfB64 || data.pdfB64 || '');
+    let sourcePdfB64 = rawPdfB64stored || '';
+    if (!sourcePdfB64) {
+      const alreadySignedBeforeThisSigner = signers
+        .slice(0, signerIdx)
+        .some(s => s.status === 'signed');
+      sourcePdfB64 = alreadySignedBeforeThisSigner
+        ? (data.signedPdfB64 || '')
+        : (data.pdfB64 || '');
+    }
     const rawPdf = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
     if (!rawPdf) return errRedirect('PDF lipsă în flux');
 
     if (hasJavaSigningService()) {
       try {
-        logger.info({ flowId, signerIdx, hasCert: !!certPem }, 'STS callback: Java prepare cu signing-cert-v2');
-        // b242: câmpul /Sig e pre-creat la creare flux (signer.padesFieldName)
-        // Java PdfSigner găsește câmpul existent — NICIO modificare AcroForm/Annots
-        // Rect-ul e cel din câmpul pre-creat; x/y/w/h sunt ignorate de iText dacă câmpul există
-        const fieldName = signer?.padesFieldName || `sig_${signerIdx + 1}`;
-        logger.info({ flowId, signerIdx, fieldName, hasPadesFieldName: !!signer?.padesFieldName },
-          'STS callback: folosim câmp AcroForm pre-creat la flow creation');
+        // b243: Java creează câmpul /Sig FRESH în zona de semnătură din cartuș
+        // Coordonatele celulei sunt în signer.padesRect (setat la creare flux de stampFooterOnPdf)
+        // Fiecare revizie iText conține NUMAI obiectele proprii → sig_1 rămâne validă
+        const rect = signer?.padesRect;
+        const fieldName = `sig_${signerIdx + 1}`;
+        const sigPage = rect?.page || 1;
+        const sigX    = typeof rect?.x === 'number' ? rect.x : (30 + (signerIdx % 3) * 190);
+        const sigY    = typeof rect?.y === 'number' ? rect.y : (30 + Math.floor(signerIdx / 3) * 70);
+        const sigW    = typeof rect?.w === 'number' ? rect.w : 180;
+        const sigH2   = typeof rect?.h === 'number' ? rect.h : 50;
+
+        logger.info({ flowId, signerIdx, fieldName, hasRect: !!rect,
+          page: sigPage, x: sigX, y: sigY, w: sigW, h: sigH2 },
+          'STS callback: Java prepare — câmp NOU în celula cartuș');
 
         const prepareRes = await javaPreparePades({
           pdfBase64: rawPdf,
@@ -126,12 +141,12 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
           reason: 'Semnare DocFlowAI',
           location: 'Romania',
           contactInfo: signer?.email || '',
-          page: 1, x: 0, y: 0, width: 0, height: 0,  // ignorat — câmp există deja
+          page: sigPage, x: sigX, y: sigY, width: sigW, height: sigH2,
           useSignedAttributes: true,
           subFilter: 'ETSI.CAdES.detached',
           signerCertificatePem: certPem || null,
           signerIndex: signerIdx,
-          fieldAlreadyExists: true,  // b242: nu recrea câmpul
+          fieldAlreadyExists: false,  // b243: câmp NOU, nu pre-creat
         });
         if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
           throw new Error('Java prepare: câmpuri lipsă în răspuns');
@@ -447,8 +462,19 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     //   3. Construiește sesiunea OAuth PKCE și returnează URL redirect
     // Java prepare + hash STS se fac la OAuth callback după ce avem cert din /userinfo.
     const signedCount = signers.filter((s, i) => i < idx && s.status === 'signed').length;
-    const isSubsequentSigner = signedCount > 0 && !!data.signedPdfB64;
-    const sourcePdfB64 = isSubsequentSigner ? data.signedPdfB64 : (data.pdfB64 || '');
+    const isSubsequentSigner = signedCount > 0;
+
+    if (isSubsequentSigner && !data.signedPdfB64) {
+      logger.error({ flowId, signerIdx: idx }, 'initiate-cloud-signing: subsequent signer but signedPdfB64 missing');
+      return res.status(409).json({
+        error: 'signed_pdf_missing_for_subsequent_signer',
+        message: 'PDF-ul semnat anterior lipsește. Fluxul nu poate continua în siguranță.',
+      });
+    }
+
+    const sourcePdfB64 = isSubsequentSigner
+      ? data.signedPdfB64
+      : (data.pdfB64 || '');
     const rawPdfStr = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
     if (!rawPdfStr) return res.status(500).json({ error: 'pdf_missing' });
     let pdfBuf = Buffer.from(rawPdfStr, 'base64');

@@ -84,7 +84,8 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
             flowId: newFlowId2, createdAt: newCreatedAt,
             initName: data.initName, initFunctie: data.initFunctie,
             institutie: data.institutie, compartiment: data.compartiment,
-            flowType: data.flowType || 'tabel'
+            flowType: data.flowType || 'tabel',
+            preventRewriteIfSigned: true,
           });
         } catch(e) { logger.warn({ err: e }, 'Re-stamp footer on reinitiate error:'); }
       }
@@ -249,7 +250,8 @@ router.post('/flows/:flowId/reinitiate-review', _largePdf, async (req, res) => {
           flowId, createdAt: now,
           initName: data.initName, initFunctie: data.initFunctie,
           institutie: data.institutie, compartiment: data.compartiment,
-          flowType: data.flowType || 'tabel'
+          flowType: data.flowType || 'tabel',
+          preventRewriteIfSigned: true,
         });
       } catch(e) { logger.warn({ err: e }, 'Re-stamp footer on reinitiate-review error:'); }
     }
