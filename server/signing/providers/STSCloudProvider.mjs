@@ -1,5 +1,5 @@
 /**
- * DocFlowAI — STSCloudProvider                                   b232
+ * DocFlowAI — STSCloudProvider                                   b234
  * Serviciul de Telecomunicații Speciale (STS) — QTSP România
  *
  * Arhitectură HASH-BASED (STS NU primește documente, doar hash-uri SHA-256):
@@ -171,16 +171,12 @@ export class STSCloudProvider {
           preview: uiText.substring(0, 300) }, 'STS: /userinfo raspuns');
         if (uiResp.ok) {
           const ui = JSON.parse(uiText);
-          // FIX b233: STS poate returna signingCertificate ca:
-          // 1. { pemCertificate: "-----BEGIN..." }
-          // 2. "-----BEGIN CERTIFICATE..."  (string direct)
-          // 3. { certificate: "...", ... }
-          // 4. în otherCertificates[]
+          // b234: STS returnează efectiv "pemCertificat" (fără 'e') — confirmat în producție
+          // Documentația STS scrie "pemCertificate" dar API-ul real folosește varianta română
           const sc = ui?.signingCertificate;
-          // STS folosește chei românești: pemCertificat (nu pemCertificate)
           certPem = (typeof sc === 'string' && sc.includes('CERTIFICATE') ? sc : null)
-                 || sc?.pemCertificat    // ← cheia reală STS (română, fără 'e' la final)
-                 || sc?.pemCertificate
+                 || sc?.pemCertificat    // ← cheia reală STS (română, fără 'e') — prioritate
+                 || sc?.pemCertificate   // ← fallback conform docs scrise
                  || sc?.pem || sc?.certificate || sc?.cert
                  || ui?.certificate?.pemCertificat
                  || ui?.certificate?.pemCertificate
