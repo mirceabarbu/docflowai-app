@@ -273,6 +273,98 @@ export class STSCloudProvider {
     };
   }
 
+  // ── b236: Metode separate pentru fluxul restructurat ──────────────────────
+  //
+  // exchangeCodeForToken: pasul 1 din callback — schimbăm code cu token + luăm cert
+  // submitHashToSTS:      pasul 2 din callback — trimitem hash-ul după ce l-am calculat
+  //                       (cu signing-certificate-v2 inclus în signedAttrs)
+
+  async exchangeCodeForToken(code, session) {
+    const pd = session.providerData || {};
+    try {
+      const clientAssertion = this._buildClientAssertion(pd.clientId, pd.kid, pd.privateKeyPem, pd.idpUrl);
+      const tokenResp = await _fetchIPv4(`${pd.idpUrl}/oauth2/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code', client_id: pd.clientId, code,
+          redirect_uri: pd.redirectUri, client_assertion: clientAssertion,
+          client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+          code_verifier: pd.codeVerifier,
+        }).toString(),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!tokenResp.ok) {
+        const errText = await tokenResp.text();
+        logger.error({ status: tokenResp.status, body: errText.substring(0, 200) }, 'STS: token exchange failed');
+        return { ok: false, error: 'sts_token_failed', message: `Eroare token STS: ${errText.substring(0, 200)}` };
+      }
+      const tokenJson = await tokenResp.json();
+      const accessToken = tokenJson.access_token;
+      if (!accessToken) return { ok: false, error: 'sts_no_token' };
+
+      // /userinfo — cert leaf + CA intermediari
+      let certPem = null, certChainPem = [];
+      try {
+        const uiResp = await _fetchIPv4(`${pd.idpUrl}/userinfo`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const uiText = await uiResp.text();
+        logger.info({ status: uiResp.status, len: uiText.length, preview: uiText.substring(0, 300) },
+          'STS: /userinfo raspuns');
+        if (uiResp.ok) {
+          const ui = JSON.parse(uiText);
+          const sc = ui?.signingCertificate;
+          certPem = (typeof sc === 'string' && sc.includes('CERTIFICATE') ? sc : null)
+                 || sc?.pemCertificat || sc?.pemCertificate
+                 || sc?.pem || sc?.certificate || sc?.cert
+                 || ui?.certificate?.pemCertificat || ui?.certificate?.pemCertificate
+                 || (typeof ui?.certificate === 'string' ? ui.certificate : null)
+                 || ui?.cert || ui?.pemCertificate || ui?.pemCertificat || null;
+          if (Array.isArray(ui?.otherCertificates) && ui.otherCertificates.length > 0) {
+            certChainPem = ui.otherCertificates
+              .map(oc => (typeof oc === 'string' && oc.includes('CERTIFICATE') ? oc : null)
+                      || oc?.pemCertificat || oc?.pemCertificate || oc?.pem || oc?.certificate || null)
+              .filter(Boolean);
+          }
+          if (!certPem && certChainPem.length > 0) certPem = certChainPem.shift();
+          logger.info({ hasCert: !!certPem, chainLen: certChainPem.length,
+            allKeys: JSON.stringify(Object.keys(ui || {})) }, 'STS: certificate din /userinfo');
+        }
+      } catch(uiErr) { logger.warn({ err: uiErr }, 'STS: /userinfo eroare (non-fatal)'); }
+
+      return { ok: true, accessToken, certPem, certChainPem };
+    } catch(e) {
+      logger.error({ err: e }, 'STS: exchangeCodeForToken error');
+      return { ok: false, error: 'sts_error', message: e.message };
+    }
+  }
+
+  async submitHashToSTS(hashBase64, accessToken, pd, sessionId, docName) {
+    try {
+      logger.info({ sessionId, hashLen: hashBase64?.length }, 'STS: trimit hash la /api/v1/signature');
+      const signResp = await _fetchIPv4(`${pd.signUrl}/api/v1/signature`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([{ id: sessionId, hashByte: hashBase64,
+          algorithmName: 'SHA256', docName: docName || sessionId }]),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const signJson = await signResp.json();
+      if (!signResp.ok || signJson.errorCode !== 0) {
+        logger.error({ resp: signJson }, 'STS: /api/v1/signature error');
+        return { ok: false, error: 'sts_sign_failed',
+          message: signJson.errorMessage || `Eroare STS cod: ${signJson.errorCode}` };
+      }
+      logger.info({ stsOpId: signJson.id, sessionId }, 'STS: hash trimis — utilizatorul trebuie să aprobe');
+      return { ok: true, stsOpId: signJson.id };
+    } catch(e) {
+      logger.error({ err: e }, 'STS: submitHashToSTS error');
+      return { ok: false, error: 'sts_error', message: e.message };
+    }
+  }
+
   _buildClientAssertion(clientId, kid, privateKeyPem, idpUrl) {
     const now    = Math.floor(Date.now() / 1000);
     const header  = { alg: 'RS256', kid };

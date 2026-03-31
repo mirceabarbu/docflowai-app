@@ -12,25 +12,16 @@ async function postJson(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-
   const text = await res.text();
   let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
+  try { json = text ? JSON.parse(text) : null; } catch {
     throw new Error(`Invalid JSON from signing service (${path}): ${text}`);
   }
-
-  if (!res.ok) {
-    throw new Error(`Signing service error ${res.status} on ${path}: ${JSON.stringify(json)}`);
-  }
-
+  if (!res.ok) throw new Error(`Signing service error ${res.status} on ${path}: ${JSON.stringify(json)}`);
   return json;
 }
 
-export function hasJavaSigningService() {
-  return !!baseUrl();
-}
+export function hasJavaSigningService() { return !!baseUrl(); }
 
 export async function javaPreparePades({
   pdfBase64,
@@ -41,28 +32,16 @@ export async function javaPreparePades({
   location,
   contactInfo,
   page = 1,
-  x = 100,
-  y = 100,
-  width = 180,
-  height = 50,
+  x = 100, y = 100,
+  width = 180, height = 50,
   useSignedAttributes = true,
   subFilter = 'ETSI.CAdES.detached',
+  signerCertificatePem = null,  // b236: furnizat DUPĂ OAuth pentru signing-certificate-v2
 }) {
   return postJson('/api/pades/prepare', {
-    pdfBase64,
-    fieldName,
-    signerName,
-    signerRole,
-    reason,
-    location,
-    contactInfo,
-    page,
-    x,
-    y,
-    width,
-    height,
-    useSignedAttributes,
-    subFilter,
+    pdfBase64, fieldName, signerName, signerRole, reason, location, contactInfo,
+    page, x, y, width, height, useSignedAttributes, subFilter,
+    signerCertificatePem,  // null → no signing-cert-v2; string → inclus în signedAttrs
   });
 }
 
@@ -74,14 +53,11 @@ export async function javaFinalizePades({
   certificateChainPem = [],
   useSignedAttributes = true,
   subFilter = 'ETSI.CAdES.detached',
+  tsaUrl = null,  // b236: RFC 3161 timestamp (null → folosește TSA_URL din config Java)
 }) {
   return postJson('/api/pades/finalize', {
-    preparedPdfBase64,
-    fieldName,
-    signByteBase64,
-    certificatePem,
-    certificateChainPem,
-    useSignedAttributes,
-    subFilter,
+    preparedPdfBase64, fieldName, signByteBase64, certificatePem,
+    certificateChainPem, useSignedAttributes, subFilter,
+    tsaUrl,
   });
 }

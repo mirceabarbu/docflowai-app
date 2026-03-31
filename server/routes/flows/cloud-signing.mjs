@@ -35,91 +35,139 @@ import { javaPreparePades, javaFinalizePades, hasJavaSigningService } from '../.
 
 
 // ── GET /flows/sts-oauth-callback — callback OAuth2 de la STS IDP ─────────
-// STS redirecționează utilizatorul aici după autentificare și selectarea certificatului.
-// Query params: code, state, [error], [error_description]
+// b236: fluxul restructurat — Java prepare se face AICI, cu cert cunoscut:
+//   1. exchangeCodeForToken → access token + cert din /userinfo
+//   2. Java prepare CU cert → signedAttrs cu signing-certificate-v2 (RFC 5035)
+//   3. submitHashToSTS cu noul hash → STS primește hash corect legat de cert
 router.get('/flows/sts-oauth-callback', async (req, res) => {
   try {
     if (requireDb(res)) return;
     const { code, state, error } = req.query;
 
-    // Extragem sessionId din state
-    // Format single: `${sessionId}___${randomState}`
-    // Format bulk:   `BULK_${bulkSessionId}___${randomState}`
     const sessionId = state?.split('___')[0];
     if (!sessionId) {
       return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('State invalid')}`);
     }
 
-    // b231: detectam sesiune bulk și delegăm
+    // b231: sesiune bulk — delegăm nemodificat
     if (sessionId.startsWith('BULK_')) {
       const bulkSessionId = sessionId.replace('BULK_', '');
       const { processBulkOAuthCallback } = await import('./bulk-signing.mjs');
       return processBulkOAuthCallback(bulkSessionId, req.query, res);
     }
 
-    // Găsim fluxul prin sessionId stocat în signers[i].signingSessionId
     const { rows } = await pool.query(
       `SELECT id AS flow_id FROM flows
        WHERE data->'signers' @> $1::jsonb AND deleted_at IS NULL LIMIT 1`,
       [JSON.stringify([{ signingSessionId: sessionId }])]
     );
-
     if (!rows.length) {
       logger.warn({ sessionId }, 'STS callback: sesiune negăsită în DB');
       return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Sesiune expirată sau inexistentă')}`);
     }
 
     const flowId = rows[0].flow_id;
-    // Folosim getFlowData — face JOIN cu flows_pdfs și returnează pdfB64 corect
     const data = await getFlowData(flowId);
-    if (!data) {
-      return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Flux negăsit')}`);
-    }
+    if (!data) return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Flux negăsit')}`);
+
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const signerIdx = signers.findIndex(s => s.signingSessionId === sessionId);
-    if (signerIdx === -1) {
-      return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Semnatar negăsit')}`);
-    }
+    if (signerIdx === -1) return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Semnatar negăsit')}`);
 
     const signer = signers[signerIdx];
+    const pd = signer.stsProviderData || {};
+    const errRedirect = (msg) =>
+      res.redirect(`/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(signer.token)}&sts_error=${encodeURIComponent(msg)}`);
 
-    // Reconstituim pdfBytes din flux
-    const rawPdf = (data.pdfB64 || '').includes(',') ? data.pdfB64.split(',')[1] : (data.pdfB64 || '');
-    if (!rawPdf) {
-      return res.redirect(`/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(signer.token)}&sts_error=${encodeURIComponent('PDF lipsă')}`);
+    if (error) return errRedirect(req.query.error_description || error);
+    if (!code)  return errRedirect('Cod OAuth lipsă');
+
+    const expectedState = `${sessionId}___${pd.state}`;
+    if (state !== expectedState) {
+      logger.warn({ state, expectedState }, 'STS: state mismatch');
+      return errRedirect('State OAuth invalid');
     }
-    const pdfBytes = Buffer.from(rawPdf, 'base64');
-
-    // Reconstituim sesiunea pentru STSCloudProvider
-    const session = {
-      sessionId,
-      flowId,
-      signerToken:  signer.token,
-      provider:     'sts-cloud',
-      providerData: signer.stsProviderData || {},
-    };
 
     const { STSCloudProvider } = await import('../../signing/providers/STSCloudProvider.mjs');
     const provider = new STSCloudProvider();
-    const result   = await provider.processOAuthCallback(req.query, session, pdfBytes);
+    const session = { sessionId, flowId, signerToken: signer.token, provider: 'sts-cloud', providerData: pd };
 
-    if (!result.ok) {
-      const errMsg = encodeURIComponent(result.message || result.error || 'Eroare STS');
-      return res.redirect(`/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(signer.token)}&sts_error=${errMsg}`);
+    // ── PASUL 1: code → access token + cert din /userinfo ─────────────────────
+    const tokenResult = await provider.exchangeCodeForToken(code, session);
+    if (!tokenResult.ok) return errRedirect(tokenResult.message || 'Eroare token STS');
+    const { accessToken, certPem, certChainPem } = tokenResult;
+
+    // ── PASUL 2: Java prepare CU cert → signing-certificate-v2 în signedAttrs ──
+    // PDF-ul pregătit (unlock aplicat) a fost salvat la initiate în _rawPdf_${signerIdx}
+    let padesPdfB64, signedAttrsHashB64;
+    const rawPdfB64stored = data[`_rawPdf_${signerIdx}`] || '';
+    if (!rawPdfB64stored) {
+      logger.warn({ flowId, signerIdx }, 'STS callback: _rawPdf lipsă — folosim pdfB64 curent');
+    }
+    const sourcePdfB64 = rawPdfB64stored || (data.signedPdfB64 || data.pdfB64 || '');
+    const rawPdf = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
+    if (!rawPdf) return errRedirect('PDF lipsă în flux');
+
+    if (hasJavaSigningService()) {
+      try {
+        logger.info({ flowId, signerIdx, hasCert: !!certPem }, 'STS callback: Java prepare cu signing-cert-v2');
+        const prepareRes = await javaPreparePades({
+          pdfBase64: rawPdf,
+          fieldName: `sig_${signerIdx + 1}`,
+          signerName: signer?.name || signer?.fullName || 'Semnatar',
+          signerRole: signer?.role || signer?.atribut || 'SEMNATAR',
+          reason: 'Semnare DocFlowAI',
+          location: 'Romania',
+          contactInfo: signer?.email || '',
+          page: 1, x: 100, y: 100, width: 180, height: 50,
+          useSignedAttributes: true,
+          subFilter: 'ETSI.CAdES.detached',
+          signerCertificatePem: certPem || null,
+        });
+        if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
+          throw new Error('Java prepare: câmpuri lipsă în răspuns');
+        }
+        padesPdfB64        = prepareRes.preparedPdfBase64;
+        signedAttrsHashB64 = prepareRes.toBeSignedDigestBase64;
+        logger.info({ flowId, signerIdx }, 'STS callback: Java prepare OK');
+      } catch (prepErr) {
+        logger.error({ err: prepErr, flowId, signerIdx }, 'STS callback: Java prepare eșuat');
+        return errRedirect('Eroare pregătire document PAdES');
+      }
+    } else {
+      // Fallback local (fără signing-cert-v2)
+      const { preparePadesDoc, calcPadesHash, buildSignedAttrs, calcSignedAttrsHash } =
+        await import('../../signing/pades.mjs');
+      const isSubsequentSigner = signers.filter((s, i) => i < signerIdx && s.status === 'signed').length > 0;
+      const pdfBuf = Buffer.from(rawPdf, 'base64');
+      const pdfBufPades = await preparePadesDoc(pdfBuf, data, signerIdx, { alwaysDrawCartus: !isSubsequentSigner });
+      const documentDigest = calcPadesHash(pdfBufPades);
+      padesPdfB64 = pdfBufPades.toString('base64');
+      const signedAttrsDer = buildSignedAttrs(documentDigest);
+      signedAttrsHashB64 = calcSignedAttrsHash(signedAttrsDer);
+      data[`_signedAttrs_${signerIdx}`] = signedAttrsDer.toString('hex');
     }
 
-    // Stocăm datele de polling în semnatar
-    signers[signerIdx].stsOpId       = result.stsOpId;
-    signers[signerIdx].stsToken      = result.accessToken;
-    signers[signerIdx].stsSignUrl    = result.signUrl;
-    signers[signerIdx].stsPending    = true;
-    signers[signerIdx].stsCertPem    = result.certPem || null;
-    signers[signerIdx].stsCertChain  = result.certChainPem || []; // CA intermediar(i) pentru path building
+    // PDF pregătit e gata — curățăm rawPdf temporar și salvăm cel nou
+    delete data[`_rawPdf_${signerIdx}`];
+    data[`_padesPdf_${signerIdx}`] = padesPdfB64;
+
+    // ── PASUL 3: trimitem hash-ul (cu signing-cert-v2) la STS ─────────────────
+    const submitResult = await provider.submitHashToSTS(
+      signedAttrsHashB64, accessToken, pd, sessionId, data.docName || flowId
+    );
+    if (!submitResult.ok) return errRedirect(submitResult.message || 'Eroare trimitere hash la STS');
+
+    signers[signerIdx].stsOpId      = submitResult.stsOpId;
+    signers[signerIdx].stsToken     = accessToken;
+    signers[signerIdx].stsSignUrl   = pd.signUrl;
+    signers[signerIdx].stsPending   = true;
+    signers[signerIdx].stsCertPem   = certPem || null;
+    signers[signerIdx].stsCertChain = certChainPem || [];
     data.signers   = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
 
-    // Redirecționăm înapoi la pagina de semnare cu status pending
     return res.redirect(
       `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(signer.token)}&sts_pending=1`
     );
@@ -184,9 +232,10 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
           fieldName: `sig_${idx + 1}`,
           signByteBase64: pollResult.signByte,
           certificatePem: certPem,
-          certificateChainPem: certChainPem,  // CA intermediar(i) din otherCertificates — fix chain building
+          certificateChainPem: certChainPem,
           useSignedAttributes: true,
           subFilter: 'ETSI.CAdES.detached',
+          tsaUrl: null,  // b236: Java service folosește TSA_URL din config (DigiCert default)
         });
 
         if (!finalizeRes?.signedPdfBase64) {
@@ -388,20 +437,20 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
         message: `Provider-ul "${providerId}" nu este activ în această organizație.` });
     }
 
-    // ARHITECTURA PAdES INCREMENTAL b233:
-    // Semnatar 1: pdfB64 original → unlock → preparePadesDoc (desenează cartuș) → injectCms → revision 1
-    // Semnatar 2+: signedPdfB64 (conține cartuș + CMS sem.1) → NU unlock → preparePadesDoc
-    //              (adaugă doar placeholder, NU redesenează cartușul) → injectCms → revision 2
-    //              pdf-lib.save({useObjectStreams:false}) = incremental update = PAdES cu 2 semnături
+    // b236: ARHITECTURA RESTRUCTURATĂ — prepare mutat la OAuth callback (când avem cert)
+    // initiate-cloud-signing face DOAR:
+    //   1. Unlock PDF (dacă e primul semnatar)
+    //   2. Salvează PDF-ul pregătit în _rawPdf_${idx} (fără placeholder PAdES)
+    //   3. Construiește sesiunea OAuth PKCE și returnează URL redirect
+    // Java prepare + hash STS se fac la OAuth callback după ce avem cert din /userinfo.
     const signedCount = signers.filter((s, i) => i < idx && s.status === 'signed').length;
     const isSubsequentSigner = signedCount > 0 && !!data.signedPdfB64;
     const sourcePdfB64 = isSubsequentSigner ? data.signedPdfB64 : (data.pdfB64 || '');
-    const rawPdf = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
-    if (!rawPdf) return res.status(500).json({ error: 'pdf_missing' });
-    let pdfBuf = Buffer.from(rawPdf, 'base64');
+    const rawPdfStr = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
+    if (!rawPdfStr) return res.status(500).json({ error: 'pdf_missing' });
+    let pdfBuf = Buffer.from(rawPdfStr, 'base64');
 
-    // Unlock DOAR pentru semnatar 1 — pe PDF deja semnat (sem.2+) NU facem unlock
-    // (pdf-lib re-save pe un PDF cu CMS binar embedded poate corupe semnătura anterioară)
+    // Unlock DOAR pentru semnatar 1 (neschimbat față de b235)
     if (!isSubsequentSigner && _PDFLib && data.flowType !== 'ancore') {
       try {
         const { PDFDocument, PDFName, PDFNumber } = _PDFLib;
@@ -416,88 +465,25 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
       } catch(e) { logger.warn({ err: e }, 'initiate-cloud-signing: unlock error (non-fatal)'); }
     }
 
-    // ── PAdES: pregătim placeholder + hash (Java service dacă e disponibil) ────
-    let pdfBufPades;
-    let padesPdfB64;
-    let documentDigest;
-    let signedAttrsDer;
-    let signedAttrsHashB64;
-
-    if (hasJavaSigningService()) {
-      try {
-        logger.info({ flowId, signerIdx: idx, isSubsequentSigner }, 'PAdES initiate: prepare prin Java signing service');
-        const prepareRes = await javaPreparePades({
-          pdfBase64: pdfBuf.toString('base64'),
-          fieldName: `sig_${idx + 1}`,
-          signerName: signers[idx]?.name || signers[idx]?.fullName || 'Semnatar',
-          signerRole: signers[idx]?.role || signers[idx]?.atribut || 'SEMNATAR',
-          reason: 'Semnare DocFlowAI',
-          location: 'Romania',
-          contactInfo: signers[idx]?.email || '',
-          page: 1,
-          x: 100,
-          y: 100,
-          width: 180,
-          height: 50,
-          useSignedAttributes: true,
-          subFilter: 'ETSI.CAdES.detached',
-        });
-
-        if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
-          throw new Error('Java signing service nu a returnat preparedPdfBase64/toBeSignedDigestBase64');
-        }
-
-        padesPdfB64 = prepareRes.preparedPdfBase64;
-        pdfBufPades = Buffer.from(padesPdfB64, 'base64');
-        documentDigest = prepareRes.documentDigestBase64 || null;
-        signedAttrsHashB64 = prepareRes.toBeSignedDigestBase64;
-        signedAttrsDer = null; // finalizarea se face în Java service
-
-        logger.info({ flowId, signerIdx: idx, hasDocumentDigest: !!documentDigest,
-          signedAttrsHashLen: signedAttrsHashB64.length }, 'PAdES: prepare generat prin Java service');
-      } catch (javaErr) {
-        logger.error({ err: javaErr, flowId, signerIdx: idx }, 'PAdES initiate: Java service a eșuat — fallback local');
-        const { preparePadesDoc, calcPadesHash, buildSignedAttrs, calcSignedAttrsHash } =
-          await import('../../signing/pades.mjs');
-        pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx, { alwaysDrawCartus: !isSubsequentSigner });
-        documentDigest  = calcPadesHash(pdfBufPades);
-        padesPdfB64     = pdfBufPades.toString('base64');
-        signedAttrsDer  = buildSignedAttrs(documentDigest);
-        signedAttrsHashB64 = calcSignedAttrsHash(signedAttrsDer);
-        logger.info({ flowId, signerIdx: idx, isSubsequentSigner,
-          documentDigestLen: documentDigest.length,
-          signedAttrsHashLen: signedAttrsHashB64.length }, 'PAdES: placeholder + signedAttrs generate (fallback local)');
-      }
-    } else {
-      const { preparePadesDoc, calcPadesHash, buildSignedAttrs, calcSignedAttrsHash } =
-        await import('../../signing/pades.mjs');
-      pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx,
-        { alwaysDrawCartus: !isSubsequentSigner });
-      documentDigest  = calcPadesHash(pdfBufPades);   // SHA256(bytesOutsideContents)
-      padesPdfB64     = pdfBufPades.toString('base64');
-      signedAttrsDer     = buildSignedAttrs(documentDigest);
-      signedAttrsHashB64 = calcSignedAttrsHash(signedAttrsDer);
-      logger.info({ flowId, signerIdx: idx, isSubsequentSigner,
-        documentDigestLen: documentDigest.length,
-        signedAttrsHashLen: signedAttrsHashB64.length }, 'PAdES: placeholder + signedAttrs generate');
-    }
+    // Salvăm PDF-ul (unlock aplicat, fără placeholder) — va fi folosit la OAuth callback
+    data[`_rawPdf_${idx}`] = pdfBuf.toString('base64');
 
     const providerConfig = getOrgProviderConfig(org, providerId);
     logger.info({
-      providerId, orgId: data.orgId,
+      providerId, orgId: data.orgId, isSubsequentSigner,
       hasClientId: !!providerConfig.clientId,
       hasKid: !!providerConfig.kid,
       hasPrivateKey: !!providerConfig.privateKeyPem,
       hasRedirectUri: !!providerConfig.redirectUri,
-      padesHashLen: signedAttrsHashB64.length,
-    }, 'initiate-cloud-signing: PAdES pregătit');
+    }, 'initiate-cloud-signing b236: PDF pregătit, construim sesiune OAuth');
     const appBaseUrl = process.env.PUBLIC_BASE_URL || 'https://app.docflowai.ro';
 
+    // initiateSession construiește PKCE + URL OAuth (fără hash — nu îl avem încă)
     const session = await provider.initiateSession({
-      flowId, signer: signers[idx], pdfBytes: pdfBufPades,
+      flowId, signer: signers[idx], pdfBytes: pdfBuf,
       flowData: data, config: providerConfig, appBaseUrl,
       ancoreFieldName: signers[idx].ancoreFieldName || null,
-      padesHashBase64: signedAttrsHashB64,  // trimitem SHA256(signedAttrs) la STS
+      padesHashBase64: null,  // b236: hash calculat la OAuth callback după cert
     });
 
     const signingUrl = await provider.getSigningUrl(session);
@@ -506,21 +492,16 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
         message: 'Provider-ul nu a returnat URL de semnare.' });
     }
 
-    // Stocăm sessionId + providerData + PAdES metadata per semnatar
     signers[idx].signingSessionId = session.sessionId;
     signers[idx].signingProvider  = providerId;
     if (session.providerData && Object.keys(session.providerData).length > 0) {
       signers[idx].stsProviderData = session.providerData;
     }
-    // Stocăm padesPdf și signedAttrsDer (hex) în JSONB
-    data[`_padesPdf_${idx}`] = padesPdfB64;
-    if (signedAttrsDer) data[`_signedAttrs_${idx}`] = signedAttrsDer.toString('hex');
-    signers[idx].padesHashBase64 = documentDigest || null;  // documentDigest stocat pentru referință
     data.signers  = signers;
     data.updatedAt = new Date().toISOString();
     await saveFlow(flowId, data);
 
-    logger.info({ flowId, providerId, signerEmail: signers[idx].email }, 'Cloud signing session inițiată');
+    logger.info({ flowId, providerId, signerEmail: signers[idx].email }, 'Cloud signing session inițiată (b236)');
     return res.json({ ok: true, signingUrl, sessionId: session.sessionId, provider: provider.id });
   } catch(e) {
     logger.error({ err: e }, 'initiate-cloud-signing error');
