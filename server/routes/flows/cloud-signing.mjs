@@ -111,6 +111,15 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
     if (hasJavaSigningService()) {
       try {
         logger.info({ flowId, signerIdx, hasCert: !!certPem }, 'STS callback: Java prepare cu signing-cert-v2');
+        // Calculăm coordonate per semnatar pentru a evita suprapunerea
+        // b237: coordonate simple bazate pe index — TODO tabel row coordinates
+        // PDF coordonate: y=0 la baza paginii, A4 = 842pt înălțime
+        // Plasăm semnăturile de jos în sus (semnatar 0 = cel mai jos)
+        const sigX = 30;
+        const sigY = 30 + signerIdx * 75;  // 75pt spațiu vertical între semnături
+        const sigW = 250;
+        const sigH = 60;
+
         const prepareRes = await javaPreparePades({
           pdfBase64: rawPdf,
           fieldName: `sig_${signerIdx + 1}`,
@@ -119,7 +128,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
           reason: 'Semnare DocFlowAI',
           location: 'Romania',
           contactInfo: signer?.email || '',
-          page: 1, x: 100, y: 100, width: 180, height: 50,
+          page: 1, x: sigX, y: sigY, width: sigW, height: sigH,
           useSignedAttributes: true,
           subFilter: 'ETSI.CAdES.detached',
           signerCertificatePem: certPem || null,
