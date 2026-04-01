@@ -65,14 +65,3 @@ export async function javaFinalizePades({
     tsaUrl,
   });
 }
-
-/**
- * b251: Creeaza campuri AcroForm /Sig folosind iText.
- * Apelat la creare flux, dupa stampFooterOnPdf (vizual pdf-lib).
- * @param {Object} opts
- * @param {string} opts.pdfBase64
- * @param {Array}  opts.fields - [{fieldName, x, y, w, h, page}]
- */
-export async function javaCreateFields({ pdfBase64, fields }) {
-  return postJson('/api/pades/create-fields', { pdfBase64, fields });
-}
