@@ -118,20 +118,12 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
 
     if (hasJavaSigningService()) {
       try {
-        // b243: Java creează câmpul /Sig FRESH în zona de semnătură din cartuș
-        // Coordonatele celulei sunt în signer.padesRect (setat la creare flux de stampFooterOnPdf)
-        // Fiecare revizie iText conține NUMAI obiectele proprii → sig_1 rămâne validă
-        const rect = signer?.padesRect;
-        const fieldName = `sig_${signerIdx + 1}`;
-        const sigPage = rect?.page || 1;
-        const sigX    = typeof rect?.x === 'number' ? rect.x : (30 + (signerIdx % 3) * 190);
-        const sigY    = typeof rect?.y === 'number' ? rect.y : (30 + Math.floor(signerIdx / 3) * 70);
-        const sigW    = typeof rect?.w === 'number' ? rect.w : 180;
-        const sigH2   = typeof rect?.h === 'number' ? rect.h : 50;
-
-        logger.info({ flowId, signerIdx, fieldName, hasRect: !!rect,
-          page: sigPage, x: sigX, y: sigY, w: sigW, h: sigH2 },
-          'STS callback: Java prepare — câmp NOU în celula cartuș');
+        // b247: câmpul /Sig e PRE-CREAT în revizia 0 (stampFooterOnPdf la creare flux)
+        // Java DOAR completează câmpul existent — NU crează nimic nou, NU atinge AcroForm/Annots
+        // TOATE câmpurile există în revizia 0 → Adobe nu vede modificări structurale între revizii
+        const fieldName = signer?.padesFieldName || `sig_${signerIdx + 1}`;
+        logger.info({ flowId, signerIdx, fieldName, hasPadesFieldName: !!signer?.padesFieldName },
+          'STS callback b247: Java prepare — câmp EXISTENT pre-creat în revizia 0');
 
         const prepareRes = await javaPreparePades({
           pdfBase64: rawPdf,
@@ -141,12 +133,12 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
           reason: 'Semnare DocFlowAI',
           location: 'Romania',
           contactInfo: signer?.email || '',
-          page: sigPage, x: sigX, y: sigY, width: sigW, height: sigH2,
+          page: 1, x: 0, y: 0, width: 0, height: 0,  // ignorate — câmp existent
           useSignedAttributes: true,
           subFilter: 'ETSI.CAdES.detached',
           signerCertificatePem: certPem || null,
           signerIndex: signerIdx,
-          fieldAlreadyExists: false,  // b243: câmp NOU, nu pre-creat
+          fieldAlreadyExists: true,  // b247: câmp pre-creat, Java nu face nimic nou
         });
         if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
           throw new Error('Java prepare: câmpuri lipsă în răspuns');

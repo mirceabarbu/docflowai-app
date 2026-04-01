@@ -869,14 +869,18 @@ function pdfLooksSigned(pdfB64) {
   } catch { return false; }
 }
 
-// ── stampFooterOnPdf b246 ─────────────────────────────────────────────────
-// Desenează footer + cartuș vizual "SEMNAT SI APROBAT" la creare flux.
-// NU crează câmpuri AcroForm — Java le crează la semnare la coordonatele din padesRect.
-// Returnează { pdfB64, signerRects: [{x,y,w,h,page}] } — coords celulă per semnatar.
+// ── stampFooterOnPdf b247 ─────────────────────────────────────────────────
+// ARHITECTURA CORECTA MULTI-SEMNATAR:
+//   - Desenează footer + cartuș vizual "SEMNAT SI APROBAT"
+//   - Creează câmpuri AcroForm /Sig (sig_1, sig_2...) în zona de semnătură a fiecărei celule
+//   - Returnează { pdfB64, signerFields: [{fieldName, pageIndex}] }
+//   - crud.mjs stochează signer.padesFieldName
+//   - Java găsește câmpul EXISTENT și adaugă NUMAI ByteRange+Contents (zero alte modificări)
+//   - TOATE câmpurile există în revizia 0 → Adobe nu vede modificări structurale între revizii
 // HARD STOP: niciodată nu rescrie un PDF deja semnat.
 async function stampFooterOnPdf(pdfB64, flowData) {
-  if (!flowData) flowData = {};
-  if (!pdfB64 || !PDFLib) return pdfB64;
+  if (!flowData) { flowData = {}; }
+  if (!pdfB64 || !PDFLib) { return pdfB64; }
 
   if (flowData.preventRewriteIfSigned !== false && pdfLooksSigned(pdfB64)) {
     logger.warn({ flowId: flowData.flowId },
@@ -885,70 +889,78 @@ async function stampFooterOnPdf(pdfB64, flowData) {
   }
 
   try {
-    var PDFLib_ = PDFLib;
-    var PDFDocument = PDFLib_.PDFDocument;
-    var rgb = PDFLib_.rgb;
-    var StandardFonts = PDFLib_.StandardFonts;
+    var PDFDocument  = PDFLib.PDFDocument;
+    var PDFName      = PDFLib.PDFName;
+    var PDFNumber    = PDFLib.PDFNumber;
+    var PDFString    = PDFLib.PDFString;
+    var PDFArray     = PDFLib.PDFArray;
+    var rgb          = PDFLib.rgb;
+    var StandardFonts = PDFLib.StandardFonts;
+
     var diacr = {
       'ă':'a','â':'a','î':'i','ș':'s','ț':'t',
       'Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T',
       'ş':'s','ţ':'t','Ş':'S','Ţ':'T',
     };
     function ro(t) {
-      return String(t||'').split('').map(function(c){ return diacr[c]||c; }).join('');
+      return String(t || '').split('').map(function(c) { return diacr[c] || c; }).join('');
     }
 
     var clean   = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    var pdfDoc  = await PDFDocument.load(Buffer.from(clean,'base64'), {ignoreEncryption:true});
+    var pdfDoc  = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
     var fontR   = await pdfDoc.embedFont(StandardFonts.Helvetica);
     var fontB   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     var pages   = pdfDoc.getPages();
-    var lastPage= pages[pages.length-1];
-    var pw      = lastPage.getSize().width;
-    var ph      = lastPage.getSize().height;
-    var MARGIN  = 40;
+    var lastPage = pages[pages.length - 1];
+    var pw = lastPage.getSize().width;
+    var ph = lastPage.getSize().height;
+    var MARGIN = 40;
     var FONT_SIZE = 7;
     var isAncore  = (flowData.flowType || 'tabel') === 'ancore';
     var signersIn = Array.isArray(flowData.signers) ? flowData.signers : [];
-    var signerRects = []; // [{x,y,w,h,page}] — coords celulă per semnatar (0-indexed page)
+    var signerFields = []; // [{fieldName, pageIndex}]
 
     // ── Footer ────────────────────────────────────────────────────────────
     var footerY = 14;
     var createdDate = flowData.createdAt
-      ? new Date(flowData.createdAt).toLocaleString('ro-RO', {timeZone:'Europe/Bucharest'})
-      : new Date().toLocaleString('ro-RO', {timeZone:'Europe/Bucharest'});
+      ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
+      : new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
     var parts = [
-      ro(flowData.initName||''),
+      ro(flowData.initName || ''),
       flowData.initFunctie  ? ro(flowData.initFunctie)  : null,
       flowData.institutie   ? ro(flowData.institutie)   : null,
       flowData.compartiment ? ro(flowData.compartiment) : null,
     ].filter(Boolean).join(', ');
-    var footerLeft  = createdDate + (parts ? '  |  '+parts : '');
-    var footerRight = ro(flowData.flowId||'') + '  |  DocFlowAI';
+    var footerLeft  = createdDate + (parts ? '  |  ' + parts : '');
+    var footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
     var rightWidth  = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
     var rightX      = pw - MARGIN - rightWidth;
     lastPage.drawLine({
-      start:{x:MARGIN, y:footerY+10}, end:{x:pw-MARGIN, y:footerY+10},
-      thickness:0.4, color:rgb(0.75,0.75,0.75),
+      start: { x: MARGIN, y: footerY + 10 }, end: { x: pw - MARGIN, y: footerY + 10 },
+      thickness: 0.4, color: rgb(0.75, 0.75, 0.75),
     });
-    lastPage.drawText(footerLeft, {x:MARGIN, y:footerY, size:FONT_SIZE, font:fontR,
-      color:rgb(0.5,0.5,0.5), opacity:0.8, maxWidth:rightX-MARGIN-8});
-    lastPage.drawText(footerRight, {x:rightX, y:footerY, size:FONT_SIZE, font:fontR,
-      color:rgb(0.5,0.5,0.5), opacity:0.8});
+    lastPage.drawText(footerLeft, {
+      x: MARGIN, y: footerY, size: FONT_SIZE, font: fontR,
+      color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: rightX - MARGIN - 8,
+    });
+    lastPage.drawText(footerRight, {
+      x: rightX, y: footerY, size: FONT_SIZE, font: fontR,
+      color: rgb(0.5, 0.5, 0.5), opacity: 0.8,
+    });
 
-    // ── Cartuș vizual + coordonate celule (fără câmpuri AcroForm) ──────────
+    // ── Cartuș vizual + câmpuri AcroForm /Sig ─────────────────────────────
     if (!isAncore && signersIn.length > 0) {
-      var n    = signersIn.length;
-      var cols = Math.min(n, 3);
-      var rows = Math.ceil(n / cols);
-      var cellW = (pw - MARGIN*2) / cols;
+      var n     = signersIn.length;
+      var cols  = Math.min(n, 3);
+      var rows  = Math.ceil(n / cols);
+      var cellW = (pw - MARGIN * 2) / cols;
       var cellH = 70;
       var sigH  = cellH * 0.45;
       var infoH = cellH * 0.55;
       var titleH      = 20;
       var footerH     = 28;
-      var cartusBottom= footerH + 8;
-      var cartusH     = rows*cellH + titleH;
+      var cartusBottom = footerH + 8;
+      var cartusH     = rows * cellH + titleH;
       var cartusTotal = cartusH + cartusBottom + 10;
 
       var freeSpace = ph * 0.25;
@@ -959,81 +971,132 @@ async function stampFooterOnPdf(pdfB64, flowData) {
       } else {
         cartusPage      = pdfDoc.addPage([pw, ph]);
         cartusPageIndex = pdfDoc.getPageCount() - 1;
-        var rTxt = ro(flowData.flowId||'') + '  |  DocFlowAI';
+        var rTxt = ro(flowData.flowId || '') + '  |  DocFlowAI';
         var rW   = fontR.widthOfTextAtSize(rTxt, 7);
-        cartusPage.drawLine({start:{x:MARGIN,y:footerH-4},end:{x:pw-MARGIN,y:footerH-4},
-          thickness:0.4, color:rgb(0.75,0.75,0.75)});
-        cartusPage.drawText(rTxt, {x:pw-MARGIN-rW, y:footerH-14, size:7, font:fontR,
-          color:rgb(0.5,0.5,0.5), opacity:0.8});
+        cartusPage.drawLine({
+          start: { x: MARGIN, y: footerH - 4 }, end: { x: pw - MARGIN, y: footerH - 4 },
+          thickness: 0.4, color: rgb(0.75, 0.75, 0.75),
+        });
+        cartusPage.drawText(rTxt, {
+          x: pw - MARGIN - rW, y: footerH - 14, size: 7, font: fontR,
+          color: rgb(0.5, 0.5, 0.5), opacity: 0.8,
+        });
       }
 
       // Bara titlu
-      cartusPage.drawRectangle({x:MARGIN, y:cartusBottom+cartusH-titleH,
-        width:pw-MARGIN*2, height:titleH,
-        color:rgb(1,1,1), borderColor:rgb(0,0,0), borderWidth:0.8});
+      cartusPage.drawRectangle({
+        x: MARGIN, y: cartusBottom + cartusH - titleH,
+        width: pw - MARGIN * 2, height: titleH,
+        color: rgb(1, 1, 1), borderColor: rgb(0, 0, 0), borderWidth: 0.8,
+      });
       cartusPage.drawText('SEMNAT SI APROBAT', {
-        x:MARGIN+8, y:cartusBottom+cartusH-titleH+6,
-        size:7, font:fontB, color:rgb(0,0,0)});
+        x: MARGIN + 8, y: cartusBottom + cartusH - titleH + 6,
+        size: 7, font: fontB, color: rgb(0, 0, 0),
+      });
 
-      // Celule semnatari
+      // Celule semnatari + câmpuri /Sig
       for (var i = 0; i < signersIn.length; i++) {
         var s   = signersIn[i];
         var col = i % cols;
         var row = Math.floor(i / cols);
-        var cx  = MARGIN + col*cellW;
-        var cy  = cartusBottom + (rows-1-row)*cellH;
+        var cx  = MARGIN + col * cellW;
+        var cy  = cartusBottom + (rows - 1 - row) * cellH;
         var infoY = cy + sigH;
 
         // Bordură celulă
-        cartusPage.drawRectangle({x:cx, y:cy, width:cellW, height:cellH,
-          color:rgb(0.97,0.97,0.97), borderColor:rgb(0.2,0.2,0.2), borderWidth:1});
-        // Separator info/semnătură
-        cartusPage.drawLine({start:{x:cx,y:infoY}, end:{x:cx+cellW,y:infoY},
-          thickness:0.5, color:rgb(0.3,0.3,0.3)});
-
-        // Rol (bold)
-        var rolText = ro(s.rol||s.atribut||'—');
-        cartusPage.drawText(rolText, {x:cx+5, y:infoY+infoH-12, size:7, font:fontB,
-          color:rgb(0.1,0.1,0.1), maxWidth:cellW-10});
-        // Nume + funcție
-        var nf = [ro(s.name||''), ro(s.functie||'')].filter(function(x){return x.trim();}).join(' - ');
-        if (nf.trim()) cartusPage.drawText(nf, {x:cx+5, y:infoY+infoH-23, size:6.5, font:fontR,
-          color:rgb(0.15,0.15,0.15), maxWidth:cellW-10});
-
-        // Zona semnătură — fundal bleu discret (câmpul Java va apărea peste ea)
-        cartusPage.drawRectangle({x:cx+1, y:cy+1, width:cellW-2, height:sigH-2,
-          color:rgb(0.94,0.96,0.99)});
-
-        // Text placeholder mic discret
-        cartusPage.drawText('Semnat digital QES', {
-          x:cx+4, y:cy+sigH-10, size:5, font:fontB,
-          color:rgb(0.55,0.6,0.7), maxWidth:cellW-8});
-        cartusPage.drawText('STS Cloud QES', {
-          x:cx+4, y:cy+4, size:4.5, font:fontR,
-          color:rgb(0.6,0.65,0.75), maxWidth:cellW-8});
-
-        // Stocăm coordonatele celulei de semnătură (zona de jos = sigH)
-        signerRects.push({
-          x: Math.round(cx + 1),
-          y: Math.round(cy + 1),
-          w: Math.round(cellW - 2),
-          h: Math.round(sigH - 2),
-          page: cartusPageIndex + 1,   // 1-based pentru Java
+        cartusPage.drawRectangle({
+          x: cx, y: cy, width: cellW, height: cellH,
+          color: rgb(0.97, 0.97, 0.97), borderColor: rgb(0.2, 0.2, 0.2), borderWidth: 1,
         });
+        // Separator info / semnătură
+        cartusPage.drawLine({
+          start: { x: cx, y: infoY }, end: { x: cx + cellW, y: infoY },
+          thickness: 0.5, color: rgb(0.3, 0.3, 0.3),
+        });
+
+        // Info semnatar: rol (bold)
+        var rolText = ro(s.rol || s.atribut || '—');
+        cartusPage.drawText(rolText, {
+          x: cx + 5, y: infoY + infoH - 12, size: 7, font: fontB,
+          color: rgb(0.1, 0.1, 0.1), maxWidth: cellW - 10,
+        });
+        // Nume + funcție
+        var nf = [ro(s.name || ''), ro(s.functie || '')].filter(function(x) { return x.trim(); }).join(' - ');
+        if (nf.trim()) {
+          cartusPage.drawText(nf, {
+            x: cx + 5, y: infoY + infoH - 23, size: 6.5, font: fontR,
+            color: rgb(0.15, 0.15, 0.15), maxWidth: cellW - 10,
+          });
+        }
+
+        // Zona semnătură — fundal bleu discret, gol (Java va completa câmpul /Sig)
+        cartusPage.drawRectangle({
+          x: cx + 1, y: cy + 1, width: cellW - 2, height: sigH - 2,
+          color: rgb(0.94, 0.96, 0.99),
+        });
+
+        // ── Câmp AcroForm /Sig pentru acest semnatar ─────────────────────
+        // Creat O SINGURA DATA în revizia 0 → Adobe acceptă semnări ulterioare
+        var fieldName = 'sig_' + (i + 1);
+        var rx1 = cx + 1;
+        var ry1 = cy + 1;
+        var rx2 = cx + cellW - 1;
+        var ry2 = cy + sigH - 1;
+
+        var widgetDict = pdfDoc.context.obj({
+          Type:    PDFName.of('Annot'),
+          Subtype: PDFName.of('Widget'),
+          FT:      PDFName.of('Sig'),
+          T:       PDFString.of(fieldName),
+          Rect:    pdfDoc.context.obj([rx1, ry1, rx2, ry2]),
+          F:       PDFNumber.of(4),
+          P:       cartusPage.ref,
+        });
+        var widgetRef = pdfDoc.context.register(widgetDict);
+
+        // AcroForm Fields
+        var acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+        var acroFormDict;
+        if (!acroFormRef) {
+          acroFormDict = pdfDoc.context.obj({ Fields: pdfDoc.context.obj([]) });
+          var newRef = pdfDoc.context.register(acroFormDict);
+          pdfDoc.catalog.set(PDFName.of('AcroForm'), newRef);
+        } else {
+          acroFormDict = pdfDoc.context.lookup(acroFormRef);
+        }
+        var fieldsRef = acroFormDict.get(PDFName.of('Fields'));
+        var fieldsArr = fieldsRef ? pdfDoc.context.lookup(fieldsRef) : pdfDoc.context.obj([]);
+        if (!fieldsRef) { acroFormDict.set(PDFName.of('Fields'), fieldsArr); }
+        acroFormDict.set(PDFName.of('SigFlags'), PDFNumber.of(3));
+        fieldsArr.push(widgetRef);
+
+        // Page Annots
+        var annotsKey  = PDFName.of('Annots');
+        var pageAnnots = cartusPage.node.get(annotsKey);
+        if (!pageAnnots) {
+          pageAnnots = pdfDoc.context.obj([]);
+          cartusPage.node.set(annotsKey, pageAnnots);
+        } else if (pageAnnots.constructor && pageAnnots.constructor.name !== 'PDFArray') {
+          pageAnnots = pdfDoc.context.lookup(pageAnnots);
+        }
+        pageAnnots.push(widgetRef);
+
+        signerFields.push({ fieldName: fieldName, pageIndex: cartusPageIndex });
+        logger.debug({ fieldName: fieldName }, 'b247: câmp /Sig creat în cartuș');
       }
     }
 
     var savedB64 = Buffer.from(
-      await pdfDoc.save({useObjectStreams: false})
+      await pdfDoc.save({ useObjectStreams: false })
     ).toString('base64');
 
-    logger.info({signerCount: signerRects.length, flowId: flowData.flowId},
-      'b246: stampFooterOnPdf OK — footer + cartus vizual, coords calculate');
+    logger.info({ signerCount: signerFields.length, flowId: flowData.flowId },
+      'b247: stampFooterOnPdf OK — footer + cartus + campuri /Sig pre-create');
 
-    return {pdfB64: savedB64, signerRects: signerRects};
+    return { pdfB64: savedB64, signerFields: signerFields };
 
   } catch (e) {
-    logger.warn({err: e}, 'stampFooterOnPdf error (non-fatal)');
+    logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)');
     return pdfB64;
   }
 }
@@ -1604,7 +1667,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT, version: APP_VERSION, build: 'b246', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
+  logger.info({ port: PORT, version: APP_VERSION, build: 'b247', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry().then(async () => {
     // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway
