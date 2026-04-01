@@ -124,10 +124,10 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
         const rect = signer?.padesRect;
         const fieldName = `sig_${signerIdx + 1}`;
         const sigPage = rect?.page || 1;
-        const sigX    = typeof rect?.x === 'number' ? rect.x : (30 + (signerIdx % 3) * 190);
-        const sigY    = typeof rect?.y === 'number' ? rect.y : (30 + Math.floor(signerIdx / 3) * 70);
-        const sigW    = typeof rect?.w === 'number' ? rect.w : 180;
-        const sigH2   = typeof rect?.h === 'number' ? rect.h : 50;
+        const sigX    = typeof rect?.x === 'number' ? rect.x : (36 + (signerIdx % 3) * 185);
+        const sigY    = typeof rect?.y === 'number' ? rect.y : (42 + Math.floor(signerIdx / 3) * 115);
+        const sigW    = typeof rect?.w === 'number' ? rect.w : 168;
+        const sigH2   = typeof rect?.h === 'number' ? rect.h : 90;
 
         logger.info({ flowId, signerIdx, fieldName, hasRect: !!rect,
           page: sigPage, x: sigX, y: sigY, w: sigW, h: sigH2 },
@@ -138,6 +138,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
           fieldName,
           signerName: signer?.name || signer?.fullName || 'Semnatar',
           signerRole: signer?.rol || signer?.role || signer?.atribut || 'SEMNATAR',
+          signerFunction: signer?.functie || '',
           reason: 'Semnare DocFlowAI',
           location: 'Romania',
           contactInfo: signer?.email || '',
