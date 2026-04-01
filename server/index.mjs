@@ -858,21 +858,176 @@ function pdfLooksSigned(pdfB64) {
   try {
     if (!pdfB64) return false;
     const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    const buf = Buffer.from(clean, 'base64');
-    const sample = buf.toString('latin1');
+    const sample = Buffer.from(clean, 'base64').toString('latin1');
     return (
-      sample.includes('/ByteRange') ||
-      sample.includes('/Contents<') ||
-      sample.includes('/Contents <') ||
+      sample.includes('/ByteRange') || sample.includes('/Contents<') ||
+      sample.includes('/Contents <') || sample.includes('/Type/Sig') ||
+      sample.includes('/Type /Sig') ||
       sample.includes('/SubFilter/ETSI.CAdES.detached') ||
-      sample.includes('/SubFilter /ETSI.CAdES.detached') ||
-      sample.includes('/Type/Sig') ||
-      sample.includes('/Type /Sig')
+      sample.includes('/SubFilter /ETSI.CAdES.detached')
     );
   } catch { return false; }
 }
 
+// ── stampFooterOnPdf b244 ─────────────────────────────────────────────────
+// Desenează footer + cartuș vizual "SEMNAT SI APROBAT" O SINGURA DATA la creare flux.
+// NU crează câmpuri AcroForm — Java le creează la semnare prin PdfSigner.signExternalContainer.
+// HARD STOP: niciodată nu rescrie un PDF deja semnat.
 async function stampFooterOnPdf(pdfB64, flowData = {}) {
+  if (!pdfB64 || !PDFLib) return pdfB64;
+
+  if (flowData?.preventRewriteIfSigned !== false && pdfLooksSigned(pdfB64)) {
+    logger.warn({ flowId: flowData?.flowId },
+      'stampFooterOnPdf skipped: PDF already contains signatures');
+    return pdfB64;
+  }
+
+  try {
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const diacr = {
+      'ă':'a','â':'a','î':'i','ș':'s','ț':'t',
+      'Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T',
+      'ş':'s','ţ':'t','Ş':'S','Ţ':'T',
+    };
+    function ro(t) { return String(t||'').split('').map(c=>diacr[c]||c).join(''); }
+
+    const clean   = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const pdfDoc  = await PDFDocument.load(Buffer.from(clean,'base64'),{ignoreEncryption:true});
+    const fontR   = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontB   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const pages   = pdfDoc.getPages();
+    const lastPage= pages[pages.length-1];
+    const { width:pW, height:pH } = lastPage.getSize();
+    const MARGIN  = 40, FONT_SIZE = 7;
+
+    const isAncore  = (flowData.flowType||'tabel') === 'ancore';
+    const signersIn = Array.isArray(flowData.signers) ? flowData.signers : [];
+
+    // ── Footer ────────────────────────────────────────────────────────────
+    const footerY = 14;
+    const createdDate = flowData.createdAt
+      ? new Date(flowData.createdAt).toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'})
+      : new Date().toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'});
+    const parts = [
+      ro(flowData.initName||''),
+      flowData.initFunctie  ? ro(flowData.initFunctie)  : null,
+      flowData.institutie   ? ro(flowData.institutie)   : null,
+      flowData.compartiment ? ro(flowData.compartiment) : null,
+    ].filter(Boolean).join(', ');
+    const footerLeft  = createdDate + (parts ? '  |  '+parts : '');
+    const footerRight = ro(flowData.flowId||'') + '  |  DocFlowAI';
+    const rightWidth  = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
+    const rightX      = pW - MARGIN - rightWidth;
+    lastPage.drawLine({
+      start:{x:MARGIN,y:footerY+10}, end:{x:pW-MARGIN,y:footerY+10},
+      thickness:0.4, color:rgb(.75,.75,.75),
+    });
+    lastPage.drawText(footerLeft, {
+      x:MARGIN, y:footerY, size:FONT_SIZE, font:fontR,
+      color:rgb(.5,.5,.5), opacity:.8, maxWidth:rightX-MARGIN-8,
+    });
+    lastPage.drawText(footerRight, {
+      x:rightX, y:footerY, size:FONT_SIZE, font:fontR,
+      color:rgb(.5,.5,.5), opacity:.8,
+    });
+
+    // ── Cartuș vizual "SEMNAT SI APROBAT" (numai flux tabel cu semnatari) ──
+    // IMPORTANT: nu adaugam câmpuri AcroForm — Java le creează la semnare.
+    // Zona de semnătură rămâne goală vizual (câmpul Java va apărea peste ea).
+    if (!isAncore && signersIn.length > 0) {
+      const n     = signersIn.length;
+      const cols  = Math.min(n, 3);
+      const rows  = Math.ceil(n / cols);
+      const cellW = (pW - MARGIN*2) / cols;
+      const cellH = 70;
+      const infoH = cellH * 0.55;
+      const sigH  = cellH * 0.45;
+      const titleH    = 20;
+      const cartusH   = rows*cellH + titleH;
+      const footerH   = 28;
+      const cartusBottom = footerH + 8;
+      const cartusTotal  = cartusH + cartusBottom + 10;
+
+      // Alegem pagina cartuș
+      const freeSpace = pH * 0.25;
+      let cartusPage;
+      if (freeSpace >= cartusTotal) {
+        cartusPage = lastPage;
+      } else {
+        cartusPage = pdfDoc.addPage([pW, pH]);
+        // Footer pe pagina nouă
+        const rTxt = ro(flowData.flowId||'') + '  |  DocFlowAI';
+        const rW   = fontR.widthOfTextAtSize(rTxt, 7);
+        cartusPage.drawLine({
+          start:{x:MARGIN,y:footerH-4}, end:{x:pW-MARGIN,y:footerH-4},
+          thickness:0.4, color:rgb(.75,.75,.75),
+        });
+        cartusPage.drawText(rTxt, {
+          x:pW-MARGIN-rW, y:footerH-14, size:7, font:fontR,
+          color:rgb(.5,.5,.5), opacity:.8,
+        });
+      }
+
+      // Bara titlu
+      cartusPage.drawRectangle({
+        x:MARGIN, y:cartusBottom+cartusH-titleH,
+        width:pW-MARGIN*2, height:titleH,
+        color:rgb(1,1,1), borderColor:rgb(0,0,0), borderWidth:0.8,
+      });
+      cartusPage.drawText('SEMNAT SI APROBAT', {
+        x:MARGIN+8, y:cartusBottom+cartusH-titleH+6,
+        size:7, font:fontB, color:rgb(0,0,0),
+      });
+
+      // Celule semnatari
+      signersIn.forEach((s, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const cx  = MARGIN + col*cellW;
+        const cy  = cartusBottom + (rows-1-row)*cellH;
+        const infoY = cy + sigH;
+
+        // Bordura celulă
+        cartusPage.drawRectangle({
+          x:cx, y:cy, width:cellW, height:cellH,
+          color:rgb(.97,.97,.97), borderColor:rgb(.2,.2,.2), borderWidth:1,
+        });
+        // Linie separatoare info/semnătură
+        cartusPage.drawLine({
+          start:{x:cx,y:infoY}, end:{x:cx+cellW,y:infoY},
+          thickness:0.5, color:rgb(.3,.3,.3),
+        });
+
+        // Info semnatar: rol
+        cartusPage.drawText(ro(s.rol||s.atribut||'—'), {
+          x:cx+5, y:infoY+infoH-12, size:7, font:fontB,
+          color:rgb(.1,.1,.1), maxWidth:cellW-10,
+        });
+        // Nume + funcție
+        const nf = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
+        if (nf) cartusPage.drawText(nf, {
+          x:cx+5, y:infoY+infoH-23, size:6.5, font:fontR,
+          color:rgb(.15,.15,.15), maxWidth:cellW-10,
+        });
+
+        // Zona de semnătură — spațiu rezervat pentru câmpul Java
+        // Fundal ușor albastru-gri ca placeholder vizual
+        cartusPage.drawRectangle({
+          x:cx+1, y:cy+1, width:cellW-2, height:sigH-2,
+          color:rgb(.96,.96,.98),
+        });
+      });
+    }
+
+    return Buffer.from(
+      await pdfDoc.save({ useObjectStreams: false })
+    ).toString('base64');
+
+  } catch (e) {
+    logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)');
+    return pdfB64;
+  }
+}) {
   if (!pdfB64 || !PDFLib) return pdfB64;
 
   // HARD STOP: nu rescriem niciodată un PDF deja semnat.
@@ -1500,7 +1655,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT, version: APP_VERSION, build: 'b243', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
+  logger.info({ port: PORT, version: APP_VERSION, build: 'b244', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry().then(async () => {
     // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway
