@@ -28,6 +28,7 @@ export async function javaPreparePades({
   fieldName,
   signerName,
   signerRole,
+  signerFunction,
   reason,
   location,
   contactInfo,
@@ -41,7 +42,7 @@ export async function javaPreparePades({
   fieldAlreadyExists = false,    // b242: true=câmpul /Sig exista deja în PDF (pre-creat la flow creation)
 }) {
   return postJson('/api/pades/prepare', {
-    pdfBase64, fieldName, signerName, signerRole, reason, location, contactInfo,
+    pdfBase64, fieldName, signerName, signerRole, signerFunction, reason, location, contactInfo,
     page, x, y, width, height, useSignedAttributes, subFilter,
     signerCertificatePem,  // null → no signing-cert-v2; string → inclus în signedAttrs
     signerIndex,

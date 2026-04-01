@@ -884,7 +884,7 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
   }
 
   try {
-    const { PDFDocument, rgb, StandardFonts, degrees } = PDFLib;
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
     const diacr = {
       'ă':'a','â':'a','î':'i','ș':'s','ț':'t',
       'Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T',
@@ -895,30 +895,9 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
     const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
     const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
     const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    let lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
-    let { width: pW, height: pH } = lastPage.getSize();
+    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+    const { width: pW } = lastPage.getSize();
     const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
-
-    const signers = Array.isArray(flowData?.signers) ? flowData.signers : [];
-    const signerCount = Math.max(0, signers.length);
-    const maxCols = 3;
-    const cols = Math.min(maxCols, Math.max(1, signerCount));
-    const rows = Math.max(1, Math.ceil(Math.max(1, signerCount) / maxCols));
-    const boxGapX = 12;
-    const boxGapY = 12;
-    const boxH = 102;
-    const usableW = pW - (MARGIN * 2);
-    const boxW = Math.max(140, (usableW - boxGapX * (cols - 1)) / cols);
-    const gridH = rows * boxH + (rows - 1) * boxGapY;
-    const footerTopY = footerY + 10;
-    const availableBottomH = 170;
-
-    // Pentru 4+ semnatari sau când nu încape elegant jos, adăugăm pagină dedicată de semnături.
-    if (signerCount > 3 || gridH > availableBottomH) {
-      lastPage = pdfDoc.addPage([pW, pH]);
-      ({ width: pW, height: pH } = lastPage.getSize());
-    }
 
     const createdDate = flowData.createdAt
       ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
@@ -938,7 +917,7 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
     const leftMaxWidth = rightX - MARGIN - 8;
 
     lastPage.drawLine({
-      start: { x: MARGIN, y: footerTopY }, end: { x: pW - MARGIN, y: footerTopY },
+      start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 },
       thickness: 0.4, color: rgb(0.75, 0.75, 0.75)
     });
     lastPage.drawText(footerLeft,  { x: MARGIN,  y: footerY, size: FONT_SIZE, font: fontR,
@@ -946,56 +925,41 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
     lastPage.drawText(footerRight, { x: rightX,  y: footerY, size: FONT_SIZE, font: fontR,
       color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
 
+    const signersIn = Array.isArray(flowData.signers) ? flowData.signers : [];
     const signerRects = [];
-    if (signerCount > 0) {
-      const gridTopY = footerTopY + 18 + gridH;
-      const baseY = footerTopY + 16;
-      const watermarkSize = Math.max(18, Math.min(26, boxW / 8));
 
-      for (let i = 0; i < signerCount; i++) {
-        const col = i % cols;
-        const row = Math.floor(i / maxCols);
-        const x = MARGIN + col * (boxW + boxGapX);
-        const y = baseY + (rows - 1 - row) * (boxH + boxGapY);
-        const w = boxW;
-        const h = boxH;
+    if ((flowData.flowType || 'tabel') !== 'ancore' && signersIn.length > 0) {
+      const count = Math.min(signersIn.length, 6);
+      const cols = Math.min(count, 3);
+      const rows = count > 3 ? 2 : 1;
+      const gapX = 10;
+      const gapY = 10;
+      const usableW = pW - MARGIN * 2;
+      const cellW = Math.floor((usableW - gapX * (cols - 1)) / cols);
+      const cellH = rows === 1 ? 82 : 72;
+      const baseY = footerY + 24;
+      const totalH = rows * cellH + (rows - 1) * gapY;
+      const topY = baseY + totalH - cellH;
+      const pageNo = pdfDoc.getPageCount();
 
-        // Chenar discret, premium
-        lastPage.drawRectangle({
-          x, y, width: w, height: h,
-          borderColor: rgb(0.20, 0.20, 0.20),
-          borderWidth: 0.8,
-          color: rgb(1, 1, 1),
-          opacity: 1,
-          borderOpacity: 0.9,
-        });
-
-        // Watermark discret DocFlowAI în fundalul casetei
-        const wm = 'DocFlowAI';
-        const wmW = fontB.widthOfTextAtSize(wm, watermarkSize);
-        lastPage.drawText(wm, {
-          x: x + Math.max(10, (w - wmW) / 2),
-          y: y + Math.max(18, (h / 2) - 4),
-          size: watermarkSize,
-          font: fontB,
-          color: rgb(0.88, 0.90, 0.94),
-          opacity: 0.18,
-          rotate: degrees(0),
-        });
-
+      for (let i = 0; i < count; i++) {
+        const row = Math.floor(i / 3);
+        const col = i % 3;
+        const x = MARGIN + col * (cellW + gapX);
+        const y = topY - row * (cellH + gapY);
         signerRects.push({
-          page: pdfDoc.getPageCount(),
-          x: Math.round((x + 6) * 100) / 100,
-          y: Math.round((y + 6) * 100) / 100,
-          w: Math.round((w - 12) * 100) / 100,
-          h: Math.round((h - 12) * 100) / 100,
+          x: Math.round(x),
+          y: Math.round(y),
+          w: Math.round(cellW),
+          h: Math.round(cellH),
+          page: pageNo,
         });
       }
     }
 
     const isAncore = flowData.flowType === 'ancore';
-    const outPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
-    return { pdfB64: outPdf, signerRects };
+    const savedB64 = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
+    return { pdfB64: savedB64, signerRects };
 
   } catch (e) {
     logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)');
