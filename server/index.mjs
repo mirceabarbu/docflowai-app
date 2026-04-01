@@ -869,14 +869,11 @@ function pdfLooksSigned(pdfB64) {
   } catch { return false; }
 }
 
-// ── stampFooterOnPdf b247 ─────────────────────────────────────────────────
-// ARHITECTURA CORECTA MULTI-SEMNATAR:
-//   - Desenează footer + cartuș vizual "SEMNAT SI APROBAT"
-//   - Creează câmpuri AcroForm /Sig (sig_1, sig_2...) în zona de semnătură a fiecărei celule
-//   - Returnează { pdfB64, signerFields: [{fieldName, pageIndex}] }
-//   - crud.mjs stochează signer.padesFieldName
-//   - Java găsește câmpul EXISTENT și adaugă NUMAI ByteRange+Contents (zero alte modificări)
-//   - TOATE câmpurile există în revizia 0 → Adobe nu vede modificări structurale între revizii
+// ── stampFooterOnPdf b248 ─────────────────────────────────────────────────
+// REGULA: desenează cartuș vizual FĂRĂ câmpuri AcroForm.
+// Câmpurile /Sig sunt create de Java la semnare (câmp NOU în fiecare revizie).
+// Această abordare a funcționat în b243 și este singura compatibilă cu multi-sign PAdES.
+// Returnează { pdfB64, signerRects: [{x,y,w,h,page}] } — coords exacte celulă/semnatar.
 // HARD STOP: niciodată nu rescrie un PDF deja semnat.
 async function stampFooterOnPdf(pdfB64, flowData) {
   if (!flowData) { flowData = {}; }
@@ -890,13 +887,8 @@ async function stampFooterOnPdf(pdfB64, flowData) {
 
   try {
     var PDFDocument  = PDFLib.PDFDocument;
-    var PDFName      = PDFLib.PDFName;
-    var PDFNumber    = PDFLib.PDFNumber;
-    var PDFString    = PDFLib.PDFString;
-    var PDFArray     = PDFLib.PDFArray;
     var rgb          = PDFLib.rgb;
     var StandardFonts = PDFLib.StandardFonts;
-
     var diacr = {
       'ă':'a','â':'a','î':'i','ș':'s','ț':'t',
       'Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T',
@@ -906,19 +898,19 @@ async function stampFooterOnPdf(pdfB64, flowData) {
       return String(t || '').split('').map(function(c) { return diacr[c] || c; }).join('');
     }
 
-    var clean   = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    var pdfDoc  = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
-    var fontR   = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    var fontB   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    var pages   = pdfDoc.getPages();
+    var clean    = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    var pdfDoc   = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
+    var fontR    = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    var fontB    = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    var pages    = pdfDoc.getPages();
     var lastPage = pages[pages.length - 1];
     var pw = lastPage.getSize().width;
     var ph = lastPage.getSize().height;
-    var MARGIN = 40;
+    var MARGIN   = 40;
     var FONT_SIZE = 7;
     var isAncore  = (flowData.flowType || 'tabel') === 'ancore';
     var signersIn = Array.isArray(flowData.signers) ? flowData.signers : [];
-    var signerFields = []; // [{fieldName, pageIndex}]
+    var signerRects = [];  // [{x,y,w,h,page}] — coords exacte, 1-based page
 
     // ── Footer ────────────────────────────────────────────────────────────
     var footerY = 14;
@@ -948,7 +940,8 @@ async function stampFooterOnPdf(pdfB64, flowData) {
       color: rgb(0.5, 0.5, 0.5), opacity: 0.8,
     });
 
-    // ── Cartuș vizual + câmpuri AcroForm /Sig ─────────────────────────────
+    // ── Cartuș vizual (FĂRĂ câmpuri AcroForm) ────────────────────────────
+    // Câmpurile /Sig sunt create de Java la semnare → multi-sign PAdES garantat corect
     if (!isAncore && signersIn.length > 0) {
       var n     = signersIn.length;
       var cols  = Math.min(n, 3);
@@ -967,10 +960,10 @@ async function stampFooterOnPdf(pdfB64, flowData) {
       var cartusPage, cartusPageIndex;
       if (freeSpace >= cartusTotal) {
         cartusPage      = lastPage;
-        cartusPageIndex = pages.length - 1;
+        cartusPageIndex = pages.length;  // 1-based
       } else {
         cartusPage      = pdfDoc.addPage([pw, ph]);
-        cartusPageIndex = pdfDoc.getPageCount() - 1;
+        cartusPageIndex = pdfDoc.getPageCount();  // 1-based
         var rTxt = ro(flowData.flowId || '') + '  |  DocFlowAI';
         var rW   = fontR.widthOfTextAtSize(rTxt, 7);
         cartusPage.drawLine({
@@ -994,7 +987,7 @@ async function stampFooterOnPdf(pdfB64, flowData) {
         size: 7, font: fontB, color: rgb(0, 0, 0),
       });
 
-      // Celule semnatari + câmpuri /Sig
+      // Celule semnatari — NUMAI vizual, FĂRĂ AcroForm
       for (var i = 0; i < signersIn.length; i++) {
         var s   = signersIn[i];
         var col = i % cols;
@@ -1013,8 +1006,7 @@ async function stampFooterOnPdf(pdfB64, flowData) {
           start: { x: cx, y: infoY }, end: { x: cx + cellW, y: infoY },
           thickness: 0.5, color: rgb(0.3, 0.3, 0.3),
         });
-
-        // Info semnatar: rol (bold)
+        // Rol (bold)
         var rolText = ro(s.rol || s.atribut || '—');
         cartusPage.drawText(rolText, {
           x: cx + 5, y: infoY + infoH - 12, size: 7, font: fontB,
@@ -1028,61 +1020,21 @@ async function stampFooterOnPdf(pdfB64, flowData) {
             color: rgb(0.15, 0.15, 0.15), maxWidth: cellW - 10,
           });
         }
-
-        // Zona semnătură — fundal bleu discret, gol (Java va completa câmpul /Sig)
+        // Zona semnătură: fundal bleu discret FĂRĂ text
+        // Java va crea câmpul /Sig aici cu textul propriu (Semnat digital / Nume · data / STS Cloud QES)
         cartusPage.drawRectangle({
           x: cx + 1, y: cy + 1, width: cellW - 2, height: sigH - 2,
           color: rgb(0.94, 0.96, 0.99),
         });
 
-        // ── Câmp AcroForm /Sig pentru acest semnatar ─────────────────────
-        // Creat O SINGURA DATA în revizia 0 → Adobe acceptă semnări ulterioare
-        var fieldName = 'sig_' + (i + 1);
-        var rx1 = cx + 1;
-        var ry1 = cy + 1;
-        var rx2 = cx + cellW - 1;
-        var ry2 = cy + sigH - 1;
-
-        var widgetDict = pdfDoc.context.obj({
-          Type:    PDFName.of('Annot'),
-          Subtype: PDFName.of('Widget'),
-          FT:      PDFName.of('Sig'),
-          T:       PDFString.of(fieldName),
-          Rect:    pdfDoc.context.obj([rx1, ry1, rx2, ry2]),
-          F:       PDFNumber.of(4),
-          P:       cartusPage.ref,
+        // Stocăm coords exacte pentru Java (1-based page)
+        signerRects.push({
+          x: Math.round(cx + 1),
+          y: Math.round(cy + 1),
+          w: Math.round(cellW - 2),
+          h: Math.round(sigH - 2),
+          page: cartusPageIndex,
         });
-        var widgetRef = pdfDoc.context.register(widgetDict);
-
-        // AcroForm Fields
-        var acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-        var acroFormDict;
-        if (!acroFormRef) {
-          acroFormDict = pdfDoc.context.obj({ Fields: pdfDoc.context.obj([]) });
-          var newRef = pdfDoc.context.register(acroFormDict);
-          pdfDoc.catalog.set(PDFName.of('AcroForm'), newRef);
-        } else {
-          acroFormDict = pdfDoc.context.lookup(acroFormRef);
-        }
-        var fieldsRef = acroFormDict.get(PDFName.of('Fields'));
-        var fieldsArr = fieldsRef ? pdfDoc.context.lookup(fieldsRef) : pdfDoc.context.obj([]);
-        if (!fieldsRef) { acroFormDict.set(PDFName.of('Fields'), fieldsArr); }
-        acroFormDict.set(PDFName.of('SigFlags'), PDFNumber.of(3));
-        fieldsArr.push(widgetRef);
-
-        // Page Annots
-        var annotsKey  = PDFName.of('Annots');
-        var pageAnnots = cartusPage.node.get(annotsKey);
-        if (!pageAnnots) {
-          pageAnnots = pdfDoc.context.obj([]);
-          cartusPage.node.set(annotsKey, pageAnnots);
-        } else if (pageAnnots.constructor && pageAnnots.constructor.name !== 'PDFArray') {
-          pageAnnots = pdfDoc.context.lookup(pageAnnots);
-        }
-        pageAnnots.push(widgetRef);
-
-        signerFields.push({ fieldName: fieldName, pageIndex: cartusPageIndex });
-        logger.debug({ fieldName: fieldName }, 'b247: câmp /Sig creat în cartuș');
       }
     }
 
@@ -1090,10 +1042,10 @@ async function stampFooterOnPdf(pdfB64, flowData) {
       await pdfDoc.save({ useObjectStreams: false })
     ).toString('base64');
 
-    logger.info({ signerCount: signerFields.length, flowId: flowData.flowId },
-      'b247: stampFooterOnPdf OK — footer + cartus + campuri /Sig pre-create');
+    logger.info({ signerCount: signerRects.length, flowId: flowData.flowId },
+      'b248: stampFooterOnPdf OK — footer + cartus vizual, ZERO AcroForm (Java face campurile)');
 
-    return { pdfB64: savedB64, signerFields: signerFields };
+    return { pdfB64: savedB64, signerRects: signerRects };
 
   } catch (e) {
     logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)');
@@ -1667,7 +1619,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT, version: APP_VERSION, build: 'b247', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
+  logger.info({ port: PORT, version: APP_VERSION, build: 'b248', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry().then(async () => {
     // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway

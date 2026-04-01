@@ -135,12 +135,10 @@ const createFlow = async (req, res) => {
         });
         if (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) {
           finalPdfB64 = _stampResult.pdfB64;
-          // b247: stocăm fieldName câmp /Sig pre-creat per semnatar
-          if (Array.isArray(_stampResult.signerFields) && _stampResult.signerFields.length > 0) {
-            _stampResult.signerFields.forEach(function(sf, i) {
-              if (normalizedSigners[i]) {
-                normalizedSigners[i].padesFieldName = sf.fieldName;
-              }
+          // b248: stochează coords celulă semnătură per semnatar
+          if (Array.isArray(_stampResult.signerRects) && _stampResult.signerRects.length > 0) {
+            _stampResult.signerRects.forEach(function(rect, i) {
+              if (normalizedSigners[i]) { normalizedSigners[i].padesRect = rect; }
             });
           }
         } else if (typeof _stampResult === 'string' && _stampResult.length > 0) {
