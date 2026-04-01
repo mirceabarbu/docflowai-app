@@ -30,6 +30,18 @@ export function _injectDeps(d) {
 
 const router = Router();
 
+function extractCertCommonName(certPem) {
+  try {
+    if (!certPem) return '';
+    const cert = new crypto.X509Certificate(certPem);
+    const m = /(?:^|,)\s*CN=([^,]+)/.exec(cert.subject || '');
+    return m?.[1]?.trim() || '';
+  } catch {
+    return '';
+  }
+}
+
+
 import { getOrgProviders, getOrgProviderConfig, getProvider } from '../../signing/index.mjs';
 import { javaPreparePades, javaFinalizePades, hasJavaSigningService } from '../../signing/java-pades-client.mjs';
 
@@ -133,13 +145,11 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
           page: sigPage, x: sigX, y: sigY, w: sigW, h: sigH2 },
           'STS callback: Java prepare — câmp NOU în celula cartuș');
 
-        const certCn = extractCertCommonName(certPem);
         const prepareRes = await javaPreparePades({
           pdfBase64: rawPdf,
           fieldName,
-          signerName: certCn || signer?.name || signer?.fullName || 'Semnatar',
+          signerName: extractCertCommonName(certPem) || signer?.name || signer?.fullName || 'Semnatar',
           signerRole: signer?.rol || signer?.role || signer?.atribut || 'SEMNATAR',
-          signerFunction: signer?.functie || signer?.function || '',
           reason: 'Semnare DocFlowAI',
           location: 'Romania',
           contactInfo: signer?.email || '',
@@ -649,17 +659,4 @@ router.post('/flows/:flowId/signing-callback', async (req, res) => {
 
 
 
-export default router;function extractCertCommonName(certPem) {
-  try {
-    if (!certPem) return '';
-    const { X509Certificate } = crypto;
-    const x509 = new X509Certificate(certPem);
-    const subj = x509.subject || '';
-    const m = subj.match(/CN=([^,\n]+)/);
-    return (m?.[1] || '').trim();
-  } catch {
-    return '';
-  }
-}
-
-
+export default router;

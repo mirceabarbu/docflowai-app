@@ -858,150 +858,170 @@ function pdfLooksSigned(pdfB64) {
   try {
     if (!pdfB64) return false;
     const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    const buf = Buffer.from(clean, 'base64');
-    const sample = buf.toString('latin1');
+    const sample = Buffer.from(clean, 'base64').toString('latin1');
     return (
-      sample.includes('/ByteRange') ||
-      sample.includes('/Contents<') ||
-      sample.includes('/Contents <') ||
+      sample.includes('/ByteRange') || sample.includes('/Contents<') ||
+      sample.includes('/Contents <') || sample.includes('/Type/Sig') ||
+      sample.includes('/Type /Sig') ||
       sample.includes('/SubFilter/ETSI.CAdES.detached') ||
-      sample.includes('/SubFilter /ETSI.CAdES.detached') ||
-      sample.includes('/Type/Sig') ||
-      sample.includes('/Type /Sig')
+      sample.includes('/SubFilter /ETSI.CAdES.detached')
     );
   } catch { return false; }
 }
 
-async function stampFooterOnPdf(pdfB64, flowData = {}) {
+// ── stampFooterOnPdf b252 ─────────────────────────────────────────────────
+// TEST DECISIV: cartus vizual pe pagina EXISTENTA (ZERO addPage, ZERO AcroForm).
+// Daca multi-sign merge → addPage() era cauza coruptiei.
+// Daca nu merge → cartusul insusi e incompatibil → ramanem la b243 (footer only).
+// fieldAlreadyExists=false (Java creeaza camp NOU per semnatar, ca in b243).
+// Returneaza { pdfB64, signerRects: [{x,y,w,h,page}] } pentru coordonate Java.
+async function stampFooterOnPdf(pdfB64, flowData) {
+  if (!flowData) flowData = {};
   if (!pdfB64 || !PDFLib) return pdfB64;
 
-  if (flowData?.preventRewriteIfSigned !== false && pdfLooksSigned(pdfB64)) {
-    logger.warn({ flowId: flowData?.flowId, flowType: flowData?.flowType },
-      'stampFooterOnPdf skipped: PDF already contains signatures');
+  if (flowData.preventRewriteIfSigned !== false && pdfLooksSigned(pdfB64)) {
+    logger.warn({ flowId: flowData.flowId }, 'stampFooterOnPdf skipped: already signed');
     return pdfB64;
   }
 
   try {
-    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const PDFDocument   = PDFLib.PDFDocument;
+    const rgb           = PDFLib.rgb;
+    const StandardFonts = PDFLib.StandardFonts;
     const diacr = {
       'ă':'a','â':'a','î':'i','ș':'s','ț':'t',
       'Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T',
-      'ş':'s','ţ':'t','Ş':'S','Ţ':'T'
+      'ş':'s','ţ':'t','Ş':'S','Ţ':'T',
     };
-    const ro = (t) => String(t || '').split('').map(ch => diacr[ch] || ch).join('');
+    const ro = (t) => String(t || '').split('').map((c) => diacr[c] || c).join('');
 
-    const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const clean  = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
     const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    let page = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
-    let { width: pW, height: pH } = page.getSize();
-
+    const fontR  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontB  = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const pages  = pdfDoc.getPages();
+    const lastPage = pages[pages.length - 1];
+    const { width: pw, height: ph } = lastPage.getSize();
     const MARGIN = 40;
-    const footerY = 14;
-    const FOOTER_SIZE = 7;
+    const FOOTER_Y = 14;
+    const FOOTER_H = 28;
+    const signerRects = [];
+    const signersIn = Array.isArray(flowData.signers) ? flowData.signers : [];
+    const isAncore = (flowData.flowType || 'tabel') === 'ancore';
 
+    // footer
     const createdDate = flowData.createdAt
       ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
       : new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
-
     const parts = [
       ro(flowData.initName || ''),
-      flowData.initFunctie  ? ro(flowData.initFunctie)  : null,
-      flowData.institutie   ? ro(flowData.institutie)   : null,
+      flowData.initFunctie ? ro(flowData.initFunctie) : null,
+      flowData.institutie ? ro(flowData.institutie) : null,
       flowData.compartiment ? ro(flowData.compartiment) : null,
     ].filter(Boolean).join(', ');
-
-    const footerLeft  = createdDate + (parts ? '  |  ' + parts : '');
+    const footerLeft = createdDate + (parts ? '  |  ' + parts : '');
     const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
+    const rightWidth = fontR.widthOfTextAtSize(footerRight, 7);
+    const rightX = pw - MARGIN - rightWidth;
 
-    const signersIn = Array.isArray(flowData.signers) ? flowData.signers : [];
-    const signerRects = [];
+    lastPage.drawLine({
+      start: { x: MARGIN, y: FOOTER_Y + 10 },
+      end: { x: pw - MARGIN, y: FOOTER_Y + 10 },
+      thickness: 0.4,
+      color: rgb(0.75, 0.75, 0.75),
+    });
+    lastPage.drawText(footerLeft, {
+      x: MARGIN,
+      y: FOOTER_Y,
+      size: 7,
+      font: fontR,
+      color: rgb(0.5, 0.5, 0.5),
+      opacity: 0.8,
+      maxWidth: rightX - MARGIN - 8,
+    });
+    lastPage.drawText(footerRight, {
+      x: rightX,
+      y: FOOTER_Y,
+      size: 7,
+      font: fontR,
+      color: rgb(0.5, 0.5, 0.5),
+      opacity: 0.8,
+    });
 
-    if ((flowData.flowType || 'tabel') !== 'ancore' && signersIn.length > 0) {
-      const count = Math.min(signersIn.length, 6);
-      const cols = Math.min(count, 3);
-      const rows = count > 3 ? 2 : 1;
+    if (!isAncore && signersIn.length > 0) {
+      const n = signersIn.length;
+      let cols = 3;
+      if (n === 1) cols = 1;
+      else if (n === 2) cols = 2;
+      else if (n === 3) cols = 3;
+      else if (n === 4) cols = 2;
+      else cols = 3;
+      const rows = Math.ceil(n / cols);
+
+      const availableW = pw - MARGIN * 2;
       const gapX = 12;
-      const gapY = 12;
-      const usableW = pW - MARGIN * 2;
-      const cellW = (usableW - gapX * (cols - 1)) / cols;
-      const cellH = rows === 1 ? 94 : 82;
-      const footerBlockH = 28;
-      const baseY = footerY + footerBlockH + 10;
-      const totalH = rows * cellH + (rows - 1) * gapY;
-
-      if (baseY + totalH + 14 > pH) {
-        page = pdfDoc.addPage([pW, pH]);
-        ({ width: pW, height: pH } = page.getSize());
+      const gapY = 10;
+      const boxW = Math.floor((availableW - gapX * (cols - 1)) / cols);
+      const boxH = rows === 1 ? 74 : 66;
+      const totalH = rows * boxH + (rows - 1) * gapY;
+      const baseY = FOOTER_H + 8;
+      const topY = baseY + totalH;
+      const maxTop = ph - 48;
+      if (topY > maxTop) {
+        logger.warn({ flowId: flowData.flowId, topY, maxTop, signerCount: n }, 'cartus exceeds preferred height; using compact layout');
       }
 
-      const totalWidth = cols * cellW + (cols - 1) * gapX;
-      const startX = MARGIN + Math.max(0, (usableW - totalWidth) / 2);
-      const topY = footerY + footerBlockH + totalH - cellH + 10;
-      const pageNo = pdfDoc.getPages().indexOf(page) + 1;
+      const pageIdx = pages.length;
+      for (let i = 0; i < n; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const itemsInRow = Math.min(cols, n - row * cols);
+        const rowTotalW = itemsInRow * boxW + (itemsInRow - 1) * gapX;
+        const rowStartX = MARGIN + Math.max(0, Math.floor((availableW - rowTotalW) / 2));
+        const x = rowStartX + col * (boxW + gapX);
+        const y = baseY + (rows - 1 - row) * (boxH + gapY);
+        const s = signersIn[i] || {};
+        const role = ro(s.rol || s.atribut || s.role || 'SEMNATAR');
+        const func = ro(s.functie || s.function || s.title || '');
 
-      for (let i = 0; i < count; i++) {
-        const row = Math.floor(i / 3);
-        const col = i % 3;
-        const x = startX + col * (cellW + gapX);
-        const y = topY - row * (cellH + gapY);
-
-        signerRects.push({
-          x: Math.round(x),
-          y: Math.round(y),
-          w: Math.round(cellW),
-          h: Math.round(cellH),
-          page: pageNo,
-        });
-
-        page.drawRectangle({
-          x, y, width: cellW, height: cellH,
-          borderColor: rgb(0.20, 0.20, 0.20),
+        lastPage.drawRectangle({
+          x, y, width: boxW, height: boxH,
+          color: rgb(0.99, 0.99, 0.99),
+          borderColor: rgb(0.15, 0.15, 0.15),
           borderWidth: 0.9,
         });
 
-        const s = signersIn[i] || {};
-        const role = ro(s.rol || s.role || s.atribut || 'SEMNATAR').toUpperCase();
-        const functie = ro(s.functie || s.function || s.title || '');
-        const topX = x + 6;
-        let ty = y + cellH - 16;
-        page.drawText(role, {
-          x: topX, y: ty, size: 8.5, font: fontB, color: rgb(0.12, 0.12, 0.12)
+        lastPage.drawText(role, {
+          x: x + 8,
+          y: y + boxH - 20,
+          size: 7.5,
+          font: fontB,
+          color: rgb(0.07, 0.07, 0.07),
+          maxWidth: boxW - 16,
         });
-        ty -= 12;
-        if (functie) {
-          page.drawText(functie, {
-            x: topX, y: ty, size: 7.5, font, color: rgb(0.18, 0.18, 0.18),
-            maxWidth: cellW - 12
+        if (func.trim()) {
+          lastPage.drawText(func, {
+            x: x + 8,
+            y: y + boxH - 35,
+            size: 6.5,
+            font: fontR,
+            color: rgb(0.15, 0.15, 0.15),
+            maxWidth: boxW - 16,
           });
         }
+
+        signerRects.push({
+          x: Math.round(x + 4),
+          y: Math.round(y + 4),
+          w: Math.round(boxW - 8),
+          h: Math.round(boxH - 8),
+          page: pageIdx,
+        });
       }
     }
 
-    const footerPage = page;
-    const rightWidth  = font.widthOfTextAtSize(footerRight, FOOTER_SIZE);
-    const rightX      = pW - MARGIN - rightWidth;
-    const leftMaxWidth = rightX - MARGIN - 8;
-
-    footerPage.drawLine({
-      start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 },
-      thickness: 0.4, color: rgb(0.75, 0.75, 0.75)
-    });
-    footerPage.drawText(footerLeft,  {
-      x: MARGIN, y: footerY, size: FOOTER_SIZE, font,
-      color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth
-    });
-    footerPage.drawText(footerRight, {
-      x: rightX, y: footerY, size: FOOTER_SIZE, font,
-      color: rgb(0.5, 0.5, 0.5), opacity: 0.8
-    });
-
-    const isAncore = flowData.flowType === 'ancore';
-    const savedB64 = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
+    const savedB64 = Buffer.from(await pdfDoc.save({ useObjectStreams: false })).toString('base64');
     return { pdfB64: savedB64, signerRects };
-
   } catch (e) {
     logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)');
     return pdfB64;
@@ -1574,7 +1594,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT, version: APP_VERSION, build: 'b243', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
+  logger.info({ port: PORT, version: APP_VERSION, build: 'b252', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry().then(async () => {
     // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway
