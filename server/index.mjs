@@ -875,8 +875,6 @@ function pdfLooksSigned(pdfB64) {
 async function stampFooterOnPdf(pdfB64, flowData = {}) {
   if (!pdfB64 || !PDFLib) return pdfB64;
 
-  // HARD STOP: nu rescriem niciodată un PDF deja semnat.
-  // Orice save() cu pdf-lib după semnare poate invalida semnăturile anterioare.
   if (flowData?.preventRewriteIfSigned !== false && pdfLooksSigned(pdfB64)) {
     logger.warn({ flowId: flowData?.flowId, flowType: flowData?.flowType },
       'stampFooterOnPdf skipped: PDF already contains signatures');
@@ -890,14 +888,19 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
       'Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T',
       'ş':'s','ţ':'t','Ş':'S','Ţ':'T'
     };
-    function ro(t) { return String(t || '').split('').map(ch => diacr[ch] || ch).join(''); }
+    const ro = (t) => String(t || '').split('').map(ch => diacr[ch] || ch).join('');
 
     const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
     const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
-    const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
-    const { width: pW } = lastPage.getSize();
-    const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    let page = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+    let { width: pW, height: pH } = page.getSize();
+
+    const MARGIN = 40;
+    const footerY = 14;
+    const FOOTER_SIZE = 7;
 
     const createdDate = flowData.createdAt
       ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
@@ -912,18 +915,6 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
 
     const footerLeft  = createdDate + (parts ? '  |  ' + parts : '');
     const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
-    const rightWidth  = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
-    const rightX      = pW - MARGIN - rightWidth;
-    const leftMaxWidth = rightX - MARGIN - 8;
-
-    lastPage.drawLine({
-      start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 },
-      thickness: 0.4, color: rgb(0.75, 0.75, 0.75)
-    });
-    lastPage.drawText(footerLeft,  { x: MARGIN,  y: footerY, size: FONT_SIZE, font: fontR,
-      color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth });
-    lastPage.drawText(footerRight, { x: rightX,  y: footerY, size: FONT_SIZE, font: fontR,
-      color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
 
     const signersIn = Array.isArray(flowData.signers) ? flowData.signers : [];
     const signerRects = [];
@@ -932,21 +923,31 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
       const count = Math.min(signersIn.length, 6);
       const cols = Math.min(count, 3);
       const rows = count > 3 ? 2 : 1;
-      const gapX = 10;
-      const gapY = 10;
+      const gapX = 12;
+      const gapY = 12;
       const usableW = pW - MARGIN * 2;
-      const cellW = Math.floor((usableW - gapX * (cols - 1)) / cols);
-      const cellH = rows === 1 ? 82 : 72;
-      const baseY = footerY + 24;
+      const cellW = (usableW - gapX * (cols - 1)) / cols;
+      const cellH = rows === 1 ? 94 : 82;
+      const footerBlockH = 28;
+      const baseY = footerY + footerBlockH + 10;
       const totalH = rows * cellH + (rows - 1) * gapY;
-      const topY = baseY + totalH - cellH;
-      const pageNo = pdfDoc.getPageCount();
+
+      if (baseY + totalH + 14 > pH) {
+        page = pdfDoc.addPage([pW, pH]);
+        ({ width: pW, height: pH } = page.getSize());
+      }
+
+      const totalWidth = cols * cellW + (cols - 1) * gapX;
+      const startX = MARGIN + Math.max(0, (usableW - totalWidth) / 2);
+      const topY = footerY + footerBlockH + totalH - cellH + 10;
+      const pageNo = pdfDoc.getPages().indexOf(page) + 1;
 
       for (let i = 0; i < count; i++) {
         const row = Math.floor(i / 3);
         const col = i % 3;
-        const x = MARGIN + col * (cellW + gapX);
+        const x = startX + col * (cellW + gapX);
         const y = topY - row * (cellH + gapY);
+
         signerRects.push({
           x: Math.round(x),
           y: Math.round(y),
@@ -954,8 +955,48 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
           h: Math.round(cellH),
           page: pageNo,
         });
+
+        page.drawRectangle({
+          x, y, width: cellW, height: cellH,
+          borderColor: rgb(0.20, 0.20, 0.20),
+          borderWidth: 0.9,
+        });
+
+        const s = signersIn[i] || {};
+        const role = ro(s.rol || s.role || s.atribut || 'SEMNATAR').toUpperCase();
+        const functie = ro(s.functie || s.function || s.title || '');
+        const topX = x + 6;
+        let ty = y + cellH - 16;
+        page.drawText(role, {
+          x: topX, y: ty, size: 8.5, font: fontB, color: rgb(0.12, 0.12, 0.12)
+        });
+        ty -= 12;
+        if (functie) {
+          page.drawText(functie, {
+            x: topX, y: ty, size: 7.5, font, color: rgb(0.18, 0.18, 0.18),
+            maxWidth: cellW - 12
+          });
+        }
       }
     }
+
+    const footerPage = page;
+    const rightWidth  = font.widthOfTextAtSize(footerRight, FOOTER_SIZE);
+    const rightX      = pW - MARGIN - rightWidth;
+    const leftMaxWidth = rightX - MARGIN - 8;
+
+    footerPage.drawLine({
+      start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 },
+      thickness: 0.4, color: rgb(0.75, 0.75, 0.75)
+    });
+    footerPage.drawText(footerLeft,  {
+      x: MARGIN, y: footerY, size: FOOTER_SIZE, font,
+      color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth
+    });
+    footerPage.drawText(footerRight, {
+      x: rightX, y: footerY, size: FOOTER_SIZE, font,
+      color: rgb(0.5, 0.5, 0.5), opacity: 0.8
+    });
 
     const isAncore = flowData.flowType === 'ancore';
     const savedB64 = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');

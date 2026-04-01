@@ -135,7 +135,7 @@ const createFlow = async (req, res) => {
         });
         if (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) {
           finalPdfB64 = _stampResult.pdfB64;
-          if (Array.isArray(_stampResult.signerRects) && _stampResult.signerRects.length) {
+          if (Array.isArray(_stampResult.signerRects)) {
             normalizedSigners = normalizedSigners.map((s, i) => ({
               ...s,
               padesRect: _stampResult.signerRects[i] || s.padesRect || null,
