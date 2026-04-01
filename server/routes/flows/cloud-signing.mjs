@@ -118,12 +118,11 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
 
     if (hasJavaSigningService()) {
       try {
-        logger.info({ flowId, signerIdx, hasCert: !!certPem }, 'STS callback: Java prepare cu signing-cert-v2');
-        // Câmpul /Sig e pre-creat la creare flux (signer.padesFieldName)
-        // Java PdfSigner găsește câmpul existent — fără modificare AcroForm/Annots
+        // b250: campul /Sig este PRE-CREAT in revizia 0 (stampFooterOnPdf la creare flux)
+        // Java DOAR completeaza campul existent — ZERO structura noua, ZERO AcroForm changes
         const fieldName = signer?.padesFieldName || `sig_${signerIdx + 1}`;
         logger.info({ flowId, signerIdx, fieldName, hasPadesFieldName: !!signer?.padesFieldName },
-          'STS callback: folosim câmp AcroForm pre-creat la flow creation');
+          'STS callback b250: Java completeaza camp EXISTENT pre-creat in revizia 0');
 
         const prepareRes = await javaPreparePades({
           pdfBase64: rawPdf,
@@ -138,7 +137,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
           subFilter: 'ETSI.CAdES.detached',
           signerCertificatePem: certPem || null,
           signerIndex: signerIdx,
-          fieldAlreadyExists: true,
+          fieldAlreadyExists: true,  // b250: camp pre-creat in revizia 0
         });
         if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
           throw new Error('Java prepare: câmpuri lipsă în răspuns');

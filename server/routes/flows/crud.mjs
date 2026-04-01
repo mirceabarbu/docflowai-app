@@ -3,6 +3,7 @@
  * CRUD fluxuri: creare, citire, actualizare, ștergere, my-flows
  */
 import { Router, json as expressJson } from 'express';
+import { hasJavaSigningService, javaCreateFields } from '../../signing/java-pades-client.mjs';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
@@ -135,16 +136,43 @@ const createFlow = async (req, res) => {
         });
         if (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) {
           finalPdfB64 = _stampResult.pdfB64;
-          // Stocăm padesFieldName pe fiecare semnatar (ordinea e garantată de sort anterior)
-          if (Array.isArray(_stampResult.signerFields) && _stampResult.signerFields.length > 0) {
-            _stampResult.signerFields.forEach((sf, i) => {
-              if (normalizedSigners[i]) {
-                normalizedSigners[i].padesFieldName = sf.fieldName;
+          // b251: dupa vizual pdf-lib, cream campuri /Sig cu iText (evita "repararea" la semnare)
+          // iText creeaza campuri complete → nu modifica structura la semnare → sig_1 ramane valida
+          if (hasJavaSigningService() && Array.isArray(_stampResult.signerFieldNames) &&
+              _stampResult.signerFieldNames.length > 0) {
+            try {
+              const fieldDefs = _stampResult.signerFieldNames.map(function(fn, i) {
+                var rect = (_stampResult.signerRects && _stampResult.signerRects[i]) || null;
+                return {
+                  fieldName: fn,
+                  x: rect ? rect.x : 30 + (i % 3) * 180,
+                  y: rect ? rect.y : 30,
+                  w: rect ? rect.w : 170,
+                  h: rect ? rect.h : 30,
+                  page: rect ? rect.page : 1,
+                };
+              });
+              const createRes = await javaCreateFields({ pdfBase64: finalPdfB64, fields: fieldDefs });
+              if (createRes && createRes.pdfBase64) {
+                finalPdfB64 = createRes.pdfBase64;
+                logger.info({ fieldsCreated: createRes.fieldsCreated, flowId },
+                  'b251: campuri /Sig create de iText — PAdES multi-sign safe');
               }
+              // Stocam padesFieldName pe fiecare semnatar
+              _stampResult.signerFieldNames.forEach(function(fn, i) {
+                if (normalizedSigners[i]) { normalizedSigners[i].padesFieldName = fn; }
+              });
+            } catch (jErr) {
+              logger.warn({ err: jErr }, 'b251: javaCreateFields eroare — continuam fara campuri pre-create');
+            }
+          } else if (Array.isArray(_stampResult.signerFieldNames)) {
+            // Fallback: fara Java service, stocam fieldNames dar fara campuri pre-create
+            _stampResult.signerFieldNames.forEach(function(fn, i) {
+              if (normalizedSigners[i]) { normalizedSigners[i].padesFieldName = fn; }
             });
           }
         } else if (typeof _stampResult === 'string' && _stampResult.length > 0) {
-          finalPdfB64 = _stampResult;  // fallback backward compat
+          finalPdfB64 = _stampResult;
         }
       } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }

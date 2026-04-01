@@ -80,16 +80,13 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
       const baseForStamp = newData.originalPdfB64 || newData.pdfB64;
       if (baseForStamp) {
         try {
-          {
-            const _stampResult = await _stampFooterOnPdf(baseForStamp, {
-              flowId: newFlowId2, createdAt: newCreatedAt,
-              initName: data.initName, initFunctie: data.initFunctie,
-              institutie: data.institutie, compartiment: data.compartiment,
-              flowType: data.flowType || 'tabel',
-              preventRewriteIfSigned: true,
-            });
-            newData.pdfB64 = (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) ? _stampResult.pdfB64 : _stampResult;
-          }
+          newData.pdfB64 = await _stampFooterOnPdf(baseForStamp, {
+            flowId: newFlowId2, createdAt: newCreatedAt,
+            initName: data.initName, initFunctie: data.initFunctie,
+            institutie: data.institutie, compartiment: data.compartiment,
+            flowType: data.flowType || 'tabel',
+            preventRewriteIfSigned: true,
+          });
         } catch(e) { logger.warn({ err: e }, 'Re-stamp footer on reinitiate error:'); }
       }
     }
@@ -249,16 +246,13 @@ router.post('/flows/:flowId/reinitiate-review', _largePdf, async (req, res) => {
     let finalPdfB64 = pdfB64;
     if (finalPdfB64 && _stampFooterOnPdf && (data.flowType || 'tabel') !== 'ancore') {
       try {
-        {
-          const _stampResult = await _stampFooterOnPdf(finalPdfB64, {
-            flowId, createdAt: now,
-            initName: data.initName, initFunctie: data.initFunctie,
-            institutie: data.institutie, compartiment: data.compartiment,
-            flowType: data.flowType || 'tabel',
-            preventRewriteIfSigned: true,
-          });
-          finalPdfB64 = (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) ? _stampResult.pdfB64 : _stampResult;
-        }
+        finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
+          flowId, createdAt: now,
+          initName: data.initName, initFunctie: data.initFunctie,
+          institutie: data.institutie, compartiment: data.compartiment,
+          flowType: data.flowType || 'tabel',
+          preventRewriteIfSigned: true,
+        });
       } catch(e) { logger.warn({ err: e }, 'Re-stamp footer on reinitiate-review error:'); }
     }
 
