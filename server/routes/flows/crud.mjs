@@ -135,6 +135,15 @@ const createFlow = async (req, res) => {
         });
         if (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) {
           finalPdfB64 = _stampResult.pdfB64;
+          // b246: stocăm coordonatele celulei de semnătură per semnatar
+          // Java le folosește pentru a poziționa câmpul exact în celula cartuș
+          if (Array.isArray(_stampResult.signerRects) && _stampResult.signerRects.length > 0) {
+            _stampResult.signerRects.forEach(function(rect, i) {
+              if (normalizedSigners[i]) {
+                normalizedSigners[i].padesRect = rect; // {x,y,w,h,page}
+              }
+            });
+          }
         } else if (typeof _stampResult === 'string' && _stampResult.length > 0) {
           finalPdfB64 = _stampResult;
         }
