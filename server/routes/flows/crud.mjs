@@ -136,10 +136,9 @@ const createFlow = async (req, res) => {
         if (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) {
           finalPdfB64 = _stampResult.pdfB64;
           if (Array.isArray(_stampResult.signerRects)) {
-            normalizedSigners = normalizedSigners.map((s, i) => ({
-              ...s,
-              padesRect: _stampResult.signerRects[i] || s.padesRect || null,
-            }));
+            _stampResult.signerRects.forEach((rect, idx) => {
+              if (normalizedSigners[idx] && rect) normalizedSigners[idx].padesRect = rect;
+            });
           }
         } else if (typeof _stampResult === 'string' && _stampResult.length > 0) {
           finalPdfB64 = _stampResult;

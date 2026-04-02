@@ -30,18 +30,22 @@ export function _injectDeps(d) {
 
 const router = Router();
 
-
-function extractCertCommonName(certPem) {
+function extractCertificateCn(certPem) {
   try {
-    if (!certPem) return '';
+    if (!certPem) return null;
     const cert = new crypto.X509Certificate(certPem);
-    const m = /(?:^|,)\s*CN=([^,]+)/.exec(cert.subject || '');
-    return m?.[1]?.trim() || '';
+    const subject = String(cert.subject || '');
+    let m = subject.match(/(?:^|\n|,)\s*CN\s*=\s*([^,\n]+)/i);
+    if (m?.[1]) return m[1].trim();
+    for (const line of subject.split(/\n+/)) {
+      const mm = line.match(/^CN\s*=\s*(.+)$/i);
+      if (mm?.[1]) return mm[1].trim();
+    }
+    return null;
   } catch {
-    return '';
+    return null;
   }
 }
-
 
 import { getOrgProviders, getOrgProviderConfig, getProvider } from '../../signing/index.mjs';
 import { javaPreparePades, javaFinalizePades, hasJavaSigningService } from '../../signing/java-pades-client.mjs';
@@ -146,11 +150,13 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
           page: sigPage, x: sigX, y: sigY, w: sigW, h: sigH2 },
           'STS callback: Java prepare — câmp NOU în celula cartuș');
 
+        const certCn = extractCertificateCn(certPem) || signer?.certificateCn || signer?.name || signer?.fullName || 'Semnatar';
         const prepareRes = await javaPreparePades({
           pdfBase64: rawPdf,
           fieldName,
-          signerName: extractCertCommonName(certPem) || signer?.name || signer?.fullName || 'Semnatar',
+          signerName: certCn,
           signerRole: signer?.rol || signer?.role || signer?.atribut || 'SEMNATAR',
+          signerFunction: signer?.functie || signer?.function || '',
           reason: 'Semnare DocFlowAI',
           location: 'Romania',
           contactInfo: signer?.email || '',

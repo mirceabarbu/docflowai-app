@@ -892,15 +892,10 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
 
     const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
     const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    let page = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
-    let { width: pW, height: pH } = page.getSize();
-
-    const MARGIN = 40;
-    const footerY = 14;
-    const FOOTER_SIZE = 7;
+    const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+    const { width: pW } = lastPage.getSize();
+    const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
 
     const createdDate = flowData.createdAt
       ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
@@ -915,108 +910,61 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
 
     const footerLeft  = createdDate + (parts ? '  |  ' + parts : '');
     const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
-
-    const signersIn = Array.isArray(flowData.signers) ? flowData.signers : [];
-    const signerRects = [];
-
-    if ((flowData.flowType || 'tabel') !== 'ancore' && signersIn.length > 0) {
-      const count = Math.min(signersIn.length, 6);
-      let cols = 3;
-      if (count === 1) cols = 1;
-      else if (count === 2) cols = 2;
-      else if (count === 3) cols = 3;
-      else if (count === 4) cols = 2;
-      else cols = 3;
-      const rows = Math.ceil(count / cols);
-
-      const gapX = 12;
-      const gapY = 12;
-      const usableW = pW - MARGIN * 2;
-      const cellW = (usableW - gapX * (cols - 1)) / cols;
-      const cellH = rows === 1 ? 88 : 80;
-      const headerH = 30;
-      const footerBlockH = 28;
-      const baseY = footerY + footerBlockH + 10;
-      const totalH = rows * cellH + (rows - 1) * gapY;
-
-      if (baseY + totalH + 14 > pH) {
-        page = pdfDoc.addPage([pW, pH]);
-        ({ width: pW, height: pH } = page.getSize());
-      }
-
-      const pageNo = pdfDoc.getPages().indexOf(page) + 1;
-      const usableW2 = pW - MARGIN * 2;
-      const rowTopY = footerY + footerBlockH + totalH - cellH + 10;
-
-      for (let i = 0; i < count; i++) {
-        const row = Math.floor(i / cols);
-        const col = i % cols;
-        const itemsInRow = Math.min(cols, count - row * cols);
-        const rowWidth = itemsInRow * cellW + (itemsInRow - 1) * gapX;
-        const rowStartX = MARGIN + Math.max(0, (usableW2 - rowWidth) / 2);
-        const x = rowStartX + col * (cellW + gapX);
-        const y = rowTopY - row * (cellH + gapY);
-
-        const s = signersIn[i] || {};
-        const role = ro(s.rol || s.role || s.atribut || 'SEMNATAR').toUpperCase();
-        const functie = ro(s.functie || s.function || s.title || '');
-
-        page.drawRectangle({
-          x, y, width: cellW, height: cellH,
-          borderColor: rgb(0.20, 0.20, 0.20),
-          borderWidth: 0.9,
-        });
-
-        const topX = x + 8;
-        let ty = y + cellH - 18;
-        page.drawText(role, {
-          x: topX, y: ty, size: 8.8, font: fontB, color: rgb(0.12, 0.12, 0.12), maxWidth: cellW - 16
-        });
-        ty -= 14;
-        if (functie) {
-          page.drawText(functie, {
-            x: topX, y: ty, size: 7.4, font, color: rgb(0.18, 0.18, 0.18),
-            maxWidth: cellW - 16
-          });
-        }
-
-        // Semnatura trebuie ancorata EXCLUSIV in zona de jos a aceleiasi casete.
-        const sigX = x + 8;
-        const sigY = y + 6;
-        const sigW = cellW - 16;
-        const sigH = Math.max(34, cellH - headerH - 12);
-
-        signerRects.push({
-          x: Math.round(sigX),
-          y: Math.round(sigY),
-          w: Math.round(sigW),
-          h: Math.round(sigH),
-          page: pageNo,
-        });
-      }
-    }
-
-    const footerPage = page;
-    const rightWidth  = font.widthOfTextAtSize(footerRight, FOOTER_SIZE);
+    const rightWidth  = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
     const rightX      = pW - MARGIN - rightWidth;
     const leftMaxWidth = rightX - MARGIN - 8;
 
-    footerPage.drawLine({
+    lastPage.drawLine({
       start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 },
       thickness: 0.4, color: rgb(0.75, 0.75, 0.75)
     });
-    footerPage.drawText(footerLeft,  {
-      x: MARGIN, y: footerY, size: FOOTER_SIZE, font,
-      color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth
-    });
-    footerPage.drawText(footerRight, {
-      x: rightX, y: footerY, size: FOOTER_SIZE, font,
-      color: rgb(0.5, 0.5, 0.5), opacity: 0.8
-    });
+    lastPage.drawText(footerLeft,  { x: MARGIN,  y: footerY, size: FONT_SIZE, font: fontR,
+      color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth });
+    lastPage.drawText(footerRight, { x: rightX,  y: footerY, size: FONT_SIZE, font: fontR,
+      color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
 
     const isAncore = flowData.flowType === 'ancore';
-    const savedB64 = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
-    return { pdfB64: savedB64, signerRects };
+    const stampedPdfB64 = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
+
+    const signerRects = [];
+    const signers = Array.isArray(flowData.signers) ? flowData.signers : [];
+    if (signers.length) {
+      const pageCount = pdfDoc.getPageCount();
+      const page = pdfDoc.getPages()[pageCount - 1];
+      const { width, height } = page.getSize();
+      const availableBottom = footerY + 26;
+      const topMargin = 40;
+      const sideMargin = 40;
+      const colGap = 18;
+      const rowGap = 18;
+      const n = signers.length;
+      let cols = 3;
+      if (n === 1) cols = 1;
+      else if (n === 2) cols = 2;
+      else if (n === 3) cols = 3;
+      else if (n === 4) cols = 2;
+      else cols = 3;
+      const rows = Math.ceil(n / cols);
+      const totalWidth = width - (sideMargin * 2) - ((cols - 1) * colGap);
+      const cellW = totalWidth / cols;
+      const maxAreaH = Math.max(120, height * 0.30);
+      const totalH = maxAreaH - ((rows - 1) * rowGap);
+      const cellH = Math.max(56, Math.min(78, totalH / rows));
+      const blockBottom = availableBottom + 6;
+      const blockTop = blockBottom + rows * cellH + (rows - 1) * rowGap;
+      const startY = Math.min(height - topMargin, blockTop) - cellH;
+
+      for (let i = 0; i < n; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const x = sideMargin + col * (cellW + colGap);
+        const y = startY - row * (cellH + rowGap);
+        signerRects.push({ page: pageCount, x, y, w: cellW, h: cellH });
+      }
+    }
+
+    if (signerRects.length) return { pdfB64: stampedPdfB64, signerRects };
+    return stampedPdfB64;
 
   } catch (e) {
     logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)');
