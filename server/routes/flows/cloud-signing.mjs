@@ -135,44 +135,152 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
 
     if (hasJavaSigningService()) {
       try {
-        // b243: Java creează câmpul /Sig FRESH în zona de semnătură din cartuș
-        // Coordonatele celulei sunt în signer.padesRect (setat la creare flux de stampFooterOnPdf)
-        // Fiecare revizie iText conține NUMAI obiectele proprii → sig_1 rămâne validă
-        const rect = signer?.padesRect;
-        const fieldName = `sig_${signerIdx + 1}`;
-        const sigPage = rect?.page || 1;
-        const sigX    = typeof rect?.x === 'number' ? rect.x : (30 + (signerIdx % 3) * 190);
-        const sigY    = typeof rect?.y === 'number' ? rect.y : (30 + Math.floor(signerIdx / 3) * 70);
-        const sigW    = typeof rect?.w === 'number' ? rect.w : 180;
-        const sigH2   = typeof rect?.h === 'number' ? rect.h : 50;
+        const isAncore = (data.flowType || 'tabel').toLowerCase() === 'ancore';
 
-        logger.info({ flowId, signerIdx, fieldName, hasRect: !!rect,
-          page: sigPage, x: sigX, y: sigY, w: sigW, h: sigH2 },
-          'STS callback: Java prepare — câmp NOU în celula cartuș');
+        if (isAncore) {
+          // ── FLUX ANCORE: semnătură în câmpul AcroForm existent repartizat semnătarului ──
+          // NU atingem fluxul tabel. Câmpul există deja în PDF — Java îl folosește (fieldAlreadyExists:true).
+          const ancoreField = signer?.ancoreFieldName || null;
+          if (!ancoreField) {
+            throw new Error(`Ancora semnătarului ${signerIdx} nu este configurată (ancoreFieldName lipsă)`);
+          }
 
-        const certCn = extractCertificateCn(certPem) || signer?.certificateCn || signer?.name || signer?.fullName || 'Semnatar';
-        const prepareRes = await javaPreparePades({
-          pdfBase64: rawPdf,
-          fieldName,
-          signerName: certCn,
-          signerRole: signer?.rol || signer?.role || signer?.atribut || 'SEMNATAR',
-          signerFunction: signer?.functie || signer?.function || '',
-          reason: 'Semnare DocFlowAI',
-          location: 'Romania',
-          contactInfo: signer?.email || '',
-          page: sigPage, x: sigX, y: sigY, width: sigW, height: sigH2,
-          useSignedAttributes: true,
-          subFilter: 'ETSI.CAdES.detached',
-          signerCertificatePem: certPem || null,
-          signerIndex: signerIdx,
-          fieldAlreadyExists: false,  // b243: câmp NOU, nu pre-creat
-        });
-        if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
-          throw new Error('Java prepare: câmpuri lipsă în răspuns');
+          // Extragem coordonatele câmpului AcroForm din PDF
+          const { PDFDocument, PDFName } = await import('pdf-lib');
+          const pdfBufAncore = Buffer.from(rawPdf, 'base64');
+          const pdfDocAncore = await PDFDocument.load(pdfBufAncore, { ignoreEncryption: true });
+          const pagesAncore  = pdfDocAncore.getPages();
+
+          let ancorePage = 1;
+          let ancoreX = 0, ancoreY = 0, ancoreW = 150, ancoreH = 40;
+          let fieldFound = false;
+
+          const afRef = pdfDocAncore.catalog.get(PDFName.of('AcroForm'));
+          if (afRef) {
+            const acroForm = pdfDocAncore.context.lookup(afRef);
+            const fRef = acroForm?.get(PDFName.of('Fields'));
+            if (fRef) {
+              const fArr = pdfDocAncore.context.lookup(fRef);
+              const searchField = (arr) => {
+                for (let i = 0; i < (arr.size ? arr.size() : 0); i++) {
+                  try {
+                    const f = pdfDocAncore.context.lookup(arr.get(i));
+                    const t = f?.get(PDFName.of('T'));
+                    const s = t?.decodeText ? t.decodeText() : t?.asString?.();
+                    if (s === ancoreField) {
+                      const rObj = f.get(PDFName.of('Rect'));
+                      if (rObj) {
+                        const ra = pdfDocAncore.context.lookup(rObj);
+                        if (ra?.size && ra.size() >= 4) {
+                          const x1 = ra.get(0).value(), y1 = ra.get(1).value();
+                          const x2 = ra.get(2).value(), y2 = ra.get(3).value();
+                          ancoreX = Math.min(x1, x2);
+                          ancoreY = Math.min(y1, y2);
+                          ancoreW = Math.abs(x2 - x1);
+                          ancoreH = Math.abs(y2 - y1);
+                        }
+                      }
+                      const pRef = f.get(PDFName.of('P'));
+                      if (pRef) {
+                        const pi = pagesAncore.findIndex(p =>
+                          p.ref?.objectNumber === (pRef.objectNumber ?? pRef?.value?.objectNumber));
+                        if (pi >= 0) ancorePage = pi + 1;
+                      }
+                      fieldFound = true;
+                      return true;
+                    }
+                    // Căutare recursivă în Kids (câmpuri nested)
+                    const kRef = f?.get(PDFName.of('Kids'));
+                    if (kRef) {
+                      const kids = pdfDocAncore.context.lookup(kRef);
+                      if (searchField(kids)) return true;
+                    }
+                  } catch {}
+                }
+                return false;
+              };
+              searchField(fArr);
+            }
+          }
+
+          if (!fieldFound) {
+            logger.warn({ flowId, signerIdx, ancoreField }, 'STS ancore: câmp AcroForm negăsit — fallback invizibil');
+          }
+
+          logger.info({ flowId, signerIdx, ancoreField, fieldFound,
+            page: ancorePage, x: ancoreX, y: ancoreY, w: ancoreW, h: ancoreH },
+            'STS callback: Java prepare ANCORE — câmp existent');
+
+          const certCn = extractCertificateCn(certPem) || signer?.certificateCn || signer?.name || signer?.fullName || 'Semnatar';
+          const prepareRes = await javaPreparePades({
+            pdfBase64:          rawPdf,
+            fieldName:          ancoreField,          // numele exact al câmpului AcroForm
+            signerName:         certCn,
+            signerRole:         signer?.rol || signer?.role || signer?.atribut || 'SEMNATAR',
+            signerFunction:     signer?.functie || signer?.function || '',
+            reason:             'Semnare DocFlowAI',
+            location:           'Romania',
+            contactInfo:        signer?.email || '',
+            page:               ancorePage,
+            x:                  ancoreX,
+            y:                  ancoreY,
+            width:              ancoreW,
+            height:             ancoreH,
+            useSignedAttributes: true,
+            subFilter:          'ETSI.CAdES.detached',
+            signerCertificatePem: certPem || null,
+            signerIndex:        signerIdx,
+            fieldAlreadyExists: true,               // câmpul există deja în AcroForm
+            appearanceMode:     'ancore',            // aparență simplă: "Semnat digital de: nume\ndata/ora"
+          });
+          if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
+            throw new Error('Java prepare ancore: câmpuri lipsă în răspuns');
+          }
+          padesPdfB64        = prepareRes.preparedPdfBase64;
+          signedAttrsHashB64 = prepareRes.toBeSignedDigestBase64;
+          logger.info({ flowId, signerIdx, ancoreField }, 'STS callback: Java prepare ANCORE OK');
+
+        } else {
+          // ── FLUX TABEL: cod neatins b243 ─────────────────────────────────
+          // b243: Java creează câmpul /Sig FRESH în zona de semnătură din cartuș
+          // Coordonatele celulei sunt în signer.padesRect (setat la creare flux de stampFooterOnPdf)
+          // Fiecare revizie iText conține NUMAI obiectele proprii → sig_1 rămâne validă
+          const rect = signer?.padesRect;
+          const fieldName = `sig_${signerIdx + 1}`;
+          const sigPage = rect?.page || 1;
+          const sigX    = typeof rect?.x === 'number' ? rect.x : (30 + (signerIdx % 3) * 190);
+          const sigY    = typeof rect?.y === 'number' ? rect.y : (30 + Math.floor(signerIdx / 3) * 70);
+          const sigW    = typeof rect?.w === 'number' ? rect.w : 180;
+          const sigH2   = typeof rect?.h === 'number' ? rect.h : 50;
+
+          logger.info({ flowId, signerIdx, fieldName, hasRect: !!rect,
+            page: sigPage, x: sigX, y: sigY, w: sigW, h: sigH2 },
+            'STS callback: Java prepare — câmp NOU în celula cartuș');
+
+          const certCn = extractCertificateCn(certPem) || signer?.certificateCn || signer?.name || signer?.fullName || 'Semnatar';
+          const prepareRes = await javaPreparePades({
+            pdfBase64: rawPdf,
+            fieldName,
+            signerName: certCn,
+            signerRole: signer?.rol || signer?.role || signer?.atribut || 'SEMNATAR',
+            signerFunction: signer?.functie || signer?.function || '',
+            reason: 'Semnare DocFlowAI',
+            location: 'Romania',
+            contactInfo: signer?.email || '',
+            page: sigPage, x: sigX, y: sigY, width: sigW, height: sigH2,
+            useSignedAttributes: true,
+            subFilter: 'ETSI.CAdES.detached',
+            signerCertificatePem: certPem || null,
+            signerIndex: signerIdx,
+            fieldAlreadyExists: false,  // b243: câmp NOU, nu pre-creat
+          });
+          if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
+            throw new Error('Java prepare: câmpuri lipsă în răspuns');
+          }
+          padesPdfB64        = prepareRes.preparedPdfBase64;
+          signedAttrsHashB64 = prepareRes.toBeSignedDigestBase64;
+          logger.info({ flowId, signerIdx }, 'STS callback: Java prepare OK');
         }
-        padesPdfB64        = prepareRes.preparedPdfBase64;
-        signedAttrsHashB64 = prepareRes.toBeSignedDigestBase64;
-        logger.info({ flowId, signerIdx }, 'STS callback: Java prepare OK');
       } catch (prepErr) {
         logger.error({ err: prepErr, flowId, signerIdx }, 'STS callback: Java prepare eșuat');
         return errRedirect('Eroare pregătire document PAdES');
