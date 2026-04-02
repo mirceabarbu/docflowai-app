@@ -817,26 +817,30 @@ th{ color: var(--sub) !important; }
               if (statusEl) statusEl.textContent = '⏳ ' + (j.message || 'Așteptăm aprobarea...');
             } else if (j.status === 'signed') {
               clearInterval(_stsPollInterval); _stsPollInterval = null;
-              if (statusEl) statusEl.textContent = '✅ Semnătură aplicată cu succes!';
-              // Redirect direct la flow.html — eliminăm bounce-ul prin semdoc-signer cu sts_signed=1
-              // j.completed=true → toți semnatarii au semnat → flow complet
-              // j.completed=false → mai sunt semnatari → tot mergem la flow pentru status
-              const signBox = document.getElementById('signBox');
-              if (signBox) {
-                signBox.innerHTML = `
-                  <div style="text-align:center;padding:32px 24px;">
-                    <div style="font-size:2.5rem;margin-bottom:12px;">✅</div>
-                    <div style="font-weight:700;font-size:1.05rem;color:#2dd4bf;margin-bottom:8px;">
-                      Semnătură electronică calificată aplicată
-                    </div>
-                    <div style="font-size:.85rem;color:rgba(234,240,255,.55);">
-                      Redirecționăm către statusul documentului...
-                    </div>
-                  </div>`;
+              // ── Completăm overlay-ul vizual înainte de redirect ──────────
+              const ov = document.getElementById('qesProcessingOverlay');
+              if (ov) {
+                const DONE_SVG = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                [['qIcon2','qLabel2'],['qIcon3','qLabel3'],['qIcon4','qLabel4']].forEach(([iId,lId], idx) => {
+                  setTimeout(() => {
+                    const ic = document.getElementById(iId);
+                    const lb = document.getElementById(lId);
+                    if (ic) { ic.className = 'qsi qsi-done'; ic.innerHTML = DONE_SVG; }
+                    if (lb) lb.className = 'ql ql-done';
+                  }, idx * 120);
+                });
+                setTimeout(() => {
+                  const titleEl = ov.querySelector('[data-qes-title]');
+                  const subEl   = ov.querySelector('[data-qes-sub]');
+                  const iconBox = ov.querySelector('[data-qes-icon]');
+                  if (titleEl) titleEl.textContent = 'Semnătură aplicată cu succes!';
+                  if (subEl)   { subEl.textContent = 'Redirecționăm către document...'; subEl.style.color = 'rgba(45,212,191,.9)'; }
+                  if (iconBox) iconBox.style.background = 'linear-gradient(135deg,rgba(45,212,191,.3),rgba(45,212,191,.1))';
+                }, 400);
               }
               setTimeout(() => {
                 window.location.replace(`/flow.html?flow=${encodeURIComponent(flow)}`);
-              }, 1500);
+              }, 1600);
             } else if (j.status === 'error') {
               cancelStsPolling();
               showError('❌ ' + (j.message || 'Eroare la semnare STS.'));
@@ -1574,15 +1578,15 @@ th{ color: var(--sub) !important; }
             </style>
             <div style="width:100%;max-width:400px;margin:0 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;">
               <div style="display:flex;align-items:center;gap:14px;padding:20px 22px 16px;border-bottom:1px solid rgba(255,255,255,.07);">
-                <div style="width:44px;height:44px;border-radius:12px;flex-shrink:0;background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(45,212,191,.2));display:flex;align-items:center;justify-content:center;border:1px solid rgba(45,212,191,.25);">
+                <div style="width:44px;height:44px;border-radius:12px;flex-shrink:0;background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(45,212,191,.2));display:flex;align-items:center;justify-content:center;border:1px solid rgba(45,212,191,.25);transition:background .4s;" data-qes-icon>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                     <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z" fill="rgba(45,212,191,.15)" stroke="#2dd4bf" stroke-width="1.5" stroke-linejoin="round"/>
                     <path d="M9 12l2 2 4-4" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </div>
                 <div>
-                  <div style="font-weight:700;font-size:.95rem;color:#eaf0ff;letter-spacing:.2px;">Semnătură electronică calificată</div>
-                  <div style="font-size:.75rem;color:rgba(45,212,191,.7);margin-top:2px;letter-spacing:.5px;">STS CLOUD QES &nbsp;·&nbsp; ÎN CURS DE PROCESARE</div>
+                  <div style="font-weight:700;font-size:.95rem;color:#eaf0ff;letter-spacing:.2px;" data-qes-title>Semnătură electronică calificată</div>
+                  <div style="font-size:.75rem;color:rgba(45,212,191,.7);margin-top:2px;letter-spacing:.5px;" data-qes-sub>STS CLOUD QES &nbsp;·&nbsp; ÎN CURS DE PROCESARE</div>
                 </div>
               </div>
               <div style="padding:4px 22px 8px;">
@@ -1629,8 +1633,8 @@ th{ color: var(--sub) !important; }
                   var f=document.getElementById(ni),m=document.getElementById(nl);
                   if(f){f.className='qsi qsi-active';f.innerHTML=SPIN;}if(m)m.className='ql ql-active';
                 }
-                setTimeout(function(){adv('qIcon2','qLabel2','qIcon3','qLabel3');},1800);
-                setTimeout(function(){adv('qIcon3','qLabel3','qIcon4','qLabel4');},4000);
+                setTimeout(function(){adv('qIcon2','qLabel2','qIcon3','qLabel3');},600);
+                setTimeout(function(){adv('qIcon3','qLabel3','qIcon4','qLabel4');},1200);
               })();
             <\/script>
           `;
