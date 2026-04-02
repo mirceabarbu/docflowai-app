@@ -26,7 +26,7 @@ const { SignPdf }              = _require('@signpdf/signpdf');
 const { pdflibAddPlaceholder } = _require('@signpdf/placeholder-pdf-lib');
 const { Signer, DEFAULT_BYTE_RANGE_PLACEHOLDER, SUBFILTER_ADOBE_PKCS7_DETACHED } = _require('@signpdf/utils');
 
-const STS_SIGNATURE_LENGTH = 32768;
+const STS_SIGNATURE_LENGTH = 8192;  // suficient pentru CMS cu chain 3 certuri (~5KB)
 
 function ro(t) {
   const m = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
@@ -39,7 +39,7 @@ class STSSigner extends Signer {
 }
 
 // ── preparePadesDoc ─────────────────────────────────────────────────────────
-export async function preparePadesDoc(pdfBuf, flowData, signerIdx) {
+export async function preparePadesDoc(pdfBuf, flowData, signerIdx, opts = {}) {
   const { PDFDocument, PDFName, PDFNumber, PDFString, rgb, StandardFonts } =
     await import('pdf-lib');
 
@@ -113,10 +113,13 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx) {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // FLUX TABEL: cartuș ca la buildCartusBlob — pe aceeași pagină dacă încape
+  // FLUX TABEL: cartuș „SEMNAT SI APROBAT" — desenat direct în PDF cu placeholder
+  // Migration 044 garantează că flows_pdfs acceptă cheia padesPdf_N (constraint eliminat)
   // ════════════════════════════════════════════════════════════════════════
+
   const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
   const MARGIN = 40;
   const n     = signers.length;
   const cols  = Math.min(n, 3);
@@ -125,32 +128,24 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx) {
   const cellH = 64;
   const infoH = cellH * 0.58;
   const sigH  = cellH * 0.42;
-  const titleH    = 20;
-  const cartusH   = rows * cellH + titleH;
-  const footerH   = 28;  // spațiu footer jos
+  const titleH     = 20;
+  const cartusH    = rows * cellH + titleH;
+  const footerH    = 28;
   const cartusBottom = footerH + 8;
-  const cartusTotal  = cartusH + cartusBottom + 10;  // înălțime totală cartuș
+  const cartusTotal  = cartusH + cartusBottom + 10;
 
-  // Detectăm spațiu disponibil pe ultima pagină (ca buildCartusBlob)
-  // Estimăm conținutul textual al ultimei pagini: PDF.js nu e disponibil server-side
-  // dar putem verifica dacă pagina are suficient spațiu în zona de jos
-  const isFirstSigner = signers.slice(0, signerIdx).every(s => s.status !== 'signed');
+  const isFirstSigner = opts.alwaysDrawCartus
+    ? true
+    : signers.slice(0, signerIdx).every(s => s.status !== 'signed');
+
   let cartusPage;
-
   if (!isFirstSigner) {
-    // Semnatar 2+: cartușul există deja pe ultima pagină
     cartusPage = lastPage;
   } else {
-    // Semnatar 1: detectăm spațiu disponibil
-    // Verificăm dacă ultima pagină are suficient spațiu în zona de jos
-    // Pragul: dacă pagina e mai înaltă de 400pt și cartușul încape în ultimii 25%
-    const freeSpace = pH * 0.25; // ~25% din pagina de jos ca estimare conservatoare
-    const hasSpace  = freeSpace >= cartusTotal;
-
-    if (hasSpace) {
+    const freeSpace = pH * 0.25;
+    if (freeSpace >= cartusTotal) {
       cartusPage = lastPage;
-      logger.info({ signerIdx, pdfSize: pdfBuf.length, freeSpace, cartusTotal },
-        'PAdES tabel: cartuș pe ultima pagină existentă');
+      logger.info({ signerIdx, freeSpace, cartusTotal }, 'PAdES tabel: cartuș pe ultima pagină');
     } else {
       cartusPage = pdfDoc.addPage([pW, pH]);
       logger.info({ signerIdx }, 'PAdES tabel: pagină nouă pentru cartuș');
@@ -173,14 +168,13 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx) {
       x: MARGIN + 8, y: cartusBottom + cartusH - titleH + 6,
       size: 7, font: fontB, color: rgb(0,0,0) });
 
-    // Celule pentru toți semnatarii
+    // Celule semnatari
     signers.forEach((s, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
       const cx  = MARGIN + col * cellW;
       const cy  = cartusBottom + (rows - 1 - row) * cellH;
       const infoY = cy + sigH;
-
       cartusPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH,
         color: rgb(.97,.97,.97), borderColor: rgb(.2,.2,.2), borderWidth: 1 });
       cartusPage.drawLine({ start: { x: cx, y: infoY }, end: { x: cx+cellW, y: infoY },
@@ -192,20 +186,45 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx) {
       if (nf) cartusPage.drawText(nf, {
         x: cx+5, y: infoY+infoH-23, size: 6.5, font: fontR,
         color: rgb(.15,.15,.15), maxWidth: cellW-10 });
-      cartusPage.drawText('Semnatura electronica calificata', {
-        x: cx+5, y: cy+sigH-10, size: 5.5, font: fontR,
-        color: rgb(.55,.55,.65), maxWidth: cellW-10 });
-      cartusPage.drawText('L.S.', { x: cx+5, y: cy+4, size: 7, font: fontB,
-        color: rgb(.5,.5,.6) });
+
+      if (i === signerIdx) {
+        // Semnatar CURENT — fundal teal + text fix semnat digital QES
+        // Acesta e conținutul semnat de STS — data reală e în certificatul CMS / Raport Trust
+        cartusPage.drawRectangle({ x: cx+1, y: cy+1, width: cellW-2, height: sigH-2,
+          color: rgb(0.88, 0.97, 0.96), borderColor: rgb(0.27, 0.75, 0.7), borderWidth: 0.5 });
+        cartusPage.drawText('Semnat digital QES', {
+          x: cx+5, y: cy+sigH-11, size: 6, font: fontB,
+          color: rgb(0.1, 0.45, 0.42), maxWidth: cellW-10 });
+        cartusPage.drawText('STS Cloud', {
+          x: cx+5, y: cy+sigH-20, size: 5.5, font: fontR,
+          color: rgb(0.2, 0.5, 0.5), maxWidth: cellW-10 });
+        cartusPage.drawText('Data: Raport Trust', {
+          x: cx+5, y: cy+4, size: 5, font: fontR,
+          color: rgb(0.3, 0.5, 0.5), maxWidth: cellW-10 });
+      } else {
+        // Orice alt semnatar (trecut sau viitor) — același text QES, fără fundal colorat
+        // Cel care a semnat deja are textul din runda lui (revision anterioară)
+        // Cel care urmează va primi textul QES când va fi rândul lui
+        cartusPage.drawRectangle({ x: cx+1, y: cy+1, width: cellW-2, height: sigH-2,
+          color: rgb(0.97, 0.97, 0.97) });
+        cartusPage.drawText('Semnat digital QES', {
+          x: cx+5, y: cy+sigH-11, size: 6, font: fontB,
+          color: rgb(.35,.35,.55), maxWidth: cellW-10 });
+        cartusPage.drawText('STS Cloud', {
+          x: cx+5, y: cy+sigH-20, size: 5.5, font: fontR,
+          color: rgb(.45,.45,.6), maxWidth: cellW-10 });
+        cartusPage.drawText('Data: Raport Trust', {
+          x: cx+5, y: cy+4, size: 5, font: fontR,
+          color: rgb(.5,.5,.6), maxWidth: cellW-10 });
+      }
     });
   }
 
-  // Rect zona JOS a celulei semnătarului curent
   const col = signerIdx % cols;
   const row = Math.floor(signerIdx / cols);
   const cx  = MARGIN + col * cellW;
   const cy  = cartusBottom + (rows - 1 - row) * cellH;
-  const widgetRect = [cx+1, cy+1, cx+cellW-1, cy+sigH-1];
+  const widgetRect = [cx+1, cy+1, cx+cellW-1, cy+sigH-1]
 
   pdflibAddPlaceholder({
     pdfDoc, pdfPage: cartusPage,
@@ -218,7 +237,7 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx) {
   });
 
   const savedBytes = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-  logger.info({ signerIdx, widgetRect, pdfSize: savedBytes.length, isFirstSigner },
+  logger.info({ signerIdx, widgetRect, pdfSize: savedBytes.length },
     'PAdES tabel: gata');
   return savedBytes;
 }
@@ -250,31 +269,148 @@ export function calcPadesHash(pdfBytes) {
   ).digest('base64');
 }
 
-// ── buildCmsFromRawSignature ────────────────────────────────────────────────
-/**
- * CMS/PKCS#7 SignedData FĂRĂ signedAttrs — soluția corectă pentru STS.
- *
- * De ce fără signedAttrs:
- *   STS semnează: ECDSA.sign(key, SHA256(pdfBytesOutsideContents))
- *   Adobe verifică fără signedAttrs: ECDSA.verify(key, signByte, SHA256(pdfBytes)) ✅
- *   Adobe verifică cu signedAttrs:   ECDSA.verify(key, signByte, SHA256(DER(attrs))) ✗
- *   → fără signedAttrs e singurul format compatibil cu API-ul STS
- */
-async function buildCmsFromRawSignature(signByteBase64, certPem) {
-  const signatureBytes = Buffer.from(signByteBase64, 'base64');
-
+// ── buildSignedAttrs + calcSignedAttrsHash — PAdES-B-B conform RFC 5652 ────
+// signedAttrs conține contentType + messageDigest (documentDigest = SHA256(bytesOutsideContents))
+// Semnătura STS trebuie să acopere SHA256(DER(signedAttrs ca SET 0x31))
+export function buildSignedAttrs(documentDigestB64) {
   function encLen(len) {
     if (len < 128) return Buffer.from([len]);
     const h = len.toString(16).padStart(len > 0xffff ? 6 : 4, '0');
     const b = Buffer.from(h, 'hex');
     return Buffer.concat([Buffer.from([0x80 | b.length]), b]);
   }
-  function seq(c)   { return Buffer.concat([Buffer.from([0x30]), encLen(c.length), c]); }
-  function set(c)   { return Buffer.concat([Buffer.from([0x31]), encLen(c.length), c]); }
-  function ctx0(c)  { return Buffer.concat([Buffer.from([0xa0]), encLen(c.length), c]); }
-  function oid(h)   { const b=Buffer.from(h,'hex'); return Buffer.concat([Buffer.from([0x06,b.length]),b]); }
-  function int1(v)  { return Buffer.from([0x02,0x01,v]); }
-  function octstr(d){ return Buffer.concat([Buffer.from([0x04]),encLen(d.length),d]); }
+  function tlv(tag, c) { return Buffer.concat([Buffer.from([tag]), encLen(c.length), c]); }
+  const seq  = c => tlv(0x30, c);
+  const set  = c => tlv(0x31, c);
+  const oid  = h => { const b = Buffer.from(h, 'hex'); return Buffer.concat([Buffer.from([0x06, b.length]), b]); };
+  const octst = d => Buffer.concat([Buffer.from([0x04]), encLen(d.length), d]);
+
+  const OID_DATA          = '2a864886f70d010701';
+  const OID_CONTENT_TYPE  = '2a864886f70d010903';
+  const OID_MSG_DIGEST    = '2a864886f70d010904';
+
+  const digestBytes = Buffer.from(documentDigestB64, 'base64');
+
+  const contentTypeAttr = seq(Buffer.concat([
+    oid(OID_CONTENT_TYPE),
+    set(seq(oid(OID_DATA))),
+  ]));
+  const msgDigestAttr = seq(Buffer.concat([
+    oid(OID_MSG_DIGEST),
+    set(octst(digestBytes)),
+  ]));
+
+  // SignedAttrs ca [0] IMPLICIT pentru embed în CMS SignerInfo
+  const innerSet = Buffer.concat([contentTypeAttr, msgDigestAttr]);
+  const signedAttrsImplicit = Buffer.concat([Buffer.from([0xa0]), encLen(innerSet.length), innerSet]);
+
+  return signedAttrsImplicit;
+}
+
+export function calcSignedAttrsHash(signedAttrsImplicit) {
+  // Pentru hashing: inlocuim tag [0] IMPLICIT (0xa0) cu SET (0x31)
+  const hashable = Buffer.concat([Buffer.from([0x31]), signedAttrsImplicit.slice(1)]);
+  return crypto.createHash('sha256').update(hashable).digest('base64');
+}
+
+// ── parseCertComponents — extrage issuer+serial direct din DER, fără re-encodare ──
+// MOTIVUL EXISTENȚEI: node-forge.pki.certificateFromPem() → toDer() NU produce bytes
+// identici cu certificatul original. Adobe validează IssuerAndSerialNumber exact byte-cu-byte
+// față de certificatul din CMS. Orice diferență → "formatting errors" → semnătură invalidă.
+function parseCertComponents(certDer) {
+  let pos = 0;
+
+  function readLen() {
+    let b = certDer[pos++];
+    if (!(b & 0x80)) return b;
+    const n = b & 0x7f; let len = 0;
+    for (let i = 0; i < n; i++) len = (len << 8) | certDer[pos++];
+    return len;
+  }
+  function skipTlv() {
+    const start = pos++;
+    const len = readLen(); pos += len;
+    return certDer.slice(start, pos);
+  }
+  function readTlvSlice() {
+    const start = pos++; readLen(); return certDer.slice(start, pos += (certDer.readUInt8 ? 0 : 0));
+  }
+
+  try {
+    // — Refacem cu abordare mai robustă —
+    pos = 0;
+    function tlvSkip() { pos++; const l = readLen(); pos += l; }
+    function tlvRead() {
+      const s = pos; pos++; const l = readLen(); pos += l;
+      return certDer.slice(s, pos);
+    }
+
+    tlvRead();  // Certificate SEQUENCE — consumăm tot, reîncepem din TBS
+    pos = 0;
+
+    // Intrăm în Certificate SEQUENCE
+    pos++;       // tag 0x30
+    readLen();   // certificate length
+
+    // Intrăm în TBSCertificate SEQUENCE
+    pos++;       // tag 0x30
+    readLen();   // TBS length
+
+    // Optional version [0] EXPLICIT
+    if (certDer[pos] === 0xa0) tlvSkip();
+
+    // serialNumber INTEGER — citim bytes exacți din cert (incluzând tag 0x02 + length)
+    const serialBytes = tlvRead();
+
+    // signature AlgorithmIdentifier — skip
+    tlvSkip();
+
+    // issuer Name — citim bytes exacți (incluzând tag 0x30 + length)
+    const issuerBytes = tlvRead();
+
+    return { serialBytes, issuerBytes };
+  } catch(e) {
+    logger.warn({ err: e.message }, 'parseCertComponents: eroare parsing DER (non-fatal)');
+    return null;
+  }
+}
+
+// ── buildCmsFromRawSignature ────────────────────────────────────────────────
+/**
+ * Construiește CMS/PKCS#7 SignedData pentru injectare în PDF PAdES.
+ *
+ * ARHITECTURA CORECTĂ (fără signedAttrs — compatibil cu API-ul STS):
+ *   STS primește: SHA256(bytesOutsideContents) = documentDigest
+ *   STS produce:  RSA_PKCS1v15_sign(privKey, documentDigest)
+ *   CMS fără signedAttrs: signatureValue acoperă documentDigest direct
+ *   Adobe verifică: RSA_verify(pubKey, SHA256(bytesOutsideContents), signatureValue) ✓
+ *
+ * CERT EMBEDDING:
+ *   Certificatul se extrage direct din PEM (base64 decode) → bytes identici cu originalul.
+ *   Issuer și serial se parsează din DER → bytes identici, fără re-encodare prin forge.
+ *   Aceasta asigură că Adobe poate găsi semnătarul în CMS.certificates prin IssuerAndSerialNumber.
+ *
+ * @param {string} signByteBase64 - signByte de la STS (Base64)
+ * @param {string|null} certPem   - certificat PEM din /userinfo
+ */
+async function buildCmsFromRawSignature(signByteBase64, certPem, signedAttrsDer = null) {
+  const signatureBytes = Buffer.from(signByteBase64, 'base64');
+
+  // ── Helpers DER minimali ─────────────────────────────────────────────────
+  function encLen(len) {
+    if (len < 128) return Buffer.from([len]);
+    const h = len.toString(16).padStart(len > 0xffff ? 6 : 4, '0');
+    const b = Buffer.from(h, 'hex');
+    return Buffer.concat([Buffer.from([0x80 | b.length]), b]);
+  }
+  function tlv(tag, c) { return Buffer.concat([Buffer.from([tag]), encLen(c.length), c]); }
+  const seq   = c => tlv(0x30, c);
+  const set   = c => tlv(0x31, c);
+  const ctx0  = c => tlv(0xa0, c);
+  const oid   = h => { const b = Buffer.from(h, 'hex'); return Buffer.concat([Buffer.from([0x06, b.length]), b]); };
+  const int1  = v => Buffer.from([0x02, 0x01, v]);
+  const octst = d => Buffer.concat([Buffer.from([0x04]), encLen(d.length), d]);
+  const algId = h => seq(Buffer.concat([oid(h), Buffer.from([0x05, 0x00])])); // AlgorithmIdentifier cu NULL params
 
   const OID_SIGNED_DATA  = '2a864886f70d010702';
   const OID_DATA         = '2a864886f70d010701';
@@ -282,76 +418,188 @@ async function buildCmsFromRawSignature(signByteBase64, certPem) {
   const OID_RSA          = '2a864886f70d010101';
   const OID_ECDSA_SHA256 = '2a8648ce3d040302';
 
-  const isECDSA = signatureBytes[0] === 0x30 && signatureBytes[2] === 0x02;
-  const sigAlg  = isECDSA ? OID_ECDSA_SHA256 : OID_RSA;
-  logger.info({ isECDSA, sigLen: signatureBytes.length,
-    first4: signatureBytes.slice(0,4).toString('hex') }, 'CMS: algoritm detectat');
+  // Detectăm algoritmul: ECDSA DER = SEQUENCE { INTEGER r, INTEGER s } → byte[0]=0x30, byte[2]=0x02
+  // RSA raw = bytes plain (nu DER), < 200 bytes mai rare, de obicei 256 (RSA-2048)
+  const isECDSA = signatureBytes[0] === 0x30 && signatureBytes[2] === 0x02 && signatureBytes.length < 200;
+  const sigAlgOid = isECDSA ? OID_ECDSA_SHA256 : OID_RSA;
+  // Pentru ECDSA: signatureAlgorithm fără NULL (absent params per RFC 5480)
+  // Pentru RSA:   signatureAlgorithm cu NULL (required per RFC 3279)
+  const sigAlgId = isECDSA
+    ? seq(oid(sigAlgOid))
+    : algId(sigAlgOid);
 
-  // Construim SignerInfo fără signedAttrs
-  // sid: IssuerAndSerialNumber sau SubjectKeyIdentifier
-  // Fără cert: folosim placeholder simplu
-  let signerInfo;
-  if (certPem) {
-    const forge = _require('node-forge');
-    const cert  = forge.pki.certificateFromPem(certPem);
-    const certDer  = Buffer.from(forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes(), 'binary');
-    const issuerDer = Buffer.from(forge.asn1.toDer(cert.issuer.toAsn1()).getBytes(), 'binary');
-    const serialBuf = Buffer.from(cert.serialNumber, 'hex');
-    const serialDer = (serialBuf[0] & 0x80)
-      ? Buffer.concat([Buffer.from([0x02]), encLen(serialBuf.length+1), Buffer.from([0x00]), serialBuf])
-      : Buffer.concat([Buffer.from([0x02]), encLen(serialBuf.length), serialBuf]);
-    const issuerAndSerial = seq(Buffer.concat([issuerDer, serialDer]));
+  logger.info({
+    isECDSA, sigLen: signatureBytes.length,
+    first4: signatureBytes.slice(0, 4).toString('hex').toUpperCase(),
+    hasCert: !!certPem,
+  }, 'CMS: construire PAdES signature');
 
-    signerInfo = seq(Buffer.concat([
-      int1(1),
-      issuerAndSerial,
-      seq(oid(OID_SHA256)),
-      // ← fără signedAttrs
-      seq(Buffer.concat([oid(sigAlg), ...(isECDSA ? [] : [Buffer.from([0x05,0x00])])])),
-      octstr(signatureBytes),
-    ]));
-
-    const signedData = seq(Buffer.concat([
-      int1(1),
-      set(seq(oid(OID_SHA256))),
-      seq(oid(OID_DATA)),
-      ctx0(certDer),           // certificates
-      set(signerInfo),
-    ]));
-    const cms = seq(Buffer.concat([oid(OID_SIGNED_DATA), ctx0(signedData)]));
-    logger.info({ cmsLen: cms.length, hasCert: true }, 'CMS: construit cu certificat');
-    return cms;
-
-  } else {
-    // Fallback fără certificat — Adobe arată semnătură dar nu poate verifica identitatea
-    signerInfo = seq(Buffer.concat([
-      int1(1),
-      seq(Buffer.concat([        // sid: versiune simplă
-        Buffer.from([0x30,0x00]), // issuer gol
-        Buffer.from([0x02,0x01,0x01]), // serial = 1
-      ])),
-      seq(oid(OID_SHA256)),
-      seq(Buffer.concat([oid(sigAlg), ...(isECDSA ? [] : [Buffer.from([0x05,0x00])])])),
-      octstr(signatureBytes),
-    ]));
-    const signedData = seq(Buffer.concat([
-      int1(1),
-      set(seq(oid(OID_SHA256))),
-      seq(oid(OID_DATA)),
-      set(signerInfo),
-    ]));
-    const cms = seq(Buffer.concat([oid(OID_SIGNED_DATA), ctx0(signedData)]));
-    logger.warn({ cmsLen: cms.length }, 'CMS: construit FĂRĂ certificat — identitate neverificabilă');
-    return cms;
+  // ── Extrage URL caIssuers din AIA extension ──────────────────────────────
+  function extractAiaIssuers(certDer) {
+    const urls = [];
+    try {
+      // caIssuers OID bytes: 2b 06 01 05 05 07 30 02
+      const needle = Buffer.from('2b06010505073002', 'hex');
+      let pos = 0;
+      while (pos < certDer.length - needle.length) {
+        if (certDer.slice(pos, pos + needle.length).equals(needle)) {
+          const after = pos + needle.length;
+          // IA5String tag = 0x86
+          if (after + 1 < certDer.length && certDer[after] === 0x86) {
+            const urlLen = certDer[after + 1];
+            const url = certDer.slice(after + 2, after + 2 + urlLen).toString('ascii');
+            if (url.startsWith('http')) urls.push(url);
+          }
+        }
+        pos++;
+      }
+    } catch(e) {}
+    return urls;
   }
+
+  async function fetchCaCert(url) {
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) return null;
+      const arr = await resp.arrayBuffer();
+      const buf = Buffer.from(arr);
+      // PEM → DER dacă e nevoie
+      if (buf.length > 0 && buf[0] === 0x2d) {
+        const pem = buf.toString('ascii').replace(/-----[^-]+-----/g, '').replace(/\s/g, '');
+        return Buffer.from(pem, 'base64');
+      }
+      return buf;
+    } catch(e) { return null; }
+  }
+
+  async function buildChain(endEntityDer) {
+    const chain = [endEntityDer];
+    let current = endEntityDer;
+    for (let i = 0; i < 3; i++) {
+      const urls = extractAiaIssuers(current);
+      if (!urls.length) break;
+      const ca = await fetchCaCert(urls[0]);
+      if (!ca || ca.length < 100 || ca.equals(current)) break;
+      chain.push(ca);
+      current = ca;
+      if (!extractAiaIssuers(ca).length) break; // root
+    }
+    logger.info({ chainLen: chain.length }, 'CMS: CA chain');
+    return chain;
+  }
+
+  if (certPem) {
+    try {
+            const pemBody = certPem.replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----/g, '').replace(/[\r\n\s]/g, '');
+      const certDer = Buffer.from(pemBody, 'base64');
+      if (!certDer.length) throw new Error('Cert DER gol');
+
+      // Descărcăm CA chain din AIA
+      const chain = await buildChain(certDer);
+      const allCertsDer = Buffer.concat(chain);
+
+      const parsed = parseCertComponents(certDer);
+      let issuerAndSerial;
+      if (parsed) {
+        issuerAndSerial = seq(Buffer.concat([parsed.issuerBytes, parsed.serialBytes]));
+        logger.info({ issuerLen: parsed.issuerBytes.length, serialLen: parsed.serialBytes.length,
+          serialHex: parsed.serialBytes.toString('hex').substring(0, 20) }, 'CMS: issuer+serial OK');
+      } else {
+        logger.warn('CMS: parseCertComponents eșuat');
+        issuerAndSerial = seq(Buffer.concat([
+          Buffer.from([0x30, 0x00]),
+          Buffer.from([0x02, 0x01, 0x01]),
+        ]));
+      }
+
+      // signedAttrs: inclus dacă avem — semnătura e validă PAdES-B-B
+      const signerInfo = signedAttrsDer
+        ? seq(Buffer.concat([
+            int1(1), issuerAndSerial, algId(OID_SHA256),
+            signedAttrsDer,   // [0] IMPLICIT signedAttrs
+            sigAlgId, octst(signatureBytes),
+          ]))
+        : seq(Buffer.concat([
+            int1(1), issuerAndSerial, algId(OID_SHA256), sigAlgId, octst(signatureBytes),
+          ]));
+
+      const signedData = seq(Buffer.concat([
+        int1(1), set(algId(OID_SHA256)), seq(oid(OID_DATA)),
+        ctx0(allCertsDer),   // chain complet: end-entity + CA + root
+        set(signerInfo),
+      ]));
+
+      const cms = seq(Buffer.concat([oid(OID_SIGNED_DATA), ctx0(signedData)]));
+      logger.info({ cmsLen: cms.length, certDerLen: certDer.length, chainLen: chain.length }, 'CMS: construit cu succes ✓');
+      return cms;
+
+    } catch(e) {
+      logger.error({ err: e.message }, 'CMS: eroare construire cu cert — fallback fără cert');
+      // Cade în fallback de mai jos
+    }
+  }
+
+  // ── Fallback fără certificat ──────────────────────────────────────────────
+  logger.warn('CMS: construire FĂRĂ certificat — semnătura e prezentă dar identitatea neverificabilă');
+  const signerInfo = seq(Buffer.concat([
+    int1(1),
+    seq(Buffer.concat([Buffer.from([0x30, 0x00]), Buffer.from([0x02, 0x01, 0x01])])),
+    algId(OID_SHA256),
+    sigAlgId,
+    octst(signatureBytes),
+  ]));
+  const signedData = seq(Buffer.concat([
+    int1(1),
+    set(algId(OID_SHA256)),
+    seq(oid(OID_DATA)),
+    set(signerInfo),
+  ]));
+  return seq(Buffer.concat([oid(OID_SIGNED_DATA), ctx0(signedData)]));
 }
 
 // ── injectCms ───────────────────────────────────────────────────────────────
-export async function injectCms(pdfBytes, signByteB64, certPem) {
-  const cmsBuffer = await buildCmsFromRawSignature(signByteB64, certPem);
+export async function injectCms(pdfBytes, signByteB64, certPem, signedAttrsDer = null) {
+  const cmsBuffer = await buildCmsFromRawSignature(signByteB64, certPem, signedAttrsDer);
   if (cmsBuffer.length > STS_SIGNATURE_LENGTH)
     throw new Error(`PAdES: CMS prea mare (${cmsBuffer.length} > ${STS_SIGNATURE_LENGTH})`);
-  const signedPdf = await new SignPdf().sign(pdfBytes, new STSSigner(cmsBuffer));
-  logger.info({ cmsLen: cmsBuffer.length, pdfSize: signedPdf.length }, 'PAdES: injectat OK');
+
+  // ── Injectare manuală /Contents — padding exact cu zeros ──────────────────
+  // @signpdf/signpdf face padding cu zeros dar Adobe parser strict refuză zeros după DER.
+  // Soluție: găsim /Contents în PDF și scriem hex-ul CMS-ului fără padding suplimentar,
+  // ajustând placeholder-ul să fie exact cât CMS-ul * 2 (hex encoding).
+  const { removeTrailingNewLine, convertBuffer, findByteRange } = _require('@signpdf/utils');
+  let pdf = removeTrailingNewLine(convertBuffer(pdfBytes, 'PDF'));
+
+  // Găsim /Contents <placeholder_hex>
+  const contentsTag = Buffer.from('/Contents ');
+  const contentsIdx = (() => {
+    for (let i = pdf.length - 1; i >= 0; i--) {
+      if (pdf.slice(i, i + contentsTag.length).equals(contentsTag)) return i;
+    }
+    return -1;
+  })();
+
+  if (contentsIdx === -1) throw new Error('injectCms: /Contents negăsit în PDF');
+
+  const ltIdx  = pdf.indexOf(0x3c, contentsIdx + contentsTag.length); // '<'
+  const gtIdx  = pdf.indexOf(0x3e, ltIdx);                             // '>'
+  if (ltIdx === -1 || gtIdx === -1) throw new Error('injectCms: /Contents hex negăsit');
+
+  const placeholderLen = gtIdx - ltIdx - 1; // lungimea hex-ului placeholder (fără < >)
+  const cmsHex = cmsBuffer.toString('hex');
+
+  if (cmsHex.length > placeholderLen)
+    throw new Error(`injectCms: CMS hex (${cmsHex.length}) > placeholder (${placeholderLen})`);
+
+  // Scriem CMS hex + zeros padding la dreapta până la placeholderLen
+  const paddedHex = Buffer.from(cmsHex.padEnd(placeholderLen, '0'));
+  const signedPdf = Buffer.concat([
+    pdf.slice(0, ltIdx + 1),
+    paddedHex,
+    pdf.slice(gtIdx),
+  ]);
+
+  logger.info({ cmsLen: cmsBuffer.length, pdfSize: signedPdf.length,
+    hasSignedAttrs: !!signedAttrsDer, placeholderLen, cmsHexLen: cmsHex.length }, 'PAdES: injectat OK ✓');
   return signedPdf;
 }

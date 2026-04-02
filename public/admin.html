@@ -1246,7 +1246,7 @@ async function submitChangePwd(){
     else{msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');btn.disabled=false;btn.textContent='Salvează';}
   }catch(e){msg.style.color='#f28b82';msg.textContent='Eroare de rețea.';btn.disabled=false;btn.textContent='Salvează';}
 }
-function hdrs(){return{"Content-Type":"application/json"};} // SEC-01: token în cookie HttpOnly — nu mai trimitem Authorization header
+function hdrs(){const t=window._csrfToken||(()=>{const c=document.cookie.split("; ").find(r=>r.startsWith("csrf_token="));return c?c.split("=")[1]:null;})();const h={"Content-Type":"application/json"};if(t)h["x-csrf-token"]=t;return h;}
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 function validatePhoneClient(phone){
   if(!phone||!phone.trim())return{valid:true,normalized:""};
@@ -2738,14 +2738,18 @@ async function orLoadDetail(id) {
       ['Erori', errors, '#ffaaaa'],
     ].map(([l, v, col]) => `<span style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);padding:5px 14px;border-radius:20px;font-size:.8rem;"><strong style="color:${col};">${v}</strong> <span style="color:var(--muted);">${l}</span></span>`).join('');
 
-    // Banner informativ tracking
-    $('or-detail-stats').insertAdjacentHTML('afterend', `
-      <div style="background:rgba(255,213,128,.07);border:1px solid rgba(255,213,128,.2);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:.78rem;color:#ffd580;line-height:1.5;">
-        <strong>⚠ Despre acuratețea metricilor:</strong> Deschiderile (pixel GIF) sunt blocate de Gmail, Outlook și Apple Mail — cifrele sunt <em>sub-raportate</em>.
-        <strong style="color:#ffd580;">Click-urile ★ sunt metrica fiabilă</strong> — înseamnă că destinatarul a acționat efectiv pe un link din email.
-        Raportul <strong>clickuri/trimiși</strong> este indicatorul real de interes.
-      </div>
-    `);
+    // Banner informativ tracking — adăugat o singură dată, NU la fiecare render
+    const existingWarning = document.getElementById('or-metrics-warning');
+    if (!existingWarning) {
+      const statsEl = $('or-detail-stats');
+      if (statsEl && statsEl.parentNode) {
+        const warn = document.createElement('div');
+        warn.id = 'or-metrics-warning';
+        warn.style.cssText = 'background:rgba(255,213,128,.07);border:1px solid rgba(255,213,128,.2);border-radius:8px;padding:10px 14px;margin-top:10px;font-size:.78rem;color:#ffd580;line-height:1.5;';
+        warn.innerHTML = '<strong>⚠ Despre acuratețea metricilor:</strong> Deschiderile (pixel GIF) sunt blocate de Gmail, Outlook și Apple Mail — cifrele sunt <em>sub-raportate</em>. <strong style="color:#ffd580;">Click-urile ★ sunt metrica fiabilă</strong> — înseamnă că destinatarul a acționat efectiv pe un link din email. Raportul <strong>clickuri/trimiși</strong> este indicatorul real de interes.';
+        statsEl.parentNode.insertBefore(warn, statsEl.nextSibling);
+      }
+    }
 
     $('or-recip-count').textContent = `${total} destinatar${total !== 1 ? 'i' : ''}`;
 

@@ -1,5 +1,25 @@
 /**
- * DocFlowAI v3.9.12 — Main entry point (orchestrator)
+ * DocFlowAI v3.9.15 — Main entry point (orchestrator)
+ *
+ * CHANGES v3.9.15 (build b229, 27.03.2026):
+ *  FIX CRITIC: HTTP 500 la incarcarea PDF in semdoc-signer.html
+ *    Cauza: safeDocName(data.docName, flowId) — flowId nedefinit in scope-ul routelor GET
+ *    Fix: inlocuit cu req.params.flowId || data.flowId in toate rutele PDF
+ *
+ * CHANGES v3.9.14 (build b228, 27.03.2026):
+ *  SEC: npm audit fix — 0 vulnerabilitati
+ *    node-forge 1.3.3 → 1.4.0 (4 CVE-uri high: DoS, cert bypass, sig forgery)
+ *    picomatch 4.0.x → 4.0.4+ (2 CVE-uri high: ReDoS, method injection)
+ *
+ * CHANGES v3.9.13 (build b227, 27.03.2026):
+ *  FIX: footer upload local - crud.mjs gestiona gresit return stampFooterOnPdf
+ *  FIX: CSRF admin - hdrs() nu includea x-csrf-token
+ *  FIX: Refresh flow.html - feedback vizual + spinner
+ *  FIX: Denumire document consistenta - safeDocName() centralizat
+ *  FIX: Arhivare Drive - archiveFlow din admin.mjs apelat fara pool
+ *       -> documentele suport nu se arhivau
+ *  FIX: EMAIL_SENT in progress/evenimente - loadFlow() dupa trimitere
+ *       -> evenimentul aparea doar dupa refresh manual
  *
  * CHANGES v3.9.12 (build b226, 26.03.2026):
  *  FIX ROOT: CMS fara signedAttrs — singurul format compatibil cu STS
@@ -834,36 +854,124 @@ function isSignerTokenExpired(signer) {
 // Footer stamp — linia de identificare pe ultima pagina.
 // Pentru flowType 'ancore': salvare cu useObjectStreams:false pentru a nu degrada AcroForm/campuri semnatura.
 // Pentru flowType 'tabel': comportament implicit (useObjectStreams:true).
-async function stampFooterOnPdf(pdfB64, flowData) {
-  if (!pdfB64 || !PDFLib) return pdfB64;
+function pdfLooksSigned(pdfB64) {
   try {
-    const { PDFDocument, PDFName, PDFNumber, PDFString, rgb, StandardFonts } = PDFLib;
-    const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-    function ro(t) { return String(t||'').split('').map(ch => diacr[ch]||ch).join(''); }
-    const clean  = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    const pdfDoc = await PDFDocument.load(Buffer.from(clean,'base64'),{ignoreEncryption:true});
-    const fontR  = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontB  = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount()-1];
-    const { width:pW, height:pH } = lastPage.getSize();
+    if (!pdfB64) return false;
+    const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const buf = Buffer.from(clean, 'base64');
+    const sample = buf.toString('latin1');
+    return (
+      sample.includes('/ByteRange') ||
+      sample.includes('/Contents<') ||
+      sample.includes('/Contents <') ||
+      sample.includes('/SubFilter/ETSI.CAdES.detached') ||
+      sample.includes('/SubFilter /ETSI.CAdES.detached') ||
+      sample.includes('/Type/Sig') ||
+      sample.includes('/Type /Sig')
+    );
+  } catch { return false; }
+}
 
-    // ── Footer ────────────────────────────────────────────────────────────
-    const MARGIN=40, footerY=14, FS=7;
+async function stampFooterOnPdf(pdfB64, flowData = {}) {
+  if (!pdfB64 || !PDFLib) return pdfB64;
+
+  if (flowData?.preventRewriteIfSigned !== false && pdfLooksSigned(pdfB64)) {
+    logger.warn({ flowId: flowData?.flowId, flowType: flowData?.flowType },
+      'stampFooterOnPdf skipped: PDF already contains signatures');
+    return pdfB64;
+  }
+
+  try {
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    const diacr = {
+      'ă':'a','â':'a','î':'i','ș':'s','ț':'t',
+      'Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T',
+      'ş':'s','ţ':'t','Ş':'S','Ţ':'T'
+    };
+    const ro = (t) => String(t || '').split('').map(ch => diacr[ch] || ch).join('');
+
+    const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
+    const pdfDoc = await PDFDocument.load(Buffer.from(clean, 'base64'), { ignoreEncryption: true });
+    const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const lastPage = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+    const { width: pW } = lastPage.getSize();
+    const MARGIN = 40, footerY = 14, FONT_SIZE = 7;
+
     const createdDate = flowData.createdAt
       ? new Date(flowData.createdAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })
       : new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
-    const parts = [ro(flowData.initName || ''), flowData.initFunctie ? ro(flowData.initFunctie) : null, flowData.institutie ? ro(flowData.institutie) : null, flowData.compartiment ? ro(flowData.compartiment) : null].filter(Boolean).join(', ');
-    const footerLeft = createdDate + (parts ? '  |  ' + parts : '');
+
+    const parts = [
+      ro(flowData.initName || ''),
+      flowData.initFunctie  ? ro(flowData.initFunctie)  : null,
+      flowData.institutie   ? ro(flowData.institutie)   : null,
+      flowData.compartiment ? ro(flowData.compartiment) : null,
+    ].filter(Boolean).join(', ');
+
+    const footerLeft  = createdDate + (parts ? '  |  ' + parts : '');
     const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
-    const rightWidth = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
-    const rightX = pW - MARGIN - rightWidth;
+    const rightWidth  = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
+    const rightX      = pW - MARGIN - rightWidth;
     const leftMaxWidth = rightX - MARGIN - 8;
-    lastPage.drawLine({ start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 }, thickness: 0.4, color: rgb(0.75, 0.75, 0.75) });
-    lastPage.drawText(footerLeft, { x: MARGIN, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth });
-    lastPage.drawText(footerRight, { x: rightX, y: footerY, size: FONT_SIZE, font: fontR, color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
+
+    lastPage.drawLine({
+      start: { x: MARGIN, y: footerY + 10 }, end: { x: pW - MARGIN, y: footerY + 10 },
+      thickness: 0.4, color: rgb(0.75, 0.75, 0.75)
+    });
+    lastPage.drawText(footerLeft,  { x: MARGIN,  y: footerY, size: FONT_SIZE, font: fontR,
+      color: rgb(0.5, 0.5, 0.5), opacity: 0.8, maxWidth: leftMaxWidth });
+    lastPage.drawText(footerRight, { x: rightX,  y: footerY, size: FONT_SIZE, font: fontR,
+      color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
+
     const isAncore = flowData.flowType === 'ancore';
-    return Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
-  } catch(e) { logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)'); return pdfB64; }
+    const stampedPdfB64 = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
+
+    const signerRects = [];
+    const signers = Array.isArray(flowData.signers) ? flowData.signers : [];
+    if (signers.length) {
+      const pageCount = pdfDoc.getPageCount();
+      const page = pdfDoc.getPages()[pageCount - 1];
+      const { width, height } = page.getSize();
+      const availableBottom = footerY + 26;
+      const topMargin = 40;
+      const sideMargin = 40;
+      const colGap = 18;
+      const rowGap = 18;
+      const n = signers.length;
+      let cols = 3;
+      if (n === 1) cols = 1;
+      else if (n === 2) cols = 2;
+      else if (n === 3) cols = 3;
+      else if (n === 4) cols = 2;
+      else cols = 3;
+      const rows = Math.ceil(n / cols);
+      const totalWidth = width - (sideMargin * 2) - ((cols - 1) * colGap);
+      const cellW = totalWidth / cols;
+      const maxAreaH = Math.max(120, height * 0.30);
+      const totalH = maxAreaH - ((rows - 1) * rowGap);
+      const cellH = Math.max(56, Math.min(78, totalH / rows));
+      const blockBottom = availableBottom + 6;
+      const blockTop = blockBottom + rows * cellH + (rows - 1) * rowGap;
+      const startY = Math.min(height - topMargin, blockTop) - cellH;
+
+      for (let i = 0; i < n; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const x = sideMargin + col * (cellW + colGap);
+        const y = startY - row * (cellH + rowGap);
+        // b253: h=54 = înălțimea exactă a conținutului Java (6 linii text + padding + chenar).
+        // cellH (56-78pt) e pentru layout-ul intern; câmpul STS are nevoie doar de 54pt.
+        signerRects.push({ page: pageCount, x, y, w: cellW, h: 54 });
+      }
+    }
+
+    if (signerRects.length) return { pdfB64: stampedPdfB64, signerRects };
+    return stampedPdfB64;
+
+  } catch (e) {
+    logger.warn({ err: e }, 'stampFooterOnPdf error (non-fatal)');
+    return pdfB64;
+  }
 }
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
@@ -1432,7 +1540,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const PORT = process.env.PORT;
 if (!PORT) { logger.error('PORT missing - setati variabila de mediu PORT'); process.exit(1); }
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
-  logger.info({ port: PORT, version: APP_VERSION }, 'DocFlowAI server pornit');
+  logger.info({ port: PORT, version: APP_VERSION, build: 'b243', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry().then(async () => {
     // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway

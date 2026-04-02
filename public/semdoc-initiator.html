@@ -468,7 +468,10 @@ th{ color: var(--sub) !important; }
               <div style="font-weight:700;font-size:1rem;color:var(--sub);">📂 Fluxurile mele</div>
               <span id="fluxCounter" style="display:none;padding:3px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:20px;font-size:.8rem;color:#c4b5ff;font-weight:700;"></span>
             </div>
-            <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows(1)">🔄 Actualizează</button>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <a href="/bulk-signer.html" style="display:inline-flex;align-items:center;gap:6px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);color:#b39dff;padding:7px 14px;border-radius:10px;font-size:.82rem;font-weight:700;text-decoration:none;cursor:pointer;" title="Semnează mai multe documente dintr-o singură operațiune">✍️ Semnare în masă</a>
+              <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows(1)">🔄 Actualizează</button>
+            </div>
           </div>
           <!-- Linia 2: Search + filtru status -->
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
@@ -493,6 +496,7 @@ th{ color: var(--sub) !important; }
             <select id="fluxStatusFilter" onchange="loadMyFlows(1)"
               style="padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.85rem;cursor:pointer;">
               <option value="all">Toate statusurile</option>
+              <option value="to_sign">✍️ De semnat</option>
               <option value="pending">⏳ În curs</option>
               <option value="completed">✅ Finalizate</option>
               <option value="refused">⛔ Refuzate</option>
@@ -665,12 +669,11 @@ th{ color: var(--sub) !important; }
         $("tabInit").classList.toggle("active", name === "init");
         $("tabFluxuri").classList.toggle("active", name === "fluxuri");
         if (name === "fluxuri") {
-          // Nu pre-populăm search-ul — backend filtrează automat după userul logat
           const fs = $("fluxSearch");
-          if (fs && !fs._userTyped) {
-            fs.value = "";
-            fs.setAttribute("value", "");
-          }
+          if (fs && !fs._userTyped) { fs.value = ""; fs.setAttribute("value", ""); }
+          // Resetăm filtrul la "Toate statusurile" la fiecare deschidere tab
+          const sf = $("fluxStatusFilter");
+          if (sf) sf.value = "all";
           loadMyFlows();
         }
       }
@@ -1198,7 +1201,41 @@ th{ color: var(--sub) !important; }
 
       let _allFlows = [];
 
+      // b233: map provider → label + icon pentru badge în mini-timeline
+      const _PROVIDER_BADGE = {
+        'local-upload': { icon: '💻', label: 'Upload local', color: 'rgba(157,176,255,.8)',   bg: 'rgba(157,176,255,.12)', border: 'rgba(157,176,255,.3)' },
+        'sts-cloud':    { icon: '🏛️', label: 'STS Cloud',    color: 'rgba(45,212,191,.9)',    bg: 'rgba(45,212,191,.12)',  border: 'rgba(45,212,191,.3)' },
+        'certsign':     { icon: '🔐', label: 'certSIGN',     color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
+        'transsped':    { icon: '🔐', label: 'Trans Sped',   color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
+        'alfatrust':    { icon: '🔐', label: 'AlfaTrust',    color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
+        'namirial':     { icon: '🔐', label: 'Namirial',     color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
+      };
+      function _providerBadgeHtml(providerId) {
+        const p = _PROVIDER_BADGE[providerId] || { icon: '🔏', label: providerId || 'Semnătură', color: 'rgba(234,240,255,.5)', bg: 'rgba(255,255,255,.06)', border: 'rgba(255,255,255,.15)' };
+        return `<div style="margin-top:3px;display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:20px;font-size:.68rem;font-weight:600;background:${p.bg};border:1px solid ${p.border};color:${p.color};">${p.icon} ${p.label}</div>`;
+      }
+
       function renderFluxuri(flows) {
+        // Helper: badge provider semnare
+        function providerBadge(f) {
+          // Determinam providerul efectiv din signatarii care au semnat
+          // IMPORTANT: fallback = 'local-upload', NU orgDefaultProvider
+          // orgDefaultProvider e ce e configurat in org, nu neaparat cum s-a semnat
+          const usedProvider = (f.signers || [])
+            .filter(s => s.signingProvider)
+            .map(s => s.signingProvider)
+            .find(Boolean) || 'local-upload';
+          const PROV = {
+            'sts-cloud':    { icon: '🏛️', label: 'STS Cloud QES', color: 'rgba(45,212,191,.15)', border: 'rgba(45,212,191,.35)', text: '#7cf0e0' },
+            'certsign':     { icon: '🔐', label: 'certSIGN Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
+            'transsped':    { icon: '🔐', label: 'Trans Sped Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
+            'alfatrust':    { icon: '🔐', label: 'AlfaTrust Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
+            'namirial':     { icon: '🔐', label: 'Namirial Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
+            'local-upload': { icon: '⬆️', label: 'Upload local', color: 'rgba(255,200,50,.1)', border: 'rgba(255,200,50,.3)', text: '#ffd580' },
+          };
+          const p = PROV[usedProvider] || PROV['local-upload'];
+          return `<span title="Metodă semnare: ${p.label}" style="background:${p.color};border:1px solid ${p.border};color:${p.text};padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;">${p.icon} ${p.label}</span>`;
+        }
         const el = $("fluxuriContent");
         if (!el) return;
         if (!flows.length) {
@@ -1209,7 +1246,7 @@ th{ color: var(--sub) !important; }
       const dlToken = ""; // unused — cookie trimis automat cu credentials: include
         const currentUserEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
         el.innerHTML = flows.map(f => {
-          const dt = new Date(f.createdAt).toLocaleDateString("ro-RO");
+          const dt = new Date(f.createdAt).toLocaleString("ro-RO", {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
           const allSigned = f.allSigned;
           const isRefused = (f.signers || []).some(s => s.status === "refused");
           const refusedByAprobat = (f.signers || []).some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
@@ -1256,10 +1293,14 @@ th{ color: var(--sub) !important; }
             const delegTip = s.delegatedFrom ? ` 👥 delegat de ${s.delegatedFrom.name||s.delegatedFrom.email}` : '';
             const refuzTip = st==='refused' && s.refuseReason ? `\nMotiv: ${s.refuseReason}` : '';
             const tipText = `${s.name||''}${rolTip}${delegTip}${refuzTip}`.replace(/"/g,'&quot;');
+            // Provider: dacă a semnat deja → signingProvider real; altfel → default org
+            const _prov = s.signingProvider || (st === 'current' || st === 'pending' ? (f.orgDefaultProvider || 'local-upload') : null);
+            const _provBadge = _prov ? _providerBadgeHtml(_prov) : '';
             return `<div class="mtl-step ${cls}" title="${tipText}">
               <div class="mtl-dot">${icon}</div>
               <div class="mtl-name">${esc(nameShort)}</div>
               ${ts ? `<div class="mtl-ts">${ts}</div>` : ''}
+              ${_provBadge}
             </div>`;
           });
           // Pas final: flux finalizat / stare finală + timestamp
@@ -1295,7 +1336,7 @@ th{ color: var(--sub) !important; }
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
               <div>
                 <div style="font-weight:700;font-size:.95rem;margin-bottom:4px;">${esc(f.docName)}</div>
-                <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; ${f.flowType === 'ancore' ? '<span title="PDF cu ancore existente — fără tabel generat" style="color:#7cf0e0;font-weight:600;">⚓ Ancore</span>' : '<span title="PDF cu tabel generat de DocFlowAI" style="color:#b39dff;font-weight:600;">📋 Tabel</span>'} &nbsp;·&nbsp; Inițiator: ${esc(f.initName || f.initEmail)} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span>${f.parentFlowId ? ` &nbsp;·&nbsp; <a href="/flow.html?flow=${encodeURIComponent(f.parentFlowId)}" style="color:#ffd580;font-size:.76rem;text-decoration:underline;" title="Flux reinițiat după refuz — vezi fluxul anterior">🔁 Reinițiat din ${f.parentFlowId}</a>` : ''}</div>
+                <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; ${f.flowType === 'ancore' ? '<span title="PDF cu ancore existente — fără tabel generat" style="color:#7cf0e0;font-weight:600;">⚓ Ancore</span>' : '<span title="PDF cu tabel generat de DocFlowAI" style="color:#b39dff;font-weight:600;">📋 Tabel</span>'} &nbsp;·&nbsp; ${providerBadge(f)} &nbsp;·&nbsp; Inițiator: ${esc(f.initName || f.initEmail)} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span>${f.parentFlowId ? ` &nbsp;·&nbsp; <a href="/flow.html?flow=${encodeURIComponent(f.parentFlowId)}" style="color:#ffd580;font-size:.76rem;text-decoration:underline;" title="Flux reinițiat după refuz — vezi fluxul anterior">🔁 Reinițiat din ${f.parentFlowId}</a>` : ''}</div>
               </div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 ${isUrgent ? '<span style="background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>' : ''}
@@ -1559,7 +1600,7 @@ async function signFromFluxuri(flowId) {
             if (isFiltered) {
               const filterLabel = {
                 "pending": "În curs", "completed": "Finalizate",
-                "refused": "Refuzate", "cancelled": "Anulate", "all": ""
+                "refused": "Refuzate", "cancelled": "Anulate", "to_sign": "De semnat", "all": ""
               }[filterVal] || filterVal;
               counter.textContent = `${total} ${total === 1 ? "flux" : "fluxuri"}${filterLabel ? " · " + filterLabel : ""}`;
               counter.style.background = "rgba(124,92,255,.15)";
@@ -2358,9 +2399,14 @@ async function doSendEmail() {
     });
     const d = await r.json();
     if (r.ok) {
-      msg.style.color = '#2dd4bf'; msg.textContent = `✅ Email trimis cu succes către ${to}`;
+      msg.style.color = '#2dd4bf';
+      msg.textContent = `✅ Email trimis cu succes către ${to}`;
       btn.textContent = '✅ Trimis!';
-      setTimeout(() => closeSendEmailModal(), 2000);
+      // b232: reîmprospătăm lista de fluxuri pentru a actualiza badge-ul email și evenimentele
+      setTimeout(() => {
+        closeSendEmailModal();
+        loadMyFlows(_fluxPage);  // refresh card → evenimentul EMAIL_SENT apare imediat
+      }, 1500);
     } else {
       msg.style.color = '#ffaaaa'; msg.textContent = `❌ ${d.message || d.error || 'Eroare la trimitere.'}`;
       btn.disabled = false; btn.textContent = '📤 Trimite email';

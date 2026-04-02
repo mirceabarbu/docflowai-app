@@ -776,6 +776,69 @@ const MIGRATIONS = [
         CHECK (key IN ('pdfB64','signedPdfB64','originalPdfB64')
                OR key LIKE 'padesPdf_%');
     `
+  },
+  {
+    id: '042_bulk_signing_sessions',
+    sql: `
+      -- Bulk signing: sesiuni de semnare în masă (un utilizator semnează N documente
+      -- printr-un singur flux OAuth + o singură aprobare email/PUSH la STS)
+      CREATE TABLE IF NOT EXISTS bulk_signing_sessions (
+        id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id        INTEGER      REFERENCES organizations(id) ON DELETE SET NULL,
+        signer_email  TEXT         NOT NULL,
+        provider_id   TEXT         NOT NULL DEFAULT 'sts-cloud',
+        status        TEXT         NOT NULL DEFAULT 'initiated'
+                                   CHECK (status IN ('initiated','oauth_pending','signing_pending','completed','error')),
+        items         JSONB        NOT NULL DEFAULT '[]',
+        sts_provider_data JSONB,
+        sts_op_id     TEXT,
+        sts_token     TEXT,
+        sts_sign_url  TEXT,
+        sts_cert_pem  TEXT,
+        error_message TEXT,
+        created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        expires_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW() + INTERVAL '2 hours',
+        completed_at  TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_bulk_sessions_signer
+        ON bulk_signing_sessions(signer_email, status);
+      CREATE INDEX IF NOT EXISTS idx_bulk_sessions_expires
+        ON bulk_signing_sessions(expires_at)
+        WHERE status NOT IN ('completed','error');
+    `
+  },
+  {
+    id: '043_flows_pdfs_pades_fix',
+    sql: `
+      -- b233: refacem explicit constraint-ul flows_pdfs.key pentru a include padesPdf_%
+      -- Migration 041 a putut rula in medii unde constraint-ul deja exista (DROP IF EXISTS ok
+      -- dar ADD CONSTRAINT putea eșua silențios sau nu a inclus padesPdf_% corect).
+      ALTER TABLE flows_pdfs DROP CONSTRAINT IF EXISTS flows_pdfs_key_check;
+      ALTER TABLE flows_pdfs ADD CONSTRAINT flows_pdfs_key_check
+        CHECK (key IN ('pdfB64','signedPdfB64','originalPdfB64')
+               OR key LIKE 'padesPdf_%');
+    `
+  },
+  {
+    id: '045_cleanup_pades_jsonb',
+    sql: `
+      -- b233: curățăm cheile _padesPdf_N rămase în JSONB din fluxuri existente
+      -- Acestea sunt PDF-uri de ~300KB care blochează app-ul dacă nu sunt șterse la poll
+      UPDATE flows SET data = data - '_padesPdf_0' - '_padesPdf_1' - '_padesPdf_2' - '_padesPdf_3'
+        - 'padesPdfs'
+      WHERE data ? '_padesPdf_0' OR data ? '_padesPdf_1' OR data ? 'padesPdfs';
+    `
+  },
+  {
+    id: '044_flows_pdfs_no_constraint',
+    sql: `
+      -- b233: eliminam COMPLET constraint-ul pe flows_pdfs.key.
+      -- Motivul: CHECK constraint cauza INSERT silent-fail pentru cheia 'padesPdf_N'
+      -- in unele medii (constraint ADD-uit partial sau cu versiune veche),
+      -- ducand la fallback la pdfB64 (fara cartus, fara semnatura vizibila).
+      -- flows_pdfs este o tabela interna — nu are sens sa restrictionam cheile.
+      ALTER TABLE flows_pdfs DROP CONSTRAINT IF EXISTS flows_pdfs_key_check;
+    `
   }
 ];
 

@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.mjs';
 import { pool, requireDb, getFlowData } from '../db/index.mjs';
+import { logger } from '../middleware/logger.mjs';
 
 // wsPush injectat la montare
 let _wsPush;
@@ -120,6 +121,58 @@ router.get('/api/my-signer-token/:flowId', async (req, res) => {
     if (!signer) return res.status(403).json({ error: 'not_a_signer' });
     res.json({ token: signer.token, flowId: req.params.flowId, status: signer.status });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
+// ── GET /api/my-pending-flows — fluxuri unde userul curent e semnatar activ ──
+// Folosit de bulk-signer.html și semdoc-initiator.html pentru selecția bulk
+router.get('/api/my-pending-flows', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const email = actor.email.toLowerCase();
+    const orgId = actor.orgId || null;
+    let whereClause, params;
+    if (orgId) {
+      whereClause = `(data->>'completed') IS DISTINCT FROM 'true'
+        AND (data->>'status') IS DISTINCT FROM 'cancelled'
+        AND (data->>'status') IS DISTINCT FROM 'refused'
+        AND org_id = $2 AND deleted_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM jsonb_array_elements(data->'signers') s
+          WHERE lower(s->>'email') = $1 AND s->>'status' = 'current'
+        )`;
+      params = [email, orgId];
+    } else {
+      whereClause = `(data->>'completed') IS DISTINCT FROM 'true'
+        AND (data->>'status') IS DISTINCT FROM 'cancelled'
+        AND (data->>'status') IS DISTINCT FROM 'refused'
+        AND deleted_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM jsonb_array_elements(data->'signers') s
+          WHERE lower(s->>'email') = $1 AND s->>'status' = 'current'
+        )`;
+      params = [email];
+    }
+    const { rows } = await pool.query(
+      `SELECT id AS flow_id, data, created_at FROM flows
+       WHERE ${whereClause} ORDER BY created_at DESC LIMIT 50`,
+      params
+    );
+    const flows = rows.map(r => {
+      const d = r.data || {};
+      const signer = (d.signers || []).find(s => (s.email||'').toLowerCase() === email && s.status === 'current');
+      return {
+        flowId:      d.flowId,
+        docName:     d.docName || '—',
+        flowType:    d.flowType || 'tabel',
+        createdAt:   d.createdAt || r.created_at,
+        urgent:      !!(d.urgent),
+        signerToken: signer?.token || null,
+        signingProvider: signer?.signingProvider || null,
+      };
+    }).filter(f => f.flowId && f.signerToken);
+    res.json({ flows, total: flows.length });
+  } catch(e) { logger.error({ err: e }, 'my-pending-flows error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 export default router;

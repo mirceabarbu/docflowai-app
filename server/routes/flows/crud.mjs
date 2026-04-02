@@ -6,6 +6,11 @@ import { Router, json as expressJson } from 'express';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
+
+// Helper: denumire consistenta pentru PDF descarcat
+function safeDocName(docName, flowId) {
+  return (docName || flowId || 'document').replace(/[^\w\-\.\s]/g, '_').replace(/\s+/g, '-').substring(0, 80);
+}
 import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -115,23 +120,28 @@ const createFlow = async (req, res) => {
 
     if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
       try {
-        // stampFooterOnPdf poate returna { pdfB64, signersFieldNames }
-        // dacă generează și cartușul cu câmpuri AcroForm /Sig
-        const stampResult = await _stampFooterOnPdf(finalPdfB64, {
-          flowId, createdAt, initName, initFunctie,
-          institutie: initInstitutie, compartiment: initCompartiment,
+        // b242: stampFooterOnPdf returnează { pdfB64, signerFields }
+        // signerFields = [{fieldName, pageIndex}] — câmpurile /Sig pre-create
+        const _stampResult = await _stampFooterOnPdf(finalPdfB64, {
+          flowId,
+          createdAt,
+          initName,
+          initFunctie,
+          institutie: initInstitutie,
+          compartiment: initCompartiment,
           flowType: body.flowType || 'tabel',
+          signers: normalizedSigners,
+          preventRewriteIfSigned: true,
         });
-        if (stampResult && typeof stampResult === 'object' && stampResult.pdfB64) {
-          finalPdfB64 = stampResult.pdfB64;
-          // Aplicăm padesFieldName per semnatar dacă a fost generat
-          if (stampResult.signersFieldNames) {
-            normalizedSigners.forEach((s, i) => {
-              if (stampResult.signersFieldNames[i]) s.padesFieldName = stampResult.signersFieldNames[i];
+        if (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) {
+          finalPdfB64 = _stampResult.pdfB64;
+          if (Array.isArray(_stampResult.signerRects)) {
+            _stampResult.signerRects.forEach((rect, idx) => {
+              if (normalizedSigners[idx] && rect) normalizedSigners[idx].padesRect = rect;
             });
           }
-        } else {
-          finalPdfB64 = stampResult; // returnare simplă (string) — fallback
+        } else if (typeof _stampResult === 'string' && _stampResult.length > 0) {
+          finalPdfB64 = _stampResult;
         }
       } catch(e) { logger.warn({ err: e }, 'Footer la creare error:'); }
     }
@@ -179,14 +189,14 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
-    const safeName = (data.docName || 'document').replace(/[^\w\-]+/g, '_');
+    const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
     const b64 = data.signedPdfB64;
     if (!b64 || typeof b64 !== 'string') {
       if (data.storage === 'drive' && data.driveFileIdFinal) {
         try {
           const { streamFromDrive } = await import('../../drive.mjs');
           res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
+          res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
           await streamFromDrive(data.driveFileIdFinal, res); return;
         } catch(driveErr) { return res.status(502).json({ error: 'drive_unavailable' }); }
       }
@@ -194,7 +204,7 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
     }
     const raw = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
     return res.status(200).send(Buffer.from(raw, 'base64'));
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
@@ -246,7 +256,7 @@ router.get('/flows/:flowId/pdf', _readRateLimit, async (req, res) => {
     }
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${(data.docName || 'document').replace(/[^\w\-]+/g, '_')}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="${safeDocName(data.docName, req.params.flowId)}.pdf"`);
     return res.status(200).send(pdfBuf);
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
@@ -276,7 +286,11 @@ const getFlowHandler = async (req, res) => {
     res.setHeader('ETag', etag);
     // Cache scurt (30s) pentru fluxuri active, lung (1h) pentru cele finalizate
     const isCompleted = data.completed || data.status === 'cancelled' || data.status === 'refused';
-    res.setHeader('Cache-Control', isCompleted ? 'private, max-age=3600' : 'private, max-age=30');
+    // FIX b232: max-age=3600 pentru fluxuri finalizate cauza browser sa serveasca
+    // raspunsul din cache dupa trimiteri email, ascunzand evenimentul EMAIL_SENT.
+    // no-cache = browser revalideaza intotdeauna via ETag (bandwidth ok), dar NU
+    // serveste din cache fara sa contacteze serverul.
+    res.setHeader('Cache-Control', isCompleted ? 'private, no-cache' : 'private, max-age=30');
 
     // FIX: getUserMapForOrg — nu leak-uieste useri intre organizatii
     const orgId = actor?.orgId || data?.orgId || null;
@@ -384,6 +398,8 @@ router.get('/my-flows', async (req, res) => {
     else if (statusFilter === 'completed') statusWhere = " AND (data->>'completed') = 'true'";
     else if (statusFilter === 'refused') statusWhere = " AND (data->>'status') = 'refused'";
     else if (statusFilter === 'cancelled') statusWhere = " AND (data->>'status') = 'cancelled'";
+    // b230: "De semnat" — fluxuri active unde userul curent e semnatar cu status=current
+    else if (statusFilter === 'to_sign') statusWhere = ` AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'cancelled' AND EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1 AND s->>'status' = 'current')`;
     let searchWhere = '';
     if (search) {
       params.push(`%${escapedSearch}%`);
@@ -403,10 +419,25 @@ router.get('/my-flows', async (req, res) => {
     const whereClause = baseWhere + statusWhere + searchWhere;
     const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
     const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
-    const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows WHERE ${whereClause} ORDER BY updated_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]);
+    const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows WHERE ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]);
 
     // FIX: getUserMapForOrg — fara leak intre organizatii
     const userMap = await getUserMapForOrg(orgId);
+
+    // b233: provider default al org-ului — afișat ca badge în mini-timeline
+    let orgDefaultProvider = 'local-upload';
+    let orgEnabledProviders = ['local-upload'];
+    if (orgId) {
+      const { rows: orgRows } = await pool.query(
+        'SELECT signing_providers_enabled FROM organizations WHERE id=$1', [orgId]
+      );
+      const enabled = orgRows[0]?.signing_providers_enabled;
+      if (Array.isArray(enabled) && enabled.length > 0) {
+        orgEnabledProviders = enabled;
+        // Provider default = primul non-local-upload (dacă există), altfel local-upload
+        orgDefaultProvider = enabled.find(p => p !== 'local-upload') || 'local-upload';
+      }
+    }
     const myFlows = rows.map(r => r.data).filter(Boolean).map(d => ({
       flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
       createdAt: d.createdAt, updatedAt: d.updatedAt,
@@ -421,7 +452,7 @@ router.get('/my-flows', async (req, res) => {
       flowType: d.flowType || 'tabel', // FIX: flowType lipsea → badge afișa mereu 'Tabel'
       status: d.status || 'active',
       urgent: !!(d.urgent),
-      signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refusedAt: s.refusedAt || null, notifiedAt: s.notifiedAt || null, refuseReason: s.refuseReason }; }),
+      signers: (d.signers || []).map(s => { const u = userMap[(s.email || '').toLowerCase()] || {}; return { name: s.name, email: s.email, rol: s.rol, functie: s.functie || u.functie || '', compartiment: s.compartiment || u.compartiment || '', status: s.status, signedAt: s.signedAt, refusedAt: s.refusedAt || null, notifiedAt: s.notifiedAt || null, refuseReason: s.refuseReason, signingProvider: s.signingProvider || null }; }),
       hasSignedPdf: !!(
         d.signedPdfB64
         || d._signedPdfB64Present
@@ -432,6 +463,8 @@ router.get('/my-flows', async (req, res) => {
       allSigned: !!(d.completed || (d.signers || []).every(s => s.status === 'signed')),
       reinitiatedAs: d.reinitiatedAs || null, // prezent dacă fluxul a fost reinițializat — blochează al doilea Reinițiază
       parentFlowId: d.parentFlowId || null,
+      orgDefaultProvider,
+      orgEnabledProviders,
     }));
     res.json({ flows: myFlows, total, page, limit, pages });
   } catch(e) { logger.error({ err: e }, 'my-flows error:'); res.status(500).json({ error: 'server_error' }); }
@@ -457,16 +490,16 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
       if (d.storage === 'drive' && d.driveFileIdFinal) {
         try {
           const { streamFromDrive } = await import('../../drive.mjs');
-          const safeName2 = (d.docName || 'document').replace(/[^\w\-]+/g, '_');
-          res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${safeName2}_semnat.pdf"`);
+          const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
+          res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
           await streamFromDrive(d.driveFileIdFinal, res); return;
         } catch(driveErr) { return res.status(502).json({ error: 'drive_unavailable' }); }
       }
       return res.status(404).json({ error: 'no_signed_pdf' });
     }
     const buf = Buffer.from(d.signedPdfB64.split(',')[1] || d.signedPdfB64, 'base64');
-    const safeName = (d.docName || 'document').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="${safeName}_semnat.pdf"`);
+    const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
     res.send(buf);
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
