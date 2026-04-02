@@ -959,7 +959,9 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
         const col = i % cols;
         const x = sideMargin + col * (cellW + colGap);
         const y = startY - row * (cellH + rowGap);
-        signerRects.push({ page: pageCount, x, y, w: cellW, h: cellH });
+        // b253: h=54 = înălțimea exactă a conținutului Java (6 linii text + padding + chenar).
+        // cellH (56-78pt) e pentru layout-ul intern; câmpul STS are nevoie doar de 54pt.
+        signerRects.push({ page: pageCount, x, y, w: cellW, h: 54 });
       }
     }
 
