@@ -1544,6 +1544,13 @@ th{ color: var(--sub) !important; }
         // Afișăm imediat, înainte ca loadFlow să termine, pentru că backend-ul
         // procesează injectCms + appearance stream (2-4 secunde de așteptare)
         if (_stsPending === '1') {
+          // Ascundem imediat banner-ul urgent și viewer-ul PDF —
+          // loadFlow() le va re-afișa, dar le vom re-ascunde în .then()
+          const _urgBanner = $('urgentBanner');
+          const _pdfBox    = $('pdfBox');
+          if (_urgBanner) _urgBanner.style.display = 'none';
+          if (_pdfBox)    _pdfBox.style.display    = 'none';
+
           const signBox = $('signBox');
           if (signBox) {
             signBox.innerHTML = `
@@ -1722,7 +1729,14 @@ th{ color: var(--sub) !important; }
         }
 
         loadFlow().catch((e) => showError(String(e.message || e))).then(() => {
-          if (_stsPending === '1') startStsPolling();
+          if (_stsPending === '1') {
+            // loadFlow() a putut re-afișa banner-ul urgent și PDF-ul — le re-ascundem
+            const _urgBanner = $('urgentBanner');
+            const _pdfBox    = $('pdfBox');
+            if (_urgBanner) _urgBanner.style.display = 'none';
+            if (_pdfBox)    _pdfBox.style.display    = 'none';
+            startStsPolling();
+          }
           // sts_signed=1: dacă fluxul încă arată semnatarul ca 'current' (race condition DB),
           // forțăm starea vizuală corectă — semnatarul a semnat cu succes
           if (_stsSigned === '1') {
