@@ -1540,203 +1540,105 @@ th{ color: var(--sub) !important; }
           window.history.replaceState({}, '', cleanUrl.toString());
         }
 
-        // ── Loading state profesionist când sts_pending=1 ─────────────────
-        // Afișăm imediat, înainte ca loadFlow să termine, pentru că backend-ul
-        // procesează injectCms + appearance stream (2-4 secunde de așteptare)
+        // ── Overlay procesare STS — position:fixed pe body ────────────────
+        // Acoperă TOATĂ pagina (inclusiv pdfBox, urgentBanner, signBox).
+        // loadFlow() rulează normal în fundal fără să poată suprascrie overlay-ul.
+        // Dispare natural la redirect-ul final către flow.html.
         if (_stsPending === '1') {
-          // Ascundem imediat banner-ul urgent și viewer-ul PDF —
-          // loadFlow() le va re-afișa, dar le vom re-ascunde în .then()
-          const _urgBanner = $('urgentBanner');
-          const _pdfBox    = $('pdfBox');
-          if (_urgBanner) _urgBanner.style.display = 'none';
-          if (_pdfBox)    _pdfBox.style.display    = 'none';
-
-          const signBox = $('signBox');
-          if (signBox) {
-            signBox.innerHTML = `
-              <style>
-                @keyframes qes-spin { to { transform: rotate(360deg); } }
-                @keyframes qes-bar  { 0%{transform:translateX(-100%)} 100%{transform:translateX(220%)} }
-                @keyframes qes-fade { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-                @keyframes qes-pulse-ring {
-                  0%  { box-shadow: 0 0 0 0 rgba(45,212,191,.45); }
-                  70% { box-shadow: 0 0 0 10px rgba(45,212,191,0); }
-                  100%{ box-shadow: 0 0 0 0 rgba(45,212,191,0); }
-                }
-                .qes-step { display:flex; align-items:center; gap:12px; padding:9px 0;
-                  border-bottom:1px solid rgba(255,255,255,.05); animation:qes-fade .35s ease both; }
-                .qes-step:last-child { border-bottom:none; }
-                .qes-icon { width:28px; height:28px; border-radius:50%; flex-shrink:0;
-                  display:flex; align-items:center; justify-content:center; font-size:.8rem; }
-                .qes-icon-done { background:rgba(45,212,191,.15); color:#2dd4bf; }
-                .qes-icon-active { background:rgba(124,92,255,.2);
-                  animation:qes-pulse-ring 1.4s ease-in-out infinite; }
-                .qes-icon-pending { background:rgba(255,255,255,.06); color:rgba(255,255,255,.25); }
-                .qes-spin-svg { animation:qes-spin .9s linear infinite; }
-                .qes-label { font-size:.82rem; font-weight:600; }
-                .qes-label-done { color:rgba(45,212,191,.8); }
-                .qes-label-active { color:#eaf0ff; }
-                .qes-label-pending { color:rgba(255,255,255,.3); }
-                .qes-sublabel { font-size:.72rem; color:rgba(234,240,255,.35); margin-top:1px; }
-              </style>
-
-              <div style="padding:24px 22px 20px; font-family:'Segoe UI',system-ui,sans-serif;">
-
-                <!-- Header -->
-                <div style="display:flex; align-items:center; gap:14px; margin-bottom:22px;
-                  padding-bottom:18px; border-bottom:1px solid rgba(255,255,255,.07);">
-                  <div style="width:44px;height:44px;border-radius:12px;flex-shrink:0;
-                    background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(45,212,191,.2));
-                    display:flex;align-items:center;justify-content:center;
-                    border:1px solid rgba(45,212,191,.25);">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                      <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z"
-                        fill="rgba(45,212,191,.2)" stroke="#2dd4bf" stroke-width="1.5" stroke-linejoin="round"/>
-                      <path d="M9 12l2 2 4-4" stroke="#2dd4bf" stroke-width="1.8"
-                        stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <div style="font-weight:700;font-size:.95rem;color:#eaf0ff;letter-spacing:.2px;">
-                      Semnătură electronică calificată
-                    </div>
-                    <div style="font-size:.75rem;color:rgba(45,212,191,.7);margin-top:2px;letter-spacing:.5px;">
-                      STS CLOUD QES &nbsp;·&nbsp; ÎN CURS DE PROCESARE
-                    </div>
-                  </div>
+          const _ov = document.createElement('div');
+          _ov.id = 'qesProcessingOverlay';
+          _ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0d1225;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif';
+          _ov.innerHTML = `
+            <style>
+              @keyframes qes-spin { to { transform:rotate(360deg); } }
+              @keyframes qes-bar  { 0%{transform:translateX(-100%)} 100%{transform:translateX(220%)} }
+              @keyframes qes-fade { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+              @keyframes qes-ring {
+                0%  { box-shadow:0 0 0 0 rgba(45,212,191,.45); }
+                70% { box-shadow:0 0 0 10px rgba(45,212,191,0); }
+                100%{ box-shadow:0 0 0 0 rgba(45,212,191,0); }
+              }
+              .qsi { width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center; }
+              .qsi-done   { background:rgba(45,212,191,.15); }
+              .qsi-active { background:rgba(124,92,255,.2);animation:qes-ring 1.4s ease-in-out infinite; }
+              .qsi-wait   { background:rgba(255,255,255,.06); }
+              .qss        { animation:qes-spin .9s linear infinite; }
+              .ql         { font-size:.82rem;font-weight:600; }
+              .ql-done    { color:rgba(45,212,191,.8); }
+              .ql-active  { color:#eaf0ff; }
+              .ql-wait    { color:rgba(255,255,255,.3); }
+              .qsub       { font-size:.72rem;color:rgba(234,240,255,.32);margin-top:1px; }
+              .qrow       { display:flex;align-items:center;gap:12px;padding:9px 0;
+                border-bottom:1px solid rgba(255,255,255,.05);animation:qes-fade .35s ease both; }
+              .qrow:last-child { border-bottom:none; }
+            </style>
+            <div style="width:100%;max-width:400px;margin:0 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:14px;padding:20px 22px 16px;border-bottom:1px solid rgba(255,255,255,.07);">
+                <div style="width:44px;height:44px;border-radius:12px;flex-shrink:0;background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(45,212,191,.2));display:flex;align-items:center;justify-content:center;border:1px solid rgba(45,212,191,.25);">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z" fill="rgba(45,212,191,.15)" stroke="#2dd4bf" stroke-width="1.5" stroke-linejoin="round"/>
+                    <path d="M9 12l2 2 4-4" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
                 </div>
-
-                <!-- Steps -->
-                <div style="margin-bottom:20px;">
-
-                  <div class="qes-step" style="animation-delay:.05s">
-                    <div class="qes-icon qes-icon-done">
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <path d="M2.5 7l3 3 6-6" stroke="#2dd4bf" stroke-width="1.8"
-                          stroke-linecap="round" stroke-linejoin="round"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <div class="qes-label qes-label-done">Autentificare STS finalizată</div>
-                      <div class="qes-sublabel">Identitate verificată prin OAuth 2.0 PKCE</div>
-                    </div>
-                  </div>
-
-                  <div class="qes-step" id="qStep2" style="animation-delay:.15s">
-                    <div class="qes-icon qes-icon-active" id="qIcon2">
-                      <svg class="qes-spin-svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                        <circle cx="8" cy="8" r="6" stroke="rgba(124,92,255,.3)" stroke-width="2"/>
-                        <path d="M8 2a6 6 0 0 1 6 6" stroke="#7c5cff" stroke-width="2"
-                          stroke-linecap="round"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <div class="qes-label qes-label-active" id="qLabel2">Pregătire document PAdES</div>
-                      <div class="qes-sublabel" id="qSub2">Calculare ByteRange și hash SHA-256</div>
-                    </div>
-                  </div>
-
-                  <div class="qes-step" id="qStep3" style="animation-delay:.25s">
-                    <div class="qes-icon qes-icon-pending" id="qIcon3">
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <circle cx="7" cy="7" r="5" stroke="rgba(255,255,255,.2)" stroke-width="1.5"/>
-                        <path d="M7 4v3.5l2 1.2" stroke="rgba(255,255,255,.2)" stroke-width="1.4"
-                          stroke-linecap="round"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <div class="qes-label qes-label-pending" id="qLabel3">Semnătură criptografică ECDSA</div>
-                      <div class="qes-sublabel" id="qSub3">STS procesează hash-ul documentului</div>
-                    </div>
-                  </div>
-
-                  <div class="qes-step" id="qStep4" style="animation-delay:.35s">
-                    <div class="qes-icon qes-icon-pending" id="qIcon4">
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <rect x="2" y="5" width="10" height="7" rx="1.5"
-                          stroke="rgba(255,255,255,.2)" stroke-width="1.4"/>
-                        <path d="M5 5V3.5a2 2 0 0 1 4 0V5" stroke="rgba(255,255,255,.2)" stroke-width="1.4"
-                          stroke-linecap="round"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <div class="qes-label qes-label-pending" id="qLabel4">Finalizare și arhivare</div>
-                      <div class="qes-sublabel" id="qSub4">Construire CMS, validare și salvare</div>
-                    </div>
-                  </div>
-
+                <div>
+                  <div style="font-weight:700;font-size:.95rem;color:#eaf0ff;letter-spacing:.2px;">Semnătură electronică calificată</div>
+                  <div style="font-size:.75rem;color:rgba(45,212,191,.7);margin-top:2px;letter-spacing:.5px;">STS CLOUD QES &nbsp;·&nbsp; ÎN CURS DE PROCESARE</div>
                 </div>
-
-                <!-- Progress bar -->
-                <div style="height:3px;background:rgba(255,255,255,.07);border-radius:2px;
-                  overflow:hidden;margin-bottom:14px;">
-                  <div style="height:100%;width:60%;background:linear-gradient(90deg,#7c5cff,#2dd4bf);
-                    border-radius:2px;animation:qes-bar 2s ease-in-out infinite;"></div>
-                </div>
-
-                <!-- Footer -->
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <div style="font-size:.72rem;color:rgba(234,240,255,.3);letter-spacing:.3px;">
-                    ⚠ Nu închideți această pagină
-                  </div>
-                  <div id="qesTimer" style="font-size:.72rem;color:rgba(45,212,191,.5);
-                    font-variant-numeric:tabular-nums;letter-spacing:.3px;">
-                    0s
-                  </div>
-                </div>
-
               </div>
-
-              <script>
-                (function() {
-                  var t0 = Date.now();
-                  // Timer
-                  var timerEl = document.getElementById('qesTimer');
-                  var timerInt = setInterval(function() {
-                    if (!timerEl) { clearInterval(timerInt); return; }
-                    timerEl.textContent = Math.round((Date.now()-t0)/1000) + 's';
-                  }, 1000);
-                  // Step 2 → done, Step 3 → active  (după ~1.8s)
-                  setTimeout(function() {
-                    var i2 = document.getElementById('qIcon2');
-                    var l2 = document.getElementById('qLabel2');
-                    if (i2) { i2.className='qes-icon qes-icon-done';
-                      i2.innerHTML='<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
-                    if (l2) { l2.className='qes-label qes-label-done'; }
-                    var i3 = document.getElementById('qIcon3');
-                    var l3 = document.getElementById('qLabel3');
-                    if (i3) { i3.className='qes-icon qes-icon-active';
-                      i3.innerHTML='<svg class="qes-spin-svg" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="rgba(124,92,255,.3)" stroke-width="2"/><path d="M8 2a6 6 0 0 1 6 6" stroke="#7c5cff" stroke-width="2" stroke-linecap="round"/></svg>'; }
-                    if (l3) { l3.className='qes-label qes-label-active'; }
-                  }, 1800);
-                  // Step 3 → done, Step 4 → active  (după ~4s)
-                  setTimeout(function() {
-                    var i3 = document.getElementById('qIcon3');
-                    var l3 = document.getElementById('qLabel3');
-                    if (i3) { i3.className='qes-icon qes-icon-done';
-                      i3.innerHTML='<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
-                    if (l3) { l3.className='qes-label qes-label-done'; }
-                    var i4 = document.getElementById('qIcon4');
-                    var l4 = document.getElementById('qLabel4');
-                    if (i4) { i4.className='qes-icon qes-icon-active';
-                      i4.innerHTML='<svg class="qes-spin-svg" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="rgba(124,92,255,.3)" stroke-width="2"/><path d="M8 2a6 6 0 0 1 6 6" stroke="#7c5cff" stroke-width="2" stroke-linecap="round"/></svg>'; }
-                    if (l4) { l4.className='qes-label qes-label-active'; }
-                  }, 4000);
-                })();
-              <\/script>
-            `;
-          }
+              <div style="padding:4px 22px 8px;">
+                <div class="qrow" style="animation-delay:.05s">
+                  <div class="qsi qsi-done"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                  <div><div class="ql ql-done">Autentificare STS finalizată</div><div class="qsub">Identitate verificată prin OAuth 2.0 PKCE</div></div>
+                </div>
+                <div class="qrow" style="animation-delay:.12s">
+                  <div class="qsi qsi-active" id="qIcon2"><svg class="qss" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="rgba(124,92,255,.3)" stroke-width="2"/><path d="M8 2a6 6 0 0 1 6 6" stroke="#7c5cff" stroke-width="2" stroke-linecap="round"/></svg></div>
+                  <div><div class="ql ql-active" id="qLabel2">Pregătire document PAdES</div><div class="qsub">Calculare ByteRange și hash SHA-256</div></div>
+                </div>
+                <div class="qrow" style="animation-delay:.2s">
+                  <div class="qsi qsi-wait" id="qIcon3"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="rgba(255,255,255,.2)" stroke-width="1.5"/><path d="M7 4v3.5l2 1.2" stroke="rgba(255,255,255,.2)" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+                  <div><div class="ql ql-wait" id="qLabel3">Semnătură criptografică ECDSA</div><div class="qsub">STS procesează hash-ul documentului</div></div>
+                </div>
+                <div class="qrow" style="animation-delay:.28s">
+                  <div class="qsi qsi-wait" id="qIcon4"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="5" width="10" height="7" rx="1.5" stroke="rgba(255,255,255,.2)" stroke-width="1.4"/><path d="M5 5V3.5a2 2 0 0 1 4 0V5" stroke="rgba(255,255,255,.2)" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+                  <div><div class="ql ql-wait" id="qLabel4">Finalizare și arhivare</div><div class="qsub">Construire CMS, validare și salvare</div></div>
+                </div>
+              </div>
+              <div style="padding:8px 22px 18px;">
+                <div style="height:3px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;margin-bottom:12px;">
+                  <div style="height:100%;width:55%;background:linear-gradient(90deg,#7c5cff,#2dd4bf);border-radius:2px;animation:qes-bar 2s ease-in-out infinite;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div style="font-size:.72rem;color:rgba(234,240,255,.3);">⚠ Nu închideți această pagină</div>
+                  <div id="qesTimer" style="font-size:.72rem;color:rgba(45,212,191,.5);font-variant-numeric:tabular-nums;">0s</div>
+                </div>
+              </div>
+            </div>
+            <script>
+              (function() {
+                var t0 = Date.now();
+                var ti = setInterval(function() {
+                  var el = document.getElementById('qesTimer');
+                  if (!el) { clearInterval(ti); return; }
+                  el.textContent = Math.round((Date.now()-t0)/1000) + 's';
+                }, 1000);
+                var DONE = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><\\/svg>';
+                var SPIN = '<svg class="qss" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="rgba(124,92,255,.3)" stroke-width="2"/><path d="M8 2a6 6 0 0 1 6 6" stroke="#7c5cff" stroke-width="2" stroke-linecap="round"/><\\/svg>';
+                function adv(di,dl,ni,nl){
+                  var e=document.getElementById(di),l=document.getElementById(dl);
+                  if(e){e.className='qsi qsi-done';e.innerHTML=DONE;}if(l)l.className='ql ql-done';
+                  var f=document.getElementById(ni),m=document.getElementById(nl);
+                  if(f){f.className='qsi qsi-active';f.innerHTML=SPIN;}if(m)m.className='ql ql-active';
+                }
+                setTimeout(function(){adv('qIcon2','qLabel2','qIcon3','qLabel3');},1800);
+                setTimeout(function(){adv('qIcon3','qLabel3','qIcon4','qLabel4');},4000);
+              })();
+            <\/script>
+          `;
+          document.body.appendChild(_ov);
         }
 
         loadFlow().catch((e) => showError(String(e.message || e))).then(() => {
-          if (_stsPending === '1') {
-            // loadFlow() a putut re-afișa banner-ul urgent și PDF-ul — le re-ascundem
-            const _urgBanner = $('urgentBanner');
-            const _pdfBox    = $('pdfBox');
-            if (_urgBanner) _urgBanner.style.display = 'none';
-            if (_pdfBox)    _pdfBox.style.display    = 'none';
-            startStsPolling();
-          }
+          if (_stsPending === '1') startStsPolling();
           // sts_signed=1: dacă fluxul încă arată semnatarul ca 'current' (race condition DB),
           // forțăm starea vizuală corectă — semnatarul a semnat cu succes
           if (_stsSigned === '1') {
