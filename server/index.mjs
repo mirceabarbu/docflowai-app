@@ -509,6 +509,9 @@ import outreachRouter from './routes/admin/outreach.mjs';
 import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
+import { formulareRouter } from './routes/formulare.mjs';
+app.use(formulareRouter);
+
 const app = express();
 app.set('trust proxy', 1);
 
