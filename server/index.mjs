@@ -510,7 +510,6 @@ import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
 import { formulareRouter } from './routes/formulare.mjs';
-app.use(formulareRouter);
 
 const app = express();
 app.set('trust proxy', 1);
@@ -1432,6 +1431,7 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
   }
 });
 app.use('/', templatesRouter);         // Q-06: Template CRUD
+app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
