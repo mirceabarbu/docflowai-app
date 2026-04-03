@@ -510,6 +510,7 @@ import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
 import { formulareRouter } from './routes/formulare.mjs';
+app.use(formulareRouter);
 
 const app = express();
 app.set('trust proxy', 1);
@@ -931,11 +932,6 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
     const signerRects = [];
     const signers = Array.isArray(flowData.signers) ? flowData.signers : [];
     if (signers.length) {
-      const pageCount = pdfDoc.getPageCount();
-      const page = pdfDoc.getPages()[pageCount - 1];
-      const { width, height } = page.getSize();
-      const availableBottom = footerY + 26;
-      const topMargin = 40;
       const sideMargin = 40;
       const colGap = 2;
       const rowGap = 2;
@@ -947,23 +943,77 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
       else if (n === 4) cols = 2;
       else cols = 3;
       const rows = Math.ceil(n / cols);
+
+      // ── Detectăm dacă cartușul încape pe ultima pagină existentă ──────────
+      // Calculăm înălțimea blocului de semnături (blockTopCheck).
+      // Dacă depășește 40% din înălțimea paginii → pagină nouă, cartus sus.
+      // Altfel → cartus jos pe ultima pagină, deasupra footer-ului.
+      const lastPageExisting = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+      const { width: pWLast, height: hLast } = lastPageExisting.getSize();
+      const cellHCheck = Math.max(56, Math.min(78,
+        (Math.max(120, hLast * 0.30) - ((rows - 1) * rowGap)) / rows));
+      const blockTopCheck = (footerY + 32) + rows * cellHCheck + (rows - 1) * rowGap;
+      const needsNewPage  = blockTopCheck > hLast * 0.40;
+
+      // ── Alege / creează pagina pentru cartus ──────────────────────────────
+      let cartusPage, cartusPageNum, topMargin;
+      if (needsNewPage) {
+        // Pagină nouă — adăugăm footer pe ea și plasăm cartușul sus
+        cartusPage    = pdfDoc.addPage([pWLast, hLast]);
+        cartusPageNum = pdfDoc.getPageCount();
+        topMargin     = 30;
+        // Footer pe pagina nouă
+        const diacr2 = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
+        const ro2 = t => String(t||'').split('').map(ch => diacr2[ch]||ch).join('');
+        const fRight2 = ro2(flowData.flowId||'') + '  |  DocFlowAI';
+        const rW2 = fontR.widthOfTextAtSize(fRight2, 7);
+        const parts2 = [ro2(flowData.initName||''),
+          flowData.initFunctie  ? ro2(flowData.initFunctie)  : null,
+          flowData.institutie   ? ro2(flowData.institutie)   : null].filter(Boolean).join(', ');
+        const fLeft2 = (flowData.createdAt
+          ? new Date(flowData.createdAt).toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'})
+          : new Date().toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'}))
+          + (parts2 ? '  |  ' + parts2 : '');
+        cartusPage.drawLine({ start:{x:40,y:footerY+10}, end:{x:pWLast-40,y:footerY+10},
+          thickness:0.4, color:rgb(0.75,0.75,0.75) });
+        cartusPage.drawText(fLeft2,  { x:40, y:footerY, size:7, font:fontR,
+          color:rgb(0.5,0.5,0.5), opacity:0.8, maxWidth:pWLast-80-rW2-8 });
+        cartusPage.drawText(fRight2, { x:pWLast-40-rW2, y:footerY, size:7,
+          font:fontR, color:rgb(0.5,0.5,0.5) });
+        logger.info({ flowId: flowData.flowId, n, rows,
+          blockTopCheck: Math.round(blockTopCheck), threshold: Math.round(hLast*0.40) },
+          'stampFooterOnPdf: pagina noua pentru cartus (bloc > 40% pagina)');
+      } else {
+        cartusPage    = lastPageExisting;
+        cartusPageNum = pdfDoc.getPageCount();
+        topMargin     = 40;
+      }
+
+      // ── Calculul poziției ─────────────────────────────────────────────────
+      const { width, height } = cartusPage.getSize();
       const totalWidth = width - (sideMargin * 2) - ((cols - 1) * colGap);
-      const cellW = totalWidth / cols;
-      const maxAreaH = Math.max(120, height * 0.30);
-      const totalH = maxAreaH - ((rows - 1) * rowGap);
-      const cellH = Math.max(56, Math.min(78, totalH / rows));
-      const blockBottom = availableBottom + 6;
-      const blockTop = blockBottom + rows * cellH + (rows - 1) * rowGap;
-      const startY = Math.min(height - topMargin, blockTop) - cellH;
+      const cellW      = totalWidth / cols;
+      const cellH      = Math.max(56, Math.min(78,
+        (Math.max(120, height * 0.30) - ((rows - 1) * rowGap)) / rows));
+
+      let startY;
+      if (needsNewPage) {
+        // Sus: prima linie de celule la (height - topMargin - cellH)
+        startY = height - topMargin - cellH;
+      } else {
+        // Jos: deasupra footer-ului
+        const blockBottom = footerY + 32;
+        const blockTop    = blockBottom + rows * cellH + (rows - 1) * rowGap;
+        startY = Math.min(height - topMargin, blockTop) - cellH;
+      }
 
       for (let i = 0; i < n; i++) {
         const row = Math.floor(i / cols);
         const col = i % cols;
         const x = sideMargin + col * (cellW + colGap);
         const y = startY - row * (cellH + rowGap);
-        // b253: h=54 = înălțimea exactă a conținutului Java (6 linii text + padding + chenar).
-        // cellH (56-78pt) e pentru layout-ul intern; câmpul STS are nevoie doar de 54pt.
-        signerRects.push({ page: pageCount, x, y, w: cellW, h: 54 });
+        // h=54: înălțimea exactă a conținutului Java (6 linii + padding + chenar)
+        signerRects.push({ page: cartusPageNum, x, y, w: cellW, h: 54 });
       }
     }
 
@@ -1431,7 +1481,6 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
   }
 });
 app.use('/', templatesRouter);         // Q-06: Template CRUD
-app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
