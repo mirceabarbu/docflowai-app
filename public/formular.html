@@ -5,162 +5,124 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
   <style>
-    :root{
-      --bg:#070c1a; --card:rgba(12,20,40,.85); --card2:rgba(12,20,40,.6);
-      --text:#e8eeff; --sub:#b8c8f0; --muted:#6b82b8;
-      --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
-      --v:#6c4ff0; --t:#1ec8ae; --o:#f06c4f;
-      --err:#ff5555; --ok:#2dd4bf;
-      --input-bg:rgba(255,255,255,.05); --input-border:rgba(255,255,255,.12);
-      --input-focus:rgba(108,79,240,.5);
-      --radius:12px; --radius-sm:8px;
+    :root {
+      --app-bg:#070c1a; --app-text:#e8eeff; --app-sub:#b8c8f0;
+      --app-muted:#6b82b8; --app-line:rgba(255,255,255,.08);
+      --app-v:#6c4ff0; --app-t:#1ec8ae;
+      --doc-field:#dce6f0; --doc-field-focus:#b8d0e8;
+      --doc-border:#888; --doc-border-lt:#bbb;
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html{scroll-behavior:smooth}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
-      background:var(--bg);color:var(--text);line-height:1.55;overflow-x:hidden}
-    body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
-      background:radial-gradient(800px 500px at 10% 0%,rgba(108,79,240,.18),transparent 60%),
-                 radial-gradient(600px 400px at 85% 20%,rgba(30,200,174,.12),transparent 55%)}
-
-    /* ── Nav ── */
-    nav{position:sticky;top:0;z-index:100;background:rgba(7,12,26,.88);
-      backdrop-filter:blur(18px);border-bottom:1px solid var(--line);padding:14px 0}
-    .nav-inner{max-width:1100px;margin:0 auto;padding:0 22px;
-      display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text)}
-    .brand img{height:36px;width:auto;opacity:.9}
-    .brand-label{font-size:13px;font-weight:700;color:var(--sub)}
-    .nav-back{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;
-      border-radius:999px;border:1px solid var(--line2);color:var(--sub);
-      text-decoration:none;font-size:13px;transition:.2s}
-    .nav-back:hover{border-color:rgba(255,255,255,.25);color:var(--text)}
-
-    /* ── Layout ── */
-    .wrap{max-width:1100px;margin:0 auto;padding:32px 22px 60px;position:relative;z-index:1}
-
-    /* ── Page header ── */
-    .page-header{margin-bottom:28px}
-    .page-title{font-size:1.7rem;font-weight:900;letter-spacing:-.02em;margin-bottom:6px}
-    .page-sub{font-size:.9rem;color:var(--muted)}
-
-    /* ── Tabs ── */
-    .tabs{display:flex;gap:4px;margin-bottom:28px;
-      background:rgba(255,255,255,.04);border-radius:14px;padding:4px;
-      width:fit-content;border:1px solid var(--line)}
-    .tab{padding:9px 22px;border-radius:10px;cursor:pointer;font-size:.88rem;font-weight:700;
-      color:var(--muted);border:none;background:none;transition:.2s;white-space:nowrap}
-    .tab:hover{color:var(--sub)}
-    .tab.active{background:linear-gradient(135deg,var(--v),var(--t));color:#fff;
-      box-shadow:0 4px 16px rgba(108,79,240,.3)}
-
-    /* ── Section cards ── */
-    .section-card{background:var(--card);border:1px solid var(--line2);border-radius:var(--radius);
-      padding:22px 24px;margin-bottom:16px;backdrop-filter:blur(10px)}
-    .section-title{font-size:.82rem;font-weight:900;text-transform:uppercase;
-      letter-spacing:.08em;color:var(--v);margin-bottom:16px;
-      display:flex;align-items:center;gap:8px}
-    .section-title::after{content:"";flex:1;height:1px;background:var(--line)}
-
-    /* ── Form grid ── */
-    .grid{display:grid;gap:14px}
-    .grid-2{grid-template-columns:1fr 1fr}
-    .grid-3{grid-template-columns:1fr 1fr 1fr}
-    .grid-4{grid-template-columns:1fr 1fr 1fr 1fr}
-    @media(max-width:720px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
-    @media(max-width:900px){.grid-3{grid-template-columns:1fr 1fr}.grid-4{grid-template-columns:1fr 1fr}}
-
-    /* ── Fields ── */
-    .field{display:flex;flex-direction:column;gap:4px}
-    .field label{font-size:.72rem;font-weight:700;text-transform:uppercase;
-      letter-spacing:.05em;color:var(--muted)}
-    .field label .req{color:var(--err);margin-left:2px}
-    .field label .maxl{color:rgba(255,255,255,.2);font-weight:400;font-size:.65rem;margin-left:4px}
-    .field input,.field textarea,.field select{
-      background:var(--input-bg);border:1px solid var(--input-border);
-      border-radius:var(--radius-sm);color:var(--text);font-size:.85rem;
-      padding:9px 12px;outline:none;transition:.2s;font-family:inherit;
-      width:100%}
-    .field textarea{resize:vertical;min-height:60px}
-    .field input:focus,.field textarea:focus,.field select:focus{
-      border-color:var(--input-focus);background:rgba(108,79,240,.07)}
-    .field input.err,.field textarea.err,.field select.err{border-color:var(--err)}
-    .field .hint{font-size:.7rem;color:var(--muted);margin-top:2px}
-    .field .errmsg{font-size:.7rem;color:var(--err);display:none}
-    .field.has-err .errmsg{display:block}
-    .field.has-err label{color:var(--err)}
-
-    /* ── Checkboxes ── */
-    .ckbx-group{display:flex;flex-direction:column;gap:8px;margin:4px 0}
-    .ckbx-row{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem;color:var(--sub)}
-    .ckbx-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--v);cursor:pointer;flex-shrink:0}
-
-    /* ── Dynamic table ── */
-    .dyn-table-wrap{overflow-x:auto;margin-top:8px}
-    .dyn-table{width:100%;border-collapse:collapse;font-size:.78rem}
-    .dyn-table th{padding:7px 10px;text-align:left;font-weight:700;font-size:.68rem;
-      text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
-      background:rgba(255,255,255,.04);border-bottom:1px solid var(--line2);white-space:nowrap}
-    .dyn-table td{padding:5px 4px;vertical-align:top}
-    .dyn-table td input{width:100%;background:rgba(255,255,255,.05);border:1px solid var(--line);
-      border-radius:6px;color:var(--text);font-size:.78rem;padding:6px 8px;outline:none;
-      font-family:inherit;min-width:60px}
-    .dyn-table td input:focus{border-color:var(--input-focus);background:rgba(108,79,240,.07)}
-    .dyn-table td.td-del{width:32px}
-    .btn-del-row{background:rgba(255,85,85,.12);border:1px solid rgba(255,85,85,.25);
-      border-radius:6px;color:var(--err);cursor:pointer;padding:5px 8px;
-      font-size:.75rem;transition:.15s;white-space:nowrap}
-    .btn-del-row:hover{background:rgba(255,85,85,.22)}
-    .btn-add-row{display:inline-flex;align-items:center;gap:6px;margin-top:10px;
-      padding:8px 16px;border-radius:8px;border:1px dashed rgba(108,79,240,.4);
-      background:rgba(108,79,240,.07);color:#a898ff;cursor:pointer;
-      font-size:.8rem;font-weight:700;transition:.2s}
-    .btn-add-row:hover{border-color:rgba(108,79,240,.7);background:rgba(108,79,240,.14)}
-
-    /* ── Actions ── */
-    .actions-bar{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px;align-items:center}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
-      padding:11px 22px;border-radius:12px;font-size:.88rem;font-weight:800;
-      cursor:pointer;transition:.2s;border:1px solid var(--line2);
-      background:rgba(255,255,255,.04);color:var(--text);text-decoration:none}
-    .btn:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.22)}
-    .btn.primary{background:linear-gradient(135deg,var(--v),var(--t));border:none;
-      box-shadow:0 8px 28px rgba(108,79,240,.3);color:#fff}
+    body{font-family:Arial,Helvetica,sans-serif;background:var(--app-bg);color:var(--app-text);overflow-x:hidden}
+    /* Nav */
+    nav{position:sticky;top:0;z-index:100;background:rgba(7,12,26,.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--app-line);padding:12px 0}
+    .nav-inner{max-width:1020px;margin:0 auto;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+    .brand img{height:34px;opacity:.92}
+    .brand-lbl{font-size:13px;font-weight:700;color:var(--app-sub)}
+    .nav-back{padding:6px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.15);color:var(--app-sub);text-decoration:none;font-size:13px;transition:.2s}
+    .nav-back:hover{border-color:rgba(255,255,255,.3);color:var(--app-text)}
+    /* Tabs */
+    .tabs-wrap{max-width:1020px;margin:0 auto;padding:16px 16px 0}
+    .tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:12px;padding:3px;width:fit-content;border:1px solid var(--app-line)}
+    .tab{padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.86rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s}
+    .tab:hover{color:var(--app-sub)}
+    .tab.active{background:linear-gradient(135deg,var(--app-v),var(--app-t));color:#fff;box-shadow:0 3px 12px rgba(108,79,240,.3)}
+    /* Outer */
+    .outer{max-width:1020px;margin:0 auto;padding:16px 16px 60px}
+    /* Status */
+    .status{display:none;padding:9px 14px;border-radius:9px;font-size:.84rem;margin-bottom:14px;align-items:center;gap:8px}
+    .status.err{display:flex;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090}
+    .status.ok{display:flex;background:rgba(30,200,174,.08);border:1px solid rgba(30,200,174,.22);color:var(--app-t)}
+    .status.info{display:flex;background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.22);color:#b0a0ff}
+    /* Actions (dark) */
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;align-items:center}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 20px;border-radius:10px;font-size:.86rem;font-weight:800;cursor:pointer;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--app-text);transition:.2s;font-family:inherit}
+    .btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.24)}
+    .btn.primary{background:linear-gradient(135deg,var(--app-v),var(--app-t));border:none;box-shadow:0 6px 24px rgba(108,79,240,.3);color:#fff}
     .btn.primary:hover{filter:brightness(1.08)}
-    .btn.secondary{border-color:rgba(30,200,174,.35);color:var(--t);background:rgba(30,200,174,.07)}
-    .btn.secondary:hover{background:rgba(30,200,174,.14)}
-    .btn:disabled{opacity:.45;cursor:not-allowed;pointer-events:none}
-    .btn-sm{padding:7px 14px;font-size:.78rem;border-radius:8px}
-
-    /* ── Status / result ── */
-    .status-bar{display:none;padding:10px 16px;border-radius:10px;font-size:.85rem;
-      align-items:center;gap:10px;margin-bottom:16px}
-    .status-bar.err{display:flex;background:rgba(255,85,85,.12);border:1px solid rgba(255,85,85,.3);color:#ff8888}
-    .status-bar.ok{display:flex;background:rgba(30,200,174,.1);border:1px solid rgba(30,200,174,.25);color:var(--t)}
-    .status-bar.info{display:flex;background:rgba(108,79,240,.1);border:1px solid rgba(108,79,240,.25);color:#b0a0ff}
-
-    /* ── Result panel ── */
-    .result-panel{display:none;background:var(--card);border:1px solid rgba(30,200,174,.25);
-      border-radius:var(--radius);padding:20px 22px;margin-top:20px}
-    .result-panel.visible{display:block}
-    .result-title{font-weight:900;color:var(--t);margin-bottom:12px;font-size:1rem}
-    .result-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .flow-form{margin-top:16px;padding-top:16px;border-top:1px solid var(--line);display:none}
-    .flow-form.visible{display:block}
-    .flow-form-title{font-size:.82rem;font-weight:700;color:var(--sub);margin-bottom:12px}
-    .flow-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
-    @media(max-width:600px){.flow-grid{grid-template-columns:1fr}}
-
-    /* ── Spinner ── */
+    .btn.teal{border-color:rgba(30,200,174,.3);color:var(--app-t);background:rgba(30,200,174,.06)}
+    .btn:disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.2);
-      border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+    .spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+    /* Result */
+    .result{display:none;background:rgba(12,20,40,.85);border:1px solid rgba(30,200,174,.22);border-radius:12px;padding:18px 20px;margin-top:14px}
+    .result.show{display:block}
+    .result-title{font-weight:900;color:var(--app-t);margin-bottom:8px}
+    .result-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .flow-form{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--app-line)}
+    .flow-form.show{display:block}
+    .flow-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+    @media(max-width:580px){.flow-grid{grid-template-columns:1fr}}
+    .dk-field{display:flex;flex-direction:column;gap:3px}
+    .dk-field label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--app-muted)}
+    .dk-field input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--app-text);font-size:.84rem;padding:8px 10px;outline:none;transition:.2s;font-family:inherit}
+    .dk-field input:focus{border-color:rgba(108,79,240,.5);background:rgba(108,79,240,.07)}
 
-    /* ── Template warning ── */
-    .tpl-warning{display:none;padding:10px 14px;border-radius:10px;margin-bottom:16px;
-      border:1px solid rgba(240,108,79,.35);background:rgba(240,108,79,.1);
-      color:#f9a87a;font-size:.82rem}
-    .tpl-warning.visible{display:flex;gap:8px;align-items:flex-start}
+    /* === DOCUMENT (alb, ca formularul oficial) === */
+    .doc{background:#fff;color:#111;border:1px solid #ccc;border-radius:3px;padding:22px 26px;font-family:Arial,Helvetica,sans-serif;font-size:12px;box-shadow:0 4px 24px rgba(0,0,0,.45);line-height:1.4}
+    .doc-title{text-align:center;font-size:14px;font-weight:900;text-transform:uppercase;margin-bottom:10px;letter-spacing:.04em;color:#000}
+    .doc-subtitle{text-align:center;font-size:11px;color:#333;margin-bottom:12px}
+    /* Inputs */
+    .di{background:var(--doc-field);border:1px solid var(--doc-border);border-radius:1px;padding:3px 6px;font-size:11px;font-family:Arial,inherit;color:#000;outline:none;transition:.15s;width:100%}
+    .di:focus{background:var(--doc-field-focus);border-color:#555}
+    .di.err{border-color:#c00;background:#ffe8e8}
+    .dt{background:var(--doc-field);border:1px solid var(--doc-border);border-radius:1px;padding:4px 6px;font-size:11px;font-family:Arial,inherit;color:#000;outline:none;resize:vertical;width:100%;transition:.15s}
+    .dt:focus{background:var(--doc-field-focus);border-color:#555}
+    .dt.err{border-color:#c00}
+    /* Labels */
+    .dl{font-size:11px;color:#333;margin-bottom:2px;margin-top:7px}
+    .dl.req::after{content:" *";color:#c00}
+    /* Checkbox */
+    .dck{display:flex;align-items:flex-start;gap:6px;margin:5px 0;font-size:11px;color:#222;cursor:pointer}
+    .dck input{width:13px;height:13px;accent-color:#333;flex-shrink:0;margin-top:1px;cursor:pointer}
+    /* Table */
+    .doc-t{width:100%;border-collapse:collapse;margin:4px 0}
+    .doc-t th{border:1px solid #888;padding:4px 4px;font-size:10px;font-weight:700;text-align:center;background:#f0f0f0;vertical-align:middle;line-height:1.3;color:#000}
+    .doc-t td{border:1px solid #888;padding:2px 2px;vertical-align:middle}
+    .doc-t td.tot{font-weight:700;font-size:11px;padding-left:5px}
+    .doc-t td.cx{text-align:center;font-size:10px;color:#555}
+    .doc-t td.num{text-align:right;padding-right:4px;font-size:11px}
+    .doc-t input{background:var(--doc-field);border:none;padding:3px 4px;font-size:11px;width:100%;font-family:inherit;color:#000;outline:none;min-width:40px}
+    .doc-t input:focus{background:var(--doc-field-focus)}
+    .doc-t input[type=number]{text-align:right}
+    .doc-t tfoot tr{background:#f0f0f0}
+    /* Add row btn (the [+]) */
+    .badd{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:2px;border:1px solid #888;background:#f0f0f0;cursor:pointer;font-size:14px;font-weight:900;color:#333;line-height:1}
+    .badd:hover{background:#ddd}
+    .bdel{background:#fee;border:1px solid #fcc;border-radius:2px;cursor:pointer;padding:1px 4px;font-size:10px;color:#900;font-family:inherit}
+    .bdel:hover{background:#fdd}
+    /* Header row */
+    .hdr{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;font-size:12px}
+    .hdr label{white-space:nowrap;color:#333}
+    /* Separator */
+    .doc-hr{border:none;border-top:1px solid #ccc;margin:10px 0}
+    /* Section title */
+    .dsec{font-weight:700;font-size:12px;margin:10px 0 5px;color:#000;border-bottom:1px solid #ddd;padding-bottom:3px}
+    /* Numar unic box */
+    .nubox{border:1px solid #888;padding:5px 8px;display:flex;align-items:center;gap:6px;font-size:11px;background:#fafafa}
+    .nubox label{white-space:nowrap}
+    /* Capture zone */
+    .cap-lbl{font-size:10.5px;color:#444;margin:8px 0 3px;font-style:italic;line-height:1.4}
+    .cap-zone{border:1px solid #888;border-radius:1px;background:var(--doc-field);min-height:100px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:.15s;overflow:hidden}
+    .cap-zone:hover{border-color:#444;background:var(--doc-field-focus)}
+    .cap-zone.drag-ov{border-color:#337ab7;background:#dceefb}
+    .cap-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+    .cap-ph{text-align:center;color:#666;pointer-events:none;padding:10px}
+    .cap-ph .ico{font-size:24px;margin-bottom:3px}
+    .cap-ph p{font-size:10px}
+    .cap-img{width:100%;max-height:280px;object-fit:contain;display:none}
+    .cap-br{display:flex;justify-content:flex-end;margin-top:3px}
+    /* Attachments */
+    .att-zone{border:1px solid #aaa;background:#f8f8f8;padding:5px 7px;min-height:30px;border-radius:1px}
+    .att-list{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:3px}
+    .att-chip{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:3px;background:#d4e6f1;border:1px solid #a8c7e0;font-size:9.5px;color:#1a4060}
+    .att-chip button{background:none;border:none;cursor:pointer;color:#900;font-size:10px;padding:0}
+    .att-br{display:flex;justify-content:flex-end;margin-top:4px;gap:6px}
+    .att-btn{padding:4px 12px;border-radius:2px;border:1px solid #888;background:#f0f0f0;font-size:11px;cursor:pointer;font-family:inherit;color:#222}
+    .att-btn:hover{background:#e0e0e0}
+    .att-inp{display:none}
   </style>
 </head>
 <body>
@@ -169,866 +131,600 @@
   <div class="nav-inner">
     <a class="brand" href="/semdoc.html">
       <img src="/Logo.png" alt="DocFlowAI"/>
-      <span class="brand-label">Formulare oficiale</span>
+      <span class="brand-lbl">Formulare oficiale</span>
     </a>
-    <a class="nav-back" href="/semdoc.html">← Înapoi la aplicație</a>
+    <a class="nav-back" href="/semdoc.html">← Înapoi</a>
   </div>
 </nav>
 
-<div class="wrap">
-  <div class="page-header">
-    <div class="page-title">📋 Formulare oficiale</div>
-    <div class="page-sub">Completare date → generare PDF → semnare electronică calificată (STS Cloud QES)</div>
-  </div>
-
-  <!-- Status bar -->
-  <div class="status-bar" id="statusBar"></div>
-
-  <!-- Template warning -->
-  <div class="tpl-warning" id="tplWarning">
-    ⚠ <span id="tplWarningMsg"></span>
-  </div>
-
-  <!-- Tabs -->
+<div class="tabs-wrap">
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('ordnt')">📄 Ordonanțare de Plată</button>
-    <button class="tab" onclick="switchTab('notafd')">📋 Document de Fundamentare</button>
+    <button class="tab active" onclick="sw('ordnt')">📄 Ordonanțare de Plată</button>
+    <button class="tab" onclick="sw('notafd')">📋 Document de Fundamentare</button>
+  </div>
+</div>
+
+<div class="outer">
+<div class="status" id="sBar"></div>
+
+<!-- ═══ ORDNT ═══════════════════════════════════════════════════════════════ -->
+<div id="form-ordnt">
+<div class="doc">
+  <div class="doc-title">Ordonantare de Plata</div>
+  <!-- nr / data -->
+  <div class="hdr" style="justify-content:center;margin-bottom:14px">
+    <label>nr</label>
+    <input id="o-nr" class="di" maxlength="20" placeholder="număr" style="width:150px"/>
+    <label>/ data</label>
+    <input id="o-data" class="di" maxlength="10" placeholder="DD.MM.YYYY" style="width:100px"/>
+  </div>
+  <!-- Institutie -->
+  <div class="dl req">Instituția publică</div>
+  <textarea id="o-den" class="dt" maxlength="150" rows="2"></textarea>
+  <div style="margin-top:6px;display:flex;gap:10px">
+    <div style="flex:0 0 auto">
+      <div class="dl req">CIF instituție</div>
+      <input id="o-cif" class="di" maxlength="10" placeholder="fără RO" style="width:130px"/>
+    </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════════════════
-       ORDNT — Ordonanțare de Plată
-  ═══════════════════════════════════════════════════════════════════════════ -->
-  <div id="form-ordnt">
+  <div class="doc-hr"></div>
 
-    <!-- Header ORDNT -->
-    <div class="section-card">
-      <div class="section-title">🏛 Antet instituție</div>
-      <div class="grid grid-1" style="margin-bottom:12px">
-        <div class="field" id="f-ordnt-DenInstPb">
-          <label>Denumirea instituției publice <span class="req">*</span> <span class="maxl">max 150</span></label>
-          <textarea id="ordnt-DenInstPb" maxlength="150" rows="2" placeholder="ex: PRIMĂRIA MUNICIPIULUI..."></textarea>
-          <span class="errmsg">Câmp obligatoriu</span>
-        </div>
-      </div>
-      <div class="grid grid-3">
-        <div class="field" id="f-ordnt-Cif">
-          <label>CIF instituție <span class="req">*</span></label>
-          <input id="ordnt-Cif" type="text" maxlength="10" placeholder="ex: 4317392"/>
-          <span class="hint">Fără RO în față</span>
-          <span class="errmsg">CIF invalid (cifre, fără RO)</span>
-        </div>
-        <div class="field" id="f-ordnt-NrOrdonantPl">
-          <label>Nr. Ordonanță de Plată <span class="req">*</span> <span class="maxl">max 20</span></label>
-          <input id="ordnt-NrOrdonantPl" type="text" maxlength="20" placeholder="ex: 001"/>
-        </div>
-        <div class="field" id="f-ordnt-DataOrdontPl">
-          <label>Data ordonanței <span class="req">*</span></label>
-          <input id="ordnt-DataOrdontPl" type="text" maxlength="10" placeholder="DD.MM.YYYY"/>
-          <span class="hint">Format: ZZ.LL.AAAA</span>
-          <span class="errmsg">Format invalid (DD.MM.YYYY)</span>
-        </div>
-      </div>
+  <!-- Numar unic + tabel -->
+  <div class="nubox" style="margin-bottom:0">
+    <label>Număr unic de înregistrare al documentului de fundamentare</label>
+    <input id="o-nrUnic" class="di" maxlength="20" style="max-width:200px"/>
+  </div>
+
+  <table class="doc-t">
+    <thead>
+      <tr>
+        <th>Cod<br>angajament</th>
+        <th>Indicator<br>angajament</th>
+        <th>Program</th>
+        <th>Cod SSI</th>
+        <th>Recepții<br>(lei)</th>
+        <th>Plăți anterioare<br>(lei)</th>
+        <th>Suma ordonantată<br>la plată (lei)</th>
+        <th>Recepții<br>neplatite (lei)<br><small style="font-weight:400">5=(col.2)-(col.3)-(col.4)</small></th>
+        <th style="width:22px"></th>
+      </tr>
+      <tr style="background:#f5f5f5;font-size:10px;color:#666;text-align:center">
+        <td>1.1</td><td>1.2</td><td>1.3</td><td>1.4</td><td>2</td><td>3</td><td>4</td><td>5</td><td></td>
+      </tr>
+    </thead>
+    <tbody id="o-tbody"></tbody>
+    <tfoot>
+      <tr>
+        <td class="tot">TOTAL</td>
+        <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
+        <td class="num" id="o-t-rec">0</td>
+        <td class="num" id="o-t-plati">0</td>
+        <td class="num" id="o-t-suma">0</td>
+        <td class="num" id="o-t-neplat">0</td>
+        <td><button class="badd" onclick="addOR()" title="Adaugă rând">+</button></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="doc-hr"></div>
+
+  <!-- Captura imagine -->
+  <div class="cap-lbl">Captura de imagine/imagini din sistemul de control al angajamentelor bugetare este redată în rubrica de mai jos sau ca anexă la ordonanțarea de plată</div>
+  <div class="cap-zone" id="o-czone" ondragover="dov(event,'o-czone')" ondragleave="dlv(event,'o-czone')" ondrop="ddp(event,'o-cimg','o-czone','o-cph')">
+    <input type="file" accept="image/*" onchange="fimg(event,'o-cimg','o-cph')"/>
+    <div class="cap-ph" id="o-cph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="color:#999;margin-top:1px">PNG · JPG · BMP</p></div>
+    <img class="cap-img" id="o-cimg"/>
+  </div>
+  <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg','o-cph')">✕ Șterge imaginea</button></div>
+
+  <div class="doc-hr"></div>
+
+  <!-- Beneficiar -->
+  <div class="dl req">Beneficiar</div>
+  <textarea id="o-benef" class="dt" maxlength="150" rows="2"></textarea>
+
+  <div class="dl req">Documente justificative <span style="font-weight:400;color:#888">(max 90 car.)</span></div>
+  <input id="o-docsj" class="di" maxlength="90" style="margin-bottom:6px"/>
+
+  <!-- Atașamente ORDNT -->
+  <div class="att-zone"><div class="att-list" id="o-alist"></div></div>
+  <div class="att-br">
+    <button class="att-btn" onclick="document.getElementById('o-ainp').click()">📎 Atașează fișiere</button>
+    <input type="file" id="o-ainp" class="att-inp" multiple onchange="addAtt(event,'o-alist','o-adata')"/>
+  </div>
+  <input type="hidden" id="o-adata" value="[]"/>
+
+  <div class="doc-hr"></div>
+
+  <!-- Date beneficiar -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+    <div>
+      <div class="dl req">CIF beneficiar</div>
+      <input id="o-cifb" class="di" maxlength="10"/>
     </div>
-
-    <!-- Document de fundamentare aferent -->
-    <div class="section-card">
-      <div class="section-title">📎 Document de fundamentare aferent</div>
-      <div class="grid grid-2" style="margin-bottom:12px">
-        <div class="field" id="f-ordnt-nr_unic_inreg">
-          <label>Nr. unic înregistrare <span class="req">*</span> <span class="maxl">max 20</span></label>
-          <input id="ordnt-nr_unic_inreg" type="text" maxlength="20" placeholder="ex: 123/2026"/>
-          <span class="errmsg">Câmp obligatoriu</span>
-        </div>
-        <div class="field" id="f-ordnt-documente_justificative">
-          <label>Documente justificative <span class="req">*</span> <span class="maxl">max 90</span></label>
-          <input id="ordnt-documente_justificative" type="text" maxlength="90" placeholder="ex: Factura 123/2026"/>
-          <span class="errmsg">Câmp obligatoriu</span>
-        </div>
-      </div>
-      <div class="grid grid-1" style="margin-bottom:12px">
-        <div class="field" id="f-ordnt-beneficiar">
-          <label>Beneficiar <span class="req">*</span> <span class="maxl">max 150</span></label>
-          <input id="ordnt-beneficiar" type="text" maxlength="150" placeholder="Denumirea completă a beneficiarului"/>
-          <span class="errmsg">Câmp obligatoriu</span>
-        </div>
-      </div>
-      <div class="grid grid-3" style="margin-bottom:12px">
-        <div class="field" id="f-ordnt-cif_beneficiar">
-          <label>CIF beneficiar <span class="req">*</span></label>
-          <input id="ordnt-cif_beneficiar" type="text" maxlength="10" placeholder="ex: 12345678"/>
-          <span class="errmsg">CIF invalid</span>
-        </div>
-        <div class="field" id="f-ordnt-iban_beneficiar">
-          <label>IBAN beneficiar <span class="req">*</span> <span class="maxl">max 24</span></label>
-          <input id="ordnt-iban_beneficiar" type="text" maxlength="24" placeholder="RO49AAAA..."/>
-          <span class="errmsg">Câmp obligatoriu</span>
-        </div>
-        <div class="field" id="f-ordnt-banca_beneficiar">
-          <label>Bancă beneficiar <span class="req">*</span> <span class="maxl">max 100</span></label>
-          <input id="ordnt-banca_beneficiar" type="text" maxlength="100" placeholder="ex: Banca Transilvania"/>
-          <span class="errmsg">Câmp obligatoriu</span>
-        </div>
-      </div>
-      <div class="grid grid-2">
-        <div class="field">
-          <label>Informații privind plata <span class="maxl">max 70</span></label>
-          <input id="ordnt-inf_pv_plata" type="text" maxlength="70" placeholder="Informații suplimentare"/>
-        </div>
-        <div class="field">
-          <label>Informații privind plata 2 <span class="maxl">max 70</span></label>
-          <input id="ordnt-inf_pv_plata1" type="text" maxlength="70" placeholder="Continuare informații"/>
-        </div>
-      </div>
+    <div>
+      <div class="dl req">IBAN beneficiar</div>
+      <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..."/>
     </div>
-
-    <!-- Rânduri angajamente -->
-    <div class="section-card">
-      <div class="section-title">📊 Rânduri angajamente (rowTfd)</div>
-      <div class="dyn-table-wrap">
-        <table class="dyn-table" id="ordnt-rows-table">
-          <thead>
-            <tr>
-              <th>Cod angajament<br><span style="font-weight:400;font-size:.65rem">max 11</span></th>
-              <th>Indicator<br><span style="font-weight:400;font-size:.65rem">max 3</span></th>
-              <th>Program<br><span style="font-weight:400;font-size:.65rem">max 10</span></th>
-              <th>Cod SSI<br><span style="font-weight:400;font-size:.65rem">max 15</span></th>
-              <th>Recepții</th>
-              <th>Plăți ant.</th>
-              <th>Suma ord.</th>
-              <th>Rec. neplatite</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="ordnt-rows-body"></tbody>
-        </table>
-      </div>
-      <button class="btn-add-row" onclick="addOrdntRow()">＋ Adaugă rând</button>
+    <div>
+      <div class="dl req">Bancă beneficiar</div>
+      <input id="o-banca" class="di" maxlength="100"/>
     </div>
-
-    <!-- Result panel ORDNT -->
-    <div id="result-ordnt" class="result-panel">
-      <div class="result-title">✅ PDF generat cu succes</div>
-      <div style="font-size:.83rem;color:var(--muted)" id="result-ordnt-name"></div>
-      <div class="result-actions">
-        <button class="btn btn-sm secondary" onclick="downloadPdf('ordnt')">⬇ Descarcă PDF</button>
-        <button class="btn btn-sm primary" onclick="showFlowForm('ordnt')">🚀 Creează flux de semnare</button>
-      </div>
-      <div class="flow-form" id="flow-form-ordnt">
-        <div class="flow-form-title">📝 Configurare flux de semnare (ancore)</div>
-        <div class="flow-grid">
-          <div class="field">
-            <label>Nume document</label>
-            <input id="ff-ordnt-docName" type="text" placeholder="ex: Ordonanțare de Plată nr. 001"/>
-          </div>
-          <div class="field">
-            <label>Email inițiator</label>
-            <input id="ff-ordnt-initEmail" type="email" placeholder="email@institutie.ro"/>
-          </div>
-        </div>
-        <div class="actions-bar" style="margin-top:0">
-          <button class="btn primary" onclick="createFlow('ordnt')">🔏 Lansează flux de semnare</button>
-        </div>
-      </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div>
+      <div class="dl">Informații privind plata</div>
+      <input id="o-inf1" class="di" maxlength="70"/>
     </div>
-
-    <!-- Actions ORDNT -->
-    <div class="actions-bar">
-      <button class="btn primary" id="btn-gen-ordnt" onclick="generatePdf('ordnt')">
-        <span>⚙ Generează PDF</span>
-      </button>
-      <button class="btn" onclick="resetForm('ordnt')">↺ Resetează</button>
+    <div>
+      <div class="dl">Informații privind plata (cont.)</div>
+      <input id="o-inf2" class="di" maxlength="70"/>
     </div>
+  </div>
+</div><!-- /doc -->
 
-  </div><!-- /form-ordnt -->
-
-
-  <!-- ═══════════════════════════════════════════════════════════════════════
-       NOTAFD — Document de Fundamentare
-  ═══════════════════════════════════════════════════════════════════════════ -->
-  <div id="form-notafd" style="display:none">
-
-    <!-- Header NOTAFD -->
-    <div class="section-card">
-      <div class="section-title">🏛 Antet</div>
-      <div class="field" style="margin-bottom:12px" id="f-notafd-DenInstPb">
-        <label>Denumirea instituției publice <span class="req">*</span> <span class="maxl">max 150</span></label>
-        <textarea id="notafd-DenInstPb" maxlength="150" rows="2" placeholder="PRIMĂRIA MUNICIPIULUI..."></textarea>
-        <span class="errmsg">Câmp obligatoriu</span>
-      </div>
-      <div class="grid grid-3" style="margin-bottom:12px">
-        <div class="field" id="f-notafd-Cif">
-          <label>CIF <span class="req">*</span></label>
-          <input id="notafd-Cif" type="text" maxlength="10" placeholder="ex: 4317392"/>
-          <span class="errmsg">CIF invalid</span>
-        </div>
-        <div class="field" id="f-notafd-NrUnicInreg">
-          <label>Nr. unic înregistrare <span class="req">*</span> <span class="maxl">max 20</span></label>
-          <input id="notafd-NrUnicInreg" type="text" maxlength="20" placeholder="ex: 123/2026"/>
-          <span class="errmsg">Câmp obligatoriu</span>
-        </div>
-        <div class="field" id="f-notafd-Revizuirea">
-          <label>Revizuirea <span class="req">*</span> <span class="maxl">max 3</span></label>
-          <input id="notafd-Revizuirea" type="text" maxlength="3" placeholder="ex: 0"/>
-          <span class="errmsg">Câmp obligatoriu</span>
-        </div>
-      </div>
-      <div class="grid grid-2">
-        <div class="field" id="f-notafd-SubtitluDF">
-          <label>Subtitlu document <span class="req">*</span> <span class="maxl">max 150</span></label>
-          <input id="notafd-SubtitluDF" type="text" maxlength="150" placeholder="Subtitlul documentului de fundamentare"/>
-          <span class="errmsg">Câmp obligatoriu</span>
-        </div>
-        <div class="field" id="f-notafd-DataRevizuirii">
-          <label>Data revizuirii <span class="req">*</span></label>
-          <input id="notafd-DataRevizuirii" type="text" maxlength="10" placeholder="DD.MM.YYYY"/>
-          <span class="hint">Format: ZZ.LL.AAAA</span>
-          <span class="errmsg">Format invalid (DD.MM.YYYY)</span>
-        </div>
-      </div>
+<div class="result" id="result-ordnt">
+  <div class="result-title">✅ PDF generat cu succes</div>
+  <div style="font-size:.8rem;color:var(--app-muted)" id="rname-ordnt"></div>
+  <div class="result-acts">
+    <button class="btn teal" onclick="dlPdf('ordnt')">⬇ Descarcă PDF</button>
+    <button class="btn primary" onclick="showFF('ordnt')">🚀 Creează flux de semnare</button>
+  </div>
+  <div class="flow-form" id="ff-ordnt">
+    <div style="font-size:.8rem;font-weight:700;color:var(--app-sub);margin-bottom:8px">📝 Flux de semnare (ancore)</div>
+    <div class="flow-grid">
+      <div class="dk-field"><label>Nume document</label><input id="ffn-ordnt" placeholder="Ordonanțare de Plată nr. ..."/></div>
+      <div class="dk-field"><label>Email inițiator</label><input id="ffe-ordnt" type="email"/></div>
     </div>
-
-    <!-- Secțiunea A -->
-    <div class="section-card">
-      <div class="section-title">📋 Secțiunea A — Compartiment de specialitate</div>
-      <div class="field" style="margin-bottom:12px" id="f-notafd-compartiment_specialitate">
-        <label>Compartiment specialitate <span class="req">*</span> <span class="maxl">max 150</span></label>
-        <input id="notafd-compartiment_specialitate" type="text" maxlength="150"
-          placeholder="ex: Compartimentul Buget-Contabilitate"/>
-        <span class="errmsg">Câmp obligatoriu</span>
-      </div>
-      <div class="field" style="margin-bottom:12px" id="f-notafd-obiect_fd_reviz_scurt">
-        <label>Obiect/fundament revizuire (scurt) <span class="req">*</span> <span class="maxl">max 250</span></label>
-        <input id="notafd-obiect_fd_reviz_scurt" type="text" maxlength="250"
-          placeholder="Descriere scurtă"/>
-        <span class="errmsg">Câmp obligatoriu</span>
-      </div>
-      <div class="field" id="f-notafd-obiect_fd_reviz_lung">
-        <label>Obiect/fundament revizuire (detaliat) <span class="maxl">max 500</span></label>
-        <textarea id="notafd-obiect_fd_reviz_lung" maxlength="500" rows="3"
-          placeholder="Descriere detaliată a fundamentului..."></textarea>
-      </div>
+    <div class="actions" style="margin-top:6px">
+      <button class="btn primary" onclick="mkFlow('ordnt')">🔏 Lansează flux</button>
     </div>
+  </div>
+</div>
 
-    <!-- Angajamente legale — valori -->
-    <div class="section-card">
-      <div class="section-title">💰 Angajamente legale — Valori</div>
-      <div class="ckbx-group" style="margin-bottom:12px">
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_stab_tin_cont"/>
-          Stabilire ținere cont
-        </label>
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_ramane_suma"/>
-          Rămâne suma
-        </label>
-      </div>
-      <div class="field" style="max-width:200px;margin-bottom:14px">
-        <label>Suma rămasă</label>
-        <input id="notafd-ramane_suma" type="number" min="0" max="999999999999" placeholder="0"/>
-      </div>
+<div class="actions">
+  <button class="btn primary" id="bgen-ordnt" onclick="genPdf('ordnt')"><span>⚙ Generează PDF</span></button>
+  <button class="btn" onclick="resetF('ordnt')">↺ Resetează</button>
+</div>
+</div><!-- /form-ordnt -->
 
-      <div class="dyn-table-wrap">
-        <table class="dyn-table" id="notafd-val-table">
-          <thead>
-            <tr>
-              <th>Element FD<br><span style="font-weight:400;font-size:.65rem">max 150</span></th>
-              <th>Program<br><span style="font-weight:400;font-size:.65rem">max 10</span></th>
-              <th>Cod SSI<br><span style="font-weight:400;font-size:.65rem">max 15</span></th>
-              <th>Param FD<br><span style="font-weight:400;font-size:.65rem">max 500</span></th>
-              <th>Val.rev.prec</th>
-              <th>Influențe</th>
-              <th>Val.actualiz</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="notafd-val-body"></tbody>
-        </table>
-      </div>
-      <button class="btn-add-row" onclick="addNotafdValRow()">＋ Adaugă rând angajament</button>
+
+<!-- ═══ NOTAFD ══════════════════════════════════════════════════════════════ -->
+<div id="form-notafd" style="display:none">
+<div class="doc">
+  <!-- Antet -->
+  <div class="dl req">Instituția publică</div>
+  <input id="n-den" class="di" maxlength="150" style="margin-bottom:6px"/>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+    <div>
+      <div class="dl req">Cod de identificare fiscală</div>
+      <input id="n-cif" class="di" maxlength="10" style="width:130px"/>
     </div>
+  </div>
 
-    <!-- Angajamente legale — Plăți -->
-    <div class="section-card">
-      <div class="section-title">💳 Angajamente legale — Plăți</div>
-      <div class="ckbx-group" style="margin-bottom:14px">
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_fara_ang_emis_ancrt"/>
-          Fără angajamente emise în exercițiul curent
-        </label>
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_cu_ang_emis_ancrt"/>
-          Cu angajamente emise în exercițiul curent
-        </label>
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_sting_ang_in_ancrt"/>
-          Stingere angajamente în exercițiul curent
-        </label>
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_fara_plati_ang_in_ancrt"/>
-          Fără plăți angajamente în exercițiul curent
-        </label>
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_cu_plati_ang_in_mmani"/>
-          Cu plăți angajamente în exercițiul curent
-        </label>
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_ang_leg_emise_ct_an_urm"/>
-          Angajamente legale emise cont ani următori
-        </label>
-      </div>
+  <div class="doc-title">Document de Fundamentare</div>
 
-      <div class="dyn-table-wrap">
-        <table class="dyn-table" id="notafd-plati-table">
-          <thead>
-            <tr>
-              <th>Program<br><span style="font-weight:400;font-size:.65rem">max 10</span></th>
-              <th>Cod SSI<br><span style="font-weight:400;font-size:.65rem">max 15</span></th>
-              <th>Plăți ani prec.</th>
-              <th>Plăți est. ancrt</th>
-              <th>Plăți est. N+1</th>
-              <th>Plăți est. N+2</th>
-              <th>Plăți est. N+3</th>
-              <th>Plăți ani ulter.</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="notafd-plati-body"></tbody>
-        </table>
-      </div>
-      <button class="btn-add-row" onclick="addNotafdPlatiRow()">＋ Adaugă rând plăți</button>
+  <textarea id="n-subtitlu" class="dt" maxlength="150" rows="2" placeholder="Subtitlul documentului de fundamentare..."></textarea>
+
+  <div class="hdr" style="margin-top:10px;margin-bottom:6px">
+    <label>Număr unic de înregistrare</label>
+    <input id="n-nrUnic" class="di" maxlength="20" style="width:150px"/>
+    <label style="margin-left:12px">revizuirea</label>
+    <input id="n-rev" class="di" maxlength="3" style="width:50px"/>
+    <label>/ data</label>
+    <input id="n-data" class="di" maxlength="10" placeholder="DD.MM.YYYY" style="width:100px"/>
+  </div>
+
+  <label class="dck">
+    <input type="checkbox" id="n-ck-oblig"/>
+    se referă la angajamente legale care se emit ca urmare a unei obligații legale sau de către un terț
+  </label>
+
+  <div class="doc-hr"></div>
+
+  <!-- SECTIUNEA A -->
+  <div class="dsec">Secțiunea A: Obiectul documentului de fundamentare</div>
+
+  <div class="dl req">1. Compartiment de specialitate:</div>
+  <textarea id="n-comp" class="dt" maxlength="150" rows="2"></textarea>
+
+  <div class="dl req" style="margin-top:8px">2. Descrierea pe scurt a obiectului documentului de fundamentare/motivul revizuirii:</div>
+  <textarea id="n-scurt" class="dt" maxlength="250" rows="2"></textarea>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;margin-bottom:2px">
+    <div class="dl" style="margin:0">3. Descrierea pe larg a stării de fapt și de drept:</div>
+    <button class="att-btn" onclick="document.getElementById('n-fdai').click()">📎 Atașează fișiere</button>
+    <input type="file" id="n-fdai" class="att-inp" multiple onchange="addAtt(event,'n-fdal','n-fdad')"/>
+  </div>
+  <textarea id="n-lung" class="dt" maxlength="500" rows="6"></textarea>
+  <div class="att-zone" style="margin-top:4px"><div class="att-list" id="n-fdal"></div></div>
+  <input type="hidden" id="n-fdad" value="[]"/>
+
+  <div class="doc-hr"></div>
+
+  <!-- 4. Valoarea angajamentelor -->
+  <div style="font-weight:700;font-size:11px;margin:6px 0 4px;display:flex;justify-content:space-between">
+    <span>4. Valoarea angajamentelor legale (pe toată perioada de valabilitate a documentului de fundamentare):</span>
+    <span style="font-weight:400">(lei)</span>
+  </div>
+  <label class="dck"><input type="checkbox" id="n-ck-stab"/>Se stabilește ținând cont de:</label>
+
+  <table class="doc-t">
+    <thead>
+      <tr>
+        <th style="min-width:110px">Element de fundamentare</th>
+        <th>Program</th><th>Cod SSI</th>
+        <th>Parametrii de fundamentare</th>
+        <th>Val. totală revizie precedentă (lei)</th>
+        <th>Influențe +/- (lei)</th>
+        <th>Val. totală actualizată (lei)</th>
+        <th style="width:22px"></th>
+      </tr>
+    </thead>
+    <tbody id="n-vtbody"></tbody>
+    <tfoot>
+      <tr>
+        <td class="tot" colspan="4">TOTAL</td>
+        <td class="num" id="n-t-vprec">0</td>
+        <td class="num" id="n-t-vinfl">0</td>
+        <td class="num" id="n-t-vact">0</td>
+        <td><button class="badd" onclick="addNV()">+</button></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div style="display:flex;align-items:center;gap:6px;margin:6px 0;font-size:11px">
+    <input type="checkbox" id="n-ck-ramane" style="width:13px;height:13px"/>
+    <label for="n-ck-ramane">Rămâne suma de</label>
+    <input id="n-ramana" class="di" type="number" min="0" value="0" style="width:100px"/>
+    <label>lei</label>
+  </div>
+
+  <div class="doc-hr"></div>
+
+  <!-- 5. Angajamente plati -->
+  <div style="font-weight:700;font-size:11px;margin:4px 0">5. Angajamente legale emise anterior</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+    <label class="dck"><input type="checkbox" id="n-ck-faraang"/>Fără angajamente emise în exercițiul curent</label>
+    <label class="dck"><input type="checkbox" id="n-ck-cuang"/>Cu angajamente emise în exercițiul curent</label>
+    <label class="dck"><input type="checkbox" id="n-ck-sting"/>Stingere angajamente în exercițiul curent</label>
+    <label class="dck"><input type="checkbox" id="n-ck-faraplati"/>Fără plăți angajamente în exercițiul curent</label>
+    <label class="dck"><input type="checkbox" id="n-ck-cuplati"/>Cu plăți angajamente în exercițiul curent</label>
+    <label class="dck"><input type="checkbox" id="n-ck-anurmatori"/>Angajamente legale emise cont ani următori</label>
+  </div>
+
+  <table class="doc-t" style="margin-top:6px">
+    <thead>
+      <tr>
+        <th>Program</th><th>Cod SSI</th>
+        <th>Plăți ani prec.</th><th>Plăți est. an cur.</th>
+        <th>N+1</th><th>N+2</th><th>N+3</th><th>Ani ulter.</th>
+        <th style="width:22px"></th>
+      </tr>
+    </thead>
+    <tbody id="n-ptbody"></tbody>
+    <tfoot>
+      <tr>
+        <td class="tot" colspan="2">TOTAL</td>
+        <td class="num" id="n-t-pprec">0</td><td class="num" id="n-t-pancrt">0</td>
+        <td class="num" id="n-t-pnp1">0</td><td class="num" id="n-t-pnp2">0</td>
+        <td class="num" id="n-t-pnp3">0</td><td class="num" id="n-t-pulter">0</td>
+        <td><button class="badd" onclick="addNP()">+</button></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="doc-hr"></div>
+
+  <!-- SECTIUNEA B -->
+  <div class="dsec">Secțiunea B: Situația evidențiată în sistemul de control al angajamentelor</div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px">
+    <label class="dck" style="margin:0;flex:1">
+      <input type="checkbox" id="n-ck-seca"/>
+      Propunerile de la secțiunea A au fost înregistrate în sistemul de control al angajamentelor după cum urmează:
+    </label>
+    <span style="font-size:10px;color:#555;white-space:nowrap">(lei)</span>
+  </div>
+
+  <div style="overflow-x:auto">
+  <table class="doc-t">
+    <thead>
+      <tr>
+        <th>Cod<br>angaj.</th><th>Indicator<br>angaj.</th><th>Program</th><th>Cod SSI</th>
+        <th>Suma rez. cr. angaj. an cur. rev. prec. (lei)</th>
+        <th>Influențe +/-</th>
+        <th>Suma rez. cr. angaj. actualiz. (lei)<br><small style="font-weight:400">7=5+6</small></th>
+        <th>Suma rez. cr. bug. an cur. rev. prec. (lei)</th>
+        <th>Influențe +/-</th>
+        <th>Suma rez. cr. bug. actualiz. (lei)<br><small style="font-weight:400">10=8+9</small></th>
+        <th style="width:22px"></th>
+      </tr>
+      <tr style="background:#f5f5f5;font-size:10px;text-align:center;color:#666">
+        <td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td>
+        <td>7</td><td>8</td><td>9</td><td>10</td><td></td>
+      </tr>
+    </thead>
+    <tbody id="n-ctbody"></tbody>
+    <tfoot>
+      <tr>
+        <td class="tot">TOTAL</td>
+        <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
+        <td class="num" id="n-t-c5">0</td><td class="num" id="n-t-c6">0</td><td class="num" id="n-t-c7">0</td>
+        <td class="num" id="n-t-c8">0</td><td class="num" id="n-t-c9">0</td><td class="num" id="n-t-c10">0</td>
+        <td><button class="badd" onclick="addNC()">+</button></td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+
+  <!-- Captura imagine NOTAFD -->
+  <div class="cap-lbl">Captura de imagine/imagini din sistemul de control al angajamentelor bugetare este redată în rubrica de mai jos sau ca anexă la documentul de fundamentare</div>
+  <div class="cap-zone" id="n-czone" ondragover="dov(event,'n-czone')" ondragleave="dlv(event,'n-czone')" ondrop="ddp(event,'n-cimg','n-czone','n-cph')">
+    <input type="file" accept="image/*" onchange="fimg(event,'n-cimg','n-cph')"/>
+    <div class="cap-ph" id="n-cph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="color:#999;margin-top:1px">PNG · JPG · BMP</p></div>
+    <img class="cap-img" id="n-cimg"/>
+  </div>
+  <div class="cap-br"><button class="att-btn" onclick="clrImg('n-cimg','n-cph')">✕ Șterge imaginea</button></div>
+
+  <div class="doc-hr"></div>
+
+  <!-- Nu s-au rezervat -->
+  <label class="dck">
+    <input type="checkbox" id="n-ck-fararezv"/>
+    Nu s-au rezervat în sistemul de control al angajamentelor credite de angajament în cuantum de
+    <input id="n-sumfara" class="di" type="number" min="0" value="0" style="width:110px;display:inline;margin:0 4px"/>
+    lei
+  </label>
+  <label class="dck" style="margin-top:4px"><input type="checkbox" id="n-ck-interzis"/>Este interzisă emiterea de angajamente</label>
+  <label class="dck"><input type="checkbox" id="n-ck-intrucat"/>Întrucât:</label>
+  <textarea id="n-intrucat" class="dt" maxlength="500" rows="2" placeholder="Motivare..." style="margin-top:4px"></textarea>
+
+  <!-- Atașamente finale NOTAFD -->
+  <div class="att-zone" style="margin-top:8px"><div class="att-list" id="n-alist"></div></div>
+  <div class="att-br">
+    <button class="att-btn" onclick="document.getElementById('n-ainp').click()">📎 Atașează fișiere</button>
+    <input type="file" id="n-ainp" class="att-inp" multiple onchange="addAtt(event,'n-alist','n-adata')"/>
+  </div>
+  <input type="hidden" id="n-adata" value="[]"/>
+
+</div><!-- /doc -->
+
+<div class="result" id="result-notafd">
+  <div class="result-title">✅ PDF generat cu succes</div>
+  <div style="font-size:.8rem;color:var(--app-muted)" id="rname-notafd"></div>
+  <div class="result-acts">
+    <button class="btn teal" onclick="dlPdf('notafd')">⬇ Descarcă PDF</button>
+    <button class="btn primary" onclick="showFF('notafd')">🚀 Creează flux de semnare</button>
+  </div>
+  <div class="flow-form" id="ff-notafd">
+    <div style="font-size:.8rem;font-weight:700;color:var(--app-sub);margin-bottom:8px">📝 Flux de semnare (ancore)</div>
+    <div class="flow-grid">
+      <div class="dk-field"><label>Nume document</label><input id="ffn-notafd" placeholder="Document de Fundamentare nr. ..."/></div>
+      <div class="dk-field"><label>Email inițiator</label><input id="ffe-notafd" type="email"/></div>
     </div>
-
-    <!-- Secțiunea B -->
-    <div class="section-card">
-      <div class="section-title">🔍 Secțiunea B — Control angajamente</div>
-      <div class="ckbx-group" style="margin-bottom:14px">
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_secta_inreg_ctrl_ang"/>
-          Înregistrare control angajamente
-        </label>
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_fara_inreg_ctrl_ang"/>
-          Fără înregistrare control angajamente
-        </label>
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_interzis_emit_ang"/>
-          Interzis emitere angajamente
-        </label>
-        <label class="ckbx-row">
-          <input type="checkbox" id="notafd-ckbx_interzis_intrucat"/>
-          Interzis întrucât
-        </label>
-      </div>
-      <div class="grid grid-2" style="margin-bottom:14px">
-        <div class="field">
-          <label>Suma fără înreg. control credit bugetar</label>
-          <input id="notafd-sum_fara_inreg_ctrl_crdbug" type="number" min="0" max="999999999999" placeholder="0"/>
-        </div>
-        <div class="field">
-          <label>Întrucât <span class="maxl">max 500</span></label>
-          <textarea id="notafd-intrucat" maxlength="500" rows="2" placeholder="Motivare..."></textarea>
-        </div>
-      </div>
-
-      <div class="dyn-table-wrap">
-        <table class="dyn-table" id="notafd-ctrl-table">
-          <thead>
-            <tr>
-              <th>Cod angajament<br><span style="font-weight:400;font-size:.65rem">max 11</span></th>
-              <th>Indicator<br><span style="font-weight:400;font-size:.65rem">max 3</span></th>
-              <th>Program<br><span style="font-weight:400;font-size:.65rem">max 10</span></th>
-              <th>Cod SSI<br><span style="font-weight:400;font-size:.65rem">max 15</span></th>
-              <th>Rez.cr.ang.prec</th>
-              <th>Influențe C6</th>
-              <th>Rez.cr.ang.act</th>
-              <th>Rez.cr.bug.prec</th>
-              <th>Influențe C9</th>
-              <th>Rez.cr.bug.act</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="notafd-ctrl-body"></tbody>
-        </table>
-      </div>
-      <button class="btn-add-row" onclick="addNotafdCtrlRow()">＋ Adaugă rând control</button>
+    <div class="actions" style="margin-top:6px">
+      <button class="btn primary" onclick="mkFlow('notafd')">🔏 Lansează flux</button>
     </div>
+  </div>
+</div>
 
-    <!-- Result panel NOTAFD -->
-    <div id="result-notafd" class="result-panel">
-      <div class="result-title">✅ PDF generat cu succes</div>
-      <div style="font-size:.83rem;color:var(--muted)" id="result-notafd-name"></div>
-      <div class="result-actions">
-        <button class="btn btn-sm secondary" onclick="downloadPdf('notafd')">⬇ Descarcă PDF</button>
-        <button class="btn btn-sm primary" onclick="showFlowForm('notafd')">🚀 Creează flux de semnare</button>
-      </div>
-      <div class="flow-form" id="flow-form-notafd">
-        <div class="flow-form-title">📝 Configurare flux de semnare (ancore)</div>
-        <div class="flow-grid">
-          <div class="field">
-            <label>Nume document</label>
-            <input id="ff-notafd-docName" type="text" placeholder="ex: Document de Fundamentare nr. 123"/>
-          </div>
-          <div class="field">
-            <label>Email inițiator</label>
-            <input id="ff-notafd-initEmail" type="email" placeholder="email@institutie.ro"/>
-          </div>
-        </div>
-        <div class="actions-bar" style="margin-top:0">
-          <button class="btn primary" onclick="createFlow('notafd')">🔏 Lansează flux de semnare</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Actions NOTAFD -->
-    <div class="actions-bar">
-      <button class="btn primary" id="btn-gen-notafd" onclick="generatePdf('notafd')">
-        <span>⚙ Generează PDF</span>
-      </button>
-      <button class="btn" onclick="resetForm('notafd')">↺ Resetează</button>
-    </div>
-
-  </div><!-- /form-notafd -->
-</div><!-- /wrap -->
+<div class="actions">
+  <button class="btn primary" id="bgen-notafd" onclick="genPdf('notafd')"><span>⚙ Generează PDF</span></button>
+  <button class="btn" onclick="resetF('notafd')">↺ Resetează</button>
+</div>
+</div><!-- /form-notafd -->
+</div><!-- /outer -->
 
 <script>
-  // ── State ───────────────────────────────────────────────────────────────────
-  const state = {
-    ordnt:  { pdfBase64: null, fileName: null },
-    notafd: { pdfBase64: null, fileName: null },
-    currentTab: 'ordnt',
-    user: null,
-  };
+const ST = { ordnt:{pdf:null,name:null}, notafd:{pdf:null,name:null}, user:null };
+const imgs = {'o-cimg':null,'n-cimg':null};
 
-  // ── Init ────────────────────────────────────────────────────────────────────
-  (async function init() {
-    // Load user
-    try {
-      const r = await fetch('/auth/me', { credentials: 'include' });
-      if (r.ok) {
-        state.user = await r.json();
-        // Pre-fill emails
-        for (const t of ['ordnt','notafd']) {
-          const el = document.getElementById(`ff-${t}-initEmail`);
-          if (el && state.user.email) el.value = state.user.email;
-        }
-      } else {
-        window.location.href = '/login.html';
-        return;
-      }
-    } catch { window.location.href = '/login.html'; return; }
+(async()=>{
+  try{
+    const r=await fetch('/auth/me',{credentials:'include'});
+    if(!r.ok){location.href='/login.html';return;}
+    ST.user=await r.json();
+    ['ordnt','notafd'].forEach(t=>{const e=document.getElementById('ffe-'+t);if(e&&ST.user.email)e.value=ST.user.email;});
+  }catch{location.href='/login.html';return;}
+  const today=new Date();
+  const d=`${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
+  ['o-data','n-data'].forEach(id=>{const e=document.getElementById(id);if(e&&!e.value)e.value=d;});
+  addOR(); addNV();
+})();
 
-    // Check templates
-    try {
-      const r = await fetch('/api/formulare/templates', { credentials: 'include' });
-      if (r.ok) {
-        const { templates } = await r.json();
-        const missing = Object.entries(templates)
-          .filter(([,v]) => !v.configured)
-          .map(([,v]) => v.path);
-        if (missing.length > 0) {
-          const w = document.getElementById('tplWarning');
-          w.classList.add('visible');
-          document.getElementById('tplWarningMsg').textContent =
-            'Template-uri PDF lipsă. Adăugați fișierele în: ' + missing.join(', ');
-        }
-      }
-    } catch {}
+function sw(tab){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='ordnt')||(i===1&&tab==='notafd')));
+  document.getElementById('form-ordnt').style.display=tab==='ordnt'?'':'none';
+  document.getElementById('form-notafd').style.display=tab==='notafd'?'':'none';
+  clrS();
+}
+function setS(msg,type='info'){const el=document.getElementById('sBar');el.className='status '+type;el.innerHTML=(type==='err'?'❌ ':type==='ok'?'✅ ':'⏳ ')+msg;}
+function clrS(){const el=document.getElementById('sBar');el.className='status';el.innerHTML='';}
 
-    // Add initial rows
-    addOrdntRow();
-    addNotafdValRow();
+/* Images */
+function showImg(iid,phid,data){const i=document.getElementById(iid),p=document.getElementById(phid);i.src=data;i.style.display='block';if(p)p.style.display='none';imgs[iid]=data;}
+function clrImg(iid,phid){const i=document.getElementById(iid),p=document.getElementById(phid);i.src='';i.style.display='none';if(p)p.style.display='';imgs[iid]=null;}
+function fimg(ev,iid,phid){const f=ev.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=e=>showImg(iid,phid,e.target.result);r.readAsDataURL(f);}
+function dov(ev,zid){ev.preventDefault();document.getElementById(zid).classList.add('drag-ov');}
+function dlv(ev,zid){document.getElementById(zid).classList.remove('drag-ov');}
+function ddp(ev,iid,zid,phid){ev.preventDefault();document.getElementById(zid).classList.remove('drag-ov');const f=ev.dataTransfer.files?.[0];if(!f||!f.type.startsWith('image/'))return;const r=new FileReader();r.onload=e=>showImg(iid,phid,e.target.result);r.readAsDataURL(f);}
 
-    // Set today's date
-    const today = new Date();
-    const dd = String(today.getDate()).padStart(2,'0');
-    const mm = String(today.getMonth()+1).padStart(2,'0');
-    const yyyy = today.getFullYear();
-    const dateStr = `${dd}.${mm}.${yyyy}`;
-    ['ordnt-DataOrdontPl','notafd-DataRevizuirii'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el && !el.value) el.value = dateStr;
-    });
-  })();
-
-  // ── Tab switch ──────────────────────────────────────────────────────────────
-  function switchTab(tab) {
-    state.currentTab = tab;
-    document.querySelectorAll('.tab').forEach((t,i) => {
-      t.classList.toggle('active', (i === 0 && tab === 'ordnt') || (i === 1 && tab === 'notafd'));
-    });
-    document.getElementById('form-ordnt').style.display  = tab === 'ordnt'  ? '' : 'none';
-    document.getElementById('form-notafd').style.display = tab === 'notafd' ? '' : 'none';
-    clearStatus();
-  }
-
-  // ── Status helpers ──────────────────────────────────────────────────────────
-  function setStatus(msg, type='info') {
-    const el = document.getElementById('statusBar');
-    el.className = `status-bar ${type}`;
-    el.innerHTML = (type === 'err' ? '❌ ' : type === 'ok' ? '✅ ' : '⏳ ') + msg;
-  }
-  function clearStatus() {
-    const el = document.getElementById('statusBar');
-    el.className = 'status-bar';
-    el.innerHTML = '';
-  }
-
-  // ── Dynamic rows — ORDNT ────────────────────────────────────────────────────
-  let ordntRowIdx = 0;
-  function addOrdntRow() {
-    const i = ordntRowIdx++;
-    const tr = document.createElement('tr');
-    tr.id = `ordnt-row-${i}`;
-    tr.innerHTML = `
-      <td><input type="text" maxlength="11" placeholder="Cod ang." data-field="cod_angajament"/></td>
-      <td><input type="text" maxlength="3" placeholder="Ind." data-field="indicator_angajament"/></td>
-      <td><input type="text" maxlength="10" placeholder="Program" data-field="program"/></td>
-      <td><input type="text" maxlength="15" placeholder="Cod SSI" data-field="cod_SSI"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="receptii"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="plati_anterioare"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="suma_ordonantata_plata"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="receptii_neplatite"/></td>
-      <td class="td-del"><button class="btn-del-row" onclick="delRow('ordnt-row-${i}')">✕</button></td>
-    `;
-    document.getElementById('ordnt-rows-body').appendChild(tr);
-  }
-
-  function getOrdntRows() {
-    return [...document.querySelectorAll('#ordnt-rows-body tr')].map(tr => {
-      const obj = {};
-      tr.querySelectorAll('input[data-field]').forEach(inp => {
-        obj[inp.dataset.field] = inp.value;
-      });
-      return obj;
-    });
-  }
-
-  // ── Dynamic rows — NOTAFD val ───────────────────────────────────────────────
-  let notafdValIdx = 0;
-  function addNotafdValRow() {
-    const i = notafdValIdx++;
-    const tr = document.createElement('tr');
-    tr.id = `notafd-val-row-${i}`;
-    tr.innerHTML = `
-      <td><input type="text" maxlength="150" placeholder="Element FD" data-field="element_fd" style="min-width:120px"/></td>
-      <td><input type="text" maxlength="10" placeholder="Prog." data-field="program"/></td>
-      <td><input type="text" maxlength="15" placeholder="Cod SSI" data-field="codSSI"/></td>
-      <td><input type="text" maxlength="500" placeholder="Parametri" data-field="param_fd" style="min-width:100px"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="valt_rev_prec"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="influente"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="valt_actualiz"/></td>
-      <td class="td-del"><button class="btn-del-row" onclick="delRow('notafd-val-row-${i}')">✕</button></td>
-    `;
-    document.getElementById('notafd-val-body').appendChild(tr);
-  }
-  function getNotafdValRows() {
-    return [...document.querySelectorAll('#notafd-val-body tr')].map(tr => {
-      const obj = {};
-      tr.querySelectorAll('input[data-field]').forEach(inp => { obj[inp.dataset.field] = inp.value; });
-      return obj;
-    });
-  }
-
-  // ── Dynamic rows — NOTAFD plăți ─────────────────────────────────────────────
-  let notafdPlatiIdx = 0;
-  function addNotafdPlatiRow() {
-    const i = notafdPlatiIdx++;
-    const tr = document.createElement('tr');
-    tr.id = `notafd-plati-row-${i}`;
-    tr.innerHTML = `
-      <td><input type="text" maxlength="10" placeholder="Prog." data-field="program"/></td>
-      <td><input type="text" maxlength="15" placeholder="Cod SSI" data-field="codSSI"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="plati_ani_precedenti"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="plati_estim_ancrt"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="plati_estim_an_np1"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="plati_estim_an_np2"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="plati_estim_an_np3"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="plati_estim_ani_ulter"/></td>
-      <td class="td-del"><button class="btn-del-row" onclick="delRow('notafd-plati-row-${i}')">✕</button></td>
-    `;
-    document.getElementById('notafd-plati-body').appendChild(tr);
-  }
-  function getNotafdPlatiRows() {
-    return [...document.querySelectorAll('#notafd-plati-body tr')].map(tr => {
-      const obj = {};
-      tr.querySelectorAll('input[data-field]').forEach(inp => { obj[inp.dataset.field] = inp.value; });
-      return obj;
-    });
-  }
-
-  // ── Dynamic rows — NOTAFD ctrl ──────────────────────────────────────────────
-  let notafdCtrlIdx = 0;
-  function addNotafdCtrlRow() {
-    const i = notafdCtrlIdx++;
-    const tr = document.createElement('tr');
-    tr.id = `notafd-ctrl-row-${i}`;
-    tr.innerHTML = `
-      <td><input type="text" maxlength="11" placeholder="Cod ang." data-field="cod_angajament"/></td>
-      <td><input type="text" maxlength="3" placeholder="Ind." data-field="indicator_angajament"/></td>
-      <td><input type="text" maxlength="10" placeholder="Prog." data-field="program"/></td>
-      <td><input type="text" maxlength="15" placeholder="Cod SSI" data-field="cod_SSI"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="sum_rezv_crdt_ang_af_rvz_prc"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="influente_c6"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="sum_rezv_crdt_ang_act"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="sum_rezv_crdt_bug_af_rvz_prc"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="influente_c9"/></td>
-      <td><input type="number" min="0" placeholder="0" data-field="sum_rezv_crdt_bug_act"/></td>
-      <td class="td-del"><button class="btn-del-row" onclick="delRow('notafd-ctrl-row-${i}')">✕</button></td>
-    `;
-    document.getElementById('notafd-ctrl-body').appendChild(tr);
-  }
-  function getNotafdCtrlRows() {
-    return [...document.querySelectorAll('#notafd-ctrl-body tr')].map(tr => {
-      const obj = {};
-      tr.querySelectorAll('input[data-field]').forEach(inp => { obj[inp.dataset.field] = inp.value; });
-      return obj;
-    });
-  }
-
-  function delRow(rowId) {
-    const el = document.getElementById(rowId);
-    if (el) el.remove();
-  }
-
-  // ── Collect form data ───────────────────────────────────────────────────────
-  function g(id) { return (document.getElementById(id)?.value || '').trim(); }
-  function cb(id) { return document.getElementById(id)?.checked ? '1' : ''; }
-
-  function collectOrdnt() {
-    return {
-      Cif:           g('ordnt-Cif'),
-      DenInstPb:     g('ordnt-DenInstPb'),
-      NrOrdonantPl:  g('ordnt-NrOrdonantPl'),
-      DataOrdontPl:  g('ordnt-DataOrdontPl'),
-      docFd: {
-        nr_unic_inreg:         g('ordnt-nr_unic_inreg'),
-        beneficiar:            g('ordnt-beneficiar'),
-        documente_justificative: g('ordnt-documente_justificative'),
-        iban_beneficiar:       g('ordnt-iban_beneficiar'),
-        cif_beneficiar:        g('ordnt-cif_beneficiar'),
-        banca_beneficiar:      g('ordnt-banca_beneficiar'),
-        inf_pv_plata:          g('ordnt-inf_pv_plata'),
-        inf_pv_plata1:         g('ordnt-inf_pv_plata1'),
-        rowTfd: getOrdntRows(),
-      },
+/* Attachments */
+function addAtt(ev,lid,did){
+  const files=ev.target.files;if(!files.length)return;
+  const list=document.getElementById(lid);
+  let cur=JSON.parse(document.getElementById(did).value||'[]');
+  for(const f of files){
+    const rd=new FileReader();
+    rd.onload=e=>{
+      const idx=cur.length;cur.push({name:f.name,type:f.type,data:e.target.result});
+      document.getElementById(did).value=JSON.stringify(cur);
+      const chip=document.createElement('span');chip.className='att-chip';
+      chip.innerHTML=`📎 ${f.name} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
+      list.appendChild(chip);
     };
+    rd.readAsDataURL(f);
   }
+  ev.target.value='';
+}
+function remAtt(idx,lid,did,btn){
+  const cur=JSON.parse(document.getElementById(did).value||'[]');
+  cur.splice(idx,1);document.getElementById(did).value=JSON.stringify(cur);
+  btn.closest('.att-chip').remove();
+}
 
-  function collectNotafd() {
-    return {
-      Cif:            g('notafd-Cif'),
-      DenInstPb:      g('notafd-DenInstPb'),
-      SubtitluDF:     g('notafd-SubtitluDF'),
-      NrUnicInreg:    g('notafd-NrUnicInreg'),
-      Revizuirea:     g('notafd-Revizuirea'),
-      DataRevizuirii: g('notafd-DataRevizuirii'),
-      sectiuneaA: {
-        compartiment_specialitate: g('notafd-compartiment_specialitate'),
-        obiect_fd_reviz_scurt:     g('notafd-obiect_fd_reviz_scurt'),
-        obiect_fd_reviz_lung:      g('notafd-obiect_fd_reviz_lung'),
-        ang_legale_val: {
-          ckbx_stab_tin_cont: cb('notafd-ckbx_stab_tin_cont'),
-          ckbx_ramane_suma:   cb('notafd-ckbx_ramane_suma'),
-          ramane_suma:        g('notafd-ramane_suma') || '0',
-          rowT_ang_pl_val:    getNotafdValRows(),
-        },
-        ang_legale_plati: {
-          ckbx_fara_ang_emis_ancrt:    cb('notafd-ckbx_fara_ang_emis_ancrt'),
-          ckbx_cu_ang_emis_ancrt:      cb('notafd-ckbx_cu_ang_emis_ancrt'),
-          ckbx_sting_ang_in_ancrt:     cb('notafd-ckbx_sting_ang_in_ancrt'),
-          ckbx_fara_plati_ang_in_ancrt: cb('notafd-ckbx_fara_plati_ang_in_ancrt'),
-          ckbx_cu_plati_ang_in_mmani:  cb('notafd-ckbx_cu_plati_ang_in_mmani'),
-          ckbx_ang_leg_emise_ct_an_urm: cb('notafd-ckbx_ang_leg_emise_ct_an_urm'),
-          rowT_ang_pl_plati:            getNotafdPlatiRows(),
-        },
-      },
-      sectiuneaB: {
-        ckbx_secta_inreg_ctrl_ang:  cb('notafd-ckbx_secta_inreg_ctrl_ang'),
-        ckbx_fara_inreg_ctrl_ang:   cb('notafd-ckbx_fara_inreg_ctrl_ang'),
-        sum_fara_inreg_ctrl_crdbug: g('notafd-sum_fara_inreg_ctrl_crdbug') || '0',
-        ckbx_interzis_emit_ang:     cb('notafd-ckbx_interzis_emit_ang'),
-        ckbx_interzis_intrucat:     cb('notafd-ckbx_interzis_intrucat'),
-        intrucat:                   g('notafd-intrucat'),
-        rowT_ang_ctrl_ang:          getNotafdCtrlRows(),
-      },
-    };
+/* Dynamic rows */
+let oI=0,nVI=0,nPI=0,nCI=0;
+function addOR(){const i=oI++;const tr=document.createElement('tr');tr.id='or-'+i;
+  tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="number" min="0" value="0" data-f="receptii" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="plati_anterioare" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="suma_ordonantata_plata" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="receptii_neplatite" oninput="upTot()"/></td><td><button class="bdel" onclick="delR('or-${i}');upTot()">✕</button></td>`;
+  document.getElementById('o-tbody').appendChild(tr);}
+function getOR(){return[...document.querySelectorAll('#o-tbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
+
+function addNV(){const i=nVI++;const tr=document.createElement('tr');tr.id='nv-'+i;
+  tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="number" min="0" value="0" data-f="valt_rev_prec" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="influente" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="valt_actualiz" oninput="upTot()"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;
+  document.getElementById('n-vtbody').appendChild(tr);}
+function getNV(){return[...document.querySelectorAll('#n-vtbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
+
+function addNP(){const i=nPI++;const tr=document.createElement('tr');tr.id='np-'+i;
+  tr.innerHTML=`<td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="number" min="0" value="0" data-f="plati_ani_precedenti" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="plati_estim_ancrt" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="plati_estim_an_np1" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="plati_estim_an_np2" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="plati_estim_an_np3" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="plati_estim_ani_ulter" oninput="upTot()"/></td><td><button class="bdel" onclick="delR('np-${i}');upTot()">✕</button></td>`;
+  document.getElementById('n-ptbody').appendChild(tr);}
+function getNP(){return[...document.querySelectorAll('#n-ptbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
+
+function addNC(){const i=nCI++;const tr=document.createElement('tr');tr.id='nc-'+i;
+  tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="number" min="0" value="0" data-f="sum_rezv_crdt_ang_af_rvz_prc" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="influente_c6" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="sum_rezv_crdt_ang_act" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="sum_rezv_crdt_bug_af_rvz_prc" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="influente_c9" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="sum_rezv_crdt_bug_act" oninput="upTot()"/></td><td><button class="bdel" onclick="delR('nc-${i}');upTot()">✕</button></td>`;
+  document.getElementById('n-ctbody').appendChild(tr);}
+function getNC(){return[...document.querySelectorAll('#n-ctbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
+
+function delR(id){document.getElementById(id)?.remove();}
+
+/* Totals */
+function sf(bid,f){return[...document.querySelectorAll(`#${bid} input[data-f="${f}"]`)].reduce((s,i)=>s+(parseFloat(i.value)||0),0);}
+function st2(id,v){const e=document.getElementById(id);if(e)e.textContent=Math.round(v).toLocaleString('ro-RO');}
+function upTot(){
+  st2('o-t-rec',sf('o-tbody','receptii'));st2('o-t-plati',sf('o-tbody','plati_anterioare'));
+  st2('o-t-suma',sf('o-tbody','suma_ordonantata_plata'));st2('o-t-neplat',sf('o-tbody','receptii_neplatite'));
+  st2('n-t-vprec',sf('n-vtbody','valt_rev_prec'));st2('n-t-vinfl',sf('n-vtbody','influente'));st2('n-t-vact',sf('n-vtbody','valt_actualiz'));
+  st2('n-t-pprec',sf('n-ptbody','plati_ani_precedenti'));st2('n-t-pancrt',sf('n-ptbody','plati_estim_ancrt'));
+  st2('n-t-pnp1',sf('n-ptbody','plati_estim_an_np1'));st2('n-t-pnp2',sf('n-ptbody','plati_estim_an_np2'));
+  st2('n-t-pnp3',sf('n-ptbody','plati_estim_an_np3'));st2('n-t-pulter',sf('n-ptbody','plati_estim_ani_ulter'));
+  st2('n-t-c5',sf('n-ctbody','sum_rezv_crdt_ang_af_rvz_prc'));st2('n-t-c6',sf('n-ctbody','influente_c6'));
+  st2('n-t-c7',sf('n-ctbody','sum_rezv_crdt_ang_act'));st2('n-t-c8',sf('n-ctbody','sum_rezv_crdt_bug_af_rvz_prc'));
+  st2('n-t-c9',sf('n-ctbody','influente_c9'));st2('n-t-c10',sf('n-ctbody','sum_rezv_crdt_bug_act'));
+}
+
+/* Collect */
+const g=id=>(document.getElementById(id)?.value||'').trim();
+const cb=id=>document.getElementById(id)?.checked?'1':'';
+
+function colO(){return{
+  Cif:g('o-cif'),DenInstPb:g('o-den'),NrOrdonantPl:g('o-nr'),DataOrdontPl:g('o-data'),
+  captureImageBase64:imgs['o-cimg']||null,
+  attachments:JSON.parse(document.getElementById('o-adata').value||'[]'),
+  docFd:{nr_unic_inreg:g('o-nrUnic'),beneficiar:g('o-benef'),
+    documente_justificative:g('o-docsj'),iban_beneficiar:g('o-iban'),
+    cif_beneficiar:g('o-cifb'),banca_beneficiar:g('o-banca'),
+    inf_pv_plata:g('o-inf1'),inf_pv_plata1:g('o-inf2'),rowTfd:getOR()},
+};}
+
+function colN(){return{
+  Cif:g('n-cif'),DenInstPb:g('n-den'),SubtitluDF:g('n-subtitlu'),
+  NrUnicInreg:g('n-nrUnic'),Revizuirea:g('n-rev'),DataRevizuirii:g('n-data'),
+  captureImageBase64:imgs['n-cimg']||null,
+  attachmentsFd:JSON.parse(document.getElementById('n-fdad').value||'[]'),
+  attachments:JSON.parse(document.getElementById('n-adata').value||'[]'),
+  sectiuneaA:{
+    compartiment_specialitate:g('n-comp'),
+    obiect_fd_reviz_scurt:g('n-scurt'),obiect_fd_reviz_lung:g('n-lung'),
+    ang_legale_val:{ckbx_stab_tin_cont:cb('n-ck-oblig'),ckbx_ramane_suma:cb('n-ck-stab'),
+      ramane_suma:g('n-ramana')||'0',rowT_ang_pl_val:getNV()},
+    ang_legale_plati:{ckbx_fara_ang_emis_ancrt:cb('n-ck-faraang'),ckbx_cu_ang_emis_ancrt:cb('n-ck-cuang'),
+      ckbx_sting_ang_in_ancrt:cb('n-ck-sting'),ckbx_fara_plati_ang_in_ancrt:cb('n-ck-faraplati'),
+      ckbx_cu_plati_ang_in_mmani:cb('n-ck-cuplati'),ckbx_ang_leg_emise_ct_an_urm:cb('n-ck-anurmatori'),
+      rowT_ang_pl_plati:getNP()},
+  },
+  sectiuneaB:{
+    ckbx_secta_inreg_ctrl_ang:cb('n-ck-seca'),ckbx_fara_inreg_ctrl_ang:cb('n-ck-fararezv'),
+    sum_fara_inreg_ctrl_crdbug:g('n-sumfara')||'0',
+    ckbx_interzis_emit_ang:cb('n-ck-interzis'),ckbx_interzis_intrucat:cb('n-ck-intrucat'),
+    intrucat:g('n-intrucat'),rowT_ang_ctrl_ang:getNC(),
+  },
+};}
+
+/* Validation */
+const DR=/^([1-9]|0[1-9]|[12]\d|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}$/;
+const CR=/^[1-9]\d{1,9}$/;
+function markE(id,bad){const e=document.getElementById(id);if(e)e.classList.toggle('err',bad);}
+function valF(ft){
+  let ok=true;
+  const req=(id,c)=>{markE(id,!c);if(!c)ok=false;};
+  if(ft==='ordnt'){
+    req('o-den',g('o-den').length>0);req('o-cif',CR.test(g('o-cif')));
+    req('o-nr',g('o-nr').length>0);req('o-data',DR.test(g('o-data')));
+    req('o-nrUnic',g('o-nrUnic').length>0);req('o-benef',g('o-benef').length>0);
+    req('o-docsj',g('o-docsj').length>0);req('o-iban',g('o-iban').length>0);
+    req('o-cifb',CR.test(g('o-cifb')));req('o-banca',g('o-banca').length>0);
+    if(!getOR().length){setS('Adăugați cel puțin un rând angajament.','err');ok=false;}
+  }else{
+    req('n-den',g('n-den').length>0);req('n-cif',CR.test(g('n-cif')));
+    req('n-nrUnic',g('n-nrUnic').length>0);req('n-rev',g('n-rev').length>0);
+    req('n-data',DR.test(g('n-data')));req('n-subtitlu',g('n-subtitlu').length>0);
+    req('n-comp',g('n-comp').length>0);req('n-scurt',g('n-scurt').length>0);
+    if(!getNV().length){setS('Adăugați cel puțin un rând la pct. 4.','err');ok=false;}
   }
+  return ok;
+}
 
-  // ── Client-side validation ──────────────────────────────────────────────────
-  const DATE_RE = /^([1-9]|0[1-9]|[12][0-9]|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}$/;
-  const CIF_RE  = /^[1-9]\d{1,9}$/;
+/* Generate */
+async function genPdf(ft){
+  clrS();
+  if(!valF(ft)){if(!document.querySelector('.status.err')?.innerHTML.length)setS('Verificați câmpurile marcate.','err');return;}
+  const btn=document.getElementById('bgen-'+ft);
+  btn.disabled=true;btn.innerHTML='<div class="spinner"></div> <span>Se generează...</span>';
+  setS('Se generează PDF-ul...','info');
+  const data=ft==='ordnt'?colO():colN();
+  try{
+    const r=await fetch('/api/formulare/generate',{method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({formType:ft,data})});
+    const j=await r.json();
+    if(!r.ok||!j.ok){setS(j.errors?j.errors.join('; '):(j.message||j.error||'Eroare'),'err');return;}
+    ST[ft].pdf=j.pdfBase64;ST[ft].name=j.fileName;
+    const panel=document.getElementById('result-'+ft);panel.classList.add('show');
+    document.getElementById('rname-'+ft).textContent=j.fileName;
+    panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+    const dn=document.getElementById('ffn-'+ft);if(dn&&!dn.value)dn.value=j.fileName.replace('.pdf','');
+    setS('PDF generat! Descărcați sau lansați fluxul de semnare.','ok');
+  }catch(e){setS('Eroare rețea: '+e.message,'err');}
+  finally{btn.disabled=false;btn.innerHTML='<span>⚙ Generează PDF</span>';}
+}
 
-  function setFieldErr(fieldId, hasErr) {
-    const el = document.getElementById(`f-${fieldId}`);
-    if (el) el.classList.toggle('has-err', hasErr);
-    const inp = document.getElementById(fieldId.replace('f-',''));
-    if (inp) inp.classList.toggle('err', hasErr);
-  }
-
-  function validateClient(formType) {
-    let ok = true;
-    function chk(fieldId, cond) {
-      setFieldErr(fieldId, !cond);
-      if (!cond) ok = false;
-    }
-
-    if (formType === 'ordnt') {
-      chk('ordnt-DenInstPb', g('ordnt-DenInstPb').length > 0);
-      chk('ordnt-Cif',       CIF_RE.test(g('ordnt-Cif')));
-      chk('ordnt-NrOrdonantPl', g('ordnt-NrOrdonantPl').length > 0);
-      chk('ordnt-DataOrdontPl', DATE_RE.test(g('ordnt-DataOrdontPl')));
-      chk('ordnt-nr_unic_inreg', g('ordnt-nr_unic_inreg').length > 0);
-      chk('ordnt-beneficiar',    g('ordnt-beneficiar').length > 0);
-      chk('ordnt-documente_justificative', g('ordnt-documente_justificative').length > 0);
-      chk('ordnt-iban_beneficiar',  g('ordnt-iban_beneficiar').length > 0);
-      chk('ordnt-cif_beneficiar',   CIF_RE.test(g('ordnt-cif_beneficiar')));
-      chk('ordnt-banca_beneficiar', g('ordnt-banca_beneficiar').length > 0);
-      if (getOrdntRows().length === 0) {
-        setStatus('Adăugați cel puțin un rând angajament.', 'err');
-        ok = false;
-      }
-    } else {
-      chk('notafd-DenInstPb',     g('notafd-DenInstPb').length > 0);
-      chk('notafd-Cif',           CIF_RE.test(g('notafd-Cif')));
-      chk('notafd-NrUnicInreg',   g('notafd-NrUnicInreg').length > 0);
-      chk('notafd-Revizuirea',    g('notafd-Revizuirea').length > 0);
-      chk('notafd-DataRevizuirii', DATE_RE.test(g('notafd-DataRevizuirii')));
-      chk('notafd-SubtitluDF',    g('notafd-SubtitluDF').length > 0);
-      chk('notafd-compartiment_specialitate', g('notafd-compartiment_specialitate').length > 0);
-      chk('notafd-obiect_fd_reviz_scurt',     g('notafd-obiect_fd_reviz_scurt').length > 0);
-      if (getNotafdValRows().length === 0) {
-        setStatus('Adăugați cel puțin un rând angajament (Secțiunea A).', 'err');
-        ok = false;
-      }
-    }
-    return ok;
-  }
-
-  // ── Generate PDF ────────────────────────────────────────────────────────────
-  async function generatePdf(formType) {
-    clearStatus();
-    if (!validateClient(formType)) {
-      setStatus('Verificați câmpurile marcate cu roșu.', 'err');
-      return;
-    }
-
-    const btn = document.getElementById(`btn-gen-${formType}`);
-    btn.disabled = true;
-    btn.innerHTML = '<div class="spinner"></div> <span>Se generează...</span>';
-    setStatus('Se generează PDF-ul...', 'info');
-
-    const data = formType === 'ordnt' ? collectOrdnt() : collectNotafd();
-
-    try {
-      const r = await fetch('/api/formulare/generate', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formType, data }),
-      });
-      const j = await r.json();
-
-      if (!r.ok || !j.ok) {
-        const msgs = j.errors ? j.errors.join('; ') : (j.message || j.error || 'Eroare server');
-        setStatus(msgs, 'err');
-        return;
-      }
-
-      state[formType].pdfBase64 = j.pdfBase64;
-      state[formType].fileName  = j.fileName;
-
-      // Show result panel
-      const panel = document.getElementById(`result-${formType}`);
-      panel.classList.add('visible');
-      document.getElementById(`result-${formType}-name`).textContent = j.fileName;
-      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-      // Pre-fill flow form
-      const docNameEl = document.getElementById(`ff-${formType}-docName`);
-      if (docNameEl && !docNameEl.value) {
-        docNameEl.value = j.fileName.replace('.pdf','');
-      }
-
-      setStatus('PDF generat cu succes! Descărcați sau lansați fluxul de semnare.', 'ok');
-
-    } catch (e) {
-      setStatus('Eroare rețea: ' + e.message, 'err');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '<span>⚙ Generează PDF</span>';
-    }
-  }
-
-  // ── Download PDF ────────────────────────────────────────────────────────────
-  function downloadPdf(formType) {
-    const { pdfBase64, fileName } = state[formType];
-    if (!pdfBase64) return;
-    const link = document.createElement('a');
-    link.href = 'data:application/pdf;base64,' + pdfBase64;
-    link.download = fileName || `formular_${formType}.pdf`;
-    link.click();
-  }
-
-  // ── Show flow form ──────────────────────────────────────────────────────────
-  function showFlowForm(formType) {
-    const ff = document.getElementById(`flow-form-${formType}`);
-    ff.classList.add('visible');
-    ff.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-
-  // ── Create flow ─────────────────────────────────────────────────────────────
-  async function createFlow(formType) {
-    const { pdfBase64, fileName } = state[formType];
-    if (!pdfBase64) { setStatus('Generați mai întâi PDF-ul.', 'err'); return; }
-
-    const docName   = g(`ff-${formType}-docName`);
-    const initEmail = g(`ff-${formType}-initEmail`);
-    if (!docName)   { setStatus('Introduceți numele documentului.', 'err'); return; }
-    if (!initEmail) { setStatus('Introduceți email-ul inițiatorului.', 'err'); return; }
-
-    setStatus('Se creează fluxul de semnare...', 'info');
-
-    try {
-      // Redirect la pagina de creare flux cu PDF-ul pre-încărcat
-      // Salvăm temporar în sessionStorage
-      sessionStorage.setItem('docflow_prefill_pdf', pdfBase64);
-      sessionStorage.setItem('docflow_prefill_name', docName);
-      sessionStorage.setItem('docflow_prefill_type', 'ancore');
-      sessionStorage.setItem('docflow_prefill_email', initEmail);
-      window.location.href = '/semdoc.html?action=new_flow_prefill';
-    } catch (e) {
-      setStatus('Eroare: ' + e.message, 'err');
-    }
-  }
-
-  // ── Reset form ──────────────────────────────────────────────────────────────
-  function resetForm(formType) {
-    if (!confirm('Resetați formularul? Datele completate se vor pierde.')) return;
-    // Reset all inputs in the form
-    document.querySelectorAll(`#form-${formType} input, #form-${formType} textarea`)
-      .forEach(el => {
-        if (el.type === 'checkbox') el.checked = false;
-        else el.value = '';
-      });
-    // Clear rows
-    if (formType === 'ordnt') {
-      document.getElementById('ordnt-rows-body').innerHTML = '';
-      addOrdntRow();
-    } else {
-      document.getElementById('notafd-val-body').innerHTML = '';
-      document.getElementById('notafd-plati-body').innerHTML = '';
-      document.getElementById('notafd-ctrl-body').innerHTML = '';
-      addNotafdValRow();
-    }
-    // Hide result
-    document.getElementById(`result-${formType}`).classList.remove('visible');
-    document.getElementById(`flow-form-${formType}`).classList.remove('visible');
-    state[formType] = { pdfBase64: null, fileName: null };
-    clearStatus();
-    // Remove field errors
-    document.querySelectorAll(`#form-${formType} .has-err`).forEach(el => el.classList.remove('has-err'));
-    document.querySelectorAll(`#form-${formType} .err`).forEach(el => el.classList.remove('err'));
-  }
+function dlPdf(ft){
+  const{pdf,name}=ST[ft];if(!pdf)return;
+  const a=document.createElement('a');a.href='data:application/pdf;base64,'+pdf;
+  a.download=name||'formular_'+ft+'.pdf';a.click();
+}
+function showFF(ft){const e=document.getElementById('ff-'+ft);e.classList.add('show');e.scrollIntoView({behavior:'smooth',block:'nearest'});}
+async function mkFlow(ft){
+  const{pdf}=ST[ft];if(!pdf){setS('Generați mai întâi PDF-ul.','err');return;}
+  const dn=g('ffn-'+ft),em=g('ffe-'+ft);
+  if(!dn||!em){setS('Completați numele documentului și email-ul.','err');return;}
+  sessionStorage.setItem('docflow_prefill_pdf',pdf);
+  sessionStorage.setItem('docflow_prefill_name',dn);
+  sessionStorage.setItem('docflow_prefill_type','ancore');
+  sessionStorage.setItem('docflow_prefill_email',em);
+  location.href='/semdoc.html?action=new_flow_prefill';
+}
+function resetF(ft){
+  if(!confirm('Resetați formularul? Datele se vor pierde.'))return;
+  document.querySelectorAll(`#form-${ft} input:not([type=file]),#form-${ft} textarea`)
+    .forEach(e=>{if(e.type==='checkbox')e.checked=false;else e.value=(e.type==='number'?'0':'');});
+  if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';}
+  else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
+  document.getElementById('result-'+ft).classList.remove('show');
+  document.getElementById('ff-'+ft).classList.remove('show');
+  ST[ft]={pdf:null,name:null};clrS();upTot();
+  document.querySelectorAll(`#form-${ft} .err`).forEach(e=>e.classList.remove('err'));
+}
 </script>
 </body>
 </html>
