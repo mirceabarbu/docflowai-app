@@ -387,11 +387,13 @@ router.get('/my-flows', async (req, res) => {
     // FIX: filtru org_id strict — fara "OR $2 = 0"
     let baseWhere, params;
     if (orgId) {
-      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND org_id = $2 AND deleted_at IS NULL`;
+      // PERF-05: folosim @> pe GIN index (idx_flows_signers_gin) in loc de EXISTS+jsonb_array_elements
+      // @> necesita email lowercase in signers — emailurile sunt deja lowercase la creare flux
+      baseWhere = `(data->>'initEmail' = $1 OR data->'signers' @> jsonb_build_array(jsonb_build_object('email',$1::text))) AND org_id = $2 AND deleted_at IS NULL`;
       params = [email, orgId];
     } else {
       // User fara org (legacy) — vede doar fluxurile proprii fara filtrare org
-      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND deleted_at IS NULL`;
+      baseWhere = `(data->>'initEmail' = $1 OR data->'signers' @> jsonb_build_array(jsonb_build_object('email',$1::text))) AND deleted_at IS NULL`;
       params = [email];
     }
 
@@ -401,7 +403,8 @@ router.get('/my-flows', async (req, res) => {
     else if (statusFilter === 'refused') statusWhere = " AND (data->>'status') = 'refused'";
     else if (statusFilter === 'cancelled') statusWhere = " AND (data->>'status') = 'cancelled'";
     // b230: "De semnat" — fluxuri active unde userul curent e semnatar cu status=current
-    else if (statusFilter === 'to_sign') statusWhere = ` AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'cancelled' AND EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1 AND s->>'status' = 'current')`;
+    // PERF-05: @> pe GIN index pentru to_sign de asemenea
+    else if (statusFilter === 'to_sign') statusWhere = ` AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'cancelled' AND data->'signers' @> jsonb_build_array(jsonb_build_object('email',$1::text,'status','current'))`;
     let searchWhere = '';
     if (search) {
       params.push(`%${escapedSearch}%`);
@@ -419,9 +422,17 @@ router.get('/my-flows', async (req, res) => {
       )`;
     }
     const whereClause = baseWhere + statusWhere + searchWhere;
-    const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
-    const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
-    const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows WHERE ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]);
+    // PERF-05: window function COUNT OVER() — un singur round-trip DB in loc de doua query-uri
+    const { rows: allRows } = await pool.query(
+      `SELECT id, data, created_at, updated_at, COUNT(*) OVER() AS _total
+       FROM flows WHERE ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
+    const total = allRows.length > 0 ? parseInt(allRows[0]._total) : 0;
+    const pages = Math.ceil(total / limit) || 1;
+    const rows = allRows.map(r => { const {_total, ...rest} = r; return rest; });
 
     // FIX: getUserMapForOrg — fara leak intre organizatii
     const userMap = await getUserMapForOrg(orgId);
