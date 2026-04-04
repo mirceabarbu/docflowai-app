@@ -29,6 +29,8 @@
     .tab{padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.86rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s}
     .tab:hover{color:var(--app-sub)}
     .tab.active{background:linear-gradient(135deg,var(--app-v),var(--app-t));color:#fff;box-shadow:0 3px 12px rgba(108,79,240,.3)}
+    .draft-badge{font-size:11px;color:var(--app-muted);margin-left:6px;font-weight:400;opacity:0;transition:opacity .4s}
+    .draft-badge.show{opacity:1}
     /* Outer */
     .outer{max-width:1020px;margin:0 auto;padding:16px 16px 60px}
     /* Status */
@@ -139,8 +141,8 @@
 
 <div class="tabs-wrap">
   <div class="tabs">
-    <button class="tab active" onclick="sw('ordnt')">📄 Ordonanțare de Plată</button>
-    <button class="tab" onclick="sw('notafd')">📋 Document de Fundamentare</button>
+    <button class="tab active" onclick="sw('ordnt')">📄 Ordonanțare de Plată <span class="draft-badge" id="db-ordnt"></span></button>
+    <button class="tab" onclick="sw('notafd')">📋 Document de Fundamentare <span class="draft-badge" id="db-notafd"></span></button>
   </div>
 </div>
 
@@ -769,8 +771,200 @@ async function mkFlow(ft){
   sessionStorage.setItem('docflow_prefill_email',em);
   location.href='/semdoc.html?action=new_flow_prefill';
 }
+
+/* ── AUTO-SAVE DRAFT ─────────────────────────────────────────────────────────
+ * Salvează starea fiecărui formular în localStorage la fiecare 2s de inactivitate.
+ * La reload: restaurare automată cu banner de confirmare.
+ * La resetF: draft șters.
+ * NU salvează: fișiere atașate (prea mari), imaginile de captură. ─────────── */
+
+const DRAFT_VER = '2'; // bump dacă schimbi structura draft-ului
+
+function _draftKey(ft){ return 'dfai_draft_v' + DRAFT_VER + '_' + ft; }
+
+// Colectează starea completă a formularului într-un obiect serializabil
+function _draftCollect(ft) {
+  const form = document.getElementById('form-' + ft);
+  if (!form) return null;
+  const state = { inputs:{}, checkboxes:{}, rows:{}, ts: new Date().toISOString() };
+
+  // Inputs și textareas cu ID (exclus file inputs și cele fără ID)
+  form.querySelectorAll('input[id]:not([type=file]):not([type=hidden]),textarea[id]').forEach(el => {
+    if (el.type === 'checkbox') state.checkboxes[el.id] = el.checked;
+    else state.inputs[el.id] = el.value;
+  });
+
+  // Rânduri dinamice — salvate ca array de obiecte {data-f: value}
+  const tbodies = {
+    ordnt: ['o-tbody'],
+    notafd: ['n-vtbody','n-ptbody','n-ctbody'],
+  };
+  (tbodies[ft] || []).forEach(tid => {
+    const tbody = document.getElementById(tid);
+    if (!tbody) return;
+    state.rows[tid] = [...tbody.querySelectorAll('tr')].map(tr => {
+      const o = {};
+      tr.querySelectorAll('input[data-f]').forEach(inp => { o[inp.dataset.f] = inp.value; });
+      return o;
+    });
+  });
+
+  return state;
+}
+
+// Restaurează starea din obiectul salvat
+function _draftApply(ft, state) {
+  if (!state) return;
+  const form = document.getElementById('form-' + ft);
+  if (!form) return;
+
+  // Inputs
+  Object.entries(state.inputs || {}).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el && el.type !== 'file') el.value = val;
+  });
+
+  // Checkboxes + re-trigger toggle-uri dependente
+  Object.entries(state.checkboxes || {}).forEach(([id, checked]) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = checked;
+  });
+
+  // Re-aplică stările dependente pentru pct 4 și pct 5 (doc fundamentare)
+  if (ft === 'notafd') {
+    const ckStab = document.getElementById('n-ck-stab');
+    const ckRam  = document.getElementById('n-ck-ramane');
+    if (ckStab && ckRam) {
+      if (ckStab.checked) p4toggle('stab');
+      else if (ckRam.checked) p4toggle('ramane');
+    }
+    p5toggle && p5toggle();
+  }
+
+  // Rânduri dinamice
+  const addFns = { 'o-tbody': addOR, 'n-vtbody': addNV, 'n-ptbody': addNP, 'n-ctbody': addNC };
+  Object.entries(state.rows || {}).forEach(([tid, rows]) => {
+    const tbody = document.getElementById(tid);
+    if (!tbody || !rows.length) return;
+    tbody.innerHTML = '';
+    const addFn = addFns[tid];
+    rows.forEach(rowData => {
+      if (addFn) addFn();
+      const tr = tbody.querySelector('tr:last-child');
+      if (!tr) return;
+      Object.entries(rowData).forEach(([f, v]) => {
+        const inp = tr.querySelector(`[data-f="${f}"]`);
+        if (inp) inp.value = v;
+      });
+    });
+  });
+
+  // Recalculează totaluri și col 7 după restore
+  upTot && upTot();
+  // Re-calculează col 7 = col5+col6 pentru fiecare rând NV
+  document.querySelectorAll('#n-vtbody tr').forEach(tr => {
+    const c5 = parseFloat(tr.querySelector('[data-f="valt_rev_prec"]')?.value) || 0;
+    const c6 = parseFloat(tr.querySelector('[data-f="influente"]')?.value) || 0;
+    const c7 = tr.querySelector('[data-f="valt_actualiz"]');
+    if (c7) c7.value = c5 + c6;
+  });
+  upTot && upTot();
+}
+
+// Salvează în localStorage cu gestionare erori quota
+function draftSave(ft) {
+  try {
+    const state = _draftCollect(ft);
+    if (!state) return;
+    localStorage.setItem(_draftKey(ft), JSON.stringify(state));
+    _draftShowBadge(ft, '💾 salvat ' + new Date().toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}));
+  } catch(e) {
+    // localStorage plin sau indisponibil — ignorăm silențios
+    if (e.name === 'QuotaExceededError') _draftShowBadge(ft, '⚠ storage plin');
+  }
+}
+
+function draftClear(ft) {
+  try { localStorage.removeItem(_draftKey(ft)); } catch {}
+  _draftHideBadge(ft);
+}
+
+function _draftShowBadge(ft, txt) {
+  const el = document.getElementById('db-' + ft);
+  if (!el) return;
+  el.textContent = txt;
+  el.classList.add('show');
+}
+function _draftHideBadge(ft) {
+  const el = document.getElementById('db-' + ft);
+  if (el) { el.textContent = ''; el.classList.remove('show'); }
+}
+
+// Încarc draft la pornire cu banner de confirmare
+function draftLoadIfExists(ft) {
+  try {
+    const raw = localStorage.getItem(_draftKey(ft));
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (!state || !state.ts) return;
+
+    const age = Math.round((Date.now() - new Date(state.ts)) / 60000);
+    const ageStr = age < 1 ? 'acum câteva secunde' : age < 60 ? `acum ${age} min` : `acum ${Math.round(age/60)}h`;
+
+    // Banner de restore
+    const bar = document.getElementById('sBar');
+    bar.className = 'status info';
+    bar.innerHTML = `📋 Draft găsit (${ageStr}). &nbsp;
+      <button onclick="_doRestore('${ft}')" style="padding:2px 10px;border-radius:6px;border:1px solid rgba(108,79,240,.4);background:rgba(108,79,240,.12);color:#b0a0ff;cursor:pointer;font-size:.82rem">Restaurează</button>
+      <button onclick="draftClear('${ft}');clrS()" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:none;color:var(--app-muted);cursor:pointer;font-size:.82rem">Ignoră</button>`;
+
+    // Stocăm starea pentru butonul de restore
+    window._pendingDraft = window._pendingDraft || {};
+    window._pendingDraft[ft] = state;
+  } catch {}
+}
+
+function _doRestore(ft) {
+  const state = window._pendingDraft?.[ft];
+  if (!state) return;
+  // Golim rândurile implicite adăugate la init înainte de restore
+  ['o-tbody','n-vtbody','n-ptbody','n-ctbody'].forEach(tid => {
+    const el = document.getElementById(tid);
+    if (el) el.innerHTML = '';
+  });
+  _draftApply(ft, state);
+  delete window._pendingDraft[ft];
+  clrS();
+  _draftShowBadge(ft, '✅ draft restaurat');
+  setTimeout(() => _draftHideBadge(ft), 4000);
+}
+
+// Debounce auto-save — 2s după ultima tastă
+const _draftTimers = {};
+function _draftSchedule(ft) {
+  clearTimeout(_draftTimers[ft]);
+  _draftTimers[ft] = setTimeout(() => draftSave(ft), 2000);
+}
+
+// Atașează listeners la toate input-urile din fiecare formular
+function _draftAttach(ft) {
+  const form = document.getElementById('form-' + ft);
+  if (!form) return;
+  form.addEventListener('input', () => _draftSchedule(ft));
+  form.addEventListener('change', () => _draftSchedule(ft));
+}
+
+// Init — rulat după ce formularele sunt gata
+(function initDraft(){
+  ['ordnt','notafd'].forEach(ft => {
+    _draftAttach(ft);
+    draftLoadIfExists(ft);
+  });
+})();
+
 function resetF(ft){
-  if(!confirm('Resetați formularul? Datele se vor pierde.'))return;
+  if(!confirm('Resetați formularul? Datele și draft-ul se vor pierde.'))return;
+  draftClear(ft);
   document.querySelectorAll(`#form-${ft} input:not([type=file]),#form-${ft} textarea`)
     .forEach(e=>{if(e.type==='checkbox')e.checked=false;else e.value=(e.type==='number'?'0':'');});
   if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';}
