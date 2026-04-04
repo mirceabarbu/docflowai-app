@@ -45,6 +45,22 @@
     .btn.secondary:hover{background:rgba(255,255,255,.13);filter:none;}
     .btn.danger{background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.28);color:#ffaaaa;}
     .btn.danger:hover{background:rgba(255,80,80,.25);filter:none;}
+    /* ── QuickStats bar ── */
+    #qs-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+      background:rgba(15,23,49,.7);border-bottom:1px solid rgba(255,255,255,.07);
+      padding:8px 24px;position:sticky;top:57px;z-index:90;backdrop-filter:blur(8px);}
+    .qs-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;
+      border-radius:999px;font-size:.78rem;font-weight:600;white-space:nowrap;cursor:default;}
+    .qs-pill.blue{background:rgba(120,160,255,.15);border:1px solid rgba(120,160,255,.3);color:#9db0ff;}
+    .qs-pill.amber{background:rgba(255,180,50,.12);border:1px solid rgba(255,180,50,.3);color:#ffd580;}
+    .qs-pill.red{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.3);color:#ff9090;}
+    .qs-pill.green{background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);color:#2dd4bf;}
+    .qs-pill.orange{background:rgba(255,140,60,.12);border:1px solid rgba(255,140,60,.3);color:#ff9e40;}
+    .qs-val{font-size:1rem;font-weight:800;}
+    .qs-ts{font-size:.7rem;color:rgba(157,176,255,.4);margin-left:auto;}
+    .qs-spin{width:13px;height:13px;border:2px solid rgba(157,176,255,.2);
+      border-top-color:#9db0ff;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0;}
+    @keyframes spin{to{transform:rotate(360deg)}}
     /* Clase vechi pastrate pentru compatibilitate */
     .btn-p{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;}
     .btn-p:hover{opacity:.88;}
@@ -187,6 +203,34 @@
   ⚠️ <strong>Parola ta este temporară.</strong> Te rugăm să o schimbi acum pentru securitatea contului.
   &nbsp;<button onclick="openChangePwdModal()" style="background:rgba(255,165,0,.25);border:1px solid rgba(255,165,0,.5);color:#ffd580;padding:4px 14px;border-radius:7px;cursor:pointer;font-size:.83rem;font-weight:700;">🔑 Schimbă parola</button>
   &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" style="background:transparent;border:none;color:#9db0ff;cursor:pointer;font-size:.85rem;opacity:.6;">✕</button>
+</div>
+
+<!-- ── QuickStats bar — statistici live, mereu vizibile ──────────────────── -->
+<div id="qs-bar">
+  <div class="qs-spin" id="qs-loader"></div>
+  <span class="qs-pill blue" id="qs-active" style="display:none"
+        title="Fluxuri active (nesemnate complet)" onclick="switchTab('fluxuri')">
+    📋 Active <span class="qs-val" id="qs-v-active">—</span>
+  </span>
+  <span class="qs-pill amber" id="qs-blocked" style="display:none"
+        title="Fluxuri fără activitate de peste 48h — posibil blocate">
+    ⏳ Blocate &gt;48h <span class="qs-val" id="qs-v-blocked">—</span>
+  </span>
+  <span class="qs-pill green" id="qs-today" style="display:none"
+        title="Fluxuri finalizate astăzi">
+    ✅ Finalizate azi <span class="qs-val" id="qs-v-today">—</span>
+  </span>
+  <span class="qs-pill blue" id="qs-created" style="display:none"
+        title="Fluxuri create astăzi">
+    🆕 Create azi <span class="qs-val" id="qs-v-created">—</span>
+  </span>
+  <span class="qs-pill orange" id="qs-urgent" style="display:none"
+        title="Fluxuri urgente active">
+    🚨 Urgente <span class="qs-val" id="qs-v-urgent">—</span>
+  </span>
+  <span class="qs-ts" id="qs-ts"></span>
+  <button onclick="loadQuickStats()" title="Actualizează statisticile"
+          style="margin-left:4px;background:none;border:none;color:rgba(157,176,255,.4);cursor:pointer;font-size:.8rem;padding:2px 4px;">↻</button>
 </div>
 
 <!-- Modal schimbare parolă -->
@@ -1174,6 +1218,7 @@ fetch('/auth/me', { credentials: 'include' })
       location.href = '/login?next=/admin';
     } else {
       loadActiveFlowsBadge(); // F — b97
+      loadQuickStats();       // quickstats bar
     // Stocăm rolul curent pentru onRoleChange
     try {
       const _me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
@@ -4990,6 +5035,51 @@ async function orgTestWebhook() {
   } catch(e) {
     msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`;
   }
+}
+
+// ── QuickStats bar — statistici live ─────────────────────────────────────
+let _qsTimer = null;
+
+async function loadQuickStats() {
+  const loader = document.getElementById('qs-loader');
+  if (loader) loader.style.display = '';
+  try {
+    const r = await _apiFetch('/admin/quickstats', { headers: hdrs() });
+    if (!r.ok) return;
+    const d = await r.json();
+
+    const setPill = (pillId, valId, val, forceShow) => {
+      const pill = document.getElementById(pillId);
+      const span = document.getElementById(valId);
+      if (!pill || !span) return;
+      span.textContent = val ?? '—';
+      pill.style.display = (forceShow !== false) ? '' : 'none';
+    };
+
+    setPill('qs-active',  'qs-v-active',  d.active,          true);
+    setPill('qs-blocked', 'qs-v-blocked', d.blocked_48h,     d.blocked_48h > 0);
+    setPill('qs-today',   'qs-v-today',   d.completed_today, true);
+    setPill('qs-created', 'qs-v-created', d.created_today,   true);
+    setPill('qs-urgent',  'qs-v-urgent',  d.urgent_active,   d.urgent_active > 0);
+
+    // Colorare dinamică: dacă sunt fluxuri blocate, pill-ul devine roșu
+    const blockedPill = document.getElementById('qs-blocked');
+    if (blockedPill && d.blocked_48h > 0) {
+      blockedPill.className = d.blocked_48h > 5 ? 'qs-pill red' : 'qs-pill amber';
+    }
+
+    const ts = document.getElementById('qs-ts');
+    if (ts) ts.textContent = 'actualizat ' +
+      new Date().toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+
+  } catch(e) { /* non-fatal — bara rămâne cu valorile anterioare */ }
+  finally {
+    if (loader) loader.style.display = 'none';
+  }
+
+  // Auto-refresh la 60s
+  clearTimeout(_qsTimer);
+  _qsTimer = setTimeout(loadQuickStats, 60_000);
 }
 
 </script>
