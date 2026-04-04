@@ -737,7 +737,10 @@ app.get('/admin/reminder-status', async (req, res) => {
     let pendingCount = 0, overdueCount = 0;
     if (pool && DB_READY) {
       try {
-        const orgFilter = actor.role === 'org_admin' ? `AND (data->>'orgId')::int = ${Number(actor.orgId)}` : '';
+        // SEC: org_id coloana indexata + parametru $1 in loc de string interpolation
+        const isOrgAdmin = actor.role === 'org_admin';
+        const qParams = isOrgAdmin ? [Number(actor.orgId)] : [];
+        const orgWhere = isOrgAdmin ? 'AND org_id = $1' : '';
         const { rows } = await pool.query(`
           SELECT COUNT(*) FILTER (
             WHERE (data->>'completed') IS DISTINCT FROM 'true'
@@ -750,8 +753,8 @@ app.get('/admin/reminder-status', async (req, res) => {
             AND deleted_at IS NULL
             AND updated_at < NOW() - INTERVAL '24 hours'
           ) AS overdue
-          FROM flows WHERE 1=1 ${orgFilter}
-        `);
+          FROM flows WHERE 1=1 ${orgWhere}
+        `, qParams);
         pendingCount = parseInt(rows[0]?.pending || 0);
         overdueCount = parseInt(rows[0]?.overdue || 0);
       } catch(e) { /* non-fatal */ }
@@ -1336,53 +1339,76 @@ app.use('/', flowsRouter);
 // ── Tracking routes neutre (fara 'email'/'click' in path — mai putin blocate de Yahoo/Outlook) ──
 // /d/:trackingId — click tracking (d = document)
 // /p/:trackingId — pixel tracking (p = pixel)
-// Ambele sunt aliases pentru endpoint-urile din flows/email.mjs
+// PERF-05: tracking scrie direct în outreach_recipients, NU în flows.data (elimină getFlowData+saveFlow)
 app.get('/d/:trackingId', async (req, res) => {
-  // Forward catre handler-ul email-click
-  req.params.trackingId = req.params.trackingId;
-  // Redirect cu flowId precompletat in /verifica?id= daca il gasim rapid
+  const { trackingId } = req.params;
+  // Redirect imediat — cautam flow_id pentru URL de verificare
   let safeDest = 'https://www.docflowai.ro';
   try {
-    const { rows: qr } = await pool.query(
-      `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
-      [JSON.stringify([{ trackingId: req.params.trackingId }])]
+    // PERF-05: outreach_recipients are tracking_id indexat — lookup O(1)
+    const { rows: orRows } = await pool.query(
+      `SELECT r.tracking_id, c.id AS campaign_id
+       FROM outreach_recipients r
+       JOIN outreach_campaigns c ON c.id = r.campaign_id
+       WHERE r.tracking_id = $1 LIMIT 1`,
+      [trackingId]
     ).catch(() => ({ rows: [] }));
-    if (qr.length) {
-      // Asiguram ca appBase are schema https:// — fara ea URL-ul devine relativ
-      let appBase = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
-      if (appBase && !appBase.startsWith('http')) appBase = 'https://' + appBase;
-      appBase = appBase.replace(/\/+$/, ''); // eliminam trailing slash
-      safeDest = `${appBase}/verifica?id=${encodeURIComponent(qr[0].flow_id)}`;
+    if (!orRows.length) {
+      // Fallback: cauta in flows.events (tracking-uri vechi pre-PERF-05)
+      const { rows: qr } = await pool.query(
+        `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+        [JSON.stringify([{ trackingId }])]
+      ).catch(() => ({ rows: [] }));
+      if (qr.length) {
+        let appBase = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+        if (!appBase.startsWith('http')) appBase = 'https://' + appBase;
+        safeDest = `${appBase}/verifica?id=${encodeURIComponent(qr[0].flow_id)}`;
+      }
     }
   } catch { /* fallback la docflowai.ro */ }
   res.redirect(302, safeDest);
-  // Procesam tracking async
+  // Procesam tracking async — doar în outreach_recipients
   setImmediate(async () => {
     try {
-      const { trackingId } = req.params;
       if (!trackingId) return;
-      const { rows } = await pool.query(
-        `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
-        [JSON.stringify([{ trackingId }])]
+      const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
+      const ua = (req.headers['user-agent'] || '').substring(0, 200);
+      // PERF-05: un singur UPDATE atomic, fara getFlowData/saveFlow
+      const { rowCount } = await pool.query(
+        `UPDATE outreach_recipients
+         SET opened_at  = COALESCE(opened_at, NOW()),
+             clicked_at = COALESCE(clicked_at, NOW()),
+             click_count = click_count + 1,
+             status      = CASE WHEN status = 'sent' THEN 'opened' ELSE status END
+         WHERE tracking_id = $1`,
+        [trackingId]
       );
-      if (!rows.length) return;
-      const flowId = rows[0].flow_id;
-      const data = await getFlowData(flowId);
-      if (!data) return;
-      const events = Array.isArray(data.events) ? data.events : [];
-      const emailEv = events.find(e => e.trackingId === trackingId);
-      if (!emailEv) return;
-      if (events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId)) return;
-      const now = new Date().toISOString();
-      const ip  = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
-      const ua  = (req.headers['user-agent'] || '').substring(0, 200);
-      data.events.push({ at: now, type: 'EMAIL_OPENED', trackingId, to: emailEv.to, by: emailEv.by, ip, userAgent: ua });
-      data.updatedAt = now;
-      await saveFlow(flowId, data);
-      writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
-        actorEmail: emailEv.to, actorIp: ip,
-        payload: { trackingId, sentBy: emailEv.by, via: 'click', userAgent: ua } });
-      logger.info({ flowId, trackingId, ip }, '📬 Email deschis (click /d/)');
+      if (rowCount > 0) {
+        logger.info({ trackingId, ip }, '📬 Email click (outreach /d/)');
+      } else {
+        // Tracking ID nu e în outreach — poate e flux intern (email.mjs)
+        // Cautam în flows.events pentru backward-compat
+        const { rows } = await pool.query(
+          `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+          [JSON.stringify([{ trackingId }])]
+        );
+        if (!rows.length) return;
+        const flowId = rows[0].flow_id;
+        const data = await getFlowData(flowId);
+        if (!data) return;
+        const events = Array.isArray(data.events) ? data.events : [];
+        const emailEv = events.find(e => e.trackingId === trackingId);
+        if (!emailEv) return;
+        if (events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId)) return;
+        const now = new Date().toISOString();
+        data.events.push({ at: now, type: 'EMAIL_OPENED', trackingId, to: emailEv.to, by: emailEv.by, ip, userAgent: ua });
+        data.updatedAt = now;
+        await saveFlow(flowId, data);
+        writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
+          actorEmail: emailEv.to, actorIp: ip,
+          payload: { trackingId, sentBy: emailEv.by, via: 'click', userAgent: ua } });
+        logger.info({ flowId, trackingId, ip }, '📬 Email deschis (click /d/ — flow intern)');
+      }
     } catch(e) { logger.warn({ err: e }, '/d/ tracking error'); }
   });
 });
@@ -1394,32 +1420,46 @@ app.get('/p/:trackingId', async (req, res) => {
   res.setHeader('Cache-Control','no-store,no-cache,must-revalidate');
   res.setHeader('Pragma','no-cache');
   res.end(GIF);
+  // PERF-05: tracking direct în outreach_recipients
   setImmediate(async () => {
     try {
       const { trackingId } = req.params;
       if (!trackingId) return;
-      const { rows } = await pool.query(
-        `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
-        [JSON.stringify([{ trackingId }])]
+      const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
+      const ua = (req.headers['user-agent'] || '').substring(0, 200);
+      // UPDATE atomic — fara getFlowData/saveFlow
+      const { rowCount } = await pool.query(
+        `UPDATE outreach_recipients
+         SET opened_at = COALESCE(opened_at, NOW()),
+             status    = CASE WHEN status = 'sent' THEN 'opened' ELSE status END
+         WHERE tracking_id = $1`,
+        [trackingId]
       );
-      if (!rows.length) return;
-      const flowId = rows[0].flow_id;
-      const data = await getFlowData(flowId);
-      if (!data) return;
-      const events = Array.isArray(data.events) ? data.events : [];
-      const emailEv = events.find(e => e.trackingId === trackingId);
-      if (!emailEv) return;
-      if (events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId)) return;
-      const now = new Date().toISOString();
-      const ip  = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '—';
-      const ua  = (req.headers['user-agent'] || '').substring(0, 200);
-      data.events.push({ at: now, type: 'EMAIL_OPENED', trackingId, to: emailEv.to, by: emailEv.by, ip, userAgent: ua });
-      data.updatedAt = now;
-      await saveFlow(flowId, data);
-      writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
-        actorEmail: emailEv.to, actorIp: ip,
-        payload: { trackingId, sentBy: emailEv.by, via: 'pixel', userAgent: ua } });
-      logger.info({ flowId, trackingId, ip }, '📬 Email deschis (pixel /p/)');
+      if (rowCount > 0) {
+        logger.info({ trackingId, ip }, '📬 Email deschis (pixel outreach /p/)');
+      } else {
+        // Backward-compat: flows.events pentru email-uri interne (non-outreach)
+        const { rows } = await pool.query(
+          `SELECT id AS flow_id FROM flows WHERE data->'events' @> $1::jsonb LIMIT 1`,
+          [JSON.stringify([{ trackingId }])]
+        );
+        if (!rows.length) return;
+        const flowId = rows[0].flow_id;
+        const data = await getFlowData(flowId);
+        if (!data) return;
+        const events = Array.isArray(data.events) ? data.events : [];
+        const emailEv = events.find(e => e.trackingId === trackingId);
+        if (!emailEv) return;
+        if (events.some(e => e.type === 'EMAIL_OPENED' && e.trackingId === trackingId)) return;
+        const now = new Date().toISOString();
+        data.events.push({ at: now, type: 'EMAIL_OPENED', trackingId, to: emailEv.to, by: emailEv.by, ip, userAgent: ua });
+        data.updatedAt = now;
+        await saveFlow(flowId, data);
+        writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_OPENED',
+          actorEmail: emailEv.to, actorIp: ip,
+          payload: { trackingId, sentBy: emailEv.by, via: 'pixel', userAgent: ua } });
+        logger.info({ flowId, trackingId, ip }, '📬 Email deschis (pixel /p/ — flow intern)');
+      }
     } catch(e) { logger.warn({ err: e }, '/p/ tracking error'); }
   });
 });
