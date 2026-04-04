@@ -348,17 +348,18 @@
     <span>4. Valoarea angajamentelor legale (pe toată perioada de valabilitate a documentului de fundamentare):</span>
     <span style="font-weight:400">(lei)</span>
   </div>
-  <label class="dck"><input type="checkbox" id="n-ck-stab"/>Se stabilește ținând cont de:</label>
+  <label class="dck"><input type="checkbox" id="n-ck-stab" onchange="p4toggle('stab')"/>Se stabilește ținând cont de:</label>
 
+  <div id="n-p4-tabel" style="opacity:.4;pointer-events:none">
   <table class="doc-t">
     <thead>
       <tr>
         <th style="min-width:110px">Element de fundamentare</th>
         <th>Program</th><th>Cod SSI</th>
         <th>Parametrii de fundamentare</th>
-        <th>Val. totală revizie precedentă (lei)</th>
+        <th title="Se completează automat din revizia precedentă (col. 7)">Val. totală revizie precedentă (lei)</th>
         <th>Influențe +/- (lei)</th>
-        <th>Val. totală actualizată (lei)</th>
+        <th>Val. totală actualizată (lei)<br><small style="font-weight:400">7=5+6</small></th>
         <th style="width:22px"></th>
       </tr>
     </thead>
@@ -373,26 +374,26 @@
       </tr>
     </tfoot>
   </table>
-
-  <div style="display:flex;align-items:center;gap:6px;margin:6px 0;font-size:11px">
-    <input type="checkbox" id="n-ck-ramane" style="width:13px;height:13px"/>
-    <label for="n-ck-ramane">Rămâne suma de</label>
-    <input id="n-ramana" class="di" type="number" min="0" value="0" style="width:100px"/>
-    <label>lei</label>
   </div>
+
+  <label class="dck" style="margin-top:6px">
+    <input type="checkbox" id="n-ck-ramane" onchange="p4toggle('ramane')"/>
+    Rămâne în suma de
+    <input id="n-ramana" class="di" type="number" min="0" value="0" style="width:100px;display:inline;margin:0 4px" disabled/>
+    lei conform fundamentării aprobate într-o revizuire anterioară a prezentului document de fundamentare
+  </label>
 
   <div class="doc-hr"></div>
 
   <!-- 5. Angajamente plati -->
   <div style="font-weight:700;font-size:11px;margin:4px 0">5. Angajamente legale emise anterior</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-    <label class="dck"><input type="checkbox" id="n-ck-faraang"/>Fără angajamente emise în exercițiul curent</label>
-    <label class="dck"><input type="checkbox" id="n-ck-cuang"/>Cu angajamente emise în exercițiul curent</label>
-    <label class="dck"><input type="checkbox" id="n-ck-sting"/>Stingere angajamente în exercițiul curent</label>
-    <label class="dck"><input type="checkbox" id="n-ck-faraplati"/>Fără plăți angajamente în exercițiul curent</label>
-    <label class="dck"><input type="checkbox" id="n-ck-cuplati"/>Cu plăți angajamente în exercițiul curent</label>
-    <label class="dck"><input type="checkbox" id="n-ck-anurmatori"/>Angajamente legale emise cont ani următori</label>
+  <label class="dck"><input type="checkbox" id="n-ck-cuang" onchange="p5toggle()"/>Cu angajamente în exercițiul curent</label>
+  <div id="n-p5-sub" style="margin-left:22px;opacity:.4;pointer-events:none">
+    <label class="dck"><input type="checkbox" id="n-ck-sting" disabled/>Stingere angajamente în exercițiul curent</label>
+    <label class="dck"><input type="checkbox" id="n-ck-faraplati" disabled/>Fără plăți angajamente în exercițiul curent</label>
+    <label class="dck"><input type="checkbox" id="n-ck-cuplati" disabled/>Cu plăți angajamente în exercițiul curent</label>
   </div>
+  <label class="dck" style="margin-top:3px"><input type="checkbox" id="n-ck-faraang" onchange="p5toggle()"/>Fără angajamente emise în exercițiul curent</label>
 
   <table class="doc-t" style="margin-top:6px">
     <thead>
@@ -415,9 +416,9 @@
     </tfoot>
   </table>
 
-  <div class="doc-hr"></div>
+  <label class="dck" style="margin-top:6px"><input type="checkbox" id="n-ck-anurmatori"/>Angajamentele legale se vor emite în contul anului următor</label>
 
-  <!-- SECTIUNEA B -->
+  <div class="doc-hr"></div>
   <div class="dsec">Secțiunea B: Situația evidențiată în sistemul de control al angajamentelor</div>
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px">
     <label class="dck" style="margin:0;flex:1">
@@ -474,6 +475,12 @@
     <input type="checkbox" id="n-ck-fararezv"/>
     Nu s-au rezervat în sistemul de control al angajamentelor credite de angajament în cuantum de
     <input id="n-sumfara" class="di" type="number" min="0" value="0" style="width:110px;display:inline;margin:0 4px"/>
+    lei
+  </label>
+  <label class="dck" style="margin-top:4px">
+    <input type="checkbox" id="n-ck-fararezvcrbug"/>
+    Nu s-au rezervat în sistemul de control al angajamentelor credite bugetare în cuantum de
+    <input id="n-sumfararezvcrbug" class="di" type="number" min="0" value="0" style="width:110px;display:inline;margin:0 4px"/>
     lei
   </label>
   <label class="dck" style="margin-top:4px"><input type="checkbox" id="n-ck-interzis"/>Este interzisă emiterea de angajamente</label>
@@ -582,7 +589,7 @@ function addOR(){const i=oI++;const tr=document.createElement('tr');tr.id='or-'+
 function getOR(){return[...document.querySelectorAll('#o-tbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
 
 function addNV(){const i=nVI++;const tr=document.createElement('tr');tr.id='nv-'+i;
-  tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="number" min="0" value="0" data-f="valt_rev_prec" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="influente" oninput="upTot()"/></td><td><input type="number" min="0" value="0" data-f="valt_actualiz" oninput="upTot()"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;
+  tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="number" min="0" value="0" data-f="valt_rev_prec" oninput="calcNVRow(this)"/></td><td><input type="number" min="0" value="0" data-f="influente" oninput="calcNVRow(this)"/></td><td style="background:#f0f0f0"><input type="number" value="0" data-f="valt_actualiz" readonly tabindex="-1" style="background:#ebebeb;text-align:right;cursor:default"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;
   document.getElementById('n-vtbody').appendChild(tr);}
 function getNV(){return[...document.querySelectorAll('#n-vtbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
 
@@ -597,6 +604,52 @@ function addNC(){const i=nCI++;const tr=document.createElement('tr');tr.id='nc-'
 function getNC(){return[...document.querySelectorAll('#n-ctbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
 
 function delR(id){document.getElementById(id)?.remove();}
+
+/* Pct 4 - mutual exclusion Se stabileste / Ramane */
+function p4toggle(src){
+  const ckStab=document.getElementById('n-ck-stab');
+  const ckRam=document.getElementById('n-ck-ramane');
+  const tbl=document.getElementById('n-p4-tabel');
+  const inp=document.getElementById('n-ramana');
+  if(src==='stab'&&ckStab.checked){
+    ckRam.checked=false;
+    tbl.style.opacity='1';tbl.style.pointerEvents='';
+    inp.disabled=true;
+  } else if(src==='ramane'&&ckRam.checked){
+    ckStab.checked=false;
+    tbl.style.opacity='.4';tbl.style.pointerEvents='none';
+    inp.disabled=false;
+  } else {
+    tbl.style.opacity='.4';tbl.style.pointerEvents='none';
+    inp.disabled=true;
+  }
+}
+
+/* Pct 5 - Cu angajamente / Fara angajamente mutually exclusive */
+function p5toggle(){
+  const ckCu=document.getElementById('n-ck-cuang');
+  const ckFara=document.getElementById('n-ck-faraang');
+  const sub=document.getElementById('n-p5-sub');
+  if(ckCu.checked&&ckFara.checked){
+    if(event&&event.target===ckCu)ckFara.checked=false;
+    else ckCu.checked=false;
+  }
+  const cuActive=ckCu.checked;
+  sub.style.opacity=cuActive?'1':'.4';
+  sub.style.pointerEvents=cuActive?'':'none';
+  sub.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.disabled=!cuActive);
+  if(!cuActive)sub.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=false);
+}
+
+/* Col 7 = Col 5 + Col 6 (auto-calculat) */
+function calcNVRow(el){
+  const tr=el.closest('tr');
+  const c5=parseFloat(tr.querySelector('[data-f="valt_rev_prec"]')?.value)||0;
+  const c6=parseFloat(tr.querySelector('[data-f="influente"]')?.value)||0;
+  const c7=tr.querySelector('[data-f="valt_actualiz"]');
+  if(c7)c7.value=c5+c6;
+  upTot();
+}
 
 /* Totals */
 function sf(bid,f){return[...document.querySelectorAll(`#${bid} input[data-f="${f}"]`)].reduce((s,i)=>s+(parseFloat(i.value)||0),0);}
@@ -636,7 +689,7 @@ function colN(){return{
   sectiuneaA:{
     compartiment_specialitate:g('n-comp'),
     obiect_fd_reviz_scurt:g('n-scurt'),obiect_fd_reviz_lung:g('n-lung'),
-    ang_legale_val:{ckbx_stab_tin_cont:cb('n-ck-oblig'),ckbx_ramane_suma:cb('n-ck-stab'),
+    ang_legale_val:{ckbx_stab_tin_cont:cb('n-ck-stab'),ckbx_ramane_suma:cb('n-ck-ramane'),
       ramane_suma:g('n-ramana')||'0',rowT_ang_pl_val:getNV()},
     ang_legale_plati:{ckbx_fara_ang_emis_ancrt:cb('n-ck-faraang'),ckbx_cu_ang_emis_ancrt:cb('n-ck-cuang'),
       ckbx_sting_ang_in_ancrt:cb('n-ck-sting'),ckbx_fara_plati_ang_in_ancrt:cb('n-ck-faraplati'),
@@ -646,6 +699,8 @@ function colN(){return{
   sectiuneaB:{
     ckbx_secta_inreg_ctrl_ang:cb('n-ck-seca'),ckbx_fara_inreg_ctrl_ang:cb('n-ck-fararezv'),
     sum_fara_inreg_ctrl_crdbug:g('n-sumfara')||'0',
+    ckbx_fara_inreg_ctrl_crd_bug:cb('n-ck-fararezvcrbug'),
+    sum_fara_inreg_ctrl_crd_bug:g('n-sumfararezvcrbug')||'0',
     ckbx_interzis_emit_ang:cb('n-ck-interzis'),ckbx_interzis_intrucat:cb('n-ck-intrucat'),
     intrucat:g('n-intrucat'),rowT_ang_ctrl_ang:getNC(),
   },
