@@ -1155,6 +1155,59 @@ router.get('/admin/analytics', async (req, res) => {
   }
 });
 
+// ── GET /admin/quickstats — bară live de statistici (mereu vizibilă în UI) ──
+// Un singur query agregat: active, blocate >48h, finalizate azi, create azi.
+// Apelat la load + auto-refresh 60s — răspuns < 20ms cu idx_flows_org_active.
+router.get('/admin/quickstats', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const orgId = actorOrgFilter(actor) ? Number(actorOrgFilter(actor)) : null;
+    const params = orgId ? [orgId] : [];
+    const orgWhere = orgId ? 'AND org_id = $1' : '';
+
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE (data->>'completed') IS DISTINCT FROM 'true'
+            AND (data->>'status') NOT IN ('refused','cancelled')
+        )::int AS active,
+
+        COUNT(*) FILTER (
+          WHERE (data->>'completed') IS DISTINCT FROM 'true'
+            AND (data->>'status') NOT IN ('refused','cancelled')
+            AND updated_at < NOW() - INTERVAL '48 hours'
+        )::int AS blocked_48h,
+
+        COUNT(*) FILTER (
+          WHERE (data->>'completed') = 'true'
+            AND updated_at >= CURRENT_DATE
+            AND updated_at < CURRENT_DATE + INTERVAL '1 day'
+        )::int AS completed_today,
+
+        COUNT(*) FILTER (
+          WHERE created_at >= CURRENT_DATE
+            AND created_at < CURRENT_DATE + INTERVAL '1 day'
+        )::int AS created_today,
+
+        COUNT(*) FILTER (
+          WHERE (data->>'urgent') = 'true'
+            AND (data->>'completed') IS DISTINCT FROM 'true'
+            AND (data->>'status') NOT IN ('refused','cancelled')
+        )::int AS urgent_active
+
+      FROM flows
+      WHERE deleted_at IS NULL ${orgWhere}
+    `, params);
+
+    res.json({ ok: true, ...rows[0], ts: new Date().toISOString() });
+  } catch(e) {
+    logger.error({ err: e }, '/admin/quickstats error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // ── Flows admin ────────────────────────────────────────────────────────────
 // ── GET /admin/flows/clean-preview — preview fluxuri ce vor fi șterse ─────
 
