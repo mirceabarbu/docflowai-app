@@ -121,14 +121,7 @@ const { Pool } = pg;
 
 export const DATABASE_URL = process.env.DATABASE_URL;
 export const pool = DATABASE_URL
-  ? new Pool({
-      connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 20,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,   // PERF: evită blocare la pool exhaustion
-      statement_timeout: 15_000,        // PERF: kill query-uri runaway (>15s)
-    })
+  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 20, idleTimeoutMillis: 30000 })
   : null;
 
 export let DB_READY = false;
@@ -848,39 +841,14 @@ const MIGRATIONS = [
     `
   },
   {
-    // PERF-05: Indexuri lipsă identificate la analiza scalabilitate 5000 fluxuri/an
-    id: '046_perf_missing_indexes',
+    // FEAT: CIF + compartimente pe organizații
+    // cif: Codul de Identificare Fiscală al instituției (completat automat în formulare)
+    // compartimente: lista compartimentelor instituției (pentru datalist în formulare + flux nou)
+    id: '047_org_cif_compartimente',
     sql: `
-      -- 1. Partial index pentru listare activa multi-tenant (query-ul admin cel mai frecvent)
-      --    Acoperă WHERE org_id=N AND deleted_at IS NULL ORDER BY updated_at DESC
-      CREATE INDEX IF NOT EXISTS idx_flows_org_active
-        ON flows(org_id, updated_at DESC)
-        WHERE deleted_at IS NULL;
-
-      -- 2. Partial index pentru COUNT unread rapid (apelat la fiecare WS connect)
-      CREATE INDEX IF NOT EXISTS idx_notif_unread
-        ON notifications(user_email)
-        WHERE read = FALSE;
-
-      -- 3. Index compus pentru stats campanie outreach (COUNT FILTER per status)
-      CREATE INDEX IF NOT EXISTS idx_orecip_camp_status
-        ON outreach_recipients(campaign_id, status);
-
-      -- 4. Full-text search pe outreach_primarii (inlocuieste ILIKE full-scan)
-      ALTER TABLE outreach_primarii
-        ADD COLUMN IF NOT EXISTS search_vector tsvector;
-      UPDATE outreach_primarii
-        SET search_vector = to_tsvector('simple',
-          coalesce(institutie,'') || ' ' ||
-          coalesce(localitate,'') || ' ' ||
-          coalesce(judet,''));
-      CREATE INDEX IF NOT EXISTS idx_oprm_fts
-        ON outreach_primarii USING GIN(search_vector);
-
-      -- 5. Cleanup sesiuni bulk expirate — index pentru job periodic
-      CREATE INDEX IF NOT EXISTS idx_bulk_expires_cleanup
-        ON bulk_signing_sessions(expires_at)
-        WHERE status NOT IN ('completed','error');
+      ALTER TABLE organizations
+        ADD COLUMN IF NOT EXISTS cif          TEXT    DEFAULT NULL,
+        ADD COLUMN IF NOT EXISTS compartimente TEXT[] NOT NULL DEFAULT '{}';
     `
   }
 ];

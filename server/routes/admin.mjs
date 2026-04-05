@@ -107,6 +107,30 @@ router.get('/users', async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
+// ── GET /api/org/profile — profil organizație pentru utilizatorul curent ──
+// Accesibil oricărui utilizator autentificat — returnează org proprie.
+// Folosit de formulare.html pentru auto-fill instituție + CIF + compartimente.
+router.get('/api/org/profile', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows: uRows } = await pool.query(
+      'SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]
+    );
+    const orgId = uRows[0]?.org_id || actor.orgId || null;
+    if (!orgId) return res.json({ ok: true, org: null });
+
+    const { rows } = await pool.query(
+      'SELECT id, name, cif, compartimente FROM organizations WHERE id=$1', [orgId]
+    );
+    if (!rows.length) return res.json({ ok: true, org: null });
+    res.json({ ok: true, org: rows[0] });
+  } catch(e) {
+    logger.error({ err: e }, '/api/org/profile error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // ── GET /admin/organizations — listă organizații cu statistici și config webhook ──
 router.get('/admin/organizations', async (req, res) => {
   if (requireDb(res)) return;
@@ -114,7 +138,7 @@ router.get('/admin/organizations', async (req, res) => {
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   try {
     const { rows } = await pool.query(`
-      SELECT o.id, o.name, o.webhook_url, o.webhook_events, o.webhook_enabled,
+      SELECT o.id, o.name, o.cif, o.compartimente, o.webhook_url, o.webhook_events, o.webhook_enabled,
              o.webhook_secret IS NOT NULL AS webhook_has_secret,
              o.created_at, o.updated_at,
              COUNT(DISTINCT u.id)::int  AS user_count,
@@ -137,10 +161,16 @@ router.put('/admin/organizations/:id', csrfMiddleware, async (req, res) => {
   const orgId = parseInt(req.params.id);
   if (!orgId) return res.status(400).json({ error: 'invalid_id' });
   const { name, webhook_url, webhook_secret, webhook_events, webhook_enabled,
-          signing_providers_enabled, signing_providers_config } = req.body || {};
+          signing_providers_enabled, signing_providers_config,
+          cif, compartimente } = req.body || {};
   try {
     const updates = []; const params = [];
     if (name !== undefined) { params.push(String(name).trim()); updates.push(`name=$${params.length}`); }
+    if (cif !== undefined) { params.push(cif ? String(cif).replace(/\D/g,'').substring(0,10) : null); updates.push(`cif=$${params.length}`); }
+    if (compartimente !== undefined && Array.isArray(compartimente)) {
+      params.push(compartimente.map(c => String(c).trim()).filter(Boolean));
+      updates.push(`compartimente=$${params.length}`);
+    }
     if (webhook_url !== undefined) { params.push(webhook_url ? String(webhook_url).trim() : null); updates.push(`webhook_url=$${params.length}`); }
     if (webhook_secret !== undefined && webhook_secret !== '') { params.push(String(webhook_secret).trim()); updates.push(`webhook_secret=$${params.length}`); }
     if (webhook_events !== undefined) { params.push(Array.isArray(webhook_events) ? webhook_events : []); updates.push(`webhook_events=$${params.length}`); }
@@ -168,7 +198,7 @@ router.put('/admin/organizations/:id', csrfMiddleware, async (req, res) => {
     updates.push(`updated_at=NOW()`);
     params.push(orgId);
     const { rows } = await pool.query(
-      `UPDATE organizations SET ${updates.join(',')} WHERE id=$${params.length} RETURNING id, name, webhook_url, webhook_events, webhook_enabled, updated_at`,
+      `UPDATE organizations SET ${updates.join(',')} WHERE id=$${params.length} RETURNING id, name, cif, compartimente, webhook_url, webhook_events, webhook_enabled, updated_at`,
       params
     );
     if (!rows.length) return res.status(404).json({ error: 'org_not_found' });
@@ -1151,59 +1181,6 @@ router.get('/admin/analytics', async (req, res) => {
     });
   } catch(e) {
     logger.error({ err: e }, '/admin/analytics error');
-    res.status(500).json({ error: 'server_error' });
-  }
-});
-
-// ── GET /admin/quickstats — bară live de statistici (mereu vizibilă în UI) ──
-// Un singur query agregat: active, blocate >48h, finalizate azi, create azi.
-// Apelat la load + auto-refresh 60s — răspuns < 20ms cu idx_flows_org_active.
-router.get('/admin/quickstats', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
-  try {
-    const orgId = actorOrgFilter(actor) ? Number(actorOrgFilter(actor)) : null;
-    const params = orgId ? [orgId] : [];
-    const orgWhere = orgId ? 'AND org_id = $1' : '';
-
-    const { rows } = await pool.query(`
-      SELECT
-        COUNT(*) FILTER (
-          WHERE (data->>'completed') IS DISTINCT FROM 'true'
-            AND (data->>'status') NOT IN ('refused','cancelled')
-        )::int AS active,
-
-        COUNT(*) FILTER (
-          WHERE (data->>'completed') IS DISTINCT FROM 'true'
-            AND (data->>'status') NOT IN ('refused','cancelled')
-            AND updated_at < NOW() - INTERVAL '48 hours'
-        )::int AS blocked_48h,
-
-        COUNT(*) FILTER (
-          WHERE (data->>'completed') = 'true'
-            AND updated_at >= CURRENT_DATE
-            AND updated_at < CURRENT_DATE + INTERVAL '1 day'
-        )::int AS completed_today,
-
-        COUNT(*) FILTER (
-          WHERE created_at >= CURRENT_DATE
-            AND created_at < CURRENT_DATE + INTERVAL '1 day'
-        )::int AS created_today,
-
-        COUNT(*) FILTER (
-          WHERE (data->>'urgent') = 'true'
-            AND (data->>'completed') IS DISTINCT FROM 'true'
-            AND (data->>'status') NOT IN ('refused','cancelled')
-        )::int AS urgent_active
-
-      FROM flows
-      WHERE deleted_at IS NULL ${orgWhere}
-    `, params);
-
-    res.json({ ok: true, ...rows[0], ts: new Date().toISOString() });
-  } catch(e) {
-    logger.error({ err: e }, '/admin/quickstats error');
     res.status(500).json({ error: 'server_error' });
   }
 });
