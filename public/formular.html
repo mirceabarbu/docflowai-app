@@ -29,6 +29,8 @@
     .tab{padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.86rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s}
     .tab:hover{color:var(--app-sub)}
     .tab.active{background:linear-gradient(135deg,var(--app-v),var(--app-t));color:#fff;box-shadow:0 3px 12px rgba(108,79,240,.3)}
+    .draft-badge{font-size:11px;color:var(--app-muted);margin-left:6px;font-weight:400;opacity:0;transition:opacity .4s}
+    .draft-badge.show{opacity:1}
     /* Outer */
     .outer{max-width:1020px;margin:0 auto;padding:16px 16px 60px}
     /* Status */
@@ -124,8 +126,6 @@
     .att-btn:hover{background:#e0e0e0}
     .att-inp{display:none}
     /* === Header identic cu semdoc-initiator === */
-    :root{--bg:#0b1020;--card:#0f1731;--muted2:#9db0ff;--text2:#eaf0ff;
-      --line2:rgba(255,255,255,.10);--accent:#7c5cff;--accent2:#2dd4bf;}
     body{background:
       radial-gradient(900px 500px at 18% 8%,rgba(124,92,255,.3),transparent 60%),
       radial-gradient(700px 450px at 82% 80%,rgba(45,212,191,.18),transparent 55%),#0b1020 !important;}
@@ -136,25 +136,20 @@
     .h-tabs{display:flex;gap:5px;flex-wrap:wrap;}
     .tabbtn{display:inline-flex;align-items:center;gap:5px;background:rgba(120,160,255,.22);
       color:#e9eefc;border:1px solid rgba(120,160,255,.45);padding:7px 13px;border-radius:10px;
-      font-size:.83rem;font-weight:500;cursor:pointer;transition:filter .15s,transform .1s;
-      text-decoration:none;font-family:inherit;}
+      font-size:.83rem;font-weight:500;cursor:pointer;transition:filter .15s,transform .1s;text-decoration:none;font-family:inherit;}
     .tabbtn:hover{filter:brightness(1.08);transform:translateY(-1px);}
     .tabbtn.h-active{background:rgba(120,160,255,.35);border-color:rgba(120,160,255,.7);font-weight:600;}
     .tabbtn.h-formulare{border-color:rgba(30,200,174,.4);color:#1ec8ae;background:rgba(30,200,174,.1);}
     #hUserBar{display:flex;align-items:center;gap:8px;font-size:.82rem;color:#cdd8ff;}
-    #hUserBar a{color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);
-      padding:5px 11px;border-radius:8px;font-size:.8rem;}
+    #hUserBar a{color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 11px;border-radius:8px;font-size:.8rem;}
     #hUserBar a:hover{border-color:rgba(255,255,255,.3);}
-    #hUserBar button{background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);
-      color:#ffaaaa;padding:5px 11px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;}
+    #hUserBar button{background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 11px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;}
   </style>
 </head>
 <body>
 
 <header class="app-hdr">
-  <div class="h-brand">
-    <img src="/Logo.png" alt="DocFlowAI"/>
-  </div>
+  <div class="h-brand"><img src="/Logo.png" alt="DocFlowAI"/></div>
   <div class="h-tabs">
     <a href="/semdoc-initiator.html" class="tabbtn">📝 Flux nou</a>
     <a href="/semdoc-initiator.html" class="tabbtn">📂 Fluxuri mele</a>
@@ -166,8 +161,8 @@
 
 <div class="tabs-wrap">
   <div class="tabs">
-    <button class="tab active" onclick="sw('ordnt')">📄 Ordonanțare de Plată</button>
-    <button class="tab" onclick="sw('notafd')">📋 Document de Fundamentare</button>
+    <button class="tab active" onclick="sw('ordnt')">📄 Ordonanțare de Plată <span class="draft-badge" id="db-ordnt"></span></button>
+    <button class="tab" onclick="sw('notafd')">📋 Document de Fundamentare <span class="draft-badge" id="db-notafd"></span></button>
   </div>
 </div>
 
@@ -354,7 +349,10 @@
   <div class="dsec">Secțiunea A: Obiectul documentului de fundamentare</div>
 
   <div class="dl req">1. Compartiment de specialitate:</div>
-  <textarea id="n-comp" class="dt" maxlength="150" rows="2"></textarea>
+  <input id="n-comp" class="di" maxlength="150" list="comp-list-notafd"
+    style="width:100%;padding:4px 6px;font-size:11px;" autocomplete="off"
+    placeholder="Selectați sau introduceți compartimentul..."/>
+  <datalist id="comp-list-notafd"></datalist>
 
   <div class="dl req" style="margin-top:8px">2. Descrierea pe scurt a obiectului documentului de fundamentare/motivul revizuirii:</div>
   <textarea id="n-scurt" class="dt" maxlength="250" rows="2"></textarea>
@@ -572,33 +570,24 @@ const imgs = {'o-cimg':null,'n-cimg':null};
     }
   }catch{location.href='/login.html';return;}
 
-  // ── Auto-fill instituție + CIF + compartimente din organizație ────────
+  // ── Auto-fill instituție + CIF + compartimente din organizație ──────
   try{
     const orgR=await fetch('/api/org/profile',{credentials:'include'});
     if(orgR.ok){
       const {org}=await orgR.json();
       if(org){
-        // Completăm câmpurile Instituție publică și CIF din ambele formulare
-        const setIfEmpty=(id,val)=>{const e=document.getElementById(id);if(e&&!e.value&&val)e.value=val;};
-        setIfEmpty('o-den', org.name||'');
-        setIfEmpty('o-cif', org.cif||'');
-        setIfEmpty('n-den', org.name||'');
-        setIfEmpty('n-cif', org.cif||'');
-
-        // Compartimente — populăm datalist pentru ambele formulare
+        const setF=(id,val)=>{const e=document.getElementById(id);if(e&&val)e.value=val;};
+        if(org.name){ setF('o-den',org.name); setF('n-den',org.name); }
+        if(org.cif){  setF('o-cif',org.cif);  setF('n-cif',org.cif);  }
         if(Array.isArray(org.compartimente)&&org.compartimente.length){
-          ['comp-list-ordnt','comp-list-notafd'].forEach(dlId=>{
-            let dl=document.getElementById(dlId);
-            if(!dl){dl=document.createElement('datalist');dl.id=dlId;document.body.appendChild(dl);}
-            dl.innerHTML=org.compartimente.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
-          });
-          // Legăm datalist la câmpul compartiment din DF
-          const compInp=document.getElementById('n-comp');
-          if(compInp)compInp.setAttribute('list','comp-list-notafd');
+          const dl=document.getElementById('comp-list-notafd');
+          if(dl) dl.innerHTML=org.compartimente
+            .map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`)
+            .join('');
         }
       }
     }
-  }catch(e){/* non-fatal — org profile opțional */}
+  }catch(e){/* non-fatal */}
 
   const today=new Date();
   const d=`${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
@@ -844,8 +833,200 @@ async function mkFlow(ft){
   sessionStorage.setItem('docflow_prefill_email',em);
   location.href='/semdoc.html?action=new_flow_prefill';
 }
+
+/* ── AUTO-SAVE DRAFT ─────────────────────────────────────────────────────────
+ * Salvează starea fiecărui formular în localStorage la fiecare 2s de inactivitate.
+ * La reload: restaurare automată cu banner de confirmare.
+ * La resetF: draft șters.
+ * NU salvează: fișiere atașate (prea mari), imaginile de captură. ─────────── */
+
+const DRAFT_VER = '2'; // bump dacă schimbi structura draft-ului
+
+function _draftKey(ft){ return 'dfai_draft_v' + DRAFT_VER + '_' + ft; }
+
+// Colectează starea completă a formularului într-un obiect serializabil
+function _draftCollect(ft) {
+  const form = document.getElementById('form-' + ft);
+  if (!form) return null;
+  const state = { inputs:{}, checkboxes:{}, rows:{}, ts: new Date().toISOString() };
+
+  // Inputs și textareas cu ID (exclus file inputs și cele fără ID)
+  form.querySelectorAll('input[id]:not([type=file]):not([type=hidden]),textarea[id]').forEach(el => {
+    if (el.type === 'checkbox') state.checkboxes[el.id] = el.checked;
+    else state.inputs[el.id] = el.value;
+  });
+
+  // Rânduri dinamice — salvate ca array de obiecte {data-f: value}
+  const tbodies = {
+    ordnt: ['o-tbody'],
+    notafd: ['n-vtbody','n-ptbody','n-ctbody'],
+  };
+  (tbodies[ft] || []).forEach(tid => {
+    const tbody = document.getElementById(tid);
+    if (!tbody) return;
+    state.rows[tid] = [...tbody.querySelectorAll('tr')].map(tr => {
+      const o = {};
+      tr.querySelectorAll('input[data-f]').forEach(inp => { o[inp.dataset.f] = inp.value; });
+      return o;
+    });
+  });
+
+  return state;
+}
+
+// Restaurează starea din obiectul salvat
+function _draftApply(ft, state) {
+  if (!state) return;
+  const form = document.getElementById('form-' + ft);
+  if (!form) return;
+
+  // Inputs
+  Object.entries(state.inputs || {}).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el && el.type !== 'file') el.value = val;
+  });
+
+  // Checkboxes + re-trigger toggle-uri dependente
+  Object.entries(state.checkboxes || {}).forEach(([id, checked]) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = checked;
+  });
+
+  // Re-aplică stările dependente pentru pct 4 și pct 5 (doc fundamentare)
+  if (ft === 'notafd') {
+    const ckStab = document.getElementById('n-ck-stab');
+    const ckRam  = document.getElementById('n-ck-ramane');
+    if (ckStab && ckRam) {
+      if (ckStab.checked) p4toggle('stab');
+      else if (ckRam.checked) p4toggle('ramane');
+    }
+    p5toggle && p5toggle();
+  }
+
+  // Rânduri dinamice
+  const addFns = { 'o-tbody': addOR, 'n-vtbody': addNV, 'n-ptbody': addNP, 'n-ctbody': addNC };
+  Object.entries(state.rows || {}).forEach(([tid, rows]) => {
+    const tbody = document.getElementById(tid);
+    if (!tbody || !rows.length) return;
+    tbody.innerHTML = '';
+    const addFn = addFns[tid];
+    rows.forEach(rowData => {
+      if (addFn) addFn();
+      const tr = tbody.querySelector('tr:last-child');
+      if (!tr) return;
+      Object.entries(rowData).forEach(([f, v]) => {
+        const inp = tr.querySelector(`[data-f="${f}"]`);
+        if (inp) inp.value = v;
+      });
+    });
+  });
+
+  // Recalculează totaluri și col 7 după restore
+  upTot && upTot();
+  // Re-calculează col 7 = col5+col6 pentru fiecare rând NV
+  document.querySelectorAll('#n-vtbody tr').forEach(tr => {
+    const c5 = parseFloat(tr.querySelector('[data-f="valt_rev_prec"]')?.value) || 0;
+    const c6 = parseFloat(tr.querySelector('[data-f="influente"]')?.value) || 0;
+    const c7 = tr.querySelector('[data-f="valt_actualiz"]');
+    if (c7) c7.value = c5 + c6;
+  });
+  upTot && upTot();
+}
+
+// Salvează în localStorage cu gestionare erori quota
+function draftSave(ft) {
+  try {
+    const state = _draftCollect(ft);
+    if (!state) return;
+    localStorage.setItem(_draftKey(ft), JSON.stringify(state));
+    _draftShowBadge(ft, '💾 salvat ' + new Date().toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}));
+  } catch(e) {
+    // localStorage plin sau indisponibil — ignorăm silențios
+    if (e.name === 'QuotaExceededError') _draftShowBadge(ft, '⚠ storage plin');
+  }
+}
+
+function draftClear(ft) {
+  try { localStorage.removeItem(_draftKey(ft)); } catch {}
+  _draftHideBadge(ft);
+}
+
+function _draftShowBadge(ft, txt) {
+  const el = document.getElementById('db-' + ft);
+  if (!el) return;
+  el.textContent = txt;
+  el.classList.add('show');
+}
+function _draftHideBadge(ft) {
+  const el = document.getElementById('db-' + ft);
+  if (el) { el.textContent = ''; el.classList.remove('show'); }
+}
+
+// Încarc draft la pornire cu banner de confirmare
+function draftLoadIfExists(ft) {
+  try {
+    const raw = localStorage.getItem(_draftKey(ft));
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (!state || !state.ts) return;
+
+    const age = Math.round((Date.now() - new Date(state.ts)) / 60000);
+    const ageStr = age < 1 ? 'acum câteva secunde' : age < 60 ? `acum ${age} min` : `acum ${Math.round(age/60)}h`;
+
+    // Banner de restore
+    const bar = document.getElementById('sBar');
+    bar.className = 'status info';
+    bar.innerHTML = `📋 Draft găsit (${ageStr}). &nbsp;
+      <button onclick="_doRestore('${ft}')" style="padding:2px 10px;border-radius:6px;border:1px solid rgba(108,79,240,.4);background:rgba(108,79,240,.12);color:#b0a0ff;cursor:pointer;font-size:.82rem">Restaurează</button>
+      <button onclick="draftClear('${ft}');clrS()" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:none;color:var(--app-muted);cursor:pointer;font-size:.82rem">Ignoră</button>`;
+
+    // Stocăm starea pentru butonul de restore
+    window._pendingDraft = window._pendingDraft || {};
+    window._pendingDraft[ft] = state;
+  } catch {}
+}
+
+function _doRestore(ft) {
+  const state = window._pendingDraft?.[ft];
+  if (!state) return;
+  // Golim rândurile implicite adăugate la init înainte de restore
+  ['o-tbody','n-vtbody','n-ptbody','n-ctbody'].forEach(tid => {
+    const el = document.getElementById(tid);
+    if (el) el.innerHTML = '';
+  });
+  _draftApply(ft, state);
+  delete window._pendingDraft[ft];
+  clrS();
+  _draftShowBadge(ft, '✅ draft restaurat');
+  setTimeout(() => _draftHideBadge(ft), 4000);
+}
+
+// Debounce auto-save — 2s după ultima tastă
+const _draftTimers = {};
+function _draftSchedule(ft) {
+  clearTimeout(_draftTimers[ft]);
+  _draftTimers[ft] = setTimeout(() => draftSave(ft), 2000);
+}
+
+// Atașează listeners la toate input-urile din fiecare formular
+function _draftAttach(ft) {
+  const form = document.getElementById('form-' + ft);
+  if (!form) return;
+  form.addEventListener('input', () => _draftSchedule(ft));
+  form.addEventListener('change', () => _draftSchedule(ft));
+}
+
+// Init — rulat după ce formularele sunt gata
+(function initDraft(){
+  ['ordnt','notafd'].forEach(ft => {
+    _draftAttach(ft);
+    draftLoadIfExists(ft);
+  });
+})();
+
 function resetF(ft){
-  if(!confirm('Resetați formularul? Datele se vor pierde.'))return;
+  if(!confirm('Resetați formularul? Datele și draft-ul se vor pierde.'))return;
+  draftClear(ft);
   document.querySelectorAll(`#form-${ft} input:not([type=file]),#form-${ft} textarea`)
     .forEach(e=>{if(e.type==='checkbox')e.checked=false;else e.value=(e.type==='number'?'0':'');});
   if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';}
