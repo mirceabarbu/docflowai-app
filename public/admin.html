@@ -602,6 +602,11 @@
           <input id="owAdminFunctie" type="text" placeholder="Administrator Instituție" value="Administrator Instituție"
             style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;font-family:inherit;"/>
         </div>
+        <div>
+          <label style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">CIF Instituție</label>
+          <input id="owOrgCif" type="text" placeholder="ex: 4326513" maxlength="12"
+            style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;font-family:inherit;"/>
+        </div>
         <div id="owMsg" style="font-size:.83rem;min-height:18px;"></div>
         <!-- Rezultat succes -->
         <div id="owResult" style="display:none;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.3);border-radius:10px;padding:14px;font-size:.83rem;">
@@ -3992,7 +3997,7 @@ function openOnboardingWizard() {
   const m = document.getElementById('onboardingModal');
   if (!m) return;
   // Reset
-  ['owOrgName','owAdminEmail','owAdminName'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  ['owOrgName','owAdminEmail','owAdminName','owOrgCif'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   const functieEl = document.getElementById('owAdminFunctie');
   if (functieEl) functieEl.value = 'Administrator Instituție';
   const msg = document.getElementById('owMsg');
@@ -4013,6 +4018,7 @@ async function doOnboarding() {
   const adminEmail = (document.getElementById('owAdminEmail')?.value || '').trim();
   const adminName  = (document.getElementById('owAdminName')?.value || '').trim();
   const adminFunctie = (document.getElementById('owAdminFunctie')?.value || '').trim();
+  const cif = (document.getElementById('owOrgCif')?.value || '').trim().replace(/^RO/i, '').replace(/\D/g, '');
   const msg = document.getElementById('owMsg');
   const btn = document.getElementById('owSubmitBtn');
 
@@ -4025,7 +4031,7 @@ async function doOnboarding() {
   try {
     const r = await _apiFetch('/admin/onboarding', {
       method: 'POST', headers: hdrs(),
-      body: JSON.stringify({ org_name: orgName, admin_email: adminEmail, admin_name: adminName, admin_functie: adminFunctie })
+      body: JSON.stringify({ org_name: orgName, admin_email: adminEmail, admin_name: adminName, admin_functie: adminFunctie, cif: cif || null })
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.message || d.error || 'Eroare server');
