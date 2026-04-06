@@ -464,6 +464,7 @@
  */
 
 import express from 'express';
+import compression from 'compression';
 import { readFileSync } from 'fs';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -512,6 +513,7 @@ import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din 
 import { formulareRouter } from './routes/formulare.mjs';
 
 const app = express();
+app.use(compression()); // PERF-FIX-07: gzip pentru toate răspunsurile — reduce ~70% din dimensiunea HTML/JSON
 app.set('trust proxy', 1);
 
 // SEC-01: cookie-parser — necesár pentru req.cookies.auth_token (JWT HttpOnly)
@@ -643,7 +645,25 @@ process.on('uncaughtException',  (err) => logger.error({ err }, 'uncaughtExcepti
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, '../public');
-app.use(express.static(PUBLIC_DIR));
+// PERF-FIX-08: Cache headers pentru assets statice
+// HTML-urile nu se cache-uiesc (contin nonce CSP si se pot schimba la deploy)
+// Imaginile/CSS/JS pot fi cache-uite agresiv — hash-ul din filename asigura invalidarea
+app.use(express.static(PUBLIC_DIR, {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      // HTML: revalidare obligatorie — nu cache local
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    } else if (/\.(png|jpg|jpeg|gif|ico|webp|svg)$/.test(filePath)) {
+      // Imagini: 30 zile — se schimba rar
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+    } else if (/\.(js|css|woff|woff2)$/.test(filePath)) {
+      // JS/CSS: 1 ora — se pot schimba la deploy
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+  }
+}));
 
 // SEC-03: sendHtmlWithNonce eliminat — revenit la sendFile simplu
 

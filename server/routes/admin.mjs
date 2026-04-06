@@ -114,10 +114,8 @@ router.get('/api/org/profile', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { rows: uRows } = await pool.query(
-      'SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]
-    );
-    const orgId = uRows[0]?.org_id || actor.orgId || null;
+    // PERF-FIX: org_id disponibil direct din JWT — fără query DB suplimentar
+    const orgId = actor.orgId || null;
     if (!orgId) return res.json({ ok: true, org: null });
 
     const { rows } = await pool.query(
@@ -1059,8 +1057,8 @@ router.get('/admin/analytics', async (req, res) => {
   try {
     const orgFilter = actorOrgFilter(actor);
     const params    = orgFilter ? [orgFilter] : [];
-    const whereOrg  = orgFilter ? `AND (data->>'orgId')::int = $1` : '';
-    const whereOrgDel = orgFilter ? `AND (data->>'orgId')::int = $1 AND deleted_at IS NULL` : 'AND deleted_at IS NULL';
+    const whereOrg  = orgFilter ? `AND org_id = $1` : '';  // PERF: org_id coloana indexata, nu JSONB
+    const whereOrgDel = orgFilter ? `AND org_id = $1 AND deleted_at IS NULL` : 'AND deleted_at IS NULL';  // PERF: org_id coloana indexata
 
     // Statistici generale fluxuri
     const { rows: flowStats } = await pool.query(`
@@ -1198,7 +1196,7 @@ router.get('/admin/flows/stats', async (req, res) => {
   try {
     const orgFilter = actorOrgFilter(actor);
     // FIX: query construit prin concatenare — evită interpolarea template literal cu ghilimele SQL
-    const whereCond = orgFilter ? " AND (data->>'orgId')::int = $1" : '';
+    const whereCond = orgFilter ? ' AND org_id = $1' : '';  // PERF: org_id coloana indexata
     const params = orgFilter ? [orgFilter] : [];
     const sql =
       'SELECT ' +
@@ -1331,10 +1329,10 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
     // org_admin: filtrare strictă după org_id
+    // PERF-FIX: org_id din JWT — verificat la autentificare
     let apOrgId = null;
     if (actor.role === 'org_admin') {
-      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-      apOrgId = aRows[0]?.org_id || null;
+      apOrgId = actor.orgId || null;
       if (!apOrgId) return res.status(403).json({ error: 'org_admin_no_org' });
     }
     const days = parseInt(req.query.days || '30');
@@ -1507,10 +1505,10 @@ router.get('/admin/flows/institutions', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
+    // PERF-FIX: org_id din JWT — verificat la autentificare
     let actorOrgId = null;
     if (actor.role === 'org_admin') {
-      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-      actorOrgId = aRows[0]?.org_id || null;
+      actorOrgId = actor.orgId || null;
       if (!actorOrgId) return res.status(403).json({ error: 'org_admin_no_org' });
     }
     // Colectăm instituții distincte din JSONB și din tabelul users (prin initEmail)
@@ -1549,11 +1547,10 @@ router.get('/admin/flows/list', async (req, res) => {
     const storageFilter = (req.query.storage || '').trim(); // 'drive' = doar arhivate
     // FIX v3.2.2: escape caractere speciale LIKE
     const escapedSearch = search.replace(/[%_\\]/g, '\\$&');
-    // org_admin: filtrare strictă după org_id
+    // org_admin: filtrare strictă după org_id — din JWT (PERF-FIX: fără query DB suplimentar)
     let actorOrgId = null;
     if (actor.role === 'org_admin') {
-      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-      actorOrgId = aRows[0]?.org_id || null;
+      actorOrgId = actor.orgId || null;
       if (!actorOrgId) return res.status(403).json({ error: 'org_admin_no_org' });
     }
     const conditions = ['1=1']; const params = [];
@@ -1565,27 +1562,29 @@ router.get('/admin/flows/list', async (req, res) => {
     else if (statusFilter === 'refused') conditions.push("(data->>'status') = 'refused'");
     else if (statusFilter === 'cancelled') conditions.push("(data->>'status') = 'cancelled'");
     if (search) { params.push(`%${escapedSearch}%`); conditions.push(`(lower(data->>'docName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initName') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'initEmail') LIKE $${params.length} ESCAPE '\\' OR lower(data->>'flowId') LIKE $${params.length} ESCAPE '\\')`); }
-    if (instFilter) { params.push(instFilter); conditions.push(`(data->>'institutie' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.institutie=$${params.length}))`); }
-    if (deptFilter) { params.push(deptFilter); conditions.push(`(data->>'compartiment' = $${params.length} OR EXISTS (SELECT 1 FROM users u WHERE lower(u.email)=lower(data->>'initEmail') AND u.compartiment=$${params.length}))`); }
+    // PERF-FIX-06: instFilter/deptFilter prin LEFT JOIN (deja prezent) — elimina EXISTS corelat per rând
+    if (instFilter) { params.push(instFilter); conditions.push(`(COALESCE(NULLIF(u.institutie,''), f.data->>'institutie') = $${params.length})`); }
+    if (deptFilter) { params.push(deptFilter); conditions.push(`(COALESCE(NULLIF(u.compartiment,''), f.data->>'compartiment') = $${params.length})`); }
     // BUG-03: folosim coloana TIMESTAMPTZ created_at (nu data->>'createdAt' string) — corect și indexabil
     if (dateFrom) { params.push(dateFrom + 'T00:00:00.000Z'); conditions.push(`created_at >= $${params.length}::timestamptz`); }
     if (dateTo)   { params.push(dateTo   + 'T23:59:59.999Z'); conditions.push(`created_at <= $${params.length}::timestamptz`); }
     if (storageFilter === 'drive') conditions.push("(data->>'storage') = 'drive'");
     const whereClause = conditions.join(' AND ');
-    const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows f WHERE ${whereClause} AND f.deleted_at IS NULL`, params);
-    const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
-    // PERF-01 + BUG-05: LEFT JOIN users — elimină SELECT ALL users in-memory + cross-org leak
-    // Folosim LEFT JOIN ca să nu pierdem fluxuri ai căror inițiatori au fost șterși din users
-    const { rows } = await pool.query(`
+    // PERF-FIX-05: window function COUNT OVER() — un singur round-trip DB în loc de două
+    const { rows: allRows } = await pool.query(`
       SELECT f.id, f.data, f.created_at,
              COALESCE(NULLIF(u.institutie,''), f.data->>'institutie') AS institutie,
-             COALESCE(NULLIF(u.compartiment,''), f.data->>'compartiment') AS compartiment
+             COALESCE(NULLIF(u.compartiment,''), f.data->>'compartiment') AS compartiment,
+             COUNT(*) OVER() AS _total
       FROM flows f
       LEFT JOIN users u ON lower(u.email) = lower(f.data->>'initEmail')
       WHERE ${whereClause} AND f.deleted_at IS NULL
       ORDER BY f.created_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, [...params, limit, offset]);
+    const total = allRows.length > 0 ? parseInt(allRows[0]._total) : 0;
+    const pages = Math.ceil(total / limit) || 1;
+    const rows = allRows.map(r => { const { _total, ...rest } = r; return rest; });
     const flows = rows.map(r => {
       const d = r.data || {};
       return { flowId: d.flowId, docName: d.docName, initEmail: d.initEmail, initName: d.initName,
@@ -1656,9 +1655,8 @@ router.get('/admin/stats', async (req, res) => {
   if (!pool || !DB_READY) return res.json({ ok: false, error: 'db_not_ready' });
   try {
     if (actor.role === 'org_admin') {
-      // Stats filtrate pe org_id
-      const { rows: aRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-      const orgId = aRows[0]?.org_id;
+      // Stats filtrate pe org_id — din JWT (PERF-FIX: fără query DB suplimentar)
+      const orgId = actor.orgId || null;
       if (!orgId) return res.status(403).json({ error: 'org_admin_no_org' });
       const [flowsR, usersR, notifsR, archR] = await Promise.all([
         pool.query('SELECT COUNT(*) FROM flows WHERE deleted_at IS NULL AND org_id=$1', [orgId]),
@@ -2158,9 +2156,8 @@ router.get('/admin/user-activity', async (req, res) => {
     const deptFilter     = (req.query.compartiment  || '').trim();
     const nameFilter     = (req.query.name     || '').toLowerCase().trim();
 
-    // Toti utilizatorii din aceeași organizație
-    const { rows: selfRow } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const orgId = selfRow[0]?.org_id || null;
+    // Toti utilizatorii din aceeași organizație — org_id din JWT (PERF-FIX)
+    const orgId = actor.orgId || null;
     // org_admin fără org_id → acces refuzat
     if (actor.role === 'org_admin' && !orgId) return res.status(403).json({ error: 'org_admin_no_org' });
     let userQuery, userParams;
