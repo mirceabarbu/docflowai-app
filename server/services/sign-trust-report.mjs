@@ -293,6 +293,7 @@ async function _generateReportPdf(report) {
     ok:       rgb(0.06, 0.73, 0.51),
     fail:     rgb(0.93, 0.27, 0.27),
     warn:     rgb(0.96, 0.62, 0.04),
+    info:     rgb(0.28, 0.52, 0.82),   // albastru neutru — pentru N/A (nu e eroare)
     border:   rgb(0.88, 0.90, 0.96),
     white:    rgb(1, 1, 1),
   };
@@ -342,8 +343,18 @@ async function _generateReportPdf(report) {
     y -= 14;
   };
 
-  const levelColor = ok => ok === true ? COL.ok : ok === false ? COL.fail : COL.warn;
-  const levelText  = ok => ok === true ? 'VALID' : ok === false ? 'INVALID' : 'NEVERIFICAT';
+  const levelColor = (ok, lvl) => {
+    if (ok === true)  return COL.ok;
+    if (ok === false) return COL.fail;
+    if (lvl?.notApplicable) return COL.info;   // N/A — albastru neutru, nu eroare
+    return COL.warn;                            // null fără notApplicable — galben
+  };
+  const levelText  = (ok, lvl) => {
+    if (ok === true)  return 'VALID';
+    if (ok === false) return 'INVALID';
+    if (lvl?.notApplicable) return 'N/A';
+    return 'NEVERIFICAT';
+  };
 
   // ══════════════════════════════════════════════════════════════════════
   // ── HEADER ─────────────────────────────────────────────────────────
@@ -481,9 +492,18 @@ async function _generateReportPdf(report) {
           const ch = cert.chain[i];
           const role = ch.isEndEntity ? 'Semnatar' : ch.isSelfSigned ? 'Root CA' : 'CA Intermediar';
           const col  = ch.isEndEntity ? COL.text : COL.muted;
-          page.drawText(`${i+1}. ${ro(ch.subject?.CN || '?')} [${role}]`,
+          const cn   = ro(ch.CN || ch.issuerCN || 'necunoscut');
+          // Dacă Root CA e dedus (nu din CMS), adăugăm notă că e în trust store OS
+          const suffix = ch.isInferred ? ' ¹' : '';
+          page.drawText(`${i+1}. ${cn}${suffix} [${role}]`,
             { x: MARGIN + 8, y, size: 7.5, font: fontR, color: col, maxWidth: COL_W - 20 });
           y -= 11;
+        }
+        // Notă de subsol dacă Root CA e dedus
+        if (cert.chain.some(ch => ch.isInferred)) {
+          page.drawText('¹ Root CA prezent in trust store-ul sistemului de operare (nu inclus in CMS — conform RFC 5652)',
+            { x: MARGIN + 8, y, size: 6.5, font: fontR, color: COL.muted, maxWidth: COL_W - 20 });
+          y -= 10;
         }
       }
       y -= 6; drawLine();
@@ -513,8 +533,8 @@ async function _generateReportPdf(report) {
     ensureSpace(20);
     const lvl = levels6[item.key];
     const ok  = lvl?.ok;
-    const col = levelColor(ok);
-    const lbl = levelText(ok);
+    const col = levelColor(ok, lvl);
+    const lbl = levelText(ok, lvl);
     page.drawRectangle({ x: MARGIN, y: y - 3, width: 62, height: 14, color: col, borderRadius: 3 });
     { const tw = fontB.widthOfTextAtSize(lbl, 7); const bx = MARGIN + Math.max(0, (62 - tw) / 2);
       page.drawText(lbl, { x: bx, y: y + 1, size: 7, font: fontB, color: COL.white }); }

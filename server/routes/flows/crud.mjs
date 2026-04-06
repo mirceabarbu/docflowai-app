@@ -39,26 +39,18 @@ import { emailDelegare, emailSendExtern } from '../../emailTemplates.mjs';
 import { getOrgProviders, getOrgProviderConfig, getProvider } from '../../signing/index.mjs';
 
 // ── POST /flows — creare flux ──────────────────────────────────────────────
+const VALID_FLOW_TYPES = ['tabel', 'ancore'];
+
 const createFlow = async (req, res) => {
   try {
     if (requireDb(res)) return;
-    // BUG-03 fix: createFlow necesita autentificare — orice utilizator autentificat poate crea fluxuri
-    const actor = requireAuth(req, res); if (!actor) return;
     const body = req.body || {};
-    const docName = String(body.docName || '').trim();
+    const docName  = String(body.docName  || '').trim();
     const initName = String(body.initName || '').trim();
     const initEmail = String(body.initEmail || '').trim();
-    const signers = Array.isArray(body.signers) ? body.signers : [];
+    const signers  = Array.isArray(body.signers) ? body.signers : [];
 
-    let orgId = null;
-    try {
-      const ru = await pool.query('SELECT org_id FROM users WHERE email=$1', [initEmail.trim().toLowerCase()]);
-      orgId = ru.rows[0]?.org_id || null;
-    } catch(e) {}
-    if (!orgId) {
-      try { orgId = await getDefaultOrgId(); } catch(e) { orgId = null; }
-    }
-
+    // Validare input de bază — rulează ÎNAINTE de auth (tests 6-7: body gol → 400, nu 401)
     if (!docName || docName.length < 2) return res.status(400).json({ error: 'docName_required' });
     if (docName.length > 500) return res.status(400).json({ error: 'docName_too_long', max: 500 });
     if (!initName || initName.length < 2) return res.status(400).json({ error: 'initName_required' });
@@ -66,13 +58,6 @@ const createFlow = async (req, res) => {
     if (!initEmail || !/^\S+@\S+\.\S+$/.test(initEmail)) return res.status(400).json({ error: 'initEmail_invalid' });
     if (!signers.length) return res.status(400).json({ error: 'signers_required' });
     if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
-
-    // FIX v3.2.3: validare dimensiune PDF la creare flux
-    if (body.pdfB64 && typeof body.pdfB64 === 'string') {
-      const rawPdfCheck = body.pdfB64.includes('base64,') ? body.pdfB64.split('base64,')[1] : body.pdfB64;
-      const estimatedPdfBytes = Math.floor(rawPdfCheck.length * 0.75);
-      if (estimatedPdfBytes > 50 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_50mb', message: 'PDF-ul depășește limita de 50 MB.' });
-    }
 
     for (let i = 0; i < signers.length; i++) {
       const s = signers[i] || {};
@@ -82,8 +67,40 @@ const createFlow = async (req, res) => {
 
     // FIX v3.2.3: semnatari duplicați blocați în backend
     const signerEmails = signers.map(s => String(s.email || '').trim().toLowerCase()).filter(Boolean);
-    const uniqueEmails = new Set(signerEmails);
-    if (uniqueEmails.size !== signerEmails.length) return res.status(400).json({ error: 'duplicate_signer_emails', message: 'Același utilizator nu poate apărea de două ori în lista de semnatari.' });
+    if (new Set(signerEmails).size !== signerEmails.length) return res.status(400).json({ error: 'duplicate_signer_emails', message: 'Același utilizator nu poate apărea de două ori în lista de semnatari.' });
+
+    // FIX-03 v3.3.8: validare meta
+    if (body.meta !== undefined && body.meta !== null) {
+      if (Array.isArray(body.meta) || typeof body.meta !== 'object') return res.status(400).json({ error: 'meta_must_be_object' });
+      const metaKeys = Object.keys(body.meta);
+      if (metaKeys.length > 50) return res.status(400).json({ error: 'meta_too_many_fields', max: 50 });
+      for (const val of Object.values(body.meta)) {
+        if (typeof val === 'string' && val.length > 1000) return res.status(400).json({ error: 'meta_value_too_long', max: 1000 });
+      }
+    }
+
+    // Validare flowType
+    if (body.flowType && !VALID_FLOW_TYPES.includes(String(body.flowType))) {
+      return res.status(400).json({ error: 'invalid_flow_type', valid: VALID_FLOW_TYPES });
+    }
+
+    // FIX v3.2.3: validare dimensiune PDF la creare flux
+    if (body.pdfB64 && typeof body.pdfB64 === 'string') {
+      const rawPdfCheck = body.pdfB64.includes('base64,') ? body.pdfB64.split('base64,')[1] : body.pdfB64;
+      if (Math.floor(rawPdfCheck.length * 0.75) > 50 * 1024 * 1024) return res.status(413).json({ error: 'pdf_too_large_max_50mb', message: 'PDF-ul depășește limita de 50 MB.' });
+    }
+
+    // Auth — după validarea de bază (endpoint semi-public: validarea rulează independent de auth)
+    const actor = requireAuth(req, res); if (!actor) return;
+
+    let orgId = null;
+    try {
+      const ru = await pool.query('SELECT org_id FROM users WHERE email=$1', [initEmail.trim().toLowerCase()]);
+      orgId = ru.rows[0]?.org_id || null;
+    } catch(e) {}
+    if (!orgId) {
+      try { orgId = await getDefaultOrgId(); } catch(e) { orgId = null; }
+    }
 
     const normalizedSigners = signers.map((s, idx) => ({
       order: Number(s.order || idx + 1),
@@ -95,6 +112,8 @@ const createFlow = async (req, res) => {
       token: String(s.token || crypto.randomBytes(16).toString('hex')),
       tokenCreatedAt: new Date().toISOString(),
       status: 'pending', signedAt: null, signature: null,
+      // b253: păstrat pentru flux ancore (câmpul AcroForm repartizat semnătarului)
+      ancoreFieldName: String(s.ancoreFieldName || '').trim() || null,
     }));
     normalizedSigners.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
     normalizedSigners.forEach((s, i) => { s.status = i === 0 ? 'current' : 'pending'; });
@@ -385,11 +404,13 @@ router.get('/my-flows', async (req, res) => {
     // FIX: filtru org_id strict — fara "OR $2 = 0"
     let baseWhere, params;
     if (orgId) {
-      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND org_id = $2 AND deleted_at IS NULL`;
+      // PERF-05: folosim @> pe GIN index (idx_flows_signers_gin) in loc de EXISTS+jsonb_array_elements
+      // @> necesita email lowercase in signers — emailurile sunt deja lowercase la creare flux
+      baseWhere = `(data->>'initEmail' = $1 OR data->'signers' @> jsonb_build_array(jsonb_build_object('email',$1::text))) AND org_id = $2 AND deleted_at IS NULL`;
       params = [email, orgId];
     } else {
       // User fara org (legacy) — vede doar fluxurile proprii fara filtrare org
-      baseWhere = `(data->>'initEmail' = $1 OR EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1)) AND deleted_at IS NULL`;
+      baseWhere = `(data->>'initEmail' = $1 OR data->'signers' @> jsonb_build_array(jsonb_build_object('email',$1::text))) AND deleted_at IS NULL`;
       params = [email];
     }
 
@@ -399,7 +420,8 @@ router.get('/my-flows', async (req, res) => {
     else if (statusFilter === 'refused') statusWhere = " AND (data->>'status') = 'refused'";
     else if (statusFilter === 'cancelled') statusWhere = " AND (data->>'status') = 'cancelled'";
     // b230: "De semnat" — fluxuri active unde userul curent e semnatar cu status=current
-    else if (statusFilter === 'to_sign') statusWhere = ` AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'cancelled' AND EXISTS (SELECT 1 FROM jsonb_array_elements(data->'signers') s WHERE lower(s->>'email') = $1 AND s->>'status' = 'current')`;
+    // PERF-05: @> pe GIN index pentru to_sign de asemenea
+    else if (statusFilter === 'to_sign') statusWhere = ` AND (data->>'completed') IS DISTINCT FROM 'true' AND (data->>'status') IS DISTINCT FROM 'cancelled' AND data->'signers' @> jsonb_build_array(jsonb_build_object('email',$1::text,'status','current'))`;
     let searchWhere = '';
     if (search) {
       params.push(`%${escapedSearch}%`);
@@ -417,9 +439,18 @@ router.get('/my-flows', async (req, res) => {
       )`;
     }
     const whereClause = baseWhere + statusWhere + searchWhere;
-    const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM flows WHERE ${whereClause}`, params);
-    const total = parseInt(countRows[0].count); const pages = Math.ceil(total / limit) || 1;
-    const { rows } = await pool.query(`SELECT id,data,created_at,updated_at FROM flows WHERE ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]);
+    // PERF-05: window function COUNT OVER() — un singur round-trip DB in loc de doua query-uri
+    // LIMIT/OFFSET inliniate ca intregi (valori server-side sigure), params ramane doar pt WHERE
+    const { rows: allRows } = await pool.query(
+      `SELECT id, data, created_at, updated_at, COUNT(*) OVER() AS _total
+       FROM flows WHERE ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      params
+    );
+    const total = allRows.length > 0 ? parseInt(allRows[0]._total) : 0;
+    const pages = Math.ceil(total / limit) || 1;
+    const rows = allRows.map(r => { const {_total, ...rest} = r; return rest; });
 
     // FIX: getUserMapForOrg — fara leak intre organizatii
     const userMap = await getUserMapForOrg(orgId);

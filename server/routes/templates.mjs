@@ -45,6 +45,11 @@ router.post('/api/templates', async (req, res) => {
   if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
   if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
   if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
+  for (let i = 0; i < signers.length; i++) {
+    const s = signers[i] || {};
+    if (!String(s.email || '').trim() || !/^\S+@\S+\.\S+$/.test(String(s.email || '').trim()))
+      return res.status(400).json({ error: 'signer_email_invalid', index: i });
+  }
   try {
     // FIX b76: citim și org_id — FK obligatoriu pe templates în producție
     const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
@@ -62,6 +67,8 @@ router.post('/api/templates', async (req, res) => {
 router.put('/api/templates/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid_id' });
   const { name, signers, shared } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
   if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
@@ -70,7 +77,7 @@ router.put('/api/templates/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
       'UPDATE templates SET name=$1,signers=$2,shared=$3,updated_at=NOW() WHERE id=$4 AND user_email=$5 RETURNING *',
-      [name?.trim(), JSON.stringify(signers), !!shared, parseInt(req.params.id), actor.email.toLowerCase()]
+      [name?.trim(), JSON.stringify(signers), !!shared, id, actor.email.toLowerCase()]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found_or_not_owner' });
     res.json({ ...rows[0], isOwner: true });
@@ -81,8 +88,10 @@ router.put('/api/templates/:id', async (req, res) => {
 router.delete('/api/templates/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid_id' });
   try {
-    const { rowCount } = await pool.query('DELETE FROM templates WHERE id=$1 AND user_email=$2', [parseInt(req.params.id), actor.email.toLowerCase()]);
+    const { rowCount } = await pool.query('DELETE FROM templates WHERE id=$1 AND user_email=$2', [id, actor.email.toLowerCase()]);
     if (!rowCount) return res.status(404).json({ error: 'not_found_or_not_owner' });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }

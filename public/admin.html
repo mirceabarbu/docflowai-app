@@ -602,6 +602,11 @@
           <input id="owAdminFunctie" type="text" placeholder="Administrator Instituție" value="Administrator Instituție"
             style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;font-family:inherit;"/>
         </div>
+        <div>
+          <label style="font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;">CIF Instituție</label>
+          <input id="owOrgCif" type="text" placeholder="ex: 4326513" maxlength="12"
+            style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.9rem;outline:none;font-family:inherit;"/>
+        </div>
         <div id="owMsg" style="font-size:.83rem;min-height:18px;"></div>
         <!-- Rezultat succes -->
         <div id="owResult" style="display:none;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.3);border-radius:10px;padding:14px;font-size:.83rem;">
@@ -658,10 +663,28 @@
 
   <div id="orgEditModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
     <div style="background:#0f1731;border:1px solid rgba(124,92,255,.3);border-radius:18px;padding:32px;max-width:580px;width:calc(100%-32px);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);">
-      <h3 style="margin:0 0 20px;color:#c4b5ff;font-size:1rem;">⚙️ Configurare Webhook — <span id="orgEditName"></span></h3>
+      <h3 style="margin:0 0 20px;color:#c4b5ff;font-size:1rem;">⚙️ Configurare — <span id="orgEditName"></span></h3>
 
-      <div style="margin-bottom:14px;">
-        <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;">URL Webhook</label>
+      <!-- CIF + Compartimente -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div>
+          <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;">CIF Instituție</label>
+          <input id="orgCif" type="text" maxlength="10" placeholder="ex: 1234567"
+            style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;box-sizing:border-box;"
+            title="Codul de Identificare Fiscală — completat automat în formulare"/>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">Folosit la auto-completare formulare</div>
+        </div>
+        <div>
+          <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;">Compartimente instituție</label>
+          <input id="orgCompartimenteInput" type="text" placeholder="Adaugă compartiment + Enter"
+            style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;box-sizing:border-box;"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();orgAddCompartiment();}"/>
+        </div>
+      </div>
+      <div id="orgCompartimenteList" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;min-height:24px;"></div>
+
+      <div style="border-top:1px solid rgba(255,255,255,.07);padding-top:14px;margin-bottom:14px;">
+        <div style="font-size:.75rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">🔗 Webhook</div>
         <input id="orgWebhookUrl" type="url" placeholder="https://sistemul-vostru.ro/api/docflowai/webhook"
           style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;box-sizing:border-box;"/>
         <div style="font-size:.73rem;color:var(--muted);margin-top:4px;">DocFlowAI va trimite un POST JSON la acest URL la evenimentele selectate.</div>
@@ -3893,6 +3916,10 @@ function openOrgModal(id, name) {
   $('evtRefused').checked = false;
   $('evtCancelled').checked = false;
   $('orgEditMsg').textContent = '';
+  $('orgCif').value = '';
+  $('orgCompartimenteInput').value = '';
+  _orgCompartimente = [];
+  _renderCompartimente();
   // Încarcă config curentă
   _apiFetch('/admin/organizations', { headers: hdrs() }).then(r => r.json()).then(orgs => {
     const org = orgs.find(o => o.id === id);
@@ -3903,6 +3930,11 @@ function openOrgModal(id, name) {
     $('evtCompleted').checked = evts.includes('flow.completed');
     $('evtRefused').checked = evts.includes('flow.refused');
     $('evtCancelled').checked = evts.includes('flow.cancelled');
+    // CIF
+    $('orgCif').value = org.cif || '';
+    // Compartimente
+    _orgCompartimente = Array.isArray(org.compartimente) ? [...org.compartimente] : [];
+    _renderCompartimente();
   }).catch(() => {});
   // Încarcă providerii de semnare ai org-ului
   _selectedProviders = new Set(['local-upload']);
@@ -3965,7 +3997,7 @@ function openOnboardingWizard() {
   const m = document.getElementById('onboardingModal');
   if (!m) return;
   // Reset
-  ['owOrgName','owAdminEmail','owAdminName'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  ['owOrgName','owAdminEmail','owAdminName','owOrgCif'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   const functieEl = document.getElementById('owAdminFunctie');
   if (functieEl) functieEl.value = 'Administrator Instituție';
   const msg = document.getElementById('owMsg');
@@ -3986,6 +4018,7 @@ async function doOnboarding() {
   const adminEmail = (document.getElementById('owAdminEmail')?.value || '').trim();
   const adminName  = (document.getElementById('owAdminName')?.value || '').trim();
   const adminFunctie = (document.getElementById('owAdminFunctie')?.value || '').trim();
+  const cif = (document.getElementById('owOrgCif')?.value || '').trim().replace(/^RO/i, '').replace(/\D/g, '');
   const msg = document.getElementById('owMsg');
   const btn = document.getElementById('owSubmitBtn');
 
@@ -3998,7 +4031,7 @@ async function doOnboarding() {
   try {
     const r = await _apiFetch('/admin/onboarding', {
       method: 'POST', headers: hdrs(),
-      body: JSON.stringify({ org_name: orgName, admin_email: adminEmail, admin_name: adminName, admin_functie: adminFunctie })
+      body: JSON.stringify({ org_name: orgName, admin_email: adminEmail, admin_name: adminName, admin_functie: adminFunctie, cif: cif || null })
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.message || d.error || 'Eroare server');
@@ -4928,6 +4961,35 @@ function orgGenSecret() {
   setTimeout(() => { if($('orgWebhookSecret')) $('orgWebhookSecret').type = 'password'; }, 5000);
 }
 
+// ── Compartimente org — state + helpers ──────────────────────────────────
+let _orgCompartimente = [];
+
+function _renderCompartimente() {
+  const el = $('orgCompartimenteList');
+  if (!el) return;
+  el.innerHTML = _orgCompartimente.map((c, i) =>
+    `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;background:rgba(124,92,255,.18);border:1px solid rgba(124,92,255,.35);color:#c4b5ff;font-size:.78rem;">
+      ${escH(c)}
+      <button onclick="_removeCompartiment(${i})" style="background:none;border:none;color:#c4b5ff;cursor:pointer;font-size:.82rem;padding:0;line-height:1;">✕</button>
+    </span>`
+  ).join('');
+}
+
+function orgAddCompartiment() {
+  const inp = $('orgCompartimenteInput');
+  if (!inp) return;
+  const val = inp.value.trim();
+  if (!val || _orgCompartimente.includes(val)) { inp.value = ''; return; }
+  _orgCompartimente.push(val);
+  inp.value = '';
+  _renderCompartimente();
+}
+
+function _removeCompartiment(idx) {
+  _orgCompartimente.splice(idx, 1);
+  _renderCompartimente();
+}
+
 async function saveOrgWebhook() {
   if (!_currentOrgId) return;
   const msg = $('orgEditMsg');
@@ -4937,11 +4999,16 @@ async function saveOrgWebhook() {
   if ($('evtCancelled').checked) events.push('flow.cancelled');
   // Includem providerii de semnare în același request (atomic — un singur PUT)
   _selectedProviders.add('local-upload');
+  // Adaugă compartimentul din input dacă nu s-a apăsat Enter
+  const compInp = $('orgCompartimenteInput');
+  if (compInp?.value.trim()) orgAddCompartiment();
   const body = {
     webhook_url:               $('orgWebhookUrl').value.trim() || null,
     webhook_events:            events,
     webhook_enabled:           $('orgWebhookEnabled').checked,
     signing_providers_enabled: [..._selectedProviders],
+    cif:                       $('orgCif').value.trim() || null,
+    compartimente:             _orgCompartimente,
   };
   const secret = $('orgWebhookSecret').value.trim();
   if (secret) body.webhook_secret = secret;

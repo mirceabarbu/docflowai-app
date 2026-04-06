@@ -839,6 +839,17 @@ const MIGRATIONS = [
       -- flows_pdfs este o tabela interna — nu are sens sa restrictionam cheile.
       ALTER TABLE flows_pdfs DROP CONSTRAINT IF EXISTS flows_pdfs_key_check;
     `
+  },
+  {
+    // FEAT: CIF + compartimente pe organizații
+    // cif: Codul de Identificare Fiscală al instituției (completat automat în formulare)
+    // compartimente: lista compartimentelor instituției (pentru datalist în formulare + flux nou)
+    id: '047_org_cif_compartimente',
+    sql: `
+      ALTER TABLE organizations
+        ADD COLUMN IF NOT EXISTS cif          TEXT    DEFAULT NULL,
+        ADD COLUMN IF NOT EXISTS compartimente TEXT[] NOT NULL DEFAULT '{}';
+    `
   }
 ];
 
