@@ -969,7 +969,7 @@ router.post('/admin/onboarding', csrfMiddleware, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden', message: 'Doar super-adminul poate crea instituții noi.' });
 
-  const { org_name, admin_email, admin_name, admin_functie, admin_phone } = req.body || {};
+  const { org_name, admin_email, admin_name, admin_functie, admin_phone, cif } = req.body || {};
 
   if (!org_name || !String(org_name).trim())
     return res.status(400).json({ error: 'org_name_required' });
@@ -983,6 +983,7 @@ router.post('/admin/onboarding', csrfMiddleware, async (req, res) => {
   const adminName  = String(admin_name).trim();
   const adminFunctie = (admin_functie || 'Administrator Instituție').trim();
   const adminPhone = (admin_phone || '').trim();
+  const orgCif = cif ? String(cif).replace(/\D/g, '').substring(0, 10) || null : null;
 
   try {
     // 1. Verificam ca emailul nu exista deja
@@ -1002,10 +1003,10 @@ router.post('/admin/onboarding', csrfMiddleware, async (req, res) => {
       logger.info({ orgName, orgId }, 'Onboarding: org existenta refolosita');
     } else {
       const { rows: newOrg } = await pool.query(
-        'INSERT INTO organizations (name) VALUES ($1) RETURNING id', [orgName]
+        'INSERT INTO organizations (name, cif) VALUES ($1, $2) RETURNING id', [orgName, orgCif]
       );
       orgId = newOrg[0].id;
-      logger.info({ orgName, orgId }, 'Onboarding: org noua creata');
+      logger.info({ orgName, orgId, orgCif }, 'Onboarding: org noua creata');
     }
 
     // 3. Cream utilizatorul org_admin cu parola temporara
