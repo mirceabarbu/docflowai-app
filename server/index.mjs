@@ -599,6 +599,7 @@ app.use((req, res, next) => {
 // app-level parser a respins deja body-ul cu 413 înainte ca ruta să ruleze.
 // Soluție: middleware adaptiv — detectăm path-urile PDF și aplicăm limita corectă.
 const _LARGE_PDF_PATHS = [
+  '/flows',                   // POST/PUT — creare/editare flux cu pdfB64
   '/reinitiate-review',       // POST — upload document revizuit după review
   '/upload-signed-pdf',       // POST — upload PDF semnat de semnatar
   '/signing-callback',        // POST — callback provider cloud signing
