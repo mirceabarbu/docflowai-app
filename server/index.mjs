@@ -599,10 +599,11 @@ app.use((req, res, next) => {
 // app-level parser a respins deja body-ul cu 413 înainte ca ruta să ruleze.
 // Soluție: middleware adaptiv — detectăm path-urile PDF și aplicăm limita corectă.
 const _LARGE_PDF_PATHS = [
-  '/reinitiate-review',   // POST — upload document revizuit după review
-  '/upload-signed-pdf',   // POST — upload PDF semnat de semnatar
-  '/signing-callback',    // POST — callback provider cloud signing
-  '/sign',                // POST — poate conține signedPdfB64
+  '/reinitiate-review',       // POST — upload document revizuit după review
+  '/upload-signed-pdf',       // POST — upload PDF semnat de semnatar
+  '/signing-callback',        // POST — callback provider cloud signing
+  '/sign',                    // POST — poate conține signedPdfB64
+  '/detect-acroform-fields',  // POST — detectare câmpuri AcroForm/XFA din PDF
 ];
 app.use((req, res, next) => {
   const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));
