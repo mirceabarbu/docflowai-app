@@ -395,11 +395,14 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
         if (!padesPdfB64stored) throw new Error(`padesPdf lipsă în data._padesPdf_${idx}`);
         if (!certPem) throw new Error('Certificatul STS lipsește pentru finalizarea Java PAdES');
 
+        // tabel: sig_N (neschimbat față de b236); ancore: câmpul XFA al semnătarului
+        const _finalizeFieldName = (data.flowType === 'ancore' && signer.ancoreFieldName)
+          ? signer.ancoreFieldName
+          : `sig_${idx + 1}`;
+
         const finalizeRes = await javaFinalizePades({
           preparedPdfBase64: padesPdfB64stored,
-          // ancore: folosim ancoreFieldName (ex: SignatureField11); tabel: sig_N
-          fieldName: (data.flowType === 'ancore' && signer.ancoreFieldName)
-            ? signer.ancoreFieldName : `sig_${idx + 1}`,
+          fieldName: _finalizeFieldName,
           signByteBase64: pollResult.signByte,
           certificatePem: certPem,
           certificateChainPem: certChainPem,
