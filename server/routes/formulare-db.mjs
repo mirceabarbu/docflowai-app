@@ -27,6 +27,19 @@ function requireDb(res) {
   return false;
 }
 
+/** Trimite notificare in-app corect (user_email + data JSONB) */
+async function sendNotif(userId, type, title, message, data) {
+  try {
+    const { rows } = await pool.query('SELECT email FROM users WHERE id=$1', [userId]);
+    if (!rows.length) return;
+    await pool.query(
+      `INSERT INTO notifications (user_email, type, title, message, data)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [rows[0].email.toLowerCase(), type, title, message, JSON.stringify(data)]
+    );
+  } catch (_) { /* non-fatal */ }
+}
+
 /** Câmpuri DF sectiunea A (P1) */
 const DF_P1_FIELDS = [
   'cif','den_inst_pb','subtitlu_df','nr_unic_inreg','revizuirea','data_revizuirii',
@@ -277,18 +290,10 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
       RETURNING *
     `, [assigned_to, req.params.id, actor.orgId]);
 
-    // Notificare in-app pentru P2
-    try {
-      await pool.query(`
-        INSERT INTO notifications (user_id, type, title, body, data)
-        VALUES ($1, 'formulare_df_p2', $2, $3, $4)
-      `, [
-        assigned_to,
-        'Document de Fundamentare — completare solicitată',
-        `${actor.nume || actor.email} vă solicită completarea Secțiunii B din DF "${doc.nr_unic_inreg || 'fără număr'}"`,
-        JSON.stringify({ form_type: 'df', form_id: req.params.id }),
-      ]);
-    } catch (_) { /* non-fatal */ }
+    await sendNotif(assigned_to, 'formulare_df_p2',
+      'Document de Fundamentare — completare solicitată',
+      `${actor.nume || actor.email} vă solicită completarea Secțiunii B din DF "${doc.nr_unic_inreg || 'fără număr'}"`,
+      { form_type: 'df', form_id: req.params.id });
 
     logger.info({ id: req.params.id, p2: p2.email, actor: actor.email }, 'formulare-df trimis la P2');
     res.json({ ok: true, document: updated[0], assigned_to: p2 });
@@ -325,18 +330,10 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
       RETURNING *
     `, vals);
 
-    // Notificare in-app pentru P1
-    try {
-      await pool.query(`
-        INSERT INTO notifications (user_id, type, title, body, data)
-        VALUES ($1, 'formulare_df_completed', $2, $3, $4)
-      `, [
-        doc.created_by,
-        'Document de Fundamentare — completat de P2',
-        `${actor.nume || actor.email} a completat Secțiunea B din DF "${doc.nr_unic_inreg || 'fără număr'}"`,
-        JSON.stringify({ form_type: 'df', form_id: req.params.id }),
-      ]);
-    } catch (_) { /* non-fatal */ }
+    await sendNotif(doc.created_by, 'formulare_df_completed',
+      'Document de Fundamentare — completat de P2',
+      `${actor.nume || actor.email} a completat Secțiunea B din DF "${doc.nr_unic_inreg || 'fără număr'}"`,
+      { form_type: 'df', form_id: req.params.id });
 
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-df completat de P2');
     res.json({ ok: true, document: updated[0] });
@@ -576,17 +573,10 @@ router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
       RETURNING *
     `, [assigned_to, req.params.id, actor.orgId]);
 
-    try {
-      await pool.query(`
-        INSERT INTO notifications (user_id, type, title, body, data)
-        VALUES ($1, 'formulare_ord_p2', $2, $3, $4)
-      `, [
-        assigned_to,
-        'Ordonanțare de Plată — completare solicitată',
-        `${actor.nume || actor.email} vă solicită completarea ORD "${doc.nr_ordonant_pl || 'fără număr'}"`,
-        JSON.stringify({ form_type: 'ord', form_id: req.params.id }),
-      ]);
-    } catch (_) { /* non-fatal */ }
+    await sendNotif(assigned_to, 'formulare_ord_p2',
+      'Ordonanțare de Plată — completare solicitată',
+      `${actor.nume || actor.email} vă solicită completarea ORD "${doc.nr_ordonant_pl || 'fără număr'}"`,
+      { form_type: 'ord', form_id: req.params.id });
 
     logger.info({ id: req.params.id, p2: p2.email, actor: actor.email }, 'formulare-ord trimis la P2');
     res.json({ ok: true, document: updated[0], assigned_to: p2 });
@@ -623,17 +613,10 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
       RETURNING *
     `, vals);
 
-    try {
-      await pool.query(`
-        INSERT INTO notifications (user_id, type, title, body, data)
-        VALUES ($1, 'formulare_ord_completed', $2, $3, $4)
-      `, [
-        doc.created_by,
-        'Ordonanțare de Plată — completată de P2',
-        `${actor.nume || actor.email} a completat ORD "${doc.nr_ordonant_pl || 'fără număr'}"`,
-        JSON.stringify({ form_type: 'ord', form_id: req.params.id }),
-      ]);
-    } catch (_) { /* non-fatal */ }
+    await sendNotif(doc.created_by, 'formulare_ord_completed',
+      'Ordonanțare de Plată — completată de P2',
+      `${actor.nume || actor.email} a completat ORD "${doc.nr_ordonant_pl || 'fără număr'}"`,
+      { form_type: 'ord', form_id: req.params.id });
 
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-ord completat de P2');
     res.json({ ok: true, document: updated[0] });

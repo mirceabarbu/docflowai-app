@@ -1534,9 +1534,7 @@ function showLinkFlowSection(ft){
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-// Încarcă lista de documente la pornire, după autentificare
 (function initDocWorkflow(){
-  // Așteptăm ca ST.user să fie populat (fetch /auth/me e async)
   const waitUser=setInterval(()=>{
     if(!ST.user)return;
     clearInterval(waitUser);
@@ -1544,6 +1542,16 @@ function showLinkFlowSection(ft){
     refreshDocs('notafd');
     renderActions('ordnt');
     renderActions('notafd');
+    // Auto-open din URL params (redirect din notificări)
+    const params=new URLSearchParams(location.search);
+    const formType=params.get('form_type'); // 'df' | 'ord'
+    const formId=params.get('form_id');
+    if(formType&&formId){
+      const ft=formType==='ord'?'ordnt':'notafd';
+      sw(ft);
+      // Așteptăm puțin ca lista să se încarce, apoi deschidem documentul
+      setTimeout(()=>openDoc(ft,formId),600);
+    }
   },100);
 })();
 

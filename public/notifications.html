@@ -186,6 +186,7 @@
     <button class="filter-btn" data-filter="REVIEW_REQUESTED">De revizuit</button>
     <button class="filter-btn" data-filter="COMPLETED">Finalizate</button>
     <button class="filter-btn" data-filter="REFUSED">Refuzate</button>
+    <button class="filter-btn" data-filter="formulare">📄 Formulare</button>
   </div>
 
   <div id="listArea">
@@ -248,11 +249,15 @@ async function loadNotifs() {
   }
 }
 
+const FORMULARE_TYPES = new Set(['formulare_df_p2','formulare_ord_p2','formulare_df_completed','formulare_ord_completed']);
+
 function typeIcon(type) {
   if (type === 'YOUR_TURN') return '✍️';
   if (type === 'COMPLETED') return '✅';
   if (type === 'REFUSED') return '⛔';
   if (type === 'REVIEW_REQUESTED') return '🔄';
+  if (type === 'formulare_df_p2' || type === 'formulare_ord_p2') return '📄';
+  if (type === 'formulare_df_completed' || type === 'formulare_ord_completed') return '✅';
   return '🔔';
 }
 
@@ -276,6 +281,7 @@ function filtered() {
     return allNotifs.filter(n => n.type === 'YOUR_TURN' && n.signer_status === 'current');
   }
   if (currentFilter === 'REVIEW_REQUESTED') return allNotifs.filter(n => n.type === 'REVIEW_REQUESTED');
+  if (currentFilter === 'formulare') return allNotifs.filter(n => FORMULARE_TYPES.has(n.type));
   return allNotifs.filter(n => n.type === currentFilter);
 }
 
@@ -293,8 +299,9 @@ function updateTabCounts() {
     REVIEW_REQUESTED: allNotifs.filter(n => n.type === 'REVIEW_REQUESTED').length,
     COMPLETED: allNotifs.filter(n => n.type === 'COMPLETED').length,
     REFUSED: allNotifs.filter(n => n.type === 'REFUSED').length,
+    formulare: allNotifs.filter(n => FORMULARE_TYPES.has(n.type)).length,
   };
-  const labels = { all:'Toate', unread:'Necitite', urgent:'🚨 Urgente', YOUR_TURN:'De semnat', REVIEW_REQUESTED:'De revizuit', COMPLETED:'Finalizate', REFUSED:'Refuzate' };
+  const labels = { all:'Toate', unread:'Necitite', urgent:'🚨 Urgente', YOUR_TURN:'De semnat', REVIEW_REQUESTED:'De revizuit', COMPLETED:'Finalizate', REFUSED:'Refuzate', formulare:'📄 Formulare' };
   document.querySelectorAll('.filter-btn').forEach(btn => {
     const f = btn.dataset.filter;
     const c = counts[f] || 0;
@@ -337,26 +344,30 @@ function renderList() {
       ${!n.read ? '<div class="notif-unread-dot"></div>' : ''}
       <button class="notif-del" title="Șterge" onclick="deleteNotif(event,${n.id})">✕</button>
     `;
-    // Click → marchează citit + navighează (dacă e flux)
+    // Click → marchează citit + navighează
     card.onclick = async (e) => {
       if (e.target.classList.contains('notif-del')) return;
       markRead(n.id);
+
+      // Notificări formulare → deschide formular.html cu documentul auto-loaded
+      if (FORMULARE_TYPES.has(n.type) && n.data) {
+        const d = typeof n.data === 'string' ? JSON.parse(n.data) : n.data;
+        if (d.form_type && d.form_id) {
+          location.href = `/formular.html?form_type=${encodeURIComponent(d.form_type)}&form_id=${encodeURIComponent(d.form_id)}`;
+          return;
+        }
+      }
+
       if (n.flow_id) {
         if (n.type === 'YOUR_TURN') {
-          // Fetch token de semnare si redirectioneaza direct la pagina de semnare
           try {
             const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(n.flow_id)}`);
             if (r.ok) {
               const d = await r.json();
               location.href = `/semdoc-signer.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
-            } else {
-              location.href = '/';
-            }
-          } catch(e) {
-            location.href = '/';
-          }
+            } else { location.href = '/'; }
+          } catch(e) { location.href = '/'; }
         } else {
-          // COMPLETED, REFUSED, SIGNED etc. → deschide flow.html
           location.href = `/flow.html?flow=${encodeURIComponent(n.flow_id)}`;
         }
       }
@@ -430,7 +441,7 @@ function connectWS() {
 connectWS();
 // Aplica tab din URL daca exista (?tab=sign / done / refused / unread)
 (function applyTabFromUrl() {
-  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', review: 'REVIEW_REQUESTED', urgent: 'urgent', unread: 'unread', all: 'all' };
+  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', review: 'REVIEW_REQUESTED', urgent: 'urgent', unread: 'unread', all: 'all', formulare: 'formulare' };
   const urlTab = new URLSearchParams(location.search).get('tab');
   const filter = tabMap[urlTab] || null;
   if (filter && filter !== 'all') {

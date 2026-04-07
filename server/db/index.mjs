@@ -852,6 +852,10 @@ const MIGRATIONS = [
     `
   },
   {
+    id: '048_notifications_data_col',
+    sql: `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data JSONB DEFAULT NULL;`
+  },
+  {
     id: '048_formulare_df',
     sql: `
       CREATE TABLE IF NOT EXISTS formulare_df (
