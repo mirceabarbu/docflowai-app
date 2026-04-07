@@ -892,12 +892,17 @@ async function genPdf(ft){
   clrS();
   if(!valF(ft)){if(!document.querySelector('.status.err')?.innerHTML.length)setS('Verificați câmpurile marcate.','err');return;}
   const btn=document.getElementById('bgen-'+ft);
+  if(!btn){setS('Eroare internă: buton negăsit. Reîncărcați pagina.','err');return;}
   btn.disabled=true;btn.innerHTML='<div class="spinner"></div> <span>Se generează...</span>';
   setS('Se generează PDF-ul...','info');
-  const data=ft==='ordnt'?colO():colN();
+  const ctrl=new AbortController();
+  const timeout=setTimeout(()=>ctrl.abort(),90000); // 90s timeout
   try{
+    const data=ft==='ordnt'?colO():colN();
     const r=await fetch('/api/formulare/generate',{method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({formType:ft,data})});
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({formType:ft,data}),
+      signal:ctrl.signal});
+    clearTimeout(timeout);
     const j=await r.json();
     if(!r.ok||!j.ok){setS(j.errors?j.errors.join('; '):(j.message||j.error||'Eroare'),'err');return;}
     ST[ft].pdf=j.pdfBase64;ST[ft].name=j.fileName;
@@ -906,8 +911,11 @@ async function genPdf(ft){
     panel.scrollIntoView({behavior:'smooth',block:'nearest'});
     const dn=document.getElementById('ffn-'+ft);if(dn&&!dn.value)dn.value=j.fileName.replace('.pdf','');
     setS('PDF generat! Descărcați sau lansați fluxul de semnare.','ok');
-  }catch(e){setS('Eroare rețea: '+e.message,'err');}
-  finally{btn.disabled=false;btn.innerHTML='<span>⚙ Generează PDF</span>';}
+  }catch(e){
+    clearTimeout(timeout);
+    if(e.name==='AbortError')setS('Timeout: generarea PDF a durat prea mult (>90s). Verificați template-ul.','err');
+    else setS('Eroare: '+e.message,'err');
+  }finally{btn.disabled=false;btn.innerHTML='<span>⚙ Generează PDF</span>';}
 }
 
 function dlPdf(ft){
@@ -1302,6 +1310,12 @@ async function openDoc(ft,id){
       setLockedBar(ft,'Document trimis la P2. Așteptați completarea.','warn');
     }else if(status==='completed'){
       lockAll(ft,true);
+      if(role==='p1'){
+        // P1 poate adăuga/vizualiza captura și după completare
+        const czId=ft==='ordnt'?'o-czone':'n-czone';
+        const czone=document.getElementById(czId);if(czone)czone.style.pointerEvents='';
+        document.querySelectorAll(`#form-${ft} .cap-zone input[type=file]`).forEach(e=>e.disabled=false);
+      }
       setLockedBar(ft,`Document complet${role==='p1'?' — puteți genera PDF':'.'}`,'info');
     }else{
       setLockedBar(ft,'');
