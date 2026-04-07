@@ -335,14 +335,17 @@
      ════════════════════════════════════════════════════════════════════════ -->
 <div id="section-form" style="display:none">
 
-<div class="back-bar">
+<div class="back-bar" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
   <button class="btn" onclick="showListSection()" style="padding:6px 14px;font-size:.83rem">← Înapoi la listă</button>
+  <span id="form-type-title" style="font-size:.88rem;font-weight:700;color:var(--app-sub)"></span>
+  <span id="form-save-badge" style="font-size:.74rem;color:var(--app-muted)"></span>
 </div>
 
-<div class="tabs-wrap">
+<!-- tabs ascunse — sw() le folosește intern pt show/hide; nu sunt vizibile utilizatorului -->
+<div class="tabs-wrap" style="display:none" aria-hidden="true">
   <div class="tabs">
-    <button class="tab active" onclick="sw('ordnt')">📄 Ordonanțare de Plată <span class="draft-badge" id="db-ordnt"></span></button>
-    <button class="tab" onclick="sw('notafd')">📋 Document de Fundamentare <span class="draft-badge" id="db-notafd"></span></button>
+    <button class="tab active" onclick="sw('ordnt')">📄 ORD <span class="draft-badge" id="db-ordnt"></span></button>
+    <button class="tab" onclick="sw('notafd')">📋 DF <span class="draft-badge" id="db-notafd"></span></button>
   </div>
 </div>
 
@@ -351,16 +354,6 @@
 
 <!-- ═══ ORDNT ═══════════════════════════════════════════════════════════════ -->
 <div id="form-ordnt">
-<div class="docs-panel">
-  <div class="docs-panel-hdr">
-    <span class="docs-panel-title">Ordonanțările mele de plată</span>
-    <div style="display:flex;gap:6px">
-      <button class="btn" style="padding:5px 12px;font-size:.78rem" onclick="refreshDocs('ordnt')">↺</button>
-      <button class="btn primary" style="padding:5px 12px;font-size:.78rem" onclick="newDoc('ordnt')">+ Document nou</button>
-    </div>
-  </div>
-  <div class="docs-list" id="docs-list-ordnt"><div class="docs-empty">Se încarcă...</div></div>
-</div>
 <div class="locked-bar" id="locked-bar-ordnt"></div>
 <div class="doc">
   <div class="doc-title">Ordonantare de Plata</div>
@@ -518,16 +511,6 @@
 
 <!-- ═══ NOTAFD ══════════════════════════════════════════════════════════════ -->
 <div id="form-notafd" style="display:none">
-<div class="docs-panel">
-  <div class="docs-panel-hdr">
-    <span class="docs-panel-title">Documentele mele de fundamentare</span>
-    <div style="display:flex;gap:6px">
-      <button class="btn" style="padding:5px 12px;font-size:.78rem" onclick="refreshDocs('notafd')">↺</button>
-      <button class="btn primary" style="padding:5px 12px;font-size:.78rem" onclick="newDoc('notafd')">+ Document nou</button>
-    </div>
-  </div>
-  <div class="docs-list" id="docs-list-notafd"><div class="docs-empty">Se încarcă...</div></div>
-</div>
 <div class="locked-bar" id="locked-bar-notafd"></div>
 <div class="doc">
   <!-- Antet -->
@@ -840,18 +823,22 @@ function _applyAutoFill(ft, resetDate){
   }catch{location.href='/login.html';return;}
 
   // ── Fetch profil org → stochează în ST.orgProfile pentru re-fill ulterior ──
+  // Dacă utilizatorul nu are org (ex: admin super-user), org va fi null —
+  // câmpurile rămân editabile fără eroare; nu e nevoie de fallback în JWT.
   try{
     const orgR=await fetch('/api/org/profile',{credentials:'include'});
     if(orgR.ok){
-      const {org}=await orgR.json();
+      const body=await orgR.json();
+      const org=body?.org||null;
       if(org){
         const compList=org.compartimente_utilizatori&&org.compartimente_utilizatori.length
           ? org.compartimente_utilizatori
           : (org.compartimente||[]);
-        ST.orgProfile={name:org.name,cif:org.cif,_compList:compList};
+        ST.orgProfile={name:org.name||'',cif:org.cif||'',_compList:compList};
       }
+      // org null → ST.orgProfile rămâne null; câmpurile vor fi editabile manual
     }
-  }catch(e){/* non-fatal */}
+  }catch(e){/* non-fatal — câmpurile rămân editabile */}
 
   // ── Aplică auto-fill în ambele formulare (condiție: câmpurile goale) ────
   _applyAutoFill('ordnt');
@@ -1225,12 +1212,16 @@ function draftClear(ft) {
 }
 
 function _draftShowBadge(ft, txt) {
+  // Actualizează badge-ul vizibil din back-bar (tab-urile sunt ascunse)
+  const vis = document.getElementById('form-save-badge');
+  if (vis) { vis.textContent = txt; vis.style.display = ''; }
+  // Și cel din tabs-wrap (ascuns, backup)
   const el = document.getElementById('db-' + ft);
-  if (!el) return;
-  el.textContent = txt;
-  el.classList.add('show');
+  if (el) { el.textContent = txt; el.classList.add('show'); }
 }
 function _draftHideBadge(ft) {
+  const vis = document.getElementById('form-save-badge');
+  if (vis) vis.textContent = '';
   const el = document.getElementById('db-' + ft);
   if (el) { el.textContent = ''; el.classList.remove('show'); }
 }
@@ -1346,6 +1337,9 @@ function populateOrd(doc){
   sv('o-nrUnic',doc.nr_unic_inreg);sv('o-benef',doc.beneficiar);sv('o-docsj',doc.documente_justificative);
   sv('o-iban',doc.iban_beneficiar);sv('o-cifb',doc.cif_beneficiar);sv('o-banca',doc.banca_beneficiar);
   sv('o-inf1',doc.inf_pv_plata);sv('o-inf2',doc.inf_pv_plata1);
+  // Restabilește selecția DF legat
+  const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value=doc.df_id||'';
+  const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
   (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=v;});});
   upTot();
@@ -1656,8 +1650,8 @@ async function confirmP2(){
     const j=await r.json();
     if(!r.ok||!j.ok){setS(j.error||'Eroare la trimitere','err');return;}
     ST.docStatus[ft]='pending_p2';
-    lockAll(ft,true);setLockedBar(ft,'Document trimis la P2. Așteptați completarea.','warn');
-    renderActions(ft);refreshDocs(ft);
+    // Redirect automat la centralizare după trimite P2
+    setTimeout(()=>showListSection(),1200);
     setS(`Trimis la ${j.assigned_to?.nume||j.assigned_to?.email||'P2'}.`,'ok');
   }catch(e){setS('Eroare: '+e.message,'err');}
 }
@@ -1734,8 +1728,6 @@ function showLinkFlowSection(ft){
   const waitUser=setInterval(()=>{
     if(!ST.user)return;
     clearInterval(waitUser);
-    refreshDocs('ordnt');
-    refreshDocs('notafd');
     renderActions('ordnt');
     renderActions('notafd');
     // Afișează filtrul Inițiator doar pentru admin/org_admin
@@ -1745,14 +1737,22 @@ function showLinkFlowSection(ft){
     }
     _populateCompartimente();
     loadDfAprobate();
-    // Auto-open din URL params (redirect din notificări) → deschide Section 2
+    // Suport ambele formate URL:
+    //   nou:    ?id=UUID&tip=df|ord
+    //   legacy: ?form_type=df|ord&form_id=UUID  (din notificări)
     const urlParams=new URLSearchParams(location.search);
-    const formType=urlParams.get('form_type'); // 'df' | 'ord'
-    const formId=urlParams.get('form_id');
+    const formType=urlParams.get('tip')||urlParams.get('form_type');
+    const formId=urlParams.get('id')||urlParams.get('form_id');
     if(formType&&formId){
       const ft=formType==='ord'?'ordnt':'notafd';
       showFormSection(ft);
       setTimeout(()=>openDoc(ft,formId),600);
+    } else if(formType&&!formId){
+      // Document nou pentru tipul specificat
+      const ft=formType==='ord'?'ordnt':'notafd';
+      showFormSection(ft);
+      newDoc(ft);
+      _applyAutoFill(ft,true);
     } else {
       showListSection();
     }
@@ -1913,16 +1913,25 @@ let _lstDebTimer=null;
 function showListSection(){
   document.getElementById('section-list').style.display='';
   document.getElementById('section-form').style.display='none';
+  // Curăță URL params la revenire în centralizare
+  try{history.replaceState({},'',location.pathname);}catch(_){}
   loadList();
 }
 function showFormSection(ft){
   document.getElementById('section-list').style.display='none';
   document.getElementById('section-form').style.display='';
+  // Curăță badge-ul de salvare la deschiderea unui formular nou
+  const sb=document.getElementById('form-save-badge');if(sb)sb.textContent='';
+  // Type indicator vizibil în back-bar
+  const ti=document.getElementById('form-type-title');
+  if(ti)ti.textContent=ft==='ordnt'?'📄 Ordonanțare de Plată':'📋 Document de Fundamentare';
   sw(ft||'ordnt');
 }
 function newDocFromList(){
   const ft=_lstState.type==='ord'?'ordnt':'notafd';
   showFormSection(ft);
+  // URL indică document nou
+  try{history.replaceState({},'',`${location.pathname}?tip=${_lstState.type}`);}catch(_){}
   newDoc(ft);
   _applyAutoFill(ft,true);
 }
@@ -2026,7 +2035,8 @@ function changeLstPage(dir){
 function openDocFromList(type,id){
   const ft=type==='ord'?'ordnt':'notafd';
   showFormSection(ft);
-  sw(ft);
+  // URL reflectă documentul deschis: /formulare?id=UUID&tip=df
+  try{history.replaceState({},'',`${location.pathname}?id=${encodeURIComponent(id)}&tip=${type}`);}catch(_){}
   setTimeout(()=>openDoc(ft,id),200);
 }
 async function anuleazaDoc(type,id){

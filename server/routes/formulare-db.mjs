@@ -147,6 +147,10 @@ router.get('/api/formulare-df/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    // Admin fără org_id nu are org_id → skip filtrul de org
+    const isGlobalAdmin = actor.role === 'admin' && !actor.orgId;
+    const orgCond = isGlobalAdmin ? '' : 'AND fd.org_id = $2';
+    const params  = isGlobalAdmin ? [req.params.id] : [req.params.id, actor.orgId];
     const { rows } = await pool.query(`
       SELECT fd.*,
         p1.nume AS created_by_nume, p1.email AS created_by_email,
@@ -157,8 +161,8 @@ router.get('/api/formulare-df/:id', async (req, res) => {
       JOIN users p1 ON p1.id = fd.created_by
       LEFT JOIN users p2 ON p2.id = fd.assigned_to
       LEFT JOIN flows f  ON f.id = fd.flow_id
-      WHERE fd.id = $1 AND fd.org_id = $2 AND fd.deleted_at IS NULL
-    `, [req.params.id, actor.orgId]);
+      WHERE fd.id = $1 ${orgCond} AND fd.deleted_at IS NULL
+    `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
     if (doc.created_by !== actor.userId && doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
@@ -435,6 +439,9 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const isGlobalAdmin = actor.role === 'admin' && !actor.orgId;
+    const orgCond = isGlobalAdmin ? '' : 'AND fo.org_id = $2';
+    const params  = isGlobalAdmin ? [req.params.id] : [req.params.id, actor.orgId];
     const { rows } = await pool.query(`
       SELECT fo.*,
         p1.nume AS created_by_nume, p1.email AS created_by_email,
@@ -444,8 +451,8 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
       JOIN users p1 ON p1.id = fo.created_by
       LEFT JOIN users p2 ON p2.id = fo.assigned_to
       LEFT JOIN formulare_df fd ON fd.id = fo.df_id
-      WHERE fo.id = $1 AND fo.org_id = $2 AND fo.deleted_at IS NULL
-    `, [req.params.id, actor.orgId]);
+      WHERE fo.id = $1 ${orgCond} AND fo.deleted_at IS NULL
+    `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
     if (doc.created_by !== actor.userId && doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
