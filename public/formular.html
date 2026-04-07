@@ -187,6 +187,8 @@
        CENTRALIZARE — Section 1 (list) adăugată deasupra formularului
        ═══════════════════════════════════════════════════════ */
     .back-bar{max-width:1020px;margin:10px auto 0;padding:0 16px}
+    #val-err-bar{display:none;max-width:1020px;margin:8px auto 0;padding:0 16px}
+    #val-err-bar .val-err-inner{background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090;padding:9px 14px;border-radius:9px;font-size:.83rem}
     .lst-wrap{max-width:1020px;margin:0 auto;padding:14px 16px 0}
     .lst-tabs-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
     .lst-tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:10px;padding:3px;border:1px solid var(--app-line)}
@@ -340,6 +342,7 @@
   <span id="form-type-title" style="font-size:.88rem;font-weight:700;color:var(--app-sub)"></span>
   <span id="form-save-badge" style="font-size:.74rem;color:var(--app-muted)"></span>
 </div>
+<div id="val-err-bar"><div class="val-err-inner" id="val-err-msg"></div></div>
 
 <!-- tabs ascunse — sw() le folosește intern pt show/hide; nu sunt vizibile utilizatorului -->
 <div class="tabs-wrap" style="display:none" aria-hidden="true">
@@ -1590,8 +1593,134 @@ async function uploadCaptura(ft){
   }catch(_){}
 }
 
+// ── Validare câmpuri obligatorii înainte de P2 ───────────────────────────────
+function _vf(id){return(document.getElementById(id)?.value||'').trim();}
+function _vcb(id){return!!document.getElementById(id)?.checked;}
+
+function _markInvalidEl(el){
+  if(!el)return;
+  el.classList.add('err');
+  const fix=()=>{el.classList.remove('err');el.removeEventListener('input',fix);el.removeEventListener('change',fix);};
+  el.addEventListener('input',fix);
+  el.addEventListener('change',fix);
+}
+function _markInvalid(ids){ids.forEach(id=>_markInvalidEl(document.getElementById(id)));}
+
+function _showValErr(msg){
+  const bar=document.getElementById('val-err-bar');
+  const msgEl=document.getElementById('val-err-msg');
+  if(bar)bar.style.display='';
+  if(msgEl)msgEl.textContent=msg;
+}
+function _clearValErr(){
+  const bar=document.getElementById('val-err-bar');
+  if(bar)bar.style.display='none';
+}
+
+function _validateDf(){
+  const errs=[];
+  const req=(id,label)=>{if(!_vf(id)){errs.push({id,label});return false;}return true;};
+
+  req('n-subtitlu','Subtitlu');
+  req('n-nrUnic','Număr unic de înregistrare');
+  req('n-data','Data');
+  req('n-den','Instituția publică');
+  req('n-cif','CIF instituție');
+  req('n-comp','Compartiment (Pct. 1)');
+  req('n-scurt','Descriere scurtă (Pct. 2)');
+  req('n-lung','Descriere largă (Pct. 3)');
+
+  // Pct. 4 — obligatoriu una din cele două bife
+  const ckStab=_vcb('n-ck-stab'), ckRam=_vcb('n-ck-ramane');
+  if(!ckStab&&!ckRam){
+    errs.push({id:'n-ck-stab',label:'Pct. 4: bifați una din opțiunile de valoare angajament legal'});
+  } else if(ckStab){
+    // Tabelul trebuie să aibă cel puțin un rând, cu toate celulele text completate
+    const rows=[...document.querySelectorAll('#n-vtbody tr')];
+    if(!rows.length){
+      errs.push({id:null,label:'Pct. 4: adăugați cel puțin un rând în tabel'});
+    } else {
+      let tblErr=false;
+      rows.forEach((tr,i)=>{
+        ['element_fd','program','codSSI','param_fd'].forEach(f=>{
+          const inp=tr.querySelector(`[data-f="${f}"]`);
+          if(inp&&!inp.value.trim()){
+            _markInvalidEl(inp);
+            if(!tblErr){errs.push({id:null,label:`Pct. 4: completați toate celulele din tabel (rândul ${i+1})`});tblErr=true;}
+          }
+        });
+      });
+    }
+  } else if(ckRam){
+    const suma=parseFloat(document.getElementById('n-ramana')?.value)||0;
+    if(suma<=0) errs.push({id:'n-ramana',label:'Pct. 4: completați suma (valoare > 0)'});
+  }
+
+  // Pct. 5 — obligatoriu una din cele două bife
+  const ckCu=_vcb('n-ck-cuang'), ckFara=_vcb('n-ck-faraang');
+  if(!ckCu&&!ckFara){
+    errs.push({id:'n-ck-cuang',label:'Pct. 5: bifați una din opțiunile de angajamente'});
+  } else if(ckCu){
+    const ckSting=_vcb('n-ck-sting'), ckFaraPlati=_vcb('n-ck-faraplati'), ckCuPlati=_vcb('n-ck-cuplati');
+    if(!ckSting&&!ckFaraPlati&&!ckCuPlati){
+      errs.push({id:'n-ck-sting',label:'Pct. 5: bifați una din sub-opțiunile angajamentelor curente'});
+    } else if(ckCuPlati){
+      const rows=[...document.querySelectorAll('#n-ptbody tr')];
+      const hasVal=rows.some(tr=>[...tr.querySelectorAll('input[type=number]')].some(i=>(parseFloat(i.value)||0)>0));
+      if(!hasVal) errs.push({id:null,label:'Pct. 5: completați cel puțin un rând în tabelul de plăți'});
+    }
+  }
+
+  return errs;
+}
+
+function _validateOrd(){
+  const errs=[];
+  const req=(id,label)=>{if(!_vf(id)){errs.push({id,label});return false;}return true;};
+
+  req('o-nr','Număr ORD');
+  req('o-nrUnic','Numărul DF asociat (completați sau selectați din lista DF-uri aprobate)');
+  req('o-den','Instituția publică (auto-fill din DF)');
+  req('o-cif','CIF instituție (auto-fill din DF)');
+
+  // Coloana 4 (suma_ordonantata_plata) — cel puțin un rând > 0
+  const hasSuma=[...document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]')].some(i=>(parseFloat(i.value)||0)>0);
+  if(!hasSuma) errs.push({id:null,label:'Coloana 4 (Suma ordonanțată la plată): cel puțin un rând completat cu valoare > 0'});
+
+  req('o-benef','Beneficiar');
+  req('o-docsj','Documente justificative');
+  req('o-cifb','CIF beneficiar');
+  req('o-iban','IBAN beneficiar');
+  req('o-banca','Bancă beneficiar');
+  req('o-inf1','Informații privind plata');
+
+  return errs;
+}
+
+function _scrollToFirstErr(errs){
+  for(const e of errs){
+    if(!e.id)continue;
+    const el=document.getElementById(e.id);
+    if(el){el.scrollIntoView({behavior:'smooth',block:'center'});return;}
+  }
+  // fallback — scroll la primul element cu clasa err
+  const firstErr=document.querySelector('#section-form .err');
+  if(firstErr)firstErr.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
 // ── Submit la P2 ─────────────────────────────────────────────────────────────
 async function showP2Modal(ft){
+  // VALIDARE SINCRONĂ — înainte de orice altceva
+  _clearValErr();
+  const valErrs = ft==='notafd' ? _validateDf() : _validateOrd();
+  if(valErrs.length){
+    const fieldIds = valErrs.map(e=>e.id).filter(Boolean);
+    _markInvalid(fieldIds);
+    _showValErr('Completați câmpurile marcate înainte de a trimite la P2.');
+    _scrollToFirstErr(valErrs);
+    return;
+  }
+
   // Auto-save înainte de deschiderea modalului (nu mai e nevoie de save manual prealabil)
   if(!ST.docId[ft]){
     setS('Se salvează documentul...','info');
@@ -1911,6 +2040,7 @@ let _lstState={type:'df',page:1,limit:20};
 let _lstDebTimer=null;
 
 function showListSection(){
+  _clearValErr();
   document.getElementById('section-list').style.display='';
   document.getElementById('section-form').style.display='none';
   // Curăță URL params la revenire în centralizare
@@ -1918,6 +2048,7 @@ function showListSection(){
   loadList();
 }
 function showFormSection(ft){
+  _clearValErr();
   document.getElementById('section-list').style.display='none';
   document.getElementById('section-form').style.display='';
   // Curăță badge-ul de salvare la deschiderea unui formular nou
