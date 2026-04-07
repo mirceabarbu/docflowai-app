@@ -792,38 +792,25 @@ router.get('/api/formulare/utilizatori-org', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CENTRALIZARE — GET /api/formulare/list
-// ─────────────────────────────────────────────────────────────────────────────
-// Parametri query: tip=df|ord, page=1, limit=20, status=all|draft|...,
-//   dateFrom=YYYY-MM-DD, dateTo=YYYY-MM-DD, compartiment=, initiator=
-// Vizibilitate: user → propriile + P2; org_admin → tot org; admin → tot
-
-router.get('/api/formulare/list', async (req, res) => {
+// ── GET /api/formulare/list — centralizare DF + ORD ──────────────────────────
+router.get('/formulare/list', async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-
-  const tip  = req.query.tip === 'ord' ? 'ord' : 'df';
-  const page = Math.max(1, parseInt(req.query.page)  || 1);
-  const lim  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-  const status     = req.query.status     || 'all';
-  const dateFrom   = req.query.dateFrom   || null;
-  const dateTo     = req.query.dateTo     || null;
-  const compartiment = req.query.compartiment || null;
-  const initiator    = req.query.initiator    || null;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
 
   const isAdmin    = actor.role === 'admin';
   const isOrgAdmin = actor.role === 'org_admin';
 
-  // Aliasuri status: noile nume UI → valorile din DB
-  const STATUS_ALIAS = { transmis_p2: 'pending_p2', completat: 'completed' };
+  const { type = 'df', status, from, to, comp, init, page = '1', limit = '20' } = req.query;
+  const lim  = Math.min(parseInt(limit) || 20, 100);
+  const pg   = Math.max(parseInt(page)  || 1,  1);
 
   try {
-    const params = [];
-    const conds  = [];
+    if (type === 'df') {
+      // ── Documente de Fundamentare ────────────────────────────────────────
+      const params = [];
+      const conds  = ['fd.deleted_at IS NULL'];
 
-    if (tip === 'df') {
-      conds.push('fd.deleted_at IS NULL');
       if (!isAdmin) {
         conds.push(`fd.org_id=$${params.push(actor.orgId)}`);
         if (!isOrgAdmin) {
@@ -832,169 +819,173 @@ router.get('/api/formulare/list', async (req, res) => {
           conds.push(`(fd.created_by=$${u1} OR fd.assigned_to=$${u2})`);
         }
       }
-      if (status !== 'all') {
-        const dbStatus = STATUS_ALIAS[status] || status;
-        conds.push(`fd.status=$${params.push(dbStatus)}`);
-      }
-      if (dateFrom)     conds.push(`fd.created_at >= $${params.push(dateFrom)}`);
-      if (dateTo)       conds.push(`fd.created_at < ($${params.push(dateTo)}::date + interval '1 day')`);
-      if (compartiment) conds.push(`fd.compartiment_specialitate=$${params.push(compartiment)}`);
-      if (initiator) {
-        const pct = `%${initiator}%`;
-        const i1 = params.push(pct), i2 = params.push(pct);
-        conds.push(`(p1.email ILIKE $${i1} OR p1.nume ILIKE $${i2})`);
-      }
-      const limIdx = params.push(lim);
-      const offIdx = params.push((page - 1) * lim);
-      const where  = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
-      const { rows } = await pool.query(`
+      if (status && status !== 'all') {
+        if (status === 'aprobat') {
+          conds.push(`fd.status='completed' AND f.data->>'status'='completed' AND fd.flow_id IS NOT NULL`);
+        } else if (status === 'respins') {
+          conds.push(`fd.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
+        } else {
+          conds.push(`fd.status=$${params.push(status)}`);
+        }
+      }
+      if (from) conds.push(`fd.created_at >= $${params.push(from)}`);
+      if (to)   conds.push(`fd.created_at <  $${params.push(to + 'T23:59:59')}`);
+      if (comp) conds.push(`fd.compartiment_specialitate=$${params.push(comp)}`);
+      if (init) {
+        const like = `%${init}%`;
+        conds.push(`(u1.email ILIKE $${params.push(like)} OR u1.nume ILIKE $${params.push(like)})`);
+      }
+
+      const where = `WHERE ${conds.join(' AND ')}`;
+      const limIdx = params.push(lim);
+      const offIdx = params.push((pg - 1) * lim);
+
+      const sql = `
         SELECT
-          fd.id, 'df' AS tip, fd.version, fd.status,
-          fd.nr_unic_inreg   AS nr_document,
-          fd.subtitlu_df     AS titlu,
-          fd.compartiment_specialitate AS compartiment,
-          fd.created_at, fd.updated_at, fd.flow_id,
-          fd.created_by,  p1.nume AS initiator_nume, p1.email AS initiator_email,
-          fd.assigned_to, p2.nume AS p2_nume,        p2.email AS p2_email,
-          CASE WHEN fd.flow_id IS NOT NULL
-                AND f.data->>'status' = 'completed'           THEN true  ELSE false END AS aprobat,
-          CASE WHEN fd.flow_id IS NOT NULL
-                AND f.data->>'status' IN ('refused','rejected') THEN true ELSE false END AS respins,
-          COUNT(*) OVER() AS total_count
+          fd.id, fd.status, fd.created_at, fd.updated_at,
+          fd.nr_unic_inreg AS nr,
+          fd.subtitlu_df AS titlu,
+          fd.created_by,
+          COALESCE(u1.nume, u1.email) AS initiator,
+          COALESCE(u2.nume, u2.email) AS p2,
+          (fd.created_by = $${params.push(actor.userId)}) AS "isP1",
+          COUNT(*) OVER() AS total
         FROM formulare_df fd
-        JOIN  users p1 ON p1.id = fd.created_by
-        LEFT JOIN users p2 ON p2.id = fd.assigned_to
-        LEFT JOIN flows  f  ON f.id  = fd.flow_id
+        LEFT JOIN users u1 ON u1.id = fd.created_by
+        LEFT JOIN users u2 ON u2.id = fd.assigned_to
+        LEFT JOIN flows f  ON f.id::text = fd.flow_id
         ${where}
         ORDER BY fd.updated_at DESC
-        LIMIT $${limIdx} OFFSET $${offIdx}
-      `, params);
+        LIMIT $${limIdx} OFFSET $${offIdx}`;
 
-      const total = rows.length ? parseInt(rows[0].total_count) : 0;
-      return res.json({
-        ok: true,
-        documents: rows.map(({ total_count, ...r }) => r),
-        total, page, limit: lim,
-      });
-    }
+      const { rows } = await pool.query(sql, params);
+      const total = rows.length ? parseInt(rows[0].total) : 0;
+      res.json({ ok: true, rows: rows.map(r => { const { total: _, ...rest } = r; return rest; }), total });
 
-    // ── ORD ──────────────────────────────────────────────────────────────────
-    conds.push('fo.deleted_at IS NULL');
-    if (!isAdmin) {
-      conds.push(`fo.org_id=$${params.push(actor.orgId)}`);
-      if (!isOrgAdmin) {
-        const u1 = params.push(actor.userId);
-        const u2 = params.push(actor.userId);
-        conds.push(`(fo.created_by=$${u1} OR fo.assigned_to=$${u2})`);
+    } else {
+      // ── Ordonanțări de Plată ─────────────────────────────────────────────
+      const params = [];
+      const conds  = ['fo.deleted_at IS NULL'];
+
+      if (!isAdmin) {
+        conds.push(`fo.org_id=$${params.push(actor.orgId)}`);
+        if (!isOrgAdmin) {
+          const u1 = params.push(actor.userId);
+          const u2 = params.push(actor.userId);
+          conds.push(`(fo.created_by=$${u1} OR fo.assigned_to=$${u2})`);
+        }
       }
-    }
-    if (status !== 'all') {
-      const dbStatus = STATUS_ALIAS[status] || status;
-      conds.push(`fo.status=$${params.push(dbStatus)}`);
-    }
-    if (dateFrom)     conds.push(`fo.created_at >= $${params.push(dateFrom)}`);
-    if (dateTo)       conds.push(`fo.created_at < ($${params.push(dateTo)}::date + interval '1 day')`);
-    if (compartiment) conds.push(`fd.compartiment_specialitate=$${params.push(compartiment)}`);
-    if (initiator) {
-      const pct = `%${initiator}%`;
-      const i1 = params.push(pct), i2 = params.push(pct);
-      conds.push(`(p1.email ILIKE $${i1} OR p1.nume ILIKE $${i2})`);
-    }
-    const limIdx = params.push(lim);
-    const offIdx = params.push((page - 1) * lim);
-    const where  = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
-    const { rows } = await pool.query(`
-      SELECT
-        fo.id, 'ord' AS tip, fo.version, fo.status,
-        fo.nr_ordonant_pl  AS nr_document,
-        fo.beneficiar      AS titlu,
-        fd.compartiment_specialitate AS compartiment,
-        fo.created_at, fo.updated_at, fo.flow_id, fo.df_id,
-        fo.created_by,  p1.nume AS initiator_nume, p1.email AS initiator_email,
-        fo.assigned_to, p2.nume AS p2_nume,        p2.email AS p2_email,
-        fd.nr_unic_inreg AS df_nr,
-        CASE WHEN fo.flow_id IS NOT NULL
-              AND f.data->>'status' = 'completed'             THEN true  ELSE false END AS aprobat,
-        CASE WHEN fo.flow_id IS NOT NULL
-              AND f.data->>'status' IN ('refused','rejected') THEN true  ELSE false END AS respins,
-        COUNT(*) OVER() AS total_count
-      FROM formulare_ord fo
-      JOIN  users p1 ON p1.id = fo.created_by
-      LEFT JOIN users p2 ON p2.id = fo.assigned_to
-      LEFT JOIN formulare_df fd ON fd.id = fo.df_id
-      LEFT JOIN flows        f  ON f.id  = fo.flow_id
-      ${where}
-      ORDER BY fo.updated_at DESC
-      LIMIT $${limIdx} OFFSET $${offIdx}
-    `, params);
+      if (status && status !== 'all') {
+        if (status === 'aprobat') {
+          conds.push(`fo.status='completed' AND f.data->>'status'='completed' AND fo.flow_id IS NOT NULL`);
+        } else if (status === 'respins') {
+          conds.push(`fo.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
+        } else {
+          conds.push(`fo.status=$${params.push(status)}`);
+        }
+      }
+      if (from) conds.push(`fo.created_at >= $${params.push(from)}`);
+      if (to)   conds.push(`fo.created_at <  $${params.push(to + 'T23:59:59')}`);
+      // formulare_ord nu are compartiment_specialitate — filtru ignorat pentru ORD
+      if (init) {
+        const like = `%${init}%`;
+        conds.push(`(u1.email ILIKE $${params.push(like)} OR u1.nume ILIKE $${params.push(like)})`);
+      }
 
-    const total = rows.length ? parseInt(rows[0].total_count) : 0;
-    res.json({
-      ok: true,
-      documents: rows.map(({ total_count, ...r }) => r),
-      total, page, limit: lim,
-    });
+      const where = `WHERE ${conds.join(' AND ')}`;
+      const limIdx = params.push(lim);
+      const offIdx = params.push((pg - 1) * lim);
 
+      const sql = `
+        SELECT
+          fo.id, fo.status, fo.created_at, fo.updated_at,
+          fo.nr_ordonant_pl AS nr,
+          fo.beneficiar AS titlu,
+          fo.created_by,
+          COALESCE(u1.nume, u1.email) AS initiator,
+          COALESCE(u2.nume, u2.email) AS p2,
+          (fo.created_by = $${params.push(actor.userId)}) AS "isP1",
+          COUNT(*) OVER() AS total
+        FROM formulare_ord fo
+        LEFT JOIN users u1 ON u1.id = fo.created_by
+        LEFT JOIN users u2 ON u2.id = fo.assigned_to
+        LEFT JOIN flows f  ON f.id::text = fo.flow_id
+        ${where}
+        ORDER BY fo.updated_at DESC
+        LIMIT $${limIdx} OFFSET $${offIdx}`;
+
+      const { rows } = await pool.query(sql, params);
+      const total = rows.length ? parseInt(rows[0].total) : 0;
+      res.json({ ok: true, rows: rows.map(r => { const { total: _, ...rest } = r; return rest; }), total });
+    }
   } catch (e) {
-    logger.error({ err: e }, 'formulare list error');
+    logger.error({ err: e }, 'formulare/list error');
     res.status(500).json({ error: 'server_error' });
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ANULARE DF / ORD (P1 sau admin)
-// ─────────────────────────────────────────────────────────────────────────────
-
-router.post('/api/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
+// ── POST /api/formulare-df/:id/anuleaza ───────────────────────────────────────
+router.post('/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  const { id } = req.params;
   try {
     const { rows } = await pool.query(
-      'SELECT created_by, status FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
+      `SELECT created_by, org_id, status FROM formulare_df WHERE id=$1 AND deleted_at IS NULL`,
+      [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    if (rows[0].created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
+    const doc = rows[0];
+    const isAdmin = actor.role === 'admin';
+    const isOrgAdmin = actor.role === 'org_admin';
+    if (!isAdmin && doc.org_id !== actor.orgId) return res.status(403).json({ error: 'forbidden' });
+    if (!isAdmin && !isOrgAdmin && doc.created_by !== actor.userId)
       return res.status(403).json({ error: 'forbidden' });
-    if (['aprobat', 'anulat'].includes(rows[0].status))
-      return res.status(409).json({ error: 'cannot_cancel', status: rows[0].status });
+    if (!['draft','pending_p2'].includes(doc.status))
+      return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft sau transmis_p2 pot fi anulate.' });
 
     await pool.query(
-      `UPDATE formulare_df SET status='anulat', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
-      [req.params.id, actor.orgId]
+      `UPDATE formulare_df SET status='anulat', updated_at=NOW() WHERE id=$1`,
+      [id]
     );
-    logger.info({ id: req.params.id, actor: actor.email }, 'formulare-df anulat');
     res.json({ ok: true });
   } catch (e) {
-    logger.error({ err: e }, 'formulare-df anuleaza error');
+    logger.error({ err: e }, 'anuleaza df error');
     res.status(500).json({ error: 'server_error' });
   }
 });
 
-router.post('/api/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
+// ── POST /api/formulare-ord/:id/anuleaza ──────────────────────────────────────
+router.post('/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  const { id } = req.params;
   try {
     const { rows } = await pool.query(
-      'SELECT created_by, status FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
+      `SELECT created_by, org_id, status FROM formulare_ord WHERE id=$1 AND deleted_at IS NULL`,
+      [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    if (rows[0].created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
+    const doc = rows[0];
+    const isAdmin = actor.role === 'admin';
+    const isOrgAdmin = actor.role === 'org_admin';
+    if (!isAdmin && doc.org_id !== actor.orgId) return res.status(403).json({ error: 'forbidden' });
+    if (!isAdmin && !isOrgAdmin && doc.created_by !== actor.userId)
       return res.status(403).json({ error: 'forbidden' });
-    if (['aprobat', 'anulat'].includes(rows[0].status))
-      return res.status(409).json({ error: 'cannot_cancel', status: rows[0].status });
+    if (!['draft','pending_p2'].includes(doc.status))
+      return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft sau transmis_p2 pot fi anulate.' });
 
     await pool.query(
-      `UPDATE formulare_ord SET status='anulat', updated_at=NOW() WHERE id=$1 AND org_id=$2`,
-      [req.params.id, actor.orgId]
+      `UPDATE formulare_ord SET status='anulat', updated_at=NOW() WHERE id=$1`,
+      [id]
     );
-    logger.info({ id: req.params.id, actor: actor.email }, 'formulare-ord anulat');
     res.json({ ok: true });
   } catch (e) {
-    logger.error({ err: e }, 'formulare-ord anuleaza error');
+    logger.error({ err: e }, 'anuleaza ord error');
     res.status(500).json({ error: 'server_error' });
   }
 });

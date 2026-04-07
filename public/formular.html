@@ -183,24 +183,16 @@
     /* ── P2 field highlight ── */
     .p2-field{border-color:#1ec8ae !important;background:#f0fdf9 !important}
 
-    /* ═══════════════════════════════════════════════════════════════
-       CENTRALIZARE — Section 1 (list) + Section 2 (form) navigation
-       ═══════════════════════════════════════════════════════════════ */
-
-    /* Back bar */
+    /* ═══════════════════════════════════════════════════════
+       CENTRALIZARE — Section 1 (list) adăugată deasupra formularului
+       ═══════════════════════════════════════════════════════ */
     .back-bar{max-width:1020px;margin:10px auto 0;padding:0 16px}
-
-    /* List wrapper */
-    .lst-wrap{max-width:1020px;margin:0 auto;padding:14px 16px 60px}
-
-    /* List header: tabs + new button */
+    .lst-wrap{max-width:1020px;margin:0 auto;padding:14px 16px 0}
     .lst-tabs-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
     .lst-tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:10px;padding:3px;border:1px solid var(--app-line)}
     .lst-tab{padding:8px 18px;border-radius:7px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s;font-family:inherit}
     .lst-tab:hover{color:var(--app-sub)}
     .lst-tab.active{background:linear-gradient(135deg,var(--app-v),var(--app-t));color:#fff;box-shadow:0 3px 12px rgba(108,79,240,.3)}
-
-    /* Filters */
     .lst-filters{background:rgba(255,255,255,.03);border:1px solid var(--app-line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
     .lst-filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
     .flt-grp{display:flex;flex-direction:column;gap:4px;min-width:110px}
@@ -208,8 +200,6 @@
     .flt-sel,.flt-inp{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--app-text);font-size:.82rem;padding:6px 8px;outline:none;font-family:inherit;transition:.15s}
     .flt-sel:focus,.flt-inp:focus{border-color:rgba(108,79,240,.5)}
     .flt-inp[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
-
-    /* Table */
     .lst-table-wrap{background:rgba(255,255,255,.02);border:1px solid var(--app-line);border-radius:10px;overflow:hidden;margin-bottom:10px;overflow-x:auto}
     .lst-table{width:100%;border-collapse:collapse;font-size:.82rem}
     .lst-table th{padding:10px 12px;text-align:left;font-size:.71rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--app-muted);border-bottom:1px solid var(--app-line);white-space:nowrap;background:rgba(255,255,255,.02)}
@@ -220,8 +210,6 @@
     .lst-sub{font-size:.73rem;color:var(--app-muted);margin-top:2px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .lst-user{font-size:.8rem;color:var(--app-sub)}
     .lst-date{font-size:.77rem;color:var(--app-muted);white-space:nowrap}
-
-    /* Status badges */
     .stbadge{display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:999px;font-size:.7rem;font-weight:700;white-space:nowrap}
     .stbadge.st-draft{background:rgba(150,150,150,.14);color:#aaa;border:1px solid rgba(150,150,150,.2)}
     .stbadge.st-transmis_p2,.stbadge.st-pending_p2{background:rgba(255,165,30,.1);color:#ffaa44;border:1px solid rgba(255,165,30,.25)}
@@ -231,25 +219,18 @@
     .stbadge.st-aprobat{background:rgba(50,200,80,.1);color:#66dd88;border:1px solid rgba(50,200,80,.2)}
     .stbadge.st-respins{background:rgba(255,60,60,.1);color:#ff8888;border:1px solid rgba(255,60,60,.22)}
     .stbadge.st-anulat{background:rgba(80,80,80,.15);color:#888;border:1px solid rgba(80,80,80,.2)}
-
-    /* Pagination */
     .lst-pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:6px 0}
     .lst-page-info{font-size:.82rem;color:var(--app-muted);min-width:160px;text-align:center}
-
-    /* Empty / Loading */
     .lst-empty{text-align:center;padding:36px 16px;color:var(--app-muted);font-size:.84rem}
-
-    /* Table action buttons */
     .tbl-acts{display:inline-flex;gap:4px;flex-wrap:wrap}
     .tbl-btn{padding:3px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--app-text);font-size:.72rem;cursor:pointer;transition:.15s;white-space:nowrap;font-family:inherit}
     .tbl-btn:hover{background:rgba(255,255,255,.09)}
     .tbl-btn.danger{border-color:rgba(255,80,80,.3);color:#ff9090}
     .tbl-btn.danger:hover{background:rgba(255,80,80,.1)}
-
     @media(max-width:720px){
       .lst-table th:nth-child(2),.lst-table td:nth-child(2),
       .lst-table th:nth-child(5),.lst-table td:nth-child(5){display:none}
-      .lst-sub{max-width:150px}
+      .lst-sub{max-width:140px}
     }
   </style>
 </head>
@@ -266,13 +247,11 @@
   <div id="hUserBar"></div>
 </header>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
+<!-- ════════════════════════════════════════════════════════════════════════
      SECTION 1 — CENTRALIZARE (afișată implicit)
-     ══════════════════════════════════════════════════════════════════════════ -->
+     ════════════════════════════════════════════════════════════════════════ -->
 <div id="section-list">
 <div class="lst-wrap">
-
-  <!-- Tabs + buton nou -->
   <div class="lst-tabs-hdr">
     <div class="lst-tabs">
       <button class="lst-tab active" id="ltab-df"  onclick="switchListTab('df')">📋 Documente de Fundamentare</button>
@@ -280,8 +259,6 @@
     </div>
     <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
   </div>
-
-  <!-- Filtre -->
   <div class="lst-filters">
     <div class="lst-filter-row">
       <div class="flt-grp">
@@ -308,9 +285,7 @@
       </div>
       <div class="flt-grp">
         <label class="flt-lbl">Compartiment</label>
-        <select id="flt-comp" class="flt-sel" onchange="loadList()">
-          <option value="">Toate</option>
-        </select>
+        <select id="flt-comp" class="flt-sel" onchange="loadList()"><option value="">Toate</option></select>
       </div>
       <div class="flt-grp" id="flt-init-grp" style="display:none">
         <label class="flt-lbl">Inițiator</label>
@@ -319,8 +294,6 @@
       <button class="btn" style="padding:6px 11px;font-size:.78rem;align-self:flex-end" onclick="resetFilters()">↺</button>
     </div>
   </div>
-
-  <!-- Tabel -->
   <div class="lst-table-wrap">
     <table class="lst-table">
       <thead>
@@ -339,20 +312,17 @@
     <div id="lst-empty"   class="lst-empty" style="display:none">Nu există documente care să corespundă filtrelor.</div>
     <div id="lst-loading" class="lst-empty">Se încarcă...</div>
   </div>
-
-  <!-- Paginare -->
   <div class="lst-pagination" id="lst-pagination" style="display:none">
     <button class="btn" id="lst-prev" onclick="changeLstPage(-1)">← Anterior</button>
     <span id="lst-page-info" class="lst-page-info"></span>
     <button class="btn" id="lst-next" onclick="changeLstPage(1)">Următor →</button>
   </div>
-
 </div><!-- /lst-wrap -->
 </div><!-- /section-list -->
 
-<!-- ══════════════════════════════════════════════════════════════════════════
-     SECTION 2 — FORMULAR (ascunsă implicit)
-     ══════════════════════════════════════════════════════════════════════════ -->
+<!-- ════════════════════════════════════════════════════════════════════════
+     SECTION 2 — FORMULAR (ascunsă implicit; logica existentă neatinsă)
+     ════════════════════════════════════════════════════════════════════════ -->
 <div id="section-form" style="display:none">
 
 <div class="back-bar">
@@ -796,6 +766,7 @@
 <script>
 const ST = {
   ordnt:{pdf:null,name:null}, notafd:{pdf:null,name:null}, user:null,
+  orgProfile:null,                    // cache org → re-fill la fiecare newDoc din Section 1
   docId:{ordnt:null,notafd:null},
   docStatus:{ordnt:null,notafd:null},
   docRole:{ordnt:null,notafd:null},  // 'p1'|'p2'|'view'
@@ -803,12 +774,40 @@ const ST = {
 };
 const imgs = {'o-cimg':null,'n-cimg':null};
 
+// ── _applyAutoFill — aplică date org+user în formular (apelat la init și după newDoc din list)
+// ft: 'ordnt'|'notafd' sau absent → ambele; resetDate: dacă true, suprascrie data chiar dacă e completată
+function _applyAutoFill(ft, resetDate){
+  const sf=(id,val)=>{const e=document.getElementById(id);if(e&&val!==undefined&&val!==null&&val!=='')e.value=val;};
+  const org=ST.orgProfile;
+  const today=new Date();
+  const d=`${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
+
+  if(!ft||ft==='ordnt'){
+    if(org?.name) sf('o-den',org.name);
+    if(org?.cif)  sf('o-cif',org.cif);
+    const od=document.getElementById('o-data');
+    if(od&&(resetDate||!od.value))od.value=d;
+    if(ST.user?.email) sf('ffe-ordnt',ST.user.email);
+  }
+  if(!ft||ft==='notafd'){
+    if(org?.name) sf('n-den',org.name);
+    if(org?.cif)  sf('n-cif',org.cif);
+    const nd=document.getElementById('n-data');
+    if(nd&&(resetDate||!nd.value))nd.value=d;
+    if(ST.user?.compartiment) sf('n-comp',ST.user.compartiment);
+    if(ST.user?.email) sf('ffe-notafd',ST.user.email);
+    if(org?._compList?.length){
+      const dl=document.getElementById('comp-list-notafd');
+      if(dl) dl.innerHTML=org._compList.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
+    }
+  }
+}
+
 (async()=>{
   try{
     const r=await fetch('/auth/me',{credentials:'include'});
     if(!r.ok){location.href='/login.html';return;}
     ST.user=await r.json();
-    ['ordnt','notafd'].forEach(t=>{const e=document.getElementById('ffe-'+t);if(e&&ST.user.email)e.value=ST.user.email;});
 
     // ── userBar identic cu semdoc-initiator ──────────────────────────────
     const bar=document.getElementById('hUserBar');
@@ -821,33 +820,23 @@ const imgs = {'o-cimg':null,'n-cimg':null};
     }
   }catch{location.href='/login.html';return;}
 
-  // ── Auto-fill instituție + CIF + compartimente din organizație ──────
-  const setF=(id,val)=>{const e=document.getElementById(id);if(e&&val)e.value=val;};
+  // ── Fetch profil org → stochează în ST.orgProfile pentru re-fill ulterior ──
   try{
     const orgR=await fetch('/api/org/profile',{credentials:'include'});
     if(orgR.ok){
       const {org}=await orgR.json();
       if(org){
-        if(org.name){ setF('o-den',org.name); setF('n-den',org.name); }
-        if(org.cif){  setF('o-cif',org.cif);  setF('n-cif',org.cif);  }
         const compList=org.compartimente_utilizatori&&org.compartimente_utilizatori.length
           ? org.compartimente_utilizatori
           : (org.compartimente||[]);
-        if(compList.length){
-          const dl=document.getElementById('comp-list-notafd');
-          if(dl) dl.innerHTML=compList
-            .map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`)
-            .join('');
-        }
+        ST.orgProfile={name:org.name,cif:org.cif,_compList:compList};
       }
     }
   }catch(e){/* non-fatal */}
-  // ── Auto-fill compartiment din profilul utilizatorului curent ──────
-  if(ST.user&&ST.user.compartiment) setF('n-comp',ST.user.compartiment);
 
-  const today=new Date();
-  const d=`${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
-  ['o-data','n-data'].forEach(id=>{const e=document.getElementById(id);if(e&&!e.value)e.value=d;});
+  // ── Aplică auto-fill în ambele formulare (condiție: câmpurile goale) ────
+  _applyAutoFill('ordnt');
+  _applyAutoFill('notafd');
   addOR(); addNV();
 })();
 
@@ -1719,22 +1708,20 @@ function showLinkFlowSection(ft){
     refreshDocs('notafd');
     renderActions('ordnt');
     renderActions('notafd');
-
-    // Inițializare section 1
-    _populateCompartimente();
+    // Afișează filtrul Inițiator doar pentru admin/org_admin
     if(ST.user.role==='admin'||ST.user.role==='org_admin'){
       const ig=document.getElementById('flt-init-grp');
       if(ig)ig.style.display='';
     }
-
-    // Auto-open din URL params (redirect din notificări)
-    const params=new URLSearchParams(location.search);
-    const formType=params.get('form_type'); // 'df' | 'ord'
-    const formId=params.get('form_id');
+    _populateCompartimente();
+    // Auto-open din URL params (redirect din notificări) → deschide Section 2
+    const urlParams=new URLSearchParams(location.search);
+    const formType=urlParams.get('form_type'); // 'df' | 'ord'
+    const formId=urlParams.get('form_id');
     if(formType&&formId){
       const ft=formType==='ord'?'ordnt':'notafd';
       showFormSection(ft);
-      setTimeout(()=>openDoc(ft,formId),300);
+      setTimeout(()=>openDoc(ft,formId),600);
     } else {
       showListSection();
     }
@@ -1754,9 +1741,10 @@ function resetF(ft){
   document.querySelectorAll(`#form-${ft} .err`).forEach(e=>e.classList.remove('err'));
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SECTION NAVIGATION
-// ══════════════════════════════════════════════════════════════════════════════
+// ── Centralizare: navigare secțiuni ──────────────────────────────────────────
+const _escH=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+let _lstState={type:'df',page:1,limit:20};
+let _lstDebTimer=null;
 
 function showListSection(){
   document.getElementById('section-list').style.display='';
@@ -1766,191 +1754,146 @@ function showListSection(){
 function showFormSection(ft){
   document.getElementById('section-list').style.display='none';
   document.getElementById('section-form').style.display='';
-  if(ft)sw(ft);
+  sw(ft||'ordnt');
 }
 function newDocFromList(){
-  const ft=_lstTip==='df'?'notafd':'ordnt';
+  const ft=_lstState.type==='ord'?'ordnt':'notafd';
   showFormSection(ft);
   newDoc(ft);
+  _applyAutoFill(ft,true);
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CENTRALIZARE — stare și funcții de list
-// ══════════════════════════════════════════════════════════════════════════════
-
-let _lstTip='df', _lstPage=1, _lstTotal=0, _lstLimit=20;
-
-function switchListTab(tip){
-  _lstTip=tip; _lstPage=1;
-  document.getElementById('ltab-df').classList.toggle('active',tip==='df');
-  document.getElementById('ltab-ord').classList.toggle('active',tip==='ord');
+function switchListTab(type){
+  _lstState.type=type;_lstState.page=1;
+  document.getElementById('ltab-df').classList.toggle('active',type==='df');
+  document.getElementById('ltab-ord').classList.toggle('active',type==='ord');
   loadList();
 }
-
 async function loadList(){
-  const tbody=document.getElementById('lst-tbody');
-  const emptyEl=document.getElementById('lst-empty');
-  const loadEl=document.getElementById('lst-loading');
-  const paginEl=document.getElementById('lst-pagination');
-  if(tbody)tbody.innerHTML='';
-  if(emptyEl)emptyEl.style.display='none';
-  if(loadEl){loadEl.style.display='';loadEl.textContent='Se încarcă...';}
-  if(paginEl)paginEl.style.display='none';
-
-  const status=document.getElementById('flt-status')?.value||'all';
-  const dateFrom=document.getElementById('flt-from')?.value||'';
-  const dateTo=document.getElementById('flt-to')?.value||'';
-  const compartiment=document.getElementById('flt-comp')?.value||'';
-  const initiator=document.getElementById('flt-init')?.value||'';
-
-  const qp=new URLSearchParams({tip:_lstTip,page:_lstPage,limit:_lstLimit,status});
-  if(dateFrom)qp.set('dateFrom',dateFrom);
-  if(dateTo)qp.set('dateTo',dateTo);
-  if(compartiment)qp.set('compartiment',compartiment);
-  if(initiator)qp.set('initiator',initiator);
-
+  const tb=document.getElementById('lst-tbody');
+  const em=document.getElementById('lst-empty');
+  const ld=document.getElementById('lst-loading');
+  const pg=document.getElementById('lst-pagination');
+  if(tb)tb.innerHTML='';
+  if(em)em.style.display='none';
+  if(ld)ld.style.display='';
+  if(pg)pg.style.display='none';
+  const p=[];
+  const status=(document.getElementById('flt-status')?.value)||'all';
+  const from=(document.getElementById('flt-from')?.value)||'';
+  const to=(document.getElementById('flt-to')?.value)||'';
+  const comp=(document.getElementById('flt-comp')?.value)||'';
+  const init=(document.getElementById('flt-init')?.value)||'';
+  p.push('type='+_lstState.type);
+  if(status&&status!=='all')p.push('status='+encodeURIComponent(status));
+  if(from)p.push('from='+encodeURIComponent(from));
+  if(to)p.push('to='+encodeURIComponent(to));
+  if(comp)p.push('comp='+encodeURIComponent(comp));
+  if(init)p.push('init='+encodeURIComponent(init));
+  p.push('page='+_lstState.page);
+  p.push('limit='+_lstState.limit);
   try{
-    const r=await fetch(`/api/formulare/list?${qp}`,{credentials:'include'});
+    const r=await fetch('/api/formulare/list?'+p.join('&'),{credentials:'include'});
+    if(ld)ld.style.display='none';
+    if(!r.ok){if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}return;}
     const j=await r.json();
-    if(!r.ok||!j.ok){
-      if(loadEl){loadEl.style.display='';loadEl.textContent='Eroare la încărcare.';}
-      return;
-    }
-    _lstTotal=j.total||0;
-    if(loadEl)loadEl.style.display='none';
-    _renderLstTable(j.documents||[]);
-    _renderLstPagin();
-  }catch(e){
-    if(loadEl){loadEl.style.display='';loadEl.textContent='Eroare rețea: '+e.message;}
-  }
+    const rows=j.rows||[];
+    const total=j.total||0;
+    if(!rows.length){if(em)em.style.display='';}
+    else{_renderLstTable(rows,_lstState.type);_renderLstPagin(total,_lstState.page,_lstState.limit);}
+  }catch(e){if(ld)ld.style.display='none';if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}}
 }
-
-const _eh=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-const _ST_UI={
-  draft:        {ico:'📝',lbl:'Draft',        cls:'st-draft'},
-  pending_p2:   {ico:'📤',lbl:'Transmis P2',  cls:'st-transmis_p2'},
-  transmis_p2:  {ico:'📤',lbl:'Transmis P2',  cls:'st-transmis_p2'},
-  completed:    {ico:'✅',lbl:'Completat',     cls:'st-completat'},
-  completat:    {ico:'✅',lbl:'Completat',     cls:'st-completat'},
-  generat_pdf:  {ico:'📄',lbl:'PDF generat',  cls:'st-generat_pdf'},
-  transmis_flux:{ico:'🔄',lbl:'Trimis flux',  cls:'st-transmis_flux'},
-  aprobat:      {ico:'🟢',lbl:'Aprobat',      cls:'st-aprobat'},
-  respins:      {ico:'❌',lbl:'Respins',       cls:'st-respins'},
-  anulat:       {ico:'🚫',lbl:'Anulat',       cls:'st-anulat'},
-};
-
-function _lstDisplayStatus(doc){
-  if(doc.aprobat)return'aprobat';
-  if(doc.respins)return'respins';
-  return doc.status||'draft';
+function _stBadge(status){
+  const map={draft:'📝 Draft',pending_p2:'📤 Transmis P2',completed:'✅ Completat',
+    generat_pdf:'📄 PDF generat',transmis_flux:'🔄 Trimis flux',
+    aprobat:'🟢 Aprobat',respins:'❌ Respins',anulat:'🚫 Anulat'};
+  const cls={draft:'stbadge-draft',pending_p2:'stbadge-transmis_p2',completed:'stbadge-completat',
+    generat_pdf:'stbadge-generat_pdf',transmis_flux:'stbadge-transmis_flux',
+    aprobat:'stbadge-aprobat',respins:'stbadge-respins',anulat:'stbadge-anulat'};
+  return`<span class="stbadge ${cls[status]||'stbadge-draft'}">${_escH(map[status]||status)}</span>`;
 }
-
-function _renderLstTable(docs){
-  const tbody=document.getElementById('lst-tbody');
-  const emptyEl=document.getElementById('lst-empty');
-  if(!tbody)return;
-  if(!docs.length){tbody.innerHTML='';if(emptyEl)emptyEl.style.display='';return;}
-
-  const canSeeInit=ST.user&&(ST.user.role==='admin'||ST.user.role==='org_admin');
-  const myId=ST.user?.userId;
-
-  tbody.innerHTML=docs.map(doc=>{
-    const ft=doc.tip==='df'?'notafd':'ordnt';
-    const nr=_eh(doc.nr_document)||(doc.tip==='df'?'DF fără număr':'ORD fără număr');
-    const titlu=_eh(doc.titlu)||'—';
-    const ds=_lstDisplayStatus(doc);
-    const ui=_ST_UI[ds]||{ico:'●',lbl:ds,cls:'st-draft'};
-    const initName=_eh(canSeeInit?(doc.initiator_nume||doc.initiator_email)||'—':'—');
-    const p2Name=_eh(doc.p2_nume||doc.p2_email)||'—';
-    const creat=doc.created_at?new Date(doc.created_at).toLocaleDateString('ro-RO'):'—';
-    const upd=doc.updated_at?new Date(doc.updated_at).toLocaleDateString('ro-RO'):'—';
-    const canCancel=doc.created_by===myId&&!['aprobat','anulat'].includes(ds);
-
-    return`<tr onclick="openDocFromList('${ft}','${_eh(doc.id)}')">
-      <td>
-        <div class="lst-nr">${nr}</div>
-        <div class="lst-sub" title="${titlu}">${titlu}</div>
+function _fmtDate(iso){
+  if(!iso)return '—';
+  try{const d=new Date(iso);return`${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;}
+  catch{return iso;}
+}
+function _renderLstTable(rows,type){
+  const tb=document.getElementById('lst-tbody');
+  if(!tb)return;
+  tb.innerHTML=rows.map(row=>{
+    const canCancel=row.status==='draft'||(row.status==='pending_p2'&&row.isP1);
+    const cancelBtn=canCancel
+      ?`<button class="btn" style="padding:3px 8px;font-size:.74rem;color:#c0392b" onclick="anuleazaDoc('${type}','${_escH(row.id)}')">🚫</button>`
+      :'';
+    const safeId=_escH(row.id);
+    const nr=_escH(row.nr||row.id.slice(0,8));
+    const titlu=_escH(row.titlu||'');
+    return`<tr>
+      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}</a>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>
-      <td class="lst-user">${initName}</td>
-      <td class="lst-user">${p2Name==='—'?`<span style="color:var(--app-line)">—</span>`:p2Name}</td>
-      <td><span class="stbadge ${ui.cls}">${ui.ico} ${ui.lbl}</span></td>
-      <td class="lst-date">${creat}</td>
-      <td class="lst-date">${upd}</td>
-      <td onclick="event.stopPropagation()">
-        <div class="tbl-acts">
-          <button class="tbl-btn" onclick="openDocFromList('${ft}','${_eh(doc.id)}')">✏️ Deschide</button>
-          ${canCancel?`<button class="tbl-btn danger" onclick="anuleazaDoc('${doc.tip}','${_eh(doc.id)}')">🚫 Anulează</button>`:''}
-        </div>
+      <td>${_escH(row.initiator||'—')}</td>
+      <td>${_escH(row.p2||'—')}</td>
+      <td>${_stBadge(row.status)}</td>
+      <td>${_fmtDate(row.created_at)}</td>
+      <td>${_fmtDate(row.updated_at)}</td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="btn primary" style="padding:3px 8px;font-size:.74rem" onclick="openDocFromList('${type}','${safeId}')">✏ Deschide</button>
+        ${cancelBtn}
       </td>
     </tr>`;
   }).join('');
 }
-
-function _renderLstPagin(){
-  const paginEl=document.getElementById('lst-pagination');
-  const infoEl=document.getElementById('lst-page-info');
-  const prevBtn=document.getElementById('lst-prev');
-  const nextBtn=document.getElementById('lst-next');
-  if(!paginEl)return;
-  const totalPg=Math.ceil(_lstTotal/_lstLimit)||1;
-  if(_lstTotal===0){paginEl.style.display='none';return;}
-  paginEl.style.display='';
-  if(infoEl)infoEl.textContent=`Pagina ${_lstPage} din ${totalPg} (${_lstTotal} documente)`;
-  if(prevBtn)prevBtn.disabled=_lstPage<=1;
-  if(nextBtn)nextBtn.disabled=_lstPage>=totalPg;
+function _renderLstPagin(total,page,limit){
+  const pg=document.getElementById('lst-pagination');
+  const info=document.getElementById('lst-page-info');
+  const prev=document.getElementById('lst-prev');
+  const next=document.getElementById('lst-next');
+  if(!pg)return;
+  const totalPages=Math.ceil(total/limit)||1;
+  if(totalPages<=1){pg.style.display='none';return;}
+  pg.style.display='flex';
+  if(info)info.textContent=`Pagina ${page} din ${totalPages} (${total} total)`;
+  if(prev)prev.disabled=page<=1;
+  if(next)next.disabled=page>=totalPages;
 }
-
 function changeLstPage(dir){
-  const totalPg=Math.ceil(_lstTotal/_lstLimit)||1;
-  _lstPage=Math.max(1,Math.min(totalPg,_lstPage+dir));
+  _lstState.page=Math.max(1,_lstState.page+dir);
   loadList();
 }
-
-function openDocFromList(ft,id){
+function openDocFromList(type,id){
+  const ft=type==='ord'?'ordnt':'notafd';
   showFormSection(ft);
-  openDoc(ft,id);
+  sw(ft);
+  setTimeout(()=>openDoc(ft,id),200);
 }
-
-async function anuleazaDoc(tip,id){
-  if(!confirm('Anulați acest document? Acțiunea nu poate fi anulată.'))return;
-  const ep=tip==='df'?`/api/formulare-df/${id}/anuleaza`:`/api/formulare-ord/${id}/anuleaza`;
+async function anuleazaDoc(type,id){
+  if(!confirm('Anulați acest document? Operațiunea nu poate fi inversată.'))return;
   try{
-    const r=await fetch(ep,{method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},body:'{}'});
+    const r=await fetch(`/api/formulare-${type}/${id}/anuleaza`,{
+      method:'POST',credentials:'include',
+      headers:{'X-CSRF-Token':getCsrf()},
+    });
     const j=await r.json();
     if(!r.ok||!j.ok){alert(j.error||'Eroare la anulare');return;}
     loadList();
   }catch(e){alert('Eroare: '+e.message);}
 }
-
-let _initDebTimer=null;
 function debouncedLoadList(){
-  clearTimeout(_initDebTimer);
-  _initDebTimer=setTimeout(()=>{_lstPage=1;loadList();},400);
+  clearTimeout(_lstDebTimer);
+  _lstDebTimer=setTimeout(()=>loadList(),400);
 }
-
 function resetFilters(){
-  const stEl=document.getElementById('flt-status');if(stEl)stEl.value='all';
-  const cEl=document.getElementById('flt-comp');if(cEl)cEl.value='';
+  const st=document.getElementById('flt-status');if(st)st.value='all';
+  const cp=document.getElementById('flt-comp');if(cp)cp.value='';
   ['flt-from','flt-to','flt-init'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  _lstPage=1;loadList();
+  _lstState.page=1;
+  loadList();
 }
-
-async function _populateCompartimente(){
-  try{
-    const r=await fetch('/api/org/profile',{credentials:'include'});
-    if(!r.ok)return;
-    const{org}=await r.json();
-    const list=(org?.compartimente_utilizatori?.length?org.compartimente_utilizatori:(org?.compartimente||[]));
-    const sel=document.getElementById('flt-comp');
-    if(sel&&list.length){
-      list.forEach(c=>{
-        const opt=document.createElement('option');
-        opt.value=c;opt.textContent=c;sel.appendChild(opt);
-      });
-    }
-  }catch(_){}
+function _populateCompartimente(){
+  const sel=document.getElementById('flt-comp');
+  if(!sel)return;
+  const list=ST.orgProfile?._compList||[];
+  if(!list.length)return;
+  sel.innerHTML='<option value="">Toate</option>'+list.map(c=>`<option value="${_escH(c)}">${_escH(c)}</option>`).join('');
 }
 </script>
 </body>
