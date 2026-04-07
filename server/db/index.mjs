@@ -966,6 +966,29 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_formulare_capturi_form ON formulare_capturi(form_type, form_id);
     `
+  },
+  {
+    id: '051_beneficiari',
+    sql: `
+      CREATE TABLE IF NOT EXISTS beneficiari (
+        id        SERIAL PRIMARY KEY,
+        org_id    INTEGER REFERENCES organizations(id),
+        denumire  TEXT NOT NULL,
+        cif       VARCHAR(20),
+        iban      VARCHAR(34),
+        banca     TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_beneficiari_org ON beneficiari(org_id);
+    `
+  },
+  {
+    id: '052_formulare_ord_compartiment',
+    sql: `
+      ALTER TABLE formulare_ord
+        ADD COLUMN IF NOT EXISTS compartiment_specialitate TEXT;
+    `
   }
 ];
 

@@ -61,7 +61,7 @@ const ORD_P1_FIELDS = [
   'cif','den_inst_pb','nr_ordonant_pl','data_ordont_pl',
   'nr_unic_inreg','beneficiar','documente_justificative',
   'iban_beneficiar','cif_beneficiar','banca_beneficiar',
-  'inf_pv_plata','inf_pv_plata1','rows',
+  'inf_pv_plata','inf_pv_plata1','rows','compartiment_specialitate',
 ];
 
 /** Câmpuri ORD P2 (actualizare rânduri cu receptii/plati/receptii_neplatite) */
@@ -526,6 +526,12 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
       allVals.push(extraVals[i]);
       pi++;
     }
+    // df_id poate fi actualizat explicit (include null pentru a șterge legătura)
+    if ('df_id' in (req.body || {})) {
+      allSets.push(`df_id=$${pi}`);
+      allVals.push(req.body.df_id || null);
+      pi++;
+    }
     allSets.push(`updated_at=NOW()`);
     allVals.push(req.params.id, actor.orgId);
 
@@ -792,8 +798,66 @@ router.get('/api/formulare/utilizatori-org', async (req, res) => {
   }
 });
 
+// ── GET /api/beneficiari — caută beneficiari din org ─────────────────────────
+router.get('/api/beneficiari', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  const q = (req.query.q || '').trim();
+  try {
+    const like = `%${q}%`;
+    const { rows } = await pool.query(
+      `SELECT id, denumire, cif, iban, banca
+       FROM beneficiari
+       WHERE org_id=$1 AND (denumire ILIKE $2 OR cif ILIKE $2 OR iban ILIKE $2)
+       ORDER BY updated_at DESC LIMIT 20`,
+      [actor.orgId, like]
+    );
+    res.json({ ok: true, beneficiari: rows });
+  } catch (e) {
+    logger.error({ err: e }, 'beneficiari search error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── POST /api/beneficiari — salvează sau actualizează beneficiar ──────────────
+router.post('/api/beneficiari', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  const { denumire, cif, iban, banca } = req.body || {};
+  if (!denumire) return res.status(400).json({ error: 'denumire_required' });
+  try {
+    // Dacă există deja cu același CIF în org, returnăm cel existent
+    if (cif) {
+      const { rows: existing } = await pool.query(
+        'SELECT * FROM beneficiari WHERE org_id=$1 AND cif=$2 LIMIT 1',
+        [actor.orgId, cif]
+      );
+      if (existing.length) {
+        // Actualizăm datele dacă s-au schimbat
+        await pool.query(
+          `UPDATE beneficiari SET denumire=$1, iban=$2, banca=$3, updated_at=NOW()
+           WHERE id=$4`,
+          [denumire, iban || existing[0].iban, banca || existing[0].banca, existing[0].id]
+        );
+        return res.json({ ok: true, id: existing[0].id, existing: true });
+      }
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO beneficiari (org_id, denumire, cif, iban, banca)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [actor.orgId, denumire, cif || null, iban || null, banca || null]
+    );
+    res.json({ ok: true, id: rows[0].id });
+  } catch (e) {
+    logger.error({ err: e }, 'beneficiari save error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // ── GET /api/formulare/list — centralizare DF + ORD ──────────────────────────
-router.get('/formulare/list', async (req, res) => {
+router.get('/api/formulare/list', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res);
   if (!actor) return;
@@ -927,7 +991,7 @@ router.get('/formulare/list', async (req, res) => {
 });
 
 // ── POST /api/formulare-df/:id/anuleaza ───────────────────────────────────────
-router.post('/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
+router.post('/api/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res);
   if (!actor) return;
@@ -959,7 +1023,7 @@ router.post('/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
 });
 
 // ── POST /api/formulare-ord/:id/anuleaza ──────────────────────────────────────
-router.post('/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
+router.post('/api/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res);
   if (!actor) return;

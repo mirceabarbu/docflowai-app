@@ -232,6 +232,16 @@
       .lst-table th:nth-child(5),.lst-table td:nth-child(5){display:none}
       .lst-sub{max-width:140px}
     }
+    /* ── Beneficiari + DF autocomplete ── */
+    .ac-wrap{position:relative}
+    .ac-drop{position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #888;border-top:none;z-index:60;max-height:150px;overflow-y:auto;box-shadow:0 4px 10px rgba(0,0,0,.22);display:none}
+    .ac-opt{padding:5px 8px;cursor:pointer;font-size:11px;border-bottom:1px solid #eee;color:#222;line-height:1.3}
+    .ac-opt:hover,.ac-opt:focus{background:#e8f0ff}
+    .ac-opt:last-child{border-bottom:none}
+    .ac-opt small{color:#666;font-size:10px}
+    /* ── Auto-save indicator ── */
+    .asave-ok{color:#1aaa6e;font-size:.73rem;font-weight:600}
+    .asave-pend{color:#f5a623;font-size:.73rem}
   </style>
 </head>
 <body>
@@ -373,10 +383,16 @@
 
   <div class="doc-hr"></div>
 
-  <!-- Numar unic + tabel -->
-  <div class="nubox" style="margin-bottom:0">
-    <label>Număr unic de înregistrare al documentului de fundamentare</label>
-    <input id="o-nrUnic" class="di" maxlength="20" style="max-width:200px"/>
+  <!-- Numar unic + selector DF aprobat -->
+  <div class="nubox" style="margin-bottom:0;flex-wrap:wrap;gap:6px;align-items:center">
+    <label style="white-space:normal">Număr unic de înregistrare al documentului de fundamentare</label>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <select id="o-df-sel" class="di" style="max-width:260px;font-size:11px" onchange="selectDfAprobat()">
+        <option value="">— selectare DF aprobat —</option>
+      </select>
+      <input id="o-nrUnic" class="di" maxlength="20" style="max-width:160px" placeholder="sau nr. manual..."/>
+      <input type="hidden" id="o-df-id"/>
+    </div>
   </div>
 
   <table class="doc-t">
@@ -423,9 +439,12 @@
 
   <div class="doc-hr"></div>
 
-  <!-- Beneficiar -->
+  <!-- Beneficiar cu autocomplete -->
   <div class="dl req">Beneficiar</div>
-  <textarea id="o-benef" class="dt" maxlength="150" rows="2"></textarea>
+  <div class="ac-wrap">
+    <textarea id="o-benef" class="dt" maxlength="150" rows="2" oninput="debouncedBenefSearch()" autocomplete="off"></textarea>
+    <div id="o-benef-drop" class="ac-drop"></div>
+  </div>
 
   <div class="dl req">Documente justificative <span style="font-weight:400;color:#888">(max 90 car.)</span></div>
   <input id="o-docsj" class="di" maxlength="90" style="margin-bottom:6px"/>
@@ -1266,8 +1285,8 @@ function _draftSchedule(ft) {
 function _draftAttach(ft) {
   const form = document.getElementById('form-' + ft);
   if (!form) return;
-  form.addEventListener('input', () => _draftSchedule(ft));
-  form.addEventListener('change', () => _draftSchedule(ft));
+  form.addEventListener('input', () => { _draftSchedule(ft); _scheduleAutoSaveDb(ft); });
+  form.addEventListener('change', () => { _draftSchedule(ft); _scheduleAutoSaveDb(ft); });
 }
 
 // Init — rulat după ce formularele sunt gata
@@ -1298,6 +1317,7 @@ function collectOrdDb(){return{
   nr_unic_inreg:g('o-nrUnic'),beneficiar:g('o-benef'),documente_justificative:g('o-docsj'),
   iban_beneficiar:g('o-iban'),cif_beneficiar:g('o-cifb'),banca_beneficiar:g('o-banca'),
   inf_pv_plata:g('o-inf1'),inf_pv_plata1:g('o-inf2'),rows:getOR(),
+  df_id:document.getElementById('o-df-id')?.value||null,
 };}
 function collectDfP1Db(){return{
   cif:g('n-cif'),den_inst_pb:g('n-den'),subtitlu_df:g('n-subtitlu'),
@@ -1385,12 +1405,11 @@ function renderActions(ft){
   const B=(cls,txt,fn)=>`<button class="btn ${cls}" onclick="${fn}">${txt}</button>`;
   let html='';
   if(!docId){
-    html=B('','💾 Salvează în DB',`saveDoc('${ft}')`)
+    html=B('teal','📨 Trimite la P2',`showP2Modal('${ft}')`)
       +B('primary','⚙ Generează PDF',`genPdf('${ft}')`)
       +B('','↺ Resetează',`resetF('${ft}')`);
   }else if(status==='draft'&&role==='p1'){
-    html=B('','💾 Salvează',`saveDoc('${ft}')`)
-      +B('teal','📨 Trimite la P2',`showP2Modal('${ft}')`)
+    html=B('teal','📨 Trimite la P2',`showP2Modal('${ft}')`)
       +B('','+ Nou',`newDoc('${ft}')`)
       +B('','↺ Câmpuri',`resetF('${ft}')`);
   }else if(status==='pending_p2'&&role==='p2'){
@@ -1518,8 +1537,12 @@ function newDoc(ft){
   lockAll(ft,false);setLockedBar(ft,'');
   // Golim câmpurile
   document.querySelectorAll(`#form-${ft} input:not([type=file]):not([type=hidden]),#form-${ft} textarea`).forEach(e=>{if(e.type==='checkbox')e.checked=false;else if(e.type==='number')e.value='0';else e.value='';});
-  if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';}
-  else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
+  if(ft==='ordnt'){
+    document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');
+    document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';
+    const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
+    const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
+  }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   ST[ft]={pdf:null,name:null};upTot();clrS();renderActions(ft);
   document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.remove('active'));
@@ -1575,7 +1598,13 @@ async function uploadCaptura(ft){
 
 // ── Submit la P2 ─────────────────────────────────────────────────────────────
 async function showP2Modal(ft){
-  if(!ST.docId[ft]){setS('Salvați documentul mai întâi.','err');return;}
+  // Auto-save înainte de deschiderea modalului (nu mai e nevoie de save manual prealabil)
+  if(!ST.docId[ft]){
+    setS('Se salvează documentul...','info');
+    await saveDoc(ft);
+    if(!ST.docId[ft]){setS('Nu s-a putut salva documentul.','err');return;}
+    clrS();
+  }
   ST.pendingFt=ft;ST.selectedP2Id=null;
   document.getElementById('modal-confirm').disabled=true;
   document.getElementById('modal-search').value='';
@@ -1613,8 +1642,9 @@ function selectP2(id){
 async function confirmP2(){
   if(!ST.selectedP2Id||!ST.pendingFt)return;
   const ft=ST.pendingFt;
-  // Salvăm mai întâi dacă e modificat
+  // Salvăm mai întâi + salvăm beneficiarul nou (dacă ORD)
   await saveDoc(ft);
+  if(ft==='ordnt')await _saveBeneficiarIfNew();
   closeModal();
   try{
     setS('Se trimite la P2...','info');
@@ -1714,6 +1744,7 @@ function showLinkFlowSection(ft){
       if(ig)ig.style.display='';
     }
     _populateCompartimente();
+    loadDfAprobate();
     // Auto-open din URL params (redirect din notificări) → deschide Section 2
     const urlParams=new URLSearchParams(location.search);
     const formType=urlParams.get('form_type'); // 'df' | 'ord'
@@ -1739,6 +1770,139 @@ function resetF(ft){
   document.getElementById('ff-'+ft).classList.remove('show');
   ST[ft]={pdf:null,name:null};clrS();upTot();
   document.querySelectorAll(`#form-${ft} .err`).forEach(e=>e.classList.remove('err'));
+}
+
+// ── Auto-save DB (debounce 800ms, silențios) ──────────────────────────────────
+const _autoSaveTimers={};
+async function _autoSaveDb(ft){
+  if(!ST.user)return;
+  // Dacă documentul e blocat (P1 asteaptă P2 sau completat) → nu auto-salvăm
+  const s=ST.docStatus[ft];
+  if(s==='pending_p2'||s==='completed'||s==='anulat')return;
+  const docId=ST.docId[ft];
+  const body=ft==='ordnt'?collectOrdDb():(ST.docRole[ft]==='p2'?collectDfP2Db():collectDfP1Db());
+  _draftShowBadge(ft,'⏳');
+  try{
+    const hdrs={'Content-Type':'application/json','X-CSRF-Token':getCsrf()};
+    let r,j;
+    if(!docId){
+      r=await fetch(ftApi(ft),{method:'POST',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
+      j=await r.json();
+      if(r.ok&&j.ok){ST.docId[ft]=j.document.id;ST.docStatus[ft]='draft';ST.docRole[ft]='p1';renderActions(ft);}
+    }else{
+      r=await fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
+      j=await r.json();
+      if(r.ok&&j.ok)ST.docStatus[ft]=j.document.status;
+    }
+    if(!r||!j||!r.ok)return;
+    const iid=ft==='ordnt'?'o-cimg':'n-cimg';
+    if(imgs[iid]&&ST.docId[ft])await uploadCaptura(ft);
+    _draftShowBadge(ft,'💾 '+new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}));
+  }catch(_){_draftShowBadge(ft,'⚠');}
+}
+function _scheduleAutoSaveDb(ft){
+  clearTimeout(_autoSaveTimers[ft]);
+  _autoSaveTimers[ft]=setTimeout(()=>_autoSaveDb(ft),800);
+}
+
+// ── DF Aprobate — dropdown pentru ORD ────────────────────────────────────────
+let _dfAprobate=[];
+async function loadDfAprobate(){
+  try{
+    const r=await fetch('/api/formulare-df/aprobate',{credentials:'include'});
+    const j=await r.json();
+    if(!r.ok||!j.ok)return;
+    _dfAprobate=j.documents||[];
+    const sel=document.getElementById('o-df-sel');
+    if(!sel)return;
+    sel.innerHTML='<option value="">— selectare DF aprobat —</option>'
+      +_dfAprobate.map(d=>{
+        const nr=d.nr_unic_inreg?`DF ${_escH(d.nr_unic_inreg)}`:'DF fără număr';
+        const sub=d.subtitlu_df?` — ${_escH(d.subtitlu_df.slice(0,50))}`:'';
+        return`<option value="${_escH(d.id)}">${nr}${sub}</option>`;
+      }).join('');
+  }catch(_){}
+}
+function selectDfAprobat(){
+  const sel=document.getElementById('o-df-sel');
+  const id=sel?.value||'';
+  const hiddenId=document.getElementById('o-df-id');
+  if(hiddenId)hiddenId.value=id;
+  if(!id){document.getElementById('o-nrUnic').value='';return;}
+  const df=_dfAprobate.find(d=>d.id===id);
+  if(!df)return;
+  const sv2=(eid,val)=>{const e=document.getElementById(eid);if(e&&val!=null)e.value=val;};
+  sv2('o-nrUnic',df.nr_unic_inreg);
+  sv2('o-cif',df.cif);
+  sv2('o-den',df.den_inst_pb);
+  // Pre-fill rânduri tabel din rows_ctrl (cod_angajament, indicator, program, cod_SSI)
+  const rows=(df.rows_ctrl||[]);
+  if(rows.length){
+    const tbody=document.getElementById('o-tbody');
+    tbody.innerHTML='';oI=0;
+    rows.forEach(row=>{
+      addOR();
+      const tr=tbody.querySelector('tr:last-child');
+      const set=(f,v)=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp&&v!=null)inp.value=v;};
+      set('cod_angajament',row.cod_angajament);
+      set('indicator_angajament',row.indicator_angajament);
+      set('program',row.program);
+      set('cod_SSI',row.cod_SSI);
+    });
+    upTot();
+  }
+}
+
+// ── Beneficiari autocomplete ──────────────────────────────────────────────────
+let _benefTimer=null;
+function debouncedBenefSearch(){
+  clearTimeout(_benefTimer);
+  _benefTimer=setTimeout(()=>_searchBenef(),400);
+}
+async function _searchBenef(){
+  const q=(document.getElementById('o-benef')?.value||'').trim();
+  const drop=document.getElementById('o-benef-drop');
+  if(!drop)return;
+  if(q.length<2){drop.style.display='none';return;}
+  try{
+    const r=await fetch('/api/beneficiari?q='+encodeURIComponent(q),{credentials:'include'});
+    const j=await r.json();
+    const list=j.beneficiari||[];
+    if(!list.length){drop.style.display='none';return;}
+    drop.innerHTML=list.map(b=>`<div class="ac-opt" tabindex="0"
+        onclick="selectBenef(${b.id},'${_escH(b.denumire)}','${_escH(b.cif||'')}','${_escH(b.iban||'')}','${_escH(b.banca||'')}')">
+        <strong>${_escH(b.denumire)}</strong><br>
+        <small>CIF: ${_escH(b.cif||'—')} · IBAN: ${_escH(b.iban||'—')}</small>
+      </div>`).join('');
+    drop.style.display='block';
+  }catch(_){drop.style.display='none';}
+}
+function selectBenef(id,den,cif,iban,banca){
+  const sv2=(eid,val)=>{const e=document.getElementById(eid);if(e)e.value=val;};
+  sv2('o-benef',den);sv2('o-cifb',cif);sv2('o-iban',iban);sv2('o-banca',banca);
+  const drop=document.getElementById('o-benef-drop');
+  if(drop)drop.style.display='none';
+}
+// Închide dropdown la click în afară
+document.addEventListener('click',e=>{
+  const drop=document.getElementById('o-benef-drop');
+  if(drop&&!drop.contains(e.target)&&e.target.id!=='o-benef')drop.style.display='none';
+});
+
+// ── Salvare automată beneficiar la Trimite P2 ─────────────────────────────────
+async function _saveBeneficiarIfNew(){
+  const den=(g('o-benef')||'').trim();
+  const cif=(g('o-cifb')||'').trim();
+  const iban=(g('o-iban')||'').trim();
+  const banca=(g('o-banca')||'').trim();
+  if(!den)return;
+  try{
+    await fetch('/api/beneficiari',{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      body:JSON.stringify({denumire:den,cif,iban,banca}),
+    });
+  }catch(_){}
 }
 
 // ── Centralizare: navigare secțiuni ──────────────────────────────────────────
