@@ -850,6 +850,118 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS cif          TEXT    DEFAULT NULL,
         ADD COLUMN IF NOT EXISTS compartimente TEXT[] NOT NULL DEFAULT '{}';
     `
+  },
+  {
+    id: '048_formulare_df',
+    sql: `
+      CREATE TABLE IF NOT EXISTS formulare_df (
+        id              UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id          INTEGER NOT NULL REFERENCES organizations(id),
+        version         INTEGER NOT NULL DEFAULT 1,
+        status          TEXT    NOT NULL DEFAULT 'draft',
+        created_by      INTEGER NOT NULL REFERENCES users(id),
+        assigned_to     INTEGER REFERENCES users(id),
+        flow_id         TEXT    DEFAULT NULL,
+
+        cif             TEXT,
+        den_inst_pb     TEXT,
+        subtitlu_df     TEXT,
+        nr_unic_inreg   TEXT,
+        revizuirea      TEXT,
+        data_revizuirii TEXT,
+
+        compartiment_specialitate   TEXT,
+        obiect_fd_reviz_scurt       TEXT,
+        obiect_fd_reviz_lung        TEXT,
+        ckbx_stab_tin_cont          TEXT,
+        ckbx_ramane_suma            TEXT,
+        ramane_suma                 TEXT,
+        rows_val                    JSONB NOT NULL DEFAULT '[]',
+        ckbx_fara_ang_emis_ancrt    TEXT,
+        ckbx_cu_ang_emis_ancrt      TEXT,
+        ckbx_sting_ang_in_ancrt     TEXT,
+        ckbx_fara_plati_ang_in_ancrt TEXT,
+        ckbx_cu_plati_ang_in_mmani  TEXT,
+        ckbx_ang_leg_emise_ct_an_urm TEXT,
+        rows_plati                  JSONB NOT NULL DEFAULT '[]',
+
+        ckbx_secta_inreg_ctrl_ang   TEXT,
+        ckbx_fara_inreg_ctrl_ang    TEXT,
+        sum_fara_inreg_ctrl_crdbug  TEXT,
+        ckbx_interzis_emit_ang      TEXT,
+        ckbx_interzis_intrucat      TEXT,
+        intrucat                    TEXT,
+        rows_ctrl                   JSONB NOT NULL DEFAULT '[]',
+
+        submitted_at  TIMESTAMPTZ,
+        completed_at  TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at    TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_org    ON formulare_df(org_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_p1     ON formulare_df(created_by);
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_p2     ON formulare_df(assigned_to) WHERE assigned_to IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_status ON formulare_df(org_id, status) WHERE deleted_at IS NULL;
+    `
+  },
+  {
+    id: '049_formulare_ord',
+    sql: `
+      CREATE TABLE IF NOT EXISTS formulare_ord (
+        id              UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id          INTEGER NOT NULL REFERENCES organizations(id),
+        version         INTEGER NOT NULL DEFAULT 1,
+        status          TEXT    NOT NULL DEFAULT 'draft',
+        created_by      INTEGER NOT NULL REFERENCES users(id),
+        assigned_to     INTEGER REFERENCES users(id),
+        df_id           UUID    REFERENCES formulare_df(id),
+        flow_id         TEXT    DEFAULT NULL,
+
+        cif             TEXT,
+        den_inst_pb     TEXT,
+        nr_ordonant_pl  TEXT,
+        data_ordont_pl  TEXT,
+
+        nr_unic_inreg           TEXT,
+        beneficiar              TEXT,
+        documente_justificative TEXT,
+        iban_beneficiar         TEXT,
+        cif_beneficiar          TEXT,
+        banca_beneficiar        TEXT,
+        inf_pv_plata            TEXT,
+        inf_pv_plata1           TEXT,
+
+        rows JSONB NOT NULL DEFAULT '[]',
+
+        submitted_at  TIMESTAMPTZ,
+        completed_at  TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at    TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_org    ON formulare_ord(org_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_p1     ON formulare_ord(created_by);
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_p2     ON formulare_ord(assigned_to) WHERE assigned_to IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_status ON formulare_ord(org_id, status) WHERE deleted_at IS NULL;
+    `
+  },
+  {
+    id: '050_formulare_capturi',
+    sql: `
+      CREATE TABLE IF NOT EXISTS formulare_capturi (
+        id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        form_type   TEXT    NOT NULL,
+        form_id     UUID    NOT NULL,
+        uploaded_by INTEGER NOT NULL REFERENCES users(id),
+        filename    TEXT,
+        mimetype    TEXT,
+        size_bytes  INTEGER,
+        data        BYTEA   NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_formulare_capturi_form ON formulare_capturi(form_type, form_id);
+    `
   }
 ];
 

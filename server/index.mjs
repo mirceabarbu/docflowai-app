@@ -511,6 +511,7 @@ import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
 import { formulareRouter } from './routes/formulare.mjs';
+import { formulareDbRouter } from './routes/formulare-db.mjs';
 
 const app = express();
 app.use(compression()); // PERF-FIX-07: gzip pentru toate răspunsurile — reduce ~70% din dimensiunea HTML/JSON
@@ -1540,7 +1541,8 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
   }
 });
 app.use('/', templatesRouter);         // Q-06: Template CRUD
-app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD
+app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD (generare PDF)
+app.use('/', formulareDbRouter);      // Formulare DB: DF + ORD workflow P1→P2
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
