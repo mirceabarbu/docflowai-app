@@ -114,6 +114,12 @@ const createFlow = async (req, res) => {
       status: 'pending', signedAt: null, signature: null,
       // b253: păstrat pentru flux ancore (câmpul AcroForm repartizat semnătarului)
       ancoreFieldName: String(s.ancoreFieldName || '').trim() || null,
+      // b253+: coordonate XFA pentru câmpuri fără /Rect în AcroForm (PDF-uri XFA Forexebug)
+      ancoreFieldRect: (s.ancoreFieldRect && typeof s.ancoreFieldRect === 'object' && !Array.isArray(s.ancoreFieldRect))
+        ? { x: s.ancoreFieldRect.x ?? null, y: s.ancoreFieldRect.y ?? null,
+            w: s.ancoreFieldRect.w ?? null, h: s.ancoreFieldRect.h ?? null,
+            page: s.ancoreFieldRect.page ?? null }
+        : null,
     }));
     normalizedSigners.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
     normalizedSigners.forEach((s, i) => { s.status = i === 0 ? 'current' : 'pending'; });
