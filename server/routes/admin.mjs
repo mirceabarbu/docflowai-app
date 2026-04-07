@@ -118,7 +118,7 @@ router.get('/api/org/profile', async (req, res) => {
     const orgId = actor.orgId || null;
     if (!orgId) return res.json({ ok: true, org: null });
 
-    const [orgResult, compResult] = await Promise.all([
+    const [orgResult, compResult] = await Promise.allSettled([
       pool.query('SELECT id, name, cif, compartimente FROM organizations WHERE id=$1', [orgId]),
       pool.query(
         `SELECT DISTINCT compartiment FROM users
@@ -127,9 +127,12 @@ router.get('/api/org/profile', async (req, res) => {
         [orgId]
       ),
     ]);
-    if (!orgResult.rows.length) return res.json({ ok: true, org: null });
-    const org = orgResult.rows[0];
-    org.compartimente_utilizatori = compResult.rows.map(r => r.compartiment);
+    if (orgResult.status === 'rejected') throw orgResult.reason;
+    if (!orgResult.value.rows.length) return res.json({ ok: true, org: null });
+    const org = orgResult.value.rows[0];
+    org.compartimente_utilizatori = compResult.status === 'fulfilled'
+      ? compResult.value.rows.map(r => r.compartiment)
+      : [];
     res.json({ ok: true, org });
   } catch(e) {
     logger.error({ err: e }, '/api/org/profile error');

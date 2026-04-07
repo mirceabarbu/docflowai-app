@@ -571,12 +571,12 @@ const imgs = {'o-cimg':null,'n-cimg':null};
   }catch{location.href='/login.html';return;}
 
   // ── Auto-fill instituție + CIF + compartimente din organizație ──────
+  const setF=(id,val)=>{const e=document.getElementById(id);if(e&&val)e.value=val;};
   try{
     const orgR=await fetch('/api/org/profile',{credentials:'include'});
     if(orgR.ok){
       const {org}=await orgR.json();
       if(org){
-        const setF=(id,val)=>{const e=document.getElementById(id);if(e&&val)e.value=val;};
         if(org.name){ setF('o-den',org.name); setF('n-den',org.name); }
         if(org.cif){  setF('o-cif',org.cif);  setF('n-cif',org.cif);  }
         const compList=org.compartimente_utilizatori&&org.compartimente_utilizatori.length
@@ -591,6 +591,8 @@ const imgs = {'o-cimg':null,'n-cimg':null};
       }
     }
   }catch(e){/* non-fatal */}
+  // ── Auto-fill compartiment din profilul utilizatorului curent ──────
+  if(ST.user&&ST.user.compartiment) setF('n-comp',ST.user.compartiment);
 
   const today=new Date();
   const d=`${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
