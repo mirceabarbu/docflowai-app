@@ -118,11 +118,19 @@ router.get('/api/org/profile', async (req, res) => {
     const orgId = actor.orgId || null;
     if (!orgId) return res.json({ ok: true, org: null });
 
-    const { rows } = await pool.query(
-      'SELECT id, name, cif, compartimente FROM organizations WHERE id=$1', [orgId]
-    );
-    if (!rows.length) return res.json({ ok: true, org: null });
-    res.json({ ok: true, org: rows[0] });
+    const [orgResult, compResult] = await Promise.all([
+      pool.query('SELECT id, name, cif, compartimente FROM organizations WHERE id=$1', [orgId]),
+      pool.query(
+        `SELECT DISTINCT compartiment FROM users
+         WHERE org_id=$1 AND compartiment IS NOT NULL AND compartiment <> ''
+         ORDER BY compartiment ASC`,
+        [orgId]
+      ),
+    ]);
+    if (!orgResult.rows.length) return res.json({ ok: true, org: null });
+    const org = orgResult.rows[0];
+    org.compartimente_utilizatori = compResult.rows.map(r => r.compartiment);
+    res.json({ ok: true, org });
   } catch(e) {
     logger.error({ err: e }, '/api/org/profile error');
     res.status(500).json({ error: 'server_error' });

@@ -579,9 +579,12 @@ const imgs = {'o-cimg':null,'n-cimg':null};
         const setF=(id,val)=>{const e=document.getElementById(id);if(e&&val)e.value=val;};
         if(org.name){ setF('o-den',org.name); setF('n-den',org.name); }
         if(org.cif){  setF('o-cif',org.cif);  setF('n-cif',org.cif);  }
-        if(Array.isArray(org.compartimente)&&org.compartimente.length){
+        const compList=org.compartimente_utilizatori&&org.compartimente_utilizatori.length
+          ? org.compartimente_utilizatori
+          : (org.compartimente||[]);
+        if(compList.length){
           const dl=document.getElementById('comp-list-notafd');
-          if(dl) dl.innerHTML=org.compartimente
+          if(dl) dl.innerHTML=compList
             .map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`)
             .join('');
         }
