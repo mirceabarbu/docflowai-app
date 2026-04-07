@@ -32,6 +32,17 @@ npx vitest run server/tests/integration/flows.test.mjs
 
 ---
 
+## Reguli de lucru
+
+După ORICE implementare completă și după ce testele trec:
+1. `git add .`
+2. `git commit -m "descriere"`
+3. `git push origin develop`
+
+**O sarcină nu este considerată terminată fără `git push`.**
+
+---
+
 ## ⚠️ ZONE INTERZISE — NU MODIFICA NICIODATĂ
 
 Următoarele fișiere sunt **STRICT NO-TOUCH**. Semnarea STS Cloud QES PAdES multi-semnatar funcționează în producție cu clienți reali. Orice modificare poate invalida semnăturile calificate existente:
