@@ -243,41 +243,85 @@ function appendObjectUpdate(pdfBuffer, objNum, genNum, xmlContent) {
   return Buffer.concat([pdfBuffer, newObj, xrefSection]);
 }
 
-// ── XFA injection: adăugare datasets (nu există — NOTAFD) ────────────────────
+// ── XFA injection: adăugare datasets (nu există — NOTAFD) incremental binar ──
+// Nu apelează niciodată pdfDoc.save() — evită blocarea pe template-uri XFA.
 
-async function addDatasetsWithPdfLib(pdfBuffer, pdfDoc, xmlContent) {
+async function addDatasetsIncremental(pdfBuffer, pdfDoc, xmlContent) {
   const { PDFName } = await import('pdf-lib');
-  const xmlBytes = Buffer.from(xmlContent, 'utf-8');
 
-  // Creăm stream nou pentru datasets
-  const newStream = pdfDoc.context.stream(xmlBytes, { Length: xmlBytes.length });
-  const newRef    = pdfDoc.context.register(newStream);
+  // 1. Alocă număr obiect nou (după cel mai mare din PDF)
+  const nextObjNum = pdfDoc.context.largestObjectNumber + 1;
+  const genNum     = 0;
 
-  // Găsim XFA array și inserăm datasets
+  // 2. Găsește ref-ul obiectului XFA array
   const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
   const acroForm    = pdfDoc.context.lookup(acroFormRef);
   const xfaRef      = acroForm.get(PDFName.of('XFA'));
-  const xfaArr      = pdfDoc.context.lookup(xfaRef);
+  const xfaObjNum   = xfaRef.objectNumber;
+  const xfaGenNum   = xfaRef.generationNumber ?? 0;
 
-  // Inserăm înainte de xmpmeta sau postamble (ultimele două intrări)
-  let insertIdx = xfaArr.size(); // fallback: la sfârșit
+  // 3. Citește intrările existente din XFA array
+  const xfaArr = pdfDoc.context.lookup(xfaRef);
+  const entries = [];
   for (let i = 0; i + 1 < xfaArr.size(); i += 2) {
-    try {
-      const name = xfaArr.get(i).decodeText?.()
-        || xfaArr.get(i).value
-        || '';
-      if (['xmpmeta', 'postamble'].includes(String(name).replace(/[()]/g, ''))) {
-        insertIdx = i;
-        break;
-      }
-    } catch {}
+    const name = (() => {
+      try { return xfaArr.get(i).decodeText?.() || xfaArr.get(i).value || ''; }
+      catch { return ''; }
+    })();
+    entries.push({ name: String(name).replace(/[()]/g, ''), ref: xfaArr.get(i + 1) });
   }
 
-  // Inserăm: (datasets) newRef
-  xfaArr.insert(insertIdx, pdfDoc.context.obj('datasets'));
-  xfaArr.insert(insertIdx + 1, newRef);
+  // Inserează datasets înainte de xmpmeta sau postamble
+  let insertIdx = entries.length;
+  for (let i = 0; i < entries.length; i++) {
+    if (['xmpmeta', 'postamble'].includes(entries[i].name)) { insertIdx = i; break; }
+  }
+  entries.splice(insertIdx, 0, { name: 'datasets', newObjNum: nextObjNum });
 
-  return Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
+  // Reconstruiește XFA array ca string PDF
+  const xfaArrStr = entries.map(e => {
+    const refStr = e.newObjNum
+      ? `${e.newObjNum} 0 R`
+      : `${e.ref.objectNumber} ${e.ref.generationNumber ?? 0} R`;
+    return `(${e.name}) ${refStr}`;
+  }).join(' ');
+  const newXfaContent = `[ ${xfaArrStr} ]`;
+
+  // 4. Construiește incremental update binar
+  const xmlBytes   = Buffer.from(xmlContent, 'utf-8');
+  const prevSX     = getPrevStartxref(pdfBuffer);
+
+  // Obiect 1: noul datasets stream (apare primul în buffer)
+  const dsHeader = Buffer.from(`\n${nextObjNum} ${genNum} obj\n<< /Length ${xmlBytes.length} >>\nstream\n`);
+  const dsFooter = Buffer.from(`\nendstream\nendobj\n`);
+  const dsObj    = Buffer.concat([dsHeader, xmlBytes, dsFooter]);
+
+  // Obiect 2: XFA array actualizat
+  const xfaUpdated = Buffer.from(`\n${xfaObjNum} ${xfaGenNum} obj\n${newXfaContent}\nendobj\n`);
+
+  const dsOffset   = pdfBuffer.length;
+  const xfaOffset  = dsOffset + dsObj.length;
+  const xrefOffset = xfaOffset + xfaUpdated.length;
+
+  const pad10 = n => String(n).padStart(10, '0');
+  const pad5  = n => String(n).padStart(5, '0');
+
+  // Două subsecțiuni xref separate (objNum-uri neconsecutive)
+  const xrefSection = Buffer.from([
+    `xref`,
+    `${xfaObjNum} 1`,
+    `${pad10(xfaOffset)} ${pad5(xfaGenNum)} n `,
+    `${nextObjNum} 1`,
+    `${pad10(dsOffset)} ${pad5(genNum)} n `,
+    `trailer`,
+    `<< /Size ${nextObjNum + 1} /Prev ${prevSX} >>`,
+    `startxref`,
+    `${xrefOffset}`,
+    `%%EOF`,
+    ``
+  ].join('\n'));
+
+  return Buffer.concat([pdfBuffer, dsObj, xfaUpdated, xrefSection]);
 }
 
 // ── Funcție principală: fill XFA ──────────────────────────────────────────────
@@ -294,9 +338,9 @@ async function fillXfaTemplate(templateBuffer, datasetsXml) {
     logger.info({ objNum: datasetsXr.objNum }, 'formulare: injectare XFA incremental update');
     return appendObjectUpdate(templateBuffer, datasetsXr.objNum, datasetsXr.genNum, datasetsXml);
   } else {
-    // NOTAFD: datasets lipsă → adăugăm cu pdf-lib (nicio semnătură în template)
-    logger.info('formulare: adăugare datasets XFA (NOTAFD) cu pdf-lib');
-    return addDatasetsWithPdfLib(templateBuffer, pdfDoc, datasetsXml);
+    // NOTAFD: datasets lipsă → injectare binară incrementală (fără pdfDoc.save())
+    logger.info('formulare: adăugare datasets XFA (NOTAFD) incremental binar');
+    return addDatasetsIncremental(templateBuffer, pdfDoc, datasetsXml);
   }
 }
 
