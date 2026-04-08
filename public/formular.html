@@ -278,7 +278,7 @@
         <select id="flt-status" class="flt-sel" onchange="loadList()">
           <option value="all">Toate</option>
           <option value="draft">📝 Draft</option>
-          <option value="pending_p2">📤 Transmis P2</option>
+          <option value="pending_p2">📤 La Responsabil Buget</option>
           <option value="completed">✅ Completat</option>
           <option value="generat_pdf">📄 PDF generat</option>
           <option value="transmis_flux">🔄 Trimis flux</option>
@@ -295,7 +295,7 @@
         <label class="flt-lbl">Până la</label>
         <input type="date" id="flt-to" class="flt-inp" onchange="loadList()"/>
       </div>
-      <div class="flt-grp">
+      <div class="flt-grp" id="flt-comp-wrap">
         <label class="flt-lbl">Compartiment</label>
         <select id="flt-comp" class="flt-sel" onchange="loadList()"><option value="">Toate</option></select>
       </div>
@@ -312,7 +312,7 @@
         <tr>
           <th>Nr. / Titlu</th>
           <th>Inițiator</th>
-          <th>P2</th>
+          <th>Responsabil Buget</th>
           <th>Status</th>
           <th>Creat</th>
           <th>Actualizat</th>
@@ -757,13 +757,13 @@
 <!-- ── Modal selectare P2 ─────────────────────────────────────────────────── -->
 <div class="modal-ov" id="modal-p2" onclick="if(event.target===this)closeModal()">
   <div class="modal-box">
-    <div class="modal-title">Selectează persoana responsabilă (P2)</div>
+    <div class="modal-title">Selectează Responsabilul Buget</div>
     <input class="modal-search" id="modal-search" placeholder="Caută după nume sau email..."
       oninput="filterModalUsers()" autocomplete="off"/>
     <div class="modal-list" id="modal-user-list"></div>
     <div class="modal-acts">
       <button class="btn" onclick="closeModal()">Anulează</button>
-      <button class="btn primary" id="modal-confirm" disabled onclick="confirmP2()">Trimite la P2</button>
+      <button class="btn primary" id="modal-confirm" disabled onclick="confirmP2()">Trimite la Responsabil Buget</button>
     </div>
   </div>
 </div>
@@ -1086,15 +1086,52 @@ function dlPdf(ft){
 }
 function showFF(ft){const e=document.getElementById('ff-'+ft);e.classList.add('show');e.scrollIntoView({behavior:'smooth',block:'nearest'});}
 async function mkFlow(ft){
-  const{pdf}=ST[ft];if(!pdf){setS('Generați mai întâi PDF-ul.','err');return;}
-  const dn=g('ffn-'+ft),em=g('ffe-'+ft);
-  if(!dn||!em){setS('Completați numele documentului și email-ul.','err');return;}
-  sessionStorage.setItem('docflow_prefill_pdf',pdf);
-  sessionStorage.setItem('docflow_prefill_name',dn);
-  sessionStorage.setItem('docflow_prefill_type','tabel');
-  sessionStorage.setItem('docflow_prefill_email',em);
-  showLinkFlowSection(ft);
-  location.href='/semdoc.html?action=new_flow_prefill';
+  const{pdf,name}=ST[ft];
+  if(!pdf){setS('Generați mai întâi PDF-ul.','err');return;}
+  const dn=(g('ffn-'+ft)||'').trim()||((name||'').replace('.pdf',''));
+  if(!dn){setS('Introduceți numele documentului.','err');return;}
+  const user=ST.user;
+  if(!user?.email){setS('Utilizator necunoscut. Reîncărcați pagina.','err');return;}
+  const btns=document.querySelectorAll(`#ff-${ft} button`);
+  btns.forEach(b=>{b.disabled=true;});
+  setS('Se creează fluxul de semnare...','info');
+  try{
+    const body={
+      docName:dn,
+      initName:user.nume||user.email,
+      initEmail:user.email,
+      pdfB64:pdf,
+      flowType:'tabel',
+      signers:[{
+        name:user.nume||user.email,
+        email:user.email,
+        rol:'Initiator',
+        functie:user.functie||'',
+        compartiment:user.compartiment||'',
+        order:1
+      }]
+    };
+    const r=await fetch('/api/flows',{method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok||!j.ok){setS(j.error||j.message||'Eroare la creare flux','err');return;}
+    const flowId=j.flowId;
+    // Leagă fluxul de documentul formularului
+    if(ST.docId[ft]){
+      try{
+        await fetch(`${ftApi(ft)}/${ST.docId[ft]}/link-flow`,{method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+          body:JSON.stringify({flow_id:flowId})});
+      }catch(_){}
+    }
+    setS('Flux creat cu succes! Redirecționare...','ok');
+    setTimeout(()=>{
+      if(j.initIsSigner&&j.signerToken)location.href=`/semdoc-signer.html?token=${j.signerToken}`;
+      else location.href='/semdoc-initiator.html';
+    },1200);
+  }catch(e){setS('Eroare: '+e.message,'err');}
+  finally{btns.forEach(b=>{b.disabled=false;});}
 }
 
 /* ── AUTO-SAVE DRAFT ─────────────────────────────────────────────────────────
@@ -1302,7 +1339,7 @@ function ftType(ft){return ft==='ordnt'?'ord':'df';}
 // ── Status label ─────────────────────────────────────────────────────────────
 function stLabel(s,aprobat){
   if(aprobat)return['aprobat','✔ Aprobat'];
-  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La P2'],completed:['completed','✅ Complet']}[s]||['draft',s];
+  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La Responsabil Buget'],completed:['completed','✅ Complet']}[s]||['draft',s];
 }
 
 // ── Colectare date formular → DB ──────────────────────────────────────────────
@@ -1414,22 +1451,22 @@ function renderActions(ft){
   const B=(cls,txt,fn)=>`<button class="btn ${cls}" onclick="${fn}">${txt}</button>`;
   let html='';
   if(!docId){
-    html=B('teal','📨 Trimite la P2',`showP2Modal('${ft}')`)
+    html=B('teal','📨 Trimite la Responsabil Buget',`showP2Modal('${ft}')`)
       +B('primary','⚙ Generează PDF',`genPdf('${ft}')`)
       +B('','↺ Resetează',`resetF('${ft}')`);
   }else if(status==='draft'&&role==='p1'){
-    html=B('teal','📨 Trimite la P2',`showP2Modal('${ft}')`)
+    html=B('teal','📨 Trimite la Responsabil Buget',`showP2Modal('${ft}')`)
       +B('','+ Nou',`newDoc('${ft}')`)
       +B('','↺ Câmpuri',`resetF('${ft}')`);
   }else if(status==='pending_p2'&&role==='p2'){
     html=B('','💾 Salvează',`saveDoc('${ft}')`)
       +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`);
   }else if(status==='pending_p2'&&role==='p1'){
-    html=`<span style="color:var(--app-muted);font-size:.82rem">⏳ Așteptare completare P2...</span>`
+    html=`<span style="color:var(--app-muted);font-size:.82rem">⏳ Așteptare Responsabil Buget...</span>`
       +B('','+ Nou',`newDoc('${ft}')`);
   }else if(status==='completed'&&role==='p1'){
     html=`<button class="btn primary" id="bgen-${ft}" onclick="genPdf('${ft}')"><span>⚙ Generează PDF</span></button>`
-      +B('','✏️ Modifică (retrimite P2)',`resetDocToP1('${ft}')`)
+      +B('','✏️ Modifică (retrimite Resp. Buget)',`resetDocToP1('${ft}')`)
       +B('','+ Nou',`newDoc('${ft}')`);
   }else if(status==='completed'&&role==='p2'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
@@ -1487,7 +1524,7 @@ async function openDoc(ft,id){
       setLockedBar(ft,'Completați câmpurile dvs. (marcate) și apăsați Finalizez.','info');
     }else if(status==='pending_p2'&&role==='p1'){
       lockAll(ft,true);
-      setLockedBar(ft,'Document trimis la P2. Așteptați completarea.','warn');
+      setLockedBar(ft,'Document trimis la Responsabil Buget. Așteptați completarea.','warn');
     }else if(status==='completed'){
       lockAll(ft,true);
       lockCaptureAndAttachments(ft,true);
@@ -1523,8 +1560,8 @@ function renderDocsList(ft,docs){
     const title=ft==='ordnt'
       ?(d.nr_ordonant_pl?`ORD ${esc(d.nr_ordonant_pl)}`:'ORD fără număr')
       :(d.nr_unic_inreg?`DF ${esc(d.nr_unic_inreg)}`:'DF fără număr');
-    const updated=new Date(d.updated_at).toLocaleDateString('ro-RO');
-    const p2info=d.assigned_to_nume?` · P2: ${esc(d.assigned_to_nume)}`:'';
+    const updated=new Date(d.updated_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const p2info=d.assigned_to_nume?` · Resp. Buget: ${esc(d.assigned_to_nume)}`:'';
     return`<div class="doc-card" data-id="${d.id}" onclick="openDoc('${ft}','${d.id}')">
       <div class="doc-card-main">
         <div class="doc-card-title">${title}</div>
@@ -1777,7 +1814,7 @@ async function confirmP2(){
   if(ft==='ordnt')await _saveBeneficiarIfNew();
   closeModal();
   try{
-    setS('Se trimite la P2...','info');
+    setS('Se trimite la Responsabil Buget...','info');
     const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/submit`,{
       method:'POST',credentials:'include',
       headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
@@ -1788,7 +1825,7 @@ async function confirmP2(){
     ST.docStatus[ft]='pending_p2';
     // Redirect automat la centralizare după trimite P2
     setTimeout(()=>showListSection(),1200);
-    setS(`Trimis la ${j.assigned_to?.nume||j.assigned_to?.email||'P2'}.`,'ok');
+    setS(`Trimis la ${j.assigned_to?.nume||j.assigned_to?.email||'Responsabil Buget'}.`,'ok');
   }catch(e){setS('Eroare: '+e.message,'err');}
 }
 
@@ -1866,10 +1903,13 @@ function showLinkFlowSection(ft){
     clearInterval(waitUser);
     renderActions('ordnt');
     renderActions('notafd');
-    // Afișează filtrul Inițiator doar pentru admin/org_admin
+    // Afișează filtrul Inițiator și Compartiment doar pentru admin/org_admin
     if(ST.user.role==='admin'||ST.user.role==='org_admin'){
       const ig=document.getElementById('flt-init-grp');
       if(ig)ig.style.display='';
+    } else {
+      const cw=document.getElementById('flt-comp-wrap');
+      if(cw)cw.style.display='none';
     }
     _populateCompartimente();
     loadDfAprobate();
@@ -2114,7 +2154,7 @@ async function loadList(){
   }catch(e){if(ld)ld.style.display='none';if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}}
 }
 function _stBadge(status){
-  const map={draft:'📝 Draft',pending_p2:'📤 Transmis P2',completed:'✅ Completat',
+  const map={draft:'📝 Draft',pending_p2:'📤 La Responsabil Buget',completed:'✅ Completat',
     generat_pdf:'📄 PDF generat',transmis_flux:'🔄 Trimis flux',
     aprobat:'🟢 Aprobat',respins:'❌ Respins',anulat:'🚫 Anulat'};
   const cls={draft:'stbadge-draft',pending_p2:'stbadge-transmis_p2',completed:'stbadge-completat',
@@ -2124,7 +2164,7 @@ function _stBadge(status){
 }
 function _fmtDate(iso){
   if(!iso)return '—';
-  try{const d=new Date(iso);return`${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;}
+  try{return new Date(iso).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}
   catch{return iso;}
 }
 function _renderLstTable(rows,type){
