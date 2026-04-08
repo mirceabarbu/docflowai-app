@@ -1264,6 +1264,7 @@ function _doRestore(ft) {
 // Debounce auto-save — 2s după ultima tastă
 const _draftTimers = {};
 function _draftSchedule(ft) {
+  if(ST.docAprobat?.[ft])return;
   clearTimeout(_draftTimers[ft]);
   _draftTimers[ft] = setTimeout(() => draftSave(ft), 2000);
 }
@@ -1406,6 +1407,10 @@ function renderActions(ft){
   const status=ST.docStatus[ft],role=ST.docRole[ft],docId=ST.docId[ft];
   const B=(cls,txt,fn)=>`<button class="btn ${cls}" onclick="${fn}">${txt}</button>`;
   let html='';
+  if(ST.docAprobat?.[ft]){
+    div.innerHTML=B('','+ Nou',`newDoc('${ft}')`);
+    return;
+  }
   if(!docId){
     html=B('teal','📨 Trimite la Responsabil Buget',`showP2Modal('${ft}')`)
       +B('primary','⚙ Generează PDF',`genPdf('${ft}')`)
@@ -1454,6 +1459,8 @@ async function openDoc(ft,id){
     ST.docStatus[ft]=doc.status;
     const userId=ST.user?.userId;
     ST.docRole[ft]=doc.created_by===userId?'p1':doc.assigned_to===userId?'p2':'view';
+    ST.docAprobat=ST.docAprobat||{};
+    ST.docAprobat[ft]=doc.aprobat===true;
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
@@ -1475,7 +1482,11 @@ async function openDoc(ft,id){
     // Lock / mode
     lockAll(ft,false);
     const status=doc.status,role=ST.docRole[ft];
-    if(status==='pending_p2'&&role==='p2'){
+    if(ST.docAprobat[ft]){
+      lockAll(ft,true);
+      lockCaptureAndAttachments(ft,true);
+      setLockedBar(ft,'✔ Document aprobat — fluxul de semnare a fost finalizat.','info');
+    }else if(status==='pending_p2'&&role==='p2'){
       if(ft==='ordnt')setModeP2Ord();else setModeP2Df();
       setLockedBar(ft,'Completați câmpurile dvs. (marcate) și apăsați Finalizez.','info');
     }else if(status==='pending_p2'&&role==='p1'){
@@ -1490,6 +1501,7 @@ async function openDoc(ft,id){
     }
 
     renderActions(ft);
+    refreshDocs(ft);
     // Evidențiere card activ
     document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.toggle('active',c.dataset.id===id));
     setS(`Document încărcat (${status})`,status==='completed'?'ok':'info');
@@ -1530,6 +1542,7 @@ function renderDocsList(ft,docs){
 
 // ── Nou document ──────────────────────────────────────────────────────────────
 function newDoc(ft){
+  ST.docAprobat=ST.docAprobat||{};ST.docAprobat[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
   lockAll(ft,false);setLockedBar(ft,'');
   // Golim câmpurile
@@ -1547,6 +1560,7 @@ function newDoc(ft){
 
 // ── Salvare în DB ─────────────────────────────────────────────────────────────
 async function saveDoc(ft){
+  if(ST.docAprobat?.[ft])return;
   const docId=ST.docId[ft];
   const body=ft==='ordnt'?collectOrdDb()
     :(ST.docRole[ft]==='p2'?collectDfP2Db():collectDfP1Db());
@@ -1809,6 +1823,7 @@ async function completeAsP2(ft){
 
 // ── P1 modifică după completare → resetează la draft + version++ ──────────────
 async function resetDocToP1(ft){
+  if(ST.docAprobat?.[ft]){setS('Document aprobat — nu poate fi modificat.','err');return;}
   if(!confirm('Documentul va fi resetat la draft și P2 va trebui să completeze din nou. Continuați?'))return;
   // Trimitem un câmp dummy de update pentru a triggera reset în backend
   const body=ft==='ordnt'?{cif:g('o-cif')||' '}:{cif:g('n-cif')||' '};

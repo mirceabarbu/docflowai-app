@@ -446,11 +446,14 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
       SELECT fo.*,
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
-        fd.nr_unic_inreg AS df_nr, fd.rows_ctrl AS df_rows_ctrl
+        fd.nr_unic_inreg AS df_nr, fd.rows_ctrl AS df_rows_ctrl,
+        CASE WHEN fo.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
+             THEN true ELSE false END AS aprobat
       FROM formulare_ord fo
       JOIN users p1 ON p1.id = fo.created_by
       LEFT JOIN users p2 ON p2.id = fo.assigned_to
       LEFT JOIN formulare_df fd ON fd.id = fo.df_id
+      LEFT JOIN flows f ON f.id = fo.flow_id
       WHERE fo.id = $1 ${orgCond} AND fo.deleted_at IS NULL
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
