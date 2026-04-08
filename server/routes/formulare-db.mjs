@@ -921,6 +921,9 @@ router.get('/api/formulare/list', async (req, res) => {
           fd.nr_unic_inreg AS nr,
           fd.subtitlu_df AS titlu,
           fd.created_by,
+          fd.flow_id,
+          CASE WHEN fd.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
+               THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
           COALESCE(u2.nume, u2.email) AS p2,
           (fd.created_by = $${params.push(actor.userId)}) AS "isP1",
@@ -978,6 +981,9 @@ router.get('/api/formulare/list', async (req, res) => {
           fo.nr_ordonant_pl AS nr,
           fo.beneficiar AS titlu,
           fo.created_by,
+          fo.flow_id,
+          CASE WHEN fo.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
+               THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
           COALESCE(u2.nume, u2.email) AS p2,
           (fo.created_by = $${params.push(actor.userId)}) AS "isP1",

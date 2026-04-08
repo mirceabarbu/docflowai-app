@@ -443,6 +443,7 @@ async function generatePdfSimple(formType, data) {
 
   const total = pages.length;
   const genDt = new Date().toLocaleString('ro-RO', {
+    timeZone: 'Europe/Bucharest',
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 
