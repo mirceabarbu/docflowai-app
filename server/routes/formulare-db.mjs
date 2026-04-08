@@ -277,7 +277,7 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
     const doc = existing[0];
     if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
       return res.status(403).json({ error: 'forbidden' });
-    if (doc.status !== 'draft')
+    if (!['draft','returnat'].includes(doc.status))
       return res.status(409).json({ error: 'document_not_draft', status: doc.status });
 
     // Verifică că P2 e din același org
@@ -289,7 +289,7 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
 
     const { rows: updated } = await pool.query(`
       UPDATE formulare_df
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW()
+      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL
       WHERE id=$2 AND org_id=$3
       RETURNING *
     `, [assigned_to, req.params.id, actor.orgId]);
@@ -343,6 +343,39 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df complete error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// POST /api/formulare-df/:id/returneaza — P2 returnează documentul ca neconform
+router.post('/api/formulare-df/:id/returneaza', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { motiv } = req.body || {};
+    if (!motiv || !motiv.trim()) return res.status(400).json({ error: 'motiv_obligatoriu' });
+    const { rows } = await pool.query(
+      'SELECT * FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
+      [req.params.id, actor.orgId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const doc = rows[0];
+    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
+      return res.status(403).json({ error: 'forbidden' });
+    if (doc.status !== 'pending_p2')
+      return res.status(409).json({ error: 'status_invalid', status: doc.status });
+    await pool.query(
+      `UPDATE formulare_df SET status='returnat', motiv_returnare=$1, updated_at=NOW() WHERE id=$2`,
+      [motiv.trim(), req.params.id]
+    );
+    await sendNotif(doc.created_by, 'formulare_df_returnat',
+      'Document de Fundamentare — returnat ca neconform',
+      `${actor.nume || actor.email} a returnat DF "${doc.nr_unic_inreg || 'fără număr'}" cu observații`,
+      { form_type: 'df', form_id: req.params.id });
+    logger.info({ id: req.params.id, actor: actor.email }, 'formulare-df returnat de P2');
+    res.json({ ok: true });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-df returneaza error');
     res.status(500).json({ error: 'server_error' });
   }
 });
@@ -573,7 +606,7 @@ router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
     const doc = existing[0];
     if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
       return res.status(403).json({ error: 'forbidden' });
-    if (doc.status !== 'draft')
+    if (!['draft','returnat'].includes(doc.status))
       return res.status(409).json({ error: 'document_not_draft', status: doc.status });
 
     const { rows: p2rows } = await pool.query(
@@ -584,7 +617,7 @@ router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
 
     const { rows: updated } = await pool.query(`
       UPDATE formulare_ord
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW()
+      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL
       WHERE id=$2 AND org_id=$3
       RETURNING *
     `, [assigned_to, req.params.id, actor.orgId]);
@@ -638,6 +671,39 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord complete error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// POST /api/formulare-ord/:id/returneaza — P2 returnează documentul ca neconform
+router.post('/api/formulare-ord/:id/returneaza', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { motiv } = req.body || {};
+    if (!motiv || !motiv.trim()) return res.status(400).json({ error: 'motiv_obligatoriu' });
+    const { rows } = await pool.query(
+      'SELECT * FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
+      [req.params.id, actor.orgId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const doc = rows[0];
+    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
+      return res.status(403).json({ error: 'forbidden' });
+    if (doc.status !== 'pending_p2')
+      return res.status(409).json({ error: 'status_invalid', status: doc.status });
+    await pool.query(
+      `UPDATE formulare_ord SET status='returnat', motiv_returnare=$1, updated_at=NOW() WHERE id=$2`,
+      [motiv.trim(), req.params.id]
+    );
+    await sendNotif(doc.created_by, 'formulare_ord_returnat',
+      'Ordonanțare de Plată — returnată ca neconformă',
+      `${actor.nume || actor.email} a returnat ORD "${doc.nr_ordonant_pl || 'fără număr'}" cu observații`,
+      { form_type: 'ord', form_id: req.params.id });
+    logger.info({ id: req.params.id, actor: actor.email }, 'formulare-ord returnat de P2');
+    res.json({ ok: true });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-ord returneaza error');
     res.status(500).json({ error: 'server_error' });
   }
 });
@@ -1024,8 +1090,8 @@ router.post('/api/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
     if (!isAdmin && doc.org_id !== actor.orgId) return res.status(403).json({ error: 'forbidden' });
     if (!isAdmin && !isOrgAdmin && doc.created_by !== actor.userId)
       return res.status(403).json({ error: 'forbidden' });
-    if (!['draft','pending_p2'].includes(doc.status))
-      return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft sau transmis_p2 pot fi anulate.' });
+    if (!['draft','pending_p2','returnat'].includes(doc.status))
+      return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
 
     await pool.query(
       `UPDATE formulare_df SET status='anulat', updated_at=NOW() WHERE id=$1`,
@@ -1056,8 +1122,8 @@ router.post('/api/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
     if (!isAdmin && doc.org_id !== actor.orgId) return res.status(403).json({ error: 'forbidden' });
     if (!isAdmin && !isOrgAdmin && doc.created_by !== actor.userId)
       return res.status(403).json({ error: 'forbidden' });
-    if (!['draft','pending_p2'].includes(doc.status))
-      return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft sau transmis_p2 pot fi anulate.' });
+    if (!['draft','pending_p2','returnat'].includes(doc.status))
+      return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
 
     await pool.query(
       `UPDATE formulare_ord SET status='anulat', updated_at=NOW() WHERE id=$1`,

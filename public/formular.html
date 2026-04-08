@@ -160,6 +160,7 @@
     .dst.pending{background:rgba(255,170,30,.1);color:#ffcc44;border:1px solid rgba(255,170,30,.2)}
     .dst.completed{background:rgba(30,200,174,.1);color:var(--app-t);border:1px solid rgba(30,200,174,.2)}
     .dst.aprobat{background:rgba(50,200,80,.1);color:#66dd88;border:1px solid rgba(50,200,80,.2)}
+    .dst.returnat{background:rgba(255,140,0,.15);color:#ffaa44;border:1px solid rgba(255,140,0,.3)}
     .docs-empty{color:var(--app-muted);font-size:.8rem;text-align:center;padding:12px}
     /* ── Locked bar ── */
     .locked-bar{display:none;padding:8px 12px;border-radius:8px;font-size:.8rem;margin-bottom:10px;text-align:center;font-weight:600}
@@ -222,6 +223,9 @@
     .stbadge.st-aprobat{background:rgba(50,200,80,.1);color:#66dd88;border:1px solid rgba(50,200,80,.2)}
     .stbadge.st-respins{background:rgba(255,60,60,.1);color:#ff8888;border:1px solid rgba(255,60,60,.22)}
     .stbadge.st-anulat{background:rgba(80,80,80,.15);color:#888;border:1px solid rgba(80,80,80,.2)}
+    .stbadge.st-returnat{background:rgba(255,140,0,.15);color:#ffaa44;border:1px solid rgba(255,140,0,.3)}
+    .btn.danger{background:rgba(255,60,60,.15);border:1px solid rgba(255,60,60,.35);color:#ff8888}
+    .btn.danger:hover{background:rgba(255,60,60,.25)}
     .lst-pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:6px 0}
     .lst-page-info{font-size:.82rem;color:var(--app-muted);min-width:160px;text-align:center}
     .lst-empty{text-align:center;padding:36px 16px;color:var(--app-muted);font-size:.84rem}
@@ -359,6 +363,8 @@
 <!-- ═══ ORDNT ═══════════════════════════════════════════════════════════════ -->
 <div id="form-ordnt">
 <div class="locked-bar" id="locked-bar-ordnt"></div>
+<div id="motiv-bar-ordnt" style="display:none;max-width:1020px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-ordnt"></span></div>
+<div class="actions" id="actions-ordnt"></div>
 <div class="doc">
   <div class="doc-title">Ordonantare de Plata</div>
   <!-- nr / data -->
@@ -503,13 +509,14 @@
   </div>
 </div>
 
-<div class="actions" id="actions-ordnt"></div>
 </div><!-- /form-ordnt -->
 
 
 <!-- ═══ NOTAFD ══════════════════════════════════════════════════════════════ -->
 <div id="form-notafd" style="display:none">
 <div class="locked-bar" id="locked-bar-notafd"></div>
+<div id="motiv-bar-notafd" style="display:none;max-width:1020px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-notafd"></span></div>
+<div class="actions" id="actions-notafd"></div>
 <div class="doc">
   <!-- Antet -->
   <div class="dl req">Instituția publică</div>
@@ -738,7 +745,6 @@
   </div>
 </div>
 
-<div class="actions" id="actions-notafd"></div>
 </div><!-- /form-notafd -->
 </div><!-- /outer -->
 </div><!-- /section-form -->
@@ -753,6 +759,19 @@
     <div class="modal-acts">
       <button class="btn" onclick="closeModal()">Anulează</button>
       <button class="btn primary" id="modal-confirm" disabled onclick="confirmP2()">Trimite la Responsabil Buget</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal returnare neconform ──────────────────────────────────────────── -->
+<div class="modal-ov" id="modal-return" onclick="if(event.target===this)closeReturnModal()">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-title">↩ Returnează document ca neconform</div>
+    <p style="font-size:.85rem;color:var(--app-muted);margin-bottom:12px">Menționați deficiențele constatate. Inițiatorul va primi documentul înapoi cu observațiile dvs.</p>
+    <textarea id="return-motiv" class="dt" rows="5" maxlength="1000" placeholder="Descrieți deficiențele..."></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button class="btn" onclick="closeReturnModal()">Anulează</button>
+      <button class="btn danger" id="return-confirm" onclick="confirmReturn()">↩ Returnează</button>
     </div>
   </div>
 </div>
@@ -1327,7 +1346,7 @@ function ftType(ft){return ft==='ordnt'?'ord':'df';}
 // ── Status label ─────────────────────────────────────────────────────────────
 function stLabel(s,aprobat){
   if(aprobat)return['aprobat','✔ Aprobat'];
-  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La Responsabil Buget'],completed:['completed','✅ Complet']}[s]||['draft',s];
+  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La Responsabil Buget'],completed:['completed','✅ Complet'],returnat:['returnat','↩ Returnat']}[s]||['draft',s];
 }
 
 // ── Colectare date formular → DB ──────────────────────────────────────────────
@@ -1450,9 +1469,13 @@ function renderActions(ft){
     html=B('teal','📨 Trimite la Responsabil Buget',`showP2Modal('${ft}')`)
       +B('','+ Nou',`newDoc('${ft}')`)
       +B('','↺ Câmpuri',`resetF('${ft}')`);
+  }else if(status==='returnat'&&role==='p1'){
+    html=B('teal','📨 Retrimite la Responsabil Buget',`showP2Modal('${ft}')`)
+      +B('','+ Nou',`newDoc('${ft}')`);
   }else if(status==='pending_p2'&&role==='p2'){
     html=B('','💾 Salvează',`saveDoc('${ft}')`)
-      +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`);
+      +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`)
+      +B('danger','↩ Returnează ca neconform',`showReturnModal('${ft}')`);
   }else if(status==='pending_p2'&&role==='p1'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">⏳ Așteptare Responsabil Buget...</span>`
       +B('','+ Nou',`newDoc('${ft}')`);
@@ -1510,6 +1533,10 @@ async function openDoc(ft,id){
       }
     }catch(_){}
 
+    // Ascunde motiv bar implicit; se afișează doar pentru 'returnat'
+    const _mb=document.getElementById('motiv-bar-'+ft);
+    if(_mb)_mb.style.display='none';
+
     // Lock / mode
     lockAll(ft,false);
     const status=doc.status,role=ST.docRole[ft];
@@ -1529,6 +1556,14 @@ async function openDoc(ft,id){
     }else if(status==='pending_p2'&&role==='p1'){
       lockAll(ft,true);
       setLockedBar(ft,'Document trimis la Responsabil Buget. Așteptați completarea.','warn');
+    }else if(status==='returnat'&&role==='p1'){
+      lockAll(ft,false);
+      setLockedBar(ft,'↩ Document returnat de Responsabil Buget — verificați deficiențele și retrimiteți.','warn');
+      const mb=document.getElementById('motiv-bar-'+ft);
+      if(mb&&doc.motiv_returnare){
+        document.getElementById('motiv-text-'+ft).textContent=doc.motiv_returnare;
+        mb.style.display='';
+      }
     }else if(status==='completed'){
       lockAll(ft,true);
       lockCaptureAndAttachments(ft,true);
@@ -1868,7 +1903,8 @@ async function completeAsP2(ft){
     ST.docStatus[ft]='completed';
     lockAll(ft,true);setLockedBar(ft,'Secțiunea dvs. a fost finalizată și trimisă înapoi la P1.','info');
     renderActions(ft);refreshDocs(ft);
-    setS('Finalizat cu succes!','ok');
+    setS('Finalizat cu succes! Redirecționare...','ok');
+    setTimeout(()=>showListSection(),1500);
   }catch(e){setS('Eroare: '+e.message,'err');}
 }
 
@@ -1890,6 +1926,40 @@ async function resetDocToP1(ft){
     lockAll(ft,false);setLockedBar(ft,'');renderActions(ft);refreshDocs(ft);
     setS('Document redeschis pentru modificare.','ok');
   }catch(e){setS('Eroare: '+e.message,'err');}
+}
+
+// ── Returnare neconform ───────────────────────────────────────────────────────
+function showReturnModal(ft){
+  ST.pendingFt=ft;
+  document.getElementById('return-motiv').value='';
+  document.getElementById('modal-return').classList.add('show');
+}
+function closeReturnModal(){
+  document.getElementById('modal-return').classList.remove('show');
+}
+async function confirmReturn(){
+  const ft=ST.pendingFt;
+  const motiv=(document.getElementById('return-motiv').value||'').trim();
+  if(!motiv){setS('Menționați deficiențele înainte de returnare.','err');return;}
+  const btn=document.getElementById('return-confirm');
+  if(btn)btn.disabled=true;
+  try{
+    const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/returneaza`,{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      body:JSON.stringify({motiv}),
+    });
+    const j=await r.json();
+    if(!r.ok||!j.ok){setS(j.error||'Eroare','err');return;}
+    closeReturnModal();
+    ST.docStatus[ft]='returnat';
+    lockAll(ft,true);
+    setLockedBar(ft,'Document returnat ca neconform. Inițiatorul va fi notificat.','warn');
+    renderActions(ft);refreshDocs(ft);
+    setS('Document returnat.','ok');
+    setTimeout(()=>showListSection(),1500);
+  }catch(e){setS('Eroare: '+e.message,'err');}
+  finally{if(btn)btn.disabled=false;}
 }
 
 // ── link-flow section show — noop, asocierea se face automat din semdoc-initiator ─
@@ -2155,10 +2225,10 @@ async function loadList(){
 function _stBadge(status){
   const map={draft:'📝 Draft',pending_p2:'📤 La Responsabil Buget',completed:'✅ Completat',
     generat_pdf:'📄 PDF generat',transmis_flux:'🔄 Trimis flux',
-    aprobat:'🟢 Aprobat',respins:'❌ Respins',anulat:'🚫 Anulat'};
+    aprobat:'🟢 Aprobat',respins:'❌ Respins',anulat:'🚫 Anulat',returnat:'↩ Returnat'};
   const cls={draft:'stbadge-draft',pending_p2:'stbadge-transmis_p2',completed:'stbadge-completat',
     generat_pdf:'stbadge-generat_pdf',transmis_flux:'stbadge-transmis_flux',
-    aprobat:'stbadge-aprobat',respins:'stbadge-respins',anulat:'stbadge-anulat'};
+    aprobat:'stbadge-aprobat',respins:'stbadge-respins',anulat:'stbadge-anulat',returnat:'stbadge-returnat'};
   return`<span class="stbadge ${cls[status]||'stbadge-draft'}">${_escH(map[status]||status)}</span>`;
 }
 function _fmtDate(iso){

@@ -989,6 +989,13 @@ const MIGRATIONS = [
       ALTER TABLE formulare_ord
         ADD COLUMN IF NOT EXISTS compartiment_specialitate TEXT;
     `
+  },
+  {
+    id: '053_formulare_motiv_returnare',
+    sql: `
+      ALTER TABLE formulare_df  ADD COLUMN IF NOT EXISTS motiv_returnare TEXT;
+      ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS motiv_returnare TEXT;
+    `
   }
 ];
 
