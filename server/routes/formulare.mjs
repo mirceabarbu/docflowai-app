@@ -414,8 +414,10 @@ async function generatePdfSimple(formType, data) {
 
 // ── POST /api/formulare/generate ─────────────────────────────────────────────
 
-router.post('/api/formulare/generate', requireAuth, _json5m, async (req, res) => {
+router.post('/api/formulare/generate', _json5m, async (req, res) => {
   try {
+    const actor = requireAuth(req, res); if (!actor) return;
+
     const { formType, data } = req.body || {};
     if (!formType || !data)
       return res.status(400).json({ error: 'formType si data sunt obligatorii' });
@@ -426,7 +428,7 @@ router.post('/api/formulare/generate', requireAuth, _json5m, async (req, res) =>
     if (errs.length > 0)
       return res.status(422).json({ error: 'Validare esuata', errors: errs });
 
-    logger.info({ formType, actor: req.user?.email }, 'formulare: generare PDF simplu');
+    logger.info({ formType, actor: actor.email }, 'formulare: generare PDF simplu');
 
     const filledPdf = await generatePdfSimple(formType, data);
 
@@ -445,7 +447,8 @@ router.post('/api/formulare/generate', requireAuth, _json5m, async (req, res) =>
 
 // ── GET /api/formulare/templates ──────────────────────────────────────────────
 
-router.get('/api/formulare/templates', requireAuth, (_req, res) => {
+router.get('/api/formulare/templates', (req, res) => {
+  const actor = requireAuth(req, res); if (!actor) return;
   res.json({ templates: { ordnt: { configured: true }, notafd: { configured: true } } });
 });
 
