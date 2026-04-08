@@ -2,387 +2,414 @@
  * DocFlowAI — server/routes/formulare.mjs
  *
  * Formulare oficiale: Ordonanțare de Plată (ORDNT) + Document de Fundamentare (NOTAFD)
- * Completare date în UI → generare XML datasets → injectare XFA în PDF template → PDF completat
+ * Generare PDF simplu A4 cu pdf-lib (fără injecție XFA/template).
  *
- * REGISTRARE în server/index.mjs (sau routes/index):
+ * REGISTRARE în server/index.mjs:
  *   import { formulareRouter } from './routes/formulare.mjs';
  *   app.use(formulareRouter);
- *
- * TEMPLATE-URI PDF: puneți fișierele în:
- *   server/formulare/templates/ordnt_template.pdf
- *   server/formulare/templates/notafd_template.pdf
  */
 
 import { Router, json as expressJson } from 'express';
-import { requireAuth } from '../middleware/auth.mjs';
-import { logger } from '../middleware/logger.mjs';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { requireAuth }                  from '../middleware/auth.mjs';
+import { logger }                       from '../middleware/logger.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const router   = Router();
-const _json5m  = expressJson({ limit: '5mb' });
+const router  = Router();
+const _json5m = expressJson({ limit: '5mb' });
 
-const TEMPLATES_DIR = path.resolve(__dirname, '../formulare/templates');
+// ── Helper: diacritice române → ASCII (Helvetica nu suportă Unicode) ──────────
 
-// ── Helper: escape XML attributes ─────────────────────────────────────────────
-
-function esc(v) {
+function ro(v) {
   if (v === null || v === undefined) return '';
   return String(v)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/ă/g,'a').replace(/Ă/g,'A')
+    .replace(/î/g,'i').replace(/Î/g,'I')
+    .replace(/â/g,'a').replace(/Â/g,'A')
+    .replace(/ș/g,'s').replace(/Ș/g,'S')
+    .replace(/ş/g,'s').replace(/Ş/g,'S')
+    .replace(/ț/g,'t').replace(/Ț/g,'T')
+    .replace(/ţ/g,'t').replace(/Ţ/g,'T');
 }
 
-// ── Builder XML datasets ORDNT ─────────────────────────────────────────────────
-
-function buildOrdntXml(d) {
-  const df = d.docFd || {};
-  const rows = (df.rowTfd || []).map(r => `
-      <rowTfd
-        cod_angajament="${esc(r.cod_angajament)}"
-        indicator_angajament="${esc(r.indicator_angajament)}"
-        program="${esc(r.program)}"
-        cod_SSI="${esc(r.cod_SSI)}"
-        receptii="${esc(r.receptii || 0)}"
-        plati_anterioare="${esc(r.plati_anterioare || 0)}"
-        suma_ordonantata_plata="${esc(r.suma_ordonantata_plata || 0)}"
-        receptii_neplatite="${esc(r.receptii_neplatite || 0)}"
-      />`).join('');
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<xfa:datasets xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/">
-<xfa:data>
-<ORDNT xmlns="mfp:anaf:dgti:ordnt:declaratie:v1"
-  Cif="${esc(d.Cif)}"
-  DenInstPb="${esc(d.DenInstPb)}"
-  NrOrdonantPl="${esc(d.NrOrdonantPl)}"
-  DataOrdontPl="${esc(d.DataOrdontPl)}">
-  <docFd
-    nr_unic_inreg="${esc(df.nr_unic_inreg)}"
-    beneficiar="${esc(df.beneficiar)}"
-    documente_justificative="${esc(df.documente_justificative)}"
-    iban_beneficiar="${esc(df.iban_beneficiar)}"
-    cif_beneficiar="${esc(df.cif_beneficiar)}"
-    banca_beneficiar="${esc(df.banca_beneficiar)}"
-    inf_pv_plata="${esc(df.inf_pv_plata)}"
-    inf_pv_plata1="${esc(df.inf_pv_plata1)}"
-  >${rows}
-  </docFd>
-</ORDNT>
-</xfa:data>
-</xfa:datasets>`;
-}
-
-// ── Builder XML datasets NOTAFD ───────────────────────────────────────────────
-
-function buildNotafdXml(d) {
-  const sA   = d.sectiuneaA     || {};
-  const angV = sA.ang_legale_val   || {};
-  const angP = sA.ang_legale_plati || {};
-  const sB   = d.sectiuneaB     || {};
-
-  const rowsVal = (angV.rowT_ang_pl_val || []).map(r => `
-      <rowT_ang_pl_val
-        element_fd="${esc(r.element_fd)}"
-        program="${esc(r.program)}"
-        codSSI="${esc(r.codSSI)}"
-        param_fd="${esc(r.param_fd)}"
-        valt_rev_prec="${esc(r.valt_rev_prec || 0)}"
-        influente="${esc(r.influente || 0)}"
-        valt_actualiz="${esc(r.valt_actualiz || 0)}"
-      />`).join('');
-
-  const rowsPlati = (angP.rowT_ang_pl_plati || []).map(r => `
-      <rowT_ang_pl_plati
-        program="${esc(r.program)}"
-        codSSI="${esc(r.codSSI)}"
-        plati_ani_precedenti="${esc(r.plati_ani_precedenti || 0)}"
-        plati_estim_ancrt="${esc(r.plati_estim_ancrt || 0)}"
-        plati_estim_an_np1="${esc(r.plati_estim_an_np1 || 0)}"
-        plati_estim_an_np2="${esc(r.plati_estim_an_np2 || 0)}"
-        plati_estim_an_np3="${esc(r.plati_estim_an_np3 || 0)}"
-        plati_estim_ani_ulter="${esc(r.plati_estim_ani_ulter || 0)}"
-      />`).join('');
-
-  const rowsCtrl = (sB.rowT_ang_ctrl_ang || []).map(r => `
-    <rowT_ang_ctrl_ang
-      cod_angajament="${esc(r.cod_angajament)}"
-      indicator_angajament="${esc(r.indicator_angajament)}"
-      program="${esc(r.program)}"
-      cod_SSI="${esc(r.cod_SSI)}"
-      sum_rezv_crdt_ang_af_rvz_prc="${esc(r.sum_rezv_crdt_ang_af_rvz_prc || 0)}"
-      influente_c6="${esc(r.influente_c6 || 0)}"
-      sum_rezv_crdt_ang_act="${esc(r.sum_rezv_crdt_ang_act || 0)}"
-      sum_rezv_crdt_bug_af_rvz_prc="${esc(r.sum_rezv_crdt_bug_af_rvz_prc || 0)}"
-      influente_c9="${esc(r.influente_c9 || 0)}"
-      sum_rezv_crdt_bug_act="${esc(r.sum_rezv_crdt_bug_act || 0)}"
-    />`).join('');
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<xfa:datasets xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/">
-<xfa:data>
-<NOTAFD xmlns="mfp:anaf:dgti:notafd:declaratie:v1"
-  Cif="${esc(d.Cif)}"
-  DenInstPb="${esc(d.DenInstPb)}"
-  SubtitluDF="${esc(d.SubtitluDF)}"
-  NrUnicInreg="${esc(d.NrUnicInreg)}"
-  Revizuirea="${esc(d.Revizuirea)}"
-  DataRevizuirii="${esc(d.DataRevizuirii)}">
-  <sectiuneaA
-    compartiment_specialitate="${esc(sA.compartiment_specialitate)}"
-    obiect_fd_reviz_scurt="${esc(sA.obiect_fd_reviz_scurt)}"
-    obiect_fd_reviz_lung="${esc(sA.obiect_fd_reviz_lung)}">
-    <ang_legale_val
-      ckbx_stab_tin_cont="${esc(angV.ckbx_stab_tin_cont)}"
-      ckbx_ramane_suma="${esc(angV.ckbx_ramane_suma)}"
-      ramane_suma="${esc(angV.ramane_suma || 0)}"
-    >${rowsVal}
-    </ang_legale_val>
-    <ang_legale_plati
-      ckbx_fara_ang_emis_ancrt="${esc(angP.ckbx_fara_ang_emis_ancrt)}"
-      ckbx_cu_ang_emis_ancrt="${esc(angP.ckbx_cu_ang_emis_ancrt)}"
-      ckbx_sting_ang_in_ancrt="${esc(angP.ckbx_sting_ang_in_ancrt)}"
-      ckbx_fara_plati_ang_in_ancrt="${esc(angP.ckbx_fara_plati_ang_in_ancrt)}"
-      ckbx_cu_plati_ang_in_mmani="${esc(angP.ckbx_cu_plati_ang_in_mmani)}"
-      ckbx_ang_leg_emise_ct_an_urm="${esc(angP.ckbx_ang_leg_emise_ct_an_urm)}"
-    >${rowsPlati}
-    </ang_legale_plati>
-  </sectiuneaA>
-  <sectiuneaB
-    ckbx_secta_inreg_ctrl_ang="${esc(sB.ckbx_secta_inreg_ctrl_ang)}"
-    ckbx_fara_inreg_ctrl_ang="${esc(sB.ckbx_fara_inreg_ctrl_ang)}"
-    sum_fara_inreg_ctrl_crdbug="${esc(sB.sum_fara_inreg_ctrl_crdbug || 0)}"
-    ckbx_interzis_emit_ang="${esc(sB.ckbx_interzis_emit_ang)}"
-    ckbx_interzis_intrucat="${esc(sB.ckbx_interzis_intrucat)}"
-    intrucat="${esc(sB.intrucat)}"
-  >${rowsCtrl}
-  </sectiuneaB>
-</NOTAFD>
-</xfa:data>
-</xfa:datasets>`;
-}
-
-// ── XFA injection: găsire datasets xref ───────────────────────────────────────
-
-async function findDatasetsXref(pdfDoc) {
-  const { PDFName } = await import('pdf-lib');
-  try {
-    const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-    if (!acroFormRef) return null;
-    const acroForm = pdfDoc.context.lookup(acroFormRef);
-    const xfaRef   = acroForm.get(PDFName.of('XFA'));
-    if (!xfaRef) return null;
-    const xfaArr = pdfDoc.context.lookup(xfaRef);
-
-    for (let i = 0; i + 1 < xfaArr.size(); i += 2) {
-      try {
-        const nameItem = xfaArr.get(i);
-        // XFA array alternates: PDFString(name), PDFRef
-        const name = nameItem.decodeText?.()
-          || nameItem.value
-          || nameItem.toString?.()
-          || '';
-        if (String(name).replace(/[()]/g, '') === 'datasets') {
-          const ref = xfaArr.get(i + 1);
-          return { objNum: ref.objectNumber, genNum: ref.generationNumber ?? 0 };
-        }
-      } catch {}
-    }
-  } catch {}
-  return null;
-}
-
-// ── XFA injection: incremental update (datasets există — ORDNT) ───────────────
-
-function getPrevStartxref(pdfBuffer) {
-  // Căutăm ultimul 'startxref' din PDF
-  const buf = pdfBuffer;
-  for (let i = buf.length - 2; i >= 0; i--) {
-    if (buf[i] === 0x73 && buf.slice(i, i + 9).toString() === 'startxref') {
-      const rest = buf.slice(i + 9).toString('latin1').trimStart();
-      const m = rest.match(/^(\d+)/);
-      if (m) return parseInt(m[1]);
-    }
-  }
-  throw new Error('startxref negăsit în PDF');
-}
-
-function appendObjectUpdate(pdfBuffer, objNum, genNum, xmlContent) {
-  const xmlBytes    = Buffer.from(xmlContent, 'utf-8');
-  const prevSX      = getPrevStartxref(pdfBuffer);
-
-  // Noul obiect
-  const header = Buffer.from(`\n${objNum} ${genNum} obj\n<< /Length ${xmlBytes.length} >>\nstream\n`);
-  const footer = Buffer.from(`\nendstream\nendobj\n`);
-  const newObj = Buffer.concat([header, xmlBytes, footer]);
-
-  // Offset-ul noului obiect = lungimea bufferului original
-  const newObjOffset = pdfBuffer.length;
-  const xrefOffset   = newObjOffset + newObj.length;
-
-  const offStr = String(newObjOffset).padStart(10, '0');
-  const genStr = String(genNum).padStart(5, '0');
-
-  // Xref cross-reference section + trailer + startxref
-  const xrefSection = Buffer.from([
-    `xref`,
-    `${objNum} 1`,
-    `${offStr} ${genStr} n `,
-    `trailer`,
-    `<< /Size ${objNum + 10} /Prev ${prevSX} >>`,
-    `startxref`,
-    `${xrefOffset}`,
-    `%%EOF`,
-    ``
-  ].join('\n'));
-
-  return Buffer.concat([pdfBuffer, newObj, xrefSection]);
-}
-
-// ── XFA injection: adăugare datasets (nu există — NOTAFD) incremental binar ──
-// Nu apelează niciodată pdfDoc.save() — evită blocarea pe template-uri XFA.
-
-async function addDatasetsIncremental(pdfBuffer, pdfDoc, xmlContent) {
-  const { PDFName } = await import('pdf-lib');
-
-  // 1. Alocă număr obiect nou (după cel mai mare din PDF)
-  const nextObjNum = pdfDoc.context.largestObjectNumber + 1;
-  const genNum     = 0;
-
-  // 2. Găsește ref-ul obiectului XFA array
-  const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-  const acroForm    = pdfDoc.context.lookup(acroFormRef);
-  const xfaRef      = acroForm.get(PDFName.of('XFA'));
-  const xfaObjNum   = xfaRef.objectNumber;
-  const xfaGenNum   = xfaRef.generationNumber ?? 0;
-
-  // 3. Citește intrările existente din XFA array
-  const xfaArr = pdfDoc.context.lookup(xfaRef);
-  const entries = [];
-  for (let i = 0; i + 1 < xfaArr.size(); i += 2) {
-    const name = (() => {
-      try { return xfaArr.get(i).decodeText?.() || xfaArr.get(i).value || ''; }
-      catch { return ''; }
-    })();
-    entries.push({ name: String(name).replace(/[()]/g, ''), ref: xfaArr.get(i + 1) });
-  }
-
-  // Inserează datasets înainte de xmpmeta sau postamble
-  let insertIdx = entries.length;
-  for (let i = 0; i < entries.length; i++) {
-    if (['xmpmeta', 'postamble'].includes(entries[i].name)) { insertIdx = i; break; }
-  }
-  entries.splice(insertIdx, 0, { name: 'datasets', newObjNum: nextObjNum });
-
-  // Reconstruiește XFA array ca string PDF
-  const xfaArrStr = entries.map(e => {
-    const refStr = e.newObjNum
-      ? `${e.newObjNum} 0 R`
-      : `${e.ref.objectNumber} ${e.ref.generationNumber ?? 0} R`;
-    return `(${e.name}) ${refStr}`;
-  }).join(' ');
-  const newXfaContent = `[ ${xfaArrStr} ]`;
-
-  // 4. Construiește incremental update binar
-  const xmlBytes   = Buffer.from(xmlContent, 'utf-8');
-  const prevSX     = getPrevStartxref(pdfBuffer);
-
-  // Obiect 1: noul datasets stream (apare primul în buffer)
-  const dsHeader = Buffer.from(`\n${nextObjNum} ${genNum} obj\n<< /Length ${xmlBytes.length} >>\nstream\n`);
-  const dsFooter = Buffer.from(`\nendstream\nendobj\n`);
-  const dsObj    = Buffer.concat([dsHeader, xmlBytes, dsFooter]);
-
-  // Obiect 2: XFA array actualizat
-  const xfaUpdated = Buffer.from(`\n${xfaObjNum} ${xfaGenNum} obj\n${newXfaContent}\nendobj\n`);
-
-  const dsOffset   = pdfBuffer.length;
-  const xfaOffset  = dsOffset + dsObj.length;
-  const xrefOffset = xfaOffset + xfaUpdated.length;
-
-  const pad10 = n => String(n).padStart(10, '0');
-  const pad5  = n => String(n).padStart(5, '0');
-
-  // Două subsecțiuni xref separate (objNum-uri neconsecutive)
-  const xrefSection = Buffer.from([
-    `xref`,
-    `${xfaObjNum} 1`,
-    `${pad10(xfaOffset)} ${pad5(xfaGenNum)} n `,
-    `${nextObjNum} 1`,
-    `${pad10(dsOffset)} ${pad5(genNum)} n `,
-    `trailer`,
-    `<< /Size ${nextObjNum + 1} /Prev ${prevSX} >>`,
-    `startxref`,
-    `${xrefOffset}`,
-    `%%EOF`,
-    ``
-  ].join('\n'));
-
-  return Buffer.concat([pdfBuffer, dsObj, xfaUpdated, xrefSection]);
-}
-
-// ── Funcție principală: fill XFA ──────────────────────────────────────────────
-
-async function fillXfaTemplate(templateBuffer, datasetsXml) {
-  const { PDFDocument } = await import('pdf-lib');
-
-  // Parsăm PDF doar pentru a localiza datasets xref
-  const pdfDoc     = await PDFDocument.load(templateBuffer, { ignoreEncryption: true });
-  const datasetsXr = await findDatasetsXref(pdfDoc);
-
-  if (datasetsXr) {
-    // ORDNT: datasets există → incremental update (cel mai sigur)
-    logger.info({ objNum: datasetsXr.objNum }, 'formulare: injectare XFA incremental update');
-    return appendObjectUpdate(templateBuffer, datasetsXr.objNum, datasetsXr.genNum, datasetsXml);
-  } else {
-    // NOTAFD: datasets lipsă → injectare binară incrementală (fără pdfDoc.save())
-    logger.info('formulare: adăugare datasets XFA (NOTAFD) incremental binar');
-    return addDatasetsIncremental(templateBuffer, pdfDoc, datasetsXml);
-  }
-}
-
-// ── Validare de bază server-side ──────────────────────────────────────────────
+// ── Validare server-side ──────────────────────────────────────────────────────
 
 function validateOrdnt(d) {
   const errs = [];
-  if (!d.Cif)         errs.push('Cif obligatoriu');
-  if (!d.DenInstPb)   errs.push('DenInstPb obligatoriu');
+  if (!d.Cif)          errs.push('Cif obligatoriu');
+  if (!d.DenInstPb)    errs.push('DenInstPb obligatoriu');
   if (!d.NrOrdonantPl) errs.push('NrOrdonantPl obligatoriu');
   if (!d.DataOrdontPl) errs.push('DataOrdontPl obligatoriu');
   if (!/^[1-9]\d{1,9}$/.test(d.Cif || '')) errs.push('Cif format invalid');
   if (!/^([1-9]|0[1-9]|[12][0-9]|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}$/.test(d.DataOrdontPl || ''))
     errs.push('DataOrdontPl format invalid (DD.MM.YYYY)');
   const df = d.docFd || {};
-  if (!df.beneficiar)   errs.push('beneficiar obligatoriu');
+  if (!df.beneficiar)      errs.push('beneficiar obligatoriu');
   if (!df.iban_beneficiar) errs.push('iban_beneficiar obligatoriu');
-  if (!df.cif_beneficiar) errs.push('cif_beneficiar obligatoriu');
+  if (!df.cif_beneficiar)  errs.push('cif_beneficiar obligatoriu');
   if (!/^[1-9]\d{1,9}$/.test(df.cif_beneficiar || '')) errs.push('cif_beneficiar format invalid');
   if (!Array.isArray(df.rowTfd) || df.rowTfd.length === 0)
-    errs.push('Cel puțin un rând rowTfd obligatoriu');
+    errs.push('Cel putin un rand rowTfd obligatoriu');
   return errs;
 }
 
 function validateNotafd(d) {
   const errs = [];
-  if (!d.Cif)           errs.push('Cif obligatoriu');
-  if (!d.DenInstPb)     errs.push('DenInstPb obligatoriu');
-  if (!d.SubtitluDF)    errs.push('SubtitluDF obligatoriu');
-  if (!d.NrUnicInreg)   errs.push('NrUnicInreg obligatoriu');
-  if (!d.Revizuirea)    errs.push('Revizuirea obligatorie');
+  if (!d.Cif)            errs.push('Cif obligatoriu');
+  if (!d.DenInstPb)      errs.push('DenInstPb obligatoriu');
+  if (!d.SubtitluDF)     errs.push('SubtitluDF obligatoriu');
+  if (!d.NrUnicInreg)    errs.push('NrUnicInreg obligatoriu');
+  if (!d.Revizuirea)     errs.push('Revizuirea obligatorie');
   if (!d.DataRevizuirii) errs.push('DataRevizuirii obligatorie');
   if (!/^[1-9]\d{1,9}$/.test(d.Cif || '')) errs.push('Cif format invalid');
   if (!/^([1-9]|0[1-9]|[12][0-9]|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}$/.test(d.DataRevizuirii || ''))
     errs.push('DataRevizuirii format invalid (DD.MM.YYYY)');
   const sA = d.sectiuneaA || {};
   if (!sA.compartiment_specialitate) errs.push('compartiment_specialitate obligatoriu');
-  if (!sA.obiect_fd_reviz_scurt) errs.push('obiect_fd_reviz_scurt obligatoriu');
+  if (!sA.obiect_fd_reviz_scurt)     errs.push('obiect_fd_reviz_scurt obligatoriu');
   const angV = sA.ang_legale_val || {};
   if (!Array.isArray(angV.rowT_ang_pl_val) || angV.rowT_ang_pl_val.length === 0)
-    errs.push('Cel puțin un rând ang_legale_val obligatoriu');
+    errs.push('Cel putin un rand ang_legale_val obligatoriu');
   return errs;
+}
+
+// ── Generare PDF simplu cu pdf-lib ────────────────────────────────────────────
+
+async function generatePdfSimple(formType, data) {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+
+  const PAGE_W    = 595.28;
+  const PAGE_H    = 841.89;
+  const MARGIN    = 40;
+  const CW        = PAGE_W - 2 * MARGIN;   // content width = 515.28
+  const LH        = 16;                     // line height
+  const FOOTER_H  = 20;
+
+  const pdfDoc = await PDFDocument.create();
+  const fontR  = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontB  = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontI  = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const pages = [];
+  let page    = null;
+  let y       = 0;
+
+  function newPage() {
+    page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+    pages.push(page);
+    y = PAGE_H - MARGIN;
+  }
+
+  function ensureSpace(needed) {
+    if (y - needed < MARGIN + FOOTER_H) newPage();
+  }
+
+  // ── Drawing primitives ─────────────────────────────────────────────────────
+
+  function tw(text, font, size) {
+    return font.widthOfTextAtSize(text, size);
+  }
+
+  function trunc(s, font, size, maxW) {
+    let t = ro(String(s ?? ''));
+    if (tw(t, font, size) <= maxW) return t;
+    while (t.length > 0 && tw(t + '…', font, size) > maxW) t = t.slice(0, -1);
+    return t + '…';
+  }
+
+  function txt(text, x, yy, { font = fontR, size = 9, color = rgb(0,0,0) } = {}) {
+    page.drawText(text, { x, y: yy, font, size, color });
+  }
+
+  function centered(text, yy, { font = fontR, size = 10 } = {}) {
+    const w = tw(text, font, size);
+    txt(text, MARGIN + (CW - w) / 2, yy, { font, size });
+  }
+
+  function rightAlign(text, yy, { font = fontR, size = 9 } = {}) {
+    const w = tw(text, font, size);
+    txt(text, MARGIN + CW - w, yy, { font, size });
+  }
+
+  function hline(yy, { thickness = 0.5, color = rgb(0.4, 0.4, 0.4) } = {}) {
+    page.drawLine({ start: { x: MARGIN, y: yy }, end: { x: MARGIN + CW, y: yy }, thickness, color });
+  }
+
+  function field(label, value, { size = 9 } = {}) {
+    ensureSpace(LH);
+    const lbl = ro(label) + ': ';
+    const lw  = tw(lbl, fontB, size);
+    txt(lbl,       MARGIN,      y, { font: fontB, size });
+    txt(trunc(value, fontR, size, CW - lw), MARGIN + lw, y, { font: fontR, size });
+    y -= LH;
+  }
+
+  function checkbox(checked, label, { size = 9 } = {}) {
+    ensureSpace(LH);
+    const on = checked === 'true' || checked === true || checked === 1;
+    const mark = on ? '[X]' : '[ ]';
+    txt(mark + ' ' + ro(String(label || '')), MARGIN + 6, y, { font: fontR, size });
+    y -= LH;
+  }
+
+  function sectionHeader(title, { size = 10 } = {}) {
+    ensureSpace(LH + 6);
+    y -= 4;
+    txt(ro(title), MARGIN, y, { font: fontB, size });
+    y -= LH;
+  }
+
+  // ── Table ──────────────────────────────────────────────────────────────────
+  // cols: [{ header: string, key: string, width: number }]
+  // widths must sum to CW
+
+  function drawTable(cols, rows, { size = 7.5 } = {}) {
+    const ROW_H  = 13;
+    const HEAD_H = 15;
+
+    // Header
+    ensureSpace(HEAD_H + ROW_H);
+
+    // Header background
+    page.drawRectangle({
+      x: MARGIN, y: y - HEAD_H, width: CW, height: HEAD_H,
+      color: rgb(0.85, 0.85, 0.85),
+      borderColor: rgb(0.5, 0.5, 0.5), borderWidth: 0.5,
+    });
+
+    // Header text + column dividers
+    let cx = MARGIN;
+    for (let i = 0; i < cols.length; i++) {
+      const col = cols[i];
+      txt(trunc(col.header, fontB, size, col.width - 4), cx + 2, y - HEAD_H + 5, { font: fontB, size });
+      if (i < cols.length - 1) {
+        page.drawLine({
+          start: { x: cx + col.width, y: y },
+          end:   { x: cx + col.width, y: y - HEAD_H },
+          thickness: 0.5, color: rgb(0.5, 0.5, 0.5),
+        });
+      }
+      cx += col.width;
+    }
+
+    y -= HEAD_H;
+
+    // Data rows
+    const dataRows = rows.length > 0 ? rows : [null];
+    for (const row of dataRows) {
+      ensureSpace(ROW_H);
+
+      page.drawRectangle({
+        x: MARGIN, y: y - ROW_H, width: CW, height: ROW_H,
+        color: rgb(1, 1, 1),
+        borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.5,
+      });
+
+      if (row === null) {
+        txt('(fara inregistrari)', MARGIN + 4, y - ROW_H + 4, { font: fontI, size, color: rgb(0.5,0.5,0.5) });
+      } else {
+        cx = MARGIN;
+        for (let i = 0; i < cols.length; i++) {
+          const col = cols[i];
+          const val = trunc(row[col.key] ?? '', fontR, size, col.width - 4);
+          txt(val, cx + 2, y - ROW_H + 4, { font: fontR, size });
+          if (i < cols.length - 1) {
+            page.drawLine({
+              start: { x: cx + col.width, y },
+              end:   { x: cx + col.width, y: y - ROW_H },
+              thickness: 0.5, color: rgb(0.7, 0.7, 0.7),
+            });
+          }
+          cx += col.width;
+        }
+      }
+
+      y -= ROW_H;
+    }
+
+    y -= 6;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Construcție document
+  // ══════════════════════════════════════════════════════════════════════════
+
+  newPage();
+
+  // ── Header comun ──────────────────────────────────────────────────────────
+
+  centered(ro(data.DenInstPb || ''), y, { font: fontB, size: 12 });
+  y -= LH;
+  centered('CIF: ' + ro(data.Cif || ''), y, { font: fontR, size: 9 });
+  y -= LH + 6;
+
+  const docTitle = formType === 'ordnt' ? 'ORDONANTARE DE PLATA' : 'DOCUMENT DE FUNDAMENTARE';
+  centered(docTitle, y, { font: fontB, size: 13 });
+  y -= LH + 4;
+
+  if (formType === 'ordnt') {
+    rightAlign('Nr. ' + ro(data.NrOrdonantPl || '') + '   Data: ' + ro(data.DataOrdontPl || ''), y);
+  } else {
+    rightAlign('Nr. ' + ro(data.NrUnicInreg || '') + '   Data: ' + ro(data.DataRevizuirii || ''), y);
+  }
+  y -= LH;
+
+  hline(y);
+  y -= 10;
+
+  // ── Conținut specific ─────────────────────────────────────────────────────
+
+  if (formType === 'notafd') {
+
+    if (data.SubtitluDF) {
+      centered(ro(data.SubtitluDF), y, { font: fontI, size: 10 });
+      y -= LH + 6;
+    }
+
+    // Sectiunea A
+    sectionHeader('SECTIUNEA A');
+
+    const sA = data.sectiuneaA || {};
+    field('Compartiment specialitate', sA.compartiment_specialitate);
+    field('Obiect FD (scurt)',          sA.obiect_fd_reviz_scurt);
+    if (sA.obiect_fd_reviz_lung) field('Obiect FD (detaliat)', sA.obiect_fd_reviz_lung);
+    if (data.Revizuirea)         field('Revizuirea', data.Revizuirea);
+
+    // Pct. 4 — Angajamente legale valori
+    y -= 4;
+    sectionHeader('Pct. 4 - Angajamente legale - valori');
+
+    const angV = sA.ang_legale_val || {};
+    checkbox(angV.ckbx_stab_tin_cont, 'Stabilirea si tinerea in evidenta a angajamentelor legale');
+    checkbox(angV.ckbx_ramane_suma,   'Ramane suma de angajat');
+    if (angV.ckbx_ramane_suma === 'true' || angV.ckbx_ramane_suma === true) {
+      field('  Suma ramasa', angV.ramane_suma || '0');
+    }
+
+    const rowsVal = Array.isArray(angV.rowT_ang_pl_val) ? angV.rowT_ang_pl_val : [];
+    y -= 4;
+    drawTable([
+      { header: 'Element FD',    key: 'element_fd',    width: 75 },
+      { header: 'Program',       key: 'program',       width: 60 },
+      { header: 'Cod SSI',       key: 'codSSI',        width: 55 },
+      { header: 'Param FD',      key: 'param_fd',      width: 65 },
+      { header: 'Val. prec.',    key: 'valt_rev_prec', width: 65 },
+      { header: 'Influente',     key: 'influente',     width: 65 },
+      { header: 'Val. actual.',  key: 'valt_actualiz', width: Math.round(CW) - 75 - 60 - 55 - 65 - 65 - 65 },
+    ], rowsVal);
+
+    // Pct. 5 — Angajamente legale plati
+    sectionHeader('Pct. 5 - Angajamente legale - plati');
+
+    const angP = sA.ang_legale_plati || {};
+    checkbox(angP.ckbx_fara_ang_emis_ancrt,    'Fara angajament emis in anul curent');
+    checkbox(angP.ckbx_cu_ang_emis_ancrt,      'Cu angajament emis in anul curent');
+    checkbox(angP.ckbx_sting_ang_in_ancrt,     'Sting angajamentul in anul curent');
+    checkbox(angP.ckbx_fara_plati_ang_in_ancrt,'Fara plati ale angajamentului in anul curent');
+    checkbox(angP.ckbx_cu_plati_ang_in_mmani,  'Cu plati ale angajamentului in lunile urmatoare');
+    checkbox(angP.ckbx_ang_leg_emise_ct_an_urm,'Angajamente legale emise cu termen in ani urmatori');
+
+    const rowsPlati = Array.isArray(angP.rowT_ang_pl_plati) ? angP.rowT_ang_pl_plati : [];
+    if (rowsPlati.length > 0) {
+      y -= 4;
+      const w = Math.floor(Math.round(CW) / 8);
+      drawTable([
+        { header: 'Program',      key: 'program',                  width: w },
+        { header: 'Cod SSI',      key: 'codSSI',                   width: w },
+        { header: 'Plati prec.',  key: 'plati_ani_precedenti',     width: w },
+        { header: 'Plati an crt', key: 'plati_estim_ancrt',        width: w },
+        { header: 'Plati an+1',   key: 'plati_estim_an_np1',       width: w },
+        { header: 'Plati an+2',   key: 'plati_estim_an_np2',       width: w },
+        { header: 'Plati an+3',   key: 'plati_estim_an_np3',       width: w },
+        { header: 'Plati ulter.', key: 'plati_estim_ani_ulter',    width: Math.round(CW) - w * 7 },
+      ], rowsPlati);
+    }
+
+    // Sectiunea B
+    sectionHeader('SECTIUNEA B');
+
+    const sB = data.sectiuneaB || {};
+    checkbox(sB.ckbx_secta_inreg_ctrl_ang, 'Sectiunea A cu inregistrari in controlul angajamentelor');
+    checkbox(sB.ckbx_fara_inreg_ctrl_ang,  'Fara inregistrari in controlul angajamentelor');
+    if (sB.sum_fara_inreg_ctrl_crdbug) {
+      field('Suma fara inregistrari control credit bugetar', sB.sum_fara_inreg_ctrl_crdbug);
+    }
+    checkbox(sB.ckbx_interzis_emit_ang,  'Interzis a emite angajamente');
+    checkbox(sB.ckbx_interzis_intrucat,  'Intrucat');
+    if (sB.intrucat) field('  Motivatie', sB.intrucat);
+
+    const rowsCtrl = Array.isArray(sB.rowT_ang_ctrl_ang) ? sB.rowT_ang_ctrl_ang : [];
+    if (rowsCtrl.length > 0) {
+      y -= 4;
+      const w = Math.floor(Math.round(CW) / 10);
+      drawTable([
+        { header: 'Cod ang.',          key: 'cod_angajament',              width: w },
+        { header: 'Indicator',         key: 'indicator_angajament',        width: w },
+        { header: 'Program',           key: 'program',                     width: w },
+        { header: 'Cod SSI',           key: 'cod_SSI',                     width: w },
+        { header: 'Rez.ang.prec',      key: 'sum_rezv_crdt_ang_af_rvz_prc',width: w },
+        { header: 'Inf.C6',            key: 'influente_c6',                width: w },
+        { header: 'Rez.ang.act',       key: 'sum_rezv_crdt_ang_act',       width: w },
+        { header: 'Rez.bug.prec',      key: 'sum_rezv_crdt_bug_af_rvz_prc',width: w },
+        { header: 'Inf.C9',            key: 'influente_c9',                width: w },
+        { header: 'Rez.bug.act',       key: 'sum_rezv_crdt_bug_act',       width: Math.round(CW) - w * 9 },
+      ], rowsCtrl);
+    }
+
+  } else {
+
+    // ORDNT
+    const df = data.docFd || {};
+
+    sectionHeader('Date ordonantare');
+    field('Nr. ordonanta',   data.NrOrdonantPl);
+    field('Data ordonantei', data.DataOrdontPl);
+
+    y -= 4;
+    sectionHeader('Date beneficiar');
+    field('Beneficiar',              df.beneficiar);
+    field('IBAN beneficiar',         df.iban_beneficiar);
+    field('CIF beneficiar',          df.cif_beneficiar);
+    if (df.banca_beneficiar)         field('Banca beneficiar', df.banca_beneficiar);
+    if (df.nr_unic_inreg)            field('Nr. unic inregistrare', df.nr_unic_inreg);
+    if (df.documente_justificative)  field('Documente justificative', df.documente_justificative);
+
+    y -= 4;
+    sectionHeader('Detalii plata');
+
+    const rowsTfd = Array.isArray(df.rowTfd) ? df.rowTfd : [];
+    drawTable([
+      { header: 'Cod angajament',  key: 'cod_angajament',          width: 82 },
+      { header: 'Indicator',       key: 'indicator_angajament',    width: 67 },
+      { header: 'Program',         key: 'program',                 width: 55 },
+      { header: 'Cod SSI',         key: 'cod_SSI',                 width: 55 },
+      { header: 'Receptii',        key: 'receptii',                width: 60 },
+      { header: 'Plati ant.',      key: 'plati_anterioare',        width: 60 },
+      { header: 'Suma ordon.',     key: 'suma_ordonantata_plata',  width: 68 },
+      { header: 'Rec. neplatite',  key: 'receptii_neplatite',      width: Math.round(CW) - 82 - 67 - 55 - 55 - 60 - 60 - 68 },
+    ], rowsTfd);
+
+    if (df.inf_pv_plata || df.inf_pv_plata1) {
+      sectionHeader('Informatii proces-verbal plata');
+      if (df.inf_pv_plata)  field('Informatii PV plata',     df.inf_pv_plata);
+      if (df.inf_pv_plata1) field('Informatii PV plata (2)', df.inf_pv_plata1);
+    }
+  }
+
+  // ── Footer: număr pagină / total pagini ───────────────────────────────────
+
+  const total = pages.length;
+  for (let i = 0; i < pages.length; i++) {
+    const ft = `Pagina ${i + 1} / ${total}`;
+    const fw = tw(ft, fontR, 8);
+    pages[i].drawText(ft, {
+      x: MARGIN + (CW - fw) / 2,
+      y: MARGIN / 2,
+      font: fontR, size: 8,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+  }
+
+  return Buffer.from(await pdfDoc.save());
 }
 
 // ── POST /api/formulare/generate ─────────────────────────────────────────────
@@ -391,42 +418,22 @@ router.post('/api/formulare/generate', requireAuth, _json5m, async (req, res) =>
   try {
     const { formType, data } = req.body || {};
     if (!formType || !data)
-      return res.status(400).json({ error: 'formType și data sunt obligatorii' });
+      return res.status(400).json({ error: 'formType si data sunt obligatorii' });
     if (!['ordnt', 'notafd'].includes(formType))
       return res.status(400).json({ error: 'formType invalid. Valori: ordnt, notafd' });
 
-    // Validare
     const errs = formType === 'ordnt' ? validateOrdnt(data) : validateNotafd(data);
     if (errs.length > 0)
-      return res.status(422).json({ error: 'Validare eșuată', errors: errs });
+      return res.status(422).json({ error: 'Validare esuata', errors: errs });
 
-    // Template PDF
-    const tplFile = formType === 'ordnt' ? 'ordnt_template.pdf' : 'notafd_template.pdf';
-    const tplPath = path.join(TEMPLATES_DIR, tplFile);
-    if (!fs.existsSync(tplPath)) {
-      return res.status(404).json({
-        error: 'template_not_found',
-        message: `Template PDF lipsă. Copiați fișierul PDF în: server/formulare/templates/${tplFile}`,
-      });
-    }
+    logger.info({ formType, actor: req.user?.email }, 'formulare: generare PDF simplu');
 
-    const templateBuffer = fs.readFileSync(tplPath);
+    const filledPdf = await generatePdfSimple(formType, data);
 
-    // Build XML
-    const datasetsXml = formType === 'ordnt'
-      ? buildOrdntXml(data)
-      : buildNotafdXml(data);
-
-    logger.info({ formType, actor: req.user?.email }, 'formulare: generare PDF');
-
-    // Injectare XFA
-    const filledPdf = await fillXfaTemplate(templateBuffer, datasetsXml);
-
-    // Filename
-    const ts = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const ts = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const fileName = formType === 'ordnt'
-      ? `OrdonantarePlata_${(data.NrOrdonantPl||'').replace(/[^A-Za-z0-9_-]/g,'_')}_${ts}.pdf`
-      : `DocumentFundamentare_${(data.NrUnicInreg||'').replace(/[^A-Za-z0-9_-]/g,'_')}_${ts}.pdf`;
+      ? `OrdonantarePlata_${(data.NrOrdonantPl || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${ts}.pdf`
+      : `DocumentFundamentare_${(data.NrUnicInreg || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${ts}.pdf`;
 
     return res.json({ ok: true, pdfBase64: filledPdf.toString('base64'), fileName });
 
@@ -436,15 +443,10 @@ router.post('/api/formulare/generate', requireAuth, _json5m, async (req, res) =>
   }
 });
 
-// ── GET /api/formulare/templates — verifică dacă template-urile există ────────
+// ── GET /api/formulare/templates ──────────────────────────────────────────────
 
-router.get('/api/formulare/templates', requireAuth, (req, res) => {
-  const status = {};
-  for (const [key, file] of [['ordnt','ordnt_template.pdf'],['notafd','notafd_template.pdf']]) {
-    const p = path.join(TEMPLATES_DIR, file);
-    status[key] = { configured: fs.existsSync(p), path: `server/formulare/templates/${file}` };
-  }
-  res.json({ templates: status });
+router.get('/api/formulare/templates', requireAuth, (_req, res) => {
+  res.json({ templates: { ordnt: { configured: true }, notafd: { configured: true } } });
 });
 
 export { router as formulareRouter };
