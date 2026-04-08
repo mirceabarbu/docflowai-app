@@ -1126,9 +1126,9 @@ async function mkFlow(ft){
       }catch(_){}
     }
     setS('Flux creat cu succes! Redirecționare...','ok');
+    const flowId2=j.flow?.id||j.flowId||j.id;
     setTimeout(()=>{
-      if(j.initIsSigner&&j.signerToken)location.href=`/semdoc-signer.html?token=${j.signerToken}`;
-      else location.href='/semdoc-initiator.html';
+      location.href=`/semdoc-initiator.html?flow=${flowId2}`;
     },1200);
   }catch(e){setS('Eroare: '+e.message,'err');}
   finally{btns.forEach(b=>{b.disabled=false;});}
