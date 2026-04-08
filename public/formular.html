@@ -493,18 +493,12 @@
     <div style="font-size:.8rem;font-weight:700;color:var(--app-sub);margin-bottom:8px">📝 Flux de semnare — tabel (4 semnatari)</div>
     <div class="flow-grid">
       <div class="dk-field"><label>Nume document</label><input id="ffn-ordnt" placeholder="Ordonanțare de Plată nr. ..."/></div>
-      <div class="dk-field"><label>Email inițiator</label><input id="ffe-ordnt" type="email"/></div>
+      <div class="dk-field"><label>Inițiator</label><input id="ffe-ordnt" readonly/></div>
     </div>
     <div class="actions" style="margin-top:6px">
       <button class="btn primary" onclick="mkFlow('ordnt')">🔏 Lansează flux</button>
     </div>
-    <div id="link-flow-ordnt" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--app-line)">
-      <div style="font-size:.75rem;color:var(--app-muted);margin-bottom:6px">După creare, copiați ID-ul fluxului din URL și lipiți-l mai jos:</div>
-      <div style="display:flex;gap:6px">
-        <input id="flow-id-input-ordnt" placeholder="ID flux (ex: abc123...)" style="flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--app-text);padding:7px 10px;font-size:.82rem;outline:none;font-family:inherit"/>
-        <button class="btn teal" style="padding:7px 14px" onclick="linkFlow('ordnt')">Leagă</button>
-      </div>
-    </div>
+    <div id="link-flow-ordnt" style="display:none;margin-top:8px;font-size:.75rem;color:var(--app-muted)">După lansarea fluxului, asocierea se face automat.</div>
   </div>
 </div>
 
@@ -734,18 +728,12 @@
     <div style="font-size:.8rem;font-weight:700;color:var(--app-sub);margin-bottom:8px">📝 Flux de semnare — tabel (6 semnatari)</div>
     <div class="flow-grid">
       <div class="dk-field"><label>Nume document</label><input id="ffn-notafd" placeholder="Document de Fundamentare nr. ..."/></div>
-      <div class="dk-field"><label>Email inițiator</label><input id="ffe-notafd" type="email"/></div>
+      <div class="dk-field"><label>Inițiator</label><input id="ffe-notafd" readonly/></div>
     </div>
     <div class="actions" style="margin-top:6px">
       <button class="btn primary" onclick="mkFlow('notafd')">🔏 Lansează flux</button>
     </div>
-    <div id="link-flow-notafd" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--app-line)">
-      <div style="font-size:.75rem;color:var(--app-muted);margin-bottom:6px">După creare, copiați ID-ul fluxului din URL și lipiți-l mai jos:</div>
-      <div style="display:flex;gap:6px">
-        <input id="flow-id-input-notafd" placeholder="ID flux (ex: abc123...)" style="flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--app-text);padding:7px 10px;font-size:.82rem;outline:none;font-family:inherit"/>
-        <button class="btn teal" style="padding:7px 14px" onclick="linkFlow('notafd')">Leagă</button>
-      </div>
-    </div>
+    <div id="link-flow-notafd" style="display:none;margin-top:8px;font-size:.75rem;color:var(--app-muted)">După lansarea fluxului, asocierea se face automat.</div>
   </div>
 </div>
 
@@ -792,7 +780,7 @@ function _applyAutoFill(ft, resetDate){
     if(org?.cif)  sf('o-cif',org.cif);
     const od=document.getElementById('o-data');
     if(od&&(resetDate||!od.value))od.value=d;
-    if(ST.user?.email) sf('ffe-ordnt',ST.user.email);
+    sf('ffe-ordnt',ST.user?.nume||ST.user?.name||ST.user?.email||'');
   }
   if(!ft||ft==='notafd'){
     if(org?.name) sf('n-den',org.name);
@@ -800,7 +788,7 @@ function _applyAutoFill(ft, resetDate){
     const nd=document.getElementById('n-data');
     if(nd&&(resetDate||!nd.value))nd.value=d;
     if(ST.user?.compartiment) sf('n-comp',ST.user.compartiment);
-    if(ST.user?.email) sf('ffe-notafd',ST.user.email);
+    sf('ffe-notafd',ST.user?.nume||ST.user?.name||ST.user?.email||'');
     if(org?._compList?.length){
       const dl=document.getElementById('comp-list-notafd');
       if(dl) dl.innerHTML=org._compList.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
@@ -1085,53 +1073,21 @@ function dlPdf(ft){
   a.download=name||'formular_'+ft+'.pdf';a.click();
 }
 function showFF(ft){const e=document.getElementById('ff-'+ft);e.classList.add('show');e.scrollIntoView({behavior:'smooth',block:'nearest'});}
-async function mkFlow(ft){
+function mkFlow(ft){
   const{pdf,name}=ST[ft];
   if(!pdf){setS('Generați mai întâi PDF-ul.','err');return;}
   const dn=(g('ffn-'+ft)||'').trim()||((name||'').replace('.pdf',''));
   if(!dn){setS('Introduceți numele documentului.','err');return;}
   const user=ST.user;
   if(!user?.email){setS('Utilizator necunoscut. Reîncărcați pagina.','err');return;}
-  const btns=document.querySelectorAll(`#ff-${ft} button`);
-  btns.forEach(b=>{b.disabled=true;});
-  setS('Se creează fluxul de semnare...','info');
-  try{
-    const body={
-      docName:dn,
-      initName:user.nume||user.email,
-      initEmail:user.email,
-      pdfB64:pdf,
-      flowType:'tabel',
-      signers:[{
-        name:user.nume||user.email,
-        email:user.email,
-        rol:'Initiator',
-        functie:user.functie||'',
-        compartiment:user.compartiment||'',
-        order:1
-      }]
-    };
-    const r=await fetch('/api/flows',{method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
-      body:JSON.stringify(body)});
-    const j=await r.json();
-    if(!r.ok||!j.ok){setS(j.error||j.message||'Eroare la creare flux','err');return;}
-    const flowId=j.flowId;
-    // Leagă fluxul de documentul formularului
-    if(ST.docId[ft]){
-      try{
-        await fetch(`${ftApi(ft)}/${ST.docId[ft]}/link-flow`,{method:'POST',credentials:'include',
-          headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
-          body:JSON.stringify({flow_id:flowId})});
-      }catch(_){}
-    }
-    setS('Flux creat cu succes! Redirecționare...','ok');
-    const flowId2=j.flow?.id||j.flowId||j.id;
-    setTimeout(()=>{
-      location.href=`/semdoc-initiator.html?flow=${flowId2}`;
-    },1200);
-  }catch(e){setS('Eroare: '+e.message,'err');}
-  finally{btns.forEach(b=>{b.disabled=false;});}
+  sessionStorage.setItem('docflow_prefill_name',dn);
+  sessionStorage.setItem('docflow_prefill_email',user.email);
+  sessionStorage.setItem('docflow_prefill_pdf',pdf);
+  sessionStorage.setItem('docflow_prefill_type','tabel');
+  sessionStorage.setItem('docflow_prefill_doc_id',ST.docId[ft]||'');
+  sessionStorage.setItem('docflow_prefill_doc_type',ft);
+  setS('Redirecționare către configurare flux...','info');
+  setTimeout(()=>{location.href='/semdoc-initiator.html?action=new_flow_prefill';},600);
 }
 
 /* ── AUTO-SAVE DRAFT ─────────────────────────────────────────────────────────
@@ -1870,31 +1826,8 @@ async function resetDocToP1(ft){
   }catch(e){setS('Eroare: '+e.message,'err');}
 }
 
-// ── Link flux de semnare ──────────────────────────────────────────────────────
-async function linkFlow(ft){
-  const inp=document.getElementById(`flow-id-input-${ft}`);
-  const flowId=(inp?.value||'').trim();
-  if(!flowId){setS('Introduceți ID-ul fluxului.','err');return;}
-  if(!ST.docId[ft]){setS('Nu există document salvat.','err');return;}
-  try{
-    const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/link-flow`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
-      body:JSON.stringify({flow_id:flowId}),
-    });
-    const j=await r.json();
-    if(!r.ok||!j.ok){setS(j.error||'Eroare la legare flux','err');return;}
-    refreshDocs(ft);setS('Fluxul a fost legat de document.','ok');
-  }catch(e){setS('Eroare: '+e.message,'err');}
-}
-
-// ── link-flow section show — apelat din mkFlow după lansare ──────────────────
-function showLinkFlowSection(ft){
-  if(ST.docId[ft]){
-    const lf=document.getElementById('link-flow-'+ft);
-    if(lf)lf.style.display='';
-  }
-}
+// ── link-flow section show — noop, asocierea se face automat din semdoc-initiator ─
+function showLinkFlowSection(ft){}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (function initDocWorkflow(){

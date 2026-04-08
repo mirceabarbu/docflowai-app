@@ -2123,6 +2123,22 @@ async function signFromFluxuri(flowId) {
             await _uploadAttachments(j.flowId);
           }
 
+          // Auto-asociere document formular (dacă vine din prefill)
+          const _prefDocId   = sessionStorage.getItem("docflow_prefill_doc_id");
+          const _prefDocType = sessionStorage.getItem("docflow_prefill_doc_type");
+          if (_prefDocId && _prefDocType && j.flowId) {
+            const _pfApi = _prefDocType === "ordnt" ? "/api/formulare-ord" : "/api/formulare-df";
+            try {
+              await fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
+                method: "POST", credentials: "include",
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                body: JSON.stringify({ flow_id: j.flowId })
+              });
+            } catch(_) {}
+            sessionStorage.removeItem("docflow_prefill_doc_id");
+            sessionStorage.removeItem("docflow_prefill_doc_type");
+          }
+
           // Redirect UX:
           // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
           // - altfel -> mergi la pagina dedicată flow (status/timeline)
@@ -2158,7 +2174,31 @@ async function signFromFluxuri(flowId) {
         const params = new URLSearchParams(location.search);
         const flowParam = params.get("flow");
         const tabParam = params.get("tab");
+        const actionParam = params.get("action");
         if (flowParam) { location.replace(`/flow.html?flow=${encodeURIComponent(flowParam)}`); return; }
+        if (actionParam === "new_flow_prefill") {
+          const _pName  = sessionStorage.getItem("docflow_prefill_name");
+          const _pEmail = sessionStorage.getItem("docflow_prefill_email");
+          const _pPdf   = sessionStorage.getItem("docflow_prefill_pdf");
+          const _pType  = sessionStorage.getItem("docflow_prefill_type");
+          if (_pName  && $("docName"))   $("docName").value  = _pName;
+          if (_pEmail && $("initEmail")) $("initEmail").value = _pEmail;
+          if (_pPdf) {
+            pdfB64 = _pPdf;
+            setPdfInfo("✅ Document din formulare (prefill)");
+            setTimeout(() => renderPdfJsInit(pdfB64), 400);
+          }
+          if (_pType === "tabel") {
+            const rTabel = $("docTypeTabel");
+            if (rTabel) { rTabel.checked = true; onDocTypeChange(); }
+          }
+          sessionStorage.removeItem("docflow_prefill_name");
+          sessionStorage.removeItem("docflow_prefill_email");
+          sessionStorage.removeItem("docflow_prefill_pdf");
+          sessionStorage.removeItem("docflow_prefill_type");
+          showTab("init");
+          return;
+        }
         if (tabParam === "flows" || tabParam === "fluxuri") { showTab("fluxuri"); return; }
         if (tabParam === "init") { showTab("init"); return; }
       })();
