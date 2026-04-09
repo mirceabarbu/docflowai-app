@@ -67,3 +67,19 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000).unref(); // .unref() — nu blochează graceful shutdown
+
+// ── Pre-built limiters ────────────────────────────────────────────────────────
+
+/** Login brute-force limiter: max 10 attempts per 15 minutes per IP. */
+export const loginLimiter = createRateLimiter({
+  windowMs: 900_000,
+  max: 10,
+  message: 'Prea multe încercări. Încearcă în 15 minute.',
+});
+
+/** General API limiter: max 60 requests per minute per IP. */
+export const apiLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 60,
+  message: 'Prea multe cereri. Încearcă în 1 minut.',
+});

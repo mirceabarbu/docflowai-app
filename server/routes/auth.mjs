@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { generateCsrfToken } from '../middleware/csrf.mjs';
 import jwt from 'jsonwebtoken';
 import {
-  JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC,
+  AUTH_COOKIE, JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC,
   requireAuth, verifyPassword, hashPassword,
   setAuthCookie, clearAuthCookie,
 } from '../middleware/auth.mjs';
@@ -187,7 +187,7 @@ router.get('/auth/me', async (req, res) => {
 // ── POST /auth/refresh ────────────────────────────────────────────────────────
 router.post('/auth/refresh', async (req, res) => {
   // SEC-01: citim token-ul din cookie, cu fallback la Authorization header
-  let token = req.cookies?.auth_token || null;
+  let token = req.cookies?.[AUTH_COOKIE] || null;
   if (!token) {
     const auth = req.get('authorization') || '';
     token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
@@ -282,7 +282,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // ── GET /auth/debug — diagnostic endpoint (ADMIN ONLY) ───────────────────────
 router.get('/auth/debug', async (req, res) => {
-  let token = req.cookies?.auth_token || null;
+  let token = req.cookies?.[AUTH_COOKIE] || null;
   if (!token) {
     const auth = req.get('authorization') || '';
     token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
