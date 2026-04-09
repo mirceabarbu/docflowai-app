@@ -8,6 +8,7 @@
 
 // ── Env vars necesare pentru boot ────────────────────────────────────────────
 process.env.JWT_SECRET         = 'test-jwt-secret-vitest-docflowai-2025';
+process.env.DATABASE_URL       = 'postgresql://test:test@localhost:5432/test_docflowai';
 process.env.PORT               = '0';       // OS assign (nu pornim serverul real)
 process.env.NODE_ENV           = 'test';
 process.env.LOG_LEVEL          = 'error';   // Silențiem logurile în output teste

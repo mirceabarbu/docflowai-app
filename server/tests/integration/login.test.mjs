@@ -226,11 +226,11 @@ describe('POST /auth/login', () => {
       .set('host', 'localhost')
       .send({ email: user.email, password: plainPwd });
 
-    // Cookie auth_token trebuie să existe
+    // Cookie dfai_token trebuie să existe
     // Notă: set-cookie poate fi string (1 cookie) sau array (multiple cookies)
     const rawCookies = res.headers['set-cookie'];
     const cookieList = Array.isArray(rawCookies) ? rawCookies : (rawCookies ? [rawCookies] : []);
-    const authCookie = cookieList.find(c => c.startsWith('auth_token='));
+    const authCookie = cookieList.find(c => c.startsWith('dfai_token='));
     expect(authCookie).toBeDefined();
     expect(authCookie.toLowerCase()).toContain('httponly');
   });

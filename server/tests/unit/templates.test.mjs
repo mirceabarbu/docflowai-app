@@ -50,7 +50,7 @@ const TEST_JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key-for-vitest';
 process.env.JWT_SECRET = TEST_JWT_SECRET;
 
 function makeAuthCookie(email = 'owner@test.ro', role = 'user') {
-  return `auth_token=${jwt.sign({ email, role, orgId: 1 }, TEST_JWT_SECRET, { expiresIn: '1h' })}`;
+  return `dfai_token=${jwt.sign({ email, role, orgId: 1 }, TEST_JWT_SECRET, { expiresIn: '1h' })}`;
 }
 
 function createTestApp() {

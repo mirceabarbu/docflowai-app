@@ -121,7 +121,7 @@ process.env.JWT_SECRET = TEST_JWT_SECRET;
 
 function makeAuthCookie(overrides = {}) {
   const payload = { email: 'initiator@primaria.ro', role: 'user', orgId: 1, ...overrides };
-  return `auth_token=${jwt.sign(payload, TEST_JWT_SECRET, { expiresIn: '1h' })}`;
+  return `dfai_token=${jwt.sign(payload, TEST_JWT_SECRET, { expiresIn: '1h' })}`;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -297,7 +297,7 @@ describe('POST /flows — autentificare', () => {
     // Un payload incomplet => 400 validare, nu 401.
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', 'auth_token=invaliddddtoken')
+      .set('Cookie', 'dfai_token=invaliddddtoken')
       .send({});
     expect(res.status).toBe(400);
   });

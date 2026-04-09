@@ -220,7 +220,7 @@ describe('POST /flows — validare input', () => {
   it('400 — docName lipsă', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('docName_required');
@@ -229,7 +229,7 @@ describe('POST /flows — validare input', () => {
   it('400 — docName prea scurt (1 char)', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ docName: 'X', initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('docName_required');
@@ -238,7 +238,7 @@ describe('POST /flows — validare input', () => {
   it('400 — docName prea lung (>500 chars)', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ docName: 'A'.repeat(501), initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('docName_too_long');
@@ -248,7 +248,7 @@ describe('POST /flows — validare input', () => {
   it('400 — initName lipsă', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ docName: 'Referat', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('initName_required');
@@ -257,7 +257,7 @@ describe('POST /flows — validare input', () => {
   it('400 — initEmail invalid', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion Popescu', initEmail: 'nu-e-email', signers: [{ name: 'X Y', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('initEmail_invalid');
@@ -266,7 +266,7 @@ describe('POST /flows — validare input', () => {
   it('400 — signers lipsă (array gol)', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers: [] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('signers_required');
@@ -275,7 +275,7 @@ describe('POST /flows — validare input', () => {
   it('400 — signer email invalid', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'nu-email' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('signer_email_invalid');
@@ -285,7 +285,7 @@ describe('POST /flows — validare input', () => {
   it('400 — signer name prea scurt', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X', email: 'x@b.com' }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('signer_name_required');
@@ -294,7 +294,7 @@ describe('POST /flows — validare input', () => {
   it('400 — semnatari duplicați', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({
         docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com',
         signers: [
@@ -310,7 +310,7 @@ describe('POST /flows — validare input', () => {
     const app = createTestApp();
     const signers = Array.from({ length: 51 }, (_, i) => ({ name: `Semnatar ${i}`, email: `s${i}@b.com` }));
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('too_many_signers');
@@ -323,7 +323,7 @@ describe('POST /flows — validare input', () => {
     const app = createTestApp({ jsonLimit: '200mb' });
     const bigPdf = 'A'.repeat(67 * 1024 * 1024);
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ docName: 'Referat', initName: 'Ion', initEmail: 'a@b.com', signers: [{ name: 'X Y', email: 'x@b.com' }], pdfB64: bigPdf });
     expect(res.status).toBe(413);
     expect(res.body.error).toBe('pdf_too_large_max_50mb');
@@ -332,7 +332,7 @@ describe('POST /flows — validare input', () => {
   it('200 — creare reușită, răspuns corect', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({
         docName: 'Referat aprobare buget',
         initName: 'Ion Popescu',
@@ -350,7 +350,7 @@ describe('POST /flows — validare input', () => {
   it('200 — inițiatorul este și semnatar → signerToken inclus', async () => {
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({
         docName: 'Referat',
         initName: 'Ion Popescu',
@@ -375,7 +375,7 @@ describe('GET /flows/:flowId', () => {
     const app = createTestApp();
     const res = await request(app)
       .get('/flows/INEXISTENT')
-      .set('Cookie', `auth_token=${makeToken()}`);
+      .set('Cookie', `dfai_token=${makeToken()}`);
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('not_found');
   });
@@ -413,7 +413,7 @@ describe('GET /flows/:flowId', () => {
     const app = createTestApp();
     const res = await request(app)
       .get('/flows/TEST_ABCD1')
-      .set('Cookie', `auth_token=${makeToken()}`);
+      .set('Cookie', `dfai_token=${makeToken()}`);
     expect(res.status).toBe(200);
     expect(res.body.pdfB64).toBeUndefined();
     expect(res.body.signedPdfB64).toBeUndefined();
@@ -710,7 +710,7 @@ describe('POST /flows/:flowId/delegate', () => {
     // Actorul logat este semnatarul curent
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/delegate')
-      .set('Cookie', `auth_token=${makeToken({ email: 'signer1@primaria.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'signer1@primaria.ro' })}`)
       .send({ fromToken: currentToken, toEmail: 'signer1@primaria.ro', reason: 'Test' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('self_delegation_not_allowed');
@@ -725,7 +725,7 @@ describe('POST /flows/:flowId/delegate', () => {
     const app = createTestApp();
     // Trimitem cookie — handler-ul folosește actor.email la delegatedFrom.by
     const res = await request(app).post('/flows/TEST_ABCD1/delegate')
-      .set('Cookie', `auth_token=${makeToken({ email: 'signer1@primaria.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'signer1@primaria.ro' })}`)
       .send({ fromToken: currentToken, toEmail: 'delegat@primaria.ro', toName: 'Delegat Nou', reason: 'Absență concediu' });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -762,7 +762,7 @@ describe('POST /flows/:flowId/cancel', () => {
     dbModule.getFlowData.mockResolvedValue(null);
     const app = createTestApp();
     const res = await request(app).post('/flows/INEXISTENT/cancel')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({});
     expect(res.status).toBe(404);
   });
@@ -772,7 +772,7 @@ describe('POST /flows/:flowId/cancel', () => {
     dbModule.getFlowData.mockResolvedValue(flow);
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/cancel')
-      .set('Cookie', `auth_token=${makeToken({ email: 'altcineva@primaria.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'altcineva@primaria.ro' })}`)
       .send({ reason: 'Test' });
     expect(res.status).toBe(403);
     expect(res.body.error).toBe('forbidden');
@@ -784,7 +784,7 @@ describe('POST /flows/:flowId/cancel', () => {
     dbModule.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/cancel')
-      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'init@primaria.ro' })}`)
       .send({ reason: 'Anulat din greșeală' });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -805,7 +805,7 @@ describe('POST /flows/:flowId/cancel', () => {
     dbModule.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/cancel')
-      .set('Cookie', `auth_token=${makeAdminToken()}`) // admin, alt email
+      .set('Cookie', `dfai_token=${makeAdminToken()}`) // admin, alt email
       .send({ reason: 'Anulat de admin' });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -816,7 +816,7 @@ describe('POST /flows/:flowId/cancel', () => {
     dbModule.getFlowData.mockResolvedValue(flow);
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/cancel')
-      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'init@primaria.ro' })}`)
       .send({});
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('already_cancelled');
@@ -835,7 +835,7 @@ describe('POST /flows/:flowId/reinitiate', () => {
     dbModule.getFlowData.mockResolvedValue(null);
     const app = createTestApp();
     const res = await request(app).post('/flows/INEXISTENT/reinitiate')
-      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'init@primaria.ro' })}`)
       .send({});
     expect(res.status).toBe(404);
   });
@@ -848,7 +848,7 @@ describe('POST /flows/:flowId/reinitiate', () => {
     dbModule.getFlowData.mockResolvedValue(flow);
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/reinitiate')
-      .set('Cookie', `auth_token=${makeToken({ email: 'altcineva@ex.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'altcineva@ex.ro' })}`)
       .send({});
     expect(res.status).toBe(403);
     expect(res.body.error).toBe('forbidden');
@@ -859,7 +859,7 @@ describe('POST /flows/:flowId/reinitiate', () => {
     dbModule.getFlowData.mockResolvedValue(flow);
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/reinitiate')
-      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'init@primaria.ro' })}`)
       .send({});
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('no_refused_signer');
@@ -876,7 +876,7 @@ describe('POST /flows/:flowId/reinitiate', () => {
     dbModule.pool.query.mockResolvedValue({ rows: [] }); // attachments
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/reinitiate')
-      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'init@primaria.ro' })}`)
       .send({});
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -901,7 +901,7 @@ describe('POST /flows/:flowId/reinitiate', () => {
     dbModule.saveFlow.mockResolvedValue(undefined);
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/reinitiate')
-      .set('Cookie', `auth_token=${makeAdminToken()}`) // admin global
+      .set('Cookie', `dfai_token=${makeAdminToken()}`) // admin global
       .send({});
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -989,7 +989,7 @@ describe('GET /my-flows — multi-tenant isolation', () => {
     dbModule.getUserMapForOrg.mockResolvedValue({});
     const app = createTestApp();
     const res = await request(app).get('/my-flows')
-      .set('Cookie', `auth_token=${makeToken({ orgId: 42 })}`);
+      .set('Cookie', `dfai_token=${makeToken({ orgId: 42 })}`);
     expect(res.status).toBe(200);
     // Verificăm că query-ul COUNT conținea org_id = $2 (filtru tenant)
     const callArgs = dbModule.pool.query.mock.calls[0];
@@ -1004,7 +1004,7 @@ describe('GET /my-flows — multi-tenant isolation', () => {
     dbModule.getUserMapForOrg.mockResolvedValue({});
     const app = createTestApp();
     const res = await request(app).get('/my-flows')
-      .set('Cookie', `auth_token=${makeToken({ orgId: null })}`);
+      .set('Cookie', `dfai_token=${makeToken({ orgId: null })}`);
     expect(res.status).toBe(200);
     // Query fără org_id în params (doar email)
     const callArgs = dbModule.pool.query.mock.calls[0];
@@ -1026,7 +1026,7 @@ describe('POST /flows/:flowId/resend — org_admin tenant check', () => {
     dbModule.getFlowData.mockResolvedValue(flow);
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/resend')
-      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
       .send({});
     expect(res.status).toBe(403);
     expect(res.body.error).toBe('forbidden');
@@ -1038,7 +1038,7 @@ describe('POST /flows/:flowId/resend — org_admin tenant check', () => {
     dbModule.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/resend')
-      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
       .send({});
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -1050,7 +1050,7 @@ describe('POST /flows/:flowId/resend — org_admin tenant check', () => {
     dbModule.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/resend')
-      .set('Cookie', `auth_token=${makeToken({ email: 'init@primaria.ro', orgId: 999 })}`)
+      .set('Cookie', `dfai_token=${makeToken({ email: 'init@primaria.ro', orgId: 999 })}`)
       .send({});
     expect(res.status).toBe(200);
   });
@@ -1069,7 +1069,7 @@ describe('POST /flows/:flowId/cancel — org_admin tenant check', () => {
     dbModule.getFlowData.mockResolvedValue(flow);
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/cancel')
-      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
       .send({ reason: 'test' });
     expect(res.status).toBe(403);
     expect(res.body.error).toBe('forbidden');
@@ -1081,7 +1081,7 @@ describe('POST /flows/:flowId/cancel — org_admin tenant check', () => {
     dbModule.pool.query.mockResolvedValue({ rows: [], rowCount: 0 });
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/cancel')
-      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
       .send({ reason: 'Anulat de admin instituție' });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
@@ -1092,7 +1092,7 @@ describe('POST /flows/:flowId/cancel — org_admin tenant check', () => {
     dbModule.getFlowData.mockResolvedValue(flow);
     const app = createTestApp();
     const res = await request(app).post('/flows/TEST_ABCD1/cancel')
-      .set('Cookie', `auth_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
+      .set('Cookie', `dfai_token=${makeToken({ role: 'org_admin', orgId: 1, email: 'orgadmin@org1.ro' })}`)
       .send({});
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('already_completed');

@@ -247,7 +247,7 @@ describe('POST /flows/:flowId/cancel — tranziții invalide', () => {
 
     const res = await request(app)
       .post(`/flows/${flow.flowId}/cancel`)
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ reason: 'test' });
 
     expect(res.status).toBe(409);
@@ -259,7 +259,7 @@ describe('POST /flows/:flowId/cancel — tranziții invalide', () => {
 
     const res = await request(app)
       .post(`/flows/${flow.flowId}/cancel`)
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `dfai_token=${makeToken()}`)
       .send({ reason: 'test' });
 
     expect(res.status).toBe(409);
@@ -346,7 +346,7 @@ describe('POST /flows/:flowId/reinitiate — tranziții invalide', () => {
 
     const res = await request(app)
       .post(`/flows/${flow.flowId}/reinitiate`)
-      .set('Cookie', `auth_token=${makeToken()}`);
+      .set('Cookie', `dfai_token=${makeToken()}`);
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('no_refused_signer');
@@ -364,7 +364,7 @@ describe('POST /flows/:flowId/reinitiate — tranziții invalide', () => {
 
     const res = await request(app)
       .post(`/flows/${flow.flowId}/reinitiate`)
-      .set('Cookie', `auth_token=${makeToken()}`);
+      .set('Cookie', `dfai_token=${makeToken()}`);
 
     expect(res.status).toBe(409);
   });
@@ -380,7 +380,7 @@ describe('POST /flows/:flowId/reinitiate — tranziții invalide', () => {
 
     const res = await request(app)
       .post(`/flows/${flow.flowId}/reinitiate`)
-      .set('Cookie', `auth_token=${makeToken()}`);
+      .set('Cookie', `dfai_token=${makeToken()}`);
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('aprobat_refused');
