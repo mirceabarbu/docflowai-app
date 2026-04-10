@@ -6,7 +6,8 @@ import config from './config.mjs';
 import { pool } from './db/index.mjs';
 import { runMigrations } from './db/migrate.mjs';
 import { seedAdminUser }   from './db/seeds/admin.mjs';
-import { seedDefaultForms } from './db/seeds/forms.mjs';
+import { seedDefaultForms }   from './db/seeds/forms.mjs';
+import { seedBuiltinPolicies } from './modules/policies/builtins.mjs';
 import { logger } from './middleware/logger.mjs';
 
 export async function bootstrap() {
@@ -33,6 +34,10 @@ export async function bootstrap() {
   // Seed standard form templates (idempotent)
   await seedDefaultForms();
   logger.info('✓ Default forms seeded');
+
+  // Seed global built-in policy rules (idempotent)
+  await seedBuiltinPolicies();
+  logger.info('✓ Built-in policies seeded');
 
   logger.info('Ready.');
 }

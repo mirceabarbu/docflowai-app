@@ -23,6 +23,12 @@ import flowsModuleRouter         from './modules/flows/routes.mjs';
 import notificationsModuleRouter from './modules/notifications/routes.mjs';
 import archiveModuleRouter       from './modules/archive/routes.mjs';
 import formsModuleRouter         from './modules/forms/routes.mjs';
+import adminOrgsRouter           from './modules/admin/organizations.mjs';
+import adminUsersRouter          from './modules/admin/users.mjs';
+import analyticsRouter           from './modules/analytics/routes.mjs';
+import policiesRouter            from './modules/policies/routes.mjs';
+import auditRouter               from './modules/audit/routes.mjs';
+import { fire as fireWebhook }   from './services/webhook.mjs';
 import { generateId }            from './core/ids.mjs';
 
 const __dir    = dirname(fileURLToPath(import.meta.url));
@@ -93,7 +99,7 @@ injectFlowDeps({
   stripSensitive: (data) => data,
   stripPdfB64:    (data) => ({ ...data, pdfB64: undefined }),
   sendSignerEmail: _noop,
-  fireWebhook:     _noop,
+  fireWebhook,
 });
 
 // ── v4 API modules ────────────────────────────────────────────────────────────
@@ -103,7 +109,12 @@ app.use('/api/users',         usersApiRouter);
 app.use('/api/flows',         flowsModuleRouter);
 app.use('/api/notifications', notificationsModuleRouter);
 app.use('/api/archive',       archiveModuleRouter);
-app.use('/api/forms',         formsModuleRouter);
+app.use('/api/forms',              formsModuleRouter);
+app.use('/api/admin/organizations', adminOrgsRouter);
+app.use('/api/admin/users',         adminUsersRouter);
+app.use('/api/analytics',           analyticsRouter);
+app.use('/api/policies',            policiesRouter);
+app.use('/api/audit',               auditRouter);
 
 // ── Flow routes (STS zone — NO-TOUCH files mounted here) ─────────────────────
 
