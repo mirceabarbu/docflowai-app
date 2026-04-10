@@ -5,7 +5,8 @@
 import config from './config.mjs';
 import { pool } from './db/index.mjs';
 import { runMigrations } from './db/migrate.mjs';
-import { seedAdminUser } from './db/seeds/admin.mjs';
+import { seedAdminUser }   from './db/seeds/admin.mjs';
+import { seedDefaultForms } from './db/seeds/forms.mjs';
 import { logger } from './middleware/logger.mjs';
 
 export async function bootstrap() {
@@ -28,6 +29,10 @@ export async function bootstrap() {
 
   // Seed default org + admin user (idempotent)
   await seedAdminUser();
+
+  // Seed standard form templates (idempotent)
+  await seedDefaultForms();
+  logger.info('✓ Default forms seeded');
 
   logger.info('Ready.');
 }

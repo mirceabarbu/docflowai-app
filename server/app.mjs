@@ -22,6 +22,7 @@ import usersApiRouter     from './modules/users/routes.mjs';
 import flowsModuleRouter         from './modules/flows/routes.mjs';
 import notificationsModuleRouter from './modules/notifications/routes.mjs';
 import archiveModuleRouter       from './modules/archive/routes.mjs';
+import formsModuleRouter         from './modules/forms/routes.mjs';
 import { generateId }            from './core/ids.mjs';
 
 const __dir    = dirname(fileURLToPath(import.meta.url));
@@ -102,6 +103,7 @@ app.use('/api/users',         usersApiRouter);
 app.use('/api/flows',         flowsModuleRouter);
 app.use('/api/notifications', notificationsModuleRouter);
 app.use('/api/archive',       archiveModuleRouter);
+app.use('/api/forms',         formsModuleRouter);
 
 // ── Flow routes (STS zone — NO-TOUCH files mounted here) ─────────────────────
 
