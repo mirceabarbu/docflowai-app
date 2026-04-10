@@ -19,6 +19,7 @@ import { errorHandler }   from './middleware/errorHandler.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows/index.mjs';
 import authApiRouter      from './modules/auth/routes.mjs';
 import usersApiRouter     from './modules/users/routes.mjs';
+import flowsModuleRouter  from './modules/flows/routes.mjs';
 import { generateId }     from './core/ids.mjs';
 
 const __dir    = dirname(fileURLToPath(import.meta.url));
@@ -96,6 +97,7 @@ injectFlowDeps({
 
 app.use('/api/auth',  authApiRouter);
 app.use('/api/users', usersApiRouter);
+app.use('/api/flows', flowsModuleRouter);
 
 // ── Flow routes (STS zone — NO-TOUCH files mounted here) ─────────────────────
 
