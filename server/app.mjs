@@ -19,8 +19,10 @@ import { errorHandler }   from './middleware/errorHandler.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows/index.mjs';
 import authApiRouter      from './modules/auth/routes.mjs';
 import usersApiRouter     from './modules/users/routes.mjs';
-import flowsModuleRouter  from './modules/flows/routes.mjs';
-import { generateId }     from './core/ids.mjs';
+import flowsModuleRouter         from './modules/flows/routes.mjs';
+import notificationsModuleRouter from './modules/notifications/routes.mjs';
+import archiveModuleRouter       from './modules/archive/routes.mjs';
+import { generateId }            from './core/ids.mjs';
 
 const __dir    = dirname(fileURLToPath(import.meta.url));
 const PUBLIC   = join(__dir, '..', 'public');
@@ -95,9 +97,11 @@ injectFlowDeps({
 
 // ── v4 API modules ────────────────────────────────────────────────────────────
 
-app.use('/api/auth',  authApiRouter);
-app.use('/api/users', usersApiRouter);
-app.use('/api/flows', flowsModuleRouter);
+app.use('/api/auth',          authApiRouter);
+app.use('/api/users',         usersApiRouter);
+app.use('/api/flows',         flowsModuleRouter);
+app.use('/api/notifications', notificationsModuleRouter);
+app.use('/api/archive',       archiveModuleRouter);
 
 // ── Flow routes (STS zone — NO-TOUCH files mounted here) ─────────────────────
 
