@@ -1,268 +1,319 @@
-# CLAUDE.md
+# DocFlowAI v4.0 — Developer Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Stack
 
-## Project Overview
+- **Runtime:** Node.js 20, ES modules throughout (`"type": "module"`, `.mjs` server, `.js` frontend)
+- **Web framework:** Express 4, PostgreSQL via `pg` pool
+- **Real-time:** `ws` WebSocket server (see `server/services/ws.mjs`)
+- **PDF / Signing:** `pdf-lib`, `@signpdf/signpdf`, Java Spring Boot microservice (`SIGNING_SERVICE_URL`)
+- **Auth:** JWT in HttpOnly cookies (`dfai_token`), PBKDF2 600k iterations, optional TOTP/2FA
+- **Email:** Resend REST API; **WhatsApp:** Meta Business API; **Push:** VAPID Web Push
+- **Storage:** PDF bytes in PostgreSQL BYTEA (`flows_pdfs`); Google Drive for archive
+- **Deploy:** Railway EU West — Node.js + PostgreSQL separate services
+- **Testing:** Vitest + Supertest
 
-**DocFlowAI** (v3.9.x) is a multi-tenant SaaS platform for managing qualified electronic signatures (QES) on PDF documents, targeting Romanian public administration. Compliant with eIDAS, Law 455/2001, Law 214/2024, OUG 38/2020, HG 1259/2001.
+---
+
+## STS Zone Contract — READ THIS FIRST
+
+The following files are **STRICT NO-TOUCH**. QES PAdES multi-signer signing works in production with real clients. Any modification can invalidate existing qualified signatures:
+
+```
+server/signing/                         <- entire directory, all files
+server/routes/flows/cloud-signing.mjs
+server/routes/flows/bulk-signing.mjs
+server/routes/flows/acroform.mjs
+```
+
+**Absolute rule:** If a change would touch the STS signing flow or PAdES, STOP and ask first.
+
+If you need to interact with signing:
+- Create NEW files that import from `server/signing/`
+- Do NOT modify existing signing files
+
+---
+
+## Project Structure
+
+```
+server/
+  index.mjs           -- Entry point: createServer, WS, graceful shutdown
+  app.mjs             -- Express app factory + route mounting
+  bootstrap.mjs       -- DB migrations, seeds, startup jobs
+  config.mjs          -- All env vars with validation
+
+  core/               -- Pure utilities (no DB, no HTTP)
+    errors.mjs        -- AppError, ValidationError, NotFoundError, ForbiddenError
+    ids.mjs           -- generateId() (nanoid-based)
+    hashing.mjs       -- hashPassword, verifyPassword
+    dates.mjs         -- formatDate helpers
+    pagination.mjs    -- buildPaginationMeta
+    tenant.mjs        -- getOrgId(req), isSuperAdmin(req)
+    validation.mjs    -- validateEmail, sanitizeString
+
+  db/
+    index.mjs         -- pg Pool, DB_READY, migrations auto-run, helper queries
+    migrate.mjs       -- migration runner
+    migrations/       -- SQL files 001..013+
+    queries/          -- Domain query modules (flows, users, audit, forms, ...)
+    seeds/            -- Seed files (forms.mjs for ALOP template)
+
+  middleware/
+    auth.mjs          -- JWT verify, requireAuth, requireAdmin, hashPassword
+    logger.mjs        -- Pino logger, requestLogger middleware
+    csrf.mjs          -- Double-submit CSRF cookie
+    errorHandler.mjs  -- Express error handler (no raw errors in responses)
+    rateLimiter.mjs   -- In-memory rate limiting
+    metrics.mjs       -- Prometheus metrics
+    uploadGuard.mjs   -- File upload validation
+
+  modules/            -- v4 feature modules (each: routes.mjs + service.mjs + repository.mjs)
+    auth/             -- Login, JWT refresh, CSRF tokens
+    users/            -- User CRUD, profile, password change
+    flows/            -- Flow management (create, list, advance, cancel)
+    notifications/    -- In-app notification center
+    archive/          -- Google Drive archive jobs
+    forms/            -- Forms Engine (templates, versions, instances, PDF render)
+      evaluator.mjs   -- Pure validation engine: evaluateCondition, validateFormData
+      pdf-renderer.mjs -- AcroForm fill + programmatic PDF generation (NotoSans TTF)
+    admin/
+      organizations.mjs -- Org CRUD at /api/admin/organizations
+      users.mjs         -- Extended user mgmt: reset-password, force-logout, bulk-import
+      outreach.mjs      -- Outreach campaigns + primarii dataset
+      tracking.mjs      -- Public tracking pixel/click routes (/d/:id, /p/:id)
+    analytics/        -- Summary KPIs + flows timeline (generate_series)
+    policies/         -- Policy engine: evaluatePolicy, built-in rules
+    audit/            -- Audit log: paginated events, per-flow, CSV export
+
+  routes/             -- Legacy/NO-TOUCH routes
+    flows/
+      index.mjs       -- Orchestrator (mounts all flow sub-routes)
+      crud.mjs        -- Create, read, list flows
+      signing.mjs     -- Sign (local upload), refuse, upload PDF
+      lifecycle.mjs   -- Reinitiate, review, delegate, cancel
+      cloud-signing.mjs  NO-TOUCH -- STS OAuth
+      bulk-signing.mjs   NO-TOUCH -- Bulk signing
+      acroform.mjs       NO-TOUCH -- AcroForm detection
+      email.mjs       -- External email + tracking
+      attachments.mjs -- Support document management
+
+  services/
+    webhook.mjs       -- HMAC-SHA256 outgoing webhooks (fire, _dispatch)
+    ws.mjs            -- WebSocket server (createWsServer, sendToUser, broadcastToOrg)
+    certificate-verify.mjs -- X.509 chain validation
+    sign-trust-report.mjs  -- Trust chain report generation
+
+  signing/            NO-TOUCH -- All signing providers
+    providers/
+      LocalUploadProvider.mjs  -- operational
+      STSCloudProvider.mjs     -- NO-TOUCH (production QES)
+
+  tests/
+    setup.mjs               -- Vitest global setup (env vars, DB mock config)
+    integration/            -- Supertest tests with mocked DB
+    unit/                   -- Pure unit tests
+
+public/
+  css/main.css              -- Complete design system (CSS variables, components)
+  js/
+    core/                   -- api.js, auth.js, toast.js, modal.js, tables.js, dom.js
+    modules/
+      auth/login.js
+      admin/dashboard.js, users.js
+      initiator/flow-list.js, flow-create.js
+      forms/alop.js
+  login.html
+  admin.html
+  semdoc-initiator.html
+  formular.html
+  semdoc-signer.html        -- DO NOT MODIFY
+  flow.html                 -- DO NOT MODIFY
+  verifica.html             -- DO NOT MODIFY
+  bulk-signer.html          -- DO NOT MODIFY
+```
+
+---
+
+## How to Run Locally
+
+```bash
+git clone <repo>
+git checkout v4-enterprise
+npm install
+
+# Copy env (values from Railway dashboard)
+cp env.example .env
+# Fill in: DATABASE_URL, JWT_SECRET (>=32 chars), PUBLIC_BASE_URL,
+#          RESEND_API_KEY, MAIL_FROM
+
+npm start          # node server/index.mjs
+```
+
+---
 
 ## Commands
 
 ```bash
-# Run the application
-npm start                 # node server/index.mjs
-
-# Testing
-npm test                  # Run all tests once (vitest run)
-npm run test:watch        # Watch mode
-npm run test:coverage     # With coverage report
-
-# Syntax checking (runs node --check on 40+ server files)
-npm run check
+npm start              # Start application (node server/index.mjs)
+npm run dev            # Start with --watch (auto-restart on changes)
+npm test               # Run all tests once (vitest run)
+npm run test:watch     # Watch mode
+npm run test:coverage  # With coverage report
+npm run check          # node --check on 40+ server files (syntax only)
 ```
 
-**Run a single test file:**
+Run a single test file:
 ```bash
 npx vitest run server/tests/integration/flows.test.mjs
 ```
 
-**Environment:** Copy `env.example` to `.env`. Required vars: `DATABASE_URL`, `JWT_SECRET` (≥32 chars), `PUBLIC_BASE_URL`, `RESEND_API_KEY`, `MAIL_FROM`.
+---
 
-**Node.js version:** 20 (see `.node-version`). Codebase uses ES modules throughout (`"type": "module"`, `.mjs` extensions).
+## How to Add a New Module
+
+1. Create `server/modules/{name}/routes.mjs` + `service.mjs` + `repository.mjs`
+2. Mount in `server/app.mjs`:
+   ```js
+   import nameRouter from './modules/{name}/routes.mjs';
+   app.use('/api/{name}', nameRouter);
+   ```
+3. Add tests in `server/tests/integration/{name}.test.mjs`
+4. Add `node --check server/modules/{name}/*.mjs` to `npm run check` in `package.json`
 
 ---
 
-## Reguli de lucru
+## How to Add a New Form Template
 
-După ORICE implementare completă și după ce testele trec:
-1. `git add .`
-2. `git commit -m "descriere"`
-3. `git push origin develop`
+1. Add seed in `server/db/seeds/forms.mjs`:
+   ```js
+   const MY_SCHEMA = { sections: [...], fields: [...] };
+   const MY_RULES  = [...];
+   await seedTemplate({ code: 'MY_FORM', name: '...', schema: MY_SCHEMA, rules: MY_RULES });
+   ```
+2. Schema: `{ sections: [{ id, title }], fields: [{ id, section, type, label, required }] }`
+3. Rules: `[{ condition: { field, op, value }, effect: 'require'|'hide', target }]`
+4. `seedDefaultForms()` is called at bootstrap automatically
 
-**O sarcină nu este considerată terminată fără `git push`.**
-
----
-
-## ⚠️ ZONE INTERZISE — NU MODIFICA NICIODATĂ
-
-Următoarele fișiere sunt **STRICT NO-TOUCH**. Semnarea STS Cloud QES PAdES multi-semnatar funcționează în producție cu clienți reali. Orice modificare poate invalida semnăturile calificate existente:
-
-```
-server/signing/providers/STSCloudProvider.mjs
-server/routes/flows/cloud-signing.mjs
-server/routes/flows/bulk-signing.mjs
-server/signing/pades.mjs
-server/signing/java-pades-client.mjs
-```
-
-**Regula absolută:** Dacă o modificare ar putea atinge fluxul de semnare STS sau PAdES, OPREȘTE și întreabă mai întâi.
+Form evaluator operators: `eq neq gt gte lt lte contains not_contains in not_in empty not_empty`
 
 ---
 
-## Architecture
+## How to Add a New Signing Provider
 
-### Stack
-- **Backend:** Node.js 20, Express 4, PostgreSQL (via `pg`), compression middleware
-- **Real-time:** WebSocket (`ws`)
-- **PDF:** `pdf-lib`, `@signpdf/signpdf`, `node-forge`, `asn1js`/`pkijs` pentru X.509/CMS
-- **Java microservice:** Spring Boot pentru operații PAdES iText (`SIGNING_SERVICE_URL`)
-- **Auth:** JWT în HttpOnly cookies, PBKDF2 (100k iterații), TOTP/2FA
-- **Notificări:** Resend (email), Meta Business API (WhatsApp), VAPID Web Push
-- **Storage:** PDF bytes în PostgreSQL BYTEA (`flows_pdfs`); Google Drive pentru arhivare
-- **Deploy:** Railway EU West (PostgreSQL + Node.js servicii separate)
-- **Testing:** Vitest + Supertest
+1. Create `server/signing/providers/NameProvider.mjs` extending `SigningProvider`:
+   ```js
+   import { SigningProvider } from '../SigningProvider.mjs';
+   export class NameProvider extends SigningProvider {
+     async initiateSigning(flow, signer) { ... }
+     async completeSigning(flow, signer, payload) { ... }
+   }
+   ```
+2. Register in `server/signing/index.mjs` in `ALL_PROVIDERS` map
+3. Add provider key to `signing_providers_enabled` for the org (via admin panel)
 
-### Backend Structure (`server/`)
-
-**Entry point:** `server/index.mjs` — montează toate rutele, inițializează WebSocket, pornește job-uri background (arhivare, cleanup notificări). Conține 500+ linii de changelog inline la început.
-
-**Routes** (`server/routes/`):
-- `auth.mjs` — login, JWT refresh, CSRF tokens
-- `admin.mjs` — panou admin (utilizatori, organizații, analytics, outreach, onboarding) — 2257 linii
-- `flows/` — management fluxuri modular (vezi mai jos)
-- `templates.mjs` — template-uri semnatari
-- `notifications.mjs` — centru notificări in-app
-- `totp.mjs` — setup/verificare 2FA
-- `verify.mjs` — endpoint public verificare semnături
-- `report.mjs` — analytics/raportare
-- `formulare.mjs` — gestionare formulare (Notă de Fundamentare, Ordonanțare)
-
-**Flow sub-routes** (`server/routes/flows/`):
-| Fișier | Responsabilitate |
-|--------|-----------------|
-| `index.mjs` | Orchestrator/router |
-| `crud.mjs` | Creare, citire, listare fluxuri |
-| `signing.mjs` | Semnare (upload local), refuz, upload PDF |
-| `lifecycle.mjs` | Reinițiere, review, delegare, anulare |
-| `cloud-signing.mjs` | ⛔ STS OAuth flow, coordonare provideri cloud |
-| `email.mjs` | Trimitere email extern + tracking open/click |
-| `attachments.mjs` | Gestiune documente suport |
-| `acroform.mjs` | Detecție câmpuri XFA/AcroForm |
-| `bulk-signing.mjs` | ⛔ Operații bulk semnare |
-
-**Signing providers** (`server/signing/providers/`):
-- `LocalUploadProvider.mjs` ✅ Operațional
-- `STSCloudProvider.mjs` ✅ ⛔ Complet implementat — NU MODIFICA
-- `CertSignProvider.mjs`, `TransSpedProvider.mjs`, `AlfaTrustProvider.mjs`, `NamirialProvider.mjs` — arhitectură skeleton
-
-**Database** (`server/db/index.mjs`): Pool PostgreSQL + migrări automate la startup (50+ migrări în `schema_migrations`).
-
-**Tabele principale:**
-- `flows` — date flux în JSONB (`data`), cu coloane dedicate: `org_id`, `created_at`, `updated_at`, `deleted_at`
-- `flows_pdfs` — PDF bytes în BYTEA (chei: `pdfB64`, `signedPdfB64`, `originalPdfB64`, `padesPdf_*`)
-- `users` — utilizatori cu `org_id` FK
-- `organizations` — organizații cu `cif`, `compartimente` JSONB, `signing_providers_enabled` GIN indexed
-- `flow_signatures`, `signature_certificates`, `trust_reports` — audit QES
-- `audit_log` — log evenimente complete
-- `archive_jobs` — job-uri arhivare Google Drive
-- `outreach_institutions`, `outreach_campaigns` — modul outreach
-
-**Middleware** (`server/middleware/`): `auth.mjs` (JWT verify), `logger.mjs` (Pino), `metrics.mjs` (Prometheus), `rateLimiter.mjs` (in-memory), `cspNonce.mjs`, `csrf.mjs`.
+Never modify STSCloudProvider.mjs.
 
 ---
 
-## Tipuri de Fluxuri
+## Database Patterns
 
-Două tipuri de fluxuri, cu comportament diferit la semnare:
+### Key tables
+| Table | Purpose |
+|-------|---------|
+| `flows` | Flow metadata in JSONB `data`, with `org_id`, `created_at`, `updated_at`, `deleted_at` |
+| `flows_pdfs` | PDF bytes in BYTEA: `pdfB64`, `signedPdfB64`, `originalPdfB64` |
+| `users` | Users with `org_id` FK, `token_version` for session invalidation |
+| `organizations` | Orgs with `signing_providers_enabled` GIN-indexed JSONB |
+| `form_templates` | Form template definitions |
+| `form_instances` | Per-flow form instances with `data_json` |
+| `audit_log` | Complete event log |
+| `policy_rules` | Policy engine rules (built-in: `org_id IS NULL`) |
+| `outreach_primarii` | ~2950 Romanian municipalities dataset |
 
-**`tabel`** — DocFlowAI generează tabelul de semnături (footer PDF). Footer-ul se aplică la CREAREA fluxului (înainte de orice semnătură) pentru a nu invalida QES-ul ulterior.
+### Query rules
+- Use **`org_id` column** (not `data->>'orgId'`) -- indexed
+- Prefer **`COUNT(*) OVER()`** window function over two queries
+- Soft deletes: `deleted_at IS NULL` always in flow queries
+- `org_id` is in the JWT payload (`actor.orgId`) -- do not query it from DB if available
 
-**`ancore`** — PDF-ul vine deja cu câmpuri de semnătură de la sisteme externe (ex: Forexebug). DocFlowAI NU aplică footer, NU modifică PDF-ul la creare.
-
-**Regula critică:** `pdf-lib.save()` nu se apelează NICIODATĂ pe un PDF deja semnat — ar invalida semnăturile QES existente.
-
----
-
-## PAdES Signature Flow
-
-### Local Upload
-Semnatar descarcă PDF unsigned → semnează offline cu aplicație desktop QES → uploadează via `POST /flows/:flowId/upload-signed-pdf` → sistemul validează și avansează fluxul.
-
-### STS Cloud (hash-based) ⛔ NO-TOUCH
-1. `POST /flows/:flowId/initiate-cloud-signing` → `signing/pades.mjs:preparePadesDoc()` creează placeholder, `calcPadesHash()` calculează SHA-256 ByteRange hash
-2. Redirect la `https://idp.stsisp.ro/` (PKCE OAuth)
-3. Sistemul trimite hash la `https://sign.stsisp.ro/api/v1/signature`, polling pentru CMS DER bytes
-4. `injectCms()` inserează semnătura ca incremental PDF update
-
-### Multi-semnatar PAdES
-- Câmpurile de semnătură `/Sig` sunt create de **iText** (Java service) la crearea fluxului, NU de pdf-lib
-- Motivul: pdf-lib creează Widget-uri incomplete; iText le „repară" la semnare, ceea ce invalidează semnaturile anterioare
-- La semnare ulterioară, iText recunoaște propriile câmpuri și scrie MINIM în incremental update
-- Cartuș vizual „SEMNAT SI APROBAT" afișează rol, nume, funcție per celulă
-
----
-
-## Multi-tenancy
-
-Fiecare `organization` configurează ce provideri de semnare sunt activi (`signing_providers_enabled` JSONB array, GIN indexed). Utilizatorii aparțin organizațiilor via `org_id`. **Toate** query-urile flows/users includ izolare `org_id`.
-
-**Roluri utilizatori:**
-- `admin` — super-admin, vede totul
-- `org_admin` — administrator instituție, vede doar org-ul propriu
-- `user` — utilizator normal
-
-**Pattern important:** `org_id` este disponibil direct din JWT payload (`actor.orgId`). Nu face `SELECT org_id FROM users WHERE email=...` dacă `actor.orgId` este disponibil — este un query redundant.
-
----
-
-## Convenții DB & Performance
-
-### Indexuri importante
+### Important indexes
 ```sql
-idx_flows_org_updated    ON flows(org_id, updated_at DESC)
-idx_flows_active         ON flows WHERE not completed/refused/cancelled
-idx_flows_signers_gin    ON flows USING GIN (data->'signers')
-idx_flows_org_status     ON flows(org_id, data->>'status')
-idx_flows_deleted_at     ON flows(deleted_at) WHERE deleted_at IS NULL
-```
-
-### Reguli query
-- Folosește **`org_id` coloana** (nu `data->>'orgId'`) pentru filtrare — are index, JSONB nu
-- Preferă **window function** `COUNT(*) OVER()` în loc de 2 query-uri separate (COUNT + SELECT)
-- Folosește **LEFT JOIN users** în loc de correlated EXISTS pentru filtre instFilter/deptFilter
-- Proiectează câmpurile JSONB necesare, nu `SELECT data` complet pentru listinguri
-
-### Pool PostgreSQL
-```js
-max: 20, idleTimeoutMillis: 30_000
+idx_flows_org_updated  ON flows(org_id, updated_at DESC)
+idx_flows_active       ON flows WHERE NOT status IN ('completed','refused','cancelled')
+idx_flows_signers_gin  ON flows USING GIN (data->'signers')
 ```
 
 ---
 
 ## Security Patterns
 
-- JWT în HttpOnly cookies (niciodată `localStorage`), cu token versioning pentru invalidare la reset parolă
-- CSRF: double-submit cookie pattern (`X-CSRF-Token` header + cookie), auto-retry în `notif-widget.js`
-- Soft deletes (`deleted_at`) pentru audit trails complete
-- Niciun detaliu de eroare raw în răspunsuri 500 (logate server-side via Pino)
-- Webhook: HMAC-SHA256
-- Rate limiting in-memory (nu supraviețuiește restarturilor Railway)
+- JWT in HttpOnly cookies (`dfai_token`), never `localStorage`
+- CSRF: double-submit cookie (`X-CSRF-Token` header)
+- Token versioning: `token_version` bump invalidates all active sessions
+- Soft deletes (`deleted_at`) for complete audit trails
+- No raw error details in 500 responses
+- Webhook HMAC-SHA256 in `X-DocFlow-Signature` header
+- `esc(str)` mandatory for all user data in DOM
 
 ---
 
-## Frontend
+## Multi-tenancy
 
-Toate frontendurile sunt SPA-uri single-file (HTML + JS inline), servite static din `public/`:
-
-| Fișier | Dimensiune | Scop |
-|--------|-----------|------|
-| `admin.html` | 309KB | Panou admin complet |
-| `semdoc-initiator.html` | 138KB | Creare flux, upload PDF |
-| `semdoc-signer.html` | 114KB | Interfață semnare (STS OAuth) |
-| `flow.html` | 71KB | Status flux, WebSocket real-time, ETag cache |
-| `formular.html` | 57KB | Formulare administrative |
-| `notif-widget.js` | — | Widget notificări shared, auto-retry CSRF |
-| `sw.js` | — | Service Worker offline |
-
-**Helper universal:** `esc(str)` — escaping HTML obligatoriu pentru orice date utilizator afișate în DOM. Niciodată `innerHTML` cu date neescapate.
+- All flow/user queries include `org_id` isolation
+- `getOrgId(req)` from `server/core/tenant.mjs` reads from JWT
+- `isSuperAdmin(req)` returns `req.user?.role === 'admin'`
+- Roles: `admin` (super-admin, sees all), `org_admin` (sees own org), `user` (normal)
 
 ---
 
-## Java Signing Service (Spring Boot)
+## Two Flow Types
 
-Microserviciu separat pentru operații PAdES iText. Configurat via `SIGNING_SERVICE_URL`.
+**`tabel`** -- DocFlowAI generates the signature footer. Applied at flow CREATION, before any QES.
 
-**Endpoints folosite:**
-- `POST /api/pades/create-fields` — creează câmpuri AcroForm `/Sig` cu iText
-- `POST /api/pades/prepare` — pregătește PDF cu placeholder ByteRange
-- `POST /api/pades/finalize` — injectează CMS DER în placeholder
+**`ancore`** -- PDF has pre-existing signature fields. DocFlowAI does NOT modify the PDF at creation.
 
-**Important:** Apelurile `fetch()` către Java service nu au timeout explicit — în caz de hung service, conexiunile Node.js rămân blocate.
+Critical: `pdf-lib.save()` is NEVER called on an already-signed PDF.
 
 ---
 
-## Modul Outreach
+## Environment Variables
 
-Campanii email către ~2.950 municipalități românești. Tabele: `outreach_institutions`, `outreach_campaigns`, `outreach_recipients`. Router separat în `server/routes/admin/outreach.mjs`.
-
----
-
-## Deployment Railway
-
-- **Producție:** `docflowai-app.up.railway.app` (branch `main`)
-- **Staging:** `docflowai-app-staging.up.railway.app` (branch `develop`)
-- Migrările rulează automat la startup
-- `.railwayignore` exclude fișierele mari din `tools/`
-- Railway folosește `npm ci` — `package.json` și `package-lock.json` trebuie sincronizate întotdeauna
-
----
-
-## Integrări Externe
-
-| Serviciu | Scop | Config |
-|----------|------|--------|
-| Resend | Email tranzacțional | `RESEND_API_KEY` |
-| Meta Business API | Notificări WhatsApp | `WHATSAPP_*` vars |
-| Google Drive | Arhivare PDF-uri finalizate | `GOOGLE_*` vars |
-| Google Workspace | Provisionare utilizatori GWS | `GWS_*` vars |
-| STS Romania | Semnare cloud QES | `STS_*` vars |
-| DigiCert TSA | RFC 3161 timestamp | `http://timestamp.digicert.com` |
-| VAPID Web Push | Notificări browser | `VAPID_*` vars |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | yes | PostgreSQL connection string |
+| `JWT_SECRET` | yes | >=32 chars |
+| `PUBLIC_BASE_URL` | | Base URL |
+| `PORT` | | Default: 3000 |
+| `JWT_EXPIRES` | | Default: 8h |
+| `RESEND_API_KEY` | | Transactional email |
+| `MAIL_FROM` | | Sender address |
+| `SIGNING_SERVICE_URL` | | Java PAdES microservice |
+| `GOOGLE_DRIVE_FOLDER_ID` | | Archive destination |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | | Google service account JSON |
+| `VAPID_PUBLIC_KEY/PRIVATE_KEY/SUBJECT` | | Web Push |
+| `WA_PHONE_NUMBER_ID` / `WA_ACCESS_TOKEN` | | WhatsApp |
+| `OUTREACH_DAILY_LIMIT` | | Default: 100 emails/day |
+| `STS_CLIENT_ID` / `STS_CLIENT_SECRET` | NO-TOUCH | STS Cloud OAuth |
 
 ---
 
-## Testing
+## Reguli de lucru
 
-Teste de integrare în `server/tests/integration/` folosesc Supertest contra unei baze de date reale (configurată în `server/tests/setup.mjs`). PBKDF2 (~200ms) implică timeout de 15s în `vitest.config.mjs`. Coverage exclude: Google Drive, GWS, WhatsApp, Web Push.
+Dupa ORICE implementare completa si dupa ce testele trec:
+1. `git add .`
+2. `git commit -m "descriere"`
+3. `git push origin v4-enterprise`
 
-**Înainte de orice modificare:** rulează `npm test` și verifică că toate testele trec. Nu livra cod cu teste care pică.
+O sarcina nu este considerata terminata fara `git push`.
+
+Inainte de orice modificare: ruleaza `npm test` si verifica ca toate testele trec.
+
+---
+
+## Deployment (Railway)
+
+- Production: `docflowai-app.up.railway.app` (branch `main`)
+- Staging: `docflowai-app-staging.up.railway.app` (branch `develop`)
+- Migrations run automatically at startup
+- `.railwayignore` excludes large files from `tools/`
+- Railway uses `npm ci` -- `package.json` and `package-lock.json` must stay in sync

@@ -4,13 +4,18 @@
 
 import { createServer } from 'http';
 import { bootstrap, shutdown } from './bootstrap.mjs';
-import { app }    from './app.mjs';
-import config     from './config.mjs';
-import { logger } from './middleware/logger.mjs';
+import { app, injectWsPush }   from './app.mjs';
+import config                  from './config.mjs';
+import { logger }              from './middleware/logger.mjs';
+import { createWsServer, sendToUser } from './services/ws.mjs';
 
 bootstrap()
   .then(() => {
     const server = createServer(app);
+
+    // ── WebSocket ─────────────────────────────────────────────────────────
+    createWsServer(server);
+    injectWsPush((userId, data) => sendToUser(userId, data));
 
     server.listen(config.port, () => {
       logger.info(`DocFlowAI v4.0 listening on port ${config.port}`);

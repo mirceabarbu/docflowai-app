@@ -25,6 +25,8 @@ import archiveModuleRouter       from './modules/archive/routes.mjs';
 import formsModuleRouter         from './modules/forms/routes.mjs';
 import adminOrgsRouter           from './modules/admin/organizations.mjs';
 import adminUsersRouter          from './modules/admin/users.mjs';
+import outreachRouter            from './modules/admin/outreach.mjs';
+import { registerTrackingRoutes } from './modules/admin/tracking.mjs';
 import analyticsRouter           from './modules/analytics/routes.mjs';
 import policiesRouter            from './modules/policies/routes.mjs';
 import auditRouter               from './modules/audit/routes.mjs';
@@ -87,9 +89,15 @@ app.get('/api/status', (_req, res) => {
 const _noop   = async () => {};
 const _noopFn = ()       => {};
 
+// wsPush will be overridden by injectWsPush() once the WS server starts
+let _wsPush = _noop;
+
+/** Called by index.mjs once the WebSocket server is ready. */
+export function injectWsPush(fn) { _wsPush = fn; }
+
 injectFlowDeps({
   notify:               _noop,
-  wsPush:               _noop,
+  wsPush:               (userId, data) => _wsPush(userId, data),
   PDFLib:               await import('pdf-lib'),
   stampFooterOnPdf:     async (buf) => buf,
   isSignerTokenExpired: _noopFn,
@@ -112,9 +120,13 @@ app.use('/api/archive',       archiveModuleRouter);
 app.use('/api/forms',              formsModuleRouter);
 app.use('/api/admin/organizations', adminOrgsRouter);
 app.use('/api/admin/users',         adminUsersRouter);
+app.use('/api/admin/outreach',      outreachRouter);
 app.use('/api/analytics',           analyticsRouter);
 app.use('/api/policies',            policiesRouter);
 app.use('/api/audit',               auditRouter);
+
+// Tracking pixels: /d/:trackingId (open) + /p/:trackingId (click)
+registerTrackingRoutes(app);
 
 // ── Flow routes (STS zone — NO-TOUCH files mounted here) ─────────────────────
 
