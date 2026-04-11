@@ -223,6 +223,7 @@
   <button class="atab" data-tab="outreach" onclick="switchTab('outreach')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="outreach-tab-btn">📧 Outreach</button>
   <button class="atab" data-tab="organizatii" onclick="switchTab('organizatii')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="org-tab-btn">🏛 Organizații</button>
       <button class="atab" data-tab="analytics" onclick="switchTab('analytics');loadAnalytics();" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="analytics-tab-btn">📊 Analytics</button>
+      <button class="atab" data-tab="audit" onclick="switchTab('audit')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="audit-tab-btn">🔍 Audit</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -1071,6 +1072,58 @@
   <div id="analyticsArea" style="display:grid;gap:16px;">
     <div style="color:var(--muted);padding:24px;text-align:center;">⏳ Apasă pe tab pentru a încărca...</div>
   </div>
+</div>
+
+<div id="tab-audit" style="display:none;">
+  <h2 style="color:#9db0ff;margin-bottom:6px;">🔍 Audit Trail</h2>
+  <p style="color:var(--muted);font-size:.83rem;margin-bottom:18px;">Jurnal complet al evenimentelor din platformă.</p>
+
+  <!-- Filtre -->
+  <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;align-items:flex-end;">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:.75rem;color:var(--muted);">Tip eveniment</label>
+      <select id="audit-event-type" style="background:#1a1f35;border:1px solid rgba(255,255,255,.12);color:#eaf0ff;border-radius:8px;padding:7px 10px;font-size:.83rem;min-width:180px;">
+        <option value="">— Toate —</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:.75rem;color:var(--muted);">Flow ID</label>
+      <input id="audit-flow-id" type="text" placeholder="ex: abc123…" style="background:#1a1f35;border:1px solid rgba(255,255,255,.12);color:#eaf0ff;border-radius:8px;padding:7px 10px;font-size:.83rem;width:160px;">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:.75rem;color:var(--muted);">De la</label>
+      <input id="audit-from" type="date" style="background:#1a1f35;border:1px solid rgba(255,255,255,.12);color:#eaf0ff;border-radius:8px;padding:7px 10px;font-size:.83rem;">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:.75rem;color:var(--muted);">Până la</label>
+      <input id="audit-to" type="date" style="background:#1a1f35;border:1px solid rgba(255,255,255,.12);color:#eaf0ff;border-radius:8px;padding:7px 10px;font-size:.83rem;">
+    </div>
+    <button onclick="loadAuditEvents(1)" style="background:rgba(124,92,255,.25);color:#c4b5ff;border:1px solid rgba(124,92,255,.35);border-radius:8px;padding:7px 16px;font-size:.83rem;font-weight:700;cursor:pointer;">🔍 Caută</button>
+    <button onclick="resetAuditFilters()" style="background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:7px 14px;font-size:.83rem;cursor:pointer;">✕ Resetează</button>
+    <a id="audit-csv-btn" href="#" onclick="downloadAuditCsv();return false;" style="background:transparent;color:#4ade80;border:1px solid rgba(74,222,128,.25);border-radius:8px;padding:7px 14px;font-size:.83rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px;">⬇ CSV</a>
+  </div>
+
+  <!-- Tabel -->
+  <div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:.82rem;">
+      <thead>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.1);">
+          <th style="text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;white-space:nowrap;">Data / Ora</th>
+          <th style="text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;">Tip eveniment</th>
+          <th style="text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;">Actor</th>
+          <th style="text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;">Flow ID</th>
+          <th style="text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;">Canal</th>
+          <th style="text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;">Mesaj</th>
+        </tr>
+      </thead>
+      <tbody id="audit-tbody">
+        <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted);">⏳ Apasă pe tab pentru a încărca...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Paginare -->
+  <div id="audit-pagination" style="display:flex;align-items:center;gap:12px;margin-top:16px;justify-content:center;font-size:.83rem;color:var(--muted);"></div>
 </div>
 
 </main>
@@ -2566,7 +2619,7 @@ let _activityData = null;
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  ['utilizatori','fluxuri','rapoarte','outreach','organizatii','analytics'].forEach(t => {
+  ['utilizatori','fluxuri','rapoarte','outreach','organizatii','analytics','audit'].forEach(t => {
     const el = $('tab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
@@ -2578,10 +2631,118 @@ function switchTab(tab) {
   if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); loadFlowInstitutions(); _fluxuriLoaded = true; }
   if (tab === 'outreach' && !_outreachLoaded) { orInit(); _outreachLoaded = true; }
   if (tab === 'organizatii' && !_orgLoaded) { loadOrganizations(); _orgLoaded = true; }
+  if (tab === 'audit' && !_auditLoaded) { loadAuditEventTypes(); loadAuditEvents(1); _auditLoaded = true; }
 }
 let _fluxuriLoaded = false;
 let _outreachLoaded = false;
 let _orgLoaded = false;
+let _auditLoaded = false;
+
+// ══════════════════════════════════════════════════════════════════
+// AUDIT MODULE
+// ══════════════════════════════════════════════════════════════════
+
+let _auditCurrentPage = 1;
+
+async function loadAuditEvents(page = 1) {
+  _auditCurrentPage = page;
+  const eventType = $('audit-event-type')?.value || '';
+  const flowId    = $('audit-flow-id')?.value    || '';
+  const from      = $('audit-from')?.value       || '';
+  const to        = $('audit-to')?.value         || '';
+
+  const params = new URLSearchParams({ page, limit: 50 });
+  if (eventType) params.set('event_type', eventType);
+  if (flowId)    params.set('flow_id', flowId);
+  if (from)      params.set('from', from);
+  if (to)        params.set('to', to);
+
+  try {
+    const res  = await fetch(`/admin/audit-events?${params}`, { credentials: 'include' });
+    const data = await res.json();
+    renderAuditTable(data.events || []);
+    renderAuditPagination(data.page || 1, data.pages || 1, data.total || 0);
+  } catch(e) {
+    const tb = $('audit-tbody');
+    if (tb) tb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#f87171">Eroare la încărcare</td></tr>';
+  }
+}
+
+function renderAuditTable(events) {
+  const tbody = $('audit-tbody');
+  if (!tbody) return;
+  if (!events.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px;color:var(--muted)">Niciun eveniment găsit</td></tr>';
+    return;
+  }
+  tbody.innerHTML = events.map(e => {
+    const date    = new Date(e.created_at).toLocaleString('ro-RO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    const okBadge = e.ok
+      ? '<span style="color:#4ade80;font-weight:700;margin-right:4px;">✓</span>'
+      : '<span style="color:#f87171;font-weight:700;margin-right:4px;">✗</span>';
+    const flowLink = e.flow_id
+      ? `<a href="/flow.html?id=${encodeURIComponent(e.flow_id)}" style="font-family:monospace;font-size:.78rem;color:#7c9eff;">${e.flow_id.slice(0,12)}…</a>`
+      : '<span style="color:var(--muted)">—</span>';
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,.05);">
+      <td style="padding:8px 10px;white-space:nowrap;color:#9db0ff;">${date}</td>
+      <td style="padding:8px 10px;">${okBadge}<code style="font-size:.78rem;color:#c4b5ff;">${escH(e.event_type)}</code></td>
+      <td style="padding:8px 10px;font-size:.8rem;color:#eaf0ff;">${escH(e.actor_email || '—')}</td>
+      <td style="padding:8px 10px;">${flowLink}</td>
+      <td style="padding:8px 10px;"><span style="font-size:.76rem;color:var(--muted);">${escH(e.channel || 'api')}</span></td>
+      <td style="padding:8px 10px;font-size:.78rem;color:#8899bb;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(e.message || '')}">${escH(e.message || '—')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAuditPagination(page, pages, total) {
+  const el = $('audit-pagination');
+  if (!el) return;
+  el.innerHTML = `
+    <button onclick="loadAuditEvents(${page - 1})" ${page <= 1 ? 'disabled' : ''} style="background:rgba(255,255,255,.07);border:none;color:#c4b5ff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:.8rem;" ${page <= 1 ? 'style="opacity:.4;cursor:default;"' : ''}>‹ Anterior</button>
+    <span style="color:var(--muted);">Pagina <strong style="color:#eaf0ff;">${page}</strong> din <strong style="color:#eaf0ff;">${pages}</strong> &nbsp;·&nbsp; ${total} înregistrări</span>
+    <button onclick="loadAuditEvents(${page + 1})" ${page >= pages ? 'disabled' : ''} style="background:rgba(255,255,255,.07);border:none;color:#c4b5ff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:.8rem;">Următor ›</button>
+  `;
+}
+
+async function loadAuditEventTypes() {
+  try {
+    const res  = await fetch('/admin/audit-events/types', { credentials: 'include' });
+    const data = await res.json();
+    const sel  = $('audit-event-type');
+    if (sel && data.types) {
+      data.types.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        sel.appendChild(opt);
+      });
+    }
+  } catch(e) {}
+}
+
+function resetAuditFilters() {
+  ['audit-event-type','audit-flow-id','audit-from','audit-to'].forEach(id => {
+    const el = $(id);
+    if (el) el.value = '';
+  });
+  loadAuditEvents(1);
+}
+
+function downloadAuditCsv() {
+  const eventType = $('audit-event-type')?.value || '';
+  const flowId    = $('audit-flow-id')?.value    || '';
+  const from      = $('audit-from')?.value       || '';
+  const to        = $('audit-to')?.value         || '';
+  const params    = new URLSearchParams({ format: 'csv', limit: 10000 });
+  if (eventType) params.set('event_type', eventType);
+  if (flowId)    params.set('flow_id', flowId);
+  if (from)      params.set('from', from);
+  if (to)        params.set('to', to);
+  window.location.href = `/admin/audit-events?${params}`;
+}
+
+function escH(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 let _currentOrgId = null;
 let _rptGenerated = false; // true după prima generare raport — activează auto-refresh la filtrare
 

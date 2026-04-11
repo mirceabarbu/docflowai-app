@@ -2262,4 +2262,97 @@ router.get('/admin/user-activity', async (req, res) => {
   } catch(e) { logger.error({ err: e }, 'user-activity error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
+// ── GET /admin/audit-events/types — lista distinctă de tipuri de evenimente ──
+router.get('/admin/audit-events/types', requireAuth, requireAdmin, async (req, res) => {
+  if (requireDb(res)) return;
+  try {
+    const actor  = req.user;
+    const orgId  = actor.role === 'admin' ? null : actor.orgId;
+    const { rows } = await pool.query(
+      `SELECT DISTINCT event_type FROM audit_log
+       WHERE ($1::int IS NULL OR org_id = $1)
+       ORDER BY event_type`,
+      [orgId]
+    );
+    return res.json({ types: rows.map(r => r.event_type) });
+  } catch(e) { logger.error({ err: e }, '/admin/audit-events/types error'); return res.status(500).json({ error: 'server_error' }); }
+});
+
+// ── GET /admin/audit-events — audit log cu filtrare și paginare ───────────────
+router.get('/admin/audit-events', requireAuth, requireAdmin, async (req, res) => {
+  if (requireDb(res)) return;
+  try {
+    const actor    = req.user;
+    const orgId    = actor.role === 'admin' ? null : actor.orgId;
+    const flowId   = req.query.flow_id   || null;
+    const evType   = req.query.event_type || null;
+    const from     = req.query.from       || null;
+    const to       = req.query.to         || null;
+    const page     = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit    = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+    const offset   = (page - 1) * limit;
+
+    const baseWhere = `
+      WHERE ($1::int  IS NULL OR org_id      = $1)
+        AND ($2::text IS NULL OR flow_id     = $2)
+        AND ($3::text IS NULL OR event_type  = $3)
+        AND ($4::timestamptz IS NULL OR created_at >= $4)
+        AND ($5::timestamptz IS NULL OR created_at <= $5)`;
+    const params = [orgId, flowId, evType, from, to];
+
+    // Export CSV
+    if (req.query.format === 'csv') {
+      const { rows } = await pool.query(
+        `SELECT id, created_at, event_type, actor_email, flow_id, actor_ip, payload, created_at
+         FROM audit_log ${baseWhere} ORDER BY created_at DESC LIMIT 10000`,
+        params
+      );
+      const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const lines = [
+        'ID,Data,Tip eveniment,Actor,Flow ID,IP,Mesaj',
+        ...rows.map(r => [
+          r.id,
+          new Date(r.created_at).toISOString(),
+          esc(r.event_type),
+          esc(r.actor_email || ''),
+          esc(r.flow_id || ''),
+          esc(r.actor_ip || ''),
+          esc(r.payload?.message || ''),
+        ].join(',')),
+      ];
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="audit-${Date.now()}.csv"`);
+      return res.send(lines.join('\r\n'));
+    }
+
+    const [{ rows: countRows }, { rows: events }] = await Promise.all([
+      pool.query(`SELECT COUNT(*) AS total FROM audit_log ${baseWhere}`, params),
+      pool.query(
+        `SELECT id, created_at, event_type, actor_email, flow_id, actor_ip, payload
+         FROM audit_log ${baseWhere}
+         ORDER BY created_at DESC LIMIT $6 OFFSET $7`,
+        [...params, limit, offset]
+      ),
+    ]);
+
+    const total = parseInt(countRows[0].total);
+    return res.json({
+      events: events.map(r => ({
+        id:          r.id,
+        created_at:  r.created_at,
+        event_type:  r.event_type,
+        actor_email: r.actor_email || null,
+        flow_id:     r.flow_id     || null,
+        channel:     r.payload?.channel || 'api',
+        ok:          r.payload?.ok !== false,
+        message:     r.payload?.message || null,
+        meta:        r.payload || {},
+      })),
+      total,
+      page,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch(e) { logger.error({ err: e }, '/admin/audit-events error'); return res.status(500).json({ error: 'server_error' }); }
+});
+
 export default router;
