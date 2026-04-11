@@ -444,13 +444,19 @@
   <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
     <div>
-      <div style="font-size:1.05rem;font-weight:700;color:var(--app-sub)">📊 ALOP — Angajament Legal / Ordonanțare de Plată</div>
+      <div style="font-size:1.05rem;font-weight:700;color:var(--app-sub)">📊 ALOP — Document de Fundamentare / Ordonanțare de Plată</div>
       <div style="font-size:.8rem;color:var(--app-muted);margin-top:2px">Conform Ordinului 1140/2025 · Angajare → Lichidare → Ordonanțare → Plată</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" id="alop-btn-sablon" style="padding:7px 14px;font-size:.82rem;display:none" onclick="openAlopSablonModal()">⚙ Șablon</button>
       <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="openAlopModal()">➕ ALOP nou</button>
     </div>
+  </div>
+
+  <!-- Centralizare shortcuts -->
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+    <button class="btn" style="padding:6px 14px;font-size:.81rem" onclick="switchListTab('df')">📋 Centralizare DF</button>
+    <button class="btn" style="padding:6px 14px;font-size:.81rem" onclick="switchListTab('ord')">📄 Centralizare ORD</button>
   </div>
 
   <!-- KPI cards -->
@@ -1299,8 +1305,13 @@ function calcORRow(el){
 function getOR(){return[...document.querySelectorAll('#o-tbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
 
 function addNV(){const i=nVI++;const tr=document.createElement('tr');tr.id='nv-'+i;
-  tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="number" min="0" value="0" data-f="valt_rev_prec" oninput="calcNVRow(this)"/></td><td><input type="number" min="0" value="0" data-f="influente" oninput="calcNVRow(this)"/></td><td style="background:#f0f0f0"><input type="number" value="0" data-f="valt_actualiz" readonly tabindex="-1" style="background:#ebebeb;text-align:right;cursor:default"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;
-  document.getElementById('n-vtbody').appendChild(tr);}
+  tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="number" min="0" value="0" data-f="valt_rev_prec"/></td><td><input type="number" min="0" value="0" data-f="influente"/></td><td style="background:#f0f0f0"><input type="number" value="0" data-f="valt_actualiz" readonly tabindex="-1" style="background:#ebebeb;text-align:right;cursor:default"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;
+  document.getElementById('n-vtbody').appendChild(tr);
+  const c5=tr.querySelector('[data-f="valt_rev_prec"]');
+  const c6=tr.querySelector('[data-f="influente"]');
+  if(c5)c5.addEventListener('input',()=>calcNVRow(c5));
+  if(c6)c6.addEventListener('input',()=>calcNVRow(c6));
+}
 function getNV(){return[...document.querySelectorAll('#n-vtbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
 
 function addNP(){const i=nPI++;const tr=document.createElement('tr');tr.id='np-'+i;
@@ -1309,8 +1320,17 @@ function addNP(){const i=nPI++;const tr=document.createElement('tr');tr.id='np-'
 function getNP(){return[...document.querySelectorAll('#n-ptbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
 
 function addNC(){const i=nCI++;const tr=document.createElement('tr');tr.id='nc-'+i;
-  tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="number" min="0" value="0" data-f="sum_rezv_crdt_ang_af_rvz_prc" oninput="calcNCRow(this)"/></td><td><input type="number" min="0" value="0" data-f="influente_c6" oninput="calcNCRow(this)"/></td><td style="background:#ebebeb"><input type="number" value="0" data-f="sum_rezv_crdt_ang_act" readonly tabindex="-1" style="background:#ebebeb;text-align:right;cursor:default" title="7=5+6 — calculat automat"/></td><td><input type="number" min="0" value="0" data-f="sum_rezv_crdt_bug_af_rvz_prc" oninput="calcNCRow(this)"/></td><td><input type="number" min="0" value="0" data-f="influente_c9" oninput="calcNCRow(this)"/></td><td style="background:#ebebeb"><input type="number" value="0" data-f="sum_rezv_crdt_bug_act" readonly tabindex="-1" style="background:#ebebeb;text-align:right;cursor:default" title="10=8+9 — calculat automat"/></td><td><button class="bdel" onclick="delR('nc-${i}');upTot()">✕</button></td>`;
-  document.getElementById('n-ctbody').appendChild(tr);}
+  tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="number" min="0" value="0" data-f="sum_rezv_crdt_ang_af_rvz_prc"/></td><td><input type="number" min="0" value="0" data-f="influente_c6"/></td><td style="background:#ebebeb"><input type="number" value="0" data-f="sum_rezv_crdt_ang_act" readonly tabindex="-1" style="background:#ebebeb;text-align:right;cursor:default" title="7=5+6 — calculat automat"/></td><td><input type="number" min="0" value="0" data-f="sum_rezv_crdt_bug_af_rvz_prc"/></td><td><input type="number" min="0" value="0" data-f="influente_c9"/></td><td style="background:#ebebeb"><input type="number" value="0" data-f="sum_rezv_crdt_bug_act" readonly tabindex="-1" style="background:#ebebeb;text-align:right;cursor:default" title="10=8+9 — calculat automat"/></td><td><button class="bdel" onclick="delR('nc-${i}');upTot()">✕</button></td>`;
+  document.getElementById('n-ctbody').appendChild(tr);
+  const c5=tr.querySelector('[data-f="sum_rezv_crdt_ang_af_rvz_prc"]');
+  const c6=tr.querySelector('[data-f="influente_c6"]');
+  const c8=tr.querySelector('[data-f="sum_rezv_crdt_bug_af_rvz_prc"]');
+  const c9=tr.querySelector('[data-f="influente_c9"]');
+  if(c5)c5.addEventListener('input',()=>calcNCRow(c5));
+  if(c6)c6.addEventListener('input',()=>calcNCRow(c6));
+  if(c8)c8.addEventListener('input',()=>calcNCRow(c8));
+  if(c9)c9.addEventListener('input',()=>calcNCRow(c9));
+}
 function getNC(){return[...document.querySelectorAll('#n-ctbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o;});}
 
 function delR(id){document.getElementById(id)?.remove();}
@@ -1633,6 +1653,17 @@ function _draftApply(ft, state) {
     const c7 = tr.querySelector('[data-f="valt_actualiz"]');
     if (c7) c7.value = c5 + c6;
   });
+  // Re-calculează col 7=5+6 și col 10=8+9 pentru fiecare rând NC (Secțiunea B)
+  document.querySelectorAll('#n-ctbody tr').forEach(tr => {
+    const c5 = parseFloat(tr.querySelector('[data-f="sum_rezv_crdt_ang_af_rvz_prc"]')?.value) || 0;
+    const c6 = parseFloat(tr.querySelector('[data-f="influente_c6"]')?.value) || 0;
+    const c7 = tr.querySelector('[data-f="sum_rezv_crdt_ang_act"]');
+    if (c7) c7.value = c5 + c6;
+    const c8 = parseFloat(tr.querySelector('[data-f="sum_rezv_crdt_bug_af_rvz_prc"]')?.value) || 0;
+    const c9 = parseFloat(tr.querySelector('[data-f="influente_c9"]')?.value) || 0;
+    const c10 = tr.querySelector('[data-f="sum_rezv_crdt_bug_act"]');
+    if (c10) c10.value = c8 + c9;
+  });
   upTot && upTot();
 }
 
@@ -1808,6 +1839,14 @@ function populateDf(doc){
   (doc.rows_plati||[]).forEach(row=>{addNP();const tr=document.getElementById('n-ptbody').querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=v;});});
   (doc.rows_ctrl||[]).forEach(row=>{addNC();const tr=document.getElementById('n-ctbody').querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=v;});});
   document.querySelectorAll('#n-vtbody tr').forEach(tr=>{const c5=parseFloat(tr.querySelector('[data-f="valt_rev_prec"]')?.value)||0,c6=parseFloat(tr.querySelector('[data-f="influente"]')?.value)||0,c7=tr.querySelector('[data-f="valt_actualiz"]');if(c7)c7.value=c5+c6;});
+  document.querySelectorAll('#n-ctbody tr').forEach(tr=>{
+    const c5=parseFloat(tr.querySelector('[data-f="sum_rezv_crdt_ang_af_rvz_prc"]')?.value)||0;
+    const c6=parseFloat(tr.querySelector('[data-f="influente_c6"]')?.value)||0;
+    const c7=tr.querySelector('[data-f="sum_rezv_crdt_ang_act"]');if(c7)c7.value=c5+c6;
+    const c8=parseFloat(tr.querySelector('[data-f="sum_rezv_crdt_bug_af_rvz_prc"]')?.value)||0;
+    const c9=parseFloat(tr.querySelector('[data-f="influente_c9"]')?.value)||0;
+    const c10=tr.querySelector('[data-f="sum_rezv_crdt_bug_act"]');if(c10)c10.value=c8+c9;
+  });
   upTot();
 }
 
@@ -1962,6 +2001,9 @@ function renderActions(ft){
   const div=document.getElementById('actions-'+ft);if(!div)return;
   const status=ST.docStatus[ft],role=ST.docRole[ft],docId=ST.docId[ft];
   const B=(cls,txt,fn)=>`<button class="btn ${cls}" onclick="${fn}">${txt}</button>`;
+  // Dacă există context ALOP, ascunde butonul "+ Nou" — DF/ORD se gestionează exclusiv prin ALOP
+  const inAlop=!!(window._alopContext?.alopId);
+  const BNou=inAlop?'':B('','+ Nou',`newDoc('${ft}')`);
   let html='';
   if(ST.docAprobat?.[ft]){
     const fid=ST.docFlowId?.[ft];
@@ -1978,25 +2020,25 @@ function renderActions(ft){
       +B('','↺ Resetează',`resetF('${ft}')`);
   }else if(status==='draft'&&role==='p1'){
     html=B('teal','📨 Trimite la Responsabil Buget',`showP2Modal('${ft}')`)
-      +B('','+ Nou',`newDoc('${ft}')`)
+      +BNou
       +B('','↺ Câmpuri',`resetF('${ft}')`);
   }else if(status==='returnat'&&role==='p1'){
     html=B('teal','📨 Retrimite la Responsabil Buget',`showP2Modal('${ft}')`)
-      +B('','+ Nou',`newDoc('${ft}')`);
+      +BNou;
   }else if(status==='pending_p2'&&role==='p2'){
     html=B('','💾 Salvează',`saveDoc('${ft}')`)
       +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`)
       +B('danger','↩ Returnează ca neconform',`showReturnModal('${ft}')`);
   }else if(status==='pending_p2'&&role==='p1'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">⏳ Așteptare Responsabil Buget...</span>`
-      +B('','+ Nou',`newDoc('${ft}')`);
+      +BNou;
   }else if(status==='completed'&&role==='p1'){
     html=`<button class="btn primary" id="bgen-${ft}" onclick="genPdf('${ft}')"><span>⚙ Generează PDF</span></button>`
       +B('','✏️ Modifică (retrimite Resp. Buget)',`resetDocToP1('${ft}')`)
       +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
   }else if(status==='completed'&&role==='p2'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
-      +B('','+ Nou',`newDoc('${ft}')`);
+      +BNou;
   }else{
     html=B('primary','⚙ Generează PDF',`genPdf('${ft}')`)
       +B('','↺ Resetează',`resetF('${ft}')`);
