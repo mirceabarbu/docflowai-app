@@ -271,8 +271,9 @@
 <div class="lst-wrap">
   <div class="lst-tabs-hdr">
     <div class="lst-tabs">
-      <button class="lst-tab active" id="ltab-df"  onclick="switchListTab('df')">📋 Documente de Fundamentare</button>
-      <button class="lst-tab"        id="ltab-ord" onclick="switchListTab('ord')">💰 Ordonanțări de Plată</button>
+      <button class="lst-tab active" id="ltab-df"   onclick="switchListTab('df')">📋 Documente de Fundamentare</button>
+      <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')">💰 Ordonanțări de Plată</button>
+      <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')">📊 ALOP</button>
     </div>
     <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
   </div>
@@ -335,6 +336,68 @@
     <button class="btn" id="lst-next" onclick="changeLstPage(1)">Următor →</button>
   </div>
 </div><!-- /lst-wrap -->
+
+<!-- ════════════ ALOP ════════════════════════════════════════════════════════ -->
+<div id="alop-section" style="display:none;max-width:1020px;margin:0 auto;padding:16px">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:1.05rem;font-weight:700;color:var(--app-sub)">📊 ALOP — Angajament Legal / Ordonanțare de Plată</div>
+      <div style="font-size:.8rem;color:var(--app-muted);margin-top:2px">Orchestrează DF + ORD + fluxuri de semnare într-un singur dosar</div>
+    </div>
+    <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="openAlopModal()">➕ ALOP nou</button>
+  </div>
+
+  <!-- KPI cards -->
+  <div id="alop-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:10px;padding:12px;text-align:center">
+      <div style="font-size:1.4rem;font-weight:800;color:var(--app-sub)" id="alop-kpi-total">—</div>
+      <div style="font-size:.72rem;color:var(--app-muted);margin-top:2px">Total</div>
+    </div>
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:10px;padding:12px;text-align:center">
+      <div style="font-size:1.4rem;font-weight:800;color:#10b981" id="alop-kpi-completate">—</div>
+      <div style="font-size:.72rem;color:var(--app-muted);margin-top:2px">Finalizate</div>
+    </div>
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:10px;padding:12px;text-align:center">
+      <div style="font-size:1.4rem;font-weight:800;color:#f59e0b" id="alop-kpi-progres">—</div>
+      <div style="font-size:.72rem;color:var(--app-muted);margin-top:2px">În progres</div>
+    </div>
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:10px;padding:12px;text-align:center">
+      <div style="font-size:1.4rem;font-weight:800;color:#64748b" id="alop-kpi-draft">—</div>
+      <div style="font-size:.72rem;color:var(--app-muted);margin-top:2px">Draft</div>
+    </div>
+  </div>
+
+  <!-- Lista ALOP -->
+  <div id="alop-list-panel">
+    <div class="lst-table-wrap">
+      <table class="lst-table">
+        <thead>
+          <tr>
+            <th>Titlu</th>
+            <th>Status</th>
+            <th>DF legat</th>
+            <th>ORD legat</th>
+            <th>Creat</th>
+            <th>Acțiuni</th>
+          </tr>
+        </thead>
+        <tbody id="alop-tbody">
+          <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--app-muted)">Se încarcă...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Detaliu ALOP individual (stepper) -->
+  <div id="alop-detail-panel" style="display:none">
+    <button class="btn" style="margin-bottom:14px;padding:6px 14px;font-size:.83rem" onclick="closeAlopDetail()">← Înapoi la lista ALOP</button>
+    <div id="alop-detail-content"></div>
+  </div>
+
+</div><!-- /alop-section -->
+
 </div><!-- /section-list -->
 
 <!-- ════════════════════════════════════════════════════════════════════════
@@ -772,6 +835,35 @@
     <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
       <button class="btn" onclick="closeReturnModal()">Anulează</button>
       <button class="btn danger" id="return-confirm" onclick="confirmReturn()">↩ Returnează</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal ALOP nou ─────────────────────────────────────────────────────── -->
+<div class="modal-ov" id="alop-modal" onclick="if(event.target===this)closeAlopModal()">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-title">📊 ALOP nou</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+      <div>
+        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Titlu <span style="color:#ef4444">*</span></label>
+        <input id="alop-titlu" type="text" class="dt" placeholder="ex: Servicii IT Q1 2025" maxlength="200"/>
+      </div>
+      <div>
+        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Compartiment</label>
+        <input id="alop-compartiment" type="text" class="dt" placeholder="ex: Direcția Economică" maxlength="200"/>
+      </div>
+      <div>
+        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Valoare totală estimată (RON)</label>
+        <input id="alop-valoare" type="number" class="dt" placeholder="0.00" min="0" step="0.01"/>
+      </div>
+      <div>
+        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Note</label>
+        <textarea id="alop-notes" class="dt" rows="3" maxlength="500" placeholder="Informații suplimentare..."></textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeAlopModal()">Anulează</button>
+      <button class="btn primary" onclick="createAlop()">✅ Creează ALOP</button>
     </div>
   </div>
 </div>
@@ -2186,7 +2278,19 @@ function switchListTab(type){
   _lstState.type=type;_lstState.page=1;
   document.getElementById('ltab-df').classList.toggle('active',type==='df');
   document.getElementById('ltab-ord').classList.toggle('active',type==='ord');
-  loadList();
+  document.getElementById('ltab-alop').classList.toggle('active',type==='alop');
+  // ALOP: ascunde/arată secțiunile relevante
+  const lstWrap=document.querySelector('#section-list .lst-wrap');
+  const alopSection=document.getElementById('alop-section');
+  if(type==='alop'){
+    if(lstWrap)lstWrap.style.display='none';
+    if(alopSection)alopSection.style.display='';
+    loadAlop();loadAlopStats();
+  }else{
+    if(lstWrap)lstWrap.style.display='';
+    if(alopSection)alopSection.style.display='none';
+    loadList();
+  }
 }
 async function loadList(){
   const tb=document.getElementById('lst-tbody');
@@ -2316,6 +2420,258 @@ function _populateCompartimente(){
   if(!list.length)return;
   sel.innerHTML='<option value="">Toate</option>'+list.map(c=>`<option value="${_escH(c)}">${_escH(c)}</option>`).join('');
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ALOP MODULE
+// ══════════════════════════════════════════════════════════════════════════════
+
+function _alopStatusBadge(status){
+  const labels={
+    'draft':          {label:'Draft',        color:'#64748b'},
+    'df_in_progress': {label:'DF în lucru',  color:'#f59e0b'},
+    'df_signed':      {label:'DF semnat',    color:'#3b82f6'},
+    'ord_in_progress':{label:'ORD în lucru', color:'#8b5cf6'},
+    'ord_signed':     {label:'ORD semnat',   color:'#06b6d4'},
+    'completed':      {label:'Finalizat',    color:'#10b981'},
+    'cancelled':      {label:'Anulat',       color:'#ef4444'},
+  };
+  const s=labels[status]||{label:status,color:'#64748b'};
+  return`<span style="background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_escH(s.label)}</span>`;
+}
+
+async function loadAlopStats(){
+  try{
+    const r=await fetch('/api/alop/stats',{credentials:'include'});
+    if(!r.ok)return;
+    const d=await r.json();
+    const e=id=>document.getElementById(id);
+    if(e('alop-kpi-total'))    e('alop-kpi-total').textContent    =d.total||0;
+    if(e('alop-kpi-completate'))e('alop-kpi-completate').textContent=d.completate||0;
+    if(e('alop-kpi-progres'))  e('alop-kpi-progres').textContent  =d.in_progres||0;
+    if(e('alop-kpi-draft'))    e('alop-kpi-draft').textContent    =d.draft||0;
+  }catch(_){}
+}
+
+async function loadAlop(){
+  const tb=document.getElementById('alop-tbody');
+  if(!tb)return;
+  tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--app-muted)">Se încarcă...</td></tr>';
+  try{
+    const r=await fetch('/api/alop',{credentials:'include'});
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||'server_error');
+    const rows=data.alop||[];
+    if(!rows.length){
+      tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--app-muted)">Niciun ALOP creat.</td></tr>';
+      return;
+    }
+    tb.innerHTML=rows.map(a=>{
+      const dt=new Date(a.created_at).toLocaleDateString('ro-RO');
+      const dfInfo=a.df_nr?`<span style="font-size:.78rem;color:#7c9eff">DF ${_escH(a.df_nr)}</span>`:'<span style="font-size:.78rem;color:var(--app-muted)">Nelegat</span>';
+      const ordInfo=a.ord_status?`<span style="font-size:.78rem;color:#a78bfa">${_escH(a.ord_status)}</span>`:'<span style="font-size:.78rem;color:var(--app-muted)">Nelegat</span>';
+      return`<tr onclick="openAlop('${_escH(a.id)}')" style="cursor:pointer">
+        <td><span style="font-weight:600;color:var(--app-text)">${_escH(a.titlu||'—')}</span>
+          ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--app-muted)">${_escH(a.compartiment)}</span>`:''}
+        </td>
+        <td>${_alopStatusBadge(a.status)}</td>
+        <td>${dfInfo}</td>
+        <td>${ordInfo}</td>
+        <td style="font-size:.78rem;color:var(--app-muted)">${dt}</td>
+        <td onclick="event.stopPropagation()">
+          <button class="btn" style="padding:3px 10px;font-size:.76rem" onclick="openAlop('${_escH(a.id)}')">Deschide</button>
+          ${a.status!=='completed'&&a.status!=='cancelled'?`<button class="btn danger" style="padding:3px 10px;font-size:.76rem;margin-left:4px" onclick="cancelAlop('${_escH(a.id)}')">✕</button>`:''}
+        </td>
+      </tr>`;
+    }).join('');
+  }catch(e){
+    if(tb)tb.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#f87171">Eroare: ${_escH(e.message)}</td></tr>`;
+  }
+}
+
+function openAlopModal(){
+  ['alop-titlu','alop-compartiment','alop-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  const v=document.getElementById('alop-valoare');if(v)v.value='';
+  document.getElementById('alop-modal').style.display='flex';
+}
+function closeAlopModal(){
+  document.getElementById('alop-modal').style.display='none';
+}
+
+async function createAlop(){
+  const titlu=(document.getElementById('alop-titlu')?.value||'').trim();
+  const compartiment=(document.getElementById('alop-compartiment')?.value||'').trim();
+  const valoare=document.getElementById('alop-valoare')?.value||'';
+  const notes=(document.getElementById('alop-notes')?.value||'').trim();
+  if(!titlu){alert('Titlul este obligatoriu.');return;}
+  try{
+    const r=await fetch('/api/alop',{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      body:JSON.stringify({titlu,compartiment,valoare_totala:valoare||null,notes}),
+    });
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||'server_error');
+    closeAlopModal();
+    openAlop(data.alop.id);
+    loadAlop();loadAlopStats();
+  }catch(e){alert('Eroare: '+e.message);}
+}
+
+async function openAlop(id){
+  const listPanel=document.getElementById('alop-list-panel');
+  const detailPanel=document.getElementById('alop-detail-panel');
+  const content=document.getElementById('alop-detail-content');
+  if(listPanel)listPanel.style.display='none';
+  if(detailPanel)detailPanel.style.display='';
+  if(content)content.innerHTML='<div style="text-align:center;padding:32px;color:var(--app-muted)">Se încarcă...</div>';
+  try{
+    const r=await fetch(`/api/alop/${encodeURIComponent(id)}`,{credentials:'include'});
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||'not_found');
+    renderAlopDetail(data.alop,content);
+  }catch(e){
+    if(content)content.innerHTML=`<div style="color:#f87171;padding:20px">Eroare: ${_escH(e.message)}</div>`;
+  }
+}
+
+function closeAlopDetail(){
+  document.getElementById('alop-list-panel').style.display='';
+  document.getElementById('alop-detail-panel').style.display='none';
+}
+
+function renderAlopDetail(a,container){
+  const steps=[
+    {key:'df',     label:'Document de Fundamentare', icon:'📋',
+     done: !!a.df_id,     activeIf: !a.df_id},
+    {key:'df_sign',label:'Semnare DF',              icon:'✍️',
+     done: !!a.df_flow_id, activeIf: !!a.df_id && !a.df_flow_id},
+    {key:'ord',    label:'Ordonanțare de Plată',    icon:'💰',
+     done: !!a.ord_id,    activeIf: !!a.df_flow_id && !a.ord_id},
+    {key:'ord_sign',label:'Semnare ORD',            icon:'✅',
+     done: !!a.ord_flow_id,activeIf: !!a.ord_id && !a.ord_flow_id},
+  ];
+  const isCompleted=a.status==='completed';
+
+  let stepperHtml=`<div style="display:flex;align-items:center;gap:0;margin-bottom:20px;flex-wrap:wrap;gap:8px">`;
+  steps.forEach((s,i)=>{
+    const isDone=isCompleted||s.done;
+    const isActive=!isCompleted&&s.activeIf;
+    const col=isDone?'#10b981':isActive?'var(--app-v)':'var(--app-muted)';
+    const bg=isDone?'rgba(16,185,129,.15)':isActive?'rgba(108,79,240,.15)':'rgba(255,255,255,.04)';
+    stepperHtml+=`<div style="flex:1;min-width:140px;background:${bg};border:1px solid ${col}44;border-radius:10px;padding:12px;text-align:center">
+      <div style="font-size:1.3rem">${s.icon}</div>
+      <div style="font-size:.75rem;font-weight:700;color:${col};margin-top:4px">${isDone?'✓ ':isActive?'● ':''}${_escH(s.label)}</div>
+    </div>`;
+    if(i<steps.length-1)stepperHtml+=`<div style="color:var(--app-muted);font-size:1rem">→</div>`;
+  });
+  stepperHtml+=`</div>`;
+
+  // Butoane de acțiune contextuale
+  let actionsHtml='';
+  if(!isCompleted&&a.status!=='cancelled'){
+    if(!a.df_id){
+      actionsHtml+=`<button class="btn primary" style="margin-right:8px" onclick="alopGoToDF('${_escH(a.id)}')">📋 Completează DF</button>`;
+    }else if(!a.df_flow_id){
+      actionsHtml+=`<button class="btn primary" style="margin-right:8px" onclick="alopLaunchDfFlow('${_escH(a.id)}','${_escH(a.df_id)}')">✍️ Lansează flux semnare DF</button>`;
+    }else if(!a.ord_id){
+      actionsHtml+=`<button class="btn primary" style="margin-right:8px" onclick="alopGoToORD('${_escH(a.id)}','${_escH(a.df_id||'')}')">💰 Completează ORD</button>`;
+    }else if(!a.ord_flow_id){
+      actionsHtml+=`<button class="btn primary" style="margin-right:8px" onclick="alopLaunchOrdFlow('${_escH(a.id)}','${_escH(a.ord_id)}')">✍️ Lansează flux semnare ORD</button>`;
+    }else{
+      actionsHtml+=`<button class="btn primary" style="margin-right:8px" onclick="alopComplete('${_escH(a.id)}')">✅ Marchează finalizat</button>`;
+    }
+    actionsHtml+=`<button class="btn danger" onclick="cancelAlop('${_escH(a.id)}')">✕ Anulează ALOP</button>`;
+  }
+
+  // Detalii
+  const fmtVal=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
+  container.innerHTML=`
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:12px;padding:18px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:1rem;font-weight:700;color:var(--app-sub)">${_escH(a.titlu||'ALOP')}</div>
+          ${a.compartiment?`<div style="font-size:.8rem;color:var(--app-muted);margin-top:2px">${_escH(a.compartiment)}</div>`:''}
+          ${a.valoare_totala?`<div style="font-size:.85rem;color:#10b981;margin-top:4px;font-weight:600">${fmtVal(a.valoare_totala)}</div>`:''}
+        </div>
+        <div>${_alopStatusBadge(a.status)}</div>
+      </div>
+    </div>
+    ${stepperHtml}
+    ${actionsHtml?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${actionsHtml}</div>`:''}
+    ${isCompleted?`<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;text-align:center;color:#10b981;font-weight:600;margin-top:12px">✅ ALOP finalizat complet</div>`:''}
+  `;
+}
+
+function alopGoToDF(alopId){
+  // Deschide tab DF cu alop_id în URL
+  switchListTab('df');
+  newDocFromList();
+  try{history.replaceState({},'',`${location.pathname}?tip=df&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
+}
+
+function alopGoToORD(alopId,dfId){
+  switchListTab('ord');
+  newDocFromList();
+  // Pre-completează df_id în dropdown-ul ORD dacă există
+  setTimeout(()=>{
+    const sel=document.getElementById('o-df-id');
+    if(sel&&dfId){sel.value=dfId;}
+  },400);
+  try{history.replaceState({},'',`${location.pathname}?tip=ord&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
+}
+
+async function alopLaunchDfFlow(alopId,dfId){
+  // Verifică că DF-ul există și are PDF generat, lansează mkFlow('notafd')
+  // Leagă automat fluxul creat la ALOP via alop_id în sessionStorage
+  sessionStorage.setItem('alop_pending_link',JSON.stringify({alopId,doc:'df'}));
+  // Deschide formularul DF pentru lansare flux
+  alopGoToDF(alopId);
+}
+
+async function alopLaunchOrdFlow(alopId,ordId){
+  sessionStorage.setItem('alop_pending_link',JSON.stringify({alopId,doc:'ord'}));
+  alopGoToORD(alopId,'');
+}
+
+async function alopComplete(id){
+  if(!confirm('Marchezi ALOP-ul ca finalizat?'))return;
+  try{
+    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/complete`,{
+      method:'POST',credentials:'include',
+      headers:{'X-CSRF-Token':getCsrf()},
+    });
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||'server_error');
+    openAlop(id);loadAlopStats();
+  }catch(e){alert('Eroare: '+e.message);}
+}
+
+async function cancelAlop(id){
+  if(!confirm('Anulezi acest ALOP? Documentele DF/ORD nu vor fi șterse.'))return;
+  try{
+    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/cancel`,{
+      method:'POST',credentials:'include',
+      headers:{'X-CSRF-Token':getCsrf()},
+    });
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||'server_error');
+    closeAlopDetail();
+    loadAlop();loadAlopStats();
+  }catch(e){alert('Eroare: '+e.message);}
+}
+
+// Integrare cu mkFlow: după lansare flux, leagă automat la ALOP dacă există
+// alop_id în URL params sau alop_pending_link în sessionStorage
+(function _patchMkFlowForAlop(){
+  const _origMkFlow=window.mkFlow;
+  if(typeof _origMkFlow!=='function')return;
+  window.mkFlow=function(ft){
+    // Salvăm alop_id în sessionStorage pentru semdoc-initiator.html
+    const alopIdFromUrl=new URLSearchParams(location.search).get('alop_id');
+    if(alopIdFromUrl)sessionStorage.setItem('alop_id_for_flow',alopIdFromUrl+'|'+ft);
+    _origMkFlow(ft);
+  };
+})();
 </script>
 </body>
 </html>

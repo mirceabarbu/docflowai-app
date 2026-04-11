@@ -523,6 +523,7 @@ import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din 
 
 import { formulareRouter } from './routes/formulare.mjs';
 import { formulareDbRouter } from './routes/formulare-db.mjs';
+import alopRouter from './routes/alop.mjs';
 
 const app = express();
 app.use(compression()); // PERF-FIX-07: gzip pentru toate răspunsurile — reduce ~70% din dimensiunea HTML/JSON
@@ -1557,6 +1558,7 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
 app.use('/', templatesRouter);         // Q-06: Template CRUD
 app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD (generare PDF)
 app.use('/', formulareDbRouter);      // Formulare DB: DF + ORD workflow P1→P2
+app.use('/', alopRouter);             // ALOP orchestrator: DF + ORD + fluxuri semnare
 
 // ── v4.1 API routes — mounted AFTER all v3 routes, no overlap ────────────────
 app.get('/api/v4/health', (_req, res) => res.json({
