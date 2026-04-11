@@ -269,7 +269,7 @@
     .df-block-p2 .df-block-hdr{background:rgba(29,200,174,.05)}
     .df-block-title{font-size:12px;font-weight:700;color:var(--app-text)}
     .df-block-desc{font-size:11px;color:var(--app-muted);margin-left:auto}
-    .df-block-body{padding:14px 16px}
+    .df-block-body{padding:18px 20px}
     .df-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.4px}
     .df-badge-auto{background:rgba(255,255,255,.08);color:var(--app-muted)}
     .df-badge-p1{background:rgba(108,79,240,.2);color:#b0a0ff}
@@ -304,7 +304,10 @@
     .df-block-body .doc-t td.tot{font-weight:700;font-size:11px;color:var(--app-text)}
     .df-block-body .doc-t td.cx{text-align:center;color:var(--app-muted)}
     .df-block-body .doc-t td.num{text-align:right;color:var(--app-text);padding-right:4px}
-    .df-block-body .doc-t tfoot tr{background:rgba(255,255,255,.04)}
+    .df-block-body .doc-t tfoot tr{background:rgba(255,255,255,.05) !important}
+    .df-block-body .doc-t tfoot td{color:var(--app-sub) !important}
+    .df-block-body .doc-t tfoot td.tot{color:var(--app-text) !important;font-weight:600}
+    .df-block-body .doc-t tfoot td.num{color:var(--app-text) !important}
     .df-block-body .doc-t input{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:3px;color:var(--app-text);font-family:inherit;padding:3px 5px;font-size:11px;min-width:40px}
     .df-block-body .doc-t input:focus{background:rgba(108,79,240,.08);border-color:rgba(108,79,240,.4)}
     .df-block-body .badd{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px;width:20px;height:20px;cursor:pointer;font-size:13px;font-weight:900;display:inline-flex;align-items:center;justify-content:center}
@@ -326,7 +329,7 @@
     /* Locked block overlay */
     .df-block-body.locked{pointer-events:none;opacity:.45;filter:grayscale(.2)}
     /* Layout helpers */
-    .df-row{display:grid;gap:10px;margin-bottom:8px}
+    .df-row{display:grid;gap:14px;margin-bottom:14px}
     .df-row-1{grid-template-columns:1fr}
     .df-row-2{grid-template-columns:1fr 1fr}
     .df-row-3{grid-template-columns:1fr 1fr 1fr}
@@ -1831,8 +1834,14 @@ function _dfSetAlopCtx(ft){
   // Actualizează butonul Înapoi din back-bar contextual
   const backBtn=document.querySelector('.back-bar button');
   if(backBtn){
+    const lstType=ft==='notafd'?'df':'ord';
     if(ctx?.alopId){backBtn.textContent='← Înapoi la ALOP';backBtn.onclick=()=>{window._alopContext=null;switchListTab('alop');};}
-    else{backBtn.textContent='← Înapoi la listă';backBtn.onclick=()=>showListSection();}
+    else{backBtn.textContent='← Înapoi la lista '+(lstType==='df'?'DF':'ORD');backBtn.onclick=()=>{
+      document.getElementById('section-list').style.display='';
+      document.getElementById('section-form').style.display='none';
+      try{history.replaceState({},'',location.pathname);}catch(_){}
+      switchListTab(lstType);
+    };}
   }
 }
 function applyDfRoleState(status,role){
