@@ -304,10 +304,10 @@
     .df-block-body .doc-t td.tot{font-weight:700;font-size:11px;color:var(--app-text)}
     .df-block-body .doc-t td.cx{text-align:center;color:var(--app-muted)}
     .df-block-body .doc-t td.num{text-align:right;color:var(--app-text);padding-right:4px}
-    .df-block-body .doc-t tfoot tr{background:rgba(255,255,255,.05) !important}
-    .df-block-body .doc-t tfoot td{color:var(--app-sub) !important}
-    .df-block-body .doc-t tfoot td.tot{color:var(--app-text) !important;font-weight:600}
-    .df-block-body .doc-t tfoot td.num{color:var(--app-text) !important}
+    .df-block-body .doc-t tfoot tr,.df-block-body tr.df-total{background:rgba(255,255,255,.05) !important;border-top:1px solid rgba(255,255,255,.15) !important}
+    .df-block-body .doc-t tfoot td,.df-block-body tr.df-total td,.df-block-body tr.df-total th{color:var(--app-sub) !important;font-weight:600 !important}
+    .df-block-body .doc-t tfoot td.tot,.df-block-body tr.df-total td.tot{color:var(--app-text) !important;font-weight:700 !important}
+    .df-block-body .doc-t tfoot td.num,.df-block-body tr.df-total td.num{color:var(--app-text) !important}
     .df-block-body .doc-t input{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:3px;color:var(--app-text);font-family:inherit;padding:3px 5px;font-size:11px;min-width:40px}
     .df-block-body .doc-t input:focus{background:rgba(108,79,240,.08);border-color:rgba(108,79,240,.4)}
     .df-block-body .badd{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px;width:20px;height:20px;cursor:pointer;font-size:13px;font-weight:900;display:inline-flex;align-items:center;justify-content:center}
@@ -599,7 +599,7 @@
       </thead>
       <tbody id="o-tbody"></tbody>
       <tfoot>
-        <tr>
+        <tr class="df-total">
           <td class="tot">TOTAL</td>
           <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
           <td class="num" id="o-t-rec">0</td>
@@ -814,7 +814,7 @@
       </thead>
       <tbody id="n-vtbody"></tbody>
       <tfoot>
-        <tr>
+        <tr class="df-total">
           <td class="tot" colspan="4">TOTAL</td>
           <td class="num" id="n-t-vprec">0</td>
           <td class="num" id="n-t-vinfl">0</td>
@@ -855,7 +855,7 @@
       </thead>
       <tbody id="n-ptbody"></tbody>
       <tfoot>
-        <tr>
+        <tr class="df-total">
           <td class="tot" colspan="2">TOTAL</td>
           <td class="num" id="n-t-pprec">0</td><td class="num" id="n-t-pancrt">0</td>
           <td class="num" id="n-t-pnp1">0</td><td class="num" id="n-t-pnp2">0</td>
@@ -866,7 +866,7 @@
     </table>
     </div>
 
-    <label class="dck" style="margin-top:6px"><input type="checkbox" id="n-ck-anurmatori"/>Angajamentele legale se vor emite în contul anului următor</label>
+    <label class="dck" style="margin-top:6px"><input type="checkbox" id="n-ck-anurmatori" onchange="p5toggle()"/>Angajamentele legale se vor emite în contul anului următor</label>
 
   </div>
 </div>
@@ -915,7 +915,7 @@
       </thead>
       <tbody id="n-ctbody"></tbody>
       <tfoot>
-        <tr>
+        <tr class="df-total">
           <td class="tot">TOTAL</td>
           <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
           <td class="num" id="n-t-c5">0</td><td class="num" id="n-t-c6">0</td><td class="num" id="n-t-c7">0</td>
@@ -1327,9 +1327,16 @@ function p5toggle(){
   sub.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.disabled=!cuActive);
   if(!cuActive){
     sub.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=false);
-    const ptSub=document.getElementById('n-p5-tabel');
-    if(ptSub){ptSub.style.opacity='.4';ptSub.style.pointerEvents='none';}
   }
+  // Activare tabel: orice bifă din pct.5 EXCEPT stingere
+  const stingere=document.getElementById('n-ck-sting')?.checked;
+  const faraplati=document.getElementById('n-ck-faraplati')?.checked;
+  const cuplati=document.getElementById('n-ck-cuplati')?.checked;
+  const faraang=document.getElementById('n-ck-faraang')?.checked;
+  const anurmatori=document.getElementById('n-ck-anurmatori')?.checked;
+  const tabelActiv=(faraplati||cuplati||faraang||anurmatori)&&!stingere;
+  const ptSub=document.getElementById('n-p5-tabel');
+  if(ptSub){ptSub.style.opacity=tabelActiv?'1':'.4';ptSub.style.pointerEvents=tabelActiv?'':'none';}
 }
 
 function p5SubToggle(el){
@@ -1339,9 +1346,15 @@ function p5SubToggle(el){
       if(id!==el.id){const cb=document.getElementById(id);if(cb)cb.checked=false;}
     });
   }
-  const cuPlati=document.getElementById('n-ck-cuplati')?.checked;
+  // Tabel activ pentru faraplati și cuplati; NU pentru stingere
+  const stingere=document.getElementById('n-ck-sting')?.checked;
+  const faraplati=document.getElementById('n-ck-faraplati')?.checked;
+  const cuplati=document.getElementById('n-ck-cuplati')?.checked;
   const ptSub=document.getElementById('n-p5-tabel');
-  if(ptSub){ptSub.style.opacity=cuPlati?'1':'.4';ptSub.style.pointerEvents=cuPlati?'':'none';}
+  if(ptSub){
+    const activ=(faraplati||cuplati)&&!stingere;
+    ptSub.style.opacity=activ?'1':'.4';ptSub.style.pointerEvents=activ?'':'none';
+  }
 }
 
 /* Col 7 = Col 5 + Col 6 (auto-calculat) */
@@ -1928,7 +1941,13 @@ function renderActions(ft){
   const B=(cls,txt,fn)=>`<button class="btn ${cls}" onclick="${fn}">${txt}</button>`;
   let html='';
   if(ST.docAprobat?.[ft]){
-    div.innerHTML=B('','+ Nou',`newDoc('${ft}')`);
+    const fid=ST.docFlowId?.[ft];
+    const revNr=ST.docRevizieNr?.[ft]||0;
+    const revBadge=ft==='notafd'&&revNr>0?`<span class="df-revizie-badge" style="margin-right:4px">Revizia ${revNr}</span>`:'';
+    div.innerHTML=revBadge
+      +(fid?B('teal','📄 Descarcă PDF semnat',`viewFlowPdf('${fid}')`):'')
+      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'')
+      +B('','+ Nou',`newDoc('${ft}')`);
     return;
   }
   if(!docId){
@@ -1986,6 +2005,10 @@ async function openDoc(ft,id){
     ST.docRole[ft]=doc.created_by===userId?'p1':doc.assigned_to===userId?'p2':'view';
     ST.docAprobat=ST.docAprobat||{};
     ST.docAprobat[ft]=doc.aprobat===true;
+    ST.docFlowId=ST.docFlowId||{};
+    ST.docFlowId[ft]=doc.flow_id||null;
+    ST.docRevizieNr=ST.docRevizieNr||{};
+    ST.docRevizieNr[ft]=doc.revizie_nr||0;
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
@@ -3160,19 +3183,20 @@ function renderAlopDetail(a,container){
 // ── Navigare la formulare ─────────────────────────────────────────────────────
 async function alopDeschideDF(alopId){
   try{
-    // Fetch date proaspete — setează _alopContext cu semnatarii actuali
     const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
     if(!r.ok)return;
     const {alop}=await r.json();
+    if(!alop)return;
     window._alopContext={alopId:alop.id,titlu:alop.titlu||'',valoare:alop.valoare_totala||null,dfSemnatari:alop.df_semnatari||[],ordSemnatari:alop.ord_semnatari||[]};
-    // Asigură vizibilitate section-list (poate fi ascuns dacă un formular era deschis)
-    document.getElementById('section-list').style.display='';
-    document.getElementById('section-form').style.display='none';
-    document.getElementById('ltab-df').click();
-    await new Promise(res=>setTimeout(res,100));
     if(alop.df_id){
+      // Deschide direct documentul DF existent (nu arăta lista)
       openDocFromList('df',alop.df_id);
     }else{
+      // DF nou — switch la tab DF și deschide formular gol
+      document.getElementById('section-list').style.display='';
+      document.getElementById('section-form').style.display='none';
+      switchListTab('df');
+      await new Promise(res=>setTimeout(res,100));
       try{history.replaceState({},'',`${location.pathname}?tip=df&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
       newDocFromList();
     }
@@ -3183,14 +3207,17 @@ async function alopDeschideORD(alopId){
     const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
     if(!r.ok)return;
     const {alop}=await r.json();
+    if(!alop)return;
     window._alopContext={alopId:alop.id,titlu:alop.titlu||'',valoare:alop.valoare_totala||null,dfSemnatari:alop.df_semnatari||[],ordSemnatari:alop.ord_semnatari||[]};
-    document.getElementById('section-list').style.display='';
-    document.getElementById('section-form').style.display='none';
-    document.getElementById('ltab-ord').click();
-    await new Promise(res=>setTimeout(res,100));
     if(alop.ord_id){
+      // Deschide direct documentul ORD existent
       openDocFromList('ord',alop.ord_id);
     }else{
+      // ORD nou — switch la tab ORD și deschide formular gol
+      document.getElementById('section-list').style.display='';
+      document.getElementById('section-form').style.display='none';
+      switchListTab('ord');
+      await new Promise(res=>setTimeout(res,100));
       try{history.replaceState({},'',`${location.pathname}?tip=ord&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
       newDocFromList();
       if(alop.df_id)setTimeout(()=>{const s=document.getElementById('o-df-sel');if(s)s.value=alop.df_id;},400);
