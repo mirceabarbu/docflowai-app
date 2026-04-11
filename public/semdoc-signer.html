@@ -1641,8 +1641,27 @@ th{ color: var(--sub) !important; }
           document.body.appendChild(_ov);
         }
 
+        // Recovery după refresh: dacă nu avem ?sts_pending=1 în URL,
+        // verificăm DB-ul pentru stsPending=true și relansăm polling-ul dacă e cazul.
+        async function checkAndResumeStsPolling() {
+          if (_stsPending === '1') return; // deja pornit prin redirect normal
+          try {
+            const url = `/flows/${encodeURIComponent(flow)}/signer-status?token=${encodeURIComponent(token)}`;
+            const r = await fetch(url, { credentials: 'include' });
+            if (!r.ok) return;
+            const d = await r.json();
+            if (d.shouldResumePoll) {
+              console.log('[STS] stsPending=true detectat în DB — reluare polling automat după refresh');
+              startStsPolling();
+            }
+          } catch (e) {
+            console.warn('[STS] Nu s-a putut verifica starea STS:', e);
+          }
+        }
+
         loadFlow().catch((e) => showError(String(e.message || e))).then(() => {
           if (_stsPending === '1') startStsPolling();
+          else checkAndResumeStsPolling(); // recovery după refresh pagină
           // sts_signed=1: dacă fluxul încă arată semnatarul ca 'current' (race condition DB),
           // forțăm starea vizuală corectă — semnatarul a semnat cu succes
           if (_stsSigned === '1') {

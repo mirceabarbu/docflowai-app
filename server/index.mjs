@@ -514,6 +514,7 @@ import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows/index.mjs'; // ARCH-01: modularizat
+import signerStatusRouter from './routes/flows/signer-status.mjs';
 import verifyRouter  from './routes/verify.mjs';
 import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
@@ -1367,6 +1368,7 @@ app.use('/', adminRouter);
 // Rute publice verificare (fără autentificare)
 app.use('/', verifyRouter);
 app.use('/', reportRouter);
+app.use('/flows', signerStatusRouter);  // STS recovery: GET /flows/:id/signer-status
 app.use('/', flowsRouter);
 
 // ── Tracking routes neutre (fara 'email'/'click' in path — mai putin blocate de Yahoo/Outlook) ──
