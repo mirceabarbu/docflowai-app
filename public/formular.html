@@ -2787,7 +2787,7 @@ function renderAlopDetail(a,container){
   if(!isCompleted&&!isCancelled){
     const id=_escH(a.id);
     if(a.status==='draft'||(a.status==='angajare'&&!a.df_id)){
-      actionsHtml+=`<button class="btn primary" onclick="alopGoToDF('${id}')">📋 Completează Document de Fundamentare</button>`;
+      actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
     }else if(a.status==='angajare'&&a.df_id&&!a.df_flow_id){
       actionsHtml+=`<button class="btn primary" onclick="alopLaunchDfFlow('${id}','${_escH(a.df_id)}')">✍️ Lansează flux semnare DF</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id&&!a.df_completed_at){
@@ -2795,7 +2795,7 @@ function renderAlopDetail(a,container){
     }else if(a.status==='lichidare'){
       actionsHtml+=`<button class="btn primary" onclick="openAlopConfirmLichidare('${id}')">✔️ Confirmă Lichidarea</button>`;
     }else if(a.status==='ordonantare'&&!a.ord_id){
-      actionsHtml+=`<button class="btn primary" onclick="alopGoToORD('${id}','${_escH(a.df_id||'')}')">💰 Completează Ordonanțare de Plată</button>`;
+      actionsHtml+=`<button class="btn primary" onclick="alopDeschideORD('${id}')">💰 Completează Ordonanțare de Plată</button>`;
     }else if(a.status==='ordonantare'&&a.ord_id&&!a.ord_flow_id){
       actionsHtml+=`<button class="btn primary" onclick="alopLaunchOrdFlow('${id}','${_escH(a.ord_id)}')">✍️ Lansează flux semnare ORD</button>`;
     }else if(a.status==='ordonantare'&&a.ord_flow_id&&!a.ord_completed_at){
@@ -2866,23 +2866,62 @@ function renderAlopDetail(a,container){
 }
 
 // ── Navigare la formulare ─────────────────────────────────────────────────────
+async function alopDeschideDF(alopId){
+  try{
+    // Fetch date proaspete — setează _alopContext cu semnatarii actuali
+    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
+    if(!r.ok)return;
+    const {alop}=await r.json();
+    window._alopContext={alopId:alop.id,dfSemnatari:alop.df_semnatari||[],ordSemnatari:alop.ord_semnatari||[]};
+    // Asigură vizibilitate section-list (poate fi ascuns dacă un formular era deschis)
+    document.getElementById('section-list').style.display='';
+    document.getElementById('section-form').style.display='none';
+    document.getElementById('ltab-df').click();
+    await new Promise(res=>setTimeout(res,100));
+    if(alop.df_id){
+      openDocFromList('df',alop.df_id);
+    }else{
+      try{history.replaceState({},'',`${location.pathname}?tip=df&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
+      newDocFromList();
+    }
+  }catch(e){console.error('alopDeschideDF',e);}
+}
+async function alopDeschideORD(alopId){
+  try{
+    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
+    if(!r.ok)return;
+    const {alop}=await r.json();
+    window._alopContext={alopId:alop.id,dfSemnatari:alop.df_semnatari||[],ordSemnatari:alop.ord_semnatari||[]};
+    document.getElementById('section-list').style.display='';
+    document.getElementById('section-form').style.display='none';
+    document.getElementById('ltab-ord').click();
+    await new Promise(res=>setTimeout(res,100));
+    if(alop.ord_id){
+      openDocFromList('ord',alop.ord_id);
+    }else{
+      try{history.replaceState({},'',`${location.pathname}?tip=ord&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
+      newDocFromList();
+      if(alop.df_id)setTimeout(()=>{const s=document.getElementById('o-df-sel');if(s)s.value=alop.df_id;},400);
+    }
+  }catch(e){console.error('alopDeschideORD',e);}
+}
+// Fallback sync (folosit intern de alopLaunchDfFlow/OrdFlow când nu există doc)
 function alopGoToDF(alopId){
-  // Asigură că section-list e vizibil (poate fi ascuns dacă un formular era deschis)
   document.getElementById('section-list').style.display='';
   document.getElementById('section-form').style.display='none';
-  switchListTab('df');
+  document.getElementById('ltab-df').click();
   try{history.replaceState({},'',`${location.pathname}?tip=df&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
-  setTimeout(()=>newDocFromList(),50);
+  setTimeout(()=>newDocFromList(),100);
 }
 function alopGoToORD(alopId,dfId){
   document.getElementById('section-list').style.display='';
   document.getElementById('section-form').style.display='none';
-  switchListTab('ord');
+  document.getElementById('ltab-ord').click();
   try{history.replaceState({},'',`${location.pathname}?tip=ord&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
   setTimeout(()=>{
     newDocFromList();
     if(dfId)setTimeout(()=>{const s=document.getElementById('o-df-sel');if(s)s.value=dfId;},400);
-  },50);
+  },100);
 }
 
 // ── Acțiuni ALOP ──────────────────────────────────────────────────────────────

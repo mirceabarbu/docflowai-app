@@ -541,9 +541,9 @@ router.post('/api/alop/admin/repair-status', _csrf, async (req, res) => {
           updated_at = NOW()
       WHERE a.cancelled_at IS NULL
         AND a.status IN ('draft','angajare','ordonantare')
-        AND a.org_id = $1
+        AND ($1::integer IS NULL OR a.org_id = $1)
       RETURNING id, status
-    `, [actor.role === 'admin' ? actor.orgId : actor.orgId]);
+    `, [actor.role === 'admin' ? null : actor.orgId]);
     res.json({ repaired: r.rows });
   } catch(e) {
     logger.error({ err: e }, 'alop repair-status error');
