@@ -2263,10 +2263,11 @@ router.get('/admin/user-activity', async (req, res) => {
 });
 
 // ── GET /admin/audit-events/types — lista distinctă de tipuri de evenimente ──
-router.get('/admin/audit-events/types', requireAuth, requireAdmin, async (req, res) => {
+router.get('/admin/audit-events/types', async (req, res) => {
   if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (await requireAdmin(req, res)) return;
   try {
-    const actor  = req.user;
     const orgId  = actor.role === 'admin' ? null : actor.orgId;
     const { rows } = await pool.query(
       `SELECT DISTINCT event_type FROM audit_log
@@ -2279,10 +2280,11 @@ router.get('/admin/audit-events/types', requireAuth, requireAdmin, async (req, r
 });
 
 // ── GET /admin/audit-events — audit log cu filtrare și paginare ───────────────
-router.get('/admin/audit-events', requireAuth, requireAdmin, async (req, res) => {
+router.get('/admin/audit-events', async (req, res) => {
   if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (await requireAdmin(req, res)) return;
   try {
-    const actor    = req.user;
     const orgId    = actor.role === 'admin' ? null : actor.orgId;
     const flowId   = req.query.flow_id   || null;
     const evType   = req.query.event_type || null;
