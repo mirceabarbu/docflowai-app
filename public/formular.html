@@ -889,10 +889,12 @@
 </div>
 
 <!-- ── Modal Șablon ALOP ──────────────────────────────────────────────────── -->
-<div class="modal-ov" id="alop-sablon-modal" onclick="if(event.target===this)closeAlopSablonModal()">
-  <div class="modal-box" style="max-width:720px;max-height:90vh;overflow-y:auto">
+<div class="modal-ov" id="alop-sablon-modal" style="overflow:visible" onclick="if(event.target===this)closeAlopSablonModal()">
+  <div class="modal-box" style="max-width:720px;max-height:90vh;overflow:visible">
     <div class="modal-title">⚙ Configurare Șablon ALOP</div>
     <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:16px">Semnatarii impliciti conform OMF 1140/2025. Precompletați la crearea unui ALOP nou.</div>
+    <!-- scroll wrapper: scroll pe secțiuni, overflow:visible pe select dropdowns -->
+    <div style="overflow-y:auto;overflow-x:visible;flex:1">
 
     <!-- DF — 6 roluri fixe -->
     <div style="margin-bottom:20px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:14px">
@@ -956,7 +958,8 @@
       <div id="sab-lichidare-picker"></div>
     </div>
 
-    <div style="display:flex;gap:8px;justify-content:flex-end">
+    </div><!-- /scroll wrapper -->
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:4px">
       <button class="btn" onclick="closeAlopSablonModal()">Anulează</button>
       <button class="btn primary" onclick="saveAlopSablon()">💾 Salvează șablon</button>
     </div>
