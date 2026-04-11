@@ -489,19 +489,28 @@ async function _generateReportPdf(report) {
         y -= 4;
         page.drawText('Lant de certificare:', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 12;
         for (let i = 0; i < cert.chain.length; i++) {
-          const ch = cert.chain[i];
+          const ch   = cert.chain[i];
           const role = ch.isEndEntity ? 'Semnatar' : ch.isSelfSigned ? 'Root CA' : 'CA Intermediar';
           const col  = ch.isEndEntity ? COL.text : COL.muted;
-          const cn   = ro(ch.CN || ch.issuerCN || 'necunoscut');
-          // Dacă Root CA e dedus (nu din CMS), adăugăm notă că e în trust store OS
+          // subject.CN este câmpul corect — _extractCertInfo returnează { subject: { CN, O, ... } }
+          const cn   = ro(ch.subject?.CN || ch.subject?.O || 'necunoscut');
           const suffix = ch.isInferred ? ' ¹' : '';
-          page.drawText(`${i+1}. ${cn}${suffix} [${role}]`,
+          // Marchează QTSP romanian cunoscuți
+          const qtspMark = (() => {
+            const issO = (ch.issuer?.O || ch.subject?.O || '').toUpperCase();
+            const issN = (ch.issuer?.CN || ch.subject?.CN || '').toUpperCase();
+            if (['STS','SERVICIUL DE TELECOMUNICATII'].some(p => issO.includes(p) || issN.includes(p))) return ' [STS RO]';
+            if (['CERTSIGN','CERT SIGN'].some(p => issO.includes(p) || issN.includes(p))) return ' [certSIGN RO]';
+            return '';
+          })();
+          const label = ch.isEndEntity ? '' : qtspMark;
+          page.drawText(`${i+1}. ${cn}${suffix}${label} [${role}]`,
             { x: MARGIN + 8, y, size: 7.5, font: fontR, color: col, maxWidth: COL_W - 20 });
           y -= 11;
         }
-        // Notă de subsol dacă Root CA e dedus
+        // Notă de subsol dacă sunt certe inferred
         if (cert.chain.some(ch => ch.isInferred)) {
-          page.drawText('¹ Root CA prezent in trust store-ul sistemului de operare (nu inclus in CMS — conform RFC 5652)',
+          page.drawText('¹ Dedus din campul issuer al certificatului (CA nu a fost inclus in CMS de catre provideri)',
             { x: MARGIN + 8, y, size: 6.5, font: fontR, color: COL.muted, maxWidth: COL_W - 20 });
           y -= 10;
         }
