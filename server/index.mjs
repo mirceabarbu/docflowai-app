@@ -497,6 +497,13 @@ import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, 
 import { runMigrations as runMigrationsV4 } from './db/migrate.mjs';
 import { seedDefaultForms }    from './db/seeds/forms.mjs';
 import { seedBuiltinPolicies } from './modules/policies/builtins.mjs';
+// ── v4.1 module routers (mounted at /api/v4/*) ────────────────────────────────
+import authV4Router      from './modules/auth/routes.mjs';
+import usersV4Router     from './modules/users/routes.mjs';
+import flowsV4Router     from './modules/flows/routes.mjs';
+import formsV4Router     from './modules/forms/routes.mjs';
+import analyticsV4Router from './modules/analytics/routes.mjs';
+import auditV4Router     from './modules/audit/routes.mjs';
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml, injectTokenVersionChecker } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
@@ -1548,6 +1555,19 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
 app.use('/', templatesRouter);         // Q-06: Template CRUD
 app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD (generare PDF)
 app.use('/', formulareDbRouter);      // Formulare DB: DF + ORD workflow P1→P2
+
+// ── v4.1 API routes — mounted AFTER all v3 routes, no overlap ────────────────
+app.get('/api/v4/health', (_req, res) => res.json({
+  status: 'ok',
+  version: '4.1.0',
+  modules: ['auth', 'users', 'flows', 'forms', 'analytics', 'audit'],
+}));
+app.use('/api/v4/auth',      authV4Router);
+app.use('/api/v4/users',     usersV4Router);
+app.use('/api/v4/flows',     flowsV4Router);
+app.use('/api/v4/forms',     formsV4Router);
+app.use('/api/v4/analytics', analyticsV4Router);
+app.use('/api/v4/audit',     auditV4Router);
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
