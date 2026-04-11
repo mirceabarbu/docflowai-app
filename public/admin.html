@@ -95,9 +95,6 @@
     .modal h3{font-size:.95rem;font-weight:700;color:var(--sub);margin-bottom:18px;}
     .modal .frow{margin-bottom:12px;}
     .modal-acts{margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
-    .stat-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px 14px;text-align:center;}
-    .stat-label{font-size:.72rem;color:var(--muted);margin-bottom:4px;}
-    .stat-value{font-size:1.6rem;font-weight:800;color:#eaf0ff;}
   </style>
 
   <script>
@@ -159,7 +156,6 @@
 
   </script>
   <link rel="stylesheet" href="/mobile.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <header>
@@ -227,7 +223,7 @@
   <button class="atab" data-tab="outreach" onclick="switchTab('outreach')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="outreach-tab-btn">📧 Outreach</button>
   <button class="atab" data-tab="organizatii" onclick="switchTab('organizatii')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="org-tab-btn">🏛 Organizații</button>
       <button class="atab" data-tab="analytics" onclick="switchTab('analytics');loadAnalytics();" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="analytics-tab-btn">📊 Analytics</button>
-      <button class="atab" data-tab="audit" onclick="switchTab('audit')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="audit-tab-btn">🔍 Audit</button>
+  <button class="atab" data-tab="audit" onclick="switchTab('audit')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">🔍 Audit</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -1073,54 +1069,12 @@
 <div id="tab-analytics" style="display:none;">
   <h2 style="color:#9db0ff;margin-bottom:6px;">📊 Analytics</h2>
   <p style="color:var(--muted);font-size:.83rem;margin-bottom:20px;">Statistici agregate pentru organizația ta.</p>
-
-  <div id="section-analytics">
-    <!-- KPI Cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px" id="analytics-kpis">
-      <div class="stat-card">
-        <div class="stat-label">Total fluxuri</div>
-        <div class="stat-value" id="an-total">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Completate</div>
-        <div class="stat-value" style="color:#10b981" id="an-completed">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Refuzate</div>
-        <div class="stat-value" style="color:#ef4444" id="an-refused">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Active acum</div>
-        <div class="stat-value" style="color:#3b82f6" id="an-active">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Timp mediu</div>
-        <div class="stat-value" id="an-avgtime">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Utilizatori activi</div>
-        <div class="stat-value" id="an-users">—</div>
-      </div>
-    </div>
-
-    <!-- Grafic timeline -->
-    <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:16px;margin-bottom:16px">
-      <div style="font-size:14px;font-weight:600;margin-bottom:12px">
-        📈 Activitate ultimele 30 zile
-      </div>
-      <canvas id="analytics-chart" height="120"></canvas>
-    </div>
-
-    <!-- Provideri semnare -->
-    <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:16px">
-      <div style="font-size:14px;font-weight:600;margin-bottom:12px">
-        ✍️ Metode de semnare
-      </div>
-      <div id="analytics-providers"></div>
-    </div>
+  <div id="analyticsArea" style="display:grid;gap:16px;">
+    <div style="color:var(--muted);padding:24px;text-align:center;">⏳ Apasă pe tab pentru a încărca...</div>
   </div>
 </div>
 
+<!-- Tab Audit Trail -->
 <div id="tab-audit" style="display:none;">
   <h2 style="color:#9db0ff;margin-bottom:6px;">🔍 Audit Trail</h2>
   <p style="color:var(--muted);font-size:.83rem;margin-bottom:18px;">Jurnal complet al evenimentelor din platformă.</p>
@@ -2684,9 +2638,11 @@ let _fluxuriLoaded = false;
 let _outreachLoaded = false;
 let _orgLoaded = false;
 let _auditLoaded = false;
+let _currentOrgId = null;
+let _rptGenerated = false; // true după prima generare raport — activează auto-refresh la filtrare
 
 // ══════════════════════════════════════════════════════════════════
-// AUDIT MODULE
+// AUDIT TRAIL MODULE
 // ══════════════════════════════════════════════════════════════════
 
 let _auditCurrentPage = 1;
@@ -2747,9 +2703,9 @@ function renderAuditTable(events) {
     'USER_LOGOUT':         '#64748b',
   };
   tbody.innerHTML = events.map(e => {
-    const date    = new Date(e.created_at).toLocaleString('ro-RO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    const label   = eventLabels[e.event_type] || e.event_type;
-    const color   = badgeColor[e.event_type]  || '#64748b';
+    const date     = new Date(e.created_at).toLocaleString('ro-RO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    const label    = eventLabels[e.event_type] || e.event_type;
+    const color    = badgeColor[e.event_type]  || '#64748b';
     const badgeHtml = `<span style="background:${color}22;color:${color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${escH(label)}</span>`;
     const flowLink  = e.flow_id
       ? `<a href="/flow.html?id=${encodeURIComponent(e.flow_id)}" style="font-family:monospace;font-size:11px;color:#7c9eff;word-break:break-all;">${escH(e.flow_id)}</a>`
@@ -2770,7 +2726,7 @@ function renderAuditPagination(page, pages, total) {
   const el = $('audit-pagination');
   if (!el) return;
   el.innerHTML = `
-    <button onclick="loadAuditEvents(${page - 1})" ${page <= 1 ? 'disabled' : ''} style="background:rgba(255,255,255,.07);border:none;color:#c4b5ff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:.8rem;" ${page <= 1 ? 'style="opacity:.4;cursor:default;"' : ''}>‹ Anterior</button>
+    <button onclick="loadAuditEvents(${page - 1})" ${page <= 1 ? 'disabled' : ''} style="background:rgba(255,255,255,.07);border:none;color:#c4b5ff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:.8rem;">‹ Anterior</button>
     <span style="color:var(--muted);">Pagina <strong style="color:#eaf0ff;">${page}</strong> din <strong style="color:#eaf0ff;">${pages}</strong> &nbsp;·&nbsp; ${total} înregistrări</span>
     <button onclick="loadAuditEvents(${page + 1})" ${page >= pages ? 'disabled' : ''} style="background:rgba(255,255,255,.07);border:none;color:#c4b5ff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:.8rem;">Următor ›</button>
   `;
@@ -2811,12 +2767,6 @@ function downloadAuditCsv() {
   if (to)        params.set('to', to);
   window.location.href = `/admin/audit-events?${params}`;
 }
-
-function escH(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-let _currentOrgId = null;
-let _rptGenerated = false; // true după prima generare raport — activează auto-refresh la filtrare
 
 // ══════════════════════════════════════════════════════════════════
 // OUTREACH MODULE
@@ -4427,90 +4377,24 @@ async function do2FADisable() {
 function close2FA() { const m = document.getElementById('twoFaModal'); if (m) m.style.display = 'none'; }
 
 // ── Analytics Dashboard ──────────────────────────────────────────────────────
-let _analyticsInstance = null;
+let _analyticsData = null;
 
 async function loadAnalytics() {
+  const area = document.getElementById('analyticsArea');
+  if (!area) return;
+  area.innerHTML = '<div style="color:var(--muted);padding:40px;text-align:center;font-size:.9rem;">⏳ Se încarcă datele...</div>';
   try {
-    const r = await fetch('/admin/analytics/summary', { credentials: 'include' });
+    const r = await _apiFetch('/admin/analytics', { headers: hdrs() });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'server_error');
-
-    // KPI cards
-    document.getElementById('an-total').textContent     = d.flows?.total       ?? 0;
-    document.getElementById('an-completed').textContent = d.flows?.completed   ?? 0;
-    document.getElementById('an-refused').textContent   = d.flows?.refused     ?? 0;
-    document.getElementById('an-active').textContent    = d.flows_active       ?? 0;
-    document.getElementById('an-avgtime').textContent   = d.avg_hours ? d.avg_hours + 'h' : '—';
-    document.getElementById('an-users').textContent     = d.users_active       ?? 0;
-
-    // Grafic Chart.js
-    if (window.Chart && d.timeline?.length) {
-      const ctx = document.getElementById('analytics-chart');
-      if (ctx) {
-        if (_analyticsInstance) { _analyticsInstance.destroy(); _analyticsInstance = null; }
-        _analyticsInstance = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: d.timeline.map(t => {
-              const dt = new Date(t.data);
-              return dt.toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit' });
-            }),
-            datasets: [
-              {
-                label: 'Completate',
-                data: d.timeline.map(t => t.completate),
-                backgroundColor: '#10b981',
-                borderRadius: 4
-              },
-              {
-                label: 'Refuzate',
-                data: d.timeline.map(t => t.refuzate),
-                backgroundColor: '#ef4444',
-                borderRadius: 4
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
-            scales: {
-              x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } },
-              y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' }, beginAtZero: true }
-            }
-          }
-        });
-      }
-    }
-
-    // Provideri semnare
-    const provDiv = document.getElementById('analytics-providers');
-    if (provDiv && d.providers?.length) {
-      const total = d.providers.reduce((s, p) => s + Number(p.total), 0);
-      provDiv.innerHTML = d.providers.map(p => {
-        const pct  = total ? Math.round(p.total / total * 100) : 0;
-        const name = p.provider === 'sts-cloud'     ? 'STS Cloud QES'
-                   : p.provider === 'local-upload'  ? 'Upload local'
-                   : p.provider || 'Necunoscut';
-        return `<div style="margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-            <span style="color:#f1f5f9">${esc(name)}</span>
-            <span style="color:#94a3b8">${p.total} (${pct}%)</span>
-          </div>
-          <div style="background:#263148;border-radius:4px;height:6px">
-            <div style="background:#8b5cf6;height:6px;border-radius:4px;width:${pct}%;transition:width 0.5s"></div>
-          </div>
-        </div>`;
-      }).join('');
-    } else if (provDiv) {
-      provDiv.innerHTML = '<p style="color:#64748b;font-size:13px">Nicio semnătură înregistrată încă.</p>';
-    }
-
+    if (!r.ok) throw new Error(d.message || d.error);
+    _analyticsData = d;
+    renderAnalytics(d, area);
   } catch(e) {
-    console.error('Analytics error:', e);
+    area.innerHTML = `<div style="color:#ff8080;padding:24px;text-align:center;">❌ ${esc(e.message)}</div>`;
   }
 }
 
-function _renderAnalyticsLegacy(d, area) {
+function renderAnalytics(d, area) {
   const f = d.flows, s = d.signers, u = d.users;
   const pct = (a,b) => b ? Math.round(a/b*100) : 0;
   // Formatează ore zecimale → "X h și Y min" / "Y min" / "X h"
