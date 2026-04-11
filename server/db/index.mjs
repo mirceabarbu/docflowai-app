@@ -1046,6 +1046,21 @@ const MIGRATIONS = [
 
       END $do$;
     `
+  },
+  {
+    id: '055_alop_instances_semnatari',
+    sql: `
+      ALTER TABLE alop_instances
+        ADD COLUMN IF NOT EXISTS df_semnatari  JSONB DEFAULT '[]',
+        ADD COLUMN IF NOT EXISTS ord_semnatari JSONB DEFAULT '[]',
+        ADD COLUMN IF NOT EXISTS lichidare_confirmed_by INTEGER;
+      DO $$ BEGIN
+        ALTER TABLE alop_instances
+          ADD CONSTRAINT alop_lichidare_confirmed_by_fk
+          FOREIGN KEY (lichidare_confirmed_by) REFERENCES users(id);
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `
   }
 ];
 
