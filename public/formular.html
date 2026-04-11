@@ -2720,11 +2720,14 @@ async function openAlop(id){
   }
 }
 function closeAlopDetail(){
+  window._alopContext=null;
   document.getElementById('alop-list-panel').style.display='';
   document.getElementById('alop-detail-panel').style.display='none';
 }
 
 function renderAlopDetail(a,container){
+  // Stochează contextul ALOP activ pentru mkFlow (pre-populare semnatari)
+  window._alopContext={alopId:a.id,dfSemnatari:a.df_semnatari||[],ordSemnatari:a.ord_semnatari||[]};
   const isCompleted=a.status==='completed';
   const isCancelled=a.status==='cancelled';
   const fmtDate=iso=>iso?new Date(iso).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
@@ -3056,13 +3059,36 @@ async function saveAlopSablon(){
   }catch(e){alert('Eroare: '+e.message);}
 }
 
-// Integrare mkFlow: leagă automat fluxul la ALOP dacă există alop_id în URL
+// Integrare mkFlow: în context ALOP → stochează semnatari + id pentru semdoc-initiator
 (function _patchMkFlowForAlop(){
   const _orig=window.mkFlow;
   if(typeof _orig!=='function')return;
+  // Mapare rol ALOP → atribut semnătură în semdoc-initiator
+  const ALOP_ROL={
+    initiator:'ÎNTOCMIT', sef_compartiment:'VIZAT', responsabil_cab:'VERIFICAT',
+    sef_cab:'VIZAT', director_economic:'VIȚĂ ECONOMICĂ',
+    ordonator_credite:'APROBAT', cfp_propriu:'VIȚĂ CFPP'
+  };
   window.mkFlow=function(ft){
-    const alopId=new URLSearchParams(location.search).get('alop_id');
-    if(alopId)sessionStorage.setItem('alop_id_for_flow',alopId+'|'+ft);
+    const ctx=window._alopContext;
+    const alopId=new URLSearchParams(location.search).get('alop_id')||ctx?.alopId;
+    if(alopId){
+      sessionStorage.setItem('alop_id_for_flow',alopId+'|'+ft);
+      if(ctx){
+        const semnatari=ft==='notafd'?ctx.dfSemnatari:ctx.ordSemnatari;
+        const initiatorName=(ctx.dfSemnatari||[]).find(s=>s.role==='initiator')?.name||'';
+        const prefillSigners=(semnatari||[])
+          .filter(s=>s.user_id||s.same_as_initiator)
+          .map(s=>({
+            name:s.same_as_initiator?initiatorName:(s.name||''),
+            rol:ALOP_ROL[s.role]||'SEMNAT',
+            functie:s.functie||''
+          }));
+        if(prefillSigners.length){
+          sessionStorage.setItem('docflow_prefill_signers',JSON.stringify(prefillSigners));
+        }
+      }
+    }
     _orig(ft);
   };
 })();

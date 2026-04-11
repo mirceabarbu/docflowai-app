@@ -1656,6 +1656,16 @@ async function signFromFluxuri(flowId) {
             refreshAllDropdowns?.();
             // Re-sincronizează ÎNTOCMIT după ce dropdown-urile sunt populate
             autoFillFromProfile();
+            // ALOP: aplică semnatari pre-configurați dacă există prefill în așteptare
+            if (window._alopPrefillSigners?.length) {
+              const _alTbody = $("signersTbody");
+              if (_alTbody) {
+                _alTbody.innerHTML = "";
+                window._alopPrefillSigners.forEach(s => _alTbody.appendChild(signerRowTemplate(s)));
+                refreshAllDropdowns?.();
+              }
+              window._alopPrefillSigners = null;
+            }
           }
         } catch(e) { console.warn("Nu s-au putut încărca userii:", e); }
       })();
@@ -2139,6 +2149,30 @@ async function signFromFluxuri(flowId) {
             sessionStorage.removeItem("docflow_prefill_doc_type");
           }
 
+          // ALOP: leagă fluxul de semnare la dosarul ALOP (non-fatal)
+          const _alopIdForFlow = sessionStorage.getItem("alop_id_for_flow");
+          if (_alopIdForFlow && j.flowId) {
+            const [_alopId, _alopDocType] = _alopIdForFlow.split("|");
+            const _isDfFlow = _alopDocType === "notafd";
+            try {
+              // Link document (df_id / ord_id) dacă nu e deja legat
+              if (_prefDocId) {
+                await fetch(`/api/alop/${_alopId}/${_isDfFlow ? "link-df" : "link-ord"}`, {
+                  method: "POST", credentials: "include",
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                  body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
+                }).catch(() => {});
+              }
+              // Link fluxul de semnare
+              await fetch(`/api/alop/${_alopId}/${_isDfFlow ? "link-df-flow" : "link-ord-flow"}`, {
+                method: "POST", credentials: "include",
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                body: JSON.stringify({ flow_id: j.flowId })
+              }).catch(() => {});
+            } catch(_) {}
+            sessionStorage.removeItem("alop_id_for_flow");
+          }
+
           // Redirect UX:
           // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
           // - altfel -> mergi la pagina dedicată flow (status/timeline)
@@ -2196,6 +2230,12 @@ async function signFromFluxuri(flowId) {
           sessionStorage.removeItem("docflow_prefill_email");
           sessionStorage.removeItem("docflow_prefill_pdf");
           sessionStorage.removeItem("docflow_prefill_type");
+          // ALOP: stochează semnatari pentru aplicare după _dbUsers se încarcă
+          const _alopPS = sessionStorage.getItem("docflow_prefill_signers");
+          if (_alopPS) {
+            try { window._alopPrefillSigners = JSON.parse(_alopPS); } catch(_) {}
+            sessionStorage.removeItem("docflow_prefill_signers");
+          }
           showTab("init");
           return;
         }

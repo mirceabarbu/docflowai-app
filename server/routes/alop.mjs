@@ -515,6 +515,42 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
 });
 
 // ── POST /api/alop/:id/cancel ─────────────────────────────────────────────────
+// ── POST /api/alop/admin/repair-status — reparare status ALOP pentru fluxuri deja semnate ─
+router.post('/api/alop/admin/repair-status', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!['admin','org_admin'].includes(actor.role)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const r = await pool.query(`
+      UPDATE alop_instances a
+      SET status = CASE
+            WHEN a.ord_flow_id IS NOT NULL
+              AND EXISTS(
+                SELECT 1 FROM flows f
+                WHERE f.id::text = a.ord_flow_id
+                  AND (f.data->>'completed')::boolean = true
+              ) THEN 'plata'
+            WHEN a.df_flow_id IS NOT NULL
+              AND EXISTS(
+                SELECT 1 FROM flows f
+                WHERE f.id::text = a.df_flow_id
+                  AND (f.data->>'completed')::boolean = true
+              ) THEN 'lichidare'
+            ELSE a.status
+          END,
+          updated_at = NOW()
+      WHERE a.cancelled_at IS NULL
+        AND a.status IN ('draft','angajare','ordonantare')
+        AND a.org_id = $1
+      RETURNING id, status
+    `, [actor.role === 'admin' ? actor.orgId : actor.orgId]);
+    res.json({ repaired: r.rows });
+  } catch(e) {
+    logger.error({ err: e }, 'alop repair-status error');
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;

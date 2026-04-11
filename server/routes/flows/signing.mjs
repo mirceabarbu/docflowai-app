@@ -313,6 +313,29 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
           if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: 'Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName }, urgent: !!(data.urgent) });
           // FEAT-N01: webhook flow.completed (fire-and-forget)
           if (_fireWebhook && data.orgId) _fireWebhook(data.orgId, 'flow.completed', data).catch(() => {});
+          // ALOP: auto-tranziție dosar la finalizarea fluxului de semnare legat
+          try {
+            const [alopDf, alopOrd] = await Promise.all([
+              pool.query(`SELECT id, status FROM alop_instances WHERE df_flow_id=$1 AND cancelled_at IS NULL`, [flowId]),
+              pool.query(`SELECT id, status FROM alop_instances WHERE ord_flow_id=$1 AND cancelled_at IS NULL`, [flowId])
+            ]);
+            if (alopDf.rows[0]) {
+              const al = alopDf.rows[0];
+              if (['draft','angajare'].includes(al.status)) {
+                await pool.query(`UPDATE alop_instances SET status='lichidare', df_completed_at=NOW(), updated_at=NOW() WHERE id=$1`, [al.id]);
+                logger.info(`[ALOP] df_flow semnat → lichidare, id=${al.id}`);
+              }
+            }
+            if (alopOrd.rows[0]) {
+              const al = alopOrd.rows[0];
+              if (al.status === 'ordonantare') {
+                await pool.query(`UPDATE alop_instances SET status='plata', ord_completed_at=NOW(), updated_at=NOW() WHERE id=$1`, [al.id]);
+                logger.info(`[ALOP] ord_flow semnat → plata, id=${al.id}`);
+              }
+            }
+          } catch(alopErr) {
+            logger.warn({ err: alopErr }, '[ALOP] auto-transition failed (non-fatal)');
+          }
         }
         if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName, signerToken: nextSigner.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment }, urgent: !!(data.urgent) });
       } catch(notifErr) { logger.error({ err: notifErr, flowId }, 'Notificare async esuat'); }
