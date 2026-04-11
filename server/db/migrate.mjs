@@ -30,6 +30,11 @@ export async function runMigrations(pool) {
     )
   `);
 
+  // Force re-run 014_alop — migration rescrisă cu ALTER TABLE idempotent
+  await pool.query(
+    "DELETE FROM schema_migrations WHERE id='014_alop'"
+  ).catch(() => {});
+
   // Read applied migration IDs
   const { rows: applied } = await pool.query('SELECT id FROM schema_migrations');
   const appliedIds = new Set(applied.map(r => r.id));
