@@ -172,6 +172,9 @@
     .modal-ov.show{display:flex}
     .modal-box{background:#0f1832;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:22px 24px;width:min(480px,95vw);max-height:80vh;display:flex;flex-direction:column;gap:12px}
     .modal-title{font-size:.95rem;font-weight:800;color:var(--app-text)}
+    /* BUG1 fix — select dropdown text vizibil în modalul ALOP șablon (dark theme) */
+    #alop-sablon-modal select{color:#e8eeff !important;background-color:#1a2040 !important;border-color:rgba(255,255,255,.18) !important}
+    #alop-sablon-modal select option{color:#e8eeff !important;background-color:#1a2040 !important}
     .modal-search{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--app-text);padding:8px 10px;font-size:.84rem;outline:none;width:100%;font-family:inherit}
     .modal-search:focus{border-color:rgba(108,79,240,.5)}
     .modal-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;min-height:80px;max-height:260px}
@@ -2926,6 +2929,29 @@ async function _alopLoadSablon(){
   }catch(_){}
 }
 
+function alopSabUpdateExclusions(){
+  const selects=document.querySelectorAll('#alop-sablon-modal select.alop-sab-select');
+  const selectedIds=new Set();
+  selects.forEach(sel=>{if(sel.value)selectedIds.add(sel.value);});
+  selects.forEach(sel=>{
+    const ownValue=sel.value;
+    Array.from(sel.options).forEach(opt=>{
+      if(!opt.value)return; // skip "— Neselectat —"
+      opt.disabled=selectedIds.has(opt.value)&&opt.value!==ownValue;
+      opt.style.color=opt.disabled?'#888':'';
+    });
+  });
+}
+
+function alopSabInitExclusions(){
+  const selects=document.querySelectorAll('#alop-sablon-modal select.alop-sab-select');
+  selects.forEach(sel=>{
+    sel.removeEventListener('change',alopSabUpdateExclusions);
+    sel.addEventListener('change',alopSabUpdateExclusions);
+  });
+  alopSabUpdateExclusions();
+}
+
 async function openAlopSablonModal(){
   if(!_ALOP.orgUsers.length){
     try{
@@ -2936,6 +2962,7 @@ async function openAlopSablonModal(){
   await _alopLoadSablon();
   _initAllPickers(_ALOP.orgUsers);
   alopPopulateSabModal(_ALOP.sablon);
+  alopSabInitExclusions();
   document.getElementById('alop-sablon-modal').style.display='flex';
 }
 function closeAlopSablonModal(){document.getElementById('alop-sablon-modal').style.display='none';}
@@ -2945,7 +2972,7 @@ function _renderPickerSelect(containerId,users){
   if(!el)return;
   const opts=`<option value="">— Neselectat —</option>`+
     users.map(u=>`<option value="${_escH(String(u.id))}">${_escH(u.nume||u.email||'?')}${u.functie?` (${_escH(u.functie)})`:''}</option>`).join('');
-  el.innerHTML=`<select style="width:100%;padding:5px 8px;background:rgba(255,255,255,.06);border:1px solid var(--app-line);border-radius:6px;color:var(--app-text);font-size:.8rem">${opts}</select>`;
+  el.innerHTML=`<select class="alop-sab-select" style="width:100%;padding:5px 8px;background:rgba(255,255,255,.06);border:1px solid var(--app-line);border-radius:6px;color:var(--app-text);font-size:.8rem">${opts}</select>`;
 }
 
 function _setPickerValue(containerId,userId){
