@@ -2,8 +2,13 @@
  * server/routes/alop.mjs
  *
  * ALOP — Angajament Legal / Ordonanțare de Plată
- * Orchestrator peste DF + ORD existente: leagă un Document de Fundamentare
- * cu o Ordonanțare de Plată și fluxurile lor de semnare.
+ * Conform Ordinului 1140/2025 — 4 faze:
+ *   1. Angajare      — Document de Fundamentare (DF) + flux semnare
+ *   2. Lichidare     — confirmare servicii prestate / bunuri recepționate
+ *   3. Ordonanțare   — Ordonanțare de Plată (ORD) + flux semnare
+ *   4. Plată         — confirmare plată efectuată
+ *
+ * Status machine: draft → angajare → lichidare → ordonantare → plata → completed
  *
  * Toate rutele folosesc pattern-ul v3:
  *   const actor = requireAuth(req, res); if (!actor) return;
@@ -24,19 +29,80 @@ function requireDb(res) {
   return false;
 }
 
-// ── GET /api/alop/stats — trebuie montat ÎNAINTE de /:id ────────────────────
+// ── GET /api/alop/sablon — montat ÎNAINTE de /:id ────────────────────────────
+router.get('/api/alop/sablon', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM alop_sabloane WHERE org_id=$1',
+      [actor.orgId]
+    );
+    const defaultSablon = {
+      signatari_angajare:    [],
+      signatari_lichidare:   [],
+      signatari_ordonantare: [],
+      signatari_plata:       [],
+    };
+    res.json({ sablon: rows[0] || defaultSablon });
+  } catch (e) {
+    logger.error({ err: e }, 'alop sablon get error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── POST /api/alop/sablon — upsert șablon org ────────────────────────────────
+router.post('/api/alop/sablon', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!['admin', 'org_admin'].includes(actor.role)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  try {
+    const {
+      signatari_angajare    = [],
+      signatari_lichidare   = [],
+      signatari_ordonantare = [],
+      signatari_plata       = [],
+    } = req.body;
+
+    const { rows } = await pool.query(`
+      INSERT INTO alop_sabloane
+        (org_id, signatari_angajare, signatari_lichidare, signatari_ordonantare, signatari_plata, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (org_id) DO UPDATE
+        SET signatari_angajare    = EXCLUDED.signatari_angajare,
+            signatari_lichidare   = EXCLUDED.signatari_lichidare,
+            signatari_ordonantare = EXCLUDED.signatari_ordonantare,
+            signatari_plata       = EXCLUDED.signatari_plata,
+            updated_at            = NOW()
+      RETURNING *
+    `, [
+      actor.orgId,
+      JSON.stringify(signatari_angajare),
+      JSON.stringify(signatari_lichidare),
+      JSON.stringify(signatari_ordonantare),
+      JSON.stringify(signatari_plata),
+    ]);
+    res.json({ sablon: rows[0] });
+  } catch (e) {
+    logger.error({ err: e }, 'alop sablon save error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── GET /api/alop/stats — montat ÎNAINTE de /:id ─────────────────────────────
 router.get('/api/alop/stats', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows } = await pool.query(`
       SELECT
-        COUNT(*)::int                                              AS total,
-        COUNT(*) FILTER (WHERE status='completed')::int           AS completate,
+        COUNT(*)::int                                                    AS total,
+        COUNT(*) FILTER (WHERE status='completed')::int                  AS completate,
         COUNT(*) FILTER (WHERE status IN
-          ('df_in_progress','df_signed','ord_in_progress','ord_signed'))::int
-                                                                   AS in_progres,
-        COUNT(*) FILTER (WHERE status='draft')::int               AS draft
+          ('angajare','lichidare','ordonantare','plata'))::int            AS in_progres,
+        COUNT(*) FILTER (WHERE status='draft')::int                      AS draft
       FROM alop_instances
       WHERE org_id=$1 AND cancelled_at IS NULL
     `, [actor.orgId]);
@@ -47,7 +113,7 @@ router.get('/api/alop/stats', async (req, res) => {
   }
 });
 
-// ── GET /api/alop — lista ALOP pentru org ───────────────────────────────────
+// ── GET /api/alop — lista ALOP pentru org ────────────────────────────────────
 router.get('/api/alop', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -66,6 +132,8 @@ router.get('/api/alop', async (req, res) => {
       SELECT
         a.id, a.status, a.titlu, a.compartiment, a.valoare_totala,
         a.df_id, a.ord_id, a.df_flow_id, a.ord_flow_id,
+        a.df_completed_at, a.lichidare_confirmed_at,
+        a.ord_completed_at, a.plata_confirmed_at,
         a.created_at, a.updated_at,
         u.nume   AS creator_name,
         u.email  AS creator_email,
@@ -98,7 +166,7 @@ router.get('/api/alop', async (req, res) => {
   }
 });
 
-// ── POST /api/alop — creare ALOP nou ────────────────────────────────────────
+// ── POST /api/alop — creare ALOP nou (status: draft) ─────────────────────────
 router.post('/api/alop', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -112,8 +180,8 @@ router.post('/api/alop', _csrf, async (req, res) => {
     `, [
       actor.orgId,
       actor.userId,
-      titlu       || 'ALOP nou',
-      compartiment || '',
+      titlu         || 'ALOP nou',
+      compartiment  || '',
       valoare_totala || null,
       notes          || '',
     ]);
@@ -124,7 +192,7 @@ router.post('/api/alop', _csrf, async (req, res) => {
   }
 });
 
-// ── GET /api/alop/:id — detalii ALOP ────────────────────────────────────────
+// ── GET /api/alop/:id — detalii ALOP ─────────────────────────────────────────
 router.get('/api/alop/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -133,21 +201,25 @@ router.get('/api/alop/:id', async (req, res) => {
       SELECT
         a.*,
         u.nume   AS creator_name,
-        df.nr_unic_inreg              AS df_nr,
-        df.status                     AS df_status,
-        df.valoare_totala             AS df_valoare,
-        df.compartiment_specialitate  AS df_compartiment,
-        fo.status                     AS ord_status,
-        fo.beneficiar                 AS ord_beneficiar,
-        fo.valoare_totala             AS ord_valoare,
+        df.nr_unic_inreg             AS df_nr,
+        df.status                    AS df_status,
+        df.valoare_totala            AS df_valoare,
+        df.compartiment_specialitate AS df_compartiment,
+        fo.status                    AS ord_status,
+        fo.beneficiar                AS ord_beneficiar,
+        fo.valoare_totala            AS ord_valoare,
         f1.id AS df_flow_exists,
-        f2.id AS ord_flow_exists
+        f2.id AS ord_flow_exists,
+        ul.nume AS lichidare_by_name,
+        up.nume AS plata_by_name
       FROM alop_instances a
-      LEFT JOIN users        u  ON u.id   = a.created_by
-      LEFT JOIN formulare_df df ON df.id  = a.df_id
-      LEFT JOIN formulare_ord fo ON fo.id = a.ord_id
-      LEFT JOIN flows f1 ON f1.id = a.df_flow_id
-      LEFT JOIN flows f2 ON f2.id = a.ord_flow_id
+      LEFT JOIN users        u   ON u.id   = a.created_by
+      LEFT JOIN formulare_df df  ON df.id  = a.df_id
+      LEFT JOIN formulare_ord fo ON fo.id  = a.ord_id
+      LEFT JOIN flows        f1  ON f1.id  = a.df_flow_id
+      LEFT JOIN flows        f2  ON f2.id  = a.ord_flow_id
+      LEFT JOIN users        ul  ON ul.id  = a.lichidare_confirmed_by
+      LEFT JOIN users        up  ON up.id  = a.plata_confirmed_by
       WHERE a.id = $1
         AND a.org_id = $2
         AND a.cancelled_at IS NULL
@@ -161,7 +233,7 @@ router.get('/api/alop/:id', async (req, res) => {
   }
 });
 
-// ── POST /api/alop/:id/link-df ───────────────────────────────────────────────
+// ── POST /api/alop/:id/link-df — leagă DF, status → angajare ─────────────────
 router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -170,14 +242,14 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
     if (!df_id) return res.status(400).json({ error: 'df_id obligatoriu' });
 
     const { rows: dfRows } = await pool.query(
-      'SELECT id, status FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
+      'SELECT id FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
       [df_id, actor.orgId]
     );
     if (!dfRows[0]) return res.status(404).json({ error: 'df_not_found' });
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET df_id=$1, status='df_in_progress', updated_at=NOW()
+      SET df_id=$1, status='angajare', updated_at=NOW()
       WHERE id=$2 AND org_id=$3
       RETURNING *
     `, [df_id, req.params.id, actor.orgId]);
@@ -190,7 +262,7 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
   }
 });
 
-// ── POST /api/alop/:id/link-df-flow ─────────────────────────────────────────
+// ── POST /api/alop/:id/link-df-flow — leagă fluxul de semnare DF ─────────────
 router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -200,7 +272,7 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET df_flow_id=$1, status='df_signed', updated_at=NOW()
+      SET df_flow_id=$1, updated_at=NOW()
       WHERE id=$2 AND org_id=$3
       RETURNING *
     `, [flow_id, req.params.id, actor.orgId]);
@@ -213,7 +285,52 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
   }
 });
 
-// ── POST /api/alop/:id/link-ord ─────────────────────────────────────────────
+// ── POST /api/alop/:id/df-completed — DF semnat complet → status: lichidare ───
+router.post('/api/alop/:id/df-completed', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows } = await pool.query(`
+      UPDATE alop_instances
+      SET df_completed_at=NOW(), status='lichidare', updated_at=NOW()
+      WHERE id=$1 AND org_id=$2 AND df_flow_id IS NOT NULL AND status='angajare'
+      RETURNING *
+    `, [req.params.id, actor.orgId]);
+
+    if (!rows[0]) return res.status(400).json({ error: 'df_flow_necesar_sau_status_invalid' });
+    res.json({ alop: rows[0] });
+  } catch (e) {
+    logger.error({ err: e }, 'alop df-completed error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── POST /api/alop/:id/confirma-lichidare → status: ordonantare ──────────────
+router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { notes } = req.body;
+    const { rows } = await pool.query(`
+      UPDATE alop_instances
+      SET lichidare_confirmed_by=$1,
+          lichidare_confirmed_at=NOW(),
+          lichidare_notes=$2,
+          status='ordonantare',
+          updated_at=NOW()
+      WHERE id=$3 AND org_id=$4 AND status='lichidare'
+      RETURNING *
+    `, [actor.userId, notes || '', req.params.id, actor.orgId]);
+
+    if (!rows[0]) return res.status(400).json({ error: 'status_invalid' });
+    res.json({ alop: rows[0] });
+  } catch (e) {
+    logger.error({ err: e }, 'alop confirma-lichidare error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── POST /api/alop/:id/link-ord — leagă ORD ──────────────────────────────────
 router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -229,7 +346,7 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET ord_id=$1, status='ord_in_progress', updated_at=NOW()
+      SET ord_id=$1, updated_at=NOW()
       WHERE id=$2 AND org_id=$3
       RETURNING *
     `, [ord_id, req.params.id, actor.orgId]);
@@ -242,7 +359,7 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
   }
 });
 
-// ── POST /api/alop/:id/link-ord-flow ────────────────────────────────────────
+// ── POST /api/alop/:id/link-ord-flow — leagă fluxul de semnare ORD ───────────
 router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -252,7 +369,7 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET ord_flow_id=$1, status='ord_signed', updated_at=NOW()
+      SET ord_flow_id=$1, updated_at=NOW()
       WHERE id=$2 AND org_id=$3
       RETURNING *
     `, [flow_id, req.params.id, actor.orgId]);
@@ -265,30 +382,53 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
   }
 });
 
-// ── POST /api/alop/:id/complete ─────────────────────────────────────────────
-router.post('/api/alop/:id/complete', _csrf, async (req, res) => {
+// ── POST /api/alop/:id/ord-completed — ORD semnat complet → status: plata ─────
+router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET status='completed', completed_at=NOW(), updated_at=NOW()
-      WHERE id=$1 AND org_id=$2
-        AND df_id IS NOT NULL AND ord_id IS NOT NULL
+      SET ord_completed_at=NOW(), status='plata', updated_at=NOW()
+      WHERE id=$1 AND org_id=$2 AND ord_flow_id IS NOT NULL AND status='ordonantare'
       RETURNING *
     `, [req.params.id, actor.orgId]);
 
-    if (!rows[0]) return res.status(400).json({
-      error: 'ALOP necesită DF și ORD completate',
-    });
+    if (!rows[0]) return res.status(400).json({ error: 'ord_flow_necesar_sau_status_invalid' });
     res.json({ alop: rows[0] });
   } catch (e) {
-    logger.error({ err: e }, 'alop complete error');
+    logger.error({ err: e }, 'alop ord-completed error');
     res.status(500).json({ error: 'server_error' });
   }
 });
 
-// ── POST /api/alop/:id/cancel ───────────────────────────────────────────────
+// ── POST /api/alop/:id/confirma-plata → status: completed ────────────────────
+router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { notes } = req.body;
+    const { rows } = await pool.query(`
+      UPDATE alop_instances
+      SET plata_confirmed_by=$1,
+          plata_confirmed_at=NOW(),
+          plata_notes=$2,
+          status='completed',
+          completed_at=NOW(),
+          updated_at=NOW()
+      WHERE id=$3 AND org_id=$4 AND status='plata'
+      RETURNING *
+    `, [actor.userId, notes || '', req.params.id, actor.orgId]);
+
+    if (!rows[0]) return res.status(400).json({ error: 'status_invalid' });
+    res.json({ alop: rows[0] });
+  } catch (e) {
+    logger.error({ err: e }, 'alop confirma-plata error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── POST /api/alop/:id/cancel ─────────────────────────────────────────────────
 router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -296,7 +436,7 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET status='cancelled', cancelled_at=NOW(), updated_at=NOW()
-      WHERE id=$1 AND org_id=$2
+      WHERE id=$1 AND org_id=$2 AND status != 'completed'
       RETURNING *
     `, [req.params.id, actor.orgId]);
 
