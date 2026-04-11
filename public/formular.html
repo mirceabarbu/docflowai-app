@@ -330,6 +330,7 @@
     .df-block-body.locked{pointer-events:none;opacity:.45;filter:grayscale(.2)}
     /* Layout helpers */
     .df-row{display:grid;gap:14px;margin-bottom:14px}
+    .df-revizie-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(255,170,30,.15);color:#ffcc44;margin-left:8px;vertical-align:middle}
     .df-row-1{grid-template-columns:1fr}
     .df-row-2{grid-template-columns:1fr 1fr}
     .df-row-3{grid-template-columns:1fr 1fr 1fr}
@@ -1951,6 +1952,7 @@ function renderActions(ft){
   }else if(status==='completed'&&role==='p1'){
     html=`<button class="btn primary" id="bgen-${ft}" onclick="genPdf('${ft}')"><span>⚙ Generează PDF</span></button>`
       +B('','✏️ Modifică (retrimite Resp. Buget)',`resetDocToP1('${ft}')`)
+      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'')
       +B('','+ Nou',`newDoc('${ft}')`);
   }else if(status==='completed'&&role==='p2'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
@@ -2039,7 +2041,8 @@ async function openDoc(ft,id){
       lockAll(ft,true);
       lockCaptureAndAttachments(ft,true);
       document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
-      setLockedBar(ft,`Document complet${role==='p1'?' — puteți genera PDF':'.'}`,'info');
+      const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
+      setLockedBar(ft,`Document complet${_revNr}${role==='p1'?' — puteți genera PDF':'.'}`,'info');
     }else{
       setLockedBar(ft,'');
     }
@@ -2071,6 +2074,7 @@ function renderDocsList(ft,docs){
   const esc=s=>(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   list.innerHTML=docs.map(d=>{
     const[cls,lbl]=stLabel(d.status,d.aprobat);
+    const revBadge=ft==='notafd'&&d.revizie_nr>0?`<span class="df-revizie-badge">Rev. ${d.revizie_nr}</span>`:'';
     const title=ft==='ordnt'
       ?(d.nr_ordonant_pl?`ORD ${esc(d.nr_ordonant_pl)}`:'ORD fără număr')
       :(d.nr_unic_inreg?`DF ${esc(d.nr_unic_inreg)}`:'DF fără număr');
@@ -2081,7 +2085,7 @@ function renderDocsList(ft,docs){
       :'';
     return`<div class="doc-card" data-id="${d.id}" onclick="openDoc('${ft}','${d.id}')">
       <div class="doc-card-main">
-        <div class="doc-card-title">${title}</div>
+        <div class="doc-card-title">${title}${revBadge}</div>
         <div class="doc-card-sub">${updated}${p2info}</div>
       </div>
       <span class="dst ${cls}">${lbl}</span>${pdfBtn}
@@ -2741,8 +2745,9 @@ function _renderLstTable(rows,type){
     const safeId=_escH(row.id);
     const nr=_escH(row.nr||row.id.slice(0,8));
     const titlu=_escH(row.titlu||'');
+    const revBadgeLst=type==='df'&&row.revizie_nr>0?`<span class="df-revizie-badge" style="vertical-align:middle;margin-left:4px">Rev. ${row.revizie_nr}</span>`:'';
     return`<tr>
-      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}</a>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
+      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}</a>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>
       <td>${_escH(row.initiator||'—')}</td>
       <td>${_escH(row.p2||'—')}</td>
@@ -3078,10 +3083,13 @@ function renderAlopDetail(a,container){
       actionsHtml+=`<button class="btn primary" onclick="alopDfCompleted('${id}')">✅ Marchează DF semnat complet</button>`;
     }else if(a.status==='lichidare'){
       actionsHtml+=`<button class="btn primary" onclick="openAlopConfirmLichidare('${id}')">✔️ Confirmă Lichidarea</button>`;
+      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&!a.ord_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideORD('${id}')">💰 Completează Ordonanțare de Plată</button>`;
+      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_id&&!a.ord_flow_id){
       actionsHtml+=`<button class="btn primary" onclick="alopLaunchOrdFlow('${id}','${_escH(a.ord_id)}')">✍️ Lansează flux semnare ORD</button>`;
+      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_flow_id&&!a.ord_completed_at){
       actionsHtml+=`<button class="btn primary" onclick="alopOrdCompleted('${id}')">✅ Marchează ORD semnat complet</button>`;
     }else if(a.status==='plata'){
@@ -3449,6 +3457,54 @@ async function saveAlopSablon(){
     _ALOP.sablon=data.sablon;
     closeAlopSablonModal();
     alert('Șablon salvat cu succes.');
+  }catch(e){alert('Eroare: '+e.message);}
+}
+
+// ── Revizuiri DF ──────────────────────────────────────────────────────────────
+async function dfInitiazaRevizie(dfId){
+  if(!dfId){setS('ID document lipsă.','err');return;}
+  const motiv=prompt('Motivul revizuirii (ex: actualizare valoare contract, schimbare condiții plată):','');
+  if(motiv===null)return; // anulat
+  try{
+    const r=await fetch(`/api/formulare-df/${encodeURIComponent(dfId)}/revizuieste`,{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      body:JSON.stringify({motiv}),
+    });
+    const j=await r.json();
+    if(!r.ok||!j.ok){setS(j.detail||j.error||'Eroare la creare revizie','err');return;}
+    setS(`Revizia ${j.df.revizie_nr} creată. Se deschide documentul...`,'ok');
+    // Deschide noua revizie în formular
+    setTimeout(()=>openDocFromList('df',j.df.id),600);
+  }catch(e){setS('Eroare: '+e.message,'err');}
+}
+
+async function alopRevizuiesteDF(alopId,dfId){
+  if(!dfId){alert('Niciun DF legat de acest ALOP.');return;}
+  // Reîncarcă contextul ALOP cu date proaspete
+  try{
+    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
+    const d=await r.json();
+    if(d.alop){
+      window._alopContext={
+        alopId:d.alop.id,titlu:d.alop.titlu||'',valoare:d.alop.valoare_totala||null,
+        dfSemnatari:d.alop.df_semnatari||[],ordSemnatari:d.alop.ord_semnatari||[],
+      };
+    }
+  }catch(_){}
+  const motiv=prompt('Motivul revizuirii DF (ex: actualizare valoare contract):','');
+  if(motiv===null)return;
+  try{
+    const r=await fetch(`/api/formulare-df/${encodeURIComponent(dfId)}/revizuieste`,{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      body:JSON.stringify({motiv}),
+    });
+    const j=await r.json();
+    if(!r.ok||!j.ok){alert(j.detail||j.error||'Eroare la creare revizie');return;}
+    alert(`Revizia ${j.df.revizie_nr} creată. Se deschide documentul pentru completare.`);
+    // Navighează la noul DF
+    await alopDeschideDF(alopId);
   }catch(e){alert('Eroare: '+e.message);}
 }
 

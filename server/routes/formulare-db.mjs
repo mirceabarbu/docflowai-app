@@ -97,7 +97,7 @@ router.get('/api/formulare-df', async (req, res) => {
       SELECT
         fd.id, fd.version, fd.status, fd.nr_unic_inreg, fd.subtitlu_df,
         fd.created_at, fd.updated_at, fd.submitted_at, fd.completed_at,
-        fd.flow_id,
+        fd.flow_id, fd.revizie_nr, fd.este_revizie,
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         CASE WHEN fd.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
@@ -407,6 +407,108 @@ router.post('/api/formulare-df/:id/link-flow', _csrf, async (req, res) => {
   } catch (e) {
     logger.error({ err: e }, 'formulare-df link-flow error');
     res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// GET /api/formulare-df/:id/revizii — toate reviziile aceluiași document
+router.get('/api/formulare-df/:id/revizii', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, revizie_nr, status, created_at, revizie_motiv, revizie_at, este_revizie
+      FROM formulare_df
+      WHERE (id = $1
+          OR parent_df_id = $1
+          OR nr_unic_inreg = (
+               SELECT nr_unic_inreg FROM formulare_df
+               WHERE id = $1 AND deleted_at IS NULL LIMIT 1))
+        AND org_id = $2
+        AND deleted_at IS NULL
+      ORDER BY revizie_nr ASC
+    `, [req.params.id, actor.orgId]);
+    res.json({ revizii: rows });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-df revizii error');
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/formulare-df/:id/revizuieste — crează o revizie nouă a documentului
+router.post('/api/formulare-df/:id/revizuieste', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows: origRows } = await pool.query(
+      'SELECT * FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
+      [req.params.id, actor.orgId]
+    );
+    if (!origRows.length) return res.status(404).json({ error: 'DF negăsit' });
+    const df = origRows[0];
+
+    if (df.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
+      return res.status(403).json({ error: 'forbidden' });
+
+    // Doar DF-uri completate pot fi revizuite
+    if (df.status !== 'completed')
+      return res.status(400).json({ error: 'Doar documentele completate pot fi revizuite' });
+
+    const { motiv } = req.body || {};
+
+    // Determină numărul reviziei noi
+    const { rows: maxRows } = await pool.query(
+      `SELECT COALESCE(MAX(revizie_nr), 0) AS max_rev
+       FROM formulare_df
+       WHERE nr_unic_inreg = $1 AND org_id = $2 AND deleted_at IS NULL`,
+      [df.nr_unic_inreg, actor.orgId]
+    );
+    const nouaRevizie = (maxRows[0]?.max_rev ?? 0) + 1;
+
+    // Copiază câmpurile SecA (P1); SecB se resetează la NULL implicit
+    const { rows: nouRows } = await pool.query(`
+      INSERT INTO formulare_df (
+        org_id, created_by, nr_unic_inreg,
+        revizie_nr, parent_df_id, este_revizie, revizie_motiv, revizie_at,
+        status,
+        cif, den_inst_pb, subtitlu_df,
+        compartiment_specialitate,
+        obiect_fd_reviz_scurt, obiect_fd_reviz_lung,
+        ckbx_stab_tin_cont, ckbx_ramane_suma, ramane_suma,
+        rows_val, rows_plati,
+        ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
+        ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
+        ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm
+      )
+      SELECT
+        org_id, $2, nr_unic_inreg,
+        $3, id, TRUE, $4, NOW(),
+        'draft',
+        cif, den_inst_pb, subtitlu_df,
+        compartiment_specialitate,
+        obiect_fd_reviz_scurt, obiect_fd_reviz_lung,
+        ckbx_stab_tin_cont, ckbx_ramane_suma, ramane_suma,
+        rows_val, rows_plati,
+        ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
+        ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
+        ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm
+      FROM formulare_df WHERE id = $1
+      RETURNING *
+    `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '']);
+
+    const nou = nouRows[0];
+
+    // Actualizează linkul ALOP → df_id la noua revizie
+    await pool.query(
+      `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
+       WHERE df_id=$2 AND cancelled_at IS NULL`,
+      [nou.id, req.params.id]
+    );
+
+    logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, actor: actor.email }, 'formulare-df revizie creata');
+    res.json({ ok: true, df: nou, mesaj: `Revizia ${nouaRevizie} creată cu succes` });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-df revizuieste error');
+    res.status(500).json({ error: 'server_error', detail: e.message });
   }
 });
 
@@ -988,6 +1090,8 @@ router.get('/api/formulare/list', async (req, res) => {
           fd.subtitlu_df AS titlu,
           fd.created_by,
           fd.flow_id,
+          COALESCE(fd.revizie_nr, 0) AS revizie_nr,
+          COALESCE(fd.este_revizie, FALSE) AS este_revizie,
           CASE WHEN fd.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,

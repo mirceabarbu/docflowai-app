@@ -1061,6 +1061,29 @@ const MIGRATIONS = [
       EXCEPTION WHEN duplicate_object THEN NULL;
       END $$;
     `
+  },
+  {
+    id: '056_formulare_df_revizuiri',
+    sql: `
+      ALTER TABLE formulare_df
+        ADD COLUMN IF NOT EXISTS revizie_nr    INTEGER DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS parent_df_id  UUID REFERENCES formulare_df(id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS este_revizie  BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS revizie_motiv TEXT,
+        ADD COLUMN IF NOT EXISTS revizie_at    TIMESTAMPTZ;
+
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_parent
+        ON formulare_df(parent_df_id)
+        WHERE parent_df_id IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_nr_unic
+        ON formulare_df(nr_unic_inreg, org_id)
+        WHERE nr_unic_inreg IS NOT NULL;
+
+      UPDATE formulare_df
+        SET revizie_nr = 0, este_revizie = FALSE
+        WHERE revizie_nr IS NULL;
+    `
   }
 ];
 
