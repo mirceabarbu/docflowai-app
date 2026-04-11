@@ -1195,6 +1195,97 @@ router.get('/admin/analytics', async (req, res) => {
   }
 });
 
+// ── GET /admin/analytics/summary — KPI + timeline 30z + provideri ──────────
+router.get('/admin/analytics/summary', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+
+  try {
+    const orgFilter = actorOrgFilter(actor);
+    const params    = orgFilter ? [orgFilter] : [];
+    const whereOrg  = orgFilter ? 'AND org_id = $1' : '';
+    const whereOrgDel = orgFilter ? 'AND org_id = $1 AND deleted_at IS NULL' : 'AND deleted_at IS NULL';
+
+    // Total fluxuri per status
+    const { rows: statusRows } = await pool.query(`
+      SELECT data->>'status' AS status, COUNT(*)::int AS count
+      FROM flows WHERE 1=1 ${whereOrgDel}
+      GROUP BY data->>'status'
+    `, params);
+
+    const flows = { total: 0, completed: 0, refused: 0, cancelled: 0, in_progress: 0, draft: 0 };
+    for (const r of statusRows) {
+      flows.total += r.count;
+      if (r.status === 'completed')   flows.completed   += r.count;
+      else if (r.status === 'refused')  flows.refused     += r.count;
+      else if (r.status === 'cancelled') flows.cancelled  += r.count;
+      else if (r.status === 'in_progress') flows.in_progress += r.count;
+      else if (r.status === 'draft')    flows.draft       += r.count;
+    }
+
+    // Timeline 30 zile
+    const { rows: timeline } = await pool.query(`
+      SELECT
+        DATE(created_at AT TIME ZONE 'Europe/Bucharest') AS data,
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE data->>'status' = 'completed')::int AS completate,
+        COUNT(*) FILTER (WHERE data->>'status' = 'refused')::int AS refuzate
+      FROM flows
+      WHERE created_at >= NOW() - INTERVAL '30 days' ${whereOrgDel.replace('AND deleted_at IS NULL', 'AND deleted_at IS NULL')}
+      GROUP BY DATE(created_at AT TIME ZONE 'Europe/Bucharest')
+      ORDER BY data ASC
+    `, params);
+
+    // Top provideri semnare din audit_log
+    const provParams = orgFilter ? [orgFilter] : [];
+    const provWhere  = orgFilter ? 'AND org_id = $1' : '';
+    const { rows: providers } = await pool.query(`
+      SELECT payload->>'method' AS provider, COUNT(*)::int AS total
+      FROM audit_log
+      WHERE event_type = 'SIGNED_PDF_UPLOADED' ${provWhere}
+      GROUP BY payload->>'method'
+      ORDER BY total DESC
+    `, provParams);
+
+    // Timp mediu finalizare (ore)
+    const { rows: avgRows } = await pool.query(`
+      SELECT ROUND(AVG(
+        EXTRACT(EPOCH FROM (updated_at - created_at)) / 3600
+      )::numeric, 1) AS avg_hours
+      FROM flows
+      WHERE data->>'status' = 'completed'
+      AND updated_at > created_at
+      ${whereOrgDel}
+    `, params);
+
+    // Utilizatori activi
+    const { rows: userRows } = await pool.query(`
+      SELECT COUNT(*)::int AS total FROM users
+      WHERE status = 'active' ${orgFilter ? 'AND org_id = $1' : ''}
+    `, params);
+
+    // Fluxuri active acum
+    const { rows: activeRows } = await pool.query(`
+      SELECT COUNT(*)::int AS total FROM flows
+      WHERE data->>'status' IN ('active', 'in_progress')
+      AND deleted_at IS NULL ${whereOrg}
+    `, params);
+
+    res.json({
+      flows,
+      timeline,
+      providers,
+      avg_hours:    avgRows[0]?.avg_hours   ?? null,
+      users_active: userRows[0]?.total      ?? 0,
+      flows_active: activeRows[0]?.total    ?? 0,
+    });
+  } catch(e) {
+    logger.error({ err: e }, '/admin/analytics/summary error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // ── Flows admin ────────────────────────────────────────────────────────────
 // ── GET /admin/flows/clean-preview — preview fluxuri ce vor fi șterse ─────
 
