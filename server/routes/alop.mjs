@@ -29,6 +29,36 @@ function requireDb(res) {
   return false;
 }
 
+// ── Semnatari impliciti conform OMF 1140/2025 ─────────────────────────────────
+const DF_DEFAULT_SEMNATARI = [
+  { order: 1, role: 'initiator',          user_id: null, name: '' },
+  { order: 2, role: 'sef_compartiment',   user_id: null, name: '', same_as_initiator: false },
+  { order: 3, role: 'responsabil_cab',    user_id: null, name: '' },
+  { order: 4, role: 'sef_cab',            user_id: null, name: '' },
+  { order: 5, role: 'director_economic',  user_id: null, name: '' },
+  { order: 6, role: 'ordonator_credite',  user_id: null, name: '' },
+];
+const ORD_DEFAULT_SEMNATARI = [
+  { order: 1, role: 'initiator',          user_id: null, name: '' },
+  { order: 2, role: 'responsabil_cab',    user_id: null, name: '' },
+  { order: 3, role: 'cfp_propriu',        user_id: null, name: '' },
+  { order: 4, role: 'ordonator_credite',  user_id: null, name: '' },
+];
+
+// ── State machine ─────────────────────────────────────────────────────────────
+const VALID_TRANSITIONS = {
+  draft:       ['angajare', 'cancelled'],
+  angajare:    ['lichidare', 'cancelled'],
+  lichidare:   ['ordonantare', 'cancelled'],
+  ordonantare: ['plata', 'cancelled'],
+  plata:       ['completed', 'cancelled'],
+  completed:   [],
+  cancelled:   [],
+};
+function canTransition(from, to) {
+  return (VALID_TRANSITIONS[from] || []).includes(to);
+}
+
 // ── GET /api/alop/sablon — montat ÎNAINTE de /:id ────────────────────────────
 router.get('/api/alop/sablon', async (req, res) => {
   if (requireDb(res)) return;
@@ -60,29 +90,33 @@ router.post('/api/alop/sablon', _csrf, async (req, res) => {
   }
   try {
     const {
-      signatari_angajare    = [],
-      signatari_lichidare   = [],
-      signatari_ordonantare = [],
-      signatari_plata       = [],
+      df_semnatari_sablon  = DF_DEFAULT_SEMNATARI,
+      ord_semnatari_sablon = ORD_DEFAULT_SEMNATARI,
+      lichidare_sablon     = {},
     } = req.body;
+
+    if (!Array.isArray(df_semnatari_sablon) || df_semnatari_sablon.length !== 6) {
+      return res.status(400).json({ error: 'df_semnatari_sablon trebuie să conțină 6 roluri' });
+    }
+    if (!Array.isArray(ord_semnatari_sablon) || ord_semnatari_sablon.length !== 4) {
+      return res.status(400).json({ error: 'ord_semnatari_sablon trebuie să conțină 4 roluri' });
+    }
 
     const { rows } = await pool.query(`
       INSERT INTO alop_sabloane
-        (org_id, signatari_angajare, signatari_lichidare, signatari_ordonantare, signatari_plata, updated_at)
-      VALUES ($1, $2, $3, $4, $5, NOW())
+        (org_id, df_semnatari_sablon, ord_semnatari_sablon, lichidare_sablon, updated_at)
+      VALUES ($1, $2, $3, $4, NOW())
       ON CONFLICT (org_id) DO UPDATE
-        SET signatari_angajare    = EXCLUDED.signatari_angajare,
-            signatari_lichidare   = EXCLUDED.signatari_lichidare,
-            signatari_ordonantare = EXCLUDED.signatari_ordonantare,
-            signatari_plata       = EXCLUDED.signatari_plata,
-            updated_at            = NOW()
+        SET df_semnatari_sablon  = EXCLUDED.df_semnatari_sablon,
+            ord_semnatari_sablon = EXCLUDED.ord_semnatari_sablon,
+            lichidare_sablon     = EXCLUDED.lichidare_sablon,
+            updated_at           = NOW()
       RETURNING *
     `, [
       actor.orgId,
-      JSON.stringify(signatari_angajare),
-      JSON.stringify(signatari_lichidare),
-      JSON.stringify(signatari_ordonantare),
-      JSON.stringify(signatari_plata),
+      JSON.stringify(df_semnatari_sablon),
+      JSON.stringify(ord_semnatari_sablon),
+      JSON.stringify(lichidare_sablon),
     ]);
     res.json({ sablon: rows[0] });
   } catch (e) {
@@ -171,19 +205,56 @@ router.post('/api/alop', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { titlu, compartiment, valoare_totala, notes } = req.body;
+    const {
+      titlu, compartiment, valoare_totala, notes,
+      df_semnatari: bodyDfSem,
+      ord_semnatari: bodyOrdSem,
+    } = req.body;
+
+    // Preia șablonul org
+    const { rows: sabRows } = await pool.query(
+      'SELECT df_semnatari_sablon, ord_semnatari_sablon, lichidare_sablon FROM alop_sabloane WHERE org_id=$1',
+      [actor.orgId]
+    );
+    const sab = sabRows[0] || {};
+
+    // Preia numele utilizatorului curent
+    const { rows: uRows } = await pool.query('SELECT nume FROM users WHERE id=$1', [actor.userId]);
+    const userName = uRows[0]?.nume || '';
+
+    // Semnatari: override din body sau din șablon sau default
+    let dfSem  = bodyDfSem  || sab.df_semnatari_sablon  || DF_DEFAULT_SEMNATARI;
+    let ordSem = bodyOrdSem || sab.ord_semnatari_sablon || ORD_DEFAULT_SEMNATARI;
+
+    // Înlocuiește inițiatorul cu userul curent
+    dfSem = dfSem.map(s => {
+      if (s.role === 'initiator') return { ...s, user_id: actor.userId, name: userName };
+      if (s.role === 'sef_compartiment' && s.same_as_initiator)
+        return { ...s, user_id: actor.userId, name: userName };
+      return s;
+    });
+    ordSem = ordSem.map(s =>
+      s.role === 'initiator' ? { ...s, user_id: actor.userId, name: userName } : s
+    );
+
+    const lichidareSablon = sab.lichidare_sablon || {};
+    const lichidareUserId = lichidareSablon.user_id || null;
+
     const { rows } = await pool.query(`
       INSERT INTO alop_instances
-        (org_id, created_by, titlu, compartiment, valoare_totala, notes)
-      VALUES ($1, $2, $3, $4, $5, $6)
+        (org_id, created_by, titlu, compartiment, valoare_totala, notes,
+         df_semnatari, ord_semnatari, lichidare_confirmed_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9)
       RETURNING *
     `, [
-      actor.orgId,
-      actor.userId,
+      actor.orgId, actor.userId,
       titlu         || 'ALOP nou',
       compartiment  || '',
       valoare_totala || null,
       notes          || '',
+      JSON.stringify(dfSem),
+      JSON.stringify(ordSem),
+      lichidareUserId,
     ]);
     res.status(201).json({ alop: rows[0] });
   } catch (e) {
@@ -309,6 +380,18 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    // Guard: doar lichidare_confirmed_by sau admin/org_admin
+    const { rows: cur } = await pool.query(
+      'SELECT lichidare_confirmed_by FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!cur[0]) return res.status(404).json({ error: 'not_found' });
+    const isAdmin = ['admin', 'org_admin'].includes(actor.role);
+    const isAssigned = cur[0].lichidare_confirmed_by === actor.userId;
+    if (!isAdmin && !isAssigned && cur[0].lichidare_confirmed_by !== null) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
     const { notes } = req.body;
     const { rows } = await pool.query(`
       UPDATE alop_instances
@@ -405,6 +488,10 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
 router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
+  // Guard: doar admin/org_admin pot confirma plata
+  if (!['admin', 'org_admin'].includes(actor.role)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
   try {
     const { notes } = req.body;
     const { rows } = await pool.query(`

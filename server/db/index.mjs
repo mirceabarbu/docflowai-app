@@ -996,6 +996,56 @@ const MIGRATIONS = [
       ALTER TABLE formulare_df  ADD COLUMN IF NOT EXISTS motiv_returnare TEXT;
       ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS motiv_returnare TEXT;
     `
+  },
+  {
+    id: '054_alop_sabloane_schema',
+    sql: `
+      DO $do$ DECLARE has_old boolean;
+      BEGIN
+        -- Sigur dacă tabela nu există încă (creată ulterior de runMigrationsV4)
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_sabloane'
+        ) THEN RETURN; END IF;
+
+        -- Adaugă coloanele noi (no-op dacă există deja)
+        ALTER TABLE alop_sabloane
+          ADD COLUMN IF NOT EXISTS df_semnatari_sablon   JSONB DEFAULT '[]',
+          ADD COLUMN IF NOT EXISTS ord_semnatari_sablon  JSONB DEFAULT '[]',
+          ADD COLUMN IF NOT EXISTS lichidare_sablon      JSONB DEFAULT '{}';
+
+        -- Verifică dacă există coloanele vechi
+        SELECT EXISTS(
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='alop_sabloane'
+            AND column_name='signatari_angajare'
+        ) INTO has_old;
+
+        IF has_old THEN
+          EXECUTE $u$
+            UPDATE alop_sabloane
+            SET df_semnatari_sablon  = COALESCE(signatari_angajare, '[]'::jsonb),
+                ord_semnatari_sablon = COALESCE(signatari_ordonantare, '[]'::jsonb),
+                lichidare_sablon     = COALESCE(
+                  CASE WHEN signatari_lichidare IS NOT NULL
+                       AND jsonb_array_length(signatari_lichidare) > 0
+                  THEN signatari_lichidare->0 ELSE '{}'::jsonb END, '{}'::jsonb)
+            WHERE df_semnatari_sablon = '[]'::jsonb
+          $u$;
+          ALTER TABLE alop_sabloane
+            DROP COLUMN IF EXISTS signatari_angajare,
+            DROP COLUMN IF EXISTS signatari_lichidare,
+            DROP COLUMN IF EXISTS signatari_ordonantare,
+            DROP COLUMN IF EXISTS signatari_plata;
+        END IF;
+
+        -- Setează defaults cu structura de roluri conform OMF 1140/2025
+        ALTER TABLE alop_sabloane
+          ALTER COLUMN df_semnatari_sablon SET DEFAULT '[{"order":1,"role":"initiator","user_id":null,"name":""},{"order":2,"role":"sef_compartiment","user_id":null,"name":"","same_as_initiator":false},{"order":3,"role":"responsabil_cab","user_id":null,"name":""},{"order":4,"role":"sef_cab","user_id":null,"name":""},{"order":5,"role":"director_economic","user_id":null,"name":""},{"order":6,"role":"ordonator_credite","user_id":null,"name":""}]',
+          ALTER COLUMN ord_semnatari_sablon SET DEFAULT '[{"order":1,"role":"initiator","user_id":null,"name":""},{"order":2,"role":"responsabil_cab","user_id":null,"name":""},{"order":3,"role":"cfp_propriu","user_id":null,"name":""},{"order":4,"role":"ordonator_credite","user_id":null,"name":""}]';
+
+      END $do$;
+    `
   }
 ];
 
