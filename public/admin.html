@@ -1104,8 +1104,8 @@
   </div>
 
   <!-- Tabel -->
-  <div style="overflow-x:auto;">
-    <table style="width:100%;border-collapse:collapse;font-size:.82rem;">
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table style="width:100%;border-collapse:collapse;font-size:.82rem;table-layout:auto;">
       <thead>
         <tr style="border-bottom:1px solid rgba(255,255,255,.1);">
           <th style="text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;white-space:nowrap;">Data / Ora</th>
@@ -2675,21 +2675,46 @@ function renderAuditTable(events) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px;color:var(--muted)">Niciun eveniment găsit</td></tr>';
     return;
   }
+  const eventLabels = {
+    'FLOW_CREATED':            'Flux creat',
+    'SIGNED_PDF_UPLOADED':     'Document semnat încărcat',
+    'FLOW_COMPLETED':          'Flux finalizat',
+    'FLOW_REFUSED':            'Flux refuzat',
+    'FLOW_CANCELLED':          'Flux anulat',
+    'USER_LOGIN':              'Autentificare',
+    'USER_LOGOUT':             'Deconectare',
+    'FLOW_DELEGATED':          'Delegare semnătură',
+    'EMAIL_SENT':              'Email trimis',
+    'ARCHIVE_COMPLETED':       'Arhivat',
+    'TRUST_REPORT_GENERATED':  'Raport trust generat',
+    'SIGNER_NOTIFIED':         'Semnatar notificat',
+    'FLOW_REINITIATED':        'Flux reinițiat',
+  };
+  const badgeColor = {
+    'FLOW_CREATED':        '#3b82f6',
+    'FLOW_COMPLETED':      '#10b981',
+    'FLOW_REFUSED':        '#ef4444',
+    'FLOW_CANCELLED':      '#f97316',
+    'SIGNED_PDF_UPLOADED': '#8b5cf6',
+    'USER_LOGIN':          '#06b6d4',
+    'USER_LOGOUT':         '#64748b',
+  };
   tbody.innerHTML = events.map(e => {
     const date    = new Date(e.created_at).toLocaleString('ro-RO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    const okBadge = e.ok
-      ? '<span style="color:#4ade80;font-weight:700;margin-right:4px;">✓</span>'
-      : '<span style="color:#f87171;font-weight:700;margin-right:4px;">✗</span>';
-    const flowLink = e.flow_id
-      ? `<a href="/flow.html?id=${encodeURIComponent(e.flow_id)}" style="font-family:monospace;font-size:.78rem;color:#7c9eff;">${e.flow_id.slice(0,12)}…</a>`
+    const label   = eventLabels[e.event_type] || e.event_type;
+    const color   = badgeColor[e.event_type]  || '#64748b';
+    const badgeHtml = `<span style="background:${color}22;color:${color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${escH(label)}</span>`;
+    const flowLink  = e.flow_id
+      ? `<a href="/flow.html?id=${encodeURIComponent(e.flow_id)}" style="font-family:monospace;font-size:11px;color:#7c9eff;word-break:break-all;">${escH(e.flow_id)}</a>`
       : '<span style="color:var(--muted)">—</span>';
+    const actor = escH(e.actor_name || e.actor_email || '—');
     return `<tr style="border-bottom:1px solid rgba(255,255,255,.05);">
       <td style="padding:8px 10px;white-space:nowrap;color:#9db0ff;">${date}</td>
-      <td style="padding:8px 10px;">${okBadge}<code style="font-size:.78rem;color:#c4b5ff;">${escH(e.event_type)}</code></td>
-      <td style="padding:8px 10px;font-size:.8rem;color:#eaf0ff;">${escH(e.actor_email || '—')}</td>
+      <td style="padding:8px 10px;">${badgeHtml}</td>
+      <td style="padding:8px 10px;font-size:.8rem;color:#eaf0ff;">${actor}</td>
       <td style="padding:8px 10px;">${flowLink}</td>
       <td style="padding:8px 10px;"><span style="font-size:.76rem;color:var(--muted);">${escH(e.channel || 'api')}</span></td>
-      <td style="padding:8px 10px;font-size:.78rem;color:#8899bb;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(e.message || '')}">${escH(e.message || '—')}</td>
+      <td style="padding:8px 10px;font-size:.78rem;color:#8899bb;">${escH(e.message || '—')}</td>
     </tr>`;
   }).join('');
 }

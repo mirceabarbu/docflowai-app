@@ -2302,11 +2302,16 @@ router.get('/admin/audit-events', async (req, res) => {
         AND ($5::timestamptz IS NULL OR created_at <= $5)`;
     const params = [orgId, flowId, evType, from, to];
 
+    const joinUsers = `LEFT JOIN users u ON lower(u.email) = lower(ae.actor_email)`;
+    const selectName = `COALESCE(NULLIF(u.nume,''), ae.actor_email) AS actor_name`;
+
     // Export CSV
     if (req.query.format === 'csv') {
       const { rows } = await pool.query(
-        `SELECT id, created_at, event_type, actor_email, flow_id, actor_ip, payload, created_at
-         FROM audit_log ${baseWhere} ORDER BY created_at DESC LIMIT 10000`,
+        `SELECT ae.id, ae.created_at, ae.event_type, ae.actor_email, ${selectName},
+                ae.flow_id, ae.actor_ip, ae.payload
+         FROM audit_log ae ${joinUsers} ${baseWhere.replace(/\bae\./g, 'ae.')}
+         ORDER BY ae.created_at DESC LIMIT 10000`,
         params
       );
       const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -2316,7 +2321,7 @@ router.get('/admin/audit-events', async (req, res) => {
           r.id,
           new Date(r.created_at).toISOString(),
           esc(r.event_type),
-          esc(r.actor_email || ''),
+          esc(r.actor_name || r.actor_email || ''),
           esc(r.flow_id || ''),
           esc(r.actor_ip || ''),
           esc(r.payload?.message || ''),
@@ -2327,12 +2332,19 @@ router.get('/admin/audit-events', async (req, res) => {
       return res.send(lines.join('\r\n'));
     }
 
+    // baseWhere references columns without table alias — re-alias for JOIN query
+    const baseWhereAe = baseWhere.replace(/\borg_id\b/g, 'ae.org_id')
+      .replace(/\bflow_id\b/g, 'ae.flow_id')
+      .replace(/\bevent_type\b/g, 'ae.event_type')
+      .replace(/\bcreated_at\b/g, 'ae.created_at');
+
     const [{ rows: countRows }, { rows: events }] = await Promise.all([
-      pool.query(`SELECT COUNT(*) AS total FROM audit_log ${baseWhere}`, params),
+      pool.query(`SELECT COUNT(*) AS total FROM audit_log ae ${joinUsers} ${baseWhereAe}`, params),
       pool.query(
-        `SELECT id, created_at, event_type, actor_email, flow_id, actor_ip, payload
-         FROM audit_log ${baseWhere}
-         ORDER BY created_at DESC LIMIT $6 OFFSET $7`,
+        `SELECT ae.id, ae.created_at, ae.event_type, ae.actor_email, ${selectName},
+                ae.flow_id, ae.actor_ip, ae.payload
+         FROM audit_log ae ${joinUsers} ${baseWhereAe}
+         ORDER BY ae.created_at DESC LIMIT $6 OFFSET $7`,
         [...params, limit, offset]
       ),
     ]);
@@ -2344,6 +2356,7 @@ router.get('/admin/audit-events', async (req, res) => {
         created_at:  r.created_at,
         event_type:  r.event_type,
         actor_email: r.actor_email || null,
+        actor_name:  r.actor_name  || r.actor_email || null,
         flow_id:     r.flow_id     || null,
         channel:     r.payload?.channel || 'api',
         ok:          r.payload?.ok !== false,
