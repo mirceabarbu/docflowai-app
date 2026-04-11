@@ -890,29 +890,72 @@
 
 <!-- ── Modal Șablon ALOP ──────────────────────────────────────────────────── -->
 <div class="modal-ov" id="alop-sablon-modal" onclick="if(event.target===this)closeAlopSablonModal()">
-  <div class="modal-box" style="max-width:680px;max-height:90vh;overflow-y:auto">
+  <div class="modal-box" style="max-width:720px;max-height:90vh;overflow-y:auto">
     <div class="modal-title">⚙ Configurare Șablon ALOP</div>
-    <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:14px">Semnatarii impliciti pentru fiecare fază. Vor fi precompletați la crearea unui ALOP nou.</div>
-    <div style="margin-bottom:16px">
-      <div style="font-size:.84rem;font-weight:700;color:#3b82f6;margin-bottom:8px">1. Angajare — flux semnare Document de Fundamentare</div>
-      <div id="sab-angajare-list" style="margin-bottom:6px"></div>
-      <button class="btn" style="font-size:.78rem;padding:4px 10px" onclick="sabAddSemnatar('angajare')">+ Adaugă semnatar</button>
+    <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:16px">Semnatarii impliciti conform OMF 1140/2025. Precompletați la crearea unui ALOP nou.</div>
+
+    <!-- DF — 6 roluri fixe -->
+    <div style="margin-bottom:20px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:14px">
+      <div style="font-size:.86rem;font-weight:700;color:#3b82f6;margin-bottom:12px">📋 Document de Fundamentare — 6 roluri fixe</div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:2px">1. Inițiator (compartiment specialitate)</div>
+        <div style="font-size:.75rem;color:var(--app-muted);font-style:italic;padding:5px 8px;background:rgba(255,255,255,.04);border-radius:6px">completat automat cu userul curent la creare</div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">2. Șef compartiment</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--app-muted);margin-bottom:4px;cursor:pointer">
+          <input type="checkbox" id="sab-sef-comp-same" onchange="alopSabSameAsInitiator(this)"> Aceeași persoană cu inițiatorul
+        </label>
+        <div id="sab-sef-comp-picker"></div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">3. Responsabil CAB</div>
+        <div id="sab-resp-cab-picker"></div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">4. Șef compartiment CAB</div>
+        <div id="sab-sef-cab-picker"></div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">5. Director Economic</div>
+        <div id="sab-dir-ec-picker"></div>
+      </div>
+      <div>
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">6. Ordonator de credite</div>
+        <div id="sab-ord-cred-df-picker"></div>
+      </div>
     </div>
-    <div style="margin-bottom:16px">
-      <div style="font-size:.84rem;font-weight:700;color:#f59e0b;margin-bottom:8px">2. Lichidare — responsabili confirmare</div>
-      <div id="sab-lichidare-list" style="margin-bottom:6px"></div>
-      <button class="btn" style="font-size:.78rem;padding:4px 10px" onclick="sabAddSemnatar('lichidare')">+ Adaugă semnatar</button>
+
+    <!-- ORD — 4 roluri fixe -->
+    <div style="margin-bottom:20px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:14px">
+      <div style="font-size:.86rem;font-weight:700;color:#8b5cf6;margin-bottom:12px">💰 Ordonanțare de Plată — 4 roluri fixe</div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:2px">1. Compartiment specialitate</div>
+        <div style="font-size:.75rem;color:var(--app-muted);font-style:italic;padding:5px 8px;background:rgba(255,255,255,.04);border-radius:6px">completat automat la creare</div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">2. Responsabil CAB <span style="font-style:italic">(de obicei același cu cel din DF)</span></div>
+        <div id="sab-resp-cab-ord-picker"></div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">3. Control financiar preventiv</div>
+        <div id="sab-cfp-picker"></div>
+      </div>
+      <div>
+        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">4. Ordonator de credite <span style="font-style:italic">(de obicei același cu cel din DF)</span></div>
+        <div id="sab-ord-cred-ord-picker"></div>
+      </div>
     </div>
-    <div style="margin-bottom:16px">
-      <div style="font-size:.84rem;font-weight:700;color:#8b5cf6;margin-bottom:8px">3. Ordonanțare — flux semnare Ordonanțare de Plată</div>
-      <div id="sab-ordonantare-list" style="margin-bottom:6px"></div>
-      <button class="btn" style="font-size:.78rem;padding:4px 10px" onclick="sabAddSemnatar('ordonantare')">+ Adaugă semnatar</button>
+
+    <!-- Lichidare — 1 persoană -->
+    <div style="margin-bottom:20px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:14px">
+      <div style="font-size:.86rem;font-weight:700;color:#f59e0b;margin-bottom:10px">✔️ Lichidare — persoana care confirmă recepția</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--app-muted);margin-bottom:6px;cursor:pointer">
+        <input type="checkbox" id="sab-lichidare-same" onchange="alopSabLichidareSameAsInitiator(this)"> Aceeași persoană cu inițiatorul
+      </label>
+      <div id="sab-lichidare-picker"></div>
     </div>
-    <div style="margin-bottom:16px">
-      <div style="font-size:.84rem;font-weight:700;color:#10b981;margin-bottom:8px">4. Plată — responsabili confirmare</div>
-      <div id="sab-plata-list" style="margin-bottom:6px"></div>
-      <button class="btn" style="font-size:.78rem;padding:4px 10px" onclick="sabAddSemnatar('plata')">+ Adaugă semnatar</button>
-    </div>
+
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button class="btn" onclick="closeAlopSablonModal()">Anulează</button>
       <button class="btn primary" onclick="saveAlopSablon()">💾 Salvează șablon</button>
@@ -2481,7 +2524,16 @@ function _populateCompartimente(){
 const _ALOP = {
   sablon:   null, // cache șablon org
   orgUsers: [],   // cache utilizatori org pentru selector sablon
-  sabData:  { angajare:[], lichidare:[], ordonantare:[], plata:[] },
+};
+
+const ROLE_LABEL = {
+  initiator:         'Inițiator',
+  sef_compartiment:  'Șef compartiment',
+  responsabil_cab:   'Responsabil CAB',
+  sef_cab:           'Șef compartiment CAB',
+  director_economic: 'Director Economic',
+  ordonator_credite: 'Ordonator de credite',
+  cfp_propriu:       'CFP Propriu',
 };
 
 function _alopStatusBadge(status){
@@ -2600,20 +2652,30 @@ function _alopWizShowStep(step){
 
 function _alopSablonPreviewHtml(sab){
   if(!sab)return'<div style="color:var(--app-muted);font-size:.82rem">Niciun șablon configurat. Semnatarii se adaugă manual la fiecare flux.</div>';
-  const phases=[
-    {key:'signatari_angajare',   label:'Angajare',    color:'#3b82f6'},
-    {key:'signatari_lichidare',  label:'Lichidare',   color:'#f59e0b'},
-    {key:'signatari_ordonantare',label:'Ordonanțare', color:'#8b5cf6'},
-    {key:'signatari_plata',      label:'Plată',       color:'#10b981'},
-  ];
-  const html=phases.map(p=>{
-    const list=sab[p.key]||[];
-    if(!list.length)return'';
-    return`<div style="margin-bottom:8px">
-      <div style="font-size:.76rem;font-weight:600;color:${p.color};margin-bottom:4px">${p.label}</div>
-      ${list.map(u=>`<div style="font-size:.78rem;color:var(--app-muted)">• ${_escH(u.nume||u.email||'?')}${u.functie?` — ${_escH(u.functie)}`:''}</div>`).join('')}
+  const dfList=sab.df_semnatari_sablon||[];
+  const ordList=sab.ord_semnatari_sablon||[];
+  const lich=sab.lichidare_sablon||{};
+  let html='';
+  const dfItems=dfList.filter(u=>u.user_id||u.same_as_initiator);
+  if(dfItems.length){
+    html+=`<div style="margin-bottom:8px">
+      <div style="font-size:.76rem;font-weight:600;color:#3b82f6;margin-bottom:4px">📋 Document de Fundamentare</div>
+      ${dfItems.map(u=>`<div style="font-size:.78rem;color:var(--app-muted)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':_escH(u.name||'—')}</div>`).join('')}
     </div>`;
-  }).join('');
+  }
+  const ordItems=ordList.filter(u=>u.user_id);
+  if(ordItems.length){
+    html+=`<div style="margin-bottom:8px">
+      <div style="font-size:.76rem;font-weight:600;color:#8b5cf6;margin-bottom:4px">💰 Ordonanțare de Plată</div>
+      ${ordItems.map(u=>`<div style="font-size:.78rem;color:var(--app-muted)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${_escH(u.name||'—')}</div>`).join('')}
+    </div>`;
+  }
+  if(lich.user_id||lich.same_as_initiator){
+    html+=`<div style="margin-bottom:8px">
+      <div style="font-size:.76rem;font-weight:600;color:#f59e0b;margin-bottom:4px">✔️ Lichidare</div>
+      <div style="font-size:.78rem;color:var(--app-muted)">• ${lich.same_as_initiator?'(inițiator)':_escH(lich.name||'—')}</div>
+    </div>`;
+  }
   return html||'<div style="color:var(--app-muted);font-size:.82rem">Șablon gol — semnatarii se adaugă manual.</div>';
 }
 
@@ -2721,6 +2783,27 @@ function renderAlopDetail(a,container){
     actionsHtml+=`<button class="btn danger" onclick="cancelAlop('${id}')">✕ Anulează</button>`;
   }
 
+  // Build semnatari display
+  function _semnatariSection(list,label,color){
+    if(!list||!list.length)return'';
+    const items=list.filter(u=>u.user_id||u.same_as_initiator);
+    if(!items.length)return'';
+    return`<div style="margin-bottom:6px">
+      <div style="font-size:.76rem;font-weight:600;color:${color};margin-bottom:3px">${label}</div>
+      ${items.map(u=>`<div style="font-size:.76rem;color:var(--app-muted)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':_escH(u.name||'—')}</div>`).join('')}
+    </div>`;
+  }
+  const dfSem=_semnatariSection(a.df_semnatari,'📋 Semnatari DF','#3b82f6');
+  const ordSem=_semnatariSection(a.ord_semnatari,'💰 Semnatari ORD','#8b5cf6');
+  const lichSem=(a.lichidare_user_id||(a.meta?.lichidare_same_as_initiator))?
+    `<div style="margin-bottom:6px"><div style="font-size:.76rem;font-weight:600;color:#f59e0b;margin-bottom:3px">✔️ Lichidare</div>
+      <div style="font-size:.76rem;color:var(--app-muted)">• ${_escH(a.lichidare_name||'—')}</div></div>`:'';
+  const semHtml=(dfSem||ordSem||lichSem)?`
+    <div style="background:rgba(255,255,255,.03);border:1px solid var(--app-line);border-radius:10px;padding:12px;margin-bottom:16px">
+      <div style="font-size:.78rem;font-weight:600;color:var(--app-sub);margin-bottom:8px">Semnatari configurați</div>
+      ${dfSem}${ordSem}${lichSem}
+    </div>`:'';
+
   container.innerHTML=`
     <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:12px;padding:18px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
@@ -2734,6 +2817,7 @@ function renderAlopDetail(a,container){
       </div>
     </div>
     ${stepperHtml}
+    ${semHtml}
     ${actionsHtml?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${actionsHtml}</div>`:''}
     ${isCompleted?`<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;text-align:center;color:#10b981;font-weight:600">✅ ALOP finalizat complet — ${fmtDate(a.completed_at)}</div>`:''}
   `;
@@ -2844,60 +2928,122 @@ async function openAlopSablonModal(){
     }catch(_){}
   }
   await _alopLoadSablon();
-  const sab=_ALOP.sablon;
-  _ALOP.sabData={
-    angajare:   (sab?.signatari_angajare   ||[]).map(u=>({...u})),
-    lichidare:  (sab?.signatari_lichidare  ||[]).map(u=>({...u})),
-    ordonantare:(sab?.signatari_ordonantare||[]).map(u=>({...u})),
-    plata:      (sab?.signatari_plata      ||[]).map(u=>({...u})),
-  };
-  _sabRenderAll();
+  _initAllPickers(_ALOP.orgUsers);
+  alopPopulateSabModal(_ALOP.sablon);
   document.getElementById('alop-sablon-modal').style.display='flex';
 }
 function closeAlopSablonModal(){document.getElementById('alop-sablon-modal').style.display='none';}
 
-function _sabRenderAll(){
-  ['angajare','lichidare','ordonantare','plata'].forEach(faza=>{
-    const el=document.getElementById(`sab-${faza}-list`);
-    if(!el)return;
-    const list=_ALOP.sabData[faza];
-    if(!list.length){el.innerHTML='<div style="font-size:.78rem;color:var(--app-muted);padding:4px 0">Niciun semnatar.</div>';return;}
-    el.innerHTML=list.map((u,i)=>`
-      <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--app-line)">
-        <div style="flex:1;font-size:.8rem">${_escH(u.nume||u.email||'?')}${u.functie?`<span style="color:var(--app-muted)"> — ${_escH(u.functie)}</span>`:''}</div>
-        <button class="btn" style="padding:2px 8px;font-size:.74rem;color:#ef4444" onclick="sabRemoveSemnatar('${faza}',${i})">✕</button>
-      </div>`).join('');
-  });
+function _renderPickerSelect(containerId,users){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  const opts=`<option value="">— Neselectat —</option>`+
+    users.map(u=>`<option value="${_escH(String(u.id))}">${_escH(u.nume||u.email||'?')}${u.functie?` (${_escH(u.functie)})`:''}</option>`).join('');
+  el.innerHTML=`<select style="width:100%;padding:5px 8px;background:rgba(255,255,255,.06);border:1px solid var(--app-line);border-radius:6px;color:var(--app-text);font-size:.8rem">${opts}</select>`;
 }
 
-function sabAddSemnatar(faza){
-  const users=_ALOP.orgUsers;
-  if(!users.length){alert('Nu s-au putut încărca utilizatorii organizației.');return;}
-  const opts=users.map((u,i)=>`${i+1}. ${u.nume||u.email} (${u.functie||u.compartiment||'—'})`).join('\n');
-  const sel=prompt(`Selectează utilizator pentru "${faza}" (introdu numărul):\n${opts}`);
-  if(!sel)return;
-  const idx=parseInt(sel)-1;
-  if(isNaN(idx)||idx<0||idx>=users.length){alert('Număr invalid.');return;}
-  const u=users[idx];
-  _ALOP.sabData[faza].push({id:u.id,email:u.email,nume:u.nume,functie:u.functie||'',compartiment:u.compartiment||''});
-  _sabRenderAll();
+function _setPickerValue(containerId,userId){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  const sel=el.querySelector('select');
+  if(sel)sel.value=userId!=null?String(userId):'';
 }
-function sabRemoveSemnatar(faza,idx){
-  _ALOP.sabData[faza].splice(idx,1);
-  _sabRenderAll();
+
+function _initAllPickers(users){
+  ['sab-sef-comp-picker','sab-resp-cab-picker','sab-sef-cab-picker','sab-dir-ec-picker','sab-ord-cred-df-picker',
+   'sab-resp-cab-ord-picker','sab-cfp-picker','sab-ord-cred-ord-picker','sab-lichidare-picker']
+    .forEach(id=>_renderPickerSelect(id,users));
+}
+
+function alopPopulateSabModal(sab){
+  if(!sab)return;
+  const df=sab.df_semnatari_sablon||[];
+  const ord=sab.ord_semnatari_sablon||[];
+  const lich=sab.lichidare_sablon||{};
+  const dfByOrder={};df.forEach(u=>dfByOrder[u.order]=u);
+  const ordByOrder={};ord.forEach(u=>ordByOrder[u.order]=u);
+  // DF role 2: sef_compartiment
+  const sefComp=dfByOrder[2]||{};
+  const sefCompSame=!!sefComp.same_as_initiator;
+  const cbSefComp=document.getElementById('sab-sef-comp-same');
+  if(cbSefComp)cbSefComp.checked=sefCompSame;
+  _setPickerValue('sab-sef-comp-picker',sefComp.user_id||null);
+  const sefCompEl=document.getElementById('sab-sef-comp-picker');
+  if(sefCompEl){const s=sefCompEl.querySelector('select');if(s)s.disabled=sefCompSame;}
+  // DF roles 3-6
+  _setPickerValue('sab-resp-cab-picker',(dfByOrder[3]||{}).user_id||null);
+  _setPickerValue('sab-sef-cab-picker',(dfByOrder[4]||{}).user_id||null);
+  _setPickerValue('sab-dir-ec-picker',(dfByOrder[5]||{}).user_id||null);
+  _setPickerValue('sab-ord-cred-df-picker',(dfByOrder[6]||{}).user_id||null);
+  // ORD roles 2-4
+  _setPickerValue('sab-resp-cab-ord-picker',(ordByOrder[2]||{}).user_id||null);
+  _setPickerValue('sab-cfp-picker',(ordByOrder[3]||{}).user_id||null);
+  _setPickerValue('sab-ord-cred-ord-picker',(ordByOrder[4]||{}).user_id||null);
+  // Lichidare
+  const cbLich=document.getElementById('sab-lichidare-same');
+  if(cbLich)cbLich.checked=!!lich.same_as_initiator;
+  _setPickerValue('sab-lichidare-picker',lich.user_id||null);
+  const lichEl=document.getElementById('sab-lichidare-picker');
+  if(lichEl){const s=lichEl.querySelector('select');if(s)s.disabled=!!lich.same_as_initiator;}
+}
+
+function alopSabSameAsInitiator(cb){
+  const el=document.getElementById('sab-sef-comp-picker');
+  if(!el)return;
+  const sel=el.querySelector('select');
+  if(sel){sel.disabled=cb.checked;if(cb.checked)sel.value='';}
+}
+
+function alopSabLichidareSameAsInitiator(cb){
+  const el=document.getElementById('sab-lichidare-picker');
+  if(!el)return;
+  const sel=el.querySelector('select');
+  if(sel){sel.disabled=cb.checked;if(cb.checked)sel.value='';}
+}
+
+function alopGetSabFromUI(){
+  const users=_ALOP.orgUsers;
+  function getUser(containerId){
+    const el=document.getElementById(containerId);
+    if(!el)return null;
+    const sel=el.querySelector('select');
+    if(!sel||!sel.value)return null;
+    const uid=parseInt(sel.value,10);
+    const u=users.find(x=>x.id===uid);
+    return u?{user_id:u.id,name:u.nume||u.email||''}:null;
+  }
+  const sefCompSame=document.getElementById('sab-sef-comp-same')?.checked||false;
+  const lichSame=document.getElementById('sab-lichidare-same')?.checked||false;
+  const df_semnatari_sablon=[
+    {order:1,role:'initiator',user_id:null,name:''},
+    {order:2,role:'sef_compartiment',same_as_initiator:sefCompSame,...(!sefCompSame?(getUser('sab-sef-comp-picker')||{user_id:null,name:''}):{user_id:null,name:''})},
+    {order:3,role:'responsabil_cab',...(getUser('sab-resp-cab-picker')||{user_id:null,name:''})},
+    {order:4,role:'sef_cab',...(getUser('sab-sef-cab-picker')||{user_id:null,name:''})},
+    {order:5,role:'director_economic',...(getUser('sab-dir-ec-picker')||{user_id:null,name:''})},
+    {order:6,role:'ordonator_credite',...(getUser('sab-ord-cred-df-picker')||{user_id:null,name:''})},
+  ];
+  const ord_semnatari_sablon=[
+    {order:1,role:'initiator',user_id:null,name:''},
+    {order:2,role:'responsabil_cab',...(getUser('sab-resp-cab-ord-picker')||{user_id:null,name:''})},
+    {order:3,role:'cfp_propriu',...(getUser('sab-cfp-picker')||{user_id:null,name:''})},
+    {order:4,role:'ordonator_credite',...(getUser('sab-ord-cred-ord-picker')||{user_id:null,name:''})},
+  ];
+  const lichUser=getUser('sab-lichidare-picker');
+  const lichidare_sablon={
+    same_as_initiator:lichSame,
+    user_id:lichSame?null:(lichUser?.user_id||null),
+    name:lichSame?'':(lichUser?.name||''),
+  };
+  return{df_semnatari_sablon,ord_semnatari_sablon,lichidare_sablon};
 }
 
 async function saveAlopSablon(){
   try{
+    const body=alopGetSabFromUI();
     const r=await fetch('/api/alop/sablon',{
       method:'POST',credentials:'include',
       headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
-      body:JSON.stringify({
-        signatari_angajare:   _ALOP.sabData.angajare,
-        signatari_lichidare:  _ALOP.sabData.lichidare,
-        signatari_ordonantare:_ALOP.sabData.ordonantare,
-        signatari_plata:      _ALOP.sabData.plata,
-      }),
+      body:JSON.stringify(body),
     });
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
