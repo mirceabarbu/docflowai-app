@@ -252,6 +252,84 @@
     /* ── Auto-save indicator ── */
     .asave-ok{color:#1aaa6e;font-size:.73rem;font-weight:600}
     .asave-pend{color:#f5a623;font-size:.73rem}
+    /* ── DF/ORD dark redesign ───────────────────────────────────────────────── */
+    :root{--app-p1:rgba(108,79,240,.15);--app-p1-bdr:rgba(108,79,240,.3);--app-p2:rgba(29,200,174,.1);--app-p2-bdr:rgba(29,200,174,.25)}
+    .df-alop-ctx{font-size:.72rem;color:var(--app-muted);margin-bottom:8px;padding:5px 10px;background:rgba(108,79,240,.06);border:1px solid rgba(108,79,240,.15);border-radius:6px;display:none}
+    .df-alop-ctx.show{display:block}
+    .df-progress{display:flex;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid var(--app-line)}
+    .df-step{flex:1;padding:7px 6px;font-size:11px;color:var(--app-muted);text-align:center;border-right:1px solid var(--app-line);transition:.2s}
+    .df-step:last-child{border-right:none}
+    .df-step.active{background:rgba(108,79,240,.15);color:#b0a0ff;font-weight:600}
+    .df-step.done{background:rgba(29,200,174,.1);color:var(--app-t)}
+    .df-block{border-radius:12px;border:1px solid var(--app-line);margin-bottom:12px;overflow:hidden}
+    .df-block-p1{border-color:var(--app-p1-bdr)}
+    .df-block-p2{border-color:var(--app-p2-bdr)}
+    .df-block-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--app-line);background:rgba(255,255,255,.02);flex-wrap:wrap}
+    .df-block-p1 .df-block-hdr{background:rgba(108,79,240,.06)}
+    .df-block-p2 .df-block-hdr{background:rgba(29,200,174,.05)}
+    .df-block-title{font-size:12px;font-weight:700;color:var(--app-text)}
+    .df-block-desc{font-size:11px;color:var(--app-muted);margin-left:auto}
+    .df-block-body{padding:14px 16px}
+    .df-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.4px}
+    .df-badge-auto{background:rgba(255,255,255,.08);color:var(--app-muted)}
+    .df-badge-p1{background:rgba(108,79,240,.2);color:#b0a0ff}
+    .df-badge-p2{background:rgba(29,200,174,.2);color:#5dcaa5}
+    .df-role-tags{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+    .df-role-tag{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap}
+    .df-role-can{background:rgba(108,79,240,.2);color:#b0a0ff}
+    .df-role-no{background:rgba(255,255,255,.05);color:var(--app-muted);text-decoration:line-through}
+    .df-role-done{background:rgba(29,200,174,.2);color:#5dcaa5}
+    .df-lock-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:11px;border-bottom:1px solid var(--app-line)}
+    .df-lock-warn{background:rgba(255,170,30,.08);color:#ffcc44}
+    .df-lock-info{background:rgba(108,79,240,.08);color:#b0a0ff}
+    .df-lock-ok{background:rgba(29,200,174,.08);color:#5dcaa5}
+    /* Override light form elements inside df-block */
+    .df-block-body .di,.df-block-body .dt{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--app-text);font-size:12px;padding:6px 10px;font-family:inherit}
+    .df-block-body .di:focus,.df-block-body .dt:focus{border-color:rgba(108,79,240,.5);background:rgba(108,79,240,.04)}
+    .df-block-body .di.err,.df-block-body .dt.err{border-color:#f87171;background:rgba(248,113,113,.08)}
+    .df-block-body .di:disabled,.df-block-body .dt:disabled{opacity:.45;cursor:not-allowed}
+    .df-block-body .dl{font-size:11px;color:var(--app-muted);margin-bottom:3px;margin-top:6px}
+    .df-block-body .dl.req::after{color:#f87171}
+    .df-block-body .dck{font-size:12px;color:var(--app-sub)}
+    .df-block-body .dck input{accent-color:var(--app-v)}
+    .df-block-body .hdr label{color:var(--app-muted)}
+    .df-block-body .doc-hr{border-top:1px solid var(--app-line);margin:10px 0}
+    .df-block-body .dsec{color:var(--app-sub);border-bottom:1px solid var(--app-line);padding-bottom:4px}
+    .df-block-body .nubox{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.02);color:var(--app-sub)}
+    .df-block-body .nubox label{color:var(--app-muted)}
+    /* Dark table */
+    .df-block-body .doc-t{border-collapse:collapse;width:100%}
+    .df-block-body .doc-t th{background:rgba(255,255,255,.06);color:var(--app-sub);border:1px solid rgba(255,255,255,.1);padding:5px 6px;font-size:10px;font-weight:700;text-align:center;vertical-align:middle;line-height:1.3}
+    .df-block-body .doc-t td{border:1px solid rgba(255,255,255,.07);color:var(--app-sub);padding:3px 4px;vertical-align:middle}
+    .df-block-body .doc-t td.tot{font-weight:700;font-size:11px;color:var(--app-text)}
+    .df-block-body .doc-t td.cx{text-align:center;color:var(--app-muted)}
+    .df-block-body .doc-t td.num{text-align:right;color:var(--app-text);padding-right:4px}
+    .df-block-body .doc-t tfoot tr{background:rgba(255,255,255,.04)}
+    .df-block-body .doc-t input{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:3px;color:var(--app-text);font-family:inherit;padding:3px 5px;font-size:11px;min-width:40px}
+    .df-block-body .doc-t input:focus{background:rgba(108,79,240,.08);border-color:rgba(108,79,240,.4)}
+    .df-block-body .badd{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px;width:20px;height:20px;cursor:pointer;font-size:13px;font-weight:900;display:inline-flex;align-items:center;justify-content:center}
+    .df-block-body .badd:hover{background:rgba(108,79,240,.25)}
+    .df-block-body .bdel{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);color:#f87171;border-radius:3px;cursor:pointer;padding:1px 5px;font-size:10px;font-family:inherit}
+    .df-block-body .bdel:hover{background:rgba(248,113,113,.2)}
+    /* Dark capture zone */
+    .df-block-body .cap-lbl{font-size:10.5px;color:var(--app-muted);margin:8px 0 3px;font-style:italic;line-height:1.4}
+    .df-block-body .cap-zone{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.03);border-radius:6px}
+    .df-block-body .cap-zone:hover{border-color:rgba(108,79,240,.4);background:rgba(108,79,240,.04)}
+    .df-block-body .cap-ph{color:var(--app-muted)}
+    /* Dark attachments */
+    .df-block-body .att-zone{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02);border-radius:6px}
+    .df-block-body .att-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:var(--app-sub);border-radius:6px;font-family:inherit}
+    .df-block-body .att-btn:hover{background:rgba(255,255,255,.1)}
+    .df-block-body .att-chip{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px}
+    /* P2 field dark override */
+    .df-block-body .p2-field{border-color:rgba(29,200,174,.5) !important;background:rgba(29,200,174,.06) !important;color:var(--app-text) !important}
+    /* Locked block overlay */
+    .df-block-body.locked{pointer-events:none;opacity:.45;filter:grayscale(.2)}
+    /* Layout helpers */
+    .df-row{display:grid;gap:10px;margin-bottom:8px}
+    .df-row-1{grid-template-columns:1fr}
+    .df-row-2{grid-template-columns:1fr 1fr}
+    .df-row-3{grid-template-columns:1fr 1fr 1fr}
   </style>
 </head>
 <body>
@@ -434,129 +512,171 @@
 <div class="locked-bar" id="locked-bar-ordnt"></div>
 <div id="motiv-bar-ordnt" style="display:none;max-width:1020px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-ordnt"></span></div>
 <div class="actions" id="actions-ordnt"></div>
-<div class="doc">
-  <div class="doc-title">Ordonantare de Plata</div>
-  <!-- nr / data -->
-  <div class="hdr" style="justify-content:center;margin-bottom:14px">
-    <label>nr</label>
-    <input id="o-nr" class="di" maxlength="20" placeholder="număr" style="width:150px"/>
-    <label>/ data</label>
-    <input id="o-data" class="di" maxlength="10" placeholder="DD.MM.YYYY" style="width:100px"/>
+<div class="df-alop-ctx" id="alop-ctx-ordnt"></div>
+
+<div class="df-progress">
+  <div class="df-step active" id="ordp-date">Date generale</div>
+  <div class="df-step" id="ordp-p1">Compartiment · P1</div>
+  <div class="df-step" id="ordp-p2">Resp. CAB · P2</div>
+  <div class="df-step" id="ordp-sign">Semnare</div>
+</div>
+
+<!-- BLOC ANTET ORD -->
+<div class="df-block">
+  <div class="df-block-hdr">
+    <span class="df-badge df-badge-auto">ANTET</span>
+    <span class="df-block-title">Identificare Ordonanțare de Plată</span>
+    <span class="df-block-desc">completat automat / referință DF</span>
   </div>
-  <!-- Institutie -->
-  <div class="dl req">Instituția publică</div>
-  <textarea id="o-den" class="dt" maxlength="150" rows="2"></textarea>
-  <div style="margin-top:6px;display:flex;gap:10px">
-    <div style="flex:0 0 auto">
-      <div class="dl req">CIF instituție</div>
-      <input id="o-cif" class="di" maxlength="10" placeholder="fără RO" style="width:130px"/>
+  <div class="df-block-body">
+    <div class="df-row df-row-3">
+      <div>
+        <div class="dl req">Nr. ORD</div>
+        <input id="o-nr" class="di" maxlength="20" placeholder="număr" style="width:100%"/>
+      </div>
+      <div>
+        <div class="dl req">Data</div>
+        <input id="o-data" class="di" maxlength="10" placeholder="DD.MM.YYYY" style="width:100%"/>
+      </div>
+      <div></div>
     </div>
-  </div>
-
-  <div class="doc-hr"></div>
-
-  <!-- Numar unic + selector DF aprobat -->
-  <div class="nubox" style="margin-bottom:0;flex-wrap:wrap;gap:6px;align-items:center">
-    <label style="white-space:normal">Număr unic de înregistrare al documentului de fundamentare</label>
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <select id="o-df-sel" class="di" style="max-width:260px;font-size:11px" onchange="selectDfAprobat()">
+    <div class="df-row df-row-2">
+      <div>
+        <div class="dl req">Instituția publică</div>
+        <textarea id="o-den" class="dt" maxlength="150" rows="2"></textarea>
+      </div>
+      <div>
+        <div class="dl req">CIF instituție</div>
+        <input id="o-cif" class="di" maxlength="10" placeholder="fără RO" style="width:100%"/>
+      </div>
+    </div>
+    <div class="dl req">Nr. unic înregistrare Document de Fundamentare</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px">
+      <select id="o-df-sel" class="di" style="max-width:280px;font-size:11px" onchange="selectDfAprobat()">
         <option value="">— selectare DF aprobat —</option>
       </select>
       <input id="o-nrUnic" class="di" maxlength="20" style="max-width:160px" placeholder="sau nr. manual..."/>
       <input type="hidden" id="o-df-id"/>
     </div>
   </div>
+</div>
 
-  <table class="doc-t">
-    <thead>
-      <tr>
-        <th>Cod<br>angajament</th>
-        <th>Indicator<br>angajament</th>
-        <th>Program</th>
-        <th>Cod SSI</th>
-        <th>Recepții<br>(lei)</th>
-        <th>Plăți anterioare<br>(lei)</th>
-        <th>Suma ordonantată<br>la plată (lei)</th>
-        <th>Recepții<br>neplatite (lei)<br><small style="font-weight:400">5=(col.2)-(col.3)-(col.4)</small></th>
-        <th style="width:22px"></th>
-      </tr>
-      <tr style="background:#f5f5f5;font-size:10px;color:#666;text-align:center">
-        <td>1.1</td><td>1.2</td><td>1.3</td><td>1.4</td><td>2</td><td>3</td><td>4</td><td>5</td><td></td>
-      </tr>
-    </thead>
-    <tbody id="o-tbody"></tbody>
-    <tfoot>
-      <tr>
-        <td class="tot">TOTAL</td>
-        <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
-        <td class="num" id="o-t-rec">0</td>
-        <td class="num" id="o-t-plati">0</td>
-        <td class="num" id="o-t-suma">0</td>
-        <td class="num" id="o-t-neplat">0</td>
-        <td><button class="badd" onclick="addOR()" title="Adaugă rând">+</button></td>
-      </tr>
-    </tfoot>
-  </table>
-
-  <div class="doc-hr"></div>
-
-  <!-- Captura imagine -->
-  <div class="cap-lbl">Captura de imagine/imagini din sistemul de control al angajamentelor bugetare este redată în rubrica de mai jos sau ca anexă la ordonanțarea de plată</div>
-  <div class="cap-zone" id="o-czone" ondragover="dov(event,'o-czone')" ondragleave="dlv(event,'o-czone')" ondrop="ddp(event,'o-cimg','o-czone','o-cph')">
-    <input type="file" accept="image/*" onchange="fimg(event,'o-cimg','o-cph')"/>
-    <div class="cap-ph" id="o-cph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="color:#999;margin-top:1px">PNG · JPG · BMP</p></div>
-    <img class="cap-img" id="o-cimg"/>
-  </div>
-  <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg','o-cph')">✕ Șterge imaginea</button></div>
-
-  <div class="doc-hr"></div>
-
-  <!-- Beneficiar cu autocomplete -->
-  <div class="dl req">Beneficiar</div>
-  <div class="ac-wrap">
-    <textarea id="o-benef" class="dt" maxlength="150" rows="2" oninput="debouncedBenefSearch()" autocomplete="off"></textarea>
-    <div id="o-benef-drop" class="ac-drop"></div>
-  </div>
-
-  <div class="dl req">Documente justificative <span style="font-weight:400;color:#888">(max 90 car.)</span></div>
-  <input id="o-docsj" class="di" maxlength="90" style="margin-bottom:6px"/>
-
-  <!-- Atașamente ORDNT -->
-  <div class="att-zone"><div class="att-list" id="o-alist"></div></div>
-  <div class="att-br">
-    <button class="att-btn" onclick="document.getElementById('o-ainp').click()">📎 Atașează fișiere</button>
-    <input type="file" id="o-ainp" class="att-inp" multiple onchange="addAtt(event,'o-alist','o-adata')"/>
-  </div>
-  <input type="hidden" id="o-adata" value="[]"/>
-
-  <div class="doc-hr"></div>
-
-  <!-- Date beneficiar -->
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-    <div>
-      <div class="dl req">CIF beneficiar</div>
-      <input id="o-cifb" class="di" maxlength="10"/>
-    </div>
-    <div>
-      <div class="dl req">IBAN beneficiar</div>
-      <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..."/>
-    </div>
-    <div>
-      <div class="dl req">Bancă beneficiar</div>
-      <input id="o-banca" class="di" maxlength="100"/>
+<!-- BLOC P2 — Responsabil CAB -->
+<div class="df-block df-block-p2" id="bloc-ord-p2">
+  <div class="df-block-hdr">
+    <span class="df-badge df-badge-p2">P2</span>
+    <span class="df-block-title">Responsabil CAB — Tabel angajamente &amp; captură</span>
+    <div class="df-role-tags">
+      <span class="df-role-tag df-role-no" id="ord-p2-tag-p1">P1 blocat</span>
+      <span class="df-role-tag df-role-can" id="ord-p2-tag-p2">P2 editează col. 2-3</span>
     </div>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-    <div>
-      <div class="dl">Informații privind plata</div>
-      <input id="o-inf1" class="di" maxlength="70"/>
+  <div class="df-lock-bar df-lock-info" id="ord-p2-lock" style="display:none">🔒 Responsabilul CAB completează coloanele 2 (Recepții) și 3 (Plăți anterioare) și captura de imagine.</div>
+  <div class="df-block-body" id="ord-p2-body">
+    <div style="overflow-x:auto;margin-bottom:6px">
+    <table class="doc-t">
+      <thead>
+        <tr>
+          <th>Cod<br>angajament</th>
+          <th>Indicator<br>angajament</th>
+          <th>Program</th>
+          <th>Cod SSI</th>
+          <th>Recepții<br>(lei)</th>
+          <th>Plăți anterioare<br>(lei)</th>
+          <th>Suma ordonantată<br>la plată (lei)</th>
+          <th>Recepții neplatite (lei)<br><small style="font-weight:400">5=(col.2)-(col.3)-(col.4)</small></th>
+          <th style="width:22px"></th>
+        </tr>
+        <tr style="font-size:10px;text-align:center">
+          <td style="color:var(--app-muted)">1.1</td><td style="color:var(--app-muted)">1.2</td><td style="color:var(--app-muted)">1.3</td><td style="color:var(--app-muted)">1.4</td>
+          <td style="color:#5dcaa5;font-weight:600">2·P2</td><td style="color:#5dcaa5;font-weight:600">3·P2</td>
+          <td style="color:#b0a0ff;font-weight:600">4·P1</td><td style="color:var(--app-muted)">5</td><td></td>
+        </tr>
+      </thead>
+      <tbody id="o-tbody"></tbody>
+      <tfoot>
+        <tr>
+          <td class="tot">TOTAL</td>
+          <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
+          <td class="num" id="o-t-rec">0</td>
+          <td class="num" id="o-t-plati">0</td>
+          <td class="num" id="o-t-suma">0</td>
+          <td class="num" id="o-t-neplat">0</td>
+          <td><button class="badd" onclick="addOR()" title="Adaugă rând">+</button></td>
+        </tr>
+      </tfoot>
+    </table>
     </div>
-    <div>
-      <div class="dl">Informații privind plata (cont.)</div>
-      <input id="o-inf2" class="di" maxlength="70"/>
+    <div class="cap-lbl">Captură imagine din sistemul de control al angajamentelor bugetare (anexă la ordonanțarea de plată)</div>
+    <div class="cap-zone" id="o-czone" ondragover="dov(event,'o-czone')" ondragleave="dlv(event,'o-czone')" ondrop="ddp(event,'o-cimg','o-czone','o-cph')">
+      <input type="file" accept="image/*" onchange="fimg(event,'o-cimg','o-cph')"/>
+      <div class="cap-ph" id="o-cph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="font-size:10px;margin-top:1px">PNG · JPG · BMP</p></div>
+      <img class="cap-img" id="o-cimg"/>
+    </div>
+    <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg','o-cph')">✕ Șterge imaginea</button></div>
+  </div>
+</div>
+
+<!-- BLOC P1 — Compartiment specialitate -->
+<div class="df-block df-block-p1" id="bloc-ord-p1">
+  <div class="df-block-hdr">
+    <span class="df-badge df-badge-p1">P1</span>
+    <span class="df-block-title">Compartiment specialitate — Date beneficiar &amp; plată</span>
+    <div class="df-role-tags">
+      <span class="df-role-tag df-role-can" id="ord-p1-tag-p1">P1 editează</span>
+      <span class="df-role-tag df-role-no" id="ord-p1-tag-p2">P2 blocat</span>
     </div>
   </div>
-</div><!-- /doc -->
+  <div class="df-lock-bar df-lock-warn" id="ord-p1-lock" style="display:none">🔒 Secțiunea este blocată în starea curentă.</div>
+  <div class="df-block-body" id="ord-p1-body">
+    <div class="df-row df-row-1">
+      <div>
+        <div class="dl req">Beneficiar</div>
+        <div class="ac-wrap">
+          <textarea id="o-benef" class="dt" maxlength="150" rows="2" oninput="debouncedBenefSearch()" autocomplete="off"></textarea>
+          <div id="o-benef-drop" class="ac-drop"></div>
+        </div>
+      </div>
+    </div>
+    <div class="df-row df-row-1">
+      <div>
+        <div class="dl req">Documente justificative <span style="font-weight:400;font-size:10px">(max 90 car.)</span></div>
+        <input id="o-docsj" class="di" maxlength="90"/>
+      </div>
+    </div>
+    <div class="att-zone"><div class="att-list" id="o-alist"></div></div>
+    <div class="att-br">
+      <button class="att-btn" onclick="document.getElementById('o-ainp').click()">📎 Atașează fișiere</button>
+      <input type="file" id="o-ainp" class="att-inp" multiple onchange="addAtt(event,'o-alist','o-adata')"/>
+    </div>
+    <input type="hidden" id="o-adata" value="[]"/>
+    <div class="doc-hr"></div>
+    <div class="df-row df-row-3">
+      <div>
+        <div class="dl req">CIF beneficiar</div>
+        <input id="o-cifb" class="di" maxlength="10"/>
+      </div>
+      <div>
+        <div class="dl req">IBAN beneficiar</div>
+        <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..."/>
+      </div>
+      <div>
+        <div class="dl req">Bancă beneficiar</div>
+        <input id="o-banca" class="di" maxlength="100"/>
+      </div>
+    </div>
+    <div class="df-row df-row-2">
+      <div>
+        <div class="dl">Informații privind plata</div>
+        <input id="o-inf1" class="di" maxlength="70"/>
+      </div>
+      <div>
+        <div class="dl">Informații privind plata (cont.)</div>
+        <input id="o-inf2" class="di" maxlength="70"/>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="result" id="result-ordnt">
   <div class="result-title">✅ PDF generat cu succes</div>
@@ -586,213 +706,257 @@
 <div class="locked-bar" id="locked-bar-notafd"></div>
 <div id="motiv-bar-notafd" style="display:none;max-width:1020px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-notafd"></span></div>
 <div class="actions" id="actions-notafd"></div>
-<div class="doc">
-  <!-- Antet -->
-  <div class="dl req">Instituția publică</div>
-  <input id="n-den" class="di" maxlength="150" style="margin-bottom:6px"/>
-  <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
-    <div>
-      <div class="dl req">Cod de identificare fiscală</div>
-      <input id="n-cif" class="di" maxlength="10" style="width:130px"/>
+<div class="df-alop-ctx" id="alop-ctx-notafd"></div>
+
+<div class="df-progress">
+  <div class="df-step active" id="dfp-date">Date generale</div>
+  <div class="df-step" id="dfp-seca">Secțiunea A · P1</div>
+  <div class="df-step" id="dfp-secb">Secțiunea B · P2</div>
+  <div class="df-step" id="dfp-sign">Semnare</div>
+</div>
+
+<!-- BLOC ANTET DF -->
+<div class="df-block">
+  <div class="df-block-hdr">
+    <span class="df-badge df-badge-auto">ANTET</span>
+    <span class="df-block-title">Date identificare</span>
+    <span class="df-block-desc">completat automat</span>
+  </div>
+  <div class="df-block-body">
+    <div class="df-row df-row-2">
+      <div>
+        <div class="dl req">Instituția publică</div>
+        <input id="n-den" class="di" maxlength="150" style="width:100%"/>
+      </div>
+      <div>
+        <div class="dl req">Cod de identificare fiscală</div>
+        <input id="n-cif" class="di" maxlength="10" style="width:100%"/>
+      </div>
+    </div>
+    <div class="dl">Subtitlu document</div>
+    <textarea id="n-subtitlu" class="dt" maxlength="150" rows="2" placeholder="Subtitlul documentului de fundamentare..."></textarea>
+    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:8px">
+      <div>
+        <div class="dl req">Număr unic de înregistrare</div>
+        <input id="n-nrUnic" class="di" maxlength="20" style="width:160px"/>
+      </div>
+      <div>
+        <div class="dl">Revizuirea</div>
+        <input id="n-rev" class="di" maxlength="3" style="width:60px"/>
+      </div>
+      <div>
+        <div class="dl req">Data</div>
+        <input id="n-data" class="di" maxlength="10" placeholder="DD.MM.YYYY" style="width:110px"/>
+      </div>
+    </div>
+    <label class="dck" style="margin-top:8px">
+      <input type="checkbox" id="n-ck-oblig"/>
+      se referă la angajamente legale care se emit ca urmare a unei obligații legale sau de către un terț
+    </label>
+  </div>
+</div>
+
+<!-- BLOC SECȚIUNEA A (P1) -->
+<div class="df-block df-block-p1" id="bloc-seca">
+  <div class="df-block-hdr">
+    <span class="df-badge df-badge-p1">P1</span>
+    <span class="df-block-title">Secțiunea A — Compartiment specialitate</span>
+    <div class="df-role-tags">
+      <span class="df-role-tag df-role-can" id="seca-tag-p1">P1 editează</span>
+      <span class="df-role-tag df-role-no" id="seca-tag-p2">P2 blocat</span>
     </div>
   </div>
+  <div class="df-lock-bar df-lock-warn" id="seca-lock" style="display:none">🔒 Secțiunea A a fost trimisă la Responsabil Buget și nu mai poate fi modificată.</div>
+  <div class="df-block-body" id="seca-body">
 
-  <div class="doc-title">Document de Fundamentare</div>
+    <div class="dl req">1. Compartiment de specialitate:</div>
+    <input id="n-comp" class="di" maxlength="150" list="comp-list-notafd"
+      style="width:100%;margin-bottom:8px" autocomplete="off"
+      placeholder="Selectați sau introduceți compartimentul..."/>
+    <datalist id="comp-list-notafd"></datalist>
 
-  <textarea id="n-subtitlu" class="dt" maxlength="150" rows="2" placeholder="Subtitlul documentului de fundamentare..."></textarea>
+    <div class="dl req" style="margin-top:4px">2. Descrierea pe scurt a obiectului documentului de fundamentare / motivul revizuirii:</div>
+    <textarea id="n-scurt" class="dt" maxlength="250" rows="2" style="margin-bottom:8px"></textarea>
 
-  <div class="hdr" style="margin-top:10px;margin-bottom:6px">
-    <label>Număr unic de înregistrare</label>
-    <input id="n-nrUnic" class="di" maxlength="20" style="width:150px"/>
-    <label style="margin-left:12px">revizuirea</label>
-    <input id="n-rev" class="di" maxlength="3" style="width:50px"/>
-    <label>/ data</label>
-    <input id="n-data" class="di" maxlength="10" placeholder="DD.MM.YYYY" style="width:100px"/>
-  </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;margin-bottom:2px">
+      <div class="dl" style="margin:0">3. Descrierea pe larg a stării de fapt și de drept:</div>
+      <button class="att-btn" onclick="document.getElementById('n-fdai').click()">📎 Atașează fișiere</button>
+      <input type="file" id="n-fdai" class="att-inp" multiple onchange="addAtt(event,'n-fdal','n-fdad')"/>
+    </div>
+    <textarea id="n-lung" class="dt" maxlength="500" rows="6" style="margin-bottom:4px"></textarea>
+    <div class="att-zone" style="margin-top:4px"><div class="att-list" id="n-fdal"></div></div>
+    <input type="hidden" id="n-fdad" value="[]"/>
 
-  <label class="dck">
-    <input type="checkbox" id="n-ck-oblig"/>
-    se referă la angajamente legale care se emit ca urmare a unei obligații legale sau de către un terț
-  </label>
+    <div class="doc-hr"></div>
 
-  <div class="doc-hr"></div>
+    <div style="font-weight:700;font-size:11px;margin:4px 0;display:flex;justify-content:space-between;color:var(--app-sub)">
+      <span>4. Valoarea angajamentelor legale (pe toată perioada de valabilitate a documentului de fundamentare):</span>
+      <span style="font-weight:400;color:var(--app-muted)">(lei)</span>
+    </div>
+    <label class="dck"><input type="checkbox" id="n-ck-stab" onchange="p4toggle('stab')"/>Se stabilește ținând cont de:</label>
 
-  <!-- SECTIUNEA A -->
-  <div class="dsec">Secțiunea A: Obiectul documentului de fundamentare</div>
+    <div id="n-p4-tabel" style="opacity:.4;pointer-events:none;overflow-x:auto;margin-top:4px">
+    <table class="doc-t">
+      <thead>
+        <tr>
+          <th style="min-width:110px">Element de fundamentare</th>
+          <th>Program</th><th>Cod SSI</th>
+          <th>Parametrii de fundamentare</th>
+          <th title="Se completează automat din revizia precedentă (col. 7)">Val. totală revizie precedentă (lei)</th>
+          <th>Influențe +/- (lei)</th>
+          <th>Val. totală actualizată (lei)<br><small style="font-weight:400">7=5+6</small></th>
+          <th style="width:22px"></th>
+        </tr>
+      </thead>
+      <tbody id="n-vtbody"></tbody>
+      <tfoot>
+        <tr>
+          <td class="tot" colspan="4">TOTAL</td>
+          <td class="num" id="n-t-vprec">0</td>
+          <td class="num" id="n-t-vinfl">0</td>
+          <td class="num" id="n-t-vact">0</td>
+          <td><button class="badd" onclick="addNV()">+</button></td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
 
-  <div class="dl req">1. Compartiment de specialitate:</div>
-  <input id="n-comp" class="di" maxlength="150" list="comp-list-notafd"
-    style="width:100%;padding:4px 6px;font-size:11px;" autocomplete="off"
-    placeholder="Selectați sau introduceți compartimentul..."/>
-  <datalist id="comp-list-notafd"></datalist>
-
-  <div class="dl req" style="margin-top:8px">2. Descrierea pe scurt a obiectului documentului de fundamentare/motivul revizuirii:</div>
-  <textarea id="n-scurt" class="dt" maxlength="250" rows="2"></textarea>
-
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;margin-bottom:2px">
-    <div class="dl" style="margin:0">3. Descrierea pe larg a stării de fapt și de drept:</div>
-    <button class="att-btn" onclick="document.getElementById('n-fdai').click()">📎 Atașează fișiere</button>
-    <input type="file" id="n-fdai" class="att-inp" multiple onchange="addAtt(event,'n-fdal','n-fdad')"/>
-  </div>
-  <textarea id="n-lung" class="dt" maxlength="500" rows="6"></textarea>
-  <div class="att-zone" style="margin-top:4px"><div class="att-list" id="n-fdal"></div></div>
-  <input type="hidden" id="n-fdad" value="[]"/>
-
-  <div class="doc-hr"></div>
-
-  <!-- 4. Valoarea angajamentelor -->
-  <div style="font-weight:700;font-size:11px;margin:6px 0 4px;display:flex;justify-content:space-between">
-    <span>4. Valoarea angajamentelor legale (pe toată perioada de valabilitate a documentului de fundamentare):</span>
-    <span style="font-weight:400">(lei)</span>
-  </div>
-  <label class="dck"><input type="checkbox" id="n-ck-stab" onchange="p4toggle('stab')"/>Se stabilește ținând cont de:</label>
-
-  <div id="n-p4-tabel" style="opacity:.4;pointer-events:none">
-  <table class="doc-t">
-    <thead>
-      <tr>
-        <th style="min-width:110px">Element de fundamentare</th>
-        <th>Program</th><th>Cod SSI</th>
-        <th>Parametrii de fundamentare</th>
-        <th title="Se completează automat din revizia precedentă (col. 7)">Val. totală revizie precedentă (lei)</th>
-        <th>Influențe +/- (lei)</th>
-        <th>Val. totală actualizată (lei)<br><small style="font-weight:400">7=5+6</small></th>
-        <th style="width:22px"></th>
-      </tr>
-    </thead>
-    <tbody id="n-vtbody"></tbody>
-    <tfoot>
-      <tr>
-        <td class="tot" colspan="4">TOTAL</td>
-        <td class="num" id="n-t-vprec">0</td>
-        <td class="num" id="n-t-vinfl">0</td>
-        <td class="num" id="n-t-vact">0</td>
-        <td><button class="badd" onclick="addNV()">+</button></td>
-      </tr>
-    </tfoot>
-  </table>
-  </div>
-
-  <label class="dck" style="margin-top:6px">
-    <input type="checkbox" id="n-ck-ramane" onchange="p4toggle('ramane')"/>
-    Rămâne în suma de
-    <input id="n-ramana" class="di" type="number" min="0" value="0" style="width:100px;display:inline;margin:0 4px" disabled/>
-    lei conform fundamentării aprobate într-o revizuire anterioară a prezentului document de fundamentare
-  </label>
-
-  <div class="doc-hr"></div>
-
-  <!-- 5. Angajamente plati -->
-  <div style="font-weight:700;font-size:11px;margin:4px 0">5. Angajamente legale emise anterior</div>
-  <label class="dck"><input type="checkbox" id="n-ck-cuang" onchange="p5toggle()"/>Cu angajamente în exercițiul curent</label>
-  <div id="n-p5-sub" style="margin-left:22px;opacity:.4;pointer-events:none">
-    <label class="dck"><input type="checkbox" id="n-ck-sting" disabled onchange="p5SubToggle(this)"/>Stingere angajamente în exercițiul curent</label>
-    <label class="dck"><input type="checkbox" id="n-ck-faraplati" disabled onchange="p5SubToggle(this)"/>Fără plăți angajamente în exercițiul curent</label>
-    <label class="dck"><input type="checkbox" id="n-ck-cuplati" disabled onchange="p5SubToggle(this)"/>Cu plăți angajamente în exercițiul curent</label>
-  </div>
-  <label class="dck" style="margin-top:3px"><input type="checkbox" id="n-ck-faraang" onchange="p5toggle()"/>Fără angajamente emise în exercițiul curent</label>
-
-  <table class="doc-t" id="n-p5-tabel" style="margin-top:6px;opacity:.4;pointer-events:none">
-    <thead>
-      <tr>
-        <th>Program</th><th>Cod SSI</th>
-        <th>Plăți ani prec.</th><th>Plăți est. an cur.</th>
-        <th>N+1</th><th>N+2</th><th>N+3</th><th>Ani ulter.</th>
-        <th style="width:22px"></th>
-      </tr>
-    </thead>
-    <tbody id="n-ptbody"></tbody>
-    <tfoot>
-      <tr>
-        <td class="tot" colspan="2">TOTAL</td>
-        <td class="num" id="n-t-pprec">0</td><td class="num" id="n-t-pancrt">0</td>
-        <td class="num" id="n-t-pnp1">0</td><td class="num" id="n-t-pnp2">0</td>
-        <td class="num" id="n-t-pnp3">0</td><td class="num" id="n-t-pulter">0</td>
-        <td><button class="badd" onclick="addNP()">+</button></td>
-      </tr>
-    </tfoot>
-  </table>
-
-  <label class="dck" style="margin-top:6px"><input type="checkbox" id="n-ck-anurmatori"/>Angajamentele legale se vor emite în contul anului următor</label>
-
-  <div class="doc-hr"></div>
-  <div class="dsec">Secțiunea B: Situația evidențiată în sistemul de control al angajamentelor</div>
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px">
-    <label class="dck" style="margin:0;flex:1">
-      <input type="checkbox" id="n-ck-seca"/>
-      Propunerile de la secțiunea A au fost înregistrate în sistemul de control al angajamentelor după cum urmează:
+    <label class="dck" style="margin-top:6px">
+      <input type="checkbox" id="n-ck-ramane" onchange="p4toggle('ramane')"/>
+      Rămâne în suma de
+      <input id="n-ramana" class="di" type="number" min="0" value="0" style="width:100px;display:inline;margin:0 4px" disabled/>
+      lei conform fundamentării aprobate într-o revizuire anterioară a prezentului document de fundamentare
     </label>
-    <span style="font-size:10px;color:#555;white-space:nowrap">(lei)</span>
+
+    <div class="doc-hr"></div>
+
+    <div style="font-weight:700;font-size:11px;margin:4px 0;color:var(--app-sub)">5. Angajamente legale emise anterior</div>
+    <label class="dck"><input type="checkbox" id="n-ck-cuang" onchange="p5toggle()"/>Cu angajamente în exercițiul curent</label>
+    <div id="n-p5-sub" style="margin-left:22px;opacity:.4;pointer-events:none">
+      <label class="dck"><input type="checkbox" id="n-ck-sting" disabled onchange="p5SubToggle(this)"/>Stingere angajamente în exercițiul curent</label>
+      <label class="dck"><input type="checkbox" id="n-ck-faraplati" disabled onchange="p5SubToggle(this)"/>Fără plăți angajamente în exercițiul curent</label>
+      <label class="dck"><input type="checkbox" id="n-ck-cuplati" disabled onchange="p5SubToggle(this)"/>Cu plăți angajamente în exercițiul curent</label>
+    </div>
+    <label class="dck" style="margin-top:3px"><input type="checkbox" id="n-ck-faraang" onchange="p5toggle()"/>Fără angajamente emise în exercițiul curent</label>
+
+    <div style="overflow-x:auto;margin-top:6px">
+    <table class="doc-t" id="n-p5-tabel" style="opacity:.4;pointer-events:none">
+      <thead>
+        <tr>
+          <th>Program</th><th>Cod SSI</th>
+          <th>Plăți ani prec.</th><th>Plăți est. an cur.</th>
+          <th>N+1</th><th>N+2</th><th>N+3</th><th>Ani ulter.</th>
+          <th style="width:22px"></th>
+        </tr>
+      </thead>
+      <tbody id="n-ptbody"></tbody>
+      <tfoot>
+        <tr>
+          <td class="tot" colspan="2">TOTAL</td>
+          <td class="num" id="n-t-pprec">0</td><td class="num" id="n-t-pancrt">0</td>
+          <td class="num" id="n-t-pnp1">0</td><td class="num" id="n-t-pnp2">0</td>
+          <td class="num" id="n-t-pnp3">0</td><td class="num" id="n-t-pulter">0</td>
+          <td><button class="badd" onclick="addNP()">+</button></td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
+
+    <label class="dck" style="margin-top:6px"><input type="checkbox" id="n-ck-anurmatori"/>Angajamentele legale se vor emite în contul anului următor</label>
+
   </div>
+</div>
 
-  <div style="overflow-x:auto">
-  <table class="doc-t">
-    <thead>
-      <tr>
-        <th>Cod<br>angaj.</th><th>Indicator<br>angaj.</th><th>Program</th><th>Cod SSI</th>
-        <th>Suma rez. cr. angaj. an cur. rev. prec. (lei)</th>
-        <th>Influențe +/-</th>
-        <th>Suma rez. cr. angaj. actualiz. (lei)<br><small style="font-weight:400">7=5+6</small></th>
-        <th>Suma rez. cr. bug. an cur. rev. prec. (lei)</th>
-        <th>Influențe +/-</th>
-        <th>Suma rez. cr. bug. actualiz. (lei)<br><small style="font-weight:400">10=8+9</small></th>
-        <th style="width:22px"></th>
-      </tr>
-      <tr style="background:#f5f5f5;font-size:10px;text-align:center;color:#666">
-        <td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td>
-        <td>7</td><td>8</td><td>9</td><td>10</td><td></td>
-      </tr>
-    </thead>
-    <tbody id="n-ctbody"></tbody>
-    <tfoot>
-      <tr>
-        <td class="tot">TOTAL</td>
-        <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
-        <td class="num" id="n-t-c5">0</td><td class="num" id="n-t-c6">0</td><td class="num" id="n-t-c7">0</td>
-        <td class="num" id="n-t-c8">0</td><td class="num" id="n-t-c9">0</td><td class="num" id="n-t-c10">0</td>
-        <td><button class="badd" onclick="addNC()">+</button></td>
-      </tr>
-    </tfoot>
-  </table>
+<!-- BLOC SECȚIUNEA B (P2) -->
+<div class="df-block df-block-p2" id="bloc-secb">
+  <div class="df-block-hdr">
+    <span class="df-badge df-badge-p2">P2</span>
+    <span class="df-block-title">Secțiunea B — Responsabil CAB</span>
+    <div class="df-role-tags">
+      <span class="df-role-tag df-role-no" id="secb-tag-p1">P1 blocat</span>
+      <span class="df-role-tag df-role-can" id="secb-tag-p2">P2 editează</span>
+    </div>
   </div>
+  <div class="df-lock-bar df-lock-info" id="secb-lock" style="display:none">🔒 Secțiunea B se completează de Responsabilul CAB după primirea Secțiunii A.</div>
+  <div class="df-block-body" id="secb-body">
 
-  <!-- Captura imagine NOTAFD -->
-  <div class="cap-lbl">Captura de imagine/imagini din sistemul de control al angajamentelor bugetare este redată în rubrica de mai jos sau ca anexă la documentul de fundamentare</div>
-  <div class="cap-zone" id="n-czone" ondragover="dov(event,'n-czone')" ondragleave="dlv(event,'n-czone')" ondrop="ddp(event,'n-cimg','n-czone','n-cph')">
-    <input type="file" accept="image/*" onchange="fimg(event,'n-cimg','n-cph')"/>
-    <div class="cap-ph" id="n-cph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="color:#999;margin-top:1px">PNG · JPG · BMP</p></div>
-    <img class="cap-img" id="n-cimg"/>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px">
+      <label class="dck" style="margin:0;flex:1">
+        <input type="checkbox" id="n-ck-seca"/>
+        Propunerile de la secțiunea A au fost înregistrate în sistemul de control al angajamentelor după cum urmează:
+      </label>
+      <span style="font-size:10px;color:var(--app-muted);white-space:nowrap">(lei)</span>
+    </div>
+
+    <div style="overflow-x:auto">
+    <table class="doc-t">
+      <thead>
+        <tr>
+          <th>Cod<br>angaj.</th><th>Indicator<br>angaj.</th><th>Program</th><th>Cod SSI</th>
+          <th>Suma rez. cr. angaj. an cur. rev. prec. (lei)</th>
+          <th>Influențe +/-</th>
+          <th>Suma rez. cr. angaj. actualiz. (lei)<br><small style="font-weight:400">7=5+6</small></th>
+          <th>Suma rez. cr. bug. an cur. rev. prec. (lei)</th>
+          <th>Influențe +/-</th>
+          <th>Suma rez. cr. bug. actualiz. (lei)<br><small style="font-weight:400">10=8+9</small></th>
+          <th style="width:22px"></th>
+        </tr>
+        <tr style="font-size:10px;text-align:center">
+          <td style="color:var(--app-muted)">1</td><td style="color:var(--app-muted)">2</td>
+          <td style="color:var(--app-muted)">3</td><td style="color:var(--app-muted)">4</td>
+          <td style="color:var(--app-muted)">5</td><td style="color:var(--app-muted)">6</td>
+          <td style="color:var(--app-muted)">7</td><td style="color:var(--app-muted)">8</td>
+          <td style="color:var(--app-muted)">9</td><td style="color:var(--app-muted)">10</td><td></td>
+        </tr>
+      </thead>
+      <tbody id="n-ctbody"></tbody>
+      <tfoot>
+        <tr>
+          <td class="tot">TOTAL</td>
+          <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
+          <td class="num" id="n-t-c5">0</td><td class="num" id="n-t-c6">0</td><td class="num" id="n-t-c7">0</td>
+          <td class="num" id="n-t-c8">0</td><td class="num" id="n-t-c9">0</td><td class="num" id="n-t-c10">0</td>
+          <td><button class="badd" onclick="addNC()">+</button></td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
+
+    <div class="cap-lbl" style="margin-top:10px">Captura de imagine/imagini din sistemul de control al angajamentelor bugetare (anexă la documentul de fundamentare)</div>
+    <div class="cap-zone" id="n-czone" ondragover="dov(event,'n-czone')" ondragleave="dlv(event,'n-czone')" ondrop="ddp(event,'n-cimg','n-czone','n-cph')">
+      <input type="file" accept="image/*" onchange="fimg(event,'n-cimg','n-cph')"/>
+      <div class="cap-ph" id="n-cph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="font-size:10px;margin-top:1px">PNG · JPG · BMP</p></div>
+      <img class="cap-img" id="n-cimg"/>
+    </div>
+    <div class="cap-br"><button class="att-btn" onclick="clrImg('n-cimg','n-cph')">✕ Șterge imaginea</button></div>
+
+    <div class="doc-hr"></div>
+
+    <label class="dck">
+      <input type="checkbox" id="n-ck-fararezv"/>
+      Nu s-au rezervat în sistemul de control al angajamentelor credite de angajament în cuantum de
+      <input id="n-sumfara" class="di" type="number" min="0" value="0" style="width:110px;display:inline;margin:0 4px"/>
+      lei
+    </label>
+    <label class="dck" style="margin-top:4px">
+      <input type="checkbox" id="n-ck-fararezvcrbug"/>
+      Nu s-au rezervat în sistemul de control al angajamentelor credite bugetare în cuantum de
+      <input id="n-sumfararezvcrbug" class="di" type="number" min="0" value="0" style="width:110px;display:inline;margin:0 4px"/>
+      lei
+    </label>
+    <label class="dck" style="margin-top:4px"><input type="checkbox" id="n-ck-interzis"/>Este interzisă emiterea de angajamente</label>
+    <label class="dck"><input type="checkbox" id="n-ck-intrucat"/>Întrucât:</label>
+    <textarea id="n-intrucat" class="dt" maxlength="500" rows="2" placeholder="Motivare..." style="margin-top:4px"></textarea>
+
+    <div class="att-zone" style="margin-top:8px"><div class="att-list" id="n-alist"></div></div>
+    <div class="att-br">
+      <button class="att-btn" onclick="document.getElementById('n-ainp').click()">📎 Atașează fișiere</button>
+      <input type="file" id="n-ainp" class="att-inp" multiple onchange="addAtt(event,'n-alist','n-adata')"/>
+    </div>
+    <input type="hidden" id="n-adata" value="[]"/>
+
   </div>
-  <div class="cap-br"><button class="att-btn" onclick="clrImg('n-cimg','n-cph')">✕ Șterge imaginea</button></div>
-
-  <div class="doc-hr"></div>
-
-  <!-- Nu s-au rezervat -->
-  <label class="dck">
-    <input type="checkbox" id="n-ck-fararezv"/>
-    Nu s-au rezervat în sistemul de control al angajamentelor credite de angajament în cuantum de
-    <input id="n-sumfara" class="di" type="number" min="0" value="0" style="width:110px;display:inline;margin:0 4px"/>
-    lei
-  </label>
-  <label class="dck" style="margin-top:4px">
-    <input type="checkbox" id="n-ck-fararezvcrbug"/>
-    Nu s-au rezervat în sistemul de control al angajamentelor credite bugetare în cuantum de
-    <input id="n-sumfararezvcrbug" class="di" type="number" min="0" value="0" style="width:110px;display:inline;margin:0 4px"/>
-    lei
-  </label>
-  <label class="dck" style="margin-top:4px"><input type="checkbox" id="n-ck-interzis"/>Este interzisă emiterea de angajamente</label>
-  <label class="dck"><input type="checkbox" id="n-ck-intrucat"/>Întrucât:</label>
-  <textarea id="n-intrucat" class="dt" maxlength="500" rows="2" placeholder="Motivare..." style="margin-top:4px"></textarea>
-
-  <!-- Atașamente finale NOTAFD -->
-  <div class="att-zone" style="margin-top:8px"><div class="att-list" id="n-alist"></div></div>
-  <div class="att-br">
-    <button class="att-btn" onclick="document.getElementById('n-ainp').click()">📎 Atașează fișiere</button>
-    <input type="file" id="n-ainp" class="att-inp" multiple onchange="addAtt(event,'n-alist','n-adata')"/>
-  </div>
-  <input type="hidden" id="n-adata" value="[]"/>
-
-</div><!-- /doc -->
+</div>
 
 <div class="result" id="result-notafd">
   <div class="result-title">✅ PDF generat cu succes</div>
@@ -1644,6 +1808,109 @@ function setModeP2Ord(){
   const czone=document.getElementById('o-czone');if(czone)czone.style.pointerEvents='';
 }
 
+// ── DF/ORD dark redesign — visual role state ──────────────────────────────────
+function _dfUpdateProgress(ft,step){
+  const isOrd=ft==='ordnt';
+  const pfx=isOrd?'ordp':'dfp';
+  const order=isOrd?['date','p1','p2','sign']:['date','seca','secb','sign'];
+  const idx=order.indexOf(step);
+  order.forEach((s,i)=>{
+    const el=document.getElementById(pfx+'-'+s);
+    if(!el)return;
+    el.className='df-step';
+    if(i<idx)el.classList.add('done');
+    else if(i===idx)el.classList.add('active');
+  });
+}
+function _dfSetAlopCtx(ft){
+  const ctx=window._alopContext;
+  const el=document.getElementById('alop-ctx-'+ft);
+  if(!el)return;
+  if(ctx?.alopId){el.textContent=`📊 ALOP: ${ctx.titlu||ctx.alopId}`;el.className='df-alop-ctx show';}
+  else{el.textContent='';el.className='df-alop-ctx';}
+  // Actualizează butonul Înapoi din back-bar contextual
+  const backBtn=document.querySelector('.back-bar button');
+  if(backBtn){
+    if(ctx?.alopId){backBtn.textContent='← Înapoi la ALOP';backBtn.onclick=()=>{window._alopContext=null;switchListTab('alop');};}
+    else{backBtn.textContent='← Înapoi la listă';backBtn.onclick=()=>showListSection();}
+  }
+}
+function applyDfRoleState(status,role){
+  const secaBody=document.getElementById('seca-body');
+  const secbBody=document.getElementById('secb-body');
+  const secaLock=document.getElementById('seca-lock');
+  const secbLock=document.getElementById('secb-lock');
+  if(!secaBody)return;
+  secaBody.classList.remove('locked');
+  if(secbBody)secbBody.classList.remove('locked');
+  if(secaLock)secaLock.style.display='none';
+  if(secbLock)secbLock.style.display='none';
+  if(!status||status==='draft'){
+    if(secbBody)secbBody.classList.add('locked');
+    if(secbLock){secbLock.style.display='flex';secbLock.className='df-lock-bar df-lock-info';secbLock.textContent='🔒 Secțiunea B se completează de Responsabilul CAB după trimiterea Secțiunii A.';}
+    _dfUpdateProgress('notafd','seca');
+  }else if(status==='pending_p2'){
+    secaBody.classList.add('locked');
+    if(secaLock){secaLock.style.display='flex';secaLock.className='df-lock-bar df-lock-warn';secaLock.textContent='🔒 Secțiunea A a fost trimisă la Responsabil Buget și nu mai poate fi modificată.';}
+    if(role==='p1'&&secbBody)secbBody.classList.add('locked');
+    _dfUpdateProgress('notafd','secb');
+  }else if(status==='returnat'){
+    if(secbBody)secbBody.classList.add('locked');
+    if(secbLock){secbLock.style.display='flex';secbLock.className='df-lock-bar df-lock-warn';secbLock.textContent='↩ Secțiunea B nu a fost aprobată — verificați deficiențele și retrimiteți.';}
+    _dfUpdateProgress('notafd','seca');
+  }else if(status==='completed'||status==='aprobat'){
+    secaBody.classList.add('locked');
+    if(secbBody)secbBody.classList.add('locked');
+    if(secaLock){secaLock.style.display='flex';secaLock.className='df-lock-bar df-lock-ok';secaLock.textContent='✓ Secțiunea A aprobată.';}
+    if(secbLock){secbLock.style.display='flex';secbLock.className='df-lock-bar df-lock-ok';secbLock.textContent='✓ Secțiunea B completată de Responsabilul CAB.';}
+    _dfUpdateProgress('notafd','sign');
+  }
+  // Role tags
+  const t={p1a:document.getElementById('seca-tag-p1'),p2a:document.getElementById('seca-tag-p2'),
+           p1b:document.getElementById('secb-tag-p1'),p2b:document.getElementById('secb-tag-p2')};
+  if(status==='pending_p2'){
+    if(t.p1a){t.p1a.className='df-role-tag df-role-no';t.p1a.textContent='P1 blocat';}
+    if(t.p2b){t.p2b.className='df-role-tag df-role-can';t.p2b.textContent='P2 editează';}
+  }else if(status==='completed'||status==='aprobat'){
+    Object.values(t).forEach(el=>{if(el)el.className='df-role-tag df-role-done';});
+  }else{
+    if(t.p1a){t.p1a.className='df-role-tag df-role-can';t.p1a.textContent='P1 editează';}
+    if(t.p2a){t.p2a.className='df-role-tag df-role-no';t.p2a.textContent='P2 blocat';}
+    if(t.p1b){t.p1b.className='df-role-tag df-role-no';t.p1b.textContent='P1 blocat';}
+    if(t.p2b){t.p2b.className='df-role-tag df-role-can';t.p2b.textContent='P2 editează';}
+  }
+  _dfSetAlopCtx('notafd');
+}
+function applyOrdRoleState(status,role){
+  const p1Body=document.getElementById('ord-p1-body');
+  const p2Body=document.getElementById('ord-p2-body');
+  const p1Lock=document.getElementById('ord-p1-lock');
+  const p2Lock=document.getElementById('ord-p2-lock');
+  if(!p1Body)return;
+  p1Body.classList.remove('locked');
+  if(p2Body)p2Body.classList.remove('locked');
+  if(p1Lock)p1Lock.style.display='none';
+  if(p2Lock)p2Lock.style.display='none';
+  if(!status||status==='draft'){
+    if(p2Body)p2Body.classList.add('locked');
+    if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-info';p2Lock.textContent='🔒 Responsabilul CAB completează coloanele 2-3 și captura după primirea ORD.';}
+    _dfUpdateProgress('ordnt','p1');
+  }else if(status==='pending_p2'){
+    if(role==='p1'){
+      if(p1Body)p1Body.classList.add('locked');
+      if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-warn';p1Lock.textContent='🔒 Document trimis la Responsabil Buget. Așteptați completarea.';}
+    }
+    _dfUpdateProgress('ordnt','p2');
+  }else if(status==='completed'||status==='aprobat'){
+    if(p1Body)p1Body.classList.add('locked');
+    if(p2Body)p2Body.classList.add('locked');
+    if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Document aprobat.';}
+    if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-ok';p2Lock.textContent='✓ Date CAB completate.';}
+    _dfUpdateProgress('ordnt','sign');
+  }
+  _dfSetAlopCtx('ordnt');
+}
+
 // ── Render actions bar ────────────────────────────────────────────────────────
 function renderActions(ft){
   const div=document.getElementById('actions-'+ft);if(!div)return;
@@ -1739,6 +2006,8 @@ async function openDoc(ft,id){
       document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
       setLockedBar(ft,'✔ Document aprobat — fluxul de semnare a fost finalizat.','info');
       renderActions(ft);
+      if(ft==='notafd')applyDfRoleState('aprobat',ST.docRole[ft]);
+      else if(ft==='ordnt')applyOrdRoleState('aprobat',ST.docRole[ft]);
       refreshDocs(ft);
       document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.toggle('active',c.dataset.id===id));
       setS('Document aprobat','ok');
@@ -1767,6 +2036,8 @@ async function openDoc(ft,id){
     }
 
     renderActions(ft);
+    if(ft==='notafd')applyDfRoleState(status,role);
+    else if(ft==='ordnt')applyOrdRoleState(status,role);
     refreshDocs(ft);
     // Evidențiere card activ
     document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.toggle('active',c.dataset.id===id));
@@ -1824,6 +2095,8 @@ function newDoc(ft){
   ST.docAprobat=ST.docAprobat||{};ST.docAprobat[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
   lockAll(ft,false);setLockedBar(ft,'');
+  if(ft==='notafd')applyDfRoleState(null,'p1');
+  else if(ft==='ordnt')applyOrdRoleState(null,'p1');
   // Golim câmpurile
   document.querySelectorAll(`#form-${ft} input:not([type=file]):not([type=hidden]),#form-${ft} textarea`).forEach(e=>{if(e.type==='checkbox')e.checked=false;else if(e.type==='number')e.value='0';else e.value='';});
   if(ft==='ordnt'){
