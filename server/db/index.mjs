@@ -1272,3 +1272,33 @@ export function invalidateOrgUserCache(orgId) {
     _userMapCache.clear();
   }
 }
+
+// ── Query helpers for v4 modules ──────────────────────────────────────────────
+export async function query(sql, params) {
+  return pool.query(sql, params);
+}
+
+export async function getOne(sql, params) {
+  const result = await pool.query(sql, params);
+  return result.rows[0] || null;
+}
+
+export async function getMany(sql, params) {
+  const result = await pool.query(sql, params);
+  return result.rows;
+}
+
+export async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
