@@ -441,6 +441,12 @@
 <!-- ════════════ ALOP ════════════════════════════════════════════════════════ -->
 <div id="alop-section" style="display:none;max-width:1020px;margin:0 auto;padding:16px">
 
+  <!-- Bara navigare identică cu bara principală -->
+  <div class="lst-tabs" style="margin-bottom:16px;width:fit-content">
+    <button class="lst-tab" onclick="switchListTab('df')">📋 Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')">💰 Ordonanțări de Plată</button>
+  </div>
+
   <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
     <div>
@@ -451,12 +457,6 @@
       <button class="btn" id="alop-btn-sablon" style="padding:7px 14px;font-size:.82rem;display:none" onclick="openAlopSablonModal()">⚙ Șablon</button>
       <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="openAlopModal()">➕ ALOP nou</button>
     </div>
-  </div>
-
-  <!-- Centralizare shortcuts -->
-  <div class="lst-tabs" style="margin-bottom:12px;width:fit-content">
-    <button class="lst-tab" onclick="switchListTab('df')">📋 Centralizare DF</button>
-    <button class="lst-tab" onclick="switchListTab('ord')">💰 Centralizare ORD</button>
   </div>
 
   <!-- KPI cards -->
