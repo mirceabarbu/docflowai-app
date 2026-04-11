@@ -331,6 +331,20 @@
     /* Layout helpers */
     .df-row{display:grid;gap:14px;margin-bottom:14px}
     .df-revizie-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(255,170,30,.15);color:#ffcc44;margin-left:8px;vertical-align:middle}
+    /* ALOP modal wizard steps */
+    .alop-wizard-steps{display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.08)}
+    .alop-wstep{display:flex;align-items:center;gap:8px;opacity:.4;transition:opacity .2s}
+    .alop-wstep.active{opacity:1}
+    .alop-wstep-nr{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#b8c8f0}
+    .alop-wstep.active .alop-wstep-nr{background:rgba(108,79,240,.3);border-color:rgba(108,79,240,.6);color:#b0a0ff}
+    .alop-wstep-label{font-size:13px;font-weight:500;color:#b8c8f0}
+    .alop-wstep.active .alop-wstep-label{color:#e8eeff}
+    .alop-wstep-divider{font-size:14px;color:rgba(255,255,255,.2)}
+    /* DF/ORD info banner */
+    .df-info-banner{background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:#b0a0ff;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    /* Modal dark fields */
+    #alop-modal input:not([type=checkbox]):not([type=radio]),#alop-modal textarea,#alop-modal select{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e8eeff;font-size:13px;padding:9px 12px;width:100%;box-sizing:border-box;font-family:inherit}
+    #alop-modal label.alop-lbl{font-size:11px;color:#6b82b8;font-weight:600;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block}
     .df-row-1{grid-template-columns:1fr}
     .df-row-2{grid-template-columns:1fr 1fr}
     .df-row-3{grid-template-columns:1fr 1fr 1fr}
@@ -360,7 +374,7 @@
       <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')">💰 Ordonanțări de Plată</button>
       <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')">📊 ALOP</button>
     </div>
-    <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
+    <button id="btn-lst-nou" class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
   </div>
   <div class="lst-filters">
     <div class="lst-filter-row">
@@ -397,6 +411,8 @@
       <button class="btn" style="padding:6px 11px;font-size:.78rem;align-self:flex-end" onclick="resetFilters()">↺</button>
     </div>
   </div>
+  <div id="lst-banner-df" class="df-info-banner" style="display:none">ℹ️ Documentele de Fundamentare se creează din secțiunea <strong>ALOP</strong> → butonul <strong>📋 DF</strong>. Deschideți un ALOP activ pentru a iniția sau deschide un Document de Fundamentare.</div>
+  <div id="lst-banner-ord" class="df-info-banner" style="display:none">ℹ️ Ordonanțările de Plată se creează din secțiunea <strong>ALOP</strong> → butonul <strong>💰 ORD</strong>, după ce Documentul de Fundamentare aferent a fost aprobat.</div>
   <div class="lst-table-wrap">
     <table class="lst-table">
       <thead>
@@ -1018,9 +1034,16 @@
   <div class="modal-box" style="max-width:540px">
     <div class="modal-title">📊 ALOP nou</div>
     <!-- Step indicator -->
-    <div style="display:flex;margin-bottom:16px">
-      <div id="alop-wiz-s1" style="flex:1;text-align:center;padding:6px;border-radius:6px 0 0 6px;font-size:.8rem;font-weight:600;background:var(--app-v);color:#fff">1. Date generale</div>
-      <div id="alop-wiz-s2" style="flex:1;text-align:center;padding:6px;border-radius:0 6px 6px 0;font-size:.8rem;font-weight:600;background:rgba(255,255,255,.08);color:var(--app-muted)">2. Semnatari din șablon</div>
+    <div class="alop-wizard-steps">
+      <div class="alop-wstep active" id="awstep-1">
+        <span class="alop-wstep-nr">1</span>
+        <span class="alop-wstep-label">Date generale</span>
+      </div>
+      <div class="alop-wstep-divider">→</div>
+      <div class="alop-wstep" id="awstep-2">
+        <span class="alop-wstep-nr">2</span>
+        <span class="alop-wstep-label">Semnatari din șablon</span>
+      </div>
     </div>
     <!-- Step 1 -->
     <div id="alop-wiz-step1">
@@ -1946,8 +1969,7 @@ function renderActions(ft){
     const revBadge=ft==='notafd'&&revNr>0?`<span class="df-revizie-badge" style="margin-right:4px">Revizia ${revNr}</span>`:'';
     div.innerHTML=revBadge
       +(fid?B('teal','📄 Descarcă PDF semnat',`viewFlowPdf('${fid}')`):'')
-      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'')
-      +B('','+ Nou',`newDoc('${ft}')`);
+      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
     return;
   }
   if(!docId){
@@ -1971,8 +1993,7 @@ function renderActions(ft){
   }else if(status==='completed'&&role==='p1'){
     html=`<button class="btn primary" id="bgen-${ft}" onclick="genPdf('${ft}')"><span>⚙ Generează PDF</span></button>`
       +B('','✏️ Modifică (retrimite Resp. Buget)',`resetDocToP1('${ft}')`)
-      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'')
-      +B('','+ Nou',`newDoc('${ft}')`);
+      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
   }else if(status==='completed'&&role==='p2'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
       +B('','+ Nou',`newDoc('${ft}')`);
@@ -2691,6 +2712,14 @@ function switchListTab(type){
   document.getElementById('ltab-df').classList.toggle('active',type==='df');
   document.getElementById('ltab-ord').classList.toggle('active',type==='ord');
   document.getElementById('ltab-alop').classList.toggle('active',type==='alop');
+  // Buton "Document nou" — ascuns pentru DF/ORD (se creează doar din ALOP)
+  const btnNou=document.getElementById('btn-lst-nou');
+  if(btnNou)btnNou.style.display=type==='alop'?'':'none';
+  // Bannere informative pentru DF/ORD
+  const bannerDf=document.getElementById('lst-banner-df');
+  const bannerOrd=document.getElementById('lst-banner-ord');
+  if(bannerDf)bannerDf.style.display=type==='df'?'':'none';
+  if(bannerOrd)bannerOrd.style.display=type==='ord'?'':'none';
   // ALOP: ascunde/arată secțiunile relevante
   const lstWrap=document.querySelector('#section-list .lst-wrap');
   const alopSection=document.getElementById('alop-section');
@@ -2963,14 +2992,12 @@ function alopWizBack(){_alopWizStep=1;_alopWizShowStep(1);}
 function _alopWizShowStep(step){
   const s1=document.getElementById('alop-wiz-step1');
   const s2=document.getElementById('alop-wiz-step2');
-  const i1=document.getElementById('alop-wiz-s1');
-  const i2=document.getElementById('alop-wiz-s2');
+  const i1=document.getElementById('awstep-1');
+  const i2=document.getElementById('awstep-2');
   if(s1)s1.style.display=step===1?'':'none';
   if(s2)s2.style.display=step===2?'':'none';
-  const act='background:var(--app-v);color:#fff';
-  const inact='background:rgba(255,255,255,.08);color:var(--app-muted)';
-  if(i1)i1.style.cssText=step===1?act:inact;
-  if(i2)i2.style.cssText=step===2?act:inact;
+  if(i1)i1.classList.toggle('active',step===1);
+  if(i2)i2.classList.toggle('active',step===2);
 }
 
 function _alopSablonPreviewHtml(sab){
