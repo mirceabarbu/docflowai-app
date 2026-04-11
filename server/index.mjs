@@ -493,7 +493,10 @@ import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
 
-import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, markDbReady } from './db/index.mjs';
+import { runMigrations as runMigrationsV4 } from './db/migrate.mjs';
+import { seedDefaultForms }    from './db/seeds/forms.mjs';
+import { seedBuiltinPolicies } from './modules/policies/builtins.mjs';
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml, injectTokenVersionChecker } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
@@ -1659,6 +1662,17 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   logger.info({ port: PORT, version: APP_VERSION, build: 'b243', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry().then(async () => {
+    // v4.1: run v4 schema migrations + seed forms + seed policies
+    try {
+      await runMigrationsV4(pool);
+      markDbReady();
+      await seedDefaultForms();
+      await seedBuiltinPolicies();
+      logger.info('v4.1: migrations and seeds applied successfully');
+    } catch(e) {
+      logger.error({ err: e }, 'v4.1: migrations/seeds error (non-fatal)');
+    }
+
     // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway
     // Job-urile rămase în processing > 30min nu vor fi niciodată reluate fără acest reset.
     try {

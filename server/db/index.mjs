@@ -1092,6 +1092,8 @@ async function initDbOnce() {
   logger.info('DB ready.');
 }
 
+export function markDbReady() { DB_READY = true; DB_LAST_ERROR = null; }
+
 export async function initDbWithRetry() {
   const delays = [1000, 2000, 4000, 8000, 15000];
   for (let i = 0; i < delays.length; i++) {
