@@ -2736,6 +2736,11 @@ function closeAlopDetail(){
   document.getElementById('alop-list-panel').style.display='';
   document.getElementById('alop-detail-panel').style.display='none';
 }
+async function alopRefreshCurrent(){
+  if(!window._currentAlopId)return;
+  await openAlop(window._currentAlopId);
+  loadAlop();loadAlopStats();
+}
 
 function renderAlopDetail(a,container){
   // Stochează contextul ALOP activ pentru mkFlow (pre-populare semnatari)
@@ -2831,7 +2836,10 @@ function renderAlopDetail(a,container){
           ${a.valoare_totala?`<div style="font-size:.85rem;color:#10b981;margin-top:4px;font-weight:600">${fmtRON(a.valoare_totala)}</div>`:''}
           <div style="font-size:.74rem;color:var(--app-muted);margin-top:4px">Creat de ${_escH(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
-        <div>${_alopStatusBadge(a.status)}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${_alopStatusBadge(a.status)}
+          ${!isCompleted&&!isCancelled?`<button class="btn" onclick="alopRefreshCurrent()" style="padding:4px 10px;font-size:.78rem;line-height:1" title="Actualizează status">↻ Actualizează</button>`:''}
+        </div>
       </div>
     </div>
     ${stepperHtml}
@@ -2839,7 +2847,7 @@ function renderAlopDetail(a,container){
     ${actionsHtml?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${actionsHtml}</div>`:''}
     ${isCompleted?`<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;text-align:center;color:#10b981;font-weight:600">✅ ALOP finalizat complet — ${fmtDate(a.completed_at)}</div>`:''}
   `;
-  // Auto-refresh status la 15s cât ALOP e activ (detectează tranziții după semnare)
+  // Auto-refresh status la 30s cât ALOP e activ (detectează tranziții după semnare)
   clearInterval(window._alopRefreshInterval);
   if(!isCompleted&&!isCancelled){
     window._alopRefreshInterval=setInterval(async()=>{
@@ -2853,19 +2861,28 @@ function renderAlopDetail(a,container){
         const d=await r.json();
         if(d.alop&&d.alop.status!==a.status){openAlop(a.id);loadAlop();loadAlopStats();}
       }catch(_){}
-    },15000);
+    },30000);
   }
 }
 
 // ── Navigare la formulare ─────────────────────────────────────────────────────
 function alopGoToDF(alopId){
-  switchListTab('df');newDocFromList();
+  // Asigură că section-list e vizibil (poate fi ascuns dacă un formular era deschis)
+  document.getElementById('section-list').style.display='';
+  document.getElementById('section-form').style.display='none';
+  switchListTab('df');
   try{history.replaceState({},'',`${location.pathname}?tip=df&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
+  setTimeout(()=>newDocFromList(),50);
 }
 function alopGoToORD(alopId,dfId){
-  switchListTab('ord');newDocFromList();
-  if(dfId)setTimeout(()=>{const s=document.getElementById('o-df-sel');if(s)s.value=dfId;},400);
+  document.getElementById('section-list').style.display='';
+  document.getElementById('section-form').style.display='none';
+  switchListTab('ord');
   try{history.replaceState({},'',`${location.pathname}?tip=ord&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
+  setTimeout(()=>{
+    newDocFromList();
+    if(dfId)setTimeout(()=>{const s=document.getElementById('o-df-sel');if(s)s.value=dfId;},400);
+  },50);
 }
 
 // ── Acțiuni ALOP ──────────────────────────────────────────────────────────────
