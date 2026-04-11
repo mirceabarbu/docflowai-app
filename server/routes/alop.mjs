@@ -201,15 +201,12 @@ router.get('/api/alop/:id', async (req, res) => {
       SELECT
         a.*,
         u.nume   AS creator_name,
+        u.email  AS creator_email,
         df.nr_unic_inreg             AS df_nr,
         df.status                    AS df_status,
-        (SELECT COALESCE(SUM((r->>'val')::numeric), 0)
-           FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r
-        )                            AS df_valoare,
+        df.obiect_fd_reviz_scurt     AS df_obiect,
         df.compartiment_specialitate AS df_compartiment,
         fo.status                    AS ord_status,
-        fo.beneficiar                AS ord_beneficiar,
-        fo.valoare_totala            AS ord_valoare,
         f1.id AS df_flow_exists,
         f2.id AS ord_flow_exists,
         ul.nume AS lichidare_by_name,
