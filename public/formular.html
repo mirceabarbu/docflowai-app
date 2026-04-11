@@ -455,8 +455,8 @@
 
   <!-- Centralizare shortcuts -->
   <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-    <button class="btn" style="padding:6px 14px;font-size:.81rem" onclick="switchListTab('df')">📋 Centralizare DF</button>
-    <button class="btn" style="padding:6px 14px;font-size:.81rem" onclick="switchListTab('ord')">📄 Centralizare ORD</button>
+    <button style="background:transparent;border:1px solid rgba(255,255,255,.2);color:#94a3b8;padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit" onclick="switchListTab('df')">Centralizare DF</button>
+    <button style="background:transparent;border:1px solid rgba(255,255,255,.2);color:#94a3b8;padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit" onclick="switchListTab('ord')">Centralizare ORD</button>
   </div>
 
   <!-- KPI cards -->
@@ -2033,9 +2033,7 @@ function renderActions(ft){
     html=`<span style="color:var(--app-muted);font-size:.82rem">⏳ Așteptare Responsabil Buget...</span>`
       +BNou;
   }else if(status==='completed'&&role==='p1'){
-    html=`<button class="btn primary" id="bgen-${ft}" onclick="genPdf('${ft}')"><span>⚙ Generează PDF</span></button>`
-      +B('','✏️ Modifică (retrimite Resp. Buget)',`resetDocToP1('${ft}')`)
-      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
+    html=(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
   }else if(status==='completed'&&role==='p2'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
       +BNou;
