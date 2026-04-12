@@ -2052,7 +2052,13 @@ function renderActions(ft){
     html=`<span style="color:var(--app-muted);font-size:.82rem">⏳ Așteptare Responsabil Buget...</span>`
       +BNou;
   }else if(status==='completed'&&role==='p1'){
-    html=(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
+    const hasPdf=!!(ST[ft]?.pdf);
+    html=(hasPdf?B('primary','🔏 Lansează flux semnare',`mkFlow('${ft}')`)
+                :B('primary','⚙ Generează PDF',`genPdf('${ft}')`)  )
+      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
+  }else if(status==='transmis_flux'){
+    html=`<span style="color:var(--app-muted);font-size:.82rem">🔄 Document pe fluxul de semnare...</span>`
+      +(ST.docFlowId?.[ft]?B('','📄 Descarcă PDF',`viewFlowPdf('${ST.docFlowId[ft]}')`):'');
   }else if(status==='completed'&&role==='p2'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
       +BNou;
