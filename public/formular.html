@@ -1925,6 +1925,21 @@ function _dfSetAlopCtx(ft){
     };}
   }
 }
+function prefillSectBFromSectA(){
+  const srcRows=document.querySelectorAll('#n-vtbody tr');
+  const dstRows=document.querySelectorAll('#n-ctbody tr');
+  srcRows.forEach((srcTr,i)=>{
+    if(!dstRows[i])addNC();
+    const dst=document.querySelectorAll('#n-ctbody tr')[i];
+    if(!dst)return;
+    const progSrc=srcTr.querySelector('[data-f="program"]');
+    const ssiSrc=srcTr.querySelector('[data-f="codSSI"]');
+    const progDst=dst.querySelector('[data-f="program"]');
+    const ssiDst=dst.querySelector('[data-f="cod_SSI"]');
+    if(progSrc&&progDst&&!progDst.value)progDst.value=progSrc.value;
+    if(ssiSrc&&ssiDst&&!ssiDst.value)ssiDst.value=ssiSrc.value;
+  });
+}
 function applyDfRoleState(status,role){
   const secaBody=document.getElementById('seca-body');
   const secbBody=document.getElementById('secb-body');
@@ -1969,6 +1984,7 @@ function applyDfRoleState(status,role){
     if(t.p1b){t.p1b.className='df-role-tag df-role-no';t.p1b.textContent='P1 blocat';}
     if(t.p2b){t.p2b.className='df-role-tag df-role-can';t.p2b.textContent='P2 editează';}
   }
+  if(status==='pending_p2'&&role==='p2')prefillSectBFromSectA();
   _dfSetAlopCtx('notafd');
 }
 function applyOrdRoleState(status,role){
