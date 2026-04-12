@@ -2094,7 +2094,7 @@ async function openDoc(ft,id){
     const userId=ST.user?.userId;
     ST.docRole[ft]=doc.created_by===userId?'p1':doc.assigned_to===userId?'p2':'view';
     ST.docAprobat=ST.docAprobat||{};
-    ST.docAprobat[ft]=doc.aprobat===true;
+    ST.docAprobat[ft]=doc.aprobat===true||doc.status==='aprobat';
     ST.docFlowId=ST.docFlowId||{};
     ST.docFlowId[ft]=doc.flow_id||null;
     ST.docRevizieNr=ST.docRevizieNr||{};
@@ -2848,10 +2848,10 @@ function _stBadge(status){
   const map={draft:'📝 Draft',pending_p2:'📤 La Responsabil Buget',completed:'✅ Completat',
     generat_pdf:'📄 PDF generat',transmis_flux:'🔄 Trimis flux',
     aprobat:'🟢 Aprobat',respins:'❌ Respins',anulat:'🚫 Anulat',returnat:'↩ Returnat'};
-  const cls={draft:'stbadge-draft',pending_p2:'stbadge-transmis_p2',completed:'stbadge-completat',
-    generat_pdf:'stbadge-generat_pdf',transmis_flux:'stbadge-transmis_flux',
-    aprobat:'stbadge-aprobat',respins:'stbadge-respins',anulat:'stbadge-anulat',returnat:'stbadge-returnat'};
-  return`<span class="stbadge ${cls[status]||'stbadge-draft'}">${_escH(map[status]||status)}</span>`;
+  const cls={draft:'st-draft',pending_p2:'st-transmis_p2',completed:'st-completat',
+    generat_pdf:'st-generat_pdf',transmis_flux:'st-transmis_flux',
+    aprobat:'st-aprobat',respins:'st-respins',anulat:'st-anulat',returnat:'st-returnat'};
+  return`<span class="stbadge ${cls[status]||'st-draft'}">${_escH(map[status]||status)}</span>`;
 }
 function _fmtDate(iso){
   if(!iso)return '—';
@@ -2875,7 +2875,7 @@ function _renderLstTable(rows,type){
       </td>
       <td>${_escH(row.initiator||'—')}</td>
       <td>${_escH(row.p2||'—')}</td>
-      <td>${_stBadge(row.status)}</td>
+      <td>${_stBadge(row.aprobat ? 'aprobat' : row.status)}</td>
       <td>${_fmtDate(row.created_at)}</td>
       <td>${_fmtDate(row.updated_at)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">

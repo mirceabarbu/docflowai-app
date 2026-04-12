@@ -412,9 +412,19 @@ router.post('/api/formulare-df/:id/link-flow', _csrf, async (req, res) => {
       return res.status(409).json({ error: 'document_not_completed' });
 
     await pool.query(
-      'UPDATE formulare_df SET flow_id=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3',
+      'UPDATE formulare_df SET flow_id=$1, status=\'transmis_flux\', updated_at=NOW() WHERE id=$2 AND org_id=$3',
       [flow_id, req.params.id, actor.orgId]
     );
+    // Actualizează df_flow_id în ALOP (non-fatal)
+    try {
+      await pool.query(
+        `UPDATE alop_instances SET df_flow_id=$1, updated_at=NOW()
+         WHERE df_id=$2 AND org_id=$3 AND cancelled_at IS NULL`,
+        [flow_id, req.params.id, actor.orgId]
+      );
+    } catch(e) {
+      logger.warn({ err: e }, 'alop_instances df_flow_id update failed');
+    }
     res.json({ ok: true });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df link-flow error');
