@@ -311,6 +311,8 @@
     .df-block-body .doc-t tfoot td.tot,.df-block-body tr.df-total td.tot{color:var(--app-text) !important;-webkit-text-fill-color:var(--app-text) !important;font-weight:700 !important}
     .df-block-body .doc-t tfoot td.num,.df-block-body tr.df-total td.num{color:var(--app-text) !important;-webkit-text-fill-color:var(--app-text) !important}
     .df-block-body tr.df-total td,.df-block-body tr.df-total th,.df-block-body tfoot tr td,.df-block-body tfoot tr th{font-family:inherit !important;font-size:inherit !important}
+    .df-block-body input[readonly],.df-block-body input[tabindex="-1"]{color:#1a1a1a !important;-webkit-text-fill-color:#1a1a1a !important}
+    .df-block-body tr.df-total td.num,.df-block-body tr.df-total td.tot{color:#1a1a1a !important;-webkit-text-fill-color:#1a1a1a !important}
     .df-block-body .doc-t input{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:3px;color:var(--app-text);font-family:inherit;padding:3px 5px;font-size:11px;min-width:40px}
     .df-block-body .doc-t input:focus{background:rgba(108,79,240,.08);border-color:rgba(108,79,240,.4)}
     .df-block-body .badd{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px;width:20px;height:20px;cursor:pointer;font-size:13px;font-weight:900;display:inline-flex;align-items:center;justify-content:center}
@@ -2035,7 +2037,7 @@ function renderActions(ft){
   }
   if(!docId){
     html=B('teal','📨 Trimite la Responsabil Buget',`showP2Modal('${ft}')`)
-      +B('primary','⚙ Generează PDF',`genPdf('${ft}')`)
+      +`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
       +B('','↺ Resetează',`resetF('${ft}')`);
   }else if(status==='draft'&&role==='p1'){
     html=B('teal','📨 Trimite la Responsabil Buget',`showP2Modal('${ft}')`)
@@ -2054,7 +2056,7 @@ function renderActions(ft){
   }else if(status==='completed'&&role==='p1'){
     const hasPdf=!!(ST[ft]?.pdf);
     html=(hasPdf?B('primary','🔏 Lansează flux semnare',`mkFlow('${ft}')`)
-                :B('primary','⚙ Generează PDF',`genPdf('${ft}')`)  )
+                :`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`)
       +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
   }else if(status==='transmis_flux'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">🔄 Document pe fluxul de semnare...</span>`
@@ -2063,7 +2065,7 @@ function renderActions(ft){
     html=`<span style="color:var(--app-muted);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
       +BNou;
   }else{
-    html=B('primary','⚙ Generează PDF',`genPdf('${ft}')`)
+    html=`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
       +B('','↺ Resetează',`resetF('${ft}')`);
   }
   div.innerHTML=html;
