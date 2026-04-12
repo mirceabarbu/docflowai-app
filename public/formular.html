@@ -1841,6 +1841,7 @@ function populateDf(doc){
   (doc.rows_val||[]).forEach(row=>{addNV();const tr=document.getElementById('n-vtbody').querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=v;});});
   (doc.rows_plati||[]).forEach(row=>{addNP();const tr=document.getElementById('n-ptbody').querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=v;});});
   (doc.rows_ctrl||[]).forEach(row=>{addNC();const tr=document.getElementById('n-ctbody').querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=v;});});
+  if(!(doc.rows_ctrl||[]).length)addNC();
   document.querySelectorAll('#n-vtbody tr').forEach(tr=>{const c5=parseFloat(tr.querySelector('[data-f="valt_rev_prec"]')?.value)||0,c6=parseFloat(tr.querySelector('[data-f="influente"]')?.value)||0,c7=tr.querySelector('[data-f="valt_actualiz"]');if(c7)c7.value=c5+c6;});
   document.querySelectorAll('#n-ctbody tr').forEach(tr=>{
     const c5=parseFloat(tr.querySelector('[data-f="sum_rezv_crdt_ang_af_rvz_prc"]')?.value)||0;
@@ -1876,9 +1877,10 @@ function setModeP2Df(){
    'n-ck-faraplati','n-ck-cuplati','n-ck-anurmatori'].forEach(id=>{const e=document.getElementById(id);if(e)e.disabled=true;});
   document.querySelectorAll('#n-vtbody input,#n-ptbody input,#n-vtbody .bdel,#n-ptbody .bdel,#n-vtbody .badd,#n-ptbody .badd').forEach(e=>e.disabled=true);
   // Sect B deblocată + highlight
-  ['n-ck-seca','n-ck-fararezv','n-sumfara','n-ck-interzis','n-ck-intrucat','n-intrucat'].forEach(id=>{
+  ['n-ck-fararezv','n-sumfara','n-ck-interzis','n-ck-intrucat','n-intrucat'].forEach(id=>{
     const e=document.getElementById(id);if(e){e.disabled=false;e.classList.add('p2-field');}
   });
+  const _ckSeca=document.getElementById('n-ck-seca');if(_ckSeca)_ckSeca.disabled=true;
   document.querySelectorAll('#n-ctbody input').forEach(e=>{e.disabled=false;e.classList.add('p2-field');});
   // Upload captură deblocat
   const czone=document.getElementById('n-czone');if(czone)czone.style.pointerEvents='';
@@ -2204,7 +2206,7 @@ function newDoc(ft){
     document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';
     const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
     const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
-  }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
+  }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   ST[ft]={pdf:null,name:null};upTot();clrS();renderActions(ft);
   document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.remove('active'));
@@ -2576,7 +2578,7 @@ function resetF(ft){
   document.querySelectorAll(`#form-${ft} input:not([type=file]),#form-${ft} textarea`)
     .forEach(e=>{if(e.type==='checkbox')e.checked=false;else e.value=(e.type==='number'?'0':'');});
   if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';}
-  else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
+  else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   document.getElementById('ff-'+ft).classList.remove('show');
   ST[ft]={pdf:null,name:null};if(ST.docAprobat)ST.docAprobat[ft]=false;clrS();upTot();
