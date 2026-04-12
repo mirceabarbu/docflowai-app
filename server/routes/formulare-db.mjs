@@ -334,13 +334,17 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
       RETURNING *
     `, vals);
 
-    // Actualizează statusul ALOP legat de acest DF: draft → angajare
-    await pool.query(
-      `UPDATE alop_instances
-       SET df_completed_at=NOW(), status=CASE WHEN status='draft' THEN 'angajare' ELSE status END, updated_at=NOW()
-       WHERE df_id=$1 AND org_id=$2 AND status IN ('draft','angajare')`,
-      [req.params.id, actor.orgId]
-    );
+    // Actualizează statusul ALOP legat de acest DF: draft → angajare (non-fatal)
+    try {
+      await pool.query(
+        `UPDATE alop_instances
+         SET df_completed_at=NOW(), status=CASE WHEN status='draft' THEN 'angajare' ELSE status END, updated_at=NOW()
+         WHERE df_id=$1 AND org_id=$2 AND status IN ('draft','angajare')`,
+        [req.params.id, actor.orgId]
+      );
+    } catch(e) {
+      logger.warn({ err: e }, 'alop_instances update failed after P2 complete');
+    }
 
     await sendNotif(doc.created_by, 'formulare_df_completed',
       'Document de Fundamentare — completat de P2',

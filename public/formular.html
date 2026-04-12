@@ -522,7 +522,7 @@
 <div id="section-form" style="display:none">
 
 <div class="back-bar" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-  <button class="btn" onclick="showListSection()" style="padding:6px 14px;font-size:.83rem">← Înapoi la listă</button>
+  <button id="btn-back" class="btn" onclick="showListSection()" style="padding:6px 14px;font-size:.83rem">← Înapoi la listă</button>
   <span id="form-type-title" style="font-size:.88rem;font-weight:700;color:var(--app-sub)"></span>
   <span id="form-save-badge" style="font-size:.74rem;color:var(--app-muted)"></span>
 </div>
@@ -924,13 +924,13 @@
     <table class="doc-t">
       <thead>
         <tr>
-          <th>Cod<br>angaj.</th><th>Indicator<br>angaj.</th><th>Program</th><th>Cod SSI</th>
-          <th>Suma rez. cr. angaj. an cur. rev. prec. (lei)</th>
+          <th>Cod angajament</th><th>Indicator angajament</th><th>Program</th><th>Cod SSI</th>
+          <th>Suma rezervată din credite de angajament pentru anul curent aferentă reviziei precedente (lei)</th>
           <th>Influențe +/-</th>
-          <th>Suma rez. cr. angaj. actualiz. (lei)<br><small style="font-weight:400">7=5+6</small></th>
-          <th>Suma rez. cr. bug. an cur. rev. prec. (lei)</th>
+          <th>Suma rezervată din credite de angajament pentru anul curent actualizată (lei)<br><small style="font-weight:400">7=5+6</small></th>
+          <th>Suma rezervată din credite bugetare pentru anul curent aferentă reviziei precedente (lei)</th>
           <th>Influențe +/-</th>
-          <th>Suma rez. cr. bug. actualiz. (lei)<br><small style="font-weight:400">10=8+9</small></th>
+          <th>Suma rezervată din credite bugetare pentru anul curent actualizată (lei)<br><small style="font-weight:400">10=8+9</small></th>
           <th style="width:22px"></th>
         </tr>
         <tr style="font-size:10px;text-align:center">
@@ -1209,6 +1209,9 @@ function _applyAutoFill(ft, resetDate){
       const dl=document.getElementById('comp-list-notafd');
       if(dl) dl.innerHTML=org._compList.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
     }
+    const _alopT=window._alopContext?.titlu;
+    const _subtEl=document.getElementById('n-subtitlu');
+    if(_alopT&&_subtEl&&!_subtEl.value)_subtEl.value=_alopT;
   }
 }
 
@@ -1880,10 +1883,9 @@ function setModeP2Df(){
    'n-ck-faraplati','n-ck-cuplati','n-ck-anurmatori'].forEach(id=>{const e=document.getElementById(id);if(e)e.disabled=true;});
   document.querySelectorAll('#n-vtbody input,#n-ptbody input,#n-vtbody .bdel,#n-ptbody .bdel,#n-vtbody .badd,#n-ptbody .badd').forEach(e=>e.disabled=true);
   // Sect B deblocată + highlight
-  ['n-ck-fararezv','n-sumfara','n-ck-interzis','n-ck-intrucat','n-intrucat'].forEach(id=>{
+  ['n-ck-seca','n-ck-fararezv','n-sumfara','n-ck-interzis','n-ck-intrucat','n-intrucat'].forEach(id=>{
     const e=document.getElementById(id);if(e){e.disabled=false;e.classList.add('p2-field');}
   });
-  const _ckSeca=document.getElementById('n-ck-seca');if(_ckSeca)_ckSeca.disabled=true;
   document.querySelectorAll('#n-ctbody input').forEach(e=>{e.disabled=false;e.classList.add('p2-field');});
   // Upload captură deblocat
   const czone=document.getElementById('n-czone');if(czone)czone.style.pointerEvents='';
@@ -2057,8 +2059,7 @@ function renderActions(ft){
   }else if(status==='completed'&&role==='p1'){
     const hasPdf=!!(ST[ft]?.pdf);
     html=(hasPdf?B('primary','🔏 Lansează flux semnare',`mkFlow('${ft}')`)
-                :`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`)
-      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
+                :`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`);
   }else if(status==='transmis_flux'){
     html=`<span style="color:var(--app-muted);font-size:.82rem">🔄 Document pe fluxul de semnare...</span>`
       +(ST.docFlowId?.[ft]?B('','📄 Descarcă PDF',`viewFlowPdf('${ST.docFlowId[ft]}')`):'');
@@ -2746,24 +2747,30 @@ const _escH=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;')
 let _lstState={type:'df',page:1,limit:20};
 let _lstDebTimer=null;
 
-function showListSection(){
+function showListSection(tab){
   _clearValErr();
   document.getElementById('section-list').style.display='';
   document.getElementById('section-form').style.display='none';
-  // Curăță URL params la revenire în centralizare
   try{history.replaceState({},'',location.pathname);}catch(_){}
+  if(tab)switchListTab(tab);
   loadList();
+}
+function _updateBackBtn(ft){
+  const btn=document.getElementById('btn-back');
+  if(!btn)return;
+  const inAlop=!!(window._alopContext?.alopId);
+  if(inAlop){btn.textContent='← Înapoi la ALOP';btn.onclick=()=>showListSection('alop');}
+  else{btn.textContent='← Înapoi la listă';btn.onclick=()=>showListSection();}
 }
 function showFormSection(ft){
   _clearValErr();
   document.getElementById('section-list').style.display='none';
   document.getElementById('section-form').style.display='';
-  // Curăță badge-ul de salvare la deschiderea unui formular nou
   const sb=document.getElementById('form-save-badge');if(sb)sb.textContent='';
-  // Type indicator vizibil în back-bar
   const ti=document.getElementById('form-type-title');
   if(ti)ti.textContent=ft==='ordnt'?'📄 Ordonanțare de Plată':'📋 Document de Fundamentare';
   sw(ft||'ordnt');
+  _updateBackBtn(ft);
 }
 function newDocFromList(){
   const ft=_lstState.type==='ord'?'ordnt':'notafd';
@@ -2956,7 +2963,7 @@ const ROLE_LABEL = {
 function _alopStatusBadge(status){
   const m={
     'draft':       {label:'📝 Draft',       color:'#64748b'},
-    'angajare':    {label:'🔵 Angajare',     color:'#3b82f6'},
+    'angajare':    {label:'🟠 DF în lucru',   color:'#f97316'},
     'lichidare':   {label:'🟡 Lichidare',    color:'#f59e0b'},
     'ordonantare': {label:'🟣 Ordonanțare',  color:'#8b5cf6'},
     'plata':       {label:'🟠 Plată',        color:'#f97316'},
