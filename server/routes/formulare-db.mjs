@@ -457,23 +457,27 @@ router.get('/api/formulare-df/:id/revizii', async (req, res) => {
 });
 
 // POST /api/formulare-df/:id/revizuieste — crează o revizie nouă a documentului
-router.post('/api/formulare-df/:id/revizuieste', _csrf, async (req, res) => {
+// Alias: POST /api/formulare-df/:id/revizie
+router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie'], _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { rows: origRows } = await pool.query(
-      'SELECT * FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
+    const { rows: origRows } = await pool.query(`
+      SELECT fd.*,
+        (fd.flow_id IS NOT NULL AND f.data->>'status' = 'completed') AS aprobat
+      FROM formulare_df fd
+      LEFT JOIN flows f ON f.id = fd.flow_id
+      WHERE fd.id=$1 AND fd.org_id=$2 AND fd.deleted_at IS NULL
+    `, [req.params.id, actor.orgId]);
     if (!origRows.length) return res.status(404).json({ error: 'DF negăsit' });
     const df = origRows[0];
 
     if (df.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
       return res.status(403).json({ error: 'forbidden' });
 
-    // Doar DF-uri completate pot fi revizuite
-    if (df.status !== 'completed')
-      return res.status(400).json({ error: 'Doar documentele completate pot fi revizuite' });
+    // Doar DF-uri aprobate (flux de semnare finalizat) pot fi revizuite
+    if (!df.aprobat)
+      return res.status(400).json({ error: 'Doar documentele aprobate pot fi revizuite' });
 
     const { motiv } = req.body || {};
 
@@ -486,12 +490,13 @@ router.post('/api/formulare-df/:id/revizuieste', _csrf, async (req, res) => {
     );
     const nouaRevizie = (maxRows[0]?.max_rev ?? 0) + 1;
 
-    // Copiază câmpurile SecA (P1); SecB se resetează la NULL implicit
+    // Copiază câmpurile SecA (P1); SecB se resetează explicit la []
     const { rows: nouRows } = await pool.query(`
       INSERT INTO formulare_df (
         org_id, created_by, nr_unic_inreg,
         revizie_nr, parent_df_id, este_revizie, revizie_motiv, revizie_at,
         status,
+        revizuirea, data_revizuirii,
         cif, den_inst_pb, subtitlu_df,
         compartiment_specialitate,
         obiect_fd_reviz_scurt, obiect_fd_reviz_lung,
@@ -499,12 +504,14 @@ router.post('/api/formulare-df/:id/revizuieste', _csrf, async (req, res) => {
         rows_val, rows_plati,
         ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
         ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
-        ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm
+        ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
+        rows_ctrl
       )
       SELECT
         org_id, $2, nr_unic_inreg,
         $3, id, TRUE, $4, NOW(),
         'draft',
+        $3::text, TO_CHAR(NOW(), 'DD.MM.YYYY'),
         cif, den_inst_pb, subtitlu_df,
         compartiment_specialitate,
         obiect_fd_reviz_scurt, obiect_fd_reviz_lung,
@@ -512,7 +519,8 @@ router.post('/api/formulare-df/:id/revizuieste', _csrf, async (req, res) => {
         rows_val, rows_plati,
         ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
         ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
-        ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm
+        ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
+        '[]'::jsonb
       FROM formulare_df WHERE id = $1
       RETURNING *
     `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '']);

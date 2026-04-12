@@ -1358,6 +1358,11 @@ function p4toggle(src){
     ckStab.checked=false;
     tbl.style.opacity='.4';tbl.style.pointerEvents='none';
     inp.disabled=false;
+    // Pre-completează cu totalul curent din tabelul pct.4 dacă inputul e 0/gol
+    if(!parseFloat(inp.value)){
+      const tot=parseFloat(document.getElementById('n-t-vact')?.textContent)||0;
+      if(tot>0)inp.value=tot;
+    }
   } else {
     tbl.style.opacity='.4';tbl.style.pointerEvents='none';
     inp.disabled=true;
@@ -1799,6 +1804,7 @@ function collectDfP1Db(){return{
   nr_unic_inreg:g('n-nrUnic'),revizuirea:g('n-rev'),data_revizuirii:g('n-data'),
   compartiment_specialitate:g('n-comp'),obiect_fd_reviz_scurt:g('n-scurt'),obiect_fd_reviz_lung:g('n-lung'),
   ckbx_stab_tin_cont:cb('n-ck-stab'),ckbx_ramane_suma:cb('n-ck-ramane'),ramane_suma:g('n-ramana')||'0',
+  rows_val_unchanged:!!document.getElementById('n-ck-ramane')?.checked,
   rows_val:getNV(),
   ckbx_fara_ang_emis_ancrt:cb('n-ck-faraang'),ckbx_cu_ang_emis_ancrt:cb('n-ck-cuang'),
   ckbx_sting_ang_in_ancrt:cb('n-ck-sting'),ckbx_fara_plati_ang_in_ancrt:cb('n-ck-faraplati'),
