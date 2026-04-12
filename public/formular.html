@@ -89,6 +89,8 @@
     .doc-t input{background:var(--doc-field);border:none;padding:3px 4px;font-size:11px;width:100%;font-family:inherit;color:#000;outline:none;min-width:40px}
     .doc-t input:focus{background:var(--doc-field-focus)}
     .doc-t input[type=number]{text-align:right}
+    input[type=number]{-moz-appearance:textfield !important}
+    input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none !important;margin:0}
     .doc-t tfoot tr{background:#f0f0f0}
     /* Add row btn (the [+]) */
     .badd{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:2px;border:1px solid #888;background:#f0f0f0;cursor:pointer;font-size:14px;font-weight:900;color:#333;line-height:1}
@@ -308,6 +310,7 @@
     .df-block-body .doc-t tfoot td,.df-block-body tr.df-total td,.df-block-body tr.df-total th{color:var(--app-sub) !important;-webkit-text-fill-color:var(--app-sub) !important;font-weight:600 !important}
     .df-block-body .doc-t tfoot td.tot,.df-block-body tr.df-total td.tot{color:var(--app-text) !important;-webkit-text-fill-color:var(--app-text) !important;font-weight:700 !important}
     .df-block-body .doc-t tfoot td.num,.df-block-body tr.df-total td.num{color:var(--app-text) !important;-webkit-text-fill-color:var(--app-text) !important}
+    .df-block-body tr.df-total td,.df-block-body tr.df-total th,.df-block-body tfoot tr td,.df-block-body tfoot tr th{font-family:inherit !important;font-size:inherit !important}
     .df-block-body .doc-t input{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:3px;color:var(--app-text);font-family:inherit;padding:3px 5px;font-size:11px;min-width:40px}
     .df-block-body .doc-t input:focus{background:rgba(108,79,240,.08);border-color:rgba(108,79,240,.4)}
     .df-block-body .badd{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px;width:20px;height:20px;cursor:pointer;font-size:13px;font-weight:900;display:inline-flex;align-items:center;justify-content:center}
