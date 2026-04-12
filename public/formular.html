@@ -377,7 +377,7 @@
       <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')">💰 Ordonanțări de Plată</button>
       <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')">📊 ALOP</button>
     </div>
-    <button id="btn-lst-nou" class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
+    <button id="btn-lst-nou" class="btn primary" style="display:none !important;padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
   </div>
   <div class="lst-filters">
     <div class="lst-filter-row">
@@ -2022,9 +2022,7 @@ function renderActions(ft){
   const div=document.getElementById('actions-'+ft);if(!div)return;
   const status=ST.docStatus[ft],role=ST.docRole[ft],docId=ST.docId[ft];
   const B=(cls,txt,fn)=>`<button class="btn ${cls}" onclick="${fn}">${txt}</button>`;
-  // Dacă există context ALOP, ascunde butonul "+ Nou" — DF/ORD se gestionează exclusiv prin ALOP
-  const inAlop=!!(window._alopContext?.alopId);
-  const BNou=inAlop?'':B('','+ Nou',`newDoc('${ft}')`);
+  const BNou='';
   let html='';
   if(ST.docAprobat?.[ft]){
     const fid=ST.docFlowId?.[ft];
@@ -2773,9 +2771,6 @@ function switchListTab(type){
   document.getElementById('ltab-df').classList.toggle('active',type==='df');
   document.getElementById('ltab-ord').classList.toggle('active',type==='ord');
   document.getElementById('ltab-alop').classList.toggle('active',type==='alop');
-  // Buton "Document nou" — ascuns pentru DF/ORD (se creează doar din ALOP)
-  const btnNou=document.getElementById('btn-lst-nou');
-  if(btnNou)btnNou.style.display=type==='alop'?'':'none';
   // Bannere informative pentru DF/ORD
   const bannerDf=document.getElementById('lst-banner-df');
   const bannerOrd=document.getElementById('lst-banner-ord');
