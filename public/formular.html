@@ -2729,34 +2729,41 @@ async function loadDfAprobate(){
       }).join('');
   }catch(_){}
 }
-function selectDfAprobat(){
+async function selectDfAprobat(){
   const sel=document.getElementById('o-df-sel');
   const id=sel?.value||'';
   const hiddenId=document.getElementById('o-df-id');
   if(hiddenId)hiddenId.value=id;
   if(!id){document.getElementById('o-nrUnic').value='';return;}
-  const df=_dfAprobate.find(d=>d.id===id);
-  if(!df)return;
-  const sv2=(eid,val)=>{const e=document.getElementById(eid);if(e&&val!=null)e.value=val;};
-  sv2('o-nrUnic',df.nr_unic_inreg);
-  sv2('o-cif',df.cif);
-  sv2('o-den',df.den_inst_pb);
-  // Pre-fill rânduri tabel din rows_ctrl (cod_angajament, indicator, program, cod_SSI)
-  const rows=(df.rows_ctrl||[]);
-  if(rows.length){
+  await onDfSelect(id);
+}
+
+async function onDfSelect(dfId){
+  if(!dfId)return;
+  try{
+    const r=await fetch(`/api/formulare-df/${encodeURIComponent(dfId)}`,{credentials:'include'});
+    const j=await r.json();
+    if(!r.ok||!j.document)return;
+    const doc=j.document;
+    sv('o-nrUnic',doc.nr_unic_inreg||'');
+    sv('o-cif',doc.cif||'');
+    sv('o-den',doc.den_inst_pb||'');
+    // Pre-fill rânduri tabel din rows_ctrl — număr corect de rânduri, fără sume (completate de CAB)
+    const rows=Array.isArray(doc.rows_ctrl)?doc.rows_ctrl:JSON.parse(doc.rows_ctrl||'[]');
     const tbody=document.getElementById('o-tbody');
     tbody.innerHTML='';oI=0;
+    if(!rows.length){addOR();return;}
     rows.forEach(row=>{
       addOR();
       const tr=tbody.querySelector('tr:last-child');
-      const set=(f,v)=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp&&v!=null)inp.value=v;};
-      set('cod_angajament',row.cod_angajament);
-      set('indicator_angajament',row.indicator_angajament);
-      set('program',row.program);
-      set('cod_SSI',row.cod_SSI);
+      if(!tr)return;
+      ['cod_angajament','indicator_angajament','program','cod_SSI'].forEach(f=>{
+        const inp=tr.querySelector(`[data-f="${f}"]`);
+        if(inp&&row[f]!=null)inp.value=row[f];
+      });
     });
     upTot();
-  }
+  }catch(_){}
 }
 
 // ── Beneficiari autocomplete ──────────────────────────────────────────────────
