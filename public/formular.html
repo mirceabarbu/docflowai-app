@@ -2014,18 +2014,8 @@ function _dfSetAlopCtx(ft){
   if(!el)return;
   if(ctx?.alopId){el.textContent=`📊 ALOP: ${ctx.titlu||ctx.alopId}`;el.className='df-alop-ctx show';}
   else{el.textContent='';el.className='df-alop-ctx';}
-  // Actualizează butonul Înapoi din back-bar contextual
-  const backBtn=document.querySelector('.back-bar button');
-  if(backBtn){
-    const lstType=ft==='notafd'?'df':'ord';
-    if(ctx?.alopId){backBtn.textContent='← Înapoi la ALOP';backBtn.onclick=()=>{window._alopContext=null;switchListTab('alop');};}
-    else{backBtn.textContent='← Înapoi la lista '+(lstType==='df'?'DF':'ORD');backBtn.onclick=()=>{
-      document.getElementById('section-list').style.display='';
-      document.getElementById('section-form').style.display='none';
-      try{history.replaceState({},'',location.pathname);}catch(_){}
-      switchListTab(lstType);
-    };}
-  }
+  // Butonul Înapoi este actualizat de _updateBackBtn(ft) — centralizat
+  _updateBackBtn(ft);
 }
 function prefillSectBFromSectA(){
   const srcRows=document.querySelectorAll('#n-vtbody tr');
@@ -2282,6 +2272,7 @@ async function openDoc(ft,id){
     // Evidențiere card activ
     document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.toggle('active',c.dataset.id===id));
     setS(`Document încărcat (${status})`,status==='completed'?'ok':'info');
+    _updateBackBtn(ft);
   }catch(e){setS('Eroare rețea: '+e.message,'err');}
 }
 
@@ -2349,6 +2340,7 @@ function newDoc(ft){
   document.getElementById('result-'+ft).classList.remove('show');
   ST[ft]={pdf:null,name:null};upTot();clrS();renderActions(ft);
   document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.remove('active'));
+  _updateBackBtn(ft);
 }
 
 // ── Helper: leagă document la ALOP imediat (fire-and-forget, idempotent) ──────
@@ -2918,8 +2910,13 @@ function _updateBackBtn(ft){
   const btn=document.getElementById('btn-back');
   if(!btn)return;
   const inAlop=!!(window._alopContext?.alopId);
-  if(inAlop){btn.textContent='← Înapoi la ALOP';btn.onclick=()=>showListSection('alop');}
-  else{btn.textContent='← Înapoi la listă';btn.onclick=()=>showListSection();}
+  if(inAlop){
+    btn.textContent='← Înapoi la ALOP';
+    btn.onclick=()=>{window._alopContext=null;showListSection('alop');};
+  }else{
+    btn.textContent=ft==='notafd'?'← Înapoi la lista DF':'← Înapoi la lista ORD';
+    btn.onclick=()=>showListSection();
+  }
 }
 function showFormSection(ft){
   _clearValErr();
