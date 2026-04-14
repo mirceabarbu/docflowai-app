@@ -1877,7 +1877,7 @@ function ftType(ft){return ft==='ordnt'?'ord':'df';}
 // ── Status label ─────────────────────────────────────────────────────────────
 function stLabel(s,aprobat){
   if(aprobat)return['aprobat','✔ Aprobat'];
-  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La Responsabil Buget'],completed:['completed','✅ Complet'],returnat:['returnat','↩ Returnat']}[s]||['draft',s];
+  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La Responsabil Buget'],completed:['completed','✅ Complet'],aprobat:['aprobat','🟢 Aprobat'],transmis_flux:['transmis_flux','🔄 Pe flux'],returnat:['returnat','↩ Returnat'],respins:['respins','❌ Respins']}[s]||['draft',s];
 }
 
 // ── Colectare date formular → DB ──────────────────────────────────────────────
