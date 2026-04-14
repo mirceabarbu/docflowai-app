@@ -3445,6 +3445,18 @@ async function alopDeschideDF(alopId){
     if(alop.df_id){
       // DF există pe ALOP → deschide direct
       openDocFromList('df',alop.df_id);
+    }else if(ST.docId?.['notafd']){
+      // FIX 2: DF creat în sesiunea curentă dar link-df nu s-a salvat pe server
+      // Re-leagă imediat (link-df e idempotent) și deschide documentul
+      fetch(`/api/alop/${encodeURIComponent(alopId)}/link-df`,{
+        method:'POST',credentials:'include',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+        body:JSON.stringify({df_id:ST.docId['notafd']}),
+      }).then(r=>r.json()).then(j=>{
+        if(j.ok)console.log('ALOP re-link-df:',alopId,'→',ST.docId['notafd']);
+        else console.warn('ALOP re-link-df warn:',j.error);
+      }).catch(e=>console.warn('ALOP re-link-df error:',e));
+      openDocFromList('df',ST.docId['notafd']);
     }else{
       // DF nou — resetează contextul doc din sesiunea anterioară și creează formular gol
       ST.docId=ST.docId||{};ST.docId['notafd']=null;
