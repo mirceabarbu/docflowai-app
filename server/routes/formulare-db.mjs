@@ -62,6 +62,7 @@ const ORD_P1_FIELDS = [
   'nr_unic_inreg','beneficiar','documente_justificative',
   'iban_beneficiar','cif_beneficiar','banca_beneficiar',
   'inf_pv_plata','inf_pv_plata1','rows','compartiment_specialitate',
+  'img2',
 ];
 
 /** Câmpuri ORD P2 (actualizare rânduri cu receptii/plati/receptii_neplatite) */

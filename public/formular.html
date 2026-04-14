@@ -646,6 +646,13 @@
       <img class="cap-img" id="o-cimg"/>
     </div>
     <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg','o-cph')">✕ Șterge imaginea</button></div>
+    <div class="cap-lbl" style="margin-top:10px">Captură "Informații complete contract" din sistemul de control al angajamentelor bugetare</div>
+    <div class="cap-zone" id="o-czone2" ondragover="dov(event,'o-czone2')" ondragleave="dlv(event,'o-czone2')" ondrop="ddp(event,'o-cimg2','o-czone2','o-cph2')">
+      <input type="file" accept="image/*" onchange="fimg(event,'o-cimg2','o-cph2')"/>
+      <div class="cap-ph" id="o-cph2"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="font-size:10px;margin-top:1px">PNG · JPG · BMP</p></div>
+      <img class="cap-img" id="o-cimg2"/>
+    </div>
+    <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg2','o-cph2')">✕ Șterge imaginea</button></div>
   </div>
 </div>
 
@@ -1199,7 +1206,7 @@ const ST = {
   docRole:{ordnt:null,notafd:null},  // 'p1'|'p2'|'view'
   orgUsers:[], selectedP2Id:null, pendingFt:null,
 };
-const imgs = {'o-cimg':null,'n-cimg':null};
+const imgs = {'o-cimg':null,'o-cimg2':null,'n-cimg':null};
 
 // ── _applyAutoFill — aplică date org+user în formular (apelat la init și după newDoc din list)
 // ft: 'ordnt'|'notafd' sau absent → ambele; resetDate: dacă true, suprascrie data chiar dacă e completată
@@ -1816,6 +1823,7 @@ function collectOrdDb(){return{
   iban_beneficiar:g('o-iban'),cif_beneficiar:g('o-cifb'),banca_beneficiar:g('o-banca'),
   inf_pv_plata:g('o-inf1'),inf_pv_plata1:g('o-inf2'),rows:getOR(),
   df_id:document.getElementById('o-df-id')?.value||null,
+  img2:imgs['o-cimg2']||null,
 };}
 function collectDfP1Db(){return{
   cif:g('n-cif'),den_inst_pb:g('n-den'),subtitlu_df:g('n-subtitlu'),
@@ -1850,6 +1858,7 @@ function populateOrd(doc){
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
   (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=v;});});
+  if(doc.img2)showImg('o-cimg2','o-cph2',doc.img2);
   upTot();
 }
 function populateDf(doc){
@@ -2268,7 +2277,7 @@ function newDoc(ft){
   // Golim câmpurile
   document.querySelectorAll(`#form-${ft} input:not([type=file]):not([type=hidden]),#form-${ft} textarea`).forEach(e=>{if(e.type==='checkbox')e.checked=false;else if(e.type==='number')e.value='0';else e.value='';});
   if(ft==='ordnt'){
-    document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');
+    document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');
     document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';
     const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
     const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
@@ -2520,7 +2529,25 @@ async function confirmP2(){
 }
 
 // ── P2 finalizează ────────────────────────────────────────────────────────────
+function validateSecB(ft){
+  if(ft!=='notafd')return true;
+  const ckSeca=document.getElementById('n-ck-seca');
+  if(ckSeca&&!ckSeca.checked){
+    setS('Bifați "Propunerile de la secțiunea A au fost înregistrate..." pentru a finaliza.','err');
+    ckSeca.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
+  const rows=document.querySelectorAll('#n-ctbody tr');
+  const hasData=[...rows].some(tr=>{const cod=tr.querySelector('[data-f="cod_angajament"]');return cod&&cod.value.trim()!=='';});
+  if(!hasData){
+    setS('Completați cel puțin un rând în tabelul Secțiunii B (Cod angajament).','err');
+    return false;
+  }
+  return true;
+}
+
 async function completeAsP2(ft){
+  if(!validateSecB(ft))return;
   if(!ST.docId[ft])return;
   const body=ft==='ordnt'?{rows:getOR()}:collectDfP2Db();
   // Upload captură
@@ -2643,7 +2670,7 @@ function resetF(ft){
   draftClear(ft);
   document.querySelectorAll(`#form-${ft} input:not([type=file]),#form-${ft} textarea`)
     .forEach(e=>{if(e.type==='checkbox')e.checked=false;else e.value=(e.type==='number'?'0':'');});
-  if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';}
+  if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';}
   else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   document.getElementById('ff-'+ft).classList.remove('show');

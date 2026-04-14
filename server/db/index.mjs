@@ -1092,6 +1092,13 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS este_revizie_an_urmator BOOLEAN DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS total_val_prec          NUMERIC(15,2);
     `
+  },
+  {
+    id: '058_formulare_ord_img2',
+    sql: `
+      ALTER TABLE formulare_ord
+        ADD COLUMN IF NOT EXISTS img2 TEXT;
+    `
   }
 ];
 
