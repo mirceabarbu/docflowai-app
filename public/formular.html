@@ -2343,19 +2343,22 @@ function newDoc(ft){
   _updateBackBtn(ft);
 }
 
-// ── Helper: leagă document la ALOP imediat (fire-and-forget, idempotent) ──────
-function _alopLinkDoc(ft, docId){
+// ── Helper: leagă document la ALOP imediat (idempotent, async cu logging) ──────
+async function _alopLinkDoc(ft, docId){
   const alopId=window._alopContext?.alopId;
   if(!alopId||!docId)return;
-  const isDF=ft==='notafd';
-  const endpoint=isDF?'link-df':'link-ord';
-  const body=isDF?{df_id:docId}:{ord_id:docId};
+  const endpoint=ft==='notafd'?'link-df':'link-ord';
+  const body=ft==='notafd'?{df_id:docId}:{ord_id:docId};
   console.log(`ALOP ${endpoint}: ${alopId} → ${docId}`);
-  fetch(`/api/alop/${encodeURIComponent(alopId)}/${endpoint}`,{
-    method:'POST',credentials:'include',
-    headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
-    body:JSON.stringify(body),
-  }).catch(e=>console.warn(`alop ${endpoint} warn:`,e));
+  try{
+    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/${endpoint}`,{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      body:JSON.stringify(body),
+    });
+    const j=await r.json();
+    if(!r.ok)console.warn(`ALOP ${endpoint} warn:`,j.error);
+  }catch(e){console.warn(`ALOP ${endpoint} error:`,e);}
 }
 
 // ── Salvare în DB ─────────────────────────────────────────────────────────────
@@ -3310,6 +3313,13 @@ async function alopRefreshCurrent(){
 }
 
 function renderAlopDetail(a,container){
+  // FIX 1: Resetează contextul DF/ORD din sesiunea anterioară când ALOP-ul se schimbă
+  const _prevAlopId=window._alopContext?.alopId;
+  if(_prevAlopId&&_prevAlopId!==a.id){
+    ST.docId=ST.docId||{};ST.docId['notafd']=null;ST.docId['ordnt']=null;
+    ST.docStatus=ST.docStatus||{};ST.docStatus['notafd']=null;ST.docStatus['ordnt']=null;
+    ST.docAprobat=ST.docAprobat||{};ST.docAprobat['notafd']=false;ST.docAprobat['ordnt']=false;
+  }
   // Stochează contextul ALOP activ pentru mkFlow (pre-populare semnatari)
   window._alopContext={alopId:a.id,titlu:a.titlu||'',valoare:a.valoare_totala||null,dfSemnatari:a.df_semnatari||[],ordSemnatari:a.ord_semnatari||[]};
   const isCompleted=a.status==='completed';
@@ -3426,20 +3436,19 @@ function renderAlopDetail(a,container){
 // ── Navigare la formulare ─────────────────────────────────────────────────────
 async function alopDeschideDF(alopId){
   try{
+    // FIX 3: citim starea curentă din server — singura sursă de adevăr pentru df_id
     const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
     if(!r.ok)return;
     const {alop}=await r.json();
     if(!alop)return;
     window._alopContext={alopId:alop.id,titlu:alop.titlu||'',valoare:alop.valoare_totala||null,dfSemnatari:alop.df_semnatari||[],ordSemnatari:alop.ord_semnatari||[]};
     if(alop.df_id){
-      // Deschide direct documentul DF existent (nu arăta lista)
+      // DF există pe ALOP → deschide direct
       openDocFromList('df',alop.df_id);
-    }else if(ST.docId?.['notafd']){
-      // FIX: DF creat dar df_id nu e legat pe ALOP — re-leagă imediat
-      _alopLinkDoc('notafd',ST.docId['notafd']);
-      openDocFromList('df',ST.docId['notafd']);
     }else{
-      // DF nou — switch la tab DF și deschide formular gol
+      // DF nou — resetează contextul doc din sesiunea anterioară și creează formular gol
+      ST.docId=ST.docId||{};ST.docId['notafd']=null;
+      ST.docStatus=ST.docStatus||{};ST.docStatus['notafd']=null;
       document.getElementById('section-list').style.display='';
       document.getElementById('section-form').style.display='none';
       switchListTab('df');
@@ -3451,20 +3460,19 @@ async function alopDeschideDF(alopId){
 }
 async function alopDeschideORD(alopId){
   try{
+    // Citim starea curentă din server — singura sursă de adevăr pentru ord_id
     const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
     if(!r.ok)return;
     const {alop}=await r.json();
     if(!alop)return;
     window._alopContext={alopId:alop.id,titlu:alop.titlu||'',valoare:alop.valoare_totala||null,dfSemnatari:alop.df_semnatari||[],ordSemnatari:alop.ord_semnatari||[]};
     if(alop.ord_id){
-      // Deschide direct documentul ORD existent
+      // ORD există pe ALOP → deschide direct
       openDocFromList('ord',alop.ord_id);
-    }else if(ST.docId?.['ordnt']){
-      // FIX: ORD creat dar ord_id nu e legat pe ALOP — re-leagă imediat
-      _alopLinkDoc('ordnt',ST.docId['ordnt']);
-      openDocFromList('ord',ST.docId['ordnt']);
     }else{
-      // ORD nou — switch la tab ORD și deschide formular gol
+      // ORD nou — resetează contextul doc din sesiunea anterioară și creează formular gol
+      ST.docId=ST.docId||{};ST.docId['ordnt']=null;
+      ST.docStatus=ST.docStatus||{};ST.docStatus['ordnt']=null;
       document.getElementById('section-list').style.display='';
       document.getElementById('section-form').style.display='none';
       switchListTab('ord');
