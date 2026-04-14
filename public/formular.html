@@ -1172,6 +1172,23 @@
   </div>
 </div>
 
+<!-- ── Modal Motiv Revizie DF ─────────────────────────────────────────────── -->
+<div class="modal-ov" id="modal-revizie" onclick="if(event.target===this)closeRevizieModal()">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-title">↻ Inițiază revizie document</div>
+    <div style="font-size:.82rem;color:var(--app-muted);margin-bottom:14px">Introduceți motivul pentru care se inițiază revizia acestui Document de Fundamentare.</div>
+    <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Motiv revizie <span style="color:#ef4444">*</span></label>
+    <textarea id="revizie-motiv-input" class="dt" rows="3" maxlength="500"
+      placeholder="ex: actualizare valoare contract, schimbare condiții plată..."
+      style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+    <div id="revizie-modal-err" style="color:#ef4444;font-size:.78rem;min-height:1.2em;margin-top:4px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="btn" onclick="closeRevizieModal()">Anulează</button>
+      <button class="btn primary" onclick="confirmRevizie()">✅ Creează revizie</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const ST = {
   ordnt:{pdf:null,name:null}, notafd:{pdf:null,name:null}, user:null,
@@ -3581,22 +3598,53 @@ async function saveAlopSablon(){
 }
 
 // ── Revizuiri DF ──────────────────────────────────────────────────────────────
-async function dfInitiazaRevizie(dfId){
+let _revizieTargetId = null;
+let _revizieAlopId = null; // setat doar când vine din ALOP
+
+function dfInitiazaRevizie(dfId){
   if(!dfId){setS('ID document lipsă.','err');return;}
-  const motiv=prompt('Motivul revizuirii (ex: actualizare valoare contract, schimbare condiții plată):','');
-  if(motiv===null)return; // anulat
+  _revizieTargetId = dfId;
+  _revizieAlopId = null;
+  const el = document.getElementById('revizie-motiv-input');
+  const err = document.getElementById('revizie-modal-err');
+  if(el) el.value = '';
+  if(err) err.textContent = '';
+  document.getElementById('modal-revizie').style.display = 'flex';
+  setTimeout(()=>el?.focus(), 50);
+}
+
+function closeRevizieModal(){
+  document.getElementById('modal-revizie').style.display = 'none';
+  _revizieTargetId = null;
+  _revizieAlopId = null;
+}
+
+async function confirmRevizie(){
+  const motiv = (document.getElementById('revizie-motiv-input')?.value || '').trim();
+  const errEl = document.getElementById('revizie-modal-err');
+  if(!motiv){if(errEl) errEl.textContent='Motivul este obligatoriu.';return;}
+  if(errEl) errEl.textContent = '';
   try{
-    const r=await fetch(`/api/formulare-df/${encodeURIComponent(dfId)}/revizuieste`,{
+    const r=await fetch(`/api/formulare-df/${encodeURIComponent(_revizieTargetId)}/revizuieste`,{
       method:'POST',credentials:'include',
       headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
       body:JSON.stringify({motiv}),
     });
     const j=await r.json();
-    if(!r.ok||!j.ok){setS(j.detail||j.error||'Eroare la creare revizie','err');return;}
-    setS(`Revizia ${j.df.revizie_nr} creată. Se deschide documentul...`,'ok');
-    // Deschide noua revizie în formular
-    setTimeout(()=>openDocFromList('df',j.df.id),600);
-  }catch(e){setS('Eroare: '+e.message,'err');}
+    if(!r.ok||!j.ok){
+      if(errEl) errEl.textContent=j.detail||j.error||'Eroare la creare revizie';
+      return;
+    }
+    closeRevizieModal();
+    if(_revizieAlopId){
+      // context ALOP — navighează la noul DF în cadrul dosarului
+      setS(`Revizia ${j.df.revizie_nr} creată.`,'ok');
+      await alopDeschideDF(_revizieAlopId);
+    } else {
+      setS(`Revizia ${j.df.revizie_nr} creată. Se deschide documentul...`,'ok');
+      setTimeout(()=>openDocFromList('df',j.df.id),600);
+    }
+  }catch(e){if(errEl) errEl.textContent='Eroare: '+e.message;}
 }
 
 async function alopRevizuiesteDF(alopId,dfId){
@@ -3612,20 +3660,14 @@ async function alopRevizuiesteDF(alopId,dfId){
       };
     }
   }catch(_){}
-  const motiv=prompt('Motivul revizuirii DF (ex: actualizare valoare contract):','');
-  if(motiv===null)return;
-  try{
-    const r=await fetch(`/api/formulare-df/${encodeURIComponent(dfId)}/revizuieste`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
-      body:JSON.stringify({motiv}),
-    });
-    const j=await r.json();
-    if(!r.ok||!j.ok){alert(j.detail||j.error||'Eroare la creare revizie');return;}
-    alert(`Revizia ${j.df.revizie_nr} creată. Se deschide documentul pentru completare.`);
-    // Navighează la noul DF
-    await alopDeschideDF(alopId);
-  }catch(e){alert('Eroare: '+e.message);}
+  _revizieTargetId = dfId;
+  _revizieAlopId = alopId;
+  const el = document.getElementById('revizie-motiv-input');
+  const err = document.getElementById('revizie-modal-err');
+  if(el) el.value = '';
+  if(err) err.textContent = '';
+  document.getElementById('modal-revizie').style.display = 'flex';
+  setTimeout(()=>el?.focus(), 50);
 }
 
 // Integrare mkFlow: în context ALOP → stochează semnatari + id pentru semdoc-initiator

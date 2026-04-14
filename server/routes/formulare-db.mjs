@@ -490,7 +490,16 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
     );
     const nouaRevizie = (maxRows[0]?.max_rev ?? 0) + 1;
 
+    // FIX: Transformă rows_val — col.5 (valt_rev_prec) = col.7 (valt_actualiz) din revizia precedentă, col.6 (influente) = 0
+    const rowsValOrig = Array.isArray(df.rows_val) ? df.rows_val : JSON.parse(df.rows_val || '[]');
+    const rowsValNoi = rowsValOrig.map(r => ({
+      ...r,
+      valt_rev_prec: r.valt_actualiz || 0,
+      influente: 0,
+    }));
+
     // Copiază câmpurile SecA (P1); SecB se resetează explicit la []
+    // rows_val se transmite ca parametru JS (transformat), rows_plati se copiază din SQL
     const { rows: nouRows } = await pool.query(`
       INSERT INTO formulare_df (
         org_id, created_by, nr_unic_inreg,
@@ -516,14 +525,14 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
         compartiment_specialitate,
         obiect_fd_reviz_scurt, obiect_fd_reviz_lung,
         ckbx_stab_tin_cont, ckbx_ramane_suma, ramane_suma,
-        rows_val, rows_plati,
+        $5::jsonb, rows_plati,
         ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
         ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
         ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
         '[]'::jsonb
       FROM formulare_df WHERE id = $1
       RETURNING *
-    `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '']);
+    `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '', JSON.stringify(rowsValNoi)]);
 
     const nou = nouRows[0];
 
