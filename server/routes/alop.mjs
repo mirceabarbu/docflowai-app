@@ -59,6 +59,37 @@ function canTransition(from, to) {
   return (VALID_TRANSITIONS[from] || []).includes(to);
 }
 
+// ── GET /api/alop/:id/debug — diagnostic temporar ────────────────────────────
+router.get('/api/alop/:id/debug', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        a.id, a.status, a.df_id, a.df_flow_id, a.ord_flow_id,
+        a.df_completed_at, a.lichidare_confirmed_at,
+        f1.data->>'status' as df_flow_status,
+        f1.data->>'allSigned' as df_all_signed,
+        fd.status as df_doc_status, fd.aprobat_calc
+      FROM alop_instances a
+      LEFT JOIN flows f1 ON f1.id = a.df_flow_id
+      LEFT JOIN (
+        SELECT id, status,
+          (flow_id IS NOT NULL AND EXISTS(
+            SELECT 1 FROM flows WHERE id=formulare_df.flow_id
+            AND data->>'status'='completed'
+          )) as aprobat_calc
+        FROM formulare_df
+      ) fd ON fd.id = a.df_id
+      WHERE a.id = $1 AND a.org_id = $2
+    `, [req.params.id, actor.orgId]);
+    res.json(rows[0] || {});
+  } catch (e) {
+    logger.error({ err: e }, 'alop debug error');
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── GET /api/alop/sablon — montat ÎNAINTE de /:id ────────────────────────────
 router.get('/api/alop/sablon', async (req, res) => {
   if (requireDb(res)) return;
