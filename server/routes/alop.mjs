@@ -496,21 +496,26 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
     return res.status(403).json({ error: 'forbidden' });
   }
   try {
-    const { notes } = req.body;
+    const { notes, nr_ordin_plata, data_plata, suma_efectiva, observatii } = req.body;
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET plata_confirmed_by=$1,
           plata_confirmed_at=NOW(),
           plata_notes=$2,
+          plata_nr_ordin=$3,
+          plata_data=$4,
+          plata_suma_efectiva=$5,
+          plata_observatii=$6,
           status='completed',
           completed_at=NOW(),
           updated_at=NOW()
-      WHERE id=$3 AND org_id=$4 AND status='plata'
+      WHERE id=$7 AND org_id=$8 AND status='plata'
       RETURNING *
-    `, [actor.userId, notes || '', req.params.id, actor.orgId]);
+    `, [actor.userId, observatii || notes || '', nr_ordin_plata || null, data_plata || null,
+        suma_efectiva || null, observatii || null, req.params.id, actor.orgId]);
 
     if (!rows[0]) return res.status(400).json({ error: 'status_invalid' });
-    res.json({ alop: rows[0] });
+    res.json({ ok: true, alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-plata error');
     res.status(500).json({ error: 'server_error' });

@@ -1229,6 +1229,38 @@
   </div>
 </div>
 
+<!-- ── Modal Confirmare Plată ─────────────────────────────────────────────── -->
+<div id="modal-plata" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closePlataModal()">
+  <div style="background:var(--app-card);border-radius:12px;padding:24px;width:min(480px,92vw);border:1px solid var(--app-border)">
+    <div style="font-weight:600;font-size:1rem;margin-bottom:4px">🏦 Confirmare Plată</div>
+    <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:16px">Înregistrați execuția plății prin Trezoreria Statului.</div>
+    <div style="display:grid;gap:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Nr. ordin de plată <span style="color:#ef4444">*</span></label>
+          <input id="plata-nr-ordin" class="dt" type="text" placeholder="Ex: OP-2026-042"/>
+        </div>
+        <div>
+          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Data plății <span style="color:#ef4444">*</span></label>
+          <input id="plata-data" class="dt" type="date"/>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Suma efectiv plătită (lei) <span style="color:#ef4444">*</span></label>
+        <input id="plata-suma" class="dt" type="number" min="0" step="0.01" placeholder="0.00"/>
+      </div>
+      <div>
+        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Observații (opțional)</label>
+        <textarea id="plata-observatii" rows="2" class="dt" placeholder="Mențiuni privind plata..."></textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn" onclick="closePlataModal()">Anulează</button>
+      <button class="btn primary" onclick="confirmPlata()">🏦 Confirmă plata</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const ST = {
   ordnt:{pdf:null,name:null}, notafd:{pdf:null,name:null}, user:null,
@@ -3355,7 +3387,7 @@ function renderAlopDetail(a,container){
     </div>
     ${stepperHtml}
     ${actionsHtml?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${actionsHtml}</div>`:''}
-    ${isCompleted?`<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;text-align:center;color:#10b981;font-weight:600">✅ ALOP finalizat complet — ${fmtDate(a.completed_at)}</div>`:''}
+    ${isCompleted?`<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;text-align:center;color:#10b981;font-weight:600">✅ ALOP finalizat complet — Angajare → Lichidare → Ordonanțare → Plată executată<br><span style="font-size:.8rem;font-weight:400;opacity:.8">${fmtDate(a.completed_at)}</span></div>`:''}
   `;
   // Auto-refresh status la 15s cât ALOP e activ (detectează tranziții după semnare)
   clearInterval(window._alopRefreshInterval);
@@ -3510,18 +3542,48 @@ async function alopOrdCompleted(id){
   }catch(e){alert('Eroare: '+e.message);}
 }
 
-async function openAlopConfirmPlata(id){
-  const notes=prompt('Note privind plata (opțional):','');
-  if(notes===null)return;
+let _plataAlopId=null;
+
+function openAlopConfirmPlata(id){
+  _plataAlopId=id;
+  ['plata-nr-ordin','plata-suma','plata-observatii']
+    .forEach(eid=>{const el=document.getElementById(eid);if(el)el.value='';});
+  const dtEl=document.getElementById('plata-data');
+  if(dtEl)dtEl.value=new Date().toISOString().split('T')[0];
+  document.getElementById('modal-plata').style.display='flex';
+  setTimeout(()=>document.getElementById('plata-nr-ordin')?.focus(),50);
+}
+
+function closePlataModal(){
+  document.getElementById('modal-plata').style.display='none';
+  _plataAlopId=null;
+}
+
+async function confirmPlata(){
+  if(!_plataAlopId)return;
+  const nr=(document.getElementById('plata-nr-ordin')?.value||'').trim();
+  const dt=document.getElementById('plata-data')?.value||'';
+  const suma=parseFloat(document.getElementById('plata-suma')?.value)||0;
+  if(!nr){alert('Completați numărul ordinului de plată.');return;}
+  if(!dt){alert('Completați data plății.');return;}
+  if(suma<=0){alert('Completați suma efectiv plătită.');return;}
+  const body={
+    nr_ordin_plata:nr,
+    data_plata:dt,
+    suma_efectiva:suma,
+    observatii:(document.getElementById('plata-observatii')?.value||'').trim(),
+  };
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/confirma-plata`,{
+    const r=await fetch(`/api/alop/${encodeURIComponent(_plataAlopId)}/confirma-plata`,{
       method:'POST',credentials:'include',
       headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
-      body:JSON.stringify({notes}),
+      body:JSON.stringify(body),
     });
     const data=await r.json();
-    if(!r.ok)throw new Error(data.error||'server_error');
-    openAlop(id);loadAlopStats();
+    if(!r.ok||!data.ok){alert(data.error||'Eroare confirmare plată');return;}
+    closePlataModal();
+    openAlop(_plataAlopId);
+    loadAlop();loadAlopStats();
   }catch(e){alert('Eroare: '+e.message);}
 }
 
