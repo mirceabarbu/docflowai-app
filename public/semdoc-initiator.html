@@ -2187,14 +2187,18 @@ async function signFromFluxuri(flowId) {
             try {
               // Link document (df_id / ord_id) dacă nu e deja legat
               if (_prefDocId) {
-                await fetch(`/api/alop/${_alopId}/${_isDfFlow ? "link-df" : "link-ord"}`, {
+                const _lnkDoc = _isDfFlow ? "link-df" : "link-ord";
+                console.log(`ALOP ${_lnkDoc}: ${_alopId} → ${_prefDocId}`);
+                await fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
                   method: "POST", credentials: "include",
                   headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
                   body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
                 }).catch(() => {});
               }
               // Link fluxul de semnare
-              await fetch(`/api/alop/${_alopId}/${_isDfFlow ? "link-df-flow" : "link-ord-flow"}`, {
+              const _lnkFlow = _isDfFlow ? "link-df-flow" : "link-ord-flow";
+              console.log(`ALOP ${_lnkFlow}: ${_alopId} → ${j.flowId}`);
+              await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
                 method: "POST", credentials: "include",
                 headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
                 body: JSON.stringify({ flow_id: j.flowId })

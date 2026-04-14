@@ -382,7 +382,7 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
     `, [flow_id, req.params.id, actor.orgId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
-    res.json({ alop: rows[0] });
+    res.json({ ok: true, alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop link-df-flow error');
     res.status(500).json({ error: 'server_error' });
@@ -467,11 +467,12 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
       UPDATE alop_instances
       SET ord_id=$1, updated_at=NOW()
       WHERE id=$2 AND org_id=$3
+        AND (ord_id IS NULL OR ord_id = $1)
       RETURNING *
     `, [ord_id, req.params.id, actor.orgId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
-    res.json({ alop: rows[0] });
+    res.json({ ok: true, alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop link-ord error');
     res.status(500).json({ error: 'server_error' });
@@ -494,7 +495,7 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
     `, [flow_id, req.params.id, actor.orgId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
-    res.json({ alop: rows[0] });
+    res.json({ ok: true, alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop link-ord-flow error');
     res.status(500).json({ error: 'server_error' });

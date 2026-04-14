@@ -2358,6 +2358,7 @@ function _alopLinkDoc(ft, docId){
   const isDF=ft==='notafd';
   const endpoint=isDF?'link-df':'link-ord';
   const body=isDF?{df_id:docId}:{ord_id:docId};
+  console.log(`ALOP ${endpoint}: ${alopId} → ${docId}`);
   fetch(`/api/alop/${encodeURIComponent(alopId)}/${endpoint}`,{
     method:'POST',credentials:'include',
     headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
@@ -3461,6 +3462,10 @@ async function alopDeschideORD(alopId){
     if(alop.ord_id){
       // Deschide direct documentul ORD existent
       openDocFromList('ord',alop.ord_id);
+    }else if(ST.docId?.['ordnt']){
+      // FIX: ORD creat dar ord_id nu e legat pe ALOP — re-leagă imediat
+      _alopLinkDoc('ordnt',ST.docId['ordnt']);
+      openDocFromList('ord',ST.docId['ordnt']);
     }else{
       // ORD nou — switch la tab ORD și deschide formular gol
       document.getElementById('section-list').style.display='';
