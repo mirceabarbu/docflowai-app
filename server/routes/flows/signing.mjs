@@ -315,6 +315,11 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
           if (_fireWebhook && data.orgId) _fireWebhook(data.orgId, 'flow.completed', data).catch(() => {});
           // ALOP: auto-tranziție dosar la finalizarea fluxului de semnare legat
           try {
+            // Marchează DF ca aprobat dacă flow_id e setat pe formulare_df
+            await pool.query(
+              `UPDATE formulare_df SET aprobat = true, status = 'aprobat', updated_at = NOW() WHERE flow_id = $1`,
+              [flowId]
+            ).catch(() => {});
             const [alopDf, alopOrd] = await Promise.all([
               pool.query(`SELECT id, status FROM alop_instances WHERE df_flow_id=$1 AND cancelled_at IS NULL`, [flowId]),
               pool.query(`SELECT id, status FROM alop_instances WHERE ord_flow_id=$1 AND cancelled_at IS NULL`, [flowId])

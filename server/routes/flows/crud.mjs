@@ -187,6 +187,13 @@ const createFlow = async (req, res) => {
     const initIsSigner = first && first.email.toLowerCase() === initEmail.toLowerCase();
     if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
+    // PASUL 3: Leagă flow_id de formulare_df dacă meta.dfId e prezent
+    if (body.meta?.dfId && pool) {
+      pool.query(
+        `UPDATE formulare_df SET flow_id = $1, updated_at = NOW() WHERE id = $2`,
+        [flowId, Number(body.meta.dfId)]
+      ).catch(e => logger.warn({ err: e }, 'formulare_df link flow_id non-fatal'));
+    }
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId, eventType: 'FLOW_CREATED', actorIp: _getIp(req), actorEmail: initEmail, payload: { docName: data.docName, signersCount: normalizedSigners.length, urgent: data.urgent } });
 

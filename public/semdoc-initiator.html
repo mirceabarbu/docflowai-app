@@ -1878,6 +1878,23 @@ async function signFromFluxuri(flowId) {
         if (!_restored) {
           setDefaults();
         }
+        // Preluare PDF + meta din formular.html via sessionStorage (action=new_flow_prefill)
+        if (new URLSearchParams(location.search).get("action") === "new_flow_prefill") {
+          const _prePdf   = sessionStorage.getItem("docflow_prefill_pdf");
+          const _preName  = sessionStorage.getItem("docflow_prefill_name");
+          const _preEmail = sessionStorage.getItem("docflow_prefill_email");
+          if (_prePdf) {
+            pdfB64 = _prePdf;
+            if ($("docName") && _preName)   $("docName").value   = _preName;
+            if ($("initEmail") && _preEmail) $("initEmail").value = _preEmail;
+            if (typeof setPdfInfo === "function") setPdfInfo(`PDF preluat: ${_preName || "(fără nume)"}`);
+            if (typeof showAncoreDetectArea === "function") showAncoreDetectArea();
+            sessionStorage.removeItem("docflow_prefill_pdf");
+            sessionStorage.removeItem("docflow_prefill_name");
+            sessionStorage.removeItem("docflow_prefill_type");
+            sessionStorage.removeItem("docflow_prefill_email");
+          }
+        }
       })();
 
       // Completare automată câmpuri inițiator din profilul utilizatorului autentificat
@@ -2111,6 +2128,16 @@ async function signFromFluxuri(flowId) {
           pdfB64: pdfB64 ? (pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64) : null,
           flowType: getDocType(),
           urgent: !!($("urgentCheck")?.checked),
+          // PASUL 3: meta pentru legătura flux ↔ formulare_df (dfId + docType)
+          meta: (() => {
+            const _dfId  = sessionStorage.getItem("docflow_prefill_df_id");
+            const _dtype = sessionStorage.getItem("docflow_prefill_doc_type");
+            if (!_dfId && !_dtype) return undefined;
+            const m = {};
+            if (_dfId)  m.dfId    = Number(_dfId);
+            if (_dtype) m.docType = _dtype;
+            return m;
+          })(),
         };
 
         try {
@@ -2126,6 +2153,9 @@ async function signFromFluxuri(flowId) {
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
           clearFormState(); // flux creat cu succes — sterge draft + IDB
           resetAncoreState(); // resetează câmpurile ancore detectate
+          // Curăță meta-datele prefill din sessionStorage
+          sessionStorage.removeItem("docflow_prefill_df_id");
+          sessionStorage.removeItem("docflow_prefill_doc_type");
 
           // F-06: Upload documente suport (async, non-blocking pentru UX)
           if (_attachFiles.length) {
