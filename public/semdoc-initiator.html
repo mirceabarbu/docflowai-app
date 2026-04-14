@@ -2128,13 +2128,14 @@ async function signFromFluxuri(flowId) {
           pdfB64: pdfB64 ? (pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64) : null,
           flowType: getDocType(),
           urgent: !!($("urgentCheck")?.checked),
-          // PASUL 3: meta pentru legătura flux ↔ formulare_df (dfId + docType)
+          // PASUL 3: meta pentru legătura flux ↔ formulare_df/ord (dfId/ordId + docType)
           meta: (() => {
-            const _dfId  = sessionStorage.getItem("docflow_prefill_df_id");
+            const _docId = sessionStorage.getItem("docflow_prefill_doc_id");
             const _dtype = sessionStorage.getItem("docflow_prefill_doc_type");
-            if (!_dfId && !_dtype) return undefined;
+            if (!_docId && !_dtype) return undefined;
             const m = {};
-            if (_dfId)  m.dfId    = Number(_dfId);
+            if (_docId && _dtype === 'notafd') m.dfId  = Number(_docId);
+            if (_docId && _dtype === 'ordnt')  m.ordId = Number(_docId);
             if (_dtype) m.docType = _dtype;
             return m;
           })(),
@@ -2153,9 +2154,7 @@ async function signFromFluxuri(flowId) {
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
           clearFormState(); // flux creat cu succes — sterge draft + IDB
           resetAncoreState(); // resetează câmpurile ancore detectate
-          // Curăță meta-datele prefill din sessionStorage
-          sessionStorage.removeItem("docflow_prefill_df_id");
-          sessionStorage.removeItem("docflow_prefill_doc_type");
+          // Curăță meta-datele prefill din sessionStorage (doc_type după link-flow block)
 
           // F-06: Upload documente suport (async, non-blocking pentru UX)
           if (_attachFiles.length) {
@@ -2176,8 +2175,8 @@ async function signFromFluxuri(flowId) {
               });
             } catch(_) {}
             sessionStorage.removeItem("docflow_prefill_doc_id");
-            sessionStorage.removeItem("docflow_prefill_doc_type");
           }
+          sessionStorage.removeItem("docflow_prefill_doc_type"); // cleanup indiferent de ramura if
 
           // ALOP: leagă fluxul de semnare la dosarul ALOP (non-fatal)
           const _alopIdForFlow = sessionStorage.getItem("alop_id_for_flow");
