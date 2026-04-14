@@ -1084,6 +1084,14 @@ const MIGRATIONS = [
         SET revizie_nr = 0, este_revizie = FALSE
         WHERE revizie_nr IS NULL;
     `
+  },
+  {
+    id: '057_formulare_df_revizie_an_urmator',
+    sql: `
+      ALTER TABLE formulare_df
+        ADD COLUMN IF NOT EXISTS este_revizie_an_urmator BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS total_val_prec          NUMERIC(15,2);
+    `
   }
 ];
 

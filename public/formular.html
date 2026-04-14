@@ -736,6 +736,7 @@
 <!-- ═══ NOTAFD ══════════════════════════════════════════════════════════════ -->
 <div id="form-notafd" style="display:none">
 <div class="locked-bar" id="locked-bar-notafd"></div>
+<div id="banner-an-urmator-notafd" style="display:none;max-width:1020px;margin:4px auto 6px;padding:10px 16px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:8px;font-size:.82rem;color:#93c5fd">ℹ️ Revizie pentru angajamente an următor — înregistrare în max. 3 zile lucrătoare conform OMF 1140/2025</div>
 <div id="motiv-bar-notafd" style="display:none;max-width:1020px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-notafd"></span></div>
 <div class="actions" id="actions-notafd"></div>
 <div class="df-alop-ctx" id="alop-ctx-notafd"></div>
@@ -2052,9 +2053,14 @@ function renderActions(ft){
   const B=(cls,txt,fn)=>`<button class="btn ${cls}" onclick="${fn}">${txt}</button>`;
   const BNou='';
   let html='';
+  // Banner "an următor" — vizibil doar pentru notafd revizie an următor
+  const bannerAnUrm=document.getElementById('banner-an-urmator-notafd');
+  if(bannerAnUrm) bannerAnUrm.style.display=(ft==='notafd'&&ST.docRevizieAnUrmator?.[ft])?'':'none';
+
   if(ST.docAprobat?.[ft]){
     const fid=ST.docFlowId?.[ft];
     const revNr=ST.docRevizieNr?.[ft]||0;
+    const isAnUrm=ft==='notafd'&&ST.docRevizieAnUrmator?.[ft];
     const revBadge=ft==='notafd'&&revNr>0?`<span class="df-revizie-badge" style="margin-right:4px">Revizia ${revNr}</span>`:'';
     div.innerHTML=revBadge
       +(fid?B('teal','📄 Descarcă PDF semnat',`viewFlowPdf('${fid}')`):'')
@@ -2122,9 +2128,22 @@ async function openDoc(ft,id){
     ST.docFlowId[ft]=doc.flow_id||null;
     ST.docRevizieNr=ST.docRevizieNr||{};
     ST.docRevizieNr[ft]=doc.revizie_nr||0;
+    ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};
+    ST.docRevizieAnUrmator[ft]=doc.este_revizie_an_urmator||false;
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
+
+    // FIX 3: Precompletare automată pct.4 pentru revizie "an următor" (revizie_nr===1, pct.4 necompletat)
+    if(ft==='notafd'&&doc.este_revizie_an_urmator&&doc.revizie_nr===1&&doc.ckbx_ramane_suma!=='1'){
+      const ckRam=document.getElementById('n-ck-ramane');
+      const inpRam=document.getElementById('n-ramana');
+      if(ckRam&&inpRam){
+        ckRam.checked=true;
+        inpRam.value=doc.total_val_prec!=null?String(doc.total_val_prec):'0';
+        p4toggle('ramane');
+      }
+    }
 
     // Captură
     try{

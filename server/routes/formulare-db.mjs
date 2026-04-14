@@ -490,13 +490,17 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
     );
     const nouaRevizie = (maxRows[0]?.max_rev ?? 0) + 1;
 
-    // FIX: Transformă rows_val — col.5 (valt_rev_prec) = col.7 (valt_actualiz) din revizia precedentă, col.6 (influente) = 0
+    // Transformă rows_val — col.5 (valt_rev_prec) = col.7 (valt_actualiz) din revizia precedentă, col.6 (influente) = 0
     const rowsValOrig = Array.isArray(df.rows_val) ? df.rows_val : JSON.parse(df.rows_val || '[]');
     const rowsValNoi = rowsValOrig.map(r => ({
       ...r,
       valt_rev_prec: r.valt_actualiz || 0,
       influente: 0,
     }));
+
+    // FIX 1: Detectează dacă revizia e pentru "an următor" (checkbox ckbx_ang_leg_emise_ct_an_urm)
+    const isAnUrmator = df.ckbx_ang_leg_emise_ct_an_urm === '1';
+    const totalValPrec = rowsValOrig.reduce((s, r) => s + (parseFloat(r.valt_actualiz) || 0), 0);
 
     // Copiază câmpurile SecA (P1); SecB se resetează explicit la []
     // rows_val se transmite ca parametru JS (transformat), rows_plati se copiază din SQL
@@ -514,6 +518,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
         ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
         ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
         ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
+        este_revizie_an_urmator, total_val_prec,
         rows_ctrl
       )
       SELECT
@@ -529,10 +534,11 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
         ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
         ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
         ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
+        $6::boolean, $7::numeric,
         '[]'::jsonb
       FROM formulare_df WHERE id = $1
       RETURNING *
-    `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '', JSON.stringify(rowsValNoi)]);
+    `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '', JSON.stringify(rowsValNoi), isAnUrmator, totalValPrec]);
 
     const nou = nouRows[0];
 
@@ -543,8 +549,8 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
       [nou.id, req.params.id]
     );
 
-    logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, actor: actor.email }, 'formulare-df revizie creata');
-    res.json({ ok: true, df: nou, mesaj: `Revizia ${nouaRevizie} creată cu succes` });
+    logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, isAnUrmator, actor: actor.email }, 'formulare-df revizie creata');
+    res.json({ ok: true, df: { ...nou, total_val_prec: totalValPrec }, mesaj: `Revizia ${nouaRevizie} creată cu succes` });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df revizuieste error');
     res.status(500).json({ error: 'server_error', detail: e.message });
