@@ -350,13 +350,16 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET df_id=$1, status='angajare', updated_at=NOW()
-      WHERE id=$2 AND org_id=$3
+      SET df_id = $1,
+          updated_at = NOW(),
+          status = CASE WHEN status = 'draft' THEN 'angajare' ELSE status END
+      WHERE id = $2 AND org_id = $3
+        AND (df_id IS NULL OR df_id = $1)
       RETURNING *
     `, [df_id, req.params.id, actor.orgId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
-    res.json({ alop: rows[0] });
+    res.json({ ok: true, alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop link-df error');
     res.status(500).json({ error: 'server_error' });

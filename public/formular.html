@@ -2351,6 +2351,20 @@ function newDoc(ft){
   document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.remove('active'));
 }
 
+// ── Helper: leagă document la ALOP imediat (fire-and-forget, idempotent) ──────
+function _alopLinkDoc(ft, docId){
+  const alopId=window._alopContext?.alopId;
+  if(!alopId||!docId)return;
+  const isDF=ft==='notafd';
+  const endpoint=isDF?'link-df':'link-ord';
+  const body=isDF?{df_id:docId}:{ord_id:docId};
+  fetch(`/api/alop/${encodeURIComponent(alopId)}/${endpoint}`,{
+    method:'POST',credentials:'include',
+    headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+    body:JSON.stringify(body),
+  }).catch(e=>console.warn(`alop ${endpoint} warn:`,e));
+}
+
 // ── Salvare în DB ─────────────────────────────────────────────────────────────
 async function saveDoc(ft){
   if(ST.docAprobat?.[ft])return;
@@ -2364,7 +2378,10 @@ async function saveDoc(ft){
     if(!docId){
       r=await fetch(ftApi(ft),{method:'POST',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
-      if(r.ok&&j.ok){ST.docId[ft]=j.document.id;ST.docStatus[ft]='draft';ST.docRole[ft]='p1';}
+      if(r.ok&&j.ok){
+        ST.docId[ft]=j.document.id;ST.docStatus[ft]='draft';ST.docRole[ft]='p1';
+        _alopLinkDoc(ft,j.document.id); // FIX: leagă imediat la ALOP la primul save
+      }
     }else{
       r=await fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
@@ -2626,6 +2643,7 @@ async function completeAsP2(ft){
     const j=await r.json();
     if(!r.ok||!j.ok){setS(j.error||'Eroare','err');return;}
     ST.docStatus[ft]='completed';
+    _alopLinkDoc(ft,ST.docId[ft]); // FIX: re-leagă la ALOP după completare (idempotent)
     lockAll(ft,true);setLockedBar(ft,'Secțiunea dvs. a fost finalizată și trimisă înapoi la P1.','info');
     renderActions(ft);refreshDocs(ft);
     setS('Finalizat cu succes! Redirecționare...','ok');
@@ -3418,6 +3436,10 @@ async function alopDeschideDF(alopId){
     if(alop.df_id){
       // Deschide direct documentul DF existent (nu arăta lista)
       openDocFromList('df',alop.df_id);
+    }else if(ST.docId?.['notafd']){
+      // FIX: DF creat dar df_id nu e legat pe ALOP — re-leagă imediat
+      _alopLinkDoc('notafd',ST.docId['notafd']);
+      openDocFromList('df',ST.docId['notafd']);
     }else{
       // DF nou — switch la tab DF și deschide formular gol
       document.getElementById('section-list').style.display='';
