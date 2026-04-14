@@ -1099,6 +1099,15 @@ const MIGRATIONS = [
       ALTER TABLE formulare_ord
         ADD COLUMN IF NOT EXISTS img2 TEXT;
     `
+  },
+  {
+    id: '059_alop_lichidare_documente',
+    sql: `
+      ALTER TABLE alop_instances
+        ADD COLUMN IF NOT EXISTS lichidare_nr_factura   TEXT,
+        ADD COLUMN IF NOT EXISTS lichidare_data_factura DATE,
+        ADD COLUMN IF NOT EXISTS lichidare_nr_pv        TEXT;
+    `
   }
 ];
 

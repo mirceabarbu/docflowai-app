@@ -392,17 +392,20 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
       return res.status(403).json({ error: 'forbidden' });
     }
 
-    const { notes } = req.body;
+    const { notes, observatii, nr_factura, data_factura, nr_pv } = req.body;
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET lichidare_confirmed_by=$1,
           lichidare_confirmed_at=NOW(),
           lichidare_notes=$2,
+          lichidare_nr_factura=$3,
+          lichidare_data_factura=$4,
+          lichidare_nr_pv=$5,
           status='ordonantare',
           updated_at=NOW()
-      WHERE id=$3 AND org_id=$4 AND status='lichidare'
+      WHERE id=$6 AND org_id=$7 AND status='lichidare'
       RETURNING *
-    `, [actor.userId, notes || '', req.params.id, actor.orgId]);
+    `, [actor.userId, observatii || notes || '', nr_factura || null, data_factura || null, nr_pv || null, req.params.id, actor.orgId]);
 
     if (!rows[0]) return res.status(400).json({ error: 'status_invalid' });
     res.json({ alop: rows[0] });

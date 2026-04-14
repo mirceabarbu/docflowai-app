@@ -1197,6 +1197,38 @@
   </div>
 </div>
 
+<!-- ── Modal Confirmare Lichidare ─────────────────────────────────────────── -->
+<div id="modal-lichidare" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeLichidareModal()">
+  <div style="background:var(--app-card);border-radius:12px;padding:24px;width:min(520px,92vw);border:1px solid var(--app-border)">
+    <div style="font-weight:600;font-size:1rem;margin-bottom:4px">✔️ Confirmare Lichidare</div>
+    <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:16px">Confirmați că bunurile/serviciile au fost recepționate și documentele justificative sunt în ordine.</div>
+    <div style="display:grid;gap:10px">
+      <div>
+        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Nr. factură / document justificativ</label>
+        <input id="lich-nr-factura" class="dt" type="text" placeholder="Ex: FAC-2026-001"/>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Data facturii</label>
+          <input id="lich-data-factura" class="dt" type="date"/>
+        </div>
+        <div>
+          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Nr. proces verbal recepție</label>
+          <input id="lich-nr-pv" class="dt" type="text" placeholder="Ex: PV-2026-001"/>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Observații (opțional)</label>
+        <textarea id="lich-observatii" rows="2" class="dt" placeholder="Mențiuni privind recepția..."></textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn" onclick="closeLichidareModal()">Anulează</button>
+      <button class="btn primary" onclick="confirmLichidare()">✔️ Confirm recepția</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const ST = {
   ordnt:{pdf:null,name:null}, notafd:{pdf:null,name:null}, user:null,
@@ -3429,18 +3461,40 @@ async function alopDfCompleted(id){
   }catch(e){alert('Eroare: '+e.message);}
 }
 
-async function openAlopConfirmLichidare(id){
-  const notes=prompt('Note privind lichidarea (opțional):','');
-  if(notes===null)return;
+let _lichidareAlopId=null;
+
+function openAlopConfirmLichidare(id){
+  _lichidareAlopId=id;
+  ['lich-nr-factura','lich-data-factura','lich-nr-pv','lich-observatii']
+    .forEach(eid=>{const el=document.getElementById(eid);if(el)el.value='';});
+  document.getElementById('modal-lichidare').style.display='flex';
+  setTimeout(()=>document.getElementById('lich-nr-factura')?.focus(),50);
+}
+
+function closeLichidareModal(){
+  document.getElementById('modal-lichidare').style.display='none';
+  _lichidareAlopId=null;
+}
+
+async function confirmLichidare(){
+  if(!_lichidareAlopId)return;
+  const body={
+    nr_factura:   (document.getElementById('lich-nr-factura')?.value||'').trim(),
+    data_factura: document.getElementById('lich-data-factura')?.value||null,
+    nr_pv:        (document.getElementById('lich-nr-pv')?.value||'').trim(),
+    observatii:   (document.getElementById('lich-observatii')?.value||'').trim(),
+  };
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/confirma-lichidare`,{
+    const r=await fetch(`/api/alop/${encodeURIComponent(_lichidareAlopId)}/confirma-lichidare`,{
       method:'POST',credentials:'include',
       headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
-      body:JSON.stringify({notes}),
+      body:JSON.stringify(body),
     });
     const data=await r.json();
-    if(!r.ok)throw new Error(data.error||'server_error');
-    openAlop(id);loadAlopStats();
+    if(!r.ok||!data.ok){alert(data.error||'Eroare confirmare lichidare');return;}
+    closeLichidareModal();
+    openAlop(_lichidareAlopId);
+    loadAlop();loadAlopStats();
   }catch(e){alert('Eroare: '+e.message);}
 }
 
