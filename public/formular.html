@@ -586,8 +586,8 @@
     </div>
     <div class="dl req">Nr. unic înregistrare Document de Fundamentare</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px">
-      <select id="o-df-sel" class="di" style="max-width:280px;font-size:11px" onchange="selectDfAprobat()">
-        <option value="">— selectare DF aprobat —</option>
+      <select id="o-df-sel" class="di" style="max-width:280px;font-size:11px;background:#0d1630;color:#e8eeff;border:1px solid rgba(255,255,255,.15);-webkit-appearance:none;appearance:none" onchange="selectDfAprobat()">
+        <option value="" style="background:#0d1630;color:#e8eeff">— selectare DF aprobat —</option>
       </select>
       <input id="o-nrUnic" type="hidden"/>
       <input type="hidden" id="o-df-id"/>
@@ -1205,18 +1205,24 @@
     <div class="modal-title">✔️ Confirmare Lichidare</div>
     <div style="font-size:.8rem;color:var(--app-muted);margin-top:-4px">Confirmați că bunurile/serviciile au fost recepționate și documentele justificative sunt în ordine.</div>
     <div style="display:grid;gap:10px">
-      <div>
-        <label class="alop-lbl">Nr. factură / document justificativ</label>
-        <input id="lich-nr-factura" type="text" placeholder="Ex: FAC-2026-001"/>
-      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label class="alop-lbl">Nr. factură / document justificativ</label>
+          <input id="lich-nr-factura" type="text" placeholder="Ex: FAC-2026-001"/>
+        </div>
         <div>
           <label class="alop-lbl">Data facturii</label>
           <input id="lich-data-factura" type="date"/>
         </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
           <label class="alop-lbl">Nr. proces verbal recepție</label>
           <input id="lich-nr-pv" type="text" placeholder="Ex: PV-2026-001"/>
+        </div>
+        <div>
+          <label class="alop-lbl">Data proces verbal</label>
+          <input id="lich-data-pv" type="date"/>
         </div>
       </div>
       <div>
@@ -2529,7 +2535,10 @@ function _validateOrd(){
   const req=(id,label)=>{if(!_vf(id)){errs.push({id,label});return false;}return true;};
 
   req('o-nr','Număr ORD');
-  req('o-nrUnic','Numărul DF asociat (completați sau selectați din lista DF-uri aprobate)');
+  // DF selectat — validăm selectul vizibil (o-nrUnic e hidden, nu poate fi marcat)
+  if(!(document.getElementById('o-df-sel')?.value||'').trim()){
+    errs.push({id:'o-df-sel',label:'Selectați un Document de Fundamentare aprobat din lista de mai sus'});
+  }
   req('o-den','Instituția publică (auto-fill din DF)');
   req('o-cif','CIF instituție (auto-fill din DF)');
 
@@ -2829,11 +2838,11 @@ async function loadDfAprobate(){
     _dfAprobate=j.documents||[];
     const sel=document.getElementById('o-df-sel');
     if(!sel)return;
-    sel.innerHTML='<option value="">— selectare DF aprobat —</option>'
+    sel.innerHTML='<option value="" style="background:#0d1630;color:#e8eeff">— selectare DF aprobat —</option>'
       +_dfAprobate.map(d=>{
         const nr=d.nr_unic_inreg?`DF ${_escH(d.nr_unic_inreg)}`:'DF fără număr';
         const sub=d.subtitlu_df?` — ${_escH(d.subtitlu_df.slice(0,50))}`:'';
-        return`<option value="${_escH(d.id)}">${nr}${sub}</option>`;
+        return`<option value="${_escH(d.id)}" style="background:#0d1630;color:#e8eeff">${nr}${sub}</option>`;
       }).join('');
   }catch(_){}
 }
@@ -3402,7 +3411,7 @@ function renderAlopDetail(a,container){
     const id=_escH(a.id);
     if(!a.df_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
-    }else if(a.df_flow_id){
+    }else if(a.status==='angajare'&&a.df_flow_id){
       actionsHtml+=`<span style="color:var(--app-muted);font-size:.85rem">🔄 DF pe fluxul de semnare — în așteptare</span>`;
     }else if(a.df_id&&!a.df_flow_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Deschide DF</button>`;
@@ -3614,7 +3623,7 @@ let _lichidareAlopId=null;
 
 function openAlopConfirmLichidare(id){
   _lichidareAlopId=id;
-  ['lich-nr-factura','lich-data-factura','lich-nr-pv','lich-observatii']
+  ['lich-nr-factura','lich-data-factura','lich-nr-pv','lich-data-pv','lich-observatii']
     .forEach(eid=>{const el=document.getElementById(eid);if(el)el.value='';});
   document.getElementById('modal-lichidare').style.display='flex';
   setTimeout(()=>document.getElementById('lich-nr-factura')?.focus(),50);
@@ -3631,6 +3640,7 @@ async function confirmLichidare(){
     nr_factura:   (document.getElementById('lich-nr-factura')?.value||'').trim(),
     data_factura: document.getElementById('lich-data-factura')?.value||null,
     nr_pv:        (document.getElementById('lich-nr-pv')?.value||'').trim(),
+    data_pv:      document.getElementById('lich-data-pv')?.value||null,
     observatii:   (document.getElementById('lich-observatii')?.value||'').trim(),
   };
   try{

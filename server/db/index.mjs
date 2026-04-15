@@ -1118,6 +1118,13 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS plata_suma_efectiva NUMERIC(15,2),
         ADD COLUMN IF NOT EXISTS plata_observatii    TEXT;
     `
+  },
+  {
+    id: '061_alop_lichidare_data_pv',
+    sql: `
+      ALTER TABLE alop_instances
+        ADD COLUMN IF NOT EXISTS lichidare_data_pv DATE;
+    `
   }
 ];
 

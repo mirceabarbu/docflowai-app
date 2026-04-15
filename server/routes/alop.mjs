@@ -417,7 +417,7 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
   try {
     // Guard: doar lichidare_confirmed_by sau admin/org_admin
     const { rows: cur } = await pool.query(
-      'SELECT lichidare_confirmed_by FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT lichidare_confirmed_by, status FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!cur[0]) return res.status(404).json({ error: 'not_found' });
@@ -426,8 +426,10 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
     if (!isAdmin && !isAssigned && cur[0].lichidare_confirmed_by !== null) {
       return res.status(403).json({ error: 'forbidden' });
     }
+    logger.info({ alopId: req.params.id, currentStatus: cur[0].status }, 'confirma-lichidare attempt');
 
-    const { notes, observatii, nr_factura, data_factura, nr_pv } = req.body;
+    const { notes, observatii, nr_factura, data_factura, nr_pv, data_pv } = req.body;
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET lichidare_confirmed_by=$1,
@@ -436,13 +438,17 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
           lichidare_nr_factura=$3,
           lichidare_data_factura=$4,
           lichidare_nr_pv=$5,
+          lichidare_data_pv=$6,
           status='ordonantare',
           updated_at=NOW()
-      WHERE id=$6 AND org_id=$7 AND status IN ('lichidare','ordonantare')
+      WHERE id=$7 AND org_id=$8 AND status IN ('lichidare','ordonantare')
       RETURNING *
-    `, [actor.userId, observatii || notes || '', nr_factura || null, data_factura || null, nr_pv || null, req.params.id, actor.orgId]);
+    `, [actor.userId, observatii || notes || '', nr_factura || null, data_factura || null, nr_pv || null, data_pv || null, req.params.id, actor.orgId]);
 
-    if (!rows[0]) return res.status(400).json({ error: 'status_invalid' });
+    if (!rows[0]) {
+      logger.warn({ alopId: req.params.id, currentStatus: cur[0].status }, 'confirma-lichidare status_invalid — no row updated');
+      return res.status(400).json({ error: 'status_invalid' });
+    }
     res.json({ alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-lichidare error');
