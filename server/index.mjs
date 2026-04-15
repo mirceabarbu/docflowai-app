@@ -1577,7 +1577,7 @@ app.use('/api/v4/audit',     auditV4Router);
 app.get('/api/_dbdebug', async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT f.id as df_id, f.titlu, f.status as df_status, f.flow_id,
+      SELECT f.id as df_id, f.status as df_status, f.flow_id,
              a.id as alop_id, a.status as alop_status,
              a.df_id as alop_df_id, a.df_flow_id
       FROM formulare_df f
