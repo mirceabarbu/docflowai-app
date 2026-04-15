@@ -3386,7 +3386,7 @@ function renderAlopDetail(a,container){
     if(a.status==='draft'||(a.status==='angajare'&&!a.df_id)){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
     }else if(a.status==='angajare'&&a.df_id&&!a.df_flow_id){
-      actionsHtml+=`<button class="btn primary" onclick="alopLaunchDfFlow('${id}','${_escH(a.df_id)}')">✍️ Lansează flux semnare DF</button>`;
+      actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">🔏 Deschide DF pentru semnare</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id&&!a.df_completed_at){
       actionsHtml+=`<button class="btn primary" onclick="alopDfCompleted('${id}')">✅ Marchează DF semnat complet</button>`;
     }else if(a.status==='lichidare'){
