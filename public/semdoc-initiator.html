@@ -2197,6 +2197,7 @@ async function signFromFluxuri(flowId) {
               // Link fluxul de semnare
               const _lnkFlow = _isDfFlow ? "link-df-flow" : "link-ord-flow";
               console.log(`ALOP ${_lnkFlow}: ${_alopId} → ${j.flowId}`);
+              console.log('📤 Calling link-df-flow:', _alopId, 'flowId:', j.flowId);
               await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
                 method: "POST", credentials: "include",
                 headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },

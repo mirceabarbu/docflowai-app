@@ -368,6 +368,7 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
 
 // ── POST /api/alop/:id/link-df-flow — leagă fluxul de semnare DF ─────────────
 router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
+  console.log('🔗 LINK-DF-FLOW called:', req.params.id, 'flow_id:', req.body?.flow_id);
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
