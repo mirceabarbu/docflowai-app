@@ -1573,23 +1573,6 @@ app.use('/api/v4/forms',     formsV4Router);
 app.use('/api/v4/analytics', analyticsV4Router);
 app.use('/api/v4/audit',     auditV4Router);
 
-// ── TEMP DEBUG — DE STERS DUPA TEST ──────────────────────────────────────
-app.get('/api/_dbdebug', async (req, res) => {
-  try {
-    const { rows } = await pool.query(`
-      SELECT f.id as df_id, f.status as df_status, f.flow_id,
-             a.id as alop_id, a.status as alop_status,
-             a.df_id as alop_df_id, a.df_flow_id
-      FROM formulare_df f
-      LEFT JOIN alop_instances a ON a.df_id = f.id OR a.df_flow_id = f.flow_id
-      ORDER BY f.created_at DESC LIMIT 10
-    `);
-    res.json({ rows });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-// ── /TEMP DEBUG ───────────────────────────────────────────────────────────
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
