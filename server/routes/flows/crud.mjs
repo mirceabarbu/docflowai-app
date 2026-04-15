@@ -238,6 +238,22 @@ const createFlow = async (req, res) => {
          WHERE ord_id = $2 AND ord_flow_id IS NULL AND cancelled_at IS NULL`,
         [flowId, body.meta.ordId]
       ).catch(e => logger.warn({ err: e }, 'alop link ord_flow_id non-fatal'));
+      // Edge case: fluxul tocmai creat e deja completed → tranziție ALOP la plata
+      try {
+        const flowRow2 = await pool.query(`SELECT data FROM flows WHERE id = $1`, [flowId]);
+        const fData2 = flowRow2.rows[0]?.data;
+        if (fData2?.completed === true || fData2?.status === 'completed') {
+          await pool.query(
+            `UPDATE formulare_ord SET status='aprobat', updated_at=NOW()
+             WHERE flow_id=$1 AND status!='aprobat'`, [flowId]
+          );
+          await pool.query(
+            `UPDATE alop_instances
+             SET status='plata', ord_completed_at=NOW(), updated_at=NOW()
+             WHERE ord_flow_id=$1 AND status='ordonantare'`, [flowId]
+          );
+        }
+      } catch(e) { logger.warn({ err: e }, 'alop ord edge-case completed transition non-fatal'); }
     }
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId, eventType: 'FLOW_CREATED', actorIp: _getIp(req), actorEmail: initEmail, payload: { docName: data.docName, signersCount: normalizedSigners.length, urgent: data.urgent } });
