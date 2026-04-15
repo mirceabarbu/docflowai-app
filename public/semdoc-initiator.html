@@ -2185,6 +2185,7 @@ async function signFromFluxuri(flowId) {
           // ALOP: leagă fluxul de semnare la dosarul ALOP (non-fatal)
           const _alopId      = _urlParams.get('alop_id')        || sessionStorage.getItem('alop_id_for_flow')?.split('|')[0];
           const _alopDocType = _urlParams.get('alop_doc_type')  || sessionStorage.getItem('alop_id_for_flow')?.split('|')[1];
+          console.log('🔍 ALOP check:', '_alopId=', _alopId, 'j.flowId=', j.flowId);
           if (_alopId && j.flowId) {
             const _isDfFlow = _alopDocType === "notafd";
             try {
@@ -2196,17 +2197,18 @@ async function signFromFluxuri(flowId) {
                   method: "POST", credentials: "include",
                   headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
                   body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
-                }).catch(() => {});
+                }).catch(e => console.error('❌ link-df FAILED:', e));
               }
               // Link fluxul de semnare
               const _lnkFlow = _isDfFlow ? "link-df-flow" : "link-ord-flow";
               console.log(`ALOP ${_lnkFlow}: ${_alopId} → ${j.flowId}`);
               console.log('📤 Calling link-df-flow:', _alopId, 'flowId:', j.flowId);
+              console.log('📤 link-df-flow sending:', _alopId, j.flowId);
               await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
                 method: "POST", credentials: "include",
                 headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
                 body: JSON.stringify({ flow_id: j.flowId })
-              }).catch(() => {});
+              }).catch(e => console.error('❌ link-df-flow FAILED:', e));
             } catch(_) {}
             sessionStorage.removeItem("alop_id_for_flow");
           }
