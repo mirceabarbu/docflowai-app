@@ -3351,7 +3351,11 @@ function renderAlopDetail(a,container){
     {label:'Angajare',   icon:'📋',color:'#3b82f6',
      done:!!a.df_completed_at||isCompleted,
      active:a.status==='angajare',
-     sub:a.df_id?`DF: ${a.df_nr||a.df_id.slice(0,8)}`:'Fără DF'},
+     sub:(!a.df_id)?'Fără DF'
+        :(a.status==='angajare'&&a.df_flow_id)?'🔄 DF pe fluxul de semnare — în așteptare'
+        :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?'✅ DF aprobat'
+        :(a.status==='angajare'&&!a.df_flow_id)?'📝 DF în lucru'
+        :`DF: ${a.df_nr||a.df_id.slice(0,8)}`},
     {label:'Lichidare',  icon:'✔️',color:'#f59e0b',
      done:!!a.lichidare_confirmed_at||isCompleted,
      active:a.status==='lichidare',
