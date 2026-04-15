@@ -45,6 +45,8 @@ const createFlow = async (req, res) => {
   try {
     if (requireDb(res)) return;
     const body = req.body || {};
+    console.log('🔍 FLOW CREATE meta:', JSON.stringify(body.meta));
+    console.log('🔍 FLOW CREATE dfId type:', typeof body.meta?.dfId, '=', body.meta?.dfId);
     const docName  = String(body.docName  || '').trim();
     const initName = String(body.initName || '').trim();
     const initEmail = String(body.initEmail || '').trim();
