@@ -2130,8 +2130,9 @@ async function signFromFluxuri(flowId) {
           urgent: !!($("urgentCheck")?.checked),
           // PASUL 3: meta pentru legătura flux ↔ formulare_df/ord (dfId/ordId + docType)
           meta: (() => {
-            const _docId = sessionStorage.getItem("docflow_prefill_doc_id");
-            const _dtype = sessionStorage.getItem("docflow_prefill_doc_type");
+            const _up = new URLSearchParams(location.search);
+            const _docId = _up.get('prefill_doc_id')   || sessionStorage.getItem("docflow_prefill_doc_id");
+            const _dtype = _up.get('prefill_doc_type') || sessionStorage.getItem("docflow_prefill_doc_type");
             if (!_docId && !_dtype) return undefined;
             const m = {};
             if (_docId && _dtype === 'notafd') m.dfId  = _docId;  // UUID string
@@ -2162,9 +2163,12 @@ async function signFromFluxuri(flowId) {
             await _uploadAttachments(j.flowId);
           }
 
+          // Citire parametri prefill + ALOP din URL (primar) sau sessionStorage (fallback)
+          const _urlParams   = new URLSearchParams(location.search);
+          const _prefDocId   = _urlParams.get('prefill_doc_id')   || sessionStorage.getItem("docflow_prefill_doc_id");
+          const _prefDocType = _urlParams.get('prefill_doc_type') || sessionStorage.getItem("docflow_prefill_doc_type");
+
           // Auto-asociere document formular (dacă vine din prefill)
-          const _prefDocId   = sessionStorage.getItem("docflow_prefill_doc_id");
-          const _prefDocType = sessionStorage.getItem("docflow_prefill_doc_type");
           if (_prefDocId && _prefDocType && j.flowId) {
             const _pfApi = _prefDocType === "ordnt" ? "/api/formulare-ord" : "/api/formulare-df";
             try {
@@ -2179,9 +2183,9 @@ async function signFromFluxuri(flowId) {
           sessionStorage.removeItem("docflow_prefill_doc_type"); // cleanup indiferent de ramura if
 
           // ALOP: leagă fluxul de semnare la dosarul ALOP (non-fatal)
-          const _alopIdForFlow = sessionStorage.getItem("alop_id_for_flow");
-          if (_alopIdForFlow && j.flowId) {
-            const [_alopId, _alopDocType] = _alopIdForFlow.split("|");
+          const _alopId      = _urlParams.get('alop_id')        || sessionStorage.getItem('alop_id_for_flow')?.split('|')[0];
+          const _alopDocType = _urlParams.get('alop_doc_type')  || sessionStorage.getItem('alop_id_for_flow')?.split('|')[1];
+          if (_alopId && j.flowId) {
             const _isDfFlow = _alopDocType === "notafd";
             try {
               // Link document (df_id / ord_id) dacă nu e deja legat

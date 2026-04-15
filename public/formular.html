@@ -3530,13 +3530,12 @@ async function alopLaunchDfFlow(alopId,dfId){
       else console.warn('ALOP link-df warn:',j.error);
     }catch(e){console.warn('ALOP link-df error:',e);}
   }
-  // Pas 2: setează sessionStorage pentru semdoc-initiator
-  const ft='notafd';
-  sessionStorage.setItem('alop_id_for_flow',alopId+'|'+ft);
-  sessionStorage.setItem('docflow_prefill_doc_id',dfId||'');
-  sessionStorage.setItem('docflow_prefill_doc_type',ft);
-  // Pas 3: navighează la semdoc-initiator
-  location.href='/semdoc-initiator.html?action=new_flow_prefill';
+  // Pas 2: navighează la semdoc-initiator cu parametri în URL (nu sessionStorage)
+  location.href = '/semdoc-initiator.html?action=new_flow_prefill'
+    + '&alop_id=' + encodeURIComponent(alopId)
+    + '&alop_doc_type=notafd'
+    + '&prefill_doc_id=' + encodeURIComponent(dfId||'')
+    + '&prefill_doc_type=notafd';
 }
 async function alopLaunchOrdFlow(alopId,ordId){
   // Pas 1: leagă ord_id la ALOP ÎNAINTE de orice navigare
@@ -3552,13 +3551,12 @@ async function alopLaunchOrdFlow(alopId,ordId){
       else console.warn('ALOP link-ord warn:',j.error);
     }catch(e){console.warn('ALOP link-ord error:',e);}
   }
-  // Pas 2: setează sessionStorage pentru semdoc-initiator
-  const ft='ordnt';
-  sessionStorage.setItem('alop_id_for_flow',alopId+'|'+ft);
-  sessionStorage.setItem('docflow_prefill_doc_id',ordId||'');
-  sessionStorage.setItem('docflow_prefill_doc_type',ft);
-  // Pas 3: navighează la semdoc-initiator
-  location.href='/semdoc-initiator.html?action=new_flow_prefill';
+  // Pas 2: navighează la semdoc-initiator cu parametri în URL (nu sessionStorage)
+  location.href = '/semdoc-initiator.html?action=new_flow_prefill'
+    + '&alop_id=' + encodeURIComponent(alopId)
+    + '&alop_doc_type=ordnt'
+    + '&prefill_doc_id=' + encodeURIComponent(ordId||'')
+    + '&prefill_doc_type=ordnt';
 }
 
 async function alopDfCompleted(id){
