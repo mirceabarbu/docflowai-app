@@ -438,7 +438,7 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
           lichidare_nr_pv=$5,
           status='ordonantare',
           updated_at=NOW()
-      WHERE id=$6 AND org_id=$7 AND status='lichidare'
+      WHERE id=$6 AND org_id=$7 AND status IN ('lichidare','ordonantare')
       RETURNING *
     `, [actor.userId, observatii || notes || '', nr_factura || null, data_factura || null, nr_pv || null, req.params.id, actor.orgId]);
 

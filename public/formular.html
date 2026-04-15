@@ -349,8 +349,9 @@
     /* DF/ORD info banner */
     .df-info-banner{background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:#b0a0ff;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     /* Modal dark fields */
-    #alop-modal input:not([type=checkbox]):not([type=radio]),#alop-modal textarea,#alop-modal select{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e8eeff;font-size:13px;padding:9px 12px;width:100%;box-sizing:border-box;font-family:inherit}
-    #alop-modal label.alop-lbl{font-size:11px;color:#6b82b8;font-weight:600;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block}
+    #alop-modal input:not([type=checkbox]):not([type=radio]),#alop-modal textarea,#alop-modal select,
+    #modal-lichidare input:not([type=checkbox]):not([type=radio]),#modal-lichidare textarea{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e8eeff;font-size:13px;padding:9px 12px;width:100%;box-sizing:border-box;font-family:inherit}
+    #alop-modal label.alop-lbl,#modal-lichidare label.alop-lbl{font-size:11px;color:#6b82b8;font-weight:600;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block}
     .df-row-1{grid-template-columns:1fr}
     .df-row-2{grid-template-columns:1fr 1fr}
     .df-row-3{grid-template-columns:1fr 1fr 1fr}
@@ -587,7 +588,7 @@
       <select id="o-df-sel" class="di" style="max-width:280px;font-size:11px" onchange="selectDfAprobat()">
         <option value="">— selectare DF aprobat —</option>
       </select>
-      <input id="o-nrUnic" class="di" maxlength="20" style="max-width:160px" placeholder="sau nr. manual..."/>
+      <input id="o-nrUnic" type="hidden"/>
       <input type="hidden" id="o-df-id"/>
     </div>
   </div>
@@ -1198,31 +1199,31 @@
 </div>
 
 <!-- ── Modal Confirmare Lichidare ─────────────────────────────────────────── -->
-<div id="modal-lichidare" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeLichidareModal()">
-  <div style="background:var(--app-card);border-radius:12px;padding:24px;width:min(520px,92vw);border:1px solid var(--app-border)">
-    <div style="font-weight:600;font-size:1rem;margin-bottom:4px">✔️ Confirmare Lichidare</div>
-    <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:16px">Confirmați că bunurile/serviciile au fost recepționate și documentele justificative sunt în ordine.</div>
+<div class="modal-ov" id="modal-lichidare" onclick="if(event.target===this)closeLichidareModal()">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-title">✔️ Confirmare Lichidare</div>
+    <div style="font-size:.8rem;color:var(--app-muted);margin-top:-4px">Confirmați că bunurile/serviciile au fost recepționate și documentele justificative sunt în ordine.</div>
     <div style="display:grid;gap:10px">
       <div>
-        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Nr. factură / document justificativ</label>
-        <input id="lich-nr-factura" class="dt" type="text" placeholder="Ex: FAC-2026-001"/>
+        <label class="alop-lbl">Nr. factură / document justificativ</label>
+        <input id="lich-nr-factura" type="text" placeholder="Ex: FAC-2026-001"/>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
-          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Data facturii</label>
-          <input id="lich-data-factura" class="dt" type="date"/>
+          <label class="alop-lbl">Data facturii</label>
+          <input id="lich-data-factura" type="date"/>
         </div>
         <div>
-          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Nr. proces verbal recepție</label>
-          <input id="lich-nr-pv" class="dt" type="text" placeholder="Ex: PV-2026-001"/>
+          <label class="alop-lbl">Nr. proces verbal recepție</label>
+          <input id="lich-nr-pv" type="text" placeholder="Ex: PV-2026-001"/>
         </div>
       </div>
       <div>
-        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Observații (opțional)</label>
-        <textarea id="lich-observatii" rows="2" class="dt" placeholder="Mențiuni privind recepția..."></textarea>
+        <label class="alop-lbl">Observații (opțional)</label>
+        <textarea id="lich-observatii" rows="2" placeholder="Mențiuni privind recepția..."></textarea>
       </div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
       <button class="btn" onclick="closeLichidareModal()">Anulează</button>
       <button class="btn primary" onclick="confirmLichidare()">✔️ Confirm recepția</button>
     </div>
@@ -2275,8 +2276,12 @@ async function openDoc(ft,id){
       lockAll(ft,true);
       lockCaptureAndAttachments(ft,true);
       document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
+      // ORD P1: col.4 (suma_ordonantata_plata) rămâne editabilă pentru a putea lansa fluxul
+      if(ft==='ordnt'&&role==='p1'){
+        document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>e.disabled=false);
+      }
       const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
-      setLockedBar(ft,`Document complet${_revNr}${role==='p1'?' — puteți genera PDF':'.'}`,'info');
+      setLockedBar(ft,`Document complet${_revNr}${role==='p1'?' — completați col.4 și lansați fluxul de semnare':'.'}`,'info');
     }else{
       setLockedBar(ft,'');
     }
