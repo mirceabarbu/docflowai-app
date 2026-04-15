@@ -1339,6 +1339,12 @@ function _applyAutoFill(ft, resetDate){
     }
   }catch(e){/* non-fatal — câmpurile rămân editabile */}
 
+  // ── Restaurează _alopContext din sessionStorage după reload ─────────────
+  if (!window._alopContext) {
+    const _saved = sessionStorage.getItem('_alopContext');
+    if (_saved) try { window._alopContext = JSON.parse(_saved); } catch(e) {}
+  }
+
   // ── Aplică auto-fill în ambele formulare (condiție: câmpurile goale) ────
   _applyAutoFill('ordnt');
   _applyAutoFill('notafd');
@@ -2357,7 +2363,8 @@ async function _alopLinkDoc(ft, docId){
       body:JSON.stringify(body),
     });
     const j=await r.json();
-    if(!r.ok)console.warn(`ALOP ${endpoint} warn:`,j.error);
+    if(r.ok)console.log(`✅ link-df ok:`,alopId,docId);
+    else console.warn(`ALOP ${endpoint} warn:`,j.error);
   }catch(e){console.warn(`ALOP ${endpoint} error:`,e);}
 }
 
@@ -2916,7 +2923,7 @@ function _updateBackBtn(ft){
   const inAlop=!!(window._alopContext?.alopId);
   if(inAlop){
     btn.textContent='← Înapoi la ALOP';
-    btn.onclick=()=>{window._alopContext=null;showListSection('alop');};
+    btn.onclick=()=>{window._alopContext=null;sessionStorage.removeItem('_alopContext');showListSection('alop');};
   }else{
     btn.textContent=ft==='notafd'?'← Înapoi la lista DF':'← Înapoi la lista ORD';
     btn.onclick=()=>showListSection();
@@ -2943,7 +2950,7 @@ function newDocFromList(){
 function switchListTab(type){
   _lstState.type=type;_lstState.page=1;
   // Curăță contextul ALOP la navigare manuală din/spre alt tab decât DF/ORD
-  if(type!=='df'&&type!=='ord')window._alopContext=null;
+  if(type!=='df'&&type!=='ord'){window._alopContext=null;sessionStorage.removeItem('_alopContext');}
   document.getElementById('ltab-df').classList.toggle('active',type==='df');
   document.getElementById('ltab-ord').classList.toggle('active',type==='ord');
   document.getElementById('ltab-alop').classList.toggle('active',type==='alop');
@@ -3303,6 +3310,7 @@ async function openAlop(id){
 function closeAlopDetail(){
   clearInterval(window._alopRefreshInterval);
   window._alopContext=null;
+  sessionStorage.removeItem('_alopContext');
   window._currentAlopId=null;
   document.getElementById('alop-list-panel').style.display='';
   document.getElementById('alop-detail-panel').style.display='none';
@@ -3323,6 +3331,7 @@ function renderAlopDetail(a,container){
   }
   // Stochează contextul ALOP activ pentru mkFlow (pre-populare semnatari)
   window._alopContext={alopId:a.id,titlu:a.titlu||'',valoare:a.valoare_totala||null,dfSemnatari:a.df_semnatari||[],ordSemnatari:a.ord_semnatari||[]};
+  sessionStorage.setItem('_alopContext',JSON.stringify(window._alopContext));
   const isCompleted=a.status==='completed';
   const isCancelled=a.status==='cancelled';
   const fmtDate=iso=>iso?new Date(iso).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
@@ -3443,6 +3452,7 @@ async function alopDeschideDF(alopId){
     const {alop}=await r.json();
     if(!alop)return;
     window._alopContext={alopId:alop.id,titlu:alop.titlu||'',valoare:alop.valoare_totala||null,dfSemnatari:alop.df_semnatari||[],ordSemnatari:alop.ord_semnatari||[]};
+    sessionStorage.setItem('_alopContext',JSON.stringify(window._alopContext));
     if(alop.df_id){
       // DF există pe ALOP → deschide direct
       openDocFromList('df',alop.df_id);
@@ -3479,6 +3489,7 @@ async function alopDeschideORD(alopId){
     const {alop}=await r.json();
     if(!alop)return;
     window._alopContext={alopId:alop.id,titlu:alop.titlu||'',valoare:alop.valoare_totala||null,dfSemnatari:alop.df_semnatari||[],ordSemnatari:alop.ord_semnatari||[]};
+    sessionStorage.setItem('_alopContext',JSON.stringify(window._alopContext));
     if(alop.ord_id){
       // ORD există pe ALOP → deschide direct
       openDocFromList('ord',alop.ord_id);
@@ -3905,6 +3916,7 @@ async function alopRevizuiesteDF(alopId,dfId){
         alopId:d.alop.id,titlu:d.alop.titlu||'',valoare:d.alop.valoare_totala||null,
         dfSemnatari:d.alop.df_semnatari||[],ordSemnatari:d.alop.ord_semnatari||[],
       };
+      sessionStorage.setItem('_alopContext',JSON.stringify(window._alopContext));
     }
   }catch(_){}
   _revizieTargetId = dfId;
