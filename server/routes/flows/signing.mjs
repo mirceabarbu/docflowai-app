@@ -291,7 +291,7 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
     if (nextIdx !== -1) signers.forEach((s, i) => { if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending'; });
     data.signers = signers;
     const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
-    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); /* urgent păstrat intenționat — badge URGENT rămâne vizibil în admin și după finalizare */ data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
+    if (allDone) { data.completed = true; data.status = 'completed'; data.completedAt = new Date().toISOString(); /* urgent păstrat intenționat — badge URGENT rămâne vizibil în admin și după finalizare */ data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
     const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
     if (nextSigner) { nextSigner.emailSent = true; nextSigner.notifiedAt = new Date().toISOString(); }
     await saveFlow(flowId, data);

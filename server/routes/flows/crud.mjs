@@ -179,6 +179,9 @@ const createFlow = async (req, res) => {
       initFunctie, institutie: initInstitutie, compartiment: initCompartiment,
       meta: body.meta || {}, flowType: body.flowType || 'tabel',
       urgent: !!(body.urgent),
+      status: 'active',
+      completed: false,
+      completedAt: null,
       originalPdfB64: body.pdfB64 ?? null,  // PDF curat, fără footer — pentru reinitiate
       pdfB64: finalPdfB64,
       signers: normalizedSigners,

@@ -101,7 +101,7 @@ router.get('/api/formulare-df', async (req, res) => {
         fd.flow_id, fd.revizie_nr, fd.este_revizie,
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
-        CASE WHEN fd.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
+        CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
              THEN true ELSE false END AS aprobat
       FROM formulare_df fd
       JOIN users p1 ON p1.id = fd.created_by
@@ -133,7 +133,7 @@ router.get('/api/formulare-df/aprobate', async (req, res) => {
       WHERE fd.org_id = $1
         AND fd.deleted_at IS NULL
         AND fd.flow_id IS NOT NULL
-        AND f.data->>'status' = 'completed'
+        AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
       ORDER BY fd.updated_at DESC
     `, [actor.orgId]);
     res.json({ ok: true, documents: rows });
@@ -156,7 +156,7 @@ router.get('/api/formulare-df/:id', async (req, res) => {
       SELECT fd.*,
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
-        CASE WHEN fd.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
+        CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
              THEN true ELSE false END AS aprobat
       FROM formulare_df fd
       JOIN users p1 ON p1.id = fd.created_by
@@ -465,7 +465,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
   try {
     const { rows: origRows } = await pool.query(`
       SELECT fd.*,
-        (fd.flow_id IS NOT NULL AND f.data->>'status' = 'completed') AS aprobat
+        (fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)) AS aprobat
       FROM formulare_df fd
       LEFT JOIN flows f ON f.id = fd.flow_id
       WHERE fd.id=$1 AND fd.org_id=$2 AND fd.deleted_at IS NULL
@@ -628,7 +628,7 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         fd.nr_unic_inreg AS df_nr, fd.rows_ctrl AS df_rows_ctrl,
-        CASE WHEN fo.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
+        CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
              THEN true ELSE false END AS aprobat
       FROM formulare_ord fo
       JOIN users p1 ON p1.id = fo.created_by
@@ -1138,7 +1138,7 @@ router.get('/api/formulare/list', async (req, res) => {
           fd.flow_id,
           COALESCE(fd.revizie_nr, 0) AS revizie_nr,
           COALESCE(fd.este_revizie, FALSE) AS este_revizie,
-          CASE WHEN fd.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
+          CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
           COALESCE(u2.nume, u2.email) AS p2,
@@ -1198,7 +1198,7 @@ router.get('/api/formulare/list', async (req, res) => {
           fo.beneficiar AS titlu,
           fo.created_by,
           fo.flow_id,
-          CASE WHEN fo.flow_id IS NOT NULL AND f.data->>'status' = 'completed'
+          CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
           COALESCE(u2.nume, u2.email) AS p2,
