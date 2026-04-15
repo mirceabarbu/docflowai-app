@@ -2294,7 +2294,8 @@ async function openDoc(ft,id){
         document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>e.disabled=false);
       }
       const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
-      setLockedBar(ft,`Document complet${_revNr}${role==='p1'?' — completați col.4 și lansați fluxul de semnare':'.'}`,'info');
+      const _completedMsg=ft==='ordnt'&&role==='p1'?' — completați col.4 și lansați fluxul de semnare':ft==='notafd'&&role==='p1'?' — puteți genera PDF și lansa fluxul de semnare':'.';
+      setLockedBar(ft,`Document complet${_revNr}${_completedMsg}`,'info');
     }else{
       setLockedBar(ft,'');
     }
