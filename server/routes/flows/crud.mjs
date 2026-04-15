@@ -205,6 +205,24 @@ const createFlow = async (req, res) => {
         [flowId, body.meta.ordId, orgId]
       ).catch(e => logger.warn({ err: e }, 'formulare_ord link flow_id non-fatal'));
     }
+    // PASUL 4: Auto link-df-flow / ord-flow pe alop_instances
+    if (body.meta?.dfId && pool) {
+      await pool.query(
+        `UPDATE alop_instances
+         SET df_flow_id = $1, updated_at = NOW()
+         WHERE df_id = $2 AND df_flow_id IS NULL AND cancelled_at IS NULL`,
+        [flowId, body.meta.dfId]
+      ).catch(e => logger.warn({ err: e }, 'alop link df_flow_id non-fatal'));
+      console.log('🔗 AUTO link-df-flow:', body.meta.dfId, '->', flowId);
+    }
+    if (body.meta?.ordId && pool) {
+      await pool.query(
+        `UPDATE alop_instances
+         SET ord_flow_id = $1, updated_at = NOW()
+         WHERE ord_id = $2 AND ord_flow_id IS NULL AND cancelled_at IS NULL`,
+        [flowId, body.meta.ordId]
+      ).catch(e => logger.warn({ err: e }, 'alop link ord_flow_id non-fatal'));
+    }
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId, eventType: 'FLOW_CREATED', actorIp: _getIp(req), actorEmail: initEmail, payload: { docName: data.docName, signersCount: normalizedSigners.length, urgent: data.urgent } });
 
