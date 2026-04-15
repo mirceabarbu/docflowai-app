@@ -287,6 +287,7 @@
     .df-lock-ok{background:rgba(29,200,174,.08);color:#5dcaa5}
     /* Override light form elements inside df-block */
     .df-block-body .di,.df-block-body .dt{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--app-text);font-size:12px;padding:6px 10px;font-family:inherit}
+    .df-block-body select.di{background:#0d1630;color:#e8eeff;-webkit-appearance:none;appearance:none}
     .df-block-body .di:focus,.df-block-body .dt:focus{border-color:rgba(108,79,240,.5);background:rgba(108,79,240,.04)}
     .df-block-body .di.err,.df-block-body .dt.err{border-color:#f87171;background:rgba(248,113,113,.08)}
     .df-block-body .di:disabled,.df-block-body .dt:disabled{opacity:.45;cursor:not-allowed}
@@ -600,7 +601,7 @@
     <span class="df-badge df-badge-p2">P2</span>
     <span class="df-block-title">Responsabil CAB — Tabel angajamente &amp; captură</span>
     <div class="df-role-tags">
-      <span class="df-role-tag df-role-no" id="ord-p2-tag-p1">P1 blocat</span>
+      <span class="df-role-tag df-role-can" id="ord-p2-tag-p1">P1 editează col.4</span>
       <span class="df-role-tag df-role-can" id="ord-p2-tag-p2">P2 editează col. 2-3</span>
     </div>
   </div>
@@ -2116,7 +2117,13 @@ function applyOrdRoleState(status,role){
       if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-warn';p1Lock.textContent='🔒 Document trimis la Responsabil Buget. Așteptați completarea.';}
     }
     _dfUpdateProgress('ordnt','p2');
-  }else if(status==='completed'||status==='aprobat'){
+  }else if(status==='completed'){
+    if(p1Body)p1Body.classList.add('locked');
+    // p2Body NU e blocat vizual — P1 mai editează col.4 înainte de lansarea fluxului
+    if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Document complet — completați col.4 și lansați fluxul de semnare.';}
+    if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-ok';p2Lock.textContent='✓ Date CAB completate.';}
+    _dfUpdateProgress('ordnt','sign');
+  }else if(status==='aprobat'){
     if(p1Body)p1Body.classList.add('locked');
     if(p2Body)p2Body.classList.add('locked');
     if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Document aprobat.';}
