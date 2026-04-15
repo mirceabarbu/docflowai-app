@@ -214,6 +214,22 @@ const createFlow = async (req, res) => {
         [flowId, body.meta.dfId]
       ).catch(e => logger.warn({ err: e }, 'alop link df_flow_id non-fatal'));
       console.log('🔗 AUTO link-df-flow:', body.meta.dfId, '->', flowId);
+      // Edge case: fluxul tocmai creat e deja completed → tranziție ALOP la lichidare
+      try {
+        const flowRow = await pool.query(`SELECT data FROM flows WHERE id = $1`, [flowId]);
+        const fData = flowRow.rows[0]?.data;
+        if (fData?.completed === true || fData?.status === 'completed') {
+          await pool.query(
+            `UPDATE formulare_df SET status='aprobat', updated_at=NOW()
+             WHERE flow_id=$1 AND status!='aprobat'`, [flowId]
+          );
+          await pool.query(
+            `UPDATE alop_instances
+             SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()
+             WHERE df_flow_id=$1 AND status='angajare'`, [flowId]
+          );
+        }
+      } catch(e) { logger.warn({ err: e }, 'alop edge-case completed transition non-fatal'); }
     }
     if (body.meta?.ordId && pool) {
       await pool.query(
