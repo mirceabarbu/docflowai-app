@@ -1663,7 +1663,17 @@ function mkFlow(ft){
   sessionStorage.setItem('docflow_prefill_doc_id',ST.docId[ft]||'');
   sessionStorage.setItem('docflow_prefill_doc_type',ft);
   setS('Redirecționare către configurare flux...','info');
-  setTimeout(()=>{location.href='/semdoc-initiator.html?action=new_flow_prefill';},600);
+  setTimeout(()=>{
+    const _alopCtx = window._alopContext;
+    let _semUrl = '/semdoc-initiator.html?action=new_flow_prefill';
+    if (_alopCtx?.alopId && ST.docId?.[ft]) {
+      _semUrl += `&alop_id=${encodeURIComponent(_alopCtx.alopId)}`
+               + `&alop_doc_type=${ft==='notafd'?'notafd':'ordnt'}`
+               + `&prefill_doc_id=${encodeURIComponent(ST.docId[ft])}`
+               + `&prefill_doc_type=${ft==='notafd'?'notafd':'ordnt'}`;
+    }
+    location.href = _semUrl;
+  },600);
 }
 
 /* ── AUTO-SAVE DRAFT ─────────────────────────────────────────────────────────
