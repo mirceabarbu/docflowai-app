@@ -1404,7 +1404,11 @@ function remAtt(idx,lid,did,btn){
 let oI=0,nVI=0,nPI=0,nCI=0;
 function addOR(){const i=oI++;const tr=document.createElement('tr');tr.id='or-'+i;
   tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="number" min="0" value="0" data-f="receptii" oninput="calcORRow(this)"/></td><td><input type="number" min="0" value="0" data-f="plati_anterioare" oninput="calcORRow(this)"/></td><td><input type="number" min="0" value="0" data-f="suma_ordonantata_plata" oninput="calcORRow(this)"/></td><td style="background:rgba(255,255,255,0.07)"><input type="number" value="0" data-f="receptii_neplatite" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="5=(col.2)-(col.3)-(col.4) — calculat automat"/></td><td><button class="bdel" onclick="delR('or-${i}');upTot()">✕</button></td>`;
-  document.getElementById('o-tbody').appendChild(tr);}
+  document.getElementById('o-tbody').appendChild(tr);
+  // Dacă P1 e în modul completed (col.4 editabil), noile rânduri moștenesc același drept
+  if(ST.docRole?.ordnt==='p1'){
+    tr.querySelectorAll('[data-f="suma_ordonantata_plata"]').forEach(e=>e.disabled=false);
+  }}
 function calcORRow(el){
   const tr=el.closest('tr');
   const c2=parseFloat(tr.querySelector('[data-f="receptii"]')?.value)||0;
@@ -2289,9 +2293,10 @@ async function openDoc(ft,id){
       lockAll(ft,true);
       lockCaptureAndAttachments(ft,true);
       document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
-      // ORD P1: col.4 (suma_ordonantata_plata) rămâne editabilă pentru a putea lansa fluxul
+      // ORD P1: col.4 (suma_ordonantata_plata) rămâne editabilă + butonul Adaugă rând
       if(ft==='ordnt'&&role==='p1'){
         document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>e.disabled=false);
+        document.querySelectorAll('#bloc-ord-p2 .badd').forEach(e=>e.disabled=false);
       }
       const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
       const _completedMsg=ft==='ordnt'&&role==='p1'?' — completați col.4 și lansați fluxul de semnare':ft==='notafd'&&role==='p1'?' — puteți genera PDF și lansa fluxul de semnare':'.';
@@ -2570,6 +2575,16 @@ function _scrollToFirstErr(errs){
 
 // ── Submit la P2 ─────────────────────────────────────────────────────────────
 async function showP2Modal(ft){
+  // Pre-check rapid pentru ORD — câmpurile obligatorii critice
+  if(ft==='ordnt'){
+    const missingNr=!_vf('o-nr');
+    const missingDf=!(document.getElementById('o-df-sel')?.value||'').trim();
+    const missingSuma=![...document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]')].some(i=>(parseFloat(i.value)||0)>0);
+    if(missingNr||missingDf||missingSuma){
+      alert('Completați Nr. ORD, selectați DF-ul și completați col.4 (Suma ordonantată)');
+      return;
+    }
+  }
   // VALIDARE SINCRONĂ — înainte de orice altceva
   _clearValErr();
   const valErrs = ft==='notafd' ? _validateDf() : _validateOrd();
