@@ -191,13 +191,13 @@ const createFlow = async (req, res) => {
     if (body.meta?.dfId && pool) {
       pool.query(
         `UPDATE formulare_df SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
-        [flowId, Number(body.meta.dfId), orgId]
+        [flowId, body.meta.dfId, orgId]
       ).catch(e => logger.warn({ err: e }, 'formulare_df link flow_id non-fatal'));
     }
     if (body.meta?.ordId && pool) {
       pool.query(
         `UPDATE formulare_ord SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
-        [flowId, Number(body.meta.ordId), orgId]
+        [flowId, body.meta.ordId, orgId]
       ).catch(e => logger.warn({ err: e }, 'formulare_ord link flow_id non-fatal'));
     }
     // R-02: audit_log

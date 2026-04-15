@@ -2134,8 +2134,8 @@ async function signFromFluxuri(flowId) {
             const _dtype = sessionStorage.getItem("docflow_prefill_doc_type");
             if (!_docId && !_dtype) return undefined;
             const m = {};
-            if (_docId && _dtype === 'notafd') m.dfId  = Number(_docId);
-            if (_docId && _dtype === 'ordnt')  m.ordId = Number(_docId);
+            if (_docId && _dtype === 'notafd') m.dfId  = _docId;  // UUID string
+            if (_docId && _dtype === 'ordnt')  m.ordId = _docId;  // UUID string
             if (_dtype) m.docType = _dtype;
             return m;
           })(),
