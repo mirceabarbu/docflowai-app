@@ -256,7 +256,7 @@
     .asave-pend{color:#f5a623;font-size:.73rem}
     /* ── DF/ORD dark redesign ───────────────────────────────────────────────── */
     :root{--app-p1:rgba(108,79,240,.15);--app-p1-bdr:rgba(108,79,240,.3);--app-p2:rgba(29,200,174,.1);--app-p2-bdr:rgba(29,200,174,.25)}
-    .df-alop-ctx{font-size:.72rem;color:var(--app-muted);margin-bottom:8px;padding:5px 10px;background:rgba(108,79,240,.06);border:1px solid rgba(108,79,240,.15);border-radius:6px;display:none}
+    .df-alop-ctx{font-size:.72rem;color:var(--app-muted);margin-top:8px;margin-bottom:8px;padding:5px 10px;background:rgba(108,79,240,.06);border:1px solid rgba(108,79,240,.15);border-radius:6px;display:none}
     .df-alop-ctx.show{display:block}
     .df-progress{display:flex;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid var(--app-line)}
     .df-step{flex:1;padding:7px 6px;font-size:11px;color:var(--app-muted);text-align:center;border-right:1px solid var(--app-line);transition:.2s}
@@ -544,10 +544,10 @@
 
 <!-- ═══ ORDNT ═══════════════════════════════════════════════════════════════ -->
 <div id="form-ordnt">
+<div class="df-alop-ctx" id="alop-ctx-ordnt"></div>
 <div class="locked-bar" id="locked-bar-ordnt"></div>
 <div id="motiv-bar-ordnt" style="display:none;max-width:1200px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-ordnt"></span></div>
 <div class="actions" id="actions-ordnt"></div>
-<div class="df-alop-ctx" id="alop-ctx-ordnt"></div>
 
 <div class="df-progress">
   <div class="df-step active" id="ordp-date">Date generale</div>
@@ -745,11 +745,11 @@
 
 <!-- ═══ NOTAFD ══════════════════════════════════════════════════════════════ -->
 <div id="form-notafd" style="display:none">
+<div class="df-alop-ctx" id="alop-ctx-notafd"></div>
 <div class="locked-bar" id="locked-bar-notafd"></div>
 <div id="banner-an-urmator-notafd" style="display:none;max-width:1200px;margin:4px auto 6px;padding:10px 16px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:8px;font-size:.82rem;color:#93c5fd">ℹ️ Revizie pentru angajamente an următor — înregistrare în max. 3 zile lucrătoare conform OMF 1140/2025</div>
 <div id="motiv-bar-notafd" style="display:none;max-width:1200px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-notafd"></span></div>
 <div class="actions" id="actions-notafd"></div>
-<div class="df-alop-ctx" id="alop-ctx-notafd"></div>
 
 <div class="df-progress">
   <div class="df-step active" id="dfp-date">Date generale</div>
