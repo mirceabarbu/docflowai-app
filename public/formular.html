@@ -2050,7 +2050,13 @@ function _dfSetAlopCtx(ft){
   const ctx=window._alopContext;
   const el=document.getElementById('alop-ctx-'+ft);
   if(!el)return;
-  if(ctx?.alopId){el.textContent=`📊 ALOP: ${ctx.titlu||ctx.alopId}`;el.className='df-alop-ctx show';}
+  if(ctx?.alopId){
+    const valStr = ctx.valoare
+      ? ` · ${new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(ctx.valoare)} RON`
+      : '';
+    el.textContent=`📊 ALOP: ${ctx.titlu||ctx.alopId}${valStr}`;
+    el.className='df-alop-ctx show';
+  }
   else{el.textContent='';el.className='df-alop-ctx';}
   // Butonul Înapoi este actualizat de _updateBackBtn(ft) — centralizat
   _updateBackBtn(ft);
