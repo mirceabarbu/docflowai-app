@@ -1407,7 +1407,11 @@ function addOR(){const i=oI++;const tr=document.createElement('tr');tr.id='or-'+
   document.getElementById('o-tbody').appendChild(tr);
   // Dacă P1 e în modul completed (col.4 editabil), noile rânduri moștenesc același drept
   if(ST.docRole?.ordnt==='p1'){
-    tr.querySelectorAll('[data-f="suma_ordonantata_plata"]').forEach(e=>e.disabled=false);
+    tr.querySelectorAll('[data-f="suma_ordonantata_plata"]').forEach(e=>{
+      e.disabled=false;
+      e.style.pointerEvents='auto';
+      e.closest('td')?.style.setProperty('pointer-events','auto');
+    });
   }}
 function calcORRow(el){
   const tr=el.closest('tr');
@@ -2308,6 +2312,14 @@ async function openDoc(ft,id){
     renderActions(ft);
     if(ft==='notafd')applyDfRoleState(status,role);
     else if(ft==='ordnt')applyOrdRoleState(status,role);
+    // ORD P1 completed: override pointer-events pe col.4 după applyOrdRoleState
+    if(ft==='ordnt'&&role==='p1'&&status==='completed'){
+      document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{
+        e.disabled=false;
+        e.style.pointerEvents='auto';
+        e.closest('td')?.style.setProperty('pointer-events','auto');
+      });
+    }
     refreshDocs(ft);
     // Evidențiere card activ
     document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.toggle('active',c.dataset.id===id));
