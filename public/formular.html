@@ -3720,7 +3720,7 @@ async function confirmPlata(){
       body:JSON.stringify(body),
     });
     const data=await r.json();
-    if(!r.ok||!data.ok){alert(data.error||'Eroare confirmare plată');return;}
+    if(!r.ok){alert(data.error||'Eroare confirmare plată');return;}
     closePlataModal();
     openAlop(_plataAlopId);
     loadAlop();loadAlopStats();

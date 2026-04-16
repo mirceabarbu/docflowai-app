@@ -580,7 +580,7 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
     res.json({ ok: true, alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-plata error');
-    res.status(500).json({ error: 'server_error' });
+    res.status(500).json({ error: e.message || 'server_error' });
   }
 });
 
