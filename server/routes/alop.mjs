@@ -673,6 +673,7 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
 
 // ── POST /api/alop/:id/noua-lichidare — pornește un nou ciclu ORD pe același DF ─
 router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
+  if (!req.params.id || req.params.id === 'null') return res.status(400).json({ error: 'id_invalid' });
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
@@ -682,7 +683,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
     );
     if (!alop) return res.status(404).json({ error: 'not_found' });
     if (alop.status !== 'completed')
-      return res.status(400).json({ error: 'status_invalid', message: 'ALOP trebuie să fie în status completed.' });
+      return res.status(400).json({ error: 'status_invalid', message: 'ALOP trebuie să fie finalizat (plată efectuată).' });
 
     // Valoarea DF aprobat
     const { rows: [dfRow] } = await pool.query(
@@ -737,7 +738,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
     // Reset pentru noul ciclu
     const { rows: [updated] } = await pool.query(`
       UPDATE alop_instances SET
-        status = 'ordonantare',
+        status = 'lichidare',
         ord_id = NULL, ord_flow_id = NULL, ord_completed_at = NULL,
         lichidare_confirmed_by = NULL, lichidare_confirmed_at = NULL,
         lichidare_nr_factura = NULL, lichidare_data_factura = NULL,
@@ -757,7 +758,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
     res.json({ ok: true, alop: updated, ramas });
   } catch (e) {
     logger.error({ err: e }, 'alop noua-lichidare error');
-    res.status(500).json({ error: 'server_error' });
+    res.status(500).json({ error: e.message || 'server_error' });
   }
 });
 

@@ -3565,7 +3565,8 @@ function renderAlopDetail(a,container){
 
 // ── Multi-ORD: pornire ciclu nou de ordonanțare ───────────────────────────────
 async function startNouaLichidare(alopId){
-  if(!confirm('Pornești un nou ciclu de ordonanțare pentru valoarea rămasă din DF?'))return;
+  if(!alopId||alopId==='null')return;
+  if(!confirm('Pornești un nou ciclu Lichidare → Ordonanțare → Plată pentru valoarea rămasă din DF?'))return;
   try{
     const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
     const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/noua-lichidare`,{
