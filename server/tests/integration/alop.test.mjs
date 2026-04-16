@@ -675,15 +675,16 @@ describe('POST /api/alop/:id/confirma-lichidare', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('POST /api/alop/:id/confirma-plata', () => {
-  it('403 — user normal nu poate confirma plata', async () => {
+  it('400 — user normal fără status plata → status_invalid', async () => {
     const app = createTestApp();
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [] }); // UPDATE → 0 rows (status != 'plata')
     const res = await request(app)
       .post(`/api/alop/${ALOP_ID}/confirma-plata`)
       .set('Cookie', `auth_token=${makeToken({ role: 'user' })}`)
       .send({ nr_ordin_plata: 'OP-001', data_plata: '2025-03-01', suma_efectiva: 1500 });
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe('forbidden');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('status_invalid');
   });
 
   it('400 — respinge dacă nr_ordin_plata lipsește (UPDATE returnează 0 rows pe status wrong)', async () => {

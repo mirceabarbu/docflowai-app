@@ -1240,29 +1240,43 @@
 <!-- ── Modal Confirmare Plată ─────────────────────────────────────────────── -->
 <div id="modal-plata" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closePlataModal()">
   <div style="background:var(--app-card);border-radius:12px;padding:24px;width:min(480px,92vw);border:1px solid var(--app-border)">
-    <div style="font-weight:600;font-size:1rem;margin-bottom:4px">🏦 Confirmare Plată</div>
-    <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:16px">Înregistrați execuția plății prin Trezoreria Statului.</div>
-    <div style="display:grid;gap:10px">
+    <div style="font-weight:700;font-size:1rem;margin-bottom:4px">🏦 Confirmare Plată</div>
+    <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:16px">
+      Înregistrați execuția plății prin Trezoreria Statului.</div>
+    <div style="display:grid;gap:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
-          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Nr. ordin de plată <span style="color:#ef4444">*</span></label>
-          <input id="plata-nr-ordin" class="dt" type="text" placeholder="Ex: OP-2026-042"/>
+          <label style="font-size:.78rem;font-weight:600;text-transform:uppercase;
+            color:var(--app-muted);letter-spacing:.04em;display:block;margin-bottom:4px">
+            Nr. ordin de plată <span style="color:#ef4444">*</span></label>
+          <input id="plata-nr-ordin" class="di" type="text" placeholder="Ex: OP-2026-042"
+            style="width:100%;box-sizing:border-box"/>
         </div>
         <div>
-          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Data plății <span style="color:#ef4444">*</span></label>
-          <input id="plata-data" class="dt" type="date"/>
+          <label style="font-size:.78rem;font-weight:600;text-transform:uppercase;
+            color:var(--app-muted);letter-spacing:.04em;display:block;margin-bottom:4px">
+            Data plății <span style="color:#ef4444">*</span></label>
+          <input id="plata-data" class="di" type="text" placeholder="DD.MM.YYYY" maxlength="10"
+            style="width:100%;box-sizing:border-box"/>
         </div>
       </div>
       <div>
-        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Suma efectiv plătită (lei) <span style="color:#ef4444">*</span></label>
-        <input id="plata-suma" class="dt" type="number" min="0" step="0.01" placeholder="0.00"/>
+        <label style="font-size:.78rem;font-weight:600;text-transform:uppercase;
+          color:var(--app-muted);letter-spacing:.04em;display:block;margin-bottom:4px">
+          Suma efectiv plătită (lei) <span style="color:#ef4444">*</span></label>
+        <input id="plata-suma" class="di" type="number" min="0" step="0.01" placeholder="0.00"
+          style="width:100%;box-sizing:border-box"/>
       </div>
       <div>
-        <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:3px">Observații (opțional)</label>
-        <textarea id="plata-observatii" rows="2" class="dt" placeholder="Mențiuni privind plata..."></textarea>
+        <label style="font-size:.78rem;font-weight:600;text-transform:uppercase;
+          color:var(--app-muted);letter-spacing:.04em;display:block;margin-bottom:4px">
+          Observații (opțional)</label>
+        <textarea id="plata-observatii" class="di" rows="2"
+          placeholder="Mențiuni privind plata..."
+          style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
       </div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
       <button class="btn" onclick="closePlataModal()">Anulează</button>
       <button class="btn primary" onclick="confirmPlata()">🏦 Confirmă plata</button>
     </div>
@@ -3688,10 +3702,8 @@ let _plataAlopId=null;
 
 function openAlopConfirmPlata(id){
   _plataAlopId=id;
-  ['plata-nr-ordin','plata-suma','plata-observatii']
-    .forEach(eid=>{const el=document.getElementById(eid);if(el)el.value='';});
-  const dtEl=document.getElementById('plata-data');
-  if(dtEl)dtEl.value=new Date().toISOString().split('T')[0];
+  ['plata-nr-ordin','plata-data','plata-suma','plata-observatii']
+    .forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('modal-plata').style.display='flex';
   setTimeout(()=>document.getElementById('plata-nr-ordin')?.focus(),50);
 }
@@ -3711,7 +3723,7 @@ async function confirmPlata(){
   if(suma<=0){alert('Completați suma efectiv plătită.');return;}
   const body={
     nr_ordin_plata:nr,
-    data_plata:dt,
+    data_plata:(document.getElementById('plata-data')?.value||'').trim()||null,
     suma_efectiva:suma,
     observatii:(document.getElementById('plata-observatii')?.value||'').trim(),
   };

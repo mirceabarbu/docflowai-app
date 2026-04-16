@@ -557,10 +557,6 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
 router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  // Guard: doar admin/org_admin pot confirma plata
-  if (!['admin', 'org_admin'].includes(actor.role)) {
-    return res.status(403).json({ error: 'forbidden' });
-  }
   try {
     const { notes, nr_ordin_plata, data_plata, suma_efectiva, observatii } = req.body;
     const { rows } = await pool.query(`
