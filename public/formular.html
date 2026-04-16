@@ -3289,6 +3289,18 @@ async function openAlopModal(){
     const e=document.getElementById(id);if(e)e.value='';
   });
   const v=document.getElementById('alop-valoare');if(v)v.value='';
+  // Pre-completare compartiment din profilul utilizatorului
+  const compInput = document.getElementById('alop-compartiment');
+  if (compInput && ST.user?.compartiment) {
+    compInput.value = ST.user.compartiment;
+    compInput.readOnly = true;
+    compInput.style.opacity = '0.7';
+    compInput.style.cursor = 'default';
+  } else if (compInput) {
+    compInput.readOnly = false;
+    compInput.style.opacity = '';
+    compInput.style.cursor = '';
+  }
   _alopWizShowStep(1);
   document.getElementById('alop-modal').style.display='flex';
   if(!_ALOP.sablon)await _alopLoadSablon();
