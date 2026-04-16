@@ -352,7 +352,7 @@
     /* Modal dark fields */
     #alop-modal input:not([type=checkbox]):not([type=radio]),#alop-modal textarea,#alop-modal select,
     #modal-lichidare input:not([type=checkbox]):not([type=radio]),#modal-lichidare textarea{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e8eeff;font-size:13px;padding:9px 12px;width:100%;box-sizing:border-box;font-family:inherit}
-    #alop-modal label.alop-lbl,#modal-lichidare label.alop-lbl{font-size:11px;color:#6b82b8;font-weight:600;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block}
+    #alop-modal label.alop-lbl,#modal-lichidare label.alop-lbl,#modal-plata label.alop-lbl{font-size:11px;color:#6b82b8;font-weight:600;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block}
     .df-row-1{grid-template-columns:1fr}
     .df-row-2{grid-template-columns:1fr 1fr}
     .df-row-3{grid-template-columns:1fr 1fr 1fr}
@@ -1238,45 +1238,31 @@
 </div>
 
 <!-- ── Modal Confirmare Plată ─────────────────────────────────────────────── -->
-<div id="modal-plata" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closePlataModal()">
-  <div style="background:var(--app-card);border-radius:12px;padding:24px;width:min(480px,92vw);border:1px solid var(--app-border)">
-    <div style="font-weight:700;font-size:1rem;margin-bottom:4px">🏦 Confirmare Plată</div>
-    <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:16px">
-      Înregistrați execuția plății prin Trezoreria Statului.</div>
-    <div style="display:grid;gap:12px">
+<div class="modal-ov" id="modal-plata" onclick="if(event.target===this)closePlataModal()">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-title">🏦 Confirmare Plată</div>
+    <div style="font-size:.8rem;color:var(--app-muted);margin-top:-4px">Înregistrați execuția plății prin Trezoreria Statului.</div>
+    <div style="display:grid;gap:10px;margin-top:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
-          <label style="font-size:.78rem;font-weight:600;text-transform:uppercase;
-            color:var(--app-muted);letter-spacing:.04em;display:block;margin-bottom:4px">
-            Nr. ordin de plată <span style="color:#ef4444">*</span></label>
-          <input id="plata-nr-ordin" class="di" type="text" placeholder="Ex: OP-2026-042"
-            style="width:100%;box-sizing:border-box"/>
+          <label class="alop-lbl">Nr. ordin de plată <span style="color:#ef4444">*</span></label>
+          <input id="plata-nr-ordin" type="text" placeholder="Ex: OP-2026-042"/>
         </div>
         <div>
-          <label style="font-size:.78rem;font-weight:600;text-transform:uppercase;
-            color:var(--app-muted);letter-spacing:.04em;display:block;margin-bottom:4px">
-            Data plății <span style="color:#ef4444">*</span></label>
-          <input id="plata-data" class="di" type="text" placeholder="DD.MM.YYYY" maxlength="10"
-            style="width:100%;box-sizing:border-box"/>
+          <label class="alop-lbl">Data plății <span style="color:#ef4444">*</span></label>
+          <input id="plata-data" type="date"/>
         </div>
       </div>
       <div>
-        <label style="font-size:.78rem;font-weight:600;text-transform:uppercase;
-          color:var(--app-muted);letter-spacing:.04em;display:block;margin-bottom:4px">
-          Suma efectiv plătită (lei) <span style="color:#ef4444">*</span></label>
-        <input id="plata-suma" class="di" type="number" min="0" step="0.01" placeholder="0.00"
-          style="width:100%;box-sizing:border-box"/>
+        <label class="alop-lbl">Suma efectiv plătită (lei) <span style="color:#ef4444">*</span></label>
+        <input id="plata-suma" type="number" min="0" step="0.01" placeholder="0.00"/>
       </div>
       <div>
-        <label style="font-size:.78rem;font-weight:600;text-transform:uppercase;
-          color:var(--app-muted);letter-spacing:.04em;display:block;margin-bottom:4px">
-          Observații (opțional)</label>
-        <textarea id="plata-observatii" class="di" rows="2"
-          placeholder="Mențiuni privind plata..."
-          style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+        <label class="alop-lbl">Observații (opțional)</label>
+        <textarea id="plata-observatii" rows="2" placeholder="Mențiuni privind plata..."></textarea>
       </div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
       <button class="btn" onclick="closePlataModal()">Anulează</button>
       <button class="btn primary" onclick="confirmPlata()">🏦 Confirmă plata</button>
     </div>
