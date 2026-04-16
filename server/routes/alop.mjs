@@ -312,7 +312,12 @@ router.get('/api/alop/:id', async (req, res) => {
         f1.id AS df_flow_exists,
         f2.id AS ord_flow_exists,
         ul.nume AS lichidare_by_name,
-        up.nume AS plata_by_name
+        up.nume AS plata_by_name,
+        (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
+         FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
+        (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
+         FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
+        a.plata_suma_efectiva AS op_valoare
       FROM alop_instances a
       LEFT JOIN users        u   ON u.id   = a.created_by
       LEFT JOIN formulare_df df  ON df.id  = a.df_id

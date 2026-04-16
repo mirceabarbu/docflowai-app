@@ -3383,6 +3383,7 @@ function renderAlopDetail(a,container){
   const isCancelled=a.status==='cancelled';
   const fmtDate=iso=>iso?new Date(iso).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
   const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
+  const fmtV=v=>v>0?new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v)+' RON':'—';
 
   const phases=[
     {label:'Angajare',   icon:'📋',color:'#3b82f6',
@@ -3400,7 +3401,7 @@ function renderAlopDetail(a,container){
     {label:'Ordonanțare',icon:'💰',color:'#8b5cf6',
      done:!!a.ord_completed_at||isCompleted,
      active:a.status==='ordonantare',
-     sub:a.ord_id?'ORD legat':'Fără ORD'},
+     sub:a.ord_id?'ORD aprobat':'Fără ORD'},
     {label:'Plată',      icon:'🏦',color:'#10b981',
      done:isCompleted,
      active:a.status==='plata',
@@ -3474,6 +3475,20 @@ function renderAlopDetail(a,container){
       </div>
     </div>
     ${stepperHtml}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0">
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
+        <div style="font-size:.7rem;color:var(--app-muted);text-transform:uppercase;letter-spacing:.04em">Valoare DF</div>
+        <div style="font-size:1rem;font-weight:700;color:#b0a0ff;margin-top:4px">${fmtV(a.df_valoare||0)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
+        <div style="font-size:.7rem;color:var(--app-muted);text-transform:uppercase;letter-spacing:.04em">Valoare ORD</div>
+        <div style="font-size:1rem;font-weight:700;color:#5dcaa5;margin-top:4px">${fmtV(a.ord_valoare||0)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
+        <div style="font-size:.7rem;color:var(--app-muted);text-transform:uppercase;letter-spacing:.04em">Sumă plătită</div>
+        <div style="font-size:1rem;font-weight:700;color:#f59e0b;margin-top:4px">${fmtV(parseFloat(a.op_valoare||a.plata_suma_efectiva)||0)}</div>
+      </div>
+    </div>
     ${actionsHtml?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${actionsHtml}</div>`:''}
     ${isCompleted?`<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;text-align:center;color:#10b981;font-weight:600">✅ ALOP finalizat complet — Angajare → Lichidare → Ordonanțare → Plată executată<br><span style="font-size:.8rem;font-weight:400;opacity:.8">${fmtDate(a.completed_at)}</span></div>`:''}
   `;
