@@ -2051,9 +2051,12 @@ function _dfSetAlopCtx(ft){
   const el=document.getElementById('alop-ctx-'+ft);
   if(!el)return;
   if(ctx?.alopId){
-    const valStr = ctx.valoare
-      ? ` · ${new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(ctx.valoare)} RON`
-      : '';
+    let valStr='';
+    try{
+      const v=parseFloat(ctx.valoare);
+      if(!isNaN(v)&&v>0)
+        valStr=` · ${new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v)} RON`;
+    }catch(_){}
     el.textContent=`📊 ALOP: ${ctx.titlu||ctx.alopId}${valStr}`;
     el.className='df-alop-ctx show';
   }
