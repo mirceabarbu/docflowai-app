@@ -2302,7 +2302,17 @@ async function openDoc(ft,id){
         if(p2block){
           p2block.querySelectorAll('input,textarea,select,button.badd,button.bdel').forEach(e=>e.disabled=false);
           p2block.style.pointerEvents='';
+          p2block.style.opacity='';
+          p2block.style.filter='';
           p2block.querySelectorAll('*').forEach(e=>{if(e.style)e.style.pointerEvents='';});
+          // Elimină și de pe df-block-body din interior
+          const inner=p2block.querySelector('.df-block-body');
+          if(inner){
+            inner.classList.remove('locked');
+            inner.style.opacity='';
+            inner.style.filter='';
+            inner.style.pointerEvents='';
+          }
         }
       }
       const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
