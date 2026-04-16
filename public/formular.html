@@ -596,6 +596,67 @@
   </div>
 </div>
 
+<!-- BLOC P1 — Compartiment specialitate -->
+<div class="df-block df-block-p1" id="bloc-ord-p1">
+  <div class="df-block-hdr">
+    <span class="df-badge df-badge-p1">P1</span>
+    <span class="df-block-title">Compartiment specialitate — Date beneficiar &amp; plată</span>
+    <div class="df-role-tags">
+      <span class="df-role-tag df-role-can" id="ord-p1-tag-p1">P1 editează</span>
+      <span class="df-role-tag df-role-no" id="ord-p1-tag-p2">P2 blocat</span>
+    </div>
+  </div>
+  <div class="df-lock-bar df-lock-warn" id="ord-p1-lock" style="display:none">🔒 Secțiunea este blocată în starea curentă.</div>
+  <div class="df-block-body" id="ord-p1-body">
+    <div class="df-row df-row-1">
+      <div>
+        <div class="dl req">Beneficiar</div>
+        <div class="ac-wrap">
+          <textarea id="o-benef" class="dt" maxlength="150" rows="2" oninput="debouncedBenefSearch()" autocomplete="off"></textarea>
+          <div id="o-benef-drop" class="ac-drop"></div>
+        </div>
+      </div>
+    </div>
+    <div class="df-row df-row-1">
+      <div>
+        <div class="dl req">Documente justificative <span style="font-weight:400;font-size:10px">(max 90 car.)</span></div>
+        <input id="o-docsj" class="di" maxlength="90"/>
+      </div>
+    </div>
+    <div class="att-zone"><div class="att-list" id="o-alist"></div></div>
+    <div class="att-br">
+      <button class="att-btn" onclick="document.getElementById('o-ainp').click()">📎 Atașează fișiere</button>
+      <input type="file" id="o-ainp" class="att-inp" multiple onchange="addAtt(event,'o-alist','o-adata')"/>
+    </div>
+    <input type="hidden" id="o-adata" value="[]"/>
+    <div class="doc-hr"></div>
+    <div class="df-row df-row-3">
+      <div>
+        <div class="dl req">CIF beneficiar</div>
+        <input id="o-cifb" class="di" maxlength="10"/>
+      </div>
+      <div>
+        <div class="dl req">IBAN beneficiar</div>
+        <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..."/>
+      </div>
+      <div>
+        <div class="dl req">Bancă beneficiar</div>
+        <input id="o-banca" class="di" maxlength="100"/>
+      </div>
+    </div>
+    <div class="df-row df-row-2">
+      <div>
+        <div class="dl">Informații privind plata</div>
+        <input id="o-inf1" class="di" maxlength="70"/>
+      </div>
+      <div>
+        <div class="dl">Informații privind plata (cont.)</div>
+        <input id="o-inf2" class="di" maxlength="70"/>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- BLOC P2 — Responsabil CAB -->
 <div class="df-block df-block-p2" id="bloc-ord-p2">
   <div class="df-block-hdr">
@@ -656,67 +717,6 @@
       <img class="cap-img" id="o-cimg2"/>
     </div>
     <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg2','o-cph2')">✕ Șterge imaginea</button></div>
-  </div>
-</div>
-
-<!-- BLOC P1 — Compartiment specialitate -->
-<div class="df-block df-block-p1" id="bloc-ord-p1">
-  <div class="df-block-hdr">
-    <span class="df-badge df-badge-p1">P1</span>
-    <span class="df-block-title">Compartiment specialitate — Date beneficiar &amp; plată</span>
-    <div class="df-role-tags">
-      <span class="df-role-tag df-role-can" id="ord-p1-tag-p1">P1 editează</span>
-      <span class="df-role-tag df-role-no" id="ord-p1-tag-p2">P2 blocat</span>
-    </div>
-  </div>
-  <div class="df-lock-bar df-lock-warn" id="ord-p1-lock" style="display:none">🔒 Secțiunea este blocată în starea curentă.</div>
-  <div class="df-block-body" id="ord-p1-body">
-    <div class="df-row df-row-1">
-      <div>
-        <div class="dl req">Beneficiar</div>
-        <div class="ac-wrap">
-          <textarea id="o-benef" class="dt" maxlength="150" rows="2" oninput="debouncedBenefSearch()" autocomplete="off"></textarea>
-          <div id="o-benef-drop" class="ac-drop"></div>
-        </div>
-      </div>
-    </div>
-    <div class="df-row df-row-1">
-      <div>
-        <div class="dl req">Documente justificative <span style="font-weight:400;font-size:10px">(max 90 car.)</span></div>
-        <input id="o-docsj" class="di" maxlength="90"/>
-      </div>
-    </div>
-    <div class="att-zone"><div class="att-list" id="o-alist"></div></div>
-    <div class="att-br">
-      <button class="att-btn" onclick="document.getElementById('o-ainp').click()">📎 Atașează fișiere</button>
-      <input type="file" id="o-ainp" class="att-inp" multiple onchange="addAtt(event,'o-alist','o-adata')"/>
-    </div>
-    <input type="hidden" id="o-adata" value="[]"/>
-    <div class="doc-hr"></div>
-    <div class="df-row df-row-3">
-      <div>
-        <div class="dl req">CIF beneficiar</div>
-        <input id="o-cifb" class="di" maxlength="10"/>
-      </div>
-      <div>
-        <div class="dl req">IBAN beneficiar</div>
-        <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..."/>
-      </div>
-      <div>
-        <div class="dl req">Bancă beneficiar</div>
-        <input id="o-banca" class="di" maxlength="100"/>
-      </div>
-    </div>
-    <div class="df-row df-row-2">
-      <div>
-        <div class="dl">Informații privind plata</div>
-        <input id="o-inf1" class="di" maxlength="70"/>
-      </div>
-      <div>
-        <div class="dl">Informații privind plata (cont.)</div>
-        <input id="o-inf2" class="di" maxlength="70"/>
-      </div>
-    </div>
   </div>
 </div>
 
