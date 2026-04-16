@@ -353,6 +353,17 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
     );
     if (!dfRows[0]) return res.status(404).json({ error: 'df_not_found' });
 
+    const { rows: conflict } = await pool.query(
+      `SELECT id FROM alop_instances WHERE df_id=$1 AND id!=$2 AND cancelled_at IS NULL`,
+      [df_id, req.params.id]
+    );
+    if (conflict.length > 0) {
+      return res.status(409).json({
+        error: 'df_deja_legat',
+        message: 'Acest DF este deja asociat unui alt ALOP activ.'
+      });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET df_id = $1,

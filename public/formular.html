@@ -2039,6 +2039,11 @@ function _dfUpdateProgress(ft,step){
     if(i<idx)el.classList.add('done');
     else if(i===idx)el.classList.add('active');
   });
+  // Dacă step='sign' și documentul e aprobat, marchează și 'sign' ca done
+  if(step==='sign'){
+    const signEl=document.getElementById(pfx+'-sign');
+    if(signEl) signEl.className='df-step done';
+  }
 }
 function _dfSetAlopCtx(ft){
   const ctx=window._alopContext;
@@ -2354,7 +2359,19 @@ function renderDocsList(ft,docs){
 async function viewFlowPdf(flowId){
   try{
     const r=await fetch(`/api/flows/${encodeURIComponent(flowId)}/signed-pdf`,{credentials:'include'});
-    if(!r.ok){setS('PDF-ul fluxului nu este disponibil încă.','err');return;}
+    if(!r.ok){
+      try{
+        const r2=await fetch(`/api/flows/${encodeURIComponent(flowId)}/pdf`,{credentials:'include'});
+        if(r2.ok){
+          const blob2=await r2.blob();
+          const url2=URL.createObjectURL(blob2);
+          window.open(url2,'_blank');
+          return;
+        }
+      }catch(_){}
+      setS('PDF-ul fluxului nu este disponibil încă.','err');
+      return;
+    }
     const blob=await r.blob();
     const url=URL.createObjectURL(blob);
     window.open(url,'_blank');
@@ -3525,16 +3542,29 @@ async function alopDeschideDF(alopId){
       openDocFromList('df',alop.df_id);
     }else if(ST.docId?.['notafd']){
       // FIX 2: DF creat în sesiunea curentă dar link-df nu s-a salvat pe server
-      // Re-leagă imediat (link-df e idempotent) și deschide documentul
-      fetch(`/api/alop/${encodeURIComponent(alopId)}/link-df`,{
-        method:'POST',credentials:'include',
-        headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
-        body:JSON.stringify({df_id:ST.docId['notafd']}),
-      }).then(r=>r.json()).then(j=>{
-        if(j.ok)console.log('ALOP re-link-df:',alopId,'→',ST.docId['notafd']);
-        else console.warn('ALOP re-link-df warn:',j.error);
-      }).catch(e=>console.warn('ALOP re-link-df error:',e));
-      openDocFromList('df',ST.docId['notafd']);
+      const docStatus=ST.docStatus?.['notafd'];
+      if(docStatus==='aprobat'||docStatus==='transmis_flux'){
+        // Nu re-lega un DF aprobat — resetează și creează unul nou
+        ST.docId['notafd']=null;
+        ST.docStatus['notafd']=null;
+        document.getElementById('section-list').style.display='';
+        document.getElementById('section-form').style.display='none';
+        switchListTab('df');
+        await new Promise(res=>setTimeout(res,100));
+        try{history.replaceState({},'',`${location.pathname}?tip=df&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
+        newDocFromList();
+      }else{
+        // Re-leagă imediat (link-df e idempotent) și deschide documentul
+        fetch(`/api/alop/${encodeURIComponent(alopId)}/link-df`,{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+          body:JSON.stringify({df_id:ST.docId['notafd']}),
+        }).then(r=>r.json()).then(j=>{
+          if(j.ok)console.log('ALOP re-link-df:',alopId,'→',ST.docId['notafd']);
+          else console.warn('ALOP re-link-df warn:',j.error);
+        }).catch(e=>console.warn('ALOP re-link-df error:',e));
+        openDocFromList('df',ST.docId['notafd']);
+      }
     }else{
       // DF nou — resetează contextul doc din sesiunea anterioară și creează formular gol
       ST.docId=ST.docId||{};ST.docId['notafd']=null;

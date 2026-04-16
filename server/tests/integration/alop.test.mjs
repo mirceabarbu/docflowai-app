@@ -396,6 +396,7 @@ describe('POST /api/alop/:id/link-df — leagă Document de Fundamentare', () =>
     const updated = makeAlopRow({ df_id: DF_ID, status: 'angajare' });
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: DF_ID }] })  // SELECT formulare_df
+      .mockResolvedValueOnce({ rows: [] })                // SELECT conflict (niciun conflict)
       .mockResolvedValueOnce({ rows: [updated] });         // UPDATE alop_instances
 
     const app = createTestApp();
@@ -415,6 +416,7 @@ describe('POST /api/alop/:id/link-df — leagă Document de Fundamentare', () =>
     const unchanged = makeAlopRow({ df_id: DF_ID, status: 'angajare' });
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: DF_ID }] })  // SELECT formulare_df
+      .mockResolvedValueOnce({ rows: [] })                // SELECT conflict (niciun conflict)
       .mockResolvedValueOnce({ rows: [unchanged] });       // UPDATE (idempotent)
 
     const app = createTestApp();
@@ -433,6 +435,7 @@ describe('POST /api/alop/:id/link-df — leagă Document de Fundamentare', () =>
     // SELECT DF găsit, dar UPDATE returnează rows goale (WHERE df_id IS NULL OR df_id=$1 nu matchuiește)
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: OTHER_DF }] })  // SELECT formulare_df
+      .mockResolvedValueOnce({ rows: [] })                   // SELECT conflict (niciun conflict)
       .mockResolvedValueOnce({ rows: [] });                   // UPDATE — nu matchuiește
 
     const app = createTestApp();
