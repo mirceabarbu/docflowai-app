@@ -351,7 +351,7 @@
     .df-info-banner{background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:#b0a0ff;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     /* Modal dark fields */
     #alop-modal input:not([type=checkbox]):not([type=radio]),#alop-modal textarea,#alop-modal select,
-    #modal-lichidare input:not([type=checkbox]):not([type=radio]),#modal-lichidare textarea{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e8eeff;font-size:13px;padding:9px 12px;width:100%;box-sizing:border-box;font-family:inherit}
+    #modal-lichidare input:not([type=checkbox]):not([type=radio]),#modal-lichidare textarea,#modal-plata input:not([type=checkbox]):not([type=radio]),#modal-plata textarea{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e8eeff;font-size:13px;padding:9px 12px;width:100%;box-sizing:border-box;font-family:inherit}
     #alop-modal label.alop-lbl,#modal-lichidare label.alop-lbl,#modal-plata label.alop-lbl{font-size:11px;color:#6b82b8;font-weight:600;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block}
     .df-row-1{grid-template-columns:1fr}
     .df-row-2{grid-template-columns:1fr 1fr}
@@ -3690,12 +3690,12 @@ function openAlopConfirmPlata(id){
   _plataAlopId=id;
   ['plata-nr-ordin','plata-data','plata-suma','plata-observatii']
     .forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  document.getElementById('modal-plata').style.display='flex';
+  document.getElementById('modal-plata').classList.add('show');
   setTimeout(()=>document.getElementById('plata-nr-ordin')?.focus(),50);
 }
 
 function closePlataModal(){
-  document.getElementById('modal-plata').style.display='none';
+  document.getElementById('modal-plata').classList.remove('show');
   _plataAlopId=null;
 }
 
@@ -3722,8 +3722,8 @@ async function confirmPlata(){
     const data=await r.json();
     if(!r.ok){alert(data.error||'Eroare confirmare plată');return;}
     closePlataModal();
-    openAlop(_plataAlopId);
-    loadAlop();loadAlopStats();
+    loadAlop();
+    loadAlopStats();
   }catch(e){alert('Eroare: '+e.message);}
 }
 
