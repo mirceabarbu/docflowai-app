@@ -3254,7 +3254,16 @@ async function loadAlop(){
         </td>
         <td>${_alopStatusBadge(a.status,a.df_flow_id)}</td>
         <td style="font-size:.78rem;color:var(--app-muted)">${_escH(_alopFazaLabel(a.status))}</td>
-        <td style="font-size:.82rem">${fmtRON(a.valoare_totala)}</td>
+        <td style="font-size:.82rem">
+          <div>${fmtRON(a.valoare_totala)}</div>
+          ${(a.df_valoare||a.ord_valoare||a.op_valoare)?
+            `<div style="font-size:.7rem;color:var(--app-muted);margin-top:2px;white-space:nowrap">
+              ${a.df_valoare?`<span title="Valoare DF" style="color:#b0a0ff">DF ${fmtRON(a.df_valoare)}</span>`:''}
+              ${a.ord_valoare?`<span title="Valoare ORD" style="color:#5dcaa5;margin-left:6px">ORD ${fmtRON(a.ord_valoare)}</span>`:''}
+              ${a.op_valoare?`<span title="Sumă plătită" style="color:#f59e0b;margin-left:6px">✓ ${fmtRON(a.op_valoare)}</span>`:''}
+            </div>`
+          :''}
+        </td>
         <td style="font-size:.78rem;color:var(--app-muted)">${dt}</td>
         <td onclick="event.stopPropagation()">
           <button class="btn" style="padding:3px 10px;font-size:.76rem" onclick="openAlop('${_escH(a.id)}')">Deschide</button>
