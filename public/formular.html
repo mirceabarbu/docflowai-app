@@ -3528,12 +3528,18 @@ function renderAlopDetail(a,container){
         <div style="font-size:1rem;font-weight:700;color:#5dcaa5;margin-top:4px">${fmtV(a.ord_valoare||0)}</div>
       </div>
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
-        <div style="font-size:.7rem;color:var(--app-muted);text-transform:uppercase;letter-spacing:.04em">Sumă plătită</div>
+        <div style="font-size:.7rem;color:var(--app-muted);text-transform:uppercase;letter-spacing:.04em">Sumă plătită${(a.ciclu_curent||1)>1?` · Ciclu ${a.ciclu_curent}`:''}${(a.suma_totala_platita>0)?` (Total: ${fmtV(parseFloat(a.suma_platita_total||0))})`:''}</div>
         <div style="font-size:1rem;font-weight:700;color:#f59e0b;margin-top:4px">${fmtV(parseFloat(a.op_valoare||a.plata_suma_efectiva)||0)}</div>
       </div>
     </div>
     ${actionsHtml?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${actionsHtml}</div>`:''}
     ${isCompleted?`<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;text-align:center;color:#10b981;font-weight:600">✅ ALOP finalizat complet — Angajare → Lichidare → Ordonanțare → Plată executată<br><span style="font-size:.8rem;font-weight:400;opacity:.8">${fmtDate(a.completed_at)}</span></div>`:''}
+    ${isCompleted&&(a.ramas>0)?`
+      <div style="background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:.82rem;margin-top:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
+        <button class="btn primary" style="padding:6px 14px;font-size:.82rem" onclick="startNouaLichidare('${_escH(a.id)}')">🔄 Nouă ordonanțare parțială</button>
+      </div>`:''}
+    ${isCompleted&&(a.ramas<=0)&&(a.ciclu_curent>1)?`<div style="font-size:.78rem;color:var(--app-muted);margin-top:6px;text-align:center">${a.ciclu_curent-1} cicluri de ordonanțare finalizate · DF integral acoperit</div>`:''}
   `;
   // Auto-refresh status la 15s cât ALOP e activ (detectează tranziții după semnare)
   clearInterval(window._alopRefreshInterval);
@@ -3551,6 +3557,23 @@ function renderAlopDetail(a,container){
       }catch(_){}
     },15000);
   }
+}
+
+// ── Multi-ORD: pornire ciclu nou de ordonanțare ───────────────────────────────
+async function startNouaLichidare(alopId){
+  if(!confirm('Pornești un nou ciclu de ordonanțare pentru valoarea rămasă din DF?'))return;
+  try{
+    const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
+    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/noua-lichidare`,{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()}
+    });
+    const data=await r.json();
+    if(!r.ok){alert(data.message||data.error||'Eroare');return;}
+    openAlop(alopId);
+    loadAlop();loadAlopStats();
+    setS(`Nou ciclu pornit — rămas ${fmtRON(data.ramas)} RON`,'ok');
+  }catch(e){alert('Eroare: '+e.message);}
 }
 
 // ── Navigare la formulare ─────────────────────────────────────────────────────

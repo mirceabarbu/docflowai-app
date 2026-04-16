@@ -1125,6 +1125,41 @@ const MIGRATIONS = [
       ALTER TABLE alop_instances
         ADD COLUMN IF NOT EXISTS lichidare_data_pv DATE;
     `
+  },
+  {
+    id: '062_alop_multi_ord',
+    sql: `
+      CREATE TABLE IF NOT EXISTS alop_ord_cicluri (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        alop_id UUID NOT NULL REFERENCES alop_instances(id),
+        org_id INTEGER NOT NULL,
+        ciclu_nr INTEGER NOT NULL DEFAULT 1,
+        ord_id UUID REFERENCES formulare_ord(id),
+        ord_flow_id TEXT,
+        lichidare_confirmed_by INTEGER REFERENCES users(id),
+        lichidare_confirmed_at TIMESTAMPTZ,
+        lichidare_nr_factura TEXT,
+        lichidare_data_factura DATE,
+        lichidare_nr_pv TEXT,
+        lichidare_data_pv DATE,
+        lichidare_notes TEXT,
+        plata_confirmed_by INTEGER REFERENCES users(id),
+        plata_confirmed_at TIMESTAMPTZ,
+        plata_nr_ordin TEXT,
+        plata_data DATE,
+        plata_suma_efectiva NUMERIC(15,2),
+        plata_observatii TEXT,
+        status TEXT NOT NULL DEFAULT 'lichidare',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_alop_ord_cicluri_alop
+        ON alop_ord_cicluri(alop_id);
+
+      ALTER TABLE alop_instances
+        ADD COLUMN IF NOT EXISTS suma_totala_platita NUMERIC(15,2) DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS ciclu_curent INTEGER DEFAULT 1;
+    `
   }
 ];
 

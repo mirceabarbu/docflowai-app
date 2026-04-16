@@ -328,7 +328,9 @@ router.get('/api/alop/:id', async (req, res) => {
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
-        a.plata_suma_efectiva AS op_valoare
+        a.plata_suma_efectiva AS op_valoare,
+        COALESCE(a.suma_totala_platita,0) + COALESCE(a.plata_suma_efectiva,0) AS suma_platita_total,
+        a.ciclu_curent
       FROM alop_instances a
       LEFT JOIN users        u   ON u.id   = a.created_by
       LEFT JOIN formulare_df df  ON df.id  = a.df_id
@@ -383,6 +385,11 @@ router.get('/api/alop/:id', async (req, res) => {
         logger.warn({ err: autoErr }, '[ALOP] lazy tranziție plata failed (non-fatal)');
       }
     }
+
+    // Calcul sumă rămasă de ordonanțat (pentru multi-ORD)
+    const dfVal = parseFloat(alop.df_valoare || 0);
+    const sumaPlatita = parseFloat(alop.suma_platita_total || 0);
+    alop.ramas = dfVal > 0 ? Math.max(0, dfVal - sumaPlatita) : 0;
 
     res.json({ alop });
   } catch (e) {
@@ -652,6 +659,96 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-plata error');
     res.status(500).json({ error: e.message || 'server_error' });
+  }
+});
+
+// ── POST /api/alop/:id/noua-lichidare — pornește un nou ciclu ORD pe același DF ─
+router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows: [alop] } = await pool.query(
+      'SELECT * FROM alop_instances WHERE id=$1 AND org_id=$2 AND cancelled_at IS NULL',
+      [req.params.id, actor.orgId]
+    );
+    if (!alop) return res.status(404).json({ error: 'not_found' });
+    if (alop.status !== 'completed')
+      return res.status(400).json({ error: 'status_invalid', message: 'ALOP trebuie să fie în status completed.' });
+
+    // Valoarea DF aprobat
+    const { rows: [dfRow] } = await pool.query(
+      `SELECT COALESCE(
+        (SELECT SUM((r->>'valt_actualiz')::numeric)
+         FROM jsonb_array_elements(rows_val) r),
+        valoare_totala, 0
+       ) AS df_val
+       FROM formulare_df WHERE id=$1`,
+      [alop.df_id]
+    );
+    const dfVal = parseFloat(dfRow?.df_val || 0);
+
+    // Suma totală plătită din cicluri anterioare arhivate
+    const { rows: [sumaRow] } = await pool.query(
+      'SELECT COALESCE(SUM(plata_suma_efectiva),0) AS total FROM alop_ord_cicluri WHERE alop_id=$1',
+      [req.params.id]
+    );
+    const sumaPlata = parseFloat(sumaRow?.total || 0)
+      + parseFloat(alop.plata_suma_efectiva || 0);
+
+    const ramas = dfVal - sumaPlata;
+    if (ramas <= 0)
+      return res.status(400).json({
+        error: 'limita_depasita',
+        message: `Valoarea DF (${dfVal} RON) a fost integral ordonanțată.`
+      });
+
+    // Arhivează ciclul curent
+    const cicluNr = alop.ciclu_curent || 1;
+    await pool.query(`
+      INSERT INTO alop_ord_cicluri (
+        alop_id, org_id, ciclu_nr, ord_id, ord_flow_id,
+        lichidare_confirmed_by, lichidare_confirmed_at,
+        lichidare_nr_factura, lichidare_data_factura,
+        lichidare_nr_pv, lichidare_data_pv, lichidare_notes,
+        plata_confirmed_by, plata_confirmed_at,
+        plata_nr_ordin, plata_data, plata_suma_efectiva, plata_observatii,
+        status
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'completed')
+    `, [
+      req.params.id, actor.orgId, cicluNr,
+      alop.ord_id, alop.ord_flow_id,
+      alop.lichidare_confirmed_by, alop.lichidare_confirmed_at,
+      alop.lichidare_nr_factura, alop.lichidare_data_factura,
+      alop.lichidare_nr_pv, alop.lichidare_data_pv, alop.lichidare_notes,
+      alop.plata_confirmed_by, alop.plata_confirmed_at,
+      alop.plata_nr_ordin, alop.plata_data,
+      alop.plata_suma_efectiva, alop.plata_observatii,
+    ]);
+
+    // Reset pentru noul ciclu
+    const { rows: [updated] } = await pool.query(`
+      UPDATE alop_instances SET
+        status = 'ordonantare',
+        ord_id = NULL, ord_flow_id = NULL, ord_completed_at = NULL,
+        lichidare_confirmed_by = NULL, lichidare_confirmed_at = NULL,
+        lichidare_nr_factura = NULL, lichidare_data_factura = NULL,
+        lichidare_nr_pv = NULL, lichidare_data_pv = NULL, lichidare_notes = NULL,
+        plata_confirmed_by = NULL, plata_confirmed_at = NULL,
+        plata_nr_ordin = NULL, plata_data = NULL,
+        plata_suma_efectiva = NULL, plata_observatii = NULL,
+        completed_at = NULL,
+        suma_totala_platita = $2,
+        ciclu_curent = $3,
+        updated_at = NOW()
+      WHERE id=$1
+      RETURNING *
+    `, [req.params.id, sumaPlata, cicluNr + 1]);
+
+    logger.info({ alopId: req.params.id, ciclu: cicluNr + 1, ramas }, '[ALOP] nouă lichidare pornită');
+    res.json({ ok: true, alop: updated, ramas });
+  } catch (e) {
+    logger.error({ err: e }, 'alop noua-lichidare error');
+    res.status(500).json({ error: 'server_error' });
   }
 });
 
