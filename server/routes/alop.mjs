@@ -383,7 +383,31 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
     `, [flow_id, req.params.id, actor.orgId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
-    res.json({ ok: true, alop: rows[0] });
+
+    // Dacă fluxul e deja completat, tranziționează imediat la lichidare
+    try {
+      const { rows: flowRows } = await pool.query(
+        `SELECT data->>'status' AS status FROM flows WHERE id=$1`,
+        [flow_id]
+      );
+      if (flowRows[0]?.status === 'completed') {
+        await pool.query(`
+          UPDATE alop_instances
+          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()
+          WHERE id=$1 AND org_id=$2 AND status IN ('draft','angajare')
+        `, [req.params.id, actor.orgId]);
+        logger.info(`[ALOP] link-df-flow: flux deja completat → lichidare, id=${req.params.id}`);
+      }
+    } catch (linkErr) {
+      logger.warn({ err: linkErr }, '[ALOP] link-df-flow: auto-lichidare check failed (non-fatal)');
+    }
+
+    // Re-fetch după posibil update
+    const { rows: updated } = await pool.query(
+      'SELECT * FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    res.json({ ok: true, alop: updated[0] || rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop link-df-flow error');
     res.status(500).json({ error: 'server_error' });
