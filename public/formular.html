@@ -2250,6 +2250,13 @@ async function openDoc(ft,id){
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
 
+    // Dacă nu avem context ALOP și documentul are alop_id, populează automat contextul
+    if(!window._alopContext&&doc.alop_id){
+      window._alopContext={alopId:doc.alop_id,titlu:doc.alop_titlu||'',valoare:doc.alop_valoare||null};
+      sessionStorage.setItem('_alopContext',JSON.stringify(window._alopContext));
+    }
+    _dfSetAlopCtx(ft);
+
     // FIX 3: Precompletare automată pct.4 pentru revizie "an următor" (revizie_nr===1, pct.4 necompletat)
     if(ft==='notafd'&&doc.este_revizie_an_urmator&&doc.revizie_nr===1&&doc.ckbx_ramane_suma!=='1'){
       const ckRam=document.getElementById('n-ck-ramane');

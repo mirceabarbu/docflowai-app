@@ -167,7 +167,16 @@ router.get('/api/formulare-df/:id', async (req, res) => {
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-             THEN true ELSE false END AS aprobat
+             THEN true ELSE false END AS aprobat,
+        (SELECT a.id FROM alop_instances a
+         WHERE a.df_id = fd.id AND a.cancelled_at IS NULL
+         LIMIT 1) AS alop_id,
+        (SELECT a.titlu FROM alop_instances a
+         WHERE a.df_id = fd.id AND a.cancelled_at IS NULL
+         LIMIT 1) AS alop_titlu,
+        (SELECT a.valoare_totala FROM alop_instances a
+         WHERE a.df_id = fd.id AND a.cancelled_at IS NULL
+         LIMIT 1) AS alop_valoare
       FROM formulare_df fd
       JOIN users p1 ON p1.id = fd.created_by
       LEFT JOIN users p2 ON p2.id = fd.assigned_to
