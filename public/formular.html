@@ -2132,8 +2132,8 @@ function applyOrdRoleState(status,role){
     }
     _dfUpdateProgress('ordnt','p2');
   }else if(status==='completed'){
-    if(p1Body)p1Body.classList.add('locked');
-    // p2Body NU e blocat vizual — P1 mai editează col.4 înainte de lansarea fluxului
+    // P1 NU se blochează la completed — trebuie să completeze col.4
+    // (p1Body rămâne deblocat)
     if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Document complet — completați col.4 și lansați fluxul de semnare.';}
     if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-ok';p2Lock.textContent='✓ Date CAB completate.';}
     _dfUpdateProgress('ordnt','sign');
@@ -2312,14 +2312,6 @@ async function openDoc(ft,id){
     renderActions(ft);
     if(ft==='notafd')applyDfRoleState(status,role);
     else if(ft==='ordnt')applyOrdRoleState(status,role);
-    // ORD P1 completed: override pointer-events pe col.4 după applyOrdRoleState
-    if(ft==='ordnt'&&role==='p1'&&status==='completed'){
-      document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{
-        e.disabled=false;
-        e.style.pointerEvents='auto';
-        e.closest('td')?.style.setProperty('pointer-events','auto');
-      });
-    }
     refreshDocs(ft);
     // Evidențiere card activ
     document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.toggle('active',c.dataset.id===id));
