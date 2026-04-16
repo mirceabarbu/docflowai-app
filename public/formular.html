@@ -172,7 +172,7 @@
     /* ── Modal P2 ── */
     .modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:500;align-items:center;justify-content:center}
     .modal-ov.show{display:flex}
-    .modal-box{background:#0f1832;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:22px 24px;width:min(480px,95vw);max-height:80vh;display:flex;flex-direction:column;gap:12px}
+    .modal-box{background:#0f1832;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:28px 32px;width:min(620px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:14px}
     .modal-title{font-size:.95rem;font-weight:800;color:var(--app-text)}
     /* BUG1 fix — select dropdown text vizibil în modalul ALOP șablon (dark theme) */
     #alop-sablon-modal select{color:#e8eeff !important;background-color:#1a2040 !important;border-color:rgba(255,255,255,.18) !important}
@@ -351,7 +351,7 @@
     .df-info-banner{background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:#b0a0ff;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     /* Modal dark fields */
     #alop-modal input:not([type=checkbox]):not([type=radio]),#alop-modal textarea,#alop-modal select,
-    #modal-lichidare input:not([type=checkbox]):not([type=radio]),#modal-lichidare textarea,#modal-plata input:not([type=checkbox]):not([type=radio]),#modal-plata textarea{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e8eeff;font-size:13px;padding:9px 12px;width:100%;box-sizing:border-box;font-family:inherit}
+    #modal-lichidare input:not([type=checkbox]):not([type=radio]),#modal-lichidare textarea,#modal-plata input:not([type=checkbox]):not([type=radio]),#modal-plata textarea{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e8eeff;font-size:14px;padding:11px 14px;width:100%;box-sizing:border-box;font-family:inherit}
     #alop-modal label.alop-lbl,#modal-lichidare label.alop-lbl,#modal-plata label.alop-lbl{font-size:11px;color:#6b82b8;font-weight:600;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px;display:block}
     .df-row-1{grid-template-columns:1fr}
     .df-row-2{grid-template-columns:1fr 1fr}
@@ -1202,7 +1202,7 @@
 
 <!-- ── Modal Confirmare Lichidare ─────────────────────────────────────────── -->
 <div class="modal-ov" id="modal-lichidare" onclick="if(event.target===this)closeLichidareModal()">
-  <div class="modal-box" style="max-width:520px">
+  <div class="modal-box" style="max-width:640px">
     <div class="modal-title">✔️ Confirmare Lichidare</div>
     <div style="font-size:.8rem;color:var(--app-muted);margin-top:-4px">Confirmați că bunurile/serviciile au fost recepționate și documentele justificative sunt în ordine.</div>
     <div style="display:grid;gap:10px">
@@ -1240,7 +1240,7 @@
 
 <!-- ── Modal Confirmare Plată ─────────────────────────────────────────────── -->
 <div class="modal-ov" id="modal-plata" onclick="if(event.target===this)closePlataModal()">
-  <div class="modal-box" style="max-width:520px">
+  <div class="modal-box" style="max-width:640px">
     <div class="modal-title">🏦 Confirmare Plată</div>
     <div style="font-size:.8rem;color:var(--app-muted);margin-top:-4px">Înregistrați execuția plății prin Trezoreria Statului.</div>
     <div style="display:grid;gap:10px;margin-top:12px">
