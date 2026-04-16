@@ -2294,28 +2294,16 @@ async function openDoc(ft,id){
         mb.style.display='';
       }
     }else if(status==='completed'){
+      lockAll(ft,true);
       lockCaptureAndAttachments(ft,true);
       document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
       if(ft==='ordnt'&&role==='p1'){
-        // P1 la completed: NU lockAll — blochează selectiv tot ce nu e col.4
-        // Blochează antetul ORD
-        ['o-nr','o-data','o-den','o-cif','o-df-sel','o-nrUnic'].forEach(id=>{
-          const e=document.getElementById(id);if(e)e.disabled=true;
-        });
-        // Blochează câmpurile P1 (beneficiar, IBAN etc) — NU se modifică la completed
-        ['o-benef','o-docsj','o-iban','o-cifb','o-banca','o-inf1','o-inf2'].forEach(id=>{
-          const e=document.getElementById(id);if(e)e.disabled=true;
-        });
-        // Blochează col.1.1-1.4, col.2, col.3 din tabel; LASĂ col.4 liberă
-        document.querySelectorAll('#o-tbody input').forEach(e=>{
-          const f=e.dataset.f;
-          if(f!=='suma_ordonantata_plata')e.disabled=true;
-          else{e.disabled=false;e.style.pointerEvents='auto';}
-        });
-        // Butonul + adaugă rând rămâne activ
-        document.querySelectorAll('#bloc-ord-p2 .badd').forEach(e=>e.disabled=false);
-      }else{
-        lockAll(ft,true);
+        const p2block=document.getElementById('bloc-ord-p2');
+        if(p2block){
+          p2block.querySelectorAll('input,textarea,select,button.badd,button.bdel').forEach(e=>e.disabled=false);
+          p2block.style.pointerEvents='';
+          p2block.querySelectorAll('*').forEach(e=>{if(e.style)e.style.pointerEvents='';});
+        }
       }
       const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
       const _completedMsg=ft==='ordnt'&&role==='p1'?' — completați col.4 și lansați fluxul de semnare':ft==='notafd'&&role==='p1'?' — puteți genera PDF și lansa fluxul de semnare':'.';
@@ -3685,7 +3673,7 @@ async function confirmLichidare(){
       body:JSON.stringify(body),
     });
     const data=await r.json();
-    if(!r.ok||!data.ok){alert(data.error||'Eroare confirmare lichidare');return;}
+    if(!r.ok){alert(data.error||'Eroare confirmare lichidare');return;}
     closeLichidareModal();
     openAlop(_lichidareAlopId);
     loadAlop();loadAlopStats();
