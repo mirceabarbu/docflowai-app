@@ -3468,7 +3468,9 @@ function renderAlopDetail(a,container){
   stepperHtml+=`</div>`;
 
   let actionsHtml='';
-  if(!isCompleted&&!isCancelled){
+  const currentUserId = ST.user?.userId;
+  const isAlopOwner = a.created_by === currentUserId || ST.user?.role === 'admin' || ST.user?.role === 'org_admin';
+  if(!isCompleted&&!isCancelled&&isAlopOwner){
     const id=_escH(a.id);
     if(!a.df_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
