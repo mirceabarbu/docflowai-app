@@ -191,6 +191,19 @@ router.post('/api/formulare-df', _csrf, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const data = pick(req.body || {}, DF_P1_FIELDS);
+    if (data.nr_unic_inreg) {
+      const { rows: existing } = await pool.query(
+        `SELECT id FROM formulare_df
+         WHERE nr_unic_inreg = $1 AND org_id = $2 AND deleted_at IS NULL`,
+        [data.nr_unic_inreg, actor.orgId]
+      );
+      if (existing.length > 0) {
+        return res.status(409).json({
+          error: 'nr_unic_duplicat',
+          message: 'Numărul unic de înregistrare există deja. Folosiți alt număr sau revizuiți documentul existent.'
+        });
+      }
+    }
     const { sets, vals } = buildUpdate(data, DF_P1_FIELDS, 3);
     const cols = ['org_id', 'created_by', ...Object.keys(data)];
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
@@ -358,7 +371,7 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
     }
 
     await sendNotif(doc.created_by, 'formulare_df_completed',
-      'Document de Fundamentare — completat de P2',
+      'Document de Fundamentare — completat de Responsabil CAB',
       `${actor.nume || actor.email} a completat Secțiunea B din DF "${doc.nr_unic_inreg || 'fără număr'}"`,
       { form_type: 'df', form_id: req.params.id });
 
@@ -831,7 +844,7 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
     `, vals);
 
     await sendNotif(doc.created_by, 'formulare_ord_completed',
-      'Ordonanțare de Plată — completată de P2',
+      'Ordonanțare de Plată — completată de Responsabil CAB',
       `${actor.nume || actor.email} a completat ORD "${doc.nr_ordonant_pl || 'fără număr'}"`,
       { form_type: 'ord', form_id: req.params.id });
 

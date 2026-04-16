@@ -391,7 +391,7 @@
         <select id="flt-status" class="flt-sel" onchange="loadList()">
           <option value="all">Toate</option>
           <option value="draft">📝 Draft</option>
-          <option value="pending_p2">📤 La Responsabil Buget</option>
+          <option value="pending_p2">📤 La Responsabil CAB</option>
           <option value="completed">✅ Completat</option>
           <option value="generat_pdf">📄 PDF generat</option>
           <option value="transmis_flux">🔄 Trimis flux</option>
@@ -427,7 +427,7 @@
         <tr>
           <th>Nr. / Titlu</th>
           <th>Inițiator</th>
-          <th>Responsabil Buget</th>
+          <th>Responsabil CAB</th>
           <th>Status</th>
           <th>Creat</th>
           <th>Actualizat</th>
@@ -809,7 +809,7 @@
       <span class="df-role-tag df-role-no" id="seca-tag-p2">P2 blocat</span>
     </div>
   </div>
-  <div class="df-lock-bar df-lock-warn" id="seca-lock" style="display:none">🔒 Secțiunea A a fost trimisă la Responsabil Buget și nu mai poate fi modificată.</div>
+  <div class="df-lock-bar df-lock-warn" id="seca-lock" style="display:none">🔒 Secțiunea A a fost trimisă la Responsabil CAB și nu mai poate fi modificată.</div>
   <div class="df-block-body" id="seca-body">
 
     <div class="dl req">1. Compartiment de specialitate:</div>
@@ -1034,7 +1034,7 @@
     <div class="modal-list" id="modal-user-list"></div>
     <div class="modal-acts">
       <button class="btn" onclick="closeModal()">Anulează</button>
-      <button class="btn primary" id="modal-confirm" disabled onclick="confirmP2()">Trimite la Responsabil Buget</button>
+      <button class="btn primary" id="modal-confirm" disabled onclick="confirmP2()">Trimite la Responsabil CAB</button>
     </div>
   </div>
 </div>
@@ -1665,11 +1665,11 @@ function dlPdf(ft){
   const a=document.createElement('a');a.href='data:application/pdf;base64,'+pdf;
   a.download=name||'formular_'+ft+'.pdf';a.click();
 }
-function showFF(ft){const e=document.getElementById('ff-'+ft);e.classList.add('show');e.scrollIntoView({behavior:'smooth',block:'nearest'});}
+function showFF(ft){ mkFlow(ft); }
 function mkFlow(ft){
   const{pdf,name}=ST[ft];
   if(!pdf){setS('Generați mai întâi PDF-ul.','err');return;}
-  const dn=(g('ffn-'+ft)||'').trim()||((name||'').replace('.pdf',''));
+  const dn=(g('ffn-'+ft)||'').trim()||(ST[ft]?.name||'').replace('.pdf','')||'Document_'+ft;
   if(!dn){setS('Introduceți numele documentului.','err');return;}
   const user=ST.user;
   if(!user?.email){setS('Utilizator necunoscut. Reîncărcați pagina.','err');return;}
@@ -1910,7 +1910,7 @@ function ftType(ft){return ft==='ordnt'?'ord':'df';}
 // ── Status label ─────────────────────────────────────────────────────────────
 function stLabel(s,aprobat){
   if(aprobat)return['aprobat','✔ Aprobat'];
-  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La Responsabil Buget'],completed:['completed','✅ Complet'],aprobat:['aprobat','🟢 Aprobat'],transmis_flux:['transmis_flux','🔄 Pe flux'],returnat:['returnat','↩ Returnat'],respins:['respins','❌ Respins']}[s]||['draft',s];
+  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La Responsabil CAB'],completed:['completed','✅ Complet'],aprobat:['aprobat','🟢 Aprobat'],transmis_flux:['transmis_flux','🔄 Pe flux'],returnat:['returnat','↩ Returnat'],respins:['respins','❌ Respins']}[s]||['draft',s];
 }
 
 // ── Colectare date formular → DB ──────────────────────────────────────────────
@@ -2086,7 +2086,7 @@ function applyDfRoleState(status,role){
     _dfUpdateProgress('notafd','seca');
   }else if(status==='pending_p2'){
     secaBody.classList.add('locked');
-    if(secaLock){secaLock.style.display='flex';secaLock.className='df-lock-bar df-lock-warn';secaLock.textContent='🔒 Secțiunea A a fost trimisă la Responsabil Buget și nu mai poate fi modificată.';}
+    if(secaLock){secaLock.style.display='flex';secaLock.className='df-lock-bar df-lock-warn';secaLock.textContent='🔒 Secțiunea A a fost trimisă la Responsabil CAB și nu mai poate fi modificată.';}
     if(role==='p1'&&secbBody)secbBody.classList.add('locked');
     _dfUpdateProgress('notafd','secb');
   }else if(status==='returnat'){
@@ -2134,7 +2134,7 @@ function applyOrdRoleState(status,role){
   }else if(status==='pending_p2'){
     if(role==='p1'){
       if(p1Body)p1Body.classList.add('locked');
-      if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-warn';p1Lock.textContent='🔒 Document trimis la Responsabil Buget. Așteptați completarea.';}
+      if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-warn';p1Lock.textContent='🔒 Document trimis la Responsabil CAB. Așteptați completarea.';}
     }
     _dfUpdateProgress('ordnt','p2');
   }else if(status==='completed'){
@@ -2175,22 +2175,22 @@ function renderActions(ft){
     return;
   }
   if(!docId){
-    html=B('teal','📨 Trimite la Responsabil Buget',`showP2Modal('${ft}')`)
+    html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
       +`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
       +B('','↺ Resetează',`resetF('${ft}')`);
   }else if(status==='draft'&&role==='p1'){
-    html=B('teal','📨 Trimite la Responsabil Buget',`showP2Modal('${ft}')`)
+    html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
       +BNou
       +B('','↺ Câmpuri',`resetF('${ft}')`);
   }else if(status==='returnat'&&role==='p1'){
-    html=B('teal','📨 Retrimite la Responsabil Buget',`showP2Modal('${ft}')`)
+    html=B('teal','📨 Retrimite la Responsabil CAB',`showP2Modal('${ft}')`)
       +BNou;
   }else if(status==='pending_p2'&&role==='p2'){
     html=B('','💾 Salvează',`saveDoc('${ft}')`)
       +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`)
       +B('danger','↩ Returnează ca neconform',`showReturnModal('${ft}')`);
   }else if(status==='pending_p2'&&role==='p1'){
-    html=`<span style="color:var(--app-muted);font-size:.82rem">⏳ Așteptare Responsabil Buget...</span>`
+    html=`<span style="color:var(--app-muted);font-size:.82rem">⏳ Așteptare Responsabil CAB...</span>`
       +BNou;
   }else if(status==='completed'&&role==='p1'){
     const hasPdf=!!(ST[ft]?.pdf);
@@ -2290,10 +2290,10 @@ async function openDoc(ft,id){
       setLockedBar(ft,'Completați câmpurile dvs. (marcate) și apăsați Finalizez.','info');
     }else if(status==='pending_p2'&&role==='p1'){
       lockAll(ft,true);
-      setLockedBar(ft,'Document trimis la Responsabil Buget. Așteptați completarea.','warn');
+      setLockedBar(ft,'Document trimis la Responsabil CAB. Așteptați completarea.','warn');
     }else if(status==='returnat'&&role==='p1'){
       lockAll(ft,false);
-      setLockedBar(ft,'↩ Document returnat de Responsabil Buget — verificați deficiențele și retrimiteți.','warn');
+      setLockedBar(ft,'↩ Document returnat de Responsabil CAB — verificați deficiențele și retrimiteți.','warn');
       const mb=document.getElementById('motiv-bar-'+ft);
       if(mb&&doc.motiv_returnare){
         document.getElementById('motiv-text-'+ft).textContent=doc.motiv_returnare;
@@ -2343,7 +2343,7 @@ function renderDocsList(ft,docs){
       ?(d.nr_ordonant_pl?`ORD ${esc(d.nr_ordonant_pl)}`:'ORD fără număr')
       :(d.nr_unic_inreg?`DF ${esc(d.nr_unic_inreg)}`:'DF fără număr');
     const updated=new Date(d.updated_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-    const p2info=d.assigned_to_nume?` · Resp. Buget: ${esc(d.assigned_to_nume)}`:'';
+    const p2info=d.assigned_to_nume?` · Resp. CAB: ${esc(d.assigned_to_nume)}`:'';
     const creator=d.created_by_nume||d.created_by_email||'';
     const creatorInfo=creator?` · ${esc(creator)}`:'';
     const pdfBtn=d.flow_id
@@ -2434,6 +2434,7 @@ async function saveDoc(ft){
     if(!docId){
       r=await fetch(ftApi(ft),{method:'POST',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
+      if(r.status===409){setS(j.message||'Număr unic duplicat!','err');document.getElementById('n-nrUnic')?.focus();return;}
       if(r.ok&&j.ok){
         ST.docId[ft]=j.document.id;ST.docStatus[ft]='draft';ST.docRole[ft]='p1';
         _alopLinkDoc(ft,j.document.id); // FIX: leagă imediat la ALOP la primul save
@@ -2664,7 +2665,7 @@ async function confirmP2(){
   if(ft==='ordnt')await _saveBeneficiarIfNew();
   closeModal();
   try{
-    setS('Se trimite la Responsabil Buget...','info');
+    setS('Se trimite la Responsabil CAB...','info');
     const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/submit`,{
       method:'POST',credentials:'include',
       headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
@@ -2675,7 +2676,7 @@ async function confirmP2(){
     ST.docStatus[ft]='pending_p2';
     // Redirect automat la centralizare după trimite P2
     setTimeout(()=>showListSection(),1200);
-    setS(`Trimis la ${j.assigned_to?.nume||j.assigned_to?.email||'Responsabil Buget'}.`,'ok');
+    setS(`Trimis la ${j.assigned_to?.nume||j.assigned_to?.email||'Responsabil CAB'}.`,'ok');
   }catch(e){setS('Eroare: '+e.message,'err');}
 }
 
@@ -3078,7 +3079,7 @@ async function loadList(){
   }catch(e){if(ld)ld.style.display='none';if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}}
 }
 function _stBadge(status){
-  const map={draft:'📝 Draft',pending_p2:'📤 La Responsabil Buget',completed:'✅ Completat',
+  const map={draft:'📝 Draft',pending_p2:'📤 La Responsabil CAB',completed:'✅ Completat',
     generat_pdf:'📄 PDF generat',transmis_flux:'🔄 Trimis flux',
     aprobat:'🟢 Aprobat',respins:'❌ Respins',anulat:'🚫 Anulat',returnat:'↩ Returnat'};
   const cls={draft:'st-draft',pending_p2:'st-transmis_p2',completed:'st-completat',
