@@ -753,3 +753,181 @@ describe('POST /api/alop/:id/confirma-plata', () => {
     expect(res.body.ok).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIRMARE PLATĂ — user normal (fără restricție de rol)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/alop/:id/confirma-plata — user normal', () => {
+  it('200 — user normal (non-admin) poate confirma plata dacă ALOP e în status plata', async () => {
+    const completed = makeAlopRow({
+      status:             'completed',
+      plata_confirmed_by: 1,
+      plata_nr_ordin:     'OP-100',
+      plata_suma_efectiva: '1200.00',
+      completed_at:       new Date().toISOString(),
+    });
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [completed] });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/confirma-plata`)
+      .set('Cookie', `auth_token=${makeToken({ role: 'user' })}`)
+      .send({ nr_ordin_plata: 'OP-100', data_plata: '2025-04-01', suma_efectiva: 1200 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.alop.status).toBe('completed');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LINK-DF-FLOW — auto-lichidare STS Cloud
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/alop/:id/link-df-flow — auto-lichidare STS Cloud', () => {
+  it('200 — flux cu completed=true → ALOP tranzitionează la lichidare', async () => {
+    const angajare = makeAlopRow({ status: 'angajare', df_flow_id: FLOW_ID });
+    const lichidare = makeAlopRow({
+      status: 'lichidare', df_flow_id: FLOW_ID,
+      df_completed_at: new Date().toISOString(),
+    });
+
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [angajare] })         // UPDATE df_flow_id
+      .mockResolvedValueOnce({ rows: [{ id: FLOW_ID }] }) // SELECT flows (completat)
+      .mockResolvedValueOnce({ rows: [] })                  // UPDATE status='lichidare'
+      .mockResolvedValueOnce({ rows: [lichidare] });        // re-fetch
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/link-df-flow`)
+      .set('Cookie', `auth_token=${makeToken()}`)
+      .send({ flow_id: FLOW_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.alop.status).toBe('lichidare');
+  });
+
+  it('200 — flux NU e completat → ALOP rămâne în angajare', async () => {
+    const angajare = makeAlopRow({ status: 'angajare', df_flow_id: FLOW_ID });
+
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [angajare] }) // UPDATE df_flow_id
+      .mockResolvedValueOnce({ rows: [] })          // SELECT flows → nu e completat
+      .mockResolvedValueOnce({ rows: [angajare] }); // re-fetch
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/link-df-flow`)
+      .set('Cookie', `auth_token=${makeToken()}`)
+      .send({ flow_id: FLOW_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.alop.status).toBe('angajare');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOUA LICHIDARE — ciclu 2 (multi-ORD)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/alop/:id/noua-lichidare', () => {
+  it('200 — ALOP completed cu valoare rămasă → resetează la lichidare ciclu 2', async () => {
+    const completedAlop = makeAlopRow({
+      status:              'completed',
+      df_id:               DF_ID,
+      ciclu_curent:        1,
+      plata_suma_efectiva: '1000.00',
+    });
+    const resetAlop = makeAlopRow({
+      status:              'lichidare',
+      df_id:               DF_ID,
+      ciclu_curent:        2,
+      ord_id:              null,
+      plata_suma_efectiva: null,
+    });
+
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [completedAlop] })       // SELECT alop
+      .mockResolvedValueOnce({ rows: [{ df_val: '2000' }] }) // SELECT df_val
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })      // SELECT SUM cicluri anterioare
+      .mockResolvedValueOnce({ rows: [] })                     // INSERT alop_ord_cicluri
+      .mockResolvedValueOnce({ rows: [resetAlop] });           // UPDATE alop
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/noua-lichidare`)
+      .set('Cookie', `auth_token=${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.alop.status).toBe('lichidare');
+    expect(res.body.alop.ciclu_curent).toBe(2);
+    expect(res.body.alop.ord_id).toBeNull();
+    expect(res.body.ramas).toBeCloseTo(1000); // 2000 - (0 + 1000) = 1000
+  });
+
+  it('400 — suma epuizată (plata_suma >= df_val) returnează limita_depasita', async () => {
+    const completedAlop = makeAlopRow({
+      status:              'completed',
+      df_id:               DF_ID,
+      plata_suma_efectiva: '2000.00',
+    });
+
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [completedAlop] })
+      .mockResolvedValueOnce({ rows: [{ df_val: '2000' }] })
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/noua-lichidare`)
+      .set('Cookie', `auth_token=${makeToken()}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('limita_depasita');
+  });
+
+  it('400 — ALOP non-completed returnează status_invalid', async () => {
+    const lichidareAlop = makeAlopRow({ status: 'lichidare', df_id: DF_ID });
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [lichidareAlop] });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/noua-lichidare`)
+      .set('Cookie', `auth_token=${makeToken()}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('status_invalid');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GUARD ID INVALID
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Guard id invalid', () => {
+  it('400 — GET /api/alop/null returnează 400 id_invalid', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .get('/api/alop/null')
+      .set('Cookie', `auth_token=${makeToken()}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('id_invalid');
+  });
+
+  it('400 — POST /api/alop/null/noua-lichidare returnează 400 id_invalid', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/api/alop/null/noua-lichidare')
+      .set('Cookie', `auth_token=${makeToken()}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('id_invalid');
+  });
+});
