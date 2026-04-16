@@ -17,14 +17,14 @@
     body{font-family:Arial,Helvetica,sans-serif;background:var(--app-bg);color:var(--app-text);overflow-x:hidden}
     /* Nav */
     nav{position:sticky;top:0;z-index:100;background:rgba(7,12,26,.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--app-line);padding:12px 0}
-    .nav-inner{max-width:1020px;margin:0 auto;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .nav-inner{max-width:1200px;margin:0 auto;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
     .brand{display:flex;align-items:center;gap:10px;text-decoration:none}
     .brand img{height:34px;opacity:.92}
     .brand-lbl{font-size:13px;font-weight:700;color:var(--app-sub)}
     .nav-back{padding:6px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.15);color:var(--app-sub);text-decoration:none;font-size:13px;transition:.2s}
     .nav-back:hover{border-color:rgba(255,255,255,.3);color:var(--app-text)}
     /* Tabs */
-    .tabs-wrap{max-width:1020px;margin:0 auto;padding:16px 16px 0}
+    .tabs-wrap{max-width:1200px;margin:0 auto;padding:16px 16px 0}
     .tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:12px;padding:3px;width:fit-content;border:1px solid var(--app-line)}
     .tab{padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.86rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s}
     .tab:hover{color:var(--app-sub)}
@@ -32,7 +32,7 @@
     .draft-badge{font-size:11px;color:var(--app-muted);margin-left:6px;font-weight:400;opacity:0;transition:opacity .4s}
     .draft-badge.show{opacity:1}
     /* Outer */
-    .outer{max-width:1020px;margin:0 auto;padding:16px 16px 60px}
+    .outer{max-width:1200px;margin:0 auto;padding:16px 16px 60px}
     /* Status */
     .status{display:none;padding:9px 14px;border-radius:9px;font-size:.84rem;margin-bottom:14px;align-items:center;gap:8px}
     .status.err{display:flex;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090}
@@ -192,10 +192,10 @@
     /* ═══════════════════════════════════════════════════════
        CENTRALIZARE — Section 1 (list) adăugată deasupra formularului
        ═══════════════════════════════════════════════════════ */
-    .back-bar{max-width:1020px;margin:10px auto 0;padding:0 16px}
-    #val-err-bar{display:none;max-width:1020px;margin:8px auto 0;padding:0 16px}
+    .back-bar{max-width:1200px;margin:10px auto 0;padding:0 16px}
+    #val-err-bar{display:none;max-width:1200px;margin:8px auto 0;padding:0 16px}
     #val-err-bar .val-err-inner{background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090;padding:9px 14px;border-radius:9px;font-size:.83rem}
-    .lst-wrap{max-width:1020px;margin:0 auto;padding:14px 16px 0}
+    .lst-wrap{max-width:1200px;margin:0 auto;padding:14px 16px 0}
     .lst-tabs-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
     .lst-tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:10px;padding:3px;border:1px solid var(--app-line)}
     .lst-tab{padding:8px 18px;border-radius:7px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s;font-family:inherit}
@@ -447,7 +447,7 @@
 </div><!-- /lst-wrap -->
 
 <!-- ════════════ ALOP ════════════════════════════════════════════════════════ -->
-<div id="alop-section" style="display:none;max-width:1020px;margin:0 auto;padding:16px">
+<div id="alop-section" style="display:none;max-width:1200px;margin:0 auto;padding:16px">
 
   <!-- Bara navigare identică cu bara principală -->
   <div class="lst-tabs" style="margin-bottom:16px;width:fit-content">
@@ -545,7 +545,7 @@
 <!-- ═══ ORDNT ═══════════════════════════════════════════════════════════════ -->
 <div id="form-ordnt">
 <div class="locked-bar" id="locked-bar-ordnt"></div>
-<div id="motiv-bar-ordnt" style="display:none;max-width:1020px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-ordnt"></span></div>
+<div id="motiv-bar-ordnt" style="display:none;max-width:1200px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-ordnt"></span></div>
 <div class="actions" id="actions-ordnt"></div>
 <div class="df-alop-ctx" id="alop-ctx-ordnt"></div>
 
@@ -746,8 +746,8 @@
 <!-- ═══ NOTAFD ══════════════════════════════════════════════════════════════ -->
 <div id="form-notafd" style="display:none">
 <div class="locked-bar" id="locked-bar-notafd"></div>
-<div id="banner-an-urmator-notafd" style="display:none;max-width:1020px;margin:4px auto 6px;padding:10px 16px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:8px;font-size:.82rem;color:#93c5fd">ℹ️ Revizie pentru angajamente an următor — înregistrare în max. 3 zile lucrătoare conform OMF 1140/2025</div>
-<div id="motiv-bar-notafd" style="display:none;max-width:1020px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-notafd"></span></div>
+<div id="banner-an-urmator-notafd" style="display:none;max-width:1200px;margin:4px auto 6px;padding:10px 16px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:8px;font-size:.82rem;color:#93c5fd">ℹ️ Revizie pentru angajamente an următor — înregistrare în max. 3 zile lucrătoare conform OMF 1140/2025</div>
+<div id="motiv-bar-notafd" style="display:none;max-width:1200px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-notafd"></span></div>
 <div class="actions" id="actions-notafd"></div>
 <div class="df-alop-ctx" id="alop-ctx-notafd"></div>
 
