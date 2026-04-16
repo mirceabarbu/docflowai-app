@@ -343,7 +343,48 @@ router.get('/api/alop/:id', async (req, res) => {
     `, [req.params.id, actor.orgId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
-    res.json({ alop: rows[0] });
+    const alop = rows[0];
+
+    // ── Lazy auto-tranziție pentru fluxuri STS Cloud (completed=true fără status='completed') ──
+    // DF aprobat dar ALOP încă în angajare → lichidare
+    if (alop.df_aprobat && alop.status === 'angajare') {
+      try {
+        const { rows: up } = await pool.query(`
+          UPDATE alop_instances
+          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()
+          WHERE id=$1 AND status='angajare'
+          RETURNING status, df_completed_at
+        `, [req.params.id]);
+        if (up[0]) {
+          alop.status = up[0].status;
+          alop.df_completed_at = up[0].df_completed_at;
+          logger.info(`[ALOP] lazy auto-tranziție angajare→lichidare (STS), id=${req.params.id}`);
+        }
+      } catch (autoErr) {
+        logger.warn({ err: autoErr }, '[ALOP] lazy tranziție lichidare failed (non-fatal)');
+      }
+    }
+
+    // ORD aprobat dar ALOP încă în ordonantare → plata
+    if (alop.ord_aprobat && alop.status === 'ordonantare') {
+      try {
+        const { rows: up } = await pool.query(`
+          UPDATE alop_instances
+          SET status='plata', ord_completed_at=NOW(), updated_at=NOW()
+          WHERE id=$1 AND status='ordonantare'
+          RETURNING status, ord_completed_at
+        `, [req.params.id]);
+        if (up[0]) {
+          alop.status = up[0].status;
+          alop.ord_completed_at = up[0].ord_completed_at;
+          logger.info(`[ALOP] lazy auto-tranziție ordonantare→plata (STS), id=${req.params.id}`);
+        }
+      } catch (autoErr) {
+        logger.warn({ err: autoErr }, '[ALOP] lazy tranziție plata failed (non-fatal)');
+      }
+    }
+
+    res.json({ alop });
   } catch (e) {
     logger.error({ err: e }, 'alop get error');
     res.status(500).json({ error: 'server_error' });
