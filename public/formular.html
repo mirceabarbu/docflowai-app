@@ -2134,7 +2134,7 @@ function applyOrdRoleState(status,role){
   }else if(status==='completed'){
     // P1 NU se blochează la completed — trebuie să completeze col.4
     // (p1Body rămâne deblocat)
-    if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Document complet — completați col.4 și lansați fluxul de semnare.';}
+    if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Document complet — lansați fluxul de semnare.';}
     if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-ok';p2Lock.textContent='✓ Date CAB completate.';}
     _dfUpdateProgress('ordnt','sign');
   }else if(status==='aprobat'){
@@ -2297,26 +2297,8 @@ async function openDoc(ft,id){
       lockAll(ft,true);
       lockCaptureAndAttachments(ft,true);
       document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
-      if(ft==='ordnt'&&role==='p1'){
-        const p2block=document.getElementById('bloc-ord-p2');
-        if(p2block){
-          p2block.querySelectorAll('input,textarea,select,button.badd,button.bdel').forEach(e=>e.disabled=false);
-          p2block.style.pointerEvents='';
-          p2block.style.opacity='';
-          p2block.style.filter='';
-          p2block.querySelectorAll('*').forEach(e=>{if(e.style)e.style.pointerEvents='';});
-          // Elimină și de pe df-block-body din interior
-          const inner=p2block.querySelector('.df-block-body');
-          if(inner){
-            inner.classList.remove('locked');
-            inner.style.opacity='';
-            inner.style.filter='';
-            inner.style.pointerEvents='';
-          }
-        }
-      }
       const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
-      const _completedMsg=ft==='ordnt'&&role==='p1'?' — completați col.4 și lansați fluxul de semnare':ft==='notafd'&&role==='p1'?' — puteți genera PDF și lansa fluxul de semnare':'.';
+      const _completedMsg=ft==='ordnt'&&role==='p1'?' — lansați fluxul de semnare':ft==='notafd'&&role==='p1'?' — puteți genera PDF și lansa fluxul de semnare':'.';
       setLockedBar(ft,`Document complet${_revNr}${_completedMsg}`,'info');
     }else{
       setLockedBar(ft,'');
