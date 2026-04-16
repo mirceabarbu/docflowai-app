@@ -394,7 +394,7 @@ router.get('/api/alop/:id', async (req, res) => {
     res.json({ alop });
   } catch (e) {
     logger.error({ err: e }, 'alop get error');
-    res.status(500).json({ error: 'server_error' });
+    res.status(500).json({ error: e.message || 'server_error' });
   }
 });
 
@@ -554,7 +554,7 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
     res.json({ alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-lichidare error');
-    res.status(500).json({ error: 'server_error' });
+    res.status(500).json({ error: e.message || 'server_error' });
   }
 });
 
