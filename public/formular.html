@@ -3380,6 +3380,7 @@ async function createAlop(){
 
 // ── Detaliu ALOP ──────────────────────────────────────────────────────────────
 async function openAlop(id){
+  if(!id||id==='null'||id==='undefined'){console.error('openAlop: id invalid:',id);return;}
   window._currentAlopId=id;
   clearInterval(window._alopRefreshInterval);
   const listPanel=document.getElementById('alop-list-panel');
@@ -3412,6 +3413,7 @@ async function alopRefreshCurrent(){
 }
 
 function renderAlopDetail(a,container){
+  if(!a||!a.id)return;
   // FIX 1: Resetează contextul DF/ORD din sesiunea anterioară când ALOP-ul se schimbă
   const _prevAlopId=window._alopContext?.alopId;
   if(_prevAlopId&&_prevAlopId!==a.id){
@@ -3731,6 +3733,7 @@ async function alopDfCompleted(id){
 let _lichidareAlopId=null;
 
 function openAlopConfirmLichidare(id){
+  if(!id||id==='null')return;
   _lichidareAlopId=id;
   ['lich-nr-factura','lich-data-factura','lich-nr-pv','lich-data-pv','lich-observatii']
     .forEach(eid=>{const el=document.getElementById(eid);if(el)el.value='';});
@@ -3781,6 +3784,7 @@ async function alopOrdCompleted(id){
 let _plataAlopId=null;
 
 function openAlopConfirmPlata(id){
+  if(!id||id==='null')return;
   _plataAlopId=id;
   ['plata-nr-ordin','plata-data','plata-suma','plata-observatii']
     .forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});

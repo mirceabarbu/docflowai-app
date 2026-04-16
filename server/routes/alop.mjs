@@ -301,6 +301,9 @@ router.post('/api/alop', _csrf, async (req, res) => {
 
 // ── GET /api/alop/:id — detalii ALOP ─────────────────────────────────────────
 router.get('/api/alop/:id', async (req, res) => {
+  if (!req.params.id || req.params.id === 'null' || req.params.id === 'undefined') {
+    return res.status(400).json({ error: 'id_invalid' });
+  }
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
@@ -514,6 +517,9 @@ router.post('/api/alop/:id/df-completed', _csrf, async (req, res) => {
 
 // ── POST /api/alop/:id/confirma-lichidare → status: ordonantare ──────────────
 router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
+  if (!req.params.id || req.params.id === 'null' || req.params.id === 'undefined') {
+    return res.status(400).json({ error: 'id_invalid' });
+  }
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
@@ -633,6 +639,9 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
 
 // ── POST /api/alop/:id/confirma-plata → status: completed ────────────────────
 router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
+  if (!req.params.id || req.params.id === 'null' || req.params.id === 'undefined') {
+    return res.status(400).json({ error: 'id_invalid' });
+  }
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
