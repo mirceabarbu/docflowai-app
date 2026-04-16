@@ -316,6 +316,12 @@ router.get('/api/alop/:id', async (req, res) => {
         fo.status                    AS ord_status,
         f1.id AS df_flow_exists,
         f2.id AS ord_flow_exists,
+        CASE WHEN a.df_flow_id IS NOT NULL AND (
+          f1.data->>'status' = 'completed' OR (f1.data->>'completed')::boolean = true
+        ) THEN true ELSE false END AS df_aprobat,
+        CASE WHEN a.ord_flow_id IS NOT NULL AND (
+          f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true
+        ) THEN true ELSE false END AS ord_aprobat,
         ul.nume AS lichidare_by_name,
         up.nume AS plata_by_name,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
@@ -408,10 +414,13 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
     // Dacă fluxul e deja completat, tranziționează imediat la lichidare
     try {
       const { rows: flowRows } = await pool.query(
-        `SELECT data->>'status' AS status FROM flows WHERE id=$1`,
+        `SELECT id FROM flows WHERE id=$1 AND (
+          data->>'status' = 'completed'
+          OR (data->>'completed')::boolean = true
+        )`,
         [flow_id]
       );
-      if (flowRows[0]?.status === 'completed') {
+      if (flowRows[0]) {
         await pool.query(`
           UPDATE alop_instances
           SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()
