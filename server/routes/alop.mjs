@@ -689,10 +689,16 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
     const { rows: [dfRow] } = await pool.query(
       `SELECT COALESCE(
         (SELECT SUM((r->>'valt_actualiz')::numeric)
-         FROM jsonb_array_elements(rows_val) r),
-        valoare_totala, 0
+         FROM jsonb_array_elements(
+           CASE WHEN fd.rows_val IS NOT NULL
+                AND jsonb_array_length(fd.rows_val) > 0
+           THEN fd.rows_val ELSE '[]'::jsonb END
+         ) r
+         WHERE (r->>'valt_actualiz') IS NOT NULL
+           AND (r->>'valt_actualiz') ~ '^[0-9.]+$'
+        ), 0
        ) AS df_val
-       FROM formulare_df WHERE id=$1`,
+       FROM formulare_df fd WHERE fd.id=$1`,
       [alop.df_id]
     );
     const dfVal = parseFloat(dfRow?.df_val || 0);
