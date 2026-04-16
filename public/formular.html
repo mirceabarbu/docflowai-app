@@ -3469,7 +3469,14 @@ function renderAlopDetail(a,container){
 
   let actionsHtml='';
   const currentUserId = ST.user?.userId;
-  const isAlopOwner = !currentUserId || a.created_by === currentUserId || ST.user?.role === 'admin' || ST.user?.role === 'org_admin';
+  const isAlopOwner = !currentUserId || String(a.created_by) === String(currentUserId)
+    || ST.user?.role === 'admin'
+    || ST.user?.role === 'org_admin';
+  console.log('[ALOP owner check]', {
+    currentUserId, aCreatedBy: a.created_by,
+    match: String(a.created_by) === String(currentUserId),
+    role: ST.user?.role, isAlopOwner
+  });
   if(!isCompleted&&!isCancelled&&isAlopOwner){
     const id=_escH(a.id);
     if(!a.df_id){
