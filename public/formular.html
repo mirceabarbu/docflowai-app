@@ -3440,7 +3440,7 @@ function renderAlopDetail(a,container){
         :(a.status==='angajare'&&!a.df_flow_id)?'📝 DF în lucru'
         :`DF: ${a.df_nr||a.df_id.slice(0,8)}`},
     {label:'Lichidare',  icon:'✔️',color:'#f59e0b',
-     done:!!a.lichidare_confirmed_at||isCompleted,
+     done:(!!a.lichidare_confirmed_at&&a.status!=='lichidare')||isCompleted,
      active:a.status==='lichidare',
      sub:a.lichidare_confirmed_at?`Confirmat ${fmtDate(a.lichidare_confirmed_at)}`:'În așteptare'},
     {label:'Ordonanțare',icon:'💰',color:'#8b5cf6',
@@ -3469,7 +3469,7 @@ function renderAlopDetail(a,container){
 
   let actionsHtml='';
   const currentUserId = ST.user?.userId;
-  const isAlopOwner = a.created_by === currentUserId || ST.user?.role === 'admin' || ST.user?.role === 'org_admin';
+  const isAlopOwner = !currentUserId || a.created_by === currentUserId || ST.user?.role === 'admin' || ST.user?.role === 'org_admin';
   if(!isCompleted&&!isCancelled&&isAlopOwner){
     const id=_escH(a.id);
     if(!a.df_id){
@@ -3479,7 +3479,7 @@ function renderAlopDetail(a,container){
     }else if(a.df_id&&!a.df_flow_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Deschide DF</button>`;
     }
-    if(a.status==='lichidare'){
+    if(a.status==='lichidare'&&!a.lichidare_confirmed_at){
       actionsHtml+=`<button class="btn primary" onclick="openAlopConfirmLichidare('${id}')">✔️ Confirmă Lichidarea</button>`;
       if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&!a.ord_id){
