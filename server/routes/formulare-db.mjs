@@ -94,6 +94,17 @@ router.get('/api/formulare-df', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    let orgFilter, params;
+    if (actor.role === 'admin') {
+      orgFilter = '';
+      params = [];
+    } else if (actor.role === 'org_admin') {
+      orgFilter = 'AND fd.org_id = $1';
+      params = [actor.orgId];
+    } else {
+      orgFilter = 'AND fd.org_id = $1 AND (fd.created_by = $2 OR fd.assigned_to = $2)';
+      params = [actor.orgId, actor.userId];
+    }
     const { rows } = await pool.query(`
       SELECT
         fd.id, fd.version, fd.status, fd.nr_unic_inreg, fd.subtitlu_df,
@@ -107,11 +118,10 @@ router.get('/api/formulare-df', async (req, res) => {
       JOIN users p1 ON p1.id = fd.created_by
       LEFT JOIN users p2 ON p2.id = fd.assigned_to
       LEFT JOIN flows f  ON f.id = fd.flow_id
-      WHERE fd.org_id = $1
-        AND fd.deleted_at IS NULL
-        AND (fd.created_by = $2 OR fd.assigned_to = $2)
+      WHERE fd.deleted_at IS NULL
+        ${orgFilter}
       ORDER BY fd.updated_at DESC
-    `, [actor.orgId, actor.userId]);
+    `, params);
     res.json({ ok: true, documents: rows });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df list error');
@@ -591,6 +601,17 @@ router.get('/api/formulare-ord', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    let orgFilter, params;
+    if (actor.role === 'admin') {
+      orgFilter = '';
+      params = [];
+    } else if (actor.role === 'org_admin') {
+      orgFilter = 'AND fo.org_id = $1';
+      params = [actor.orgId];
+    } else {
+      orgFilter = 'AND fo.org_id = $1 AND (fo.created_by = $2 OR fo.assigned_to = $2)';
+      params = [actor.orgId, actor.userId];
+    }
     const { rows } = await pool.query(`
       SELECT
         fo.id, fo.version, fo.status, fo.nr_ordonant_pl, fo.nr_unic_inreg,
@@ -603,11 +624,10 @@ router.get('/api/formulare-ord', async (req, res) => {
       JOIN users p1 ON p1.id = fo.created_by
       LEFT JOIN users p2 ON p2.id = fo.assigned_to
       LEFT JOIN formulare_df fd ON fd.id = fo.df_id
-      WHERE fo.org_id = $1
-        AND fo.deleted_at IS NULL
-        AND (fo.created_by = $2 OR fo.assigned_to = $2)
+      WHERE fo.deleted_at IS NULL
+        ${orgFilter}
       ORDER BY fo.updated_at DESC
-    `, [actor.orgId, actor.userId]);
+    `, params);
     res.json({ ok: true, documents: rows });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord list error');

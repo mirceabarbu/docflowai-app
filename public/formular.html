@@ -494,6 +494,7 @@
         <thead>
           <tr>
             <th>Titlu</th>
+            <th>CREAT DE</th>
             <th>Status</th>
             <th>Faza curentă</th>
             <th>Valoare</th>
@@ -502,7 +503,7 @@
           </tr>
         </thead>
         <tbody id="alop-tbody">
-          <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--app-muted)">Se încarcă...</td></tr>
+          <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--app-muted)">Se încarcă...</td></tr>
         </tbody>
       </table>
     </div>
@@ -2343,13 +2344,15 @@ function renderDocsList(ft,docs){
       :(d.nr_unic_inreg?`DF ${esc(d.nr_unic_inreg)}`:'DF fără număr');
     const updated=new Date(d.updated_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const p2info=d.assigned_to_nume?` · Resp. Buget: ${esc(d.assigned_to_nume)}`:'';
+    const creator=d.created_by_nume||d.created_by_email||'';
+    const creatorInfo=creator?` · ${esc(creator)}`:'';
     const pdfBtn=d.flow_id
       ?`<button class="btn" style="padding:3px 8px;font-size:.74rem;margin-left:4px" onclick="event.stopPropagation();viewFlowPdf('${d.flow_id}')" title="PDF semnat din flux">📄 PDF flux</button>`
       :'';
     return`<div class="doc-card" data-id="${d.id}" onclick="openDoc('${ft}','${d.id}')">
       <div class="doc-card-main">
         <div class="doc-card-title">${title}${revBadge}</div>
-        <div class="doc-card-sub">${updated}${p2info}</div>
+        <div class="doc-card-sub">${updated}${p2info}${creatorInfo}</div>
       </div>
       <span class="dst ${cls}">${lbl}</span>${pdfBtn}
     </div>`;
@@ -3234,14 +3237,14 @@ async function loadAlop(){
   _updateAlopSablonBtnVisibility();
   const tb=document.getElementById('alop-tbody');
   if(!tb)return;
-  tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--app-muted)">Se încarcă...</td></tr>';
+  tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--app-muted)">Se încarcă...</td></tr>';
   try{
     const r=await fetch('/api/alop',{credentials:'include'});
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
     const rows=data.alop||[];
     if(!rows.length){
-      tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--app-muted)">Niciun ALOP creat.</td></tr>';
+      tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--app-muted)">Niciun ALOP creat.</td></tr>';
       return;
     }
     const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON',maximumFractionDigits:0}).format(v):'—';
@@ -3252,6 +3255,7 @@ async function loadAlop(){
         <td><span style="font-weight:600;color:var(--app-text)">${_escH(a.titlu||'—')}</span>
           ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--app-muted)">${_escH(a.compartiment)}</span>`:''}
         </td>
+        <td style="font-size:.78rem;color:var(--app-muted)">${_escH(a.creator_name||a.creator_email||'—')}</td>
         <td>${_alopStatusBadge(a.status,a.df_flow_id)}</td>
         <td style="font-size:.78rem;color:var(--app-muted)">${_escH(_alopFazaLabel(a.status))}</td>
         <td style="font-size:.82rem">
@@ -3272,7 +3276,7 @@ async function loadAlop(){
       </tr>`;
     }).join('');
   }catch(e){
-    if(tb)tb.innerHTML=`<tr><td colspan="6" style="text-align:center;padding:20px;color:#f87171">Eroare: ${_escH(e.message)}</td></tr>`;
+    if(tb)tb.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:20px;color:#f87171">Eroare: ${_escH(e.message)}</td></tr>`;
   }
 }
 
