@@ -356,6 +356,9 @@
     .df-row-1{grid-template-columns:1fr}
     .df-row-2{grid-template-columns:1fr 1fr}
     .df-row-3{grid-template-columns:1fr 1fr 1fr}
+  /* Date inputs */
+  input[type="date"]{-webkit-date-and-time-value:{text-align:left}}
+  input[type="date"]::-webkit-datetime-edit-fields-wrapper{direction:ltr}
   </style>
 </head>
 <body>
@@ -1253,7 +1256,7 @@
         </div>
         <div>
           <label class="alop-lbl">Data plății <span style="color:#ef4444">*</span></label>
-          <input id="plata-data" type="text" placeholder="zz.ll.aaaa" maxlength="10" pattern="\d{2}\.\d{2}\.\d{4}"/>
+          <input id="plata-data" type="date"/>
         </div>
       </div>
       <div>
@@ -1907,6 +1910,30 @@ function _draftAttach(ft) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function getCsrf(){return document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('csrf_token='))?.split('=')[1]||'';}
+
+// Afișare vizuală dd.mm.yyyy peste input[type=date] (valoarea internă rămâne YYYY-MM-DD)
+function initDateDisplayRo(){
+  document.querySelectorAll('input[type="date"]').forEach(input=>{
+    if(input.dataset.roDate)return;
+    input.dataset.roDate='1';
+    const wrapper=document.createElement('div');
+    wrapper.style.cssText='position:relative;display:inline-block;width:100%';
+    input.parentNode.insertBefore(wrapper,input);
+    wrapper.appendChild(input);
+    const display=document.createElement('span');
+    display.style.cssText='position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:inherit;color:inherit;background:transparent;z-index:1';
+    wrapper.appendChild(display);
+    const update=()=>{
+      if(input.value){const[y,m,d]=input.value.split('-');display.textContent=`${d}.${m}.${y}`;input.style.color='transparent';}
+      else{display.textContent='';input.style.color='';}
+    };
+    input.addEventListener('change',update);
+    input.addEventListener('input',update);
+    update();
+  });
+}
+document.addEventListener('DOMContentLoaded',initDateDisplayRo);
+
 function ftApi(ft){return ft==='ordnt'?'/api/formulare-ord':'/api/formulare-df';}
 function ftType(ft){return ft==='ordnt'?'ord':'df';}
 
@@ -3814,9 +3841,9 @@ function openAlopConfirmLichidare(id){
   if(!id||id==='null')return;
   _lichidareAlopId=id;
   ['lich-nr-factura','lich-data-factura','lich-nr-pv','lich-data-pv','lich-observatii']
-    .forEach(eid=>{const el=document.getElementById(eid);if(el)el.value='';});
+    .forEach(eid=>{const el=document.getElementById(eid);if(el){el.value='';if(el.type==='date')el.dispatchEvent(new Event('input'));}});
   document.getElementById('modal-lichidare').style.display='flex';
-  setTimeout(()=>document.getElementById('lich-nr-factura')?.focus(),50);
+  setTimeout(()=>{initDateDisplayRo();document.getElementById('lich-nr-factura')?.focus();},50);
 }
 
 function closeLichidareModal(){
@@ -3867,26 +3894,15 @@ function openAlopConfirmPlata(id,ordValoare){
   _plataAlopId=id;
   _plataOrdValoare=parseFloat(ordValoare)||0;
   ['plata-nr-ordin','plata-data','plata-suma','plata-observatii']
-    .forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+    .forEach(eid=>{const e=document.getElementById(eid);if(e){e.value='';if(e.type==='date')e.dispatchEvent(new Event('input'));}});
   document.getElementById('modal-plata').classList.add('show');
-  setTimeout(()=>document.getElementById('plata-nr-ordin')?.focus(),50);
+  setTimeout(()=>{initDateDisplayRo();document.getElementById('plata-nr-ordin')?.focus();},50);
 }
 
 function closePlataModal(){
   document.getElementById('modal-plata').classList.remove('show');
   _plataAlopId=null;
 }
-// Auto-formatare date zz.ll.aaaa pentru câmpurile de tip text din modaluri ALOP
-['plata-data','lichidare-data'].forEach(id=>{
-  const el=document.getElementById(id);
-  if(!el)return;
-  el.addEventListener('input',function(){
-    let v=this.value.replace(/[^\d]/g,'');
-    if(v.length>2)v=v.slice(0,2)+'.'+v.slice(2);
-    if(v.length>5)v=v.slice(0,5)+'.'+v.slice(5);
-    this.value=v.slice(0,10);
-  });
-});
 
 async function confirmPlata(){
   if(!_plataAlopId)return;
@@ -3895,7 +3911,6 @@ async function confirmPlata(){
   const suma=parseFloat(document.getElementById('plata-suma')?.value)||0;
   if(!nr){alert('Completați numărul ordinului de plată.');return;}
   if(!dt){alert('Completați data plății.');return;}
-  if(!/^\d{2}\.\d{2}\.\d{4}$/.test(dt)){alert('Introduceți data în formatul zz.ll.aaaa.');return;}
   if(suma<=0){alert('Completați suma efectiv plătită.');return;}
   if(_plataOrdValoare>0&&suma>_plataOrdValoare){
     alert(`Suma introdusă (${suma.toLocaleString('ro-RO')} RON) depășește suma ordonanțată (${_plataOrdValoare.toLocaleString('ro-RO')} RON). Corectați suma.`);
