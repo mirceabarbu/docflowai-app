@@ -359,6 +359,7 @@
   /* Date inputs */
   input[type="date"]{-webkit-date-and-time-value:{text-align:left}}
   input[type="date"]::-webkit-datetime-edit-fields-wrapper{direction:ltr}
+  #ord-p1-body input[data-f="suma_ordonantata_plata"]{opacity:1!important;pointer-events:auto!important;}
   </style>
 </head>
 <body>
@@ -2060,6 +2061,7 @@ function setModeP2Df(){
 }
 function setModeP2Ord(){
   lockAll('ordnt',true);
+  document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;e.style.removeProperty('pointer-events');e.style.removeProperty('opacity');e.closest('td')?.style.removeProperty('pointer-events');e.closest('td')?.style.removeProperty('opacity');});
   // Deblochez receptii + plati_anterioare în tabel
   document.querySelectorAll('#o-tbody input[data-f="receptii"],#o-tbody input[data-f="plati_anterioare"]').forEach(e=>{e.disabled=false;e.classList.add('p2-field');});
   const czone=document.getElementById('o-czone');if(czone)czone.style.pointerEvents='';
@@ -2183,7 +2185,6 @@ function applyOrdRoleState(status,role){
     _dfUpdateProgress('ordnt','p1');
   }else if(status==='pending_p2'){
     if(role==='p1'){
-      if(p1Body)p1Body.classList.add('locked');
       if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-warn';p1Lock.textContent='🔒 Document trimis la Responsabil CAB. Așteptați completarea.';}
     }
     _dfUpdateProgress('ordnt','p2');
@@ -2206,7 +2207,6 @@ function applyOrdRoleState(status,role){
     });
     _dfUpdateProgress('ordnt','sign');
   }else if(status==='aprobat'){
-    if(p1Body)p1Body.classList.add('locked');
     if(p2Body)p2Body.classList.add('locked');
     if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Document aprobat.';}
     if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-ok';p2Lock.textContent='✓ Date CAB completate.';}
@@ -2344,6 +2344,7 @@ async function openDoc(ft,id){
     const status=doc.status,role=ST.docRole[ft];
     if(ST.docAprobat[ft]){
       lockAll(ft,true);
+      if(ft==='ordnt')document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;e.style.removeProperty('pointer-events');e.style.removeProperty('opacity');e.closest('td')?.style.removeProperty('pointer-events');e.closest('td')?.style.removeProperty('opacity');});
       lockCaptureAndAttachments(ft,true);
       document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
       setLockedBar(ft,'✔ Document aprobat — fluxul de semnare a fost finalizat.','info');
@@ -2359,6 +2360,7 @@ async function openDoc(ft,id){
       setLockedBar(ft,'Completați câmpurile dvs. (marcate) și apăsați Finalizez.','info');
     }else if(status==='pending_p2'&&role==='p1'){
       lockAll(ft,true);
+      if(ft==='ordnt')document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;e.style.removeProperty('pointer-events');e.style.removeProperty('opacity');e.closest('td')?.style.removeProperty('pointer-events');e.closest('td')?.style.removeProperty('opacity');});
       setLockedBar(ft,'Document trimis la Responsabil CAB. Așteptați completarea.','warn');
     }else if(status==='returnat'&&role==='p1'){
       lockAll(ft,false);
@@ -2370,6 +2372,7 @@ async function openDoc(ft,id){
       }
     }else if(status==='completed'){
       lockAll(ft,true);
+      if(ft==='ordnt')document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;e.style.removeProperty('pointer-events');e.style.removeProperty('opacity');e.closest('td')?.style.removeProperty('pointer-events');e.closest('td')?.style.removeProperty('opacity');});
       lockCaptureAndAttachments(ft,true);
       document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
       const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
@@ -2784,7 +2787,9 @@ async function completeAsP2(ft){
     if(!r.ok||!j.ok){setS(j.error||'Eroare','err');return;}
     ST.docStatus[ft]='completed';
     _alopLinkDoc(ft,ST.docId[ft]); // FIX: re-leagă la ALOP după completare (idempotent)
-    lockAll(ft,true);setLockedBar(ft,'Secțiunea dvs. a fost finalizată și trimisă înapoi la P1.','info');
+    lockAll(ft,true);
+    if(ft==='ordnt')document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;e.style.removeProperty('pointer-events');e.style.removeProperty('opacity');e.closest('td')?.style.removeProperty('pointer-events');e.closest('td')?.style.removeProperty('opacity');});
+    setLockedBar(ft,'Secțiunea dvs. a fost finalizată și trimisă înapoi la P1.','info');
     renderActions(ft);refreshDocs(ft);
     setS('Finalizat cu succes! Redirecționare...','ok');
     setTimeout(()=>showListSection(),1500);
@@ -2837,6 +2842,7 @@ async function confirmReturn(){
     closeReturnModal();
     ST.docStatus[ft]='returnat';
     lockAll(ft,true);
+    if(ft==='ordnt')document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;e.style.removeProperty('pointer-events');e.style.removeProperty('opacity');e.closest('td')?.style.removeProperty('pointer-events');e.closest('td')?.style.removeProperty('opacity');});
     setLockedBar(ft,'Document returnat ca neconform. Inițiatorul va fi notificat.','warn');
     renderActions(ft);refreshDocs(ft);
     setS('Document returnat.','ok');
