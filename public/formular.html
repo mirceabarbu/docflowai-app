@@ -710,13 +710,15 @@
       <img class="cap-img" id="o-cimg"/>
     </div>
     <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg','o-cph')">✕ Șterge imaginea</button></div>
+    <div id="o-captura2-wrap">
     <div class="cap-lbl" style="margin-top:10px">Captură "Informații complete contract" din sistemul de control al angajamentelor bugetare</div>
-    <div class="cap-zone" id="o-czone2" ondragover="dov(event,'o-czone2')" ondragleave="dlv(event,'o-czone2')" ondrop="ddp(event,'o-cimg2','o-czone2','o-cph2')">
-      <input type="file" accept="image/*" onchange="fimg(event,'o-cimg2','o-cph2')"/>
+    <div class="cap-zone" id="o-czone2" ondragover="dov(event,'o-czone2')" ondragleave="dlv(event,'o-czone2')" ondrop="ddp(event,'o-cimg2','o-czone2','o-cph2');document.getElementById('o-captura2-wrap').style.display=''">
+      <input type="file" accept="image/*" onchange="fimg(event,'o-cimg2','o-cph2');document.getElementById('o-captura2-wrap').style.display=''"/>
       <div class="cap-ph" id="o-cph2"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="font-size:10px;margin-top:1px">PNG · JPG · BMP</p></div>
       <img class="cap-img" id="o-cimg2"/>
     </div>
     <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg2','o-cph2')">✕ Șterge imaginea</button></div>
+    </div>
   </div>
 </div>
 
@@ -1251,7 +1253,7 @@
         </div>
         <div>
           <label class="alop-lbl">Data plății <span style="color:#ef4444">*</span></label>
-          <input id="plata-data" type="date"/>
+          <input id="plata-data" type="text" placeholder="zz.ll.aaaa" maxlength="10" pattern="\d{2}\.\d{2}\.\d{4}"/>
         </div>
       </div>
       <div>
@@ -1956,8 +1958,16 @@ function populateOrd(doc){
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
   (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=v;});});
+  const _wrap2=document.getElementById('o-captura2-wrap');
+  if(_wrap2)_wrap2.style.display=doc.img2?'':'none';
   if(doc.img2)showImg('o-cimg2','o-cph2',doc.img2);
   upTot();
+  // Ciclu 2+: prefill plati_anterioare
+  const _sumaAnt=window._alopSumaPlataAnterioara||0;
+  if(_sumaAnt>0){
+    const _antInputs=document.querySelectorAll('#o-tbody input[data-f="plati_anterioare"]');
+    if(_antInputs.length){_antInputs[0].value=_sumaAnt;calcORRow(_antInputs[0]);}
+  }
 }
 function populateDf(doc){
   sv('n-cif',doc.cif);sv('n-den',doc.den_inst_pb);sv('n-subtitlu',doc.subtitlu_df);
@@ -2009,7 +2019,7 @@ function lockCaptureAndAttachments(ft,lock){
 }
 function setModeP2Df(){
   // Blochează P1 (header + sect A), deblochează sect B
-  ['n-den','n-cif','n-subtitlu','n-nrUnic','n-rev','n-data','n-comp','n-scurt','n-lung',
+  ['n-den','n-cif','n-subtitlu','n-nrUnic','n-rev','n-data','n-ck-oblig','n-comp','n-scurt','n-lung',
    'n-ck-stab','n-ck-ramane','n-ramana','n-ck-cuang','n-ck-faraang','n-ck-sting',
    'n-ck-faraplati','n-ck-cuplati','n-ck-anurmatori'].forEach(id=>{const e=document.getElementById(id);if(e)e.disabled=true;});
   document.querySelectorAll('#n-vtbody input,#n-ptbody input,#n-vtbody .bdel,#n-ptbody .bdel,#n-vtbody .badd,#n-ptbody .badd').forEach(e=>e.disabled=true);
@@ -2087,6 +2097,7 @@ function applyDfRoleState(status,role){
   const secbLock=document.getElementById('secb-lock');
   if(!secaBody)return;
   secaBody.classList.remove('locked');
+  document.querySelectorAll('#seca-body input[type="checkbox"]').forEach(cb=>{cb.disabled=false;});
   if(secbBody)secbBody.classList.remove('locked');
   if(secaLock)secaLock.style.display='none';
   if(secbLock)secbLock.style.display='none';
@@ -2096,6 +2107,7 @@ function applyDfRoleState(status,role){
     _dfUpdateProgress('notafd','seca');
   }else if(status==='pending_p2'){
     secaBody.classList.add('locked');
+    document.querySelectorAll('#seca-body input[type="checkbox"]').forEach(cb=>{cb.disabled=true;});
     if(secaLock){secaLock.style.display='flex';secaLock.className='df-lock-bar df-lock-warn';secaLock.textContent='🔒 Secțiunea A a fost trimisă la Responsabil CAB și nu mai poate fi modificată.';}
     if(role==='p1'&&secbBody)secbBody.classList.add('locked');
     _dfUpdateProgress('notafd','secb');
@@ -2105,6 +2117,7 @@ function applyDfRoleState(status,role){
     _dfUpdateProgress('notafd','seca');
   }else if(status==='completed'||status==='aprobat'){
     secaBody.classList.add('locked');
+    document.querySelectorAll('#seca-body input[type="checkbox"]').forEach(cb=>{cb.disabled=true;});
     if(secbBody)secbBody.classList.add('locked');
     if(secaLock){secaLock.style.display='flex';secaLock.className='df-lock-bar df-lock-ok';secaLock.textContent='✓ Secțiunea A aprobată.';}
     if(secbLock){secbLock.style.display='flex';secbLock.className='df-lock-bar df-lock-ok';secbLock.textContent='✓ Secțiunea B completată de Responsabilul CAB.';}
@@ -2155,8 +2168,13 @@ function applyOrdRoleState(status,role){
     if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-ok';p2Lock.textContent='✓ Date CAB completate.';}
     // Col.4 (suma_ordonantata_plata) rămâne vizual activ chiar dacă p1Body e în container shared cu p2Body locked
     document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{
-      e.style.opacity='1';e.style.pointerEvents='auto';
-      e.style.background='rgba(108,79,240,.08)';e.style.borderColor='rgba(108,79,240,.4)';
+      e.disabled=false;
+      e.style.setProperty('pointer-events','auto','important');
+      e.style.setProperty('opacity','1','important');
+      e.style.setProperty('background','rgba(108,79,240,.10)','important');
+      e.style.setProperty('border-color','rgba(108,79,240,.5)','important');
+      e.style.setProperty('color','var(--app-text)','important');
+      e.closest('td')?.style.setProperty('pointer-events','auto','important');
       e.closest('td')?.style.setProperty('opacity','1','important');
     });
     _dfUpdateProgress('ordnt','sign');
@@ -3438,6 +3456,8 @@ async function alopRefreshCurrent(){
 
 function renderAlopDetail(a,container){
   if(!a||!a.id)return;
+  // Suma plătită în ciclurile anterioare — folosită de populateOrd pentru prefill plati_anterioare
+  window._alopSumaPlataAnterioara=parseFloat(a.suma_platita_total||0)||0;
   // FIX 1: Resetează contextul DF/ORD din sesiunea anterioară când ALOP-ul se schimbă
   const _prevAlopId=window._alopContext?.alopId;
   if(_prevAlopId&&_prevAlopId!==a.id){
@@ -3517,7 +3537,7 @@ function renderAlopDetail(a,container){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideORD('${id}')">💰 Completează Ordonanțare de Plată</button>`;
       if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_id&&!a.ord_flow_id){
-      actionsHtml+=`<button class="btn primary" onclick="alopLaunchOrdFlow('${id}','${_escH(a.ord_id)}')">✍️ Lansează flux semnare ORD</button>`;
+      actionsHtml+=`<button class="btn primary" onclick="alopLaunchOrdFlow('${id}','${_escH(a.ord_id)}')">⚙ Generează PDF + Lansează flux ORD</button>`;
       if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_flow_id&&!a.ord_completed_at){
       actionsHtml+=`<button class="btn primary" onclick="alopOrdCompleted('${id}')">✅ Marchează ORD semnat complet</button>`;
@@ -3747,6 +3767,14 @@ async function alopLaunchDfFlow(alopId,dfId){
     + '&prefill_doc_type=notafd';
 }
 async function alopLaunchOrdFlow(alopId,ordId){
+  // Pas 0: Generează PDF dacă ORD-ul e deschis în formular
+  const hasPdf=ST.docHasPdf?.['ordnt'];
+  if(!hasPdf&&ST.docId?.['ordnt']){
+    try{
+      await genPdf('ordnt');
+      await new Promise(r=>setTimeout(r,800));
+    }catch(e){console.warn('genPdf ordnt warn:',e);}
+  }
   // Pas 1: leagă ord_id la ALOP ÎNAINTE de orice navigare
   if(ordId){
     try{
@@ -3848,6 +3876,17 @@ function closePlataModal(){
   document.getElementById('modal-plata').classList.remove('show');
   _plataAlopId=null;
 }
+// Auto-formatare date zz.ll.aaaa pentru câmpurile de tip text din modaluri ALOP
+['plata-data','lichidare-data'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.addEventListener('input',function(){
+    let v=this.value.replace(/[^\d]/g,'');
+    if(v.length>2)v=v.slice(0,2)+'.'+v.slice(2);
+    if(v.length>5)v=v.slice(0,5)+'.'+v.slice(5);
+    this.value=v.slice(0,10);
+  });
+});
 
 async function confirmPlata(){
   if(!_plataAlopId)return;
@@ -3856,9 +3895,10 @@ async function confirmPlata(){
   const suma=parseFloat(document.getElementById('plata-suma')?.value)||0;
   if(!nr){alert('Completați numărul ordinului de plată.');return;}
   if(!dt){alert('Completați data plății.');return;}
+  if(!/^\d{2}\.\d{2}\.\d{4}$/.test(dt)){alert('Introduceți data în formatul zz.ll.aaaa.');return;}
   if(suma<=0){alert('Completați suma efectiv plătită.');return;}
   if(_plataOrdValoare>0&&suma>_plataOrdValoare){
-    alert(`Suma introdusă (${suma.toLocaleString('ro-RO')} RON) depășește suma ordonată (${_plataOrdValoare.toLocaleString('ro-RO')} RON). Corectați suma.`);
+    alert(`Suma introdusă (${suma.toLocaleString('ro-RO')} RON) depășește suma ordonanțată (${_plataOrdValoare.toLocaleString('ro-RO')} RON). Corectați suma.`);
     return;
   }
   const body={

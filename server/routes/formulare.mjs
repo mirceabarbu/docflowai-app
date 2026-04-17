@@ -400,9 +400,9 @@ async function generatePdfSimple(formType, data) {
   function buildOrdnt() {
     const df = data.docFd || {};
 
-    secTitle('Date ordonanță');
-    fieldLine('Nr. ordonanță', data.NrOrdonantPl);
-    fieldLine('Data ordonanței', data.DataOrdontPl);
+    secTitle('Date ordonanțare');
+    fieldLine('Nr. ordonanțare', data.NrOrdonantPl);
+    fieldLine('Data ordonanțării', data.DataOrdontPl);
 
     y -= 4;
     secTitle('Date beneficiar');

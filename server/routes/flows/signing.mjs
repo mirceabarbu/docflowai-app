@@ -332,12 +332,16 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
                 logger.info(`[ALOP] df_flow semnat → lichidare, id=${al.id}`);
               }
             }
-            if (alopOrd.rows[0]) {
-              const al = alopOrd.rows[0];
-              if (al.status === 'ordonantare') {
-                await pool.query(`UPDATE alop_instances SET status='plata', ord_completed_at=NOW(), updated_at=NOW() WHERE id=$1`, [al.id]);
-                logger.info(`[ALOP] ord_flow semnat → plata, id=${al.id}`);
-              }
+            const alopOrdRow = alopOrd.rows[0] || (await pool.query(
+              `SELECT a.id, a.status FROM alop_instances a
+               JOIN alop_ord_cicluri c ON c.alop_id = a.id
+               WHERE c.ord_flow_id = $1 AND a.cancelled_at IS NULL
+               LIMIT 1`,
+              [flowId]
+            )).rows[0];
+            if (alopOrdRow && alopOrdRow.status === 'ordonantare') {
+              await pool.query(`UPDATE alop_instances SET status='plata', ord_completed_at=NOW(), updated_at=NOW() WHERE id=$1`, [alopOrdRow.id]);
+              logger.info(`[ALOP] ord_flow semnat → plata, id=${alopOrdRow.id}`);
             }
           } catch(alopErr) {
             logger.warn({ err: alopErr }, '[ALOP] auto-transition failed (non-fatal)');
