@@ -131,7 +131,7 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx, opts = {}) {
   const titleH     = 20;
   const cartusH    = rows * cellH + titleH;
   const footerH    = 28;
-  const cartusBottom = footerH + 8;
+  const cartusBottom = footerH + 22;
   const cartusTotal  = cartusH + cartusBottom + 10;
 
   const isFirstSigner = opts.alwaysDrawCartus
