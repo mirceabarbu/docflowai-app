@@ -598,39 +598,82 @@ th{ color: var(--sub) !important; }
       $("pdfFile").addEventListener("change", () => {
         const clearBtn = $("btnClearPdf");
         const f = $("pdfFile").files && $("pdfFile").files[0];
-        if (!f){ pdfB64=null; originalFileName=null; setPdfInfo("Nu ai selectat încă un fișier."); return; }
+        if (!f) { pdfB64=null; originalFileName=null; setPdfInfo("Nu ai selectat încă un fișier."); return; }
+
         const ACCEPTED = ['.pdf','.docx','.doc','.xlsx','.xls',
           '.pptx','.ppt','.odt','.ods','.odp',
           '.jpg','.jpeg','.png','.webp','.gif','.bmp'];
-        const fExt = f.name.split('.').pop().toLowerCase();
-        if (!ACCEPTED.includes('.' + fExt)) { pdfB64=null; originalFileName=null; setPdfInfo('❌ Tip fișier nesuportat.', true); return; }
-        if (f.size > 50*1024*1024){ pdfB64=null; originalFileName=null; setPdfInfo("❌ Fișier prea mare — max 50MB.", true); $("pdfFile").value=""; return; }
-        const needsConv = fExt !== 'pdf';
-        if (needsConv) {
-          setPdfInfo(`⏳ Fișier ${fExt.toUpperCase()} — va fi convertit automat la PDF.`, false);
-        } else {
-          setPdfInfo(`Selectat: ${f.name} (${Math.round(f.size/1024)} KB).`);
+        const fExt = '.' + f.name.split('.').pop().toLowerCase();
+        if (!ACCEPTED.includes(fExt)) {
+          pdfB64=null; originalFileName=null;
+          setPdfInfo('❌ Tip fișier nesuportat. Acceptăm: PDF, DOCX, XLSX, JPG, PNG etc.', true);
+          return;
         }
+
+        if (f.size > 50*1024*1024) {
+          pdfB64=null; originalFileName=null;
+          setPdfInfo('❌ Fișier prea mare — max 50MB.', true);
+          $("pdfFile").value=''; return;
+        }
+
+        const isPdf = fExt === '.pdf';
+        const needsConv = !isPdf;
+
+        if (needsConv) {
+          // Fișier non-PDF: stochează raw bytes ca dataURL dar
+          // NU face preview și NU apelează renderPdfJsInit
+          pdfB64 = null; // va fi setat după conversie server-side la submit
+          originalFileName = f.name;
+          setPdfInfo(`⏳ Fișier ${fExt.replace('.','').toUpperCase()} — va fi convertit automat la PDF la trimitere.`);
+
+          // Stochează fișierul raw pentru submit (nu dataURL base64 pdf)
+          window._rawFileForConversion = f;
+
+          // Ascunde preview box dacă era vizibil
+          const box = $("pdfPreviewBox");
+          if (box) box.style.display = 'none';
+
+          // Activează butonul Șterge
+          if (clearBtn) {
+            clearBtn.style.opacity='1'; clearBtn.style.pointerEvents='auto';
+            clearBtn.style.cursor='pointer'; clearBtn.disabled=false;
+            clearBtn.style.background='rgba(255,80,80,.15)';
+            clearBtn.style.borderColor='rgba(255,80,80,.3)';
+            clearBtn.style.color='#ffaaaa';
+          }
+          $("btnRenunta").style.display='';
+
+          // Auto-fill docName din numele fișierului
+          const docNameEl = $("docName");
+          if (docNameEl && !docNameEl.value.trim()) {
+            docNameEl.value = f.name.replace(/\.[^.]+$/, '');
+          }
+          validateForm();
+          return;
+        }
+
+        // PDF normal: comportament existent
+        window._rawFileForConversion = null;
         originalFileName = f.name;
+        setPdfInfo(`Selectat: ${f.name} (${Math.round(f.size/1024)} KB).`);
         const reader = new FileReader();
         reader.onload = () => {
           pdfB64 = reader.result;
-          if (clearBtn) { clearBtn.style.opacity = "1"; clearBtn.style.pointerEvents = "auto"; clearBtn.style.cursor = "pointer"; clearBtn.disabled = false; clearBtn.style.background = "rgba(255,80,80,.15)"; clearBtn.style.borderColor = "rgba(255,80,80,.3)"; clearBtn.style.color = "#ffaaaa"; }
-          $("btnRenunta").style.display = "";
-          validateForm();
-          saveFormState();
-          idb.save(pdfB64);
-          // Auto-fill docName from PDF filename if empty
+          if (clearBtn) {
+            clearBtn.style.opacity='1'; clearBtn.style.pointerEvents='auto';
+            clearBtn.style.cursor='pointer'; clearBtn.disabled=false;
+            clearBtn.style.background='rgba(255,80,80,.15)';
+            clearBtn.style.borderColor='rgba(255,80,80,.3)';
+            clearBtn.style.color='#ffaaaa';
+          }
+          $("btnRenunta").style.display='';
+          validateForm(); saveFormState(); idb.save(pdfB64);
           const docNameEl = $("docName");
           if (docNameEl && !docNameEl.value.trim()) {
-            docNameEl.value = f.name.replace(/\.[^.]+$/, "");
+            docNameEl.value = f.name.replace(/\.pdf$/i, '');
           }
           const box = $("pdfPreviewBox");
-          if (box) {
-            box.style.display = "block";
-            renderPdfJsInit(pdfB64);
-          }
-          // Dacă tipul de flux e ancore — detectăm câmpurile automat
+          if (box) { box.style.display='block'; renderPdfJsInit(pdfB64); }
           onPdfUploadedForAncore();
         };
         reader.readAsDataURL(f);
@@ -668,6 +711,7 @@ th{ color: var(--sub) !important; }
         $("pdfFile").value = "";
         pdfB64 = null;
         originalFileName = null;
+        window._rawFileForConversion = null;
         idb.clear();
         validateForm();
         setPdfInfo("Nu ai selectat încă un fișier.");
@@ -2129,6 +2173,23 @@ async function signFromFluxuri(flowId) {
         // Obtine functie/compartiment din profilul userului
         const _u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
         $("createResult").textContent = "Se creează...";
+
+        // Fișier non-PDF: citim raw bytes ca base64 la submit
+        let _submitPdfB64 = pdfB64 ? (pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64) : null;
+        if (!_submitPdfB64 && window._rawFileForConversion) {
+          try {
+            _submitPdfB64 = await new Promise((res, rej) => {
+              const r = new FileReader();
+              r.onload = () => res(r.result.split(',')[1]);
+              r.onerror = rej;
+              r.readAsDataURL(window._rawFileForConversion);
+            });
+          } catch(e) {
+            $("createResult").textContent = "❌ Eroare la citirea fișierului.";
+            return;
+          }
+        }
+
         const payload = {
           docName: $("docName").value.trim(),
           initName: initNameVal,
@@ -2137,7 +2198,7 @@ async function signFromFluxuri(flowId) {
           initFunctie: $("initFunctie")?.value?.trim() || _u.functie || '',
           initCompartiment: $("initCompartiment")?.value?.trim() || _u.compartiment || '',
           signers: readSigners(),
-          pdfB64: pdfB64 ? (pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64) : null,
+          pdfB64: _submitPdfB64,
           originalFileName: originalFileName || null,
           flowType: getDocType(),
           urgent: !!($("urgentCheck")?.checked),
