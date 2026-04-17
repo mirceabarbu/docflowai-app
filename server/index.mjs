@@ -1040,7 +1040,7 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
         startY = height - topMargin - cellH;
       } else {
         // Jos: deasupra footer-ului
-        const blockBottom = footerY + 32;
+        const blockBottom = footerY + 41;
         const blockTop    = blockBottom + rows * cellH + (rows - 1) * rowGap;
         startY = Math.min(height - topMargin, blockTop) - cellH;
       }
