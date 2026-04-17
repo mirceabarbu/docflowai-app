@@ -6,6 +6,7 @@ import { Router, json as expressJson } from 'express';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
+import { convertToPdf, ACCEPTED_EXTENSIONS } from '../../utils/convertToPdf.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -140,6 +141,20 @@ const createFlow = async (req, res) => {
     const flowId = _newFlowId(initInstitutie);
     let finalPdfB64 = body.pdfB64 ?? null;
 
+    // Conversie automată fișiere non-PDF (DOCX, XLSX, imagini) la PDF
+    if (finalPdfB64 && body.originalFileName) {
+      try {
+        const rawB64 = finalPdfB64.includes('base64,') ? finalPdfB64.split('base64,')[1] : finalPdfB64;
+        const inputBuf = Buffer.from(rawB64, 'base64');
+        const convertedBuf = await convertToPdf(inputBuf, body.originalFileName);
+        finalPdfB64 = convertedBuf.toString('base64');
+      } catch(convErr) {
+        logger.warn({ err: convErr, originalFileName: body.originalFileName }, 'convertToPdf non-fatal, using original');
+      }
+    }
+    // PDF-ul convertit fără footer — pentru reinitiate (dacă fișierul era non-PDF, body.pdfB64 era DOCX/imagine)
+    const preFooterPdfB64 = finalPdfB64;
+
     // flowType 'ancore': PDF-ul NU se modifica deloc — nici footer stamp.
     // Formularele oficiale (Formular 17 etc.) pot contine semnaturi de certificare
     // ale autoritatii emitente. Orice modificare (chiar si pdf-lib save) le invalideaza.
@@ -182,7 +197,7 @@ const createFlow = async (req, res) => {
       status: 'active',
       completed: false,
       completedAt: null,
-      originalPdfB64: body.pdfB64 ?? null,  // PDF curat, fără footer — pentru reinitiate
+      originalPdfB64: preFooterPdfB64,  // PDF curat (convertit dacă era non-PDF), fără footer — pentru reinitiate
       pdfB64: finalPdfB64,
       signers: normalizedSigners,
       createdAt, updatedAt: new Date().toISOString(),
