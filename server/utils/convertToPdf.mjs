@@ -5,53 +5,55 @@ import { tmpdir } from 'os';
 import { join, extname, basename } from 'path';
 import { PDFDocument } from 'pdf-lib';
 
-const execFileAsync = promisify(execFile);
+const exec = promisify(execFile);
 
-const IMAGE_TYPES = ['.jpg','.jpeg','.png','.gif','.webp','.bmp'];
-const OFFICE_TYPES = ['.docx','.doc','.xlsx','.xls','.pptx','.ppt','.odt','.ods','.odp'];
+const IMAGE_EXTS  = ['.jpg','.jpeg','.png','.gif','.webp','.bmp'];
+const OFFICE_EXTS = ['.docx','.doc','.xlsx','.xls',
+                     '.pptx','.ppt','.odt','.ods','.odp'];
 
 export async function convertToPdf(buffer, originalName) {
   const ext = extname(originalName).toLowerCase();
-
-  // PDF → direct
   if (ext === '.pdf') return buffer;
 
-  // Imagini → embed în PDF via pdf-lib
-  if (IMAGE_TYPES.includes(ext)) {
+  // Imagini → pdf-lib (fără LibreOffice, mai rapid)
+  if (IMAGE_EXTS.includes(ext)) {
     const pdfDoc = await PDFDocument.create();
-    let img;
-    if (ext === '.png') {
-      img = await pdfDoc.embedPng(buffer);
-    } else {
-      img = await pdfDoc.embedJpg(buffer);
-    }
+    const img = (ext === '.png')
+      ? await pdfDoc.embedPng(buffer)
+      : await pdfDoc.embedJpg(buffer);
     const page = pdfDoc.addPage([img.width, img.height]);
-    page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
-    const pdfBytes = await pdfDoc.save();
-    return Buffer.from(pdfBytes);
+    page.drawImage(img, { x:0, y:0, width:img.width, height:img.height });
+    return Buffer.from(await pdfDoc.save());
   }
 
-  // Office (DOCX/XLSX etc.) → LibreOffice headless
-  if (OFFICE_TYPES.includes(ext)) {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'docflow-conv-'));
-    const inputPath = join(tmpDir, basename(originalName));
-    const outputPath = join(tmpDir, basename(originalName, ext) + '.pdf');
+  // Office → LibreOffice headless (fidelitate vizuală 100%)
+  if (OFFICE_EXTS.includes(ext)) {
+    const tmpDir = await mkdtemp(join(tmpdir(), 'docflow-'));
+    const inPath  = join(tmpDir, basename(originalName));
+    const outPath = join(tmpDir,
+      basename(originalName, ext) + '.pdf');
     try {
-      await writeFile(inputPath, buffer);
-      await execFileAsync('libreoffice', [
-        '--headless', '--convert-to', 'pdf',
-        '--outdir', tmpDir, inputPath
-      ], { timeout: 60_000 });
-      const pdfBuffer = await readFile(outputPath);
-      return pdfBuffer;
+      await writeFile(inPath, buffer);
+      await exec('libreoffice', [
+        '--headless',
+        '--norestore',
+        '--nofirststartwizard',
+        '--convert-to', 'pdf',
+        '--outdir', tmpDir,
+        inPath
+      ], {
+        timeout: 90_000,
+        env: { ...process.env, HOME: '/tmp' }
+      });
+      return await readFile(outPath);
     } finally {
-      await unlink(inputPath).catch(() => {});
-      await unlink(outputPath).catch(() => {});
+      await unlink(inPath).catch(()=>{});
+      await unlink(outPath).catch(()=>{});
     }
   }
 
-  throw new Error(`Tip fișier nesuportat pentru conversie: ${ext}`);
+  throw new Error(`Tip fișier nesuportat: ${ext}`);
 }
 
 export const ACCEPTED_EXTENSIONS =
-  [...IMAGE_TYPES, ...OFFICE_TYPES, '.pdf'];
+  [...IMAGE_EXTS, ...OFFICE_EXTS, '.pdf'];
