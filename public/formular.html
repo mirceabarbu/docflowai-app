@@ -359,7 +359,6 @@
   /* Date inputs */
   input[type="date"]{-webkit-date-and-time-value:{text-align:left}}
   input[type="date"]::-webkit-datetime-edit-fields-wrapper{direction:ltr}
-  #ord-p1-body input[data-f="suma_ordonantata_plata"]{opacity:1!important;pointer-events:auto!important;}
   </style>
 </head>
 <body>
@@ -2189,22 +2188,10 @@ function applyOrdRoleState(status,role){
     }
     _dfUpdateProgress('ordnt','p2');
   }else if(status==='completed'){
-    // P1 NU se blochează la completed — trebuie să completeze col.4
-    // (p1Body rămâne deblocat); p2Body se blochează — CAB a terminat
+    lockAll('ordnt',true);
     if(p2Body)p2Body.classList.add('locked');
-    if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Document complet — lansați fluxul de semnare.';}
+    if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Date CAB completate — lansați fluxul de semnare.';}
     if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-ok';p2Lock.textContent='✓ Date CAB completate.';}
-    // Col.4 (suma_ordonantata_plata) rămâne vizual activ chiar dacă p1Body e în container shared cu p2Body locked
-    document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{
-      e.disabled=false;
-      e.style.setProperty('pointer-events','auto','important');
-      e.style.setProperty('opacity','1','important');
-      e.style.setProperty('background','rgba(108,79,240,.10)','important');
-      e.style.setProperty('border-color','rgba(108,79,240,.5)','important');
-      e.style.setProperty('color','var(--app-text)','important');
-      e.closest('td')?.style.setProperty('pointer-events','auto','important');
-      e.closest('td')?.style.setProperty('opacity','1','important');
-    });
     _dfUpdateProgress('ordnt','sign');
   }else if(status==='aprobat'){
     if(p2Body)p2Body.classList.add('locked');
@@ -2302,6 +2289,20 @@ async function openDoc(ft,id){
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
+
+    // Prefill plati_anterioare ciclu 2+ — suma din cicluri finalizate anterior
+    if(ft==='ordnt'){
+      const _ctx=window._alopContext;
+      const _alopId=doc.alop_id||_ctx?.alopId||new URLSearchParams(location.search).get('alop_id');
+      if(_alopId){
+        const _ra=await fetch(`/api/alop/${encodeURIComponent(_alopId)}`,{credentials:'include'}).then(r=>r.json()).catch(()=>null);
+        const _totalAnt=(_ra?.alop?.cicluri_istorice||[]).reduce((s,c)=>s+parseFloat(c.plata_suma_efectiva||0),0);
+        if(_totalAnt>0){
+          const _firstRow=document.querySelector('#o-tbody input[data-f="plati_anterioare"]');
+          if(_firstRow&&(parseFloat(_firstRow.value)||0)===0){_firstRow.value=_totalAnt;calcORRow(_firstRow);}
+        }
+      }
+    }
 
     // Dacă nu avem context ALOP și documentul are alop_id, populează automat contextul
     if(!window._alopContext&&doc.alop_id){
@@ -3580,6 +3581,9 @@ function renderAlopDetail(a,container){
     actionsHtml+=`<button class="btn danger" onclick="cancelAlop('${id}')">✕ Anulează</button>`;
   }
 
+  const _totalCicluri=(a.cicluri_istorice?.length||0)+1;
+  const _mesajFinal=isCompleted&&a.ramas<=0?`${_totalCicluri} ${_totalCicluri===1?'ciclu':'cicluri'} de ordonanțare finalizate · DF integral acoperit`:'';
+
   // Build semnatari display
   function _semnatariSection(list,label,color){
     if(!list||!list.length)return'';
@@ -3627,22 +3631,39 @@ function renderAlopDetail(a,container){
         <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
         <button class="btn primary" style="padding:6px 14px;font-size:.82rem" onclick="startNouaLichidare('${_escH(a.id)}')">🔄 Nouă ordonanțare parțială</button>
       </div>`:''}
-    ${isCompleted&&(a.ramas<=0)&&(a.ciclu_curent>1)?`<div style="font-size:.78rem;color:var(--app-muted);margin-top:6px;text-align:center">${a.ciclu_curent-1} cicluri de ordonanțare finalizate · DF integral acoperit</div>`:''}
+    ${_mesajFinal?`<div style="font-size:.78rem;color:var(--app-muted);margin-top:6px;text-align:center">${_mesajFinal}</div>`:''}
   `;
-  // Bloc istoric cicluri anterioare
-  if(a.cicluri_istorice&&a.cicluri_istorice.length>0){
-    const istoricHtml=a.cicluri_istorice
-      .map(c=>`<div style="display:flex;justify-content:space-between;padding:6px 10px;border-radius:6px;margin-bottom:4px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);font-size:.78rem;color:var(--app-muted)">
-        <span>Ciclu ${c.ciclu_nr}</span>
-        <span>${fmtV(parseFloat(c.plata_suma_efectiva||0))}</span>
-        <span>${c.plata_confirmed_at?fmtDate(c.plata_confirmed_at):'—'}</span>
-      </div>`).join('');
-    if(istoricHtml){
-      const istoricDiv=document.createElement('div');
-      istoricDiv.style.marginBottom='8px';
-      istoricDiv.innerHTML=`<div style="font-size:.72rem;font-weight:700;color:var(--app-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Cicluri anterioare</div>`+istoricHtml;
-      const vBlock=container.querySelector('[data-valori]');
-      if(vBlock)vBlock.parentNode.insertBefore(istoricDiv,vBlock);
+  // Bloc istoric cicluri anterioare — detaliat
+  {
+    const _istorice=a.cicluri_istorice||[];
+    if(_istorice.length>0){
+      let _istHtml=`<div style="margin:12px 0 8px"><div style="font-size:.72rem;font-weight:700;color:var(--app-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Cicluri anterioare</div>`;
+      _istorice.forEach(c=>{
+        _istHtml+=`<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:.8rem">
+          <div style="font-weight:700;color:var(--app-sub);margin-bottom:6px">Ciclu ${c.ciclu_nr}</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="background:rgba(108,79,240,.08);border-radius:6px;padding:6px 10px">
+              <div style="font-size:.68rem;color:var(--app-muted);margin-bottom:2px">✔ Lichidare</div>
+              <div style="color:var(--app-sub)">${c.lichidare_nr_factura?`Fact. ${c.lichidare_nr_factura}`:'—'}</div>
+              <div style="font-size:.72rem;color:var(--app-muted)">${c.lichidare_confirmed_at?fmtDate(c.lichidare_confirmed_at):''}</div>
+            </div>
+            <div style="background:rgba(245,158,11,.08);border-radius:6px;padding:6px 10px">
+              <div style="font-size:.68rem;color:var(--app-muted);margin-bottom:2px">💰 Ordonanțare</div>
+              <div style="color:var(--app-sub)">${fmtV(parseFloat(c.plata_suma_efectiva||0))}</div>
+              <div style="font-size:.72rem;color:var(--app-muted)">${c.plata_confirmed_at?fmtDate(c.plata_confirmed_at):'—'}</div>
+            </div>
+            <div style="background:rgba(16,185,129,.08);border-radius:6px;padding:6px 10px">
+              <div style="font-size:.68rem;color:var(--app-muted);margin-bottom:2px">🏦 Plată</div>
+              <div style="color:#34d399;font-weight:700">${fmtV(parseFloat(c.plata_suma_efectiva||0))}</div>
+              <div style="font-size:.72rem;color:var(--app-muted)">${c.plata_nr_ordin?`OP ${c.plata_nr_ordin} · `:''}${c.plata_data||''}</div>
+            </div>
+          </div>
+        </div>`;
+      });
+      const _totalIst=_istorice.reduce((s,c)=>s+parseFloat(c.plata_suma_efectiva||0),0);
+      _istHtml+=`<div style="text-align:right;font-size:.8rem;color:var(--app-muted);padding:4px 4px 8px">Total cicluri anterioare: <strong style="color:var(--app-text)">${fmtV(_totalIst)}</strong></div></div>`;
+      const _vBlock=container.querySelector('[data-valori]');
+      if(_vBlock){const _d=document.createElement('div');_d.innerHTML=_istHtml;_vBlock.parentNode.insertBefore(_d,_vBlock);}
     }
   }
   // Auto-refresh status la 15s cât ALOP e activ (detectează tranziții după semnare)
