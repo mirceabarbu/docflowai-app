@@ -411,8 +411,19 @@ router.get('/bulk-signing/:sessionId/poll', async (req, res) => {
     if (session.signer_email !== actor.email.toLowerCase())
       return res.status(403).json({ error: 'forbidden' });
 
-    if (session.status === 'completed')
-      return res.json({ status: 'completed', items: session.items });
+    if (session.status === 'completed') {
+      const _items = Array.isArray(session.items) ? session.items : [];
+      const _signed = _items.filter(i => i.status === 'signed').length;
+      const _errors = _items.filter(i => i.status === 'error').length;
+      return res.json({
+        status: 'completed',
+        items: _items,
+        signed: _signed,
+        errors: _errors,
+        total: _items.length,
+        flowCount: _items.length,
+      });
+    }
     if (session.status === 'error')
       return res.json({ status: 'error', message: session.error_message });
     if (session.status !== 'signing_pending')
