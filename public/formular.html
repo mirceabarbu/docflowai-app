@@ -3564,7 +3564,7 @@ function renderAlopDetail(a,container){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideORD('${id}')">💰 Completează Ordonanțare de Plată</button>`;
       if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_id&&!a.ord_flow_id){
-      actionsHtml+=`<button class="btn primary" onclick="alopLaunchOrdFlow('${id}','${_escH(a.ord_id)}')">⚙ Generează PDF + Lansează flux ORD</button>`;
+      actionsHtml+=`<button class="btn primary" onclick="alopDeschideORD('${id}')">⚙ Generează PDF + Lansează flux ORD</button>`;
       if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_flow_id&&!a.ord_completed_at){
       actionsHtml+=`<button class="btn primary" onclick="alopOrdCompleted('${id}')">✅ Marchează ORD semnat complet</button>`;
