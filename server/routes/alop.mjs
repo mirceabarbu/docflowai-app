@@ -333,7 +333,8 @@ router.get('/api/alop/:id', async (req, res) => {
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
         a.plata_suma_efectiva AS op_valoare,
         COALESCE(a.suma_totala_platita,0) + COALESCE(a.plata_suma_efectiva,0) AS suma_platita_total,
-        a.ciclu_curent
+        a.ciclu_curent,
+        cicluri.cicluri_json AS cicluri_istorice
       FROM alop_instances a
       LEFT JOIN users        u   ON u.id   = a.created_by
       LEFT JOIN formulare_df df  ON df.id  = a.df_id
@@ -342,6 +343,11 @@ router.get('/api/alop/:id', async (req, res) => {
       LEFT JOIN flows        f2  ON f2.id  = a.ord_flow_id
       LEFT JOIN users        ul  ON ul.id  = a.lichidare_confirmed_by
       LEFT JOIN users        up  ON up.id  = a.plata_confirmed_by
+      LEFT JOIN LATERAL (
+        SELECT json_agg(c ORDER BY c.ciclu_nr) AS cicluri_json
+        FROM alop_ord_cicluri c
+        WHERE c.alop_id = a.id
+      ) cicluri ON true
       WHERE a.id = $1
         AND a.org_id = $2
         AND a.cancelled_at IS NULL

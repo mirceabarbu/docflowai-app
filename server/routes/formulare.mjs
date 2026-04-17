@@ -18,7 +18,7 @@ import { fileURLToPath }               from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router    = Router();
-const _json5m   = expressJson({ limit: '5mb' });
+const _json5m   = expressJson({ limit: '15mb' });
 const FONTS_DIR = path.resolve(__dirname, '../formulare/fonts');
 
 // ── Transliterare fallback (folosit doar dacă NotoSans nu e disponibil) ───────
@@ -433,11 +433,46 @@ async function generatePdfSimple(formType, data) {
     }
   }
 
+  // ── Embed captură imagine în PDF ──────────────────────────────────────────
+  async function embedCapture(b64, title) {
+    if (!b64) return;
+    const raw = b64.includes(',') ? b64.split(',')[1] : b64;
+    const isJpg = b64.startsWith('data:image/jpeg') || b64.startsWith('data:image/jpg');
+    let imgEmbed;
+    try {
+      const bytes = Buffer.from(raw, 'base64');
+      imgEmbed = isJpg ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(bytes);
+    } catch (_) { return; }  // imagine coruptă — ignorăm, PDF-ul rămâne valid
+    const maxW = CW, maxH = 200;
+    let iw = imgEmbed.width, ih = imgEmbed.height;
+    if (iw > maxW) { ih = Math.round(ih * maxW / iw); iw = maxW; }
+    if (ih > maxH) { iw = Math.round(iw * maxH / ih); ih = maxH; }
+    ensureY(ih + 32);
+    y -= 10;
+    pg.drawText(str(title), { x: ML, y, font: fB, size: 7.5, color: rgb(0.2, 0.2, 0.2) });
+    y -= 4;
+    pg.drawLine({ start: { x: ML, y }, end: { x: ML + CW, y },
+      thickness: 0.3, color: rgb(0.7, 0.7, 0.7) });
+    y -= 2 + ih;
+    pg.drawImage(imgEmbed, { x: ML, y, width: iw, height: ih });
+    y -= 8;
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
 
   newPage();
   drawDocHeader();
   if (formType === 'notafd') buildNotafd(); else buildOrdnt();
+
+  // ── Capturi imagine (după conținut, înainte de footer) ─────────────────────
+  const _capLabel1 = 'Captură imagine din sistemul de control al angajamentelor bugetare';
+  const _capLabel2 = 'Captură \u201eInformații complete contract\u201d din sistemul de control al angajamentelor bugetare';
+  if (formType === 'ordnt') {
+    await embedCapture(data.captureImageBase64,   _capLabel1);
+    await embedCapture(data.captureImageBase64_2, _capLabel2);
+  } else {
+    await embedCapture(data.captureImageBase64, _capLabel1);
+  }
 
   // ── Footer pe fiecare pagină ───────────────────────────────────────────────
 

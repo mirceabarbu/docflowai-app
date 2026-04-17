@@ -1572,6 +1572,7 @@ const cb=id=>document.getElementById(id)?.checked?'1':'';
 function colO(){return{
   Cif:g('o-cif'),DenInstPb:g('o-den'),NrOrdonantPl:g('o-nr'),DataOrdontPl:g('o-data'),
   captureImageBase64:imgs['o-cimg']||null,
+  captureImageBase64_2:imgs['o-cimg2']||null,
   attachments:JSON.parse(document.getElementById('o-adata').value||'[]'),
   docFd:{nr_unic_inreg:g('o-nrUnic'),beneficiar:g('o-benef'),
     documente_justificative:g('o-docsj'),iban_beneficiar:g('o-iban'),
@@ -2148,9 +2149,16 @@ function applyOrdRoleState(status,role){
     _dfUpdateProgress('ordnt','p2');
   }else if(status==='completed'){
     // P1 NU se blochează la completed — trebuie să completeze col.4
-    // (p1Body rămâne deblocat)
+    // (p1Body rămâne deblocat); p2Body se blochează — CAB a terminat
+    if(p2Body)p2Body.classList.add('locked');
     if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Document complet — lansați fluxul de semnare.';}
     if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-ok';p2Lock.textContent='✓ Date CAB completate.';}
+    // Col.4 (suma_ordonantata_plata) rămâne vizual activ chiar dacă p1Body e în container shared cu p2Body locked
+    document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{
+      e.style.opacity='1';e.style.pointerEvents='auto';
+      e.style.background='rgba(108,79,240,.08)';e.style.borderColor='rgba(108,79,240,.4)';
+      e.closest('td')?.style.setProperty('opacity','1','important');
+    });
     _dfUpdateProgress('ordnt','sign');
   }else if(status==='aprobat'){
     if(p1Body)p1Body.classList.add('locked');
@@ -3514,7 +3522,7 @@ function renderAlopDetail(a,container){
     }else if(a.status==='ordonantare'&&a.ord_flow_id&&!a.ord_completed_at){
       actionsHtml+=`<button class="btn primary" onclick="alopOrdCompleted('${id}')">✅ Marchează ORD semnat complet</button>`;
     }else if(a.status==='plata'){
-      actionsHtml+=`<button class="btn primary" onclick="openAlopConfirmPlata('${id}')">🏦 Confirmă Plata</button>`;
+      actionsHtml+=`<button class="btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">🏦 Confirmă Plata</button>`;
     }
     actionsHtml+=`<button class="btn danger" onclick="cancelAlop('${id}')">✕ Anulează</button>`;
   }
@@ -3545,7 +3553,7 @@ function renderAlopDetail(a,container){
       </div>
     </div>
     ${stepperHtml}
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0">
+    <div data-valori style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0">
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
         <div style="font-size:.7rem;color:var(--app-muted);text-transform:uppercase;letter-spacing:.04em">Valoare DF</div>
         <div style="font-size:1rem;font-weight:700;color:#b0a0ff;margin-top:4px">${fmtV(a.df_valoare||0)}</div>
@@ -3568,6 +3576,22 @@ function renderAlopDetail(a,container){
       </div>`:''}
     ${isCompleted&&(a.ramas<=0)&&(a.ciclu_curent>1)?`<div style="font-size:.78rem;color:var(--app-muted);margin-top:6px;text-align:center">${a.ciclu_curent-1} cicluri de ordonanțare finalizate · DF integral acoperit</div>`:''}
   `;
+  // Bloc istoric cicluri anterioare
+  if(a.cicluri_istorice&&a.cicluri_istorice.length>0){
+    const istoricHtml=a.cicluri_istorice
+      .map(c=>`<div style="display:flex;justify-content:space-between;padding:6px 10px;border-radius:6px;margin-bottom:4px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);font-size:.78rem;color:var(--app-muted)">
+        <span>Ciclu ${c.ciclu_nr}</span>
+        <span>${fmtV(parseFloat(c.plata_suma_efectiva||0))}</span>
+        <span>${c.plata_confirmed_at?fmtDate(c.plata_confirmed_at):'—'}</span>
+      </div>`).join('');
+    if(istoricHtml){
+      const istoricDiv=document.createElement('div');
+      istoricDiv.style.marginBottom='8px';
+      istoricDiv.innerHTML=`<div style="font-size:.72rem;font-weight:700;color:var(--app-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Cicluri anterioare</div>`+istoricHtml;
+      const vBlock=container.querySelector('[data-valori]');
+      if(vBlock)vBlock.parentNode.insertBefore(istoricDiv,vBlock);
+    }
+  }
   // Auto-refresh status la 15s cât ALOP e activ (detectează tranziții după semnare)
   clearInterval(window._alopRefreshInterval);
   if(!isCompleted&&!isCancelled){
@@ -3808,10 +3832,12 @@ async function alopOrdCompleted(id){
 }
 
 let _plataAlopId=null;
+let _plataOrdValoare=0;
 
-function openAlopConfirmPlata(id){
+function openAlopConfirmPlata(id,ordValoare){
   if(!id||id==='null')return;
   _plataAlopId=id;
+  _plataOrdValoare=parseFloat(ordValoare)||0;
   ['plata-nr-ordin','plata-data','plata-suma','plata-observatii']
     .forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('modal-plata').classList.add('show');
@@ -3831,6 +3857,10 @@ async function confirmPlata(){
   if(!nr){alert('Completați numărul ordinului de plată.');return;}
   if(!dt){alert('Completați data plății.');return;}
   if(suma<=0){alert('Completați suma efectiv plătită.');return;}
+  if(_plataOrdValoare>0&&suma>_plataOrdValoare){
+    alert(`Suma introdusă (${suma.toLocaleString('ro-RO')} RON) depășește suma ordonată (${_plataOrdValoare.toLocaleString('ro-RO')} RON). Corectați suma.`);
+    return;
+  }
   const body={
     nr_ordin_plata:nr,
     data_plata:(document.getElementById('plata-data')?.value||'').trim()||null,
