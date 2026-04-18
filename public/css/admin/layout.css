@@ -1,11 +1,8 @@
 /* === Shell enterprise layout === */
 .df-shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh;align-items:start;}
-.df-sidebar{background:var(--df-bg-elevated);border-right:1px solid var(--df-border);display:flex;flex-direction:column;padding:20px 0 16px;position:sticky;top:0;align-self:stretch;max-height:100vh;overflow-y:auto;}
-.df-sidebar-brand{display:flex;align-items:center;gap:12px;padding:4px 22px 22px;}
-.df-sidebar-brand img{height:40px;width:auto;object-fit:contain;}
-.df-sidebar-brand-text{display:flex;flex-direction:column;line-height:1.2;}
-.df-sidebar-brand-text strong{font-size:.95rem;color:var(--df-text);font-weight:600;letter-spacing:.01em;}
-.df-sidebar-brand-text span{font-size:.68rem;color:var(--df-text-4);letter-spacing:.1em;text-transform:uppercase;margin-top:2px;}
+.df-sidebar{background:var(--df-bg-elevated);border-right:1px solid var(--df-border);display:flex;flex-direction:column;padding:20px 0 16px;position:sticky;top:0;align-self:stretch;max-height:100vh;overflow-y:auto;overflow-x:hidden;}
+.df-sidebar-brand{display:flex;align-items:center;justify-content:center;padding:8px 22px 24px;}
+.df-sidebar-brand img{height:56px;width:auto;max-width:100%;object-fit:contain;}
 .df-nav-label{font-size:.65rem;color:var(--df-text-5);font-weight:600;letter-spacing:.14em;text-transform:uppercase;padding:14px 22px 6px;}
 .df-nav-group{display:flex;flex-direction:column;gap:1px;padding:0 10px 4px;}
 .df-nav-item{display:flex;align-items:center;gap:11px;padding:9px 12px;border:none;background:transparent;color:var(--df-text-3);font-size:.84rem;font-weight:500;border-radius:var(--df-radius-md);cursor:pointer;text-align:left;font-family:inherit;transition:background .15s,color .15s;position:relative;width:100%;}
