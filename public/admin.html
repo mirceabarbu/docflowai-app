@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/css/admin/tokens.css">
   <link rel="stylesheet" href="/css/admin/admin.css">
   <link rel="stylesheet" href="/css/admin/layout.css">
+  <link rel="stylesheet" href="/css/admin/components.css">
 
   <script>
     // SEC-01: apiFetch shim — cookie HttpOnly trimis automat cu credentials: include
@@ -308,7 +309,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><div style="display:flex;gap:6px;"><button onclick="exportUsersCSV()" style="padding:7px 14px;font-size:.82rem;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:600;">📥 CSV</button><button onclick="exportUsersPDF()" style="padding:7px 14px;font-size:.82rem;background:rgba(157,176,255,.1);border:1px solid rgba(157,176,255,.25);border-radius:8px;color:#9db0ff;cursor:pointer;font-weight:600;">📄 PDF</button><button onclick="openBulkImportModal()" style="padding:7px 14px;font-size:.82rem;background:rgba(255,176,32,.1);border:1px solid rgba(255,176,32,.25);border-radius:8px;color:#ffd580;cursor:pointer;font-weight:600;">📤 Import CSV</button></div></div>
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">👥 Utilizatori <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><div style="display:flex;gap:6px;"><button class="df-action-btn success" onclick="exportUsersCSV()">📥 CSV</button><button class="df-action-btn" onclick="exportUsersPDF()">📄 PDF</button><button class="df-action-btn warning" onclick="openBulkImportModal()">📤 Import CSV</button></div></div>
     <div class="tbl-wrap" id="tblScroll"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
     <div id="pgBarWrapper"></div>
   </div>
