@@ -93,6 +93,12 @@
             }
           });
         }
+
+        // Afișează butonul 2FA în dropdown doar pentru admin/org_admin
+        if (isAdmin || isOrgAdmin) {
+          var btn2fa = document.getElementById('hdr2faBtn');
+          if (btn2fa) btn2fa.style.display = 'inline-flex';
+        }
       })
       .catch(function() {
         location.href = '/login?next=' + encodeURIComponent(location.pathname);
