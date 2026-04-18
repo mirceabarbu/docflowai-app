@@ -266,3 +266,13 @@ Campanii email către ~2.950 municipalități românești. Tabele: `outreach_ins
 Teste de integrare în `server/tests/integration/` folosesc Supertest contra unei baze de date reale (configurată în `server/tests/setup.mjs`). PBKDF2 (~200ms) implică timeout de 15s în `vitest.config.mjs`. Coverage exclude: Google Drive, GWS, WhatsApp, Web Push.
 
 **Înainte de orice modificare:** rulează `npm test` și verifică că toate testele trec. Nu livra cod cu teste care pică.
+
+---
+
+## Cache busting — când modifici JS/CSS
+
+Două niveluri de cache există:
+
+1. **Browser cache** → rezolvat prin `?v=VERSION` pe toate link-urile CSS/JS din HTML. Bump-ează `version` în `package.json` și rulează `sed` pe `?v=` în `public/*.html`.
+
+2. **Service Worker** (`sw.js`) → cache-uiește agresiv assets în `PRECACHE_ASSETS`. Când modifici un fișier din acea listă (`notif-widget.js`, `mobile.css`, `Logo.png`, etc.), bump-ează manual `CACHE_VERSION` în `public/sw.js` (ex. `v7` → `v8`). Fără bump, utilizatorii primesc versiunea veche până la hard refresh.
