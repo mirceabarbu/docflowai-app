@@ -1,0 +1,66 @@
+:root{
+  /* === Surfaces === */
+  --df-bg:            #0d1530;
+  --df-bg-elevated:   #0f1836;
+  --df-surface:       #131d3d;
+  --df-surface-2:     #172345;
+  --df-surface-hover: #1a2850;
+
+  /* === Borders === */
+  --df-border:        rgba(255,255,255,.06);
+  --df-border-2:      rgba(255,255,255,.10);
+  --df-border-hover:  rgba(255,255,255,.15);
+
+  /* === Text === */
+  --df-text:          #e8eeff;
+  --df-text-2:        #c4d1ee;
+  --df-text-3:        #8d9cc7;
+  --df-text-4:        #6b82b8;
+  --df-text-5:        #4a5d8c;
+
+  /* === Primary — bleumarin enterprise === */
+  --df-primary:       #2563eb;
+  --df-primary-2:     #1d4ed8;
+  --df-primary-bg:    rgba(37,99,235,.15);
+  --df-primary-bd:    rgba(37,99,235,.30);
+  --df-primary-text:  #93b4f5;
+  --df-primary-ring:  rgba(37,99,235,.18);
+
+  /* === Brand — violet (păstrat pentru identitate) === */
+  --df-brand:         #7c5cff;
+  --df-brand-bg:      rgba(124,92,255,.15);
+  --df-brand-bd:      rgba(124,92,255,.30);
+  --df-brand-text:    #c4b5fd;
+
+  /* === Semantic === */
+  --df-success:       #22c55e;
+  --df-success-bg:    rgba(34,197,94,.14);
+  --df-success-bd:    rgba(34,197,94,.30);
+  --df-warning:       #f59e0b;
+  --df-warning-bg:    rgba(245,158,11,.14);
+  --df-warning-bd:    rgba(245,158,11,.30);
+  --df-danger:        #ef4444;
+  --df-danger-bg:     rgba(239,68,68,.14);
+  --df-danger-bd:     rgba(239,68,68,.30);
+  --df-info:          #3b82f6;
+
+  /* === Radius === */
+  --df-radius-sm:     6px;
+  --df-radius-md:     8px;
+  --df-radius-lg:     10px;
+  --df-radius-xl:     12px;
+
+  /* === Legacy aliases ===
+     Folosite în ~311 inline styles din admin.html. Nu șterge —
+     migrare treptată la etapa 3. Valorile de mai jos setează
+     automat aspectul enterprise pentru toate inline styles. */
+  --bg:      var(--df-bg);
+  --card:    var(--df-surface);
+  --text:    var(--df-text);
+  --sub:     var(--df-text-2);
+  --muted:   var(--df-text-3);
+  --line:    var(--df-border-2);
+  --accent:  var(--df-brand);       /* violet - folosit pe logo, pill.admin */
+  --accent2: #2dd4bf;               /* teal legacy - folosit rar, păstrat */
+  --radius:  var(--df-radius-xl);
+}
