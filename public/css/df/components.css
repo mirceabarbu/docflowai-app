@@ -91,3 +91,8 @@
 .df-ico-sm{width:14px;height:14px;}
 .df-ico-lg{width:20px;height:20px;}
 .df-ico-xl{width:24px;height:24px;}
+
+/* === Search input cu icon în stânga === */
+.df-search-wrap{position:relative;flex:1;min-width:200px;}
+.df-search-wrap .df-search-ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--df-text-4);pointer-events:none;}
+.df-search-wrap input[type="search"],.df-search-wrap input.df-search-input{width:100%;padding:9px 14px 9px 38px !important;}
