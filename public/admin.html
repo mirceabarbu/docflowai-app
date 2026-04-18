@@ -110,7 +110,10 @@
 
   <div class="df-nav-label">Principal</div>
   <div class="df-nav-group">
-    <button class="df-nav-item active" data-tab="utilizatori" onclick="switchTab('utilizatori')">
+    <button class="df-nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+      <span class="df-nav-icon">🏠</span>Dashboard
+    </button>
+    <button class="df-nav-item" data-tab="utilizatori" onclick="switchTab('utilizatori')">
       <span class="df-nav-icon">👥</span>Utilizatori
     </button>
     <button class="df-nav-item" data-tab="fluxuri" onclick="switchTab('fluxuri')">
@@ -170,6 +173,50 @@
 
 <main>
 
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- TAB 0: DASHBOARD                                                  -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-dashboard">
+
+  <div class="df-kpi-grid">
+    <div class="df-kpi-card">
+      <div class="df-kpi-label">Utilizatori</div>
+      <div class="df-kpi-value" id="dashKpiUsers">—</div>
+      <div class="df-kpi-sub">în organizație</div>
+    </div>
+    <div class="df-kpi-card">
+      <div class="df-kpi-label">Fluxuri active</div>
+      <div class="df-kpi-value" id="dashKpiActive">—</div>
+      <div class="df-kpi-sub">în curs de semnare</div>
+    </div>
+    <div class="df-kpi-card">
+      <div class="df-kpi-label">Fluxuri finalizate</div>
+      <div class="df-kpi-value" id="dashKpiCompleted">—</div>
+      <div class="df-kpi-sub">total sistem</div>
+    </div>
+    <div class="df-kpi-card">
+      <div class="df-kpi-label">Notificări necitite</div>
+      <div class="df-kpi-value" id="dashKpiNotif">—</div>
+      <div class="df-kpi-sub">în organizație</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Bine ai venit</div>
+    <p style="color:var(--df-text-3);font-size:.88rem;line-height:1.6;margin-bottom:14px;">
+      Panou de administrare DocFlowAI. Selectează o secțiune din stânga
+      pentru a gestiona utilizatorii, fluxurile, organizațiile și
+      celelalte componente ale sistemului.
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn" onclick="switchTab('utilizatori')">👥 Administrează utilizatori</button>
+      <button class="btn" onclick="switchTab('fluxuri')">📁 Vezi fluxuri</button>
+      <button class="btn" onclick="switchTab('analytics');loadAnalytics();">📈 Analytics</button>
+    </div>
+  </div>
+
+</div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
 <!-- TAB 1: UTILIZATORI                                                -->
@@ -2555,6 +2602,7 @@ fetch("/auth/me",{headers:hdrs()})
     if(u.role==="org_admin") window._orgAdminInstitutie = u.institutie || "";
     // BUG-FIX: org_admin poate vedea/selecta doar rol 'user' — filtrăm dropdown-urile
     if(u.role==="org_admin") _lockRoleDropdownsForOrgAdmin();
+    switchTab('dashboard');
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
     loadDbStats(); // auto-încarcă statistici DB
@@ -2569,30 +2617,55 @@ let _activityData = null;
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  ['utilizatori','fluxuri','rapoarte','outreach','organizatii','analytics','audit'].forEach(t => {
+  ['dashboard','utilizatori','fluxuri','rapoarte','outreach','organizatii','analytics','audit'].forEach(t => {
     const el = $('tab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
   document.querySelectorAll('.df-nav-item').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
-  const titles = {utilizatori:'Utilizatori',fluxuri:'Administrare fluxuri',rapoarte:'Rapoarte',outreach:'Outreach',organizatii:'Organizații',analytics:'Analytics',audit:'Log audit'};
-  const subtitles = {utilizatori:'Administrează utilizatorii, rolurile și permisiunile',fluxuri:'Gestionează fluxurile de documente și arhivarea',rapoarte:'Rapoarte și statistici de utilizare',outreach:'Campanii outreach și import primării',organizatii:'Configurare organizații și signing providers',analytics:'Analytics și metrici de adopție',audit:'Log de audit și evenimente de securitate'};
+  const titles = {dashboard:'Dashboard',utilizatori:'Utilizatori',fluxuri:'Administrare fluxuri',rapoarte:'Rapoarte',outreach:'Outreach',organizatii:'Organizații',analytics:'Analytics',audit:'Log audit'};
+  const subtitles = {dashboard:'Privire de ansamblu asupra activității sistemului',utilizatori:'Administrează utilizatorii, rolurile și permisiunile',fluxuri:'Gestionează fluxurile de documente și arhivarea',rapoarte:'Rapoarte și statistici de utilizare',outreach:'Campanii outreach și import primării',organizatii:'Configurare organizații și signing providers',analytics:'Analytics și metrici de adopție',audit:'Log de audit și evenimente de securitate'};
   const titleEl = document.getElementById('df-page-title');
   const subEl = document.getElementById('df-page-subtitle');
   if (titleEl) titleEl.textContent = titles[tab] || 'Admin';
   if (subEl) subEl.textContent = subtitles[tab] || '';
+  if (tab === 'dashboard' && !_dashboardLoaded) { loadDashboard(); _dashboardLoaded = true; }
   if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); loadFlowInstitutions(); _fluxuriLoaded = true; }
   if (tab === 'outreach' && !_outreachLoaded) { orInit(); _outreachLoaded = true; }
   if (tab === 'organizatii' && !_orgLoaded) { loadOrganizations(); _orgLoaded = true; }
   if (tab === 'audit' && !_auditLoaded) { loadAuditEventTypes(); loadAuditEvents(1); _auditLoaded = true; }
 }
+let _dashboardLoaded = false;
 let _fluxuriLoaded = false;
 let _outreachLoaded = false;
 let _orgLoaded = false;
 let _auditLoaded = false;
 let _currentOrgId = null;
 let _rptGenerated = false; // true după prima generare raport — activează auto-refresh la filtrare
+
+async function loadDashboard() {
+  try {
+    const [sR, fR] = await Promise.all([
+      apiFetch('/admin/stats'),
+      apiFetch('/admin/flows/stats'),
+    ]);
+    const s = sR.ok ? await sR.json() : null;
+    const f = fR.ok ? await fR.json() : null;
+    const set = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = (val != null) ? Number(val).toLocaleString('ro-RO') : '—';
+    };
+    if (s?.stats) {
+      set('dashKpiUsers', s.stats.users);
+      set('dashKpiNotif', s.stats.unreadNotifications);
+    }
+    if (f) {
+      set('dashKpiActive', f.active);
+      set('dashKpiCompleted', f.completed);
+    }
+  } catch(e) { /* silent — KPI rămân '—' */ }
+}
 
 // ══════════════════════════════════════════════════════════════════
 // AUDIT TRAIL MODULE
