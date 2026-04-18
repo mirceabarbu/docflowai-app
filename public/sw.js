@@ -5,7 +5,7 @@
  * - Offline fallback pentru HTML pages
  */
 
-const CACHE_VERSION = 'docflowai-v2';
+const CACHE_VERSION = 'docflowai-v3';
 const CACHE_STATIC = `${CACHE_VERSION}-static`;
 
 // Assets de pre-cacheuit la install
@@ -60,8 +60,13 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Assets statice (css, js, png, ico) → Cache-first
-  if (/\.(css|js|png|ico|jpg|jpeg|svg|woff|woff2)$/.test(url.pathname)) {
+  // Assets statice — CSS/JS: stale-while-revalidate (update în background)
+  // Imagini/fonturi: cache-first (se schimbă rar)
+  if (/\.(css|js)$/.test(url.pathname)) {
+    e.respondWith(staleWhileRevalidate(e.request));
+    return;
+  }
+  if (/\.(png|ico|jpg|jpeg|svg|woff|woff2)$/.test(url.pathname)) {
     e.respondWith(cacheFirst(e.request));
     return;
   }
@@ -86,6 +91,17 @@ async function cacheFirst(request) {
   } catch(e) {
     return new Response('Offline — asset indisponibil', { status: 503 });
   }
+}
+
+async function staleWhileRevalidate(request) {
+  const cached = await caches.match(request);
+  const networkFetch = fetch(request).then(response => {
+    if (response.ok) {
+      caches.open(CACHE_STATIC).then(cache => cache.put(request, response.clone()));
+    }
+    return response;
+  }).catch(() => cached);
+  return cached || networkFetch;
 }
 
 async function networkFirst(request) {
