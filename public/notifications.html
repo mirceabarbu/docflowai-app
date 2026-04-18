@@ -4,50 +4,15 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Notificări</title>
+  <link rel="stylesheet" href="/css/df/tokens.css">
+  <link rel="stylesheet" href="/css/df/shell.css">
+  <link rel="stylesheet" href="/css/df/components.css">
   <style>
     :root {
-      --bg: #0b1020; --card: #0f1731; --muted: #9db0ff; --text: #eaf0ff;
-      --sub: #cdd8ff; --line: rgba(255,255,255,.10); --accent: #7c5cff; --accent2: #2dd4bf;
+      --card: var(--df-surface); --accent: var(--df-brand); --accent2: #2dd4bf;
+      --sub: var(--df-text-2); --muted: var(--df-text-3); --line: var(--df-border-2); --text: var(--df-text);
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; min-height: 100vh; color: var(--text);
-      background: radial-gradient(900px 600px at 20% 10%, rgba(124,92,255,.28), transparent 60%),
-        radial-gradient(700px 500px at 80% 85%, rgba(45,212,191,.18), transparent 55%), var(--bg);
-    }
-    header {
-      position: sticky; top: 0; z-index: 100;
-      padding: 12px 24px;
-      background: rgba(11,16,32,.8); backdrop-filter: blur(14px);
-      border-bottom: 1px solid var(--line);
-      display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    }
-    .brand { display: flex; align-items: center; gap: 10px; }
-    .brand img { height: 80px; width: auto; object-fit: contain; }
-    .brand-title { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; }
-    .header-right { display: flex; align-items: center; gap: 10px; font-size: .82rem; }
-    .btn-ghost {
-      background: rgba(255,255,255,.06); border: 1px solid var(--line);
-      color: var(--sub); padding: 6px 14px; border-radius: 8px; cursor: pointer;
-      font-size: .82rem; font-weight: 600; text-decoration: none;
-      transition: background .18s;
-    }
-    .btn-ghost:hover { background: rgba(255,255,255,.1); }
-    .btn-danger { background: rgba(255,80,80,.15); border: 1px solid rgba(255,80,80,.3); color: #ffaaaa; }
-    .btn-danger:hover { background: rgba(255,80,80,.25); }
-    .btn-accent {
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border: none; color: #fff; padding: 6px 14px; border-radius: 8px;
-      cursor: pointer; font-size: .82rem; font-weight: 700; text-decoration: none;
-      transition: opacity .18s;
-    }
-    .btn-accent:hover { opacity: .88; }
-
-    main { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
-    .page-header { margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    .page-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em; }
-    .page-title span { color: var(--accent); }
-    .page-actions { display: flex; gap: 8px; }
 
     /* Filter tabs */
     .filters { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; overflow-x: visible; padding-bottom: 4px; }
@@ -154,45 +119,156 @@
 </head>
 <body>
 
-<header>
-  <div class="brand">
-    <img src="/Logo.png" alt="DocFlowAI"/>
-  </div>
-  <div id="userBar" class="header-right">
-    <!-- bell widget injected here by notif-widget.js -->
-    <a href="/" class="btn-ghost">← Înapoi</a>
-    <span id="wsStatus" title="Conexiune live" style="display:flex;align-items:center;font-size:.75rem;color:var(--muted);">
-      <span class="ws-dot" id="wsDot"></span><span id="wsLabel">Connecting...</span>
-    </span>
-    <!-- userInfo populated by JS -->
-    <span id="userInfo"></span>
-    <button class="btn-danger btn-ghost" id="btnLogout">Ieșire</button>
-  </div>
-</header>
+<script>
+  (async () => {
+    try {
+      const r = await fetch('/auth/me', {credentials:'include'});
+      if (!r.ok) return;
+      const u = await r.json();
+      const isAdmin = u.role === 'admin' || u.role === 'superadmin';
+      const isOrgAdmin = u.role === 'org_admin' || u.role === 'superadmin';
+      if (!isAdmin) {
+        document.querySelectorAll('.df-nav-label').forEach(l => {
+          if (l.textContent.trim() === 'Administrare') {
+            l.style.display = 'none';
+            l.nextElementSibling.style.display = 'none';
+          }
+        });
+      }
+      if (!isOrgAdmin) {
+        document.querySelectorAll('.df-nav-label').forEach(l => {
+          if (l.textContent.trim() === 'Organizație') {
+            l.style.display = 'none';
+            l.nextElementSibling.style.display = 'none';
+          }
+        });
+      }
+    } catch(e) { /* silent */ }
+  })();
+</script>
 
-<main>
-  <div class="page-header">
-    <div class="page-title">🔔 Notificările <span>mele</span></div>
-    <div class="page-actions">
-      <button class="btn-ghost" id="btnReadAll" style="display:none;">✓ Marchează toate citite</button>
+<div class="df-shell">
+  <aside class="df-sidebar">
+    <div class="df-sidebar-brand">
+      <img src="/Logo.png" alt="DocFlowAI"/>
     </div>
-  </div>
 
-  <div class="filters">
-    <button class="filter-btn active" data-filter="all">Toate</button>
-    <button class="filter-btn" data-filter="unread">Necitite</button>
-    <button class="filter-btn filter-urgent" data-filter="urgent">🚨 Urgente</button>
-    <button class="filter-btn" data-filter="YOUR_TURN">De semnat</button>
-    <button class="filter-btn" data-filter="REVIEW_REQUESTED">De revizuit</button>
-    <button class="filter-btn" data-filter="COMPLETED">Finalizate</button>
-    <button class="filter-btn" data-filter="REFUSED">Refuzate</button>
-    <button class="filter-btn" data-filter="formulare">📄 Formulare</button>
-  </div>
+    <div class="df-nav-label">Navigare app</div>
+    <div class="df-nav-group">
+      <a href="/" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Flux nou
+      </a>
+      <a href="/?tab=flows" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Fluxurile mele
+      </a>
+      <a href="/templates" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Șabloane
+      </a>
+      <a href="/formular.html" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Formulare
+      </a>
+    </div>
 
-  <div id="listArea">
-    <div class="loading"><div class="spin"></div></div>
+    <div class="df-nav-label">Administrare</div>
+    <div class="df-nav-group">
+      <a href="/admin" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Dashboard
+      </a>
+      <a href="/admin?tab=utilizatori" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Utilizatori
+      </a>
+      <a href="/admin?tab=fluxuri" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        Fluxuri documente
+      </a>
+      <a href="/admin?tab=rapoarte" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Rapoarte
+      </a>
+    </div>
+
+    <div class="df-nav-label">Organizație</div>
+    <div class="df-nav-group">
+      <a href="/admin?tab=organizatii" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>
+        Organizații
+      </a>
+      <a href="/admin?tab=outreach" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Outreach
+      </a>
+      <a href="/admin?tab=analytics" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Analytics
+      </a>
+      <a href="/admin?tab=audit" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Audit
+      </a>
+    </div>
+
+    <div class="df-nav-label">Comunicare</div>
+    <div class="df-nav-group">
+      <a href="/notifications" class="df-nav-item active">
+        <svg class="df-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        Notificări
+      </a>
+    </div>
+  </aside>
+
+  <div class="df-page">
+    <header class="df-page-header">
+      <div class="df-page-titles">
+        <h1>Notificări</h1>
+        <p>Activitatea recentă pe fluxurile tale</p>
+      </div>
+      <div class="df-page-actions">
+        <span id="wsStatus" title="Conexiune live" style="display:flex;align-items:center;font-size:.75rem;color:var(--df-text-3);">
+          <span class="ws-dot" id="wsDot"></span>
+          <span id="wsLabel">Connecting...</span>
+        </span>
+        <button class="df-action-btn" id="btnReadAll" style="display:none;">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Marchează toate citite
+        </button>
+        <div id="userBar" style="display:flex;align-items:center;gap:8px;">
+          <!-- bell widget injected by notif-widget.js -->
+          <span id="userInfo"></span>
+          <button class="df-action-btn" id="btnLogout" style="color:#ffaaaa;border-color:rgba(255,85,85,.3);">
+            Ieșire
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="df-page-body">
+      <div class="filters">
+        <button class="filter-btn active" data-filter="all">Toate</button>
+        <button class="filter-btn" data-filter="unread">Necitite</button>
+        <button class="filter-btn filter-urgent" data-filter="urgent">🚨 Urgente</button>
+        <button class="filter-btn" data-filter="YOUR_TURN">De semnat</button>
+        <button class="filter-btn" data-filter="REVIEW_REQUESTED">De revizuit</button>
+        <button class="filter-btn" data-filter="COMPLETED">Finalizate</button>
+        <button class="filter-btn" data-filter="REFUSED">Refuzate</button>
+        <button class="filter-btn" data-filter="formulare">📄 Formulare</button>
+      </div>
+      <div id="listArea">
+        <div class="loading"><div class="spin"></div></div>
+      </div>
+    </main>
   </div>
-</main>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
