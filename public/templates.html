@@ -136,36 +136,9 @@
     };
   </script>
   <link rel="stylesheet" href="/mobile.css">
+  <script src="/js/df-shell.js"></script>
 </head>
 <body>
-
-<script>
-  (async () => {
-    try {
-      const r = await fetch('/auth/me', {credentials:'include'});
-      if (!r.ok) return;
-      const u = await r.json();
-      const isAdmin = u.role === 'admin' || u.role === 'superadmin';
-      const isOrgAdmin = u.role === 'org_admin' || u.role === 'superadmin';
-      if (!isAdmin) {
-        document.querySelectorAll('.df-nav-label').forEach(l => {
-          if (l.textContent.trim() === 'Administrare') {
-            l.style.display = 'none';
-            l.nextElementSibling.style.display = 'none';
-          }
-        });
-      }
-      if (!isOrgAdmin) {
-        document.querySelectorAll('.df-nav-label').forEach(l => {
-          if (l.textContent.trim() === 'Organizație') {
-            l.style.display = 'none';
-            l.nextElementSibling.style.display = 'none';
-          }
-        });
-      }
-    } catch(e) { /* silent */ }
-  })();
-</script>
 
 <div class="df-shell">
   <aside class="df-sidebar">
@@ -195,19 +168,19 @@
 
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
-      <a href="/admin" class="df-nav-item">
+      <a href="/admin#dashboard" class="df-nav-item">
         <svg class="df-nav-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
         Dashboard
       </a>
-      <a href="/admin?tab=utilizatori" class="df-nav-item">
+      <a href="/admin#utilizatori" class="df-nav-item">
         <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Utilizatori
       </a>
-      <a href="/admin?tab=fluxuri" class="df-nav-item">
+      <a href="/admin#fluxuri" class="df-nav-item">
         <svg class="df-nav-icon" viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
         Fluxuri documente
       </a>
-      <a href="/admin?tab=rapoarte" class="df-nav-item">
+      <a href="/admin#rapoarte" class="df-nav-item">
         <svg class="df-nav-icon" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Rapoarte
       </a>
@@ -215,19 +188,19 @@
 
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
-      <a href="/admin?tab=organizatii" class="df-nav-item">
+      <a href="/admin#organizatii" class="df-nav-item">
         <svg class="df-nav-icon" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>
         Organizații
       </a>
-      <a href="/admin?tab=outreach" class="df-nav-item">
+      <a href="/admin#outreach" class="df-nav-item">
         <svg class="df-nav-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         Outreach
       </a>
-      <a href="/admin?tab=analytics" class="df-nav-item">
+      <a href="/admin#analytics" class="df-nav-item">
         <svg class="df-nav-icon" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         Analytics
       </a>
-      <a href="/admin?tab=audit" class="df-nav-item">
+      <a href="/admin#audit" class="df-nav-item">
         <svg class="df-nav-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Audit
       </a>
@@ -252,8 +225,27 @@
         <p>Configurează seturi de semnatari reutilizabili pentru fluxuri rapide</p>
       </div>
       <div class="df-page-actions">
-        <div id="userBar" style="display:flex;align-items:center;gap:8px;">
-          <!-- populated by JS below -->
+        <div id="userBar"></div>
+        <div class="df-user-menu" id="df-user-menu">
+          <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <div class="df-user-trigger-avatar">U</div>
+            <div class="df-user-trigger-info">
+              <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+              <div class="df-user-trigger-role">Utilizator</div>
+            </div>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openChangePwdModal()">
+              <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+              Schimbă parola
+            </button>
+            <div class="df-user-dropdown-divider"></div>
+            <button class="danger" onclick="closeUserMenu();logout()">
+              <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Ieșire
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -348,35 +340,6 @@
 
 <script>
 const $ = id => document.getElementById(id);
-// SEC-01: token din cookie HttpOnly — eliminat token
-const me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
-fetch('/auth/me', { credentials: 'include' })
-  .then(r => {
-    if (!r.ok) {
-      localStorage.removeItem('docflow_user');
-      location.href = '/login?next=/templates';
-    }
-  })
-  .catch(() => { location.href = '/login?next=/templates'; });
-function logout() {
-  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
-  localStorage.removeItem('docflow_token');
-  localStorage.removeItem('docflow_user');
-  location.href = '/login';
-}
-
-// Populate userBar with name + admin link + logout
-(function() {
-  const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
-  const bar = document.getElementById('userBar');
-  if (!bar) return;
-  const label = u.nume || u.email || '';
-  bar.innerHTML =
-    (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
-    ((u.role === 'admin' || u.role === 'org_admin') ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
-    `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
-    `<button onclick="logout()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
-})();
 function hdrs() { return { 'Content-Type': 'application/json' }; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 

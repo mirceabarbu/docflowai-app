@@ -1,5 +1,5 @@
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh;background:var(--df-bg);color:var(--df-text);}
+
     header{background:var(--df-bg-elevated);border-bottom:1px solid var(--df-border);
       padding:10px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;gap:12px;}
     .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.1rem;}

@@ -1463,7 +1463,13 @@ fetch("/auth/me",{headers:hdrs()})
     if(u.role==="org_admin") window._orgAdminInstitutie = u.institutie || "";
     // BUG-FIX: org_admin poate vedea/selecta doar rol 'user' — filtrăm dropdown-urile
     if(u.role==="org_admin") _lockRoleDropdownsForOrgAdmin();
-    switchTab('dashboard');
+    // Hash routing: /admin#tabname → deschide tabul respectiv
+    const _validTabs = ['dashboard','utilizatori','fluxuri','rapoarte',
+                        'organizatii','outreach','analytics','audit'];
+    const _initialTab = (location.hash || '').replace(/^#/,'').trim();
+    const _startTab = _validTabs.includes(_initialTab) ? _initialTab : 'dashboard';
+    switchTab(_startTab);
+    if (_startTab === 'analytics') loadAnalytics();
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
     loadDbStats(); // auto-încarcă statistici DB
