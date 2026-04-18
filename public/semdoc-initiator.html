@@ -4,18 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DocFlowAI — Inițiere flux</title>
+    <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.252">
+    <link rel="stylesheet" href="/css/df/shell.css?v=3.9.252">
+    <link rel="stylesheet" href="/css/df/components.css?v=3.9.252">
+    <script src="/js/df-shell.js?v=3.9.252"></script>
     <style>
       *{box-sizing:border-box;}
-body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
-      header { position:sticky; top:0; z-index:100; padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); display:flex; gap:12px; align-items:center; justify-content:space-between; }
-      .brand { font-weight: 800; letter-spacing:.2px; }
-      .tabs { display:flex; gap:8px; }
       button, input, select { font: inherit; }
-      select option{background: var(--card); color: var(--text);} 
-
-      .tabbtn { display:inline-flex;align-items:center;gap:5px;background:rgba(120,160,255,.22);color:#e9eefc;border:1px solid rgba(120,160,255,.45);padding:8px 14px;border-radius:10px;font-size:.85rem;font-weight:500;cursor:pointer;transition:filter .15s,transform .1s;text-decoration:none; }
-      .tabbtn:hover { filter:brightness(1.08);transform:translateY(-1px); }
-      .tabbtn.active { background:rgba(120,160,255,.35);border-color:rgba(120,160,255,.7);font-weight:600; }
+      select option{background: var(--card); color: var(--text);}
       @keyframes pulse-urgent { 0%,100%{box-shadow:0 0 0 0 rgba(255,40,40,.4);} 50%{box-shadow:0 0 0 5px rgba(255,40,40,0);} }
       main { padding: 18px 20px; max-width: 1200px; margin: 0 auto; }
       .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
@@ -43,41 +39,19 @@ body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9ee
       tr.drag-over td { background: rgba(124,92,255,.18) !important; }
     
 
-/* ===== DocFlowAI Theme (from landing index.html) + UI polish ===== */
+/* ===== DocFlowAI Theme ===== */
 :root{
-  --bg:#0b1020;
-  --card:#0f1731;
-  --muted:#9db0ff;
-  --text:#eaf0ff;
-  --sub:#cdd8ff;
-  --line:rgba(255,255,255,.10);
-  --accent:#7c5cff;
+  --bg: var(--df-bg);
+  --card: var(--df-surface);
+  --muted: var(--df-text-3);
+  --text: var(--df-text);
+  --sub: var(--df-text-2);
+  --line: var(--df-border-2);
+  --accent: var(--df-brand);
   --accent2:#2dd4bf;
   --shadow: 0 20px 60px rgba(0,0,0,.35);
   --radius:18px;
 }
-
-body{
-  background:
-    radial-gradient(900px 500px at 18% 8%, rgba(124,92,255,.35), transparent 60%),
-    radial-gradient(700px 450px at 82% 12%, rgba(45,212,191,.22), transparent 55%),
-    var(--bg) !important;
-  color: var(--text) !important;
-}
-
-header{
-  position:sticky !important; top:0 !important; z-index:100 !important;
-  background: rgba(15,23,49,.85) !important;
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--line) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-}
-#userBar { display:flex !important; align-items:center !important; gap:10px !important; font-size:.82rem; }
-#userBar button { background:rgba(255,80,80,.18) !important; border:1px solid rgba(255,80,80,.35) !important; color:#ffaaaa !important; padding:6px 14px !important; border-radius:8px !important; cursor:pointer !important; font-size:.82rem !important; font-weight:600 !important; }
-
-.brand{ color: var(--text) !important; }
 .muted, .card-sub, label{ color: var(--sub) !important; opacity: .9 !important; }
 a{ color: var(--muted) !important; }
 
@@ -195,23 +169,6 @@ th{ color: var(--sub) !important; }
     @keyframes mtl-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(124,92,255,.4);} 50%{box-shadow:0 0 0 5px rgba(124,92,255,0);} }
     .ms-active .mtl-dot { animation:mtl-pulse 2s ease-in-out infinite; }
 </style>
-    <script>
-    // Auth guard — redirect to login if no valid JWT
-    (function() {
-      fetch('/auth/me', { credentials: 'include' })
-        .then(r => {
-          if (!r.ok) {
-            localStorage.removeItem('docflow_user');
-            localStorage.removeItem('docflow_force_pwd');
-            location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
-          }
-        })
-        .catch(() => {
-          location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
-        });
-    })();
-  </script>
-
   <script>
     // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
     // SEC-01: token în cookie HttpOnly — credentials: include trimite cookie automat.
@@ -272,7 +229,7 @@ th{ color: var(--sub) !important; }
     })();
 
   </script>
-  <link rel="stylesheet" href="/mobile.css">
+  <link rel="stylesheet" href="/mobile.css?v=3.9.252">
 </head>
 <script>
   // Incarca pdf-lib pentru stampilare PDF la creare flux
@@ -301,27 +258,136 @@ th{ color: var(--sub) !important; }
   }
 </script>
   <body>
-    <header>
-      <div class="brand">
-        <img src="/Logo.png" alt="DocFlowAI" style="height:87px; width:auto; object-fit:contain; display:block;" />
+<div class="df-shell">
+
+  <aside class="df-sidebar">
+    <div class="df-sidebar-brand">
+      <img src="/Logo.png" alt="DocFlowAI"/>
+    </div>
+
+    <div class="df-nav-label">Navigare app</div>
+    <div class="df-nav-group">
+      <a href="/" id="sbFluxNou" class="df-nav-item active">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Flux nou
+      </a>
+      <a href="/?tab=flows" id="sbFluxurileMele" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Fluxurile mele
+      </a>
+      <a href="/templates" class="df-nav-item" id="linkSabloane">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Șabloane
+      </a>
+      <a href="/formular.html" class="df-nav-item" id="linkFormulare">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Formulare
+      </a>
+    </div>
+
+    <div class="df-nav-label">Administrare</div>
+    <div class="df-nav-group">
+      <a href="/admin#dashboard" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Dashboard
+      </a>
+      <a href="/admin#utilizatori" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Utilizatori
+      </a>
+      <a href="/admin#fluxuri" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        Fluxuri documente
+      </a>
+      <a href="/admin#rapoarte" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Rapoarte
+      </a>
+    </div>
+
+    <div class="df-nav-label">Organizație</div>
+    <div class="df-nav-group">
+      <a href="/admin#organizatii" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>
+        Organizații
+      </a>
+      <a href="/admin#outreach" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Outreach
+      </a>
+      <a href="/admin#analytics" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Analytics
+      </a>
+      <a href="/admin#audit" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Audit
+      </a>
+    </div>
+  </aside>
+
+  <div class="df-page">
+
+    <header class="df-page-header">
+      <div class="df-page-titles">
+        <h1>Inițiere flux</h1>
+        <p>Încarcă documentul și configurează semnatarii pentru un nou flux de semnare</p>
       </div>
-      <div class="tabs">
-        <button id="tabInit" class="tabbtn active" type="button">📝 Flux nou</button>
-        <button id="tabFluxuri" class="tabbtn" type="button">📂 Fluxuri mele</button>
-        <a href="/templates" class="tabbtn" style="text-decoration:none;" id="linkSabloane">📋 Șabloane</a>
-        <a href="/formular.html" class="tabbtn" style="text-decoration:none;border-color:rgba(30,200,174,.35);color:#1ec8ae;" id="linkFormulare">📄 Formulare</a>
+      <div class="df-page-actions">
+        <div class="df-user-menu" id="df-user-menu">
+          <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <div class="df-user-trigger-avatar">U</div>
+            <div class="df-user-trigger-info">
+              <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+              <div class="df-user-trigger-role">Utilizator</div>
+            </div>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openChangePwdModal()">
+              <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+              Schimbă parola
+            </button>
+            <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
+              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+              Configurare 2FA
+            </button>
+            <a href="/admin" style="text-decoration:none;">
+              <button>
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                Panou admin
+              </button>
+            </a>
+            <div class="df-user-dropdown-divider"></div>
+            <button class="danger" onclick="closeUserMenu();logout()">
+              <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Ieșire
+            </button>
+          </div>
+        </div>
       </div>
-      <div id="userBar" style="display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
     </header>
 
-    <!-- Banner schimbare parolă obligatorie -->
+    <!-- Banner parolă temporară -->
     <div id="forcePwdBanner" style="display:none;background:linear-gradient(135deg,rgba(255,165,0,.18),rgba(255,100,0,.12));border-bottom:1px solid rgba(255,165,0,.4);padding:12px 24px;text-align:center;font-size:.88rem;color:#ffd580;">
       ⚠️ <strong>Parola ta este temporară.</strong> Te rugăm să o schimbi acum pentru securitatea contului.
       &nbsp;<button onclick="openChangePwdModal()" style="background:rgba(255,165,0,.25);border:1px solid rgba(255,165,0,.5);color:#ffd580;padding:4px 14px;border-radius:7px;cursor:pointer;font-size:.83rem;font-weight:700;">🔑 Schimbă parola</button>
       &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" style="background:transparent;border:none;color:#9db0ff;cursor:pointer;font-size:.85rem;opacity:.6;">✕</button>
     </div>
 
-    <main>
+    <main class="df-page-body">
+
+      <!-- Tab-uri intrapagină -->
+      <div class="df-pill-tabs">
+        <button id="tabInit" class="df-pill-tab active" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Flux nou
+        </button>
+        <button id="tabFluxuri" class="df-pill-tab" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Fluxurile mele
+        </button>
+      </div>
       <!-- INIT -->
       <section id="viewInit">
 
@@ -515,6 +581,8 @@ th{ color: var(--sub) !important; }
         </div>
       </section>
     </main>
+  </div>
+</div>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -725,6 +793,10 @@ th{ color: var(--sub) !important; }
         $("viewFluxuri").classList.toggle("hidden", name !== "fluxuri");
         $("tabInit").classList.toggle("active", name === "init");
         $("tabFluxuri").classList.toggle("active", name === "fluxuri");
+        const sbInit = document.getElementById("sbFluxNou");
+        const sbFlows = document.getElementById("sbFluxurileMele");
+        if (sbInit) sbInit.classList.toggle("active", name === "init");
+        if (sbFlows) sbFlows.classList.toggle("active", name === "fluxuri");
         if (name === "fluxuri") {
           const fs = $("fluxSearch");
           if (fs && !fs._userTyped) { fs.value = ""; fs.setAttribute("value", ""); }
@@ -1956,17 +2028,8 @@ async function signFromFluxuri(flowId) {
       // Completare automată câmpuri inițiator din profilul utilizatorului autentificat
       autoFillFromProfile();
 
-      // Show logged-in user + logout button
+      // Banner parolă temporară
       (function() {
-        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI non-sensibile — OK în localStorage
-        const bar = document.getElementById("userBar");
-        if (!bar) return;
-        const label = u.nume || u.email || "";
-        bar.innerHTML = (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : "") +
-          ((u.role === "admin" || u.role === "org_admin") ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
-          `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
-          `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');localStorage.removeItem('docflow_force_pwd');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
-        // Banner parolă temporară
         if (localStorage.getItem("docflow_force_pwd") === "1") {
           const banner = document.getElementById("forcePwdBanner");
           if (banner) banner.style.display = "block";
