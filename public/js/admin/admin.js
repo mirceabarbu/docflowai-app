@@ -846,6 +846,7 @@ async function loadFlowsList(forceReload = true, page) {
     const flows = Array.isArray(resp) ? resp : (resp.flows || []);
     const total = resp.total || flows.length;
     const pages = resp.pages || 1;
+    const cntFlows = document.getElementById('flowsActiveCount'); if (cntFlows) cntFlows.textContent = total || '—';
 
     // Dropdown instituții populat din /admin/flows/institutions (endpoint dedicat)
     // — nu din datele paginii curente (ar arăta doar instituțiile din pag. curentă)
@@ -1781,6 +1782,7 @@ async function orLoadCampaigns() {
   try {
     const r = await fetch('/admin/outreach/campaigns', { credentials: 'include' });
     const d = await r.json();
+    const cntCamp = document.getElementById('outreachCampaignsCount'); if (cntCamp) cntCamp.textContent = d.campaigns?.length || 0;
     if (!d.campaigns?.length) {
       el.innerHTML = '<div style="color:var(--muted);font-size:.84rem;padding:12px 0;">Nicio campanie. Creează prima campanie mai sus.</div>';
       return;
