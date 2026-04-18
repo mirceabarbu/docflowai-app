@@ -24,8 +24,8 @@ body {
 /* === Page header & body === */
 .df-page{display:flex;flex-direction:column;min-width:0;}
 .df-page-header{padding:18px 32px;display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--df-border);background:var(--df-bg);flex-wrap:wrap;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;min-height:84px;}
-.df-page-titles h1{font-size:1.35rem;font-weight:600;color:var(--df-text);margin-bottom:4px;letter-spacing:-.01em;}
-.df-page-titles p{font-size:.8rem;color:var(--df-text-3);max-width:640px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.df-page-titles h1{font-size:1.35rem;font-weight:600;color:var(--df-text);margin:0 0 4px;letter-spacing:-.01em;}
+.df-page-titles p{font-size:.8rem;color:var(--df-text-3);max-width:640px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;}
 .df-page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .df-page-body{padding:26px 32px 60px;max-width:1600px;width:100%;margin:0 auto;}
 
