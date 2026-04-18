@@ -226,6 +226,7 @@
 
   <div class="card">
     <div class="card-title">➕ Utilizator nou</div>
+    <div class="df-form-section-title">Date personale</div>
     <div class="grid3">
       <div class="frow"><label>Prenume *</label><input id="nPrenume" placeholder="Ion" oninput="updateGwsPreview()"/></div>
       <div class="frow"><label>Nume familie *</label><input id="nNumeFamilie" placeholder="Popescu" oninput="updateGwsPreview()"/></div>
@@ -234,6 +235,7 @@
         <datalist id="functieList"></datalist>
       </div>
     </div>
+    <div class="df-form-section-title">Cont și acces</div>
     <div class="grid3" style="margin-top:12px;">
       <!-- Email login — vizibil doar fără Workspace -->
       <div class="frow" id="nEmailRow">
@@ -268,6 +270,7 @@
         <div id="nOrgHint" style="font-size:.75rem;color:var(--muted);margin-top:4px;display:none;"></div>
       </div>
     </div>
+    <div class="df-form-section-title">Contact și notificări</div>
     <div class="grid3" style="margin-top:12px;">
       <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
         <input id="nPhone" type="tel" placeholder="0712345678 sau +40712345678" oninput="phoneInputFeedback(this)"/></div>
@@ -401,7 +404,7 @@
         <div id="archivePreviewSummary" style="font-size:.88rem;margin-bottom:10px;font-weight:600;"></div>
         <div id="archivePreviewList" style="font-size:.8rem;color:var(--muted);max-height:200px;overflow-y:auto;"></div>
       </div>
-      <button id="btnDoArchive" class="btn" onclick="doArchive()" style="background:linear-gradient(135deg,#2dd4bf,#7c5cff);padding:10px 24px;font-size:.88rem;font-weight:700;">📦 Arhivează în Drive și eliberează DB</button>
+      <button id="btnDoArchive" class="df-inline-action primary" onclick="doArchive()">📦 Arhivează în Drive și eliberează DB</button>
     </div>
     <div id="archiveMsg" style="margin-top:12px;font-size:.83rem;"></div>
   </div>
@@ -560,7 +563,7 @@
 <div id="tab-organizatii" style="display:none;">
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:6px;">
     <h2 style="color:#9db0ff;margin:0;">🏛 Organizații & Webhook</h2>
-    <button onclick="openOnboardingWizard()" style="padding:9px 18px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:10px;color:#fff;font-size:.85rem;font-weight:700;cursor:pointer;">
+    <button onclick="openOnboardingWizard()" class="df-inline-action primary">
       ➕ Instituție nouă
     </button>
   </div>
@@ -847,7 +850,7 @@
       <textarea id="or-c-body" rows="10" style="width:100%;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text);font-size:.84rem;font-family:monospace;resize:vertical;"></textarea>
     </div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap;">
-      <button onclick="orCreateCampaign()" style="padding:9px 22px;background:rgba(124,92,255,.3);border:1px solid rgba(124,92,255,.5);border-radius:9px;color:#c4b5ff;font-weight:700;font-size:.88rem;cursor:pointer;">✅ Crează campanie</button>
+      <button onclick="orCreateCampaign()" class="df-inline-action primary">✅ Crează campanie</button>
       <button onclick="orFillDefaultTemplate()" style="padding:9px 16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--muted);font-size:.83rem;cursor:pointer;">📋 Template broșură</button>
       <button onclick="orFillConvTemplate()" title="Ton direct, personal — mai eficient pentru factori de decizie" style="padding:9px 16px;background:rgba(255,213,128,.08);border:1px solid rgba(255,213,128,.25);border-radius:9px;color:#ffd580;font-size:.83rem;cursor:pointer;">✉️ Template conversațional ★</button>
       <select onchange="if(this.value){$('or-c-subject').value=this.value;this.value='';}" style="padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--muted);font-size:.82rem;cursor:pointer;max-width:240px;">
@@ -877,7 +880,7 @@
       <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
         <span>🎯 <span id="or-detail-name"></span></span>
         <div style="display:flex;gap:8px;">
-          <button onclick="orSendBatch()" id="or-btn-send" style="padding:8px 20px;background:rgba(45,212,191,.2);border:1px solid rgba(45,212,191,.4);border-radius:9px;color:#7cf0e0;font-weight:700;font-size:.88rem;cursor:pointer;">▶ Trimite batch (50)</button>
+          <button onclick="orSendBatch()" id="or-btn-send" class="df-inline-action success">▶ Trimite batch (50)</button>
           <button onclick="orResetErrors()" style="padding:8px 14px;background:rgba(255,180,50,.1);border:1px solid rgba(255,180,50,.3);border-radius:9px;color:#ffd580;font-size:.83rem;cursor:pointer;">🔁 Retry erori</button>
           <button onclick="orDeleteCampaign()" style="padding:8px 14px;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);border-radius:9px;color:#ffaaaa;font-size:.83rem;cursor:pointer;">🗑 Șterge</button>
         </div>
