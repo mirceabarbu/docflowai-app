@@ -267,7 +267,7 @@ th{ color: var(--sub) !important; }
 
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
-      <a href="/" id="sbFluxNou" class="df-nav-item active">
+      <a href="/" id="sbFluxNou" class="df-nav-item">
         <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         Flux nou
       </a>
@@ -377,17 +377,6 @@ th{ color: var(--sub) !important; }
 
     <main class="df-page-body">
 
-      <!-- Tab-uri intrapagină -->
-      <div class="df-pill-tabs">
-        <button id="tabInit" class="df-pill-tab active" type="button">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Flux nou
-        </button>
-        <button id="tabFluxuri" class="df-pill-tab" type="button">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          Fluxurile mele
-        </button>
-      </div>
       <!-- INIT -->
       <section id="viewInit">
 
@@ -791,8 +780,6 @@ th{ color: var(--sub) !important; }
       function showTab(name) {
         $("viewInit").classList.toggle("hidden", name !== "init");
         $("viewFluxuri").classList.toggle("hidden", name !== "fluxuri");
-        $("tabInit").classList.toggle("active", name === "init");
-        $("tabFluxuri").classList.toggle("active", name === "fluxuri");
         const sbInit = document.getElementById("sbFluxNou");
         const sbFlows = document.getElementById("sbFluxurileMele");
         if (sbInit) sbInit.classList.toggle("active", name === "init");
@@ -806,14 +793,12 @@ th{ color: var(--sub) !important; }
           loadMyFlows();
         }
       }
-      $("tabInit").addEventListener("click", () => { showTab("init"); sessionStorage.setItem("docflow_tab", "init"); });
       // Sabloane: salveaza starea + PDF inainte de navigare
       document.getElementById("linkSabloane")?.addEventListener("click", (e) => {
         sessionStorage.setItem("docflow_tab", "init");
         saveFormState();
         if (pdfB64) idb.save(pdfB64);
       });
-      $("tabFluxuri").addEventListener("click", () => { showTab("fluxuri"); sessionStorage.setItem("docflow_tab", "fluxuri"); });
 
       // Signers table
       const tbody = $("signersTbody");
@@ -2001,6 +1986,8 @@ async function signFromFluxuri(flowId) {
         const _savedTab = sessionStorage.getItem("docflow_tab");
         if (_savedTab === "fluxuri") {
           showTab("fluxuri");
+        } else {
+          showTab("init");
         }
         const _restored = await restoreFormState();
         if (!_restored) {
