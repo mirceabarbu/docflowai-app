@@ -1,3 +1,4 @@
+/* Componente reutilizabile — .df-action-btn, .df-toolbar, .df-ic, .df-form-section-title. Depinde de tokens.css. */
 /* === Table polish enterprise (scoped la .card pentru a nu afecta
       alte zone) === */
 .card table{width:100%;border-collapse:collapse;font-size:.83rem;}

@@ -1,3 +1,4 @@
+/* Layout shell — .df-shell, .df-sidebar, .df-page, .df-page-header. Depinde de tokens.css. */
 /* === Shell enterprise layout === */
 .df-shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh;align-items:start;}
 .df-sidebar{background:var(--df-bg-elevated);border-right:1px solid var(--df-border);display:flex;flex-direction:column;padding:20px 0 16px;position:sticky;top:0;align-self:stretch;max-height:100vh;overflow-y:auto;overflow-x:hidden;}
