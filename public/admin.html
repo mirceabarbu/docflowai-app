@@ -288,7 +288,8 @@
       <div class="frow" id="gwsBox" style="background:rgba(66,133,244,.07);border:1px solid rgba(66,133,244,.25);border-radius:12px;padding:12px 14px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-          <strong style="font-size:.85rem;color:#9db0ff;">Google Workspace</strong>
+          <strong style="font-size:.85rem;color:#9db0ff;flex:1;">Google Workspace</strong>
+          <button onclick="verifyGws()" id="btnGwsVerify" title="Testează conectivitatea cu Google Workspace" style="padding:4px 10px;background:rgba(66,133,244,.12);border:1px solid rgba(66,133,244,.3);border-radius:6px;color:#8ab4f8;cursor:pointer;font-size:.72rem;font-weight:500;">🔗 Test conexiune</button>
         </div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;color:var(--sub);margin-bottom:8px;">
           <input type="checkbox" id="nCreateGws" style="accent-color:#4285F4;width:15px;height:15px;" onchange="onGwsToggle()"/>
@@ -404,7 +405,10 @@
         <div id="archivePreviewSummary" style="font-size:.88rem;margin-bottom:10px;font-weight:600;"></div>
         <div id="archivePreviewList" style="font-size:.8rem;color:var(--muted);max-height:200px;overflow-y:auto;"></div>
       </div>
-      <button id="btnDoArchive" class="df-inline-action primary" onclick="doArchive()">📦 Arhivează în Drive și eliberează DB</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="btnDoArchive" class="df-inline-action primary" onclick="doArchive()">📦 Arhivează în Drive și eliberează DB</button>
+        <button id="btnDoArchiveAsync" class="df-inline-action brand" onclick="doArchiveAsync()" title="Creează un job în background — nu blochează UI pentru volume mari">⚡ Async (fundal)</button>
+      </div>
     </div>
     <div id="archiveMsg" style="margin-top:12px;font-size:.83rem;"></div>
   </div>
@@ -1684,6 +1688,34 @@ async function _fetchGwsPreview() {
   finally { $('gwsPreviewSpin').style.display = 'none'; }
 }
 
+// ── Verificare conectivitate Google Workspace (v4 backend feature) ─────────
+async function verifyGws() {
+  const btn = document.getElementById('btnGwsVerify');
+  if (!btn) return;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Verificare...';
+  try {
+    const r = await _apiFetch('/admin/gws/verify', { headers: hdrs() });
+    const j = await r.json();
+    if (r.status === 403) {
+      alert('⚠️ Verificare Google Workspace permisă doar pentru super-admin.');
+    } else if (j.ok) {
+      const details = [];
+      if (j.domain) details.push(`Domeniu: ${j.domain}`);
+      if (j.adminEmail) details.push(`Admin: ${j.adminEmail}`);
+      if (j.userCount != null) details.push(`Utilizatori existenți: ${j.userCount}`);
+      alert(`✅ Google Workspace: conexiune OK\n\n${details.join('\n') || 'Serviciul răspunde corect.'}`);
+    } else {
+      alert(`❌ Google Workspace: conexiune eșuată\n\n${j.error || j.message || 'Verifică credențialele service account în config.'}`);
+    }
+  } catch (e) {
+    alert(`❌ Eroare verificare: ${e.message}`);
+  }
+  btn.disabled = false;
+  btn.textContent = origText;
+}
+
 async function createUser(){
   const prenume    = ($('nPrenume')||{value:''}).value.trim();
   const numeFamilie= ($('nNumeFamilie')||{value:''}).value.trim();
@@ -2389,6 +2421,83 @@ async function doArchive() {
   } catch(e) { msg.textContent = "❌ " + e.message; }
   btn.disabled = false;
   btn.textContent = "📦 Arhivează în Drive și eliberează DB";
+}
+
+// ── Arhivare asincronă cu job tracking (v4 backend feature) ────────────────
+let _archiveJobPollTimer = null;
+
+async function doArchiveAsync() {
+  if (!_archiveFlowIds.length) return;
+  const btn = document.getElementById("btnDoArchiveAsync");
+  const btnSync = document.getElementById("btnDoArchive");
+  const msg = document.getElementById("archiveMsg");
+  if (!confirm(`Pornești un job de arhivare asincron pentru ${_archiveFlowIds.length} fluxuri?\n\nAvantaje față de arhivarea sincronă:\n✅ Nu blochează UI-ul\n✅ Poți naviga în alt tab în timp ce se procesează\n✅ Potrivit pentru volume mari (>50 fluxuri)\n\nJob-ul pornește în max 30 secunde și poți urmări progresul aici.`)) return;
+  btn.disabled = true;
+  btnSync.disabled = true;
+  btn.textContent = "⏳ Creez job...";
+  msg.textContent = "";
+  try {
+    const r = await _apiFetch("/admin/flows/archive-async", {
+      method: "POST", headers: hdrs(),
+      body: JSON.stringify({ flowIds: _archiveFlowIds })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "Eroare server");
+    msg.innerHTML = `🚀 Job creat: <strong>#${j.jobId}</strong> pentru ${j.flowCount} fluxuri. ${escH(j.message || 'Procesarea începe în fundal...')}`;
+    btn.textContent = "⏳ În procesare...";
+    pollArchiveJob(j.jobId);
+  } catch (e) {
+    msg.innerHTML = `❌ ${escH(e.message)}`;
+    btn.disabled = false;
+    btnSync.disabled = false;
+    btn.textContent = "⚡ Async (fundal)";
+  }
+}
+
+function pollArchiveJob(jobId) {
+  clearTimeout(_archiveJobPollTimer);
+  _archiveJobPollTimer = setTimeout(async () => {
+    try {
+      const r = await _apiFetch(`/admin/flows/archive-job/${jobId}`, { headers: hdrs() });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Eroare verificare job");
+      const msg = document.getElementById("archiveMsg");
+      const btn = document.getElementById("btnDoArchiveAsync");
+      const btnSync = document.getElementById("btnDoArchive");
+      const statusLabel = {
+        pending: "⏸ În coadă",
+        running: "⏳ Se procesează",
+        done: "✅ Finalizat",
+        error: "❌ Eroare",
+      }[j.status] || j.status;
+      if (j.done) {
+        let html = `Job #${j.jobId} — ${statusLabel}<br>Fluxuri: ${j.flowCount}`;
+        if (j.status === 'done' && j.result) {
+          const ok = j.result.ok || 0;
+          const fail = j.result.failed || 0;
+          html += `<br>✅ Arhivate: <strong>${ok}</strong>`;
+          if (fail) html += ` · ❌ Eșuate: <strong>${fail}</strong>`;
+        }
+        if (j.error) html += `<br>Eroare: ${escH(j.error)}`;
+        msg.innerHTML = html;
+        btn.disabled = false;
+        btnSync.disabled = false;
+        btn.textContent = "⚡ Async (fundal)";
+        _archiveFlowIds = [];
+        document.getElementById("archivePreview").style.display = "none";
+      } else {
+        msg.innerHTML = `${statusLabel} — Job #${j.jobId} (${j.flowCount} fluxuri). Actualizare auto la fiecare 3s...`;
+        pollArchiveJob(jobId);
+      }
+    } catch (e) {
+      const msg = document.getElementById("archiveMsg");
+      if (msg) msg.innerHTML = `❌ Polling oprit: ${escH(e.message)}`;
+      const btn = document.getElementById("btnDoArchiveAsync");
+      const btnSync = document.getElementById("btnDoArchive");
+      if (btn) { btn.disabled = false; btn.textContent = "⚡ Async (fundal)"; }
+      if (btnSync) btnSync.disabled = false;
+    }
+  }, 3000);
 }
 
 async function runVacuum() {
