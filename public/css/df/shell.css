@@ -13,11 +13,11 @@ body {
 /* === Shell enterprise layout === */
 .df-shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh;align-items:start;}
 .df-sidebar{background:var(--df-bg-elevated);border-right:1px solid var(--df-border);display:flex;flex-direction:column;padding:20px 0 16px;position:sticky;top:0;align-self:stretch;max-height:100vh;overflow-y:auto;overflow-x:hidden;}
-.df-sidebar-brand{display:flex;align-items:center;justify-content:center;padding:14px 14px 22px;}
-.df-sidebar-brand img{width:100%;height:auto;max-height:110px;object-fit:contain;}
-.df-nav-label{font-size:.65rem;color:var(--df-text-5);font-weight:600;letter-spacing:.14em;text-transform:uppercase;padding:14px 22px 6px;}
-.df-nav-group{display:flex;flex-direction:column;gap:1px;padding:0 10px 4px;}
-.df-nav-item{display:flex;align-items:center;gap:11px;padding:9px 12px;border:none;background:transparent;color:var(--df-text-3);font-size:.84rem;font-weight:500;border-radius:var(--df-radius-md);cursor:pointer;text-align:left;font-family:inherit;transition:background .15s,color .15s;position:relative;width:100%;}
+.df-sidebar-brand{display:flex;align-items:center;justify-content:center;padding:8px 6px 14px;}
+.df-sidebar-brand img{width:100%;height:auto;max-height:85px;object-fit:contain;}
+.df-nav-label{font-size:.62rem;color:var(--df-text-5);font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:10px 18px 4px;}
+.df-nav-group{display:flex;flex-direction:column;gap:0;padding:0 10px 2px;}
+.df-nav-item{display:flex;align-items:center;gap:10px;padding:7px 12px;border:none;background:transparent;color:var(--df-text-3);font-size:.8rem;font-weight:500;border-radius:var(--df-radius-md);cursor:pointer;text-align:left;font-family:inherit;transition:background .15s,color .15s;position:relative;width:100%;}
 .df-nav-item:hover{background:rgba(255,255,255,.04);color:var(--df-text);}
 .df-nav-item.active{background:var(--df-primary-bg);color:var(--df-text);}
 .df-nav-item.active::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--df-primary);}
@@ -25,7 +25,7 @@ body {
 .df-page{display:flex;flex-direction:column;min-width:0;}
 .df-page-header{padding:22px 32px;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;border-bottom:1px solid var(--df-border);background:var(--df-bg);flex-wrap:wrap;}
 .df-page-titles h1{font-size:1.35rem;font-weight:600;color:var(--df-text);margin-bottom:4px;letter-spacing:-.01em;}
-.df-page-titles p{font-size:.8rem;color:var(--df-text-3);max-width:640px;}
+.df-page-titles p{font-size:.8rem;color:var(--df-text-3);max-width:640px;font-style:italic;}
 .df-page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .df-page-body{padding:26px 32px 60px;max-width:1340px;}
 

@@ -33,6 +33,7 @@
       font-size: 18px;
       text-decoration: none;
       flex-shrink: 0;
+      color: var(--df-text-2, #c4d1ee);
     }
     #nw-bell-btn:hover { background: rgba(124,92,255,.22); transform: scale(1.07); }
     #nw-bell-btn:active { transform: scale(.95); }
@@ -247,7 +248,7 @@
     bellBtn.id = 'nw-bell-btn';
     bellBtn.href = '/notifications';
     bellBtn.title = 'Notificări';
-    bellBtn.innerHTML = `🔔<span id="nw-badge"></span>`;
+    bellBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span id="nw-badge"></span>`;
     bellBtn.addEventListener('click', async (e) => {
       e.preventDefault();
       // SEC-01: nu mai verificăm token din localStorage — cookie trimis automat
