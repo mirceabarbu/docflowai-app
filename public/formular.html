@@ -4,13 +4,13 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.265">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.265">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.265">
-  <script src="/js/df-shell.js?v=3.9.265"></script>
-  <script src="/js/df-user-modals.js?v=3.9.265"></script>
-  <script src="/js/df-subtabs.js?v=3.9.265"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.265">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.266">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.266">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.266">
+  <script src="/js/df-shell.js?v=3.9.266"></script>
+  <script src="/js/df-user-modals.js?v=3.9.266"></script>
+  <script src="/js/df-subtabs.js?v=3.9.266"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.266">
   <style>
     :root {
       --app-bg: var(--df-bg);
@@ -183,11 +183,11 @@
     #val-err-bar{display:none;margin:8px 0 0;padding:0}
     #val-err-bar .val-err-inner{background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090;padding:9px 14px;border-radius:9px;font-size:.83rem}
     .lst-wrap{padding:14px 0 0}
-    .lst-tabs-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
-    .lst-tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:10px;padding:3px;border:1px solid var(--app-line)}
-    .lst-tab{padding:8px 18px;border-radius:7px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s;font-family:inherit}
-    .lst-tab:hover{color:var(--app-sub)}
-    .lst-tab.active{background:linear-gradient(135deg,var(--app-v),var(--app-t));color:#fff;box-shadow:0 3px 12px rgba(108,79,240,.3)}
+    .lst-tabs-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:8px}
+    .lst-tabs{display:flex;gap:4px;border-bottom:1px solid var(--df-border);flex-wrap:wrap;padding:0 2px}
+    .lst-tab{background:transparent;border:none;padding:10px 18px 12px;color:var(--df-text-3);font-size:.88rem;font-weight:500;cursor:pointer;font-family:inherit;position:relative;transition:color .15s;border-bottom:2px solid transparent;margin-bottom:-1px;display:inline-flex;align-items:center;gap:8px}
+    .lst-tab:hover{color:var(--df-text)}
+    .lst-tab.active{color:var(--df-primary-text);border-bottom-color:var(--df-primary);font-weight:600}
     .lst-filters{background:rgba(255,255,255,.03);border:1px solid var(--app-line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
     .lst-filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
     .flt-grp{display:flex;flex-direction:column;gap:4px;min-width:110px}
@@ -361,19 +361,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -381,19 +381,19 @@
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
       <a href="/admin#dashboard" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-layout"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-layout"/></svg>
         Dashboard
       </a>
       <a href="/admin#utilizatori" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-users"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-users"/></svg>
         Utilizatori
       </a>
       <a href="/admin#fluxuri" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-git-branch"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-git-branch"/></svg>
         Fluxuri documente
       </a>
       <a href="/admin#rapoarte" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-bar-chart"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-bar-chart"/></svg>
         Rapoarte
       </a>
     </div>
@@ -401,19 +401,19 @@
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
       <a href="/admin#organizatii" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-building"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-building"/></svg>
         Organizații
       </a>
       <a href="/admin#outreach" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-send"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-send"/></svg>
         Outreach
       </a>
       <a href="/admin#analytics" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-trending-up"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-trending-up"/></svg>
         Analytics
       </a>
       <a href="/admin#audit" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-search"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-search"/></svg>
         Audit
       </a>
     </div>
@@ -421,7 +421,7 @@
     <div class="df-nav-label">Comunicare</div>
     <div class="df-nav-group">
       <a href="/notifications" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-bell"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-bell"/></svg>
         Notificări
       </a>
     </div>
@@ -447,22 +447,22 @@
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.265#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.266#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -479,9 +479,9 @@
 <div class="lst-wrap">
   <div class="lst-tabs-hdr">
     <div class="lst-tabs">
-      <button class="lst-tab active" id="ltab-df"   onclick="switchListTab('df')">📋 Documente de Fundamentare</button>
-      <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')">💰 Ordonanțări de Plată</button>
-      <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')">📊 ALOP</button>
+      <button class="lst-tab active" id="ltab-df"   onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-file-text"/></svg> Documente de Fundamentare</button>
+      <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-file-text"/></svg> Ordonanțări de Plată</button>
+      <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-bar-chart"/></svg> ALOP</button>
     </div>
     <button id="btn-lst-nou" class="btn primary" style="display:none !important;padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
   </div>
@@ -491,14 +491,14 @@
         <label class="flt-lbl">Status</label>
         <select id="flt-status" class="flt-sel" onchange="loadList()">
           <option value="all">Toate</option>
-          <option value="draft">📝 Draft</option>
-          <option value="pending_p2">📤 La Responsabil CAB</option>
-          <option value="completed">✅ Completat</option>
-          <option value="generat_pdf">📄 PDF generat</option>
-          <option value="transmis_flux">🔄 Trimis flux</option>
-          <option value="aprobat">🟢 Aprobat</option>
-          <option value="respins">❌ Respins</option>
-          <option value="anulat">🚫 Anulat</option>
+          <option value="draft">Draft</option>
+          <option value="pending_p2">La Responsabil CAB</option>
+          <option value="completed">Completat</option>
+          <option value="generat_pdf">PDF generat</option>
+          <option value="transmis_flux">Trimis flux</option>
+          <option value="aprobat">Aprobat</option>
+          <option value="respins">Respins</option>
+          <option value="anulat">Anulat</option>
         </select>
       </div>
       <div class="flt-grp">
@@ -552,19 +552,19 @@
 
   <!-- Bara navigare identică cu bara principală -->
   <div class="lst-tabs" style="margin-bottom:16px;width:fit-content">
-    <button class="lst-tab" onclick="switchListTab('df')">📋 Documente de Fundamentare</button>
-    <button class="lst-tab" onclick="switchListTab('ord')">💰 Ordonanțări de Plată</button>
+    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-file-text"/></svg> Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-file-text"/></svg> Ordonanțări de Plată</button>
   </div>
 
   <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
     <div>
-      <div style="font-size:1.05rem;font-weight:700;color:var(--app-sub)">📊 ALOP — Document de Fundamentare / Ordonanțare de Plată</div>
+      <div style="font-size:1.05rem;font-weight:700;color:var(--app-sub);display:inline-flex;align-items:center;gap:8px"><svg class="df-ico df-ico-lg" style="color:var(--app-sub)"><use href="/icons.svg?v=3.9.266#ico-bar-chart"/></svg> ALOP — Document de Fundamentare / Ordonanțare de Plată</div>
       <div style="font-size:.8rem;color:var(--app-muted);margin-top:2px">Conform Ordinului 1140/2025 · Angajare → Lichidare → Ordonanțare → Plată</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" id="alop-btn-sablon" style="padding:7px 14px;font-size:.82rem;display:none" onclick="openAlopSablonModal()">⚙ Șablon</button>
-      <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="openAlopModal()">➕ ALOP nou</button>
+      <button class="btn" id="alop-btn-sablon" style="padding:7px 14px;font-size:.82rem;display:none" onclick="openAlopSablonModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-settings"/></svg> Șablon</button>
+      <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="openAlopModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-plus"/></svg> ALOP nou</button>
     </div>
   </div>
 
@@ -726,7 +726,7 @@
     </div>
     <div class="att-zone"><div class="att-list" id="o-alist"></div></div>
     <div class="att-br">
-      <button class="att-btn" onclick="document.getElementById('o-ainp').click()">📎 Atașează fișiere</button>
+      <button class="att-btn" onclick="document.getElementById('o-ainp').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-paperclip"/></svg> Atașează fișiere</button>
       <input type="file" id="o-ainp" class="att-inp" multiple onchange="addAtt(event,'o-alist','o-adata')"/>
     </div>
     <input type="hidden" id="o-adata" value="[]"/>
@@ -827,7 +827,7 @@
   <div class="result-title">✅ PDF generat cu succes</div>
   <div style="font-size:.8rem;color:var(--app-muted)" id="rname-ordnt"></div>
   <div class="result-acts">
-    <button class="btn teal" onclick="dlPdf('ordnt')">⬇ Descarcă PDF</button>
+    <button class="btn teal" onclick="dlPdf('ordnt')"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-download"/></svg> Descarcă PDF</button>
     <button class="btn primary" onclick="showFF('ordnt')">🚀 Creează flux de semnare</button>
   </div>
   <div class="flow-form" id="ff-ordnt">
@@ -926,7 +926,7 @@
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;margin-bottom:2px">
       <div class="dl" style="margin:0">3. Descrierea pe larg a stării de fapt și de drept:</div>
-      <button class="att-btn" onclick="document.getElementById('n-fdai').click()">📎 Atașează fișiere</button>
+      <button class="att-btn" onclick="document.getElementById('n-fdai').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-paperclip"/></svg> Atașează fișiere</button>
       <input type="file" id="n-fdai" class="att-inp" multiple onchange="addAtt(event,'n-fdal','n-fdad')"/>
     </div>
     <textarea id="n-lung" class="dt" maxlength="500" rows="6" style="margin-bottom:4px"></textarea>
@@ -1096,7 +1096,7 @@
 
     <div class="att-zone" style="margin-top:8px"><div class="att-list" id="n-alist"></div></div>
     <div class="att-br">
-      <button class="att-btn" onclick="document.getElementById('n-ainp').click()">📎 Atașează fișiere</button>
+      <button class="att-btn" onclick="document.getElementById('n-ainp').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-paperclip"/></svg> Atașează fișiere</button>
       <input type="file" id="n-ainp" class="att-inp" multiple onchange="addAtt(event,'n-alist','n-adata')"/>
     </div>
     <input type="hidden" id="n-adata" value="[]"/>
@@ -1108,7 +1108,7 @@
   <div class="result-title">✅ PDF generat cu succes</div>
   <div style="font-size:.8rem;color:var(--app-muted)" id="rname-notafd"></div>
   <div class="result-acts">
-    <button class="btn teal" onclick="dlPdf('notafd')">⬇ Descarcă PDF</button>
+    <button class="btn teal" onclick="dlPdf('notafd')"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-download"/></svg> Descarcă PDF</button>
     <button class="btn primary" onclick="showFF('notafd')">🚀 Creează flux de semnare</button>
   </div>
   <div class="flow-form" id="ff-notafd">
@@ -1202,7 +1202,7 @@
       <div id="alop-wiz-sablon-preview"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
         <button class="btn" onclick="alopWizBack()">← Înapoi</button>
-        <button class="btn primary" onclick="createAlop()">✅ Creează ALOP</button>
+        <button class="btn primary" onclick="createAlop()"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-check"/></svg> Creează ALOP</button>
       </div>
     </div>
   </div>
@@ -1298,7 +1298,7 @@
     <div id="revizie-modal-err" style="color:#ef4444;font-size:.78rem;min-height:1.2em;margin-top:4px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
       <button class="btn" onclick="closeRevizieModal()">Anulează</button>
-      <button class="btn primary" onclick="confirmRevizie()">✅ Creează revizie</button>
+      <button class="btn primary" onclick="confirmRevizie()"><svg class="df-ico"><use href="/icons.svg?v=3.9.266#ico-check"/></svg> Creează revizie</button>
     </div>
   </div>
 </div>
@@ -4361,6 +4361,6 @@ async function alopRevizuiesteDF(alopId,dfId){
   </div>
 </div>
 
-<script src="/notif-widget.js?v=3.9.265"></script>
+<script src="/notif-widget.js?v=3.9.266"></script>
 </body>
 </html>
