@@ -4,25 +4,30 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.261">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.261">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.261">
+  <script src="/js/df-shell.js?v=3.9.261"></script>
+  <script src="/js/df-user-modals.js?v=3.9.261"></script>
+  <script src="/js/df-subtabs.js?v=3.9.261"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.261">
   <style>
     :root {
-      --app-bg:#070c1a; --app-text:#e8eeff; --app-sub:#b8c8f0;
-      --app-muted:#6b82b8; --app-line:rgba(255,255,255,.08);
-      --app-v:#6c4ff0; --app-t:#1ec8ae;
-      --doc-field:#dce6f0; --doc-field-focus:#b8d0e8;
-      --doc-border:#888; --doc-border-lt:#bbb;
+      --app-bg: var(--df-bg);
+      --app-text: var(--df-text);
+      --app-sub: var(--df-text-2);
+      --app-muted: var(--df-text-3);
+      --app-line: var(--df-border-2);
+      --app-v: var(--df-brand);
+      --app-t: #2dd4bf;
+      --doc-field: #dce6f0;
+      --doc-field-focus: #b8d0e8;
+      --doc-border: #888;
+      --doc-border-lt: #bbb;
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html{scroll-behavior:smooth}
-    body{font-family:Arial,Helvetica,sans-serif;background:var(--app-bg);color:var(--app-text);overflow-x:hidden}
-    /* Nav */
-    nav{position:sticky;top:0;z-index:100;background:rgba(7,12,26,.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--app-line);padding:12px 0}
-    .nav-inner{max-width:1200px;margin:0 auto;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
-    .brand{display:flex;align-items:center;gap:10px;text-decoration:none}
-    .brand img{height:34px;opacity:.92}
-    .brand-lbl{font-size:13px;font-weight:700;color:var(--app-sub)}
-    .nav-back{padding:6px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.15);color:var(--app-sub);text-decoration:none;font-size:13px;transition:.2s}
-    .nav-back:hover{border-color:rgba(255,255,255,.3);color:var(--app-text)}
+
     /* Tabs */
     .tabs-wrap{max-width:1200px;margin:0 auto;padding:16px 16px 0}
     .tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:12px;padding:3px;width:fit-content;border:1px solid var(--app-line)}
@@ -127,25 +132,7 @@
     .att-btn{padding:4px 12px;border-radius:2px;border:1px solid #888;background:#f0f0f0;font-size:11px;cursor:pointer;font-family:inherit;color:#222}
     .att-btn:hover{background:#e0e0e0}
     .att-inp{display:none}
-    /* === Header identic cu semdoc-initiator === */
-    body{background:
-      radial-gradient(900px 500px at 18% 8%,rgba(124,92,255,.3),transparent 60%),
-      radial-gradient(700px 450px at 82% 80%,rgba(45,212,191,.18),transparent 55%),#0b1020 !important;}
-    header.app-hdr{position:sticky;top:0;z-index:100;background:rgba(15,23,49,.9);
-      backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.10);
-      padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
-    .h-brand img{height:87px;width:auto;object-fit:contain;display:block;}
-    .h-tabs{display:flex;gap:5px;flex-wrap:wrap;}
-    .tabbtn{display:inline-flex;align-items:center;gap:5px;background:rgba(120,160,255,.22);
-      color:#e9eefc;border:1px solid rgba(120,160,255,.45);padding:7px 13px;border-radius:10px;
-      font-size:.83rem;font-weight:500;cursor:pointer;transition:filter .15s,transform .1s;text-decoration:none;font-family:inherit;}
-    .tabbtn:hover{filter:brightness(1.08);transform:translateY(-1px);}
-    .tabbtn.h-formulare{border-color:rgba(30,200,174,.4);color:#1ec8ae;background:rgba(30,200,174,.08);}
-    .tabbtn.h-active{background:rgba(120,160,255,.35);border-color:rgba(120,160,255,.7);font-weight:600;}
-    #hUserBar{display:flex;align-items:center;gap:8px;font-size:.82rem;color:#cdd8ff;}
-    #hUserBar a{color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 11px;border-radius:8px;font-size:.8rem;}
-    #hUserBar a:hover{border-color:rgba(255,255,255,.3);}
-    #hUserBar button{background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 11px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;}
+
     /* ── Document list panel ── */
     .docs-panel{background:rgba(255,255,255,.03);border:1px solid var(--app-line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
     .docs-panel-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px}
@@ -362,17 +349,128 @@
   </style>
 </head>
 <body>
+<span id="hUserBar" style="display:none;"></span>
 
-<header class="app-hdr">
-  <div class="h-brand"><img src="/Logo.png" alt="DocFlowAI"/></div>
-  <div class="h-tabs">
-    <a href="/semdoc-initiator.html" class="tabbtn">📝 Flux nou</a>
-    <a href="/semdoc-initiator.html" class="tabbtn">📂 Fluxuri mele</a>
-    <a href="/templates" class="tabbtn">📋 Șabloane</a>
-    <span class="tabbtn h-active">📄 Formulare</span>
-  </div>
-  <div id="hUserBar"></div>
-</header>
+<div class="df-shell">
+
+  <aside class="df-sidebar">
+    <div class="df-sidebar-brand">
+      <img src="/Logo.png" alt="DocFlowAI"/>
+    </div>
+
+    <div class="df-nav-label">Navigare app</div>
+    <div class="df-nav-group">
+      <a href="/" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-edit"/></svg>
+        Flux nou
+      </a>
+      <a href="/?tab=flows" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-folder"/></svg>
+        Fluxurile mele
+      </a>
+      <a href="/templates" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-grid"/></svg>
+        Șabloane
+      </a>
+      <a href="/formular.html" class="df-nav-item active">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-file-text"/></svg>
+        Formulare
+      </a>
+    </div>
+
+    <div class="df-nav-label">Administrare</div>
+    <div class="df-nav-group">
+      <a href="/admin#dashboard" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-layout"/></svg>
+        Dashboard
+      </a>
+      <a href="/admin#utilizatori" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-users"/></svg>
+        Utilizatori
+      </a>
+      <a href="/admin#fluxuri" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-git-branch"/></svg>
+        Fluxuri documente
+      </a>
+      <a href="/admin#rapoarte" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-bar-chart"/></svg>
+        Rapoarte
+      </a>
+    </div>
+
+    <div class="df-nav-label">Organizație</div>
+    <div class="df-nav-group">
+      <a href="/admin#organizatii" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-building"/></svg>
+        Organizații
+      </a>
+      <a href="/admin#outreach" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-send"/></svg>
+        Outreach
+      </a>
+      <a href="/admin#analytics" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-trending-up"/></svg>
+        Analytics
+      </a>
+      <a href="/admin#audit" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-search"/></svg>
+        Audit
+      </a>
+    </div>
+
+    <div class="df-nav-label">Comunicare</div>
+    <div class="df-nav-group">
+      <a href="/notifications" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-bell"/></svg>
+        Notificări
+      </a>
+    </div>
+  </aside>
+
+  <div class="df-page">
+
+    <header class="df-page-header">
+      <div class="df-page-titles">
+        <h1 id="dfPageTitle">Formulare oficiale</h1>
+        <p id="dfPageSubtitle">Document de Fundamentare, Ordonanțare de Plată, ALOP</p>
+      </div>
+      <div class="df-page-actions">
+        <div id="userBar"></div>
+        <div class="df-user-menu" id="df-user-menu">
+          <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <div class="df-user-trigger-avatar">A</div>
+            <div class="df-user-trigger-info">
+              <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+              <div class="df-user-trigger-role">Utilizator</div>
+            </div>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openChangePwdModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-key"/></svg>
+              Schimbă parola
+            </button>
+            <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-shield"/></svg>
+              Configurare 2FA
+            </button>
+            <a href="/admin" class="df-admin-link" style="text-decoration:none;">
+              <button>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-layout"/></svg>
+                Panou admin
+              </button>
+            </a>
+            <div class="df-user-dropdown-divider"></div>
+            <button class="danger" onclick="closeUserMenu();logout()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-log-out"/></svg>
+              Ieșire
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="df-page-body">
 
 <!-- ════════════════════════════════════════════════════════════════════════
      SECTION 1 — CENTRALIZARE (afișată implicit)
@@ -3056,6 +3154,9 @@ function showListSection(tab){
   _clearValErr();
   document.getElementById('section-list').style.display='';
   document.getElementById('section-form').style.display='none';
+  const _tEl=document.getElementById('dfPageTitle'),_sEl=document.getElementById('dfPageSubtitle');
+  if(_tEl)_tEl.textContent='Formulare oficiale';
+  if(_sEl)_sEl.textContent='Document de Fundamentare, Ordonanțare de Plată, ALOP';
   try{history.replaceState({},'',location.pathname);}catch(_){}
   if(tab)switchListTab(tab);
   loadList();
@@ -3076,6 +3177,11 @@ function showFormSection(ft){
   _clearValErr();
   document.getElementById('section-list').style.display='none';
   document.getElementById('section-form').style.display='';
+  const _tEl=document.getElementById('dfPageTitle'),_sEl=document.getElementById('dfPageSubtitle');
+  const _titles={'notafd':'Document de Fundamentare','ordnt':'Ordonanțare de Plată','alop':'ALOP — Angajament, Lichidare, Ordonanțare, Plată'};
+  const _subs={'notafd':'Completați secțiunile A și B conform rolului dumneavoastră','ordnt':'Completați ordonanțarea asociată documentului de fundamentare','alop':'Centralizator financiar — evidență angajamente bugetare'};
+  if(_tEl)_tEl.textContent=_titles[ft]||'Formular';
+  if(_sEl)_sEl.textContent=_subs[ft]||'';
   const sb=document.getElementById('form-save-badge');if(sb)sb.textContent='';
   const ti=document.getElementById('form-type-title');
   if(ti)ti.textContent=ft==='ordnt'?'📄 Ordonanțare de Plată':'📋 Document de Fundamentare';
@@ -4250,5 +4356,11 @@ async function alopRevizuiesteDF(alopId,dfId){
   };
 })();
 </script>
+
+    </main>
+  </div>
+</div>
+
+<script src="/notif-widget.js?v=3.9.261"></script>
 </body>
 </html>
