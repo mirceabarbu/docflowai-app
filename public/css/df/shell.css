@@ -27,7 +27,7 @@ body {
 .df-page-titles h1{font-size:1.35rem;font-weight:600;color:var(--df-text);margin-bottom:4px;letter-spacing:-.01em;}
 .df-page-titles p{font-size:.8rem;color:var(--df-text-3);max-width:640px;font-style:italic;}
 .df-page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.df-page-body{padding:26px 32px 60px;max-width:1200px;width:100%;margin:0 auto;}
+.df-page-body{padding:26px 32px 60px;max-width:1600px;width:100%;margin:0 auto;}
 
 /* Override max-width constraint on existing <main> when inside df-page */
 .df-page main:not(.df-page-body){max-width:unset;margin:0;padding:0;}
