@@ -354,7 +354,7 @@ async function loadUsers(){
     }
     const users=await r.json();
     $("cnt").textContent="("+users.length+")";
-    const countEl=$("usersListCount"); if(countEl) countEl.textContent=users.length||"";
+    const countEl=$("usersListCount"); if(countEl) countEl.textContent=String(users.length);
     const el=$("tbl");
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
     el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead>
@@ -846,7 +846,7 @@ async function loadFlowsList(forceReload = true, page) {
     const flows = Array.isArray(resp) ? resp : (resp.flows || []);
     const total = resp.total || flows.length;
     const pages = resp.pages || 1;
-    const cntFlows = document.getElementById('flowsActiveCount'); if (cntFlows) cntFlows.textContent = total || '—';
+    const cntFlows = document.getElementById('flowsActiveCount'); if (cntFlows) cntFlows.textContent = String(total);
 
     // Dropdown instituții populat din /admin/flows/institutions (endpoint dedicat)
     // — nu din datele paginii curente (ar arăta doar instituțiile din pag. curentă)
@@ -1494,7 +1494,7 @@ function switchTab(tab) {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
   const titles = {dashboard:'Dashboard',utilizatori:'Utilizatori',fluxuri:'Administrare fluxuri',rapoarte:'Rapoarte',outreach:'Outreach',organizatii:'Organizații',analytics:'Analytics',audit:'Log audit'};
-  const subtitles = {dashboard:'Privire de ansamblu asupra activității sistemului',utilizatori:'Administrează utilizatorii, rolurile și permisiunile',fluxuri:'Gestionează fluxurile de documente și arhivarea',rapoarte:'Rapoarte și statistici de utilizare',outreach:'Campanii outreach și import primării',organizatii:'Configurare organizații și signing providers',analytics:'Analytics și metrici de adopție',audit:'Log de audit și evenimente de securitate'};
+  const subtitles = {dashboard:'Privire de ansamblu asupra activității sistemului',utilizatori:'Administrează utilizatorii, rolurile și permisiunile',fluxuri:'Gestionează fluxurile de documente și arhivarea',rapoarte:'Rapoarte și statistici de utilizare',outreach:'Campanii outreach și import primării',organizatii:'Configurare organizații, signing providers și webhook-uri pentru integrarea cu sisteme externe (AvanDoc, iDocNet, aplicații proprii de registratură etc.)',analytics:'Analytics și metrici de adopție',audit:'Log de audit și evenimente de securitate'};
   const titleEl = document.getElementById('df-page-title');
   const subEl = document.getElementById('df-page-subtitle');
   if (titleEl) titleEl.textContent = titles[tab] || 'Admin';
