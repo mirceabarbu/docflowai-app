@@ -52,17 +52,6 @@
     <img src="/Logo.png" alt="DocFlowAI"/>
   </div>
 
-  <div class="df-sidebar-status">
-    <span id="adminBadge" class="df-status-chip admin">
-      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      <span>Admin</span>
-    </span>
-    <span id="activeFlowsBadge" class="df-status-chip flows" title="Fluxuri active" style="display:none;">
-      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      <span><span id="activeFlowsCount">—</span> active</span>
-    </span>
-  </div>
-
   <div class="df-nav-label">Navigare app</div>
   <div class="df-nav-group">
     <a href="/" class="df-nav-item">
@@ -123,30 +112,6 @@
     </button>
   </div>
 
-  <div class="df-nav-label">Cont</div>
-  <div class="df-nav-group">
-    <button class="df-nav-item" onclick="openChangePwdModal()">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-      Schimbă parola
-    </button>
-    <button class="df-nav-item" id="hdr2faBtn" onclick="load2FAStatus()" style="display:none;">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-      Configurare 2FA
-    </button>
-  </div>
-
-  <div class="df-sidebar-footer">
-    <div class="df-user-card">
-      <div class="df-user-avatar">A</div>
-      <div class="df-user-info">
-        <div class="df-user-name"><span id="hdrUser">—</span></div>
-        <div class="df-user-role">Administrator</div>
-      </div>
-      <button class="df-user-logout" onclick="logout()" title="Ieșire">
-        <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-      </button>
-    </div>
-  </div>
 </aside>
 
 <div class="df-page">
@@ -156,12 +121,36 @@
     <p id="df-page-subtitle">Privire de ansamblu asupra activității sistemului</p>
   </div>
   <div class="df-page-actions">
-    <button id="df-action-btn" class="df-inline-action primary" style="display:none;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      <span id="df-action-btn-label">Acțiune</span>
-    </button>
+    <div class="df-user-menu" id="df-user-menu">
+      <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+        <div class="df-user-trigger-avatar">A</div>
+        <div class="df-user-trigger-info">
+          <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+          <div class="df-user-trigger-role">Administrator</div>
+        </div>
+        <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="df-user-dropdown">
+        <button onclick="closeUserMenu();openChangePwdModal()">
+          <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          Schimbă parola
+        </button>
+        <button id="hdr2faBtn" onclick="closeUserMenu();load2FAStatus()" style="display:none;">
+          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          Configurare 2FA
+        </button>
+        <div class="df-user-dropdown-divider"></div>
+        <button class="danger" onclick="closeUserMenu();logout()">
+          <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Ieșire
+        </button>
+      </div>
+    </div>
   </div>
 </header>
+<!-- Safety net: ID-uri referențiate de JS (display:none), fără efect UI -->
+<span id="adminBadge" style="display:none;"></span>
+<span id="activeFlowsBadge" style="display:none;"><span id="activeFlowsCount">—</span></span>
 <div class="df-page-body">
 
 <main>
