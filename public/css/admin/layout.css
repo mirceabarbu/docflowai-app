@@ -9,13 +9,7 @@
 .df-nav-item:hover{background:rgba(255,255,255,.04);color:var(--df-text);}
 .df-nav-item.active{background:var(--df-primary-bg);color:var(--df-text);}
 .df-nav-item.active::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--df-primary);}
-.df-nav-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0;}
 .df-sidebar-footer{margin-top:auto;padding:14px 10px 0;border-top:1px solid var(--df-border);}
-.df-user-card{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid var(--df-border);border-radius:var(--df-radius-md);}
-.df-user-avatar{width:32px;height:32px;border-radius:50%;background:var(--df-primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:600;flex-shrink:0;}
-.df-user-info{flex:1;min-width:0;line-height:1.3;}
-.df-user-name{font-size:.8rem;color:var(--df-text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.df-user-role{font-size:.66rem;color:var(--df-text-4);margin-top:1px;}
 
 /* === Page header & body === */
 .df-page{display:flex;flex-direction:column;min-width:0;}
@@ -34,6 +28,29 @@
 .df-kpi-label{font-size:.72rem;color:var(--df-text-3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;}
 .df-kpi-value{font-size:1.75rem;font-weight:600;color:var(--df-text);margin-top:10px;letter-spacing:-.02em;}
 .df-kpi-sub{font-size:.75rem;color:var(--df-text-4);margin-top:6px;}
+
+/* === SVG nav icons (Lucide-style stroke, culoare currentColor) === */
+.df-nav-icon{width:16px;height:16px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+
+/* === Status chips (ADMIN + fluxuri active) sub logo === */
+.df-sidebar-status{display:flex;flex-wrap:wrap;gap:5px;padding:0 16px 12px;border-bottom:1px solid var(--df-border);margin-bottom:4px;}
+.df-status-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:.65rem;font-weight:600;letter-spacing:.04em;white-space:nowrap;}
+.df-status-chip.admin{background:rgba(255,200,50,.12);color:#ffd580;border:1px solid rgba(255,200,50,.25);}
+.df-status-chip.flows{background:var(--df-brand-bg);color:var(--df-brand-text);border:1px solid var(--df-brand-bd);}
+.df-status-chip svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+
+/* === Sidebar nav link extern (<a>) — same style ca <button> === */
+.df-nav-item a,a.df-nav-item{text-decoration:none;}
+
+/* === User card cu logout inline === */
+.df-user-card{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid var(--df-border);border-radius:var(--df-radius-md);}
+.df-user-avatar{width:32px;height:32px;border-radius:50%;background:var(--df-primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:600;flex-shrink:0;}
+.df-user-info{flex:1;min-width:0;line-height:1.3;}
+.df-user-name{font-size:.8rem;color:var(--df-text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.df-user-role{font-size:.66rem;color:var(--df-text-4);margin-top:1px;}
+.df-user-logout{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.28);color:#fca5a5;width:30px;height:30px;border-radius:var(--df-radius-md);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;font-family:inherit;padding:0;}
+.df-user-logout:hover{background:rgba(239,68,68,.2);color:#fecaca;}
+.df-user-logout svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
 
 /* === Responsive — sidebar colapsează pe mobil === */
 @media (max-width:960px){

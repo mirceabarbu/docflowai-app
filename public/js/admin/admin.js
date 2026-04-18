@@ -1506,6 +1506,32 @@ function switchTab(tab) {
   const subEl = document.getElementById('df-page-subtitle');
   if (titleEl) titleEl.textContent = titles[tab] || 'Admin';
   if (subEl) subEl.textContent = subtitles[tab] || '';
+
+  // Buton contextual în page-header (ascuns pe tab-urile fără acțiune)
+  const actionBtn = document.getElementById('df-action-btn');
+  const actionLabel = document.getElementById('df-action-btn-label');
+  const pageActions = {
+    utilizatori: {
+      label: 'Utilizator nou',
+      onclick: () => { const el = document.getElementById('nPrenume'); if (el) { el.scrollIntoView({behavior:'smooth', block:'center'}); el.focus(); } }
+    },
+    organizatii: {
+      label: 'Organizație nouă',
+      onclick: () => { if (typeof openOnboardingWizard === 'function') openOnboardingWizard(); }
+    }
+  };
+  if (actionBtn && actionLabel) {
+    const action = pageActions[tab];
+    if (action) {
+      actionBtn.style.display = '';
+      actionLabel.textContent = action.label;
+      actionBtn.onclick = action.onclick;
+    } else {
+      actionBtn.style.display = 'none';
+      actionBtn.onclick = null;
+    }
+  }
+
   if (tab === 'dashboard' && !_dashboardLoaded) { loadDashboard(); _dashboardLoaded = true; }
   if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); loadFlowInstitutions(); _fluxuriLoaded = true; }
   if (tab === 'outreach' && !_outreachLoaded) { orInit(); _outreachLoaded = true; }
