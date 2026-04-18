@@ -96,3 +96,13 @@
 .df-search-wrap{position:relative;flex:1;min-width:200px;}
 .df-search-wrap .df-search-ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--df-text-4);pointer-events:none;}
 .df-search-wrap input[type="search"],.df-search-wrap input.df-search-input{width:100%;padding:9px 14px 9px 38px !important;}
+
+/* === Sub-tabs — underline style, generic/reusable === */
+.df-subtabs{display:flex;gap:0;border-bottom:1px solid var(--df-border);margin-bottom:24px;}
+.df-subtab{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--df-text-3);font-size:.84rem;font-weight:500;cursor:pointer;font-family:inherit;transition:color .15s,border-color .15s;white-space:nowrap;}
+.df-subtab:hover{color:var(--df-text-2);}
+.df-subtab.active{color:var(--df-primary-text);border-bottom-color:var(--df-primary);font-weight:600;}
+.df-subtab-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;padding:0 5px;background:rgba(255,255,255,.08);border-radius:999px;font-size:.68rem;font-weight:600;color:var(--df-text-3);transition:background .15s,color .15s;}
+.df-subtab.active .df-subtab-count{background:var(--df-primary-bg);color:var(--df-primary-text);}
+.df-subview{display:none;}
+.df-subview.active{display:block;}

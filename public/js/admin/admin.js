@@ -354,6 +354,7 @@ async function loadUsers(){
     }
     const users=await r.json();
     $("cnt").textContent="("+users.length+")";
+    const countEl=$("usersListCount"); if(countEl) countEl.textContent=users.length||"";
     const el=$("tbl");
     if(!users.length){el.innerHTML='<div class="empty">Niciun utilizator.</div>';return;}
     el.innerHTML=`<table><colgroup><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/><col/></colgroup><thead>

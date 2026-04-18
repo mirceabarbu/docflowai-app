@@ -4,27 +4,28 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Admin</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.254">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.254">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.254">
-  <link rel="stylesheet" href="/css/admin/admin.css?v=3.9.254">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.255">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.255">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.255">
+  <link rel="stylesheet" href="/css/admin/admin.css?v=3.9.255">
 
-  <link rel="stylesheet" href="/mobile.css?v=3.9.254">
+  <link rel="stylesheet" href="/mobile.css?v=3.9.255">
   <script src="/js/admin/core.js" defer></script>
+  <script src="/js/df-subtabs.js?v=3.9.255" defer></script>
 </head>
 <body>
 
 <!-- Banner schimbare parolă obligatorie -->
 <div id="forcePwdBanner" style="display:none;background:linear-gradient(135deg,rgba(255,165,0,.18),rgba(255,100,0,.12));border-bottom:1px solid rgba(255,165,0,.4);padding:12px 24px;text-align:center;font-size:.88rem;color:#ffd580;">
   ⚠️ <strong>Parola ta este temporară.</strong> Te rugăm să o schimbi acum pentru securitatea contului.
-  &nbsp;<button onclick="openChangePwdModal()" style="background:rgba(255,165,0,.25);border:1px solid rgba(255,165,0,.5);color:#ffd580;padding:4px 14px;border-radius:7px;cursor:pointer;font-size:.83rem;font-weight:700;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.254#ico-key"/></svg>Schimbă parola</button>
+  &nbsp;<button onclick="openChangePwdModal()" style="background:rgba(255,165,0,.25);border:1px solid rgba(255,165,0,.5);color:#ffd580;padding:4px 14px;border-radius:7px;cursor:pointer;font-size:.83rem;font-weight:700;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.255#ico-key"/></svg>Schimbă parola</button>
   &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" style="background:transparent;border:none;color:#9db0ff;cursor:pointer;font-size:.85rem;opacity:.6;">✕</button>
 </div>
 
 <!-- Modal schimbare parolă -->
 <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
   <div style="background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:32px;width:360px;max-width:calc(100vw - 32px);box-shadow:0 24px 64px rgba(0,0,0,.6);">
-    <h3 style="margin:0 0 20px;color:#eaf0ff;font-size:1.05rem;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.254#ico-key"/></svg>Schimbă parola</h3>
+    <h3 style="margin:0 0 20px;color:#eaf0ff;font-size:1.05rem;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.255#ico-key"/></svg>Schimbă parola</h3>
     <div style="margin-bottom:12px;">
       <label style="display:block;font-size:.8rem;color:#9db0ff;margin-bottom:5px;">Parola curentă</label>
       <input id="cpCurrent" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#eaf0ff;font-size:.9rem;outline:none;"/>
@@ -55,19 +56,19 @@
   <div class="df-nav-label">Navigare app</div>
   <div class="df-nav-group">
     <a href="/" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-edit"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-edit"/></svg>
       Flux nou
     </a>
     <a href="/?tab=flows" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-folder"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-folder"/></svg>
       Fluxurile mele
     </a>
     <a href="/templates" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-grid"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-grid"/></svg>
       Șabloane
     </a>
     <a href="/formular.html" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-file-text"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-file-text"/></svg>
       Formulare
     </a>
   </div>
@@ -75,19 +76,19 @@
   <div class="df-nav-label">Administrare</div>
   <div class="df-nav-group">
     <button class="df-nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-layout"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-layout"/></svg>
       Dashboard
     </button>
     <button class="df-nav-item" data-tab="utilizatori" onclick="switchTab('utilizatori')">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-users"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-users"/></svg>
       Utilizatori
     </button>
     <button class="df-nav-item" data-tab="fluxuri" onclick="switchTab('fluxuri')">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-git-branch"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-git-branch"/></svg>
       Fluxuri documente
     </button>
     <button class="df-nav-item" data-tab="rapoarte" onclick="switchTab('rapoarte')">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-bar-chart"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-bar-chart"/></svg>
       Rapoarte
     </button>
   </div>
@@ -95,19 +96,19 @@
   <div class="df-nav-label">Organizație</div>
   <div class="df-nav-group">
     <button class="df-nav-item" data-tab="organizatii" onclick="switchTab('organizatii')" id="org-tab-btn">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-building"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-building"/></svg>
       Organizații
     </button>
     <button class="df-nav-item" data-tab="outreach" onclick="switchTab('outreach')" id="outreach-tab-btn">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-send"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-send"/></svg>
       Outreach
     </button>
     <button class="df-nav-item" data-tab="analytics" onclick="switchTab('analytics');loadAnalytics();" id="analytics-tab-btn">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-trending-up"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-trending-up"/></svg>
       Analytics
     </button>
     <button class="df-nav-item" data-tab="audit" onclick="switchTab('audit')">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-search"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-search"/></svg>
       Audit
     </button>
   </div>
@@ -128,20 +129,20 @@
           <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
           <div class="df-user-trigger-role">Administrator</div>
         </div>
-        <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-chevron-down"/></svg>
+        <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-chevron-down"/></svg>
       </button>
       <div class="df-user-dropdown">
         <button onclick="closeUserMenu();openChangePwdModal()">
-          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-key"/></svg>
+          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-key"/></svg>
           Schimbă parola
         </button>
         <button id="hdr2faBtn" onclick="closeUserMenu();load2FAStatus()" style="display:none;">
-          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-shield"/></svg>
+          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-shield"/></svg>
           Configurare 2FA
         </button>
         <div class="df-user-dropdown-divider"></div>
         <button class="danger" onclick="closeUserMenu();logout()">
-          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.254#ico-log-out"/></svg>
+          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-log-out"/></svg>
           Ieșire
         </button>
       </div>
@@ -205,8 +206,23 @@
 <!-- ══════════════════════════════════════════════════════════════════ -->
 <div id="tab-utilizatori">
 
+  <div class="df-subtabs" data-subtabs-group="utilizatori">
+    <button class="df-subtab" data-subtab="user-list">
+      <svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-users"/></svg>
+      Listă utilizatori
+      <span class="df-subtab-count" id="usersListCount"></span>
+    </button>
+    <button class="df-subtab" data-subtab="user-create">
+      <svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.255#ico-plus"/></svg>
+      Utilizator nou
+    </button>
+  </div>
+
+  <div class="df-subview" data-subview="user-create">
   <div class="card">
-    <div class="card-title">➕ Utilizator nou</div>
+    <div class="card-title">
+      <svg class="df-ico" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.255#ico-plus"/></svg>Utilizator nou
+    </div>
     <div class="df-form-section-title">Date personale</div>
     <div class="grid3">
       <div class="frow"><label>Prenume *</label><input id="nPrenume" placeholder="Ion" oninput="updateGwsPreview()"/></div>
@@ -292,12 +308,15 @@
       <div id="createMsg"></div>
     </div>
   </div>
+  </div><!-- /df-subview user-create -->
 
+  <div class="df-subview" data-subview="user-list">
   <div class="card">
     <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"><span style="display:flex;align-items:center;gap:6px;"><svg class="df-ic" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Utilizatori</span> <span id="cnt" style="color:var(--muted);font-weight:400;font-size:.8rem;"></span><div style="display:flex;gap:6px;"><button class="df-action-btn success" onclick="exportUsersCSV()"><svg class="df-ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> CSV</button><button class="df-action-btn" onclick="exportUsersPDF()"><svg class="df-ic" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> PDF</button><button class="df-action-btn warning" onclick="openBulkImportModal()"><svg class="df-ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Import CSV</button></div></div>
     <div class="tbl-wrap" id="tblScroll"><div id="tbl"><div class="empty"><span class="spin"></span> Se încarcă...</div></div></div>
     <div id="pgBarWrapper"></div>
   </div>
+  </div><!-- /df-subview user-list -->
 
 </div>
 
