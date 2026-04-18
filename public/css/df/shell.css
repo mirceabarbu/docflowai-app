@@ -30,7 +30,7 @@ body {
 .df-page-body{padding:26px 32px 60px;max-width:1200px;width:100%;margin:0 auto;}
 
 /* Override max-width constraint on existing <main> when inside df-page */
-.df-page main{max-width:unset;margin:0;padding:0;}
+.df-page main:not(.df-page-body){max-width:unset;margin:0;padding:0;}
 
 /* === KPI cards dashboard — TOP-LEVEL, în afara oricărui @media === */
 .df-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px;}
