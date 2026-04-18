@@ -44,23 +44,8 @@ function logout(){
 }
 
 async function loadActiveFlowsBadge() {
-  try {
-    // Folosim endpoint-ul de statistici admin dacă există,
-    // altfel un query simplu pe lista de fluxuri cu status activ
-    const r = await _apiFetch('/admin/flows/stats', { headers: hdrs() });
-    if (!r.ok) return;
-    const j = await r.json().catch(() => ({}));
-    const count = j.activeCount ?? j.active ?? null;
-    if (count !== null) {
-      const badge = document.getElementById('activeFlowsBadge');
-      const countEl = document.getElementById('activeFlowsCount');
-      if (badge && countEl) {
-        countEl.textContent = count;
-        badge.style.display = '';
-        badge.title = `${count} fluxuri active (nesemnate complet)`;
-      }
-    }
-  } catch(e) { /* non-fatal */ }
+  // Badge-ul vizual a fost eliminat la facelift. Funcție no-op pentru compatibilitate.
+  return;
 }
 
 function openChangePwdModal(){

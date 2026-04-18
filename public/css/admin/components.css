@@ -44,6 +44,16 @@
 .th-filter:focus{border-color:var(--df-primary);background:rgba(255,255,255,.06);}
 .th-filter::placeholder{color:var(--df-text-4);}
 
+/* === SVG icon helpers === */
+.df-ic,.df-ic-lg{stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;vertical-align:middle;display:inline-block;}
+.df-ic{width:16px;height:16px;}
+.df-ic-lg{width:20px;height:20px;}
+
+/* === Section headings cu icon SVG inline === */
+.df-section-h2{display:flex;align-items:center;gap:8px;font-size:1rem;font-weight:600;margin-top:32px;margin-bottom:16px;}
+.df-section-h2.danger{color:#ffaaaa;}
+.df-section-h2.info{color:#9db0ff;}
+
 /* === Form sections (grupare vizuală în formulare lungi) === */
 .df-form-section-title{font-size:.68rem;color:var(--df-text-4);font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin:20px 0 10px;padding-bottom:8px;border-bottom:1px solid var(--df-border);}
 .df-form-section-title:first-child{margin-top:0;}
