@@ -23,7 +23,7 @@ body {
 .df-nav-item.active::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--df-primary);}
 /* === Page header & body === */
 .df-page{display:flex;flex-direction:column;min-width:0;}
-.df-page-header{padding:22px 32px;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;border-bottom:1px solid var(--df-border);background:var(--df-bg);flex-wrap:wrap;}
+.df-page-header{padding:22px 32px;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;border-bottom:1px solid var(--df-border);background:var(--df-bg);flex-wrap:wrap;max-width:1600px;width:100%;margin:0 auto;box-sizing:border-box;}
 .df-page-titles h1{font-size:1.35rem;font-weight:600;color:var(--df-text);margin-bottom:4px;letter-spacing:-.01em;}
 .df-page-titles p{font-size:.8rem;color:var(--df-text-3);max-width:640px;font-style:italic;}
 .df-page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
