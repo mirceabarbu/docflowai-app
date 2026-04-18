@@ -6,6 +6,7 @@
   <title>DocFlowAI — Admin</title>
   <link rel="stylesheet" href="/css/admin/tokens.css">
   <link rel="stylesheet" href="/css/admin/admin.css">
+  <link rel="stylesheet" href="/css/admin/layout.css">
 
   <script>
     // SEC-01: apiFetch shim — cookie HttpOnly trimis automat cu credentials: include
@@ -68,29 +69,6 @@
   <link rel="stylesheet" href="/mobile.css">
 </head>
 <body>
-<header>
-  <div class="logo">
-    <img src="/Logo.png" alt="DocFlowAI" style="height:87px;width:auto;object-fit:contain;" />
-  </div>
-  <div style="display:flex;gap:8px;align-items:center;">
-    <a href="/" class="btn" style="text-decoration:none;font-size:.82rem;padding:6px 10px;">📝 Flux nou</a>
-    <a href="/?tab=flows" class="btn" style="text-decoration:none;font-size:.82rem;padding:6px 10px;">📂 Fluxuri mele</a>
-    <a href="/templates" class="btn" style="text-decoration:none;font-size:.82rem;padding:6px 10px;">📋 Șabloane</a>
-    <span id="adminBadge" style="padding:5px 10px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:8px;font-size:.78rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
-    <!-- F — b97: badge live fluxuri active -->
-    <span id="activeFlowsBadge" title="Fluxuri active în acest moment" style="display:none;padding:5px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;font-size:.78rem;color:#c4b5fd;font-weight:700;cursor:default;">⏳ <span id="activeFlowsCount">—</span> active</span>
-  </div>
-  <div class="hdr-right" id="userBar" style="display:flex;align-items:center;gap:6px;">
-    <span style="color:var(--muted);font-size:.76rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="">
-      <strong id="hdrUser" style="color:var(--sub);"></strong>
-    </span>
-    <div style="display:flex;gap:5px;align-items:center;">
-      <button onclick="openChangePwdModal()" title="Schimbă parola" style="background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:5px 9px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:600;white-space:nowrap;">🔑</button>
-      <button id="hdr2faBtn" onclick="load2FAStatus()" title="Configurare 2FA" style="background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.25);color:#c4b5ff;padding:5px 9px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:600;display:none;white-space:nowrap;">🔐</button>
-      <button class="btn-logout" onclick="logout()" title="Ieșire" style="font-size:.76rem;padding:5px 9px;white-space:nowrap;">⏻ Ieșire</button>
-    </div>
-  </div>
-</header>
 
 <!-- Banner schimbare parolă obligatorie -->
 <div id="forcePwdBanner" style="display:none;background:linear-gradient(135deg,rgba(255,165,0,.18),rgba(255,100,0,.12));border-bottom:1px solid rgba(255,165,0,.4);padding:12px 24px;text-align:center;font-size:.88rem;color:#ffd580;">
@@ -123,18 +101,78 @@
   </div>
 </div>
 
+<div class="df-shell">
+
+<aside class="df-sidebar">
+  <div class="df-sidebar-brand">
+    <img src="/Logo.png" alt="DocFlowAI"/>
+    <div class="df-sidebar-brand-text">
+      <strong>DocFlowAI</strong>
+      <span>Administrare</span>
+    </div>
+  </div>
+
+  <div class="df-nav-label">Principal</div>
+  <div class="df-nav-group">
+    <button class="df-nav-item active" data-tab="utilizatori" onclick="switchTab('utilizatori')">
+      <span class="df-nav-icon">👥</span>Utilizatori
+    </button>
+    <button class="df-nav-item" data-tab="fluxuri" onclick="switchTab('fluxuri')">
+      <span class="df-nav-icon">📁</span>Fluxuri documente
+    </button>
+    <button class="df-nav-item" data-tab="rapoarte" onclick="switchTab('rapoarte')">
+      <span class="df-nav-icon">📊</span>Rapoarte
+    </button>
+  </div>
+
+  <div class="df-nav-label">Organizație</div>
+  <div class="df-nav-group">
+    <button class="df-nav-item" data-tab="organizatii" onclick="switchTab('organizatii')" id="org-tab-btn">
+      <span class="df-nav-icon">🏛</span>Organizații
+    </button>
+    <button class="df-nav-item" data-tab="outreach" onclick="switchTab('outreach')" id="outreach-tab-btn">
+      <span class="df-nav-icon">📧</span>Outreach
+    </button>
+    <button class="df-nav-item" data-tab="analytics" onclick="switchTab('analytics');loadAnalytics();" id="analytics-tab-btn">
+      <span class="df-nav-icon">📈</span>Analytics
+    </button>
+    <button class="df-nav-item" data-tab="audit" onclick="switchTab('audit')">
+      <span class="df-nav-icon">🔍</span>Audit
+    </button>
+  </div>
+
+  <div class="df-sidebar-footer">
+    <div class="df-user-card">
+      <div class="df-user-avatar">A</div>
+      <div class="df-user-info">
+        <div class="df-user-name"><span id="hdrUser">—</span></div>
+        <div class="df-user-role">Administrator</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="df-page">
+<header class="df-page-header">
+  <div class="df-page-titles">
+    <h1 id="df-page-title">Utilizatori</h1>
+    <p id="df-page-subtitle">Administrează utilizatorii, rolurile și permisiunile</p>
+  </div>
+  <div class="df-page-actions">
+    <span id="adminBadge" style="padding:5px 10px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.3);border-radius:8px;font-size:.76rem;color:#ffd580;font-weight:700;">🛡 ADMIN</span>
+    <span id="activeFlowsBadge" title="Fluxuri active în acest moment" style="display:none;padding:5px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;font-size:.76rem;color:#c4b5fd;font-weight:700;cursor:default;">⏳ <span id="activeFlowsCount">—</span> active</span>
+    <a href="/" class="btn" style="text-decoration:none;font-size:.8rem;padding:6px 10px;">📝 Flux nou</a>
+    <a href="/?tab=flows" class="btn" style="text-decoration:none;font-size:.8rem;padding:6px 10px;">📂 Fluxurile mele</a>
+    <a href="/templates" class="btn" style="text-decoration:none;font-size:.8rem;padding:6px 10px;">📋 Șabloane</a>
+    <button onclick="openChangePwdModal()" title="Schimbă parola" style="background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.25);color:#ffaaaa;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:600;white-space:nowrap;">🔑</button>
+    <button id="hdr2faBtn" onclick="load2FAStatus()" title="Configurare 2FA" style="background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.25);color:#c4b5ff;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:600;display:none;white-space:nowrap;">🔐</button>
+    <button class="btn-logout" onclick="logout()" title="Ieșire" style="font-size:.76rem;padding:6px 10px;white-space:nowrap;">⏻ Ieșire</button>
+  </div>
+</header>
+<div class="df-page-body">
+
 <main>
 
-<!-- ── TABS ─────────────────────────────────────────────────────────── -->
-<div class="admin-tabs" style="display:flex;gap:4px;margin-bottom:28px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:6px;">
-  <button class="atab atab-active" data-tab="utilizatori" onclick="switchTab('utilizatori')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:rgba(124,92,255,.25);color:#c4b5ff;transition:all .2s;">👥 Utilizatori</button>
-  <button class="atab" data-tab="fluxuri" onclick="switchTab('fluxuri')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📁 Administrare fluxuri</button>
-  <button class="atab" data-tab="rapoarte" onclick="switchTab('rapoarte')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">📊 Rapoarte</button>
-  <button class="atab" data-tab="outreach" onclick="switchTab('outreach')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="outreach-tab-btn">📧 Outreach</button>
-  <button class="atab" data-tab="organizatii" onclick="switchTab('organizatii')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="org-tab-btn">🏛 Organizații</button>
-      <button class="atab" data-tab="analytics" onclick="switchTab('analytics');loadAnalytics();" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;" id="analytics-tab-btn">📊 Analytics</button>
-  <button class="atab" data-tab="audit" onclick="switchTab('audit')" style="flex:1;padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font-size:.88rem;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;">🔍 Audit</button>
-</div>
 
 <!-- ══════════════════════════════════════════════════════════════════ -->
 <!-- TAB 1: UTILIZATORI                                                -->
@@ -1038,6 +1076,10 @@
 </div>
 
 </main>
+
+</div><!-- /df-page-body -->
+</div><!-- /df-page -->
+</div><!-- /df-shell -->
 
 
 <!-- Modal editare -->
@@ -2534,11 +2576,15 @@ function switchTab(tab) {
     const el = $('tab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
-  document.querySelectorAll('.atab').forEach(btn => {
-    const active = btn.dataset.tab === tab;
-    btn.style.background = active ? 'rgba(124,92,255,.25)' : 'transparent';
-    btn.style.color = active ? '#c4b5ff' : 'var(--muted)';
+  document.querySelectorAll('.df-nav-item').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
   });
+  const titles = {utilizatori:'Utilizatori',fluxuri:'Administrare fluxuri',rapoarte:'Rapoarte',outreach:'Outreach',organizatii:'Organizații',analytics:'Analytics',audit:'Log audit'};
+  const subtitles = {utilizatori:'Administrează utilizatorii, rolurile și permisiunile',fluxuri:'Gestionează fluxurile de documente și arhivarea',rapoarte:'Rapoarte și statistici de utilizare',outreach:'Campanii outreach și import primării',organizatii:'Configurare organizații și signing providers',analytics:'Analytics și metrici de adopție',audit:'Log de audit și evenimente de securitate'};
+  const titleEl = document.getElementById('df-page-title');
+  const subEl = document.getElementById('df-page-subtitle');
+  if (titleEl) titleEl.textContent = titles[tab] || 'Admin';
+  if (subEl) subEl.textContent = subtitles[tab] || '';
   if (tab === 'fluxuri' && !_fluxuriLoaded) { loadArchiveInstData(); loadFlowInstitutions(); _fluxuriLoaded = true; }
   if (tab === 'outreach' && !_outreachLoaded) { orInit(); _outreachLoaded = true; }
   if (tab === 'organizatii' && !_orgLoaded) { loadOrganizations(); _orgLoaded = true; }
