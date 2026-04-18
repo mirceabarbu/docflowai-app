@@ -4,13 +4,13 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.261">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.261">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.261">
-  <script src="/js/df-shell.js?v=3.9.261"></script>
-  <script src="/js/df-user-modals.js?v=3.9.261"></script>
-  <script src="/js/df-subtabs.js?v=3.9.261"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.261">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.262">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.262">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.262">
+  <script src="/js/df-shell.js?v=3.9.262"></script>
+  <script src="/js/df-user-modals.js?v=3.9.262"></script>
+  <script src="/js/df-subtabs.js?v=3.9.262"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.262">
   <style>
     :root {
       --app-bg: var(--df-bg);
@@ -29,7 +29,7 @@
     html{scroll-behavior:smooth}
 
     /* Tabs */
-    .tabs-wrap{max-width:1200px;margin:0 auto;padding:16px 16px 0}
+    .tabs-wrap{padding:16px 0 0}
     .tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:12px;padding:3px;width:fit-content;border:1px solid var(--app-line)}
     .tab{padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.86rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s}
     .tab:hover{color:var(--app-sub)}
@@ -37,7 +37,7 @@
     .draft-badge{font-size:11px;color:var(--app-muted);margin-left:6px;font-weight:400;opacity:0;transition:opacity .4s}
     .draft-badge.show{opacity:1}
     /* Outer */
-    .outer{max-width:1200px;margin:0 auto;padding:16px 16px 60px}
+    .outer{padding:16px 0 60px}
     /* Status */
     .status{display:none;padding:9px 14px;border-radius:9px;font-size:.84rem;margin-bottom:14px;align-items:center;gap:8px}
     .status.err{display:flex;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090}
@@ -179,10 +179,10 @@
     /* ═══════════════════════════════════════════════════════
        CENTRALIZARE — Section 1 (list) adăugată deasupra formularului
        ═══════════════════════════════════════════════════════ */
-    .back-bar{max-width:1200px;margin:10px auto 0;padding:0 16px}
-    #val-err-bar{display:none;max-width:1200px;margin:8px auto 0;padding:0 16px}
+    .back-bar{margin:10px 0 0;padding:0}
+    #val-err-bar{display:none;margin:8px 0 0;padding:0}
     #val-err-bar .val-err-inner{background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090;padding:9px 14px;border-radius:9px;font-size:.83rem}
-    .lst-wrap{max-width:1200px;margin:0 auto;padding:14px 16px 0}
+    .lst-wrap{padding:14px 0 0}
     .lst-tabs-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
     .lst-tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:10px;padding:3px;border:1px solid var(--app-line)}
     .lst-tab{padding:8px 18px;border-radius:7px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s;font-family:inherit}
@@ -361,19 +361,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -381,19 +381,19 @@
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
       <a href="/admin#dashboard" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-layout"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-layout"/></svg>
         Dashboard
       </a>
       <a href="/admin#utilizatori" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-users"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-users"/></svg>
         Utilizatori
       </a>
       <a href="/admin#fluxuri" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-git-branch"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-git-branch"/></svg>
         Fluxuri documente
       </a>
       <a href="/admin#rapoarte" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-bar-chart"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-bar-chart"/></svg>
         Rapoarte
       </a>
     </div>
@@ -401,19 +401,19 @@
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
       <a href="/admin#organizatii" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-building"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-building"/></svg>
         Organizații
       </a>
       <a href="/admin#outreach" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-send"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-send"/></svg>
         Outreach
       </a>
       <a href="/admin#analytics" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-trending-up"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-trending-up"/></svg>
         Analytics
       </a>
       <a href="/admin#audit" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-search"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-search"/></svg>
         Audit
       </a>
     </div>
@@ -421,7 +421,7 @@
     <div class="df-nav-label">Comunicare</div>
     <div class="df-nav-group">
       <a href="/notifications" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-bell"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-bell"/></svg>
         Notificări
       </a>
     </div>
@@ -447,22 +447,22 @@
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.261#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.262#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -4361,6 +4361,6 @@ async function alopRevizuiesteDF(alopId,dfId){
   </div>
 </div>
 
-<script src="/notif-widget.js?v=3.9.261"></script>
+<script src="/notif-widget.js?v=3.9.262"></script>
 </body>
 </html>
