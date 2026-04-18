@@ -1495,8 +1495,8 @@ function switchTab(tab) {
   });
   const titles = {dashboard:'Dashboard',utilizatori:'Utilizatori',fluxuri:'Administrare fluxuri',rapoarte:'Rapoarte',outreach:'Outreach',organizatii:'Organizații',analytics:'Analytics',audit:'Log audit'};
   const subtitles = {dashboard:'Privire de ansamblu asupra activității sistemului',utilizatori:'Administrează utilizatorii, rolurile și permisiunile',fluxuri:'Gestionează fluxurile de documente și arhivarea',rapoarte:'Rapoarte și statistici de utilizare',outreach:'Campanii outreach și import primării',organizatii:'Configurare organizații, signing providers și webhook-uri pentru integrarea cu sisteme externe (AvanDoc, iDocNet, aplicații proprii de registratură etc.)',analytics:'Analytics și metrici de adopție',audit:'Log de audit și evenimente de securitate'};
-  const titleEl = document.getElementById('df-page-title');
-  const subEl = document.getElementById('df-page-subtitle');
+  const titleEl = document.getElementById('dfPageTitle');
+  const subEl = document.getElementById('dfPageSubtitle');
   if (titleEl) titleEl.textContent = titles[tab] || 'Admin';
   if (subEl) subEl.textContent = subtitles[tab] || '';
 
