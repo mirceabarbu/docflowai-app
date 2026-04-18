@@ -99,6 +99,13 @@
           var btn2fa = document.getElementById('hdr2faBtn');
           if (btn2fa) btn2fa.style.display = 'inline-flex';
         }
+
+        // Ascunde "Panou admin" din dropdown pentru utilizatori non-admin
+        if (!isAdmin && !isOrgAdmin) {
+          document.querySelectorAll('.df-admin-link').forEach(function(el) {
+            el.style.display = 'none';
+          });
+        }
       })
       .catch(function() {
         location.href = '/login?next=' + encodeURIComponent(location.pathname);
