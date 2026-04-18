@@ -37,7 +37,7 @@
   .df-page-body{padding:20px 20px 40px;}
 }
 
-/* === KPI cards dashboard — top-level, în afara tuturor @media === */
+/* === KPI cards — top-level === */
 .df-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px;}
 .df-kpi-card{background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);padding:18px 20px;}
 .df-kpi-label{font-size:.72rem;color:var(--df-text-3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;}

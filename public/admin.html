@@ -2647,8 +2647,8 @@ let _rptGenerated = false; // true după prima generare raport — activează au
 async function loadDashboard() {
   try {
     const [sR, fR] = await Promise.all([
-      apiFetch('/admin/stats'),
-      apiFetch('/admin/flows/stats'),
+      _apiFetch('/admin/stats'),
+      _apiFetch('/admin/flows/stats'),
     ]);
     const s = sR.ok ? await sR.json() : null;
     const f = fR.ok ? await fR.json() : null;
@@ -2664,7 +2664,9 @@ async function loadDashboard() {
       set('dashKpiActive', f.active);
       set('dashKpiCompleted', f.completed);
     }
-  } catch(e) { /* silent — KPI rămân '—' */ }
+  } catch (e) {
+    console.warn('[loadDashboard] failed:', e);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
