@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.274">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.274">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.274">
+  <script src="/js/df-shell.js?v=3.9.271"></script>
   <link rel="stylesheet" href="/mobile.css?v=3.9.274">
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
@@ -83,6 +84,84 @@
 </head>
 <body>
 
+<div class="df-shell">
+
+<aside class="df-sidebar">
+  <div class="df-sidebar-brand">
+    <img src="/Logo.png" alt="DocFlowAI"/>
+  </div>
+
+  <div class="df-nav-label">Navigare app</div>
+  <div class="df-nav-group">
+    <a href="/" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-edit"/></svg>
+      Flux nou
+    </a>
+    <a href="/?tab=flows" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>
+      Fluxurile mele
+    </a>
+    <a href="/templates" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>
+      Șabloane
+    </a>
+    <a href="/formular.html" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg>
+      Formulare
+    </a>
+  </div>
+
+  <div class="df-nav-label">Administrare</div>
+  <div class="df-nav-group">
+    <a href="/admin#dashboard" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+      Dashboard
+    </a>
+    <a href="/admin#utilizatori" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-users"/></svg>
+      Utilizatori
+    </a>
+    <a href="/admin#fluxuri" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-git-branch"/></svg>
+      Fluxuri documente
+    </a>
+    <a href="/admin#rapoarte" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg>
+      Rapoarte
+    </a>
+  </div>
+
+  <div class="df-nav-label">Organizație</div>
+  <div class="df-nav-group">
+    <a href="/admin#organizatii" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>
+      Organizații
+    </a>
+    <a href="/admin#outreach" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-send"/></svg>
+      Outreach
+    </a>
+    <a href="/admin#analytics" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-trending-up"/></svg>
+      Analytics
+    </a>
+    <a href="/admin#audit" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
+      Audit
+    </a>
+  </div>
+
+  <div class="df-nav-label">Comunicare</div>
+  <div class="df-nav-group">
+    <a href="/notifications" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bell"/></svg>
+      Notificări
+    </a>
+  </div>
+
+</aside>
+
+<div class="df-page">
 <header class="df-page-header">
   <img src="/Logo.png" alt="DocFlowAI" style="height:40px;width:auto;flex-shrink:0;">
   <div class="df-page-titles">
@@ -473,5 +552,8 @@ function showPhaseDone(j) {
   }
 }
 </script>
+</div><!-- /df-page -->
+
+</div><!-- /df-shell -->
 </body>
 </html>
