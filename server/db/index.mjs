@@ -1050,16 +1050,21 @@ const MIGRATIONS = [
   {
     id: '055_alop_instances_semnatari',
     sql: `
-      ALTER TABLE alop_instances
-        ADD COLUMN IF NOT EXISTS df_semnatari  JSONB DEFAULT '[]',
-        ADD COLUMN IF NOT EXISTS ord_semnatari JSONB DEFAULT '[]',
-        ADD COLUMN IF NOT EXISTS lichidare_confirmed_by INTEGER;
-      DO $$ BEGIN
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
         ALTER TABLE alop_instances
-          ADD CONSTRAINT alop_lichidare_confirmed_by_fk
-          FOREIGN KEY (lichidare_confirmed_by) REFERENCES users(id);
-      EXCEPTION WHEN duplicate_object THEN NULL;
-      END $$;
+          ADD COLUMN IF NOT EXISTS df_semnatari  JSONB DEFAULT '[]',
+          ADD COLUMN IF NOT EXISTS ord_semnatari JSONB DEFAULT '[]',
+          ADD COLUMN IF NOT EXISTS lichidare_confirmed_by INTEGER;
+        BEGIN
+          ALTER TABLE alop_instances
+            ADD CONSTRAINT alop_lichidare_confirmed_by_fk
+            FOREIGN KEY (lichidare_confirmed_by) REFERENCES users(id);
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+      END $g$;
     `
   },
   {
@@ -1103,62 +1108,81 @@ const MIGRATIONS = [
   {
     id: '059_alop_lichidare_documente',
     sql: `
-      ALTER TABLE alop_instances
-        ADD COLUMN IF NOT EXISTS lichidare_nr_factura   TEXT,
-        ADD COLUMN IF NOT EXISTS lichidare_data_factura DATE,
-        ADD COLUMN IF NOT EXISTS lichidare_nr_pv        TEXT;
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+        ALTER TABLE alop_instances
+          ADD COLUMN IF NOT EXISTS lichidare_nr_factura   TEXT,
+          ADD COLUMN IF NOT EXISTS lichidare_data_factura DATE,
+          ADD COLUMN IF NOT EXISTS lichidare_nr_pv        TEXT;
+      END $g$;
     `
   },
   {
     id: '060_alop_plata_documente',
     sql: `
-      ALTER TABLE alop_instances
-        ADD COLUMN IF NOT EXISTS plata_nr_ordin      TEXT,
-        ADD COLUMN IF NOT EXISTS plata_data          DATE,
-        ADD COLUMN IF NOT EXISTS plata_suma_efectiva NUMERIC(15,2),
-        ADD COLUMN IF NOT EXISTS plata_observatii    TEXT;
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+        ALTER TABLE alop_instances
+          ADD COLUMN IF NOT EXISTS plata_nr_ordin      TEXT,
+          ADD COLUMN IF NOT EXISTS plata_data          DATE,
+          ADD COLUMN IF NOT EXISTS plata_suma_efectiva NUMERIC(15,2),
+          ADD COLUMN IF NOT EXISTS plata_observatii    TEXT;
+      END $g$;
     `
   },
   {
     id: '061_alop_lichidare_data_pv',
     sql: `
-      ALTER TABLE alop_instances
-        ADD COLUMN IF NOT EXISTS lichidare_data_pv DATE;
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+        ALTER TABLE alop_instances
+          ADD COLUMN IF NOT EXISTS lichidare_data_pv DATE;
+      END $g$;
     `
   },
   {
     id: '062_alop_multi_ord',
     sql: `
-      CREATE TABLE IF NOT EXISTS alop_ord_cicluri (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        alop_id UUID NOT NULL REFERENCES alop_instances(id),
-        org_id INTEGER NOT NULL,
-        ciclu_nr INTEGER NOT NULL DEFAULT 1,
-        ord_id UUID REFERENCES formulare_ord(id),
-        ord_flow_id TEXT,
-        lichidare_confirmed_by INTEGER REFERENCES users(id),
-        lichidare_confirmed_at TIMESTAMPTZ,
-        lichidare_nr_factura TEXT,
-        lichidare_data_factura DATE,
-        lichidare_nr_pv TEXT,
-        lichidare_data_pv DATE,
-        lichidare_notes TEXT,
-        plata_confirmed_by INTEGER REFERENCES users(id),
-        plata_confirmed_at TIMESTAMPTZ,
-        plata_nr_ordin TEXT,
-        plata_data DATE,
-        plata_suma_efectiva NUMERIC(15,2),
-        plata_observatii TEXT,
-        status TEXT NOT NULL DEFAULT 'lichidare',
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_alop_ord_cicluri_alop
-        ON alop_ord_cicluri(alop_id);
-
-      ALTER TABLE alop_instances
-        ADD COLUMN IF NOT EXISTS suma_totala_platita NUMERIC(15,2) DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS ciclu_curent INTEGER DEFAULT 1;
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+        CREATE TABLE IF NOT EXISTS alop_ord_cicluri (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          alop_id UUID NOT NULL REFERENCES alop_instances(id),
+          org_id INTEGER NOT NULL,
+          ciclu_nr INTEGER NOT NULL DEFAULT 1,
+          ord_id UUID REFERENCES formulare_ord(id),
+          ord_flow_id TEXT,
+          lichidare_confirmed_by INTEGER REFERENCES users(id),
+          lichidare_confirmed_at TIMESTAMPTZ,
+          lichidare_nr_factura TEXT,
+          lichidare_data_factura DATE,
+          lichidare_nr_pv TEXT,
+          lichidare_data_pv DATE,
+          lichidare_notes TEXT,
+          plata_confirmed_by INTEGER REFERENCES users(id),
+          plata_confirmed_at TIMESTAMPTZ,
+          plata_nr_ordin TEXT,
+          plata_data DATE,
+          plata_suma_efectiva NUMERIC(15,2),
+          plata_observatii TEXT,
+          status TEXT NOT NULL DEFAULT 'lichidare',
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_alop_ord_cicluri_alop
+          ON alop_ord_cicluri(alop_id);
+        ALTER TABLE alop_instances
+          ADD COLUMN IF NOT EXISTS suma_totala_platita NUMERIC(15,2) DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS ciclu_curent INTEGER DEFAULT 1;
+      END $g$;
     `
   }
 ];
