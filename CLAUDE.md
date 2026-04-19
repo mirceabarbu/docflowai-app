@@ -276,3 +276,88 @@ Două niveluri de cache există:
 1. **Browser cache** → rezolvat prin `?v=VERSION` pe toate link-urile CSS/JS din HTML. Bump-ează `version` în `package.json` și rulează `sed` pe `?v=` în `public/*.html`.
 
 2. **Service Worker** (`sw.js`) → cache-uiește agresiv assets în `PRECACHE_ASSETS`. Când modifici un fișier din acea listă (`notif-widget.js`, `mobile.css`, `Logo.png`, etc.), bump-ează manual `CACHE_VERSION` în `public/sw.js` (ex. `v7` → `v8`). Fără bump, utilizatorii primesc versiunea veche până la hard refresh.
+
+---
+
+## Database Migrations — Lessons learned (incident 2026-04-19)
+
+### Arhitectura duală — cum funcționează
+
+Există **două sisteme de migrări** care rulează la fiecare boot, în ordine fixă:
+
+1. **Inline** (`server/db/index.mjs` → `runMigrations()`) — array `MIGRATIONS[]` cu 001–N, rulează **primul**, într-o singură tranzacție `BEGIN/COMMIT`.
+2. **File-based V4** (`server/db/migrate.mjs` → `runMigrationsV4()`) — fișiere `*.sql` din `server/db/migrations/`, rulează **după** inline, per-fișier în tranzacții separate.
+
+**Ordinea la boot:**
+```
+initDbWithRetry()          ← rulează inline 001-N (o singură tranzacție)
+  .then(async () => {
+    await runMigrationsV4()  ← rulează file-based 000-014.sql
+    markDbReady()
+  })
+```
+
+**Consecință critică:** dacă o migrare inline eșuează, întreaga tranzacție se face ROLLBACK, `markDbReady()` nu e niciodată apelat, și serverul rămâne UP dar returnează `503 db_not_ready` pe toate endpoint-urile.
+
+### Reguli obligatorii pentru migrări inline noi
+
+**Regula 1 — Guard IF EXISTS pentru tabele V4**
+
+Tabelele create EXCLUSIV de V4 file migrations (nu de inline): `alop_instances`, `alop_sabloane`.
+
+Orice migrare inline care face `ALTER TABLE` pe o tabelă V4 **trebuie** wrappată în guard:
+
+```sql
+DO $g$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+    WHERE table_schema='public' AND table_name='alop_instances'
+  ) THEN RETURN; END IF;
+
+  -- ALTER TABLE alop_instances ...
+
+END $g$;
+```
+
+Pattern precedent: `054_alop_sabloane_schema` (model de referință).
+
+**Regula 2 — Dollar-quoting nested**
+
+Dacă SQL-ul intern conține deja `DO $$ ... END $$`, folosește tag diferit pentru outer block:
+- Outer: `DO $g$ BEGIN ... END $g$;`
+- Inner exception block: `BEGIN ... EXCEPTION WHEN ... END;` (fără DO separat)
+
+**Regula 3 — `CREATE TABLE` cu FK spre tabelă V4**
+
+Dacă migrarea inline creează o tabelă nouă cu `REFERENCES alop_instances(id)`, pune și acel `CREATE TABLE` în același guard `IF EXISTS` — altfel FK constraint eșuează pe fresh DB.
+
+**Regula 4 — Testare pe fresh DB înainte de push**
+
+Înainte de orice PR develop → main care adaugă migrări inline noi:
+```bash
+# Simulează fresh DB local: drop + recreate + start server
+dropdb docflowai_dev && createdb docflowai_dev && npm start
+# Verifică în logs că toate migrările trec fără ROLLBACK
+```
+
+### Anti-patterns de evitat
+
+| Anti-pattern | Problemă | Soluție |
+|---|---|---|
+| `ALTER TABLE alop_instances` fără guard | Fail pe fresh DB, 503 permanent | Wrap în `DO $g$ IF NOT EXISTS` |
+| `CREATE TABLE ... REFERENCES alop_instances` fără guard | FK fail pe fresh DB | Wrap în același guard |
+| `DO $$ BEGIN ... END $$` nested în `DO $$ ... END $$` | Dollar-quoting conflict | Folosește `$g$` sau alt tag pentru outer |
+| Migrare inline care presupune V4 rulat deja | Race condition garantată | V4 rulează DUPĂ inline, întotdeauna |
+
+---
+
+## Incident log
+
+### 2026-04-19: Production DB init failure
+
+- **Cause:** inline migrations 055–062 ALTER `alop_instances` which didn't exist on production (ALOP feature was staging-only, table created only by V4 `014_alop.sql`)
+- **Detection:** post PR develop → main merge, login returned `503 db_not_ready` ("Baza de date nu este disponibilă")
+- **Fix:** added `DO $g$ IF NOT EXISTS` guard to migrations 055, 059, 060, 061, 062; migration 062 also guards `CREATE TABLE alop_ord_cicluri` (FK to `alop_instances`)
+- **Time to recovery:** ~1h (diagnostic + fix commit + PR develop→main + Railway redeploy)
+- **Data loss:** zero
+- **Root cause:** dual migration systems (inline + V4 file-based) without coordination — inline runs first, V4 errors non-fatal but inline errors fatal; `alop_instances` created only by V4
+- **Prevention:** rules documented above + guard pattern established for all future ALOP migrations
