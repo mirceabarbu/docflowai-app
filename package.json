@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.9.252",
+  "version": "3.9.279",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -13,15 +13,20 @@
     "prebuild": "npm run check"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "@signpdf/placeholder-pdf-lib": "^3.3.0",
     "@signpdf/signpdf": "^3.3.0",
     "asn1js": "^3.0.7",
+    "bcryptjs": "^3.0.3",
+    "busboy": "^1.6.0",
+    "compression": "^1.7.5",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^4.22.1",
     "googleapis": "^144.0.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "nanoid": "^5.1.7",
     "node-forge": "^1.3.3",
     "otplib": "^13.4.0",
     "pdf-lib": "^1.17.1",
@@ -29,6 +34,7 @@
     "pkijs": "^3.4.0",
     "pvutils": "^1.1.5",
     "qrcode": "^1.5.4",
+    "resend": "^6.10.0",
     "web-push": "^3.6.7",
     "ws": "^8.17.0"
   },

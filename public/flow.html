@@ -4,45 +4,25 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Flow</title>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.271">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.271">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.271">
+  <link rel="stylesheet" href="/mobile.css?v=3.9.271">
+  <script src="/js/df-shell.js?v=3.9.271"></script>
+  <script src="/js/df-user-modals.js?v=3.9.271"></script>
   <style>
     :root{
-      --bg1:#070b1b; --bg2:#0b1230; --stroke:rgba(255,255,255,.10);
-      --txt:#eaf0ff; --sub:rgba(234,240,255,.78);
-      --accent:#7c5cff; --ok:#26d07c; --warn:#ffb020; --bad:#ff4d5a;
+      --bg1: var(--df-bg); --bg2: var(--df-bg-elevated);
+      --stroke: var(--df-border-2);
+      --txt: var(--df-text); --sub: var(--df-text-2);
+      --accent: var(--df-brand); --ok:#26d07c;
+      --warn:#ffb020; --bad:#ff4d5a;
       --shadow:0 20px 60px rgba(0,0,0,.40);
       --r:18px;
     }
     *{box-sizing:border-box}
-    body{
-      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      color:var(--txt);
-      background:
-        radial-gradient(900px 500px at 20% 10%, rgba(124,92,255,.28), transparent 55%),
-        radial-gradient(700px 500px at 80% 20%, rgba(0,214,255,.20), transparent 55%),
-        radial-gradient(700px 600px at 70% 90%, rgba(124,92,255,.18), transparent 60%),
-        linear-gradient(180deg, var(--bg1), var(--bg2));
-      min-height:100vh;
-    }
     a{color:inherit}
     code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:8px;border:1px solid var(--stroke)}
-    .wrap{max-width:1180px;margin:28px auto;padding:0 18px 56px;}
-    .topbar{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:12px; padding:14px 16px; border:1px solid var(--stroke);
-      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      border-radius:22px; box-shadow: var(--shadow);
-    }
-    .brand{display:flex;align-items:center;gap:12px;min-width:0}
-    .logo{
-      width:44px;height:44px;border-radius:14px;display:grid;place-items:center;
-      background: radial-gradient(70% 70% at 30% 30%, rgba(124,92,255,.55), rgba(124,92,255,.18));
-      border:1px solid rgba(124,92,255,.40);
-      flex:0 0 auto;
-    }
-    .brand .t{display:flex;flex-direction:column;min-width:0}
-    .brand .t .h{font-weight:800;letter-spacing:.2px;line-height:1.05}
-    .brand .t .s{overflow:visible;white-space:nowrap;font-size:.82rem;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
     .btn{
       border:1px solid var(--stroke);
       background:rgba(255,255,255,.06);
@@ -250,7 +230,7 @@
     }
     .tl-step.tl-active .tl-dot { animation: tl-pulse 2s ease-in-out infinite; }
 </style>
-<script src="/notif-widget.js"></script>
+<script src="/notif-widget.js?v=3.9.271"></script>
 
   <script>
     // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
@@ -270,107 +250,269 @@
       return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
-  <link rel="stylesheet" href="/mobile.css">
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <div class="logo">🛡️</div>
-        <div class="t">
-          <div class="h">DocFlowAI</div>
-          <div id="subtitle" style="font-size:.78rem;color:rgba(234,240,255,.55);white-space:nowrap;overflow:visible;">Vizualizare flow</div>
-        </div>
+<div class="df-shell">
+
+  <aside class="df-sidebar">
+    <div class="df-sidebar-brand">
+      <img src="/Logo.png" alt="DocFlowAI"/>
+    </div>
+
+    <div class="df-nav-label">Navigare app</div>
+    <div class="df-nav-group">
+      <a href="/" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-edit"/></svg>
+        Flux nou
+      </a>
+      <a href="/?tab=flows" class="df-nav-item active">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>
+        Fluxurile mele
+      </a>
+      <a href="/templates" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>
+        Șabloane
+      </a>
+      <a href="/formular.html" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg>
+        Formulare
+      </a>
+    </div>
+
+    <div class="df-nav-label">Administrare</div>
+    <div class="df-nav-group">
+      <a href="/admin#dashboard" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+        Dashboard
+      </a>
+      <a href="/admin#utilizatori" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-users"/></svg>
+        Utilizatori
+      </a>
+      <a href="/admin#fluxuri" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-git-branch"/></svg>
+        Fluxuri documente
+      </a>
+      <a href="/admin#rapoarte" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg>
+        Rapoarte
+      </a>
+    </div>
+
+    <div class="df-nav-label">Organizație</div>
+    <div class="df-nav-group">
+      <a href="/admin#organizatii" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>
+        Organizații
+      </a>
+      <a href="/admin#outreach" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-send"/></svg>
+        Outreach
+      </a>
+      <a href="/admin#analytics" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-trending-up"/></svg>
+        Analytics
+      </a>
+      <a href="/admin#audit" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
+        Audit
+      </a>
+    </div>
+
+    <div class="df-nav-label">Comunicare</div>
+    <div class="df-nav-group">
+      <a href="/notifications" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bell"/></svg>
+        Notificări
+      </a>
+    </div>
+  </aside>
+
+  <div class="df-page">
+    <header class="df-page-header">
+      <div class="df-page-titles">
+        <h1>Document flux</h1>
+        <p id="subtitle">Detalii, semnatari și istoric evenimente</p>
       </div>
-      <div class="actions">
-        <span id="userBarFlow" style="color:#cdd8ff;font-size:.82rem;"></span>
+      <div class="df-page-actions">
         <span class="pill" id="pillFlow" title="ID Flow"><strong>Flow</strong> —</span>
-        <button class="btn ghost" id="btnBack">↩️ Înapoi</button>
-        <button class="btn" id="btnRefresh">🔄 Refresh</button>
-        <button class="btn primary" id="btnDownloadSigned">⬇️ PDF semnat</button>
-        <button class="btn" id="btnDownloadOriginal" title="Descarcă PDF original (dacă există)">📎 PDF original</button>
-        <button class="btn" id="btnSendEmail" style="display:none;background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.35);color:#7cf0e0;" title="Trimite PDF semnat pe email extern">📧 Trimite</button>
-        <button class="btn" id="btnTrustReport" style="display:none;background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.35);color:#b39dff;" title="Generează Raport de Conformitate (Signing Trust Report)">📜 Raport</button>
-        <button class="btn" id="btnReinitiate" style="display:none;background:rgba(255,200,50,.12);border-color:rgba(255,200,50,.35);color:#ffd580;" title="Reinițiază fluxul după refuz">🔄 Reinițiază</button>
-        <button class="btn" id="btnReinitiateReview" style="display:none;background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.35);color:#7cf0e0;" title="Reinițiază fluxul după revizuire (re-upload document)">🔄 Reinițiază după revizuire</button>
-        <button class="btn" id="btnCancelFlow" style="display:none;background:rgba(120,120,120,.1);border-color:rgba(120,120,120,.3);color:#aaa;" title="Anulează fluxul">🚫 Anulează</button>
-        <a id="btnAuditPdf" href="#" target="_blank" class="btn" style="display:none;text-decoration:none;" title="Export Audit PDF">📄 Audit PDF</a>
+        <div id="userBar"></div>
+        <div class="df-user-menu" id="df-user-menu">
+          <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <div class="df-user-trigger-avatar">U</div>
+            <div class="df-user-trigger-info">
+              <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+              <div class="df-user-trigger-role">Utilizator</div>
+            </div>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-chevron-down"/></svg>
+          </button>
+          <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openChangePwdModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-key"/></svg>
+              Schimbă parola
+            </button>
+            <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-shield"/></svg>
+              Configurare 2FA
+            </button>
+            <a href="/admin" class="df-admin-link" style="text-decoration:none;">
+              <button>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+                Panou admin
+              </button>
+            </a>
+            <div class="df-user-dropdown-divider"></div>
+            <button class="danger" onclick="closeUserMenu();logout()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-log-out"/></svg>
+              Ieșire
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </header>
 
-    <div id="msg"></div>
-    <div id="parentFlowBanner" style="display:none;margin-bottom:12px;padding:10px 16px;border-radius:10px;background:rgba(255,200,50,.1);border:1px solid rgba(255,200,50,.3);color:#ffd580;font-size:.85rem;">
-      🔁 <strong>Flux reinițiat după refuz</strong> — acest flux continuă de la un flux anterior:
-      <a id="parentFlowLink" href="#" style="color:#ffd580;text-decoration:underline;font-weight:700;"></a>
-    </div>
+    <main class="df-page-body">
 
-    <div class="grid">
+      <!-- Toolbar acțiuni -->
+      <div class="df-toolbar" style="margin-bottom:16px;">
+        <button class="df-action-btn" id="btnBack">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+          </svg>
+          Înapoi
+        </button>
+        <button class="df-action-btn" id="btnRefresh">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Refresh
+        </button>
+        <div class="df-toolbar-spacer"></div>
+        <button class="df-action-btn primary" id="btnDownloadSigned">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          PDF semnat
+        </button>
+        <button class="df-action-btn" id="btnDownloadOriginal" title="Descarcă PDF original (dacă există)">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          </svg>
+          PDF original
+        </button>
+        <button class="df-action-btn success" id="btnSendEmail" style="display:none;" title="Trimite PDF semnat pe email extern">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+          </svg>
+          Trimite
+        </button>
+        <button class="df-action-btn" id="btnTrustReport" style="display:none;" title="Generează Raport de Conformitate">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          Raport
+        </button>
+        <button class="df-action-btn warning" id="btnReinitiate" style="display:none;" title="Reinițiază fluxul după refuz">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Reinițiază
+        </button>
+        <button class="df-action-btn success" id="btnReinitiateReview" style="display:none;" title="Reinițiază fluxul după revizuire">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Reinițiază după revizuire
+        </button>
+        <button class="df-action-btn" id="btnCancelFlow" style="display:none;color:var(--df-text-3);" title="Anulează fluxul">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+          </svg>
+          Anulează
+        </button>
+        <a id="btnAuditPdf" href="#" target="_blank" class="df-action-btn" style="display:none;text-decoration:none;" title="Export Audit PDF">
+          <svg class="df-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Audit PDF
+        </a>
+      </div>
 
-      <!-- Detalii + Semnatari — 2 coloane -->
-      <div class="two-col-grid">
+      <div id="msg"></div>
+      <div id="parentFlowBanner" style="display:none;margin-bottom:12px;padding:10px 16px;border-radius:10px;background:rgba(255,200,50,.1);border:1px solid rgba(255,200,50,.3);color:#ffd580;font-size:.85rem;">
+        🔁 <strong>Flux reinițiat după refuz</strong> — acest flux continuă de la un flux anterior:
+        <a id="parentFlowLink" href="#" style="color:#ffd580;text-decoration:underline;font-weight:700;"></a>
+      </div>
 
-        <!-- Coloana stanga: Detalii -->
-        <div class="card" style="height:100%">
+      <div class="grid">
+
+        <!-- Detalii + Semnatari — 2 coloane -->
+        <div class="two-col-grid">
+
+          <!-- Coloana stanga: Detalii -->
+          <div class="card" style="height:100%">
+            <div class="row">
+              <h3 style="margin:0">Detalii</h3>
+              <span class="badge" id="badgeStatus">—</span>
+              <span id="badgeUrgent" style="display:none;background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>
+            </div>
+            <div class="kv">
+              <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
+              <span class="pill"><strong>Tip flux</strong> <span id="flowTypePill">—</span></span>
+              <span class="pill"><strong>Semnare</strong> <span id="signingProviderPill">—</span></span>
+              <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
+              <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
+              <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
+              <span class="pill"><strong>Actualizat</strong> <span id="updatedAt">—</span></span>
+            </div>
+          </div>
+
+          <!-- Coloana dreapta: Semnatari -->
+          <div class="card" style="height:100%">
+            <div class="row">
+              <h3 style="margin:0">Semnatari</h3>
+              <span class="muted small" id="signHint"></span>
+            </div>
+            <div class="list" id="signers"></div>
+            <div class="alert small" id="hintSigner" style="display:none">
+              💡 Ești semnatar și ai token în link. Poți semna din pagina dedicată:
+              <a id="signLink" href="#" style="text-decoration:underline">Deschide semnarea</a>.
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Documente suport — full width, vizibil dacă există -->
+        <div id="attachmentsCard" class="card" style="display:none;">
           <div class="row">
-            <h3 style="margin:0">Detalii</h3>
-            <span class="badge" id="badgeStatus">—</span>
-            <span id="badgeUrgent" style="display:none;background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>
+            <h3 style="margin:0;display:inline-flex;align-items:center;gap:7px;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-paperclip"/></svg>Documente suport</h3>
+            <span class="muted small">atașate la crearea fluxului</span>
           </div>
-          <div class="kv">
-            <span class="pill"><strong>Document</strong> <span id="docName">—</span></span>
-            <span class="pill"><strong>Tip flux</strong> <span id="flowTypePill">—</span></span>
-            <span class="pill"><strong>Semnare</strong> <span id="signingProviderPill">—</span></span>
-            <span class="pill"><strong>Inițiator</strong> <span id="initName">—</span></span>
-            <span class="pill"><strong>Instituție</strong> <span id="inst">—</span></span>
-            <span class="pill"><strong>Compartiment</strong> <span id="compartiment">—</span></span>
-            <span class="pill"><strong>Actualizat</strong> <span id="updatedAt">—</span></span>
-          </div>
+          <div id="attachmentsList" style="display:flex;flex-direction:column;gap:5px;margin-top:8px;"></div>
         </div>
 
-        <!-- Coloana dreapta: Semnatari -->
-        <div class="card" style="height:100%">
+        <!-- P-05: Timeline vizual — jaloane principale flux -->
+        <div class="card" id="timelineCard" style="display:none;">
+          <div class="row" style="margin-bottom:12px;">
+            <h3 style="margin:0">Progres flux</h3>
+            <span class="muted small" id="tlSummary"></span>
+          </div>
+          <div class="tl-wrap" id="tlWrap"></div>
+        </div>
+
+        <!-- Evenimente — full width -->
+        <div class="card">
           <div class="row">
-            <h3 style="margin:0">Semnatari</h3>
-            <span class="muted small" id="signHint"></span>
+            <h3 style="margin:0">Evenimente</h3>
+            <span class="muted small">timeline & audit</span>
           </div>
-          <div class="list" id="signers"></div>
-          <div class="alert small" id="hintSigner" style="display:none">
-            💡 Ești semnatar și ai token în link. Poți semna din pagina dedicată:
-            <a id="signLink" href="#" style="text-decoration:underline">Deschide semnarea</a>.
-          </div>
+          <div class="events" id="events"></div>
         </div>
-
       </div>
 
-      <!-- Documente suport — full width, vizibil dacă există -->
-      <div id="attachmentsCard" class="card" style="display:none;">
-        <div class="row">
-          <h3 style="margin:0">📎 Documente suport</h3>
-          <span class="muted small">atașate la crearea fluxului</span>
-        </div>
-        <div id="attachmentsList" style="display:flex;flex-direction:column;gap:5px;margin-top:8px;"></div>
-      </div>
-
-
-      <!-- P-05: Timeline vizual — jaloane principale flux -->
-      <div class="card" id="timelineCard" style="display:none;">
-        <div class="row" style="margin-bottom:12px;">
-          <h3 style="margin:0">🗓 Progres flux</h3>
-          <span class="muted small" id="tlSummary"></span>
-        </div>
-        <div class="tl-wrap" id="tlWrap"></div>
-      </div>
-
-      <!-- Evenimente — full width -->
-      <div class="card">
-        <div class="row">
-          <h3 style="margin:0">Evenimente</h3>
-          <span class="muted small">timeline & audit</span>
-        </div>
-        <div class="events" id="events"></div>
-      </div>
-    </div>
+    </main>
   </div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
@@ -964,14 +1106,6 @@
 
       // Buton Reinitiere — vizibil dacă fluxul e refuzat și userul e inițiator sau admin
       const currentUser = JSON.parse(localStorage.getItem("docflow_user") || "{}");
-      // Populate userBar
-      (function() {
-        const bar = document.getElementById('userBarFlow');
-        if (!bar) return;
-        const label = currentUser.nume || currentUser.email || '';
-        if (label) bar.innerHTML = `Conectat: <strong>${esc(label)}</strong>` +
-          ((currentUser.role === 'admin' || currentUser.role === 'org_admin') ? ` &nbsp;<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:4px 10px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '');
-      })();
       const isRefused = computedStatus === "refused";
       const refusedByAprobat = signers.some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
       // Daca initiatorul (INTOCMIT) a refuzat el insusi, reinitializarea nu are sens
@@ -1220,7 +1354,7 @@
 <div id="flowSendEmailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;padding:16px;">
   <div style="background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:22px 28px;width:100%;max-width:520px;position:relative;">
     <button onclick="closeFlowSendEmailModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
-    <div style="font-size:1.05rem;font-weight:700;color:#eaf0ff;margin-bottom:4px;">📧 Trimite document pe email</div>
+    <div style="font-size:1.05rem;font-weight:700;color:#eaf0ff;margin-bottom:4px;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.271#ico-mail"/></svg>Trimite document pe email</div>
     <div id="flowSemDocLabel" style="font-size:.8rem;color:#9db0ff;margin-bottom:16px;"></div>
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div>

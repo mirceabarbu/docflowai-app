@@ -153,7 +153,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
 
           let ancorePage = 1;
           let ancoreX = 0, ancoreY = 0, ancoreW = 150, ancoreH = 40;
-          let fieldFound = false;
+          let fieldFound = false, rectFound = false;
 
           const afRef = pdfDocAncore.catalog.get(PDFName.of('AcroForm'));
           if (afRef) {
@@ -178,6 +178,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
                           ancoreY = Math.min(y1, y2);
                           ancoreW = Math.abs(x2 - x1);
                           ancoreH = Math.abs(y2 - y1);
+                          rectFound = true;
                         }
                       }
                       const pRef = f.get(PDFName.of('P'));
@@ -207,9 +208,31 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
             logger.warn({ flowId, signerIdx, ancoreField }, 'STS ancore: câmp AcroForm negăsit — fallback invizibil');
           }
 
-          logger.info({ flowId, signerIdx, ancoreField, fieldFound,
+          // ── XFA fallback: AcroForm câmp fără /Rect widget (PDF-uri XFA Forexebug) ──
+          // Câmpul există în structura XFA dar NU ca widget AcroForm cu coordonate.
+          // Folosim coordonatele salvate la crearea fluxului din detect-acroform-fields.
+          if (!rectFound && signer.ancoreFieldRect) {
+            const xr = signer.ancoreFieldRect;
+            const MM2PT = 2.8346;
+            const CONTENT_OFFSET_PT = 18; // 0.25in × 72pt/in
+            const pg = pagesAncore[(xr.page || ancorePage) - 1] || pagesAncore[0];
+            const pageH = pg ? pg.getHeight() : 841.89;
+            ancoreW = (parseFloat(xr.w) || 88) * MM2PT;
+            ancoreH = (parseFloat(xr.h) || 9) * MM2PT;
+            ancoreX = CONTENT_OFFSET_PT + (parseFloat(xr.x) || 0) * MM2PT;
+            // XFA y crește de sus în jos; PDF y crește de jos în sus
+            const yFromTop = CONTENT_OFFSET_PT + (parseFloat(xr.y) || 0) * MM2PT;
+            ancoreY = pageH - yFromTop - ancoreH;
+            ancorePage = xr.page || ancorePage;
+            logger.info({ flowId, signerIdx, ancoreField, xr,
+              ancoreX: ancoreX.toFixed(2), ancoreY: ancoreY.toFixed(2),
+              ancoreW: ancoreW.toFixed(2), ancoreH: ancoreH.toFixed(2), pageH },
+              'STS ancore: AcroForm Rect absent — folosim coordonate XFA din signer.ancoreFieldRect');
+          }
+
+          logger.info({ flowId, signerIdx, ancoreField, fieldFound, rectFound,
             page: ancorePage, x: ancoreX, y: ancoreY, w: ancoreW, h: ancoreH },
-            'STS callback: Java prepare ANCORE — câmp existent');
+            'STS callback: Java prepare ANCORE');
 
           const certCn = extractCertificateCn(certPem) || signer?.certificateCn || signer?.name || signer?.fullName || 'Semnatar';
           const prepareRes = await javaPreparePades({
@@ -230,7 +253,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
             subFilter:          'ETSI.CAdES.detached',
             signerCertificatePem: certPem || null,
             signerIndex:        signerIdx,
-            fieldAlreadyExists: true,               // câmpul există deja în AcroForm
+            fieldAlreadyExists: fieldFound && rectFound, // false pt XFA fără /Rect widget
             appearanceMode:     'ancore',            // aparență simplă: "Semnat digital de: nume\ndata/ora"
           });
           if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
@@ -372,9 +395,14 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
         if (!padesPdfB64stored) throw new Error(`padesPdf lipsă în data._padesPdf_${idx}`);
         if (!certPem) throw new Error('Certificatul STS lipsește pentru finalizarea Java PAdES');
 
+        // tabel: sig_N (neschimbat față de b236); ancore: câmpul XFA al semnătarului
+        const _finalizeFieldName = (data.flowType === 'ancore' && signer.ancoreFieldName)
+          ? signer.ancoreFieldName
+          : `sig_${idx + 1}`;
+
         const finalizeRes = await javaFinalizePades({
           preparedPdfBase64: padesPdfB64stored,
-          fieldName: `sig_${idx + 1}`,
+          fieldName: _finalizeFieldName,
           signByteBase64: pollResult.signByte,
           certificatePem: certPem,
           certificateChainPem: certChainPem,

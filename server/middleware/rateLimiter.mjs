@@ -67,3 +67,16 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000).unref(); // .unref() — nu blochează graceful shutdown
+
+// ── Pre-built limiters (used by v4 modules) ───────────────────────────────────
+export const loginLimiter = createRateLimiter({
+  windowMs: 900_000,
+  max: 10,
+  message: 'Prea multe încercări. Încearcă în 15 minute.',
+});
+
+export const apiLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 60,
+  message: 'Prea multe cereri. Încearcă în 1 minut.',
+});

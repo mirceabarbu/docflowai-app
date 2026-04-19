@@ -90,6 +90,36 @@ router.post('/flows/detect-acroform-fields', _largePdf, async (req, res) => {
               } catch {
                 xmlText = rawBuf.toString('utf8');
               }
+              // ── Extrage geometriile câmpurilor din XFA template (x,y,w,h în mm) ────
+              // Coordonatele sunt relative la subform-ul părinte. Subformele
+              // SubformSemnaturaA/B au x=0,y=0, deci coords câmpului = coords relative la contentArea.
+              const _parseMm = (val) => {
+                if (!val) return null;
+                const _m = /^([\d.]+)(mm|in|pt|cm)?$/i.exec(val.trim());
+                if (!_m) return null;
+                const _v = parseFloat(_m[1]);
+                const _u = (_m[2] || 'mm').toLowerCase();
+                if (_u === 'in') return _v * 25.4;
+                if (_u === 'pt') return _v / 2.8346;
+                if (_u === 'cm') return _v * 10;
+                return _v; // mm
+              };
+              const xfaGeomMap = new Map();
+              const _fldTagRe = /<field\b([^>]*)>/gi;
+              let _flt;
+              while ((_flt = _fldTagRe.exec(xmlText)) !== null) {
+                const _a = _flt[1];
+                const _nm = /\bname="([^"]+)"/.exec(_a);
+                if (!_nm) continue;
+                const _g = {
+                  x: _parseMm(/\bx="([^"]+)"/.exec(_a)?.[1]),
+                  y: _parseMm(/\by="([^"]+)"/.exec(_a)?.[1]),
+                  w: _parseMm(/\bw="([^"]+)"/.exec(_a)?.[1]),
+                  h: _parseMm(/\bh="([^"]+)"/.exec(_a)?.[1]),
+                };
+                if (_g.w !== null || _g.h !== null) xfaGeomMap.set(_nm[1], _g);
+              }
+
               // Extrage căile câmpurilor signature din scripturi JavaScript
               // ex: getField("form1[0].MainForm[0].SubformSemnaturaAB[0].SignatureField1[0]")
               const getFieldRe = /getField\(["']([^"']+(?:[Ss]ign|[Ss]emn)[^"']*)["']\)/g;
@@ -114,6 +144,7 @@ router.post('/flows/detect-acroform-fields', _largePdf, async (req, res) => {
                     shortName,
                     page:     null,
                     rect:     null,
+                    xfaRect:  xfaGeomMap.get(shortName) || null,  // coordonate XFA în mm
                     source:   'xfa',
                   });
                 }
@@ -125,7 +156,9 @@ router.post('/flows/detect-acroform-fields', _largePdf, async (req, res) => {
                 const name = sm[1];
                 if (!fieldsMap.has(name)) {
                   fieldsMap.set(name, { name, label: name, shortName: name,
-                                        page: null, rect: null, source: 'xfa' });
+                                        page: null, rect: null,
+                                        xfaRect: xfaGeomMap.get(name) || null,
+                                        source: 'xfa' });
                 }
               }
             } catch(xfaErr) {

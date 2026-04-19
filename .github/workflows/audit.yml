@@ -1,0 +1,66 @@
+# DocFlowAI — Security audit automat
+# Rulat la fiecare push si PR pe main
+# Esueaza build-ul daca sunt vulnerabilitati HIGH sau CRITICAL in dependente
+
+name: Security Audit
+
+on:
+  push:
+    branches: [ main, production ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Rulam saptamanal marti la 08:00 UTC
+    - cron: '0 8 * * 2'
+
+jobs:
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Run security audit (high+critical)
+        run: npm audit --audit-level=high
+        # --audit-level=high: esueaza doar pe HIGH si CRITICAL
+        # moderate/low sunt raportate dar nu blocheaza
+
+      - name: Run syntax check
+        run: npm run check
+
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+    needs: audit
+
+    env:
+      JWT_SECRET: test-jwt-secret-github-actions-2025
+      NODE_ENV: test
+      LOG_LEVEL: error
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Run test suite
+        run: npm test

@@ -464,6 +464,7 @@
  */
 
 import express from 'express';
+import compression from 'compression';
 import { readFileSync } from 'fs';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -492,7 +493,17 @@ import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
 
-import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb } from './db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, markDbReady } from './db/index.mjs';
+import { runMigrations as runMigrationsV4 } from './db/migrate.mjs';
+import { seedDefaultForms }    from './db/seeds/forms.mjs';
+import { seedBuiltinPolicies } from './modules/policies/builtins.mjs';
+// ── v4.1 module routers (mounted at /api/v4/*) ────────────────────────────────
+import authV4Router      from './modules/auth/routes.mjs';
+import usersV4Router     from './modules/users/routes.mjs';
+import flowsV4Router     from './modules/flows/routes.mjs';
+import formsV4Router     from './modules/forms/routes.mjs';
+import analyticsV4Router from './modules/analytics/routes.mjs';
+import auditV4Router     from './modules/audit/routes.mjs';
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml, injectTokenVersionChecker } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
@@ -503,6 +514,7 @@ import { injectAdminRateLimiter } from './middleware/auth.mjs';
 import notifRouter, { injectWsPush } from './routes/notifications.mjs';
 import adminRouter, { injectWsSize } from './routes/admin.mjs';
 import flowsRouter, { injectFlowDeps } from './routes/flows/index.mjs'; // ARCH-01: modularizat
+import signerStatusRouter from './routes/flows/signer-status.mjs';
 import verifyRouter  from './routes/verify.mjs';
 import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
@@ -510,8 +522,12 @@ import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
 import { formulareRouter } from './routes/formulare.mjs';
+import { formulareDbRouter } from './routes/formulare-db.mjs';
+import alopRouter from './routes/alop.mjs';
+import convertRouter from './routes/convert.mjs';
 
 const app = express();
+app.use(compression()); // PERF-FIX-07: gzip pentru toate răspunsurile — reduce ~70% din dimensiunea HTML/JSON
 app.set('trust proxy', 1);
 
 // SEC-01: cookie-parser — necesár pentru req.cookies.auth_token (JWT HttpOnly)
@@ -596,10 +612,12 @@ app.use((req, res, next) => {
 // app-level parser a respins deja body-ul cu 413 înainte ca ruta să ruleze.
 // Soluție: middleware adaptiv — detectăm path-urile PDF și aplicăm limita corectă.
 const _LARGE_PDF_PATHS = [
-  '/reinitiate-review',   // POST — upload document revizuit după review
-  '/upload-signed-pdf',   // POST — upload PDF semnat de semnatar
-  '/signing-callback',    // POST — callback provider cloud signing
-  '/sign',                // POST — poate conține signedPdfB64
+  '/flows',                   // POST/PUT — creare/editare flux cu pdfB64
+  '/reinitiate-review',       // POST — upload document revizuit după review
+  '/upload-signed-pdf',       // POST — upload PDF semnat de semnatar
+  '/signing-callback',        // POST — callback provider cloud signing
+  '/sign',                    // POST — poate conține signedPdfB64
+  '/detect-acroform-fields',  // POST — detectare câmpuri AcroForm/XFA din PDF
 ];
 app.use((req, res, next) => {
   const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));
@@ -643,7 +661,25 @@ process.on('uncaughtException',  (err) => logger.error({ err }, 'uncaughtExcepti
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, '../public');
-app.use(express.static(PUBLIC_DIR));
+// PERF-FIX-08: Cache headers pentru assets statice
+// HTML-urile nu se cache-uiesc (contin nonce CSP si se pot schimba la deploy)
+// Imaginile/CSS/JS pot fi cache-uite agresiv — hash-ul din filename asigura invalidarea
+app.use(express.static(PUBLIC_DIR, {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      // HTML: revalidare obligatorie — nu cache local
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    } else if (/\.(png|jpg|jpeg|gif|ico|webp|svg)$/.test(filePath)) {
+      // Imagini: 30 zile — se schimba rar
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+    } else if (/\.(js|css|woff|woff2)$/.test(filePath)) {
+      // JS/CSS: 1 ora — se pot schimba la deploy
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+  }
+}));
 
 // SEC-03: sendHtmlWithNonce eliminat — revenit la sendFile simplu
 
@@ -1004,7 +1040,7 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
         startY = height - topMargin - cellH;
       } else {
         // Jos: deasupra footer-ului
-        const blockBottom = footerY + 32;
+        const blockBottom = footerY + 41;
         const blockTop    = blockBottom + rows * cellH + (rows - 1) * rowGap;
         startY = Math.min(height - topMargin, blockTop) - cellH;
       }
@@ -1334,6 +1370,7 @@ app.use('/', adminRouter);
 // Rute publice verificare (fără autentificare)
 app.use('/', verifyRouter);
 app.use('/', reportRouter);
+app.use('/flows', signerStatusRouter);  // STS recovery: GET /flows/:id/signer-status
 app.use('/', flowsRouter);
 
 // ── Tracking routes neutre (fara 'email'/'click' in path — mai putin blocate de Yahoo/Outlook) ──
@@ -1520,7 +1557,24 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
   }
 });
 app.use('/', templatesRouter);         // Q-06: Template CRUD
-app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD
+app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD (generare PDF)
+app.use('/', formulareDbRouter);      // Formulare DB: DF + ORD workflow P1→P2
+app.use('/', alopRouter);             // ALOP orchestrator: DF + ORD + fluxuri semnare
+app.use('/', convertRouter);          // Conversie fișiere non-PDF la PDF
+
+// ── v4.1 API routes — mounted AFTER all v3 routes, no overlap ────────────────
+app.get('/api/v4/health', (_req, res) => res.json({
+  status: 'ok',
+  version: '4.1.0',
+  modules: ['auth', 'users', 'flows', 'forms', 'analytics', 'audit'],
+}));
+app.use('/api/v4/auth',      authV4Router);
+app.use('/api/v4/users',     usersV4Router);
+app.use('/api/v4/flows',     flowsV4Router);
+app.use('/api/v4/forms',     formsV4Router);
+app.use('/api/v4/analytics', analyticsV4Router);
+app.use('/api/v4/audit',     auditV4Router);
+
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
@@ -1635,6 +1689,17 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   logger.info({ port: PORT, version: APP_VERSION, build: 'b243', builtAt: '2026-03-31' }, 'DocFlowAI server pornit');
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry().then(async () => {
+    // v4.1: run v4 schema migrations + seed forms + seed policies
+    try {
+      await runMigrationsV4(pool);
+      markDbReady();
+      await seedDefaultForms();
+      await seedBuiltinPolicies();
+      logger.info('v4.1: migrations and seeds applied successfully');
+    } catch(e) {
+      logger.error({ err: e }, 'v4.1: migrations/seeds error (non-fatal)');
+    }
+
     // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway
     // Job-urile rămase în processing > 30min nu vor fi niciodată reluate fără acest reset.
     try {

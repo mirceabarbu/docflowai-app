@@ -850,6 +850,316 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS cif          TEXT    DEFAULT NULL,
         ADD COLUMN IF NOT EXISTS compartimente TEXT[] NOT NULL DEFAULT '{}';
     `
+  },
+  {
+    id: '048_notifications_data_col',
+    sql: `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data JSONB DEFAULT NULL;`
+  },
+  {
+    id: '048_formulare_df',
+    sql: `
+      CREATE TABLE IF NOT EXISTS formulare_df (
+        id              UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id          INTEGER NOT NULL REFERENCES organizations(id),
+        version         INTEGER NOT NULL DEFAULT 1,
+        status          TEXT    NOT NULL DEFAULT 'draft',
+        created_by      INTEGER NOT NULL REFERENCES users(id),
+        assigned_to     INTEGER REFERENCES users(id),
+        flow_id         TEXT    DEFAULT NULL,
+
+        cif             TEXT,
+        den_inst_pb     TEXT,
+        subtitlu_df     TEXT,
+        nr_unic_inreg   TEXT,
+        revizuirea      TEXT,
+        data_revizuirii TEXT,
+
+        compartiment_specialitate   TEXT,
+        obiect_fd_reviz_scurt       TEXT,
+        obiect_fd_reviz_lung        TEXT,
+        ckbx_stab_tin_cont          TEXT,
+        ckbx_ramane_suma            TEXT,
+        ramane_suma                 TEXT,
+        rows_val                    JSONB NOT NULL DEFAULT '[]',
+        ckbx_fara_ang_emis_ancrt    TEXT,
+        ckbx_cu_ang_emis_ancrt      TEXT,
+        ckbx_sting_ang_in_ancrt     TEXT,
+        ckbx_fara_plati_ang_in_ancrt TEXT,
+        ckbx_cu_plati_ang_in_mmani  TEXT,
+        ckbx_ang_leg_emise_ct_an_urm TEXT,
+        rows_plati                  JSONB NOT NULL DEFAULT '[]',
+
+        ckbx_secta_inreg_ctrl_ang   TEXT,
+        ckbx_fara_inreg_ctrl_ang    TEXT,
+        sum_fara_inreg_ctrl_crdbug  TEXT,
+        ckbx_interzis_emit_ang      TEXT,
+        ckbx_interzis_intrucat      TEXT,
+        intrucat                    TEXT,
+        rows_ctrl                   JSONB NOT NULL DEFAULT '[]',
+
+        submitted_at  TIMESTAMPTZ,
+        completed_at  TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at    TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_org    ON formulare_df(org_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_p1     ON formulare_df(created_by);
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_p2     ON formulare_df(assigned_to) WHERE assigned_to IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_status ON formulare_df(org_id, status) WHERE deleted_at IS NULL;
+    `
+  },
+  {
+    id: '049_formulare_ord',
+    sql: `
+      CREATE TABLE IF NOT EXISTS formulare_ord (
+        id              UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id          INTEGER NOT NULL REFERENCES organizations(id),
+        version         INTEGER NOT NULL DEFAULT 1,
+        status          TEXT    NOT NULL DEFAULT 'draft',
+        created_by      INTEGER NOT NULL REFERENCES users(id),
+        assigned_to     INTEGER REFERENCES users(id),
+        df_id           UUID    REFERENCES formulare_df(id),
+        flow_id         TEXT    DEFAULT NULL,
+
+        cif             TEXT,
+        den_inst_pb     TEXT,
+        nr_ordonant_pl  TEXT,
+        data_ordont_pl  TEXT,
+
+        nr_unic_inreg           TEXT,
+        beneficiar              TEXT,
+        documente_justificative TEXT,
+        iban_beneficiar         TEXT,
+        cif_beneficiar          TEXT,
+        banca_beneficiar        TEXT,
+        inf_pv_plata            TEXT,
+        inf_pv_plata1           TEXT,
+
+        rows JSONB NOT NULL DEFAULT '[]',
+
+        submitted_at  TIMESTAMPTZ,
+        completed_at  TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at    TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_org    ON formulare_ord(org_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_p1     ON formulare_ord(created_by);
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_p2     ON formulare_ord(assigned_to) WHERE assigned_to IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_status ON formulare_ord(org_id, status) WHERE deleted_at IS NULL;
+    `
+  },
+  {
+    id: '050_formulare_capturi',
+    sql: `
+      CREATE TABLE IF NOT EXISTS formulare_capturi (
+        id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        form_type   TEXT    NOT NULL,
+        form_id     UUID    NOT NULL,
+        uploaded_by INTEGER NOT NULL REFERENCES users(id),
+        filename    TEXT,
+        mimetype    TEXT,
+        size_bytes  INTEGER,
+        data        BYTEA   NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_formulare_capturi_form ON formulare_capturi(form_type, form_id);
+    `
+  },
+  {
+    id: '051_beneficiari',
+    sql: `
+      CREATE TABLE IF NOT EXISTS beneficiari (
+        id        SERIAL PRIMARY KEY,
+        org_id    INTEGER REFERENCES organizations(id),
+        denumire  TEXT NOT NULL,
+        cif       VARCHAR(20),
+        iban      VARCHAR(34),
+        banca     TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_beneficiari_org ON beneficiari(org_id);
+    `
+  },
+  {
+    id: '052_formulare_ord_compartiment',
+    sql: `
+      ALTER TABLE formulare_ord
+        ADD COLUMN IF NOT EXISTS compartiment_specialitate TEXT;
+    `
+  },
+  {
+    id: '053_formulare_motiv_returnare',
+    sql: `
+      ALTER TABLE formulare_df  ADD COLUMN IF NOT EXISTS motiv_returnare TEXT;
+      ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS motiv_returnare TEXT;
+    `
+  },
+  {
+    id: '054_alop_sabloane_schema',
+    sql: `
+      DO $do$ DECLARE has_old boolean;
+      BEGIN
+        -- Sigur dacă tabela nu există încă (creată ulterior de runMigrationsV4)
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_sabloane'
+        ) THEN RETURN; END IF;
+
+        -- Adaugă coloanele noi (no-op dacă există deja)
+        ALTER TABLE alop_sabloane
+          ADD COLUMN IF NOT EXISTS df_semnatari_sablon   JSONB DEFAULT '[]',
+          ADD COLUMN IF NOT EXISTS ord_semnatari_sablon  JSONB DEFAULT '[]',
+          ADD COLUMN IF NOT EXISTS lichidare_sablon      JSONB DEFAULT '{}';
+
+        -- Verifică dacă există coloanele vechi
+        SELECT EXISTS(
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='alop_sabloane'
+            AND column_name='signatari_angajare'
+        ) INTO has_old;
+
+        IF has_old THEN
+          EXECUTE $u$
+            UPDATE alop_sabloane
+            SET df_semnatari_sablon  = COALESCE(signatari_angajare, '[]'::jsonb),
+                ord_semnatari_sablon = COALESCE(signatari_ordonantare, '[]'::jsonb),
+                lichidare_sablon     = COALESCE(
+                  CASE WHEN signatari_lichidare IS NOT NULL
+                       AND jsonb_array_length(signatari_lichidare) > 0
+                  THEN signatari_lichidare->0 ELSE '{}'::jsonb END, '{}'::jsonb)
+            WHERE df_semnatari_sablon = '[]'::jsonb
+          $u$;
+          ALTER TABLE alop_sabloane
+            DROP COLUMN IF EXISTS signatari_angajare,
+            DROP COLUMN IF EXISTS signatari_lichidare,
+            DROP COLUMN IF EXISTS signatari_ordonantare,
+            DROP COLUMN IF EXISTS signatari_plata;
+        END IF;
+
+        -- Setează defaults cu structura de roluri conform OMF 1140/2025
+        ALTER TABLE alop_sabloane
+          ALTER COLUMN df_semnatari_sablon SET DEFAULT '[{"order":1,"role":"initiator","user_id":null,"name":""},{"order":2,"role":"sef_compartiment","user_id":null,"name":"","same_as_initiator":false},{"order":3,"role":"responsabil_cab","user_id":null,"name":""},{"order":4,"role":"sef_cab","user_id":null,"name":""},{"order":5,"role":"director_economic","user_id":null,"name":""},{"order":6,"role":"ordonator_credite","user_id":null,"name":""}]',
+          ALTER COLUMN ord_semnatari_sablon SET DEFAULT '[{"order":1,"role":"initiator","user_id":null,"name":""},{"order":2,"role":"responsabil_cab","user_id":null,"name":""},{"order":3,"role":"cfp_propriu","user_id":null,"name":""},{"order":4,"role":"ordonator_credite","user_id":null,"name":""}]';
+
+      END $do$;
+    `
+  },
+  {
+    id: '055_alop_instances_semnatari',
+    sql: `
+      ALTER TABLE alop_instances
+        ADD COLUMN IF NOT EXISTS df_semnatari  JSONB DEFAULT '[]',
+        ADD COLUMN IF NOT EXISTS ord_semnatari JSONB DEFAULT '[]',
+        ADD COLUMN IF NOT EXISTS lichidare_confirmed_by INTEGER;
+      DO $$ BEGIN
+        ALTER TABLE alop_instances
+          ADD CONSTRAINT alop_lichidare_confirmed_by_fk
+          FOREIGN KEY (lichidare_confirmed_by) REFERENCES users(id);
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `
+  },
+  {
+    id: '056_formulare_df_revizuiri',
+    sql: `
+      ALTER TABLE formulare_df
+        ADD COLUMN IF NOT EXISTS revizie_nr    INTEGER DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS parent_df_id  UUID REFERENCES formulare_df(id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS este_revizie  BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS revizie_motiv TEXT,
+        ADD COLUMN IF NOT EXISTS revizie_at    TIMESTAMPTZ;
+
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_parent
+        ON formulare_df(parent_df_id)
+        WHERE parent_df_id IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_nr_unic
+        ON formulare_df(nr_unic_inreg, org_id)
+        WHERE nr_unic_inreg IS NOT NULL;
+
+      UPDATE formulare_df
+        SET revizie_nr = 0, este_revizie = FALSE
+        WHERE revizie_nr IS NULL;
+    `
+  },
+  {
+    id: '057_formulare_df_revizie_an_urmator',
+    sql: `
+      ALTER TABLE formulare_df
+        ADD COLUMN IF NOT EXISTS este_revizie_an_urmator BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS total_val_prec          NUMERIC(15,2);
+    `
+  },
+  {
+    id: '058_formulare_ord_img2',
+    sql: `
+      ALTER TABLE formulare_ord
+        ADD COLUMN IF NOT EXISTS img2 TEXT;
+    `
+  },
+  {
+    id: '059_alop_lichidare_documente',
+    sql: `
+      ALTER TABLE alop_instances
+        ADD COLUMN IF NOT EXISTS lichidare_nr_factura   TEXT,
+        ADD COLUMN IF NOT EXISTS lichidare_data_factura DATE,
+        ADD COLUMN IF NOT EXISTS lichidare_nr_pv        TEXT;
+    `
+  },
+  {
+    id: '060_alop_plata_documente',
+    sql: `
+      ALTER TABLE alop_instances
+        ADD COLUMN IF NOT EXISTS plata_nr_ordin      TEXT,
+        ADD COLUMN IF NOT EXISTS plata_data          DATE,
+        ADD COLUMN IF NOT EXISTS plata_suma_efectiva NUMERIC(15,2),
+        ADD COLUMN IF NOT EXISTS plata_observatii    TEXT;
+    `
+  },
+  {
+    id: '061_alop_lichidare_data_pv',
+    sql: `
+      ALTER TABLE alop_instances
+        ADD COLUMN IF NOT EXISTS lichidare_data_pv DATE;
+    `
+  },
+  {
+    id: '062_alop_multi_ord',
+    sql: `
+      CREATE TABLE IF NOT EXISTS alop_ord_cicluri (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        alop_id UUID NOT NULL REFERENCES alop_instances(id),
+        org_id INTEGER NOT NULL,
+        ciclu_nr INTEGER NOT NULL DEFAULT 1,
+        ord_id UUID REFERENCES formulare_ord(id),
+        ord_flow_id TEXT,
+        lichidare_confirmed_by INTEGER REFERENCES users(id),
+        lichidare_confirmed_at TIMESTAMPTZ,
+        lichidare_nr_factura TEXT,
+        lichidare_data_factura DATE,
+        lichidare_nr_pv TEXT,
+        lichidare_data_pv DATE,
+        lichidare_notes TEXT,
+        plata_confirmed_by INTEGER REFERENCES users(id),
+        plata_confirmed_at TIMESTAMPTZ,
+        plata_nr_ordin TEXT,
+        plata_data DATE,
+        plata_suma_efectiva NUMERIC(15,2),
+        plata_observatii TEXT,
+        status TEXT NOT NULL DEFAULT 'lichidare',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_alop_ord_cicluri_alop
+        ON alop_ord_cicluri(alop_id);
+
+      ALTER TABLE alop_instances
+        ADD COLUMN IF NOT EXISTS suma_totala_platita NUMERIC(15,2) DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS ciclu_curent INTEGER DEFAULT 1;
+    `
   }
 ];
 
@@ -945,6 +1255,8 @@ async function initDbOnce() {
   DB_READY = true; DB_LAST_ERROR = null;
   logger.info('DB ready.');
 }
+
+export function markDbReady() { DB_READY = true; DB_LAST_ERROR = null; }
 
 export async function initDbWithRetry() {
   const delays = [1000, 2000, 4000, 8000, 15000];
@@ -1122,5 +1434,35 @@ export function invalidateOrgUserCache(orgId) {
     _userMapCache.delete(String(orgId));
   } else {
     _userMapCache.clear();
+  }
+}
+
+// ── Query helpers for v4 modules ──────────────────────────────────────────────
+export async function query(sql, params) {
+  return pool.query(sql, params);
+}
+
+export async function getOne(sql, params) {
+  const result = await pool.query(sql, params);
+  return result.rows[0] || null;
+}
+
+export async function getMany(sql, params) {
+  const result = await pool.query(sql, params);
+  return result.rows;
+}
+
+export async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
 }

@@ -6,6 +6,7 @@ import { Router, json as expressJson } from 'express';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
+import { convertToPdf, ACCEPTED_EXTENSIONS } from '../../utils/convertToPdf.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -45,6 +46,8 @@ const createFlow = async (req, res) => {
   try {
     if (requireDb(res)) return;
     const body = req.body || {};
+    console.log('🔍 FLOW CREATE meta:', JSON.stringify(body.meta));
+    console.log('🔍 FLOW CREATE dfId type:', typeof body.meta?.dfId, '=', body.meta?.dfId);
     const docName  = String(body.docName  || '').trim();
     const initName = String(body.initName || '').trim();
     const initEmail = String(body.initEmail || '').trim();
@@ -114,6 +117,12 @@ const createFlow = async (req, res) => {
       status: 'pending', signedAt: null, signature: null,
       // b253: păstrat pentru flux ancore (câmpul AcroForm repartizat semnătarului)
       ancoreFieldName: String(s.ancoreFieldName || '').trim() || null,
+      // b253+: coordonate XFA pentru câmpuri fără /Rect în AcroForm (PDF-uri XFA Forexebug)
+      ancoreFieldRect: (s.ancoreFieldRect && typeof s.ancoreFieldRect === 'object' && !Array.isArray(s.ancoreFieldRect))
+        ? { x: s.ancoreFieldRect.x ?? null, y: s.ancoreFieldRect.y ?? null,
+            w: s.ancoreFieldRect.w ?? null, h: s.ancoreFieldRect.h ?? null,
+            page: s.ancoreFieldRect.page ?? null }
+        : null,
     }));
     normalizedSigners.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
     normalizedSigners.forEach((s, i) => { s.status = i === 0 ? 'current' : 'pending'; });
@@ -131,6 +140,20 @@ const createFlow = async (req, res) => {
 
     const flowId = _newFlowId(initInstitutie);
     let finalPdfB64 = body.pdfB64 ?? null;
+
+    // Conversie automată fișiere non-PDF (DOCX, XLSX, imagini) la PDF
+    if (finalPdfB64 && body.originalFileName) {
+      try {
+        const rawB64 = finalPdfB64.includes('base64,') ? finalPdfB64.split('base64,')[1] : finalPdfB64;
+        const inputBuf = Buffer.from(rawB64, 'base64');
+        const convertedBuf = await convertToPdf(inputBuf, body.originalFileName);
+        finalPdfB64 = convertedBuf.toString('base64');
+      } catch(convErr) {
+        logger.warn({ err: convErr, originalFileName: body.originalFileName }, 'convertToPdf non-fatal, using original');
+      }
+    }
+    // PDF-ul convertit fără footer — pentru reinitiate (dacă fișierul era non-PDF, body.pdfB64 era DOCX/imagine)
+    const preFooterPdfB64 = finalPdfB64;
 
     // flowType 'ancore': PDF-ul NU se modifica deloc — nici footer stamp.
     // Formularele oficiale (Formular 17 etc.) pot contine semnaturi de certificare
@@ -171,7 +194,10 @@ const createFlow = async (req, res) => {
       initFunctie, institutie: initInstitutie, compartiment: initCompartiment,
       meta: body.meta || {}, flowType: body.flowType || 'tabel',
       urgent: !!(body.urgent),
-      originalPdfB64: body.pdfB64 ?? null,  // PDF curat, fără footer — pentru reinitiate
+      status: 'active',
+      completed: false,
+      completedAt: null,
+      originalPdfB64: preFooterPdfB64,  // PDF curat (convertit dacă era non-PDF), fără footer — pentru reinitiate
       pdfB64: finalPdfB64,
       signers: normalizedSigners,
       createdAt, updatedAt: new Date().toISOString(),
@@ -181,6 +207,69 @@ const createFlow = async (req, res) => {
     const initIsSigner = first && first.email.toLowerCase() === initEmail.toLowerCase();
     if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
+    // PASUL 3: Leagă flow_id de formulare_df / formulare_ord dacă meta.dfId / ordId e prezent
+    if (body.meta?.dfId && pool) {
+      pool.query(
+        `UPDATE formulare_df SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
+        [flowId, body.meta.dfId, orgId]
+      ).catch(e => logger.warn({ err: e }, 'formulare_df link flow_id non-fatal'));
+    }
+    if (body.meta?.ordId && pool) {
+      pool.query(
+        `UPDATE formulare_ord SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
+        [flowId, body.meta.ordId, orgId]
+      ).catch(e => logger.warn({ err: e }, 'formulare_ord link flow_id non-fatal'));
+    }
+    // PASUL 4: Auto link-df-flow / ord-flow pe alop_instances
+    if (body.meta?.dfId && pool) {
+      await pool.query(
+        `UPDATE alop_instances
+         SET df_flow_id = $1, updated_at = NOW()
+         WHERE df_id = $2 AND df_flow_id IS NULL AND cancelled_at IS NULL`,
+        [flowId, body.meta.dfId]
+      ).catch(e => logger.warn({ err: e }, 'alop link df_flow_id non-fatal'));
+      console.log('🔗 AUTO link-df-flow:', body.meta.dfId, '->', flowId);
+      // Edge case: fluxul tocmai creat e deja completed → tranziție ALOP la lichidare
+      try {
+        const flowRow = await pool.query(`SELECT data FROM flows WHERE id = $1`, [flowId]);
+        const fData = flowRow.rows[0]?.data;
+        if (fData?.completed === true || fData?.status === 'completed') {
+          await pool.query(
+            `UPDATE formulare_df SET status='aprobat', updated_at=NOW()
+             WHERE flow_id=$1 AND status!='aprobat'`, [flowId]
+          );
+          await pool.query(
+            `UPDATE alop_instances
+             SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()
+             WHERE df_flow_id=$1 AND status='angajare'`, [flowId]
+          );
+        }
+      } catch(e) { logger.warn({ err: e }, 'alop edge-case completed transition non-fatal'); }
+    }
+    if (body.meta?.ordId && pool) {
+      await pool.query(
+        `UPDATE alop_instances
+         SET ord_flow_id = $1, updated_at = NOW()
+         WHERE ord_id = $2 AND ord_flow_id IS NULL AND cancelled_at IS NULL`,
+        [flowId, body.meta.ordId]
+      ).catch(e => logger.warn({ err: e }, 'alop link ord_flow_id non-fatal'));
+      // Edge case: fluxul tocmai creat e deja completed → tranziție ALOP la plata
+      try {
+        const flowRow2 = await pool.query(`SELECT data FROM flows WHERE id = $1`, [flowId]);
+        const fData2 = flowRow2.rows[0]?.data;
+        if (fData2?.completed === true || fData2?.status === 'completed') {
+          await pool.query(
+            `UPDATE formulare_ord SET status='aprobat', updated_at=NOW()
+             WHERE flow_id=$1 AND status!='aprobat'`, [flowId]
+          );
+          await pool.query(
+            `UPDATE alop_instances
+             SET status='plata', ord_completed_at=NOW(), updated_at=NOW()
+             WHERE ord_flow_id=$1 AND status='ordonantare'`, [flowId]
+          );
+        }
+      } catch(e) { logger.warn({ err: e }, 'alop ord edge-case completed transition non-fatal'); }
+    }
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId, eventType: 'FLOW_CREATED', actorIp: _getIp(req), actorEmail: initEmail, payload: { docName: data.docName, signersCount: normalizedSigners.length, urgent: data.urgent } });
 

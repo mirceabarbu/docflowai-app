@@ -4,20 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DocFlowAI — Inițiere flux</title>
+    <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.271">
+    <link rel="stylesheet" href="/css/df/shell.css?v=3.9.271">
+    <link rel="stylesheet" href="/css/df/components.css?v=3.9.271">
+    <link rel="stylesheet" href="/mobile.css?v=3.9.271">
+    <script src="/js/df-shell.js?v=3.9.271"></script>
     <style>
       *{box-sizing:border-box;}
-body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
-      header { position:sticky; top:0; z-index:100; padding: 18px 20px; border-bottom: 1px solid rgba(255,255,255,.08); display:flex; gap:12px; align-items:center; justify-content:space-between; }
-      .brand { font-weight: 800; letter-spacing:.2px; }
-      .tabs { display:flex; gap:8px; }
       button, input, select { font: inherit; }
-      select option{background: var(--card); color: var(--text);} 
-
-      .tabbtn { display:inline-flex;align-items:center;gap:5px;background:rgba(120,160,255,.22);color:#e9eefc;border:1px solid rgba(120,160,255,.45);padding:8px 14px;border-radius:10px;font-size:.85rem;font-weight:500;cursor:pointer;transition:filter .15s,transform .1s;text-decoration:none; }
-      .tabbtn:hover { filter:brightness(1.08);transform:translateY(-1px); }
-      .tabbtn.active { background:rgba(120,160,255,.35);border-color:rgba(120,160,255,.7);font-weight:600; }
+      select option{background: var(--card); color: var(--text);}
       @keyframes pulse-urgent { 0%,100%{box-shadow:0 0 0 0 rgba(255,40,40,.4);} 50%{box-shadow:0 0 0 5px rgba(255,40,40,0);} }
-      main { padding: 18px 20px; max-width: 1100px; margin: 0 auto; }
       .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
       .grid { display:grid; gap:10px; grid-template-columns: repeat(12, 1fr); }
       .col-2 { grid-column: span 2; } .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; } .col-6 { grid-column: span 6; } .col-12 { grid-column: span 12; }
@@ -43,41 +39,19 @@ body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9ee
       tr.drag-over td { background: rgba(124,92,255,.18) !important; }
     
 
-/* ===== DocFlowAI Theme (from landing index.html) + UI polish ===== */
+/* ===== DocFlowAI Theme ===== */
 :root{
-  --bg:#0b1020;
-  --card:#0f1731;
-  --muted:#9db0ff;
-  --text:#eaf0ff;
-  --sub:#cdd8ff;
-  --line:rgba(255,255,255,.10);
-  --accent:#7c5cff;
+  --bg: var(--df-bg);
+  --card: var(--df-surface);
+  --muted: var(--df-text-3);
+  --text: var(--df-text);
+  --sub: var(--df-text-2);
+  --line: var(--df-border-2);
+  --accent: var(--df-brand);
   --accent2:#2dd4bf;
   --shadow: 0 20px 60px rgba(0,0,0,.35);
   --radius:18px;
 }
-
-body{
-  background:
-    radial-gradient(900px 500px at 18% 8%, rgba(124,92,255,.35), transparent 60%),
-    radial-gradient(700px 450px at 82% 12%, rgba(45,212,191,.22), transparent 55%),
-    var(--bg) !important;
-  color: var(--text) !important;
-}
-
-header{
-  position:sticky !important; top:0 !important; z-index:100 !important;
-  background: rgba(15,23,49,.85) !important;
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--line) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-}
-#userBar { display:flex !important; align-items:center !important; gap:10px !important; font-size:.82rem; }
-#userBar button { background:rgba(255,80,80,.18) !important; border:1px solid rgba(255,80,80,.35) !important; color:#ffaaaa !important; padding:6px 14px !important; border-radius:8px !important; cursor:pointer !important; font-size:.82rem !important; font-weight:600 !important; }
-
-.brand{ color: var(--text) !important; }
 .muted, .card-sub, label{ color: var(--sub) !important; opacity: .9 !important; }
 a{ color: var(--muted) !important; }
 
@@ -195,23 +169,6 @@ th{ color: var(--sub) !important; }
     @keyframes mtl-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(124,92,255,.4);} 50%{box-shadow:0 0 0 5px rgba(124,92,255,0);} }
     .ms-active .mtl-dot { animation:mtl-pulse 2s ease-in-out infinite; }
 </style>
-    <script>
-    // Auth guard — redirect to login if no valid JWT
-    (function() {
-      fetch('/auth/me', { credentials: 'include' })
-        .then(r => {
-          if (!r.ok) {
-            localStorage.removeItem('docflow_user');
-            localStorage.removeItem('docflow_force_pwd');
-            location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
-          }
-        })
-        .catch(() => {
-          location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
-        });
-    })();
-  </script>
-
   <script>
     // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
     // SEC-01: token în cookie HttpOnly — credentials: include trimite cookie automat.
@@ -272,7 +229,6 @@ th{ color: var(--sub) !important; }
     })();
 
   </script>
-  <link rel="stylesheet" href="/mobile.css">
 </head>
 <script>
   // Incarca pdf-lib pentru stampilare PDF la creare flux
@@ -301,27 +257,134 @@ th{ color: var(--sub) !important; }
   }
 </script>
   <body>
-    <header>
-      <div class="brand">
-        <img src="/Logo.png" alt="DocFlowAI" style="height:87px; width:auto; object-fit:contain; display:block;" />
+<div class="df-shell">
+
+  <aside class="df-sidebar">
+    <div class="df-sidebar-brand">
+      <img src="/Logo.png" alt="DocFlowAI"/>
+    </div>
+
+    <div class="df-nav-label">Navigare app</div>
+    <div class="df-nav-group">
+      <a href="/" id="sbFluxNou" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-edit"/></svg>
+        Flux nou
+      </a>
+      <a href="/?tab=flows" id="sbFluxurileMele" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>
+        Fluxurile mele
+      </a>
+      <a href="/templates" class="df-nav-item" id="linkSabloane">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>
+        Șabloane
+      </a>
+      <a href="/formular.html" class="df-nav-item" id="linkFormulare">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg>
+        Formulare
+      </a>
+    </div>
+
+    <div class="df-nav-label">Administrare</div>
+    <div class="df-nav-group">
+      <a href="/admin#dashboard" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+        Dashboard
+      </a>
+      <a href="/admin#utilizatori" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-users"/></svg>
+        Utilizatori
+      </a>
+      <a href="/admin#fluxuri" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-git-branch"/></svg>
+        Fluxuri documente
+      </a>
+      <a href="/admin#rapoarte" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg>
+        Rapoarte
+      </a>
+    </div>
+
+    <div class="df-nav-label">Organizație</div>
+    <div class="df-nav-group">
+      <a href="/admin#organizatii" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>
+        Organizații
+      </a>
+      <a href="/admin#outreach" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-send"/></svg>
+        Outreach
+      </a>
+      <a href="/admin#analytics" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-trending-up"/></svg>
+        Analytics
+      </a>
+      <a href="/admin#audit" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
+        Audit
+      </a>
+    </div>
+
+    <div class="df-nav-label">Comunicare</div>
+    <div class="df-nav-group">
+      <a href="/notifications" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bell"/></svg>
+        Notificări
+      </a>
+    </div>
+  </aside>
+
+  <div class="df-page">
+
+    <header class="df-page-header">
+      <div class="df-page-titles">
+        <h1 id="dfPageTitle">Inițiere flux</h1>
+        <p id="dfPageSubtitle">Încarcă documentul și configurează semnatarii pentru un nou flux de semnare</p>
       </div>
-      <div class="tabs">
-        <button id="tabInit" class="tabbtn active" type="button">📝 Flux nou</button>
-        <button id="tabFluxuri" class="tabbtn" type="button">📂 Fluxuri mele</button>
-        <a href="/templates" class="tabbtn" style="text-decoration:none;" id="linkSabloane">📋 Șabloane</a>
-        <a href="/formular.html" class="tabbtn" style="text-decoration:none;border-color:rgba(30,200,174,.35);color:#1ec8ae;" id="linkFormulare">📄 Formulare</a>
+      <div class="df-page-actions">
+        <div id="userBar"></div>
+        <div class="df-user-menu" id="df-user-menu">
+          <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <div class="df-user-trigger-avatar">U</div>
+            <div class="df-user-trigger-info">
+              <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+              <div class="df-user-trigger-role">Utilizator</div>
+            </div>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-chevron-down"/></svg>
+          </button>
+          <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openChangePwdModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-key"/></svg>
+              Schimbă parola
+            </button>
+            <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-shield"/></svg>
+              Configurare 2FA
+            </button>
+            <a href="/admin" class="df-admin-link" style="text-decoration:none;">
+              <button>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+                Panou admin
+              </button>
+            </a>
+            <div class="df-user-dropdown-divider"></div>
+            <button class="danger" onclick="closeUserMenu();logout()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-log-out"/></svg>
+              Ieșire
+            </button>
+          </div>
+        </div>
       </div>
-      <div id="userBar" style="display:flex; align-items:center; gap:10px; font-size:.82rem;"></div>
     </header>
 
-    <!-- Banner schimbare parolă obligatorie -->
+    <!-- Banner parolă temporară -->
     <div id="forcePwdBanner" style="display:none;background:linear-gradient(135deg,rgba(255,165,0,.18),rgba(255,100,0,.12));border-bottom:1px solid rgba(255,165,0,.4);padding:12px 24px;text-align:center;font-size:.88rem;color:#ffd580;">
       ⚠️ <strong>Parola ta este temporară.</strong> Te rugăm să o schimbi acum pentru securitatea contului.
-      &nbsp;<button onclick="openChangePwdModal()" style="background:rgba(255,165,0,.25);border:1px solid rgba(255,165,0,.5);color:#ffd580;padding:4px 14px;border-radius:7px;cursor:pointer;font-size:.83rem;font-weight:700;">🔑 Schimbă parola</button>
+      &nbsp;<button onclick="openChangePwdModal()" style="background:rgba(255,165,0,.25);border:1px solid rgba(255,165,0,.5);color:#ffd580;padding:4px 14px;border-radius:7px;cursor:pointer;font-size:.83rem;font-weight:700;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-key"/></svg>Schimbă parola</button>
       &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" style="background:transparent;border:none;color:#9db0ff;cursor:pointer;font-size:.85rem;opacity:.6;">✕</button>
     </div>
 
-    <main>
+    <main class="df-page-body">
+
       <!-- INIT -->
       <section id="viewInit">
 
@@ -346,9 +409,9 @@ th{ color: var(--sub) !important; }
             <!-- Rând 2: PDF+Urgent · Compartiment · Instituție -->
             <div class="col-5">
               <label>PDF (atașament maxim 50MB)</label>
-              <input id="pdfFile" type="file" accept="application/pdf" style="display:none;" />
+              <input id="pdfFile" type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp,.jpg,.jpeg,.png,.webp,.gif,.bmp" style="display:none;" />
               <div class="row" style="gap:8px; align-items:center; flex-wrap:nowrap; margin-top:2px;">
-                <button id="btnChoosePdf" class="btn secondary" type="button" style="width:auto; flex-shrink:0;">📎 Alege</button>
+                <button id="btnChoosePdf" class="btn secondary" type="button" style="width:auto; flex-shrink:0;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.271#ico-paperclip"/></svg>Alege</button>
                 <button id="btnClearPdf" class="btn danger" type="button" disabled style="flex-shrink:0; opacity:.3; pointer-events:none; cursor:default;">Șterge</button>
                 <label id="urgentToggle" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:7px 12px;border-radius:10px;border:1px solid rgba(255,80,80,.25);background:rgba(255,80,80,.06);transition:all .2s;user-select:none;flex-shrink:0;" title="Marchează documentul ca URGENT — semnatarii vor fi notificați cu prioritate înaltă">
                   <input type="checkbox" id="urgentCheck" style="width:16px;height:16px;cursor:pointer;accent-color:#ff4444;" />
@@ -376,10 +439,10 @@ th{ color: var(--sub) !important; }
             <!-- F-06: Documente suport -->
             <div class="col-12">
               <div style="border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 16px;background:rgba(255,255,255,.03);margin-bottom:4px;">
-                <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:8px;">📎 Documente suport <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional, max 5 fișiere × 10 MB (PDF, ZIP, RAR)</span></div>
+                <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:8px;display:inline-flex;align-items:center;gap:6px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-paperclip"/></svg>Documente suport <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional, max 5 fișiere × 10 MB (PDF, ZIP, RAR)</span></div>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                   <label id="attachPickerLabel" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;cursor:pointer;font-size:.83rem;color:#b39dff;font-weight:600;">
-                    ➕ Adaugă fișier
+                    <svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:4px;"><use href="/icons.svg?v=3.9.271#ico-plus"/></svg>Adaugă fișier
                     <input id="attachPicker" type="file" accept=".pdf,.zip,.rar,application/pdf,application/zip,application/x-rar-compressed" multiple style="display:none;" />
                   </label>
                   <span id="attachHint" style="font-size:.78rem;color:var(--muted);">Niciun fișier selectat</span>
@@ -393,11 +456,11 @@ th{ color: var(--sub) !important; }
                 <span style="font-size:.85rem; color:var(--muted); font-weight:600;">Tip document:</span>
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:6px 14px; border-radius:8px; border:1px solid rgba(124,92,255,.4); background:rgba(124,92,255,.1);" id="lblTip1">
                   <input type="radio" name="docType" id="docTypeTabel" value="tabel" checked style="accent-color:#7c5cff; width:14px; height:14px;" onchange="onDocTypeChange()" />
-                  <span style="font-size:.84rem; color:#c4b0ff; font-weight:600;">📋 Cu tabel generat</span>
+                  <span style="font-size:.84rem; color:#c4b0ff; font-weight:600;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>Cu tabel generat</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:6px 14px; border-radius:8px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03);" id="lblTip2">
                   <input type="radio" name="docType" id="docTypeAncore" value="ancore" style="accent-color:#7c5cff; width:14px; height:14px;" onchange="onDocTypeChange()" />
-                  <span style="font-size:.84rem; color:var(--sub); font-weight:600;">🔖 Ancore existente</span>
+                  <span style="font-size:.84rem; color:var(--sub); font-weight:600;">Ancore existente</span>
                 </label>
                 <span id="docTypeHint" style="font-size:.78rem; color:var(--muted); margin-left:4px;">DocFlowAI generează tabelul cu semnatari și ancora pentru semnătură</span>
               </div>
@@ -409,7 +472,7 @@ th{ color: var(--sub) !important; }
                 <div class="row">
                   <button id="btnAdd" class="btn secondary" type="button">+ Adaugă rând</button>
                   <button id="btnDefaults" class="btn secondary" type="button">Roluri implicite</button>
-                  <button id="btnFromTemplate" class="btn secondary" type="button" style="background:rgba(45,212,191,.1);border-color:rgba(45,212,191,.3);color:#2dd4bf;">📋 Din șablon</button>
+                  <button id="btnFromTemplate" class="btn secondary" type="button" style="background:rgba(45,212,191,.1);border-color:rgba(45,212,191,.3);color:#2dd4bf;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>Din șablon</button>
                 </div>
                 <span id="pdfRequiredHint" style="display:none; color:#a0b0d0; font-size:.85em; background:rgba(20,28,50,.9); padding:7px 16px; border-radius:8px; border:1px solid rgba(120,160,255,.3);">📎 Încarcă mai întâi PDF-ul</span>
               </div>
@@ -432,10 +495,10 @@ th{ color: var(--sub) !important; }
                 <!-- Zona detectare câmpuri AcroForm — vizibilă doar pentru ancore -->
                 <div id="ancoreDetectArea" style="display:none; margin-top:10px; padding:12px 16px; background:rgba(45,212,191,.06); border:1px solid rgba(45,212,191,.2); border-radius:10px;">
                   <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <span style="font-size:.85rem; color:#7cf0e0; font-weight:600;">🔍 Câmpuri semnătură detectate în PDF:</span>
+                    <span style="font-size:.85rem; color:#7cf0e0; font-weight:600;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>Câmpuri semnătură detectate în PDF:</span>
                     <button id="btnDetectFields" type="button"
                       style="padding:6px 14px; background:rgba(45,212,191,.15); border:1px solid rgba(45,212,191,.35); border-radius:7px; color:#2dd4bf; cursor:pointer; font-size:.82rem; font-weight:600;">
-                      🔄 Redetectează
+                      <svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:4px;"><use href="/icons.svg?v=3.9.271#ico-refresh"/></svg>Redetectează
                     </button>
                     <span id="detectStatus" style="font-size:.8rem; color:rgba(234,240,255,.5);"></span>
                   </div>
@@ -452,7 +515,7 @@ th{ color: var(--sub) !important; }
             <div class="col-12">
               <div class="row">
                 <button id="btnCreate" class="btn" type="button">Pornește flux</button>
-                <button id="btnRenunta" class="btn danger" type="button" style="display:none;">✕ Renunță la flux</button>
+                <button id="btnRenunta" class="btn danger" type="button" style="display:none;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.271#ico-x"/></svg>Renunță la flux</button>
                 <span id="createResult" class="muted"></span>
               </div>
             </div>
@@ -466,41 +529,45 @@ th{ color: var(--sub) !important; }
           <!-- Linia 1: Titlu + contor + buton refresh -->
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
             <div style="display:flex;align-items:center;gap:10px;">
-              <div style="font-weight:700;font-size:1rem;color:var(--sub);">📂 Fluxurile mele</div>
+              <div style="font-weight:700;font-size:1rem;color:var(--sub);display:inline-flex;align-items:center;gap:7px;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>Fluxurile mele</div>
               <span id="fluxCounter" style="display:none;padding:3px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:20px;font-size:.8rem;color:#c4b5ff;font-weight:700;"></span>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <a href="/bulk-signer.html" style="display:inline-flex;align-items:center;gap:6px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);color:#b39dff;padding:7px 14px;border-radius:10px;font-size:.82rem;font-weight:700;text-decoration:none;cursor:pointer;" title="Semnează mai multe documente dintr-o singură operațiune">✍️ Semnare în masă</a>
-              <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows(1)">🔄 Actualizează</button>
+              <a href="/bulk-signer.html" style="display:inline-flex;align-items:center;gap:6px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);color:#b39dff;padding:7px 14px;border-radius:10px;font-size:.82rem;font-weight:700;text-decoration:none;cursor:pointer;" title="Semnează mai multe documente dintr-o singură operațiune"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-pen-tool"/></svg>Semnare în masă</a>
+              <button id="btnRefreshFluxuri" class="btn secondary" type="button" onclick="loadMyFlows(1)"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.271#ico-refresh"/></svg>Actualizează</button>
             </div>
           </div>
           <!-- Linia 2: Search + filtru status -->
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
             <input type="text" tabindex="-1" autocomplete="username" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
             <input type="password" tabindex="-1" autocomplete="new-password" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
-            <input
-              id="fluxSearch"
-              name="docflow_flux_search_q"
-              type="search"
-              placeholder="🔍 Caută după nume document, inițiator, ID flux..."
-              autocomplete="off"
-              autocapitalize="off"
-              autocorrect="off"
-              spellcheck="false"
-              data-form-type="other"
-              data-lpignore="true"
-              readonly
-              onfocus="this.removeAttribute('readonly')"
-              oninput="this._userTyped=true; debounceLoadFlows()"
-              style="flex:1;min-width:200px;padding:9px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.88rem;outline:none;"
-            />
+            <div class="df-search-wrap">
+              <svg class="df-search-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
+              <input
+                id="fluxSearch"
+                name="docflow_flux_search_q"
+                type="search"
+                placeholder="Caută după nume document, inițiator, ID flux..."
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                data-form-type="other"
+                data-lpignore="true"
+                readonly
+                onfocus="this.removeAttribute('readonly')"
+                oninput="this._userTyped=true; debounceLoadFlows()"
+                class="df-search-input"
+                style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.88rem;outline:none;"
+              />
+            </div>
             <select id="fluxStatusFilter" onchange="loadMyFlows(1)"
               style="padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#eaf0ff;font-size:.85rem;cursor:pointer;">
               <option value="all">Toate statusurile</option>
-              <option value="to_sign">✍️ De semnat</option>
-              <option value="pending">⏳ În curs</option>
-              <option value="completed">✅ Finalizate</option>
-              <option value="refused">⛔ Refuzate</option>
+              <option value="to_sign">De semnat</option>
+              <option value="pending">În curs</option>
+              <option value="completed">Finalizate</option>
+              <option value="refused">Refuzate</option>
             </select>
           </div>
           <div id="fluxuriContent">
@@ -515,6 +582,8 @@ th{ color: var(--sub) !important; }
         </div>
       </section>
     </main>
+  </div>
+</div>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -529,6 +598,7 @@ th{ color: var(--sub) !important; }
 
       // PDF (Varianta A): stocăm PDF-ul în flow ca DataURL base64
       let pdfB64 = null;
+      let originalFileName = null;
 
       function onDocTypeChange() {
         const isTabel = $("docTypeTabel").checked;
@@ -594,35 +664,88 @@ th{ color: var(--sub) !important; }
         }
       }
 
-      $("pdfFile").addEventListener("change", () => {
+      $("pdfFile").addEventListener("change", async () => {
         const clearBtn = $("btnClearPdf");
-        const f = $("pdfFile").files && $("pdfFile").files[0];
-        if (!f){ pdfB64=null; setPdfInfo("Nu ai selectat încă un PDF."); return; }
-        if (f.type !== "application/pdf"){ pdfB64=null; setPdfInfo("❌ Te rog selectează un fișier PDF.", true); return; }
-        if (f.size > 50*1024*1024){ pdfB64=null; setPdfInfo("❌ PDF prea mare — max 50MB. Comprimă documentul și încearcă din nou.", true); $("pdfFile").value=""; return; }
-        setPdfInfo(`Selectat: ${f.name} (${Math.round(f.size/1024)} KB).`);
-        const reader = new FileReader();
-        reader.onload = () => {
-          pdfB64 = reader.result;
-          if (clearBtn) { clearBtn.style.opacity = "1"; clearBtn.style.pointerEvents = "auto"; clearBtn.style.cursor = "pointer"; clearBtn.disabled = false; clearBtn.style.background = "rgba(255,80,80,.15)"; clearBtn.style.borderColor = "rgba(255,80,80,.3)"; clearBtn.style.color = "#ffaaaa"; }
-          $("btnRenunta").style.display = "";
-          validateForm();
-          saveFormState();
-          idb.save(pdfB64);
-          // Auto-fill docName from PDF filename if empty
-          const docNameEl = $("docName");
-          if (docNameEl && !docNameEl.value.trim()) {
-            docNameEl.value = f.name.replace(/\.pdf$/i, "");
+        const f = $("pdfFile").files?.[0];
+        if (!f) { pdfB64=null; originalFileName=null; setPdfInfo("Nu ai selectat încă un fișier."); return; }
+
+        const ACCEPTED = ['.pdf','.docx','.doc','.xlsx','.xls',
+          '.pptx','.ppt','.odt','.ods','.odp',
+          '.jpg','.jpeg','.png','.webp','.gif','.bmp'];
+        const fExt = '.' + f.name.split('.').pop().toLowerCase();
+        if (!ACCEPTED.includes(fExt)) {
+          pdfB64=null; originalFileName=null;
+          setPdfInfo('❌ Tip nesuportat. Acceptăm: PDF, DOCX, XLSX, JPG, PNG etc.', true);
+          return;
+        }
+        if (f.size > 50*1024*1024) {
+          pdfB64=null; originalFileName=null;
+          setPdfInfo('❌ Fișier prea mare — max 50MB.', true);
+          $("pdfFile").value=''; return;
+        }
+
+        // Activează Șterge + Renunță imediat
+        const activateClear = () => {
+          if (clearBtn) {
+            clearBtn.style.opacity='1'; clearBtn.style.pointerEvents='auto';
+            clearBtn.style.cursor='pointer'; clearBtn.disabled=false;
+            clearBtn.style.background='rgba(255,80,80,.15)';
+            clearBtn.style.borderColor='rgba(255,80,80,.3)';
+            clearBtn.style.color='#ffaaaa';
           }
-          const box = $("pdfPreviewBox");
-          if (box) {
-            box.style.display = "block";
-            renderPdfJsInit(pdfB64);
-          }
-          // Dacă tipul de flux e ancore — detectăm câmpurile automat
-          onPdfUploadedForAncore();
+          $("btnRenunta").style.display='';
         };
-        reader.readAsDataURL(f);
+
+        // Auto-fill docName
+        const docNameEl = $("docName");
+        if (docNameEl && !docNameEl.value.trim())
+          docNameEl.value = f.name.replace(/\.[^.]+$/, '');
+
+        if (fExt === '.pdf') {
+          // PDF direct — comportament existent
+          originalFileName = f.name;
+          window._rawFileForConversion = null;
+          setPdfInfo(`Selectat: ${f.name} (${Math.round(f.size/1024)} KB).`);
+          const reader = new FileReader();
+          reader.onload = () => {
+            pdfB64 = reader.result;
+            activateClear(); validateForm(); saveFormState(); idb.save(pdfB64);
+            const box = $("pdfPreviewBox");
+            if (box) { box.style.display='block'; renderPdfJsInit(pdfB64); }
+            onPdfUploadedForAncore();
+          };
+          reader.readAsDataURL(f);
+          return;
+        }
+
+        // Non-PDF — conversie server-side imediată
+        originalFileName = f.name;
+        window._rawFileForConversion = null;
+        pdfB64 = null;
+        setPdfInfo(`⏳ Se convertește ${fExt.replace('.','').toUpperCase()} la PDF...`);
+        activateClear();
+        try {
+          const fd = new FormData();
+          fd.append('file', f, f.name);
+          const resp = await fetch('/api/convert-to-pdf', {
+            method: 'POST', credentials: 'include', body: fd
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(()=>({error:'Eroare conversie'}));
+            setPdfInfo('❌ ' + (err.error||'Conversie eșuată'), true);
+            pdfB64=null; validateForm(); return;
+          }
+          const { pdfB64: converted } = await resp.json();
+          pdfB64 = converted;
+          setPdfInfo(`✅ Convertit din ${fExt.replace('.','').toUpperCase()} — ${Math.round(f.size/1024)} KB.`);
+          validateForm(); saveFormState(); idb.save(pdfB64);
+          const box = $("pdfPreviewBox");
+          if (box) { box.style.display='block'; renderPdfJsInit(pdfB64); }
+          onPdfUploadedForAncore();
+        } catch(e) {
+          setPdfInfo('❌ Eroare la conversie: ' + e.message, true);
+          pdfB64=null; validateForm();
+        }
       });
 
       $("btnChoosePdf").addEventListener("click", () => $("pdfFile").click());
@@ -656,9 +779,11 @@ th{ color: var(--sub) !important; }
         $("btnClearPdf").style.color = "";
         $("pdfFile").value = "";
         pdfB64 = null;
+        originalFileName = null;
+        window._rawFileForConversion = null;
         idb.clear();
         validateForm();
-        setPdfInfo("Nu ai selectat încă un PDF.");
+        setPdfInfo("Nu ai selectat încă un fișier.");
         const box = $("pdfPreviewBox");
         const cont = $("pdfPagesContainer");
         if (box) { if(cont) cont.innerHTML = ""; box.style.display = "none"; }
@@ -667,8 +792,19 @@ th{ color: var(--sub) !important; }
       function showTab(name) {
         $("viewInit").classList.toggle("hidden", name !== "init");
         $("viewFluxuri").classList.toggle("hidden", name !== "fluxuri");
-        $("tabInit").classList.toggle("active", name === "init");
-        $("tabFluxuri").classList.toggle("active", name === "fluxuri");
+        const sbInit = document.getElementById("sbFluxNou");
+        const sbFlows = document.getElementById("sbFluxurileMele");
+        if (sbInit) sbInit.classList.toggle("active", name === "init");
+        if (sbFlows) sbFlows.classList.toggle("active", name === "fluxuri");
+        const titleEl = document.getElementById("dfPageTitle");
+        const subtitleEl = document.getElementById("dfPageSubtitle");
+        if (name === "fluxuri") {
+          if (titleEl) titleEl.textContent = "Fluxurile mele";
+          if (subtitleEl) subtitleEl.textContent = "Vizualizează și gestionează fluxurile create de tine";
+        } else {
+          if (titleEl) titleEl.textContent = "Inițiere flux";
+          if (subtitleEl) subtitleEl.textContent = "Încarcă documentul și configurează semnatarii pentru un nou flux de semnare";
+        }
         if (name === "fluxuri") {
           const fs = $("fluxSearch");
           if (fs && !fs._userTyped) { fs.value = ""; fs.setAttribute("value", ""); }
@@ -678,14 +814,12 @@ th{ color: var(--sub) !important; }
           loadMyFlows();
         }
       }
-      $("tabInit").addEventListener("click", () => { showTab("init"); sessionStorage.setItem("docflow_tab", "init"); });
       // Sabloane: salveaza starea + PDF inainte de navigare
       document.getElementById("linkSabloane")?.addEventListener("click", (e) => {
         sessionStorage.setItem("docflow_tab", "init");
         saveFormState();
         if (pdfB64) idb.save(pdfB64);
       });
-      $("tabFluxuri").addEventListener("click", () => { showTab("fluxuri"); sessionStorage.setItem("docflow_tab", "fluxuri"); });
 
       // Signers table
       const tbody = $("signersTbody");
@@ -1656,6 +1790,16 @@ async function signFromFluxuri(flowId) {
             refreshAllDropdowns?.();
             // Re-sincronizează ÎNTOCMIT după ce dropdown-urile sunt populate
             autoFillFromProfile();
+            // ALOP: aplică semnatari pre-configurați dacă există prefill în așteptare
+            if (window._alopPrefillSigners?.length) {
+              const _alTbody = $("signersTbody");
+              if (_alTbody) {
+                _alTbody.innerHTML = "";
+                window._alopPrefillSigners.forEach(s => _alTbody.appendChild(signerRowTemplate(s)));
+                refreshAllDropdowns?.();
+              }
+              window._alopPrefillSigners = null;
+            }
           }
         } catch(e) { console.warn("Nu s-au putut încărca userii:", e); }
       })();
@@ -1863,27 +2007,37 @@ async function signFromFluxuri(flowId) {
         const _savedTab = sessionStorage.getItem("docflow_tab");
         if (_savedTab === "fluxuri") {
           showTab("fluxuri");
+        } else {
+          showTab("init");
         }
         const _restored = await restoreFormState();
         if (!_restored) {
           setDefaults();
+        }
+        // Preluare PDF + meta din formular.html via sessionStorage (action=new_flow_prefill)
+        if (new URLSearchParams(location.search).get("action") === "new_flow_prefill") {
+          const _prePdf   = sessionStorage.getItem("docflow_prefill_pdf");
+          const _preName  = sessionStorage.getItem("docflow_prefill_name");
+          const _preEmail = sessionStorage.getItem("docflow_prefill_email");
+          if (_prePdf) {
+            pdfB64 = _prePdf;
+            if ($("docName") && _preName)   $("docName").value   = _preName;
+            if ($("initEmail") && _preEmail) $("initEmail").value = _preEmail;
+            if (typeof setPdfInfo === "function") setPdfInfo(`PDF preluat: ${_preName || "(fără nume)"}`);
+            if (typeof showAncoreDetectArea === "function") showAncoreDetectArea();
+            sessionStorage.removeItem("docflow_prefill_pdf");
+            sessionStorage.removeItem("docflow_prefill_name");
+            sessionStorage.removeItem("docflow_prefill_type");
+            sessionStorage.removeItem("docflow_prefill_email");
+          }
         }
       })();
 
       // Completare automată câmpuri inițiator din profilul utilizatorului autentificat
       autoFillFromProfile();
 
-      // Show logged-in user + logout button
+      // Banner parolă temporară
       (function() {
-        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI non-sensibile — OK în localStorage
-        const bar = document.getElementById("userBar");
-        if (!bar) return;
-        const label = u.nume || u.email || "";
-        bar.innerHTML = (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : "") +
-          ((u.role === "admin" || u.role === "org_admin") ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
-          `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
-          `<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_token');localStorage.removeItem('docflow_user');localStorage.removeItem('docflow_force_pwd');location.href='/login';});" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
-        // Banner parolă temporară
         if (localStorage.getItem("docflow_force_pwd") === "1") {
           const banner = document.getElementById("forcePwdBanner");
           if (banner) banner.style.display = "block";
@@ -2090,6 +2244,7 @@ async function signFromFluxuri(flowId) {
         // Obtine functie/compartiment din profilul userului
         const _u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
         $("createResult").textContent = "Se creează...";
+
         const payload = {
           docName: $("docName").value.trim(),
           initName: initNameVal,
@@ -2099,8 +2254,21 @@ async function signFromFluxuri(flowId) {
           initCompartiment: $("initCompartiment")?.value?.trim() || _u.compartiment || '',
           signers: readSigners(),
           pdfB64: pdfB64 ? (pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64) : null,
+          originalFileName: originalFileName || null,
           flowType: getDocType(),
           urgent: !!($("urgentCheck")?.checked),
+          // PASUL 3: meta pentru legătura flux ↔ formulare_df/ord (dfId/ordId + docType)
+          meta: (() => {
+            const _up = new URLSearchParams(location.search);
+            const _docId = _up.get('prefill_doc_id')   || sessionStorage.getItem("docflow_prefill_doc_id");
+            const _dtype = _up.get('prefill_doc_type') || sessionStorage.getItem("docflow_prefill_doc_type");
+            if (!_docId && !_dtype) return undefined;
+            const m = {};
+            if (_docId && _dtype === 'notafd') m.dfId  = _docId;  // UUID string
+            if (_docId && _dtype === 'ordnt')  m.ordId = _docId;  // UUID string
+            if (_dtype) m.docType = _dtype;
+            return m;
+          })(),
         };
 
         try {
@@ -2116,11 +2284,62 @@ async function signFromFluxuri(flowId) {
           localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
           clearFormState(); // flux creat cu succes — sterge draft + IDB
           resetAncoreState(); // resetează câmpurile ancore detectate
+          // Curăță meta-datele prefill din sessionStorage (doc_type după link-flow block)
 
           // F-06: Upload documente suport (async, non-blocking pentru UX)
           if (_attachFiles.length) {
             $("createResult").textContent = `✅ Flux creat. Se încarcă ${_attachFiles.length} document(e) suport...`;
             await _uploadAttachments(j.flowId);
+          }
+
+          // Citire parametri prefill + ALOP din URL (primar) sau sessionStorage (fallback)
+          const _urlParams   = new URLSearchParams(location.search);
+          const _prefDocId   = _urlParams.get('prefill_doc_id')   || sessionStorage.getItem("docflow_prefill_doc_id");
+          const _prefDocType = _urlParams.get('prefill_doc_type') || sessionStorage.getItem("docflow_prefill_doc_type");
+
+          // Auto-asociere document formular (dacă vine din prefill)
+          if (_prefDocId && _prefDocType && j.flowId) {
+            const _pfApi = _prefDocType === "ordnt" ? "/api/formulare-ord" : "/api/formulare-df";
+            try {
+              await fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
+                method: "POST", credentials: "include",
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                body: JSON.stringify({ flow_id: j.flowId })
+              });
+            } catch(_) {}
+            sessionStorage.removeItem("docflow_prefill_doc_id");
+          }
+          sessionStorage.removeItem("docflow_prefill_doc_type"); // cleanup indiferent de ramura if
+
+          // ALOP: leagă fluxul de semnare la dosarul ALOP (non-fatal)
+          const _alopId      = _urlParams.get('alop_id')        || sessionStorage.getItem('alop_id_for_flow')?.split('|')[0];
+          const _alopDocType = _urlParams.get('alop_doc_type')  || sessionStorage.getItem('alop_id_for_flow')?.split('|')[1];
+          console.log('🔍 ALOP check:', '_alopId=', _alopId, 'j.flowId=', j.flowId);
+          if (_alopId && j.flowId) {
+            const _isDfFlow = _alopDocType === "notafd";
+            try {
+              // Link document (df_id / ord_id) dacă nu e deja legat
+              if (_prefDocId) {
+                const _lnkDoc = _isDfFlow ? "link-df" : "link-ord";
+                console.log(`ALOP ${_lnkDoc}: ${_alopId} → ${_prefDocId}`);
+                await fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
+                  method: "POST", credentials: "include",
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                  body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
+                }).catch(e => console.error('❌ link-df FAILED:', e));
+              }
+              // Link fluxul de semnare
+              const _lnkFlow = _isDfFlow ? "link-df-flow" : "link-ord-flow";
+              console.log(`ALOP ${_lnkFlow}: ${_alopId} → ${j.flowId}`);
+              console.log('📤 Calling link-df-flow:', _alopId, 'flowId:', j.flowId);
+              console.log('📤 link-df-flow sending:', _alopId, j.flowId);
+              await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
+                method: "POST", credentials: "include",
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                body: JSON.stringify({ flow_id: j.flowId })
+              }).catch(e => console.error('❌ link-df-flow FAILED:', e));
+            } catch(_) {}
+            sessionStorage.removeItem("alop_id_for_flow");
           }
 
           // Redirect UX:
@@ -2158,7 +2377,37 @@ async function signFromFluxuri(flowId) {
         const params = new URLSearchParams(location.search);
         const flowParam = params.get("flow");
         const tabParam = params.get("tab");
+        const actionParam = params.get("action");
         if (flowParam) { location.replace(`/flow.html?flow=${encodeURIComponent(flowParam)}`); return; }
+        if (actionParam === "new_flow_prefill") {
+          const _pName  = sessionStorage.getItem("docflow_prefill_name");
+          const _pEmail = sessionStorage.getItem("docflow_prefill_email");
+          const _pPdf   = sessionStorage.getItem("docflow_prefill_pdf");
+          const _pType  = sessionStorage.getItem("docflow_prefill_type");
+          if (_pName  && $("docName"))   $("docName").value  = _pName;
+          if (_pEmail && $("initEmail")) $("initEmail").value = _pEmail;
+          if (_pPdf) {
+            pdfB64 = _pPdf;
+            setPdfInfo("✅ Document din formulare (prefill)");
+            setTimeout(() => renderPdfJsInit(pdfB64), 400);
+          }
+          if (_pType === "tabel") {
+            const rTabel = $("docTypeTabel");
+            if (rTabel) { rTabel.checked = true; onDocTypeChange(); }
+          }
+          sessionStorage.removeItem("docflow_prefill_name");
+          sessionStorage.removeItem("docflow_prefill_email");
+          sessionStorage.removeItem("docflow_prefill_pdf");
+          sessionStorage.removeItem("docflow_prefill_type");
+          // ALOP: stochează semnatari pentru aplicare după _dbUsers se încarcă
+          const _alopPS = sessionStorage.getItem("docflow_prefill_signers");
+          if (_alopPS) {
+            try { window._alopPrefillSigners = JSON.parse(_alopPS); } catch(_) {}
+            sessionStorage.removeItem("docflow_prefill_signers");
+          }
+          showTab("init");
+          return;
+        }
         if (tabParam === "flows" || tabParam === "fluxuri") { showTab("fluxuri"); return; }
         if (tabParam === "init") { showTab("init"); return; }
       })();
@@ -2198,12 +2447,12 @@ async function signFromFluxuri(flowId) {
       }
       // ── End PDF.js renderer ────────────────────────────────────────────────
     </script>
-  <script src="/notif-widget.js"></script>
+  <script src="/notif-widget.js?v=3.9.271"></script>
 
 <!-- Modal incarcare document revizuit -->
 <div id="reviewUploadModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:center;justify-content:center;padding:20px;">
   <div style="background:#0f1731;border:1px solid rgba(255,180,0,.3);border-radius:16px;padding:28px;width:100%;max-width:480px;box-shadow:0 24px 64px rgba(0,0,0,.6);">
-    <h3 style="font-size:1rem;font-weight:700;color:#ffd580;margin-bottom:12px;">📤 Încarcă document revizuit</h3>
+    <h3 style="font-size:1rem;font-weight:700;color:#ffd580;margin-bottom:12px;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.271#ico-upload"/></svg>Încarcă document revizuit</h3>
     <p style="font-size:.83rem;color:rgba(205,216,255,.65);margin-bottom:16px;">Selectează documentul PDF revizuit. <strong style="color:#ffaaaa;">Nu poți re-încărca același fișier semnat inițial.</strong> Fluxul va fi reinițiat și toți semnatarii vor semna din nou.</p>
     <input type="file" id="reviewUploadFile" accept=".pdf,application/pdf" style="width:100%;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,180,0,.3);border-radius:10px;color:#eaf0ff;font-size:.88rem;margin-bottom:12px;cursor:pointer;" />
     <div id="reviewUploadMsg" style="font-size:.82rem;min-height:20px;margin-bottom:12px;color:#ffaaaa;"></div>
@@ -2216,7 +2465,7 @@ async function signFromFluxuri(flowId) {
 <!-- Modal schimbare parolă -->
 <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
   <div style="background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:32px;width:360px;max-width:calc(100vw - 32px);box-shadow:0 24px 64px rgba(0,0,0,.6);">
-    <h3 style="margin:0 0 20px;color:#eaf0ff;font-size:1.05rem;">🔑 Schimbă parola</h3>
+    <h3 style="margin:0 0 20px;color:#eaf0ff;font-size:1.05rem;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.271#ico-key"/></svg>Schimbă parola</h3>
     <div style="margin-bottom:12px;">
       <label style="display:block;font-size:.8rem;color:#9db0ff;margin-bottom:5px;">Parola curentă</label>
       <input id="cpCurrent" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#eaf0ff;font-size:.9rem;outline:none;"/>
@@ -2274,7 +2523,7 @@ async function submitChangePwd(){
 <div id="sendEmailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;padding:16px;">
   <div style="background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:28px 32px;width:100%;max-width:520px;position:relative;">
     <button onclick="closeSendEmailModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;font-size:1.3rem;cursor:pointer;">✕</button>
-    <div style="font-size:1.05rem;font-weight:700;color:#eaf0ff;margin-bottom:4px;">📧 Trimite document pe email</div>
+    <div style="font-size:1.05rem;font-weight:700;color:#eaf0ff;margin-bottom:4px;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.271#ico-mail"/></svg>Trimite document pe email</div>
     <div id="semDocNameLabel" style="font-size:.8rem;color:#9db0ff;margin-bottom:20px;"></div>
 
     <div style="display:flex;flex-direction:column;gap:14px;">

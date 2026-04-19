@@ -4,44 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>DocFlowAI — Șabloane</title>
+<link rel="stylesheet" href="/css/df/tokens.css?v=3.9.271">
+<link rel="stylesheet" href="/css/df/shell.css?v=3.9.271">
+<link rel="stylesheet" href="/css/df/components.css?v=3.9.271">
 <style>
   :root {
-    --bg:#080e24;--surface:#0f1731;--surface2:#141e3a;
-    --accent:#7c5cff;--accent2:#2dd4bf;
-    --sub:#9db0ff;--muted:#5a6a9a;--line:rgba(255,255,255,.08);
-    --radius:16px;--danger:#ff5555;
+    --surface: var(--df-surface); --surface2: var(--df-surface-2);
+    --accent: var(--df-brand);
+    --sub: var(--df-text-2); --muted: var(--df-text-3); --line: var(--df-border-2);
+    --radius: var(--df-radius-xl); --danger: var(--df-danger); --bg: var(--df-bg);
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:var(--bg);color:#eaf0ff;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;min-height:100vh;}
-  body::before{content:'';position:fixed;inset:0;
-    background:radial-gradient(ellipse 80% 60% at 20% 10%,rgba(124,92,255,.12) 0%,transparent 60%),
-              radial-gradient(ellipse 60% 50% at 80% 80%,rgba(45,212,191,.08) 0%,transparent 60%);
-    pointer-events:none;z-index:0;}
-  header{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;
-    padding:14px 28px;background:rgba(8,14,36,.85);backdrop-filter:blur(16px);
-    border-bottom:1px solid var(--line);}
-  .logo{display:flex;align-items:center;}
-  .logo img{height:87px;width:auto;object-fit:contain;}
-  .hdr-right{display:flex;align-items:center;gap:10px;}
-  .btn-back{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:7px 14px;
-    border-radius:9px;font-size:.82rem;transition:all .2s;}
-  .btn-back:hover{color:var(--sub);border-color:var(--sub);}
-  .btn-logout{background:transparent;border:1px solid rgba(255,85,85,.3);color:#ff8888;
-    padding:7px 14px;border-radius:9px;font-size:.82rem;cursor:pointer;transition:all .2s;}
-  .btn-logout:hover{background:rgba(255,85,85,.1);}
-  /* Butoane navigare header — identice cu alte pagini */
-  .btn{background:rgba(120,160,255,.22);border:1px solid rgba(120,160,255,.45);color:#e9eefc;
-    padding:8px 14px;border-radius:10px;cursor:pointer;font-size:.88rem;text-decoration:none;
-    display:inline-flex;align-items:center;gap:4px;transition:filter .15s,transform .12s;}
-  .btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
-  .btn.active{background:rgba(120,160,255,.35);border-color:rgba(120,160,255,.7);font-weight:600;}
-  .btn.danger{background:rgba(255,85,85,.18);border-color:rgba(255,85,85,.35);color:#ff8888;}
-  .btn.danger:hover{background:rgba(255,85,85,.28);}
-  .btn.success{background:rgba(45,212,191,.18);border-color:rgba(45,212,191,.35);color:#7cf0e0;}
-  .btn.success:hover{background:rgba(45,212,191,.28);}
-  main{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:36px 24px 80px;}
-  h1{font-size:1.7rem;font-weight:800;margin-bottom:6px;}
-  h1 span{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;}
   .subtitle{color:var(--muted);font-size:.88rem;margin-bottom:32px;}
   .create-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
     padding:28px;margin-bottom:32px;}
@@ -75,7 +48,7 @@
   .shared-row{display:flex;align-items:center;gap:10px;margin-top:14px;}
   .shared-row label{margin:0;text-transform:none;font-size:.85rem;color:var(--sub);cursor:pointer;}
   input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer;}
-  .btn-primary{background:linear-gradient(135deg,var(--accent),#2dd4bf);color:#fff;border:none;
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--df-teal));color:#fff;border:none;
     padding:11px 24px;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;transition:all .15s;}
   .btn-primary:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
   .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
@@ -91,11 +64,11 @@
   .tmpl-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
     padding:20px 22px;transition:border-color .2s,transform .15s;animation:card-in .3s ease both;}
   .tmpl-card:hover{border-color:rgba(124,92,255,.35);transform:translateY(-2px);}
-  .tmpl-card.shared-card{border-left:3px solid var(--accent2);}
+  .tmpl-card.shared-card{border-left:3px solid var(--df-teal);}
   @keyframes card-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
   .tmpl-name{font-size:1rem;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .tmpl-badge{font-size:.65rem;padding:2px 8px;border-radius:20px;font-weight:700;letter-spacing:.06em;}
-  .badge-shared{background:rgba(45,212,191,.15);color:var(--accent2);border:1px solid rgba(45,212,191,.3);}
+  .badge-shared{background:var(--df-teal-bg);color:var(--df-teal);border:1px solid var(--df-teal-bd);}
   .badge-private{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--line);}
   .badge-extern{background:rgba(124,92,255,.12);color:var(--accent);border:1px solid rgba(124,92,255,.25);}
   .tmpl-meta{font-size:.75rem;color:var(--muted);margin-bottom:14px;}
@@ -110,7 +83,7 @@
   .atrib-pill{font-size:.65rem;padding:2px 7px;border-radius:6px;font-weight:700;
     background:rgba(124,92,255,.15);color:var(--accent);border:1px solid rgba(124,92,255,.2);}
   .tmpl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
-  .btn-use{background:linear-gradient(135deg,var(--accent),#2dd4bf);color:#fff;border:none;
+  .btn-use{background:linear-gradient(135deg,var(--accent),var(--df-teal));color:#fff;border:none;
     padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;
     transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:4px;}
   .btn-use:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
@@ -121,6 +94,15 @@
   .btn-sm.danger:hover{background:rgba(255,85,85,.12);border-color:var(--danger);}
   .btn-sm.success{color:#7cf0e0;}
   .btn-sm.success:hover{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.4);}
+  /* Butoane navigare interne (card actions) */
+  .btn{background:rgba(120,160,255,.22);border:1px solid rgba(120,160,255,.45);color:#e9eefc;
+    padding:8px 14px;border-radius:10px;cursor:pointer;font-size:.88rem;text-decoration:none;
+    display:inline-flex;align-items:center;gap:4px;transition:filter .15s,transform .12s;}
+  .btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
+  .btn.danger{background:rgba(255,85,85,.18);border-color:rgba(255,85,85,.35);color:#ff8888;}
+  .btn.danger:hover{background:rgba(255,85,85,.28);}
+  .btn.success{background:rgba(45,212,191,.18);border-color:rgba(45,212,191,.35);color:#7cf0e0;}
+  .btn.success:hover{background:rgba(45,212,191,.28);}
   .empty-state{text-align:center;padding:48px 24px;color:var(--muted);}
   .empty-icon{font-size:2.5rem;margin-bottom:12px;}
   .empty-title{font-size:1rem;font-weight:600;margin-bottom:6px;color:var(--sub);}
@@ -153,77 +135,187 @@
       return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
-  <link rel="stylesheet" href="/mobile.css">
+  <link rel="stylesheet" href="/mobile.css?v=3.9.271">
+  <script src="/js/df-shell.js?v=3.9.271"></script>
+  <script src="/js/df-user-modals.js?v=3.9.271"></script>
 </head>
 <body>
-<header>
-  <div class="logo"><img src="/Logo.png" alt="DocFlowAI" style="height:87px;width:auto;object-fit:contain;display:block;"/></div>
-  <div style="display:flex;gap:8px;align-items:center;">
-    <a href="/" class="btn">📝 Flux nou</a>
-    <a href="/?tab=flows" class="btn">📂 Fluxuri mele</a>
-    <a href="/templates" class="btn active">📋 Șabloane</a>
-  </div>
-  <div class="hdr-right" id="userBar">
-    <!-- populated by JS below -->
-  </div>
-</header>
 
-<main>
-  <div style="font-weight:700; font-size:1rem; color:var(--sub); margin-bottom:6px;">📋 Șabloane</div>
-  <p class="subtitle">Configurează seturi de semnatari reutilizabili pentru fluxuri rapide.</p>
+<div class="df-shell">
+  <aside class="df-sidebar">
+    <div class="df-sidebar-brand">
+      <img src="/Logo.png" alt="DocFlowAI"/>
+    </div>
 
-  <div class="create-card">
-    <h2>➕ Șablon nou</h2>
-    <div class="form-row">
-      <div>
-        <label>Nume șablon *</label>
-        <input id="tName" type="text" placeholder="Ex: Aprobare referat consum"/>
+    <div class="df-nav-label">Navigare app</div>
+    <div class="df-nav-group">
+      <a href="/" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-edit"/></svg>
+        Flux nou
+      </a>
+      <a href="/?tab=flows" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>
+        Fluxurile mele
+      </a>
+      <a href="/templates" class="df-nav-item active">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>
+        Șabloane
+      </a>
+      <a href="/formular.html" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg>
+        Formulare
+      </a>
+    </div>
+
+    <div class="df-nav-label">Administrare</div>
+    <div class="df-nav-group">
+      <a href="/admin#dashboard" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+        Dashboard
+      </a>
+      <a href="/admin#utilizatori" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-users"/></svg>
+        Utilizatori
+      </a>
+      <a href="/admin#fluxuri" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-git-branch"/></svg>
+        Fluxuri documente
+      </a>
+      <a href="/admin#rapoarte" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg>
+        Rapoarte
+      </a>
+    </div>
+
+    <div class="df-nav-label">Organizație</div>
+    <div class="df-nav-group">
+      <a href="/admin#organizatii" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>
+        Organizații
+      </a>
+      <a href="/admin#outreach" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-send"/></svg>
+        Outreach
+      </a>
+      <a href="/admin#analytics" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-trending-up"/></svg>
+        Analytics
+      </a>
+      <a href="/admin#audit" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
+        Audit
+      </a>
+    </div>
+
+    <div class="df-nav-label">Comunicare</div>
+    <div class="df-nav-group">
+      <a href="/notifications" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        Notificări
+      </a>
+    </div>
+  </aside>
+
+  <div class="df-page">
+    <header class="df-page-header">
+      <div class="df-page-titles">
+        <h1>Șabloane</h1>
+        <p>Configurează seturi de semnatari reutilizabili pentru fluxuri rapide</p>
       </div>
-      <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
-        <div class="shared-row">
-          <input type="checkbox" id="tShared"/>
-          <label for="tShared">🏢 Distribuie cu instituția mea</label>
+      <div class="df-page-actions">
+        <div id="userBar"></div>
+        <div class="df-user-menu" id="df-user-menu">
+          <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <div class="df-user-trigger-avatar">U</div>
+            <div class="df-user-trigger-info">
+              <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+              <div class="df-user-trigger-role">Utilizator</div>
+            </div>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-chevron-down"/></svg>
+          </button>
+          <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openChangePwdModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-key"/></svg>
+              Schimbă parola
+            </button>
+            <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-shield"/></svg>
+              Configurare 2FA
+            </button>
+            <a href="/admin" class="df-admin-link" style="text-decoration:none;">
+              <button>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+                Panou admin
+              </button>
+            </a>
+            <div class="df-user-dropdown-divider"></div>
+            <button class="danger" onclick="closeUserMenu();logout()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-log-out"/></svg>
+              Ieșire
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-    <label style="margin-bottom:10px;display:block;">Semnatari (în ordinea semnării) *</label>
-    <table class="signers-table">
-      <thead><tr>
-        <th style="width:32px;"></th>
-        <th style="width:155px;">ATRIBUT</th>
-        <th style="width:190px;">FUNCȚIE</th>
-        <th>NUME ȘI PRENUME</th>
-                <th style="width:90px;"></th>
-      </tr></thead>
-      <tbody id="signersBuilder"></tbody>
-    </table>
-    <button class="add-row-btn" onclick="addSignerRow()">+ Adaugă semnatar</button>
-    <div class="create-actions">
-      <button class="btn-primary" id="btnSave" onclick="saveTemplate()">💾 Salvează șablonul</button>
-      <div id="createMsg"></div>
-    </div>
-  </div>
+    </header>
 
-  <div class="section-header">
-    <span class="section-title">🔒 Șabloanele mele</span>
-    <span class="section-tag" id="myCount">—</span>
-  </div>
-  <div id="myGrid" class="tmpl-grid">
-    <div class="empty-state"><span class="spin"></span></div>
-  </div>
+    <main class="df-page-body">
+      <div class="create-card">
+        <h2><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.271#ico-plus"/></svg>Șablon nou</h2>
+        <div class="form-row">
+          <div>
+            <label>Nume șablon *</label>
+            <input id="tName" type="text" placeholder="Ex: Aprobare referat consum"/>
+          </div>
+          <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
+            <div class="shared-row">
+              <input type="checkbox" id="tShared"/>
+              <label for="tShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>Distribuie cu instituția mea</label>
+            </div>
+          </div>
+        </div>
+        <label style="margin-bottom:10px;display:block;">Semnatari (în ordinea semnării) *</label>
+        <table class="signers-table">
+          <thead><tr>
+            <th style="width:32px;"></th>
+            <th style="width:155px;">ATRIBUT</th>
+            <th style="width:190px;">FUNCȚIE</th>
+            <th>NUME ȘI PRENUME</th>
+                    <th style="width:90px;"></th>
+          </tr></thead>
+          <tbody id="signersBuilder"></tbody>
+        </table>
+        <button class="add-row-btn" onclick="addSignerRow()">+ Adaugă semnatar</button>
+        <div class="create-actions">
+          <button class="btn-primary" id="btnSave" onclick="saveTemplate()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-save"/></svg>Salvează șablonul</button>
+          <div id="createMsg"></div>
+        </div>
+      </div>
 
-  <div id="sharedSection" style="display:none;">
-    <div class="section-header">
-      <span class="section-title">🏢 Șabloane instituție</span>
-      <span class="section-tag" id="sharedCount">—</span>
-    </div>
-    <div id="sharedGrid" class="tmpl-grid"></div>
+      <div class="section-header">
+        <span class="section-title">Șabloanele mele</span>
+        <span class="section-tag" id="myCount">—</span>
+      </div>
+      <div id="myGrid" class="tmpl-grid">
+        <div class="empty-state"><span class="spin"></span></div>
+      </div>
+
+      <div id="sharedSection" style="display:none;">
+        <div class="section-header">
+          <span class="section-title"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>Șabloane instituție</span>
+          <span class="section-tag" id="sharedCount">—</span>
+        </div>
+        <div id="sharedGrid" class="tmpl-grid"></div>
+      </div>
+    </main>
   </div>
-</main>
+</div>
 
 <div class="modal-bg" id="editModal" onclick="if(event.target===this)closeEdit()">
   <div class="modal">
-    <h3>✏️ Editează șablon</h3>
+    <h3><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.271#ico-edit-pencil"/></svg>Editează șablon</h3>
     <input type="hidden" id="eId"/>
     <div class="form-row">
       <div>
@@ -233,7 +325,7 @@
       <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
         <div class="shared-row">
           <input type="checkbox" id="eShared"/>
-          <label for="eShared">🏢 Distribuie cu instituția</label>
+          <label for="eShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>Distribuie cu instituția</label>
         </div>
       </div>
     </div>
@@ -252,42 +344,13 @@
     <div id="editMsg" style="margin-top:10px;font-size:.83rem;"></div>
     <div class="modal-acts">
       <button class="btn-sm" onclick="closeEdit()">Anulează</button>
-      <button class="btn-primary" onclick="saveEdit()">💾 Salvează</button>
+      <button class="btn-primary" onclick="saveEdit()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-save"/></svg>Salvează</button>
     </div>
   </div>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
-// SEC-01: token din cookie HttpOnly — eliminat token
-const me = JSON.parse(localStorage.getItem('docflow_user') || '{}');
-fetch('/auth/me', { credentials: 'include' })
-  .then(r => {
-    if (!r.ok) {
-      localStorage.removeItem('docflow_user');
-      location.href = '/login?next=/templates';
-    }
-  })
-  .catch(() => { location.href = '/login?next=/templates'; });
-function logout() {
-  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
-  localStorage.removeItem('docflow_token');
-  localStorage.removeItem('docflow_user');
-  location.href = '/login';
-}
-
-// Populate userBar with name + admin link + logout
-(function() {
-  const u = JSON.parse(localStorage.getItem('docflow_user') || '{}');
-  const bar = document.getElementById('userBar');
-  if (!bar) return;
-  const label = u.nume || u.email || '';
-  bar.innerHTML =
-    (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
-    ((u.role === 'admin' || u.role === 'org_admin') ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
-    `<button onclick="openChangePwdModal()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">🔑 Parolă</button>` +
-    `<button onclick="logout()" style="background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);color:#ffaaaa;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Ieșire</button>`;
-})();
 function hdrs() { return { 'Content-Type': 'application/json' }; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -673,7 +736,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
 
 loadTemplates();
 </script>
-<script src="/notif-widget.js"></script>
+<script src="/notif-widget.js?v=3.9.271"></script>
 
 <!-- Modal schimbare parola -->
 <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
@@ -694,7 +757,7 @@ loadTemplates();
     <div id="tmplPwdMsg" style="font-size:.83rem;margin-bottom:14px;min-height:18px;"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button onclick="closeChangePwdModal()" style="background:transparent;border:1px solid rgba(255,255,255,.15);color:#9db0ff;padding:8px 18px;border-radius:9px;cursor:pointer;font-size:.88rem;">Anuleaza</button>
-      <button id="tmplPwdBtn" onclick="submitChangePwd()" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;color:#fff;padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.88rem;font-weight:700;">Salveaza</button>
+      <button id="tmplPwdBtn" onclick="submitChangePwd()" style="background:linear-gradient(135deg,#7c5cff,var(--df-teal));border:none;color:#fff;padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.88rem;font-weight:700;">Salveaza</button>
     </div>
   </div>
 </div>

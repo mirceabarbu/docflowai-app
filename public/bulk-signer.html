@@ -4,24 +4,30 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Semnare în masă</title>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.274">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.274">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.274">
+  <script src="/js/df-shell.js?v=3.9.271"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.274">
   <style>
-    :root {
-      --bg:#0d1117; --card:rgba(255,255,255,.04); --stroke:rgba(255,255,255,.09);
-      --text:#eaf0ff; --sub:rgba(234,240,255,.55); --r:14px; --shadow:0 8px 32px rgba(0,0,0,.4);
-      --ok:#26d07c; --warn:#ffb020; --bad:#ff4d5a; --purple:#7c5cff; --teal:#2dd4bf;
-    }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh}
-    header{position:sticky;top:0;z-index:100;padding:16px 24px;border-bottom:1px solid var(--stroke);
-      display:flex;align-items:center;gap:16px;background:rgba(13,17,23,.95);backdrop-filter:blur(12px)}
-    header h1{font-size:1rem;font-weight:700;color:var(--purple)}
-    header a{color:var(--sub);text-decoration:none;font-size:.85rem;margin-left:auto;
-      padding:7px 14px;border:1px solid var(--stroke);border-radius:8px;transition:all .15s}
-    header a:hover{border-color:var(--purple);color:var(--text)}
-    main{max-width:760px;margin:40px auto;padding:0 20px 60px}
+    body {
+      --card:   rgba(255,255,255,.04);
+      --sub:    rgba(234,240,255,.55);
+      --r:      14px;
+      --shadow: 0 8px 32px rgba(0,0,0,.4);
+      /* Legacy aliases — used in JS-generated inline styles, do not remove */
+      --stroke: var(--df-border-2);
+      --purple: var(--df-brand);
+      background: var(--df-bg);
+      color: var(--df-text);
+      font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      min-height: 100vh;
+    }
+main.df-page-body{max-width:760px;margin-top:40px;padding:0 20px 60px}
     h2{font-size:1.1rem;font-weight:700;margin-bottom:6px}
     .sub{color:var(--sub);font-size:.85rem;margin-bottom:28px}
-    .card{background:var(--card);border:1px solid var(--stroke);border-radius:var(--r);
+    .card{background:var(--card);border:1px solid var(--df-border-2);border-radius:var(--r);
       padding:20px 24px;margin-bottom:16px}
     .item{display:flex;align-items:center;gap:14px;padding:13px 0;
       border-bottom:1px solid rgba(255,255,255,.05)}
@@ -34,17 +40,17 @@
     .item-status{font-size:.8rem;font-weight:700;padding:3px 10px;border-radius:20px;
       white-space:nowrap;flex-shrink:0}
     .status-pending{background:rgba(255,176,32,.12);color:#ffd580;border:1px solid rgba(255,176,32,.3)}
-    .status-signed{background:rgba(38,208,124,.12);color:#7cf0e0;border:1px solid rgba(38,208,124,.3)}
-    .status-error{background:rgba(255,77,90,.12);color:#ffaaaa;border:1px solid rgba(255,77,90,.3)}
+    .status-signed {background:rgba(38,208,124,.12);color:#7cf0e0;border:1px solid rgba(38,208,124,.3)}
+    .status-error  {background:rgba(255,77,90,.12); color:#ffaaaa;border:1px solid rgba(255,77,90,.3)}
     .status-waiting{background:rgba(124,92,255,.12);color:#b39dff;border:1px solid rgba(124,92,255,.3)}
     .btn{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:10px;
       font-size:.9rem;font-weight:700;cursor:pointer;border:none;transition:all .15s}
-    .btn-primary{background:linear-gradient(135deg,var(--purple),var(--teal));color:#fff}
+    .btn-primary{background:linear-gradient(135deg,var(--df-brand),var(--df-teal));color:#fff}
     .btn-primary:disabled{opacity:.45;cursor:not-allowed}
-    .btn-sec{background:rgba(255,255,255,.06);border:1px solid var(--stroke);color:var(--sub)}
+    .btn-sec{background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);color:var(--sub)}
     .progress-wrap{background:rgba(255,255,255,.06);border-radius:999px;height:6px;
       overflow:hidden;margin:12px 0}
-    .progress-bar{height:100%;background:linear-gradient(90deg,var(--purple),var(--teal));
+    .progress-bar{height:100%;background:linear-gradient(90deg,var(--df-brand),var(--df-teal));
       border-radius:999px;transition:width .4s ease;width:0%}
     #phase-init{display:block}
     #phase-wait{display:none}
@@ -55,24 +61,123 @@
     @keyframes spin{to{transform:rotate(360deg)}}
     .alert{padding:12px 16px;border-radius:10px;font-size:.86rem;margin-bottom:16px}
     .alert-err{background:rgba(255,77,90,.1);border:1px solid rgba(255,77,90,.3);color:#ffaaaa}
-    .alert-ok{background:rgba(38,208,124,.1);border:1px solid rgba(38,208,124,.3);color:#7cf0e0}
+    .alert-ok {background:rgba(38,208,124,.1);border:1px solid rgba(38,208,124,.3);color:#7cf0e0}
     .stat-row{display:flex;gap:16px;margin-top:16px;flex-wrap:wrap}
-    .stat{flex:1;min-width:100px;background:rgba(255,255,255,.04);border:1px solid var(--stroke);
+    .stat{flex:1;min-width:100px;background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);
       border-radius:10px;padding:12px 16px;text-align:center}
     .stat-n{font-size:1.8rem;font-weight:800;line-height:1}
     .stat-l{font-size:.76rem;color:var(--sub);margin-top:4px}
-    .stat-n.ok{color:var(--ok)} .stat-n.warn{color:var(--warn)} .stat-n.bad{color:var(--bad)}
+    .stat-n.ok  {color:var(--df-success)}
+    .stat-n.warn{color:var(--df-warning)}
+    .stat-n.bad {color:var(--df-danger)}
   </style>
 </head>
 <body>
 
-<header>
-  <span style="font-size:1.1rem">📋</span>
-  <h1>DocFlowAI — Semnare în masă</h1>
-  <a href="/semdoc-initiator.html">← Înapoi la fluxuri</a>
+<div class="df-shell">
+
+<aside class="df-sidebar">
+  <div class="df-sidebar-brand">
+    <img src="/Logo.png" alt="DocFlowAI"/>
+  </div>
+
+  <div class="df-nav-label">Navigare app</div>
+  <div class="df-nav-group">
+    <a href="/" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-edit"/></svg>
+      Flux nou
+    </a>
+    <a href="/?tab=flows" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>
+      Fluxurile mele
+    </a>
+    <a href="/templates" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>
+      Șabloane
+    </a>
+    <a href="/formular.html" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg>
+      Formulare
+    </a>
+  </div>
+
+  <div class="df-nav-label">Administrare</div>
+  <div class="df-nav-group">
+    <a href="/admin#dashboard" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+      Dashboard
+    </a>
+    <a href="/admin#utilizatori" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-users"/></svg>
+      Utilizatori
+    </a>
+    <a href="/admin#fluxuri" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-git-branch"/></svg>
+      Fluxuri documente
+    </a>
+    <a href="/admin#rapoarte" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg>
+      Rapoarte
+    </a>
+  </div>
+
+  <div class="df-nav-label">Organizație</div>
+  <div class="df-nav-group">
+    <a href="/admin#organizatii" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>
+      Organizații
+    </a>
+    <a href="/admin#outreach" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-send"/></svg>
+      Outreach
+    </a>
+    <a href="/admin#analytics" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-trending-up"/></svg>
+      Analytics
+    </a>
+    <a href="/admin#audit" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
+      Audit
+    </a>
+  </div>
+
+  <div class="df-nav-label">Comunicare</div>
+  <div class="df-nav-group">
+    <a href="/notifications" class="df-nav-item">
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bell"/></svg>
+      Notificări
+    </a>
+  </div>
+
+</aside>
+
+<div class="df-page">
+<header class="df-page-header">
+  <div class="df-page-titles">
+    <h1>Semnare în masă</h1>
+  </div>
+  <div class="df-page-actions">
+    <div id="userBar"></div>
+    <div class="df-user-menu" id="df-user-menu">
+      <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+        <div class="df-user-trigger-avatar">U</div>
+        <div class="df-user-trigger-info">
+          <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+          <div class="df-user-trigger-role">Utilizator</div>
+        </div>
+        <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-chevron-down"/></svg>
+      </button>
+      <div class="df-user-dropdown">
+        <button class="danger" onclick="closeUserMenu();logout()">
+          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-log-out"/></svg>
+          Ieșire
+        </button>
+      </div>
+    </div>
+  </div>
 </header>
 
-<main>
+<main class="df-page-body">
 
   <!-- ── FAZA 1: așteptare după redirect OAuth ── -->
   <div id="phase-wait" style="text-align:center;padding:60px 0">
@@ -452,5 +557,8 @@ function showPhaseDone(j) {
   }
 }
 </script>
+</div><!-- /df-page -->
+
+</div><!-- /df-shell -->
 </body>
 </html>

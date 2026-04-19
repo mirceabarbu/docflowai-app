@@ -14,7 +14,38 @@
  */
 
 import crypto from 'crypto';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { logger } from '../middleware/logger.mjs';
+
+// ── Trusted CA bundle (opțional) ──────────────────────────────────────────
+// Fișier: server/certs/sts-ca-bundle.pem
+// Conține certificate CA publice (STS și alți QTSP) pentru extinderea lanțului.
+// Non-fatal dacă fișierul lipsește — verificarea continuă fără bundle.
+let _trustedCaDers = null; // null = neîncărcat; [] = fișier absent/gol
+
+async function _loadTrustedCas() {
+  if (_trustedCaDers !== null) return _trustedCaDers;
+  _trustedCaDers = [];
+  try {
+    const dir     = dirname(fileURLToPath(import.meta.url));
+    const pemPath = join(dir, '..', 'certs', 'sts-ca-bundle.pem');
+    const pem     = await readFile(pemPath, 'utf8');
+    const re = /-----BEGIN CERTIFICATE-----\r?\n([\s\S]+?)\r?\n-----END CERTIFICATE-----/g;
+    let m;
+    while ((m = re.exec(pem)) !== null) {
+      const der = Buffer.from(m[1].replace(/\s/g, ''), 'base64');
+      _trustedCaDers.push(der);
+    }
+    if (_trustedCaDers.length > 0) {
+      logger.info({ count: _trustedCaDers.length }, 'cert-verify: trusted CA bundle încărcat');
+    }
+  } catch(e) {
+    if (e.code !== 'ENOENT') logger.warn({ err: e }, 'cert-verify: CA bundle error (non-fatal)');
+  }
+  return _trustedCaDers;
+}
 
 // ── OID-uri PDF/X.509 ─────────────────────────────────────────────────────
 const OID = {
@@ -181,7 +212,18 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
     }
 
     // ── L3: Certificat semnatar ──────────────────────────────────────
-    const certs = sd.certificates || [];
+    // Includem și certurile din trusted CA bundle (dacă există)
+    const cmsCerts = sd.certificates || [];
+    const extraCerts = [];
+    try {
+      const trustedDers = await _loadTrustedCas();
+      for (const der of trustedDers) {
+        const ab2  = der.buffer.slice(der.byteOffset, der.byteOffset + der.byteLength);
+        const asn2 = asn1js.fromBER(ab2);
+        if (asn2.offset !== -1) extraCerts.push(new pkijs.Certificate({ schema: asn2.result }));
+      }
+    } catch { /* non-fatal */ }
+    const certs = [...cmsCerts, ...extraCerts];
 
     // Găsim end-entity cert — cel care corespunde signerInfo
     // (nu CA-ul, nu OCSP responder — cel cu keyUsage digitalSignature și fără isCA)
@@ -266,15 +308,55 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
         const getCN = rdn => rdn?.typesAndValues?.find(tv => tv.type === OID.CN)?.value?.valueBlock?.value || '';
         return !getCN(cert.subject).toUpperCase().includes('OCSP');
       });
-      const chain = chainCerts.length >= 2 ? chainCerts :
+      let chain = chainCerts.length >= 2 ? chainCerts :
         nonOCSP.map(cert => {
           const ci = _extractCertInfo(cert, pkijs);
           ci.isEndEntity = cert === signerCert;
           return ci;
         });
+
+      // ── Inferare lanț din issuer CN ─────────────────────────────────
+      // Dacă CMS nu conține CA certs (cazul tipic STS), reconstruim lanțul
+      // din câmpurile issuer ale certificatelor. Marcat isInferred=true.
+      if (chain.length < 2 && chain.length > 0) {
+        const ee = chain[0];
+        const issuerCN = ee.issuer?.CN;
+        // Adăugăm CA Intermediar inferit
+        if (issuerCN && issuerCN !== (ee.subject?.CN || '')) {
+          chain = [...chain, {
+            subject:      { CN: issuerCN, O: ee.issuer?.O || '', OU: '', C: ee.issuer?.C || '', serial: '' },
+            issuer:       { CN: issuerCN, O: ee.issuer?.O || '', C: ee.issuer?.C || '' },
+            serialNumber: '—',
+            isEndEntity:  false,
+            isSelfSigned: false,
+            isCA:         true,
+            isInferred:   true,
+          }];
+        }
+      }
+      // Adăugăm Root CA inferit dacă ultimul element nu e self-signed și are issuer diferit
+      if (chain.length >= 2) {
+        const last = chain[chain.length - 1];
+        const lastIssuerCN = last.issuer?.CN;
+        if (!last.isSelfSigned && lastIssuerCN && lastIssuerCN !== (last.subject?.CN || '')) {
+          const alreadyPresent = chain.some(c => (c.subject?.CN || '') === lastIssuerCN);
+          if (!alreadyPresent) {
+            chain = [...chain, {
+              subject:      { CN: lastIssuerCN, O: last.issuer?.O || '', OU: '', C: last.issuer?.C || '', serial: '' },
+              issuer:       { CN: lastIssuerCN, O: last.issuer?.O || '', C: last.issuer?.C || '' },
+              serialNumber: '—',
+              isEndEntity:  false,
+              isSelfSigned: true,
+              isCA:         true,
+              isInferred:   true,
+            }];
+          }
+        }
+      }
+
       result.chain = chain;
       result.levels.L4.ok   = chain.length >= 2;
-      result.levels.L4.note = `${chain.length} certificate în lanț`;
+      result.levels.L4.note = `${chain.length} certificate în lanț${chain.some(c => c.isInferred) ? ' (CA inferred din certificat)' : ''}`;
 
       // ── L5: OCSP ────────────────────────────────────────────────────
       result.levels.L5 = { name: 'Validitate la semnare (OCSP/CRL)', ok: null };

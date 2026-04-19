@@ -291,7 +291,7 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
     if (nextIdx !== -1) signers.forEach((s, i) => { if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending'; });
     data.signers = signers;
     const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
-    if (allDone) { data.completed = true; data.completedAt = new Date().toISOString(); /* urgent păstrat intenționat — badge URGENT rămâne vizibil în admin și după finalizare */ data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
+    if (allDone) { data.completed = true; data.status = 'completed'; data.completedAt = new Date().toISOString(); /* urgent păstrat intenționat — badge URGENT rămâne vizibil în admin și după finalizare */ data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
     const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
     if (nextSigner) { nextSigner.emailSent = true; nextSigner.notifiedAt = new Date().toISOString(); }
     await saveFlow(flowId, data);
@@ -313,6 +313,39 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
           if (data.initEmail) await _notify({ userEmail: data.initEmail, flowId, type: 'COMPLETED', title: 'Document semnat complet', message: `Documentul „${data.docName}" a fost semnat de toți semnatarii.`, waParams: { docName: data.docName }, urgent: !!(data.urgent) });
           // FEAT-N01: webhook flow.completed (fire-and-forget)
           if (_fireWebhook && data.orgId) _fireWebhook(data.orgId, 'flow.completed', data).catch(() => {});
+          // ALOP: auto-tranziție dosar la finalizarea fluxului de semnare legat
+          try {
+            // Marchează DF ca aprobat: status='aprobat' (coloana stocată);
+            // câmpul `aprobat` e calculat dinamic din flow_id+status în queries
+            await pool.query(
+              `UPDATE formulare_df SET status = 'aprobat', updated_at = NOW() WHERE flow_id = $1`,
+              [flowId]
+            ).catch(() => {});
+            const [alopDf, alopOrd] = await Promise.all([
+              pool.query(`SELECT id, status FROM alop_instances WHERE df_flow_id=$1 AND cancelled_at IS NULL`, [flowId]),
+              pool.query(`SELECT id, status FROM alop_instances WHERE ord_flow_id=$1 AND cancelled_at IS NULL`, [flowId])
+            ]);
+            if (alopDf.rows[0]) {
+              const al = alopDf.rows[0];
+              if (['draft','angajare'].includes(al.status)) {
+                await pool.query(`UPDATE alop_instances SET status='lichidare', df_completed_at=NOW(), updated_at=NOW() WHERE id=$1`, [al.id]);
+                logger.info(`[ALOP] df_flow semnat → lichidare, id=${al.id}`);
+              }
+            }
+            const alopOrdRow = alopOrd.rows[0] || (await pool.query(
+              `SELECT a.id, a.status FROM alop_instances a
+               JOIN alop_ord_cicluri c ON c.alop_id = a.id
+               WHERE c.ord_flow_id = $1 AND a.cancelled_at IS NULL
+               LIMIT 1`,
+              [flowId]
+            )).rows[0];
+            if (alopOrdRow && alopOrdRow.status === 'ordonantare') {
+              await pool.query(`UPDATE alop_instances SET status='plata', ord_completed_at=NOW(), updated_at=NOW() WHERE id=$1`, [alopOrdRow.id]);
+              logger.info(`[ALOP] ord_flow semnat → plata, id=${alopOrdRow.id}`);
+            }
+          } catch(alopErr) {
+            logger.warn({ err: alopErr }, '[ALOP] auto-transition failed (non-fatal)');
+          }
         }
         if (nextSigner?.email) await _notify({ userEmail: nextSigner.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat', message: `Este rândul tău să semnezi documentul „${data.docName}". Documentul conține semnăturile semnatarilor anteriori.`, waParams: { signerName: nextSigner.name || nextSigner.email, docName: data.docName, signerToken: nextSigner.token, initName: data.initName, initFunctie: data.initFunctie, institutie: data.institutie, compartiment: data.compartiment }, urgent: !!(data.urgent) });
       } catch(notifErr) { logger.error({ err: notifErr, flowId }, 'Notificare async esuat'); }
