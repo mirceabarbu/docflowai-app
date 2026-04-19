@@ -4,13 +4,13 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>DocFlowAI — Șabloane</title>
-<link rel="stylesheet" href="/css/df/tokens.css?v=3.9.270">
-<link rel="stylesheet" href="/css/df/shell.css?v=3.9.270">
-<link rel="stylesheet" href="/css/df/components.css?v=3.9.270">
+<link rel="stylesheet" href="/css/df/tokens.css?v=3.9.271">
+<link rel="stylesheet" href="/css/df/shell.css?v=3.9.271">
+<link rel="stylesheet" href="/css/df/components.css?v=3.9.271">
 <style>
   :root {
     --surface: var(--df-surface); --surface2: var(--df-surface-2);
-    --accent: var(--df-brand); --accent2: #2dd4bf;
+    --accent: var(--df-brand);
     --sub: var(--df-text-2); --muted: var(--df-text-3); --line: var(--df-border-2);
     --radius: var(--df-radius-xl); --danger: var(--df-danger); --bg: var(--df-bg);
   }
@@ -48,7 +48,7 @@
   .shared-row{display:flex;align-items:center;gap:10px;margin-top:14px;}
   .shared-row label{margin:0;text-transform:none;font-size:.85rem;color:var(--sub);cursor:pointer;}
   input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer;}
-  .btn-primary{background:linear-gradient(135deg,var(--accent),#2dd4bf);color:#fff;border:none;
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--df-teal));color:#fff;border:none;
     padding:11px 24px;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;transition:all .15s;}
   .btn-primary:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
   .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
@@ -64,11 +64,11 @@
   .tmpl-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
     padding:20px 22px;transition:border-color .2s,transform .15s;animation:card-in .3s ease both;}
   .tmpl-card:hover{border-color:rgba(124,92,255,.35);transform:translateY(-2px);}
-  .tmpl-card.shared-card{border-left:3px solid var(--accent2);}
+  .tmpl-card.shared-card{border-left:3px solid var(--df-teal);}
   @keyframes card-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
   .tmpl-name{font-size:1rem;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .tmpl-badge{font-size:.65rem;padding:2px 8px;border-radius:20px;font-weight:700;letter-spacing:.06em;}
-  .badge-shared{background:rgba(45,212,191,.15);color:var(--accent2);border:1px solid rgba(45,212,191,.3);}
+  .badge-shared{background:var(--df-teal-bg);color:var(--df-teal);border:1px solid var(--df-teal-bd);}
   .badge-private{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--line);}
   .badge-extern{background:rgba(124,92,255,.12);color:var(--accent);border:1px solid rgba(124,92,255,.25);}
   .tmpl-meta{font-size:.75rem;color:var(--muted);margin-bottom:14px;}
@@ -83,7 +83,7 @@
   .atrib-pill{font-size:.65rem;padding:2px 7px;border-radius:6px;font-weight:700;
     background:rgba(124,92,255,.15);color:var(--accent);border:1px solid rgba(124,92,255,.2);}
   .tmpl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
-  .btn-use{background:linear-gradient(135deg,var(--accent),#2dd4bf);color:#fff;border:none;
+  .btn-use{background:linear-gradient(135deg,var(--accent),var(--df-teal));color:#fff;border:none;
     padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;
     transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:4px;}
   .btn-use:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
@@ -135,9 +135,9 @@
       return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.270">
-  <script src="/js/df-shell.js?v=3.9.270"></script>
-  <script src="/js/df-user-modals.js?v=3.9.270"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.271">
+  <script src="/js/df-shell.js?v=3.9.271"></script>
+  <script src="/js/df-user-modals.js?v=3.9.271"></script>
 </head>
 <body>
 
@@ -150,19 +150,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -170,19 +170,19 @@
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
       <a href="/admin#dashboard" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-layout"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
         Dashboard
       </a>
       <a href="/admin#utilizatori" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-users"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-users"/></svg>
         Utilizatori
       </a>
       <a href="/admin#fluxuri" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-git-branch"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-git-branch"/></svg>
         Fluxuri documente
       </a>
       <a href="/admin#rapoarte" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-bar-chart"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg>
         Rapoarte
       </a>
     </div>
@@ -190,19 +190,19 @@
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
       <a href="/admin#organizatii" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-building"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>
         Organizații
       </a>
       <a href="/admin#outreach" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-send"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-send"/></svg>
         Outreach
       </a>
       <a href="/admin#analytics" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-trending-up"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-trending-up"/></svg>
         Analytics
       </a>
       <a href="/admin#audit" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-search"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
         Audit
       </a>
     </div>
@@ -234,26 +234,26 @@
               <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
               <div class="df-user-trigger-role">Utilizator</div>
             </div>
-            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-chevron-down"/></svg>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-chevron-down"/></svg>
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -263,7 +263,7 @@
 
     <main class="df-page-body">
       <div class="create-card">
-        <h2><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.270#ico-plus"/></svg>Șablon nou</h2>
+        <h2><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.271#ico-plus"/></svg>Șablon nou</h2>
         <div class="form-row">
           <div>
             <label>Nume șablon *</label>
@@ -272,7 +272,7 @@
           <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
             <div class="shared-row">
               <input type="checkbox" id="tShared"/>
-              <label for="tShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.270#ico-building"/></svg>Distribuie cu instituția mea</label>
+              <label for="tShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>Distribuie cu instituția mea</label>
             </div>
           </div>
         </div>
@@ -289,7 +289,7 @@
         </table>
         <button class="add-row-btn" onclick="addSignerRow()">+ Adaugă semnatar</button>
         <div class="create-actions">
-          <button class="btn-primary" id="btnSave" onclick="saveTemplate()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.270#ico-save"/></svg>Salvează șablonul</button>
+          <button class="btn-primary" id="btnSave" onclick="saveTemplate()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-save"/></svg>Salvează șablonul</button>
           <div id="createMsg"></div>
         </div>
       </div>
@@ -304,7 +304,7 @@
 
       <div id="sharedSection" style="display:none;">
         <div class="section-header">
-          <span class="section-title"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.270#ico-building"/></svg>Șabloane instituție</span>
+          <span class="section-title"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>Șabloane instituție</span>
           <span class="section-tag" id="sharedCount">—</span>
         </div>
         <div id="sharedGrid" class="tmpl-grid"></div>
@@ -315,7 +315,7 @@
 
 <div class="modal-bg" id="editModal" onclick="if(event.target===this)closeEdit()">
   <div class="modal">
-    <h3><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.270#ico-edit-pencil"/></svg>Editează șablon</h3>
+    <h3><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.271#ico-edit-pencil"/></svg>Editează șablon</h3>
     <input type="hidden" id="eId"/>
     <div class="form-row">
       <div>
@@ -325,7 +325,7 @@
       <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
         <div class="shared-row">
           <input type="checkbox" id="eShared"/>
-          <label for="eShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.270#ico-building"/></svg>Distribuie cu instituția</label>
+          <label for="eShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>Distribuie cu instituția</label>
         </div>
       </div>
     </div>
@@ -344,7 +344,7 @@
     <div id="editMsg" style="margin-top:10px;font-size:.83rem;"></div>
     <div class="modal-acts">
       <button class="btn-sm" onclick="closeEdit()">Anulează</button>
-      <button class="btn-primary" onclick="saveEdit()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.270#ico-save"/></svg>Salvează</button>
+      <button class="btn-primary" onclick="saveEdit()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-save"/></svg>Salvează</button>
     </div>
   </div>
 </div>
@@ -736,7 +736,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
 
 loadTemplates();
 </script>
-<script src="/notif-widget.js?v=3.9.270"></script>
+<script src="/notif-widget.js?v=3.9.271"></script>
 
 <!-- Modal schimbare parola -->
 <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
@@ -757,7 +757,7 @@ loadTemplates();
     <div id="tmplPwdMsg" style="font-size:.83rem;margin-bottom:14px;min-height:18px;"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button onclick="closeChangePwdModal()" style="background:transparent;border:1px solid rgba(255,255,255,.15);color:#9db0ff;padding:8px 18px;border-radius:9px;cursor:pointer;font-size:.88rem;">Anuleaza</button>
-      <button id="tmplPwdBtn" onclick="submitChangePwd()" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;color:#fff;padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.88rem;font-weight:700;">Salveaza</button>
+      <button id="tmplPwdBtn" onclick="submitChangePwd()" style="background:linear-gradient(135deg,#7c5cff,var(--df-teal));border:none;color:#fff;padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.88rem;font-weight:700;">Salveaza</button>
     </div>
   </div>
 </div>

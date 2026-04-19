@@ -4,67 +4,63 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.270">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.270">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.270">
-  <script src="/js/df-shell.js?v=3.9.270"></script>
-  <script src="/js/df-user-modals.js?v=3.9.270"></script>
-  <script src="/js/df-subtabs.js?v=3.9.270"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.270">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.271">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.271">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.271">
+  <script src="/js/df-shell.js?v=3.9.271"></script>
+  <script src="/js/df-user-modals.js?v=3.9.271"></script>
+  <script src="/js/df-subtabs.js?v=3.9.271"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.271">
   <style>
-    :root {
-      --app-bg: var(--df-bg);
-      --app-text: var(--df-text);
-      --app-sub: var(--df-text-2);
-      --app-muted: var(--df-text-3);
-      --app-line: var(--df-border-2);
-      --app-v: var(--df-brand);
-      --app-t: #2dd4bf;
-      --doc-field: #dce6f0;
+    body {
+      --doc-field:       #dce6f0;
       --doc-field-focus: #b8d0e8;
-      --doc-border: #888;
-      --doc-border-lt: #bbb;
+      --doc-border:      #888;
+      --app-p1:          rgba(108,79,240,.15);
+      --app-p1-bdr:      rgba(108,79,240,.3);
+      --app-p2:          rgba(29,200,174,.1);
+      --app-p2-bdr:      rgba(29,200,174,.25);
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html{scroll-behavior:smooth}
 
     /* Tabs */
     .tabs-wrap{padding:16px 0 0}
-    .tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:12px;padding:3px;width:fit-content;border:1px solid var(--app-line)}
-    .tab{padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.86rem;font-weight:700;color:var(--app-muted);border:none;background:none;transition:.2s}
-    .tab:hover{color:var(--app-sub)}
-    .tab.active{background:linear-gradient(135deg,var(--app-v),var(--app-t));color:#fff;box-shadow:0 3px 12px rgba(108,79,240,.3)}
-    .draft-badge{font-size:11px;color:var(--app-muted);margin-left:6px;font-weight:400;opacity:0;transition:opacity .4s}
+    .tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:12px;padding:3px;width:fit-content;border:1px solid var(--df-border-2)}
+    .tab{padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.86rem;font-weight:700;color:var(--df-text-3);border:none;background:none;transition:.2s}
+    .tab:hover{color:var(--df-text-2)}
+    .tab.active{background:linear-gradient(135deg,var(--df-brand),var(--df-teal));color:#fff;box-shadow:0 3px 12px rgba(108,79,240,.3)}
+    .draft-badge{font-size:11px;color:var(--df-text-3);margin-left:6px;font-weight:400;opacity:0;transition:opacity .4s}
     .draft-badge.show{opacity:1}
     /* Outer */
     .outer{padding:16px 0 60px}
     /* Status */
     .status{display:none;padding:9px 14px;border-radius:9px;font-size:.84rem;margin-bottom:14px;align-items:center;gap:8px}
     .status.err{display:flex;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090}
-    .status.ok{display:flex;background:rgba(30,200,174,.08);border:1px solid rgba(30,200,174,.22);color:var(--app-t)}
+    .status.ok{display:flex;background:rgba(30,200,174,.08);border:1px solid rgba(30,200,174,.22);color:var(--df-teal)}
     .status.info{display:flex;background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.22);color:#b0a0ff}
     /* Actions (dark) */
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;align-items:center}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 20px;border-radius:10px;font-size:.86rem;font-weight:800;cursor:pointer;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--app-text);transition:.2s;font-family:inherit}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 20px;border-radius:10px;font-size:.86rem;font-weight:800;cursor:pointer;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--df-text);transition:.2s;font-family:inherit}
     .btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.24)}
-    .btn.primary{background:linear-gradient(135deg,var(--app-v),var(--app-t));border:none;box-shadow:0 6px 24px rgba(108,79,240,.3);color:#fff}
+    .btn.primary{background:linear-gradient(135deg,var(--df-brand),var(--df-teal));border:none;box-shadow:0 6px 24px rgba(108,79,240,.3);color:#fff}
     .btn.primary:hover{filter:brightness(1.08)}
-    .btn.teal{border-color:rgba(30,200,174,.3);color:var(--app-t);background:rgba(30,200,174,.06)}
+    .btn.teal{border-color:rgba(30,200,174,.3);color:var(--df-teal);background:rgba(30,200,174,.06)}
     .btn:disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
     @keyframes spin{to{transform:rotate(360deg)}}
     .spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
     /* Result */
     .result{display:none;background:rgba(12,20,40,.85);border:1px solid rgba(30,200,174,.22);border-radius:12px;padding:18px 20px;margin-top:14px}
     .result.show{display:block}
-    .result-title{font-weight:900;color:var(--app-t);margin-bottom:8px}
+    .result-title{font-weight:900;color:var(--df-teal);margin-bottom:8px}
     .result-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .flow-form{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--app-line)}
+    .flow-form{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--df-border-2)}
     .flow-form.show{display:block}
     .flow-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
     @media(max-width:580px){.flow-grid{grid-template-columns:1fr}}
     .dk-field{display:flex;flex-direction:column;gap:3px}
-    .dk-field label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--app-muted)}
-    .dk-field input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--app-text);font-size:.84rem;padding:8px 10px;outline:none;transition:.2s;font-family:inherit}
+    .dk-field label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--df-text-3)}
+    .dk-field input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--df-text);font-size:.84rem;padding:8px 10px;outline:none;transition:.2s;font-family:inherit}
     .dk-field input:focus{border-color:rgba(108,79,240,.5);background:rgba(108,79,240,.07)}
 
     /* === DOCUMENT (alb, ca formularul oficial) === */
@@ -134,23 +130,23 @@
     .att-inp{display:none}
 
     /* ── Document list panel ── */
-    .docs-panel{background:rgba(255,255,255,.03);border:1px solid var(--app-line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+    .docs-panel{background:rgba(255,255,255,.03);border:1px solid var(--df-border-2);border-radius:12px;padding:14px 16px;margin-bottom:14px}
     .docs-panel-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px}
-    .docs-panel-title{font-size:.8rem;font-weight:700;color:var(--app-sub);text-transform:uppercase;letter-spacing:.06em}
+    .docs-panel-title{font-size:.8rem;font-weight:700;color:var(--df-text-2);text-transform:uppercase;letter-spacing:.06em}
     .docs-list{display:flex;flex-direction:column;gap:5px;max-height:200px;overflow-y:auto}
-    .doc-card{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;border:1px solid var(--app-line);background:rgba(255,255,255,.02);cursor:pointer;transition:.15s}
+    .doc-card{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;border:1px solid var(--df-border-2);background:rgba(255,255,255,.02);cursor:pointer;transition:.15s}
     .doc-card:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.15)}
     .doc-card.active{border-color:rgba(108,79,240,.5);background:rgba(108,79,240,.08)}
     .doc-card-main{flex:1;min-width:0}
-    .doc-card-title{font-size:.82rem;font-weight:700;color:var(--app-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .doc-card-sub{font-size:.72rem;color:var(--app-muted);margin-top:1px}
+    .doc-card-title{font-size:.82rem;font-weight:700;color:var(--df-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .doc-card-sub{font-size:.72rem;color:var(--df-text-3);margin-top:1px}
     .dst{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:.68rem;font-weight:700;white-space:nowrap;flex-shrink:0}
     .dst.draft{background:rgba(108,79,240,.12);color:#b0a0ff;border:1px solid rgba(108,79,240,.2)}
     .dst.pending{background:rgba(255,170,30,.1);color:#ffcc44;border:1px solid rgba(255,170,30,.2)}
-    .dst.completed{background:rgba(30,200,174,.1);color:var(--app-t);border:1px solid rgba(30,200,174,.2)}
+    .dst.completed{background:rgba(30,200,174,.1);color:var(--df-teal);border:1px solid rgba(30,200,174,.2)}
     .dst.aprobat{background:rgba(50,200,80,.1);color:#66dd88;border:1px solid rgba(50,200,80,.2)}
     .dst.returnat{background:rgba(255,140,0,.15);color:#ffaa44;border:1px solid rgba(255,140,0,.3)}
-    .docs-empty{color:var(--app-muted);font-size:.8rem;text-align:center;padding:12px}
+    .docs-empty{color:var(--df-text-3);font-size:.8rem;text-align:center;padding:12px}
     /* ── Locked bar ── */
     .locked-bar{display:none;padding:8px 12px;border-radius:8px;font-size:.8rem;margin-bottom:10px;text-align:center;font-weight:600}
     .locked-bar.show{display:block}
@@ -160,18 +156,18 @@
     .modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:500;align-items:center;justify-content:center}
     .modal-ov.show{display:flex}
     .modal-box{background:#0f1832;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:28px 32px;width:min(620px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:14px}
-    .modal-title{font-size:.95rem;font-weight:800;color:var(--app-text)}
+    .modal-title{font-size:.95rem;font-weight:800;color:var(--df-text)}
     /* BUG1 fix — select dropdown text vizibil în modalul ALOP șablon (dark theme) */
     #alop-sablon-modal select{color:#e8eeff !important;background-color:#1a2040 !important;border-color:rgba(255,255,255,.18) !important}
     #alop-sablon-modal select option{color:#e8eeff !important;background-color:#1a2040 !important}
-    .modal-search{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--app-text);padding:8px 10px;font-size:.84rem;outline:none;width:100%;font-family:inherit}
+    .modal-search{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--df-text);padding:8px 10px;font-size:.84rem;outline:none;width:100%;font-family:inherit}
     .modal-search:focus{border-color:rgba(108,79,240,.5)}
     .modal-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;min-height:80px;max-height:260px}
     .modal-user{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent;transition:.15s}
-    .modal-user:hover{background:rgba(255,255,255,.05);border-color:var(--app-line)}
+    .modal-user:hover{background:rgba(255,255,255,.05);border-color:var(--df-border-2)}
     .modal-user.sel{background:rgba(108,79,240,.1);border-color:rgba(108,79,240,.4)}
-    .modal-u-name{font-size:.83rem;font-weight:700;color:var(--app-text)}
-    .modal-u-sub{font-size:.72rem;color:var(--app-muted)}
+    .modal-u-name{font-size:.83rem;font-weight:700;color:var(--df-text)}
+    .modal-u-sub{font-size:.72rem;color:var(--df-text-3)}
     .modal-acts{display:flex;gap:8px;justify-content:flex-end}
     /* ── P2 field highlight ── */
     .p2-field{border-color:#1ec8ae !important;background:#f0fdf9 !important}
@@ -188,28 +184,28 @@
     .lst-tab{background:transparent;border:none;padding:10px 18px 12px;color:var(--df-text-3);font-size:.88rem;font-weight:500;cursor:pointer;font-family:inherit;position:relative;transition:color .15s;border-bottom:2px solid transparent;margin-bottom:-1px;display:inline-flex;align-items:center;gap:8px}
     .lst-tab:hover{color:var(--df-text)}
     .lst-tab.active{color:var(--df-primary-text);border-bottom-color:var(--df-primary);font-weight:600}
-    .lst-filters{background:rgba(255,255,255,.03);border:1px solid var(--app-line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+    .lst-filters{background:rgba(255,255,255,.03);border:1px solid var(--df-border-2);border-radius:10px;padding:12px 14px;margin-bottom:12px}
     .lst-filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
     .flt-grp{display:flex;flex-direction:column;gap:4px;min-width:110px}
-    .flt-lbl{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--app-muted)}
-    .flt-sel,.flt-inp{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--app-text);font-size:.82rem;padding:6px 8px;outline:none;font-family:inherit;transition:.15s}
+    .flt-lbl{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--df-text-3)}
+    .flt-sel,.flt-inp{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--df-text);font-size:.82rem;padding:6px 8px;outline:none;font-family:inherit;transition:.15s}
     .flt-sel:focus,.flt-inp:focus{border-color:rgba(108,79,240,.5)}
     .flt-sel option{background:#1a1a2e;color:#e0e0e0}
     .flt-inp[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
-    .lst-table-wrap{background:rgba(255,255,255,.02);border:1px solid var(--app-line);border-radius:10px;overflow:hidden;margin-bottom:10px;overflow-x:auto}
+    .lst-table-wrap{background:rgba(255,255,255,.02);border:1px solid var(--df-border-2);border-radius:10px;overflow:hidden;margin-bottom:10px;overflow-x:auto}
     .lst-table{width:100%;border-collapse:collapse;font-size:.82rem}
-    .lst-table th{padding:10px 12px;text-align:left;font-size:.71rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--app-muted);border-bottom:1px solid var(--app-line);white-space:nowrap;background:rgba(255,255,255,.02)}
+    .lst-table th{padding:10px 12px;text-align:left;font-size:.71rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--df-text-3);border-bottom:1px solid var(--df-border-2);white-space:nowrap;background:rgba(255,255,255,.02)}
     .lst-table td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
     .lst-table tbody tr:last-child td{border-bottom:none}
     .lst-table tbody tr:hover{background:rgba(255,255,255,.035);cursor:pointer}
-    .lst-nr{font-weight:700;color:var(--app-text);font-size:.84rem}
-    .lst-sub{font-size:.73rem;color:var(--app-muted);margin-top:2px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .lst-user{font-size:.8rem;color:var(--app-sub)}
-    .lst-date{font-size:.77rem;color:var(--app-muted);white-space:nowrap}
+    .lst-nr{font-weight:700;color:var(--df-text);font-size:.84rem}
+    .lst-sub{font-size:.73rem;color:var(--df-text-3);margin-top:2px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .lst-user{font-size:.8rem;color:var(--df-text-2)}
+    .lst-date{font-size:.77rem;color:var(--df-text-3);white-space:nowrap}
     .stbadge{display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:999px;font-size:.7rem;font-weight:700;white-space:nowrap}
     .stbadge.st-draft{background:rgba(150,150,150,.14);color:#aaa;border:1px solid rgba(150,150,150,.2)}
     .stbadge.st-transmis_p2,.stbadge.st-pending_p2{background:rgba(255,165,30,.1);color:#ffaa44;border:1px solid rgba(255,165,30,.25)}
-    .stbadge.st-completat,.stbadge.st-completed{background:rgba(30,200,174,.1);color:var(--app-t);border:1px solid rgba(30,200,174,.22)}
+    .stbadge.st-completat,.stbadge.st-completed{background:rgba(30,200,174,.1);color:var(--df-teal);border:1px solid rgba(30,200,174,.22)}
     .stbadge.st-generat_pdf{background:rgba(60,140,255,.1);color:#88aaff;border:1px solid rgba(60,140,255,.2)}
     .stbadge.st-transmis_flux{background:rgba(30,80,200,.15);color:#aac0ff;border:1px solid rgba(30,80,200,.2)}
     .stbadge.st-aprobat{background:rgba(50,200,80,.1);color:#66dd88;border:1px solid rgba(50,200,80,.2)}
@@ -219,10 +215,10 @@
     .btn.danger{background:rgba(255,60,60,.15);border:1px solid rgba(255,60,60,.35);color:#ff8888}
     .btn.danger:hover{background:rgba(255,60,60,.25)}
     .lst-pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:6px 0}
-    .lst-page-info{font-size:.82rem;color:var(--app-muted);min-width:160px;text-align:center}
-    .lst-empty{text-align:center;padding:36px 16px;color:var(--app-muted);font-size:.84rem}
+    .lst-page-info{font-size:.82rem;color:var(--df-text-3);min-width:160px;text-align:center}
+    .lst-empty{text-align:center;padding:36px 16px;color:var(--df-text-3);font-size:.84rem}
     .tbl-acts{display:inline-flex;gap:4px;flex-wrap:wrap}
-    .tbl-btn{padding:3px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--app-text);font-size:.72rem;cursor:pointer;transition:.15s;white-space:nowrap;font-family:inherit}
+    .tbl-btn{padding:3px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--df-text);font-size:.72rem;cursor:pointer;transition:.15s;white-space:nowrap;font-family:inherit}
     .tbl-btn:hover{background:rgba(255,255,255,.09)}
     .tbl-btn.danger{border-color:rgba(255,80,80,.3);color:#ff9090}
     .tbl-btn.danger:hover{background:rgba(255,80,80,.1)}
@@ -242,84 +238,83 @@
     .asave-ok{color:#1aaa6e;font-size:.73rem;font-weight:600}
     .asave-pend{color:#f5a623;font-size:.73rem}
     /* ── DF/ORD dark redesign ───────────────────────────────────────────────── */
-    :root{--app-p1:rgba(108,79,240,.15);--app-p1-bdr:rgba(108,79,240,.3);--app-p2:rgba(29,200,174,.1);--app-p2-bdr:rgba(29,200,174,.25)}
-    .df-alop-ctx{font-size:.72rem;color:var(--app-muted);margin-top:8px;margin-bottom:8px;padding:5px 10px;background:rgba(108,79,240,.06);border:1px solid rgba(108,79,240,.15);border-radius:6px;display:none}
+    .df-alop-ctx{font-size:.72rem;color:var(--df-text-3);margin-top:8px;margin-bottom:8px;padding:5px 10px;background:rgba(108,79,240,.06);border:1px solid rgba(108,79,240,.15);border-radius:6px;display:none}
     .df-alop-ctx.show{display:block}
-    .df-progress{display:flex;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid var(--app-line)}
-    .df-step{flex:1;padding:7px 6px;font-size:11px;color:var(--app-muted);text-align:center;border-right:1px solid var(--app-line);transition:.2s}
+    .df-progress{display:flex;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid var(--df-border-2)}
+    .df-step{flex:1;padding:7px 6px;font-size:11px;color:var(--df-text-3);text-align:center;border-right:1px solid var(--df-border-2);transition:.2s}
     .df-step:last-child{border-right:none}
     .df-step.active{background:rgba(108,79,240,.15);color:#b0a0ff;font-weight:600}
-    .df-step.done{background:rgba(29,200,174,.1);color:var(--app-t)}
-    .df-block{border-radius:12px;border:1px solid var(--app-line);margin-bottom:12px;overflow:hidden}
+    .df-step.done{background:rgba(29,200,174,.1);color:var(--df-teal)}
+    .df-block{border-radius:12px;border:1px solid var(--df-border-2);margin-bottom:12px;overflow:hidden}
     .df-block-p1{border-color:var(--app-p1-bdr)}
     .df-block-p2{border-color:var(--app-p2-bdr)}
-    .df-block-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--app-line);background:rgba(255,255,255,.02);flex-wrap:wrap}
+    .df-block-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--df-border-2);background:rgba(255,255,255,.02);flex-wrap:wrap}
     .df-block-p1 .df-block-hdr{background:rgba(108,79,240,.06)}
     .df-block-p2 .df-block-hdr{background:rgba(29,200,174,.05)}
-    .df-block-title{font-size:12px;font-weight:700;color:var(--app-text)}
-    .df-block-desc{font-size:11px;color:var(--app-muted);margin-left:auto}
+    .df-block-title{font-size:12px;font-weight:700;color:var(--df-text)}
+    .df-block-desc{font-size:11px;color:var(--df-text-3);margin-left:auto}
     .df-block-body{padding:18px 20px}
     .df-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.4px}
-    .df-badge-auto{background:rgba(255,255,255,.08);color:var(--app-muted)}
+    .df-badge-auto{background:rgba(255,255,255,.08);color:var(--df-text-3)}
     .df-badge-p1{background:rgba(108,79,240,.2);color:#b0a0ff}
     .df-badge-p2{background:rgba(29,200,174,.2);color:#5dcaa5}
     .df-role-tags{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
     .df-role-tag{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap}
     .df-role-can{background:rgba(108,79,240,.2);color:#b0a0ff}
-    .df-role-no{background:rgba(255,255,255,.05);color:var(--app-muted);text-decoration:line-through}
+    .df-role-no{background:rgba(255,255,255,.05);color:var(--df-text-3);text-decoration:line-through}
     .df-role-done{background:rgba(29,200,174,.2);color:#5dcaa5}
-    .df-lock-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:11px;border-bottom:1px solid var(--app-line)}
+    .df-lock-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:11px;border-bottom:1px solid var(--df-border-2)}
     .df-lock-warn{background:rgba(255,170,30,.08);color:#ffcc44}
     .df-lock-info{background:rgba(108,79,240,.08);color:#b0a0ff}
     .df-lock-ok{background:rgba(29,200,174,.08);color:#5dcaa5}
     /* Override light form elements inside df-block */
-    .df-block-body .di,.df-block-body .dt{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--app-text);font-size:12px;padding:6px 10px;font-family:inherit}
+    .df-block-body .di,.df-block-body .dt{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--df-text);font-size:12px;padding:6px 10px;font-family:inherit}
     .df-block-body select.di{background:#0d1630;color:#e8eeff;-webkit-appearance:none;appearance:none}
     .df-block-body .di:focus,.df-block-body .dt:focus{border-color:rgba(108,79,240,.5);background:rgba(108,79,240,.04)}
     .df-block-body .di.err,.df-block-body .dt.err{border-color:#f87171;background:rgba(248,113,113,.08)}
     .df-block-body .di:disabled,.df-block-body .dt:disabled{opacity:.45;cursor:not-allowed}
-    .df-block-body .dl{font-size:11px;color:var(--app-muted);margin-bottom:3px;margin-top:6px}
+    .df-block-body .dl{font-size:11px;color:var(--df-text-3);margin-bottom:3px;margin-top:6px}
     .df-block-body .dl.req::after{color:#f87171}
-    .df-block-body .dck{font-size:12px;color:var(--app-sub)}
-    .df-block-body .dck input{accent-color:var(--app-v)}
-    .df-block-body .hdr label{color:var(--app-muted)}
-    .df-block-body .doc-hr{border-top:1px solid var(--app-line);margin:10px 0}
-    .df-block-body .dsec{color:var(--app-sub);border-bottom:1px solid var(--app-line);padding-bottom:4px}
-    .df-block-body .nubox{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.02);color:var(--app-sub)}
-    .df-block-body .nubox label{color:var(--app-muted)}
+    .df-block-body .dck{font-size:12px;color:var(--df-text-2)}
+    .df-block-body .dck input{accent-color:var(--df-brand)}
+    .df-block-body .hdr label{color:var(--df-text-3)}
+    .df-block-body .doc-hr{border-top:1px solid var(--df-border-2);margin:10px 0}
+    .df-block-body .dsec{color:var(--df-text-2);border-bottom:1px solid var(--df-border-2);padding-bottom:4px}
+    .df-block-body .nubox{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.02);color:var(--df-text-2)}
+    .df-block-body .nubox label{color:var(--df-text-3)}
     /* Dark table */
     .df-block-body .doc-t{border-collapse:collapse;width:100%}
-    .df-block-body .doc-t th{background:rgba(255,255,255,.06);color:var(--app-sub);border:1px solid rgba(255,255,255,.1);padding:5px 6px;font-size:10px;font-weight:700;text-align:center;vertical-align:middle;line-height:1.3}
-    .df-block-body .doc-t td{border:1px solid rgba(255,255,255,.07);color:var(--app-sub);padding:3px 4px;vertical-align:middle}
-    .df-block-body .doc-t td.tot{font-weight:700;font-size:11px;color:var(--app-text)}
-    .df-block-body .doc-t td.cx{text-align:center;color:var(--app-muted)}
-    .df-block-body .doc-t td.num{text-align:right;color:var(--app-text);-webkit-text-fill-color:var(--app-text);padding-right:4px}
+    .df-block-body .doc-t th{background:rgba(255,255,255,.06);color:var(--df-text-2);border:1px solid rgba(255,255,255,.1);padding:5px 6px;font-size:10px;font-weight:700;text-align:center;vertical-align:middle;line-height:1.3}
+    .df-block-body .doc-t td{border:1px solid rgba(255,255,255,.07);color:var(--df-text-2);padding:3px 4px;vertical-align:middle}
+    .df-block-body .doc-t td.tot{font-weight:700;font-size:11px;color:var(--df-text)}
+    .df-block-body .doc-t td.cx{text-align:center;color:var(--df-text-3)}
+    .df-block-body .doc-t td.num{text-align:right;color:var(--df-text);-webkit-text-fill-color:var(--df-text);padding-right:4px}
     .df-block-body .doc-t tfoot tr,.df-block-body tr.df-total{background:rgba(255,255,255,.05) !important;border-top:1px solid rgba(255,255,255,.15) !important}
-    .df-block-body .doc-t tfoot td,.df-block-body tr.df-total td,.df-block-body tr.df-total th{color:var(--app-sub) !important;-webkit-text-fill-color:var(--app-sub) !important;font-weight:600 !important}
-    .df-block-body .doc-t tfoot td.tot,.df-block-body tr.df-total td.tot{color:var(--app-text) !important;-webkit-text-fill-color:var(--app-text) !important;font-weight:700 !important}
-    .df-block-body .doc-t tfoot td.num,.df-block-body tr.df-total td.num{color:var(--app-text) !important;-webkit-text-fill-color:var(--app-text) !important}
+    .df-block-body .doc-t tfoot td,.df-block-body tr.df-total td,.df-block-body tr.df-total th{color:var(--df-text-2) !important;-webkit-text-fill-color:var(--df-text-2) !important;font-weight:600 !important}
+    .df-block-body .doc-t tfoot td.tot,.df-block-body tr.df-total td.tot{color:var(--df-text) !important;-webkit-text-fill-color:var(--df-text) !important;font-weight:700 !important}
+    .df-block-body .doc-t tfoot td.num,.df-block-body tr.df-total td.num{color:var(--df-text) !important;-webkit-text-fill-color:var(--df-text) !important}
     .df-block-body tr.df-total td,.df-block-body tr.df-total th,.df-block-body tfoot tr td,.df-block-body tfoot tr th{font-family:inherit !important;font-size:inherit !important}
-    table input[readonly],table input[tabindex="-1"]{background:rgba(255,255,255,0.07) !important;color:var(--app-text) !important;-webkit-text-fill-color:var(--app-text) !important;opacity:1 !important}
+    table input[readonly],table input[tabindex="-1"]{background:rgba(255,255,255,0.07) !important;color:var(--df-text) !important;-webkit-text-fill-color:var(--df-text) !important;opacity:1 !important}
     tr.df-total{background:rgba(255,255,255,0.05) !important}
-    tr.df-total td{color:var(--app-text) !important;-webkit-text-fill-color:var(--app-text) !important}
-    .df-block-body .doc-t input{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:3px;color:var(--app-text);font-family:inherit;padding:3px 5px;font-size:11px;min-width:40px}
+    tr.df-total td{color:var(--df-text) !important;-webkit-text-fill-color:var(--df-text) !important}
+    .df-block-body .doc-t input{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:3px;color:var(--df-text);font-family:inherit;padding:3px 5px;font-size:11px;min-width:40px}
     .df-block-body .doc-t input:focus{background:rgba(108,79,240,.08);border-color:rgba(108,79,240,.4)}
     .df-block-body .badd{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px;width:20px;height:20px;cursor:pointer;font-size:13px;font-weight:900;display:inline-flex;align-items:center;justify-content:center}
     .df-block-body .badd:hover{background:rgba(108,79,240,.25)}
     .df-block-body .bdel{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);color:#f87171;border-radius:3px;cursor:pointer;padding:1px 5px;font-size:10px;font-family:inherit}
     .df-block-body .bdel:hover{background:rgba(248,113,113,.2)}
     /* Dark capture zone */
-    .df-block-body .cap-lbl{font-size:10.5px;color:var(--app-muted);margin:8px 0 3px;font-style:italic;line-height:1.4}
+    .df-block-body .cap-lbl{font-size:10.5px;color:var(--df-text-3);margin:8px 0 3px;font-style:italic;line-height:1.4}
     .df-block-body .cap-zone{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.03);border-radius:6px}
     .df-block-body .cap-zone:hover{border-color:rgba(108,79,240,.4);background:rgba(108,79,240,.04)}
-    .df-block-body .cap-ph{color:var(--app-muted)}
+    .df-block-body .cap-ph{color:var(--df-text-3)}
     /* Dark attachments */
     .df-block-body .att-zone{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02);border-radius:6px}
-    .df-block-body .att-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:var(--app-sub);border-radius:6px;font-family:inherit}
+    .df-block-body .att-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:var(--df-text-2);border-radius:6px;font-family:inherit}
     .df-block-body .att-btn:hover{background:rgba(255,255,255,.1)}
     .df-block-body .att-chip{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px}
     /* P2 field dark override */
-    .df-block-body .p2-field{border-color:rgba(29,200,174,.5) !important;background:rgba(29,200,174,.06) !important;color:var(--app-text) !important}
+    .df-block-body .p2-field{border-color:rgba(29,200,174,.5) !important;background:rgba(29,200,174,.06) !important;color:var(--df-text) !important}
     /* Locked block overlay */
     .df-block-body.locked{pointer-events:none;opacity:.45;filter:grayscale(.2)}
     /* Layout helpers */
@@ -361,19 +356,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -381,19 +376,19 @@
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
       <a href="/admin#dashboard" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-layout"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
         Dashboard
       </a>
       <a href="/admin#utilizatori" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-users"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-users"/></svg>
         Utilizatori
       </a>
       <a href="/admin#fluxuri" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-git-branch"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-git-branch"/></svg>
         Fluxuri documente
       </a>
       <a href="/admin#rapoarte" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-bar-chart"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg>
         Rapoarte
       </a>
     </div>
@@ -401,19 +396,19 @@
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
       <a href="/admin#organizatii" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-building"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>
         Organizații
       </a>
       <a href="/admin#outreach" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-send"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-send"/></svg>
         Outreach
       </a>
       <a href="/admin#analytics" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-trending-up"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-trending-up"/></svg>
         Analytics
       </a>
       <a href="/admin#audit" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-search"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
         Audit
       </a>
     </div>
@@ -421,7 +416,7 @@
     <div class="df-nav-label">Comunicare</div>
     <div class="df-nav-group">
       <a href="/notifications" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-bell"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bell"/></svg>
         Notificări
       </a>
     </div>
@@ -447,22 +442,22 @@
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.270#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -479,9 +474,9 @@
 <div class="lst-wrap">
   <div class="lst-tabs-hdr">
     <div class="lst-tabs">
-      <button class="lst-tab active" id="ltab-df"   onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-file-text"/></svg> Documente de Fundamentare</button>
-      <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-file-text"/></svg> Ordonanțări de Plată</button>
-      <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-bar-chart"/></svg> ALOP</button>
+      <button class="lst-tab active" id="ltab-df"   onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg> Documente de Fundamentare</button>
+      <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg> Ordonanțări de Plată</button>
+      <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg> ALOP</button>
     </div>
     <button id="btn-lst-nou" class="btn primary" style="display:none !important;padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
   </div>
@@ -552,40 +547,40 @@
 
   <!-- Bara navigare identică cu bara principală -->
   <div class="lst-tabs" style="margin-bottom:16px">
-    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="lst-tab active" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-bar-chart"/></svg> ALOP</button>
+    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg> Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg> Ordonanțări de Plată</button>
+    <button class="lst-tab active" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg> ALOP</button>
   </div>
 
   <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
     <div>
-      <div style="font-size:1.05rem;font-weight:700;color:var(--app-sub);display:inline-flex;align-items:center;gap:8px"><svg class="df-ico df-ico-lg" style="color:var(--app-sub)"><use href="/icons.svg?v=3.9.270#ico-bar-chart"/></svg> ALOP — Document de Fundamentare / Ordonanțare de Plată</div>
-      <div style="font-size:.8rem;color:var(--app-muted);margin-top:2px">Conform Ordinului 1140/2025 · Angajare → Lichidare → Ordonanțare → Plată</div>
+      <div style="font-size:1.05rem;font-weight:700;color:var(--df-text-2);display:inline-flex;align-items:center;gap:8px"><svg class="df-ico df-ico-lg" style="color:var(--df-text-2)"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg> ALOP — Document de Fundamentare / Ordonanțare de Plată</div>
+      <div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">Conform Ordinului 1140/2025 · Angajare → Lichidare → Ordonanțare → Plată</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" id="alop-btn-sablon" style="padding:7px 14px;font-size:.82rem;display:none" onclick="openAlopSablonModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-settings"/></svg> Șablon</button>
-      <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="openAlopModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-plus"/></svg> ALOP nou</button>
+      <button class="btn" id="alop-btn-sablon" style="padding:7px 14px;font-size:.82rem;display:none" onclick="openAlopSablonModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-settings"/></svg> Șablon</button>
+      <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="openAlopModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-plus"/></svg> ALOP nou</button>
     </div>
   </div>
 
   <!-- KPI cards -->
   <div id="alop-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
-    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:10px;padding:12px;text-align:center">
-      <div style="font-size:1.4rem;font-weight:800;color:var(--app-sub)" id="alop-kpi-total">—</div>
-      <div style="font-size:.72rem;color:var(--app-muted);margin-top:2px">Total</div>
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);border-radius:10px;padding:12px;text-align:center">
+      <div style="font-size:1.4rem;font-weight:800;color:var(--df-text-2)" id="alop-kpi-total">—</div>
+      <div style="font-size:.72rem;color:var(--df-text-3);margin-top:2px">Total</div>
     </div>
-    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:10px;padding:12px;text-align:center">
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);border-radius:10px;padding:12px;text-align:center">
       <div style="font-size:1.4rem;font-weight:800;color:#10b981" id="alop-kpi-completate">—</div>
-      <div style="font-size:.72rem;color:var(--app-muted);margin-top:2px">Finalizate</div>
+      <div style="font-size:.72rem;color:var(--df-text-3);margin-top:2px">Finalizate</div>
     </div>
-    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:10px;padding:12px;text-align:center">
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);border-radius:10px;padding:12px;text-align:center">
       <div style="font-size:1.4rem;font-weight:800;color:#f59e0b" id="alop-kpi-progres">—</div>
-      <div style="font-size:.72rem;color:var(--app-muted);margin-top:2px">În progres</div>
+      <div style="font-size:.72rem;color:var(--df-text-3);margin-top:2px">În progres</div>
     </div>
-    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:10px;padding:12px;text-align:center">
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);border-radius:10px;padding:12px;text-align:center">
       <div style="font-size:1.4rem;font-weight:800;color:#64748b" id="alop-kpi-draft">—</div>
-      <div style="font-size:.72rem;color:var(--app-muted);margin-top:2px">Draft</div>
+      <div style="font-size:.72rem;color:var(--df-text-3);margin-top:2px">Draft</div>
     </div>
   </div>
 
@@ -605,7 +600,7 @@
           </tr>
         </thead>
         <tbody id="alop-tbody">
-          <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--app-muted)">Se încarcă...</td></tr>
+          <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--df-text-3)">Se încarcă...</td></tr>
         </tbody>
       </table>
     </div>
@@ -628,8 +623,8 @@
 
 <div class="back-bar" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
   <button id="btn-back" class="btn" onclick="showListSection()" style="padding:6px 14px;font-size:.83rem">← Înapoi la listă</button>
-  <span id="form-type-title" style="font-size:.88rem;font-weight:700;color:var(--app-sub)"></span>
-  <span id="form-save-badge" style="font-size:.74rem;color:var(--app-muted)"></span>
+  <span id="form-type-title" style="font-size:.88rem;font-weight:700;color:var(--df-text-2)"></span>
+  <span id="form-save-badge" style="font-size:.74rem;color:var(--df-text-3)"></span>
 </div>
 <div id="val-err-bar"><div class="val-err-inner" id="val-err-msg"></div></div>
 
@@ -727,7 +722,7 @@
     </div>
     <div class="att-zone"><div class="att-list" id="o-alist"></div></div>
     <div class="att-br">
-      <button class="att-btn" onclick="document.getElementById('o-ainp').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-paperclip"/></svg> Atașează fișiere</button>
+      <button class="att-btn" onclick="document.getElementById('o-ainp').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-paperclip"/></svg> Atașează fișiere</button>
       <input type="file" id="o-ainp" class="att-inp" multiple onchange="addAtt(event,'o-alist','o-adata')"/>
     </div>
     <input type="hidden" id="o-adata" value="[]"/>
@@ -786,9 +781,9 @@
           <th style="width:22px"></th>
         </tr>
         <tr style="font-size:10px;text-align:center">
-          <td style="color:var(--app-muted)">1.1</td><td style="color:var(--app-muted)">1.2</td><td style="color:var(--app-muted)">1.3</td><td style="color:var(--app-muted)">1.4</td>
+          <td style="color:var(--df-text-3)">1.1</td><td style="color:var(--df-text-3)">1.2</td><td style="color:var(--df-text-3)">1.3</td><td style="color:var(--df-text-3)">1.4</td>
           <td style="color:#5dcaa5;font-weight:600">2·P2</td><td style="color:#5dcaa5;font-weight:600">3·P2</td>
-          <td style="color:#b0a0ff;font-weight:600">4·P1</td><td style="color:var(--app-muted)">5</td><td></td>
+          <td style="color:#b0a0ff;font-weight:600">4·P1</td><td style="color:var(--df-text-3)">5</td><td></td>
         </tr>
       </thead>
       <tbody id="o-tbody"></tbody>
@@ -826,13 +821,13 @@
 
 <div class="result" id="result-ordnt">
   <div class="result-title">✅ PDF generat cu succes</div>
-  <div style="font-size:.8rem;color:var(--app-muted)" id="rname-ordnt"></div>
+  <div style="font-size:.8rem;color:var(--df-text-3)" id="rname-ordnt"></div>
   <div class="result-acts">
-    <button class="btn teal" onclick="dlPdf('ordnt')"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-download"/></svg> Descarcă PDF</button>
+    <button class="btn teal" onclick="dlPdf('ordnt')"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-download"/></svg> Descarcă PDF</button>
     <button class="btn primary" onclick="showFF('ordnt')">🚀 Creează flux de semnare</button>
   </div>
   <div class="flow-form" id="ff-ordnt">
-    <div style="font-size:.8rem;font-weight:700;color:var(--app-sub);margin-bottom:8px">📝 Flux de semnare — tabel (4 semnatari)</div>
+    <div style="font-size:.8rem;font-weight:700;color:var(--df-text-2);margin-bottom:8px">📝 Flux de semnare — tabel (4 semnatari)</div>
     <div class="flow-grid">
       <div class="dk-field"><label>Nume document</label><input id="ffn-ordnt" placeholder="Ordonanțare de Plată nr. ..."/></div>
       <div class="dk-field"><label>Inițiator</label><input id="ffe-ordnt" readonly/></div>
@@ -840,7 +835,7 @@
     <div class="actions" style="margin-top:6px">
       <button class="btn primary" onclick="mkFlow('ordnt')">🔏 Lansează flux</button>
     </div>
-    <div id="link-flow-ordnt" style="display:none;margin-top:8px;font-size:.75rem;color:var(--app-muted)">După lansarea fluxului, asocierea se face automat.</div>
+    <div id="link-flow-ordnt" style="display:none;margin-top:8px;font-size:.75rem;color:var(--df-text-3)">După lansarea fluxului, asocierea se face automat.</div>
   </div>
 </div>
 
@@ -927,7 +922,7 @@
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;margin-bottom:2px">
       <div class="dl" style="margin:0">3. Descrierea pe larg a stării de fapt și de drept:</div>
-      <button class="att-btn" onclick="document.getElementById('n-fdai').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-paperclip"/></svg> Atașează fișiere</button>
+      <button class="att-btn" onclick="document.getElementById('n-fdai').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-paperclip"/></svg> Atașează fișiere</button>
       <input type="file" id="n-fdai" class="att-inp" multiple onchange="addAtt(event,'n-fdal','n-fdad')"/>
     </div>
     <textarea id="n-lung" class="dt" maxlength="500" rows="6" style="margin-bottom:4px"></textarea>
@@ -936,9 +931,9 @@
 
     <div class="doc-hr"></div>
 
-    <div style="font-weight:700;font-size:11px;margin:4px 0;display:flex;justify-content:space-between;color:var(--app-sub)">
+    <div style="font-weight:700;font-size:11px;margin:4px 0;display:flex;justify-content:space-between;color:var(--df-text-2)">
       <span>4. Valoarea angajamentelor legale (pe toată perioada de valabilitate a documentului de fundamentare):</span>
-      <span style="font-weight:400;color:var(--app-muted)">(lei)</span>
+      <span style="font-weight:400;color:var(--df-text-3)">(lei)</span>
     </div>
     <label class="dck"><input type="checkbox" id="n-ck-stab" onchange="p4toggle('stab')"/>Se stabilește ținând cont de:</label>
 
@@ -977,7 +972,7 @@
 
     <div class="doc-hr"></div>
 
-    <div style="font-weight:700;font-size:11px;margin:4px 0;color:var(--app-sub)">5. Angajamente legale emise anterior</div>
+    <div style="font-weight:700;font-size:11px;margin:4px 0;color:var(--df-text-2)">5. Angajamente legale emise anterior</div>
     <label class="dck"><input type="checkbox" id="n-ck-cuang" onchange="p5toggle()"/>Cu angajamente în exercițiul curent</label>
     <div id="n-p5-sub" style="margin-left:22px;opacity:.4;pointer-events:none">
       <label class="dck"><input type="checkbox" id="n-ck-sting" disabled onchange="p5SubToggle(this)"/>Stingere angajamente în exercițiul curent</label>
@@ -1032,7 +1027,7 @@
         <input type="checkbox" id="n-ck-seca"/>
         Propunerile de la secțiunea A au fost înregistrate în sistemul de control al angajamentelor după cum urmează:
       </label>
-      <span style="font-size:10px;color:var(--app-muted);white-space:nowrap">(lei)</span>
+      <span style="font-size:10px;color:var(--df-text-3);white-space:nowrap">(lei)</span>
     </div>
 
     <div style="overflow-x:auto">
@@ -1049,11 +1044,11 @@
           <th style="width:22px"></th>
         </tr>
         <tr style="font-size:10px;text-align:center">
-          <td style="color:var(--app-muted)">1</td><td style="color:var(--app-muted)">2</td>
-          <td style="color:var(--app-muted)">3</td><td style="color:var(--app-muted)">4</td>
-          <td style="color:var(--app-muted)">5</td><td style="color:var(--app-muted)">6</td>
-          <td style="color:var(--app-muted)">7</td><td style="color:var(--app-muted)">8</td>
-          <td style="color:var(--app-muted)">9</td><td style="color:var(--app-muted)">10</td><td></td>
+          <td style="color:var(--df-text-3)">1</td><td style="color:var(--df-text-3)">2</td>
+          <td style="color:var(--df-text-3)">3</td><td style="color:var(--df-text-3)">4</td>
+          <td style="color:var(--df-text-3)">5</td><td style="color:var(--df-text-3)">6</td>
+          <td style="color:var(--df-text-3)">7</td><td style="color:var(--df-text-3)">8</td>
+          <td style="color:var(--df-text-3)">9</td><td style="color:var(--df-text-3)">10</td><td></td>
         </tr>
       </thead>
       <tbody id="n-ctbody"></tbody>
@@ -1097,7 +1092,7 @@
 
     <div class="att-zone" style="margin-top:8px"><div class="att-list" id="n-alist"></div></div>
     <div class="att-br">
-      <button class="att-btn" onclick="document.getElementById('n-ainp').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-paperclip"/></svg> Atașează fișiere</button>
+      <button class="att-btn" onclick="document.getElementById('n-ainp').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-paperclip"/></svg> Atașează fișiere</button>
       <input type="file" id="n-ainp" class="att-inp" multiple onchange="addAtt(event,'n-alist','n-adata')"/>
     </div>
     <input type="hidden" id="n-adata" value="[]"/>
@@ -1107,13 +1102,13 @@
 
 <div class="result" id="result-notafd">
   <div class="result-title">✅ PDF generat cu succes</div>
-  <div style="font-size:.8rem;color:var(--app-muted)" id="rname-notafd"></div>
+  <div style="font-size:.8rem;color:var(--df-text-3)" id="rname-notafd"></div>
   <div class="result-acts">
-    <button class="btn teal" onclick="dlPdf('notafd')"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-download"/></svg> Descarcă PDF</button>
+    <button class="btn teal" onclick="dlPdf('notafd')"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-download"/></svg> Descarcă PDF</button>
     <button class="btn primary" onclick="showFF('notafd')">🚀 Creează flux de semnare</button>
   </div>
   <div class="flow-form" id="ff-notafd">
-    <div style="font-size:.8rem;font-weight:700;color:var(--app-sub);margin-bottom:8px">📝 Flux de semnare — tabel (6 semnatari)</div>
+    <div style="font-size:.8rem;font-weight:700;color:var(--df-text-2);margin-bottom:8px">📝 Flux de semnare — tabel (6 semnatari)</div>
     <div class="flow-grid">
       <div class="dk-field"><label>Nume document</label><input id="ffn-notafd" placeholder="Document de Fundamentare nr. ..."/></div>
       <div class="dk-field"><label>Inițiator</label><input id="ffe-notafd" readonly/></div>
@@ -1121,7 +1116,7 @@
     <div class="actions" style="margin-top:6px">
       <button class="btn primary" onclick="mkFlow('notafd')">🔏 Lansează flux</button>
     </div>
-    <div id="link-flow-notafd" style="display:none;margin-top:8px;font-size:.75rem;color:var(--app-muted)">După lansarea fluxului, asocierea se face automat.</div>
+    <div id="link-flow-notafd" style="display:none;margin-top:8px;font-size:.75rem;color:var(--df-text-3)">După lansarea fluxului, asocierea se face automat.</div>
   </div>
 </div>
 
@@ -1147,7 +1142,7 @@
 <div class="modal-ov" id="modal-return" onclick="if(event.target===this)closeReturnModal()">
   <div class="modal-box" style="max-width:480px">
     <div class="modal-title">↩ Returnează document ca neconform</div>
-    <p style="font-size:.85rem;color:var(--app-muted);margin-bottom:12px">Menționați deficiențele constatate. Inițiatorul va primi documentul înapoi cu observațiile dvs.</p>
+    <p style="font-size:.85rem;color:var(--df-text-3);margin-bottom:12px">Menționați deficiențele constatate. Inițiatorul va primi documentul înapoi cu observațiile dvs.</p>
     <textarea id="return-motiv" class="dt" rows="5" maxlength="1000" placeholder="Descrieți deficiențele..."></textarea>
     <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
       <button class="btn" onclick="closeReturnModal()">Anulează</button>
@@ -1176,19 +1171,19 @@
     <div id="alop-wiz-step1">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
         <div>
-          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Titlu <span style="color:#ef4444">*</span></label>
+          <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Titlu <span style="color:#ef4444">*</span></label>
           <input id="alop-titlu" type="text" class="dt" placeholder="ex: Servicii IT Q1 2025" maxlength="200"/>
         </div>
         <div>
-          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Compartiment</label>
+          <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Compartiment</label>
           <input id="alop-compartiment" type="text" class="dt" placeholder="ex: Direcția Economică" maxlength="200"/>
         </div>
         <div>
-          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Valoare totală estimată (RON)</label>
+          <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Valoare totală estimată (RON)</label>
           <input id="alop-valoare" type="number" class="dt" placeholder="0.00" min="0" step="0.01"/>
         </div>
         <div>
-          <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Note</label>
+          <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Note</label>
           <textarea id="alop-notes" class="dt" rows="2" maxlength="500" placeholder="Informații suplimentare..."></textarea>
         </div>
       </div>
@@ -1199,11 +1194,11 @@
     </div>
     <!-- Step 2 -->
     <div id="alop-wiz-step2" style="display:none">
-      <div style="font-size:.82rem;color:var(--app-muted);margin-bottom:10px">Semnatari configurați în șablonul organizației (editabil din ⚙ Șablon)</div>
+      <div style="font-size:.82rem;color:var(--df-text-3);margin-bottom:10px">Semnatari configurați în șablonul organizației (editabil din ⚙ Șablon)</div>
       <div id="alop-wiz-sablon-preview"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
         <button class="btn" onclick="alopWizBack()">← Înapoi</button>
-        <button class="btn primary" onclick="createAlop()"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-check"/></svg> Creează ALOP</button>
+        <button class="btn primary" onclick="createAlop()"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-check"/></svg> Creează ALOP</button>
       </div>
     </div>
   </div>
@@ -1213,7 +1208,7 @@
 <div class="modal-ov" id="alop-sablon-modal" style="overflow:visible" onclick="if(event.target===this)closeAlopSablonModal()">
   <div class="modal-box" style="max-width:720px;max-height:90vh;overflow:visible">
     <div class="modal-title">⚙ Configurare Șablon ALOP</div>
-    <div style="font-size:.8rem;color:var(--app-muted);margin-bottom:16px">Semnatarii impliciti conform OMF 1140/2025. Precompletați la crearea unui ALOP nou.</div>
+    <div style="font-size:.8rem;color:var(--df-text-3);margin-bottom:16px">Semnatarii impliciti conform OMF 1140/2025. Precompletați la crearea unui ALOP nou.</div>
     <!-- scroll wrapper: scroll pe secțiuni, overflow:visible pe select dropdowns -->
     <div style="overflow-y:auto;overflow-x:visible;flex:1">
 
@@ -1221,30 +1216,30 @@
     <div style="margin-bottom:20px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:14px">
       <div style="font-size:.86rem;font-weight:700;color:#3b82f6;margin-bottom:12px">📋 Document de Fundamentare — 6 roluri fixe</div>
       <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:2px">1. Inițiator (compartiment specialitate)</div>
-        <div style="font-size:.75rem;color:var(--app-muted);font-style:italic;padding:5px 8px;background:rgba(255,255,255,.04);border-radius:6px">completat automat cu userul curent la creare</div>
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:2px">1. Inițiator (compartiment specialitate)</div>
+        <div style="font-size:.75rem;color:var(--df-text-3);font-style:italic;padding:5px 8px;background:rgba(255,255,255,.04);border-radius:6px">completat automat cu userul curent la creare</div>
       </div>
       <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">2. Șef compartiment</div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--app-muted);margin-bottom:4px;cursor:pointer">
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">2. Șef compartiment</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--df-text-3);margin-bottom:4px;cursor:pointer">
           <input type="checkbox" id="sab-sef-comp-same" onchange="alopSabSameAsInitiator(this)"> Aceeași persoană cu inițiatorul
         </label>
         <div id="sab-sef-comp-picker"></div>
       </div>
       <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">3. Responsabil CAB</div>
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">3. Responsabil CAB</div>
         <div id="sab-resp-cab-picker"></div>
       </div>
       <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">4. Șef compartiment CAB</div>
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">4. Șef compartiment CAB</div>
         <div id="sab-sef-cab-picker"></div>
       </div>
       <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">5. Director Economic</div>
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">5. Director Economic</div>
         <div id="sab-dir-ec-picker"></div>
       </div>
       <div>
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">6. Ordonator de credite</div>
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">6. Ordonator de credite</div>
         <div id="sab-ord-cred-df-picker"></div>
       </div>
     </div>
@@ -1253,19 +1248,19 @@
     <div style="margin-bottom:20px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:14px">
       <div style="font-size:.86rem;font-weight:700;color:#8b5cf6;margin-bottom:12px">💰 Ordonanțare de Plată — 4 roluri fixe</div>
       <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:2px">1. Compartiment specialitate</div>
-        <div style="font-size:.75rem;color:var(--app-muted);font-style:italic;padding:5px 8px;background:rgba(255,255,255,.04);border-radius:6px">completat automat la creare</div>
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:2px">1. Compartiment specialitate</div>
+        <div style="font-size:.75rem;color:var(--df-text-3);font-style:italic;padding:5px 8px;background:rgba(255,255,255,.04);border-radius:6px">completat automat la creare</div>
       </div>
       <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">2. Responsabil CAB <span style="font-style:italic">(de obicei același cu cel din DF)</span></div>
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">2. Responsabil CAB <span style="font-style:italic">(de obicei același cu cel din DF)</span></div>
         <div id="sab-resp-cab-ord-picker"></div>
       </div>
       <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">3. Control financiar preventiv</div>
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">3. Control financiar preventiv</div>
         <div id="sab-cfp-picker"></div>
       </div>
       <div>
-        <div style="font-size:.77rem;color:var(--app-muted);margin-bottom:4px">4. Ordonator de credite <span style="font-style:italic">(de obicei același cu cel din DF)</span></div>
+        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">4. Ordonator de credite <span style="font-style:italic">(de obicei același cu cel din DF)</span></div>
         <div id="sab-ord-cred-ord-picker"></div>
       </div>
     </div>
@@ -1273,7 +1268,7 @@
     <!-- Lichidare — 1 persoană -->
     <div style="margin-bottom:20px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:14px">
       <div style="font-size:.86rem;font-weight:700;color:#f59e0b;margin-bottom:10px">✔️ Lichidare — persoana care confirmă recepția</div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--app-muted);margin-bottom:6px;cursor:pointer">
+      <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--df-text-3);margin-bottom:6px;cursor:pointer">
         <input type="checkbox" id="sab-lichidare-same" onchange="alopSabLichidareSameAsInitiator(this)"> Aceeași persoană cu inițiatorul
       </label>
       <div id="sab-lichidare-picker"></div>
@@ -1291,15 +1286,15 @@
 <div class="modal-ov" id="modal-revizie" onclick="if(event.target===this)closeRevizieModal()">
   <div class="modal-box" style="max-width:480px">
     <div class="modal-title">↻ Inițiază revizie document</div>
-    <div style="font-size:.82rem;color:var(--app-muted);margin-bottom:14px">Introduceți motivul pentru care se inițiază revizia acestui Document de Fundamentare.</div>
-    <label style="font-size:.78rem;color:var(--app-muted);display:block;margin-bottom:4px">Motiv revizie <span style="color:#ef4444">*</span></label>
+    <div style="font-size:.82rem;color:var(--df-text-3);margin-bottom:14px">Introduceți motivul pentru care se inițiază revizia acestui Document de Fundamentare.</div>
+    <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Motiv revizie <span style="color:#ef4444">*</span></label>
     <textarea id="revizie-motiv-input" class="dt" rows="3" maxlength="500"
       placeholder="ex: actualizare valoare contract, schimbare condiții plată..."
       style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
     <div id="revizie-modal-err" style="color:#ef4444;font-size:.78rem;min-height:1.2em;margin-top:4px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
       <button class="btn" onclick="closeRevizieModal()">Anulează</button>
-      <button class="btn primary" onclick="confirmRevizie()"><svg class="df-ico"><use href="/icons.svg?v=3.9.270#ico-check"/></svg> Creează revizie</button>
+      <button class="btn primary" onclick="confirmRevizie()"><svg class="df-ico"><use href="/icons.svg?v=3.9.271#ico-check"/></svg> Creează revizie</button>
     </div>
   </div>
 </div>
@@ -1308,7 +1303,7 @@
 <div class="modal-ov" id="modal-lichidare" onclick="if(event.target===this)closeLichidareModal()">
   <div class="modal-box" style="max-width:640px">
     <div class="modal-title">✔️ Confirmare Lichidare</div>
-    <div style="font-size:.8rem;color:var(--app-muted);margin-top:-4px">Confirmați că bunurile/serviciile au fost recepționate și documentele justificative sunt în ordine.</div>
+    <div style="font-size:.8rem;color:var(--df-text-3);margin-top:-4px">Confirmați că bunurile/serviciile au fost recepționate și documentele justificative sunt în ordine.</div>
     <div style="display:grid;gap:10px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
@@ -1346,7 +1341,7 @@
 <div class="modal-ov" id="modal-plata" onclick="if(event.target===this)closePlataModal()">
   <div class="modal-box" style="max-width:640px">
     <div class="modal-title">🏦 Confirmare Plată</div>
-    <div style="font-size:.8rem;color:var(--app-muted);margin-top:-4px">Înregistrați execuția plății prin Trezoreria Statului.</div>
+    <div style="font-size:.8rem;color:var(--df-text-3);margin-top:-4px">Înregistrați execuția plății prin Trezoreria Statului.</div>
     <div style="display:grid;gap:10px;margin-top:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
@@ -1957,7 +1952,7 @@ function draftLoadIfExists(ft) {
     bar.className = 'status info';
     bar.innerHTML = `📋 Draft găsit (${ageStr}). &nbsp;
       <button onclick="_doRestore('${ft}')" style="padding:2px 10px;border-radius:6px;border:1px solid rgba(108,79,240,.4);background:rgba(108,79,240,.12);color:#b0a0ff;cursor:pointer;font-size:.82rem">Restaurează</button>
-      <button onclick="draftClear('${ft}');clrS()" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:none;color:var(--app-muted);cursor:pointer;font-size:.82rem">Ignoră</button>`;
+      <button onclick="draftClear('${ft}');clrS()" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:none;color:var(--df-text-3);cursor:pointer;font-size:.82rem">Ignoră</button>`;
 
     // Stocăm starea pentru butonul de restore
     window._pendingDraft = window._pendingDraft || {};
@@ -2338,17 +2333,17 @@ function renderActions(ft){
       +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`)
       +B('danger','↩ Returnează ca neconform',`showReturnModal('${ft}')`);
   }else if(status==='pending_p2'&&role==='p1'){
-    html=`<span style="color:var(--app-muted);font-size:.82rem">⏳ Așteptare Responsabil CAB...</span>`
+    html=`<span style="color:var(--df-text-3);font-size:.82rem">⏳ Așteptare Responsabil CAB...</span>`
       +BNou;
   }else if(status==='completed'&&role==='p1'){
     const hasPdf=!!(ST[ft]?.pdf);
     html=(hasPdf?B('primary','🔏 Lansează flux semnare',`mkFlow('${ft}')`)
                 :`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`);
   }else if(status==='transmis_flux'){
-    html=`<span style="color:var(--app-muted);font-size:.82rem">🔄 Document pe fluxul de semnare...</span>`
+    html=`<span style="color:var(--df-text-3);font-size:.82rem">🔄 Document pe fluxul de semnare...</span>`
       +(ST.docFlowId?.[ft]?B('','📄 Descarcă PDF',`viewFlowPdf('${ST.docFlowId[ft]}')`):'');
   }else if(status==='completed'&&role==='p2'){
-    html=`<span style="color:var(--app-muted);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
+    html=`<span style="color:var(--df-text-3);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
       +BNou;
   }else{
     html=`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
@@ -2799,7 +2794,7 @@ async function showP2Modal(ft){
   document.getElementById('modal-confirm').disabled=true;
   document.getElementById('modal-search').value='';
   const listEl=document.getElementById('modal-user-list');
-  listEl.innerHTML='<div style="color:var(--app-muted);font-size:.8rem;text-align:center;padding:10px">Se încarcă...</div>';
+  listEl.innerHTML='<div style="color:var(--df-text-3);font-size:.8rem;text-align:center;padding:10px">Se încarcă...</div>';
   document.getElementById('modal-p2').classList.add('show');
   if(!ST.orgUsers.length){
     try{
@@ -2815,7 +2810,7 @@ function filterModalUsers(){
   const q=(document.getElementById('modal-search')?.value||'').toLowerCase();
   const listEl=document.getElementById('modal-user-list');
   const filtered=ST.orgUsers.filter(u=>(u.nume||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q));
-  if(!filtered.length){listEl.innerHTML='<div style="color:var(--app-muted);font-size:.8rem;text-align:center;padding:10px">Niciun utilizator găsit.</div>';return;}
+  if(!filtered.length){listEl.innerHTML='<div style="color:var(--df-text-3);font-size:.8rem;text-align:center;padding:10px">Niciun utilizator găsit.</div>';return;}
   listEl.innerHTML=filtered.map(u=>`
     <div class="modal-user${ST.selectedP2Id===u.id?' sel':''}" onclick="selectP2(${u.id})">
       <div style="flex:1">
@@ -3421,14 +3416,14 @@ async function loadAlop(){
   _updateAlopSablonBtnVisibility();
   const tb=document.getElementById('alop-tbody');
   if(!tb)return;
-  tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--app-muted)">Se încarcă...</td></tr>';
+  tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--df-text-3)">Se încarcă...</td></tr>';
   try{
     const r=await fetch('/api/alop',{credentials:'include'});
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
     const rows=data.alop||[];
     if(!rows.length){
-      tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--app-muted)">Niciun ALOP creat.</td></tr>';
+      tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--df-text-3)">Niciun ALOP creat.</td></tr>';
       return;
     }
     const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON',maximumFractionDigits:0}).format(v):'—';
@@ -3436,23 +3431,23 @@ async function loadAlop(){
       const dt=new Date(a.updated_at||a.created_at).toLocaleDateString('ro-RO');
       const active=a.status!=='completed'&&a.status!=='cancelled';
       return`<tr onclick="openAlop('${_escH(a.id)}')" style="cursor:pointer">
-        <td><span style="font-weight:600;color:var(--app-text)">${_escH(a.titlu||'—')}</span>
-          ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--app-muted)">${_escH(a.compartiment)}</span>`:''}
+        <td><span style="font-weight:600;color:var(--df-text)">${_escH(a.titlu||'—')}</span>
+          ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--df-text-3)">${_escH(a.compartiment)}</span>`:''}
         </td>
-        <td style="font-size:.78rem;color:var(--app-muted)">${_escH(a.creator_name||a.creator_email||'—')}</td>
+        <td style="font-size:.78rem;color:var(--df-text-3)">${_escH(a.creator_name||a.creator_email||'—')}</td>
         <td>${_alopStatusBadge(a.status,a.df_flow_id)}</td>
-        <td style="font-size:.78rem;color:var(--app-muted)">${_escH(_alopFazaLabel(a.status))}</td>
+        <td style="font-size:.78rem;color:var(--df-text-3)">${_escH(_alopFazaLabel(a.status))}</td>
         <td style="font-size:.82rem">
           <div>${fmtRON(a.valoare_totala)}</div>
           ${(a.df_valoare||a.ord_valoare||a.op_valoare)?
-            `<div style="font-size:.7rem;color:var(--app-muted);margin-top:2px;white-space:nowrap">
+            `<div style="font-size:.7rem;color:var(--df-text-3);margin-top:2px;white-space:nowrap">
               ${a.df_valoare?`<span title="Valoare DF" style="color:#b0a0ff">DF ${fmtRON(a.df_valoare)}</span>`:''}
               ${a.ord_valoare?`<span title="Valoare ORD" style="color:#5dcaa5;margin-left:6px">ORD ${fmtRON(a.ord_valoare)}</span>`:''}
               ${a.op_valoare?`<span title="Sumă plătită" style="color:#f59e0b;margin-left:6px">✓ ${fmtRON(a.op_valoare)}</span>`:''}
             </div>`
           :''}
         </td>
-        <td style="font-size:.78rem;color:var(--app-muted)">${dt}</td>
+        <td style="font-size:.78rem;color:var(--df-text-3)">${dt}</td>
         <td onclick="event.stopPropagation()">
           <button class="btn" style="padding:3px 10px;font-size:.76rem" onclick="openAlop('${_escH(a.id)}')">Deschide</button>
           ${active?`<button class="btn danger" style="padding:3px 10px;font-size:.76rem;margin-left:4px" onclick="cancelAlop('${_escH(a.id)}')">✕</button>`:''}
@@ -3513,7 +3508,7 @@ function _alopWizShowStep(step){
 }
 
 function _alopSablonPreviewHtml(sab){
-  if(!sab)return'<div style="color:var(--app-muted);font-size:.82rem">Niciun șablon configurat. Semnatarii se adaugă manual la fiecare flux.</div>';
+  if(!sab)return'<div style="color:var(--df-text-3);font-size:.82rem">Niciun șablon configurat. Semnatarii se adaugă manual la fiecare flux.</div>';
   const dfList=sab.df_semnatari_sablon||[];
   const ordList=sab.ord_semnatari_sablon||[];
   const lich=sab.lichidare_sablon||{};
@@ -3522,23 +3517,23 @@ function _alopSablonPreviewHtml(sab){
   if(dfItems.length){
     html+=`<div style="margin-bottom:8px">
       <div style="font-size:.76rem;font-weight:600;color:#3b82f6;margin-bottom:4px">📋 Document de Fundamentare</div>
-      ${dfItems.map(u=>`<div style="font-size:.78rem;color:var(--app-muted)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':_escH(u.name||'—')}</div>`).join('')}
+      ${dfItems.map(u=>`<div style="font-size:.78rem;color:var(--df-text-3)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':_escH(u.name||'—')}</div>`).join('')}
     </div>`;
   }
   const ordItems=ordList.filter(u=>u.user_id);
   if(ordItems.length){
     html+=`<div style="margin-bottom:8px">
       <div style="font-size:.76rem;font-weight:600;color:#8b5cf6;margin-bottom:4px">💰 Ordonanțare de Plată</div>
-      ${ordItems.map(u=>`<div style="font-size:.78rem;color:var(--app-muted)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${_escH(u.name||'—')}</div>`).join('')}
+      ${ordItems.map(u=>`<div style="font-size:.78rem;color:var(--df-text-3)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${_escH(u.name||'—')}</div>`).join('')}
     </div>`;
   }
   if(lich.user_id||lich.same_as_initiator){
     html+=`<div style="margin-bottom:8px">
       <div style="font-size:.76rem;font-weight:600;color:#f59e0b;margin-bottom:4px">✔️ Lichidare</div>
-      <div style="font-size:.78rem;color:var(--app-muted)">• ${lich.same_as_initiator?'(inițiator)':_escH(lich.name||'—')}</div>
+      <div style="font-size:.78rem;color:var(--df-text-3)">• ${lich.same_as_initiator?'(inițiator)':_escH(lich.name||'—')}</div>
     </div>`;
   }
-  return html||'<div style="color:var(--app-muted);font-size:.82rem">Șablon gol — semnatarii se adaugă manual.</div>';
+  return html||'<div style="color:var(--df-text-3);font-size:.82rem">Șablon gol — semnatarii se adaugă manual.</div>';
 }
 
 async function createAlop(){
@@ -3571,7 +3566,7 @@ async function openAlop(id){
   const content=document.getElementById('alop-detail-content');
   if(listPanel)listPanel.style.display='none';
   if(detailPanel)detailPanel.style.display='';
-  if(content)content.innerHTML='<div style="text-align:center;padding:32px;color:var(--app-muted)">Se încarcă...</div>';
+  if(content)content.innerHTML='<div style="text-align:center;padding:32px;color:var(--df-text-3)">Se încarcă...</div>';
   try{
     const r=await fetch(`/api/alop/${encodeURIComponent(id)}`,{credentials:'include'});
     const data=await r.json();
@@ -3640,15 +3635,15 @@ function renderAlopDetail(a,container){
 
   let stepperHtml=`<div style="display:flex;align-items:stretch;gap:4px;margin-bottom:20px;flex-wrap:wrap">`;
   phases.forEach((p,i)=>{
-    const col=p.done?p.color:p.active?p.color:'var(--app-muted)';
+    const col=p.done?p.color:p.active?p.color:'var(--df-text-3)';
     const bg=p.done?`${p.color}22`:p.active?`${p.color}15`:'rgba(255,255,255,.03)';
     const op=(!p.done&&!p.active&&!isCancelled)?';opacity:.45':'';
     stepperHtml+=`<div style="flex:1;min-width:130px;background:${bg};border:1.5px solid ${col}44;border-radius:10px;padding:12px;text-align:center${op}">
       <div style="font-size:1.2rem">${p.icon}</div>
       <div style="font-size:.79rem;font-weight:700;color:${col};margin-top:4px">${p.done?'✓ ':''}${_escH(p.label)}</div>
-      <div style="font-size:.71rem;color:var(--app-muted);margin-top:2px">${_escH(p.sub)}</div>
+      <div style="font-size:.71rem;color:var(--df-text-3);margin-top:2px">${_escH(p.sub)}</div>
     </div>`;
-    if(i<3)stepperHtml+=`<div style="align-self:center;color:var(--app-muted);font-size:.9rem;padding:0 1px">→</div>`;
+    if(i<3)stepperHtml+=`<div style="align-self:center;color:var(--df-text-3);font-size:.9rem;padding:0 1px">→</div>`;
   });
   stepperHtml+=`</div>`;
 
@@ -3667,7 +3662,7 @@ function renderAlopDetail(a,container){
     if(!a.df_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id){
-      actionsHtml+=`<span style="color:var(--app-muted);font-size:.85rem">🔄 DF pe fluxul de semnare — în așteptare</span>`;
+      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem">🔄 DF pe fluxul de semnare — în așteptare</span>`;
     }else if(a.df_id&&!a.df_flow_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Deschide DF</button>`;
     }
@@ -3698,17 +3693,17 @@ function renderAlopDetail(a,container){
     if(!items.length)return'';
     return`<div style="margin-bottom:6px">
       <div style="font-size:.76rem;font-weight:600;color:${color};margin-bottom:3px">${label}</div>
-      ${items.map(u=>`<div style="font-size:.76rem;color:var(--app-muted)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':_escH(u.name||'—')}</div>`).join('')}
+      ${items.map(u=>`<div style="font-size:.76rem;color:var(--df-text-3)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':_escH(u.name||'—')}</div>`).join('')}
     </div>`;
   }
   container.innerHTML=`
-    <div style="background:rgba(255,255,255,.04);border:1px solid var(--app-line);border-radius:12px;padding:18px;margin-bottom:16px">
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);border-radius:12px;padding:18px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
         <div>
-          <div style="font-size:1rem;font-weight:700;color:var(--app-sub)">${_escH(a.titlu||'ALOP')}</div>
-          ${a.compartiment?`<div style="font-size:.8rem;color:var(--app-muted);margin-top:2px">${_escH(a.compartiment)}</div>`:''}
+          <div style="font-size:1rem;font-weight:700;color:var(--df-text-2)">${_escH(a.titlu||'ALOP')}</div>
+          ${a.compartiment?`<div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">${_escH(a.compartiment)}</div>`:''}
           ${a.valoare_totala?`<div style="font-size:.85rem;color:#10b981;margin-top:4px;font-weight:600">${fmtRON(a.valoare_totala)}</div>`:''}
-          <div style="font-size:.74rem;color:var(--app-muted);margin-top:4px">Creat de ${_escH(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
+          <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${_escH(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           ${_alopStatusBadge(a.status,a.df_flow_id)}
@@ -3719,15 +3714,15 @@ function renderAlopDetail(a,container){
     ${stepperHtml}
     <div data-valori style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0">
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
-        <div style="font-size:.7rem;color:var(--app-muted);text-transform:uppercase;letter-spacing:.04em">Valoare DF</div>
+        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Valoare DF</div>
         <div style="font-size:1rem;font-weight:700;color:#b0a0ff;margin-top:4px">${fmtV(a.df_valoare||0)}</div>
       </div>
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
-        <div style="font-size:.7rem;color:var(--app-muted);text-transform:uppercase;letter-spacing:.04em">Valoare ORD</div>
+        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Valoare ORD</div>
         <div style="font-size:1rem;font-weight:700;color:#5dcaa5;margin-top:4px">${fmtV(a.ord_valoare||0)}</div>
       </div>
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
-        <div style="font-size:.7rem;color:var(--app-muted);text-transform:uppercase;letter-spacing:.04em">Sumă plătită${(a.ciclu_curent||1)>1?` · Ciclu ${a.ciclu_curent}`:''}${(a.suma_totala_platita>0)?` (Total: ${fmtV(parseFloat(a.suma_platita_total||0))})`:''}</div>
+        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Sumă plătită${(a.ciclu_curent||1)>1?` · Ciclu ${a.ciclu_curent}`:''}${(a.suma_totala_platita>0)?` (Total: ${fmtV(parseFloat(a.suma_platita_total||0))})`:''}</div>
         <div style="font-size:1rem;font-weight:700;color:#f59e0b;margin-top:4px">${fmtV(parseFloat(a.op_valoare||a.plata_suma_efectiva)||0)}</div>
       </div>
     </div>
@@ -3738,37 +3733,37 @@ function renderAlopDetail(a,container){
         <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
         <button class="btn primary" style="padding:6px 14px;font-size:.82rem" onclick="startNouaLichidare('${_escH(a.id)}')">🔄 Nouă ordonanțare parțială</button>
       </div>`:''}
-    ${_mesajFinal?`<div style="font-size:.78rem;color:var(--app-muted);margin-top:6px;text-align:center">${_mesajFinal}</div>`:''}
+    ${_mesajFinal?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:6px;text-align:center">${_mesajFinal}</div>`:''}
   `;
   // Bloc istoric cicluri anterioare — detaliat
   {
     const _istorice=a.cicluri_istorice||[];
     if(_istorice.length>0){
-      let _istHtml=`<div style="margin:12px 0 8px"><div style="font-size:.72rem;font-weight:700;color:var(--app-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Cicluri anterioare</div>`;
+      let _istHtml=`<div style="margin:12px 0 8px"><div style="font-size:.72rem;font-weight:700;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Cicluri anterioare</div>`;
       _istorice.forEach(c=>{
         _istHtml+=`<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:.8rem">
-          <div style="font-weight:700;color:var(--app-sub);margin-bottom:6px">Ciclu ${c.ciclu_nr}</div>
+          <div style="font-weight:700;color:var(--df-text-2);margin-bottom:6px">Ciclu ${c.ciclu_nr}</div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
             <div style="background:rgba(108,79,240,.08);border-radius:6px;padding:6px 10px">
-              <div style="font-size:.68rem;color:var(--app-muted);margin-bottom:2px">✔ Lichidare</div>
-              <div style="color:var(--app-sub)">${c.lichidare_nr_factura?`Fact. ${c.lichidare_nr_factura}`:'—'}</div>
-              <div style="font-size:.72rem;color:var(--app-muted)">${c.lichidare_confirmed_at?fmtDate(c.lichidare_confirmed_at):''}</div>
+              <div style="font-size:.68rem;color:var(--df-text-3);margin-bottom:2px">✔ Lichidare</div>
+              <div style="color:var(--df-text-2)">${c.lichidare_nr_factura?`Fact. ${c.lichidare_nr_factura}`:'—'}</div>
+              <div style="font-size:.72rem;color:var(--df-text-3)">${c.lichidare_confirmed_at?fmtDate(c.lichidare_confirmed_at):''}</div>
             </div>
             <div style="background:rgba(245,158,11,.08);border-radius:6px;padding:6px 10px">
-              <div style="font-size:.68rem;color:var(--app-muted);margin-bottom:2px">💰 Ordonanțare</div>
-              <div style="color:var(--app-sub)">${fmtV(parseFloat(c.plata_suma_efectiva||0))}</div>
-              <div style="font-size:.72rem;color:var(--app-muted)">${c.plata_confirmed_at?fmtDate(c.plata_confirmed_at):'—'}</div>
+              <div style="font-size:.68rem;color:var(--df-text-3);margin-bottom:2px">💰 Ordonanțare</div>
+              <div style="color:var(--df-text-2)">${fmtV(parseFloat(c.plata_suma_efectiva||0))}</div>
+              <div style="font-size:.72rem;color:var(--df-text-3)">${c.plata_confirmed_at?fmtDate(c.plata_confirmed_at):'—'}</div>
             </div>
             <div style="background:rgba(16,185,129,.08);border-radius:6px;padding:6px 10px">
-              <div style="font-size:.68rem;color:var(--app-muted);margin-bottom:2px">🏦 Plată</div>
+              <div style="font-size:.68rem;color:var(--df-text-3);margin-bottom:2px">🏦 Plată</div>
               <div style="color:#34d399;font-weight:700">${fmtV(parseFloat(c.plata_suma_efectiva||0))}</div>
-              <div style="font-size:.72rem;color:var(--app-muted)">${c.plata_nr_ordin?`OP ${c.plata_nr_ordin} · `:''}${c.plata_data||''}</div>
+              <div style="font-size:.72rem;color:var(--df-text-3)">${c.plata_nr_ordin?`OP ${c.plata_nr_ordin} · `:''}${c.plata_data||''}</div>
             </div>
           </div>
         </div>`;
       });
       const _totalIst=_istorice.reduce((s,c)=>s+parseFloat(c.plata_suma_efectiva||0),0);
-      _istHtml+=`<div style="text-align:right;font-size:.8rem;color:var(--app-muted);padding:4px 4px 8px">Total cicluri anterioare: <strong style="color:var(--app-text)">${fmtV(_totalIst)}</strong></div></div>`;
+      _istHtml+=`<div style="text-align:right;font-size:.8rem;color:var(--df-text-3);padding:4px 4px 8px">Total cicluri anterioare: <strong style="color:var(--df-text)">${fmtV(_totalIst)}</strong></div></div>`;
       const _vBlock=container.querySelector('[data-valori]');
       if(_vBlock){const _d=document.createElement('div');_d.innerHTML=_istHtml;_vBlock.parentNode.insertBefore(_d,_vBlock);}
     }
@@ -4135,7 +4130,7 @@ function _renderPickerSelect(containerId,users){
   if(!el)return;
   const opts=`<option value="">— Neselectat —</option>`+
     users.map(u=>`<option value="${_escH(String(u.id))}">${_escH(u.nume||u.email||'?')}${u.functie?` (${_escH(u.functie)})`:''}</option>`).join('');
-  el.innerHTML=`<select class="alop-sab-select" style="width:100%;padding:5px 8px;background:rgba(255,255,255,.06);border:1px solid var(--app-line);border-radius:6px;color:var(--app-text);font-size:.8rem">${opts}</select>`;
+  el.innerHTML=`<select class="alop-sab-select" style="width:100%;padding:5px 8px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:6px;color:var(--df-text);font-size:.8rem">${opts}</select>`;
 }
 
 function _setPickerValue(containerId,userId){
@@ -4362,6 +4357,6 @@ async function alopRevizuiesteDF(alopId,dfId){
   </div>
 </div>
 
-<script src="/notif-widget.js?v=3.9.270"></script>
+<script src="/notif-widget.js?v=3.9.271"></script>
 </body>
 </html>

@@ -33,6 +33,12 @@
   --df-brand-bd:      rgba(124,92,255,.30);
   --df-brand-text:    #c4b5fd;
 
+  /* === Teal — accent secundar === */
+  --df-teal:          #2dd4bf;
+  --df-teal-bg:       rgba(45,212,191,.15);
+  --df-teal-bd:       rgba(45,212,191,.30);
+  --df-teal-text:     #5eead4;
+
   /* === Semantic === */
   --df-success:       #22c55e;
   --df-success-bg:    rgba(34,197,94,.14);
