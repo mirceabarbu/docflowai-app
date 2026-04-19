@@ -163,12 +163,27 @@
 
 <div class="df-page">
 <header class="df-page-header">
-  <img src="/Logo.png" alt="DocFlowAI" style="height:40px;width:auto;flex-shrink:0;">
   <div class="df-page-titles">
     <h1>Semnare în masă</h1>
   </div>
   <div class="df-page-actions">
-    <a href="/semdoc-initiator.html">← Înapoi la fluxuri</a>
+    <div id="userBar"></div>
+    <div class="df-user-menu" id="df-user-menu">
+      <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+        <div class="df-user-trigger-avatar">U</div>
+        <div class="df-user-trigger-info">
+          <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+          <div class="df-user-trigger-role">Utilizator</div>
+        </div>
+        <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-chevron-down"/></svg>
+      </button>
+      <div class="df-user-dropdown">
+        <button class="danger" onclick="closeUserMenu();logout()">
+          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-log-out"/></svg>
+          Ieșire
+        </button>
+      </div>
+    </div>
   </div>
 </header>
 
