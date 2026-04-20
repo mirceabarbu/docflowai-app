@@ -1,0 +1,158 @@
+/* CSS specific semdoc-initiator.html — creare flux nou, cartele liste fluxuri,
+   tabel semnatari cu drag-and-drop, câmp AcroForm per semnatar (ancoreField),
+   mini-timeline orizontal în card flux (.mtl-*).
+   Conține multe override-uri cu !important peste .card/.btn/.pill/inputs din
+   components.css — ordinea de încărcare (tokens → shell → components →
+   semdoc-initiator) este critică pentru ca override-urile să funcționeze.
+   Depinde de: tokens.css, shell.css, components.css (încărcate înainte). */
+
+      *{box-sizing:border-box;}
+      button, input, select { font: inherit; }
+      select option{background: var(--card); color: var(--text);}
+      @keyframes pulse-urgent { 0%,100%{box-shadow:0 0 0 0 rgba(255,40,40,.4);} 50%{box-shadow:0 0 0 5px rgba(255,40,40,0);} }
+      .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+      .grid { display:grid; gap:10px; grid-template-columns: repeat(12, 1fr); }
+      .col-2 { grid-column: span 2; } .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; } .col-6 { grid-column: span 6; } .col-12 { grid-column: span 12; }
+      label { display:block; font-size: 12px; opacity:.85; margin-bottom:6px; }
+      input, select { width:100%; padding:10px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
+      .row { display:flex; gap:10px; align-items:center; }
+      .btn { background: rgba(120,160,255,.22); border:1px solid rgba(120,160,255,.45); color:#e9eefc; padding:10px 12px; border-radius: 12px; cursor:pointer; }
+      .btn.secondary { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
+      .btn.danger { background: rgba(255,90,120,.18); border-color: rgba(255,90,120,.35); }
+      table { width:100%; border-collapse: collapse;  table-layout: fixed;}
+      th, td { text-align:left; padding:10px; border-bottom:1px solid rgba(255,255,255,.08); vertical-align: top; }
+      td input, td select{width:100%; min-width:0;}
+
+      th { font-size: 12px; opacity:.85; }
+      .muted { opacity:.8; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .pill { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12px; }
+      .ok { border-color: rgba(90,255,160,.35); background: rgba(90,255,160,.12); }
+      .warn { border-color: rgba(255,210,90,.35); background: rgba(255,210,90,.12); }
+      .bad { border-color: rgba(255,90,120,.35); background: rgba(255,90,120,.12); }
+      a { color: #a9c2ff; }
+      .hidden { display:none; }
+      tr.drag-over td { background: rgba(124,92,255,.18) !important; }
+
+
+/* ===== DocFlowAI Theme ===== */
+:root{
+  --shadow: 0 20px 60px rgba(0,0,0,.35);
+  --radius:18px;
+}
+.muted, .card-sub, label{ color: var(--sub) !important; opacity: .9 !important; }
+a{ color: var(--muted) !important; }
+
+/* Cards / panels */
+.card, .box{
+  background: rgba(15,23,49,.72) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow);
+}
+
+/* Inputs */
+input, select, textarea{
+  background: rgba(255,255,255,.04) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px !important;
+}
+input::placeholder, textarea::placeholder{ color: rgba(205,216,255,.65) !important; }
+
+input:focus, select:focus, textarea:focus{
+  outline: none !important;
+  border-color: rgba(124,92,255,.55) !important;
+  box-shadow: 0 0 0 4px rgba(124,92,255,.18);
+}
+
+/* Tabs */
+/* Buttons */
+.btn{
+  background: linear-gradient(135deg, var(--accent), var(--accent2)) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 650;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.25);
+}
+.btn.secondary{
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.btn.danger{
+  background: rgba(251,113,133,.15) !important;
+  border: 1px solid rgba(251,113,133,.35) !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.btn:hover{ filter: brightness(1.05); transform: translateY(-1px); transition: .12s ease; }
+.btn:active{ transform: translateY(0); }
+
+/* Pills */
+.pill, .kpi{
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--sub) !important;
+}
+
+/* Tables */
+th, td{ border-bottom: 1px solid rgba(255,255,255,.08) !important; }
+th{ color: var(--sub) !important; }
+
+/* Small niceties */
+.mono{ color: var(--text) !important; }
+#err{ border-color: rgba(251,113,133,.35) !important; }
+/* ===== End theme ===== */
+
+
+    /* ── Câmp AcroForm per semnatar (ancore) ───────────────────────────────── */
+    .ancore-field-col { display: none; width: 180px; }
+    .doctype-ancore .ancore-field-col { display: table-cell; }
+    select.ancoreField {
+      width: 100%; padding: 5px 8px;
+      background: rgba(45,212,191,.07);
+      border: 1px solid rgba(45,212,191,.25);
+      border-radius: 7px; color: #7cf0e0;
+      font-size: .82rem; cursor: pointer;
+    }
+    select.ancoreField option { background: #0d1020; color: #eaf0ff; }
+    select.ancoreField:disabled { opacity: .4; cursor: default; }
+    .ancore-field-hint {
+      font-size: .72rem; color: rgba(45,212,191,.55);
+      margin-top: 3px; display: none;
+    }
+    .doctype-ancore .ancore-field-hint { display: block; }
+    /* ── E — b97: Mini-timeline orizontal în card flux ─────────────────────── */
+    .mtl { display:flex; align-items:flex-start; gap:0; overflow-x:auto; padding:6px 0 2px; }
+    .mtl::-webkit-scrollbar { height:4px; }
+    .mtl::-webkit-scrollbar-thumb { background:rgba(255,255,255,.12); border-radius:4px; }
+    .mtl-step { display:flex; flex-direction:column; align-items:center; position:relative; min-width:72px; flex:1; }
+    .mtl-step:not(:last-child)::after {
+      content:''; position:absolute; top:13px; left:calc(50% + 13px);
+      right:calc(-50% + 13px); height:2px;
+      background:rgba(255,255,255,.10); z-index:0;
+    }
+    .mtl-step.ms-done:not(:last-child)::after  { background:rgba(38,208,124,.35); }
+    .mtl-step.ms-active:not(:last-child)::after{ background:rgba(124,92,255,.30); }
+    .mtl-dot {
+      width:26px; height:26px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:.8rem; border:2px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.05); position:relative; z-index:1;
+      flex-shrink:0;
+    }
+    .ms-done   .mtl-dot { border-color:rgba(38,208,124,.65);  background:rgba(38,208,124,.15); }
+    .ms-active .mtl-dot { border-color:rgba(124,92,255,.85);  background:rgba(124,92,255,.20); box-shadow:0 0 0 3px rgba(124,92,255,.15); }
+    .ms-bad    .mtl-dot { border-color:rgba(255,77,90,.65);   background:rgba(255,77,90,.12); }
+    .ms-warn   .mtl-dot { border-color:rgba(255,176,32,.55);  background:rgba(255,176,32,.10); }
+    .mtl-name { font-size:.67rem; color:rgba(234,240,255,.45); margin-top:4px; text-align:center; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ms-done   .mtl-name { color:rgba(38,208,124,.75); }
+    .ms-active .mtl-name { color:rgba(189,164,255,.9); font-weight:700; }
+    .ms-bad    .mtl-name { color:rgba(255,130,140,.75); }
+    .mtl-ts { font-size:.62rem; color:rgba(234,240,255,.25); text-align:center; margin-top:1px; }
+    .ms-done .mtl-ts { color:rgba(38,208,124,.50); }
+    @keyframes mtl-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(124,92,255,.4);} 50%{box-shadow:0 0 0 5px rgba(124,92,255,0);} }
+    .ms-active .mtl-dot { animation:mtl-pulse 2s ease-in-out infinite; }
