@@ -57,6 +57,10 @@
   --df-radius-lg:     10px;
   --df-radius-xl:     12px;
 
+  /* === Font stacks === */
+  --df-font-sans:     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --df-font-mono:     ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
   /* === Legacy aliases ===
      Folosite în ~311 inline styles din admin.html. Nu șterge —
      migrare treptată la etapa 3. Valorile de mai jos setează

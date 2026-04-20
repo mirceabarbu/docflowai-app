@@ -2,8 +2,7 @@
 /* === Body base — comun tuturor paginilor shell === */
 html, body { margin: 0; padding: 0; }
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
-    Roboto, Arial, sans-serif;
+  font-family: var(--df-font-sans);
   background: var(--df-bg);
   color: var(--df-text);
   min-height: 100vh;
@@ -17,9 +16,9 @@ body {
 .df-sidebar-brand img{width:100%;height:auto;max-height:85px;object-fit:contain;}
 .df-nav-label{font-size:.62rem;color:var(--df-text-5);font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:10px 18px 4px;}
 .df-nav-group{display:flex;flex-direction:column;gap:0;padding:0 10px 2px;}
-.df-nav-item{display:flex;align-items:center;gap:10px;padding:7px 12px;border:none;background:transparent;color:var(--df-text-3);font-size:.8rem;font-weight:500;border-radius:var(--df-radius-md);cursor:pointer;text-align:left;font-family:inherit;transition:background .15s,color .15s;position:relative;width:100%;}
-.df-nav-item:hover{background:rgba(255,255,255,.04);color:var(--df-text);}
-.df-nav-item.active{background:var(--df-primary-bg);color:var(--df-text);}
+.df-nav-item,.df-nav-item:link,.df-nav-item:visited{display:flex;align-items:center;gap:10px;padding:7px 12px;border:none;background:transparent;color:var(--df-text-3);font-size:.8rem;font-weight:500;border-radius:var(--df-radius-md);cursor:pointer;text-align:left;font-family:inherit;transition:background .15s,color .15s;position:relative;width:100%;}
+.df-nav-item:hover,.df-nav-item:link:hover,.df-nav-item:visited:hover{background:rgba(255,255,255,.04);color:var(--df-text);}
+.df-nav-item.active,.df-nav-item:link.active,.df-nav-item:visited.active{background:var(--df-primary-bg);color:var(--df-text);}
 .df-nav-item.active::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--df-primary);}
 /* === Page header & body === */
 .df-page{display:flex;flex-direction:column;min-width:0;}

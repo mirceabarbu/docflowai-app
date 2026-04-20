@@ -4,73 +4,12 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Semnare în masă</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.274">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.274">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.274">
-  <script src="/js/df-shell.js?v=3.9.271"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.274">
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body {
-      --card:   rgba(255,255,255,.04);
-      --sub:    rgba(234,240,255,.55);
-      --r:      14px;
-      --shadow: 0 8px 32px rgba(0,0,0,.4);
-      /* Legacy aliases — used in JS-generated inline styles, do not remove */
-      --stroke: var(--df-border-2);
-      --purple: var(--df-brand);
-      background: var(--df-bg);
-      color: var(--df-text);
-      font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-      min-height: 100vh;
-    }
-main.df-page-body{max-width:760px;margin-top:40px;padding:0 20px 60px}
-    h2{font-size:1.1rem;font-weight:700;margin-bottom:6px}
-    .sub{color:var(--sub);font-size:.85rem;margin-bottom:28px}
-    .card{background:var(--card);border:1px solid var(--df-border-2);border-radius:var(--r);
-      padding:20px 24px;margin-bottom:16px}
-    .item{display:flex;align-items:center;gap:14px;padding:13px 0;
-      border-bottom:1px solid rgba(255,255,255,.05)}
-    .item:last-child{border-bottom:none}
-    .item-icon{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
-      font-size:1rem;flex-shrink:0;background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.25)}
-    .item-name{font-weight:600;font-size:.92rem;flex:1;min-width:0;
-      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .item-sub{color:var(--sub);font-size:.78rem;margin-top:2px}
-    .item-status{font-size:.8rem;font-weight:700;padding:3px 10px;border-radius:20px;
-      white-space:nowrap;flex-shrink:0}
-    .status-pending{background:rgba(255,176,32,.12);color:#ffd580;border:1px solid rgba(255,176,32,.3)}
-    .status-signed {background:rgba(38,208,124,.12);color:#7cf0e0;border:1px solid rgba(38,208,124,.3)}
-    .status-error  {background:rgba(255,77,90,.12); color:#ffaaaa;border:1px solid rgba(255,77,90,.3)}
-    .status-waiting{background:rgba(124,92,255,.12);color:#b39dff;border:1px solid rgba(124,92,255,.3)}
-    .btn{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:10px;
-      font-size:.9rem;font-weight:700;cursor:pointer;border:none;transition:all .15s}
-    .btn-primary{background:linear-gradient(135deg,var(--df-brand),var(--df-teal));color:#fff}
-    .btn-primary:disabled{opacity:.45;cursor:not-allowed}
-    .btn-sec{background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);color:var(--sub)}
-    .progress-wrap{background:rgba(255,255,255,.06);border-radius:999px;height:6px;
-      overflow:hidden;margin:12px 0}
-    .progress-bar{height:100%;background:linear-gradient(90deg,var(--df-brand),var(--df-teal));
-      border-radius:999px;transition:width .4s ease;width:0%}
-    #phase-init{display:block}
-    #phase-wait{display:none}
-    #phase-done{display:none}
-    .phase-icon{font-size:2.5rem;margin-bottom:12px;display:block}
-    .spin{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.2);
-      border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .alert{padding:12px 16px;border-radius:10px;font-size:.86rem;margin-bottom:16px}
-    .alert-err{background:rgba(255,77,90,.1);border:1px solid rgba(255,77,90,.3);color:#ffaaaa}
-    .alert-ok {background:rgba(38,208,124,.1);border:1px solid rgba(38,208,124,.3);color:#7cf0e0}
-    .stat-row{display:flex;gap:16px;margin-top:16px;flex-wrap:wrap}
-    .stat{flex:1;min-width:100px;background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);
-      border-radius:10px;padding:12px 16px;text-align:center}
-    .stat-n{font-size:1.8rem;font-weight:800;line-height:1}
-    .stat-l{font-size:.76rem;color:var(--sub);margin-top:4px}
-    .stat-n.ok  {color:var(--df-success)}
-    .stat-n.warn{color:var(--df-warning)}
-    .stat-n.bad {color:var(--df-danger)}
-  </style>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.281">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.281">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.281">
+  <link rel="stylesheet" href="/css/bulk-signer/bulk-signer.css?v=3.9.281">
+  <script src="/js/df-shell.js?v=3.9.281"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.281">
 </head>
 <body>
 
@@ -84,19 +23,19 @@ main.df-page-body{max-width:760px;margin-top:40px;padding:0 20px 60px}
   <div class="df-nav-label">Navigare app</div>
   <div class="df-nav-group">
     <a href="/" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-edit"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-edit"/></svg>
       Flux nou
     </a>
     <a href="/?tab=flows" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-folder"/></svg>
       Fluxurile mele
     </a>
     <a href="/templates" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-grid"/></svg>
       Șabloane
     </a>
     <a href="/formular.html" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-file-text"/></svg>
       Formulare
     </a>
   </div>
@@ -104,19 +43,19 @@ main.df-page-body{max-width:760px;margin-top:40px;padding:0 20px 60px}
   <div class="df-nav-label">Administrare</div>
   <div class="df-nav-group">
     <a href="/admin#dashboard" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-layout"/></svg>
       Dashboard
     </a>
     <a href="/admin#utilizatori" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-users"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-users"/></svg>
       Utilizatori
     </a>
     <a href="/admin#fluxuri" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-git-branch"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-git-branch"/></svg>
       Fluxuri documente
     </a>
     <a href="/admin#rapoarte" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-bar-chart"/></svg>
       Rapoarte
     </a>
   </div>
@@ -124,19 +63,19 @@ main.df-page-body{max-width:760px;margin-top:40px;padding:0 20px 60px}
   <div class="df-nav-label">Organizație</div>
   <div class="df-nav-group">
     <a href="/admin#organizatii" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-building"/></svg>
       Organizații
     </a>
     <a href="/admin#outreach" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-send"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-send"/></svg>
       Outreach
     </a>
     <a href="/admin#analytics" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-trending-up"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-trending-up"/></svg>
       Analytics
     </a>
     <a href="/admin#audit" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-search"/></svg>
       Audit
     </a>
   </div>
@@ -144,7 +83,7 @@ main.df-page-body{max-width:760px;margin-top:40px;padding:0 20px 60px}
   <div class="df-nav-label">Comunicare</div>
   <div class="df-nav-group">
     <a href="/notifications" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bell"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-bell"/></svg>
       Notificări
     </a>
   </div>
@@ -165,11 +104,11 @@ main.df-page-body{max-width:760px;margin-top:40px;padding:0 20px 60px}
           <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
           <div class="df-user-trigger-role">Utilizator</div>
         </div>
-        <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-chevron-down"/></svg>
+        <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-chevron-down"/></svg>
       </button>
       <div class="df-user-dropdown">
         <button class="danger" onclick="closeUserMenu();logout()">
-          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-log-out"/></svg>
+          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-log-out"/></svg>
           Ieșire
         </button>
       </div>

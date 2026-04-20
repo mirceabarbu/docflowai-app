@@ -173,6 +173,16 @@ Configurează `webhook_url` per organizație. La finalizare flux, DocFlowAI trim
 
 ---
 
+## Database Migrations
+
+DocFlowAI are reguli stricte pentru migrări DB, stabilite după incidentul de producție din 2026-04-19.
+
+**Citește secțiunea "Database Migrations — Reguli obligatorii" din `CLAUDE.md` înainte de orice migrare.**
+
+Context și postmortem complet: [`docs/incidents/2026-04-19-db-init-failure.md`](docs/incidents/2026-04-19-db-init-failure.md)
+
+---
+
 ## Licență
 
 Proprietar — DocFlowAI © 2026. Toate drepturile rezervate.

@@ -4,124 +4,10 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>DocFlowAI — Șabloane</title>
-<link rel="stylesheet" href="/css/df/tokens.css?v=3.9.271">
-<link rel="stylesheet" href="/css/df/shell.css?v=3.9.271">
-<link rel="stylesheet" href="/css/df/components.css?v=3.9.271">
-<style>
-  :root {
-    --surface: var(--df-surface); --surface2: var(--df-surface-2);
-    --accent: var(--df-brand);
-    --sub: var(--df-text-2); --muted: var(--df-text-3); --line: var(--df-border-2);
-    --radius: var(--df-radius-xl); --danger: var(--df-danger); --bg: var(--df-bg);
-  }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  .subtitle{color:var(--muted);font-size:.88rem;margin-bottom:32px;}
-  .create-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-    padding:28px;margin-bottom:32px;}
-  .create-card h2{font-size:1rem;font-weight:700;color:var(--sub);margin-bottom:20px;}
-  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
-  label{display:block;font-size:.75rem;color:var(--muted);margin-bottom:5px;font-weight:600;
-    letter-spacing:.04em;text-transform:uppercase;}
-  input[type=text],input[type=email],select{width:100%;background:rgba(255,255,255,.05);
-    border:1px solid var(--line);border-radius:10px;padding:10px 13px;color:#eaf0ff;
-    font-size:.9rem;outline:none;transition:border .2s;}
-  input:focus,select:focus{border-color:var(--accent);}
-  select option{background:#0f1731;}
-  /* Tabel semnatari — identic cu semdoc-initiator */
-  .signers-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px;}
-  .signers-table th{font-size:12px;color:rgba(205,216,255,.85);text-align:left;padding:10px;
-    border-bottom:1px solid rgba(255,255,255,.08);font-weight:600;letter-spacing:.04em;}
-  .signers-table td{padding:6px 5px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle;}
-  .signers-table td input,.signers-table td select{
-    width:100%;min-width:0;padding:9px 10px;border-radius:10px;
-    border:1px solid rgba(255,255,255,.12)!important;background:rgba(0,0,0,.2)!important;
-    color:#e9eefc!important;font-size:.85rem!important;outline:none;font:inherit!important;
-    box-sizing:border-box;}
-  .signers-table td input:focus,.signers-table td select:focus{border-color:var(--accent)!important;}
-  .signers-table td select option{background:#0f1731;}
-  .signers-table tr.drag-over td{background:rgba(124,92,255,.18)!important;}
-  .drag-handle{cursor:grab;text-align:center;color:rgba(255,255,255,.35);
-    user-select:none;font-size:18px;width:32px;}
-  .add-row-btn{background:transparent;border:1px dashed rgba(124,92,255,.4);color:var(--accent);
-    border-radius:9px;padding:8px 16px;font-size:.83rem;cursor:pointer;transition:all .2s;margin-top:4px;}
-  .add-row-btn:hover{background:rgba(124,92,255,.08);border-color:var(--accent);}
-  .shared-row{display:flex;align-items:center;gap:10px;margin-top:14px;}
-  .shared-row label{margin:0;text-transform:none;font-size:.85rem;color:var(--sub);cursor:pointer;}
-  input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer;}
-  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--df-teal));color:#fff;border:none;
-    padding:11px 24px;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;transition:all .15s;}
-  .btn-primary:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
-  .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
-  .create-actions{display:flex;align-items:center;gap:14px;margin-top:18px;}
-  .msg{font-size:.83rem;padding:8px 14px;border-radius:8px;}
-  .msg.ok{background:rgba(45,212,191,.1);color:#7cf0e0;}
-  .msg.err{background:rgba(255,85,85,.1);color:#ffaaaa;}
-  .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
-  .section-title{font-size:1rem;font-weight:700;color:var(--sub);}
-  .section-tag{font-size:.72rem;color:var(--muted);background:rgba(255,255,255,.06);
-    padding:3px 10px;border-radius:20px;border:1px solid var(--line);}
-  .tmpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:40px;}
-  .tmpl-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-    padding:20px 22px;transition:border-color .2s,transform .15s;animation:card-in .3s ease both;}
-  .tmpl-card:hover{border-color:rgba(124,92,255,.35);transform:translateY(-2px);}
-  .tmpl-card.shared-card{border-left:3px solid var(--df-teal);}
-  @keyframes card-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-  .tmpl-name{font-size:1rem;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-  .tmpl-badge{font-size:.65rem;padding:2px 8px;border-radius:20px;font-weight:700;letter-spacing:.06em;}
-  .badge-shared{background:var(--df-teal-bg);color:var(--df-teal);border:1px solid var(--df-teal-bd);}
-  .badge-private{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--line);}
-  .badge-extern{background:rgba(124,92,255,.12);color:var(--accent);border:1px solid rgba(124,92,255,.25);}
-  .tmpl-meta{font-size:.75rem;color:var(--muted);margin-bottom:14px;}
-  .tmpl-signers{margin-bottom:14px;}
-  .tmpl-signer-item{display:flex;align-items:center;gap:8px;padding:6px 0;
-    border-bottom:1px solid rgba(255,255,255,.04);}
-  .tmpl-signer-item:last-child{border-bottom:none;}
-  .signer-idx{font-size:.7rem;color:var(--muted);min-width:18px;font-weight:700;}
-  .signer-info{flex:1;}
-  .signer-name-row{font-size:.83rem;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-  .signer-sub{font-size:.73rem;color:var(--muted);}
-  .atrib-pill{font-size:.65rem;padding:2px 7px;border-radius:6px;font-weight:700;
-    background:rgba(124,92,255,.15);color:var(--accent);border:1px solid rgba(124,92,255,.2);}
-  .tmpl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
-  .btn-use{background:linear-gradient(135deg,var(--accent),var(--df-teal));color:#fff;border:none;
-    padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;
-    transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:4px;}
-  .btn-use:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
-  .btn-sm{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--sub);
-    padding:6px 12px;border-radius:8px;font-size:.75rem;cursor:pointer;transition:all .15s;}
-  .btn-sm:hover{background:rgba(120,160,255,.15);border-color:rgba(120,160,255,.4);color:#e9eefc;}
-  .btn-sm.danger{color:var(--danger);}
-  .btn-sm.danger:hover{background:rgba(255,85,85,.12);border-color:var(--danger);}
-  .btn-sm.success{color:#7cf0e0;}
-  .btn-sm.success:hover{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.4);}
-  /* Butoane navigare interne (card actions) */
-  .btn{background:rgba(120,160,255,.22);border:1px solid rgba(120,160,255,.45);color:#e9eefc;
-    padding:8px 14px;border-radius:10px;cursor:pointer;font-size:.88rem;text-decoration:none;
-    display:inline-flex;align-items:center;gap:4px;transition:filter .15s,transform .12s;}
-  .btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
-  .btn.danger{background:rgba(255,85,85,.18);border-color:rgba(255,85,85,.35);color:#ff8888;}
-  .btn.danger:hover{background:rgba(255,85,85,.28);}
-  .btn.success{background:rgba(45,212,191,.18);border-color:rgba(45,212,191,.35);color:#7cf0e0;}
-  .btn.success:hover{background:rgba(45,212,191,.28);}
-  .empty-state{text-align:center;padding:48px 24px;color:var(--muted);}
-  .empty-icon{font-size:2.5rem;margin-bottom:12px;}
-  .empty-title{font-size:1rem;font-weight:600;margin-bottom:6px;color:var(--sub);}
-  .spin{display:inline-block;width:20px;height:20px;border:2px solid rgba(124,92,255,.3);
-    border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;
-    align-items:center;justify-content:center;padding:20px;}
-  .modal-bg.open{display:flex;}
-  .modal{background:#0f1731;border:1px solid var(--line);border-radius:var(--radius);
-    padding:28px;width:100%;max-width:933px;max-height:90vh;overflow-y:auto;
-    box-shadow:0 24px 64px rgba(0,0,0,.6);}
-  .modal h3{font-size:1rem;font-weight:700;color:var(--sub);margin-bottom:20px;}
-  .modal-acts{margin-top:20px;display:flex;gap:8px;justify-content:flex-end;}
-  @media(max-width:640px){
-    .form-row{grid-template-columns:1fr;}
-    .tmpl-grid{grid-template-columns:1fr;}
-  }
-</style>
+<link rel="stylesheet" href="/css/df/tokens.css?v=3.9.281">
+<link rel="stylesheet" href="/css/df/shell.css?v=3.9.281">
+<link rel="stylesheet" href="/css/df/components.css?v=3.9.281">
+<link rel="stylesheet" href="/css/templates/templates.css?v=3.9.281">
 
   <script>
     // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
@@ -135,9 +21,9 @@
       return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.271">
-  <script src="/js/df-shell.js?v=3.9.271"></script>
-  <script src="/js/df-user-modals.js?v=3.9.271"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.281">
+  <script src="/js/df-shell.js?v=3.9.281"></script>
+  <script src="/js/df-user-modals.js?v=3.9.281"></script>
 </head>
 <body>
 
@@ -150,19 +36,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -170,19 +56,19 @@
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
       <a href="/admin#dashboard" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-layout"/></svg>
         Dashboard
       </a>
       <a href="/admin#utilizatori" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-users"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-users"/></svg>
         Utilizatori
       </a>
       <a href="/admin#fluxuri" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-git-branch"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-git-branch"/></svg>
         Fluxuri documente
       </a>
       <a href="/admin#rapoarte" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-bar-chart"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-bar-chart"/></svg>
         Rapoarte
       </a>
     </div>
@@ -190,19 +76,19 @@
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
       <a href="/admin#organizatii" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-building"/></svg>
         Organizații
       </a>
       <a href="/admin#outreach" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-send"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-send"/></svg>
         Outreach
       </a>
       <a href="/admin#analytics" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-trending-up"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-trending-up"/></svg>
         Analytics
       </a>
       <a href="/admin#audit" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-search"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-search"/></svg>
         Audit
       </a>
     </div>
@@ -234,26 +120,26 @@
               <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
               <div class="df-user-trigger-role">Utilizator</div>
             </div>
-            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-chevron-down"/></svg>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-chevron-down"/></svg>
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.271#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.281#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -263,7 +149,7 @@
 
     <main class="df-page-body">
       <div class="create-card">
-        <h2><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.271#ico-plus"/></svg>Șablon nou</h2>
+        <h2><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.281#ico-plus"/></svg>Șablon nou</h2>
         <div class="form-row">
           <div>
             <label>Nume șablon *</label>
@@ -272,7 +158,7 @@
           <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
             <div class="shared-row">
               <input type="checkbox" id="tShared"/>
-              <label for="tShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>Distribuie cu instituția mea</label>
+              <label for="tShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.281#ico-building"/></svg>Distribuie cu instituția mea</label>
             </div>
           </div>
         </div>
@@ -289,7 +175,7 @@
         </table>
         <button class="add-row-btn" onclick="addSignerRow()">+ Adaugă semnatar</button>
         <div class="create-actions">
-          <button class="btn-primary" id="btnSave" onclick="saveTemplate()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-save"/></svg>Salvează șablonul</button>
+          <button class="btn-primary" id="btnSave" onclick="saveTemplate()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.281#ico-save"/></svg>Salvează șablonul</button>
           <div id="createMsg"></div>
         </div>
       </div>
@@ -304,7 +190,7 @@
 
       <div id="sharedSection" style="display:none;">
         <div class="section-header">
-          <span class="section-title"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>Șabloane instituție</span>
+          <span class="section-title"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.281#ico-building"/></svg>Șabloane instituție</span>
           <span class="section-tag" id="sharedCount">—</span>
         </div>
         <div id="sharedGrid" class="tmpl-grid"></div>
@@ -315,7 +201,7 @@
 
 <div class="modal-bg" id="editModal" onclick="if(event.target===this)closeEdit()">
   <div class="modal">
-    <h3><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.271#ico-edit-pencil"/></svg>Editează șablon</h3>
+    <h3><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.281#ico-edit-pencil"/></svg>Editează șablon</h3>
     <input type="hidden" id="eId"/>
     <div class="form-row">
       <div>
@@ -325,7 +211,7 @@
       <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
         <div class="shared-row">
           <input type="checkbox" id="eShared"/>
-          <label for="eShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-building"/></svg>Distribuie cu instituția</label>
+          <label for="eShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.281#ico-building"/></svg>Distribuie cu instituția</label>
         </div>
       </div>
     </div>
@@ -344,7 +230,7 @@
     <div id="editMsg" style="margin-top:10px;font-size:.83rem;"></div>
     <div class="modal-acts">
       <button class="btn-sm" onclick="closeEdit()">Anulează</button>
-      <button class="btn-primary" onclick="saveEdit()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.271#ico-save"/></svg>Salvează</button>
+      <button class="btn-primary" onclick="saveEdit()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.281#ico-save"/></svg>Salvează</button>
     </div>
   </div>
 </div>
@@ -736,7 +622,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
 
 loadTemplates();
 </script>
-<script src="/notif-widget.js?v=3.9.271"></script>
+<script src="/notif-widget.js?v=3.9.281"></script>
 
 <!-- Modal schimbare parola -->
 <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">

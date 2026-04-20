@@ -276,3 +276,222 @@ Două niveluri de cache există:
 1. **Browser cache** → rezolvat prin `?v=VERSION` pe toate link-urile CSS/JS din HTML. Bump-ează `version` în `package.json` și rulează `sed` pe `?v=` în `public/*.html`.
 
 2. **Service Worker** (`sw.js`) → cache-uiește agresiv assets în `PRECACHE_ASSETS`. Când modifici un fișier din acea listă (`notif-widget.js`, `mobile.css`, `Logo.png`, etc.), bump-ează manual `CACHE_VERSION` în `public/sw.js` (ex. `v7` → `v8`). Fără bump, utilizatorii primesc versiunea veche până la hard refresh.
+
+---
+
+## Database Migrations — Lessons learned (incident 2026-04-19)
+
+### Arhitectura duală — cum funcționează
+
+Există **două sisteme de migrări** care rulează la fiecare boot, în ordine fixă:
+
+1. **Inline** (`server/db/index.mjs` → `runMigrations()`) — array `MIGRATIONS[]` cu 001–N, rulează **primul**, într-o singură tranzacție `BEGIN/COMMIT`.
+2. **File-based V4** (`server/db/migrate.mjs` → `runMigrationsV4()`) — fișiere `*.sql` din `server/db/migrations/`, rulează **după** inline, per-fișier în tranzacții separate.
+
+**Ordinea la boot:**
+```
+initDbWithRetry()          ← rulează inline 001-N (o singură tranzacție)
+  .then(async () => {
+    await runMigrationsV4()  ← rulează file-based 000-014.sql
+    markDbReady()
+  })
+```
+
+**Consecință critică:** dacă o migrare inline eșuează, întreaga tranzacție se face ROLLBACK, `markDbReady()` nu e niciodată apelat, și serverul rămâne UP dar returnează `503 db_not_ready` pe toate endpoint-urile.
+
+### Reguli obligatorii pentru migrări inline noi
+
+**Regula 1 — Guard IF EXISTS pentru tabele V4**
+
+Tabelele create EXCLUSIV de V4 file migrations (nu de inline): `alop_instances`, `alop_sabloane`.
+
+Orice migrare inline care face `ALTER TABLE` pe o tabelă V4 **trebuie** wrappată în guard:
+
+```sql
+DO $g$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+    WHERE table_schema='public' AND table_name='alop_instances'
+  ) THEN RETURN; END IF;
+
+  -- ALTER TABLE alop_instances ...
+
+END $g$;
+```
+
+Pattern precedent: `054_alop_sabloane_schema` (model de referință).
+
+**Regula 2 — Dollar-quoting nested**
+
+Dacă SQL-ul intern conține deja `DO $$ ... END $$`, folosește tag diferit pentru outer block:
+- Outer: `DO $g$ BEGIN ... END $g$;`
+- Inner exception block: `BEGIN ... EXCEPTION WHEN ... END;` (fără DO separat)
+
+**Regula 3 — `CREATE TABLE` cu FK spre tabelă V4**
+
+Dacă migrarea inline creează o tabelă nouă cu `REFERENCES alop_instances(id)`, pune și acel `CREATE TABLE` în același guard `IF EXISTS` — altfel FK constraint eșuează pe fresh DB.
+
+**Regula 4 — Testare pe fresh DB înainte de push**
+
+Înainte de orice PR develop → main care adaugă migrări inline noi:
+```bash
+# Simulează fresh DB local: drop + recreate + start server
+dropdb docflowai_dev && createdb docflowai_dev && npm start
+# Verifică în logs că toate migrările trec fără ROLLBACK
+```
+
+### Anti-patterns de evitat
+
+| Anti-pattern | Problemă | Soluție |
+|---|---|---|
+| `ALTER TABLE alop_instances` fără guard | Fail pe fresh DB, 503 permanent | Wrap în `DO $g$ IF NOT EXISTS` |
+| `CREATE TABLE ... REFERENCES alop_instances` fără guard | FK fail pe fresh DB | Wrap în același guard |
+| `DO $$ BEGIN ... END $$` nested în `DO $$ ... END $$` | Dollar-quoting conflict | Folosește `$g$` sau alt tag pentru outer |
+| Migrare inline care presupune V4 rulat deja | Race condition garantată | V4 rulează DUPĂ inline, întotdeauna |
+
+---
+
+## Database Migrations — Reguli obligatorii
+
+### Context
+
+DocFlowAI folosește **DOUĂ sisteme paralele de migrări** din motive istorice:
+
+1. **Inline migrations** în `server/db/index.mjs` (funcția `runMigrations` apelată din `initDbOnce`). ~62 migrări numerotate 001-062. Rulează PRIMA la boot, într-o **singură tranzacție** — dacă una eșuează, TOATE fac rollback.
+
+2. **File-based V4 migrations** în `server/db/migrations/*.sql`. 15 fișiere numerotate 000-014. Rulează A DOUA (după `markDbReady()`), per-file tranzacție, erorile sunt **prinse ca non-fatal** și doar logate.
+
+**Această arhitectură duală creează risc** — dacă un inline migration depinde de tabelă creată de V4, la fresh DB eșuează (tabela încă nu există).
+
+### Reguli absolute
+
+#### REGULA 1: Migrări noi se scriu EXCLUSIV în inline
+
+Nu mai adăuga fișiere în `server/db/migrations/`. Toate migrările noi merg în `server/db/index.mjs` cu numărul următor (063, 064, ...).
+
+Motiv: inline se testează imediat, V4 tinde să fie ignorat din cauza `try/catch` non-fatal.
+
+#### REGULA 2: Orice CREATE/ALTER folosește IF NOT EXISTS
+
+```sql
+-- BINE:
+CREATE TABLE IF NOT EXISTS foo (...);
+ALTER TABLE bar ADD COLUMN IF NOT EXISTS baz TEXT;
+CREATE INDEX IF NOT EXISTS idx_foo ON foo(x);
+
+-- RĂU:
+CREATE TABLE foo (...);            -- eșec dacă tabela există
+ALTER TABLE bar ADD COLUMN baz;    -- eșec dacă coloana există
+```
+
+#### REGULA 3: Constraint-urile se adaugă în DO block cu exception
+
+PostgreSQL nu are `ADD CONSTRAINT IF NOT EXISTS`. Workaround:
+
+```sql
+DO $$ BEGIN
+  ALTER TABLE foo ADD CONSTRAINT foo_bar_fk
+    FOREIGN KEY (bar_id) REFERENCES bar(id);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+```
+
+#### REGULA 4: ALTER pe tabelă care POATE LIPSI primește guard
+
+Dacă tabela e creată de alt sistem (V4) sau de feature care poate nu fi activat pe toate mediile, wrap în guard:
+
+```sql
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema='public' AND table_name='target_table'
+  ) THEN RETURN; END IF;
+
+  ALTER TABLE target_table ADD COLUMN IF NOT EXISTS new_col TEXT DEFAULT '';
+END $$;
+```
+
+Precedent: migrațiile 054, 055, 059-062 au primit acest guard după incidentul din 2026-04-19.
+
+#### REGULA 5: Coloane noi NOT NULL trebuie DEFAULT
+
+Pe tabele cu date existente:
+
+```sql
+-- BINE:
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+
+-- RĂU pe tabelă cu date existente:
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL;
+-- → eșec: "column contains null values"
+```
+
+#### REGULA 6: NICIODATĂ DROP fără confirmare explicită
+
+- `DROP TABLE`
+- `DROP COLUMN`
+- `DROP CONSTRAINT`
+- `TRUNCATE`
+- `DELETE` fără `WHERE`
+
+Astea nu merg într-o migrație fără confirmare explicită de la owner (Mircea). Dacă ai nevoie să ștergi o coloană/tabelă, **întreabă prima dată, nu scrie migrația direct**.
+
+#### REGULA 7: NICIODATĂ nu modifica `server/db/migrate.mjs`
+
+Force-rerun pe migration ID (`DELETE FROM schema_migrations WHERE id='X'`) e extrem de periculos. Dacă migrația are efect cumulativ, re-rulatul poate strica date. Există un force-rerun pe `014_alop` — **nu adăuga altele**.
+
+### Proces pentru migrare nouă
+
+1. **Scrie migrația** în `server/db/index.mjs` cu următorul număr liber (verifică cu `grep -oE "'[0-9]{3}_[a-z_]+'" server/db/index.mjs | sort -u | tail -5`)
+
+2. **Respectă regulile 2-6** de mai sus
+
+3. **Test pe local** dacă ai DB local, altfel staging
+
+4. **Deploy pe staging** (`git push origin develop`) și monitorizează Railway logs:
+   - Așteaptă să vezi `DB ready.` în log
+
+5. **Testare funcțională pe staging** — minim 24h uptime + login + un workflow end-to-end care atinge noua schemă
+
+6. **Dacă staging stabil → PR develop → main** pentru production
+
+7. **Monitorizare post-deploy production** — primele 10 min după redeploy:
+   - `/health` → 200
+   - Login → merge
+   - Railway logs: `DB ready.` apare fără `DB init failed`
+
+### Anti-patterns interzise
+
+- ❌ Migrații care presupun ordinea între inline și V4
+- ❌ Modificări la `migrate.mjs` (force-rerun)
+- ❌ `CREATE TABLE` fără `IF NOT EXISTS`
+- ❌ `ADD COLUMN` fără `IF NOT EXISTS`
+- ❌ `ADD CONSTRAINT` în afara unui `DO $$ ... EXCEPTION` block
+- ❌ `NOT NULL` fără `DEFAULT` pe tabelă cu date
+- ❌ `DROP` sau `TRUNCATE` fără confirmare explicită
+- ❌ Deploy direct pe main fără staging 24h uptime
+- ❌ PR develop → main fără backup manual `pg_dump` salvat local
+
+### În caz de incident DB (schema drift, init failure)
+
+Vezi `docs/incidents/2026-04-19-db-init-failure.md` pentru playbook:
+
+1. **Nu face wipe distructiv** — încearcă întâi reconcile add-only
+2. **Backup manual local** cu `pg_dump` (nu te baza pe Railway backup)
+3. **Dry-run pe staging** înainte de production
+4. **Execuție în `BEGIN/COMMIT`** cu `ON_ERROR_STOP=1`
+5. **Comparație state before/after** pentru verificare
+
+---
+
+## Incident log
+
+### 2026-04-19: Production DB init failure
+
+- **Cause:** inline migrations 055–062 ALTER `alop_instances` which didn't exist on production (ALOP feature was staging-only, table created only by V4 `014_alop.sql`)
+- **Detection:** post PR develop → main merge, login returned `503 db_not_ready` ("Baza de date nu este disponibilă")
+- **Fix:** added `DO $g$ IF NOT EXISTS` guard to migrations 055, 059, 060, 061, 062; migration 062 also guards `CREATE TABLE alop_ord_cicluri` (FK to `alop_instances`)
+- **Time to recovery:** ~1h (diagnostic + fix commit + PR develop→main + Railway redeploy)
+- **Data loss:** zero
+- **Root cause:** dual migration systems (inline + V4 file-based) without coordination — inline runs first, V4 errors non-fatal but inline errors fatal; `alop_instances` created only by V4
+- **Prevention:** rules documented above + guard pattern established for all future ALOP migrations
