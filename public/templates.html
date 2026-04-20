@@ -8,15 +8,9 @@
 <link rel="stylesheet" href="/css/df/shell.css?v=3.9.271">
 <link rel="stylesheet" href="/css/df/components.css?v=3.9.271">
 <style>
-  :root {
-    --surface: var(--df-surface); --surface2: var(--df-surface-2);
-    --accent: var(--df-brand);
-    --sub: var(--df-text-2); --muted: var(--df-text-3); --line: var(--df-border-2);
-    --radius: var(--df-radius-xl); --danger: var(--df-danger); --bg: var(--df-bg);
-  }
   *{box-sizing:border-box;margin:0;padding:0;}
   .subtitle{color:var(--muted);font-size:.88rem;margin-bottom:32px;}
-  .create-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  .create-card{background:var(--df-surface);border:1px solid var(--line);border-radius:var(--radius);
     padding:28px;margin-bottom:32px;}
   .create-card h2{font-size:1rem;font-weight:700;color:var(--sub);margin-bottom:20px;}
   .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
@@ -61,7 +55,7 @@
   .section-tag{font-size:.72rem;color:var(--muted);background:rgba(255,255,255,.06);
     padding:3px 10px;border-radius:20px;border:1px solid var(--line);}
   .tmpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:40px;}
-  .tmpl-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  .tmpl-card{background:var(--df-surface);border:1px solid var(--line);border-radius:var(--radius);
     padding:20px 22px;transition:border-color .2s,transform .15s;animation:card-in .3s ease both;}
   .tmpl-card:hover{border-color:rgba(124,92,255,.35);transform:translateY(-2px);}
   .tmpl-card.shared-card{border-left:3px solid var(--df-teal);}
@@ -90,8 +84,8 @@
   .btn-sm{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--sub);
     padding:6px 12px;border-radius:8px;font-size:.75rem;cursor:pointer;transition:all .15s;}
   .btn-sm:hover{background:rgba(120,160,255,.15);border-color:rgba(120,160,255,.4);color:#e9eefc;}
-  .btn-sm.danger{color:var(--danger);}
-  .btn-sm.danger:hover{background:rgba(255,85,85,.12);border-color:var(--danger);}
+  .btn-sm.danger{color:var(--df-danger);}
+  .btn-sm.danger:hover{background:rgba(255,85,85,.12);border-color:var(--df-danger);}
   .btn-sm.success{color:#7cf0e0;}
   .btn-sm.success:hover{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.4);}
   /* Butoane navigare interne (card actions) */
