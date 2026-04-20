@@ -75,7 +75,7 @@
 
         // 3. Role-based sidebar hiding
         var isAdmin = u.role === 'admin' || u.role === 'superadmin';
-        var isOrgAdmin = u.role === 'org_admin' || u.role === 'superadmin';
+        var isOrgAdmin = u.role === 'admin' || u.role === 'org_admin' || u.role === 'superadmin';
 
         if (!isAdmin) {
           document.querySelectorAll('.df-nav-label').forEach(function(l) {
