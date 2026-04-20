@@ -1,0 +1,146 @@
+/* CSS specific semdoc-signer.html (Block 1) — UI generic, theme override
+   cu !important, provider cards pentru selecție semnare (STS Cloud / Ancore).
+
+   ⚠️  ZONĂ STS — CITEȘTE ÎNAINTE DE ORICE MODIFICARE:
+   - NU redenumi clase: .card, .statusBox, .box, .row, .btn, .pill, .kpi,
+     .mono, .muted, .hidden, .provider-*, .p-*. Toate sunt referite de JS STS.
+   - Body token-urile (--bg, --card, --muted, --shadow, --radius) sunt
+     intenționat diferite de tokens globale. Comentariul "page-specific —
+     no df-tokens equivalent" explică asta. NU le alinia la --df-*.
+   - Gradient-ul radial-gradient creează atmosfera "focus document"
+     distinctivă paginii de semnare. Păstrat intenționat.
+
+   Block 2 (QES processing overlay: .qsi, .qss, .qrow, .ql*, .qsub +
+   keyframes qes-spin/bar/fade/ring) RĂMÂNE INLINE în semdoc-signer.html
+   — folosit direct de JS STS pentru overlay animat pe timpul OAuth PKCE
+   + polling + hash-sign + CMS embed.
+
+   Depinde de: tokens.css, shell.css, components.css (încărcate înainte). */
+
+      *{box-sizing:border-box;}
+body { font-family: system-ui, Arial; margin: 0; background:#0b0f17; color:#e9eefc; }
+      .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; }
+      .row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+      .btn { background: rgba(120,160,255,.22); border:1px solid rgba(120,160,255,.45); color:#e9eefc; padding:10px 12px; border-radius: 12px; cursor:pointer; }
+      .btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+      .btn.secondary { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .pill { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12px; }
+      .muted { opacity:.85; }
+      .box { background: rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; }
+      textarea { width:100%; min-height: 90px; padding:10px; border-radius: 12px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
+      select option{background: var(--card); color: var(--df-text);}
+
+      a { color: #a9c2ff; }
+      .hidden { display:none; }
+
+
+/* ===== DocFlowAI Theme ===== */
+body{
+  /* page-specific — no df-tokens equivalent */
+  --bg:     #0b1020;
+  --card:   #0f1731;
+  --muted:  #9db0ff;
+  --shadow: 0 20px 60px rgba(0,0,0,.35);
+  --radius: 18px;
+}
+
+body{
+  background:
+    radial-gradient(900px 500px at 18% 8%, rgba(124,92,255,.35), transparent 60%),
+    radial-gradient(700px 450px at 82% 12%, rgba(45,212,191,.22), transparent 55%),
+    var(--bg) !important;
+  color: var(--df-text) !important;
+}
+
+.muted, .card-sub, label{ color: var(--df-text-2) !important; opacity: .9 !important; }
+a{ color: var(--muted) !important; }
+
+/* Cards / panels */
+.card, .statusBox, .box{
+  background: rgba(15,23,49,.72) !important;
+  border: 1px solid var(--df-border-2) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow);
+}
+
+/* Inputs */
+input, select, textarea{
+  background: rgba(255,255,255,.04) !important;
+  color: var(--df-text) !important;
+  border: 1px solid var(--df-border-2) !important;
+  border-radius: 14px !important;
+}
+input::placeholder, textarea::placeholder{ color: rgba(205,216,255,.65) !important; }
+
+input:focus, select:focus, textarea:focus{
+  outline: none !important;
+  border-color: rgba(124,92,255,.55) !important;
+  box-shadow: 0 0 0 4px rgba(124,92,255,.18);
+}
+
+
+/* Buttons */
+.btn{
+  background: linear-gradient(135deg, var(--df-brand), var(--df-teal)) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 650;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.25);
+}
+.btn.secondary{
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid var(--df-border-2) !important;
+  color: var(--df-text) !important;
+  box-shadow: none !important;
+}
+.btn.danger{
+  background: rgba(251,113,133,.15) !important;
+  border: 1px solid rgba(251,113,133,.35) !important;
+  color: var(--df-text) !important;
+  box-shadow: none !important;
+}
+.btn:hover{ filter: brightness(1.05); transform: translateY(-1px); transition: .12s ease; }
+.btn:active{ transform: translateY(0); }
+
+/* Pills */
+.pill, .kpi{
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid var(--df-border-2) !important;
+  color: var(--df-text-2) !important;
+}
+
+/* Tables */
+th, td{ border-bottom: 1px solid rgba(255,255,255,.08) !important; }
+th{ color: var(--df-text-2) !important; }
+
+/* Small niceties */
+.mono{ color: var(--df-text) !important; }
+#err{ border-color: rgba(251,113,133,.35) !important; }
+/* ===== End theme ===== */
+
+    /* ── Provider selecție semnare ─────────────────────────────────────────── */
+    .provider-grid { display:flex; flex-direction:column; gap:10px; margin:12px 0; }
+    .provider-card {
+      display:flex; align-items:center; gap:14px;
+      padding:14px 16px; border-radius:12px;
+      border:2px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      cursor:pointer; transition:all .15s ease;
+      user-select:none;
+    }
+    .provider-card:hover { border-color:rgba(124,92,255,.45); background:rgba(124,92,255,.08); }
+    .provider-card.selected { border-color:rgba(124,92,255,.85); background:rgba(124,92,255,.15);
+      box-shadow:0 0 0 3px rgba(124,92,255,.12); }
+    .provider-card .p-icon { font-size:1.5rem; flex-shrink:0; }
+    .provider-card .p-info { flex:1; }
+    .provider-card .p-label { font-weight:700; font-size:.9rem; }
+    .provider-card .p-desc  { font-size:.78rem; color:rgba(234,240,255,.50); margin-top:2px; }
+    .provider-card .p-check {
+      width:22px; height:22px; border-radius:50%; flex-shrink:0;
+      border:2px solid rgba(255,255,255,.25);
+      display:flex; align-items:center; justify-content:center;
+      font-size:.75rem; font-weight:700;
+    }
+    .provider-card.selected .p-check { background:#7c5cff; border-color:#7c5cff; color:#fff; }
