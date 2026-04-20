@@ -46,19 +46,23 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { flowId } = req.params;
-    const { to, subject, bodyText, extraAttachments = [] } = req.body || {};
-    // extraAttachments: [{ filename, dataB64 }] — fișiere suplimentare alese de user
-    // Nu se salvează în DB, doar atașate la email
-    const includeAttachment = true;
-    const includeLink = true;
+    let { to, subject, bodyText, extraAttachments = [] } = req.body || {};
+    // Normalize: acceptă string sau array, output întotdeauna array de adrese unice validate
+    const recipientList = Array.isArray(to) ? to : (to ? [to] : []);
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const normalizedRecipients = [...new Set(
+      recipientList
+        .map(e => String(e || '').trim())
+        .filter(e => e && emailRe.test(e))
+        .map(e => e.toLowerCase())
+    )];
 
-    // Generăm un tracking ID unic pentru acest email
-    const trackingId = crypto.randomUUID();
-    const appBase    = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const includeAttachment = true;
+    const appBase = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
 
     // Validare
-    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()))
-      return res.status(400).json({ error: 'invalid_email', message: 'Adresă de email invalidă.' });
+    if (!normalizedRecipients.length)
+      return res.status(400).json({ error: 'invalid_email', message: 'Lipsesc destinatari valizi.' });
     if (!subject || !subject.trim())
       return res.status(400).json({ error: 'subject_required', message: 'Subiectul este obligatoriu.' });
 
@@ -90,76 +94,87 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     if (includeAttachment && !pdfB64)
       return res.status(409).json({ error: 'no_pdf', message: 'PDF-ul semnat nu este disponibil (nici local, nici în Drive).' });
 
-    // A — b97: template HTML extras în emailTemplates.mjs::emailSendExtern
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    const MAIL_FROM = process.env.MAIL_FROM || 'DocFlowAI <noreply@docflowai.ro>';
+    if (!RESEND_API_KEY) return res.status(503).json({ error: 'mail_not_configured', message: 'Email-ul nu este configurat pe server.' });
+
+    // b97: template HTML din emailTemplates.mjs::emailSendExtern
     const signersForTemplate = (data.signers || []).map(s => ({
       name: s.name || s.email,
       rol: s.rol || '',
       signedAt: s.signedAt || null,
       status: s.status === 'signed' ? 'semnat' : s.status === 'refused' ? 'refuzat' : 'în așteptare',
     }));
-    const { html } = emailSendExtern({ flowId, data, signers: signersForTemplate, bodyText, trackingId, appBase });
 
-    // Construim payload Resend
-    const { sendSignerEmail } = await import('../../mailer.mjs');
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    const MAIL_FROM = process.env.MAIL_FROM || 'DocFlowAI <noreply@docflowai.ro>';
-
-    if (!RESEND_API_KEY) return res.status(503).json({ error: 'mail_not_configured', message: 'Email-ul nu este configurat pe server.' });
-
-    // Tracking primar: click pe link-ul "DocFlowAI" din email (funcționează și cu imagini blocate)
-    // Tracking secundar: pixel GIF 1x1 ca fallback (blocat de mulți clienți de email instituționali)
-    const trackingPixelUrl = `${appBase}/p/${trackingId}`;
-    const htmlWithTracking = html.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none;border:0;" alt="" /></body>`);
-
-    const payload = { from: MAIL_FROM, to: to.trim(), subject: subject.trim(), html: htmlWithTracking };
+    // Atașamente (construite o singură dată, partajate per destinatar)
     const attachments = [];
-
     if (includeAttachment && pdfB64) {
       const pdfName = `${(data.docName || flowId).replace(/[^a-zA-Z0-9_\-\.]/g, '_')}_semnat.pdf`;
       const cleanPdfB64 = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
       attachments.push({ filename: pdfName, content: cleanPdfB64 });
     }
-
-    // Atașamente suplimentare trimise de user (max 20MB total, verificat în frontend)
     for (const att of extraAttachments) {
       if (!att.filename || !att.dataB64) continue;
       const clean = att.dataB64.includes(',') ? att.dataB64.split(',')[1] : att.dataB64;
       attachments.push({ filename: att.filename, content: clean });
     }
 
-    if (attachments.length > 0) payload.attachments = attachments;
+    if (!Array.isArray(data.events)) data.events = [];
+    const now = new Date().toISOString();
+    const failures = [];
+    const successes = [];
 
-    const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      logger.error({ err: j }, `send-email FAILED to ${to}`);
-      return res.status(502).json({ error: 'send_failed', message: j?.message || 'Eroare la trimiterea emailului.' });
+    for (const recipient of normalizedRecipients) {
+      const trackingId = crypto.randomUUID();
+      const { html } = emailSendExtern({ flowId, data, signers: signersForTemplate, bodyText, trackingId, appBase });
+      // Tracking primar: click pe link DocFlowAI; tracking secundar: pixel 1x1
+      const trackingPixelUrl = `${appBase}/p/${trackingId}`;
+      const htmlWithTracking = html.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none;border:0;" alt="" /></body>`);
+      const payload = { from: MAIL_FROM, to: recipient, subject: subject.trim(), html: htmlWithTracking };
+      if (attachments.length > 0) payload.attachments = attachments;
+
+      try {
+        const r = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          logger.error({ err: j, recipient }, `send-email FAILED to ${recipient}`);
+          failures.push({ recipient, error: j?.message || 'send_failed' });
+        } else {
+          successes.push({ recipient, trackingId, resendId: j.id });
+          data.events.push({
+            at: now, type: 'EMAIL_SENT', by: actor.email,
+            to: recipient, subject: subject.trim(),
+            trackingId,
+            extraAttachmentsCount: extraAttachments.length,
+          });
+          writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_SENT',
+            actorIp: _getIp(req), actorEmail: actor.email,
+            payload: { to: recipient, subject: subject.trim(), resendId: j.id, trackingId } });
+          logger.info({ flowId, to: recipient, actor: actor.email, trackingId }, '📧 Email extern trimis');
+        }
+      } catch(sendErr) {
+        failures.push({ recipient, error: String(sendErr.message) });
+        logger.error({ err: sendErr, recipient }, `send-email exception for ${recipient}`);
+      }
     }
 
-    // Audit log cu trackingId
-    const now = new Date().toISOString();
-    if (!Array.isArray(data.events)) data.events = [];
-    data.events.push({
-      at: now, type: 'EMAIL_SENT', by: actor.email,
-      to: to.trim(), subject: subject.trim(),
-      trackingId,
-      extraAttachmentsCount: extraAttachments.length,
-    });
     // FIX b232: updatedAt trebuie actualizat pentru ca ETag-ul sa se schimbe.
-    // Fara aceasta linie, ETag = flowId+updatedAt ramane identic dupa trimitere email
-    // → browser primeste 304 Not Modified → evenimentul EMAIL_SENT nu apare in UI.
-    data.updatedAt = now;
-    await saveFlow(flowId, data);
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_SENT',
-      actorIp: _getIp(req), actorEmail: actor.email,
-      payload: { to: to.trim(), subject: subject.trim(), resendId: j.id, trackingId } });
+    if (successes.length > 0) {
+      data.updatedAt = now;
+      await saveFlow(flowId, data);
+    }
 
-    logger.info({ flowId, to, actor: actor.email, trackingId }, '📧 Email extern trimis');
-    return res.json({ ok: true, resendId: j.id, trackingId });
+    if (failures.length === 0) {
+      return res.json({ ok: true, sent: successes.length, recipients: normalizedRecipients });
+    }
+    if (failures.length === normalizedRecipients.length) {
+      return res.status(500).json({ ok: false, error: 'all_failed', failures });
+    }
+    return res.status(207).json({ ok: true, sent: successes.length, failed: failures.length, successes, failures });
   } catch(e) { logger.error({ err: e }, 'send-email error'); return res.status(500).json({ error: 'server_error' }); }
 });
 
