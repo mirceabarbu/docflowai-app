@@ -350,6 +350,140 @@ dropdb docflowai_dev && createdb docflowai_dev && npm start
 
 ---
 
+## Database Migrations — Reguli obligatorii
+
+### Context
+
+DocFlowAI folosește **DOUĂ sisteme paralele de migrări** din motive istorice:
+
+1. **Inline migrations** în `server/db/index.mjs` (funcția `runMigrations` apelată din `initDbOnce`). ~62 migrări numerotate 001-062. Rulează PRIMA la boot, într-o **singură tranzacție** — dacă una eșuează, TOATE fac rollback.
+
+2. **File-based V4 migrations** în `server/db/migrations/*.sql`. 15 fișiere numerotate 000-014. Rulează A DOUA (după `markDbReady()`), per-file tranzacție, erorile sunt **prinse ca non-fatal** și doar logate.
+
+**Această arhitectură duală creează risc** — dacă un inline migration depinde de tabelă creată de V4, la fresh DB eșuează (tabela încă nu există).
+
+### Reguli absolute
+
+#### REGULA 1: Migrări noi se scriu EXCLUSIV în inline
+
+Nu mai adăuga fișiere în `server/db/migrations/`. Toate migrările noi merg în `server/db/index.mjs` cu numărul următor (063, 064, ...).
+
+Motiv: inline se testează imediat, V4 tinde să fie ignorat din cauza `try/catch` non-fatal.
+
+#### REGULA 2: Orice CREATE/ALTER folosește IF NOT EXISTS
+
+```sql
+-- BINE:
+CREATE TABLE IF NOT EXISTS foo (...);
+ALTER TABLE bar ADD COLUMN IF NOT EXISTS baz TEXT;
+CREATE INDEX IF NOT EXISTS idx_foo ON foo(x);
+
+-- RĂU:
+CREATE TABLE foo (...);            -- eșec dacă tabela există
+ALTER TABLE bar ADD COLUMN baz;    -- eșec dacă coloana există
+```
+
+#### REGULA 3: Constraint-urile se adaugă în DO block cu exception
+
+PostgreSQL nu are `ADD CONSTRAINT IF NOT EXISTS`. Workaround:
+
+```sql
+DO $$ BEGIN
+  ALTER TABLE foo ADD CONSTRAINT foo_bar_fk
+    FOREIGN KEY (bar_id) REFERENCES bar(id);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+```
+
+#### REGULA 4: ALTER pe tabelă care POATE LIPSI primește guard
+
+Dacă tabela e creată de alt sistem (V4) sau de feature care poate nu fi activat pe toate mediile, wrap în guard:
+
+```sql
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema='public' AND table_name='target_table'
+  ) THEN RETURN; END IF;
+
+  ALTER TABLE target_table ADD COLUMN IF NOT EXISTS new_col TEXT DEFAULT '';
+END $$;
+```
+
+Precedent: migrațiile 054, 055, 059-062 au primit acest guard după incidentul din 2026-04-19.
+
+#### REGULA 5: Coloane noi NOT NULL trebuie DEFAULT
+
+Pe tabele cu date existente:
+
+```sql
+-- BINE:
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+
+-- RĂU pe tabelă cu date existente:
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL;
+-- → eșec: "column contains null values"
+```
+
+#### REGULA 6: NICIODATĂ DROP fără confirmare explicită
+
+- `DROP TABLE`
+- `DROP COLUMN`
+- `DROP CONSTRAINT`
+- `TRUNCATE`
+- `DELETE` fără `WHERE`
+
+Astea nu merg într-o migrație fără confirmare explicită de la owner (Mircea). Dacă ai nevoie să ștergi o coloană/tabelă, **întreabă prima dată, nu scrie migrația direct**.
+
+#### REGULA 7: NICIODATĂ nu modifica `server/db/migrate.mjs`
+
+Force-rerun pe migration ID (`DELETE FROM schema_migrations WHERE id='X'`) e extrem de periculos. Dacă migrația are efect cumulativ, re-rulatul poate strica date. Există un force-rerun pe `014_alop` — **nu adăuga altele**.
+
+### Proces pentru migrare nouă
+
+1. **Scrie migrația** în `server/db/index.mjs` cu următorul număr liber (verifică cu `grep -oE "'[0-9]{3}_[a-z_]+'" server/db/index.mjs | sort -u | tail -5`)
+
+2. **Respectă regulile 2-6** de mai sus
+
+3. **Test pe local** dacă ai DB local, altfel staging
+
+4. **Deploy pe staging** (`git push origin develop`) și monitorizează Railway logs:
+   - Așteaptă să vezi `DB ready.` în log
+
+5. **Testare funcțională pe staging** — minim 24h uptime + login + un workflow end-to-end care atinge noua schemă
+
+6. **Dacă staging stabil → PR develop → main** pentru production
+
+7. **Monitorizare post-deploy production** — primele 10 min după redeploy:
+   - `/health` → 200
+   - Login → merge
+   - Railway logs: `DB ready.` apare fără `DB init failed`
+
+### Anti-patterns interzise
+
+- ❌ Migrații care presupun ordinea între inline și V4
+- ❌ Modificări la `migrate.mjs` (force-rerun)
+- ❌ `CREATE TABLE` fără `IF NOT EXISTS`
+- ❌ `ADD COLUMN` fără `IF NOT EXISTS`
+- ❌ `ADD CONSTRAINT` în afara unui `DO $$ ... EXCEPTION` block
+- ❌ `NOT NULL` fără `DEFAULT` pe tabelă cu date
+- ❌ `DROP` sau `TRUNCATE` fără confirmare explicită
+- ❌ Deploy direct pe main fără staging 24h uptime
+- ❌ PR develop → main fără backup manual `pg_dump` salvat local
+
+### În caz de incident DB (schema drift, init failure)
+
+Vezi `docs/incidents/2026-04-19-db-init-failure.md` pentru playbook:
+
+1. **Nu face wipe distructiv** — încearcă întâi reconcile add-only
+2. **Backup manual local** cu `pg_dump` (nu te baza pe Railway backup)
+3. **Dry-run pe staging** înainte de production
+4. **Execuție în `BEGIN/COMMIT`** cu `ON_ERROR_STOP=1`
+5. **Comparație state before/after** pentru verificare
+
+---
+
 ## Incident log
 
 ### 2026-04-19: Production DB init failure
