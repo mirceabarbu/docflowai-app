@@ -15,7 +15,6 @@
       --purple: var(--df-brand);
       background: var(--df-bg);
       color: var(--df-text);
-      font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       min-height: 100vh;
     }
 main.df-page-body{max-width:760px;margin-top:40px;padding:0 20px 60px}

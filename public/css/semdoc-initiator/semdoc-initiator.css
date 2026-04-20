@@ -25,7 +25,7 @@
 
       th { font-size: 12px; opacity:.85; }
       .muted { opacity:.8; }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .mono { font-family: var(--df-font-mono); }
       .pill { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12px; }
       .ok { border-color: rgba(90,255,160,.35); background: rgba(90,255,160,.12); }
       .warn { border-color: rgba(255,210,90,.35); background: rgba(255,210,90,.12); }

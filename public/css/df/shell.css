@@ -2,8 +2,7 @@
 /* === Body base — comun tuturor paginilor shell === */
 html, body { margin: 0; padding: 0; }
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
-    Roboto, Arial, sans-serif;
+  font-family: var(--df-font-sans);
   background: var(--df-bg);
   color: var(--df-text);
   min-height: 100vh;
