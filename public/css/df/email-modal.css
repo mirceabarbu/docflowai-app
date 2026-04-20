@@ -1,53 +1,64 @@
-/* CSS pentru modal-ul unificat de trimitere email extern.
-   Componentă reutilizabilă folosită pe semdoc-initiator și flow.
-   Depinde de: tokens.css (variabile --df-*), shell.css (font base). */
+/* CSS specific modalul unificat de trimitere email extern
+   (component df-email-modal.js). Folosește tokens globali din tokens.css.
+   Include chip-urile multi-destinatari și layoutul formularului.
+   Depinde de: tokens.css (încărcat înainte). */
 
-/* === Overlay + container modal === */
-.df-email-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;padding:16px;}
-.df-email-overlay.open{display:flex;}
-.df-email-modal{background:#12152a;border:1px solid rgba(157,176,255,.2);border-radius:16px;padding:28px 32px;width:100%;max-width:520px;position:relative;max-height:90vh;overflow-y:auto;}
-.df-email-modal-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--df-text-3);font-size:1.3rem;cursor:pointer;line-height:1;padding:4px 8px;border-radius:6px;transition:background .15s,color .15s;}
-.df-email-modal-close:hover{background:rgba(255,255,255,.06);color:var(--df-text);}
-.df-email-modal-title{font-size:1.05rem;font-weight:700;color:var(--df-text);margin-bottom:4px;display:flex;align-items:center;gap:8px;}
-.df-email-modal-subtitle{font-size:.8rem;color:var(--df-primary-text);margin-bottom:20px;}
+/* Overlay */
+.dfem-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;padding:16px;}
+.dfem-overlay.dfem-open{display:flex;}
 
-/* === Form === */
-.df-email-form{display:flex;flex-direction:column;gap:14px;}
-.df-email-form label{font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:5px;font-weight:500;}
-.df-email-form label .req{color:#ff8080;}
-.df-email-form label .opt{color:var(--df-text-4);font-size:.72rem;font-weight:400;}
-.df-email-form input[type="text"],.df-email-form input[type="email"],.df-email-form textarea{width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--df-text);font-size:.88rem;outline:none;transition:border-color .15s;}
-.df-email-form input:focus,.df-email-form textarea:focus{border-color:var(--df-brand);}
-.df-email-form textarea{resize:vertical;min-height:120px;font-size:.85rem;}
+/* Dialog */
+.dfem-dialog{background:var(--df-surface);border:1px solid var(--df-border-2);border-radius:var(--df-radius-xl);padding:22px 28px;width:100%;max-width:560px;position:relative;max-height:90vh;overflow-y:auto;}
+.dfem-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--df-text-4);font-size:1.3rem;cursor:pointer;padding:4px 8px;border-radius:var(--df-radius-sm);transition:background .15s,color .15s;}
+.dfem-close:hover{background:rgba(255,255,255,.06);color:var(--df-text);}
 
-/* === Chip container (multi-destinatari) === */
-.df-email-chips-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;min-height:42px;transition:border-color .15s;}
-.df-email-chips-wrap:focus-within{border-color:var(--df-brand);}
-.df-email-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:.78rem;font-weight:500;white-space:nowrap;}
-.df-email-chip.valid{background:rgba(45,212,191,.15);border:1px solid rgba(45,212,191,.35);color:#7cf0e0;}
-.df-email-chip.invalid{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.35);color:#ffaaaa;}
-.df-email-chip-x{background:none;border:none;color:inherit;cursor:pointer;font-size:.9rem;line-height:1;padding:0 2px;opacity:.7;transition:opacity .15s;}
-.df-email-chip-x:hover{opacity:1;}
-.df-email-chips-input{flex:1;min-width:140px;background:none!important;border:none!important;padding:4px 2px!important;color:var(--df-text);font-size:.88rem;outline:none;font-family:inherit;}
-.df-email-chips-input::placeholder{color:var(--df-text-4);}
-.df-email-hint{font-size:.72rem;color:var(--df-text-4);margin-top:4px;font-style:italic;}
+.dfem-title{font-size:1.05rem;font-weight:700;color:var(--df-text);margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+.dfem-subtitle{font-size:.8rem;color:var(--df-text-3);margin-bottom:18px;}
 
-/* === Attachments === */
-.df-email-attach-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.df-email-attach-btn{padding:7px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:var(--df-primary-text);cursor:pointer;font-size:.82rem;font-weight:600;font-family:inherit;}
-.df-email-attach-btn:hover{background:rgba(255,255,255,.09);}
-.df-email-attach-info{font-size:.78rem;color:var(--df-text-3);}
-.df-email-attach-list{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
-.df-email-attach-item{display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(157,176,255,.08);border-radius:6px;font-size:.78rem;}
-.df-email-attach-item-icon{color:var(--df-primary-text);}
-.df-email-attach-item-name{flex:1;color:var(--df-text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.df-email-attach-item-size{color:var(--df-text-3);flex-shrink:0;}
-.df-email-attach-item-remove{background:none;border:none;color:#ff8080;cursor:pointer;font-size:.82rem;padding:0 2px;line-height:1;}
+/* Form layout */
+.dfem-form{display:flex;flex-direction:column;gap:12px;}
+.dfem-field{display:flex;flex-direction:column;gap:5px;}
+.dfem-label{font-size:.78rem;color:var(--df-text-3);font-weight:500;}
+.dfem-label .dfem-req{color:#ff8080;margin-left:2px;}
+.dfem-label .dfem-hint{color:var(--df-text-4);font-size:.72rem;font-weight:400;margin-left:4px;}
 
-/* === Feedback + submit === */
-.df-email-msg{font-size:.82rem;min-height:18px;}
-.df-email-msg.err{color:#ffaaaa;}
-.df-email-msg.ok{color:#2dd4bf;}
-.df-email-submit{background:linear-gradient(135deg,var(--df-teal),var(--df-brand));border:none;color:#fff;padding:11px 24px;border-radius:9px;font-size:.9rem;font-weight:700;cursor:pointer;width:100%;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s;}
-.df-email-submit:hover:not(:disabled){filter:brightness(1.08);}
-.df-email-submit:disabled{opacity:.55;cursor:not-allowed;}
+/* Inputs */
+.dfem-input,.dfem-textarea{width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:var(--df-radius-md);color:var(--df-text);font-size:.88rem;outline:none;font-family:inherit;transition:border-color .15s,background .15s;}
+.dfem-input:focus,.dfem-textarea:focus{border-color:var(--df-primary);background:rgba(255,255,255,.08);}
+.dfem-textarea{resize:vertical;min-height:120px;font-size:.85rem;}
+
+/* Chip-input container */
+.dfem-chip-wrap{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:var(--df-radius-md);min-height:40px;cursor:text;transition:border-color .15s,background .15s;}
+.dfem-chip-wrap:focus-within{border-color:var(--df-primary);background:rgba(255,255,255,.08);}
+.dfem-chip-input{flex:1;min-width:160px;background:transparent;border:none;outline:none;color:var(--df-text);font-size:.88rem;padding:4px 2px;font-family:inherit;}
+.dfem-chip-input::placeholder{color:var(--df-text-4);}
+
+/* Chip */
+.dfem-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--df-brand-bg);border:1px solid var(--df-brand-bd);border-radius:999px;font-size:.8rem;color:var(--df-brand-text);max-width:100%;}
+.dfem-chip.dfem-chip-invalid{background:var(--df-danger-bg);border-color:var(--df-danger-bd);color:#ffaaaa;}
+.dfem-chip-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;}
+.dfem-chip-remove{background:none;border:none;color:inherit;cursor:pointer;padding:0 2px;font-size:1rem;line-height:1;opacity:.7;transition:opacity .15s;}
+.dfem-chip-remove:hover{opacity:1;}
+
+/* Attachments */
+.dfem-attach-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.dfem-attach-btn{padding:7px 14px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:var(--df-radius-md);color:var(--df-text-2);cursor:pointer;font-size:.82rem;font-weight:500;font-family:inherit;transition:background .15s,border-color .15s;}
+.dfem-attach-btn:hover{background:rgba(255,255,255,.1);border-color:var(--df-border-hover);}
+.dfem-attach-info{font-size:.78rem;color:var(--df-text-3);}
+.dfem-attach-list{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+.dfem-attach-item{display:flex;align-items:center;gap:8px;padding:4px 10px;background:rgba(157,176,255,.08);border-radius:var(--df-radius-sm);font-size:.78rem;color:var(--df-text-2);}
+.dfem-attach-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dfem-attach-item-size{color:var(--df-text-4);}
+.dfem-attach-item-remove{background:none;border:none;color:#ff8080;cursor:pointer;font-size:.85rem;padding:0 4px;}
+
+/* Status message */
+.dfem-msg{font-size:.82rem;min-height:18px;}
+.dfem-msg.dfem-msg-err{color:#ffaaaa;}
+.dfem-msg.dfem-msg-ok{color:#5eead4;}
+
+/* Submit */
+.dfem-submit{background:linear-gradient(135deg,var(--df-teal),var(--df-brand));border:none;color:#fff;padding:11px 24px;border-radius:var(--df-radius-md);font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;transition:filter .15s,transform .05s;display:inline-flex;align-items:center;justify-content:center;gap:8px;}
+.dfem-submit:hover:not(:disabled){filter:brightness(1.08);}
+.dfem-submit:active:not(:disabled){transform:translateY(1px);}
+.dfem-submit:disabled{opacity:.55;cursor:not-allowed;}
+.dfem-submit svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}

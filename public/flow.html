@@ -1098,7 +1098,7 @@
   const _btnSendEmail = $("btnSendEmail");
   if (_btnSendEmail) _btnSendEmail.addEventListener("click", () => {
     const d = window._flowData || {};
-    window.openDfEmailModal({ flowId, docName: d.docName || flowId, institutie: d.institutie || '', compartiment: d.compartiment || '', onSuccess: function() { loadFlow(); } });
+    DFEmailModal.open(flowId, { docName: d.docName || flowId, institutie: d.institutie, compartiment: d.compartiment, onSuccess: () => loadFlow() });
   });
 
   $("btnReinitiate").addEventListener("click", async () => {

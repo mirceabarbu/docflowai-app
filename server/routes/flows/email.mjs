@@ -63,6 +63,8 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     // Validare
     if (!normalizedRecipients.length)
       return res.status(400).json({ error: 'invalid_email', message: 'Lipsesc destinatari valizi.' });
+    if (normalizedRecipients.length > 20)
+      return res.status(400).json({ error: 'too_many', message: 'Max 20 destinatari per email.' });
     if (!subject || !subject.trim())
       return res.status(400).json({ error: 'subject_required', message: 'Subiectul este obligatoriu.' });
 

@@ -1322,7 +1322,7 @@
                 ${!isCancelled && mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#ff6b6b);border:none;color:#fff;padding:7px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">✍ Semnează</button>` : ''}
                 <a href="/flow.html?flow=${f.flowId}" class="df-action-btn"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.284#ico-search"/></svg>Vezi flow</a>
                 ${!isCancelled ? dlBtn : ''}
-                ${pdfReady ? `<button onclick="window.openDfEmailModal({ flowId:'${f.flowId}', docName:${JSON.stringify(f.docName || f.flowId)}, institutie:${JSON.stringify(f.institutie || '')}, compartiment:${JSON.stringify(f.compartiment || '')}, onSuccess: function(){ loadMyFlows(_fluxPage); } })" class="df-action-btn success" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.284#ico-mail"/></svg>Trimite</button>` : ''}
+                ${pdfReady ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.284#ico-mail"/></svg>Trimite</button>` : ''}
                 ${!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" style="background:rgba(255,200,50,.12);border:1px solid rgba(255,200,50,.35);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">🔄 Reinițiază</button>` : ''}
                 ${refusedByAprobat && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<span style="color:#ffaaaa;font-size:.78rem;font-weight:600;">⛔ Refuzat de APROBATOR — flux nou necesar</span>` : ''}
                 ${!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" style="background:rgba(250,180,0,.18);border:1px solid rgba(250,180,0,.4);color:#ffd580;padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Doc revizuit</button>` : ''}
@@ -2359,6 +2359,14 @@ async function submitChangePwd(){
     else{msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');btn.disabled=false;btn.textContent='Salvează';}
   } catch(e){ console.error(e); msg.style.color='#f28b82'; msg.textContent='Eroare de rețea.'; btn.disabled=false; btn.textContent='Salvează'; }
 }
+
+window._openEmailForFlow = function(flowId) {
+  const f = (window._flowsEmailData || {})[flowId] || {};
+  DFEmailModal.open(flowId, {
+    docName: f.docName, institutie: f.institutie, compartiment: f.compartiment,
+    onSuccess: () => { if (typeof loadMyFlows === 'function') loadMyFlows(_fluxPage); },
+  });
+};
 </script>
 
 
