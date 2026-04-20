@@ -9,6 +9,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+/* Form elements moștenesc font-family din body (user-agent default NU propagă) */
+button,input,select,textarea{font-family:inherit;}
 /* === Shell enterprise layout === */
 .df-shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh;align-items:start;}
 .df-sidebar{background:var(--df-bg-elevated);border-right:1px solid var(--df-border);display:flex;flex-direction:column;padding:20px 0 16px;position:sticky;top:0;align-self:stretch;max-height:100vh;overflow-y:auto;overflow-x:hidden;}
