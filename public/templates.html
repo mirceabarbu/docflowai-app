@@ -4,10 +4,10 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>DocFlowAI — Șabloane</title>
-<link rel="stylesheet" href="/css/df/tokens.css?v=3.9.282">
-<link rel="stylesheet" href="/css/df/shell.css?v=3.9.282">
-<link rel="stylesheet" href="/css/df/components.css?v=3.9.282">
-<link rel="stylesheet" href="/css/templates/templates.css?v=3.9.282">
+<link rel="stylesheet" href="/css/df/tokens.css?v=3.9.283">
+<link rel="stylesheet" href="/css/df/shell.css?v=3.9.283">
+<link rel="stylesheet" href="/css/df/components.css?v=3.9.283">
+<link rel="stylesheet" href="/css/templates/templates.css?v=3.9.283">
 
   <script>
     // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
@@ -21,9 +21,10 @@
       return fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
     };
   </script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.282">
-  <script src="/js/df-shell.js?v=3.9.282"></script>
-  <script src="/js/df-user-modals.js?v=3.9.282"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.283">
+  <script src="/js/df-shell.js?v=3.9.283"></script>
+  <script src="/js/df-user-modals.js?v=3.9.283"></script>
+  <script src="/js/df-subtabs.js?v=3.9.283" defer></script>
 </head>
 <body>
 
@@ -36,19 +37,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -56,19 +57,19 @@
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
       <a href="/admin#dashboard" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-layout"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-layout"/></svg>
         Dashboard
       </a>
       <a href="/admin#utilizatori" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-users"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-users"/></svg>
         Utilizatori
       </a>
       <a href="/admin#fluxuri" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-git-branch"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-git-branch"/></svg>
         Fluxuri documente
       </a>
       <a href="/admin#rapoarte" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-bar-chart"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-bar-chart"/></svg>
         Rapoarte
       </a>
     </div>
@@ -76,19 +77,19 @@
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
       <a href="/admin#organizatii" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-building"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-building"/></svg>
         Organizații
       </a>
       <a href="/admin#outreach" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-send"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-send"/></svg>
         Outreach
       </a>
       <a href="/admin#analytics" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-trending-up"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-trending-up"/></svg>
         Analytics
       </a>
       <a href="/admin#audit" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-search"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-search"/></svg>
         Audit
       </a>
     </div>
@@ -120,26 +121,26 @@
               <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
               <div class="df-user-trigger-role">Utilizator</div>
             </div>
-            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-chevron-down"/></svg>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-chevron-down"/></svg>
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.282#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -148,60 +149,78 @@
     </header>
 
     <main class="df-page-body">
-      <div class="create-card">
-        <h2><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.282#ico-plus"/></svg>Șablon nou</h2>
-        <div class="form-row">
-          <div>
-            <label>Nume șablon *</label>
-            <input id="tName" type="text" placeholder="Ex: Aprobare referat consum"/>
+
+      <div class="df-subtabs" data-subtabs-group="templates">
+        <button class="df-subtab" data-subtab="tmpl-list">
+          <svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-grid"/></svg>
+          Șabloanele mele
+          <span class="df-subtab-count" id="tmplListCount"></span>
+        </button>
+        <button class="df-subtab" data-subtab="tmpl-create">
+          <svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.283#ico-plus"/></svg>
+          Șablon nou
+        </button>
+      </div>
+
+      <div class="df-subview" data-subview="tmpl-list">
+        <div class="section-header">
+          <span class="section-title">Șabloanele mele</span>
+          <span class="section-tag" id="myCount">—</span>
+        </div>
+        <div id="myGrid" class="tmpl-grid">
+          <div class="empty-state"><span class="spin"></span></div>
+        </div>
+
+        <div id="sharedSection" style="display:none;">
+          <div class="section-header">
+            <span class="section-title"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.283#ico-building"/></svg>Șabloane instituție</span>
+            <span class="section-tag" id="sharedCount">—</span>
           </div>
-          <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
-            <div class="shared-row">
-              <input type="checkbox" id="tShared"/>
-              <label for="tShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.282#ico-building"/></svg>Distribuie cu instituția mea</label>
+          <div id="sharedGrid" class="tmpl-grid"></div>
+        </div>
+      </div>
+
+      <div class="df-subview" data-subview="tmpl-create">
+        <div class="create-card">
+          <h2><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.283#ico-plus"/></svg>Șablon nou</h2>
+          <div class="form-row">
+            <div>
+              <label>Nume șablon *</label>
+              <input id="tName" type="text" placeholder="Ex: Aprobare referat consum"/>
+            </div>
+            <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
+              <div class="shared-row">
+                <input type="checkbox" id="tShared"/>
+                <label for="tShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.283#ico-building"/></svg>Distribuie cu instituția mea</label>
+              </div>
             </div>
           </div>
-        </div>
-        <label style="margin-bottom:10px;display:block;">Semnatari (în ordinea semnării) *</label>
-        <table class="signers-table">
-          <thead><tr>
-            <th style="width:32px;"></th>
-            <th style="width:155px;">ATRIBUT</th>
-            <th style="width:190px;">FUNCȚIE</th>
-            <th>NUME ȘI PRENUME</th>
-                    <th style="width:90px;"></th>
-          </tr></thead>
-          <tbody id="signersBuilder"></tbody>
-        </table>
-        <button class="add-row-btn" onclick="addSignerRow()">+ Adaugă semnatar</button>
-        <div class="create-actions">
-          <button class="btn-primary" id="btnSave" onclick="saveTemplate()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.282#ico-save"/></svg>Salvează șablonul</button>
-          <div id="createMsg"></div>
+          <label style="margin-bottom:10px;display:block;">Semnatari (în ordinea semnării) *</label>
+          <table class="signers-table">
+            <thead><tr>
+              <th style="width:32px;"></th>
+              <th style="width:155px;">ATRIBUT</th>
+              <th style="width:190px;">FUNCȚIE</th>
+              <th>NUME ȘI PRENUME</th>
+              <th style="width:90px;"></th>
+            </tr></thead>
+            <tbody id="signersBuilder"></tbody>
+          </table>
+          <button class="add-row-btn" onclick="addSignerRow()">+ Adaugă semnatar</button>
+          <div class="create-actions">
+            <button class="btn-primary" id="btnSave" onclick="saveTemplate()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.283#ico-save"/></svg>Salvează șablonul</button>
+            <div id="createMsg"></div>
+          </div>
         </div>
       </div>
 
-      <div class="section-header">
-        <span class="section-title">Șabloanele mele</span>
-        <span class="section-tag" id="myCount">—</span>
-      </div>
-      <div id="myGrid" class="tmpl-grid">
-        <div class="empty-state"><span class="spin"></span></div>
-      </div>
-
-      <div id="sharedSection" style="display:none;">
-        <div class="section-header">
-          <span class="section-title"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.282#ico-building"/></svg>Șabloane instituție</span>
-          <span class="section-tag" id="sharedCount">—</span>
-        </div>
-        <div id="sharedGrid" class="tmpl-grid"></div>
-      </div>
     </main>
   </div>
 </div>
 
 <div class="modal-bg" id="editModal" onclick="if(event.target===this)closeEdit()">
   <div class="modal">
-    <h3><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.282#ico-edit-pencil"/></svg>Editează șablon</h3>
+    <h3><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:7px;"><use href="/icons.svg?v=3.9.283#ico-edit-pencil"/></svg>Editează șablon</h3>
     <input type="hidden" id="eId"/>
     <div class="form-row">
       <div>
@@ -211,7 +230,7 @@
       <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
         <div class="shared-row">
           <input type="checkbox" id="eShared"/>
-          <label for="eShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.282#ico-building"/></svg>Distribuie cu instituția</label>
+          <label for="eShared"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.283#ico-building"/></svg>Distribuie cu instituția</label>
         </div>
       </div>
     </div>
@@ -230,7 +249,7 @@
     <div id="editMsg" style="margin-top:10px;font-size:.83rem;"></div>
     <div class="modal-acts">
       <button class="btn-sm" onclick="closeEdit()">Anulează</button>
-      <button class="btn-primary" onclick="saveEdit()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.282#ico-save"/></svg>Salvează</button>
+      <button class="btn-primary" onclick="saveEdit()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.283#ico-save"/></svg>Salvează</button>
     </div>
   </div>
 </div>
@@ -470,6 +489,9 @@ function renderTemplates() {
   const mine = allTemplates.filter(t=>t.isOwner);
   const shared = allTemplates.filter(t=>!t.isOwner);
   $('myCount').textContent=`(${mine.length})`;
+  const total = mine.length + (shared && shared.length ? shared.length : 0);
+  const subCnt = document.getElementById('tmplListCount');
+  if (subCnt) subCnt.textContent = total;
   $('myGrid').innerHTML = mine.length ? '' : `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">Niciun șablon încă</div><div style="font-size:.82rem;margin-top:4px;">Creează primul tău șablon mai sus.</div></div>`;
   mine.forEach((t,i)=>$('myGrid').appendChild(buildCard(t,i)));
   if (shared.length) {
@@ -622,7 +644,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
 
 loadTemplates();
 </script>
-<script src="/notif-widget.js?v=3.9.282"></script>
+<script src="/notif-widget.js?v=3.9.283"></script>
 
 <!-- Modal schimbare parola -->
 <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
