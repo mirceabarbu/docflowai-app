@@ -106,3 +106,76 @@
 .df-subtab.active .df-subtab-count{background:var(--df-primary-bg);color:var(--df-primary-text);}
 .df-subview{display:none;}
 .df-subview.active{display:block;}
+
+/* ── Alias .df-ico → moștenește stroke-width/linecap/linejoin ca .df-ic ──
+   Rezolvă divergența vizuală temporar, până la consolidarea pe o
+   singură clasă în Etapa 6. */
+.df-ico,.df-ico-sm,.df-ico-lg,.df-ico-xl{
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+}
+
+/* ── Variante semantice .df-action-btn (extensie) ──────────────────── */
+
+/* danger — acțiuni distructive/ireversibile (Șterge, Anulează, Refuză) */
+.df-action-btn.danger{
+  background:rgba(239,68,68,.1);
+  border-color:rgba(239,68,68,.3);
+  color:#fca5a5;
+}
+.df-action-btn.danger:hover{
+  background:rgba(239,68,68,.18);
+  border-color:rgba(239,68,68,.5);
+  color:#fecaca;
+}
+
+/* cta — gradient brand (1 CTA major per pagină) */
+.df-action-btn.cta{
+  background:linear-gradient(135deg,rgba(124,92,255,.3),rgba(45,212,191,.25));
+  border-color:rgba(124,92,255,.4);
+  color:#fff;
+  font-weight:600;
+}
+.df-action-btn.cta:hover{
+  background:linear-gradient(135deg,rgba(124,92,255,.45),rgba(45,212,191,.4));
+  border-color:rgba(124,92,255,.65);
+  box-shadow:0 4px 20px rgba(124,92,255,.25);
+}
+
+/* ── Modifiere dimensiune ─────────────────────────────────────────── */
+
+.df-action-btn.sm{
+  padding:4px 9px;
+  font-size:.72rem;
+  gap:4px;
+}
+
+.df-action-btn.lg{
+  padding:10px 20px;
+  font-size:.9rem;
+  gap:8px;
+}
+
+/* ── Modifiere formă ──────────────────────────────────────────────── */
+
+.df-action-btn.icon-only{
+  padding:6px;
+  width:32px;
+  height:32px;
+  justify-content:center;
+}
+.df-action-btn.icon-only.sm{
+  width:26px;
+  height:26px;
+  padding:4px;
+}
+
+.df-action-btn.full-width{
+  width:100%;
+  justify-content:center;
+}
+
+/* ── Scalare SVG în buton — dimensiune auto după variantă ─────────── */
+
+.df-action-btn .df-ic,.df-action-btn .df-ico{width:15px;height:15px;}
+.df-action-btn.sm .df-ic,.df-action-btn.sm .df-ico{width:13px;height:13px;}
+.df-action-btn.lg .df-ic,.df-action-btn.lg .df-ico{width:18px;height:18px;}
