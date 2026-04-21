@@ -1577,21 +1577,6 @@ function renderAuditTable(events) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px;color:var(--muted)">Niciun eveniment găsit</td></tr>';
     return;
   }
-  const eventLabels = {
-    'FLOW_CREATED':            'Flux creat',
-    'SIGNED_PDF_UPLOADED':     'Document semnat încărcat',
-    'FLOW_COMPLETED':          'Flux finalizat',
-    'FLOW_REFUSED':            'Flux refuzat',
-    'FLOW_CANCELLED':          'Flux anulat',
-    'USER_LOGIN':              'Autentificare',
-    'USER_LOGOUT':             'Deconectare',
-    'FLOW_DELEGATED':          'Delegare semnătură',
-    'EMAIL_SENT':              'Email trimis',
-    'ARCHIVE_COMPLETED':       'Arhivat',
-    'TRUST_REPORT_GENERATED':  'Raport trust generat',
-    'SIGNER_NOTIFIED':         'Semnatar notificat',
-    'FLOW_REINITIATED':        'Flux reinițiat',
-  };
   const badgeColor = {
     'FLOW_CREATED':        '#3b82f6',
     'FLOW_COMPLETED':      '#10b981',
@@ -1603,7 +1588,7 @@ function renderAuditTable(events) {
   };
   tbody.innerHTML = events.map(e => {
     const date     = new Date(e.created_at).toLocaleString('ro-RO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    const label    = eventLabels[e.event_type] || e.event_type;
+    const label    = AUDIT_EVENT_LABELS[e.event_type] || e.event_type;
     const color    = badgeColor[e.event_type]  || '#64748b';
     const badgeHtml = `<span style="background:${color}22;color:${color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${escH(label)}</span>`;
     const flowLink  = e.flow_id
@@ -1631,15 +1616,44 @@ function renderAuditPagination(page, pages, total) {
   `;
 }
 
+const AUDIT_EVENT_LABELS = {
+  'FLOW_CREATED':                  'Flux creat',
+  'FLOW_COMPLETED':                'Flux finalizat',
+  'FLOW_CANCELLED':                'Flux anulat',
+  'FLOW_REFUSED':                  'Flux refuzat',
+  'FLOW_REINITIATED':              'Flux reinițiat',
+  'FLOW_REINITIATED_AFTER_REVIEW': 'Flux reinițiat după revizuire',
+  'FLOW_DELEGATED':                'Delegare semnătură',
+  'SIGNED':                        'Semnat',
+  'REFUSED':                       'Refuzat',
+  'DELEGATED':                     'Delegare semnătură',
+  'SIGNED_PDF_UPLOADED':           'Document semnat încărcat',
+  'PDF_DOWNLOADED':                'PDF descărcat',
+  'ATTACHMENT_ADDED':              'Atașament adăugat',
+  'EMAIL_SENT':                    'Email trimis',
+  'REVIEW_REQUESTED':              'Revizuire solicitată',
+  'SIGNER_NOTIFIED':               'Semnatar notificat',
+  'ARCHIVE_COMPLETED':             'Arhivat',
+  'TRUST_REPORT_GENERATED':        'Raport trust generat',
+  'auth.login.success':            'Autentificare reușită',
+  'auth.login.failed':             'Autentificare eșuată',
+  'USER_LOGIN':                    'Autentificare',
+  'USER_LOGOUT':                   'Deconectare',
+};
+
 async function loadAuditEventTypes() {
   try {
     const res  = await fetch('/admin/audit-events/types', { credentials: 'include' });
     const data = await res.json();
     const sel  = $('audit-event-type');
     if (sel && data.types) {
-      data.types.forEach(t => {
+      const items = data.types
+        .map(t => ({ value: t, label: AUDIT_EVENT_LABELS[t] || t }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'ro'));
+      items.forEach(it => {
         const opt = document.createElement('option');
-        opt.value = t; opt.textContent = t;
+        opt.value = it.value;
+        opt.textContent = it.label;
         sel.appendChild(opt);
       });
     }

@@ -17,7 +17,7 @@
       color: var(--df-text);
       min-height: 100vh;
     }
-main.df-page-body{max-width:760px;margin-top:40px;padding:0 20px 60px}
+main.df-page-body{margin-top:0;}
     h2{font-size:1.1rem;font-weight:700;margin-bottom:6px}
     .sub{color:var(--sub);font-size:.85rem;margin-bottom:28px}
     .card{background:var(--card);border:1px solid var(--df-border-2);border-radius:var(--r);
