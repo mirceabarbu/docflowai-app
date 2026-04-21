@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Verificare Document — DocFlowAI</title>
-<link rel="stylesheet" href="/css/df/tokens.css?v=3.9.289">
-<link rel="stylesheet" href="/css/df/components.css?v=3.9.289">
+<link rel="stylesheet" href="/css/df/tokens.css?v=3.9.290">
+<link rel="stylesheet" href="/css/df/components.css?v=3.9.290">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
 
@@ -296,8 +296,8 @@
 
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('id')"><svg class="df-ic" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:6px;"><use href="/icons.svg?v=3.9.289#ico-search"/></svg>După ID flux</button>
-    <button class="tab" onclick="switchTab('pdf')"><svg class="df-ic" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:6px;"><use href="/icons.svg?v=3.9.289#ico-file-text"/></svg>Upload PDF</button>
+    <button class="tab active" onclick="switchTab('id')"><svg class="df-ic" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:6px;"><use href="/icons.svg?v=3.9.290#ico-search"/></svg>După ID flux</button>
+    <button class="tab" onclick="switchTab('pdf')"><svg class="df-ic" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:6px;"><use href="/icons.svg?v=3.9.290#ico-file-text"/></svg>Upload PDF</button>
   </div>
 
   <!-- Tab: ID flux -->
@@ -325,17 +325,17 @@
         ondragleave="this.classList.remove('drag')"
         ondrop="onDrop(event)"
         onclick="document.getElementById('fileInput').click()">
-        <div class="icon"><svg viewBox="0 0 24 24" style="width:48px;height:48px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><use href="/icons.svg?v=3.9.289#ico-file-text"/></svg></div>
+        <div class="icon"><svg viewBox="0 0 24 24" style="width:48px;height:48px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><use href="/icons.svg?v=3.9.290#ico-file-text"/></svg></div>
         <div class="label"><strong>Alege fișierul PDF</strong> sau trage aici</div>
         <div class="label" style="margin-top:6px;">Max 50 MB · PDF cu semnătură electronică calificată</div>
       </div>
       <input type="file" id="fileInput" accept=".pdf" style="display:none" onchange="onFileSelect(this)">
       <div id="fileInfo" style="margin-top:12px;display:none;">
         <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.2);border-radius:8px;font-size:.84rem;">
-          <svg class="df-ic" viewBox="0 0 24 24" style="color:var(--df-teal);"><use href="/icons.svg?v=3.9.289#ico-file-text"/></svg>
+          <svg class="df-ic" viewBox="0 0 24 24" style="color:var(--df-teal);"><use href="/icons.svg?v=3.9.290#ico-file-text"/></svg>
           <span id="fileName" style="flex:1;color:var(--df-teal);"></span>
           <span id="fileSize" style="color:var(--muted);font-size:.75rem;"></span>
-          <button onclick="clearFile()" class="df-action-btn icon-only sm" aria-label="Elimină fișierul" title="Elimină fișierul"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.289#ico-x"/></svg></button>
+          <button onclick="clearFile()" class="df-action-btn icon-only sm" aria-label="Elimină fișierul" title="Elimină fișierul"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.290#ico-x"/></svg></button>
         </div>
         <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <input class="inp" id="inputFlowIdPdf" placeholder="ID flux (opțional — pentru corelație cu platforma)"
