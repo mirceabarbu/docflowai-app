@@ -108,3 +108,7 @@
     .form-row{grid-template-columns:1fr;}
     .tmpl-grid{grid-template-columns:1fr;}
   }
+  /* Card wrapper pentru subview-uri — consistent cu admin.html */
+  .card{background:var(--df-surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:24px 26px;margin-bottom:20px;}
+  .card .section-header{margin-bottom:14px;}
