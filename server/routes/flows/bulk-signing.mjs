@@ -261,50 +261,28 @@ export async function processBulkOAuthCallback(sessionId, query, res) {
     const { STSCloudProvider } = await import('../../signing/providers/STSCloudProvider.mjs');
     const provider = new STSCloudProvider();
 
-    // PASUL 1: code → token
-    const clientAssertion = provider._buildClientAssertion(
-      pd.clientId, pd.kid, pd.privateKeyPem, pd.idpUrl);
-    const tokenResp = await _fetch4(`${pd.idpUrl}/oauth2/token`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type:            'authorization_code',
-        client_id:             pd.clientId,
-        code,
-        redirect_uri:          pd.redirectUri,
-        client_assertion:      clientAssertion,
-        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-        code_verifier:         pd.codeVerifier,
-      }).toString(),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!tokenResp.ok) {
-      const errText = await tokenResp.text();
-      logger.error({ status: tokenResp.status, body: errText.substring(0,300) }, 'bulk STS: token exchange failed');
-      return res.redirect(`/bulk-signer.html?session=${sessionId}&sts_error=${encodeURIComponent('Eroare token STS')}`);
+    // PASUL 1: code → access token + cert din /userinfo (folosim metoda
+    // providerului, care are extragere robustă de cert — identic cu
+    // cloud-signing.mjs L113-115). Evităm fetch-ul manual care rata
+    // signingCertificate ca string PEM direct.
+    const tokenResult = await provider.exchangeCodeForToken(
+      code,
+      { providerData: pd, sessionId }
+    );
+    if (!tokenResult.ok) {
+      logger.error({ sessionId, err: tokenResult }, 'bulk STS: exchangeCodeForToken failed');
+      return res.redirect(
+        `/bulk-signer.html?session=${sessionId}&sts_error=${encodeURIComponent(
+          tokenResult.message || 'Eroare token STS')}`);
     }
-    const tokenJson  = await tokenResp.json();
-    const accessToken = tokenJson.access_token;
-    if (!accessToken)
-      return res.redirect(`/bulk-signer.html?session=${sessionId}&sts_error=${encodeURIComponent('Token STS lipsă')}`);
+    const { accessToken, certPem, certChainPem } = tokenResult;
 
-    // PASUL 2: /userinfo pentru certificat (necesar înainte de signedAttrs)
-    let certPem = null;
-    try {
-      const uiResp = await _fetch4(`${pd.idpUrl}/userinfo`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (uiResp.ok) {
-        const ui = await uiResp.json();
-        certPem = ui?.signingCertificate?.pemCertificate
-               || ui?.certificate?.pemCertificate
-               || ui?.cert || ui?.pemCertificate || null;
-        if (!certPem && Array.isArray(ui?.otherCertificates))
-          certPem = ui.otherCertificates[0]?.pemCertificate || null;
-        logger.info({ hasCert: !!certPem }, 'bulk STS: cert din /userinfo');
-      }
-    } catch(e) { logger.warn({ err: e }, 'bulk STS: /userinfo non-fatal'); }
+    if (!certPem) {
+      logger.error({ sessionId }, 'bulk STS: certPem lipsă din /userinfo — nu putem finaliza PAdES');
+      return res.redirect(
+        `/bulk-signer.html?session=${sessionId}&sts_error=${encodeURIComponent(
+          'Certificatul STS nu a fost primit. Reîncercați sau contactați administratorul.')}`);
+    }
 
     // ── PASUL 2.5: Java prepare per item (b-multibulk-fix) ───────────────────
     //   Pentru fiecare flux, pregătim PAdES cu Java service folosind
@@ -436,6 +414,9 @@ export async function processBulkOAuthCallback(sessionId, query, res) {
     const stsOpId = signJson.id;
     logger.info({ stsOpId, sessionId, count: items.length },
       'bulk STS: hash-uri trimise — așteptăm aprobarea pe email/PUSH');
+
+    // Stocăm certChainPem în items[] (sts_cert_chain nu există în schema curentă)
+    items.forEach(it => { it.stsCertChainPem = certChainPem || []; });
 
     // Salvam sesiunea actualizata
     await pool.query(
@@ -580,7 +561,7 @@ router.get('/bulk-signing/:sessionId/poll', async (req, res) => {
           fieldName,
           signByteBase64:      signByte,
           certificatePem:      session.sts_cert_pem || null,
-          certificateChainPem: [],
+          certificateChainPem: Array.isArray(item.stsCertChainPem) ? item.stsCertChainPem : [],
           useSignedAttributes: true,
           subFilter:           'ETSI.CAdES.detached',
           tsaUrl:              null,
