@@ -371,6 +371,7 @@ async function loadUsers(){
         <th><select class="th-filter" onchange="filterUsers()" id="fRol" style="padding:4px 6px;">
           <option value="">Toate</option>
           <option value="admin">Admin</option>
+          <option value="org_admin">Admin Instituție</option>
           <option value="user">User</option>
         </select></th>
         <th></th><th></th>
@@ -1646,9 +1647,9 @@ async function loadAuditEventTypes() {
 }
 
 function resetAuditFilters() {
-  ['audit-event-type','audit-flow-id','audit-from','audit-to'].forEach(id => {
+  ['audit-event-type','audit-flow-id','audit-from','audit-to','audit-from-display','audit-to-display'].forEach(id => {
     const el = $(id);
-    if (el) el.value = '';
+    if (el) { el.value = ''; el.style.borderColor = ''; }
   });
   loadAuditEvents(1);
 }
