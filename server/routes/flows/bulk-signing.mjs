@@ -90,6 +90,24 @@ async function _getSession(sessionId) {
   return rows[0] || null;
 }
 
+/** Extrage CN din subject-ul certificatului PEM. Duplicat din
+ *  cloud-signing.mjs (non-exported acolo) pentru a evita modificarea
+ *  cloud-signing.mjs care e NO-TOUCH. */
+function _bulkExtractCertificateCn(certPem) {
+  try {
+    if (!certPem) return null;
+    const cert = new crypto.X509Certificate(certPem);
+    const subject = String(cert.subject || '');
+    let m = subject.match(/(?:^|\n|,)\s*CN\s*=\s*([^,\n]+)/i);
+    if (m?.[1]) return m[1].trim();
+    for (const line of subject.split(/\n+/)) {
+      const mm = line.match(/^CN\s*=\s*(.+)$/i);
+      if (mm?.[1]) return mm[1].trim();
+    }
+    return null;
+  } catch { return null; }
+}
+
 // ── POST /bulk-signing/initiate ────────────────────────────────────────────
 // Body: { flows: [{flowId, signerToken}], providerId }
 // Răspuns: { sessionId, signingUrl }
@@ -103,9 +121,15 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
     if (flowRequests.length > 20)
       return res.status(400).json({ error: 'too_many_flows', message: 'Maxim 20 fluxuri per sesiune bulk.' });
 
-    const { preparePadesDoc, calcPadesHash }   = await import('../../signing/pades.mjs');
-    const { STSCloudProvider }                  = await import('../../signing/providers/STSCloudProvider.mjs');
-    const { PDFDocument, PDFName, PDFNumber }   = await import('pdf-lib');
+    const { STSCloudProvider }  = await import('../../signing/providers/STSCloudProvider.mjs');
+    const { hasJavaSigningService } = await import('../../signing/java-pades-client.mjs');
+    if (!hasJavaSigningService()) {
+      logger.error({}, 'bulk-signing/initiate: SIGNING_SERVICE_URL lipsește');
+      return res.status(503).json({
+        error: 'signing_service_unavailable',
+        message: 'Serviciul de semnare Java nu este disponibil. Contactați administratorul.'
+      });
+    }
 
     // Validam și pregătim fiecare flux
     const items = [];
@@ -134,62 +158,25 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
       if ((signers[idx].email || '').toLowerCase() !== actor.email.toLowerCase())
         return res.status(403).json({ error: 'forbidden', message: `Token nu corespunde utilizatorului logat.` });
 
+      if ((data.flowType || 'tabel').toLowerCase() === 'ancore') {
+        return res.status(400).json({
+          error: 'ancore_not_supported',
+          message: `Fluxul ${flowId} e de tip ANCORE. Semnarea în masă nu e disponibilă pentru fluxuri ANCORE momentan. Folosiți semnarea individuală.`
+        });
+      }
+
       // Org — folosim prima gasita (trebuie sa fie aceeasi in org)
       if (!orgId && data.orgId) { orgId = data.orgId; org = await _getOrg(orgId); }
 
-      // Citim PDF-ul de semnat (semnat de predecesori sau original)
-      // ARHITECTURA PAdES INCREMENTAL b233 (bulk):
-      // Semnatar 1: pdfB64 original → unlock → cartuș nou
-      // Semnatar 2+: signedPdfB64 → NU unlock → doar placeholder (cartuș existent)
-      const signedCount = signers.filter((s, i) => i < idx && s.status === 'signed').length;
-      const isSubsequentSigner = signedCount > 0 && !!data.signedPdfB64;
-      const sourcePdfB64 = isSubsequentSigner ? data.signedPdfB64 : (data.pdfB64 || '');
-      const rawPdf = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
-      if (!rawPdf)
-        return res.status(500).json({ error: 'pdf_missing', message: `PDF lipsă pentru ${flowId}.` });
-      let pdfBuf = Buffer.from(rawPdf, 'base64');
-
-      // Unlock DOAR pentru semnatar 1
-      if (!isSubsequentSigner && data.flowType !== 'ancore') {
-        try {
-          const pdfDoc = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
-          try { delete pdfDoc.context.trailerInfo.Encrypt; } catch(e2) {}
-          try { pdfDoc.catalog.delete(PDFName.of('Perms')); } catch(e2) {}
-          try {
-            const af = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-            if (af) { const afObj = pdfDoc.context.lookup(af); if (afObj?.set) afObj.set(PDFName.of('SigFlags'), PDFNumber.of(1)); }
-          } catch(e2) {}
-          pdfBuf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
-        } catch(e) { logger.warn({ err: e, flowId }, 'bulk-initiate: unlock non-fatal'); }
-      }
-
-      // Pregătim PAdES placeholder
-      const pdfBufPades     = await preparePadesDoc(pdfBuf, data, idx,
-        { alwaysDrawCartus: !isSubsequentSigner });
-      const padesHashBase64 = calcPadesHash(pdfBufPades);  // SHA256(bytesOutsideContents)
-      const padesPdfB64     = pdfBufPades.toString('base64');
-
-      // Stocam PDF-ul cu placeholder în flows_pdfs (migration 043 garantează constraint ok)
-      const padesKey = `padesPdf_${idx}`;
-      await pool.query(
-        `INSERT INTO flows_pdfs (flow_id, key, data, updated_at) VALUES ($1,$2,$3,NOW())
-         ON CONFLICT (flow_id, key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
-        [flowId, padesKey, padesPdfB64]
-      );
-      signers[idx].bulkPadesHashBase64 = padesHashBase64;
-
-      data.signers   = signers;
-      data.updatedAt = new Date().toISOString();
-      await saveFlow(flowId, data);
-
+      // Prepararea PAdES se mută în callback (după OAuth, când avem certificatul STS).
+      // /initiate doar validează și construiește URL OAuth.
       items.push({
         flowId,
         signerToken,
-        signerIdx:        idx,
-        docName:          data.docName || flowId,
-        padesHashBase64,  // SHA256(doc)
-        bulkPadesKey:     padesKey,
-        status:           'pending',
+        signerIdx:  idx,
+        docName:    data.docName || flowId,
+        status:     'pending',
+        // padesHashBase64 + bulkPadesKey se adaugă în callback, după Java prepare
       });
     }
 
@@ -319,9 +306,104 @@ export async function processBulkOAuthCallback(sessionId, query, res) {
       }
     } catch(e) { logger.warn({ err: e }, 'bulk STS: /userinfo non-fatal'); }
 
-    // PASUL 3: colectam hash-urile SHA256(doc) per flux — trimise direct la STS
-    // (identic cu single signing — fara signedAttrs, STS semneaza documentDigest direct)
+    // ── PASUL 2.5: Java prepare per item (b-multibulk-fix) ───────────────────
+    //   Pentru fiecare flux, pregătim PAdES cu Java service folosind
+    //   certificatul STS. Salvăm PDF-ul pregătit în flows_pdfs și
+    //   populăm item.padesHashBase64 cu toBeSignedDigestBase64
+    //   (hash-ul SHA256(signedAttrs) pe care îl va semna STS).
+    const { javaPreparePades } = await import('../../signing/java-pades-client.mjs');
+    const { PDFDocument, PDFName, PDFNumber } = await import('pdf-lib');
     const items = Array.isArray(session.items) ? session.items : [];
+
+    for (const item of items) {
+      try {
+        const data = await getFlowData(item.flowId);
+        if (!data) throw new Error(`Flux ${item.flowId} negăsit`);
+        const signers = Array.isArray(data.signers) ? data.signers : [];
+        const signer  = signers[item.signerIdx];
+        if (!signer) throw new Error(`Signer idx=${item.signerIdx} lipsește`);
+
+        // Determină PDF-ul sursă (identic cu logica din vechiul /initiate)
+        const signedCount = signers.filter((s, i) => i < item.signerIdx && s.status === 'signed').length;
+        const isSubsequentSigner = signedCount > 0 && !!data.signedPdfB64;
+        const sourcePdfB64 = isSubsequentSigner ? data.signedPdfB64 : (data.pdfB64 || '');
+        const rawPdf = sourcePdfB64.includes(',') ? sourcePdfB64.split(',')[1] : sourcePdfB64;
+        if (!rawPdf) throw new Error(`PDF lipsă pentru flux ${item.flowId}`);
+
+        // Unlock DOAR pentru primul semnatar (identic cu cloud-signing + vechi bulk)
+        let pdfB64ForJava = rawPdf;
+        if (!isSubsequentSigner) {
+          try {
+            const pdfBuf = Buffer.from(rawPdf, 'base64');
+            const pdfDoc = await PDFDocument.load(pdfBuf, { ignoreEncryption: true });
+            try { delete pdfDoc.context.trailerInfo.Encrypt; } catch(e2) {}
+            try { pdfDoc.catalog.delete(PDFName.of('Perms')); } catch(e2) {}
+            try {
+              const af = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+              if (af) { const afObj = pdfDoc.context.lookup(af);
+                if (afObj?.set) afObj.set(PDFName.of('SigFlags'), PDFNumber.of(1)); }
+            } catch(e2) {}
+            const unlocked = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
+            pdfB64ForJava = unlocked.toString('base64');
+          } catch(eUnlock) {
+            logger.warn({ err: eUnlock, flowId: item.flowId },
+              'bulk callback: unlock non-fatal');
+          }
+        }
+
+        // Parametri Java prepare (identic cu cloud-signing.mjs L284-299 — TABEL)
+        const rect      = signer?.padesRect;
+        const fieldName = `sig_${item.signerIdx + 1}`;
+        const sigPage   = rect?.page || 1;
+        const sigX      = typeof rect?.x === 'number' ? rect.x : (30 + (item.signerIdx % 3) * 190);
+        const sigY      = typeof rect?.y === 'number' ? rect.y : (30 + Math.floor(item.signerIdx / 3) * 70);
+        const sigW      = typeof rect?.w === 'number' ? rect.w : 180;
+        const sigH2     = typeof rect?.h === 'number' ? rect.h : 50;
+
+        const certCn = _bulkExtractCertificateCn(certPem)
+          || signer?.certificateCn || signer?.name || signer?.fullName || 'Semnatar';
+
+        const prepareRes = await javaPreparePades({
+          pdfBase64:            pdfB64ForJava,
+          fieldName,
+          signerName:           certCn,
+          signerRole:           signer?.rol || signer?.role || signer?.atribut || 'SEMNATAR',
+          signerFunction:       signer?.functie || signer?.function || '',
+          reason:               'Semnare DocFlowAI',
+          location:             'Romania',
+          contactInfo:          signer?.email || '',
+          page:                 sigPage, x: sigX, y: sigY, width: sigW, height: sigH2,
+          useSignedAttributes:  true,
+          subFilter:            'ETSI.CAdES.detached',
+          signerCertificatePem: certPem || null,
+          signerIndex:          item.signerIdx,
+          fieldAlreadyExists:   false,   // b243: câmp NOU, nu pre-creat
+        });
+        if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
+          throw new Error('Java prepare bulk: răspuns incomplet');
+        }
+
+        // Salvăm PDF-ul pregătit în flows_pdfs + actualizăm item
+        const padesKey = `padesPdf_${item.signerIdx}`;
+        await pool.query(
+          `INSERT INTO flows_pdfs (flow_id, key, data, updated_at) VALUES ($1,$2,$3,NOW())
+           ON CONFLICT (flow_id, key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
+          [item.flowId, padesKey, prepareRes.preparedPdfBase64]
+        );
+        item.padesHashBase64 = prepareRes.toBeSignedDigestBase64;  // SHA256(signedAttrs)
+        item.bulkPadesKey    = padesKey;
+        logger.info({ flowId: item.flowId, signerIdx: item.signerIdx },
+          'bulk callback: Java prepare OK');
+      } catch (prepErr) {
+        logger.error({ err: prepErr, flowId: item.flowId },
+          'bulk callback: Java prepare eșuat');
+        return res.redirect(
+          `/bulk-signer.html?session=${sessionId}&sts_error=${encodeURIComponent(
+            `Eroare pregătire PAdES pentru ${item.flowId}: ${prepErr.message}`)}`);
+      }
+    }
+
+    // PASUL 3: colectam hash-urile SHA256(signedAttrs) per flux — trimise la STS
     const signatureRequests = [];
 
     for (const item of items) {
@@ -450,7 +532,7 @@ router.get('/bulk-signing/:sessionId/poll', async (req, res) => {
     logger.info({ sessionId: req.params.sessionId, signListLen: (pollResult.signList||[]).length },
       'bulk STS: semnături primite — injectăm CMS în fiecare PDF');
 
-    const { injectCms } = await import('../../signing/pades.mjs');
+    const { javaFinalizePades } = await import('../../signing/java-pades-client.mjs');
     const items = Array.isArray(session.items) ? session.items : [];
 
     // FIX b233: STS returneaza signList[].id = UUID propriu (diferit de item.flowId trimis de noi)
@@ -488,13 +570,24 @@ router.get('/bulk-signing/:sessionId/poll', async (req, res) => {
           'SELECT data FROM flows_pdfs WHERE flow_id=$1 AND key=$2',
           [item.flowId, item.bulkPadesKey || `padesPdf_${item.signerIdx}`]
         );
-        const padesPdfBuf = _padesRows[0]?.data ? Buffer.from(_padesRows[0].data, 'base64') : null;
-        if (!padesPdfBuf)
+        const padesPdfB64stored = _padesRows[0]?.data || null;
+        if (!padesPdfB64stored)
           throw new Error(`PAdES PDF placeholder lipsă în flows_pdfs (key=${item.bulkPadesKey})`);
 
-        const signedPdfBuf = await injectCms(padesPdfBuf, signByte,
-          session.sts_cert_pem || null);
-        const signedPdfB64 = signedPdfBuf.toString('base64');
+        const fieldName = `sig_${item.signerIdx + 1}`;  // tabel only — ancore refuzat la initiate
+        const finalizeRes = await javaFinalizePades({
+          preparedPdfBase64:   padesPdfB64stored,
+          fieldName,
+          signByteBase64:      signByte,
+          certificatePem:      session.sts_cert_pem || null,
+          certificateChainPem: [],
+          useSignedAttributes: true,
+          subFilter:           'ETSI.CAdES.detached',
+          tsaUrl:              null,
+        });
+        if (!finalizeRes?.signedPdfBase64)
+          throw new Error('Java finalize bulk: răspuns incomplet (signedPdfBase64 lipsă)');
+        const signedPdfB64 = finalizeRes.signedPdfBase64;
 
         // Curatam placeholder temporar
         // Ștergem placeholder-ul din flows_pdfs
