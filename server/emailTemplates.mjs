@@ -19,44 +19,32 @@ export function emailYourTurn({ appUrl, flowId, signerToken, signerName, docName
   const flowUrl    = `${appUrl}/flow.html?flow=${encodeURIComponent(flowId)}`;
   const subject    = urgent ? `🚨 [URGENT] Document de semnat: ${docName}` : `✍️ Document de semnat: ${docName}`;
   const html = `
-<div style="background:#0b1120;margin:0;padding:32px 16px;font-family:system-ui,-apple-system,sans-serif;">
-<div style="max-width:520px;margin:0 auto;background:#111827;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
-  <!-- Header -->
-  <div style="background:linear-gradient(135deg,#1e1460 0%,#0f2a4a 100%);padding:28px 32px 24px;text-align:center;">
-    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:10px;padding:10px 18px;font-size:1.1rem;font-weight:800;color:#fff;letter-spacing:.5px;">📋 DocFlowAI</div>
-    <div style="margin-top:14px;font-size:.8rem;color:rgba(255,255,255,.4);letter-spacing:1px;text-transform:uppercase;">Platformă documente electronice</div>
+<div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto;background:#ffffff;color:#1a1a1a;padding:32px;border:1px solid #dde4f5;border-radius:10px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <strong style="display:inline-block;background:#7c5cff;color:#ffffff;padding:10px 20px;border-radius:6px;font-size:1.05rem;letter-spacing:.3px;">DocFlowAI</strong>
   </div>
-  <!-- Body -->
-  <div style="padding:28px 32px;">
-    <p style="margin:0 0 6px;font-size:1rem;color:#cdd8ff;">Bună${signerName ? ', <strong>' + esc(signerName) + '</strong>' : ''},</p>
-    <p style="margin:0 0 20px;font-size:.9rem;color:#9db0ff;line-height:1.6;">
-      ${initName ? `<strong style="color:#eaf0ff;">${esc(initName)}</strong> te-a adăugat ca semnatar pe documentul de mai jos.` : 'Ești invitat să semnezi electronic un document.'}
-      ${initFunctie || institutie ? `<br><span style="font-size:.82rem;color:#7c8db0;">${[initFunctie, institutie].filter(Boolean).map(esc).join(' · ')}</span>` : ''}
-    </p>
-    <!-- Document card -->
-    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:18px 20px;margin-bottom:24px;">
-      <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:8px;">📄 ${esc(docName || 'Document de semnat')}</div>
-      ${institutie  ? `<div style="font-size:.82rem;color:#9db0ff;margin-bottom:3px;">🏛 ${esc(institutie)}</div>` : ''}
-      ${compartiment ? `<div style="font-size:.82rem;color:#9db0ff;margin-bottom:3px;">📂 ${esc(compartiment)}</div>` : ''}
-      <div style="font-size:.8rem;color:#5a6a8a;margin-top:6px;">ID flux: <code style="color:#7c8db0;">${esc(flowId)}</code></div>
-    </div>
-    ${roundInfo ? `<div style="background:rgba(250,180,0,.08);border:1px solid rgba(250,180,0,.2);border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:.83rem;color:#ffd580;">🔄 ${esc(roundInfo)}</div>` : ''}
-    <!-- CTA -->
-    <div style="text-align:center;margin-bottom:20px;">
-      <a href="${signerLink}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;font-weight:700;font-size:1rem;letter-spacing:.3px;">✍️ Semnează documentul</a>
-    </div>
-    <div style="text-align:center;margin-bottom:8px;">
-      <a href="${flowUrl}" style="font-size:.8rem;color:#5a6a8a;text-decoration:none;">🔍 Vezi statusul fluxului</a>
-    </div>
-    <div style="background:rgba(255,100,100,.07);border:1px solid rgba(255,100,100,.18);border-radius:8px;padding:10px 14px;margin-top:16px;font-size:.8rem;color:#ffb3b3;">
-      ⚠️ Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi în aplicație.
-    </div>
+  <p style="margin:0 0 8px;font-size:1rem;color:#1a1a1a;">Bună${signerName ? ', <strong>' + esc(signerName) + '</strong>' : ''},</p>
+  <p style="margin:0 0 20px;color:#4a5568;line-height:1.6;">
+    ${initName ? `<strong style="color:#1a1a1a;">${esc(initName)}</strong> te-a adăugat ca semnatar pe documentul de mai jos.` : 'Ești invitat să semnezi electronic un document.'}
+    ${initFunctie || institutie ? `<br><span style="font-size:.85rem;color:#7a8ab0;">${[initFunctie, institutie].filter(Boolean).map(esc).join(' · ')}</span>` : ''}
+  </p>
+  <div style="background:#f7f9fc;border:1px solid #dde4f5;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
+    <div style="font-weight:700;color:#1a1a1a;margin-bottom:8px;">${esc(docName || 'Document de semnat')}</div>
+    ${institutie  ? `<div style="font-size:.85rem;color:#5a6a9a;margin-bottom:3px;">Instituție: ${esc(institutie)}</div>` : ''}
+    ${compartiment ? `<div style="font-size:.85rem;color:#5a6a9a;margin-bottom:3px;">Compartiment: ${esc(compartiment)}</div>` : ''}
+    <div style="font-size:.82rem;color:#7a8ab0;margin-top:6px;">ID flux: <span style="font-family:monospace;color:#5a6a9a;">${esc(flowId)}</span></div>
   </div>
-  <!-- Footer -->
-  <div style="border-top:1px solid rgba(255,255,255,.06);padding:14px 32px;text-align:center;">
-    <p style="margin:0;font-size:.72rem;color:rgba(255,255,255,.25);">Link valabil 90 de zile · DocFlowAI · Dacă nu ești semnatarul acestui document, ignoră acest email.</p>
+  ${roundInfo ? `<div style="background:#fff7e6;border:1px solid #f3d88c;border-radius:6px;padding:10px 14px;margin-bottom:20px;font-size:.88rem;color:#856000;">${esc(roundInfo)}</div>` : ''}
+  <div style="text-align:center;margin:24px 0 16px;">
+    <a href="${signerLink}" style="display:inline-block;background:#7c5cff;color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:.95rem;">Semnează documentul</a>
   </div>
-</div>
+  <div style="text-align:center;margin-bottom:20px;">
+    <a href="${flowUrl}" style="font-size:.85rem;color:#7c5cff;text-decoration:none;">Vezi statusul fluxului</a>
+  </div>
+  <div style="background:#fef6f6;border:1px solid #f5c6c6;border-radius:6px;padding:10px 14px;font-size:.85rem;color:#8b3a3a;">
+    Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi în aplicație.
+  </div>
+  <p style="margin-top:24px;font-size:.75rem;color:#7a8ab0;text-align:center;">Link valabil 90 de zile · DocFlowAI · Dacă nu ești semnatarul acestui document, ignoră acest email.</p>
 </div>`;
   return { subject, html };
 }
@@ -67,20 +55,14 @@ export function emailGeneric({ appUrl, flowId, type, title, message, urgent }) {
   const icon    = iconMap[type] || 'ℹ️';
   const subject = urgent ? `🚨 [URGENT] ${title}` : title;
   const html = `
-<div style="background:#0b1120;margin:0;padding:32px 16px;font-family:system-ui,-apple-system,sans-serif;">
-<div style="max-width:520px;margin:0 auto;background:#111827;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.08);">
-  <div style="background:linear-gradient(135deg,#1e1460 0%,#0f2a4a 100%);padding:24px 32px;text-align:center;">
-    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:10px;padding:10px 18px;font-size:1.1rem;font-weight:800;color:#fff;">📋 DocFlowAI</div>
+<div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto;background:#ffffff;color:#1a1a1a;padding:32px;border:1px solid #dde4f5;border-radius:10px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <strong style="display:inline-block;background:#7c5cff;color:#ffffff;padding:10px 20px;border-radius:6px;font-size:1.05rem;letter-spacing:.3px;">DocFlowAI</strong>
   </div>
-  <div style="padding:28px 32px;">
-    <h2 style="margin:0 0 12px;font-size:1.05rem;color:#eaf0ff;">${icon} ${esc(title)}</h2>
-    <p style="margin:0 0 16px;font-size:.9rem;color:#9db0ff;line-height:1.6;">${esc(message)}</p>
-    ${flowId ? `<div style="text-align:center;margin-top:20px;"><a href="${appUrl}/flow.html?flow=${encodeURIComponent(flowId)}" style="display:inline-block;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.4);color:#b39dff;text-decoration:none;padding:10px 24px;border-radius:8px;font-size:.88rem;font-weight:600;">🔍 Vezi detalii flux</a></div>` : ''}
-  </div>
-  <div style="border-top:1px solid rgba(255,255,255,.06);padding:12px 32px;text-align:center;">
-    <p style="margin:0;font-size:.72rem;color:rgba(255,255,255,.25);">DocFlowAI · Platformă documente electronice</p>
-  </div>
-</div>
+  <h2 style="margin:0 0 12px;font-size:1.1rem;color:#1a1a1a;">${icon} ${esc(title)}</h2>
+  <p style="margin:0 0 16px;color:#4a5568;line-height:1.6;">${esc(message)}</p>
+  ${flowId ? `<div style="text-align:center;margin-top:24px;"><a href="${appUrl}/flow.html?flow=${encodeURIComponent(flowId)}" style="display:inline-block;background:#7c5cff;color:#ffffff;text-decoration:none;padding:10px 24px;border-radius:6px;font-size:.9rem;font-weight:600;">Vezi detalii flux</a></div>` : ''}
+  <p style="margin-top:24px;font-size:.75rem;color:#7a8ab0;text-align:center;">DocFlowAI · Platformă documente electronice</p>
 </div>`;
   return { subject, html };
 }
@@ -89,26 +71,26 @@ export function emailGeneric({ appUrl, flowId, type, title, message, urgent }) {
 export function emailDelegare({ signerLink, resolvedName, originalName, docName, flowId, initName, initEmail, reason, institutie }) {
   const subject = `👥 Delegare semnătură — ${docName}`;
   const html = `
-<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-  <div style="text-align:center;margin-bottom:28px;">
-    <div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div>
+<div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto;background:#ffffff;color:#1a1a1a;padding:32px;border:1px solid #dde4f5;border-radius:10px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <strong style="display:inline-block;background:#7c5cff;color:#ffffff;padding:10px 20px;border-radius:6px;font-size:1.05rem;letter-spacing:.3px;">DocFlowAI</strong>
   </div>
-  <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${resolvedName ? ', ' + esc(resolvedName) : ''},</h2>
-  <p style="color:#9db0ff;margin:0 0 6px;line-height:1.6;">
-    <strong style="color:#ffd580;">${esc(originalName)}</strong> ți-a delegat semnarea electronică a documentului:
+  <h2 style="margin:0 0 8px;font-size:1.05rem;color:#1a1a1a;">Bună${resolvedName ? ', ' + esc(resolvedName) : ''},</h2>
+  <p style="margin:0 0 12px;color:#4a5568;line-height:1.6;">
+    <strong style="color:#1a1a1a;">${esc(originalName)}</strong> ți-a delegat semnarea electronică a documentului:
   </p>
-  <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:16px 20px;margin:16px 0 20px;">
-    <div style="font-size:1rem;font-weight:700;color:#eaf0ff;margin-bottom:6px;">📄 ${esc(docName || flowId)}</div>
-    <div style="font-size:.85rem;color:#9db0ff;margin-bottom:4px;">Inițiat de: ${esc(initName || initEmail || '')}</div>
-    <div style="font-size:.85rem;color:#ffd580;">Motiv delegare: ${esc(String(reason || '').trim())}</div>
+  <div style="background:#f7f9fc;border:1px solid #dde4f5;border-radius:8px;padding:16px 20px;margin:16px 0 20px;">
+    <div style="font-weight:700;color:#1a1a1a;margin-bottom:6px;">${esc(docName || flowId)}</div>
+    <div style="font-size:.85rem;color:#5a6a9a;margin-bottom:4px;">Inițiat de: ${esc(initName || initEmail || '')}</div>
+    <div style="font-size:.85rem;color:#856000;">Motiv delegare: ${esc(String(reason || '').trim())}</div>
   </div>
-  <div style="background:rgba(255,100,100,.08);border:1px solid rgba(255,100,100,.2);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:.85rem;color:#ffb3b3;">
-    ⚠️ Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi.
+  <div style="background:#fef6f6;border:1px solid #f5c6c6;border-radius:6px;padding:10px 14px;margin-bottom:20px;font-size:.85rem;color:#8b3a3a;">
+    Descarcă documentul, semnează-l cu certificatul tău calificat, apoi încarcă-l înapoi.
   </div>
   <div style="text-align:center;">
-    <a href="${signerLink}" style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:1rem;">✍️ Deschide documentul pentru semnare</a>
+    <a href="${signerLink}" style="display:inline-block;background:#7c5cff;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:600;font-size:.95rem;">Deschide documentul pentru semnare</a>
   </div>
-  <p style="margin-top:20px;font-size:.78rem;color:rgba(255,255,255,.3);text-align:center;">Link valid 90 de zile · DocFlowAI · ${esc(institutie || '')}</p>
+  <p style="margin-top:24px;font-size:.75rem;color:#7a8ab0;text-align:center;">Link valid 90 de zile · DocFlowAI · ${esc(institutie || '')}</p>
 </div>`;
   return { subject, html };
 }
@@ -117,16 +99,26 @@ export function emailDelegare({ signerLink, resolvedName, originalName, docName,
 export function emailResetPassword({ appUrl, numeUser, email, newPwd }) {
   const subject = '🔑 Parolă resetată — DocFlowAI';
   const html = `
-<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-  <div style="text-align:center;margin-bottom:28px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
-  <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${numeUser ? ', ' + esc(numeUser) : ''},</h2>
-  <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Parola contului tău a fost resetată de un administrator.</p>
-  <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-    <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${esc(email)}</strong></div>
-    <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ TEMPORARĂ</span><strong style="color:#ffd580;font-family:monospace;">${esc(newPwd)}</strong></div>
+<div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto;background:#ffffff;color:#1a1a1a;padding:32px;border:1px solid #dde4f5;border-radius:10px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <strong style="display:inline-block;background:#7c5cff;color:#ffffff;padding:10px 20px;border-radius:6px;font-size:1.05rem;letter-spacing:.3px;">DocFlowAI</strong>
   </div>
-  <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Schimbă parola după prima autentificare.</p>
-  <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
+  <h2 style="margin:0 0 8px;font-size:1.05rem;color:#1a1a1a;">Bună${numeUser ? ', ' + esc(numeUser) : ''},</h2>
+  <p style="margin:0 0 20px;color:#4a5568;line-height:1.6;">Parola contului tău a fost resetată de un administrator.</p>
+  <div style="background:#f7f9fc;border:1px solid #dde4f5;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
+    <div style="margin-bottom:14px;">
+      <div style="color:#5a6a9a;font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Email</div>
+      <strong style="color:#1a1a1a;">${esc(email)}</strong>
+    </div>
+    <div>
+      <div style="color:#5a6a9a;font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Parolă temporară</div>
+      <strong style="color:#7c5cff;font-family:monospace;font-size:1rem;">${esc(newPwd)}</strong>
+    </div>
+  </div>
+  <p style="color:#5a6a9a;font-size:.85rem;margin:0 0 24px;">Schimbă parola după prima autentificare.</p>
+  <div style="text-align:center;">
+    <a href="${appUrl}/login" style="display:inline-block;background:#7c5cff;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:600;font-size:.95rem;">Accesează aplicația</a>
+  </div>
 </div>`;
   return { subject, html };
 }
@@ -135,16 +127,26 @@ export function emailResetPassword({ appUrl, numeUser, email, newPwd }) {
 export function emailCredentials({ appUrl, numeUser, email, newPwd }) {
   const subject = 'Cont DocFlowAI — credențiale de acces';
   const html = `
-<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-  <div style="text-align:center;margin-bottom:28px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
-  <h2 style="margin:0 0 8px;font-size:1.1rem;color:#cdd8ff;">Bună${numeUser ? ', ' + esc(numeUser) : ''},</h2>
-  <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Contul tău în <strong style="color:#eaf0ff;">DocFlowAI</strong> a fost creat sau parola a fost resetată.</p>
-  <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-    <div style="margin-bottom:14px;"><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">EMAIL</span><strong>${esc(email)}</strong></div>
-    <div><span style="color:#9db0ff;font-size:.82rem;display:block;margin-bottom:4px;">PAROLĂ TEMPORARĂ</span><strong style="color:#ffd580;font-family:monospace;">${esc(newPwd)}</strong></div>
+<div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto;background:#ffffff;color:#1a1a1a;padding:32px;border:1px solid #dde4f5;border-radius:10px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <strong style="display:inline-block;background:#7c5cff;color:#ffffff;padding:10px 20px;border-radius:6px;font-size:1.05rem;letter-spacing:.3px;">DocFlowAI</strong>
   </div>
-  <p style="color:#5a6a8a;font-size:.8rem;margin:0 0 20px;">Această parolă este valabilă pentru o singură utilizare. Recomandăm schimbarea ei după prima autentificare.</p>
-  <div style="text-align:center;margin-top:28px;"><a href="${appUrl}/login" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Accesează aplicația</a></div>
+  <h2 style="margin:0 0 8px;font-size:1.05rem;color:#1a1a1a;">Bună${numeUser ? ', ' + esc(numeUser) : ''},</h2>
+  <p style="margin:0 0 20px;color:#4a5568;line-height:1.6;">Contul tău în <strong style="color:#1a1a1a;">DocFlowAI</strong> a fost creat sau parola a fost resetată.</p>
+  <div style="background:#f7f9fc;border:1px solid #dde4f5;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
+    <div style="margin-bottom:14px;">
+      <div style="color:#5a6a9a;font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Email</div>
+      <strong style="color:#1a1a1a;">${esc(email)}</strong>
+    </div>
+    <div>
+      <div style="color:#5a6a9a;font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Parolă temporară</div>
+      <strong style="color:#7c5cff;font-family:monospace;font-size:1rem;">${esc(newPwd)}</strong>
+    </div>
+  </div>
+  <p style="color:#5a6a9a;font-size:.85rem;margin:0 0 24px;">Această parolă este valabilă pentru o singură utilizare. Recomandăm schimbarea ei după prima autentificare.</p>
+  <div style="text-align:center;">
+    <a href="${appUrl}/login" style="display:inline-block;background:#7c5cff;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:600;font-size:.95rem;">Accesează aplicația</a>
+  </div>
 </div>`;
   return { subject, html };
 }
@@ -153,14 +155,16 @@ export function emailCredentials({ appUrl, numeUser, email, newPwd }) {
 export function emailVerifyGws({ verifyUrl, numeUser }) {
   const subject = '✅ Verificare adresă email — DocFlowAI';
   const html = `
-<div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-  <div style="text-align:center;margin-bottom:24px;"><div style="display:inline-block;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:12px;padding:12px 20px;font-size:1.3rem;font-weight:800;">📋 DocFlowAI</div></div>
-  <h2 style="margin:0 0 10px;font-size:1.1rem;color:#cdd8ff;">Verificare adresă email</h2>
-  <p style="color:#9db0ff;margin:0 0 24px;line-height:1.6;">Bună${numeUser ? ' ' + esc(numeUser) : ''},<br>Apasă butonul de mai jos pentru a verifica adresa de email și a activa contul.</p>
+<div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto;background:#ffffff;color:#1a1a1a;padding:32px;border:1px solid #dde4f5;border-radius:10px;">
   <div style="text-align:center;margin-bottom:24px;">
-    <a href="${verifyUrl}" style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:1rem;">✅ Verifică adresa de email</a>
+    <strong style="display:inline-block;background:#7c5cff;color:#ffffff;padding:10px 20px;border-radius:6px;font-size:1.05rem;letter-spacing:.3px;">DocFlowAI</strong>
   </div>
-  <p style="color:#5a6a8a;font-size:.78rem;text-align:center;">Dacă nu ai solicitat această verificare, ignoră emailul.</p>
+  <h2 style="margin:0 0 10px;font-size:1.05rem;color:#1a1a1a;">Verificare adresă email</h2>
+  <p style="margin:0 0 24px;color:#4a5568;line-height:1.6;">Bună${numeUser ? ' ' + esc(numeUser) : ''},<br>Apasă butonul de mai jos pentru a verifica adresa de email și a activa contul.</p>
+  <div style="text-align:center;margin-bottom:24px;">
+    <a href="${verifyUrl}" style="display:inline-block;background:#7c5cff;color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:.95rem;">Verifică adresa de email</a>
+  </div>
+  <p style="color:#7a8ab0;font-size:.78rem;text-align:center;">Dacă nu ai solicitat această verificare, ignoră emailul.</p>
 </div>`;
   return { subject, html };
 }
