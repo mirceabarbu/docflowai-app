@@ -34,9 +34,19 @@ export function analyzeCoherence({ companyData, ibanData, declaredName }) {
     warnings.push({ code: 'CUI_NOT_FOUND', level: 'error',
       message: 'CUI-ul nu a fost găsit în baza ANAF.' });
   } else {
-    if (companyData.inactive) {
+    // CRITIC: firmă radiată = nu mai există legal. Plata = fraudă bugetară.
+    if (companyData.radiated) {
+      warnings.push({ code: 'COMPANY_RADIATED', level: 'error',
+        message: `⛔ ENTITATE RADIATĂ${companyData.liquidationDate ? ' la ' + companyData.liquidationDate : ''}. Firma nu mai există legal. NU efectuați plăți către această entitate.` });
+    } else if (companyData.inactive) {
       warnings.push({ code: 'COMPANY_INACTIVE', level: 'error',
-        message: `Entitatea este marcată inactivă la ANAF${companyData.inactiveDate ? ' din ' + companyData.inactiveDate : ''}.` });
+        message: `Entitatea este marcată INACTIVĂ la ANAF${companyData.inactiveDate ? ' din ' + companyData.inactiveDate : ''}${companyData.reactivationDate ? ' (reactivată ' + companyData.reactivationDate + ')' : ''}.` });
+    }
+
+    // TVA expirat — firma nu mai e plătitor TVA dar pe factură apare TVA
+    if (companyData.vatEndDate && !companyData.vat) {
+      warnings.push({ code: 'VAT_CANCELLED', level: 'warning',
+        message: `Înregistrarea TVA a fost anulată${companyData.vatEndDate ? ' la ' + companyData.vatEndDate : ''}${companyData.vatCancelReason ? ' — ' + companyData.vatCancelReason : ''}. Facturile emise după această dată NU trebuie să conțină TVA.` });
     }
     if (declaredName && companyData.name) {
       const sim = similarity(declaredName, companyData.name);

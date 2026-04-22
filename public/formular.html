@@ -4,14 +4,14 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.312">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.312">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.312">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.312">
-  <script src="/js/df-shell.js?v=3.9.312"></script>
-  <script src="/js/df-user-modals.js?v=3.9.312"></script>
-  <script src="/js/df-subtabs.js?v=3.9.312"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.312">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.315">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.315">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.315">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.315">
+  <script src="/js/df-shell.js?v=3.9.315"></script>
+  <script src="/js/df-user-modals.js?v=3.9.315"></script>
+  <script src="/js/df-subtabs.js?v=3.9.315"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.315">
 </head>
 <body>
 <span id="hUserBar" style="display:none;"></span>
@@ -304,10 +304,10 @@
 
   <!-- Bara navigare identică cu bara principală -->
   <div class="lst-tabs" style="margin-bottom:16px">
-    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.312#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.312#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.312#ico-bar-chart"/></svg> ALOP</button>
-    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.312#ico-shield"/></svg> Verificare furnizor</button>
+    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.315#ico-file-text"/></svg> Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.315#ico-file-text"/></svg> Ordonanțări de Plată</button>
+    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.315#ico-bar-chart"/></svg> ALOP</button>
+    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.315#ico-shield"/></svg> Verificare furnizor</button>
   </div>
 
   <div class="df-info-banner" style="margin-bottom:18px;">
@@ -4199,8 +4199,19 @@ async function vfLookupCui() {
     const r = await _vfFetch(`/api/v4/verify/cui?cui=${encodeURIComponent(cui)}`);
     const d = await r.json();
     if (!r.ok || !d.ok) {
+      const reasonMap = {
+        'upstream_unavailable':      'ANAF nu răspunde momentan. Reîncearcă în câteva secunde.',
+        'upstream_timeout':          'ANAF timeout (peste 8 secunde). Reîncearcă.',
+        'upstream_waf_blocked':      'ANAF a respins cererea (WAF). Contactează administratorul.',
+        'upstream_invalid_response': 'ANAF a returnat un răspuns neașteptat. Reîncearcă sau contactează admin.',
+        'upstream_error':            'ANAF a returnat eroare de validare. Verifică CUI-ul.',
+        'cui_invalid_format':        'CUI invalid (doar cifre, 2-10 caractere, opțional prefix RO).',
+      };
       const reason = d.reason || '';
-      msgEl.textContent = '⚠ ' + (reason === 'upstream_unavailable' ? 'ANAF nu răspunde momentan. Reîncearcă.' : reason === 'upstream_timeout' ? 'ANAF timeout. Reîncearcă.' : reason === 'cui_invalid_format' ? 'CUI invalid.' : 'Eroare: ' + (reason || 'unknown'));
+      const mapped = reasonMap[reason];
+      const upstreamMsg = d.upstream && d.upstream.message ? ' (' + d.upstream.message + ')' : '';
+      const statusMatch = reason.match(/^upstream_status_(\d+)$/);
+      msgEl.textContent = '⚠ ' + (mapped ? mapped + upstreamMsg : statusMatch ? `ANAF HTTP ${statusMatch[1]}` : 'Eroare: ' + (reason || 'unknown'));
       msgEl.style.color = '#ffaaaa'; return;
     }
     if (d.notFound || !d.data) {
@@ -4208,23 +4219,30 @@ async function vfLookupCui() {
       msgEl.style.color = '#ffaaaa'; return;
     }
     const c = d.data;
-    const statusColor = c.inactive ? '#ff8080' : '#5eead4';
-    const statusText  = c.inactive ? `Inactiv${c.inactiveDate ? ' din ' + c.inactiveDate : ''}` : 'Activ';
+    const radiatedBadge = c.radiated ? '<span style="background:rgba(239,68,68,.2);color:#ff8080;padding:2px 10px;border-radius:10px;font-size:.75rem;font-weight:700;margin-left:8px;">⛔ RADIATĂ</span>' : '';
+    const inactiveBadge = (!c.radiated && c.inactive) ? '<span style="background:rgba(239,68,68,.2);color:#ff8080;padding:2px 10px;border-radius:10px;font-size:.75rem;font-weight:700;margin-left:8px;">⛔ INACTIVĂ</span>' : '';
+    const statusDisplay = c.radiated
+      ? `<span style="color:#ff8080;font-weight:700;">RADIATĂ${c.liquidationDate ? ' la ' + c.liquidationDate : ''}</span>`
+      : c.inactive
+        ? `<span style="color:#ff8080;font-weight:600;">Inactiv${c.inactiveDate ? ' din ' + c.inactiveDate : ''}${c.reactivationDate ? ' · reactivat ' + c.reactivationDate : ''}</span>`
+        : '<span style="color:#5eead4;font-weight:600;">Activ</span>';
     resultEl.innerHTML = `
-      <div style="background:rgba(255,255,255,.03);border:1px solid var(--df-border);border-radius:8px;padding:14px;display:grid;grid-template-columns:140px 1fr auto;gap:8px 12px;font-size:.85rem;">
-        <div style="color:var(--df-text-4);">Denumire</div><div>${_vfEsc(c.name)}</div>${_vfCopyBtn(c.name,'denumire')}
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--df-border);border-radius:8px;padding:14px;display:grid;grid-template-columns:150px 1fr auto;gap:8px 12px;font-size:.85rem;">
+        <div style="color:var(--df-text-4);">Denumire</div><div>${_vfEsc(c.name)}${radiatedBadge}${inactiveBadge}</div>${_vfCopyBtn(c.name,'denumire')}
         <div style="color:var(--df-text-4);">CUI</div><div style="font-family:monospace;">${_vfEsc(c.cui)}</div>${_vfCopyBtn(c.cui,'cui')}
         ${c.tradeRegisterNo ? `<div style="color:var(--df-text-4);">Nr. Reg. Com.</div><div style="font-family:monospace;">${_vfEsc(c.tradeRegisterNo)}</div>${_vfCopyBtn(c.tradeRegisterNo,'reg com')}` : ''}
+        <div style="color:var(--df-text-4);">Status</div><div>${statusDisplay}</div><div></div>
         <div style="color:var(--df-text-4);">Adresă</div><div>${_vfEsc(c.address)}</div>${_vfCopyBtn(c.address,'adresa')}
-        <div style="color:var(--df-text-4);">Județ</div><div>${_vfEsc(c.county || '—')}</div>${_vfCopyBtn(c.county,'judet')}
+        <div style="color:var(--df-text-4);">Județ</div><div>${_vfEsc(c.county || '—')}${c.countyAuto ? ' <span style="color:var(--df-text-4);">(' + _vfEsc(c.countyAuto) + ')</span>' : ''}</div>${_vfCopyBtn(c.county,'judet')}
         ${c.locality ? `<div style="color:var(--df-text-4);">Localitate</div><div>${_vfEsc(c.locality)}</div>${_vfCopyBtn(c.locality,'localitate')}` : ''}
         ${c.legalForm ? `<div style="color:var(--df-text-4);">Formă juridică</div><div>${_vfEsc(c.legalForm)}</div><div></div>` : ''}
         <div style="color:var(--df-text-4);">Tip entitate</div><div>${_vfEsc(c.entityType)}</div><div></div>
         ${c.caenCode ? `<div style="color:var(--df-text-4);">Cod CAEN</div><div style="font-family:monospace;">${_vfEsc(c.caenCode)}</div><div></div>` : ''}
-        <div style="color:var(--df-text-4);">TVA</div><div>${c.vat ? '✓ Plătitor TVA' : '✗ Neplătitor'}${c.vatCollected ? ' (la încasare)' : ''}${c.splitVat ? ' · plată defalcată' : ''}</div><div></div>
+        <div style="color:var(--df-text-4);">TVA</div><div>${c.vat ? '✓ Plătitor TVA' : (c.vatEndDate ? '✗ <span style="color:#fbbf24;">TVA anulat la ' + _vfEsc(c.vatEndDate) + '</span>' : '✗ Neplătitor')}${c.vatCollected ? ' (la încasare)' : ''}${c.splitVat ? ' · plată defalcată' : ''}</div><div></div>
+        ${c.vatCancelReason ? `<div style="color:var(--df-text-4);">Motiv anulare TVA</div><div style="font-size:.78rem;color:var(--df-text-3);">${_vfEsc(c.vatCancelReason)}</div><div></div>` : ''}
         ${c.eFactura ? `<div style="color:var(--df-text-4);">e-Factura</div><div style="color:#5eead4;">✓ Înregistrat RO e-Factura</div><div></div>` : ''}
         ${c.anafIban ? `<div style="color:var(--df-text-4);">IBAN ANAF</div><div style="font-family:monospace;font-size:.8rem;">${_vfEsc(c.anafIban)}</div>${_vfCopyBtn(c.anafIban,'iban')}` : ''}
-        <div style="color:var(--df-text-4);">Status</div><div style="color:${statusColor};font-weight:600;">${statusText}</div><div></div>
+        ${c.fiscalAuthority ? `<div style="color:var(--df-text-4);">Organ fiscal</div><div style="font-size:.8rem;">${_vfEsc(c.fiscalAuthority)}</div><div></div>` : ''}
         <div style="color:var(--df-text-4);">Data înreg.</div><div>${_vfEsc(c.registrationDate || '—')}</div><div></div>
       </div>
     `;
