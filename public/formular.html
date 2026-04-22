@@ -4,14 +4,14 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.298">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.298">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.298">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.298">
-  <script src="/js/df-shell.js?v=3.9.298"></script>
-  <script src="/js/df-user-modals.js?v=3.9.298"></script>
-  <script src="/js/df-subtabs.js?v=3.9.298"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.298">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.312">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.312">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.312">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.312">
+  <script src="/js/df-shell.js?v=3.9.312"></script>
+  <script src="/js/df-user-modals.js?v=3.9.312"></script>
+  <script src="/js/df-subtabs.js?v=3.9.312"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.312">
 </head>
 <body>
 <span id="hUserBar" style="display:none;"></span>
@@ -148,6 +148,7 @@
       <button class="lst-tab active" id="ltab-df"   onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-file-text"/></svg> Documente de Fundamentare</button>
       <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-file-text"/></svg> Ordonanțări de Plată</button>
       <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-bar-chart"/></svg> ALOP</button>
+      <button class="lst-tab"        id="ltab-verify" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-shield"/></svg> Verificare furnizor</button>
     </div>
     <button id="btn-lst-nou" class="btn primary" style="display:none !important;padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
   </div>
@@ -296,6 +297,69 @@
   </div>
 
 </div><!-- /alop-section -->
+
+<!-- ════════════ VERIFICARE FURNIZOR ═════════════════════════════════════════ -->
+<div id="verify-section" style="display:none;">
+  <div class="df-info-banner" style="margin-bottom:18px;">
+    ℹ️ Modul de verificare furnizor — tool independent. Introdu CUI-ul, IBAN-ul sau ambele pentru a valida datele înainte de a le introduce în ALOP/DF/ORD.
+    Datele sunt verificate prin <strong>ANAF</strong> (gratuit, oficial) și validări offline pentru IBAN. Cache 15 min.
+  </div>
+
+  <!-- Card 1: CUI -->
+  <div style="background:var(--df-surface);border:1px solid var(--df-border-2);border-radius:12px;padding:18px 20px;margin-bottom:18px;">
+    <div style="font-size:.95rem;font-weight:700;color:var(--df-text-2);margin-bottom:14px;display:flex;align-items:center;gap:8px;"><svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-shield"/></svg> Verificare CUI (ANAF)</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;">
+      <div style="flex:1;min-width:220px;">
+        <label style="font-size:.77rem;color:var(--df-text-3);display:block;margin-bottom:4px;">Cod fiscal (CUI) *</label>
+        <input id="vf-cui-input" type="text" placeholder="ex: 4221306 sau RO4221306"
+               style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:8px;color:var(--df-text);font-size:.88rem;box-sizing:border-box;">
+      </div>
+      <button class="df-action-btn primary" onclick="vfLookupCui()" id="vf-cui-btn">🔍 Verifică</button>
+    </div>
+    <div id="vf-cui-result" style="display:none;"></div>
+    <div id="vf-cui-msg" style="font-size:.82rem;min-height:18px;"></div>
+  </div>
+
+  <!-- Card 2: IBAN -->
+  <div style="background:var(--df-surface);border:1px solid var(--df-border-2);border-radius:12px;padding:18px 20px;margin-bottom:18px;">
+    <div style="font-size:.95rem;font-weight:700;color:var(--df-text-2);margin-bottom:14px;display:flex;align-items:center;gap:8px;"><svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-shield"/></svg> Verificare IBAN</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;">
+      <div style="flex:1;min-width:260px;">
+        <label style="font-size:.77rem;color:var(--df-text-3);display:block;margin-bottom:4px;">IBAN *</label>
+        <input id="vf-iban-input" type="text" placeholder="ex: RO49BTRL1234567890123456"
+               style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:8px;color:var(--df-text);font-size:.88rem;box-sizing:border-box;font-family:monospace;text-transform:uppercase;">
+      </div>
+      <button class="df-action-btn primary" onclick="vfLookupIban()" id="vf-iban-btn">🔍 Verifică</button>
+    </div>
+    <div id="vf-iban-result" style="display:none;"></div>
+    <div id="vf-iban-msg" style="font-size:.82rem;min-height:18px;"></div>
+  </div>
+
+  <!-- Card 3: Coerență -->
+  <div style="background:var(--df-surface);border:1px solid var(--df-border-2);border-radius:12px;padding:18px 20px;margin-bottom:18px;">
+    <div style="font-size:.95rem;font-weight:700;color:var(--df-text-2);margin-bottom:14px;display:flex;align-items:center;gap:8px;"><svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-shield"/></svg> Verificare coerență (CUI + IBAN + Denumire)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div>
+        <label style="font-size:.77rem;color:var(--df-text-3);display:block;margin-bottom:4px;">CUI</label>
+        <input id="vf-coh-cui" type="text" placeholder="ex: 4221306"
+               style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:8px;color:var(--df-text);font-size:.88rem;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:.77rem;color:var(--df-text-3);display:block;margin-bottom:4px;">IBAN</label>
+        <input id="vf-coh-iban" type="text" placeholder="RO..."
+               style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:8px;color:var(--df-text);font-size:.88rem;box-sizing:border-box;font-family:monospace;text-transform:uppercase;">
+      </div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:.77rem;color:var(--df-text-3);display:block;margin-bottom:4px;">Denumire introdusă (opțional, pentru comparație fuzzy)</label>
+      <input id="vf-coh-name" type="text" placeholder="ex: SC EXEMPLU SRL"
+             style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:8px;color:var(--df-text);font-size:.88rem;box-sizing:border-box;">
+    </div>
+    <button class="df-action-btn primary" onclick="vfLookupCoherence()" id="vf-coh-btn">🔗 Analizează coerență</button>
+    <div id="vf-coh-result" style="display:none;margin-top:14px;"></div>
+    <div id="vf-coh-msg" style="font-size:.82rem;min-height:18px;margin-top:8px;"></div>
+  </div>
+</div><!-- /verify-section -->
 
 </div><!-- /section-list -->
 
@@ -2917,26 +2981,35 @@ function switchListTab(type){
   document.getElementById('ltab-df').classList.toggle('active',type==='df');
   document.getElementById('ltab-ord').classList.toggle('active',type==='ord');
   document.getElementById('ltab-alop').classList.toggle('active',type==='alop');
+  const ltabV=document.getElementById('ltab-verify');
+  if(ltabV)ltabV.classList.toggle('active',type==='verify');
   // Bannere informative pentru DF/ORD
   const bannerDf=document.getElementById('lst-banner-df');
   const bannerOrd=document.getElementById('lst-banner-ord');
   if(bannerDf)bannerDf.style.display=type==='df'?'':'none';
   if(bannerOrd)bannerOrd.style.display=type==='ord'?'':'none';
-  // ALOP: ascunde/arată secțiunile relevante
+  // Secțiuni ALOP / Verify
   const lstWrap=document.querySelector('#section-list .lst-wrap');
   const alopSection=document.getElementById('alop-section');
+  const verifySection=document.getElementById('verify-section');
   if(type==='alop'){
     if(lstWrap)lstWrap.style.display='none';
     if(alopSection)alopSection.style.display='';
+    if(verifySection)verifySection.style.display='none';
     loadAlop();loadAlopStats();
     // Re-fetch detaliu dacă era deschis — statusul poate fi schimbat după semnare
     const _detailP=document.getElementById('alop-detail-panel');
     if(_detailP&&_detailP.style.display!=='none'&&window._currentAlopId){
       openAlop(window._currentAlopId);
     }
+  }else if(type==='verify'){
+    if(lstWrap)lstWrap.style.display='none';
+    if(alopSection)alopSection.style.display='none';
+    if(verifySection)verifySection.style.display='';
   }else{
     if(lstWrap)lstWrap.style.display='';
     if(alopSection)alopSection.style.display='none';
+    if(verifySection)verifySection.style.display='none';
     loadList();
   }
 }
@@ -4072,6 +4145,189 @@ async function alopRevizuiesteDF(alopId,dfId){
     _orig(ft);
   };
 })();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VERIFICARE FURNIZOR (sub-tab 'verify') — CUI + IBAN + Coerență
+// ═══════════════════════════════════════════════════════════════════════════
+
+function _vfEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _vfFetch(url, opts) {
+  const jwt = localStorage.getItem('docflow_token') || localStorage.getItem('jwt') || '';
+  return fetch(url, {
+    ...opts,
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(jwt ? { 'Authorization': 'Bearer ' + jwt } : {}), ...((opts && opts.headers) || {}) },
+  });
+}
+
+function _vfCopyBtn(value, label) {
+  const v = _vfEsc(value || '');
+  return value ? `<button type="button" onclick="_vfCopy(this, '${v.replace(/'/g, "\\'")}')" title="Copiază ${label}" style="background:rgba(255,255,255,.05);border:1px solid var(--df-border-2);border-radius:4px;padding:2px 8px;font-size:.7rem;cursor:pointer;color:var(--df-text-3);margin-left:6px;">📋</button>` : '';
+}
+
+window._vfCopy = function(btn, value) {
+  navigator.clipboard?.writeText(value).then(() => {
+    const t = btn.textContent; btn.textContent = '✓';
+    setTimeout(() => btn.textContent = t, 900);
+  });
+};
+
+async function vfLookupCui() {
+  const input = document.getElementById('vf-cui-input');
+  const resultEl = document.getElementById('vf-cui-result');
+  const msgEl = document.getElementById('vf-cui-msg');
+  const btn = document.getElementById('vf-cui-btn');
+  const cui = (input.value || '').trim();
+  if (!cui) { msgEl.textContent = '⚠ Introdu un CUI.'; msgEl.style.color = '#ffaaaa'; return; }
+  msgEl.textContent = '⏳ Se verifică la ANAF...'; msgEl.style.color = 'var(--df-text-3)';
+  resultEl.style.display = 'none';
+  btn.disabled = true;
+  try {
+    const r = await _vfFetch(`/api/v4/verify/cui?cui=${encodeURIComponent(cui)}`);
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      const reason = d.reason || '';
+      msgEl.textContent = '⚠ ' + (reason === 'upstream_unavailable' ? 'ANAF nu răspunde momentan. Reîncearcă.' : reason === 'upstream_timeout' ? 'ANAF timeout. Reîncearcă.' : reason === 'cui_invalid_format' ? 'CUI invalid.' : 'Eroare: ' + (reason || 'unknown'));
+      msgEl.style.color = '#ffaaaa'; return;
+    }
+    if (d.notFound || !d.data) {
+      msgEl.textContent = '❌ CUI-ul nu a fost găsit la ANAF.';
+      msgEl.style.color = '#ffaaaa'; return;
+    }
+    const c = d.data;
+    const statusColor = c.inactive ? '#ff8080' : '#5eead4';
+    const statusText  = c.inactive ? `Inactiv${c.inactiveDate ? ' din ' + c.inactiveDate : ''}` : 'Activ';
+    resultEl.innerHTML = `
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--df-border);border-radius:8px;padding:14px;display:grid;grid-template-columns:140px 1fr auto;gap:8px 12px;font-size:.85rem;">
+        <div style="color:var(--df-text-4);">Denumire</div><div>${_vfEsc(c.name)}</div>${_vfCopyBtn(c.name,'denumire')}
+        <div style="color:var(--df-text-4);">CUI</div><div style="font-family:monospace;">${_vfEsc(c.cui)}</div>${_vfCopyBtn(c.cui,'cui')}
+        <div style="color:var(--df-text-4);">Adresă</div><div>${_vfEsc(c.address)}</div>${_vfCopyBtn(c.address,'adresa')}
+        <div style="color:var(--df-text-4);">Județ</div><div>${_vfEsc(c.county || '—')}</div>${_vfCopyBtn(c.county,'judet')}
+        <div style="color:var(--df-text-4);">Tip entitate</div><div>${_vfEsc(c.entityType)}</div><div></div>
+        <div style="color:var(--df-text-4);">TVA</div><div>${c.vat ? '✓ Plătitor TVA' : '✗ Neplătitor'}${c.vatCollected ? ' (la încasare)' : ''}</div><div></div>
+        <div style="color:var(--df-text-4);">Status</div><div style="color:${statusColor};font-weight:600;">${statusText}</div><div></div>
+        <div style="color:var(--df-text-4);">Data înreg.</div><div>${_vfEsc(c.registrationDate || '—')}</div><div></div>
+      </div>
+    `;
+    resultEl.style.display = '';
+    msgEl.textContent = d.cached ? '✓ Rezultat din cache (15 min).' : '✓ Rezultat proaspăt de la ANAF.';
+    msgEl.style.color = '#5eead4';
+  } catch (e) {
+    msgEl.textContent = '⚠ Eroare de rețea.'; msgEl.style.color = '#ffaaaa';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function vfLookupIban() {
+  const input = document.getElementById('vf-iban-input');
+  const resultEl = document.getElementById('vf-iban-result');
+  const msgEl = document.getElementById('vf-iban-msg');
+  const btn = document.getElementById('vf-iban-btn');
+  const iban = (input.value || '').trim();
+  if (!iban) { msgEl.textContent = '⚠ Introdu un IBAN.'; msgEl.style.color = '#ffaaaa'; return; }
+  msgEl.textContent = '⏳ Se validează...'; msgEl.style.color = 'var(--df-text-3)';
+  resultEl.style.display = 'none';
+  btn.disabled = true;
+  try {
+    const r = await _vfFetch(`/api/v4/verify/iban?iban=${encodeURIComponent(iban)}`);
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      const reason = d.reason || '';
+      msgEl.textContent = '⚠ ' + (reason === 'iban_format_invalid' ? 'IBAN format invalid.' : reason === 'iban_ro_length_invalid' ? 'IBAN RO trebuie să aibă 24 caractere.' : 'Eroare: ' + (reason || 'unknown'));
+      msgEl.style.color = '#ffaaaa'; return;
+    }
+    const i = d.data;
+    const validColor = i.valid ? '#5eead4' : '#ff8080';
+    const validText  = i.valid ? '✓ IBAN valid (mod-97 OK)' : '✗ IBAN invalid (check digit failed)';
+    const trezBadge = i.isTreasury ? '<span style="background:rgba(245,158,11,.2);color:#fbbf24;padding:2px 8px;border-radius:10px;font-size:.72rem;margin-left:6px;">⚠ Trezorerie</span>' : '';
+    resultEl.innerHTML = `
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--df-border);border-radius:8px;padding:14px;display:grid;grid-template-columns:140px 1fr;gap:8px 12px;font-size:.85rem;">
+        <div style="color:var(--df-text-4);">IBAN</div><div style="font-family:monospace;">${_vfEsc(i.iban)}</div>
+        <div style="color:var(--df-text-4);">Validitate</div><div style="color:${validColor};font-weight:600;">${validText}</div>
+        <div style="color:var(--df-text-4);">Țară</div><div>${_vfEsc(i.country)}</div>
+        <div style="color:var(--df-text-4);">Cod bancă</div><div style="font-family:monospace;">${_vfEsc(i.bankCode || '—')}</div>
+        <div style="color:var(--df-text-4);">Instituție</div><div>${_vfEsc(i.bankName || '—')}${trezBadge}</div>
+        <div style="color:var(--df-text-4);">Tip cont</div><div>${i.accountType === 'treasury' ? '🏛 Trezorerie' : i.accountType === 'commercial' ? '🏦 Bancă comercială' : i.accountType === 'foreign' ? '🌍 Bancă străină' : '? Necunoscut'}</div>
+      </div>
+    `;
+    resultEl.style.display = '';
+    msgEl.textContent = '';
+  } catch (e) {
+    msgEl.textContent = '⚠ Eroare de rețea.'; msgEl.style.color = '#ffaaaa';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function vfLookupCoherence() {
+  const cui = (document.getElementById('vf-coh-cui').value || '').trim();
+  const iban = (document.getElementById('vf-coh-iban').value || '').trim();
+  const name = (document.getElementById('vf-coh-name').value || '').trim();
+  const resultEl = document.getElementById('vf-coh-result');
+  const msgEl = document.getElementById('vf-coh-msg');
+  const btn = document.getElementById('vf-coh-btn');
+  if (!cui && !iban) { msgEl.textContent = '⚠ Introdu măcar un CUI sau un IBAN.'; msgEl.style.color = '#ffaaaa'; return; }
+  msgEl.textContent = '⏳ Se analizează...'; msgEl.style.color = 'var(--df-text-3)';
+  resultEl.style.display = 'none';
+  btn.disabled = true;
+  try {
+    const r = await _vfFetch('/api/v4/verify/coherence', {
+      method: 'POST',
+      body: JSON.stringify({ cui, iban, name }),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      msgEl.textContent = '⚠ Eroare: ' + (d.error || 'unknown'); msgEl.style.color = '#ffaaaa'; return;
+    }
+    const parts = [];
+    if (cui && d.company) {
+      if (d.company.data) {
+        parts.push(`<div style="margin-bottom:10px;"><strong style="color:var(--df-text-2);">Firmă (ANAF):</strong> ${_vfEsc(d.company.data.name)} · ${_vfEsc(d.company.data.entityType)} · ${d.company.data.inactive ? '<span style="color:#ff8080;">inactiv</span>' : '<span style="color:#5eead4;">activ</span>'}</div>`);
+      } else if (d.company.notFound) {
+        parts.push('<div style="margin-bottom:10px;"><strong>Firmă:</strong> <span style="color:#ff8080;">CUI negăsit la ANAF</span></div>');
+      } else {
+        parts.push(`<div style="margin-bottom:10px;"><strong>Firmă:</strong> <span style="color:#ff8080;">ANAF indisponibil (${_vfEsc(d.company.reason)})</span></div>`);
+      }
+    }
+    if (iban && d.iban) {
+      if (d.iban.ok && d.iban.data) {
+        const iv = d.iban.data;
+        parts.push(`<div style="margin-bottom:10px;"><strong style="color:var(--df-text-2);">IBAN:</strong> ${iv.valid ? '<span style="color:#5eead4;">valid</span>' : '<span style="color:#ff8080;">invalid</span>'} · ${_vfEsc(iv.bankName || '—')}${iv.isTreasury ? ' <span style="color:#fbbf24;">[Trezorerie]</span>' : ''}</div>`);
+      } else {
+        parts.push(`<div style="margin-bottom:10px;"><strong>IBAN:</strong> <span style="color:#ff8080;">${_vfEsc(d.iban.reason || 'invalid')}</span></div>`);
+      }
+    }
+    const warns = d.warnings || [];
+    if (warns.length === 0) {
+      parts.push('<div style="color:#5eead4;padding:10px;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.3);border-radius:8px;">✓ Nicio problemă detectată.</div>');
+    } else {
+      parts.push('<div style="margin-top:6px;">' + warns.map(w => {
+        const colors = { info: ['#5eead4','rgba(45,212,191,.08)','rgba(45,212,191,.3)'], warning: ['#fbbf24','rgba(245,158,11,.08)','rgba(245,158,11,.3)'], error: ['#ff8080','rgba(239,68,68,.08)','rgba(239,68,68,.3)'] }[w.level] || ['#fff','rgba(255,255,255,.04)','rgba(255,255,255,.1)'];
+        const icon = { info: 'ℹ️', warning: '⚠', error: '❌' }[w.level] || '•';
+        return `<div style="padding:10px 12px;margin-bottom:6px;background:${colors[1]};border:1px solid ${colors[2]};border-radius:8px;color:${colors[0]};font-size:.84rem;"><strong>${icon} ${_vfEsc(w.code)}:</strong> ${_vfEsc(w.message)}</div>`;
+      }).join('') + '</div>');
+    }
+    resultEl.innerHTML = parts.join('');
+    resultEl.style.display = '';
+    msgEl.textContent = '';
+  } catch (e) {
+    msgEl.textContent = '⚠ Eroare de rețea.'; msgEl.style.color = '#ffaaaa';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Enter pe inputs → trigger verificare
+document.addEventListener('DOMContentLoaded', () => {
+  const ci = document.getElementById('vf-cui-input');
+  if (ci) ci.addEventListener('keydown', e => { if (e.key === 'Enter') vfLookupCui(); });
+  const ii = document.getElementById('vf-iban-input');
+  if (ii) ii.addEventListener('keydown', e => { if (e.key === 'Enter') vfLookupIban(); });
+});
 </script>
 
     </main>

@@ -503,7 +503,8 @@ import usersV4Router     from './modules/users/routes.mjs';
 import flowsV4Router     from './modules/flows/routes.mjs';
 import formsV4Router     from './modules/forms/routes.mjs';
 import analyticsV4Router from './modules/analytics/routes.mjs';
-import auditV4Router     from './modules/audit/routes.mjs';
+import auditV4Router          from './modules/audit/routes.mjs';
+import supplierVerifyRouter   from './routes/supplier-verify.mjs';
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml, injectTokenVersionChecker } from './middleware/auth.mjs';
 
 import authRouter from './routes/auth.mjs';
@@ -1574,6 +1575,7 @@ app.use('/api/v4/flows',     flowsV4Router);
 app.use('/api/v4/forms',     formsV4Router);
 app.use('/api/v4/analytics', analyticsV4Router);
 app.use('/api/v4/audit',     auditV4Router);
+app.use('/api/v4/verify',    supplierVerifyRouter);
 
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
