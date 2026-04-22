@@ -150,6 +150,32 @@ router.post('/primarii', async (req, res) => {
   }
 });
 
+// POST /admin/outreach/primarii/suggest — sugestie de la user normal (requireAuth, nu Admin)
+// INSERT ON CONFLICT DO NOTHING: duplicate silently ignored
+router.post('/primarii/suggest', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { institutie, email, judet = '', localitate = '' } = req.body || {};
+  if (!institutie?.trim()) return res.status(400).json({ error: 'institutie_required' });
+  if (!email?.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))
+    return res.status(400).json({ error: 'email_invalid' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO outreach_primarii (institutie, email, judet, localitate)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (email) DO NOTHING
+       RETURNING id`,
+      [institutie.trim(), email.trim().toLowerCase(), (judet||'').trim(), (localitate||institutie).trim()]
+    );
+    const added = rows.length > 0;
+    logger.info({ actor: actor.email, email: email.trim().toLowerCase(), institutie: institutie.trim(), added }, 'primarii suggest');
+    res.json({ ok: true, added });
+  } catch(e) {
+    logger.error({ err: e }, 'POST primarii/suggest error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // PUT /admin/outreach/primarii/:id — editează o instituție
 router.put('/primarii/:id', async (req, res) => {
   if (await requireAdmin(req, res)) return;

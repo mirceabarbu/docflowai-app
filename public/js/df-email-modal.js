@@ -129,12 +129,12 @@
     });
   }
 
-  function addRecipient(email) {
+  function addRecipient(email, source = 'manual', institutie = null) {
     const e = (email || '').trim().replace(/^[<,;\s]+|[>,;\s]+$/g, '');
     if (!e) return false;
     if (_recipients.length >= MAX_RECIPIENTS) return false;
     if (_recipients.some(r => r.email.toLowerCase() === e.toLowerCase())) return false;
-    _recipients.push({ email: e, valid: EMAIL_RE.test(e) });
+    _recipients.push({ email: e, valid: EMAIL_RE.test(e), source, institutie });
     return true;
   }
 
@@ -220,7 +220,7 @@
 
   function selectAcResult(item) {
     if (!item) return;
-    addRecipient(item.email);
+    addRecipient(item.email, 'autocomplete', item.institutie);
     renderChips();
     _rootEl.querySelector('#dfem-to-input').value = '';
     closeAcDropdown();
@@ -310,7 +310,12 @@
         const n = d.sent || valid.length;
         setMsg(`✓ Email trimis cu succes către ${n} destinatar${n > 1 ? 'i' : ''}.`, 'ok');
         btn.querySelector('span').textContent = 'Trimis!';
-        setTimeout(() => { close(); if (typeof _opts.onSuccess === 'function') _opts.onSuccess(); }, 1500);
+        const manualValid = _recipients.filter(r => r.source === 'manual' && r.valid);
+        if (manualValid.length > 0) {
+          setTimeout(() => showSuggestStep(manualValid), 1500);
+        } else {
+          setTimeout(() => { close(); if (typeof _opts.onSuccess === 'function') _opts.onSuccess(); }, 1500);
+        }
       } else {
         setMsg(d.message || d.error || 'Eroare la trimitere.', 'err');
         btn.disabled = false; btn.querySelector('span').textContent = 'Trimite email';
@@ -319,6 +324,113 @@
       setMsg('Eroare de rețea.', 'err');
       btn.disabled = false; btn.querySelector('span').textContent = 'Trimite email';
     }
+  }
+
+  function showSuggestStep(manualRecipients) {
+    const form = _rootEl.querySelector('.dfem-form');
+    const submitBtn = _rootEl.querySelector('#dfem-submit');
+    if (form) form.style.display = 'none';
+    if (submitBtn) submitBtn.style.display = 'none';
+    const msg = _rootEl.querySelector('#dfem-msg');
+    if (msg) msg.style.display = 'none';
+
+    const dialog = _rootEl.querySelector('.dfem-dialog');
+    const existing = _rootEl.querySelector('#dfem-suggest-wrap');
+    if (existing) existing.remove();
+
+    const wrap = document.createElement('div');
+    wrap.id = 'dfem-suggest-wrap';
+    wrap.innerHTML = `
+      <div class="dfem-subtitle" style="margin-bottom:14px;">
+        Email-urile de mai jos nu sunt în baza Outreach. Vrei să le salvezi pentru autocomplete viitor?
+      </div>
+      <div id="dfem-suggest-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;"></div>
+      <div class="dfem-msg" id="dfem-suggest-msg" style="font-size:.82rem;min-height:18px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="df-action-btn" id="dfem-suggest-skip">Nu, mulțumesc</button>
+        <button type="button" class="dfem-submit" id="dfem-suggest-save"><span>💾 Salvează în Outreach</span></button>
+      </div>
+    `;
+    dialog.appendChild(wrap);
+
+    const list = wrap.querySelector('#dfem-suggest-list');
+    manualRecipients.forEach((r, idx) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:grid;grid-template-columns:auto 1fr 2fr;gap:8px;align-items:center;';
+      row.innerHTML = `
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" class="dfem-suggest-check" data-idx="${idx}" checked>
+        </label>
+        <div style="font-size:.85rem;color:var(--df-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.email)}</div>
+        <input type="text" class="dfem-input dfem-suggest-inst" data-idx="${idx}" placeholder="Nume instituție *" style="font-size:.82rem;">
+      `;
+      list.appendChild(row);
+    });
+
+    wrap.querySelector('#dfem-suggest-skip').addEventListener('click', () => {
+      close();
+      if (typeof _opts.onSuccess === 'function') _opts.onSuccess();
+    });
+    wrap.querySelector('#dfem-suggest-save').addEventListener('click', () => doSuggestSave(manualRecipients));
+
+    const firstInst = wrap.querySelector('.dfem-suggest-inst');
+    if (firstInst) setTimeout(() => firstInst.focus(), 50);
+  }
+
+  async function doSuggestSave(manualRecipients) {
+    const wrap = _rootEl.querySelector('#dfem-suggest-wrap');
+    const msgEl = wrap.querySelector('#dfem-suggest-msg');
+    const btn = wrap.querySelector('#dfem-suggest-save');
+    const checks = [...wrap.querySelectorAll('.dfem-suggest-check')];
+    const insts = [...wrap.querySelectorAll('.dfem-suggest-inst')];
+
+    const toSave = [];
+    for (let i = 0; i < manualRecipients.length; i++) {
+      if (!checks[i].checked) continue;
+      const institutie = (insts[i].value || '').trim();
+      if (!institutie) {
+        msgEl.textContent = `⚠ Completează numele instituției pentru ${manualRecipients[i].email}`;
+        msgEl.className = 'dfem-msg dfem-msg-err';
+        insts[i].focus();
+        return;
+      }
+      toSave.push({ email: manualRecipients[i].email, institutie });
+    }
+    if (!toSave.length) {
+      close();
+      if (typeof _opts.onSuccess === 'function') _opts.onSuccess();
+      return;
+    }
+
+    btn.disabled = true;
+    btn.querySelector('span').textContent = 'Se salvează...';
+    msgEl.textContent = '';
+
+    const jwt = localStorage.getItem('docflow_token') || localStorage.getItem('jwt') || '';
+    let added = 0, duplicates = 0, errors = 0;
+    for (const item of toSave) {
+      try {
+        const r = await fetch('/admin/outreach/primarii/suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(jwt ? { 'Authorization': 'Bearer ' + jwt } : {}) },
+          credentials: 'include',
+          body: JSON.stringify(item),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.added) added++;
+        else if (r.ok && !d.added) duplicates++;
+        else errors++;
+      } catch (_) { errors++; }
+    }
+
+    const parts = [];
+    if (added) parts.push(`✓ ${added} salvate`);
+    if (duplicates) parts.push(`${duplicates} deja existente`);
+    if (errors) parts.push(`${errors} erori`);
+    msgEl.textContent = parts.join(' · ');
+    msgEl.className = 'dfem-msg ' + (errors ? 'dfem-msg-err' : 'dfem-msg-ok');
+
+    setTimeout(() => { close(); if (typeof _opts.onSuccess === 'function') _opts.onSuccess(); }, 1800);
   }
 
   async function open(flowId, opts) {
@@ -372,6 +484,17 @@ Data: ${today}`;
     renderChips();
     renderAttachments();
     _rootEl.classList.add('dfem-open');
+
+    // Cleanup suggest screen din sesiune anterioară
+    const oldSuggest = _rootEl.querySelector('#dfem-suggest-wrap');
+    if (oldSuggest) oldSuggest.remove();
+    const form = _rootEl.querySelector('.dfem-form');
+    const submitBtn = _rootEl.querySelector('#dfem-submit');
+    const msgEl = _rootEl.querySelector('#dfem-msg');
+    if (form) form.style.display = '';
+    if (submitBtn) submitBtn.style.display = '';
+    if (msgEl) msgEl.style.display = '';
+
     setTimeout(() => {
       const inner = _rootEl.querySelector('.dfem-inner');
       if (inner) inner.scrollTop = 0;

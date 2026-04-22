@@ -2257,6 +2257,8 @@ function prCloseImportModal() { $('pr-import-modal').style.display = 'none'; }
 function prImportFileChange() {
   const file = $('pr-import-file').files?.[0];
   if (!file) return;
+  const nameEl = document.getElementById('pr-import-file-name');
+  if (nameEl) nameEl.textContent = file.name;
   const ext = file.name.split('.').pop().toLowerCase();
   if (ext === 'json') $('pr-import-format').value = 'json';
   else if (ext === 'csv' || ext === 'txt') $('pr-import-format').value = 'csv';
