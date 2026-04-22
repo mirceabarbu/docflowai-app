@@ -2254,9 +2254,81 @@ function prShowImportModal() {
 
 function prCloseImportModal() { $('pr-import-modal').style.display = 'none'; }
 
+function prShowExportModal() {
+  document.getElementById('pr-export-msg').textContent = '';
+  // Populează dropdown județe din cele deja încărcate de prLoad
+  const mainJudet = document.getElementById('pr-judet');
+  const exportJudet = document.getElementById('pr-export-judet');
+  if (mainJudet && exportJudet) {
+    exportJudet.innerHTML = '<option value="">— Toate județele —</option>';
+    [...mainJudet.options].forEach(opt => {
+      if (opt.value) {
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.textContent;
+        exportJudet.appendChild(o);
+      }
+    });
+  }
+  document.getElementById('pr-export-modal').classList.add('dfem-open');
+}
+
+function prCloseExportModal() {
+  document.getElementById('pr-export-modal').classList.remove('dfem-open');
+}
+
+async function prDoExport() {
+  const format = document.getElementById('pr-export-format').value;
+  const activ  = document.getElementById('pr-export-activ').value;
+  const judet  = document.getElementById('pr-export-judet').value;
+  const msgEl  = document.getElementById('pr-export-msg');
+
+  msgEl.textContent = '⏳ Se generează fișierul...';
+  msgEl.className = 'dfem-msg';
+
+  const params = new URLSearchParams();
+  params.set('format', format);
+  if (activ !== 'all') params.set('activ', activ);
+  if (judet) params.set('judet', judet);
+
+  try {
+    const r = await fetch(`/admin/outreach/primarii/export?${params.toString()}`, {
+      credentials: 'include',
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      msgEl.textContent = '⚠ ' + (d.message || d.error || `Eroare ${r.status}`);
+      msgEl.className = 'dfem-msg dfem-msg-err';
+      return;
+    }
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename="?([^"]+)"?/);
+    const filename = m ? m[1] : `outreach-primarii.${format}`;
+
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    msgEl.textContent = `✓ Descărcat: ${filename}`;
+    msgEl.className = 'dfem-msg dfem-msg-ok';
+    setTimeout(prCloseExportModal, 1400);
+  } catch (e) {
+    msgEl.textContent = '⚠ Eroare de rețea.';
+    msgEl.className = 'dfem-msg dfem-msg-err';
+  }
+}
+
 function prImportFileChange() {
   const file = $('pr-import-file').files?.[0];
   if (!file) return;
+  const nameEl = document.getElementById('pr-import-file-name');
+  if (nameEl) nameEl.textContent = file.name;
   const ext = file.name.split('.').pop().toLowerCase();
   if (ext === 'json') $('pr-import-format').value = 'json';
   else if (ext === 'csv' || ext === 'txt') $('pr-import-format').value = 'csv';

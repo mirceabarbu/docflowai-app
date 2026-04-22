@@ -150,6 +150,32 @@ router.post('/primarii', async (req, res) => {
   }
 });
 
+// POST /admin/outreach/primarii/suggest — sugestie de la user normal (requireAuth, nu Admin)
+// INSERT ON CONFLICT DO NOTHING: duplicate silently ignored
+router.post('/primarii/suggest', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { institutie, email, judet = '', localitate = '' } = req.body || {};
+  if (!institutie?.trim()) return res.status(400).json({ error: 'institutie_required' });
+  if (!email?.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))
+    return res.status(400).json({ error: 'email_invalid' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO outreach_primarii (institutie, email, judet, localitate)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (email) DO NOTHING
+       RETURNING id`,
+      [institutie.trim(), email.trim().toLowerCase(), (judet||'').trim(), (localitate||institutie).trim()]
+    );
+    const added = rows.length > 0;
+    logger.info({ actor: actor.email, email: email.trim().toLowerCase(), institutie: institutie.trim(), added }, 'primarii suggest');
+    res.json({ ok: true, added });
+  } catch(e) {
+    logger.error({ err: e }, 'POST primarii/suggest error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // PUT /admin/outreach/primarii/:id — editează o instituție
 router.put('/primarii/:id', async (req, res) => {
   if (await requireAdmin(req, res)) return;
@@ -240,6 +266,69 @@ router.post('/primarii/import', async (req, res) => {
     logger.info({ added, skipped, replace }, 'outreach_primarii: import bulk');
     res.json({ ok: true, added, skipped, total: valid.length });
   } catch(e) { logger.error({ err: e }, 'import primarii error'); res.status(500).json({ error: 'server_error' }); }
+});
+
+// GET /admin/outreach/primarii/export — export total ca CSV sau JSON
+//   ?format=csv (default) | json
+//   ?activ=all (default) | 1 (doar active) | 0 (doar inactive)
+//   ?judet=<nume>  (opțional — dacă e dat, filtrează)
+// CSV: header "email,institutie,judet,localitate" — compatibil cu POST /primarii/import
+router.get('/primarii/export', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+
+  const format = (req.query.format || 'csv').toLowerCase();
+  const activFilter = (req.query.activ || 'all').toString();
+  const judet = (req.query.judet || '').trim();
+
+  if (!['csv', 'json'].includes(format)) return res.status(400).json({ error: 'format_invalid' });
+
+  const conds = ['1=1']; const params = [];
+  if (activFilter === '1') conds.push('activ = TRUE');
+  else if (activFilter === '0') conds.push('activ = FALSE');
+  if (judet) { params.push(judet); conds.push(`judet = $${params.length}`); }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT email, institutie, judet, localitate, activ, unsubscribed
+         FROM outreach_primarii
+        WHERE ${conds.join(' AND ')}
+        ORDER BY judet ASC, institutie ASC`,
+      params
+    );
+
+    const ts = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const activTag = activFilter === '1' ? '-active' : activFilter === '0' ? '-inactive' : '';
+    const judetTag = judet ? `-${judet.toLowerCase().replace(/[^a-z0-9]/gi, '')}` : '';
+    const filename = `outreach-primarii${activTag}${judetTag}-${ts}.${format}`;
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(JSON.stringify(rows, null, 2));
+    }
+
+    const escapeCsv = (v) => {
+      if (v == null) return '';
+      const s = String(v);
+      if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const lines = ['email,institutie,judet,localitate'];
+    for (const r of rows) {
+      lines.push([r.email, r.institutie, r.judet, r.localitate].map(escapeCsv).join(','));
+    }
+    // BOM UTF-8 pentru Excel (diacritice corecte la open direct în Excel Windows)
+    const csv = '﻿' + lines.join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch(e) {
+    logger.error({ err: e }, 'GET primarii/export error');
+    res.status(500).json({ error: 'server_error' });
+  }
 });
 
 /** Trimite email via Resend REST API (fără SDK — consistente cu mailer.mjs) */
