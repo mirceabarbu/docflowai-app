@@ -96,11 +96,17 @@ export function parseAnafRecord(rec) {
     vatCollectedEndDate:   tvaI.dataSfarsitTvaInc || null,
 
     // Inactiv / radiat — CRITIC pentru plăți
+    // Detectare multi-sursă: dataRadiere (ISO) SAU stare_inregistrare text liber (/RADIAT/i)
     inactive:         inact.statusInactivi === true,
     inactiveDate:     inact.dataInactivare || null,
     reactivationDate: inact.dataReactivare || null,
-    liquidationDate:  inact.dataRadiere    || null,
-    radiated:         !!(inact.dataRadiere),
+    liquidationDate:  (() => {
+      if (inact.dataRadiere) return inact.dataRadiere;
+      const m = String(dg.stare_inregistrare || '').match(/din data\s+(\d{2}\.\d{2}\.\d{4})/i);
+      return (/RADIAT/i.test(String(dg.stare_inregistrare || '')) && m) ? m[1] : null;
+    })(),
+    radiated: !!(inact.dataRadiere) || /RADIAT/i.test(String(dg.stare_inregistrare || '')),
+    stareInregistrareText: String(dg.stare_inregistrare || ''),
 
     // Split TVA
     splitVat:          split.statusSplitTVA === true,
@@ -108,6 +114,9 @@ export function parseAnafRecord(rec) {
 
     // e-Factura
     eFactura: dg.statusRO_e_Factura === true,
+
+    // Record brut pentru secțiunea 'Date complete ANAF' din UI
+    _raw: rec,
   };
 }
 

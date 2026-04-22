@@ -177,4 +177,48 @@ describe('parseAnafRecord', () => {
     expect(r.vatCollectedStartDate).toBe('2013-01-01');
     expect(r.vatCollectedEndDate).toBe('2021-05-01');
   });
+
+  it('detectează radiere din stare_inregistrare când dataRadiere e gol', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.stare_inactiv.dataRadiere = '';
+    rec.date_generale.stare_inregistrare = 'RADIATĂ din data 15.06.2024';
+    const r = parseAnafRecord(rec);
+    expect(r.radiated).toBe(true);
+    expect(r.liquidationDate).toBe('15.06.2024');
+    expect(r.stareInregistrareText).toBe('RADIATĂ din data 15.06.2024');
+  });
+
+  it('detectează radiere cu variantă fără diacritice', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.stare_inactiv.dataRadiere = '';
+    rec.date_generale.stare_inregistrare = 'RADIATA din data 20.03.2023';
+    const r = parseAnafRecord(rec);
+    expect(r.radiated).toBe(true);
+    expect(r.liquidationDate).toBe('20.03.2023');
+  });
+
+  it('preferă dataRadiere dacă ambele surse sunt prezente', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.stare_inactiv.dataRadiere = '2024-06-15';
+    rec.date_generale.stare_inregistrare = 'RADIATĂ din data 10.06.2024';
+    const r = parseAnafRecord(rec);
+    expect(r.radiated).toBe(true);
+    expect(r.liquidationDate).toBe('2024-06-15');
+  });
+
+  it('nu marchează radiată pentru firmă activă (INREGISTRAT)', () => {
+    const r = parseAnafRecord(BRACOMA_RECORD);
+    expect(r.radiated).toBe(false);
+    expect(r.stareInregistrareText).toContain('INREGISTRAT');
+  });
+
+  it('expune _raw cu toate sub-secțiunile ANAF', () => {
+    const r = parseAnafRecord(BRACOMA_RECORD);
+    expect(r._raw).toBeDefined();
+    expect(r._raw.date_generale).toBeDefined();
+    expect(r._raw.inregistrare_scop_Tva).toBeDefined();
+    expect(r._raw.stare_inactiv).toBeDefined();
+    expect(r._raw.adresa_sediu_social).toBeDefined();
+    expect(r._raw.date_generale.cui).toBe(13265409);
+  });
 });
