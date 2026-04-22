@@ -23,7 +23,7 @@ function normalizeCui(raw) {
   return s;
 }
 
-function parseAnafRecord(rec) {
+export function parseAnafRecord(rec) {
   if (!rec) return null;
   const dg    = rec.date_generale || {};
   const tva   = rec.inregistrare_scop_Tva || {};
@@ -163,33 +163,24 @@ export async function lookupCui(rawCui) {
       return { ok: false, reason: isWaf ? 'upstream_waf_blocked' : 'upstream_invalid_response' };
     }
 
-    // Cazul subtil: cod non-200 dar CUI-ul apare în notFound → tratat ca not found, nu eroare
-    if (j.cod !== 200 && j.cod !== '200' && Array.isArray(j.notFound) && j.notFound.includes(Number(cui))) {
-      console.warn('[ANAF] CUI in notFound cu cod non-200. Treated as notFound. msg:', j.message);
-      return { ok: true, data: null, notFound: true, anafNote: j.message || null };
-    }
-
-    if (j.cod !== 200 && j.cod !== '200') {
-      console.error('[ANAF] cod non-200. Full response:', JSON.stringify(j).slice(0, 2000));
-      console.error('[ANAF] Request was: POST', ANAF_URL, 'body:', body);
-      return {
-        ok: false,
-        reason: 'upstream_error',
-        upstream: {
-          cod: j.cod,
-          message: j.message,
-          notFound: j.notFound,
-          raw: JSON.stringify(j).slice(0, 800),
-        },
-      };
-    }
-
+    // Schema reală ANAF v9: răspuns conține DOAR {found, notFound}. Câmpul "cod" NU există
+    // (documentația oficială e învechită). Source of truth: found vs notFound arrays.
     const found = Array.isArray(j.found) ? j.found : [];
-    if (!found.length) return { ok: true, data: null, notFound: true };
+    const notFound = Array.isArray(j.notFound) ? j.notFound : [];
 
-    const data = parseAnafRecord(found[0]);
-    _cache.set(cui, { expiresAt: Date.now() + CACHE_TTL_MS, data });
-    return { ok: true, cached: false, data };
+    if (found.length > 0) {
+      const data = parseAnafRecord(found[0]);
+      _cache.set(cui, { expiresAt: Date.now() + CACHE_TTL_MS, data });
+      return { ok: true, cached: false, data };
+    }
+
+    if (notFound.includes(Number(cui)) || notFound.map(String).includes(String(cui))) {
+      return { ok: true, data: null, notFound: true };
+    }
+
+    // Nici found nici notFound — răspuns neașteptat
+    console.error('[ANAF] Răspuns fără found și fără notFound. Raw:', JSON.stringify(j).slice(0, 800));
+    return { ok: false, reason: 'upstream_empty_response' };
   } catch (e) {
     clearTimeout(timer);
     if (e.name === 'AbortError') return { ok: false, reason: 'upstream_timeout' };

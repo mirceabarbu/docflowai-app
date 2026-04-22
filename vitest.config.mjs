@@ -17,7 +17,7 @@ export default defineConfig({
     setupFiles: ['./server/tests/setup.mjs'],
 
     // Pattern fișiere de test
-    include: ['server/tests/**/*.test.mjs'],
+    include: ['server/tests/**/*.test.mjs', 'server/services/**/__tests__/*.test.mjs'],
 
     // Timeout per test (PBKDF2 100k iterații durează ~200ms)
     testTimeout: 15_000,
