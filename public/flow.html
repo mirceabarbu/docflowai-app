@@ -814,6 +814,16 @@
       const data = j.data || j;
       window._flowData = data; // pentru modal email
 
+      // nameMap + resolveName — helper local pentru afișarea numelor
+      // în loc de email-uri (duplicat de renderTimeline; necesar aici
+      // pentru cardul reviewInfoCard L944).
+      const nameMap = {};
+      if (data.initEmail) nameMap[data.initEmail.toLowerCase()] = data.initName || data.initEmail;
+      (data.signers || []).forEach(s => {
+        if (s.email) nameMap[s.email.toLowerCase()] = s.name || s.email;
+      });
+      const resolveName = (email) => nameMap[(email||'').toLowerCase()] || email || '—';
+
       $("docName").textContent = (data.docName || data.documentName || data.name || data.title || "—");
       const ftPill = $("flowTypePill");
       if (ftPill) ftPill.innerHTML = data.flowType === 'ancore' ? '<span title="PDF cu ancore existente" style="color:#7cf0e0;font-weight:600;">⚓ Ancore</span>' : '<span title="PDF cu tabel generat" style="color:#b39dff;font-weight:600;">📋 Tabel generat</span>';
