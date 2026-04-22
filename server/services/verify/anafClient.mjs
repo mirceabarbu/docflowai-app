@@ -122,7 +122,10 @@ export async function lookupCui(rawCui) {
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const body = JSON.stringify([{ cui: Number(cui), data: today }]);
+  // Folosim data de ieri — ANAF publică date noaptea; data curentă dimineața poate lipsi din DB
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const queryDate = yesterday;
+  const body = JSON.stringify([{ cui: Number(cui), data: queryDate }]);
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
@@ -160,9 +163,25 @@ export async function lookupCui(rawCui) {
       return { ok: false, reason: isWaf ? 'upstream_waf_blocked' : 'upstream_invalid_response' };
     }
 
+    // Cazul subtil: cod non-200 dar CUI-ul apare în notFound → tratat ca not found, nu eroare
+    if (j.cod !== 200 && j.cod !== '200' && Array.isArray(j.notFound) && j.notFound.includes(Number(cui))) {
+      console.warn('[ANAF] CUI in notFound cu cod non-200. Treated as notFound. msg:', j.message);
+      return { ok: true, data: null, notFound: true, anafNote: j.message || null };
+    }
+
     if (j.cod !== 200 && j.cod !== '200') {
-      console.error('[ANAF] cod non-200:', j.cod, 'msg:', j.message);
-      return { ok: false, reason: 'upstream_error', upstream: { cod: j.cod, message: j.message } };
+      console.error('[ANAF] cod non-200. Full response:', JSON.stringify(j).slice(0, 2000));
+      console.error('[ANAF] Request was: POST', ANAF_URL, 'body:', body);
+      return {
+        ok: false,
+        reason: 'upstream_error',
+        upstream: {
+          cod: j.cod,
+          message: j.message,
+          notFound: j.notFound,
+          raw: JSON.stringify(j).slice(0, 800),
+        },
+      };
     }
 
     const found = Array.isArray(j.found) ? j.found : [];

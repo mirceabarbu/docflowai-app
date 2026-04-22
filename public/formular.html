@@ -4,14 +4,14 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.315">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.315">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.315">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.315">
-  <script src="/js/df-shell.js?v=3.9.315"></script>
-  <script src="/js/df-user-modals.js?v=3.9.315"></script>
-  <script src="/js/df-subtabs.js?v=3.9.315"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.315">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.316">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.316">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.316">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.316">
+  <script src="/js/df-shell.js?v=3.9.316"></script>
+  <script src="/js/df-user-modals.js?v=3.9.316"></script>
+  <script src="/js/df-subtabs.js?v=3.9.316"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.316">
 </head>
 <body>
 <span id="hUserBar" style="display:none;"></span>
@@ -304,10 +304,10 @@
 
   <!-- Bara navigare identică cu bara principală -->
   <div class="lst-tabs" style="margin-bottom:16px">
-    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.315#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.315#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.315#ico-bar-chart"/></svg> ALOP</button>
-    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.315#ico-shield"/></svg> Verificare furnizor</button>
+    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.316#ico-file-text"/></svg> Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.316#ico-file-text"/></svg> Ordonanțări de Plată</button>
+    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.316#ico-bar-chart"/></svg> ALOP</button>
+    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.316#ico-shield"/></svg> Verificare furnizor</button>
   </div>
 
   <div class="df-info-banner" style="margin-bottom:18px;">
@@ -4208,10 +4208,25 @@ async function vfLookupCui() {
         'cui_invalid_format':        'CUI invalid (doar cifre, 2-10 caractere, opțional prefix RO).',
       };
       const reason = d.reason || '';
-      const mapped = reasonMap[reason];
-      const upstreamMsg = d.upstream && d.upstream.message ? ' (' + d.upstream.message + ')' : '';
+      const mapped = reasonMap[reason] || ('Eroare: ' + (reason || 'unknown'));
       const statusMatch = reason.match(/^upstream_status_(\d+)$/);
-      msgEl.textContent = '⚠ ' + (mapped ? mapped + upstreamMsg : statusMatch ? `ANAF HTTP ${statusMatch[1]}` : 'Eroare: ' + (reason || 'unknown'));
+      const baseMsg = statusMatch ? `ANAF HTTP ${statusMatch[1]}` : mapped;
+
+      const details = [];
+      if (d.upstream) {
+        if (d.upstream.cod !== undefined) details.push('cod=' + d.upstream.cod);
+        if (d.upstream.message) details.push('mesaj=' + d.upstream.message);
+        if (Array.isArray(d.upstream.notFound) && d.upstream.notFound.length) details.push('notFound=' + JSON.stringify(d.upstream.notFound));
+      }
+
+      let html = '⚠ ' + _vfEsc(baseMsg);
+      if (details.length) {
+        html += ' <span style="color:var(--df-text-4);font-size:.78rem;">· ' + _vfEsc(details.join(' · ')) + '</span>';
+      }
+      if (d.upstream && d.upstream.raw) {
+        html += `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:.75rem;color:var(--df-text-4);">🔬 Raw response ANAF (pentru debug)</summary><pre style="background:rgba(0,0,0,.3);padding:8px;border-radius:4px;font-size:.7rem;color:var(--df-text-3);overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin-top:6px;">${_vfEsc(d.upstream.raw)}</pre></details>`;
+      }
+      msgEl.innerHTML = html;
       msgEl.style.color = '#ffaaaa'; return;
     }
     if (d.notFound || !d.data) {
