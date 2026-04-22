@@ -568,6 +568,7 @@ router.get('/flows/:flowId/signing-providers', async (req, res) => {
       flowType:   data.flowType || 'tabel',
       // Dacă există un singur provider (local-upload) — UI poate sări pasul de selecție
       skipSelection: providers.length === 1 && providers[0].id === 'local-upload',
+      flowPreferredProvider: data.preferredProvider || null,  // nou: setat la inițiere
     });
   } catch(e) { logger.error({ err: e }, 'signing-providers error'); res.status(500).json({ error: 'server_error' }); }
 });
@@ -801,5 +802,44 @@ router.post('/flows/:flowId/signing-callback', async (req, res) => {
 });
 
 
+// ── GET /api/me/signing-providers ─────────────────────────────────
+// Returnează providerii disponibili + preferința user-ului logat.
+// Folosit de semdoc-initiator pentru selecția provider la creare flux.
+router.get('/api/me/signing-providers', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const actor = requireAuth(req, res); if (!actor) return;
+
+    let org = null;
+    if (actor.orgId) {
+      const { rows } = await pool.query(
+        'SELECT signing_providers_enabled, signing_providers_config FROM organizations WHERE id=$1',
+        [actor.orgId]
+      );
+      org = rows[0] || null;
+    }
+
+    const providers = getOrgProviders(org);
+
+    // Preferința user-ului (dacă există)
+    let preferred = null;
+    try {
+      const { rows: uRows } = await pool.query(
+        'SELECT preferred_signing_provider FROM users WHERE email=$1',
+        [actor.email.toLowerCase()]
+      );
+      preferred = uRows[0]?.preferred_signing_provider || null;
+    } catch(e) { logger.warn({ err: e, email: actor.email }, '/api/me/signing-providers: preferred lookup non-fatal'); }
+
+    res.json({
+      providers,
+      preferred,
+      skipSelection: providers.length === 1 && providers[0].id === 'local-upload',
+    });
+  } catch(e) {
+    logger.error({ err: e }, '/api/me/signing-providers error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
 
 export default router;

@@ -105,6 +105,30 @@ const createFlow = async (req, res) => {
       try { orgId = await getDefaultOrgId(); } catch(e) { orgId = null; }
     }
 
+    // preferredProvider — setat la inițiere, lock pentru toți semnatarii
+    // Validăm contra providerilor ENABLED ai organizației.
+    let preferredProvider = null;
+    if (body.preferredProvider && typeof body.preferredProvider === 'string') {
+      let orgRow = null;
+      if (orgId) {
+        try {
+          const { rows } = await pool.query(
+            'SELECT signing_providers_enabled FROM organizations WHERE id=$1',
+            [orgId]
+          );
+          orgRow = rows[0] || null;
+        } catch(e) { logger.warn({ err: e, orgId }, 'preferredProvider: org lookup non-fatal'); }
+      }
+      const validIds = new Set(getOrgProviders(orgRow).map(p => p.id));
+      if (!validIds.has(body.preferredProvider)) {
+        return res.status(400).json({
+          error: 'invalid_provider',
+          message: `Provider "${body.preferredProvider}" nu este activ în organizație.`
+        });
+      }
+      preferredProvider = body.preferredProvider;
+    }
+
     const normalizedSigners = signers.map((s, idx) => ({
       order: Number(s.order || idx + 1),
       rol: String(s.rol || s.atribut || '').trim(),
@@ -194,6 +218,7 @@ const createFlow = async (req, res) => {
       initFunctie, institutie: initInstitutie, compartiment: initCompartiment,
       meta: body.meta || {}, flowType: body.flowType || 'tabel',
       urgent: !!(body.urgent),
+      preferredProvider,  // null sau id-ul providerului ales la inițiere
       status: 'active',
       completed: false,
       completedAt: null,
