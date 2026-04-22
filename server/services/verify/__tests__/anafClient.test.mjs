@@ -93,6 +93,10 @@ describe('parseAnafRecord', () => {
     expect(r.caenCode).toBe('4773');
     expect(r.registrationDate).toBe('2000-08-09');
     expect(r.vat).toBe(true);
+    expect(r.vatStartDate).toBe('2000-08-09');
+    expect(r.vatEndDate).toBeNull();
+    expect(r.vatPeriods).toHaveLength(1);
+    expect(r.vatPeriods[0]).toMatchObject({ data_inceput_ScpTVA: '2000-08-09' });
     expect(r.vatCollected).toBe(false);
     expect(r.vatCollectedStartDate).toBe('2013-01-01');
     expect(r.vatCollectedEndDate).toBe('2021-05-01');
@@ -259,5 +263,50 @@ describe('parseAnafRecord', () => {
     expect(r._raw.stare_inactiv).toBeDefined();
     expect(r._raw.adresa_sediu_social).toBeDefined();
     expect(r._raw.date_generale.cui).toBe(13265409);
+  });
+
+  it('parsează corect perioade_TVA array — firmă cu TVA anulat (structură MIRCOMIR)', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.inregistrare_scop_Tva = {
+      scpTVA: false,
+      perioade_TVA: [
+        { data_inceput_ScpTVA: '2001-01-01', data_sfarsit_ScpTVA: '2013-07-23', data_anul_imp_ScpTVA: '2013-07-23', mesaj_ScpTVA: 'Conform art.153 alin.(9) lit.d) din Codul fiscal' },
+      ],
+    };
+    const r = parseAnafRecord(rec);
+    expect(r.vat).toBe(false);
+    expect(r.vatStartDate).toBe('2001-01-01');
+    expect(r.vatEndDate).toBe('2013-07-23');
+    expect(r.vatCancelDate).toBe('2013-07-23');
+    expect(r.vatCancelReason).toContain('art.153');
+    expect(r.vatPeriods).toHaveLength(1);
+  });
+
+  it('parsează istoric multiplu de perioade TVA — ultima e cea relevantă', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.inregistrare_scop_Tva = {
+      scpTVA: true,
+      perioade_TVA: [
+        { data_inceput_ScpTVA: '2001-01-01', data_sfarsit_ScpTVA: '2005-06-30', data_anul_imp_ScpTVA: '', mesaj_ScpTVA: '' },
+        { data_inceput_ScpTVA: '2007-03-01', data_sfarsit_ScpTVA: '', data_anul_imp_ScpTVA: '', mesaj_ScpTVA: '' },
+      ],
+    };
+    const r = parseAnafRecord(rec);
+    expect(r.vatPeriods).toHaveLength(2);
+    // Ultima perioadă (index 1) este cea mai recentă
+    expect(r.vatStartDate).toBe('2007-03-01');
+    expect(r.vatEndDate).toBeNull();
+  });
+
+  it('tratează lipsa perioade_TVA (firmă neplătitoare fără istoric)', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.inregistrare_scop_Tva = { scpTVA: false };
+    const r = parseAnafRecord(rec);
+    expect(r.vat).toBe(false);
+    expect(r.vatStartDate).toBeNull();
+    expect(r.vatEndDate).toBeNull();
+    expect(r.vatCancelDate).toBeNull();
+    expect(r.vatCancelReason).toBe('');
+    expect(r.vatPeriods).toEqual([]);
   });
 });

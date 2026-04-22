@@ -49,6 +49,10 @@ export function parseAnafRecord(rec) {
   else if (/\b(PRIMARIA|PRIMĂRIA|CONSILIUL|MINISTERUL|DIRECTIA|DIRECȚIA|INSPECTORATUL|CASA|AGENTIA|AGENȚIA|AUTORITATEA|SPITALUL|COLEGIUL|LICEUL|UNIVERSITATEA|GRADINITA|GRĂDINIȚA|SCOALA|ȘCOALA|INSTITUTUL|INSTITUȚIA)\b/.test(name)) entityType = 'public';
   else if (/\b(ASOCIATIA|ASOCIAȚIA|FUNDATIA|FUNDAȚIA|ONG)\b/.test(name)) entityType = 'NGO';
 
+  // perioade_TVA e ARRAY de istoric — extragem ultima (cea mai recentă) pentru câmpurile principale
+  const vatPeriodsArr = Array.isArray(tva.perioade_TVA) ? tva.perioade_TVA : [];
+  const lastVatPeriod = vatPeriodsArr.length ? vatPeriodsArr[vatPeriodsArr.length - 1] : {};
+
   let cleanAddress = '';
   if (sediu.sdenumire_Strada || sediu.snumar_Strada || sediu.sdenumire_Localitate) {
     const parts = [];
@@ -83,12 +87,13 @@ export function parseAnafRecord(rec) {
     authorizationAct: dg.act       || '',
     anafIban:         dg.iban      || '',
 
-    // TVA — scop
+    // TVA — scop (perioade_TVA e ARRAY de istoric; luăm ultima perioadă, cea mai recentă)
     vat: tva.scpTVA === true,
-    vatStartDate:    (tva.perioade_TVA && tva.perioade_TVA.data_inceput_ScpTVA) || null,
-    vatEndDate:      tva.data_sfarsit_ScpTVA   || null,
-    vatCancelDate:   tva.data_anul_imp_ScpTVA  || null,
-    vatCancelReason: tva.mesaj_ScpTVA          || '',
+    vatStartDate:    lastVatPeriod.data_inceput_ScpTVA  || null,
+    vatEndDate:      lastVatPeriod.data_sfarsit_ScpTVA  || null,
+    vatCancelDate:   lastVatPeriod.data_anul_imp_ScpTVA || null,
+    vatCancelReason: lastVatPeriod.mesaj_ScpTVA         || '',
+    vatPeriods:      vatPeriodsArr,
 
     // TVA la încasare
     vatCollected:          tvaI.statusTvaIncasare === true,
