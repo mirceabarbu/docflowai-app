@@ -748,4 +748,28 @@ router.post('/primarii/ensure-tokens', async (req, res) => {
   }
 });
 
+// ── Search institutions (autocomplete, orice user autentificat) ───────────────
+router.get('/search', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const actor = requireAuth(req, res); if (!actor) return;
+    const q = (req.query.q || '').trim();
+    if (!q || q.length < 2) return res.json({ results: [] });
+    const { rows } = await pool.query(
+      `SELECT institutie, email, judet, localitate
+       FROM outreach_primarii
+       WHERE activ = TRUE
+         AND unsubscribed = FALSE
+         AND (institutie ILIKE $1 OR localitate ILIKE $1 OR judet ILIKE $1)
+       ORDER BY institutie
+       LIMIT 10`,
+      [`%${q}%`]
+    );
+    res.json({ results: rows });
+  } catch(e) {
+    logger.error({ err: e }, 'outreach /search error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 export default router;
