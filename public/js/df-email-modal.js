@@ -23,6 +23,9 @@
   let _recipients = [];
   let _attachments = [];
   let _rootEl = null;
+  let _acResults = [];
+  let _acActive = -1;
+  let _acTimer = null;
 
   function esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -47,6 +50,7 @@
         <div class="dfem-chip-wrap" id="dfem-chip-wrap">
           <input class="dfem-chip-input" id="dfem-to-input" type="text" placeholder="ex: primar@primarie.ro" autocomplete="off" />
         </div>
+        <div class="dfem-ac-dropdown" id="dfem-ac-dropdown" style="display:none;"></div>
       </div>
 
       <div class="dfem-field">
@@ -94,7 +98,8 @@
     const input = _rootEl.querySelector('#dfem-to-input');
     input.addEventListener('keydown', onInputKeydown);
     input.addEventListener('paste', onInputPaste);
-    input.addEventListener('blur', () => tryAddFromInput());
+    input.addEventListener('input', onInputChange);
+    input.addEventListener('blur', () => { setTimeout(() => closeAcDropdown(), 150); tryAddFromInput(); });
     _rootEl.querySelector('#dfem-chip-wrap').addEventListener('click', () => input.focus());
 
     _rootEl.querySelector('#dfem-attach-btn').addEventListener('click', () => _rootEl.querySelector('#dfem-attach-input').click());
@@ -145,9 +150,16 @@
 
   function onInputKeydown(e) {
     const input = e.target;
+    if (_acResults.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); _acActive = Math.min(_acActive + 1, _acResults.length - 1); renderAcDropdown(); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); _acActive = Math.max(_acActive - 1, -1); renderAcDropdown(); return; }
+      if (e.key === 'Enter' && _acActive >= 0) { e.preventDefault(); selectAcResult(_acResults[_acActive]); return; }
+      if (e.key === 'Escape') { e.preventDefault(); closeAcDropdown(); return; }
+    }
     if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
       if (input.value.trim()) {
         e.preventDefault();
+        closeAcDropdown();
         tryAddFromInput();
       }
       return;
@@ -168,6 +180,57 @@
       for (const p of parts) if (addRecipient(p)) added = true;
       if (added) renderChips();
     }
+  }
+
+  function onInputChange(e) {
+    const q = (e.target.value || '').trim();
+    clearTimeout(_acTimer);
+    if (q.length < 2) { closeAcDropdown(); return; }
+    _acTimer = setTimeout(() => fetchAcResults(q), 220);
+  }
+
+  async function fetchAcResults(q) {
+    try {
+      const r = await fetch(`/admin/outreach/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+      if (!r.ok) return;
+      const d = await r.json();
+      _acResults = d.results || [];
+      _acActive = -1;
+      renderAcDropdown();
+    } catch (_) { /* non-fatal */ }
+  }
+
+  function renderAcDropdown() {
+    const drop = _rootEl.querySelector('#dfem-ac-dropdown');
+    if (!drop) return;
+    if (!_acResults.length) { drop.style.display = 'none'; return; }
+    drop.innerHTML = _acResults.map((item, i) => {
+      const cls = 'dfem-ac-item' + (i === _acActive ? ' dfem-ac-item-active' : '');
+      return `<div class="${cls}" data-idx="${i}">
+        <span class="dfem-ac-name">${esc(item.institutie)}</span>
+        <span class="dfem-ac-email">${esc(item.email)}</span>
+        ${item.localitate ? `<span class="dfem-ac-loc">${esc(item.localitate)}${item.judet ? ', ' + esc(item.judet) : ''}</span>` : ''}
+      </div>`;
+    }).join('');
+    drop.querySelectorAll('.dfem-ac-item').forEach(el => {
+      el.addEventListener('mousedown', ev => { ev.preventDefault(); selectAcResult(_acResults[parseInt(el.dataset.idx, 10)]); });
+    });
+    drop.style.display = 'block';
+  }
+
+  function selectAcResult(item) {
+    if (!item) return;
+    addRecipient(item.email);
+    renderChips();
+    _rootEl.querySelector('#dfem-to-input').value = '';
+    closeAcDropdown();
+  }
+
+  function closeAcDropdown() {
+    _acResults = [];
+    _acActive = -1;
+    const drop = _rootEl && _rootEl.querySelector('#dfem-ac-dropdown');
+    if (drop) drop.style.display = 'none';
   }
 
   function onAttachChange(e) {
@@ -309,12 +372,17 @@ Data: ${today}`;
     renderChips();
     renderAttachments();
     _rootEl.classList.add('dfem-open');
-    setTimeout(() => _rootEl.querySelector('#dfem-to-input').focus(), 100);
+    setTimeout(() => {
+      const inner = _rootEl.querySelector('.dfem-inner');
+      if (inner) inner.scrollTop = 0;
+      _rootEl.querySelector('#dfem-to-input').focus();
+    }, 100);
   }
 
   function close() {
     if (!_rootEl) return;
     _rootEl.classList.remove('dfem-open');
+    closeAcDropdown();
     _flowId = null;
     _opts = {};
   }

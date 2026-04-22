@@ -62,3 +62,12 @@
 .dfem-submit:active:not(:disabled){transform:translateY(1px);}
 .dfem-submit:disabled{opacity:.55;cursor:not-allowed;}
 .dfem-submit svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+
+/* Autocomplete dropdown */
+.dfem-ac-dropdown{position:absolute;left:0;right:0;top:100%;margin-top:2px;background:var(--df-surface-2,#1e1e2e);border:1px solid var(--df-border-2);border-radius:var(--df-radius-md);box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:10;max-height:220px;overflow-y:auto;}
+.dfem-field{position:relative;}
+.dfem-ac-item{padding:8px 12px;cursor:pointer;display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;column-gap:8px;row-gap:1px;transition:background .1s;}
+.dfem-ac-item:hover,.dfem-ac-item-active{background:rgba(124,92,255,.18);}
+.dfem-ac-name{font-size:.82rem;color:var(--df-text);font-weight:600;grid-column:1;grid-row:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dfem-ac-email{font-size:.78rem;color:var(--df-teal,#2dd4bf);grid-column:2;grid-row:1 / span 2;align-self:center;white-space:nowrap;}
+.dfem-ac-loc{font-size:.73rem;color:var(--df-text-4);grid-column:1;grid-row:2;}

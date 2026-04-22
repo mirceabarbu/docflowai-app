@@ -222,14 +222,14 @@ export function emailSendExtern({ flowId, data, signers = [], bodyText = '', tra
 <html lang="ro"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f5f7fc;font-family:'Segoe UI',Arial,sans-serif;color:#1a1a1a;">
   <div style="max-width:620px;margin:0 auto;padding:32px 16px;">
-    <div style="background:linear-gradient(135deg,#7c5cff,#2dd4bf);border-radius:14px 14px 0 0;padding:24px 32px;">
+    <div style="background:#7c5cff;border-radius:14px 14px 0 0;padding:24px 32px;">
       <table role="presentation" style="width:100%;border-collapse:collapse;"><tr>
         <td style="width:52px;vertical-align:middle;">
           <div style="width:40px;height:40px;background:rgba(255,255,255,.2);border-radius:10px;text-align:center;line-height:40px;font-size:20px;">&#128203;</div>
         </td>
         <td style="vertical-align:middle;padding-left:12px;">
           <div style="font-size:11px;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:4px;">Document semnat electronic</div>
-          <div style="font-size:17px;font-weight:700;color:#fff;">${data.docName || flowId}</div>
+          <div style="font-size:17px;font-weight:700;color:#ffffff;text-shadow:0 1px 2px rgba(0,0,0,0.25);">${data.docName || flowId}</div>
         </td>
       </tr></table>
     </div>
