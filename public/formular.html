@@ -300,9 +300,18 @@
 
 <!-- ════════════ VERIFICARE FURNIZOR ═════════════════════════════════════════ -->
 <div id="verify-section" style="display:none;">
+
+  <!-- Bara navigare identică cu bara principală -->
+  <div class="lst-tabs" style="margin-bottom:16px">
+    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.312#ico-file-text"/></svg> Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.312#ico-file-text"/></svg> Ordonanțări de Plată</button>
+    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.312#ico-bar-chart"/></svg> ALOP</button>
+    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.312#ico-shield"/></svg> Verificare furnizor</button>
+  </div>
+
   <div class="df-info-banner" style="margin-bottom:18px;">
     ℹ️ Modul de verificare furnizor — tool independent. Introdu CUI-ul, IBAN-ul sau ambele pentru a valida datele înainte de a le introduce în ALOP/DF/ORD.
-    Datele sunt verificate prin <strong>ANAF</strong> (gratuit, oficial) și validări offline pentru IBAN. Cache 15 min.
+    Datele sunt verificate prin <strong>ANAF</strong> (Agenția Națională de Administrare Fiscală — gratuit, oficial) și validări offline pentru IBAN. Cache 15 min.
   </div>
 
   <!-- Card 1: CUI -->
@@ -4204,10 +4213,16 @@ async function vfLookupCui() {
       <div style="background:rgba(255,255,255,.03);border:1px solid var(--df-border);border-radius:8px;padding:14px;display:grid;grid-template-columns:140px 1fr auto;gap:8px 12px;font-size:.85rem;">
         <div style="color:var(--df-text-4);">Denumire</div><div>${_vfEsc(c.name)}</div>${_vfCopyBtn(c.name,'denumire')}
         <div style="color:var(--df-text-4);">CUI</div><div style="font-family:monospace;">${_vfEsc(c.cui)}</div>${_vfCopyBtn(c.cui,'cui')}
+        ${c.tradeRegisterNo ? `<div style="color:var(--df-text-4);">Nr. Reg. Com.</div><div style="font-family:monospace;">${_vfEsc(c.tradeRegisterNo)}</div>${_vfCopyBtn(c.tradeRegisterNo,'reg com')}` : ''}
         <div style="color:var(--df-text-4);">Adresă</div><div>${_vfEsc(c.address)}</div>${_vfCopyBtn(c.address,'adresa')}
         <div style="color:var(--df-text-4);">Județ</div><div>${_vfEsc(c.county || '—')}</div>${_vfCopyBtn(c.county,'judet')}
+        ${c.locality ? `<div style="color:var(--df-text-4);">Localitate</div><div>${_vfEsc(c.locality)}</div>${_vfCopyBtn(c.locality,'localitate')}` : ''}
+        ${c.legalForm ? `<div style="color:var(--df-text-4);">Formă juridică</div><div>${_vfEsc(c.legalForm)}</div><div></div>` : ''}
         <div style="color:var(--df-text-4);">Tip entitate</div><div>${_vfEsc(c.entityType)}</div><div></div>
-        <div style="color:var(--df-text-4);">TVA</div><div>${c.vat ? '✓ Plătitor TVA' : '✗ Neplătitor'}${c.vatCollected ? ' (la încasare)' : ''}</div><div></div>
+        ${c.caenCode ? `<div style="color:var(--df-text-4);">Cod CAEN</div><div style="font-family:monospace;">${_vfEsc(c.caenCode)}</div><div></div>` : ''}
+        <div style="color:var(--df-text-4);">TVA</div><div>${c.vat ? '✓ Plătitor TVA' : '✗ Neplătitor'}${c.vatCollected ? ' (la încasare)' : ''}${c.splitVat ? ' · plată defalcată' : ''}</div><div></div>
+        ${c.eFactura ? `<div style="color:var(--df-text-4);">e-Factura</div><div style="color:#5eead4;">✓ Înregistrat RO e-Factura</div><div></div>` : ''}
+        ${c.anafIban ? `<div style="color:var(--df-text-4);">IBAN ANAF</div><div style="font-family:monospace;font-size:.8rem;">${_vfEsc(c.anafIban)}</div>${_vfCopyBtn(c.anafIban,'iban')}` : ''}
         <div style="color:var(--df-text-4);">Status</div><div style="color:${statusColor};font-weight:600;">${statusText}</div><div></div>
         <div style="color:var(--df-text-4);">Data înreg.</div><div>${_vfEsc(c.registrationDate || '—')}</div><div></div>
       </div>
