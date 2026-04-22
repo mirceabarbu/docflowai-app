@@ -197,6 +197,45 @@ describe('parseAnafRecord', () => {
     expect(r.liquidationDate).toBe('20.03.2023');
   });
 
+  it('detectează stare_inregistrare="RADIERE din data X" (cazul real MIRCOMIR SRL)', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.stare_inactiv.dataRadiere = '';
+    rec.date_generale.stare_inregistrare = 'RADIERE din data 23.07.2013';
+    const r = parseAnafRecord(rec);
+    expect(r.radiated).toBe(true);
+    expect(r.liquidationDate).toBe('23.07.2013');
+  });
+
+  it('detectează RADIATĂ (forma feminină cu diacritic)', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.stare_inactiv.dataRadiere = '';
+    rec.date_generale.stare_inregistrare = 'RADIATĂ din data 10.05.2022';
+    expect(parseAnafRecord(rec).radiated).toBe(true);
+  });
+
+  it('detectează RADIERII (forma genitivă)', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.stare_inactiv.dataRadiere = '';
+    rec.date_generale.stare_inregistrare = 'În curs de RADIERII conform sentinței';
+    expect(parseAnafRecord(rec).radiated).toBe(true);
+  });
+
+  it('NU matchează cuvinte care conțin RADIA în interiorul unui alt cuvânt', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.stare_inactiv.dataRadiere = '';
+    rec.date_generale.stare_inregistrare = 'PARADIATA SOCIETATE INREGISTRATA';
+    expect(parseAnafRecord(rec).radiated).toBe(false);
+  });
+
+  it('case-insensitive: "radiere" lowercase tot e detectat', () => {
+    const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
+    rec.stare_inactiv.dataRadiere = '';
+    rec.date_generale.stare_inregistrare = 'radiere din data 01.01.2020';
+    const r = parseAnafRecord(rec);
+    expect(r.radiated).toBe(true);
+    expect(r.liquidationDate).toBe('01.01.2020');
+  });
+
   it('preferă dataRadiere dacă ambele surse sunt prezente', () => {
     const rec = JSON.parse(JSON.stringify(BRACOMA_RECORD));
     rec.stare_inactiv.dataRadiere = '2024-06-15';
