@@ -316,9 +316,7 @@
                   <!-- populated dynamically by loadProviders() -->
                   <span style="font-size:.8rem; color:var(--muted); font-style:italic;">Se încarcă...</span>
                 </div>
-              </div>
-              <div style="padding:6px 16px 0;">
-                <span id="providerHint" style="font-size:.78rem; color:var(--muted);">Alegeți metoda de semnare pentru toți semnatarii fluxului.</span>
+                <span id="providerHint" style="font-size:.78rem; color:var(--muted); margin-left:4px;">Alegeți metoda de semnare pentru toți semnatarii.</span>
               </div>
             </div>
 
@@ -494,7 +492,13 @@
           ? preferred
           : null;
         container.innerHTML = '';
-        providers.forEach(p => {
+        // Polish Etapa B: ordonăm providerii — cloud primii, local-upload ultimul
+        const sortedProviders = [...providers].sort((a, b) => {
+          if (a.id === 'local-upload' && b.id !== 'local-upload') return 1;
+          if (b.id === 'local-upload' && a.id !== 'local-upload') return -1;
+          return 0;
+        });
+        sortedProviders.forEach(p => {
           const meta = _PROVIDER_META[p.id] || _PROVIDER_FALLBACK;
           const isSel = p.id === preselectId;
           const label = document.createElement('label');

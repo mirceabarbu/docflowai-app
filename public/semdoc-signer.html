@@ -521,6 +521,52 @@
           const j = await r.json();
           _orgProviders = j.providers || _orgProviders;
 
+          // ── Etapa C: flowPreferredProvider — lock setat la inițiere ────
+          // Prioritate MAXIMĂ (bate b233 sticky și orice altă logică).
+          // Când e setat, sărim selecția complet și mergem direct la acțiune
+          // (echivalent cu click pe "Continuă cu provider-ul selectat").
+          const flowPref = j.flowPreferredProvider || null;
+          if (flowPref) {
+            const matched = _orgProviders.find(p => p.id === flowPref);
+            if (matched) {
+              _selectedProvider = flowPref;
+              _orgProviders = [matched];
+              const provName = matched.label || flowPref;
+              const infoBox = $('providerSelectBox');
+              if (infoBox) {
+                infoBox.innerHTML = `
+                  <div style="background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.3);
+                    border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:#7cf0e0;">
+                    🔒 Fluxul a fost inițiat cu <strong>${provName}</strong>.
+                    Toți semnatarii folosesc aceeași metodă de semnare.
+                  </div>`;
+                infoBox.style.display = '';
+              }
+              // SKIP direct la acțiune — exact ca btnProviderContinue click
+              // NU apelăm dacă suntem în stare pending (revenire de la STS)
+              const _urlP = new URLSearchParams(window.location.search);
+              if (!_urlP.get('sts_pending') && !_urlP.get('sts_signed')) {
+                applyProviderToSignBox(flowPref);
+              }
+              return;  // gata — nu mai rulează b233 sticky sau render grid
+            } else {
+              // Edge case: provider-ul a fost dezactivat în org între creare și semnare.
+              // Avertizăm, apoi cădem la logica veche (b233 sticky sau manual).
+              console.warn('flowPreferredProvider', flowPref, 'nu mai este disponibil în org');
+              const infoBox = $('providerSelectBox');
+              if (infoBox) {
+                infoBox.innerHTML = `
+                  <div style="background:rgba(255,159,100,.12);border:1px solid rgba(255,159,100,.35);
+                    border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:#ffc99f;">
+                    ⚠️ Fluxul a fost inițiat cu <strong>${flowPref}</strong> dar acest provider
+                    nu mai este disponibil în organizație. Alegeți altul din lista de mai jos.
+                  </div>`;
+                infoBox.style.display = '';
+              }
+              // NU facem return — continuă la b233 sticky + render grid
+            }
+          }
+
           // ── FIX b233: dacă un semnatar anterior a semnat deja,
           // forțăm același provider pentru toți semnatarii următori.
           // Nu permitem mix upload local + cloud pe același flux.
