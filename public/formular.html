@@ -4,14 +4,14 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.320">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.320">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.320">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.320">
-  <script src="/js/df-shell.js?v=3.9.320"></script>
-  <script src="/js/df-user-modals.js?v=3.9.320"></script>
-  <script src="/js/df-subtabs.js?v=3.9.320"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.320">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.322">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.322">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.322">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.322">
+  <script src="/js/df-shell.js?v=3.9.322"></script>
+  <script src="/js/df-user-modals.js?v=3.9.322"></script>
+  <script src="/js/df-subtabs.js?v=3.9.322"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.322">
 </head>
 <body>
 <span id="hUserBar" style="display:none;"></span>
@@ -304,10 +304,10 @@
 
   <!-- Bara navigare identică cu bara principală -->
   <div class="lst-tabs" style="margin-bottom:16px">
-    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.320#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.320#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.320#ico-bar-chart"/></svg> ALOP</button>
-    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.320#ico-shield"/></svg> Verificare furnizor</button>
+    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.322#ico-file-text"/></svg> Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.322#ico-file-text"/></svg> Ordonanțări de Plată</button>
+    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.322#ico-bar-chart"/></svg> ALOP</button>
+    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.322#ico-shield"/></svg> Verificare furnizor</button>
   </div>
 
   <div class="df-info-banner" style="margin-bottom:18px;">
@@ -4281,14 +4281,33 @@ async function vfLookupCui() {
         { title: '🏢 Adresă sediu social',     key: 'adresa_sediu_social' },
         { title: '📮 Adresă domiciliu fiscal', key: 'adresa_domiciliu_fiscal' },
       ];
-      const renderValue = v => {
+      const renderValue = (v, _depth = 0) => {
         if (v === null || v === undefined || v === '') return '<span style="color:var(--df-text-5);">—</span>';
         if (typeof v === 'boolean') return v
           ? '<span style="color:#5eead4;">✓ true</span>'
           : '<span style="color:var(--df-text-4);">✗ false</span>';
         if (Array.isArray(v)) {
-          if (!v.length) return '<span style="color:var(--df-text-5);">[]</span>';
-          return '<pre style="margin:0;font-size:.75rem;color:var(--df-text-3);white-space:pre-wrap;word-break:break-word;">' + _vfEsc(JSON.stringify(v, null, 2)) + '</pre>';
+          if (!v.length) return '<span style="color:var(--df-text-5);">[] (gol)</span>';
+          if (v.every(x => typeof x !== 'object' || x === null))
+            return _vfEsc(v.map(x => x === null ? '—' : String(x)).join(', '));
+          if (_depth >= 3) return '<span style="color:var(--df-text-5);font-size:.72rem;">[nested]</span>';
+          return v.map((item, idx) => {
+            if (!item || typeof item !== 'object') return renderValue(item, _depth + 1);
+            const subRows = Object.entries(item).map(([k, val]) =>
+              `<tr><td style="color:var(--df-text-4);padding:3px 10px 3px 0;font-size:.75rem;vertical-align:top;white-space:nowrap;">${_vfEsc(k)}</td><td style="padding:3px 0;font-size:.78rem;word-break:break-word;">${renderValue(val, _depth + 1)}</td></tr>`
+            ).join('');
+            const label = v.length > 1 ? `<div style="font-size:.72rem;color:var(--df-text-4);margin-bottom:4px;font-weight:600;">Perioada ${idx + 1}/${v.length}</div>` : '';
+            return `<div style="background:rgba(255,255,255,.02);border:1px solid var(--df-border);border-radius:6px;padding:8px 10px;margin-top:${idx > 0 ? '6px' : '0'};">${label}<table style="width:100%;border-collapse:collapse;"><tbody>${subRows}</tbody></table></div>`;
+          }).join('');
+        }
+        if (typeof v === 'object') {
+          const entries = Object.entries(v);
+          if (!entries.length) return '<span style="color:var(--df-text-5);">{} (gol)</span>';
+          if (_depth >= 3) return '<span style="color:var(--df-text-5);font-size:.72rem;">[nested]</span>';
+          const subRows = entries.map(([k, val]) =>
+            `<tr><td style="color:var(--df-text-4);padding:3px 10px 3px 0;font-size:.75rem;vertical-align:top;white-space:nowrap;">${_vfEsc(k)}</td><td style="padding:3px 0;font-size:.78rem;word-break:break-word;">${renderValue(val, _depth + 1)}</td></tr>`
+          ).join('');
+          return `<div style="background:rgba(255,255,255,.02);border:1px solid var(--df-border);border-radius:6px;padding:8px 10px;"><table style="width:100%;border-collapse:collapse;"><tbody>${subRows}</tbody></table></div>`;
         }
         return _vfEsc(String(v));
       };
