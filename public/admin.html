@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.298">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.298">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.298">
-  <link rel="stylesheet" href="/css/df/email-modal.css?v=3.9.309">
+  <link rel="stylesheet" href="/css/df/email-modal.css?v=3.9.311">
   <link rel="stylesheet" href="/css/admin/admin.css?v=3.9.298">
 
   <link rel="stylesheet" href="/mobile.css?v=3.9.298">
@@ -992,6 +992,7 @@
         <span id="pr-badge" style="font-size:.77rem;background:rgba(45,212,191,.12);color:#7cf0e0;padding:3px 10px;border-radius:10px;"></span>
         <button onclick="prShowAddModal()" style="padding:6px 14px;font-size:.8rem;background:rgba(45,212,191,.2);border:1px solid rgba(45,212,191,.4);border-radius:8px;color:#7cf0e0;cursor:pointer;font-weight:700;">➕ Adaugă</button>
         <button onclick="prShowImportModal()" style="padding:6px 14px;font-size:.8rem;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.3);border-radius:8px;color:#9db0ff;cursor:pointer;font-weight:600;">📥 Import JSON/CSV</button>
+        <button onclick="prShowExportModal()" style="padding:6px 14px;font-size:.8rem;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;color:#c4b5ff;cursor:pointer;font-weight:600;">📤 Export</button>
       </div>
     </div>
 
@@ -1117,6 +1118,43 @@
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
         <button type="button" class="df-action-btn" onclick="prCloseImportModal()">Anulează</button>
         <button type="button" class="dfem-submit" onclick="prDoImport()"><span>📥 Importă</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Export Instituții -->
+  <div class="dfem-overlay" id="pr-export-modal">
+    <div class="dfem-dialog">
+      <button class="dfem-close" type="button" aria-label="Închide" onclick="prCloseExportModal()">×</button>
+      <div class="dfem-title">📤 Export instituții</div>
+      <div class="dfem-subtitle">Descarcă baza Outreach ca fișier pentru backup, migrare între environment-uri sau prelucrare externă. Formatul CSV este compatibil cu Importul din această pagină (round-trip).</div>
+      <div class="dfem-form">
+        <div class="dfem-field">
+          <label class="dfem-label">Format</label>
+          <select id="pr-export-format" class="dfem-input">
+            <option value="csv">CSV (Excel, compatibil cu Import)</option>
+            <option value="json">JSON (ierarhic, cu toate flagurile)</option>
+          </select>
+        </div>
+        <div class="dfem-field">
+          <label class="dfem-label">Filtru stare</label>
+          <select id="pr-export-activ" class="dfem-input">
+            <option value="1">Doar active (recomandat pentru migrare)</option>
+            <option value="all">Toate (inclusiv inactive)</option>
+            <option value="0">Doar inactive</option>
+          </select>
+        </div>
+        <div class="dfem-field">
+          <label class="dfem-label">Județ <span class="dfem-hint">(gol = toate)</span></label>
+          <select id="pr-export-judet" class="dfem-input">
+            <option value="">— Toate județele —</option>
+          </select>
+        </div>
+        <div class="dfem-msg" id="pr-export-msg"></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <button type="button" class="df-action-btn" onclick="prCloseExportModal()">Anulează</button>
+        <button type="button" class="dfem-submit" onclick="prDoExport()"><span>📤 Descarcă</span></button>
       </div>
     </div>
   </div>

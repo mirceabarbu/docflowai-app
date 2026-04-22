@@ -268,6 +268,69 @@ router.post('/primarii/import', async (req, res) => {
   } catch(e) { logger.error({ err: e }, 'import primarii error'); res.status(500).json({ error: 'server_error' }); }
 });
 
+// GET /admin/outreach/primarii/export — export total ca CSV sau JSON
+//   ?format=csv (default) | json
+//   ?activ=all (default) | 1 (doar active) | 0 (doar inactive)
+//   ?judet=<nume>  (opțional — dacă e dat, filtrează)
+// CSV: header "email,institutie,judet,localitate" — compatibil cu POST /primarii/import
+router.get('/primarii/export', async (req, res) => {
+  if (await requireAdmin(req, res)) return;
+  if (requireDb(res)) return;
+
+  const format = (req.query.format || 'csv').toLowerCase();
+  const activFilter = (req.query.activ || 'all').toString();
+  const judet = (req.query.judet || '').trim();
+
+  if (!['csv', 'json'].includes(format)) return res.status(400).json({ error: 'format_invalid' });
+
+  const conds = ['1=1']; const params = [];
+  if (activFilter === '1') conds.push('activ = TRUE');
+  else if (activFilter === '0') conds.push('activ = FALSE');
+  if (judet) { params.push(judet); conds.push(`judet = $${params.length}`); }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT email, institutie, judet, localitate, activ, unsubscribed
+         FROM outreach_primarii
+        WHERE ${conds.join(' AND ')}
+        ORDER BY judet ASC, institutie ASC`,
+      params
+    );
+
+    const ts = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const activTag = activFilter === '1' ? '-active' : activFilter === '0' ? '-inactive' : '';
+    const judetTag = judet ? `-${judet.toLowerCase().replace(/[^a-z0-9]/gi, '')}` : '';
+    const filename = `outreach-primarii${activTag}${judetTag}-${ts}.${format}`;
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(JSON.stringify(rows, null, 2));
+    }
+
+    const escapeCsv = (v) => {
+      if (v == null) return '';
+      const s = String(v);
+      if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const lines = ['email,institutie,judet,localitate'];
+    for (const r of rows) {
+      lines.push([r.email, r.institutie, r.judet, r.localitate].map(escapeCsv).join(','));
+    }
+    // BOM UTF-8 pentru Excel (diacritice corecte la open direct în Excel Windows)
+    const csv = '﻿' + lines.join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch(e) {
+    logger.error({ err: e }, 'GET primarii/export error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 /** Trimite email via Resend REST API (fără SDK — consistente cu mailer.mjs) */
 async function sendEmail({ to, subject, html, attachments }) {
   const apiKey = process.env.RESEND_API_KEY;
