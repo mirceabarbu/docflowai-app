@@ -160,6 +160,10 @@
     </header>
 
     <main class="df-page-body">
+      <div id="nw-perm-banner" style="display:none;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);border-radius:10px;padding:12px 16px;margin-bottom:16px;color:#fbbf24;font-size:.88rem;line-height:1.5;">
+        ⚠️ <strong>Notificările desktop sunt blocate.</strong> Pentru a primi alerte când nu ești pe această pagină,
+        apasă pe 🔒 din bara de adrese → <em>Permisiuni pentru site</em> → <em>Notificări</em> → <em>Permite</em>, apoi reîmprospătează pagina.
+      </div>
       <div class="filters">
         <button class="filter-btn active" data-filter="all">Toate</button>
         <button class="filter-btn" data-filter="unread">Necitite</button>
@@ -416,7 +420,14 @@ loadNotifs();
 </script>
 
 <!-- Widget notificări (pentru bell icon în alte pagini) -->
-<script src="/notif-widget.js?v=3.9.298"></script>
+<script src="/notif-widget.js?v=3.9.329"></script>
+<script>
+  // Afișează banner dacă notificările browser sunt blocate explicit
+  if ('Notification' in window && Notification.permission === 'denied') {
+    const b = document.getElementById('nw-perm-banner');
+    if (b) b.style.display = 'block';
+  }
+</script>
 
 </body>
 </html>
