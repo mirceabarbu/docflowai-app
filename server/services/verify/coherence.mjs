@@ -69,7 +69,7 @@ export function analyzeCoherence({ companyData, ibanData, declaredName }) {
 
   if (ibanData && ibanData.valid === false) {
     warnings.push({ code: 'IBAN_INVALID', level: 'error',
-      message: 'IBAN-ul are format invalid (check digit mod-97 failed).' });
+      message: 'IBAN-ul are format invalid (check digit mod-97 eșuat).' });
   }
 
   if (ibanData && ibanData.isTreasury && companyData) {
