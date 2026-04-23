@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.9.327",
+  "version": "3.9.328",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",

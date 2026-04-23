@@ -4,14 +4,14 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.327">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.327">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.327">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.327">
-  <script src="/js/df-shell.js?v=3.9.327"></script>
-  <script src="/js/df-user-modals.js?v=3.9.327"></script>
-  <script src="/js/df-subtabs.js?v=3.9.327"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.327">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.328">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.328">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.328">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.328">
+  <script src="/js/df-shell.js?v=3.9.328"></script>
+  <script src="/js/df-user-modals.js?v=3.9.328"></script>
+  <script src="/js/df-subtabs.js?v=3.9.328"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.328">
 </head>
 <body>
 <span id="hUserBar" style="display:none;"></span>
@@ -149,7 +149,7 @@
       <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-file-text"/></svg> Ordonanțări de Plată</button>
       <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-bar-chart"/></svg> ALOP</button>
       <button class="lst-tab"        id="ltab-verify" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-shield"/></svg> Verificare furnizor</button>
-      <button class="lst-tab"        id="ltab-fo"     onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.327#ico-file-text"/></svg> Formulare oficiale</button>
+      <button class="lst-tab"        id="ltab-fo"     onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.328#ico-file-text"/></svg> Formulare oficiale</button>
     </div>
     <button id="btn-lst-nou" class="btn primary" style="display:none !important;padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
   </div>
@@ -305,10 +305,10 @@
 
   <!-- Bara navigare identică cu bara principală -->
   <div class="lst-tabs" style="margin-bottom:16px">
-    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.327#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.327#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.327#ico-bar-chart"/></svg> ALOP</button>
-    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.327#ico-shield"/></svg> Verificare furnizor</button>
+    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.328#ico-file-text"/></svg> Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.328#ico-file-text"/></svg> Ordonanțări de Plată</button>
+    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.328#ico-bar-chart"/></svg> ALOP</button>
+    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.328#ico-shield"/></svg> Verificare furnizor</button>
   </div>
 
   <div class="df-info-banner" style="margin-bottom:18px;">
@@ -385,7 +385,7 @@
   <table class="lst-table" id="fo-table" style="display:none;">
     <thead>
       <tr>
-        <th>Tip</th><th>Titlu</th><th>Nr. ref.</th><th>Status</th><th>Actualizat</th><th></th>
+        <th>Nr. ref.</th><th>Titlu</th><th>Status</th><th>Actualizat</th><th></th>
       </tr>
     </thead>
     <tbody id="fo-tbody"></tbody>
@@ -4520,16 +4520,23 @@ async function foListLoad(page){
   try{
     const r=await fetch(`/api/formulare-oficiale?page=${_foState.page}`,{credentials:'include'});
     if(ld)ld.style.display='none';
-    if(!r.ok){if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}return;}
+    if(!r.ok){
+      const msg=r.status===401?'Sesiunea a expirat. Reîncărcați pagina.':`Eroare HTTP ${r.status} la încărcarea listei.`;
+      if(em){em.textContent=msg;em.style.display='';}
+      console.error('[fo-list] HTTP',r.status);
+      return;
+    }
     const j=await r.json();
     _foState.pages=j.pages||1;
-    if(!j.items||!j.items.length){if(em)em.style.display='';return;}
-    tbody.innerHTML=j.items.map(it=>`<tr>
-      <td>${_foEsc(it.form_type==='NOTAFD_INVEST'?'NF Investiții':'Referat Necesitate')}</td>
-      <td><a href="/notafd-invest-form.html?id=${encodeURIComponent(it.id)}" style="font-weight:600">${_foEsc(it.title)}</a></td>
+    if(!j.items||!j.items.length){
+      if(em){em.textContent='Nu există formulare. Creați primul cu butonul de mai sus.';em.style.display='';}
+      return;
+    }
+    if(tbody)tbody.innerHTML=j.items.map(it=>`<tr>
       <td>${_foEsc(it.ref_number||'—')}</td>
+      <td><a href="/notafd-invest-form.html?id=${encodeURIComponent(it.id)}" style="font-weight:600;color:var(--df-primary-text)">${_foEsc(it.title)}</a></td>
       <td>${_foEsc(_foStatusLabel(it.status))}</td>
-      <td style="font-size:.8rem;color:#666">${_foEsc(new Date(it.updated_at).toLocaleDateString('ro-RO'))}</td>
+      <td style="font-size:.8rem;color:var(--df-text-3)">${_foEsc(new Date(it.updated_at).toLocaleDateString('ro-RO'))}</td>
       <td style="white-space:nowrap">
         <button class="btn small" onclick="foGeneratePdf('${_foEsc(it.id)}',this)" title="Generează PDF">📄 PDF</button>
         <button class="btn small danger" onclick="foDelete('${_foEsc(it.id)}',this)" title="Șterge">🗑</button>
@@ -4542,7 +4549,11 @@ async function foListLoad(page){
         `<button class="btn small${i+1===_foState.page?' active':''}" onclick="foListLoad(${i+1})">${i+1}</button>`
       ).join(' ');
     }
-  }catch(e){if(ld)ld.style.display='none';if(em){em.textContent='Eroare rețea.';em.style.display='';}}
+  }catch(e){
+    if(ld)ld.style.display='none';
+    if(em){em.textContent='Eroare rețea la încărcarea listei.';em.style.display='';}
+    console.error('[fo-list]',e);
+  }
 }
 
 function _foStatusLabel(s){

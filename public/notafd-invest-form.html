@@ -4,29 +4,40 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Notă de Fundamentare Investiții — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.327">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.327">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.327">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.327">
-  <script src="/js/df-shell.js?v=3.9.327"></script>
-  <script src="/js/df-user-modals.js?v=3.9.327"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.327">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.328">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.328">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.328">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.328">
+  <script src="/js/df-shell.js?v=3.9.328"></script>
+  <script src="/js/df-user-modals.js?v=3.9.328"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.328">
   <style>
     .nf-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
     @media(max-width:800px){.nf-form-grid{grid-template-columns:1fr;}}
     .nf-form-grid .full{grid-column:1/-1;}
-    .nf-section-title{font-size:.95rem;font-weight:700;margin:24px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--df-border,#e0e0e0);}
+    .nf-section-title{font-size:.95rem;font-weight:700;margin:24px 0 8px;padding-bottom:6px;
+      border-bottom:2px solid var(--df-border-2);color:var(--df-text);}
     .nf-field{display:flex;flex-direction:column;gap:4px;}
-    .nf-field label{font-size:.82rem;font-weight:600;color:#555;}
+    .nf-field label{font-size:.82rem;font-weight:600;color:var(--df-text-3);}
     .nf-field input,.nf-field textarea,.nf-field select{
-      border:1px solid #ccc;border-radius:6px;padding:8px 10px;font-size:.9rem;
-      font-family:inherit;resize:vertical;background:#fff;
+      background:rgba(255,255,255,.05);
+      border:1px solid var(--df-border-2);
+      border-radius:6px;padding:8px 10px;font-size:.9rem;
+      font-family:inherit;resize:vertical;
+      color:var(--df-text);outline:none;
+      transition:border-color .15s,background .15s;
     }
+    .nf-field input::placeholder,.nf-field textarea::placeholder{color:var(--df-text-5);}
     .nf-field textarea{min-height:80px;}
-    .nf-field input:focus,.nf-field textarea:focus{outline:none;border-color:var(--df-primary,#2563eb);}
-    .nf-actions{display:flex;gap:10px;margin-top:24px;}
-    .nf-saved-badge{display:none;background:#d1fae5;color:#065f46;border-radius:6px;padding:4px 12px;font-size:.83rem;align-items:center;}
+    .nf-field input:focus,.nf-field textarea:focus,.nf-field select:focus{
+      border-color:var(--df-primary);background:rgba(37,99,235,.07);}
+    .nf-actions{display:flex;gap:10px;margin-top:24px;flex-wrap:wrap;}
+    .nf-saved-badge{display:none;background:rgba(34,197,94,.15);color:#86efac;
+      border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:4px 12px;
+      font-size:.83rem;align-items:center;}
     .nf-saved-badge.show{display:inline-flex;}
+    .nf-err{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.3);
+      border-radius:8px;padding:10px 14px;font-size:.9rem;}
   </style>
 </head>
 <body>
@@ -38,21 +49,75 @@
     <div class="df-sidebar-brand">
       <img src="/Logo.png" alt="DocFlowAI"/>
     </div>
+
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.327#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.327#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-folder"/></svg>
         Fluxurile mele
       </a>
+      <a href="/templates" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-grid"/></svg>
+        Șabloane
+      </a>
       <a href="/formular.html" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.327#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
+
+    <div class="df-nav-label">Comunicare</div>
+    <div class="df-nav-group">
+      <a href="/notifications" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-bell"/></svg>
+        Notificări
+      </a>
+    </div>
+
+    <div class="df-nav-label">Administrare</div>
+    <div class="df-nav-group">
+      <a href="/admin#dashboard" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-layout"/></svg>
+        Dashboard
+      </a>
+      <a href="/admin#utilizatori" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-users"/></svg>
+        Utilizatori
+      </a>
+      <a href="/admin#fluxuri" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-git-branch"/></svg>
+        Fluxuri documente
+      </a>
+      <a href="/admin#rapoarte" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-bar-chart"/></svg>
+        Rapoarte
+      </a>
+    </div>
+
+    <div class="df-nav-label">Organizație</div>
+    <div class="df-nav-group">
+      <a href="/admin#organizatii" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-building"/></svg>
+        Organizații
+      </a>
+      <a href="/admin#outreach" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-send"/></svg>
+        Outreach
+      </a>
+      <a href="/admin#analytics" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-trending-up"/></svg>
+        Analytics
+      </a>
+      <a href="/admin#audit" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-search"/></svg>
+        Audit
+      </a>
+    </div>
+
   </aside>
 
   <div class="df-page">
@@ -63,17 +128,38 @@
       </div>
       <div class="df-page-actions">
         <div id="userBar"></div>
+        <div class="df-user-menu" id="df-user-menu">
+          <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <div class="df-user-trigger-avatar">A</div>
+            <div class="df-user-trigger-info">
+              <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+              <div class="df-user-trigger-role">Utilizator</div>
+            </div>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openChangePwdModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-key"/></svg>
+              Schimbă parola
+            </button>
+            <div class="df-user-dropdown-divider"></div>
+            <button class="danger" onclick="closeUserMenu();logout()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.328#ico-log-out"/></svg>
+              Ieșire
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
-    <main class="df-page-main">
+    <main class="df-page-body">
 
       <div style="margin-bottom:16px">
         <a href="/formular.html?tab=fo" class="btn small">← Înapoi la Formulare oficiale</a>
         <span id="nf-saved-badge" class="nf-saved-badge">✅ Salvat</span>
       </div>
 
-      <div id="nf-err" style="display:none;background:#fee2e2;color:#991b1b;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:.9rem;"></div>
+      <div id="nf-err" class="nf-err" style="display:none;margin-bottom:16px;"></div>
 
       <!-- ── Antet document ─────────────────────────────────────────────── -->
       <div class="nf-section-title">Antet</div>
@@ -400,6 +486,6 @@ async function nfGeneratePdf(){
 }
 </script>
 
-<script src="/notif-widget.js?v=3.9.327"></script>
+<script src="/notif-widget.js?v=3.9.328"></script>
 </body>
 </html>
