@@ -4,14 +4,14 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.325">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.325">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.325">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.325">
-  <script src="/js/df-shell.js?v=3.9.325"></script>
-  <script src="/js/df-user-modals.js?v=3.9.325"></script>
-  <script src="/js/df-subtabs.js?v=3.9.325"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.325">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.326">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.326">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.326">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.326">
+  <script src="/js/df-shell.js?v=3.9.326"></script>
+  <script src="/js/df-user-modals.js?v=3.9.326"></script>
+  <script src="/js/df-subtabs.js?v=3.9.326"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.326">
 </head>
 <body>
 <span id="hUserBar" style="display:none;"></span>
@@ -149,6 +149,7 @@
       <button class="lst-tab"        id="ltab-ord"  onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-file-text"/></svg> Ordonanțări de Plată</button>
       <button class="lst-tab"        id="ltab-alop" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-bar-chart"/></svg> ALOP</button>
       <button class="lst-tab"        id="ltab-verify" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.298#ico-shield"/></svg> Verificare furnizor</button>
+      <button class="lst-tab"        id="ltab-fo"     onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.326#ico-file-text"/></svg> Formulare oficiale</button>
     </div>
     <button id="btn-lst-nou" class="btn primary" style="display:none !important;padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
   </div>
@@ -304,10 +305,10 @@
 
   <!-- Bara navigare identică cu bara principală -->
   <div class="lst-tabs" style="margin-bottom:16px">
-    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.325#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.325#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.325#ico-bar-chart"/></svg> ALOP</button>
-    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.325#ico-shield"/></svg> Verificare furnizor</button>
+    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.326#ico-file-text"/></svg> Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.326#ico-file-text"/></svg> Ordonanțări de Plată</button>
+    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.326#ico-bar-chart"/></svg> ALOP</button>
+    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.326#ico-shield"/></svg> Verificare furnizor</button>
   </div>
 
   <div class="df-info-banner" style="margin-bottom:18px;">
@@ -372,6 +373,25 @@
     <div id="vf-coh-msg" style="font-size:.82rem;min-height:18px;margin-top:8px;"></div>
   </div>
 </div><!-- /verify-section -->
+
+<!-- ════════════ FORMULARE OFICIALE ══════════════════════════════════════════ -->
+<div id="fo-section" style="display:none;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <h3 style="margin:0;font-size:1.05rem;">Formulare oficiale</h3>
+    <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="foNew()">➕ Notă de Fundamentare</button>
+  </div>
+  <div id="fo-loading" style="display:none;color:#666;font-size:.88rem;padding:12px 0;">Se încarcă...</div>
+  <div id="fo-empty" style="display:none;color:#888;font-size:.9rem;padding:20px 0;text-align:center;">Nu există formulare. Creați primul cu butonul de mai sus.</div>
+  <table class="lst-table" id="fo-table" style="display:none;">
+    <thead>
+      <tr>
+        <th>Tip</th><th>Titlu</th><th>Nr. ref.</th><th>Status</th><th>Actualizat</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="fo-tbody"></tbody>
+  </table>
+  <div id="fo-pagination" style="display:none;margin-top:12px;"></div>
+</div><!-- /fo-section -->
 
 </div><!-- /section-list -->
 
@@ -2995,19 +3015,23 @@ function switchListTab(type){
   document.getElementById('ltab-alop').classList.toggle('active',type==='alop');
   const ltabV=document.getElementById('ltab-verify');
   if(ltabV)ltabV.classList.toggle('active',type==='verify');
+  const ltabFo=document.getElementById('ltab-fo');
+  if(ltabFo)ltabFo.classList.toggle('active',type==='fo');
   // Bannere informative pentru DF/ORD
   const bannerDf=document.getElementById('lst-banner-df');
   const bannerOrd=document.getElementById('lst-banner-ord');
   if(bannerDf)bannerDf.style.display=type==='df'?'':'none';
   if(bannerOrd)bannerOrd.style.display=type==='ord'?'':'none';
-  // Secțiuni ALOP / Verify
+  // Secțiuni ALOP / Verify / Formulare Oficiale
   const lstWrap=document.querySelector('#section-list .lst-wrap');
   const alopSection=document.getElementById('alop-section');
   const verifySection=document.getElementById('verify-section');
+  const foSection=document.getElementById('fo-section');
   if(type==='alop'){
     if(lstWrap)lstWrap.style.display='none';
     if(alopSection)alopSection.style.display='';
     if(verifySection)verifySection.style.display='none';
+    if(foSection)foSection.style.display='none';
     loadAlop();loadAlopStats();
     // Re-fetch detaliu dacă era deschis — statusul poate fi schimbat după semnare
     const _detailP=document.getElementById('alop-detail-panel');
@@ -3018,10 +3042,18 @@ function switchListTab(type){
     if(lstWrap)lstWrap.style.display='none';
     if(alopSection)alopSection.style.display='none';
     if(verifySection)verifySection.style.display='';
+    if(foSection)foSection.style.display='none';
+  }else if(type==='fo'){
+    if(lstWrap)lstWrap.style.display='none';
+    if(alopSection)alopSection.style.display='none';
+    if(verifySection)verifySection.style.display='none';
+    if(foSection)foSection.style.display='';
+    foListLoad();
   }else{
     if(lstWrap)lstWrap.style.display='';
     if(alopSection)alopSection.style.display='none';
     if(verifySection)verifySection.style.display='none';
+    if(foSection)foSection.style.display='none';
     loadList();
   }
 }
@@ -4466,6 +4498,94 @@ document.addEventListener('DOMContentLoaded', () => {
   const ii = document.getElementById('vf-iban-input');
   if (ii) ii.addEventListener('keydown', e => { if (e.key === 'Enter') vfLookupIban(); });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// FORMULARE OFICIALE — client JS
+// ════════════════════════════════════════════════════════════════════════════
+const _foState = { page: 1, pages: 1 };
+
+function _foEsc(s){ const d=document.createElement('div');d.textContent=s||'';return d.innerHTML; }
+
+async function foListLoad(page){
+  _foState.page = page || 1;
+  const ld=document.getElementById('fo-loading');
+  const em=document.getElementById('fo-empty');
+  const tb=document.getElementById('fo-table');
+  const pg=document.getElementById('fo-pagination');
+  const tbody=document.getElementById('fo-tbody');
+  if(ld)ld.style.display='';
+  if(em)em.style.display='none';
+  if(tb)tb.style.display='none';
+  if(pg)pg.style.display='none';
+  try{
+    const r=await fetch(`/api/formulare-oficiale?page=${_foState.page}`,{credentials:'include'});
+    if(ld)ld.style.display='none';
+    if(!r.ok){if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}return;}
+    const j=await r.json();
+    _foState.pages=j.pages||1;
+    if(!j.items||!j.items.length){if(em)em.style.display='';return;}
+    tbody.innerHTML=j.items.map(it=>`<tr>
+      <td>${_foEsc(it.form_type==='NOTAFD_INVEST'?'NF Investiții':'Referat Necesitate')}</td>
+      <td><a href="/notafd-invest-form.html?id=${encodeURIComponent(it.id)}" style="font-weight:600">${_foEsc(it.title)}</a></td>
+      <td>${_foEsc(it.ref_number||'—')}</td>
+      <td>${_foEsc(_foStatusLabel(it.status))}</td>
+      <td style="font-size:.8rem;color:#666">${_foEsc(new Date(it.updated_at).toLocaleDateString('ro-RO'))}</td>
+      <td style="white-space:nowrap">
+        <button class="btn small" onclick="foGeneratePdf('${_foEsc(it.id)}',this)" title="Generează PDF">📄 PDF</button>
+        <button class="btn small danger" onclick="foDelete('${_foEsc(it.id)}',this)" title="Șterge">🗑</button>
+      </td>
+    </tr>`).join('');
+    if(tb)tb.style.display='';
+    if(_foState.pages>1&&pg){
+      pg.style.display='';
+      pg.innerHTML=Array.from({length:_foState.pages},(_,i)=>
+        `<button class="btn small${i+1===_foState.page?' active':''}" onclick="foListLoad(${i+1})">${i+1}</button>`
+      ).join(' ');
+    }
+  }catch(e){if(ld)ld.style.display='none';if(em){em.textContent='Eroare rețea.';em.style.display='';}}
+}
+
+function _foStatusLabel(s){
+  return {draft:'📝 Draft',completed:'✅ Completat',archived:'📦 Arhivat'}[s]||s;
+}
+
+function foNew(){
+  location.href='/notafd-invest-form.html';
+}
+
+async function foDelete(id,btn){
+  if(!confirm('Ștergeți definitiv acest formular?'))return;
+  btn.disabled=true;
+  try{
+    const csrf=getCsrf();
+    const r=await fetch(`/api/formulare-oficiale/${id}`,{
+      method:'DELETE',credentials:'include',
+      headers:{'X-CSRF-Token':csrf}
+    });
+    if(r.ok){foListLoad(_foState.page);}
+    else{const j=await r.json().catch(()=>({}));alert(j.error||'Eroare la ștergere.');}
+  }catch(e){alert('Eroare rețea.');}
+  finally{btn.disabled=false;}
+}
+
+async function foGeneratePdf(id,btn){
+  btn.disabled=true;
+  btn.textContent='⏳';
+  try{
+    const csrf=getCsrf();
+    const r=await fetch(`/api/formulare-oficiale/${id}/generate-pdf`,{
+      method:'POST',credentials:'include',
+      headers:{'X-CSRF-Token':csrf}
+    });
+    if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.error||'Eroare generare PDF.');return;}
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='NF-Invest.pdf';a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+  }catch(e){alert('Eroare rețea.');}
+  finally{btn.disabled=false;btn.textContent='📄 PDF';}
+}
 </script>
 
     </main>

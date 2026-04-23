@@ -526,6 +526,7 @@ import { formulareRouter } from './routes/formulare.mjs';
 import { formulareDbRouter } from './routes/formulare-db.mjs';
 import alopRouter from './routes/alop.mjs';
 import convertRouter from './routes/convert.mjs';
+import formulareOficialeRouter from './routes/formulare-oficiale.mjs';
 
 const app = express();
 app.use(compression()); // PERF-FIX-07: gzip pentru toate răspunsurile — reduce ~70% din dimensiunea HTML/JSON
@@ -1562,6 +1563,7 @@ app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD (ge
 app.use('/', formulareDbRouter);      // Formulare DB: DF + ORD workflow P1→P2
 app.use('/', alopRouter);             // ALOP orchestrator: DF + ORD + fluxuri semnare
 app.use('/', convertRouter);          // Conversie fișiere non-PDF la PDF
+app.use('/api/formulare-oficiale', formulareOficialeRouter); // Formulare Oficiale CRUD (NF Invest, Referat)
 
 // ── v4.1 API routes — mounted AFTER all v3 routes, no overlap ────────────────
 app.get('/api/v4/health', (_req, res) => res.json({

@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Notă de Fundamentare Investiții — DocFlowAI</title>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.326">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.326">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.326">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.326">
+  <script src="/js/df-shell.js?v=3.9.326"></script>
+  <script src="/js/df-user-modals.js?v=3.9.326"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.326">
+  <style>
+    .nf-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+    @media(max-width:800px){.nf-form-grid{grid-template-columns:1fr;}}
+    .nf-form-grid .full{grid-column:1/-1;}
+    .nf-section-title{font-size:.95rem;font-weight:700;margin:24px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--df-border,#e0e0e0);}
+    .nf-field{display:flex;flex-direction:column;gap:4px;}
+    .nf-field label{font-size:.82rem;font-weight:600;color:#555;}
+    .nf-field input,.nf-field textarea,.nf-field select{
+      border:1px solid #ccc;border-radius:6px;padding:8px 10px;font-size:.9rem;
+      font-family:inherit;resize:vertical;background:#fff;
+    }
+    .nf-field textarea{min-height:80px;}
+    .nf-field input:focus,.nf-field textarea:focus{outline:none;border-color:var(--df-primary,#2563eb);}
+    .nf-actions{display:flex;gap:10px;margin-top:24px;}
+    .nf-saved-badge{display:none;background:#d1fae5;color:#065f46;border-radius:6px;padding:4px 12px;font-size:.83rem;align-items:center;}
+    .nf-saved-badge.show{display:inline-flex;}
+  </style>
+</head>
+<body>
+<span id="hUserBar" style="display:none;"></span>
+
+<div class="df-shell">
+
+  <aside class="df-sidebar">
+    <div class="df-sidebar-brand">
+      <img src="/Logo.png" alt="DocFlowAI"/>
+    </div>
+    <div class="df-nav-label">Navigare app</div>
+    <div class="df-nav-group">
+      <a href="/" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.326#ico-edit"/></svg>
+        Flux nou
+      </a>
+      <a href="/?tab=flows" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.326#ico-folder"/></svg>
+        Fluxurile mele
+      </a>
+      <a href="/formular.html" class="df-nav-item active">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.326#ico-file-text"/></svg>
+        Formulare
+      </a>
+    </div>
+  </aside>
+
+  <div class="df-page">
+    <header class="df-page-header">
+      <div class="df-page-titles">
+        <h1 id="dfPageTitle">Notă de Fundamentare Investiții</h1>
+        <p id="dfPageSubtitle">Completați câmpurile și generați PDF A4</p>
+      </div>
+      <div class="df-page-actions">
+        <div id="userBar"></div>
+      </div>
+    </header>
+
+    <main class="df-page-main">
+
+      <div style="margin-bottom:16px">
+        <a href="/formular.html?tab=fo" class="btn small">← Înapoi la Formulare oficiale</a>
+        <span id="nf-saved-badge" class="nf-saved-badge">✅ Salvat</span>
+      </div>
+
+      <div id="nf-err" style="display:none;background:#fee2e2;color:#991b1b;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:.9rem;"></div>
+
+      <!-- ── Antet document ─────────────────────────────────────────────── -->
+      <div class="nf-section-title">Antet</div>
+      <div class="nf-form-grid">
+        <div class="nf-field">
+          <label>Nr. înregistrare</label>
+          <input type="text" id="nf-nr_inregistrare" placeholder="ex. 1234">
+        </div>
+        <div class="nf-field">
+          <label>Data înregistrare</label>
+          <input type="text" id="nf-data_inregistrare" placeholder="dd.ll.aaaa">
+        </div>
+        <div class="nf-field">
+          <label>Primar (nume)</label>
+          <input type="text" id="nf-primar_name" placeholder="Prenume Nume">
+        </div>
+        <div class="nf-field">
+          <label>Director Executiv Direcția Economică (nume)</label>
+          <input type="text" id="nf-director_executiv_name" placeholder="Prenume Nume">
+        </div>
+      </div>
+
+      <!-- ── Titlu NF ───────────────────────────────────────────────────── -->
+      <div class="nf-section-title">Titlu</div>
+      <div class="nf-form-grid">
+        <div class="nf-field">
+          <label>Titlu document <span style="color:red">*</span></label>
+          <input type="text" id="nf-title" placeholder="Titlul notei de fundamentare" required>
+        </div>
+        <div class="nf-field">
+          <label>Nr. referință (ex. NF-2026-001)</label>
+          <input type="text" id="nf-ref_number" placeholder="NF-2026-001">
+        </div>
+        <div class="nf-field">
+          <label>Anul programului de investiții</label>
+          <input type="text" id="nf-an_program" placeholder="2026">
+        </div>
+        <div class="nf-field">
+          <label>Tipul obiectivului de investiții</label>
+          <input type="text" id="nf-tip_obiectiv" placeholder="ex. Construire / Reabilitare ...">
+        </div>
+      </div>
+
+      <!-- ── 1. Informații generale ────────────────────────────────────── -->
+      <div class="nf-section-title">1. Informații generale</div>
+      <div class="nf-form-grid">
+        <div class="nf-field full">
+          <label>1.1. Denumirea obiectivului de investiții</label>
+          <input type="text" id="nf-denumire_obiectiv" placeholder="Denumire completă">
+        </div>
+        <div class="nf-field">
+          <label>1.2. Ordonator principal de credite / investitor</label>
+          <input type="text" id="nf-ordonator_principal" placeholder="Denumire instituție">
+        </div>
+        <div class="nf-field">
+          <label>1.3. Ordonator de credite (secundar/terțiar)</label>
+          <input type="text" id="nf-ordonator_secundar" placeholder="Dacă este cazul">
+        </div>
+        <div class="nf-field full">
+          <label>1.4. Beneficiarul investiției</label>
+          <input type="text" id="nf-beneficiar" placeholder="Beneficiar final">
+        </div>
+      </div>
+
+      <!-- ── 2. Necesitatea și oportunitatea ──────────────────────────── -->
+      <div class="nf-section-title">2. Necesitatea și oportunitatea</div>
+      <div class="nf-form-grid">
+        <div class="nf-field full">
+          <label>a) Deficiențe majore ale situației actuale</label>
+          <textarea id="nf-deficiente_actuale" placeholder="Descrieți situația actuală și deficiențele identificate..."></textarea>
+        </div>
+        <div class="nf-field full">
+          <label>b) Așteptări, prognoze și efectul pozitiv previzionat</label>
+          <textarea id="nf-efect_pozitiv" placeholder="Descrieți efectele pozitive ale investiției..."></textarea>
+        </div>
+        <div class="nf-field full">
+          <label>c) Impactul negativ previzionat în cazul nerealizării investiției</label>
+          <textarea id="nf-impact_negativ" placeholder="Ce se întâmplă dacă investiția nu se realizează..."></textarea>
+        </div>
+        <div class="nf-field full">
+          <label>2.2. Oportunitatea investiției</label>
+          <textarea id="nf-oportunitate" placeholder="Motivele de oportunitate..."></textarea>
+        </div>
+      </div>
+
+      <!-- ── 3. Estimarea suportabilității ────────────────────────────── -->
+      <div class="nf-section-title">3. Estimarea suportabilității</div>
+      <div class="nf-form-grid">
+        <div class="nf-field">
+          <label>Valoarea totală estimată (mii lei)</label>
+          <input type="text" id="nf-valoare_totala_mii_lei" placeholder="ex. 1.250,00">
+        </div>
+        <div class="nf-field">
+          <label>Sursa valorii estimate</label>
+          <input type="text" id="nf-sursa_valoare" placeholder="ex. unui studiu de piață">
+        </div>
+        <div class="nf-field full">
+          <label>Fonduri alocate cu destinații similare (opțional)</label>
+          <input type="text" id="nf-fonduri_similare" placeholder="Dacă există">
+        </div>
+        <div class="nf-field full">
+          <label>3.2. Surse identificate pentru finanțare</label>
+          <textarea id="nf-surse_finantare" placeholder="Descrieți sursele de finanțare..."></textarea>
+        </div>
+      </div>
+
+      <!-- ── 4. Regim juridic ──────────────────────────────────────────── -->
+      <div class="nf-section-title">4. Regim juridic, economic și tehnic</div>
+      <div class="nf-form-grid">
+        <div class="nf-field full">
+          <label>Informații privind regimul juridic al terenului / construcției</label>
+          <textarea id="nf-regim_juridic" placeholder="Nu este cazul. / sau descriere..."></textarea>
+        </div>
+      </div>
+
+      <!-- ── 5. Descriere tehnică ──────────────────────────────────────── -->
+      <div class="nf-section-title">5. Descrierea succintă tehnico-funcțională</div>
+      <div class="nf-form-grid">
+        <div class="nf-field full">
+          <label>a) Destinație și funcțiuni</label>
+          <textarea id="nf-destinatie_functiuni" placeholder="Descrieți destinația și funcțiunile obiectivului..."></textarea>
+        </div>
+        <div class="nf-field full">
+          <label>b) Caracteristici, parametri și date specifice</label>
+          <textarea id="nf-caracteristici_parametri" placeholder="Caracteristici tehnice preconizate..."></textarea>
+        </div>
+        <div class="nf-field">
+          <label>c) Durata minimă de funcționare</label>
+          <input type="text" id="nf-durata_functionare" placeholder="ex. 50 ani">
+        </div>
+        <div class="nf-field">
+          <label>d) Nevoi/solicitări funcționale specifice</label>
+          <input type="text" id="nf-nevoi_functionale" placeholder="nu este cazul">
+        </div>
+        <div class="nf-field">
+          <label>e) Termen P.I.F.</label>
+          <input type="text" id="nf-termen_pif" placeholder="nu este cazul">
+        </div>
+      </div>
+
+      <!-- ── 6. Documente atașate ──────────────────────────────────────── -->
+      <div class="nf-section-title">6. Documente justificative atașate</div>
+      <div class="nf-form-grid">
+        <div class="nf-field full">
+          <label>Listă documente atașate</label>
+          <textarea id="nf-documente_atasate" placeholder="ex. 1. Studiu de oportunitate nr. ... / 2. ..."></textarea>
+        </div>
+      </div>
+
+      <!-- ── Footer semnatari ──────────────────────────────────────────── -->
+      <div class="nf-section-title">Semnatari</div>
+      <div class="nf-form-grid">
+        <div class="nf-field">
+          <label>Data semnare</label>
+          <input type="text" id="nf-data_semnare" placeholder="dd.ll.aaaa">
+        </div>
+        <div class="nf-field">
+          <label>Șef Structură / Ordonator terțiar (nume)</label>
+          <input type="text" id="nf-sef_structura_name" placeholder="Prenume Nume">
+        </div>
+        <div class="nf-field">
+          <label>Director financiar-contabil (nume)</label>
+          <input type="text" id="nf-director_financiar_name" placeholder="Prenume Nume">
+        </div>
+        <div class="nf-field">
+          <label>Întocmit (nume)</label>
+          <input type="text" id="nf-intocmit_name" placeholder="Prenume Nume">
+        </div>
+      </div>
+
+      <!-- ── Acțiuni ───────────────────────────────────────────────────── -->
+      <div class="nf-actions">
+        <button class="btn primary" onclick="nfSave()">💾 Salvează</button>
+        <button class="btn" onclick="nfGeneratePdf()" id="nf-btn-pdf">📄 Generează PDF</button>
+        <button class="btn" onclick="location.href='/formular.html?tab=fo'">Anulează</button>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function getCsrf(){
+  const m=document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return m?decodeURIComponent(m[1]):'';
+}
+
+function showErr(msg){
+  const el=document.getElementById('nf-err');
+  if(!el)return;
+  el.textContent=msg;
+  el.style.display=msg?'':'none';
+}
+
+// ── Stare pagină ─────────────────────────────────────────────────────────────
+let _nfId = null; // UUID formular, null = nou
+
+const _FIELDS = [
+  'nr_inregistrare','data_inregistrare','primar_name','director_executiv_name',
+  'an_program','tip_obiectiv','denumire_obiectiv','ordonator_principal',
+  'ordonator_secundar','beneficiar','deficiente_actuale','efect_pozitiv',
+  'impact_negativ','oportunitate','valoare_totala_mii_lei','sursa_valoare',
+  'fonduri_similare','surse_finantare','regim_juridic','destinatie_functiuni',
+  'caracteristici_parametri','durata_functionare','nevoi_functionale',
+  'termen_pif','documente_atasate','data_semnare','sef_structura_name',
+  'director_financiar_name','intocmit_name',
+];
+
+function _readForm(){
+  const d = {};
+  for(const f of _FIELDS){
+    const el = document.getElementById('nf-' + f);
+    if(el) d[f] = el.value.trim();
+  }
+  return d;
+}
+
+function _fillForm(data){
+  for(const f of _FIELDS){
+    const el = document.getElementById('nf-' + f);
+    if(el && data[f] !== undefined) el.value = data[f];
+  }
+}
+
+// ── Init: citire URL ?id=UUID ────────────────────────────────────────────────
+(async function init(){
+  const params = new URLSearchParams(location.search);
+  _nfId = params.get('id') || null;
+
+  if(!_nfId) return; // formular nou
+
+  try{
+    const r = await fetch(`/api/formulare-oficiale/${_nfId}`, { credentials:'include' });
+    if(r.status === 401){ location.href = '/'; return; }
+    if(!r.ok){ showErr('Formularul nu a putut fi încărcat.'); return; }
+    const j = await r.json();
+    document.getElementById('nf-title').value = j.title || '';
+    document.getElementById('nf-ref_number').value = j.ref_number || '';
+    _fillForm(j.form_data || {});
+    document.getElementById('dfPageSubtitle').textContent = `Editare: ${j.title}`;
+    const badge = document.getElementById('nf-saved-badge');
+    if(badge){ badge.textContent = '✅ Salvat anterior'; badge.classList.add('show'); }
+  }catch(e){
+    showErr('Eroare la încărcarea formularului.');
+  }
+})();
+
+// ── Salvare ──────────────────────────────────────────────────────────────────
+async function nfSave(){
+  showErr('');
+  const title = document.getElementById('nf-title').value.trim();
+  if(!title){ showErr('Titlul este obligatoriu.'); return; }
+
+  const payload = {
+    form_type:  'NOTAFD_INVEST',
+    title:      title,
+    ref_number: document.getElementById('nf-ref_number').value.trim() || null,
+    form_data:  _readForm(),
+  };
+
+  const csrf = getCsrf();
+  try{
+    let r, method, url;
+    if(_nfId){
+      method = 'PUT';
+      url    = `/api/formulare-oficiale/${_nfId}`;
+    }else{
+      method = 'POST';
+      url    = '/api/formulare-oficiale';
+    }
+    r = await fetch(url, {
+      method, credentials:'include',
+      headers:{ 'Content-Type':'application/json', 'X-CSRF-Token':csrf },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json();
+    if(!r.ok){ showErr(j.error || 'Eroare la salvare.'); return; }
+    if(!_nfId && j.formular?.id){
+      _nfId = j.formular.id;
+      history.replaceState({},'', `/notafd-invest-form.html?id=${_nfId}`);
+    }
+    const badge = document.getElementById('nf-saved-badge');
+    if(badge){
+      badge.textContent = '✅ Salvat';
+      badge.classList.add('show');
+      setTimeout(()=>badge.classList.remove('show'), 3000);
+    }
+  }catch(e){
+    showErr('Eroare rețea la salvare.');
+  }
+}
+
+// ── Generare PDF ─────────────────────────────────────────────────────────────
+async function nfGeneratePdf(){
+  showErr('');
+  if(!_nfId){
+    await nfSave();
+    if(!_nfId){ showErr('Salvați mai întâi formularul.'); return; }
+  }
+  const btn = document.getElementById('nf-btn-pdf');
+  btn.disabled = true;
+  btn.textContent = '⏳ Se generează...';
+  try{
+    const csrf = getCsrf();
+    const r = await fetch(`/api/formulare-oficiale/${_nfId}/generate-pdf`, {
+      method:'POST', credentials:'include',
+      headers:{ 'X-CSRF-Token':csrf },
+    });
+    if(!r.ok){ const j=await r.json().catch(()=>({})); showErr(j.error||'Eroare generare PDF.'); return; }
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `NF-Invest-${(_nfId||'').slice(0,8)}.pdf`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  }catch(e){
+    showErr('Eroare rețea la generare PDF.');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = '📄 Generează PDF';
+  }
+}
+</script>
+
+<script src="/notif-widget.js?v=3.9.326"></script>
+</body>
+</html>
