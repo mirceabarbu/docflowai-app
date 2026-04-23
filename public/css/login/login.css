@@ -1,0 +1,32 @@
+/* CSS specific login.html — ecran autentificare standalone.
+   Folosește doar tokens (--df-bg, --df-brand, --df-teal, --df-text*, --df-border-2)
+   din tokens.css. Nu depinde de shell.css sau components.css — e pagină fără
+   layout-shell (fără sidebar, fără header standard).
+   Depinde de: tokens.css (încărcat înainte). */
+
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:radial-gradient(900px 600px at 20% 10%,rgba(124,92,255,.32),transparent 60%),
+        radial-gradient(700px 500px at 80% 85%,rgba(45,212,191,.20),transparent 55%),var(--df-bg);color:var(--df-text);}
+    .wrap{width:100%;max-width:400px;padding:20px;}
+    .card{background:rgba(15,23,49,.88);border:1px solid var(--df-border-2);border-radius:20px;
+      box-shadow:0 24px 64px rgba(0,0,0,.4);padding:44px 40px 36px;backdrop-filter:blur(14px);}
+    .logo{text-align:center;margin-bottom:34px;}
+    .logo-icon{width:52px;height:52px;border-radius:14px;margin:0 auto 12px;
+      background:linear-gradient(135deg,var(--df-brand),var(--df-teal));display:flex;align-items:center;justify-content:center;font-size:24px;}
+    .logo-name{font-size:1.5rem;font-weight:800;letter-spacing:-.03em;}
+    .logo-sub{font-size:.78rem;color:var(--df-text-3);margin-top:3px;}
+    h1{font-size:.95rem;color:var(--df-text-2);text-align:center;margin-bottom:26px;font-weight:500;}
+    label{display:block;font-size:.78rem;color:var(--df-text-3);margin:14px 0 5px;}
+    input{width:100%;padding:11px 14px;background:rgba(255,255,255,.05);border:1px solid var(--df-border-2);
+      border-radius:11px;color:var(--df-text);font-size:.95rem;outline:none;transition:border-color .2s,box-shadow .2s;}
+    input:focus{border-color:rgba(124,92,255,.6);box-shadow:0 0 0 4px rgba(124,92,255,.15);}
+    input::placeholder{color:rgba(205,216,255,.38);}
+    .btn{width:100%;padding:13px;margin-top:24px;background:linear-gradient(135deg,var(--df-brand),var(--df-teal));
+      border:none;border-radius:12px;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;transition:opacity .2s,transform .1s;}
+    .btn:hover{opacity:.88;}.btn:active{transform:scale(.98);}.btn:disabled{opacity:.4;cursor:not-allowed;}
+    .err{margin-top:14px;padding:10px 14px;border-radius:10px;background:rgba(255,80,80,.12);
+      border:1px solid rgba(255,80,80,.28);color:#ffb3b3;font-size:.86rem;display:none;}
+    .spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.25);
+      border-top-color:#fff;border-radius:50%;animation:sp .65s linear infinite;margin-right:7px;vertical-align:middle;}
+    @keyframes sp{to{transform:rotate(360deg);}}
