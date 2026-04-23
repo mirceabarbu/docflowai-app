@@ -179,3 +179,7 @@
 .df-action-btn .df-ic,.df-action-btn .df-ico{width:15px;height:15px;}
 .df-action-btn.sm .df-ic,.df-action-btn.sm .df-ico{width:13px;height:13px;}
 .df-action-btn.lg .df-ic,.df-action-btn.lg .df-ico{width:18px;height:18px;}
+
+/* Grid 2 coloane pentru carduri Verificare furnizor — colapse pe mobile */
+.vf-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:900px){.vf-grid-2{grid-template-columns:1fr;}}
