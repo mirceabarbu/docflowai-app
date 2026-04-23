@@ -111,7 +111,11 @@ describe('analyzeCoherence', () => {
       ibanData: mockIban({ isTreasury: true, bankCode: 'TREZ' }),
       declaredName: null,
     });
-    expect(w).toContainEqual(expect.objectContaining({ code: 'TREASURY_PRIVATE_MISMATCH', level: 'warning' }));
+    const warn = w.find(x => x.code === 'TREASURY_PRIVATE_MISMATCH');
+    expect(warn).toBeDefined();
+    expect(warn.level).toBe('warning');
+    expect(warn.message).toContain('Legii 207/2015');
+    expect(warn.message).toContain('furnizori ai instituțiilor publice');
   });
 
   it('detectează TREASURY_PUBLIC_OK (IBAN trezorerie + instituție publică)', () => {

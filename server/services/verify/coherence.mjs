@@ -76,7 +76,7 @@ export function analyzeCoherence({ companyData, ibanData, declaredName }) {
     const priv = ['SRL', 'SA', 'PFA', 'PF_other'].includes(companyData.entityType);
     if (priv) {
       warnings.push({ code: 'TREASURY_PRIVATE_MISMATCH', level: 'warning',
-        message: `IBAN indică Trezoreria Statului, dar entitatea pare privată (${companyData.entityType}). Verifică dacă este cont corect.` });
+        message: `IBAN indică Trezoreria Statului, entitate ${companyData.entityType} (privată). Cazul e obișnuit pentru furnizori ai instituțiilor publice (cont trezorerie obligatoriu conform Legii 207/2015 și OG 6/2019). Verifică totuși că IBAN-ul e cel declarat de furnizor în factură.` });
     } else if (companyData.entityType === 'public') {
       warnings.push({ code: 'TREASURY_PUBLIC_OK', level: 'info',
         message: 'Cont de trezorerie utilizat pentru instituție publică — corect.' });
@@ -85,7 +85,7 @@ export function analyzeCoherence({ companyData, ibanData, declaredName }) {
 
   if (ibanData && !ibanData.isTreasury && companyData && companyData.entityType === 'public') {
     warnings.push({ code: 'COMMERCIAL_BANK_PUBLIC_ENTITY', level: 'warning',
-      message: 'Cont de bancă comercială pentru instituție publică — cazul obișnuit este trezorerie. Verifică.' });
+      message: 'Instituție publică cu cont de bancă comercială — cazul obișnuit e trezorerie. Verifică dacă e contul corect declarat de instituție.' });
   }
 
   return warnings;

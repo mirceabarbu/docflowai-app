@@ -70,6 +70,36 @@ describe('verifyIban', () => {
       expect(r.data.accountType).toBe('unknown');
       expect(r.data.isTreasury).toBe(false);
     });
+
+    describe('trezorerie județeană', () => {
+      it('detectează jud. Brașov (cod SIRUTA 08)', () => {
+        const r = verifyIban('RO45TREZ0815069XXX004466');
+        expect(r.data.isTreasury).toBe(true);
+        expect(r.data.treasuryCounty).toBe('Brașov');
+        expect(r.data.bankName).toBe('Trezoreria Brașov');
+      });
+
+      it('detectează jud. Cluj (cod SIRUTA 12)', () => {
+        const r = verifyIban('RO45TREZ1212345XXX004466');
+        expect(r.data.isTreasury).toBe(true);
+        expect(r.data.treasuryCounty).toBe('Cluj');
+        expect(r.data.bankName).toBe('Trezoreria Cluj');
+      });
+
+      it('detectează sector București (cod 43 = S4)', () => {
+        const r = verifyIban('RO45TREZ4312345XXX004466');
+        expect(r.data.isTreasury).toBe(true);
+        expect(r.data.treasuryCounty).toBe('București S4');
+        expect(r.data.bankName).toBe('Trezoreria București S4');
+      });
+
+      it('cod trezorerie necunoscut → fallback Trezoreria Statului', () => {
+        const r = verifyIban('RO45TREZ9912345XXX004466');
+        expect(r.data.isTreasury).toBe(true);
+        expect(r.data.treasuryCounty).toBe(null);
+        expect(r.data.bankName).toBe('Trezoreria Statului');
+      });
+    });
   });
 
   describe('mod-97 checksum', () => {
