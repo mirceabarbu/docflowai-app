@@ -4,14 +4,14 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Formulare oficiale — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.324">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.324">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.324">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.324">
-  <script src="/js/df-shell.js?v=3.9.324"></script>
-  <script src="/js/df-user-modals.js?v=3.9.324"></script>
-  <script src="/js/df-subtabs.js?v=3.9.324"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.324">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.325">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.325">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.325">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.325">
+  <script src="/js/df-shell.js?v=3.9.325"></script>
+  <script src="/js/df-user-modals.js?v=3.9.325"></script>
+  <script src="/js/df-subtabs.js?v=3.9.325"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.325">
 </head>
 <body>
 <span id="hUserBar" style="display:none;"></span>
@@ -304,10 +304,10 @@
 
   <!-- Bara navigare identică cu bara principală -->
   <div class="lst-tabs" style="margin-bottom:16px">
-    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.324#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.324#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.324#ico-bar-chart"/></svg> ALOP</button>
-    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.324#ico-shield"/></svg> Verificare furnizor</button>
+    <button class="lst-tab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.325#ico-file-text"/></svg> Documente de Fundamentare</button>
+    <button class="lst-tab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.325#ico-file-text"/></svg> Ordonanțări de Plată</button>
+    <button class="lst-tab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.325#ico-bar-chart"/></svg> ALOP</button>
+    <button class="lst-tab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.325#ico-shield"/></svg> Verificare furnizor</button>
   </div>
 
   <div class="df-info-banner" style="margin-bottom:18px;">
@@ -4428,10 +4428,25 @@ async function vfLookupCoherence() {
     if (warns.length === 0) {
       parts.push('<div style="color:#5eead4;padding:10px;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.3);border-radius:8px;">✓ Nicio problemă detectată.</div>');
     } else {
+      const VF_WARNING_TITLES = {
+        CUI_NOT_FOUND:                'CUI negăsit ANAF',
+        COMPANY_INACTIVE:             'Entitate inactivă',
+        COMPANY_RADIATED:             'Entitate radiată',
+        VAT_CANCELLED:                'TVA anulat',
+        VAT_COLLECTED:                'TVA la încasare',
+        IBAN_INVALID:                 'IBAN invalid',
+        TREASURY_PRIVATE_MISMATCH:    'Cont trezorerie — entitate privată',
+        TREASURY_PUBLIC_OK:           'Cont trezorerie — instituție publică',
+        COMMERCIAL_BANK_PUBLIC_ENTITY:'Bancă comercială — instituție publică',
+        COMPANY_NAME_MATCH:           'Denumire — corespunde cu ANAF',
+        COMPANY_NAME_PARTIAL:         'Denumire — corespunde parțial',
+        COMPANY_NAME_MISMATCH:        'Denumire — nu corespunde',
+      };
       parts.push('<div style="margin-top:6px;">' + warns.map(w => {
         const colors = { info: ['#5eead4','rgba(45,212,191,.08)','rgba(45,212,191,.3)'], warning: ['#fbbf24','rgba(245,158,11,.08)','rgba(245,158,11,.3)'], error: ['#ff8080','rgba(239,68,68,.08)','rgba(239,68,68,.3)'] }[w.level] || ['#fff','rgba(255,255,255,.04)','rgba(255,255,255,.1)'];
         const icon = { info: 'ℹ️', warning: '⚠', error: '❌' }[w.level] || '•';
-        return `<div style="padding:10px 12px;margin-bottom:6px;background:${colors[1]};border:1px solid ${colors[2]};border-radius:8px;color:${colors[0]};font-size:.84rem;"><strong>${icon} ${_vfEsc(w.code)}:</strong> ${_vfEsc(w.message)}</div>`;
+        const title = VF_WARNING_TITLES[w.code] || w.code;
+        return `<div style="padding:10px 12px;margin-bottom:6px;background:${colors[1]};border:1px solid ${colors[2]};border-radius:8px;color:${colors[0]};font-size:.84rem;"><strong>${icon} ${_vfEsc(title)}:</strong> ${_vfEsc(w.message)}</div>`;
       }).join('') + '</div>');
     }
     resultEl.innerHTML = parts.join('');
