@@ -1,11 +1,13 @@
 -- 015_formulare_oficiale.sql
 -- Formulare oficiale standalone (Referat necesitate, NF investiții, viitoare)
 -- Separate de DF/ORD/ALOP — nu interferează cu fluxul existent
+-- HOTFIX v3.9.327: org_id și created_by sunt INTEGER (SERIAL) pentru a respecta
+-- schema existentă (organizations.id și users.id sunt SERIAL, nu UUID).
 
 CREATE TABLE IF NOT EXISTS formulare_oficiale (
   id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id           UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  created_by       UUID        NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  org_id           INTEGER     NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  created_by       INTEGER     NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   form_type        TEXT        NOT NULL CHECK (form_type IN ('REFNEC', 'NOTAFD_INVEST')),
   ref_number       TEXT,
   title            TEXT        NOT NULL DEFAULT '',
