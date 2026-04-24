@@ -3324,13 +3324,18 @@ async function loadAlop(){
         <td style="font-size:.78rem;color:var(--df-text-3)">${_escH(_alopFazaLabel(a.status))}</td>
         <td style="font-size:.82rem">
           <div>${fmtRON(a.valoare_totala)}</div>
-          ${(a.df_valoare||a.ord_valoare||a.op_valoare)?
-            `<div style="font-size:.7rem;color:var(--df-text-3);margin-top:2px;white-space:nowrap">
-              ${a.df_valoare?`<span title="Valoare DF" style="color:#b0a0ff">DF ${fmtRON(a.df_valoare)}</span>`:''}
-              ${a.ord_valoare?`<span title="Valoare ORD" style="color:#5dcaa5;margin-left:6px">ORD ${fmtRON(a.ord_valoare)}</span>`:''}
-              ${a.op_valoare?`<span title="Sumă plătită" style="color:#f59e0b;margin-left:6px">✓ ${fmtRON(a.op_valoare)}</span>`:''}
-            </div>`
-          :''}
+          ${(() => {
+            // FIX v3.9.338: afișează totaluri (toate ciclurile), nu doar ciclul curent
+            const _ordTotal = parseFloat(a.total_ord_valoare || a.ord_valoare || 0);
+            const _platTotal = parseFloat(a.total_platit || a.op_valoare || 0);
+            const _dfVal = parseFloat(a.df_valoare || 0);
+            if (_dfVal === 0 && _ordTotal === 0 && _platTotal === 0) return '';
+            return `<div style="font-size:.7rem;color:var(--df-text-3);margin-top:2px;white-space:nowrap">
+              ${_dfVal?`<span title="Valoare DF" style="color:#b0a0ff">DF ${fmtRON(_dfVal)}</span>`:''}
+              ${_ordTotal?`<span title="Valoare ORD (toate ciclurile)" style="color:#5dcaa5;margin-left:6px">ORD ${fmtRON(_ordTotal)}</span>`:''}
+              ${_platTotal?`<span title="Sumă plătită (toate ciclurile)" style="color:#f59e0b;margin-left:6px">✓ ${fmtRON(_platTotal)}</span>`:''}
+            </div>`;
+          })()}
         </td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${dt}</td>
         <td onclick="event.stopPropagation()">
@@ -3615,12 +3620,10 @@ function renderAlopDetail(a,container){
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
         <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Valoare ORD${_areCicluriAnterioare ? ' · Total' : ''}</div>
         <div style="font-size:1rem;font-weight:700;color:#5dcaa5;margin-top:4px">${fmtV(_totalOrdGlobal)}</div>
-        ${_areCicluriAnterioare ? `<div style="font-size:.66rem;color:var(--df-text-3);margin-top:2px">Ciclu ${_cicluCurent}: ${fmtV(_ordCurent)}</div>` : ''}
       </div>
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
-        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Sumă plătită${_areCicluriAnterioare ? ' · Total' : ''} (TOTAL: ${fmtV(a.df_valoare || 0)})</div>
+        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Sumă plătită${_areCicluriAnterioare ? ' · Total' : ''}</div>
         <div style="font-size:1rem;font-weight:700;color:#f59e0b;margin-top:4px">${fmtV(_totalPlatitGlobal)}</div>
-        ${_areCicluriAnterioare ? `<div style="font-size:.66rem;color:var(--df-text-3);margin-top:2px">Ciclu ${_cicluCurent}: ${fmtV(_platCurent)}</div>` : ''}
       </div>
     </div>`;
     })()}
@@ -3669,8 +3672,16 @@ function renderAlopDetail(a,container){
         const _platConfirmat = !!c.plata_confirmed_at;
         const _platSuma = parseFloat(c.plata_suma_efectiva || 0);
         const _platAfisare = _platConfirmat ? fmtV(_platSuma) : (c._isCurrent ? '⏳ în curs' : '—');
+        // FIX v3.9.338: plata_data poate veni ca ISO complet (ciclul curent) sau YYYY-MM-DD (cicluri istorice). Normalizăm la dd.mm.yyyy.
+        const _fmtPlataData = (v) => {
+          if (!v) return '';
+          const s = String(v);
+          const datePart = s.substring(0, 10);
+          const m = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
+        };
         const _platDetaliu = _platConfirmat
-          ? `${c.plata_nr_ordin ? `OP ${_escH(c.plata_nr_ordin)} · ` : ''}${c.plata_data || ''}`
+          ? `${c.plata_nr_ordin ? `OP ${_escH(c.plata_nr_ordin)} · ` : ''}${_fmtPlataData(c.plata_data)}`
           : '';
         _html += `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:.8rem">
           <div style="font-weight:700;color:var(--df-text-2);margin-bottom:6px">Ciclu ${c.ciclu_nr}${_curBadge}</div>
