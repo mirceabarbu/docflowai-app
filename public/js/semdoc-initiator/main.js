@@ -1,0 +1,1962 @@
+// DocFlowAI — logica principală semdoc-initiator.html (creare flux, signers,
+// provider selection, PDF upload/render, templates, fluxuri mele, revizuire).
+// Extras din semdoc-initiator.html la Pas 2.11 (v3.9.340) byte-for-byte.
+//
+// Încărcat cu  înainte de </body> — după df-shell, df-email-modal,
+// pdf-lib-loader, pdfjs external + pdfjs-worker.
+//
+// Dependent de: window._apiFetch (df-apifetch-shim-full.js), window._pdfLibLoaded
+// (pdf-lib-loader.js), window.pdfjsLib (CDN external), window.openEmailModal
+// (df-email-modal.js), window.toggleUserMenu / closeUserMenu (df-shell.js).
+      const $ = (id) => document.getElementById(id);
+      // SEC-01: esc globala pentru toate innerHTML cu date de la server
+      function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+      function authHeaders(extra = {}) {
+        // SEC-01: token din cookie HttpOnly — nu mai citim din localStorage
+        return extra;  // SEC-01: cookie trimis automat
+      }
+
+
+
+      // PDF (Varianta A): stocăm PDF-ul în flow ca DataURL base64
+      let pdfB64 = null;
+      let originalFileName = null;
+
+      // Etapa B: provider ales la inițiere — lock pentru toți semnatarii
+      let _selectedProvider = null;
+      const _PROVIDER_META = {
+        'sts-cloud':    { iconId: 'ico-upload-cloud', color: '#7cf0e0', borderCol: 'rgba(45,212,191,.4)',  bgCol: 'rgba(45,212,191,.10)',  hint: 'Semnare cloud în browser cu certificat STS (QES). Toți semnatarii folosesc același redirect OAuth.' },
+        'local-upload': { iconId: 'ico-upload',       color: '#c4b0ff', borderCol: 'rgba(124,92,255,.4)', bgCol: 'rgba(124,92,255,.10)', hint: 'Fiecare semnatar descarcă PDF-ul, îl semnează local cu aplicația lui și îl urcă înapoi.' },
+        'namirial':     { iconId: 'ico-upload-cloud', color: '#ffc46b', borderCol: 'rgba(255,180,90,.4)', bgCol: 'rgba(255,180,90,.10)', hint: 'Semnare cloud prin Namirial QES.' },
+        'certsign':     { iconId: 'ico-upload-cloud', color: '#90c4ff', borderCol: 'rgba(120,180,255,.4)', bgCol: 'rgba(120,180,255,.10)', hint: 'Semnare cloud prin CertSign QES.' },
+        'alfatrust':    { iconId: 'ico-upload-cloud', color: '#a898ff', borderCol: 'rgba(168,152,255,.4)', bgCol: 'rgba(168,152,255,.10)', hint: 'Semnare cloud prin AlfaTrust QES.' },
+        'transsped':    { iconId: 'ico-upload-cloud', color: '#ff9fb8', borderCol: 'rgba(255,159,184,.4)', bgCol: 'rgba(255,159,184,.10)', hint: 'Semnare cloud prin TransSped QES.' },
+      };
+      const _PROVIDER_FALLBACK = { iconId: 'ico-check', color: '#ffffff', borderCol: 'rgba(255,255,255,.3)', bgCol: 'rgba(255,255,255,.06)', hint: 'Provider de semnare electronică.' };
+
+      async function loadProviders() {
+        const container = document.getElementById('providerRadios');
+        if (!container) return;
+        try {
+          const r = await fetch('/api/me/signing-providers', { credentials: 'include' });
+          if (!r.ok) {
+            container.innerHTML = '<span style="font-size:.8rem; color:#ff8080;">Eroare la încărcarea providerilor. Reîncărcați pagina.</span>';
+            return;
+          }
+          const j = await r.json();
+          const providers = Array.isArray(j.providers) ? j.providers : [];
+          if (!providers.length) {
+            container.innerHTML = '<span style="font-size:.8rem; color:#ff8080;">Niciun provider activ în organizație. Contactați administratorul.</span>';
+            return;
+          }
+          renderProviderRadios(providers, j.preferred);
+        } catch(e) {
+          console.error('loadProviders error', e);
+          container.innerHTML = '<span style="font-size:.8rem; color:#ff8080;">Eroare rețea.</span>';
+        }
+      }
+
+      function renderProviderRadios(providers, preferred) {
+        const container = document.getElementById('providerRadios');
+        if (!container) return;
+        // Pre-select: preferred user — NU auto-selectăm dacă nu e preferință salvată
+        const preselectId = (preferred && providers.some(p => p.id === preferred))
+          ? preferred
+          : null;
+        container.innerHTML = '';
+        // Polish Etapa B: ordonăm providerii — cloud primii, local-upload ultimul
+        const sortedProviders = [...providers].sort((a, b) => {
+          if (a.id === 'local-upload' && b.id !== 'local-upload') return 1;
+          if (b.id === 'local-upload' && a.id !== 'local-upload') return -1;
+          return 0;
+        });
+        sortedProviders.forEach(p => {
+          const meta = _PROVIDER_META[p.id] || _PROVIDER_FALLBACK;
+          const isSel = p.id === preselectId;
+          const label = document.createElement('label');
+          label.id = `lblProv-${p.id}`;
+          label.style.cssText = `display:flex; align-items:center; gap:8px; cursor:pointer; padding:6px 14px; border-radius:8px; border:1px solid ${isSel ? meta.borderCol : 'rgba(255,255,255,.12)'}; background:${isSel ? meta.bgCol : 'rgba(255,255,255,.03)'};`;
+          label.innerHTML = `
+            <input type="radio" name="providerSel" value="${esc(p.id)}" ${isSel ? 'checked' : ''} style="accent-color:#7c5cff; width:14px; height:14px;" />
+            <span style="font-size:.84rem; color:${isSel ? meta.color : 'var(--sub)'}; font-weight:600; display:inline-flex; align-items:center; gap:5px;">
+              <svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#${meta.iconId}"/></svg>${esc(p.label)}
+            </span>
+          `;
+          label.querySelector('input').addEventListener('change', () => onProviderChange(p.id));
+          container.appendChild(label);
+        });
+        if (preselectId) {
+          _selectedProvider = preselectId;
+          updateProviderHint(preselectId);
+        }
+        validateForm();
+      }
+
+      function onProviderChange(providerId) {
+        _selectedProvider = providerId;
+        const labels = document.querySelectorAll('#providerRadios label');
+        labels.forEach(lbl => {
+          const input = lbl.querySelector('input[type="radio"]');
+          const isSel = input && input.value === providerId;
+          const meta = _PROVIDER_META[input?.value] || _PROVIDER_FALLBACK;
+          lbl.style.borderColor = isSel ? meta.borderCol : 'rgba(255,255,255,.12)';
+          lbl.style.background  = isSel ? meta.bgCol : 'rgba(255,255,255,.03)';
+          const span = lbl.querySelector('span[style*="font-size"]');
+          if (span) span.style.color = isSel ? meta.color : 'var(--sub)';
+        });
+        updateProviderHint(providerId);
+        validateForm();
+      }
+
+      function updateProviderHint(providerId) {
+        const hint = document.getElementById('providerHint');
+        if (!hint) return;
+        const meta = _PROVIDER_META[providerId] || _PROVIDER_FALLBACK;
+        hint.textContent = meta.hint;
+      }
+
+      function onDocTypeChange() {
+        const isTabel = $("docTypeTabel").checked;
+        const lbl1 = $("lblTip1"), lbl2 = $("lblTip2"), hint = $("docTypeHint");
+        // Adaugă/elimină clasa pe tabelul de semnatari — controlează vizibilitatea coloanei
+        const sigTable = $("signersTbody")?.closest("table");
+        if (sigTable) sigTable.classList.toggle("doctype-ancore", !isTabel);
+        if (isTabel) {
+          lbl1.style.borderColor = "rgba(124,92,255,.4)"; lbl1.style.background = "rgba(124,92,255,.1)";
+          lbl2.style.borderColor = "rgba(255,255,255,.12)"; lbl2.style.background = "rgba(255,255,255,.03)";
+          if (hint) hint.textContent = "DocFlowAI generează tabelul cu semnatari și ancora pentru semnătură";
+          // Ascundem zona de detectare câmpuri
+          resetAncoreState();
+        } else {
+          lbl2.style.borderColor = "rgba(45,212,191,.4)"; lbl2.style.background = "rgba(45,212,191,.08)";
+          lbl1.style.borderColor = "rgba(255,255,255,.12)"; lbl1.style.background = "rgba(255,255,255,.03)";
+          if (hint) hint.textContent = "PDF-ul are deja ancore create — se trimite pe flux fără modificări";
+          // Dacă există deja un PDF, afișăm zona de detectare
+          if (pdfB64) showAncoreDetectArea();
+        }
+      }
+
+      function getDocType() {
+        return $("docTypeAncore")?.checked ? "ancore" : "tabel";
+      }
+
+      function validateForm() {
+        const btn = $("btnCreate");
+        if (!btn) return;
+        const hasPdf = !!pdfB64;
+
+        // Maschează zona semnatarilor până la încărcarea PDF-ului
+        const mask = $("signersMask");
+        if (mask) mask.style.display = hasPdf ? "none" : "flex";
+        const pdfHint = $("pdfRequiredHint"); if (pdfHint) pdfHint.style.display = hasPdf ? "none" : "inline-block";
+
+        const btnAdd = $("btnAdd");
+        const btnDef = $("btnDefaults");
+        if (btnAdd) { btnAdd.disabled = !hasPdf; btnAdd.style.opacity = hasPdf ? "1" : "0.4"; }
+        if (btnDef) { btnDef.disabled = !hasPdf; btnDef.style.opacity = hasPdf ? "1" : "0.4"; }
+
+        const hasProvider = !!_selectedProvider;
+        const valid = hasPdf && hasProvider;
+        btn.disabled = !valid;
+        btn.style.opacity = valid ? "1" : "0.4";
+        if (!hasPdf)           btn.title = "Încarcă mai întâi PDF-ul";
+        else if (!hasProvider) btn.title = "Alege metoda de semnare";
+        else                   btn.title = "";
+      }
+
+      function setPdfInfo(msg, isError=false) {
+        const el = $("pdfInfo");
+        el.textContent = msg;
+        el.title = msg; // tooltip la hover pentru nume lung
+        if (isError) {
+          el.style.color = "#ff6b6b";
+          el.style.fontWeight = "600";
+          el.style.whiteSpace = "normal";
+          el.style.overflow = "visible";
+        } else {
+          el.style.color = "";
+          el.style.fontWeight = "";
+          el.style.whiteSpace = "nowrap";
+          el.style.overflow = "hidden";
+        }
+      }
+
+      $("pdfFile").addEventListener("change", async () => {
+        const clearBtn = $("btnClearPdf");
+        const f = $("pdfFile").files?.[0];
+        if (!f) { pdfB64=null; originalFileName=null; setPdfInfo("Nu ai selectat încă un fișier."); return; }
+
+        const ACCEPTED = ['.pdf','.docx','.doc','.xlsx','.xls',
+          '.pptx','.ppt','.odt','.ods','.odp',
+          '.jpg','.jpeg','.png','.webp','.gif','.bmp'];
+        const fExt = '.' + f.name.split('.').pop().toLowerCase();
+        if (!ACCEPTED.includes(fExt)) {
+          pdfB64=null; originalFileName=null;
+          setPdfInfo('❌ Tip nesuportat. Acceptăm: PDF, DOCX, XLSX, JPG, PNG etc.', true);
+          return;
+        }
+        if (f.size > 50*1024*1024) {
+          pdfB64=null; originalFileName=null;
+          setPdfInfo('❌ Fișier prea mare — max 50MB.', true);
+          $("pdfFile").value=''; return;
+        }
+
+        // Activează Șterge + Renunță imediat
+        const activateClear = () => {
+          if (clearBtn) {
+            clearBtn.style.opacity='1'; clearBtn.style.pointerEvents='auto';
+            clearBtn.style.cursor='pointer'; clearBtn.disabled=false;
+            clearBtn.style.background='rgba(255,80,80,.15)';
+            clearBtn.style.borderColor='rgba(255,80,80,.3)';
+            clearBtn.style.color='#ffaaaa';
+          }
+          $("btnRenunta").style.display='';
+        };
+
+        // Auto-fill docName
+        const docNameEl = $("docName");
+        if (docNameEl && !docNameEl.value.trim())
+          docNameEl.value = f.name.replace(/\.[^.]+$/, '');
+
+        if (fExt === '.pdf') {
+          // PDF direct — comportament existent
+          originalFileName = f.name;
+          window._rawFileForConversion = null;
+          setPdfInfo(`Selectat: ${f.name} (${Math.round(f.size/1024)} KB).`);
+          const reader = new FileReader();
+          reader.onload = () => {
+            pdfB64 = reader.result;
+            activateClear(); validateForm(); saveFormState(); idb.save(pdfB64);
+            const box = $("pdfPreviewBox");
+            if (box) { box.style.display='block'; renderPdfJsInit(pdfB64); }
+            onPdfUploadedForAncore();
+          };
+          reader.readAsDataURL(f);
+          return;
+        }
+
+        // Non-PDF — conversie server-side imediată
+        originalFileName = f.name;
+        window._rawFileForConversion = null;
+        pdfB64 = null;
+        setPdfInfo(`⏳ Se convertește ${fExt.replace('.','').toUpperCase()} la PDF...`);
+        activateClear();
+        try {
+          const fd = new FormData();
+          fd.append('file', f, f.name);
+          const resp = await fetch('/api/convert-to-pdf', {
+            method: 'POST', credentials: 'include', body: fd
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(()=>({error:'Eroare conversie'}));
+            setPdfInfo('❌ ' + (err.error||'Conversie eșuată'), true);
+            pdfB64=null; validateForm(); return;
+          }
+          const { pdfB64: converted } = await resp.json();
+          pdfB64 = converted;
+          setPdfInfo(`✅ Convertit din ${fExt.replace('.','').toUpperCase()} — ${Math.round(f.size/1024)} KB.`);
+          validateForm(); saveFormState(); idb.save(pdfB64);
+          const box = $("pdfPreviewBox");
+          if (box) { box.style.display='block'; renderPdfJsInit(pdfB64); }
+          onPdfUploadedForAncore();
+        } catch(e) {
+          setPdfInfo('❌ Eroare la conversie: ' + e.message, true);
+          pdfB64=null; validateForm();
+        }
+      });
+
+      $("btnChoosePdf").addEventListener("click", () => $("pdfFile").click());
+      // URGENT toggle visual feedback
+      const urgentChk = $("urgentCheck");
+      const urgentLbl = $("urgentToggle");
+      if (urgentChk && urgentLbl) {
+        const updateUrgentStyle = () => {
+          if (urgentChk.checked) {
+            urgentLbl.style.background = "rgba(255,40,40,.22)";
+            urgentLbl.style.border = "1px solid rgba(255,40,40,.6)";
+            urgentLbl.style.color = "#ff8888";
+            urgentLbl.style.boxShadow = "0 0 12px rgba(255,40,40,.25)";
+          } else {
+            urgentLbl.style.background = "rgba(255,80,80,.06)";
+            urgentLbl.style.border = "1px solid rgba(255,80,80,.25)";
+            urgentLbl.style.color = "";
+            urgentLbl.style.boxShadow = "";
+          }
+        };
+        urgentChk.addEventListener("change", updateUrgentStyle);
+      }
+
+      $("btnClearPdf").addEventListener("click", () => {
+        $("btnClearPdf").disabled = true;
+        $("btnClearPdf").style.opacity = ".3";
+        $("btnClearPdf").style.pointerEvents = "none";
+        $("btnClearPdf").style.cursor = "default";
+        $("btnClearPdf").style.background = "";
+        $("btnClearPdf").style.borderColor = "";
+        $("btnClearPdf").style.color = "";
+        $("pdfFile").value = "";
+        pdfB64 = null;
+        originalFileName = null;
+        window._rawFileForConversion = null;
+        idb.clear();
+        validateForm();
+        setPdfInfo("Nu ai selectat încă un fișier.");
+        const box = $("pdfPreviewBox");
+        const cont = $("pdfPagesContainer");
+        if (box) { if(cont) cont.innerHTML = ""; box.style.display = "none"; }
+      });
+      // Tabs
+      function showTab(name) {
+        $("viewInit").classList.toggle("hidden", name !== "init");
+        $("viewFluxuri").classList.toggle("hidden", name !== "fluxuri");
+        const sbInit = document.getElementById("sbFluxNou");
+        const sbFlows = document.getElementById("sbFluxurileMele");
+        if (sbInit) sbInit.classList.toggle("active", name === "init");
+        if (sbFlows) sbFlows.classList.toggle("active", name === "fluxuri");
+        const titleEl = document.getElementById("dfPageTitle");
+        const subtitleEl = document.getElementById("dfPageSubtitle");
+        if (name === "fluxuri") {
+          if (titleEl) titleEl.textContent = "Fluxurile mele";
+          if (subtitleEl) subtitleEl.textContent = "Vizualizează și gestionează fluxurile create de tine";
+        } else {
+          if (titleEl) titleEl.textContent = "Inițiere flux";
+          if (subtitleEl) subtitleEl.textContent = "Încarcă documentul și configurează semnatarii pentru un nou flux de semnare";
+        }
+        if (name === "fluxuri") {
+          const fs = $("fluxSearch");
+          if (fs && !fs._userTyped) { fs.value = ""; fs.setAttribute("value", ""); }
+          // Resetăm filtrul la "Toate statusurile" la fiecare deschidere tab
+          const sf = $("fluxStatusFilter");
+          if (sf) sf.value = "all";
+          loadMyFlows();
+        }
+      }
+      // Sabloane: salveaza starea + PDF inainte de navigare
+      document.getElementById("linkSabloane")?.addEventListener("click", (e) => {
+        sessionStorage.setItem("docflow_tab", "init");
+        saveFormState();
+        if (pdfB64) idb.save(pdfB64);
+      });
+
+      // Signers table
+      const tbody = $("signersTbody");
+
+      // ── Funcții globale pentru dropdown-urile de utilizatori ───────────────
+      // Returnează setul câmpurilor ancore deja selectate în alte rânduri
+      function getUsedAncoreFields(currentSel) {
+        const used = new Set();
+        tbody.querySelectorAll(".ancoreField").forEach(sel => {
+          if (sel === currentSel) return;
+          if (sel.value) used.add(sel.value);
+        });
+        return used;
+      }
+
+      // Repopulează toate dropdown-urile ancoreField (exclusiv câmpurile deja selectate)
+      function refreshAllAncoreDropdowns() {
+        if (!_detectedAncoreFields.length) return;
+        tbody.querySelectorAll(".ancoreField").forEach(sel => {
+          const prevVal    = sel.value;
+          const usedFields = getUsedAncoreFields(sel);
+          sel.innerHTML    = "<option value=''>— Alege câmpul —</option>";
+          _detectedAncoreFields.forEach(f => {
+            if (usedFields.has(f.name)) return; // deja folosit în alt rând
+            const opt      = document.createElement("option");
+            opt.value      = f.name;
+            const label    = f.label || f.shortName || f.name;
+            const pageInfo = f.page ? ` (p.${f.page})` : "";
+            opt.textContent = label + pageInfo;
+            opt.title      = f.name;
+            sel.appendChild(opt);
+          });
+          // Restaurăm selecția curentă
+          if (prevVal) {
+            // Adăugăm înapoi opțiunea proprie dacă a dispărut
+            if (![...sel.options].some(o => o.value === prevVal)) {
+              const f   = _detectedAncoreFields.find(f => f.name === prevVal);
+              const opt = document.createElement("option");
+              opt.value = prevVal;
+              opt.textContent = (f ? (f.label || f.shortName || f.name) : prevVal);
+              sel.appendChild(opt);
+            }
+            sel.value = prevVal;
+          }
+        });
+      }
+
+      function getUsedEmails(currentSel) {
+        const used = new Set();
+        tbody.querySelectorAll('.name-select').forEach(s => {
+          if (s === currentSel) return;
+          const opt = s.options[s.selectedIndex];
+          if (opt && opt.dataset.email) used.add(opt.dataset.email);
+        });
+        return used;
+      }
+
+      function populateSelectGlobal(sel) {
+        while (sel.options.length > 1) sel.remove(1);
+        const usedEmails = getUsedEmails(sel);
+        (window._dbUsers || []).forEach(u => {
+          if (usedEmails.has(u.email || '')) return;
+          const opt = document.createElement("option");
+          opt.value = u.nume || "";
+          opt.dataset.email = u.email || "";
+          opt.dataset.functie = u.functie || "";
+          opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
+          sel.appendChild(opt);
+        });
+      }
+
+
+      function refreshAllDropdowns() {
+        tbody.querySelectorAll(".name-select").forEach(sel => {
+          const currentEmail = (sel.options[sel.selectedIndex] || {}).dataset?.email || "";
+          const currentValue = sel.value;
+          populateSelectGlobal(sel);
+          if (currentValue && currentEmail) {
+            const restored = [...sel.options].find(o => o.dataset.email === currentEmail);
+            if (restored) sel.value = restored.value;
+            else sel.value = "";
+          }
+        });
+      }
+
+      function signerRowTemplate(s = {}) {
+        const tr = document.createElement("tr");
+        tr.setAttribute("draggable", "true");
+        tr.innerHTML = `
+          <td style="cursor:grab; text-align:center; color:rgba(255,255,255,.35); user-select:none; font-size:18px;" class="dragHandle">⠿</td>
+          <td>
+            <select class="rol">
+              <option value="ÎNTOCMIT">ÎNTOCMIT</option>
+              <option value="VERIFICAT">VERIFICAT</option>
+              <option value="VIZAT">VIZAT</option>
+              <option value="AVIZAT">AVIZAT</option>
+              <option value="APROBAT">APROBAT</option>
+              <option value="VIZĂ CFPP">VIZĂ CFPP</option>
+              <option value="VIZĂ JURIDICĂ">VIZĂ JURIDICĂ</option>
+              <option value="VIZĂ TEHNICĂ">VIZĂ TEHNICĂ</option>
+              <option value="VIZĂ ECONOMICĂ">VIZĂ ECONOMICĂ</option>
+              <option value="CONTROLAT">CONTROLAT</option>
+              <option value="CERTIFICAT">CERTIFICAT</option>
+              <option value="CONTRASEMNAT">CONTRASEMNAT</option>
+              <option value="ÎNSUȘIT">ÎNSUȘIT</option>
+              <option value="ASUMAT">ASUMAT</option>
+              <option value="SEMNAT">SEMNAT</option>
+              <option value="LUAT LA CUNOȘTINȚĂ">LUAT LA CUNOȘTINȚĂ</option>
+              <option value="ÎNREGISTRAT">ÎNREGISTRAT</option>
+              <option value="CONFIRMAT">CONFIRMAT</option>
+              <option value="__alt__">Alt atribut...</option>
+            </select>
+            <input class="rolCustom" type="text" placeholder="Scrie atributul (ex: AVIZAT SPECIAL)" style="display:none;" />
+          </td>
+          <td><input class="functie" placeholder="—" readonly style="opacity:.65;cursor:default;background:rgba(255,255,255,.02);" /></td>
+          <td>
+            <select class="name-select name" style="width:100%;">
+              <option value="">— Alege utilizator —</option>
+            </select>
+          </td>
+          <td class="ancore-field-col">
+            <select class="ancoreField" disabled title="Câmpul AcroForm din PDF — disponibil după detectare">
+              <option value="">— Detectează câmpuri —</option>
+            </select>
+          </td>
+          <td><button class="df-action-btn danger sm btnDel" type="button">Șterge</button></td>
+        `;
+        tr.querySelector(".rol").value = (s.rol || s.atribut || "ÎNTOCMIT");
+        tr.querySelector(".functie").value = (s.functie || "");
+        const nameSel = tr.querySelector(".name-select");
+        if (nameSel) { nameSel.value = s.name || ""; } else { tr.querySelector(".name").value = (s.name || ""); }
+        // ancoreFieldName: pre-populat dacă rândul vine dintr-un șablon sau reinițiere
+        if (s.ancoreFieldName) {
+          const afSel = tr.querySelector(".ancoreField");
+          if (afSel) {
+            // Adaugă opțiunea dacă nu există deja (câmpurile se detectează ulterior)
+            if (![...afSel.options].some(o => o.value === s.ancoreFieldName)) {
+              const opt = document.createElement("option");
+              opt.value = s.ancoreFieldName; opt.textContent = s.ancoreFieldName;
+              afSel.appendChild(opt);
+            }
+            afSel.value = s.ancoreFieldName;
+          }
+        }
+        tr.querySelector(".btnDel").addEventListener("click", () => { tr.remove(); refreshAllDropdowns?.(); });
+
+        // Auto-fill name/email from initiator fields when ÎNTOCMIT is selected
+        function syncIntocmit(sel) {
+          if (sel.value === "ÎNTOCMIT" || (sel.value === "__alt__" && tr.querySelector(".rolCustom").value.trim().toUpperCase() === "ÎNTOCMIT")) {
+            const nameEl = tr.querySelector(".name");
+            const emailEl = tr.querySelector(".email");
+            const initN = $("initName") ? $("initName").value.trim() : "";
+            const initE = $("initEmail") ? $("initEmail").value.trim() : "";
+            if (initN && !nameEl.value.trim()) nameEl.value = initN;
+            if (initE && !emailEl.value.trim()) emailEl.value = initE;
+          }
+        }
+
+        const rolSel = tr.querySelector(".rol");
+        const rolCustom = tr.querySelector(".rolCustom");
+
+        function showCustomRol() {
+          rolSel.style.display = "none";
+          rolCustom.style.display = "block";
+          rolCustom.focus();
+        }
+        function hideCustomRol() {
+          rolCustom.style.display = "none";
+          rolCustom.value = "";
+          rolSel.style.display = "block";
+        }
+
+        rolSel.addEventListener("change", () => {
+          if (rolSel.value === "__alt__") {
+            showCustomRol();
+          }
+          syncIntocmit(rolSel);
+          updateIntocmitVisibility();
+        });
+
+        // On init, sync if pre-set to ÎNTOCMIT
+        setTimeout(() => { syncIntocmit(rolSel); }, 0);
+
+        rolCustom.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            rolSel.value = "ÎNTOCMIT";
+            hideCustomRol();
+          }
+        });
+
+        // Small "x" to go back to select - handled via placeholder hint
+        // If loading existing custom value
+        if (s.rol && !rolSel.querySelector(`option[value="${s.rol}"]`)) {
+          rolSel.value = "__alt__";
+          showCustomRol();
+          rolCustom.value = s.rol;
+        }
+
+        // Dropdown useri din DB
+        const nameSelect   = tr.querySelector(".name-select");
+        const emailInput   = tr.querySelector(".email");
+        const functieInput = tr.querySelector(".functie");
+
+        if (nameSelect) {
+          populateSelectGlobal(nameSelect);
+
+          nameSelect.addEventListener("change", () => {
+            const opt = nameSelect.options[nameSelect.selectedIndex];
+            if (opt && opt.value) {
+              if (emailInput)   { emailInput.value   = opt.dataset.email   || ""; emailInput.readOnly   = true; emailInput.style.opacity   = ".7"; emailInput.style.cursor   = "default"; }
+              if (functieInput) { functieInput.value = opt.dataset.functie || ""; functieInput.readOnly = true; functieInput.style.opacity = ".7"; functieInput.style.cursor = "default"; }
+            } else {
+              if (emailInput)   { emailInput.value   = ""; emailInput.readOnly   = false; emailInput.style.opacity   = "1"; emailInput.style.cursor = ""; }
+              if (functieInput) { functieInput.value = ""; functieInput.readOnly = false; functieInput.style.opacity = "1"; functieInput.style.cursor = ""; }
+            }
+            refreshAllDropdowns();
+            validateForm();
+          });
+        }
+
+        // Pre-selectează dacă s are email (ex: ÎNTOCMIT din profil)
+        if (s.email && nameSelect && window._dbUsers) {
+          const match = window._dbUsers.find(u => u.email === s.email);
+          if (match) {
+            nameSelect.value = match.nume || "";
+            if (emailInput)   { emailInput.readOnly   = true; emailInput.style.opacity   = ".7"; emailInput.style.cursor = "default"; }
+            if (functieInput && match.functie) { functieInput.readOnly = true; functieInput.style.opacity = ".7"; functieInput.style.cursor = "default"; }
+          }
+        }
+
+        attachDragEvents(tr);
+        return tr;
+      }
+
+      function setDefaults() {
+        tbody.innerHTML = "";
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI non-sensibile — OK în localStorage
+        const defaults = [
+          { rol: "ÎNTOCMIT", functie: u.functie || "Întocmit", name: u.nume || "", email: u.email || "" },
+          { rol: "VIZAT", functie: "Șef structură", name: "", email: "" },
+          { rol: "APROBAT", functie: "Conducător", name: "", email: "" },
+        ];
+        defaults.forEach(d => tbody.appendChild(signerRowTemplate(d)));
+      }
+
+      // Hide ÎNTOCMIT option from rows where a previous row already uses it
+      function updateIntocmitVisibility() {
+        const rows = [...tbody.querySelectorAll("tr")];
+        let intocmitUsed = false;
+        rows.forEach((tr) => {
+          const sel = tr.querySelector(".rol");
+          const opt = sel ? sel.querySelector('option[value="ÎNTOCMIT"]') : null;
+          if (!opt) return;
+          if (intocmitUsed) {
+            opt.style.display = "none";
+            opt.disabled = true;
+            if (sel.value === "ÎNTOCMIT") sel.value = "VIZAT";
+          } else {
+            opt.style.display = "";
+            opt.disabled = false;
+          }
+          if (sel && (sel.value === "ÎNTOCMIT" || (sel.value === "__alt__" && tr.querySelector(".rolCustom") && tr.querySelector(".rolCustom").value.trim().toUpperCase() === "ÎNTOCMIT"))) {
+            intocmitUsed = true;
+          }
+        });
+      }
+
+      // Watch for DOM changes in tbody
+      new MutationObserver(() => { updateIntocmitVisibility(); validateForm(); }).observe(tbody, { childList: true, subtree: true });
+
+      // ── Drag & drop reorder ──────────────────────────────────────────────
+      let dragSrc = null;
+
+      function onDragStart(e) {
+        dragSrc = this;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", "");
+        this.style.opacity = "0.4";
+      }
+      function onDragEnd(e) {
+        this.style.opacity = "";
+        [...tbody.querySelectorAll("tr")].forEach(r => r.classList.remove("drag-over"));
+      }
+      function onDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        [...tbody.querySelectorAll("tr")].forEach(r => r.classList.remove("drag-over"));
+        this.classList.add("drag-over");
+        return false;
+      }
+      function onDrop(e) {
+        e.stopPropagation();
+        if (dragSrc !== this) {
+          const allRows = [...tbody.querySelectorAll("tr")];
+          const srcIdx = allRows.indexOf(dragSrc);
+          const tgtIdx = allRows.indexOf(this);
+          if (srcIdx < tgtIdx) this.after(dragSrc);
+          else this.before(dragSrc);
+          updateIntocmitVisibility();
+        }
+        return false;
+      }
+
+      function attachDragEvents(tr) {
+        tr.addEventListener("dragstart", onDragStart);
+        tr.addEventListener("dragend", onDragEnd);
+        tr.addEventListener("dragover", onDragOver);
+        tr.addEventListener("drop", onDrop);
+      }
+
+      // Patch tbody MutationObserver to also attach drag events
+      new MutationObserver((muts) => {
+        muts.forEach(m => m.addedNodes.forEach(n => { if (n.tagName === "TR") attachDragEvents(n); }));
+      }).observe(tbody, { childList: true });
+
+      $("btnAdd").addEventListener("click", () => {
+        const newRow = signerRowTemplate();
+        tbody.appendChild(newRow);
+        // Dacă avem câmpuri detectate, le populăm și în rândul nou
+        if (_detectedAncoreFields.length) {
+          // Adăugăm rândul nou și apoi refreshăm toate (deduplicare automată)
+          refreshAllAncoreDropdowns();
+          const sel = newRow.querySelector(".ancoreField");
+          if (sel) {
+            sel.onchange = () => refreshAllAncoreDropdowns();
+          }
+        }
+        updateIntocmitVisibility(); validateForm();
+      });
+      $("btnDefaults").addEventListener("click", setDefaults);
+
+      // ── Sablon: aplica din sessionStorage sau deschide picker ──────────────
+      function applyTemplate(t) {
+        tbody.innerHTML = "";
+        (t.signers || []).forEach(s => {
+          const tr = signerRowTemplate({
+            rol: s.atribut || s.rol || "ÎNTOCMIT",
+            atribut: s.atribut || s.rol || "ÎNTOCMIT",
+            functie: s.functie || "",
+            name: s.name || "",
+            email: s.email || "",
+          });
+          tbody.appendChild(tr);
+
+          // Seteaza atributul corect
+          const rolSel = tr.querySelector(".rol");
+          if (rolSel) {
+            const atrib = s.atribut || s.rol || "ÎNTOCMIT";
+            if ([...rolSel.options].some(o => o.value === atrib)) {
+              rolSel.value = atrib;
+            } else {
+              rolSel.value = "__alt__";
+              const rolCustom = tr.querySelector(".rolCustom");
+              if (rolCustom) { rolCustom.value = atrib; rolCustom.style.display = "block"; rolSel.style.display = "none"; }
+            }
+          }
+
+          // Seteaza numele in dropdown dupa ce userii sunt incarcati
+          const nameSel = tr.querySelector(".name-select");
+          const emailIn = tr.querySelector(".email");
+          const functieIn = tr.querySelector(".functie");
+          if (nameSel && s.name) {
+            // Incearca imediat
+            if ([...nameSel.options].some(o => o.value === s.name)) {
+              nameSel.value = s.name;
+            } else {
+              // Asteapta popularea dropdown-ului (max 3s)
+              const interval = setInterval(() => {
+                if ([...nameSel.options].some(o => o.value === s.name)) {
+                  nameSel.value = s.name;
+                  clearInterval(interval);
+                }
+              }, 100);
+              setTimeout(() => clearInterval(interval), 3000);
+            }
+          }
+          // Asigura functie + email
+          if (functieIn && s.functie) functieIn.value = s.functie;
+          if (emailIn && s.email) emailIn.value = s.email;
+        });
+        updateIntocmitVisibility();
+        validateForm();
+      }
+
+      // Verifica daca exista sablon din /templates via sessionStorage (ambele chei suportate)
+      const pendingTemplate = sessionStorage.getItem("applyTemplate") || sessionStorage.getItem("docflow_template");
+      if (pendingTemplate) {
+        try {
+          const t = JSON.parse(pendingTemplate);
+          sessionStorage.removeItem("applyTemplate");
+          sessionStorage.removeItem("docflow_template");
+          setTimeout(() => applyTemplate(t), 300);
+        } catch(e) {}
+      }
+
+      // Buton "Din sablon" — deschide picker inline
+      const btnFromTmpl = $("btnFromTemplate");
+      if (btnFromTmpl) {
+        btnFromTmpl.addEventListener("click", async () => {
+          // Fetch sabloane disponibile
+          btnFromTmpl.disabled = true;
+          btnFromTmpl.textContent = "⏳ Se încarcă...";
+          try {
+            const r = await _apiFetch("/api/templates", { credentials: "include" });
+            if (!r.ok) throw new Error("fetch_failed");
+            const templates = await r.json();
+            btnFromTmpl.disabled = false;
+            btnFromTmpl.textContent = "📋 Din șablon";
+            if (!templates.length) {
+              alert("Nu ai șabloane salvate. Accesează pagina Șabloane pentru a crea unul.");
+              return;
+            }
+            showTemplatePicker(templates);
+          } catch(e) {
+            btnFromTmpl.disabled = false;
+            btnFromTmpl.textContent = "📋 Din șablon";
+            alert("Eroare la încărcarea șabloanelor.");
+          }
+        });
+      }
+
+      function showTemplatePicker(templates) {
+        // Creaza picker modal simplu
+        const existing = document.getElementById("tmplPickerOverlay");
+        if (existing) existing.remove();
+        const overlay = document.createElement("div");
+        overlay.id = "tmplPickerOverlay";
+        overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px;";
+        const box = document.createElement("div");
+        box.style.cssText = "background:#0d1628;border:1px solid rgba(124,92,255,.3);border-radius:16px;padding:24px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.6);";
+        box.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <strong style="font-size:1rem;color:#eaf0ff;">📋 Alege un șablon</strong>
+            <button onclick="document.getElementById('tmplPickerOverlay').remove()" class="df-action-btn icon-only sm" aria-label="Închide"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-x"/></svg></button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${templates.map(t => `
+              <div onclick="applyPickedTemplate(${t.id})" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .15s;"
+                onmouseover="this.style.borderColor='rgba(124,92,255,.4)';this.style.background='rgba(124,92,255,.08)'"
+                onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.background='rgba(255,255,255,.04)'">
+                <div style="font-weight:700;color:#eaf0ff;margin-bottom:4px;">${t.name}</div>
+                <div style="font-size:.78rem;color:#9db0ff;">${(t.signers||[]).map(s => s.rol || s.name).filter(Boolean).join(' → ')}</div>
+                ${!t.isOwner ? '<div style="font-size:.72rem;color:#2dd4bf;margin-top:3px;">🏛️ Partajat în instituție</div>' : ''}
+              </div>`).join("")}
+          </div>
+          <div style="margin-top:14px;text-align:right;">
+            <a href="/templates" style="font-size:.8rem;color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.1);padding:6px 12px;border-radius:8px;">⚙ Gestionează șabloane</a>
+          </div>`;
+        overlay.appendChild(box);
+        overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+        document.body.appendChild(overlay);
+        // Expune functia global
+        window._pickerTemplates = templates;
+      }
+
+      window.applyPickedTemplate = function(id) {
+        const t = (window._pickerTemplates || []).find(x => x.id === id);
+        if (t) applyTemplate(t);
+        const overlay = document.getElementById("tmplPickerOverlay");
+        if (overlay) overlay.remove();
+      };
+
+      // -------------------- Fluxuri mele --------------------
+
+      function autoFillFromProfile() {
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}"); // date UI non-sensibile — OK în localStorage
+        if (!u.email) return;
+        const nameEl = $("initName");
+        const emailEl = $("initEmail");
+        const instEl = $("initInstitutie");
+        const functieEl = $("initFunctie");
+        const compartEl = $("initCompartiment");
+        if (nameEl && u.nume) { nameEl.value = u.nume; nameEl.readOnly = true; nameEl.style.opacity = ".7"; nameEl.style.cursor = "default"; }
+        if (emailEl && u.email) { emailEl.value = u.email; emailEl.readOnly = true; emailEl.style.opacity = ".7"; emailEl.style.cursor = "default"; }
+        if (instEl && u.institutie) { instEl.value = u.institutie; instEl.title = u.institutie; }
+        if (functieEl && u.functie) { functieEl.value = u.functie; functieEl.title = u.functie; }
+        if (compartEl && u.compartiment) { compartEl.value = u.compartiment; compartEl.title = u.compartiment; }
+        const tbody2 = document.getElementById("signersTbody");
+        if (!tbody2) return;
+        tbody2.querySelectorAll("tr").forEach(tr => {
+          const rol = tr.querySelector(".rol");
+          if (!rol) return;
+          const rolVal = rol.value === "__alt__"
+            ? (tr.querySelector(".rolCustom")?.value || "").trim().toUpperCase()
+            : rol.value;
+          if (rolVal === "ÎNTOCMIT") {
+            const sel = tr.querySelector(".name-select");
+            const e = tr.querySelector(".email");
+            const f = tr.querySelector(".functie");
+            if (sel && u.nume) {
+              // Selectează userul logat dacă există în dropdown
+              const matchOpt = [...sel.options].find(o => o.value === u.nume);
+              if (matchOpt) {
+                sel.value = u.nume;
+                if (e && u.email) { e.value = u.email; e.readOnly = true; e.style.opacity = ".7"; e.style.cursor = "default"; }
+                if (f && u.functie) { f.value = u.functie; f.readOnly = true; f.style.opacity = ".7"; f.style.cursor = "default"; }
+              } else if (!sel.value) {
+                // Dacă userul nu e în dropdown (admin sau altă institutie), adaugă-l temporar
+                const tempOpt = document.createElement("option");
+                tempOpt.value = u.nume;
+                tempOpt.dataset.email = u.email || "";
+                tempOpt.dataset.functie = u.functie || "";
+                tempOpt.textContent = u.nume + (u.functie ? " — " + u.functie : "");
+                sel.insertBefore(tempOpt, sel.options[1]);
+                sel.value = u.nume;
+                if (e && u.email) { e.value = u.email; e.readOnly = true; e.style.opacity = ".7"; e.style.cursor = "default"; }
+                if (f && u.functie) { f.value = u.functie; f.readOnly = true; f.style.opacity = ".7"; f.style.cursor = "default"; }
+              }
+            }
+          }
+        });
+        validateForm();
+      }
+
+      let _allFlows = [];
+
+      // b233: map provider → label + icon pentru badge în mini-timeline
+      const _PROVIDER_BADGE = {
+        'local-upload': { icon: '💻', label: 'Upload local', color: 'rgba(157,176,255,.8)',   bg: 'rgba(157,176,255,.12)', border: 'rgba(157,176,255,.3)' },
+        'sts-cloud':    { icon: '🏛️', label: 'STS Cloud',    color: 'rgba(45,212,191,.9)',    bg: 'rgba(45,212,191,.12)',  border: 'rgba(45,212,191,.3)' },
+        'certsign':     { icon: '🔐', label: 'certSIGN',     color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
+        'transsped':    { icon: '🔐', label: 'Trans Sped',   color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
+        'alfatrust':    { icon: '🔐', label: 'AlfaTrust',    color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
+        'namirial':     { icon: '🔐', label: 'Namirial',     color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
+      };
+      function _providerBadgeHtml(providerId) {
+        const p = _PROVIDER_BADGE[providerId] || { icon: '🔏', label: providerId || 'Semnătură', color: 'rgba(234,240,255,.5)', bg: 'rgba(255,255,255,.06)', border: 'rgba(255,255,255,.15)' };
+        return `<div style="margin-top:3px;display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:20px;font-size:.68rem;font-weight:600;background:${p.bg};border:1px solid ${p.border};color:${p.color};">${p.icon} ${p.label}</div>`;
+      }
+
+      function renderFluxuri(flows) {
+        // Helper: badge provider semnare
+        function providerBadge(f) {
+          // Determinam providerul efectiv din signatarii care au semnat
+          // IMPORTANT: fallback = 'local-upload', NU orgDefaultProvider
+          // orgDefaultProvider e ce e configurat in org, nu neaparat cum s-a semnat
+          const usedProvider = (f.signers || [])
+            .filter(s => s.signingProvider)
+            .map(s => s.signingProvider)
+            .find(Boolean) || 'local-upload';
+          const PROV = {
+            'sts-cloud':    { icon: '🏛️', label: 'STS Cloud QES', color: 'rgba(45,212,191,.15)', border: 'rgba(45,212,191,.35)', text: '#7cf0e0' },
+            'certsign':     { icon: '🔐', label: 'certSIGN Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
+            'transsped':    { icon: '🔐', label: 'Trans Sped Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
+            'alfatrust':    { icon: '🔐', label: 'AlfaTrust Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
+            'namirial':     { icon: '🔐', label: 'Namirial Cloud', color: 'rgba(124,92,255,.12)', border: 'rgba(124,92,255,.35)', text: '#b39dff' },
+            'local-upload': { icon: '⬆️', label: 'Upload local', color: 'rgba(255,200,50,.1)', border: 'rgba(255,200,50,.3)', text: '#ffd580' },
+          };
+          const p = PROV[usedProvider] || PROV['local-upload'];
+          return `<span title="Metodă semnare: ${p.label}" style="background:${p.color};border:1px solid ${p.border};color:${p.text};padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;">${p.icon} ${p.label}</span>`;
+        }
+        const el = $("fluxuriContent");
+        if (!el) return;
+        if (!flows.length) {
+          el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
+          return;
+        }
+        // SEC-01: descărcarea PDF se face cu cookie auth — nu mai punem token în URL
+      const dlToken = ""; // unused — cookie trimis automat cu credentials: include
+        const currentUserEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
+        el.innerHTML = flows.map(f => {
+          const dt = new Date(f.createdAt).toLocaleString("ro-RO", {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+          const allSigned = f.allSigned;
+          const isRefused = (f.signers || []).some(s => s.status === "refused");
+          const refusedByAprobat = (f.signers || []).some(s => s.status === "refused" && (s.rol || "").toUpperCase() === "APROBAT");
+          const refusedByInitiator = (f.signers || []).some(s => s.status === "refused" && (s.email || "").toLowerCase() === (f.initEmail || "").toLowerCase());
+          const isCancelled = f.status === "cancelled";
+          const canReinitiate = isRefused && !refusedByAprobat && !refusedByInitiator && !f.reinitiatedAs;
+          const isReviewRequested = f.status === "review_requested";
+          const isUrgent = !!(f.urgent);
+          // Verifica daca userul curent trebuie sa semneze
+          const mySignerEntry = (f.signers || []).find(s => (s.email || "").toLowerCase() === currentUserEmail && s.status === "current");
+          // Verifica daca userul a trimis spre revizuire sau a semnat deja cand s-a cerut revizuire
+          const myReviewEntry = isReviewRequested && (
+            (f.reviewRequestedBy || "").toLowerCase() === currentUserEmail ||
+            (f.initEmail || "").toLowerCase() === currentUserEmail ||
+            (f.signers || []).some(s => (s.email||"").toLowerCase() === currentUserEmail && s.status === "signed")
+          );
+          const statusBadge = isCancelled
+            ? '<span style="background:rgba(150,150,150,.15);color:#aaaaaa;border:1px solid rgba(150,150,150,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">🚫 Anulat</span>'
+            : isReviewRequested
+            ? '<span style="background:rgba(250,180,0,.15);color:#ffd580;border:1px solid rgba(250,180,0,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">🔄 Spre revizuire</span>'
+            : isRefused
+            ? '<span style="background:rgba(255,80,80,.15);color:#ffaaaa;border:1px solid rgba(255,80,80,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⛔ Refuzat</span>'
+            : allSigned
+            ? '<span style="background:rgba(45,212,191,.2);color:#7cf0e0;border:1px solid rgba(45,212,191,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">✓ Finalizat</span>'
+            : '<span style="background:rgba(255,180,50,.15);color:#ffd580;border:1px solid rgba(255,180,50,.3);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;">⏳ În curs</span>';
+          // E — b97: mini-timeline orizontal în loc de lista plată de semnatari
+          const isFlowRefused = f.signers.some(s => s.status === 'refused');
+          const _mtlSteps = f.signers.map(s => {
+            const isCancelled = (isFlowRefused && s.status === 'pending') || s.status === 'cancelled';
+            const st = s.status;
+            const cls = st==='signed' ? 'ms-done' : st==='current' ? 'ms-active' : st==='refused' ? 'ms-bad' : isCancelled ? 'ms-bad' : '';
+            const icon = st==='signed' ? '✅' : st==='refused' ? '⛔' : st==='current' ? '✍️' : isCancelled ? '🚫' : '⏸';
+            const nameShort = (s.name||'—').split(' ').slice(0,2).join(' ');
+            // Data relevantă per stare — afișată sub nume
+            // refusedAt vine acum din backend; cancelledAt per semnatar nu există —
+            // folosim f.cancelledAt (nivel flux) ca fallback pentru semnatarii anulați
+            const _tsRaw = st==='signed'   ? (s.signedAt  || null)
+                         : st==='refused'  ? (s.refusedAt || null)
+                         : st==='current'  ? (s.notifiedAt || null)
+                         : isCancelled     ? (f.cancelledAt || null)
+                         : null;
+            const ts = _tsRaw ? new Date(_tsRaw).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+            const rolTip = s.rol ? ` [${s.rol}]` : '';
+            const delegTip = s.delegatedFrom ? ` 👥 delegat de ${s.delegatedFrom.name||s.delegatedFrom.email}` : '';
+            const refuzTip = st==='refused' && s.refuseReason ? `\nMotiv: ${s.refuseReason}` : '';
+            const tipText = `${s.name||''}${rolTip}${delegTip}${refuzTip}`.replace(/"/g,'&quot;');
+            // Provider: dacă a semnat deja → signingProvider real; altfel → default org
+            const _prov = s.signingProvider || (st === 'current' || st === 'pending' ? (f.orgDefaultProvider || 'local-upload') : null);
+            const _provBadge = _prov ? _providerBadgeHtml(_prov) : '';
+            return `<div class="mtl-step ${cls}" title="${tipText}">
+              <div class="mtl-dot">${icon}</div>
+              <div class="mtl-name">${esc(nameShort)}</div>
+              ${ts ? `<div class="mtl-ts">${ts}</div>` : ''}
+              ${_provBadge}
+            </div>`;
+          });
+          // Pas final: flux finalizat / stare finală + timestamp
+          const _finalCls   = f.completed ? 'ms-done' : isFlowRefused ? 'ms-bad' : f.status==='cancelled' ? 'ms-bad' : '';
+          const _finalIcon  = f.completed ? '🏁' : isFlowRefused ? '⛔' : f.status==='cancelled' ? '🚫' : '🏁';
+          const _finalLabel = f.completed ? 'Finalizat' : isFlowRefused ? 'Refuzat' : f.status==='cancelled' ? 'Anulat' : 'Final';
+          const _finalColor = f.completed ? 'rgba(38,208,124,.65)' : (isFlowRefused||f.status==='cancelled') ? 'rgba(255,100,110,.6)' : 'rgba(234,240,255,.25)';
+          const _finalTsRaw = f.completedAt || f.refusedAt || f.cancelledAt || null;
+          const _finalTs    = _finalTsRaw ? new Date(_finalTsRaw).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+          // Cine a anulat (dacă există) — afișat ca sub-text sub 'Anulat'
+          const _finalByRaw = f.status==='cancelled' ? (f.cancelledBy || null) : null;
+          const _finalBy    = _finalByRaw ? (_finalByRaw.split('@')[0]) : '';
+          _mtlSteps.push(`<div class="mtl-step ${_finalCls}"><div class="mtl-dot">${_finalIcon}</div><div class="mtl-name" style="color:${_finalColor};">${_finalLabel}</div>${_finalBy ? `<div class="mtl-ts" style="max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_finalBy)}</div>` : ''}${_finalTs ? `<div class="mtl-ts">${_finalTs}</div>` : ''}</div>`);
+          const signerRows = `<div class="mtl">${_mtlSteps.join('')}</div>`;
+          const finalStatuses = ["completed", "done", "finalizat", "finished", "complete"];
+          const successFinal = !!(f.allSigned && !isRefused && !isReviewRequested && !isCancelled);
+          const pdfReady = !!(successFinal && (f.hasSignedPdf || f.completed || finalStatuses.includes(String(f.status || "").toLowerCase())));
+          // Salvăm datele fluxului pentru modalul de email (stocăm orice flux finalizat)
+          if (successFinal || pdfReady) { window._flowsEmailData = window._flowsEmailData || {}; window._flowsEmailData[f.flowId] = f; }
+          const dlBtn = pdfReady
+            ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" class="df-action-btn primary"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-download"/></svg>PDF semnat</a>
+               <button onclick="downloadTrustReportInit('${f.flowId}', this)" class="df-action-btn"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-file-text"/></svg>Raport conformitate</button>`
+            : successFinal
+            ? `<span style="color:var(--warn);font-size:.8rem;">⏳ Se procesează PDF...</span>`
+            : isReviewRequested
+            ? `<span style="color:#ffd580;font-size:.8rem;">🔄 În revizuire</span>`
+            : isRefused
+            ? `<span style="color:#ffaaaa;font-size:.8rem;">⛔ Finalizare fără succes</span>`
+            : isCancelled
+            ? `<span style="color:#aaaaaa;font-size:.8rem;">🚫 Flux anulat</span>`
+            : `<span style="color:var(--muted);font-size:.8rem;">Nesemnat complet</span>`;
+          return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
+              <div>
+                <div style="font-weight:700;font-size:.95rem;margin-bottom:4px;">${esc(f.docName)}</div>
+                <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; ${f.flowType === 'ancore' ? '<span title="PDF cu ancore existente — fără tabel generat" style="color:#7cf0e0;font-weight:600;">⚓ Ancore</span>' : '<span title="PDF cu tabel generat de DocFlowAI" style="color:#b39dff;font-weight:600;">📋 Tabel</span>'} &nbsp;·&nbsp; ${providerBadge(f)} &nbsp;·&nbsp; Inițiator: ${esc(f.initName || f.initEmail)} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span>${f.parentFlowId ? ` &nbsp;·&nbsp; <a href="/flow.html?flow=${encodeURIComponent(f.parentFlowId)}" style="color:#ffd580;font-size:.76rem;text-decoration:underline;" title="Flux reinițiat după refuz — vezi fluxul anterior">🔁 Reinițiat din ${f.parentFlowId}</a>` : ''}</div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                ${isUrgent ? '<span style="background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>' : ''}
+                ${statusBadge}
+                <span id="emailBadge_${f.flowId}" style="display:none;"></span>
+                ${!isCancelled && mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" class="df-action-btn cta sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-pen-tool"/></svg>Semnează</button>` : ''}
+                <a href="/flow.html?flow=${f.flowId}" class="df-action-btn"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-search"/></svg>Vezi flow</a>
+                ${!isCancelled ? dlBtn : ''}
+                ${pdfReady ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-mail"/></svg>Trimite</button>` : ''}
+                ${!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-refresh"/></svg>Reinițiază</button>` : ''}
+                ${refusedByAprobat && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<span style="color:#ffaaaa;font-size:.78rem;font-weight:600;">⛔ Refuzat de APROBATOR — flux nou necesar</span>` : ''}
+                ${!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-upload"/></svg>Doc revizuit</button>` : ''}
+                ${!isCancelled && ((f.initEmail||'').toLowerCase() === currentUserEmail || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'admin' || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'org_admin') && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn danger icon-only sm" title="Șterge flux" aria-label="Șterge flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-trash"/></svg></button>` : ''}
+                ${!isCancelled && (!isRefused || canReinitiate) && !f.allSigned && !f.completed && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn sm" title="Anulează flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-ban"/></svg>Anulează</button>` : ''}
+              </div>
+            </div>
+            <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
+              ${signerRows}
+            </div>
+            <div id="attRow_${f.flowId}" style="display:none;border-top:1px solid rgba(255,255,255,.04);padding-top:8px;margin-top:6px;"></div>
+          </div>`;
+        }).join("");
+
+        // F-07: Fetch asincron statistici email extern pentru fluxurile vizibile
+        flows.forEach(f => {
+          const badge = document.getElementById(`emailBadge_${f.flowId}`);
+          if (!badge) return;
+          _apiFetch(`/flows/${encodeURIComponent(f.flowId)}/email-stats`)
+            .then(r => r.ok ? r.json() : null)
+            .then(j => {
+              if (!j || j.sent === 0) return;
+              const sentStr = j.sent === 1 ? '1 email trimis' : `${j.sent} emailuri trimise`;
+              const openedPart = j.opened > 0
+                ? `<span style="color:#a3e6a3;" title="Număr deschideri tracking pixel (estimativ)"> · ${j.opened} deschis${j.opened > 1 ? 'e' : ''}</span>`
+                : '';
+              const lastAt = j.lastSentAt
+                ? new Date(j.lastSentAt).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+                : '';
+              badge.style.display = '';
+              badge.innerHTML = `<span title="Email extern trimis${lastAt ? ' la ' + lastAt : ''}" style="background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);color:#7cf0e0;padding:2px 9px;border-radius:20px;font-size:.73rem;font-weight:600;white-space:nowrap;">✉️ ${sentStr}${openedPart}</span>`;
+            }).catch(() => {});
+        });
+        flows.forEach(f => {
+          _apiFetch(`/flows/${encodeURIComponent(f.flowId)}/attachments`).then(r => r.ok ? r.json() : null).then(j => {
+            const atts = j?.attachments || [];
+            const row = document.getElementById(`attRow_${f.flowId}`);
+            if (!row || !atts.length) return;
+            const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
+            row.style.display = '';
+            row.innerHTML = `<div style="font-size:.78rem;color:var(--muted);font-weight:600;margin-bottom:5px;">📎 Documente suport</div>` +
+              atts.map(a => `<a href="/flows/${encodeURIComponent(f.flowId)}/attachments/${a.id}" download="${a.filename.replace(/"/g,'')}"
+                style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:rgba(124,92,255,.1);border-radius:6px;text-decoration:none;color:#b39dff;font-size:.78rem;margin-right:6px;margin-bottom:4px;border:1px solid rgba(124,92,255,.2);">
+                ${iconByMime(a.mimeType)} ${a.filename} <span style="color:var(--muted)">${(a.sizeBytes/1024).toFixed(0)}KB</span> ⬇</a>`
+              ).join('');
+          }).catch(() => {});
+        });
+      }
+
+
+      async function reinitiateFlow(flowId, docName) {
+  if (!confirm("Reiniciezi fluxul de semnare pentru:\n" + docName + "\n\nSemnatarul care a refuzat va fi eliminat iar semnatarii ramasi vor fi notificati.")) return;
+  try {
+    const r = await _apiFetch("/flows/" + encodeURIComponent(flowId) + "/reinitiate", { method: "POST" });
+    const j = await r.json();
+    if (j.ok) {
+      alert("✅ Flux reinitiat! ID nou: " + j.newFlowId + "\nSemnatarii ramasi (" + j.signers + ") au fost notificati.");
+      loadMyFlows(_fluxPage);
+    } else {
+      alert("❌ " + (j.message || j.error || "Eroare la reinitiere"));
+    }
+  } catch(e) { alert("❌ " + e.message); }
+}
+
+// Modal incarcare document revizuit — cu verificare hash document original
+let _reviewUploadFlowId = null;
+function showReviewUploadModal(flowId) {
+  _reviewUploadFlowId = flowId;
+  document.getElementById("reviewUploadModal").style.display = "flex";
+  document.getElementById("reviewUploadFile").value = "";
+  document.getElementById("reviewUploadMsg").textContent = "";
+}
+function closeReviewUploadModal() {
+  document.getElementById("reviewUploadModal").style.display = "none";
+  _reviewUploadFlowId = null;
+}
+async function submitReviewUpload() {
+  const fileInp = document.getElementById("reviewUploadFile");
+  const msgEl = document.getElementById("reviewUploadMsg");
+  if (!fileInp.files[0]) { msgEl.textContent = "⚠️ Selectează un fișier PDF."; return; }
+  const file = fileInp.files[0];
+  if (!file.type.includes("pdf") && !file.name.endsWith(".pdf")) { msgEl.textContent = "⚠️ Selectează un fișier PDF valid."; return; }
+  msgEl.textContent = "⏳ Se procesează...";
+  try {
+    const pdfB64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(",")[1]);
+      r.onerror = () => rej(new Error("Eroare citire fișier"));
+      r.readAsDataURL(file);
+    });
+    const resp = await _apiFetch("/flows/" + encodeURIComponent(_reviewUploadFlowId) + "/reinitiate-review", {
+      method: "POST", body: JSON.stringify({ pdfB64 })
+    });
+    const j = await resp.json();
+    if (j.ok) {
+      closeReviewUploadModal();
+      alert("✅ Document revizuit trimis! Fluxul a fost repornit (runda " + (j.round||1) + "). Semnatarii au fost notificați.");
+      loadMyFlows(_fluxPage);
+    } else {
+      msgEl.textContent = "❌ " + (j.message || j.error || "Eroare");
+    }
+  } catch(e) { msgEl.textContent = "❌ " + e.message; }
+}
+
+async function deleteFlow(flowId, docName) {
+  if (!confirm("Stergi definitiv fluxul:\n" + docName + "\n\nAceasta actiune este ireversibila.")) return;
+  try {
+    const r = await _apiFetch("/flows/" + encodeURIComponent(flowId), { method: "DELETE" });
+    const j = await r.json();
+    if (j.ok) {
+      loadMyFlows(_fluxPage);
+    } else {
+      alert("❌ " + (j.message || j.error || "Eroare la stergere"));
+    }
+  } catch(e) { alert("❌ " + e.message); }
+}
+
+async function cancelFlow(flowId, docName) {
+  const reason = prompt("Motiv anulare flux:\n" + docName + "\n\n(opțional)");
+  if (reason === null) return; // user a apăsat Cancel
+  try {
+    const r = await _apiFetch("/flows/" + encodeURIComponent(flowId) + "/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason.trim() })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      loadMyFlows(_fluxPage);
+    } else {
+      alert("❌ " + (j.message || j.error || "Eroare la anulare"));
+    }
+  } catch(e) { alert("❌ " + e.message); }
+}
+
+async function signFromFluxuri(flowId) {
+        // SEC-01: token din cookie HttpOnly — eliminat token
+        try {
+          const r = await _apiFetch(`/api/my-signer-token/${encodeURIComponent(flowId)}`);
+          if (!r.ok) { alert("Nu s-a putut obține token-ul de semnare. Încearcă din nou."); return; }
+          const j = await r.json();
+          if (!j.token) { alert("Token de semnare indisponibil."); return; }
+          location.href = `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(j.token)}`;
+        } catch(e) {
+          alert("Eroare la obținerea token-ului: " + e.message);
+        }
+      }
+
+      let _fluxPage = 1;
+      let _fluxDebounce = null;
+
+
+      async function downloadTrustReportInit(flowId, btn) {
+        if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+        try {
+          const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report?force=1`);
+          if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j?.message || `Eroare ${r.status}`); }
+          const blob = await r.blob();
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement('a');
+          a.href = url; a.download = `TrustReport_${flowId}.pdf`;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch(e) { alert('❌ Eroare raport: ' + e.message); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = '📜 Raport conformitate'; } }
+      }
+      function debounceLoadFlows() {
+        clearTimeout(_fluxDebounce);
+        _fluxDebounce = setTimeout(() => loadMyFlows(1), 350);
+      }
+
+      function hardResetFluxSearch() {
+        const inp = $("fluxSearch");
+        if (!inp) return;
+        inp.value = "";
+        inp.setAttribute("value", "");
+        inp.defaultValue = "";
+        inp._userTyped = false;
+      }
+
+      // filterFluxuri pastrat pentru compatibilitate dar nu mai face filtrare locala
+      function filterFluxuri(q) { debounceLoadFlows(); }
+
+      function normalizeFlowSearch(v) {
+        return String(v || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .trim();
+      }
+
+      function flowMatchesSearch(flow, term) {
+        const q = normalizeFlowSearch(term);
+        if (!q) return true;
+        const hay = [
+          flow.flowId,
+          flow.docName,
+          flow.initName,
+          flow.initEmail,
+          flow.institutie,
+          flow.compartiment,
+          ...(flow.signers || []).flatMap(s => [s.name, s.email, s.rol, s.functie, s.compartiment])
+        ].map(normalizeFlowSearch).filter(Boolean);
+        return hay.some(v => v.includes(q));
+      }
+
+      async function loadMyFlows(page) {
+        page = Math.max(1, parseInt(page) || 1);
+        _fluxPage = page;
+        const el = $("fluxuriContent");
+        if (!el) return;
+        el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:32px;"><span style="display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;"></span> Se incarca...</div>';
+        const search = ($("fluxSearch") ? $("fluxSearch").value.trim() : "");
+        const status = ($("fluxStatusFilter") ? $("fluxStatusFilter").value : "all");
+        const isClientSearch = !!search;
+        const params = new URLSearchParams({ page: isClientSearch ? 1 : page, limit: isClientSearch ? 200 : 50, status });
+        try {
+          const r = await _apiFetch("/my-flows?" + params.toString());
+          if (!r.ok) { el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare la incarcare.</div>'; return; }
+          const resp = await r.json();
+          // Suport raspuns paginat { flows, total, page, pages } si legacy array
+          const rawFlows = Array.isArray(resp) ? resp : (resp.flows || []);
+          const flows = isClientSearch ? rawFlows.filter(f => flowMatchesSearch(f, search)) : rawFlows;
+          const total = isClientSearch ? flows.length : (resp.total || flows.length);
+          const pages = isClientSearch ? 1 : (resp.pages || 1);
+          _allFlows = flows;
+          if (!flows.length) {
+            el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
+            const pg = $("fluxPagination"); if (pg) pg.style.display = "none";
+            const counter = $("fluxCounter");
+            if (counter) { counter.textContent = "0 fluxuri"; counter.style.display = ""; counter.style.color = "rgba(234,240,255,.4)"; }
+            return;
+          }
+          renderFluxuri(flows);
+          // Actualizăm contorul din header
+          const counter = $("fluxCounter");
+          if (counter) {
+            const filterVal = $("fluxStatusFilter")?.value || "all";
+            const searchVal = $("fluxSearch")?.value?.trim() || "";
+            const isFiltered = filterVal !== "all" || searchVal;
+            counter.style.display = "";
+            if (isFiltered) {
+              const filterLabel = {
+                "pending": "În curs", "completed": "Finalizate",
+                "refused": "Refuzate", "cancelled": "Anulate", "to_sign": "De semnat", "all": ""
+              }[filterVal] || filterVal;
+              counter.textContent = `${total} ${total === 1 ? "flux" : "fluxuri"}${filterLabel ? " · " + filterLabel : ""}`;
+              counter.style.background = "rgba(124,92,255,.15)";
+              counter.style.borderColor = "rgba(124,92,255,.3)";
+              counter.style.color = "#c4b5ff";
+            } else {
+              counter.textContent = `${total} ${total === 1 ? "flux" : "fluxuri"}`;
+              counter.style.background = "rgba(255,255,255,.06)";
+              counter.style.borderColor = "rgba(255,255,255,.12)";
+              counter.style.color = "rgba(234,240,255,.5)";
+            }
+          }
+          // Actualizeaza paginarea
+          const pg = $("fluxPagination");
+          if (pg) {
+            pg.style.display = (!isClientSearch && pages > 1) ? "flex" : "none";
+            const info = $("fluxPageInfo");
+            if (info) info.textContent = isClientSearch
+              ? (total + " fluxuri găsite")
+              : ("Pagina " + page + " din " + pages + " (" + total + " fluxuri)");
+            const prev = $("fluxPrevBtn"); if (prev) prev.disabled = isClientSearch || page <= 1;
+            const next = $("fluxNextBtn"); if (next) next.disabled = isClientSearch || page >= pages;
+          }
+        } catch(e) {
+          el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare de retea.</div>';
+        }
+      }
+
+            // Încarcă userii din DB pentru dropdown-ul de semnatari
+      // Anti-autocomplete: goliți forțat câmpul la încărcare / revenire în pagină
+      document.addEventListener("DOMContentLoaded", () => {
+        hardResetFluxSearch();
+        setTimeout(hardResetFluxSearch, 50);
+        setTimeout(hardResetFluxSearch, 250);
+      });
+      window.addEventListener("pageshow", () => {
+        hardResetFluxSearch();
+        setTimeout(hardResetFluxSearch, 50);
+      });
+      window.addEventListener("focus", () => {
+        const inp = $("fluxSearch");
+        if (inp && !inp._userTyped) hardResetFluxSearch();
+      });
+
+      window._dbUsers = [];
+      (async function loadDbUsers() {
+        try {
+          const r = await _apiFetch('/users');
+          if (r.ok) {
+            window._dbUsers = await r.json();
+            // Repopulează toate dropdown-urile respectând selecțiile existente
+            refreshAllDropdowns?.();
+            // Re-sincronizează ÎNTOCMIT după ce dropdown-urile sunt populate
+            autoFillFromProfile();
+            // ALOP: aplică semnatari pre-configurați dacă există prefill în așteptare
+            if (window._alopPrefillSigners?.length) {
+              const _alTbody = $("signersTbody");
+              if (_alTbody) {
+                _alTbody.innerHTML = "";
+                window._alopPrefillSigners.forEach(s => _alTbody.appendChild(signerRowTemplate(s)));
+                refreshAllDropdowns?.();
+              }
+              window._alopPrefillSigners = null;
+            }
+          }
+        } catch(e) { console.warn("Nu s-au putut încărca userii:", e); }
+      })();
+
+      // ── Persistenta formular in sessionStorage ────────────────────────────
+      // ══════════════════════════════════════════════════════════════════════
+      // DRAFT STORE — Solutia C + IndexedDB
+      // Tab-urile raman in DOM (nu se demmonteaza), deci PDF ramane in memorie
+      // la switch intre taburi. IndexedDB pastreaza PDF-ul si la navigare
+      // externa (flow.html, templates etc.) pentru ca browserul reincarca pagina.
+      // ══════════════════════════════════════════════════════════════════════
+      const FORM_KEY = "docflow_draft";
+      const IDB_NAME = "docflowai_v1", IDB_STORE = "drafts", IDB_KEY = "pdf";
+
+      // ── IndexedDB helpers ─────────────────────────────────────────────────
+      const idb = {
+        _db: null,
+        open() {
+          if (this._db) return Promise.resolve(this._db);
+          return new Promise((res, rej) => {
+            const req = indexedDB.open(IDB_NAME, 1);
+            req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
+            req.onsuccess = e => { this._db = e.target.result; res(this._db); };
+            req.onerror = () => rej(req.error);
+          });
+        },
+        async save(val) {
+          try {
+            const db = await this.open();
+            await new Promise((r,j) => {
+              const tx = db.transaction(IDB_STORE, "readwrite");
+              tx.objectStore(IDB_STORE).put(val, IDB_KEY);
+              tx.oncomplete = r; tx.onerror = j;
+            });
+          } catch(e) { console.warn("idb.save:", e.message); }
+        },
+        async load() {
+          try {
+            const db = await this.open();
+            return await new Promise((r,j) => {
+              const tx = db.transaction(IDB_STORE, "readonly");
+              const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+              req.onsuccess = () => r(req.result ?? null);
+              req.onerror = j;
+            });
+          } catch(e) { return null; }
+        },
+        async clear() {
+          try {
+            const db = await this.open();
+            await new Promise((r,j) => {
+              const tx = db.transaction(IDB_STORE, "readwrite");
+              tx.objectStore(IDB_STORE).delete(IDB_KEY);
+              tx.oncomplete = r; tx.onerror = j;
+            });
+          } catch(e) {}
+        }
+      };
+
+      function saveFormState() {
+        try {
+          const signers = [...tbody.querySelectorAll("tr")].map(tr => {
+            const sel = tr.querySelector(".rol");
+            return {
+              rol: sel?.value || "",
+              rolCustom: tr.querySelector(".rolCustom")?.value || "",
+              functie: tr.querySelector(".functie")?.value || "",
+              name: (tr.querySelector(".name-select") || tr.querySelector(".name"))?.value || "",
+              email: tr.querySelector(".email")?.value || "",
+            };
+          });
+          sessionStorage.setItem(FORM_KEY, JSON.stringify({
+            docName: $("docName")?.value || "",
+            pdfName: $("pdfInfo")?.textContent || "",
+            flowType: getDocType(),
+            signers,
+            hasPdf: !!pdfB64,
+          }));
+        } catch(e) {}
+      }
+
+      function clearFormState() {
+        sessionStorage.removeItem(FORM_KEY);
+        idb.clear();
+      }
+
+      // Resetează tot ce ține de detecția câmpurilor ancore
+      function resetAncoreState() {
+        _detectedAncoreFields = [];
+        const detectArea = $("ancoreDetectArea");
+        if (detectArea) detectArea.style.display = "none";
+        const listEl   = $("detectedFieldsList");
+        const statusEl = $("detectStatus");
+        if (listEl)   listEl.innerHTML = "";
+        if (statusEl) statusEl.textContent = "";
+        // Resetăm și clasa de pe tabel
+        const sigTable = $("signersTbody")?.closest("table");
+        if (sigTable) sigTable.classList.remove("doctype-ancore");
+        // Resetăm toate dropdown-urile ancoreField
+        $("signersTbody")?.querySelectorAll(".ancoreField").forEach(sel => {
+          sel.innerHTML = "<option value=''>— Detectează câmpuri —</option>";
+          sel.disabled = true;
+          sel.value = "";
+        });
+      }
+
+      async function restoreFormState() {
+        try {
+          const raw = sessionStorage.getItem(FORM_KEY);
+          if (!raw) return false;
+          const state = JSON.parse(raw);
+          if (!state) return false;
+
+          // Restore docName
+          if (state.docName) $("docName").value = state.docName;
+
+          // Restore flowType
+          if (state.flowType) {
+            const radios = document.querySelectorAll("input[name='flowType']");
+            radios.forEach(r => { r.checked = (r.value === state.flowType); });
+            const checked = document.querySelector("input[name='flowType']:checked");
+            if (checked) checked.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+
+          // Restore signers (daca exista)
+          if (state.signers?.length) {
+            tbody.innerHTML = "";
+            state.signers.forEach(s => {
+              const tr = signerRowTemplate(s);
+              tbody.appendChild(tr);
+              if (s.rol === "__alt__" && s.rolCustom) {
+                const rc = tr.querySelector(".rolCustom");
+                if (rc) rc.value = s.rolCustom;
+              }
+            });
+            updateIntocmitVisibility();
+          }
+
+          // Restaureaza PDF din IndexedDB
+          if (state.hasPdf) {
+            const savedPdf = await idb.load();
+            if (savedPdf) {
+              pdfB64 = savedPdf;
+              const fname = (state.pdfName || "").replace(/^Selectat: /, "").replace(/ \(\d+ KB\)\.?$/, "");
+              setPdfInfo("✅ " + (fname || "document.pdf") + " (restaurat)");
+              const cb = $("btnClearPdf");
+              if (cb) {
+                cb.disabled = false; cb.style.opacity = "1"; cb.style.pointerEvents = "auto";
+                cb.style.cursor = "pointer"; cb.style.background = "rgba(255,80,80,.15)";
+                cb.style.borderColor = "rgba(255,80,80,.3)"; cb.style.color = "#ffaaaa";
+              }
+            } else {
+              // IDB golit (alt device, browser curatat) — cere reincarcarea
+              const fname = (state.pdfName || "").replace(/^Selectat: /, "").replace(/ \(\d+ KB\)\.?$/, "");
+              setPdfInfo("⚠️ Reîncarcă PDF-ul: " + (fname || "documentul"), true);
+            }
+          }
+
+          validateForm();
+          $("btnRenunta").style.display = "";
+          return true;
+        } catch(e) { console.warn("restoreFormState:", e); return false; }
+      }
+
+      // Auto-save la orice modificare in formular
+      document.addEventListener("input", (e) => {
+        if (e.target.closest("#viewInit")) saveFormState();
+      });
+      document.addEventListener("change", (e) => {
+        if (e.target.closest("#viewInit")) saveFormState();
+      });
+      // MutationObserver pe tbody pt add/remove randuri
+      new MutationObserver(() => saveFormState()).observe(tbody, { childList: true });
+
+      // Buton Renunta: reseteaza formularul si sterge starea
+      $("btnRenunta").addEventListener("click", () => {
+        if (!confirm("Renunți la fluxul curent? PDF-ul și semnătarii configurați vor fi șterși.")) return;
+        clearFormState();
+        resetAncoreState();
+        pdfB64 = null;
+        setPdfInfo("Nu ai selectat încă un PDF.");
+        const clearBtn = $("btnClearPdf");
+        if (clearBtn) {
+          clearBtn.disabled = true;
+          clearBtn.style.opacity = ".3";
+          clearBtn.style.pointerEvents = "none";
+          clearBtn.style.background = "";
+          clearBtn.style.borderColor = "";
+          clearBtn.style.color = "";
+        }
+        const box = $("pdfPreviewBox");
+        const cont = $("pdfPagesContainer");
+        if (box) { if(cont) cont.innerHTML = ""; box.style.display = "none"; }
+        $("docName").value = "";
+        $("pdfFile").value = "";
+        setDefaults();
+        autoFillFromProfile();
+        $("btnRenunta").style.display = "none";
+        $("createResult").textContent = "";
+        validateForm();
+      });
+
+      // Default load: restaureaza tab-ul si starea sau initializeaza implicit
+      (async () => {
+        const _savedTab = sessionStorage.getItem("docflow_tab");
+        if (_savedTab === "fluxuri") {
+          showTab("fluxuri");
+        } else {
+          showTab("init");
+        }
+        const _restored = await restoreFormState();
+        if (!_restored) {
+          setDefaults();
+        }
+        // Preluare PDF + meta din formular.html via sessionStorage (action=new_flow_prefill)
+        if (new URLSearchParams(location.search).get("action") === "new_flow_prefill") {
+          const _prePdf   = sessionStorage.getItem("docflow_prefill_pdf");
+          const _preName  = sessionStorage.getItem("docflow_prefill_name");
+          const _preEmail = sessionStorage.getItem("docflow_prefill_email");
+          if (_prePdf) {
+            pdfB64 = _prePdf;
+            if ($("docName") && _preName)   $("docName").value   = _preName;
+            if ($("initEmail") && _preEmail) $("initEmail").value = _preEmail;
+            if (typeof setPdfInfo === "function") setPdfInfo(`PDF preluat: ${_preName || "(fără nume)"}`);
+            if (typeof showAncoreDetectArea === "function") showAncoreDetectArea();
+            sessionStorage.removeItem("docflow_prefill_pdf");
+            sessionStorage.removeItem("docflow_prefill_name");
+            sessionStorage.removeItem("docflow_prefill_type");
+            sessionStorage.removeItem("docflow_prefill_email");
+          }
+        }
+      })();
+
+      // Completare automată câmpuri inițiator din profilul utilizatorului autentificat
+      autoFillFromProfile();
+
+      // Banner parolă temporară
+      (function() {
+        if (localStorage.getItem("docflow_force_pwd") === "1") {
+          const banner = document.getElementById("forcePwdBanner");
+          if (banner) banner.style.display = "block";
+        }
+      })();
+
+      // When initiator fields change, sync into any ÎNTOCMIT row
+      ["initName", "initEmail", "docName"].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener("input", () => {
+          [...tbody.querySelectorAll("tr")].forEach(tr => {
+            const sel = tr.querySelector(".rol");
+            if (sel && sel.value === "ÎNTOCMIT") {
+              if (id === "initName") { const n = tr.querySelector(".name"); if (n && !n.dataset.userEdited) n.value = el.value; }
+              if (id === "initEmail") { const e = tr.querySelector(".email"); if (e && !e.dataset.userEdited) e.value = el.value; }
+            }
+          });
+          validateForm();
+        });
+      });
+
+
+      // ── Detectare câmpuri AcroForm (flowType ancore) ─────────────────────
+      let _detectedAncoreFields = []; // cache câmpuri detectate
+
+      function showAncoreDetectArea() {
+        const area = $("ancoreDetectArea");
+        if (area) area.style.display = "";
+        // Clasă pe tabel pentru vizibilitate coloană
+        const sigTable = $("signersTbody")?.closest("table");
+        if (sigTable) sigTable.classList.add("doctype-ancore");
+      }
+
+      async function detectAncoreFields() {
+        if (!pdfB64) return;
+        const statusEl = $("detectStatus");
+        const listEl   = $("detectedFieldsList");
+        const btn      = $("btnDetectFields");
+        if (statusEl) statusEl.textContent = "⏳ Se detectează câmpurile...";
+        if (btn)      btn.disabled = true;
+        if (listEl)   listEl.innerHTML = "";
+        try {
+          const b64clean = pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64;
+          const r = await _apiFetch("/flows/detect-acroform-fields", {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ pdfB64: b64clean }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.message || j.error || "Eroare server");
+
+          _detectedAncoreFields = j.fields || [];
+
+          if (!_detectedAncoreFields.length) {
+            if (statusEl) statusEl.textContent = "⚠️ Nu s-au găsit câmpuri de semnătură în PDF.";
+            if (listEl)   listEl.innerHTML = "<span style='font-size:.78rem;color:rgba(255,200,50,.7);'>PDF-ul nu conține câmpuri de tip semnătură (AcroForm /Sig). Verificați că ați ales tipul corect de flux.</span>";
+            populateAncoreDropdowns([]);
+            return;
+          }
+
+          const xfaCount = _detectedAncoreFields.filter(f => f.source === 'xfa').length;
+          const acroCount = _detectedAncoreFields.length - xfaCount;
+          const typeInfo = xfaCount > 0 ? ` (XFA dinamic${acroCount > 0 ? ` + ${acroCount} AcroForm` : ''})` : '';
+          if (statusEl) statusEl.textContent = `✅ ${_detectedAncoreFields.length} câmp(uri) găsite${typeInfo}.`;
+
+          // Afișăm badge-uri cu câmpurile detectate
+          if (listEl) {
+            listEl.innerHTML = _detectedAncoreFields.map(f => {
+              const label = f.label || f.shortName || f.name;
+              const isXfa = f.source === 'xfa';
+              return `<span title="${f.name}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:${isXfa ? 'rgba(124,92,255,.12)' : 'rgba(45,212,191,.1)'};border:1px solid ${isXfa ? 'rgba(124,92,255,.3)' : 'rgba(45,212,191,.25)'};border-radius:12px;font-size:.77rem;color:${isXfa ? '#b39dff' : '#7cf0e0'};">
+                ${isXfa ? '✍️ ' : ''}<strong>${label}</strong>
+                ${f.page ? `<span style="color:rgba(234,240,255,.4);">· p.${f.page}</span>` : ""}
+              </span>`;
+            }).join("");
+          }
+
+          populateAncoreDropdowns(_detectedAncoreFields);
+        } catch(e) {
+          if (statusEl) statusEl.textContent = "❌ Eroare detectare: " + e.message;
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      }
+
+      function populateAncoreDropdowns(fields) {
+        // Populare inițială — toate câmpurile în toate dropdown-urile
+        const rows = [...$("signersTbody").querySelectorAll("tr")];
+        rows.forEach(tr => {
+          const sel = tr.querySelector(".ancoreField");
+          if (!sel) return;
+          const prevVal = sel.value;
+          sel.innerHTML = "<option value=''>— Alege câmpul —</option>";
+          fields.forEach(f => {
+            const opt       = document.createElement("option");
+            opt.value       = f.name;
+            const label     = f.label || f.shortName || f.name;
+            const pageInfo  = f.page ? ` (p.${f.page})` : "";
+            opt.textContent = label + pageInfo;
+            opt.title       = f.name;
+            sel.appendChild(opt);
+          });
+          if (prevVal && fields.some(f => f.name === prevVal)) sel.value = prevVal;
+          sel.disabled = fields.length === 0;
+
+          // La schimbarea selecției, actualizăm toate celelalte dropdown-uri
+          sel.onchange = () => refreshAllAncoreDropdowns();
+        });
+        // Aplicăm deduplicarea după populare
+        refreshAllAncoreDropdowns();
+      }
+
+      // Apelat din handler-ul de upload PDF (după ce pdfB64 e setat)
+      function onPdfUploadedForAncore() {
+        if (getDocType() !== "ancore") return;
+        showAncoreDetectArea();
+        detectAncoreFields();
+      }
+
+      function readSigners() {
+        const rows = [...tbody.querySelectorAll("tr")];
+        return rows.map((tr, i) => {
+          const ancoreSel = tr.querySelector(".ancoreField");
+          const ancoreFieldName = ancoreSel?.value?.trim() || null;
+          // Email citit din data-email al opțiunii selectate (nu mai avem input vizibil)
+          const nameSel2 = tr.querySelector(".name-select");
+          const emailVal = (nameSel2?.options[nameSel2?.selectedIndex]?.dataset?.email || '').trim();
+          return {
+            order: i + 1,
+            rol: (() => { const sel = tr.querySelector(".rol"); if (sel.value === "__alt__") { return tr.querySelector(".rolCustom").value.trim().toUpperCase() || "__alt__"; } return sel.value; })(),
+            functie: tr.querySelector(".functie").value.trim(),
+            name: (tr.querySelector(".name-select") || tr.querySelector(".name"))?.value?.trim() || "",
+            email: emailVal,
+            // ancoreFieldName: câmpul AcroForm — prezent doar pentru flowType='ancore'
+            ...(ancoreFieldName ? { ancoreFieldName } : {}),
+          };
+        }).filter(s => s.rol && (s.name || s.email));
+      }
+
+      // Create flow
+      validateForm(); // inițializare stare buton
+      loadProviders(); // Etapa B: populează bloc "Metodă de semnare"
+      // Buton redetectare câmpuri AcroForm
+      const _btnDetectFields = $("btnDetectFields");
+      if (_btnDetectFields) _btnDetectFields.addEventListener("click", detectAncoreFields);
+
+      // ── F-06: Attachment picker ─────────────────────────────────────────
+      const _attachFiles = []; // [{file, name}]
+      const ATTACH_MAX = 5;
+      const ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+
+      function _renderAttachList() {
+        const list = $('attachList');
+        const hint = $('attachHint');
+        hint.textContent = _attachFiles.length ? `${_attachFiles.length} fișier(e) selectat(e)` : 'Niciun fișier selectat';
+        list.innerHTML = _attachFiles.map((af, i) => `
+          <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(124,92,255,.1);border-radius:6px;font-size:.8rem;">
+            <span style="color:#b39dff;">📄</span>
+            <span style="flex:1;color:var(--sub);">${af.file.name}</span>
+            <span style="color:var(--muted);">${(af.file.size/1024).toFixed(0)} KB</span>
+            <button onclick="_removeAttach(${i})" class="df-action-btn icon-only sm" title="Elimină" aria-label="Elimină"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-x"/></svg></button>
+          </div>`).join('');
+      }
+      window._removeAttach = (i) => { _attachFiles.splice(i, 1); _renderAttachList(); };
+
+      $('attachPicker').addEventListener('change', (e) => {
+        for (const f of e.target.files) {
+          if (_attachFiles.length >= ATTACH_MAX) { alert(`Maxim ${ATTACH_MAX} fișiere suport.`); break; }
+          if (f.size > ATTACH_MAX_BYTES) { alert(`„${f.name}" depășește 10 MB și nu a fost adăugat.`); continue; }
+          const ext = f.name.split('.').pop().toLowerCase();
+          if (!['pdf','zip','rar'].includes(ext)) { alert(`„${f.name}": tip nesuporten. Acceptate: PDF, ZIP, RAR.`); continue; }
+          if (_attachFiles.some(af => af.file.name === f.name && af.file.size === f.size)) continue; // skip duplicate
+          _attachFiles.push({ file: f });
+        }
+        e.target.value = ''; // reset picker
+        _renderAttachList();
+      });
+
+      async function _uploadAttachments(flowId) {
+        if (!_attachFiles.length) return;
+        for (const af of _attachFiles) {
+          try {
+            const b64 = await new Promise((res, rej) => {
+              const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(af.file);
+            });
+            const mimeByExt = { pdf: 'application/pdf', zip: 'application/zip', rar: 'application/x-rar-compressed' };
+            const ext = af.file.name.split('.').pop().toLowerCase();
+            await _apiFetch(`/flows/${encodeURIComponent(flowId)}/attachments`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: af.file.name, mimeType: mimeByExt[ext] || 'application/octet-stream', dataB64: b64 })
+            });
+          } catch(e) { console.warn('Attachment upload failed:', af.file.name, e); }
+        }
+      }
+
+      // ── Stampila flux pe ultima pagina PDF ─────────────────────────────────
+      // Footer aplicat de server la finalizare, nu la creare flux
+
+      $("btnCreate").addEventListener("click", async () => {
+        $("createResult").textContent = "Se pregătește documentul...";
+        const initNameVal = $("initName").value.trim();
+        const initEmailVal = $("initEmail").value.trim();
+        const institutieVal = $("initInstitutie")?.value?.trim() || "";
+        // Obtine functie/compartiment din profilul userului
+        const _u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        $("createResult").textContent = "Se creează...";
+
+        const payload = {
+          docName: $("docName").value.trim(),
+          initName: initNameVal,
+          initEmail: initEmailVal,
+          initInstitutie: institutieVal,
+          initFunctie: $("initFunctie")?.value?.trim() || _u.functie || '',
+          initCompartiment: $("initCompartiment")?.value?.trim() || _u.compartiment || '',
+          signers: readSigners(),
+          pdfB64: pdfB64 ? (pdfB64.includes(",") ? pdfB64.split(",")[1] : pdfB64) : null,
+          originalFileName: originalFileName || null,
+          flowType: getDocType(),
+          preferredProvider: _selectedProvider,  // Etapa B: provider ales la inițiere
+          urgent: !!($("urgentCheck")?.checked),
+          // PASUL 3: meta pentru legătura flux ↔ formulare_df/ord (dfId/ordId + docType)
+          meta: (() => {
+            const _up = new URLSearchParams(location.search);
+            const _docId = _up.get('prefill_doc_id')   || sessionStorage.getItem("docflow_prefill_doc_id");
+            const _dtype = _up.get('prefill_doc_type') || sessionStorage.getItem("docflow_prefill_doc_type");
+            if (!_docId && !_dtype) return undefined;
+            const m = {};
+            if (_docId && _dtype === 'notafd') m.dfId  = _docId;  // UUID string
+            if (_docId && _dtype === 'ordnt')  m.ordId = _docId;  // UUID string
+            if (_dtype) m.docType = _dtype;
+            return m;
+          })(),
+        };
+
+        if (!_selectedProvider) {
+          $("createResult").textContent = "❌ Alege metoda de semnare înainte de a porni fluxul.";
+          return;
+        }
+
+        try {
+          const r = await _apiFetch("/flows", {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify(payload),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j?.error || "server_error");
+
+          localStorage.setItem("lastInitName", $("initName").value.trim());
+          localStorage.setItem("lastInitEmail", $("initEmail").value.trim());
+          clearFormState(); // flux creat cu succes — sterge draft + IDB
+          resetAncoreState(); // resetează câmpurile ancore detectate
+          // Curăță meta-datele prefill din sessionStorage (doc_type după link-flow block)
+
+          // F-06: Upload documente suport (async, non-blocking pentru UX)
+          if (_attachFiles.length) {
+            $("createResult").textContent = `✅ Flux creat. Se încarcă ${_attachFiles.length} document(e) suport...`;
+            await _uploadAttachments(j.flowId);
+          }
+
+          // Citire parametri prefill + ALOP din URL (primar) sau sessionStorage (fallback)
+          const _urlParams   = new URLSearchParams(location.search);
+          const _prefDocId   = _urlParams.get('prefill_doc_id')   || sessionStorage.getItem("docflow_prefill_doc_id");
+          const _prefDocType = _urlParams.get('prefill_doc_type') || sessionStorage.getItem("docflow_prefill_doc_type");
+
+          // Auto-asociere document formular (dacă vine din prefill)
+          if (_prefDocId && _prefDocType && j.flowId) {
+            const _pfApi = _prefDocType === "ordnt" ? "/api/formulare-ord" : "/api/formulare-df";
+            try {
+              await fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
+                method: "POST", credentials: "include",
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                body: JSON.stringify({ flow_id: j.flowId })
+              });
+            } catch(_) {}
+            sessionStorage.removeItem("docflow_prefill_doc_id");
+          }
+          sessionStorage.removeItem("docflow_prefill_doc_type"); // cleanup indiferent de ramura if
+
+          // ALOP: leagă fluxul de semnare la dosarul ALOP (non-fatal)
+          const _alopId      = _urlParams.get('alop_id')        || sessionStorage.getItem('alop_id_for_flow')?.split('|')[0];
+          const _alopDocType = _urlParams.get('alop_doc_type')  || sessionStorage.getItem('alop_id_for_flow')?.split('|')[1];
+          console.log('🔍 ALOP check:', '_alopId=', _alopId, 'j.flowId=', j.flowId);
+          if (_alopId && j.flowId) {
+            const _isDfFlow = _alopDocType === "notafd";
+            try {
+              // Link document (df_id / ord_id) dacă nu e deja legat
+              if (_prefDocId) {
+                const _lnkDoc = _isDfFlow ? "link-df" : "link-ord";
+                console.log(`ALOP ${_lnkDoc}: ${_alopId} → ${_prefDocId}`);
+                await fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
+                  method: "POST", credentials: "include",
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                  body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
+                }).catch(e => console.error('❌ link-df FAILED:', e));
+              }
+              // Link fluxul de semnare
+              const _lnkFlow = _isDfFlow ? "link-df-flow" : "link-ord-flow";
+              console.log(`ALOP ${_lnkFlow}: ${_alopId} → ${j.flowId}`);
+              console.log('📤 Calling link-df-flow:', _alopId, 'flowId:', j.flowId);
+              console.log('📤 link-df-flow sending:', _alopId, j.flowId);
+              await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
+                method: "POST", credentials: "include",
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                body: JSON.stringify({ flow_id: j.flowId })
+              }).catch(e => console.error('❌ link-df-flow FAILED:', e));
+            } catch(_) {}
+            sessionStorage.removeItem("alop_id_for_flow");
+          }
+
+          // Redirect UX:
+          // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
+          // - altfel -> mergi la pagina dedicată flow (status/timeline)
+          if (j.initIsSigner) {
+            if (j.signerToken) {
+              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar — te redirecționăm la semnare...</strong>`;
+              setTimeout(() => {
+                location.href = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(j.signerToken)}&fromInit=1`;
+              }, 900);
+            } else {
+              // Fallback safe: fără token nu putem deschide semnarea direct
+              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar</strong>, dar lipsește token-ul de semnare. Te ducem la statusul fluxului.`;
+              setTimeout(() => {
+                location.href = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
+              }, 900);
+            }
+          } else {
+            $("createResult").innerHTML = `✅ Flux creat. Notificare trimisă primului semnatar. Te ducem la statusul fluxului.`;
+            setTimeout(() => {
+              location.href = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
+            }, 900);
+          }
+} catch (e) {
+          $("createResult").textContent = `❌ Eroare: ${String(e.message || e)}`;
+        }
+      });
+
+
+
+
+      // Gestioneaza parametri URL la load
+      (function handleUrlParams() {
+        const params = new URLSearchParams(location.search);
+        const flowParam = params.get("flow");
+        const tabParam = params.get("tab");
+        const actionParam = params.get("action");
+        if (flowParam) { location.replace(`/flow.html?flow=${encodeURIComponent(flowParam)}`); return; }
+        if (actionParam === "new_flow_prefill") {
+          const _pName  = sessionStorage.getItem("docflow_prefill_name");
+          const _pEmail = sessionStorage.getItem("docflow_prefill_email");
+          const _pPdf   = sessionStorage.getItem("docflow_prefill_pdf");
+          const _pType  = sessionStorage.getItem("docflow_prefill_type");
+          if (_pName  && $("docName"))   $("docName").value  = _pName;
+          if (_pEmail && $("initEmail")) $("initEmail").value = _pEmail;
+          if (_pPdf) {
+            pdfB64 = _pPdf;
+            setPdfInfo("✅ Document din formulare (prefill)");
+            setTimeout(() => renderPdfJsInit(pdfB64), 400);
+          }
+          if (_pType === "tabel") {
+            const rTabel = $("docTypeTabel");
+            if (rTabel) { rTabel.checked = true; onDocTypeChange(); }
+          }
+          sessionStorage.removeItem("docflow_prefill_name");
+          sessionStorage.removeItem("docflow_prefill_email");
+          sessionStorage.removeItem("docflow_prefill_pdf");
+          sessionStorage.removeItem("docflow_prefill_type");
+          // ALOP: stochează semnatari pentru aplicare după _dbUsers se încarcă
+          const _alopPS = sessionStorage.getItem("docflow_prefill_signers");
+          if (_alopPS) {
+            try { window._alopPrefillSigners = JSON.parse(_alopPS); } catch(_) {}
+            sessionStorage.removeItem("docflow_prefill_signers");
+          }
+          showTab("init");
+          return;
+        }
+        if (tabParam === "flows" || tabParam === "fluxuri") { showTab("fluxuri"); return; }
+        if (tabParam === "init") { showTab("init"); return; }
+      })();
+
+      // ── PDF.js renderer pentru initiator (base64 input) ───────────────────
+      async function renderPdfJsInit(b64) {
+        const container = $("pdfPagesContainer");
+        if (!container) return;
+        container.innerHTML = '<p style="color:rgba(255,255,255,.4);text-align:center;padding:40px 0;">Se incarca documentul...</p>';
+        try {
+          await new Promise((res, rej) => {
+            if (window.pdfjsLib) return res();
+            let w = 0;
+            const iv = setInterval(() => {
+              w += 150;
+              if (window.pdfjsLib) { clearInterval(iv); res(); }
+              else if (w > 6000) { clearInterval(iv); rej(new Error("PDF.js indisponibil")); }
+            }, 150);
+          });
+          const raw = b64.includes(",") ? b64.split(",")[1] : b64;
+          const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+          const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+          container.innerHTML = "";
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const vp = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement("canvas");
+            canvas.width = vp.width;
+            canvas.height = vp.height;
+            canvas.style.cssText = "display:block;width:100%;margin-bottom:8px;border-radius:6px;";
+            container.appendChild(canvas);
+            await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+          }
+        } catch(e) {
+          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + esc(e.message) + '</p>';
+        }
+      }
+      // ── End PDF.js renderer ────────────────────────────────────────────────
