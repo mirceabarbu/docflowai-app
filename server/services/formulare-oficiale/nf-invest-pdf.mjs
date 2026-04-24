@@ -6,6 +6,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { formatMoneyRO } from '../format-money.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const FONTS_DIR = join(__dir, '../../formulare/fonts');
@@ -185,7 +186,9 @@ export async function generateNfInvestPdf(formular) {
   section(3, 'Estimarea suportabilității investiției publice');
   drawText('3.1. Estimarea cheltuielilor pentru execuția obiectivului de investiții:', { font: fB, size: 10 });
   spacer(4);
-  const valoare = data.valoare_totala_mii_lei ? `${data.valoare_totala_mii_lei} mii lei` : '—';
+  const valoare = data.valoare_totala_mii_lei
+    ? `${formatMoneyRO(data.valoare_totala_mii_lei)} mii lei`
+    : '—';
   drawText(
     `Fondurile solicitate pentru anul ${data.an_program || '....'} sunt în valoare totală estimată de ${valoare}, valoarea rezultată în urma ${data.sursa_valoare || 'unei cercetări a pieței'}.`,
     { font: fR, size: 10 }

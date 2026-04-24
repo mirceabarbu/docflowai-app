@@ -4,36 +4,9 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Autentificare</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.298">
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;
-      background:radial-gradient(900px 600px at 20% 10%,rgba(124,92,255,.32),transparent 60%),
-        radial-gradient(700px 500px at 80% 85%,rgba(45,212,191,.20),transparent 55%),var(--df-bg);color:var(--df-text);}
-    .wrap{width:100%;max-width:400px;padding:20px;}
-    .card{background:rgba(15,23,49,.88);border:1px solid var(--df-border-2);border-radius:20px;
-      box-shadow:0 24px 64px rgba(0,0,0,.4);padding:44px 40px 36px;backdrop-filter:blur(14px);}
-    .logo{text-align:center;margin-bottom:34px;}
-    .logo-icon{width:52px;height:52px;border-radius:14px;margin:0 auto 12px;
-      background:linear-gradient(135deg,var(--df-brand),var(--df-teal));display:flex;align-items:center;justify-content:center;font-size:24px;}
-    .logo-name{font-size:1.5rem;font-weight:800;letter-spacing:-.03em;}
-    .logo-sub{font-size:.78rem;color:var(--df-text-3);margin-top:3px;}
-    h1{font-size:.95rem;color:var(--df-text-2);text-align:center;margin-bottom:26px;font-weight:500;}
-    label{display:block;font-size:.78rem;color:var(--df-text-3);margin:14px 0 5px;}
-    input{width:100%;padding:11px 14px;background:rgba(255,255,255,.05);border:1px solid var(--df-border-2);
-      border-radius:11px;color:var(--df-text);font-size:.95rem;outline:none;transition:border-color .2s,box-shadow .2s;}
-    input:focus{border-color:rgba(124,92,255,.6);box-shadow:0 0 0 4px rgba(124,92,255,.15);}
-    input::placeholder{color:rgba(205,216,255,.38);}
-    .btn{width:100%;padding:13px;margin-top:24px;background:linear-gradient(135deg,var(--df-brand),var(--df-teal));
-      border:none;border-radius:12px;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;transition:opacity .2s,transform .1s;}
-    .btn:hover{opacity:.88;}.btn:active{transform:scale(.98);}.btn:disabled{opacity:.4;cursor:not-allowed;}
-    .err{margin-top:14px;padding:10px 14px;border-radius:10px;background:rgba(255,80,80,.12);
-      border:1px solid rgba(255,80,80,.28);color:#ffb3b3;font-size:.86rem;display:none;}
-    .spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.25);
-      border-top-color:#fff;border-radius:50%;animation:sp .65s linear infinite;margin-right:7px;vertical-align:middle;}
-    @keyframes sp{to{transform:rotate(360deg);}}
-  </style>
-  <link rel="stylesheet" href="/mobile.css">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.332">
+  <link rel="stylesheet" href="/css/login/login.css?v=3.9.332">
+  <link rel="stylesheet" href="/mobile.css?v=3.9.332">
 </head>
 <body>
 <header style="position:fixed;top:0;left:0;width:100%;padding:10px 24px;z-index:100;background:rgba(11,16,32,.75);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;">
@@ -53,62 +26,6 @@
     <div class="err" id="errMsg"></div>
   </div>
 </div>
-<script>
-  const $=id=>document.getElementById(id);
-  // SEC-01: token-ul este în cookie HttpOnly — nu mai verificăm localStorage
-  // Verificăm autentificarea cu /auth/me (cookie trimis automat)
-  fetch("/auth/me", { credentials: 'include' })
-    .then(r=>r.ok?r.json():null)
-    .then(u=>{if(u&&u.userId)location.href=(u.role==="admin"||u.role==="org_admin")?"/admin":"/"})
-    .catch(()=>{});
-
-  function showErr(msg){const el=$("errMsg");el.textContent=msg;el.style.display="block";}
-  async function login(){
-    const email=$("email").value.trim(),password=$("password").value;
-    const btn=$("btnLogin");
-    $("errMsg").style.display="none";
-    if(!email||!password){showErr("Completează emailul și parola.");return;}
-    btn.disabled=true;btn.innerHTML='<span class="spin"></span>Se verifică...';
-    try{
-      // SEC-01: credentials: include — serverul setează cookie HttpOnly auth_token
-      const r=await fetch("/auth/login",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        credentials: 'include',
-        body:JSON.stringify({email,password})
-      });
-      const d=await r.json();
-      if(!r.ok){
-        if(d.error==="too_many_attempts"){
-          const min=Math.ceil((d.remainSec||900)/60);
-          showErr(`⛔ Prea multe încercări eșuate. Contul este blocat temporar. Încearcă din nou în ${min} minute.`);
-          let sec=d.remainSec||900;
-          const iv=setInterval(()=>{
-            sec--;
-            if(sec<=0){clearInterval(iv);$("errMsg").style.display="none";return;}
-            const m2=Math.floor(sec/60),s2=sec%60;
-            $("errMsg").textContent=`⛔ Prea multe încercări eșuate. Încearcă din nou în ${m2}:${String(s2).padStart(2,"0")}.`;
-          },1000);
-          return;
-        }
-        const m={invalid_credentials:"Email sau parolă incorectă.",db_not_ready:"Baza de date nu este disponibilă."};
-        showErr(m[d.error]||"Eroare de autentificare.");return;
-      }
-      // SEC-01: token-ul este în cookie HttpOnly setat de server — nu în d.token
-      // Stocăm doar datele non-sensibile pentru UI
-      localStorage.setItem("docflow_user",JSON.stringify({email:d.email,role:d.role,nume:d.nume,functie:d.functie,institutie:d.institutie||"",compartiment:d.compartiment||""}));
-      // Curățăm orice token vechi din localStorage (migrare de la versiunile anterioare)
-      localStorage.removeItem("docflow_token");
-      if(d.force_password_change) localStorage.setItem("docflow_force_pwd","1");
-      else localStorage.removeItem("docflow_force_pwd");
-      const next=new URLSearchParams(location.search).get("next");
-      location.href=(d.role==="admin"||d.role==="org_admin")?(next&&next.startsWith("/admin")?next:"/admin"):(next||"/");
-    }catch(e){showErr("Eroare de rețea.");}
-    finally{btn.disabled=false;btn.textContent="Intră în cont";}
-  }
-  $("btnLogin").addEventListener("click",login);
-  $("password").addEventListener("keydown",e=>{if(e.key==="Enter")login();});
-  $("email").addEventListener("keydown",e=>{if(e.key==="Enter")$("password").focus();});
-</script>
+<script src="/js/login/login.js?v=3.9.332"></script>
 </body>
 </html>

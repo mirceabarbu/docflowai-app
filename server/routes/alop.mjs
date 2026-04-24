@@ -209,7 +209,24 @@ router.get('/api/alop', async (req, res) => {
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
-        a.plata_suma_efectiva AS op_valoare
+        a.plata_suma_efectiva AS op_valoare,
+        -- FIX v3.9.338: totaluri agregate (toate ciclurile) pentru afișarea pe listă
+        (
+          COALESCE(
+            (SELECT SUM(plata_suma_efectiva)
+             FROM alop_ord_cicluri c
+             WHERE c.alop_id = a.id), 0
+          )
+          + COALESCE(
+            (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
+             FROM formulare_ord fo2
+             LEFT JOIN jsonb_array_elements(COALESCE(fo2.rows,'[]'::jsonb)) r ON true
+             WHERE fo2.id = a.ord_id), 0
+          )
+        ) AS total_ord_valoare,
+        (
+          COALESCE(a.suma_totala_platita, 0) + COALESCE(a.plata_suma_efectiva, 0)
+        ) AS total_platit
       FROM alop_instances a
       LEFT JOIN users        u  ON u.id  = a.created_by
       LEFT JOIN formulare_df df ON df.id = a.df_id

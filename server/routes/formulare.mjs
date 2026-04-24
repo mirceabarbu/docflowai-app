@@ -111,6 +111,14 @@ async function generatePdfSimple(formType, data) {
   // str(): returnează string-ul direct dacă NotoSans e OK, altfel transliterează
   const str = (v) => unicode ? String(v ?? '') : ro(v);
 
+  // fmtNum(): format numeric ro-RO pentru PDF (1234.56 → "1.234,56")
+  const fmtNum = (v, d = 2) => {
+    if (v === null || v === undefined || v === '') return '';
+    const n = parseFloat(v);
+    if (isNaN(n)) return String(v ?? '');
+    return n.toLocaleString('ro-RO', { minimumFractionDigits: d, maximumFractionDigits: d });
+  };
+
   // ── Stare pagini ───────────────────────────────────────────────────────────
   const pages = [];
   let pg, y, pgNum = 0;
@@ -263,7 +271,8 @@ async function generatePdfSimple(formType, data) {
         cx = ML;
         for (let i = 0; i < cols.length; i++) {
           const col = cols[i];
-          const val = clamp(str(row[col.key] ?? ''), fR, 7, col.width - 4);
+          const rawVal = row[col.key] ?? '';
+          const val = clamp(str(col.numeric ? fmtNum(rawVal) : rawVal), fR, 7, col.width - 4);
           const vw  = tw(val, fR, 7);
           const tx  = col.numeric ? cx + col.width - 3 - vw : cx + 2;
           pg.drawText(val, { x: tx, y: y - RH + 4, font: fR, size: 7, color: rgb(0, 0, 0) });
@@ -327,7 +336,7 @@ async function generatePdfSimple(formType, data) {
     checkItem(angV.ckbx_stab_tin_cont, 'Stabilirea și ținerea în evidență a angajamentelor legale (valori)');
     checkItem(angV.ckbx_ramane_suma,   'Rămâne suma de angajat');
     if (isChecked(angV.ckbx_ramane_suma) && (angV.ramane_suma || angV.ramane_suma === 0))
-      fieldLine('  Suma rămasă de angajat', String(angV.ramane_suma), { indent: 16 });
+      fieldLine('  Suma rămasă de angajat', fmtNum(angV.ramane_suma), { indent: 16 });
     y -= 2;
     drawTable([
       { header: 'Element FD',       key: 'element_fd',    width: 80 },

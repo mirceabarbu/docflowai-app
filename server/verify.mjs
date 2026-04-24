@@ -145,6 +145,11 @@ export async function verifyPdfSignatures(pdfBytes) {
 
       const signedData = new pkijs.SignedData({ schema: contentInfo.content });
 
+      // ── Extract certificat semnatar DEVREME (folosit în L2 fallback și în L3) ──
+      // FIX v3.9.337: era declarat la L244 dar folosit la L166 în catch-ul L2 fallback → Temporal Dead Zone
+      const certs = signedData.certificates || [];
+      const signerCert = certs[0]; // primul cert = semnatarul
+
       // ── L2: Verificare semnătură CMS ─────────────────────────────────
       result.levels.L2 = { name: 'Semnătură CMS', ok: null };
       try {
@@ -161,6 +166,12 @@ export async function verifyPdfSignatures(pdfBytes) {
         // pkijs.verify() eșuează pt. PAdES/CAdES cu signedAttrs (authAttrs) —
         // facem verificare manuală ECDSA/RSA cu WebCrypto nativ Node.js
         try {
+          // FIX v3.9.337: check defensiv — dacă CMS nu are certificat, eroare clară
+          if (!signerCert || !(signerCert instanceof pkijs.Certificate)) {
+            result.levels.L2.ok = null;
+            result.levels.L2.note = 'Certificat semnatar absent în CMS — verificare imposibilă';
+            throw new Error('no_signer_cert');
+          }
           const si         = signedData.signerInfos[0];
           const sigValue   = Buffer.from(si.signature.valueBlock.valueHexView);
           const pubKeyInfo = signerCert.subjectPublicKeyInfo;
@@ -239,9 +250,8 @@ export async function verifyPdfSignatures(pdfBytes) {
       } catch { result.levels.L1.ok = true; }
 
       // ── L3: Informații certificat semnatar ────────────────────────────
+      // NOTE: certs și signerCert sunt declarate mai sus (înainte de L2) — vezi FIX v3.9.337
       result.levels.L3 = { name: 'Certificat semnatar', ok: false };
-      const certs = signedData.certificates || [];
-      const signerCert = certs[0]; // primul cert = semnatarul
 
       if (signerCert instanceof pkijs.Certificate) {
         const getAttr = (rdn, oid) =>

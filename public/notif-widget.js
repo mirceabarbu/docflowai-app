@@ -251,6 +251,11 @@
     bellBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span id="nw-badge"></span>`;
     bellBtn.addEventListener('click', async (e) => {
       e.preventDefault();
+      // Cere permisiune notificări browser la primul click (dacă nu a ales încă)
+      if ('Notification' in window && Notification.permission === 'default') {
+        const granted = await ensureNotificationPermission();
+        if (granted) alert('✓ Notificările desktop au fost activate. Vei primi alerte OS când nu ești pe această pagină.');
+      }
       // SEC-01: nu mai verificăm token din localStorage — cookie trimis automat
       if (unreadCount === 0) { window.location.href = '/notifications'; return; }
       try {
@@ -348,7 +353,13 @@
       try {
         const msg = JSON.parse(ev.data);
         if (msg.event === 'unread_count') updateBadge(msg.count);
-        if (msg.event === 'notification') showToast(msg.data);
+        if (msg.event === 'notification') {
+          if (document.visibilityState === 'visible') {
+            showToast(msg.data);
+          } else {
+            showBrowserNotification(msg.data);
+          }
+        }
         // Serverul poate trimite auth_error dacă tokenul WS a expirat → refresh + reconect
         if (msg.event === 'auth_error') {
           refreshToken().then(ok => { if (ok) connectWS(); });
@@ -393,12 +404,58 @@
     fetchUnreadCount();
     connectWS();
     scheduleProactiveRefresh();
+    // Cere permisiunea pentru browser notifications (non-blocking, doar prima dată)
+    ensureNotificationPermission().then(ok => {
+      console.log('[nw] Browser notifications:', ok ? 'enabled' : 'disabled');
+    });
   }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     setTimeout(init, 100);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // BROWSER NOTIFICATIONS (OS-level, apar în dreapta jos Windows)
+  // ══════════════════════════════════════════════════════════
+
+  async function ensureNotificationPermission() {
+    if (!('Notification' in window)) {
+      console.warn('[nw] Browser nu suportă Notifications API');
+      return false;
+    }
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied') return false;
+    try {
+      const result = await Notification.requestPermission();
+      return result === 'granted';
+    } catch(e) {
+      console.error('[nw] requestPermission error:', e);
+      return false;
+    }
+  }
+
+  function showBrowserNotification(notif) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      const n = new Notification(notif.title || 'DocFlowAI', {
+        body: notif.message || '',
+        icon: '/icon-192.png',
+        badge: '/icon-72.png',
+        tag: `docflow-${notif.flowId || notif.flow || Date.now()}`,
+        requireInteraction: false,
+        silent: false,
+      });
+      n.onclick = () => {
+        window.focus();
+        n.close();
+        window.location.href = buildActionUrl(notif);
+      };
+      setTimeout(() => n.close(), 10000);
+    } catch(e) {
+      console.error('[nw] showBrowserNotification error:', e);
+    }
   }
 
   // ── API global expus paginilor ────────────────────────────
