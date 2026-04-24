@@ -4,118 +4,18 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DocFlowAI — Semnare</title>
-    <script>
-      // Load pdf-lib with multiple CDN fallbacks
-      (function() {
-        var cdns = [
-          "https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js",
-          "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js",
-          "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
-        ];
-        var idx = 0;
-        function tryNext() {
-          if (idx >= cdns.length) {
-            window._pdfLibFailed = true;
-            console.error("❌ pdf-lib failed to load from all CDNs");
-            return;
-          }
-          var s = document.createElement("script");
-          s.src = cdns[idx++];
-          s.onload = function() { console.log("✅ pdf-lib loaded from", s.src); window._pdfLibLoaded = true; };
-          s.onerror = function() { console.warn("⚠ CDN failed:", s.src); tryNext(); };
-          document.head.appendChild(s);
-        }
-        tryNext();
-      })();
-    </script>
+    <script src="/js/semdoc-signer/pdf-lib-loader.js?v=3.9.341"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-      if (window.pdfjsLib) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-      }
-    </script>
-    <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.298">
-    <link rel="stylesheet" href="/css/df/shell.css?v=3.9.298">
-    <link rel="stylesheet" href="/css/df/components.css?v=3.9.298">
-    <link rel="stylesheet" href="/css/semdoc-signer/semdoc-signer.css?v=3.9.298">
-    <script>
-    // Auth guard — semnarea strict in-app, cookie HttpOnly obligatoriu
-    (function() {
-      fetch('/auth/me', { credentials: 'include' })
-        .then(r => {
-          if (!r.ok) {
-            location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
-          }
-        })
-        .catch(() => {
-          location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
-        });
+    <script src="/js/semdoc-signer/pdfjs-worker.js?v=3.9.341"></script>
+    <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.341">
+    <link rel="stylesheet" href="/css/df/shell.css?v=3.9.341">
+    <link rel="stylesheet" href="/css/df/components.css?v=3.9.341">
+    <link rel="stylesheet" href="/css/semdoc-signer/semdoc-signer.css?v=3.9.341">
+    <script src="/js/semdoc-signer/auth-guard.js?v=3.9.341"></script>
 
-    })();
-  </script>
-
-  <script>
-    // apiFetch shim — folosește refresh automat dacă notif-widget e încărcat,
-    // SEC-01: token în cookie HttpOnly — credentials: include trimite cookie automat.
-    // Fallback tranziție: dacă există token vechi în localStorage (sesiune anterioară upgrade),
-    // îl trimitem ca Authorization Bearer până expiră natural.
-    window._apiFetch = async function(url, options) {
-      if (window.docflow && window.docflow.apiFetch) return window.docflow.apiFetch(url, options);
-      const headers = Object.assign({}, (options||{}).headers || {});
-      const legacyToken = localStorage.getItem('docflow_token');
-      if (legacyToken) headers['Authorization'] = 'Bearer ' + legacyToken;
-      const method = (options?.method || 'GET').toUpperCase();
-      const isMutation = !['GET','HEAD','OPTIONS'].includes(method);
-      function getCsrf() {
-        // Preferinta: variabila globala > cookie
-        if (window._csrfToken) return window._csrfToken;
-        const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
-        return c ? c.split('=')[1] : null;
-      }
-      if (isMutation) { const t = getCsrf(); if (t) headers['x-csrf-token'] = t; }
-      let res = await fetch(url, Object.assign({}, options||{}, { headers, credentials: 'include' }));
-      if (res.status === 403 && isMutation) {
-        let body = {};
-        try { body = await res.clone().json(); } catch(e) {}
-        if (body?.error === 'csrf_invalid') {
-          let freshCsrf = null;
-          try {
-            const rr = await fetch('/auth/csrf-token', { credentials: 'include' });
-            if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
-          } catch(e) {}
-          if (!freshCsrf) {
-            try {
-              const rr = await fetch('/auth/refresh', { method: 'POST', credentials: 'include' });
-              if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
-            } catch(e) {}
-          }
-          if (freshCsrf) { window._csrfToken = freshCsrf; }
-          const retryHeaders = Object.assign({}, headers);
-          const t2 = getCsrf(); if (t2) retryHeaders['x-csrf-token'] = t2;
-          res = await fetch(url, Object.assign({}, options||{}, { headers: retryHeaders, credentials: 'include' }));
-        }
-      }
-      return res;
-    };
-    // ── CSRF: incarcare token la deschiderea paginii ──────────────────────────
-    // Citim token din /auth/csrf-token (sigur, nu depinde de timing cookie)
-    // Stocat in window._csrfToken — folosit de toti apiFetch shim-ii
-    window._csrfToken = null;
-    (async function initCsrf() {
-      try {
-        const r = await fetch('/auth/csrf-token', { credentials: 'include' });
-        if (r.ok) { const d = await r.json(); window._csrfToken = d.csrfToken || null; }
-      } catch(e) {}
-      // Fallback la cookie daca fetch esueaza
-      if (!window._csrfToken) {
-        const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
-        if (c) window._csrfToken = c.split('=')[1];
-      }
-    })();
-
-  </script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.298">
-  <script src="/js/df-shell.js?v=3.9.298"></script>
+  <script src="/js/df-apifetch-shim-full.js?v=3.9.341"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.341">
+  <script src="/js/df-shell.js?v=3.9.341"></script>
 </head>
   <body>
 <div class="df-shell">
@@ -128,19 +28,19 @@
   <div class="df-nav-label">Navigare app</div>
   <div class="df-nav-group">
     <a href="/" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-edit"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-edit"/></svg>
       Flux nou
     </a>
     <a href="/?tab=flows" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-folder"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-folder"/></svg>
       Fluxurile mele
     </a>
     <a href="/templates" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-grid"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-grid"/></svg>
       Șabloane
     </a>
     <a href="/formular.html" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-file-text"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-file-text"/></svg>
       Formulare
     </a>
   </div>
@@ -148,7 +48,7 @@
   <div class="df-nav-label">Comunicare</div>
   <div class="df-nav-group">
     <a href="/notifications" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-bell"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-bell"/></svg>
       Notificări
     </a>
   </div>
@@ -156,19 +56,19 @@
   <div class="df-nav-label">Administrare</div>
   <div class="df-nav-group">
     <a href="/admin#dashboard" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-layout"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-layout"/></svg>
       Dashboard
     </a>
     <a href="/admin#utilizatori" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-users"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-users"/></svg>
       Utilizatori
     </a>
     <a href="/admin#fluxuri" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-git-branch"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-git-branch"/></svg>
       Fluxuri documente
     </a>
     <a href="/admin#rapoarte" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-bar-chart"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-bar-chart"/></svg>
       Rapoarte
     </a>
   </div>
@@ -176,19 +76,19 @@
   <div class="df-nav-label">Organizație</div>
   <div class="df-nav-group">
     <a href="/admin#organizatii" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-building"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-building"/></svg>
       Organizații
     </a>
     <a href="/admin#outreach" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-send"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-send"/></svg>
       Outreach
     </a>
     <a href="/admin#analytics" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-trending-up"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-trending-up"/></svg>
       Analytics
     </a>
     <a href="/admin#audit" class="df-nav-item">
-      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-search"/></svg>
+      <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-search"/></svg>
       Audit
     </a>
   </div>
@@ -201,7 +101,7 @@
     <h1>Semnare document</h1>
   </div>
   <div class="df-page-actions">
-    <button id="btnTrustReportHeader" class="df-action-btn" style="display:none;" title="Raport de Conformitate"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-scroll"/></svg>Raport</button>
+    <button id="btnTrustReportHeader" class="df-action-btn" style="display:none;" title="Raport de Conformitate"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-scroll"/></svg>Raport</button>
     <div class="df-user-menu" id="df-user-menu">
       <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
         <div class="df-user-trigger-avatar">U</div>
@@ -209,16 +109,16 @@
           <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
           <div class="df-user-trigger-role">Utilizator</div>
         </div>
-        <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-chevron-down"/></svg>
+        <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-chevron-down"/></svg>
       </button>
       <div class="df-user-dropdown">
         <button onclick="closeUserMenu();openChangePwdModal()">
-          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-key"/></svg>
+          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-key"/></svg>
           Schimbă parola
         </button>
         <div class="df-user-dropdown-divider"></div>
         <button class="danger" onclick="closeUserMenu();logout()">
-          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-log-out"/></svg>
+          <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-log-out"/></svg>
           Ieșire
         </button>
       </div>
@@ -261,7 +161,7 @@
           <div class="box" id="whoBox">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
               <div id="whoSigners" style="display:flex;flex-direction:column;gap:4px;flex:1;"></div>
-              <button id="btnRefresh" class="df-action-btn" style="flex-shrink:0;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-rotate-cw"/></svg>Reîncarcă</button>
+              <button id="btnRefresh" class="df-action-btn" style="flex-shrink:0;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-rotate-cw"/></svg>Reîncarcă</button>
             </div>
           </div>
 
@@ -282,7 +182,7 @@
             </div>
             <div class="provider-grid" id="providerGrid"></div>
             <button id="btnProviderContinue" class="df-action-btn cta full-width" style="margin-top:12px;" disabled>
-              <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-arrow-right"/></svg>Continuă cu provider-ul selectat
+              <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-arrow-right"/></svg>Continuă cu provider-ul selectat
             </button>
           </div>
 
@@ -299,16 +199,16 @@
             <div id="downloadForSigningStatus" class="muted" style="font-size:.85em; margin-bottom:12px;"></div>
             <div style="border-top:1px solid rgba(255,255,255,.1); padding-top:14px;">
               <input id="signedPdfFile" type="file" accept="application/pdf" style="display:none;" />
-              <button id="btnChooseSignedPdf" class="df-action-btn full-width" type="button" style="margin-bottom:8px;" disabled title="Descarcă mai întâi PDF-ul pentru semnare"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-folder"/></svg>Încarcă fișier PDF semnat calificat</button>
+              <button id="btnChooseSignedPdf" class="df-action-btn full-width" type="button" style="margin-bottom:8px;" disabled title="Descarcă mai întâi PDF-ul pentru semnare"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-folder"/></svg>Încarcă fișier PDF semnat calificat</button>
               <div id="signedPdfInfo" class="muted" style="font-size:.9em; margin-bottom:10px;">Niciun fișier selectat.</div>
               <button id="btnUploadSignedPdf" class="df-action-btn cta full-width lg" type="button" disabled>⬆️ Trimite PDF semnat calificat</button>
               <div id="uploadStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
             </div>
             <div style="border-top:1px solid rgba(255,255,255,.08); margin-top:14px; padding-top:14px;">
               <div style="display:flex;gap:10px;margin-bottom:0;">
-                <button id="btnRefuz" class="df-action-btn danger" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-x"/></svg>Refuz semnarea</button>
-                <button id="btnDelegheaza" class="df-action-btn" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-users"/></svg>Delegă semnarea</button>
-                <button id="btnRevizuire" class="df-action-btn" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-rotate-ccw"/></svg>Trimite spre revizuire</button>
+                <button id="btnRefuz" class="df-action-btn danger" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-x"/></svg>Refuz semnarea</button>
+                <button id="btnDelegheaza" class="df-action-btn" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-users"/></svg>Delegă semnarea</button>
+                <button id="btnRevizuire" class="df-action-btn" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-rotate-ccw"/></svg>Trimite spre revizuire</button>
               </div>
               <div id="refuzStatus" style="margin-top:8px; font-size:.88em; color:#ffaaaa;"></div>
               <!-- Modal Refuz -->
@@ -319,7 +219,7 @@
                 </div>
                 <textarea id="refuzReason" placeholder="Motivul refuzului (opțional)" rows="3" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,80,80,.2);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:10px;box-sizing:border-box;resize:none;"></textarea>
                 <div style="display:flex;gap:8px;">
-                  <button id="btnRefuzConfirm" class="df-action-btn danger" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-x"/></svg>Confirmă refuzul</button>
+                  <button id="btnRefuzConfirm" class="df-action-btn danger" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-x"/></svg>Confirmă refuzul</button>
                   <button id="btnRefuzCancel" class="df-action-btn sm" type="button">Anulează</button>
                 </div>
                 <div id="refuzModalStatus" style="margin-top:8px;font-size:.85rem;"></div>
@@ -334,7 +234,7 @@
                 <input id="delegateName" type="text" placeholder="Nume delegat" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:8px;box-sizing:border-box;" />
                 <textarea id="delegateReason" placeholder="Motiv delegare*" rows="2" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:10px;box-sizing:border-box;resize:none;"></textarea>
                 <div style="display:flex;gap:8px;">
-                  <button id="btnDelegateConfirm" class="df-action-btn" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-check"/></svg>Confirmă delegarea</button>
+                  <button id="btnDelegateConfirm" class="df-action-btn" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-check"/></svg>Confirmă delegarea</button>
                   <button class="df-action-btn sm" onclick="document.getElementById('delegateModal').style.display='none'" type="button">Anulează</button>
                 </div>
                 <div id="delegateStatus" style="margin-top:8px;font-size:.85rem;"></div>
@@ -348,7 +248,7 @@
                 </div>
                 <textarea id="reviewReason" placeholder="Motiv revizuire*" rows="3" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;margin-bottom:10px;box-sizing:border-box;resize:none;"></textarea>
                 <div style="display:flex;gap:8px;">
-                  <button id="btnReviewConfirm" class="df-action-btn" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-check"/></svg>Confirmă trimiterea spre revizuire</button>
+                  <button id="btnReviewConfirm" class="df-action-btn" type="button" style="flex:1;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-check"/></svg>Confirmă trimiterea spre revizuire</button>
                   <button class="df-action-btn sm" onclick="document.getElementById('reviewModal').style.display='none'" type="button">Anulează</button>
                 </div>
                 <div id="reviewStatus" style="margin-top:8px;font-size:.85rem;"></div>
@@ -362,8 +262,8 @@
             <div style="font-weight:700; margin-bottom:8px;">✅ Document semnat complet de toți semnatarii!</div>
             <div class="muted" style="margin-bottom:12px;">Inițiatorul a fost notificat și poate descărca PDF-ul final semnat calificat.</div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-              <a id="btnDownloadFinalPdf" href="#" class="df-action-btn cta" style="text-decoration:none;" target="_blank"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-download"/></svg>Descarcă PDF final semnat calificat</a>
-              <button id="btnTrustReportSigner" class="df-action-btn" title="Generează Raport de Conformitate (Signing Trust Report)"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-scroll"/></svg>Raport conformitate</button>
+              <a id="btnDownloadFinalPdf" href="#" class="df-action-btn cta" style="text-decoration:none;" target="_blank"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-download"/></svg>Descarcă PDF final semnat calificat</a>
+              <button id="btnTrustReportSigner" class="df-action-btn" title="Generează Raport de Conformitate (Signing Trust Report)"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-scroll"/></svg>Raport conformitate</button>
             </div>
             <div id="pdfGenStatus" style="margin-top:8px; font-size:.9em; color:#a3e6a3;"></div>
           </div>
@@ -372,1537 +272,9 @@
       </div>
     </main>
 
-    <script>
-      const $ = (id) => document.getElementById(id);
-      // SEC-01: esc pentru innerHTML cu date externe
-      function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-      function showError(msg) {
-        $("err").classList.remove("hidden");
-        $("err").textContent = "❌ " + msg;
-        $("result").textContent = "";
-      }
-
-      const params = new URLSearchParams(location.search);
-      const flow = params.get("flow");
-      const token = params.get("token");
-
-      // Populate userBar — rulează după DOM, deci getElementById funcționează corect
-      (function() {
-        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
-        const bar = document.getElementById('userBar');
-        if (!bar) return;
-        const label = u.nume || u.email || '';
-        bar.innerHTML =
-          (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
-          ((u.role === 'admin' || u.role === 'org_admin') ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
-          `<button class="df-action-btn sm" onclick="openChangePwdModal()"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-key"/></svg>Parolă</button>` +
-          `<button class="df-action-btn sm danger" onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-log-out"/></svg>Ieșire</button>`;
-        if (localStorage.getItem("docflow_force_pwd") === "1") {
-          const banner = document.getElementById("forcePwdBanner");
-          if (banner) banner.style.display = "block";
-        }
-      })();
-
-      if (!flow || !token) {
-        showError("Link invalid. Lipsesc parametri (flow/token).");
-        $("content").style.display = "none";
-      } else {
-        $("flowId").textContent = flow;
-        // flow/token nu se afișează în header
-      }
-
-      let currentFlow = null;
-      let signerIndex = -1;
-
-      function showBlockedState(title, message) {
-        const signBox = $("signBox");
-        if (signBox) { signBox.style.opacity = "0.15"; signBox.style.pointerEvents = "none"; }
-        const completedBox = $("completedBox");
-        if (completedBox) completedBox.style.display = "none";
-        $("result").innerHTML = `
-          <div style="background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);border-radius:12px;padding:16px 20px;margin-top:12px;">
-            <div style="font-size:1.05rem;font-weight:700;margin-bottom:6px;">${title}</div>
-            <div style="font-size:.88rem;color:var(--muted);">${message}</div>
-          </div>`;
-      }
-
-      function renderSignersList(j) {
-        const whoEl = $("whoSigners");
-        if (!whoEl) return;
-        const esc3 = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        const isRefused = (j.signers||[]).some(x => x.status === 'refused');
-        const _SP = {
-          'sts-cloud':    { icon: '🏛️', label: 'STS QES',     col: 'rgba(45,212,191,.15)', brd: 'rgba(45,212,191,.3)', txt: '#7cf0e0' },
-          'certsign':     { icon: '🔐', label: 'certSIGN',    col: 'rgba(124,92,255,.12)', brd: 'rgba(124,92,255,.3)', txt: '#b39dff' },
-          'transsped':    { icon: '🔐', label: 'Trans Sped',  col: 'rgba(124,92,255,.12)', brd: 'rgba(124,92,255,.3)', txt: '#b39dff' },
-          'alfatrust':    { icon: '🔐', label: 'AlfaTrust',   col: 'rgba(124,92,255,.12)', brd: 'rgba(124,92,255,.3)', txt: '#b39dff' },
-          'namirial':     { icon: '🔐', label: 'Namirial',    col: 'rgba(124,92,255,.12)', brd: 'rgba(124,92,255,.3)', txt: '#b39dff' },
-          'local-upload': { icon: '⬆️', label: 'Upload cert', col: 'rgba(255,200,50,.12)', brd: 'rgba(255,200,50,.3)', txt: '#ffd580' },
-        };
-        whoEl.innerHTML = (j.signers||[]).map(x => {
-          const st = x.status==='signed'&&!x.pdfUploaded?'current':x.status;
-          const isCancelled = isRefused && st === 'pending';
-          const icon = st==='signed'?'✅':st==='refused'?'⛔':st==='current'?'✍':isCancelled?'🚫':'⏳';
-          const badgeColor = st==='signed'?'rgba(45,212,191,.2)':st==='refused'?'rgba(255,80,80,.2)':st==='current'?'rgba(124,92,255,.25)':isCancelled?'rgba(255,80,80,.12)':'rgba(255,255,255,.06)';
-          const badgeText = st==='signed'?'semnat':st==='refused'?'refuzat':st==='current'?'curent':isCancelled?'anulat':'în așteptare';
-          const textColor = st==='signed'?'#7cf0e0':st==='refused'?'#ffaaaa':st==='current'?'#b39dff':isCancelled?'#ff9999':'#9db0ff';
-          const extra = [x.functie, x.compartiment].filter(Boolean).join(' · ');
-          const isMe = x.token === token;
-          const delegBadge = x.delegatedFrom
-            ? `<span title="Delegat de ${esc3(x.delegatedFrom.name||x.delegatedFrom.email)}" style="font-size:.69rem;padding:1px 7px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);">👥 delegat</span>`
-            : '';
-          // Badge tip semnătură — doar pentru semnatarii care au semnat deja
-          let provBadge = '';
-          if (st === 'signed') {
-            const pd = _SP[x.signingProvider] || _SP['local-upload'];
-            provBadge = `<span title="Semnat cu ${pd.label}" style="font-size:.69rem;padding:1px 7px;border-radius:10px;background:${pd.col};color:${pd.txt};font-weight:700;border:1px solid ${pd.brd};margin-left:2px;">${pd.icon} ${pd.label}</span>`;
-          }
-          return `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;flex-wrap:wrap;${isMe?'font-weight:700;':'opacity:.75;'}">
-            <span>${icon}</span>
-            <span style="font-size:.8rem;color:var(--muted);min-width:90px;">${esc3(x.rol||'')}</span>
-            <span style="font-size:.83rem;">${esc3(x.name||'—')}</span>
-            ${extra?`<span style="font-size:.77rem;color:var(--muted);">— ${esc3(extra)}</span>`:''}
-            <span style="font-size:.71rem;padding:1px 7px;border-radius:10px;background:${badgeColor};color:${textColor};font-weight:700;">${badgeText}</span>
-            ${provBadge}${delegBadge}
-          </div>`;
-        }).join('');
-      }
-
-      async function loadAttachments() {
-        try {
-          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/attachments?token=${encodeURIComponent(token||'')}`);
-          if (!r.ok) return;
-          const j = await r.json();
-          const atts = j.attachments || [];
-          const box = document.getElementById('attachmentsBox');
-          const list = document.getElementById('attachmentsList');
-          if (!atts.length || !box || !list) return;
-          box.style.display = '';
-          const iconByMime = t => t.includes('pdf') ? '📄' : t.includes('zip') ? '🗜️' : t.includes('rar') ? '🗜️' : '📎';
-          list.innerHTML = atts.map(a => `
-            <a href="/flows/${encodeURIComponent(flow)}/attachments/${a.id}?token=${encodeURIComponent(token||'')}"
-               download="${a.filename.replace(/"/g,'')}"
-               style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(124,92,255,.1);border-radius:7px;text-decoration:none;color:var(--df-text);font-size:.82rem;">
-              <span>${iconByMime(a.mimeType)}</span>
-              <span style="flex:1;">${a.filename}</span>
-              <span style="color:var(--muted);font-size:.75rem;">${(a.sizeBytes/1024).toFixed(0)} KB</span>
-              <span style="color:#b39dff;font-size:.75rem;font-weight:700;">⬇ Descarcă</span>
-            </a>`).join('');
-        } catch(e) { /* non-fatal */ }
-      }
-
-
-      // ── Provider selecție ─────────────────────────────────────────────────
-      let _selectedProvider = 'local-upload';
-      let _orgProviders     = [{ id: 'local-upload', label: 'Upload local (orice certificat calificat)', mode: 'upload' }];
-
-      const PROVIDER_ICONS = {
-        'local-upload': '💻',
-        'sts-cloud':    '🏛️',
-        'certsign':     '📜',
-        'transsped':    '🔏',
-        'alfatrust':    '🛡️',
-        'namirial':     '✍️',
-      };
-      const PROVIDER_DESC = {
-        'local-upload': 'Descarcă PDF → semnează cu aplicație proprie → uploadează',
-        'sts-cloud':    'Semnare cloud direct în browser — certificat STS',
-        'certsign':     'Semnare cloud direct în browser — certificat certSIGN / Paperless',
-        'transsped':    'Semnare cloud direct în browser — certificat Trans Sped',
-        'alfatrust':    'Semnare cloud direct în browser — certificat AlfaTrust / AlfaSign',
-        'namirial':     'Semnare cloud direct în browser — certificat Namirial',
-      };
-
-      async function loadSigningProviders() {
-        try {
-          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/signing-providers?token=${encodeURIComponent(token)}`);
-          if (!r.ok) return; // non-fatal — rămânem pe local-upload
-          const j = await r.json();
-          _orgProviders = j.providers || _orgProviders;
-
-          // ── Etapa C: flowPreferredProvider — lock setat la inițiere ────
-          // Prioritate MAXIMĂ (bate b233 sticky și orice altă logică).
-          // Când e setat, sărim selecția complet și mergem direct la acțiune
-          // (echivalent cu click pe "Continuă cu provider-ul selectat").
-          const flowPref = j.flowPreferredProvider || null;
-          if (flowPref) {
-            const matched = _orgProviders.find(p => p.id === flowPref);
-            if (matched) {
-              _selectedProvider = flowPref;
-              _orgProviders = [matched];
-              const provName = matched.label || flowPref;
-              const infoBox = $('providerSelectBox');
-              if (infoBox) {
-                infoBox.innerHTML = `
-                  <div style="background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.3);
-                    border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:#7cf0e0;">
-                    🔒 Fluxul a fost inițiat cu <strong>${provName}</strong>.
-                    Toți semnatarii folosesc aceeași metodă de semnare.
-                  </div>`;
-                infoBox.style.display = '';
-              }
-              // SKIP direct la acțiune — exact ca btnProviderContinue click
-              // NU apelăm dacă suntem în stare pending (revenire de la STS)
-              const _urlP = new URLSearchParams(window.location.search);
-              if (!_urlP.get('sts_pending') && !_urlP.get('sts_signed')) {
-                applyProviderToSignBox(flowPref);
-              }
-              return;  // gata — nu mai rulează b233 sticky sau render grid
-            } else {
-              // Edge case: provider-ul a fost dezactivat în org între creare și semnare.
-              // Avertizăm, apoi cădem la logica veche (b233 sticky sau manual).
-              console.warn('flowPreferredProvider', flowPref, 'nu mai este disponibil în org');
-              const infoBox = $('providerSelectBox');
-              if (infoBox) {
-                infoBox.innerHTML = `
-                  <div style="background:rgba(255,159,100,.12);border:1px solid rgba(255,159,100,.35);
-                    border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:#ffc99f;">
-                    ⚠️ Fluxul a fost inițiat cu <strong>${flowPref}</strong> dar acest provider
-                    nu mai este disponibil în organizație. Alegeți altul din lista de mai jos.
-                  </div>`;
-                infoBox.style.display = '';
-              }
-              // NU facem return — continuă la b233 sticky + render grid
-            }
-          }
-
-          // ── FIX b233: dacă un semnatar anterior a semnat deja,
-          // forțăm același provider pentru toți semnatarii următori.
-          // Nu permitem mix upload local + cloud pe același flux.
-          const flowData = currentFlow || {};
-          const signers  = flowData.signers || [];
-          const prevProvider = signers
-            .filter(s => s.status === 'signed' && s.signingProvider)
-            .map(s => s.signingProvider)
-            .find(Boolean)
-            // Dacă signingProvider e null (upload local vechi), detectăm după pdfUploaded
-            || (signers.some(s => s.status === 'signed' && !s.signingProvider) ? 'local-upload' : null);
-
-          if (prevProvider) {
-            const matchedProvider = _orgProviders.find(p => p.id === prevProvider);
-            if (matchedProvider) {
-              _selectedProvider = prevProvider;
-              _orgProviders = [matchedProvider];
-              const provName = matchedProvider.label || prevProvider;
-              const infoBox = $('providerSelectBox');
-              if (infoBox) {
-                infoBox.innerHTML = `
-                  <div style="background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.3);
-                    border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:#7cf0e0;">
-                    🔒 Fluxul a fost inițiat cu <strong>${provName}</strong>.
-                    Toți semnatarii trebuie să folosească același provider de semnare.
-                  </div>`;
-                infoBox.style.display = '';
-              }
-              // NU apelăm applyProviderToSignBox dacă suntem în stare pending (revenire de la STS)
-              // — polling-ul sau loading state-ul ar fi suprascrис
-              const _urlP = new URLSearchParams(window.location.search);
-              if (!_urlP.get('sts_pending') && !_urlP.get('sts_signed')) {
-                applyProviderToSignBox(prevProvider);
-              }
-              return;
-            }
-          }
-
-          // Dacă există un singur provider (local-upload) → sărim selecția
-          if (j.skipSelection) {
-            _selectedProvider = 'local-upload';
-            $('providerSelectBox').style.display = 'none';
-            return;
-          }
-
-          // Pre-selectăm preferința utilizatorului
-          if (j.preferred && _orgProviders.some(p => p.id === j.preferred)) {
-            _selectedProvider = j.preferred;
-          }
-
-          renderProviderGrid(_orgProviders, _selectedProvider);
-          $('providerSelectBox').style.display = '';
-          // Ascundem signBox până se alege providerul
-          $('signBox').style.display = 'none';
-        } catch(e) {
-          // Non-fatal — continuăm cu local-upload
-          _selectedProvider = 'local-upload';
-        }
-      }
-
-      function renderProviderGrid(providers, selectedId) {
-        const grid = $('providerGrid');
-        if (!grid) return;
-        grid.innerHTML = '';
-        for (const p of providers) {
-          const card = document.createElement('div');
-          card.className = 'provider-card' + (p.id === selectedId ? ' selected' : '');
-          card.dataset.providerId = p.id;
-          card.innerHTML = `
-            <div class="p-icon">${PROVIDER_ICONS[p.id] || '🔐'}</div>
-            <div class="p-info">
-              <div class="p-label">${p.label}</div>
-              <div class="p-desc">${PROVIDER_DESC[p.id] || ''}</div>
-            </div>
-            <div class="p-check">${p.id === selectedId ? '✓' : ''}</div>
-          `;
-          card.addEventListener('click', () => selectProvider(p.id));
-          grid.appendChild(card);
-        }
-        $('btnProviderContinue').disabled = false;
-      }
-
-      function selectProvider(providerId) {
-        _selectedProvider = providerId;
-        // Actualizăm UI
-        document.querySelectorAll('.provider-card').forEach(c => {
-          const isSelected = c.dataset.providerId === providerId;
-          c.classList.toggle('selected', isSelected);
-          c.querySelector('.p-check').textContent = isSelected ? '✓' : '';
-        });
-        $('btnProviderContinue').disabled = false;
-      }
-
-      // Buton "Continuă" — aplică selecția și afișează signBox corect
-      document.addEventListener('DOMContentLoaded', () => {
-        const btnContinue = $('btnProviderContinue');
-        if (btnContinue) {
-          btnContinue.addEventListener('click', () => {
-            $('providerSelectBox').style.display = 'none';
-            applyProviderToSignBox(_selectedProvider);
-          });
-        }
-      });
-
-      function applyProviderToSignBox(providerId) {
-        $('signBox').style.display = '';
-        const p = _orgProviders.find(p => p.id === providerId);
-        if (!p) return;
-
-        if (p.mode === 'redirect' || p.mode === 'hash-redirect') {
-          // Provider cloud: ascundem flow-ul de upload, afișăm buton redirect
-          $('btnDownloadForSigning').style.display = 'none';
-          $('btnChooseSignedPdf').style.display     = 'none';
-          $('btnUploadSignedPdf').style.display     = 'none';
-          // Instrucțiunile se actualizează
-          const desc = $('signBox').querySelector('.muted');
-          if (desc) desc.innerHTML = `<strong>${p.label}</strong><br>Vei fi redirectat la provider pentru semnare electronică calificată în browser. Documentul va fi returnat automat după semnare.`;
-          // Adaugă buton de redirect dacă nu există deja
-          if (!$('btnSignCloud')) {
-            const btn = document.createElement('button');
-            btn.id = 'btnSignCloud';
-            btn.className = 'btn';
-            btn.style.cssText = 'width:100%;padding:14px;font-weight:700;background:linear-gradient(90deg,#7c5cff,#2dd4bf);border:none;margin-bottom:8px;';
-            btn.textContent = `🔐 Semnează cu ${p.label}`;
-            btn.addEventListener('click', () => initiateCloudSigning(providerId));
-            $('signBox').insertBefore(btn, $('btnDownloadForSigning'));
-          }
-        } else {
-          // Provider local: flow normal de upload
-          $('btnDownloadForSigning').style.display = '';
-          $('btnChooseSignedPdf').style.display     = '';
-          $('btnUploadSignedPdf').style.display     = '';
-          const cloudBtn = $('btnSignCloud');
-          if (cloudBtn) cloudBtn.remove();
-        }
-      }
-
-      async function initiateCloudSigning(providerId) {
-        const btn = $('btnSignCloud');
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ Se inițiază sesiunea...'; }
-        try {
-          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/initiate-cloud-signing`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token, providerId }),
-          });
-          const j = await r.json();
-          if (!r.ok) throw new Error(j.message || j.error || 'Eroare server');
-          if (j.signingUrl) {
-            // Redirect la provider
-            window.location.href = j.signingUrl;
-          } else {
-            throw new Error('Provider-ul nu a returnat URL de semnare.');
-          }
-        } catch(e) {
-          if (btn) { btn.disabled = false; btn.textContent = `🔐 Semnează cu provider`; }
-          showError('❌ ' + e.message);
-        }
-      }
-
-
-      // ── STS Cloud Polling ─────────────────────────────────────────────────
-      let _stsPollInterval = null;
-      let _stsPollCount    = 0;
-      const STS_POLL_MAX   = 60; // max 3 minute
-
-      function startStsPolling() {
-        if (_stsPollInterval) return;
-        // Afișăm UI de așteptare
-        const signBox = $('signBox');
-        if (signBox) {
-          signBox.innerHTML = `
-            <div style="text-align:center;padding:24px;">
-              <div style="font-size:2rem;margin-bottom:12px;">📱</div>
-              <div style="font-weight:700;font-size:1rem;margin-bottom:8px;color:#b39dff;">
-                Așteptăm aprobarea ta pe email / PUSH
-              </div>
-              <div class="muted" style="font-size:.88rem;margin-bottom:16px;line-height:1.6;">
-                STS a trimis o notificare pe adresa ta de email sau pe telefon.<br>
-                Aprobă semnarea din aplicația STS sau emailul primit.
-              </div>
-              <div id="stsPollStatus" style="font-size:.82rem;color:rgba(234,240,255,.5);margin-bottom:16px;">
-                ⏳ Verificăm statusul...
-              </div>
-              <div style="display:flex;justify-content:center;">
-                <div style="width:40px;height:4px;background:rgba(124,92,255,.3);border-radius:2px;overflow:hidden;">
-                  <div id="stsPollBar" style="width:0%;height:100%;background:#7c5cff;transition:width .3s;"></div>
-                </div>
-              </div>
-              <button class="df-action-btn sm" onclick="cancelStsPolling()" style="margin-top:16px;">
-                Anulează
-              </button>
-            </div>
-          `;
-        }
-
-        _stsPollCount = 0;
-        _stsPollInterval = setInterval(async () => {
-          _stsPollCount++;
-          const bar = $('stsPollBar');
-          if (bar) bar.style.width = Math.min(100, (_stsPollCount / STS_POLL_MAX) * 100) + '%';
-
-          if (_stsPollCount >= STS_POLL_MAX) {
-            cancelStsPolling();
-            showError('⏱ Timeout — utilizatorul nu a aprobat în 3 minute. Reîncearcă semnarea.');
-            return;
-          }
-
-          try {
-            const r = await _apiFetch(
-              `/flows/${encodeURIComponent(flow)}/sts-poll?token=${encodeURIComponent(token)}`);
-            const j = await r.json();
-
-            const statusEl = $('stsPollStatus');
-
-            if (j.status === 'waiting') {
-              if (statusEl) statusEl.textContent = '⏳ ' + (j.message || 'Așteptăm aprobarea...');
-            } else if (j.status === 'signed') {
-              clearInterval(_stsPollInterval); _stsPollInterval = null;
-              // ── Completăm overlay-ul vizual înainte de redirect ──────────
-              const ov = document.getElementById('qesProcessingOverlay');
-              if (ov) {
-                const DONE_SVG = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-                [['qIcon2','qLabel2'],['qIcon3','qLabel3'],['qIcon4','qLabel4']].forEach(([iId,lId], idx) => {
-                  setTimeout(() => {
-                    const ic = document.getElementById(iId);
-                    const lb = document.getElementById(lId);
-                    if (ic) { ic.className = 'qsi qsi-done'; ic.innerHTML = DONE_SVG; }
-                    if (lb) lb.className = 'ql ql-done';
-                  }, idx * 120);
-                });
-                setTimeout(() => {
-                  const titleEl = ov.querySelector('[data-qes-title]');
-                  const subEl   = ov.querySelector('[data-qes-sub]');
-                  const iconBox = ov.querySelector('[data-qes-icon]');
-                  if (titleEl) titleEl.textContent = 'Semnătură aplicată cu succes!';
-                  if (subEl)   { subEl.textContent = 'Redirecționăm către document...'; subEl.style.color = 'rgba(45,212,191,.9)'; }
-                  if (iconBox) iconBox.style.background = 'linear-gradient(135deg,rgba(45,212,191,.3),rgba(45,212,191,.1))';
-                }, 400);
-              }
-              setTimeout(() => {
-                window.location.replace(`/flow.html?flow=${encodeURIComponent(flow)}`);
-              }, 1600);
-            } else if (j.status === 'error') {
-              cancelStsPolling();
-              showError('❌ ' + (j.message || 'Eroare la semnare STS.'));
-            }
-          } catch(e) {
-            const statusEl = $('stsPollStatus');
-            if (statusEl) statusEl.textContent = '⚠ Eroare rețea — reîncercăm...';
-          }
-        }, 3000);
-      }
-
-      function cancelStsPolling() {
-        if (_stsPollInterval) { clearInterval(_stsPollInterval); _stsPollInterval = null; }
-        loadFlow();
-      }
-
-      async function loadFlow() {
-        if (!flow || !token) return;
-
-        $("result").textContent = "Se încarcă...";
-        try {
-          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}?token=${encodeURIComponent(token)}`);
-          const j = await r.json().catch(() => ({}));
-          if (!r.ok) {
-            if (j?.error === "token_expired") {
-              showBlockedState("⏳ Link expirat", "Link-ul de semnare a expirat (90 de zile). Contactează inițiatorul documentului pentru a primi un nou link.");
-              return;
-            }
-            if (j?.error === "forbidden" || j?.error === "auth_required") {
-              showBlockedState("🔒 Acces refuzat", "Token invalid sau lipsă. Verifică link-ul primit pe email.");
-              return;
-            }
-            throw new Error(j?.error || "server_error");
-          }
-
-          currentFlow = j;
-          signerIndex = (j.signers || []).findIndex(s => s.token === token);
-          if (signerIndex === -1) throw new Error("Token invalid (nu corespunde niciunui semnatar).");
-
-          $("docName").textContent = j.docName || "—";
-          // URGENT banner
-          const urgentBanner = $("urgentBanner");
-          if (urgentBanner) { urgentBanner.style.display = j.urgent ? "flex" : "none"; }
-
-          // Flux refuzat — afișează mesaj clar și blochează tot
-          if (j.status === "refused" || (j.signers||[]).some(s => s.status === "refused")) {
-            const refuser = (j.signers||[]).find(s => s.status === "refused");
-            const refuserInfo = refuser ? `${refuser.name||refuser.email} (${refuser.rol||""})` : "un semnatar";
-            const reason = refuser?.refuseReason ? ` — Motiv: "${refuser.refuseReason}"` : "";
-            showBlockedState("⛔ Document refuzat", `Documentul a fost refuzat de ${refuserInfo}${reason}. Fluxul este închis.`);
-            $("docName").textContent = j.docName || "—";
-            renderSignersList(j);
-            return;
-          }
-
-          // Flux anulat — blochează semnarea, arată mesaj clar
-          if (j.status === "cancelled") {
-            const canceledBy = j.cancelledBy || j.initName || "inițiator";
-            const reason = j.cancelReason ? ` — Motiv: „${j.cancelReason}"` : "";
-            showBlockedState("🚫 Flux anulat", `Fluxul a fost anulat de ${canceledBy}${reason}. Semnarea nu mai este posibilă.`);
-            $("docName").textContent = j.docName || "—";
-            renderSignersList(j);
-            return;
-          }
-
-          // Flux trimis spre revizuire — blochează semnarea, arată mesaj
-          if (j.status === "review_requested" || j.status === "reinitiated_after_review") {
-            const reviewer = j.reviewRequestedBy || "un semnatar";
-            const reason = j.reviewReason ? ` Motiv: „${j.reviewReason}"` : "";
-            showBlockedState("🔄 Document în revizuire", `Documentul a fost trimis spre revizuire de ${reviewer}.${reason} Inițiatorul va repori fluxul după revizuire.`);
-            $("docName").textContent = j.docName || "—";
-            renderSignersList(j);
-            return;
-          }
-
-          // PDF viewer cu PDF.js (evita "Please wait..." din Chrome pe AcroForm PDFs)
-          if (j.hasPdf) {
-            const pdfUrl = `/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token)}`;
-            $("pdfBox").classList.remove("hidden");
-            renderPdfJs(pdfUrl);
-          } else {
-            $("pdfBox").classList.add("hidden");
-          }
-
-          const s = j.signers[signerIndex];
-          renderSignersList(j);
-          loadAttachments(); // F-06: documente suport
-
-          const lines = [];
-          lines.push(`Semnatar curent: ${j.signers.findIndex(x => x.status === "current") + 1}`);
-          const slMap = {"signed":"semnat","current":"curent","pending":"în așteptare"};
-          (j.signers || []).forEach((x, i) => {
-            const displayStatus = (x.status === "signed" && !x.pdfUploaded) ? "curent" : (slMap[x.status] || x.status || "pending");
-            lines.push(`${i+1}. ${displayStatus} :: ${x.rol || ""} :: ${x.name || ""}`);
-          });
-
-          // Check if fully completed (all signed + all PDFs uploaded)
-          const flowCompleted = j.completed || (j.signers && j.signers.every(x => x.status === "signed" && x.pdfUploaded));
-          // Aratam butonul Raport in header daca fluxul e finalizat sau userul a semnat deja
-          const iHaveSigned = (j.signers || []).some(s => (s.email||'').toLowerCase() === (JSON.parse(localStorage.getItem('docflow_user')||'{}').email||'').toLowerCase() && s.status === 'signed');
-          if (_btnReportHeader) _btnReportHeader.style.display = (flowCompleted || iHaveSigned) ? "" : "none";
-          const thisSigned = s.status === "signed" && s.pdfUploaded;
-          const signBox = $("signBox");
-
-          if (flowCompleted) {
-            if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-            $("result").textContent = "";
-            const box = $("completedBox");
-            if (box) box.style.display = "block";
-            const dlBtn = $("btnDownloadFinalPdf");
-            if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`;
-          } else if (thisSigned) {
-            // This signer already uploaded — lock box, show waiting message
-            if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-            $("result").textContent = "✅ Ai trimis documentul semnat. Se așteaptă ceilalți semnatari.";
-          } else if (s.status !== "current") {
-            // Not their turn yet
-            if (signBox) { signBox.style.opacity = "0.4"; signBox.style.pointerEvents = "none"; }
-            const slLabel = {"signed":"semnat","current":"curent","pending":"în așteptare"};
-            $("result").textContent = `Nu e rândul tău încă (status: ${slLabel[s.status]||s.status}).`;
-          } else {
-            // Their turn — enable signBox
-            if (signBox) { signBox.style.opacity = "1"; signBox.style.pointerEvents = "auto"; }
-            // Avertisment "nu verificam semnatura" — doar pentru flux ancore
-            const warnEl = $("warnAncoreOnly");
-            if (warnEl) warnEl.style.display = currentFlow?.flowType === "ancore" ? "inline" : "none";
-            $("result").textContent = "";
-            // Încarcă providerii de semnare disponibili în org (non-blocking)
-            loadSigningProviders();
-          }
-        } catch (e) {
-          $("result").textContent = "";
-          throw e;
-        }
-      }
-
-      // OPT-05: Buton Raport Trust — atat in header cat si in completedBox
-      const _btnReportHeader = $("btnTrustReportHeader");
-      const _btnReportSigner = $("btnTrustReportSigner");
-
-      // Handler comun pentru ambele butoane
-      async function downloadTrustReportSigner() {
-        const btn = document.activeElement && document.activeElement.id ? $(document.activeElement.id) : _btnReportHeader;
-        if (_btnReportHeader) { _btnReportHeader.disabled = true; _btnReportHeader.textContent = "⏳..."; }
-        if (_btnReportSigner) { _btnReportSigner.disabled = true; _btnReportSigner.textContent = "⏳ Se generează..."; }
-        try {
-          const r = await _apiFetch(`/api/flows/${encodeURIComponent(flow)}/report?force=1`);
-          if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || j.error || "Eroare server"); }
-          const blob = await r.blob();
-          if (!blob || blob.size < 100) throw new Error("PDF gol returnat de server");
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url; a.download = `TrustReport_${flow}.pdf`;
-          document.body.appendChild(a); a.click();
-          document.body.removeChild(a); URL.revokeObjectURL(url);
-        } catch (e) {
-          alert("❌ Eroare generare raport: " + e.message);
-        } finally {
-          if (_btnReportHeader) { _btnReportHeader.disabled = false; _btnReportHeader.textContent = "📜 Raport"; }
-          if (_btnReportSigner) { _btnReportSigner.disabled = false; _btnReportSigner.textContent = "📜 Raport conformitate"; }
-        }
-      }
-
-      if (_btnReportHeader) _btnReportHeader.addEventListener("click", downloadTrustReportSigner);
-      if (_btnReportSigner) {
-        _btnReportSigner.addEventListener("click", async () => {
-          _btnReportSigner.disabled = true;
-          _btnReportSigner.textContent = "⏳ Se generează...";
-          try {
-            const r = await _apiFetch(`/api/flows/${encodeURIComponent(flow)}/report?force=1`);
-            if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || j.error || "Eroare server"); }
-            const blob = await r.blob();
-            if (!blob || blob.size < 100) throw new Error("PDF gol returnat de server");
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url; a.download = `TrustReport_${flow}.pdf`;
-            document.body.appendChild(a); a.click();
-            document.body.removeChild(a); URL.revokeObjectURL(url);
-          } catch (e) {
-            alert("❌ Eroare generare raport: " + e.message);
-          } finally {
-            _btnReportSigner.disabled = false;
-            _btnReportSigner.textContent = "📜 Raport conformitate";
-          }
-        });
-      }
-
-      $("btnRefresh").addEventListener("click", async () => {
-        try {
-          await loadFlow();
-        } catch (e) {
-          showError(String(e.message || e));
-        }
-      });
-
-      // ── Upload PDF Semnat Calificat ─────────────────────────────────────────
-      let signedPdfB64Data = null;
-
-      $("btnChooseSignedPdf").addEventListener("click", () => $("signedPdfFile").click());
-
-      $("signedPdfFile").addEventListener("change", () => {
-        const f = $("signedPdfFile").files && $("signedPdfFile").files[0];
-        if (!f) { signedPdfB64Data = null; $("signedPdfInfo").textContent = "Niciun fișier selectat."; $("btnUploadSignedPdf").disabled = true; return; }
-        if (f.type !== "application/pdf") { signedPdfB64Data = null; $("signedPdfInfo").textContent = "❌ Te rog selectează un fișier PDF."; $("btnUploadSignedPdf").disabled = true; return; }
-        if (f.size > 30 * 1024 * 1024) { signedPdfB64Data = null; $("signedPdfInfo").textContent = "❌ Fișier prea mare (max 30MB)."; $("btnUploadSignedPdf").disabled = true; return; }
-        $("signedPdfInfo").textContent = `✅ ${f.name} (${Math.round(f.size/1024)} KB) — gata de upload`;
-        const reader = new FileReader();
-        reader.onload = async () => {
-          signedPdfB64Data = reader.result;
-
-          // Verificare hash local — doar pentru flux 'tabel' (nu ancore)
-          // Flux ancore: PDF-ul poate fi identic daca semnatarul il re-incarca, nu blocam
-          const isAncoreFlow = currentFlow?.flowType === 'ancore';
-          if (_downloadedHash && !isAncoreFlow) {
-            try {
-              const raw = signedPdfB64Data.includes(",") ? signedPdfB64Data.split(",")[1] : signedPdfB64Data;
-              const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
-              const hashBuf = await crypto.subtle.digest("SHA-256", bytes);
-              const uploadedHash = Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,"0")).join("");
-              if (uploadedHash === _downloadedHash) {
-                signedPdfB64Data = null;
-                $("signedPdfInfo").innerHTML = "<span style='color:#ff6b6b;font-weight:600;'>❌ Documentul nu conține semnătură — este identic cu cel descărcat. Semnează-l în Adobe Acrobat înainte de a-l încărca.</span>";
-                $("btnUploadSignedPdf").disabled = true;
-                return;
-              }
-            } catch(e2) { /* hash check eșuat, continuăm */ }
-          }
-
-          // Activează butonul doar dacă semnătarul e current (nu a semnat/uploadat deja)
-          const s = currentFlow?.signers?.[signerIndex];
-          const canUpload = s && (s.status === "current" || (s.status === "signed" && !s.pdfUploaded));
-          $("btnUploadSignedPdf").disabled = !canUpload;
-          // Dezactivează butonul de refuz când PDF-ul e încărcat
-          const refuzBtn = $("btnRefuz");
-          if (refuzBtn) {
-            refuzBtn.disabled = true;
-            refuzBtn.style.opacity = ".3";
-            refuzBtn.style.pointerEvents = "none";
-            refuzBtn.style.cursor = "default";
-            refuzBtn.title = "Nu poți refuza după ce ai încărcat un PDF semnat";
-          }
-          // Dezactivează Delegă + Revizuire — documentul e deja pregătit pentru upload
-          const delegBtn = $("btnDelegheaza");
-          if (delegBtn) {
-            delegBtn.disabled = true;
-            delegBtn.style.opacity = ".3";
-            delegBtn.style.pointerEvents = "none";
-            delegBtn.title = "Ai ales un PDF semnat — nu mai poți delega";
-          }
-          const revBtn = $("btnRevizuire");
-          if (revBtn) {
-            revBtn.disabled = true;
-            revBtn.style.opacity = ".3";
-            revBtn.style.pointerEvents = "none";
-            revBtn.title = "Ai ales un PDF semnat — nu mai poți trimite spre revizuire";
-          }
-        };
-        reader.readAsDataURL(f);
-      });
-
-      $("btnUploadSignedPdf").addEventListener("click", async () => {
-        if (!signedPdfB64Data) return;
-        const btn = $("btnUploadSignedPdf");
-        const status = $("uploadStatus");
-        btn.disabled = true;
-        btn.textContent = "⏳ Se înregistrează și trimite...";
-        status.textContent = "";
-        try {
-          // Step 1: register signature in DocFlowAI (/sign)
-          if (!currentFlow) await loadFlow();
-          const s = currentFlow.signers[signerIndex];
-          if (s.status === "current") {
-            const signerName = s.name || "semnatar";
-            // SEC-01: cookie trimis automat prin credentials: include
-            const rSign = await _apiFetch(`/flows/${encodeURIComponent(flow)}/sign`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ token, signature: signerName }),
-            });
-            const jSign = await rSign.json().catch(() => ({}));
-            if (!rSign.ok) throw new Error(jSign?.error || "sign_error");
-          }
-
-          // Step 2: upload signed PDF
-          // Flux 'ancore': nu se verifica uploadToken (PDF semnat cu certificat calificat local)
-          const isAncoreUpload = currentFlow?.flowType === 'ancore';
-          if (!isAncoreUpload && !_uploadToken) {
-            throw new Error("Lipsește tokenul de verificare. Descarcă documentul din sistem folosind butonul de descărcare, semnează-l și încarcă-l înapoi.");
-          }
-          const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/upload-signed-pdf`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              token,
-              signedPdfB64: signedPdfB64Data,
-              signerName: currentFlow?.signers?.[signerIndex]?.name || "",
-              uploadToken: isAncoreUpload ? undefined : (_uploadToken || undefined),
-            }),
-          });
-          const j = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(j?.error || "server_error");
-
-          await loadFlow();
-
-          btn.textContent = "✅ Trimis";
-
-          // Dacă vine din flux initiat de el insusi (initIsSigner), redirect la Status dupa semnare
-          const urlParams = new URLSearchParams(location.search);
-          const fromInit = urlParams.get('fromInit') === '1';
-
-          const redirectToStatus = () => {
-            status.innerHTML = `<span style="color:#2dd4bf;">✅ Document semnat cu succes! Redirecționăm către Status...</span>`;
-            setTimeout(() => { location.href = `/flow.html?flow=${encodeURIComponent(flow)}`; }, 2500);
-          };
-
-          if (j.completed) {
-            status.textContent = "";
-            const completedBox = $("completedBox");
-            if (completedBox) {
-              completedBox.style.display = "block";
-              // Ascundem butonul din header cand completedBox e vizibil (evitam duplicate)
-              if (_btnReportHeader) _btnReportHeader.style.display = "none";
-              const dlBtn = $("btnDownloadFinalPdf");
-              if (dlBtn) dlBtn.href = `/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`;
-            }
-            const signBox = $("signBox");
-            if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-            redirectToStatus();
-          } else if (j.nextSigner) {
-            const signBox = $("signBox");
-            if (signBox) { signBox.style.opacity = "0.5"; signBox.style.pointerEvents = "none"; }
-            redirectToStatus();
-          } else {
-            redirectToStatus();
-          }
-        } catch(e) {
-          status.textContent = "❌ Eroare: " + e.message;
-          btn.disabled = false;
-          btn.textContent = "⬆️ Trimite PDF semnat calificat";
-        }
-      });
-      // ── End Upload ──────────────────────────────────────────────────────────
-
-      // ── Download PDF for signing ───────────────────────────────────────────
-      let _uploadToken = null; // Nivel 1 securitate: token emis la descărcare PDF
-      let _downloadedHash = null; // Hash-ul PDF-ului descărcat — pentru verificare locala inainte de upload
-
-      async function downloadPdfForSigning() {
-        const btn = $("btnDownloadForSigning");
-        const status = $("downloadForSigningStatus");
-        if (!btn || !status) return;
-
-        btn.disabled = true;
-        btn.textContent = "⏳ Se pregătește...";
-        status.textContent = "";
-
-        try {
-          await new Promise(r => setTimeout(r, 30));
-
-          let pdfBlob;
-          let fname = (currentFlow?.docName || "document").replace(/[^a-zA-Z0-9_\-]/g, "_") + "_de_semnat.pdf";
-
-          // Semnatar 1: generează PDF cu cartuș + câmpuri AcroForm din original
-          // Semnatar 2+: descarcă DIRECT /signed-pdf — NU modificăm, păstrăm semnăturile calificate
-          // flowType "ancore": PDF-ul are deja ancore, nu generăm cartuș
-          const prevResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/signed-pdf?token=${encodeURIComponent(token)}`);
-          if (prevResp.ok) {
-            // Semnatar 2+: descărcare directă, fără nicio procesare
-            // Captăm uploadToken din /pdf (pentru versiunea originală)
-            status.textContent = "⏳ Se descarcă PDF-ul semnat de semnatarii anteriori...";
-            const origForHash = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
-            _uploadToken = origForHash.headers.get("X-Docflow-UploadToken") || null;
-            pdfBlob = await prevResp.blob();
-            // Înregistrăm descărcarea (downloadedAt) pentru semnatarul curent
-            try {
-              await _apiFetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ signerToken: token }),
-              });
-            } catch(e) { console.warn("register-download (signer 2+) error:", e.message); }
-          } else if (currentFlow?.flowType === "ancore") {
-            // Tip 2: ancore existente — descărcăm PDF-ul original fără modificări
-            status.textContent = "⏳ Se descarcă PDF-ul original (ancore existente)...";
-            const origResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
-            if (!origResp.ok) throw new Error("PDF original indisponibil (cod " + origResp.status + ").");
-            _uploadToken = origResp.headers.get("X-Docflow-UploadToken") || null;
-            pdfBlob = await origResp.blob();
-          } else {
-            // Semnatar 1, tip tabel: generează cartuș pe original
-            status.textContent = "⏳ Se generează PDF cu cartuș...";
-            await new Promise(r => setTimeout(r, 30));
-            pdfBlob = await buildCartusBlob();
-            // _uploadToken e setat in buildCartusBlob via /pdf endpoint
-            // Dar hash-ul PDF-ului generat (cu cartus) e diferit de originalul din DB
-            // -> inregistram hash-ul local la server pentru verificare corecta
-            if (_uploadToken) {
-              try {
-                // Calculeaza hash-ul PDF-ului generat cu cartus
-                const cartusBytes = await pdfBlob.arrayBuffer();
-                const hashBuf = await crypto.subtle.digest("SHA-256", cartusBytes);
-                const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,"0")).join("");
-                // Inregistreaza hash-ul la server -> primeste uploadToken pe baza lui
-                const regResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/register-download`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ signerToken: token }),
-                });
-                if (regResp.ok) {
-                  const regJson = await regResp.json();
-                  if (regJson.uploadToken) _uploadToken = regJson.uploadToken;
-                }
-              } catch(e) { console.warn("register-download error:", e.message); }
-            }
-          }
-
-          // Calculează și salvează hash-ul PDF-ului descărcat pentru verificare locală
-          try {
-            const hashBuf = await crypto.subtle.digest('SHA-256', await pdfBlob.arrayBuffer());
-            _downloadedHash = Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-          } catch(e2) { _downloadedHash = null; }
-
-          // Descarcă fișierul
-          const url = URL.createObjectURL(pdfBlob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = fname;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-
-          // Activăm upload-ul IMEDIAT după descărcare reușită —
-          // ÎNAINTE de register-download sau orice alt pas care poate eșua.
-          // FIX b80: dacă register-download sau buildCartusBlob aruncă excepție,
-          // butonul rămânea disabled și semnatarul nu putea încărca PDF-ul.
-          const chooseBtn = $("btnChooseSignedPdf");
-          if (chooseBtn) { chooseBtn.disabled = false; chooseBtn.title = ""; }
-
-          // Nu deschidem în browser — lăsăm OS să deschidă cu aplicația implicită (Adobe)
-          setTimeout(() => URL.revokeObjectURL(url), 30000);
-
-          status.textContent = "✅ PDF descărcat în folderul Downloads. Deschide fișierul în Adobe Acrobat/Reader pentru a aplica semnătura electronică calificată.";
-          btn.textContent = "⬇️ Descarcă din nou";
-
-        } catch(err) {
-          console.error("downloadPdfForSigning error:", err);
-          status.textContent = "❌ Eroare: " + (err.message || String(err));
-          btn.textContent = "⬇️ Descarcă PDF pentru semnare calificată";
-        }
-
-        btn.disabled = false;
-      }
-      // ── End Download for signing ────────────────────────────────────────────
-
-      // ── Build cartus PDF blob (pure function, no side effects) ──────────────
-      async function buildCartusBlob() {
-        if (!currentFlow) throw new Error("Date flux indisponibile — reîncarcă pagina.");
-
-        // FIX b80: fallback când pdf-lib nu e disponibil (timeout CDN, conexiune lentă etc.)
-        // În loc să arunce excepție (care bloca întreaga descărcare), returnăm PDF-ul simplu.
-        if (!window.PDFLib) {
-          const waitResult = await new Promise((resolve) => {
-            let waited = 0;
-            const iv = setInterval(() => {
-              waited += 200;
-              if (window.PDFLib) { clearInterval(iv); resolve('loaded'); }
-              else if (window._pdfLibFailed || waited > 10000) {
-                clearInterval(iv);
-                resolve('failed'); // nu reject — cădem pe fallback
-              }
-            }, 200);
-          });
-          if (waitResult === 'failed') {
-            // Fallback: descarcă PDF-ul original simplu fără cartuș
-            console.warn('buildCartusBlob: pdf-lib indisponibil — fallback la PDF simplu');
-            const fbResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
-            if (!fbResp.ok) throw new Error("PDF original indisponibil pe server (cod " + fbResp.status + ").");
-            _uploadToken = fbResp.headers.get("X-Docflow-UploadToken") || _uploadToken;
-            return await fbResp.blob(); // returnează direct — fără cartuș
-          }
-        }
-
-        const { PDFDocument, PDFName, PDFString, PDFNumber, rgb, StandardFonts } = PDFLib;
-
-        // buildCartusBlob folosește MEREU PDF-ul original ca bază
-        // (semnatar 2+ descarcă direct /signed-pdf din downloadPdfForSigning, fără modificare)
-        const pdfResp = await _apiFetch(`/flows/${encodeURIComponent(flow)}/pdf?token=${encodeURIComponent(token||"")}`);
-        if (!pdfResp.ok) throw new Error("PDF original indisponibil pe server (cod " + pdfResp.status + ").");
-        _uploadToken = pdfResp.headers.get("X-Docflow-UploadToken") || _uploadToken;
-        const pdfBytes = await pdfResp.arrayBuffer();
-
-        const pdfDoc = await PDFDocument.load(pdfBytes);
-        const pages = pdfDoc.getPages();
-        const lastPage = pages[pages.length - 1];
-        const { width: pW } = lastPage.getSize();
-
-        const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-        function ro(t) {
-          const m = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-          return String(t||'').split('').map(c => m[c]||c).join('');
-        }
-
-        const ACCENT_HEX = "#000000";
-        function hx(h) { return rgb(parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255); }
-        const accent = hx(ACCENT_HEX);
-        const hR = 0, hG = 0, hB = 0;
-        const lightBg = rgb(0.96, 0.96, 0.96);
-
-        const signers = currentFlow.signers || [];
-        if (!signers.length) throw new Error("Niciun semnatar în flux.");
-
-        const MARGIN = 40;
-        const n = signers.length;
-        const cols = Math.min(n, 3); // max 3 pe rand
-        const rows = Math.ceil(n / cols);
-        const cellW = (pW - MARGIN*2) / cols;
-        const cellH = 48; // 2 rânduri text + câmp semnătură compact
-        const titleH = 20;
-        const cartusBottom = 55;
-        const { height: pH } = lastPage.getSize();
-
-        // ── Detectare spațiu liber la baza ultimei pagini via PDF.js ──────────
-        // lowestContentY = y-ul celui mai de jos rând de text de conținut (ignorăm footer-ul server y≈14-28)
-        // pdfBytes este ArrayBuffer — trebuie convertit la Uint8Array pentru PDF.js
-        // Dacă detecția eșuează → fallback conservator: pagină nouă
-        let lowestContentY = 0; // 0 = nu știm → pagină nouă conservator
-        if (window.pdfjsLib) {
-          try {
-            const uint8 = new Uint8Array(pdfBytes); // ← fix: ArrayBuffer → Uint8Array
-            const pdfjsDoc = await pdfjsLib.getDocument({ data: uint8 }).promise;
-            const pdfjsPage = await pdfjsDoc.getPage(pdfjsDoc.numPages);
-            const tc = await pdfjsPage.getTextContent();
-            // transform[5] = Y de la baza paginii (coordonate PDF)
-            // Căutăm cel mai MIC Y dintre itemele de CONȚINUT (nu footer)
-            let minY = pH;
-            for (const item of (tc.items || [])) {
-              const y = item.transform ? item.transform[5] : 0;
-              if (y > cartusBottom + 10) { // ignorăm footer-ul serverului (y ≈ 14–28)
-                if (y < minY) minY = y;
-              }
-            }
-            if (minY < pH) {
-              lowestContentY = minY; // am găsit conținut
-              console.log('[DocFlowAI] lowestContentY:', lowestContentY, '| pH:', pH, '| cartusBottom:', cartusBottom);
-            } else {
-              // Nu s-a găsit niciun text — pagina poate fi goală sau conținut doar grafic
-              // Tratăm ca pagină goală → tabel jos normal
-              lowestContentY = cartusBottom + 1000; // valoare mare → tabel pe pagina curentă
-              console.log('[DocFlowAI] Niciun text detectat — pagina tratată ca goală');
-            }
-          } catch(e) {
-            console.warn('[DocFlowAI] PDF.js failed → new page fallback:', e.message);
-            lowestContentY = 0; // fallback: pagină nouă
-          }
-        } else {
-          console.warn('[DocFlowAI] pdfjsLib indisponibil → new page fallback');
-          lowestContentY = 0; // fallback: pagină nouă
-        }
-
-        // Spațiu disponibil = de la cel mai jos conținut detectat până la cartusBottom (+ 20pt margine)
-        const cartusH = rows * cellH + titleH;
-
-        let drawPage = lastPage;
-        let actualCartusBottom = cartusBottom;
-
-        // FIX b80: decizie pagină nouă vs pagina curentă
-        // lowestContentY = Y-ul celui mai de jos rând de text (coordonate PDF, 0 = jos pagina)
-        // cartusH + cartusBottom = spațiul total necesar de jos în sus
-        // Dacă conținutul ajunge prea jos și nu încape cartușul → pagină nouă
-        const spatiuNecesar = cartusH + cartusBottom + 20; // 20pt margine de siguranță
-        if (lowestContentY > 0 && lowestContentY < spatiuNecesar) {
-          // Conținutul e prea jos — cartușul s-ar suprapune → pagină nouă
-          console.log('[DocFlowAI] Spațiu insuficient (' + lowestContentY + ' < ' + spatiuNecesar + ') → pagină nouă');
-          drawPage = pdfDoc.addPage([pW, pH]);
-          actualCartusBottom = cartusBottom; // jos pe pagina nouă
-        } else if (lowestContentY === 0) {
-          // PDF.js indisponibil sau eroare → conservator: pagină nouă
-          console.log('[DocFlowAI] lowestContentY=0 (fallback) → pagină nouă');
-          drawPage = pdfDoc.addPage([pW, pH]);
-          actualCartusBottom = cartusBottom;
-        } else {
-          console.log('[DocFlowAI] Spațiu suficient (' + lowestContentY + ' >= ' + spatiuNecesar + ') → pagina curentă');
-        }
-
-        // Title bar — fundal alb, text negru (conform cerinta)
-        drawPage.drawRectangle({ x: MARGIN, y: actualCartusBottom + cartusH - titleH, width: pW - MARGIN*2, height: titleH, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 0.8 });
-        drawPage.drawText("SEMNAT SI APROBAT", { x: MARGIN+8, y: actualCartusBottom + cartusH - titleH + 6, size: 7, font: fontB, color: rgb(0,0,0) });
-        // (Removed) Generat timestamp in header bar — kept footer timestamp as single source of truth
-
-        // AcroForm — comportament diferit dupa tipul fluxului:
-        // - flux 'ancore': PDF are campuri editabile Forexebug → merge cu AcroForm existent, SigFlags=1
-        // - flux 'tabel': PDF nu are campuri editabile → AcroForm nou, SigFlags=1
-        const isAncoreFlux = currentFlow?.flowType === 'ancore';
-        const existingAcroFormRef = isAncoreFlux ? pdfDoc.catalog.get(PDFName.of('AcroForm')) : null;
-        let acroForm;
-        let existingFields = [];
-        if (existingAcroFormRef) {
-          // Flux ancore — pastram campurile editabile Forexebug
-          acroForm = pdfDoc.context.lookup(existingAcroFormRef);
-          const ef = acroForm.get(PDFName.of('Fields'));
-          if (ef) existingFields = ef.asArray ? ef.asArray() : [];
-          // SigFlags = 1 (SignaturesExist) — NU 3, ca sa nu blocheze editarea campurilor existente
-          acroForm.set(PDFName.of('SigFlags'), PDFNumber.of(1));
-        } else {
-          // Flux tabel sau ancore fara AcroForm — cream AcroForm nou
-          acroForm = pdfDoc.context.obj({
-            Type: PDFName.of('AcroForm'),
-            Fields: pdfDoc.context.obj([]),
-            SigFlags: PDFNumber.of(1),
-            DA: PDFString.of('/Helv 10 Tf 0 g'),
-          });
-          pdfDoc.catalog.set(PDFName.of('AcroForm'), pdfDoc.context.register(acroForm));
-        }
-        const allRefs = [...existingFields];
-
-        signers.forEach((s, idx) => {
-          const row = Math.floor(idx / cols);
-          const col = idx % cols;
-          const cx = MARGIN + col * cellW;
-          const cy = actualCartusBottom + (rows - 1 - row) * cellH;
-
-          const isSigned = s.status === "signed" && !!s.pdfUploaded;
-          const borderColor = rgb(.2,.2,.2);
-          const bgColor     = isSigned ? rgb(.94,.98,.94) : lightBg;
-
-          drawPage.drawRectangle({ x: cx, y: cy, width: cellW, height: cellH, color: bgColor, borderColor, borderWidth: 1 });
-          drawPage.drawRectangle({ x: cx+1.5, y: cy+1.5, width: cellW-3, height: cellH-3, color: bgColor, borderColor, borderWidth: .35 });
-
-          // Dimensiunile câmpului de semnătură — declarate o singură dată per celulă
-          // Offseturi scalate proporțional cu cellH (referință: cellH=80)
-          // cellH=60 fix — câmpul de semnătură ocupă zona de jos
-          const sigFieldTop = cy + cellH - 26; // text ocupă 26pt de sus
-          const sigFieldBot = cy + 4;
-
-          // Rând 1: Rol (bold)
-          drawPage.drawText(ro(s.rol)||"—", { x: cx+6, y: cy+cellH-13, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
-          // Rând 2: "Nume Prenume - Funcție" pe un singur rând
-          const nameFunc = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
-          if (nameFunc) drawPage.drawText(nameFunc, { x: cx+6, y: cy+cellH-24, size: 7, font: fontR, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
-
-          if (isSigned && s.signature) {
-            drawPage.drawText(ro(s.signature), { x: cx+6, y: cy+18, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
-            if (s.signedAt) drawPage.drawText(new Date(s.signedAt).toLocaleString("ro-RO"), { x: cx+6, y: cy+8, size: 5.5, font: fontR, color: rgb(.5,.5,.5), maxWidth: cellW-12 });
-          } else {
-            const midSigY = sigFieldBot + (sigFieldTop - sigFieldBot) / 2 - 2;
-            drawPage.drawText("L.S.", { x: cx+6, y: midSigY + 6, size: 6.5, font: fontB, color: rgb(.5,.5,.6) });
-            drawPage.drawText("Semnatura electronica", { x: cx+6, y: midSigY - 4, size: 5.5, font: fontR, color: rgb(.6,.6,.6), maxWidth: cellW-12 });
-          }
-
-          // AcroForm — toate câmpurile active (Ff=0), fără evidențiere per semnatar
-          const fn = `SIG_${(s.rol||'SEM').replace(/[^A-Za-z0-9]/g,'_')}_${idx+1}`;
-          const bgR2 = isSigned ? PDFNumber.of(.92) : PDFNumber.of(.96);
-          const bgG2 = isSigned ? PDFNumber.of(.98) : PDFNumber.of(.97);
-          const bgB2 = isSigned ? PDFNumber.of(.94) : PDFNumber.of(1.0);
-
-          const widget = pdfDoc.context.obj({
-            Type: PDFName.of('Annot'), Subtype: PDFName.of('Widget'), FT: PDFName.of('Sig'),
-            Rect: pdfDoc.context.obj([cx+4, sigFieldBot, cx+cellW-4, sigFieldTop].map(v => PDFNumber.of(Math.round(v*10)/10))),
-            T: PDFString.of(fn),
-            TU: PDFString.of(ro(s.rol||'') + (s.name ? ' - '+ro(s.name) : '') + (isSigned ? ' [SEMNAT]' : ' [IN ASTEPTARE]')),
-            F: PDFNumber.of(4),
-            Ff: PDFNumber.of(0),
-            P: drawPage.ref,
-            DA: PDFString.of('/Helv 10 Tf 0 g'),
-            MK: pdfDoc.context.obj({
-              BC: pdfDoc.context.obj([hR,hG,hB].map(v=>PDFNumber.of(v))),
-              BG: pdfDoc.context.obj([bgR2, bgG2, bgB2]),
-            }),
-            BS: pdfDoc.context.obj({ W: PDFNumber.of(1), S: PDFName.of('S') }),
-          });
-          const ref = pdfDoc.context.register(widget);
-          allRefs.push(ref);
-          if (!lastPage.node.get(PDFName.of('Annots'))) lastPage.node.set(PDFName.of('Annots'), pdfDoc.context.obj([]));
-          lastPage.node.get(PDFName.of('Annots')).push(ref);
-        });
-
-        acroForm.set(PDFName.of('Fields'), pdfDoc.context.obj(allRefs));
-
-        // ── Footer: NU se redesenează de signer — e stamped o singură dată de server la creare flux ──
-
-        const outBytes = await pdfDoc.save();
-        return new Blob([outBytes], { type: 'application/pdf' });
-      }
-      // ── End PDF Generator ──────────────────────────────────────────────────
-
-      if (flow && token) {
-        // Verificăm dacă revenim de la STS IDP (OAuth callback)
-        const _stsParams  = new URLSearchParams(window.location.search);
-        const _stsPending = _stsParams.get('sts_pending');
-        const _stsError   = _stsParams.get('sts_error');
-        const _stsSigned  = _stsParams.get('sts_signed');  // set după semnare STS reușită
-        if (_stsError) {
-          showError('❌ Eroare STS: ' + decodeURIComponent(_stsError));
-        }
-        // Curățăm sts_signed din URL (fără reload) — evităm confuzie la refresh
-        if (_stsSigned === '1') {
-          const cleanUrl = new URL(window.location.href);
-          cleanUrl.searchParams.delete('sts_signed');
-          window.history.replaceState({}, '', cleanUrl.toString());
-        }
-
-        // ── Overlay procesare STS — position:fixed pe body ────────────────
-        // Acoperă TOATĂ pagina (inclusiv pdfBox, urgentBanner, signBox).
-        // loadFlow() rulează normal în fundal fără să poată suprascrie overlay-ul.
-        // Dispare natural la redirect-ul final către flow.html.
-        if (_stsPending === '1') {
-          const _ov = document.createElement('div');
-          _ov.id = 'qesProcessingOverlay';
-          _ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0d1225;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,system-ui,sans-serif';
-          _ov.innerHTML = `
-            <style>
-              @keyframes qes-spin { to { transform:rotate(360deg); } }
-              @keyframes qes-bar  { 0%{transform:translateX(-100%)} 100%{transform:translateX(220%)} }
-              @keyframes qes-fade { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-              @keyframes qes-ring {
-                0%  { box-shadow:0 0 0 0 rgba(45,212,191,.45); }
-                70% { box-shadow:0 0 0 10px rgba(45,212,191,0); }
-                100%{ box-shadow:0 0 0 0 rgba(45,212,191,0); }
-              }
-              .qsi { width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center; }
-              .qsi-done   { background:rgba(45,212,191,.15); }
-              .qsi-active { background:rgba(124,92,255,.2);animation:qes-ring 1.4s ease-in-out infinite; }
-              .qsi-wait   { background:rgba(255,255,255,.06); }
-              .qss        { animation:qes-spin .9s linear infinite; }
-              .ql         { font-size:.82rem;font-weight:600; }
-              .ql-done    { color:rgba(45,212,191,.8); }
-              .ql-active  { color:#eaf0ff; }
-              .ql-wait    { color:rgba(255,255,255,.3); }
-              .qsub       { font-size:.72rem;color:rgba(234,240,255,.32);margin-top:1px; }
-              .qrow       { display:flex;align-items:center;gap:12px;padding:9px 0;
-                border-bottom:1px solid rgba(255,255,255,.05);animation:qes-fade .35s ease both; }
-              .qrow:last-child { border-bottom:none; }
-            </style>
-            <div style="width:100%;max-width:400px;margin:0 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;">
-              <div style="display:flex;align-items:center;gap:14px;padding:20px 22px 16px;border-bottom:1px solid rgba(255,255,255,.07);">
-                <div style="width:44px;height:44px;border-radius:12px;flex-shrink:0;background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(45,212,191,.2));display:flex;align-items:center;justify-content:center;border:1px solid rgba(45,212,191,.25);transition:background .4s;" data-qes-icon>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z" fill="rgba(45,212,191,.15)" stroke="#2dd4bf" stroke-width="1.5" stroke-linejoin="round"/>
-                    <path d="M9 12l2 2 4-4" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                </div>
-                <div>
-                  <div style="font-weight:700;font-size:.95rem;color:#eaf0ff;letter-spacing:.2px;" data-qes-title>Semnătură electronică calificată</div>
-                  <div style="font-size:.75rem;color:rgba(45,212,191,.7);margin-top:2px;letter-spacing:.5px;" data-qes-sub>STS CLOUD QES &nbsp;·&nbsp; ÎN CURS DE PROCESARE</div>
-                </div>
-              </div>
-              <div style="padding:4px 22px 8px;">
-                <div class="qrow" style="animation-delay:.05s">
-                  <div class="qsi qsi-done"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-                  <div><div class="ql ql-done">Autentificare STS finalizată</div><div class="qsub">Identitate verificată prin OAuth 2.0 PKCE</div></div>
-                </div>
-                <div class="qrow" style="animation-delay:.12s">
-                  <div class="qsi qsi-active" id="qIcon2"><svg class="qss" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="rgba(124,92,255,.3)" stroke-width="2"/><path d="M8 2a6 6 0 0 1 6 6" stroke="#7c5cff" stroke-width="2" stroke-linecap="round"/></svg></div>
-                  <div><div class="ql ql-active" id="qLabel2">Pregătire document PAdES</div><div class="qsub">Calculare ByteRange și hash SHA-256</div></div>
-                </div>
-                <div class="qrow" style="animation-delay:.2s">
-                  <div class="qsi qsi-wait" id="qIcon3"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="rgba(255,255,255,.2)" stroke-width="1.5"/><path d="M7 4v3.5l2 1.2" stroke="rgba(255,255,255,.2)" stroke-width="1.4" stroke-linecap="round"/></svg></div>
-                  <div><div class="ql ql-wait" id="qLabel3">Semnătură criptografică ECDSA</div><div class="qsub">STS procesează hash-ul documentului</div></div>
-                </div>
-                <div class="qrow" style="animation-delay:.28s">
-                  <div class="qsi qsi-wait" id="qIcon4"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="5" width="10" height="7" rx="1.5" stroke="rgba(255,255,255,.2)" stroke-width="1.4"/><path d="M5 5V3.5a2 2 0 0 1 4 0V5" stroke="rgba(255,255,255,.2)" stroke-width="1.4" stroke-linecap="round"/></svg></div>
-                  <div><div class="ql ql-wait" id="qLabel4">Finalizare și arhivare</div><div class="qsub">Construire CMS, validare și salvare</div></div>
-                </div>
-              </div>
-              <div style="padding:8px 22px 18px;">
-                <div style="height:3px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;margin-bottom:12px;">
-                  <div style="height:100%;width:55%;background:linear-gradient(90deg,#7c5cff,#2dd4bf);border-radius:2px;animation:qes-bar 2s ease-in-out infinite;"></div>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <div style="font-size:.72rem;color:rgba(234,240,255,.3);">⚠ Nu închideți această pagină</div>
-                  <div id="qesTimer" style="font-size:.72rem;color:rgba(45,212,191,.5);font-variant-numeric:tabular-nums;">0s</div>
-                </div>
-              </div>
-            </div>
-            <script>
-              (function() {
-                var t0 = Date.now();
-                var ti = setInterval(function() {
-                  var el = document.getElementById('qesTimer');
-                  if (!el) { clearInterval(ti); return; }
-                  el.textContent = Math.round((Date.now()-t0)/1000) + 's';
-                }, 1000);
-                var DONE = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><\\/svg>';
-                var SPIN = '<svg class="qss" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="rgba(124,92,255,.3)" stroke-width="2"/><path d="M8 2a6 6 0 0 1 6 6" stroke="#7c5cff" stroke-width="2" stroke-linecap="round"/><\\/svg>';
-                function adv(di,dl,ni,nl){
-                  var e=document.getElementById(di),l=document.getElementById(dl);
-                  if(e){e.className='qsi qsi-done';e.innerHTML=DONE;}if(l)l.className='ql ql-done';
-                  var f=document.getElementById(ni),m=document.getElementById(nl);
-                  if(f){f.className='qsi qsi-active';f.innerHTML=SPIN;}if(m)m.className='ql ql-active';
-                }
-                setTimeout(function(){adv('qIcon2','qLabel2','qIcon3','qLabel3');},600);
-                setTimeout(function(){adv('qIcon3','qLabel3','qIcon4','qLabel4');},1200);
-              })();
-            <\/script>
-          `;
-          document.body.appendChild(_ov);
-        }
-
-        // Recovery după refresh: dacă nu avem ?sts_pending=1 în URL,
-        // verificăm DB-ul pentru stsPending=true și relansăm polling-ul dacă e cazul.
-        async function checkAndResumeStsPolling() {
-          if (_stsPending === '1') return; // deja pornit prin redirect normal
-          try {
-            const url = `/flows/${encodeURIComponent(flow)}/signer-status?token=${encodeURIComponent(token)}`;
-            const r = await fetch(url, { credentials: 'include' });
-            if (!r.ok) return;
-            const d = await r.json();
-            if (d.shouldResumePoll) {
-              console.log('[STS] stsPending=true detectat în DB — reluare polling automat după refresh');
-              startStsPolling();
-            }
-          } catch (e) {
-            console.warn('[STS] Nu s-a putut verifica starea STS:', e);
-          }
-        }
-
-        loadFlow().catch((e) => showError(String(e.message || e))).then(() => {
-          if (_stsPending === '1') startStsPolling();
-          else checkAndResumeStsPolling(); // recovery după refresh pagină
-          // sts_signed=1: dacă fluxul încă arată semnatarul ca 'current' (race condition DB),
-          // forțăm starea vizuală corectă — semnatarul a semnat cu succes
-          if (_stsSigned === '1') {
-            const signBox = $('signBox');
-            if (signBox) {
-              signBox.style.opacity = '0.5';
-              signBox.style.pointerEvents = 'none';
-            }
-            $('result').innerHTML = '<span style="color:#2dd4bf;font-weight:700;">✅ Semnătura electronică calificată a fost aplicată cu succes! Redirecționăm către Status...</span>';
-            setTimeout(() => { location.href = `/flow.html?flow=${encodeURIComponent(flow)}`; }, 2500);
-          }
-        });
-      }
-
-      // ── Refuz semnare — modal inline (fără prompt/confirm nativ) ─────────
-      const btnRefuz = $("btnRefuz");
-      if (btnRefuz) {
-        // Deschide / închide modal
-        btnRefuz.addEventListener("click", () => {
-          const refuzModal = $("refuzModal");
-          if (!refuzModal) return;
-          const isOpen = refuzModal.style.display !== "none";
-          refuzModal.style.display = isOpen ? "none" : "block";
-          // Ascunde celelalte modale dacă sunt deschise
-          const delegModal = $("delegateModal");
-          const revModal   = $("reviewModal");
-          if (delegModal) delegModal.style.display = "none";
-          if (revModal)   revModal.style.display   = "none";
-          if (!isOpen) {
-            // Focus pe textarea la deschidere
-            setTimeout(() => { const ta = $("refuzReason"); if(ta) ta.focus(); }, 80);
-          }
-        });
-      }
-
-      // Buton Anulează din modal refuz
-      const btnRefuzCancel = $("btnRefuzCancel");
-      if (btnRefuzCancel) {
-        btnRefuzCancel.addEventListener("click", () => {
-          const refuzModal = $("refuzModal");
-          if (refuzModal) refuzModal.style.display = "none";
-          const ta = $("refuzReason");
-          if (ta) ta.value = "";
-          const st = $("refuzModalStatus");
-          if (st) st.textContent = "";
-        });
-      }
-
-      // Buton Confirmă refuzul
-      const btnRefuzConfirm = $("btnRefuzConfirm");
-      if (btnRefuzConfirm) {
-        btnRefuzConfirm.addEventListener("click", async () => {
-          const reason   = ($("refuzReason")?.value || "").trim();
-          const statusEl = $("refuzModalStatus");
-          const refuzStatus = $("refuzStatus");
-
-          btnRefuzConfirm.disabled = true;
-          btnRefuzConfirm.textContent = "Se procesează...";
-          if (statusEl) statusEl.textContent = "";
-
-          try {
-            const r = await _apiFetch(`/flows/${flow}/refuse`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ token, reason: reason || "Fără motiv specificat" })
-            });
-            const d = await r.json();
-            if (r.ok) {
-              // Ascunde modalul, afișează confirmare
-              const refuzModal = $("refuzModal");
-              if (refuzModal) refuzModal.style.display = "none";
-              btnRefuz.style.background   = "rgba(255,80,80,.3)";
-              btnRefuz.style.borderColor  = "rgba(255,80,80,.6)";
-              btnRefuz.textContent        = "✓ Refuz înregistrat";
-              btnRefuz.disabled           = true;
-              if (refuzStatus) refuzStatus.innerHTML = "❌ Ai refuzat semnarea. Inițiatorul și semnatarii anteriori au fost notificați. Lucrarea este <strong>ÎNCHISĂ</strong>.";
-              const signBox = $("signBox");
-              if (signBox) signBox.style.display = "none";
-              setTimeout(() => { location.href = "/?tab=flows"; }, 2500);
-            } else {
-              if (statusEl) statusEl.textContent = "❌ Eroare: " + (d.error || "unknown");
-              btnRefuzConfirm.disabled    = false;
-              btnRefuzConfirm.textContent = "✕ Confirmă refuzul";
-            }
-          } catch(e) {
-            if (statusEl) statusEl.textContent = "❌ Eroare de rețea.";
-            btnRefuzConfirm.disabled    = false;
-            btnRefuzConfirm.textContent = "✕ Confirmă refuzul";
-          }
-        });
-      }
-
-      // ── PDF.js renderer (evita iframe + Chrome AcroForm bug) ──────────────
-      async function renderPdfJs(url) {
-        const container = $("pdfPagesContainer");
-        if (!container) return;
-        container.innerHTML = '<p style="color:rgba(255,255,255,.4);text-align:center;padding:40px 0;">Se incarca documentul...</p>';
-        try {
-          // Asteapta pdfjsLib max 6s
-          await new Promise((res, rej) => {
-            if (window.pdfjsLib) return res();
-            let w = 0;
-            const iv = setInterval(() => {
-              w += 150;
-              if (window.pdfjsLib) { clearInterval(iv); res(); }
-              else if (w > 6000) { clearInterval(iv); rej(new Error("PDF.js indisponibil")); }
-            }, 150);
-          });
-          const resp = await _apiFetch(url);
-          if (!resp.ok) throw new Error("HTTP " + resp.status);
-          const arrBuf = await resp.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrBuf) }).promise;
-          container.innerHTML = "";
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const vp = page.getViewport({ scale: 1.5 });
-            const canvas = document.createElement("canvas");
-            canvas.width = vp.width;
-            canvas.height = vp.height;
-            canvas.style.cssText = "display:block;width:100%;margin-bottom:8px;border-radius:6px;";
-            container.appendChild(canvas);
-            await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
-          }
-        } catch(e) {
-          container.innerHTML = '<p style="color:#ff6b6b;text-align:center;padding:40px 0;">Eroare la incarcarea PDF: ' + esc(e.message) + '</p>';
-        }
-      }
-      // ── End PDF.js renderer ────────────────────────────────────────────────
-    </script>
-  <script src="/notif-widget.js"></script>
-<script>
-// ── Delegare semnatura ────────────────────────────────────────────────
-      const btnDelegate = $("btnDelegheaza");
-      if (btnDelegate) {
-        btnDelegate.addEventListener("click", async () => {
-          const modal = $("delegateModal");
-          if (!modal) return;
-          const isOpen = modal.style.display !== "none";
-          if (isOpen) { modal.style.display = "none"; return; }
-          modal.style.display = "block";
-          // Incarca userii din institutie daca nu sunt deja incarcati
-          const sel = $("delegateUserSelect");
-          if (sel && sel.options.length <= 1) {
-            try {
-              // SEC-01: token din cookie HttpOnly — eliminat jwtToken
-              const r = await _apiFetch('/users');
-              if (r.ok) {
-                const users = await r.json();
-                // Exclude semnatarul curent din lista
-                const myEmail = currentFlow?.signers?.[signerIndex]?.email || "";
-                users.forEach(u => {
-                  if ((u.email || "").toLowerCase() === myEmail.toLowerCase()) return;
-                  const opt = document.createElement("option");
-                  opt.value = u.email || "";
-                  opt.dataset.name = u.nume || "";
-                  opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
-                  sel.appendChild(opt);
-                });
-              }
-            } catch(e) { console.warn("Nu s-au putut incarca userii pentru delegare:", e); }
-          }
-        });
-      }
-      // Auto-fill email+name din dropdown
-      const delegSel = $("delegateUserSelect");
-      if (delegSel) {
-        delegSel.addEventListener("change", () => {
-          const opt = delegSel.options[delegSel.selectedIndex];
-          const emailInp = $("delegateEmail");
-          const nameInp = $("delegateName");
-          if (opt && opt.value) {
-            if (emailInp) { emailInp.value = opt.value; emailInp.readOnly = true; emailInp.style.opacity = ".6"; }
-            if (nameInp) { nameInp.value = opt.dataset.name || ""; nameInp.readOnly = true; nameInp.style.opacity = ".6"; }
-          } else {
-            if (emailInp) { emailInp.value = ""; emailInp.readOnly = false; emailInp.style.opacity = "1"; }
-            if (nameInp) { nameInp.value = ""; nameInp.readOnly = false; nameInp.style.opacity = "1"; }
-          }
-        });
-      }
-      const btnDelegConfirm = $("btnDelegateConfirm");
-      if (btnDelegConfirm) {
-        btnDelegConfirm.addEventListener("click", async () => {
-          const toEmail = ($("delegateEmail")?.value||"").trim();
-          const toName = ($("delegateName")?.value||"").trim();
-          const reason = ($("delegateReason")?.value||"").trim();
-          const statusEl = $("delegateStatus");
-          if (!toEmail || !/\S+@\S+\.\S+/.test(toEmail)) { if(statusEl) statusEl.textContent = "❌ Email invalid."; return; }
-          if (!reason) { if(statusEl) statusEl.textContent = "❌ Motivul este obligatoriu."; return; }
-          btnDelegConfirm.disabled = true; btnDelegConfirm.textContent = "Se procesează...";
-          if(statusEl) statusEl.textContent = "";
-          try {
-            const r = await _apiFetch("/flows/" + encodeURIComponent(flow) + "/delegate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ fromToken: token, toEmail, toName, reason })
-            });
-            const j = await r.json();
-            if (j.ok) {
-              if(statusEl) statusEl.textContent = "✅ Delegare înregistrată. " + toEmail + " a primit notificare.";
-              btnDelegConfirm.textContent = "✓ Delegat";
-              if (btnDelegate) btnDelegate.disabled = true;
-              // Redirect la notificari: tab 'sign' daca mai are de semnat, altfel 'all'
-              setTimeout(async () => {
-                try {
-                  // SEC-01: token din cookie HttpOnly — eliminat jwtTok
-                  const rFlows = await _apiFetch('/my-flows');
-                  const jFlows = rFlows.ok ? await rFlows.json() : {};
-                  const pending = (jFlows.flows || []).some(f =>
-                    (f.signers || []).some(s => s.status === "current" && (s.email||"").toLowerCase() === (localStorage.getItem("docflow_email")||"").toLowerCase())
-                  );
-                  location.href = "/notifications.html?tab=" + (pending ? "sign" : "all");
-                } catch(e) { location.href = "/notifications.html?tab=all"; }
-              }, 1500);
-            } else {
-              if(statusEl) statusEl.textContent = "❌ " + (j.message || j.error || "Eroare");
-              btnDelegConfirm.disabled = false;
-              btnDelegConfirm.textContent = "✓ Confirmă delegarea";
-            }
-          } catch(e) {
-            if(statusEl) statusEl.textContent = "❌ Eroare rețea: " + e.message;
-            btnDelegConfirm.disabled = false;
-            btnDelegConfirm.textContent = "✓ Confirmă delegarea";
-          }
-        });
-      }
-      // ── Buton Trimite spre revizuire ──────────────────────────────────────
-      const btnRevizuire = $("btnRevizuire");
-      if (btnRevizuire) {
-        btnRevizuire.addEventListener("click", () => {
-          const reviewModal = $("reviewModal");
-          if (reviewModal) {
-            reviewModal.style.display = reviewModal.style.display === "none" ? "block" : "none";
-            // Ascunde delegateModal dacă e deschis
-            const delegModal = $("delegateModal");
-            if (delegModal) delegModal.style.display = "none";
-          }
-        });
-      }
-      const btnReviewConfirm = $("btnReviewConfirm");
-      if (btnReviewConfirm) {
-        btnReviewConfirm.addEventListener("click", async () => {
-          const reason = ($("reviewReason")?.value || "").trim();
-          const statusEl = $("reviewStatus");
-          if (!reason) { if(statusEl) statusEl.textContent = "❌ Motivul este obligatoriu."; return; }
-          btnReviewConfirm.disabled = true; btnReviewConfirm.textContent = "Se procesează...";
-          if(statusEl) statusEl.textContent = "";
-          try {
-            const r = await _apiFetch("/flows/" + encodeURIComponent(flow) + "/request-review", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ token, reason })
-            });
-            const j = await r.json();
-            if (j.ok) {
-              if(statusEl) statusEl.textContent = "✅ Documentul a fost trimis spre revizuire. Inițiatorul a fost notificat.";
-              btnReviewConfirm.textContent = "✓ Trimis";
-              if (btnRevizuire) btnRevizuire.disabled = true;
-              setTimeout(() => { location.href = "/notifications.html?tab=all"; }, 1800);
-            } else {
-              if(statusEl) statusEl.textContent = "❌ " + (j.message || j.error || "Eroare");
-              btnReviewConfirm.disabled = false;
-              btnReviewConfirm.textContent = "✓ Confirmă trimiterea spre revizuire";
-            }
-          } catch(e) {
-            if(statusEl) statusEl.textContent = "❌ Eroare rețea: " + e.message;
-            btnReviewConfirm.disabled = false;
-            btnReviewConfirm.textContent = "✓ Confirmă trimiterea spre revizuire";
-          }
-        });
-      }
-
-</script>
+    <script src="/js/semdoc-signer/main.js?v=3.9.341" defer></script>
+  <script src="/notif-widget.js?v=3.9.341"></script>
+<script src="/js/semdoc-signer/post-dom-handlers.js?v=3.9.341" defer></script>
 
 <!-- ── Modal Schimbă Parola ───────────────────────────────────────────── -->
 <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
@@ -1923,43 +295,11 @@
     <div id="cpMsg" style="min-height:20px;margin-bottom:14px;font-size:.83rem;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="df-action-btn sm" onclick="closeChangePwdModal()">Anulează</button>
-      <button class="df-action-btn cta" onclick="submitChangePwd()" id="cpBtn"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-save"/></svg>Salvează</button>
+      <button class="df-action-btn cta" onclick="submitChangePwd()" id="cpBtn"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.341#ico-save"/></svg>Salvează</button>
     </div>
   </div>
 </div>
-<script>
-function openChangePwdModal(){
-  document.getElementById('changePwdModal').style.display='flex';
-  document.getElementById('cpCurrent').value=document.getElementById('cpNew').value=document.getElementById('cpConfirm').value='';
-  document.getElementById('cpMsg').textContent='';document.getElementById('cpMsg').style.color='';
-  document.getElementById('cpBtn').disabled=false;document.getElementById('cpBtn').textContent='Salvează';
-  document.getElementById('cpCurrent').focus();
-}
-function closeChangePwdModal(){document.getElementById('changePwdModal').style.display='none';}
-async function submitChangePwd(){
-  const cur=document.getElementById('cpCurrent').value;
-  const nw=document.getElementById('cpNew').value;
-  const cf=document.getElementById('cpConfirm').value;
-  const msg=document.getElementById('cpMsg');
-  const btn=document.getElementById('cpBtn');
-  if(!cur||!nw||!cf){msg.style.color='#f28b82';msg.textContent='Completează toate câmpurile.';return;}
-  if(nw!==cf){msg.style.color='#f28b82';msg.textContent='Parolele noi nu coincid.';return;}
-  if(nw.length<6){msg.style.color='#f28b82';msg.textContent='Parola trebuie să aibă minim 6 caractere.';return;}
-  btn.disabled=true;btn.textContent='Se salvează...';
-  try{
-    const r=await fetch('/auth/change-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});
-    const d=await r.json();
-    if(r.ok){
-      msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';btn.textContent='Salvează';
-      localStorage.removeItem('docflow_force_pwd');
-      setTimeout(closeChangePwdModal,1800);
-    } else {
-      msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');
-      btn.disabled=false;btn.textContent='Salvează';
-    }
-  } catch(e){msg.style.color='#f28b82';msg.textContent='Eroare de rețea.';btn.disabled=false;btn.textContent='Salvează';}
-}
-</script>
+<script src="/js/semdoc-signer/modals.js?v=3.9.341"></script>
 
 </div><!-- /df-page -->
 
