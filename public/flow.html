@@ -957,8 +957,8 @@
           ${data.reviewReason ? `<div style="color:var(--sub);font-size:.88rem;margin-bottom:12px;"><strong>Motiv:</strong> ${data.reviewReason}</div>` : ""}
           ${(isInitiator || isAdmin) ? `
           <div style="margin-top:12px;">
-            <div style="font-size:.82rem;color:var(--muted);margin-bottom:8px;">Încarcă un document revizuit pentru a reporni fluxul cu toți semnatarii originali:</div>
-            <input type="file" id="reviewPdfInput" accept="application/pdf" style="display:none;" onchange="const n=document.getElementById('reviewPdfName');n.textContent=this.files[0]?.name||'Niciun fișier selectat';n.style.color=this.files[0]?'var(--df-text)':'var(--muted)';" />
+            <div style="font-size:.82rem;color:var(--muted);margin-bottom:8px;">Încarcă un document revizuit (PDF, DOCX, XLSX, PPTX, ODT, imagine). Fișierele non-PDF vor fi convertite automat.</div>
+            <input type="file" id="reviewPdfInput" accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp,.jpg,.jpeg,.png,.webp,.gif,.bmp" style="display:none;" onchange="const n=document.getElementById('reviewPdfName');n.textContent=this.files[0]?.name||'Niciun fișier selectat';n.style.color=this.files[0]?'var(--df-text)':'var(--muted)';" />
             <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
               <button type="button" onclick="document.getElementById('reviewPdfInput').click()" class="df-action-btn"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-folder"/></svg>Alege fișier</button>
               <span id="reviewPdfName" style="color:var(--muted);font-size:.83rem;">Niciun fișier selectat</span>
@@ -974,18 +974,49 @@
             btnUploadRev.addEventListener("click", async () => {
               const fileInput = $("reviewPdfInput");
               const statusEl = $("reviewUploadStatus");
-              if (!fileInput?.files?.length) { if(statusEl) statusEl.textContent = "❌ Selectează un fișier PDF."; return; }
+              if (!fileInput?.files?.length) { if(statusEl) statusEl.textContent = "❌ Selectează un fișier."; return; }
               const file = fileInput.files[0];
-              if (!file.type.includes("pdf") && !file.name.endsWith(".pdf")) { if(statusEl) statusEl.textContent = "❌ Fișierul trebuie să fie PDF."; return; }
-              btnUploadRev.disabled = true; btnUploadRev.textContent = "⏳ Se procesează...";
-              if(statusEl) statusEl.textContent = "";
+              const fName = file.name || '';
+              const fExt = (fName.match(/\.[^.]+$/)?.[0] || '').toLowerCase();
+              const ACCEPTED = ['.pdf','.docx','.doc','.xlsx','.xls','.pptx','.ppt','.odt','.ods','.odp','.jpg','.jpeg','.png','.webp','.gif','.bmp'];
+              if (!ACCEPTED.includes(fExt)) {
+                if(statusEl) statusEl.textContent = "❌ Tip fișier neacceptat. Folosește: PDF, DOCX, XLSX, PPTX, ODT, ODS, ODP, JPG, PNG, WEBP.";
+                return;
+              }
+              btnUploadRev.disabled = true;
+              const origLabel = '⬆️ Trimite documentul revizuit și repornește fluxul';
               try {
-                const pdfB64 = await new Promise((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onload = e => resolve(e.target.result);
-                  reader.onerror = reject;
-                  reader.readAsDataURL(file);
-                });
+                let pdfB64;
+                if (fExt === '.pdf') {
+                  // Upload direct pentru PDF
+                  btnUploadRev.textContent = "⏳ Se procesează...";
+                  if(statusEl) statusEl.textContent = "";
+                  pdfB64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = e => resolve(e.target.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                  });
+                } else {
+                  // Conversie server pentru non-PDF
+                  btnUploadRev.textContent = `⏳ Convertesc ${fExt.replace('.','').toUpperCase()} la PDF...`;
+                  if(statusEl) statusEl.textContent = "";
+                  const fd = new FormData();
+                  fd.append('file', file, fName);
+                  const convResp = await fetch('/api/convert-to-pdf', {
+                    method: 'POST', credentials: 'include', body: fd
+                  });
+                  if (!convResp.ok) {
+                    const errJ = await convResp.json().catch(()=>({error:'conversion_failed'}));
+                    throw new Error(errJ.message || errJ.error || `Conversie eșuată (${convResp.status})`);
+                  }
+                  const convJ = await convResp.json();
+                  if (!convJ.pdfB64) throw new Error('Răspuns conversie invalid');
+                  pdfB64 = convJ.pdfB64.startsWith('data:') ? convJ.pdfB64 : `data:application/pdf;base64,${convJ.pdfB64}`;
+                }
+
+                // Trimitem la reinitiate-review (format identic cu înainte)
+                btnUploadRev.textContent = "⏳ Se repornește fluxul...";
                 const r = await _apiFetch("/flows/" + encodeURIComponent(flowId) + "/reinitiate-review", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -993,17 +1024,16 @@
                 });
                 const j2 = await r.json();
                 if (j2.ok) {
-                  // Issue 4: Acelasi flowId — reîncarcă pagina curentă
                   setMsg("ok", `✅ Document revizuit trimis! Fluxul a fost repornit (runda ${j2.round || 1}). Semnatarii au fost notificați.`);
                   if(statusEl) statusEl.textContent = "";
                   setTimeout(() => loadFlow(), 1200);
                 } else {
                   if(statusEl) statusEl.textContent = "❌ " + (j2.message || j2.error || "Eroare");
-                  btnUploadRev.disabled = false; btnUploadRev.textContent = "⬆️ Trimite documentul revizuit și repornește fluxul";
+                  btnUploadRev.disabled = false; btnUploadRev.textContent = origLabel;
                 }
               } catch(e) {
-                if(statusEl) statusEl.textContent = "❌ Eroare: " + e.message;
-                btnUploadRev.disabled = false; btnUploadRev.textContent = "⬆️ Trimite documentul revizuit și repornește fluxul";
+                if(statusEl) statusEl.textContent = "❌ " + e.message;
+                btnUploadRev.disabled = false; btnUploadRev.textContent = origLabel;
               }
             });
           }
