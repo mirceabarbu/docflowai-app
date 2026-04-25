@@ -183,3 +183,12 @@
 /* Grid 2 coloane pentru carduri Verificare furnizor — colapse pe mobile */
 .vf-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 @media(max-width:900px){.vf-grid-2{grid-template-columns:1fr;}}
+
+/* ── BLOC 0: Mesaje UI (folosit de window.df.showMsg) ───────────────────── */
+.df-msg {
+  font-size: .9rem;
+  line-height: 1.4;
+  margin-top: 8px;
+}
+.df-msg--ok  { color: var(--df-success, #2dd4bf); }
+.df-msg--err { color: var(--df-danger,  #ff8080); }
