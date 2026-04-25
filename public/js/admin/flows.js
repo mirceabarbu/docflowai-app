@@ -93,8 +93,10 @@
     const statusF = document.getElementById("flowStatusFilter").value;
     const instF = document.getElementById("flowInstFilter").value;
     const deptF = document.getElementById("flowDeptFilter").value;
-    const dateFrom = (document.getElementById("flowDateFrom")?.value || "").trim();
-    const dateTo   = (document.getElementById("flowDateTo")?.value   || "").trim();
+    const _df = (document.getElementById("flowDateFrom")?.value || "").trim();
+    const _dt = (document.getElementById("flowDateTo")?.value   || "").trim();
+    const dateFrom = /^\d{4}-\d{2}-\d{2}$/.test(_df) ? _df : (window.df?.parseDMYtoISO?.(_df) || '');
+    const dateTo   = /^\d{4}-\d{2}-\d{2}$/.test(_dt) ? _dt : (window.df?.parseDMYtoISO?.(_dt) || '');
     area.innerHTML = '<span style="color:var(--muted);">⏳ Se incarca...</span>';
 
     // Mapeaza valorile locale la parametrii server

@@ -132,7 +132,7 @@
     if (!confirm(`Arhivezi ${_archiveFlowIds.length} fluxuri în Google Drive?\n\nCe se întâmplă:\n✅ PDF-urile sunt copiate în Google Drive\n✅ Fluxurile rămân vizibile în platformă (cu link Drive)\n🗑️ PDF-urile (pdfB64 / signedPdfB64 / originalPdfB64) sunt șterse din baza de date PostgreSQL\n\nAcțiunea nu poate fi anulată.`)) return;
     btn.disabled = true;
     msg.textContent = "";
-    let totalOk = 0, totalFail = 0, batchIndex = 0, failedFlows = [];
+    let allResults = [], batchIndex = 0;
     try {
       while (true) {
         btn.textContent = `⏳ Se arhivează... (${Math.min((batchIndex+1)*10, _archiveFlowIds.length)}/${_archiveFlowIds.length})`;
@@ -142,17 +142,17 @@
         });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error||"Eroare server");
-        const batchOk = (j.results||[]).filter(x=>x.ok);
-        const batchFail = (j.results||[]).filter(x=>!x.ok);
-        totalOk += batchOk.length;
-        totalFail += batchFail.length;
-        failedFlows.push(...batchFail);
+        allResults.push(...(j.results||[]));
         if (!j.hasMore) break;
         batchIndex++;
       }
-      let html = `✅ Arhivate: <strong>${totalOk}</strong> fluxuri`;
-      if (totalFail) {
-        html += ` &nbsp;·&nbsp; ❌ Eșuate: <strong>${totalFail}</strong>`;
+      const successful  = allResults.filter(r => r.ok && !r.skipped).length;
+      const skipped     = allResults.filter(r => r.skipped).length;
+      const failedFlows = allResults.filter(r => !r.ok && !r.skipped);
+      let html = `✅ Arhivare completă: <strong>${successful}</strong> fluxuri arhivate cu succes`;
+      if (skipped)            html += `, <strong>${skipped}</strong> deja arhivate`;
+      if (failedFlows.length) {
+        html += `, <strong style="color:#ff8080;">${failedFlows.length}</strong> erori`;
         html += `<div style="margin-top:8px;background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.2);border-radius:8px;padding:10px;max-height:160px;overflow-y:auto;">`;
         html += failedFlows.map(f => `<div style="font-size:.78rem;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);">
           <span style="color:#ffaaaa;font-weight:600;">${f.flowId}</span>
@@ -160,6 +160,7 @@
         </div>`).join('');
         html += '</div>';
       }
+      html += '.';
       msg.innerHTML = html;
       document.getElementById("archivePreview").style.display = "none";
       _archiveFlowIds = [];

@@ -4,20 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DocFlowAI — Inițiere flux</title>
-    <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.340">
-    <link rel="stylesheet" href="/css/df/shell.css?v=3.9.340">
-    <link rel="stylesheet" href="/css/df/components.css?v=3.9.340">
-    <link rel="stylesheet" href="/css/df/email-modal.css?v=3.9.340">
-    <link rel="stylesheet" href="/css/semdoc-initiator/semdoc-initiator.css?v=3.9.340">
-    <link rel="stylesheet" href="/mobile.css?v=3.9.340">
-    <script src="/js/df-utils.js?v=3.9.343"></script>
-    <script src="/js/df-apifetch-shim-full.js?v=3.9.340"></script>
-    <script src="/js/df-shell.js?v=3.9.340"></script>
-    <script src="/js/df-email-modal.js?v=3.9.340" defer></script>
+    <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.353">
+    <link rel="stylesheet" href="/css/df/shell.css?v=3.9.353">
+    <link rel="stylesheet" href="/css/df/components.css?v=3.9.353">
+    <link rel="stylesheet" href="/css/df/email-modal.css?v=3.9.353">
+    <link rel="stylesheet" href="/css/semdoc-initiator/semdoc-initiator.css?v=3.9.353">
+    <link rel="stylesheet" href="/mobile.css?v=3.9.353">
+    <script src="/js/df-utils.js?v=3.9.353"></script>
+    <script src="/js/df-apifetch-shim-full.js?v=3.9.353"></script>
+    <script src="/js/df-shell.js?v=3.9.353"></script>
+    <script src="/js/df-email-modal.js?v=3.9.353" defer></script>
 </head>
-<script src="/js/semdoc-initiator/pdf-lib-loader.js?v=3.9.340"></script>
+<script src="/js/semdoc-initiator/pdf-lib-loader.js?v=3.9.353"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="/js/semdoc-initiator/pdfjs-worker.js?v=3.9.340"></script>
+<script src="/js/semdoc-initiator/pdfjs-worker.js?v=3.9.353"></script>
   <body>
 <div class="df-shell">
 
@@ -29,19 +29,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" id="sbFluxNou" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" id="sbFluxurileMele" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item" id="linkSabloane">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item" id="linkFormulare">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -49,7 +49,7 @@
     <div class="df-nav-label">Comunicare</div>
     <div class="df-nav-group">
       <a href="/notifications" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-bell"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-bell"/></svg>
         Notificări
       </a>
     </div>
@@ -57,19 +57,19 @@
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
       <a href="/admin#dashboard" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-layout"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-layout"/></svg>
         Dashboard
       </a>
       <a href="/admin#utilizatori" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-users"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-users"/></svg>
         Utilizatori
       </a>
       <a href="/admin#fluxuri" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-git-branch"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-git-branch"/></svg>
         Fluxuri documente
       </a>
       <a href="/admin#rapoarte" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-bar-chart"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-bar-chart"/></svg>
         Rapoarte
       </a>
     </div>
@@ -77,19 +77,19 @@
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
       <a href="/admin#organizatii" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-building"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-building"/></svg>
         Organizații
       </a>
       <a href="/admin#outreach" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-send"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-send"/></svg>
         Outreach
       </a>
       <a href="/admin#analytics" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-trending-up"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-trending-up"/></svg>
         Analytics
       </a>
       <a href="/admin#audit" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-search"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-search"/></svg>
         Audit
       </a>
     </div>
@@ -112,26 +112,26 @@
               <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
               <div class="df-user-trigger-role">Utilizator</div>
             </div>
-            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-chevron-down"/></svg>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-chevron-down"/></svg>
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -142,8 +142,8 @@
     <!-- Banner parolă temporară -->
     <div id="forcePwdBanner" style="display:none;background:linear-gradient(135deg,rgba(255,165,0,.18),rgba(255,100,0,.12));border-bottom:1px solid rgba(255,165,0,.4);padding:12px 24px;text-align:center;font-size:.88rem;color:#ffd580;">
       ⚠️ <strong>Parola ta este temporară.</strong> Te rugăm să o schimbi acum pentru securitatea contului.
-      &nbsp;<button onclick="openChangePwdModal()" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-key"/></svg>Schimbă parola</button>
-      &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" class="df-action-btn icon-only sm" aria-label="Închide"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-x"/></svg></button>
+      &nbsp;<button onclick="openChangePwdModal()" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-key"/></svg>Schimbă parola</button>
+      &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" class="df-action-btn icon-only sm" aria-label="Închide"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-x"/></svg></button>
     </div>
 
     <main class="df-page-body">
@@ -174,8 +174,8 @@
               <label>PDF (atașament maxim 50MB)</label>
               <input id="pdfFile" type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp,.jpg,.jpeg,.png,.webp,.gif,.bmp" style="display:none;" />
               <div class="row" style="gap:8px; align-items:center; flex-wrap:nowrap; margin-top:2px;">
-                <button id="btnChoosePdf" class="df-action-btn" type="button" style="flex-shrink:0;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-paperclip"/></svg>Alege</button>
-                <button id="btnClearPdf" class="df-action-btn danger" type="button" disabled style="flex-shrink:0; opacity:.3; pointer-events:none; cursor:default;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-trash"/></svg>Șterge</button>
+                <button id="btnChoosePdf" class="df-action-btn" type="button" style="flex-shrink:0;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-paperclip"/></svg>Alege</button>
+                <button id="btnClearPdf" class="df-action-btn danger" type="button" disabled style="flex-shrink:0; opacity:.3; pointer-events:none; cursor:default;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-trash"/></svg>Șterge</button>
                 <label id="urgentToggle" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:7px 12px;border-radius:10px;border:1px solid rgba(255,80,80,.25);background:rgba(255,80,80,.06);transition:all .2s;user-select:none;flex-shrink:0;" title="Marchează documentul ca URGENT — semnatarii vor fi notificați cu prioritate înaltă">
                   <input type="checkbox" id="urgentCheck" style="width:16px;height:16px;cursor:pointer;accent-color:#ff4444;" />
                   <span style="font-weight:700;font-size:.85rem;letter-spacing:.03em;white-space:nowrap;">🚨 URGENT</span>
@@ -202,10 +202,10 @@
             <!-- F-06: Documente suport -->
             <div class="col-12">
               <div style="border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 16px;background:rgba(255,255,255,.03);margin-bottom:4px;">
-                <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:8px;display:inline-flex;align-items:center;gap:6px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-paperclip"/></svg>Documente suport <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional, max 5 fișiere × 10 MB (PDF, ZIP, RAR)</span></div>
+                <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:8px;display:inline-flex;align-items:center;gap:6px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-paperclip"/></svg>Documente suport <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional, max 5 fișiere × 10 MB (PDF, ZIP, RAR)</span></div>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                   <label id="attachPickerLabel" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;cursor:pointer;font-size:.83rem;color:#b39dff;font-weight:600;">
-                    <svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:4px;"><use href="/icons.svg?v=3.9.340#ico-plus"/></svg>Adaugă fișier
+                    <svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:4px;"><use href="/icons.svg?v=3.9.353#ico-plus"/></svg>Adaugă fișier
                     <input id="attachPicker" type="file" accept=".pdf,.zip,.rar,application/pdf,application/zip,application/x-rar-compressed" multiple style="display:none;" />
                   </label>
                   <span id="attachHint" style="font-size:.78rem;color:var(--muted);">Niciun fișier selectat</span>
@@ -219,11 +219,11 @@
                 <span style="font-size:.85rem; color:var(--muted); font-weight:600;">Tip document:</span>
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:6px 14px; border-radius:8px; border:1px solid rgba(124,92,255,.4); background:rgba(124,92,255,.1);" id="lblTip1">
                   <input type="radio" name="docType" id="docTypeTabel" value="tabel" checked style="accent-color:#7c5cff; width:14px; height:14px;" onchange="onDocTypeChange()" />
-                  <span style="font-size:.84rem; color:#c4b0ff; font-weight:600;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-grid"/></svg>Cu tabel generat</span>
+                  <span style="font-size:.84rem; color:#c4b0ff; font-weight:600;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-grid"/></svg>Cu tabel generat</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:6px 14px; border-radius:8px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03);" id="lblTip2">
                   <input type="radio" name="docType" id="docTypeAncore" value="ancore" style="accent-color:#7c5cff; width:14px; height:14px;" onchange="onDocTypeChange()" />
-                  <span style="font-size:.84rem; color:var(--sub); font-weight:600;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-anchor"/></svg>Ancore existente</span>
+                  <span style="font-size:.84rem; color:var(--sub); font-weight:600;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-anchor"/></svg>Ancore existente</span>
                 </label>
                 <span id="docTypeHint" style="font-size:.78rem; color:var(--muted); margin-left:4px;">DocFlowAI generează tabelul cu semnatari și ancora pentru semnătură</span>
               </div>
@@ -244,9 +244,9 @@
               <div id="signersMask" style="display:none;"></div>
               <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
                 <div class="row">
-                  <button id="btnAdd" class="df-action-btn" type="button"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-plus"/></svg>Adaugă rând</button>
+                  <button id="btnAdd" class="df-action-btn" type="button"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-plus"/></svg>Adaugă rând</button>
                   <button id="btnDefaults" class="df-action-btn" type="button">Roluri implicite</button>
-                  <button id="btnFromTemplate" class="df-action-btn success" type="button"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-grid"/></svg>Din șablon</button>
+                  <button id="btnFromTemplate" class="df-action-btn success" type="button"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-grid"/></svg>Din șablon</button>
                 </div>
                 <span id="pdfRequiredHint" style="display:none; color:#a0b0d0; font-size:.85em; background:rgba(20,28,50,.9); padding:7px 16px; border-radius:8px; border:1px solid rgba(120,160,255,.3);">📎 Încarcă mai întâi PDF-ul</span>
               </div>
@@ -269,8 +269,8 @@
                 <!-- Zona detectare câmpuri AcroForm — vizibilă doar pentru ancore -->
                 <div id="ancoreDetectArea" style="display:none; margin-top:10px; padding:12px 16px; background:rgba(45,212,191,.06); border:1px solid rgba(45,212,191,.2); border-radius:10px;">
                   <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <span style="font-size:.85rem; color:#7cf0e0; font-weight:600;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-search"/></svg>Câmpuri semnătură detectate în PDF:</span>
-                    <button id="btnDetectFields" type="button" class="df-action-btn success sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-refresh"/></svg>Redetectează</button>
+                    <span style="font-size:.85rem; color:#7cf0e0; font-weight:600;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-search"/></svg>Câmpuri semnătură detectate în PDF:</span>
+                    <button id="btnDetectFields" type="button" class="df-action-btn success sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-refresh"/></svg>Redetectează</button>
                     <span id="detectStatus" style="font-size:.8rem; color:rgba(234,240,255,.5);"></span>
                   </div>
                   <div id="detectedFieldsList" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;"></div>
@@ -285,8 +285,8 @@
 
             <div class="col-12">
               <div class="row">
-                <button id="btnCreate" class="df-action-btn cta" type="button"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-rocket"/></svg>Pornește flux</button>
-                <button id="btnRenunta" class="df-action-btn danger" type="button" style="display:none;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-x"/></svg>Renunță la flux</button>
+                <button id="btnCreate" class="df-action-btn cta" type="button"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-rocket"/></svg>Pornește flux</button>
+                <button id="btnRenunta" class="df-action-btn danger" type="button" style="display:none;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-x"/></svg>Renunță la flux</button>
                 <span id="createResult" class="muted"></span>
               </div>
             </div>
@@ -303,8 +303,8 @@
               <span id="fluxCounter" style="display:none;padding:3px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:20px;font-size:.8rem;color:#c4b5ff;font-weight:700;"></span>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <a href="/bulk-signer.html" class="df-action-btn" title="Semnează mai multe documente dintr-o singură operațiune"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-pen-tool"/></svg>Semnare în masă</a>
-              <button id="btnRefreshFluxuri" class="df-action-btn" type="button" onclick="loadMyFlows(1)"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-refresh"/></svg>Actualizează</button>
+              <a href="/bulk-signer.html" class="df-action-btn" title="Semnează mai multe documente dintr-o singură operațiune"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-pen-tool"/></svg>Semnare în masă</a>
+              <button id="btnRefreshFluxuri" class="df-action-btn" type="button" onclick="loadMyFlows(1)"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-refresh"/></svg>Actualizează</button>
             </div>
           </div>
           <!-- Linia 2: Search + filtru status -->
@@ -312,7 +312,7 @@
             <input type="text" tabindex="-1" autocomplete="username" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
             <input type="password" tabindex="-1" autocomplete="new-password" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;opacity:0;pointer-events:none;" />
             <div class="df-search-wrap">
-              <svg class="df-search-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-search"/></svg>
+              <svg class="df-search-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-search"/></svg>
               <input
                 id="fluxSearch"
                 name="docflow_flux_search_q"
@@ -338,6 +338,7 @@
               <option value="pending">În curs</option>
               <option value="completed">Finalizate</option>
               <option value="refused">Refuzate</option>
+              <option value="cancelled">Anulate</option>
             </select>
           </div>
           <div id="fluxuriContent">
@@ -345,9 +346,9 @@
           </div>
           <!-- Paginare -->
           <div id="fluxPagination" style="display:none;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap;gap:8px;">
-            <button id="fluxPrevBtn" class="df-action-btn sm" onclick="loadMyFlows(_fluxPage - 1)"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-arrow-left"/></svg>Anterior</button>
+            <button id="fluxPrevBtn" class="df-action-btn sm" onclick="loadMyFlows(_fluxPage - 1)"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-arrow-left"/></svg>Anterior</button>
             <span id="fluxPageInfo" style="color:var(--muted);font-size:.85rem;"></span>
-            <button id="fluxNextBtn" class="df-action-btn sm" onclick="loadMyFlows(_fluxPage + 1)">Următor<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-arrow-right"/></svg></button>
+            <button id="fluxNextBtn" class="df-action-btn sm" onclick="loadMyFlows(_fluxPage + 1)">Următor<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-arrow-right"/></svg></button>
           </div>
         </div>
       </section>
@@ -355,26 +356,26 @@
   </div>
 </div>
 
-    <script src="/js/semdoc-initiator/main.js?v=3.9.340" defer></script>
-  <script src="/notif-widget.js?v=3.9.340"></script>
+    <script src="/js/semdoc-initiator/main.js?v=3.9.353" defer></script>
+  <script src="/notif-widget.js?v=3.9.353"></script>
 
 <!-- Modal incarcare document revizuit -->
 <div id="reviewUploadModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:center;justify-content:center;padding:20px;">
   <div style="background:#0f1731;border:1px solid rgba(255,180,0,.3);border-radius:16px;padding:28px;width:100%;max-width:480px;box-shadow:0 24px 64px rgba(0,0,0,.6);">
-    <h3 style="font-size:1rem;font-weight:700;color:#ffd580;margin-bottom:12px;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.340#ico-upload"/></svg>Încarcă document revizuit</h3>
+    <h3 style="font-size:1rem;font-weight:700;color:#ffd580;margin-bottom:12px;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.353#ico-upload"/></svg>Încarcă document revizuit</h3>
     <p style="font-size:.83rem;color:rgba(205,216,255,.65);margin-bottom:16px;">Selectează documentul PDF revizuit. <strong style="color:#ffaaaa;">Nu poți re-încărca același fișier semnat inițial.</strong> Fluxul va fi reinițiat și toți semnatarii vor semna din nou.</p>
     <input type="file" id="reviewUploadFile" accept=".pdf,application/pdf" style="width:100%;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,180,0,.3);border-radius:10px;color:#eaf0ff;font-size:.88rem;margin-bottom:12px;cursor:pointer;" />
     <div id="reviewUploadMsg" style="font-size:.82rem;min-height:20px;margin-bottom:12px;color:#ffaaaa;"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button onclick="closeReviewUploadModal()" class="df-action-btn sm">Anulează</button>
-      <button onclick="submitReviewUpload()" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-check"/></svg>Trimite</button>
+      <button onclick="submitReviewUpload()" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-check"/></svg>Trimite</button>
     </div>
   </div>
 </div>
 <!-- Modal schimbare parolă -->
 <div id="changePwdModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeChangePwdModal()">
   <div style="background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:32px;width:360px;max-width:calc(100vw - 32px);box-shadow:0 24px 64px rgba(0,0,0,.6);">
-    <h3 style="margin:0 0 20px;color:#eaf0ff;font-size:1.05rem;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.340#ico-key"/></svg>Schimbă parola</h3>
+    <h3 style="margin:0 0 20px;color:#eaf0ff;font-size:1.05rem;"><svg class="df-ico df-ico-lg" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.353#ico-key"/></svg>Schimbă parola</h3>
     <div style="margin-bottom:12px;">
       <label style="display:block;font-size:.8rem;color:#9db0ff;margin-bottom:5px;">Parola curentă</label>
       <input id="cpCurrent" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:9px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#eaf0ff;font-size:.9rem;outline:none;"/>
@@ -390,11 +391,11 @@
     <div id="cpMsg" style="min-height:20px;margin-bottom:14px;font-size:.83rem;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button onclick="closeChangePwdModal()" class="df-action-btn sm">Anulează</button>
-      <button onclick="submitChangePwd()" id="cpBtn" class="df-action-btn cta sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.340#ico-save"/></svg>Salvează</button>
+      <button onclick="submitChangePwd()" id="cpBtn" class="df-action-btn cta sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-save"/></svg>Salvează</button>
     </div>
   </div>
 </div>
-<script src="/js/semdoc-initiator/modals.js?v=3.9.340"></script>
+<script src="/js/semdoc-initiator/modals.js?v=3.9.353"></script>
 
 
 </html>
