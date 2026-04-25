@@ -23,6 +23,7 @@
   // ── State local Users ─────────────────────────────────────────────────────
   const PAGE_SIZE = 10;
   let _currentPage = 1;
+  let _filteredUsers = [];
   let _orgList = [];
   let _gwsPreviewTimer = null;
   let editU = null;
