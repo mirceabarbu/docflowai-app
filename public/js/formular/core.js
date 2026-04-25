@@ -28,7 +28,8 @@ window.ST = window.ST || {
   const ST   = window.ST;    // alias local (referință la același obiect)
   const imgs = window.imgs;  // alias local
 
-  // ── Counters tabele (local IIFE — capturați de closures addOR/addNV etc.) ──
+  // ── Counters tabele — pe window pentru acces din doc.js/list.js ────────────
+  window.oI=0;window.nVI=0;window.nPI=0;window.nCI=0;
 function _applyAutoFill(ft, resetDate){
   const sf=(id,val)=>{const e=document.getElementById(id);if(e&&val!==undefined&&val!==null&&val!=='')e.value=val;};
   const org=ST.orgProfile;
@@ -107,7 +108,7 @@ let oI=0,nVI=0,nPI=0,nCI=0;
 const pMR=v=>{if(v===null||v===undefined||v==='')return 0;const s=String(v).trim().replace(/\s/g,'').replace(/\./g,'').replace(',','.');const n=parseFloat(s);return isNaN(n)?0:n;};
 const fMR=(v,d=2)=>{const n=typeof v==='string'?pMR(v):Number(v);if(isNaN(n))return'0,00';return n.toLocaleString('ro-RO',{minimumFractionDigits:d,maximumFractionDigits:d});};
 function attachMoneyInput(inp,d=2){if(!inp||inp.dataset.moneyAttached==='1')return;inp.dataset.moneyAttached='1';inp.addEventListener('focus',()=>{if(inp.disabled||inp.readOnly)return;const raw=pMR(inp.value);inp.value=raw===0?'0':String(raw).replace('.',',');});inp.addEventListener('blur',()=>{if(inp.value===''||inp.value===null)return;inp.value=fMR(pMR(inp.value),d);});if(inp.value===''||inp.value==='0'){inp.value='0,00';}else if(inp.value!=='0,00'){inp.value=fMR(pMR(inp.value),d);}};
-function addOR(){const i=oI++;const tr=document.createElement('tr');tr.id='or-'+i;
+function addOR(){const i=window.oI++;const tr=document.createElement('tr');tr.id='or-'+i;
   tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="receptii" oninput="calcORRow(this)"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_anterioare" oninput="calcORRow(this)"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="suma_ordonantata_plata" oninput="calcORRow(this)"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="receptii_neplatite" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="5=(col.2)-(col.3)-(col.4) — calculat automat"/></td><td><button class="bdel" onclick="delR('or-${i}');upTot()">✕</button></td>`;
   document.getElementById('o-tbody').appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));
@@ -130,7 +131,7 @@ function calcORRow(el){
 }
 function getOR(){return[...document.querySelectorAll('#o-tbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
 
-function addNV(){const i=nVI++;const tr=document.createElement('tr');tr.id='nv-'+i;
+function addNV(){const i=window.nVI++;const tr=document.createElement('tr');tr.id='nv-'+i;
   tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_rev_prec"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_actualiz" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;
   document.getElementById('n-vtbody').appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));
@@ -141,13 +142,13 @@ function addNV(){const i=nVI++;const tr=document.createElement('tr');tr.id='nv-'
 }
 function getNV(){return[...document.querySelectorAll('#n-vtbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
 
-function addNP(){const i=nPI++;const tr=document.createElement('tr');tr.id='np-'+i;
+function addNP(){const i=window.nPI++;const tr=document.createElement('tr');tr.id='np-'+i;
   tr.innerHTML=`<td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_ani_precedenti" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_ancrt" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_an_np1" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_an_np2" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_an_np3" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_ani_ulter" oninput="upTot()"/></td><td><button class="bdel" onclick="delR('np-${i}');upTot()">✕</button></td>`;
   document.getElementById('n-ptbody').appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));}
 function getNP(){return[...document.querySelectorAll('#n-ptbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
 
-function addNC(){const i=nCI++;const tr=document.createElement('tr');tr.id='nc-'+i;
+function addNC(){const i=window.nCI++;const tr=document.createElement('tr');tr.id='nc-'+i;
   tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_ang_af_rvz_prc"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente_c6"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_ang_act" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="7=5+6 — calculat automat"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_bug_af_rvz_prc"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente_c9"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_bug_act" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="10=8+9 — calculat automat"/></td><td><button class="bdel" onclick="delR('nc-${i}');upTot()">✕</button></td>`;
   document.getElementById('n-ctbody').appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));
@@ -436,6 +437,8 @@ function mkFlow(ft){
   window.p5toggle           = p5toggle;
   window.p5SubToggle        = p5SubToggle;
 
+  window.g                  = g;
+  window.cb                 = cb;
   window.fMR                = fMR;
   window.pMR                = pMR;
   window.attachMoneyInput   = attachMoneyInput;

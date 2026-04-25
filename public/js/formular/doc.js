@@ -981,8 +981,12 @@ function resetF(ft){
   window.ftApi                      = ftApi;
   window.ftType                     = ftType;
   window.stLabel                    = stLabel;
+  window.sv                         = sv;
 
   // DB collect/populate
+  window.collectOrdDb               = collectOrdDb;
+  window.collectDfP1Db              = collectDfP1Db;
+  window.collectDfP2Db              = collectDfP2Db;
   window.populateOrd                = populateOrd;
   window.populateDf                 = populateDf;
 

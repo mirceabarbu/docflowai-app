@@ -267,6 +267,7 @@ function initDateDisplayRo(){
 document.addEventListener('DOMContentLoaded',initDateDisplayRo);
 
   // ── Exports cross-module ─────────────────────────────────────────────────
+  window._draftShowBadge    = _draftShowBadge;
   window.draftSave          = draftSave;
   window.draftClear         = draftClear;
   window.draftLoadIfExists  = draftLoadIfExists;
