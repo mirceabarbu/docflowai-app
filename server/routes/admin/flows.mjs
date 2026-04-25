@@ -260,12 +260,17 @@ router.post('/admin/flows/archive', csrfMiddleware, async (req, res) => {
         driveResult = await archiveFlow(data, pool);
         data.pdfB64 = null; data.signedPdfB64 = null; data.originalPdfB64 = null; data.storage = 'drive';
         data.archivedAt = new Date().toISOString();
-        data.driveFileIdFinal = driveResult.driveFileIdFinal || null;
-        data.driveFileIdOriginal = driveResult.driveFileIdOriginal || null;
-        data.driveFileIdAudit = driveResult.driveFileIdAudit || null;
-        data.driveFolderId = driveResult.driveFolderId || null;
-        data.driveFileLinkFinal = driveResult.driveFileLinkFinal || null;
+        // Copiem TOATE câmpurile din driveResult (paritate cu jobul async din index.mjs care folosește Object.assign)
+        data.driveFileIdFinal      = driveResult.driveFileIdFinal      || null;
+        data.driveFileIdOriginal   = driveResult.driveFileIdOriginal   || null;
+        data.driveFileIdAudit      = driveResult.driveFileIdAudit      || null;
+        data.driveFolderId         = driveResult.driveFolderId         || null;
+        data.driveFileLinkFinal    = driveResult.driveFileLinkFinal    || null;
         data.driveFileLinkOriginal = driveResult.driveFileLinkOriginal || null;
+        data.driveFileLinkAudit    = driveResult.driveFileLinkAudit    || null;
+        if (driveResult.driveAttachments)       data.driveAttachments       = driveResult.driveAttachments;
+        if (driveResult.driveAttachmentsFailed) data.driveAttachmentsFailed = driveResult.driveAttachmentsFailed;
+        if (driveResult.driveAttachmentsError)  data.driveAttachmentsError  = driveResult.driveAttachmentsError;
         await saveFlow(flowId, data);
         results.push({ flowId, ok: true });
         logger.info(`📦 Archived flow ${flowId} to Drive`);
