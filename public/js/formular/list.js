@@ -413,6 +413,7 @@ function _populateCompartimente(){
   window._autoSaveDb            = _autoSaveDb;
   window._scheduleAutoSaveDb    = _scheduleAutoSaveDb;
   window._populateCompartimente = _populateCompartimente;
+  window._updateBackBtn         = _updateBackBtn;
 
   window.df = window.df || {};
   window.df._formularListLoaded = true;

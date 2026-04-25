@@ -9,6 +9,7 @@
 
 (function () {
   'use strict';
+  const esc = window.df.esc;
 
   // -- State vars hoistate --------------------------------------------------
   let _alopWizStep = 1;
@@ -29,7 +30,7 @@ async function _alopLinkDoc(ft, docId){
   try{
     const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/${endpoint}`,{
       method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
       body:JSON.stringify(body),
     });
     const j=await r.json();
@@ -71,7 +72,7 @@ function _alopStatusBadge(status, dfFlowId){
   };
   let s=m[status]||{label:status,color:'#64748b'};
   if(status==='angajare'&&dfFlowId) s={label:'⏳ Pe flux — semnare',color:'#6366f1'};
-  return`<span style="background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_escH(s.label)}</span>`;
+  return`<span style="background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${esc(s.label)}</span>`;
 }
 function _alopFazaLabel(status){
   const m={'draft':'—','angajare':'Faza 1: Angajare','lichidare':'Faza 2: Lichidare',
@@ -117,13 +118,13 @@ async function loadAlop(){
     tb.innerHTML=rows.map(a=>{
       const dt=new Date(a.updated_at||a.created_at).toLocaleDateString('ro-RO');
       const active=a.status!=='completed'&&a.status!=='cancelled';
-      return`<tr onclick="openAlop('${_escH(a.id)}')" style="cursor:pointer">
-        <td><span style="font-weight:600;color:var(--df-text)">${_escH(a.titlu||'—')}</span>
-          ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--df-text-3)">${_escH(a.compartiment)}</span>`:''}
+      return`<tr onclick="openAlop('${esc(a.id)}')" style="cursor:pointer">
+        <td><span style="font-weight:600;color:var(--df-text)">${esc(a.titlu||'—')}</span>
+          ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--df-text-3)">${esc(a.compartiment)}</span>`:''}
         </td>
-        <td style="font-size:.78rem;color:var(--df-text-3)">${_escH(a.creator_name||a.creator_email||'—')}</td>
+        <td style="font-size:.78rem;color:var(--df-text-3)">${esc(a.creator_name||a.creator_email||'—')}</td>
         <td>${_alopStatusBadge(a.status,a.df_flow_id)}</td>
-        <td style="font-size:.78rem;color:var(--df-text-3)">${_escH(_alopFazaLabel(a.status))}</td>
+        <td style="font-size:.78rem;color:var(--df-text-3)">${esc(_alopFazaLabel(a.status))}</td>
         <td style="font-size:.82rem">
           <div>${fmtRON(a.valoare_totala)}</div>
           ${(() => {
@@ -141,13 +142,13 @@ async function loadAlop(){
         </td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${dt}</td>
         <td onclick="event.stopPropagation()">
-          <button class="btn" style="padding:3px 10px;font-size:.76rem" onclick="openAlop('${_escH(a.id)}')">Deschide</button>
-          ${active?`<button class="btn danger" style="padding:3px 10px;font-size:.76rem;margin-left:4px" onclick="cancelAlop('${_escH(a.id)}')">✕</button>`:''}
+          <button class="btn" style="padding:3px 10px;font-size:.76rem" onclick="openAlop('${esc(a.id)}')">Deschide</button>
+          ${active?`<button class="btn danger" style="padding:3px 10px;font-size:.76rem;margin-left:4px" onclick="cancelAlop('${esc(a.id)}')">✕</button>`:''}
         </td>
       </tr>`;
     }).join('');
   }catch(e){
-    if(tb)tb.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:20px;color:#f87171">Eroare: ${_escH(e.message)}</td></tr>`;
+    if(tb)tb.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:20px;color:#f87171">Eroare: ${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -208,20 +209,20 @@ function _alopSablonPreviewHtml(sab){
   if(dfItems.length){
     html+=`<div style="margin-bottom:8px">
       <div style="font-size:.76rem;font-weight:600;color:#3b82f6;margin-bottom:4px">📋 Document de Fundamentare</div>
-      ${dfItems.map(u=>`<div style="font-size:.78rem;color:var(--df-text-3)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':_escH(u.name||'—')}</div>`).join('')}
+      ${dfItems.map(u=>`<div style="font-size:.78rem;color:var(--df-text-3)">• ${esc(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':esc(u.name||'—')}</div>`).join('')}
     </div>`;
   }
   const ordItems=ordList.filter(u=>u.user_id);
   if(ordItems.length){
     html+=`<div style="margin-bottom:8px">
       <div style="font-size:.76rem;font-weight:600;color:#8b5cf6;margin-bottom:4px">💰 Ordonanțare de Plată</div>
-      ${ordItems.map(u=>`<div style="font-size:.78rem;color:var(--df-text-3)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${_escH(u.name||'—')}</div>`).join('')}
+      ${ordItems.map(u=>`<div style="font-size:.78rem;color:var(--df-text-3)">• ${esc(ROLE_LABEL[u.role]||u.role)}: ${esc(u.name||'—')}</div>`).join('')}
     </div>`;
   }
   if(lich.user_id||lich.same_as_initiator){
     html+=`<div style="margin-bottom:8px">
       <div style="font-size:.76rem;font-weight:600;color:#f59e0b;margin-bottom:4px">✔️ Lichidare</div>
-      <div style="font-size:.78rem;color:var(--df-text-3)">• ${lich.same_as_initiator?'(inițiator)':_escH(lich.name||'—')}</div>
+      <div style="font-size:.78rem;color:var(--df-text-3)">• ${lich.same_as_initiator?'(inițiator)':esc(lich.name||'—')}</div>
     </div>`;
   }
   return html||'<div style="color:var(--df-text-3);font-size:.82rem">Șablon gol — semnatarii se adaugă manual.</div>';
@@ -236,7 +237,7 @@ async function createAlop(){
   try{
     const r=await fetch('/api/alop',{
       method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
       body:JSON.stringify({titlu,compartiment,valoare_totala:valoare,notes}),
     });
     const data=await r.json();
@@ -264,7 +265,7 @@ async function openAlop(id){
     if(!r.ok)throw new Error(data.error||'not_found');
     renderAlopDetail(data.alop,content);
   }catch(e){
-    if(content)content.innerHTML=`<div style="color:#f87171;padding:20px">Eroare: ${_escH(e.message)}</div>`;
+    if(content)content.innerHTML=`<div style="color:#f87171;padding:20px">Eroare: ${esc(e.message)}</div>`;
   }
 }
 function closeAlopDetail(){
@@ -331,8 +332,8 @@ function renderAlopDetail(a,container){
     const op=(!p.done&&!p.active&&!isCancelled)?';opacity:.45':'';
     stepperHtml+=`<div style="flex:1;min-width:130px;background:${bg};border:1.5px solid ${col}44;border-radius:10px;padding:12px;text-align:center${op}">
       <div style="font-size:1.2rem">${p.icon}</div>
-      <div style="font-size:.79rem;font-weight:700;color:${col};margin-top:4px">${p.done?'✓ ':''}${_escH(p.label)}</div>
-      <div style="font-size:.71rem;color:var(--df-text-3);margin-top:2px">${_escH(p.sub)}</div>
+      <div style="font-size:.79rem;font-weight:700;color:${col};margin-top:4px">${p.done?'✓ ':''}${esc(p.label)}</div>
+      <div style="font-size:.71rem;color:var(--df-text-3);margin-top:2px">${esc(p.sub)}</div>
     </div>`;
     if(i<3)stepperHtml+=`<div style="align-self:center;color:var(--df-text-3);font-size:.9rem;padding:0 1px">→</div>`;
   });
@@ -349,7 +350,7 @@ function renderAlopDetail(a,container){
     role: ST.user?.role, isAlopOwner
   });
   if(!isCompleted&&!isCancelled&&isAlopOwner){
-    const id=_escH(a.id);
+    const id=esc(a.id);
     if(!a.df_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id){
@@ -359,13 +360,13 @@ function renderAlopDetail(a,container){
     }
     if(a.status==='lichidare'&&!a.lichidare_confirmed_at){
       actionsHtml+=`<button class="btn primary" onclick="openAlopConfirmLichidare('${id}')">✔️ Confirmă Lichidarea</button>`;
-      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
+      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&!a.ord_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideORD('${id}')">💰 Completează Ordonanțare de Plată</button>`;
-      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
+      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_id&&!a.ord_flow_id){
       actionsHtml+=`<button class="btn primary" onclick="alopDeschideORD('${id}')">⚙ Generează PDF + Lansează flux ORD</button>`;
-      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${_escH(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
+      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_flow_id&&!a.ord_completed_at){
       actionsHtml+=`<button class="btn primary" onclick="alopOrdCompleted('${id}')">✅ Marchează ORD semnat complet</button>`;
     }else if(a.status==='plata'){
@@ -384,17 +385,17 @@ function renderAlopDetail(a,container){
     if(!items.length)return'';
     return`<div style="margin-bottom:6px">
       <div style="font-size:.76rem;font-weight:600;color:${color};margin-bottom:3px">${label}</div>
-      ${items.map(u=>`<div style="font-size:.76rem;color:var(--df-text-3)">• ${_escH(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':_escH(u.name||'—')}</div>`).join('')}
+      ${items.map(u=>`<div style="font-size:.76rem;color:var(--df-text-3)">• ${esc(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':esc(u.name||'—')}</div>`).join('')}
     </div>`;
   }
   container.innerHTML=`
     <div style="background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);border-radius:12px;padding:18px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
         <div>
-          <div style="font-size:1rem;font-weight:700;color:var(--df-text-2)">${_escH(a.titlu||'ALOP')}</div>
-          ${a.compartiment?`<div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">${_escH(a.compartiment)}</div>`:''}
+          <div style="font-size:1rem;font-weight:700;color:var(--df-text-2)">${esc(a.titlu||'ALOP')}</div>
+          ${a.compartiment?`<div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">${esc(a.compartiment)}</div>`:''}
           ${a.valoare_totala?`<div style="font-size:.85rem;color:#10b981;margin-top:4px;font-weight:600">${fmtRON(a.valoare_totala)}</div>`:''}
-          <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${_escH(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
+          <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           ${_alopStatusBadge(a.status,a.df_flow_id)}
@@ -433,7 +434,7 @@ function renderAlopDetail(a,container){
     ${isCompleted&&(a.ramas>0)?`
       <div style="background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:.82rem;margin-top:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
-        <button class="btn primary" style="padding:6px 14px;font-size:.82rem" onclick="startNouaLichidare('${_escH(a.id)}')">🔄 Nouă ordonanțare parțială</button>
+        <button class="btn primary" style="padding:6px 14px;font-size:.82rem" onclick="startNouaLichidare('${esc(a.id)}')">🔄 Nouă ordonanțare parțială</button>
       </div>`:''}
     ${_mesajFinal?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:6px;text-align:center">${_mesajFinal}</div>`:''}
   `;
@@ -466,7 +467,7 @@ function renderAlopDetail(a,container){
           ? `<span style="font-size:.66rem;font-weight:600;color:#38bdf8;background:rgba(56,189,248,.12);padding:2px 8px;border-radius:8px;margin-left:8px">în curs</span>`
           : '';
         const _lichConfirmat = !!c.lichidare_confirmed_at;
-        const _lichFact = c.lichidare_nr_factura ? `Fact. ${_escH(c.lichidare_nr_factura)}` : (c._isCurrent && !_lichConfirmat ? '⏳ în curs' : '—');
+        const _lichFact = c.lichidare_nr_factura ? `Fact. ${esc(c.lichidare_nr_factura)}` : (c._isCurrent && !_lichConfirmat ? '⏳ în curs' : '—');
         const _ordVal = parseFloat(c._isCurrent ? (c.ord_valoare || 0) : (c.plata_suma_efectiva || 0));
         const _ordAfisare = c._isCurrent && !c.ord_completed_at && _ordVal === 0 ? '⏳ în curs' : fmtV(_ordVal);
         const _ordData = c._isCurrent ? (c.ord_completed_at || '') : (c.plata_confirmed_at || '');
@@ -482,7 +483,7 @@ function renderAlopDetail(a,container){
           return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
         };
         const _platDetaliu = _platConfirmat
-          ? `${c.plata_nr_ordin ? `OP ${_escH(c.plata_nr_ordin)} · ` : ''}${_fmtPlataData(c.plata_data)}`
+          ? `${c.plata_nr_ordin ? `OP ${esc(c.plata_nr_ordin)} · ` : ''}${_fmtPlataData(c.plata_data)}`
           : '';
         _html += `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:.8rem">
           <div style="font-weight:700;color:var(--df-text-2);margin-bottom:6px">Ciclu ${c.ciclu_nr}${_curBadge}</div>
@@ -543,7 +544,7 @@ async function startNouaLichidare(alopId){
     const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
     const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/noua-lichidare`,{
       method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()}
+      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()}
     });
     const data=await r.json();
     if(!r.ok){alert(data.message||data.error||'Eroare');return;}
@@ -583,7 +584,7 @@ async function alopDeschideDF(alopId){
         // Re-leagă imediat (link-df e idempotent) și deschide documentul
         fetch(`/api/alop/${encodeURIComponent(alopId)}/link-df`,{
           method:'POST',credentials:'include',
-          headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+          headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
           body:JSON.stringify({df_id:ST.docId['notafd']}),
         }).then(r=>r.json()).then(j=>{
           if(j.ok)console.log('ALOP re-link-df:',alopId,'→',ST.docId['notafd']);
@@ -656,7 +657,7 @@ async function alopLaunchDfFlow(alopId,dfId){
     try{
       const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/link-df`,{
         method:'POST',credentials:'include',
-        headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+        headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
         body:JSON.stringify({df_id:dfId}),
       });
       const j=await r.json();
@@ -685,7 +686,7 @@ async function alopLaunchOrdFlow(alopId,ordId){
     try{
       const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/link-ord`,{
         method:'POST',credentials:'include',
-        headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+        headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
         body:JSON.stringify({ord_id:ordId}),
       });
       const j=await r.json();
@@ -705,7 +706,7 @@ async function alopDfCompleted(id){
   if(!confirm('Marchezi DF-ul ca semnat complet? Dosarul trece în faza Lichidare.'))return;
   try{
     const r=await fetch(`/api/alop/${encodeURIComponent(id)}/df-completed`,{
-      method:'POST',credentials:'include',headers:{'X-CSRF-Token':getCsrf()},
+      method:'POST',credentials:'include',headers:{'X-CSRF-Token':df.getCsrf()},
     });
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
@@ -740,7 +741,7 @@ async function confirmLichidare(){
   try{
     const r=await fetch(`/api/alop/${encodeURIComponent(_lichidareAlopId)}/confirma-lichidare`,{
       method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
       body:JSON.stringify(body),
     });
     const data=await r.json();
@@ -755,7 +756,7 @@ async function alopOrdCompleted(id){
   if(!confirm('Marchezi ORD-ul ca semnat complet? Dosarul trece în faza Plată.'))return;
   try{
     const r=await fetch(`/api/alop/${encodeURIComponent(id)}/ord-completed`,{
-      method:'POST',credentials:'include',headers:{'X-CSRF-Token':getCsrf()},
+      method:'POST',credentials:'include',headers:{'X-CSRF-Token':df.getCsrf()},
     });
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
@@ -800,7 +801,7 @@ async function confirmPlata(){
   try{
     const r=await fetch(`/api/alop/${encodeURIComponent(_plataAlopId)}/confirma-plata`,{
       method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
       body:JSON.stringify(body),
     });
     const data=await r.json();
@@ -815,7 +816,7 @@ async function cancelAlop(id){
   if(!confirm('Anulezi acest ALOP? Documentele DF/ORD nu vor fi șterse.'))return;
   try{
     const r=await fetch(`/api/alop/${encodeURIComponent(id)}/cancel`,{
-      method:'POST',credentials:'include',headers:{'X-CSRF-Token':getCsrf()},
+      method:'POST',credentials:'include',headers:{'X-CSRF-Token':df.getCsrf()},
     });
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
@@ -875,7 +876,7 @@ function _renderPickerSelect(containerId,users){
   const el=document.getElementById(containerId);
   if(!el)return;
   const opts=`<option value="">— Neselectat —</option>`+
-    users.map(u=>`<option value="${_escH(String(u.id))}">${_escH(u.nume||u.email||'?')}${u.functie?` (${_escH(u.functie)})`:''}</option>`).join('');
+    users.map(u=>`<option value="${esc(String(u.id))}">${esc(u.nume||u.email||'?')}${u.functie?` (${esc(u.functie)})`:''}</option>`).join('');
   el.innerHTML=`<select class="alop-sab-select" style="width:100%;padding:5px 8px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:6px;color:var(--df-text);font-size:.8rem">${opts}</select>`;
 }
 
@@ -979,7 +980,7 @@ async function saveAlopSablon(){
     const body=alopGetSabFromUI();
     const r=await fetch('/api/alop/sablon',{
       method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
       body:JSON.stringify(body),
     });
     const data=await r.json();
@@ -1018,7 +1019,7 @@ async function confirmRevizie(){
   try{
     const r=await fetch(`/api/formulare-df/${encodeURIComponent(_revizieTargetId)}/revizuieste`,{
       method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':getCsrf()},
+      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
       body:JSON.stringify({motiv}),
     });
     const j=await r.json();
