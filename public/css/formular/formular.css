@@ -189,7 +189,7 @@
     #val-err-bar{display:none;margin:8px 0 0;padding:0}
     #val-err-bar .val-err-inner{background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090;padding:9px 14px;border-radius:9px;font-size:.83rem}
     .lst-wrap{padding:14px 0 0}
-    .lst-tabs-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:8px}
+    .lst-tabs-hdr{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
     /* .lst-tabs / .lst-tab removed — înlocuite de .df-subtabs/.df-subtab din components.css */
     .lst-filters{background:rgba(255,255,255,.03);border:1px solid var(--df-border-2);border-radius:10px;padding:12px 14px;margin-bottom:12px}
     .lst-filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
