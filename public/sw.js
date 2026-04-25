@@ -5,7 +5,7 @@
  * - Offline fallback pentru HTML pages
  */
 
-const CACHE_VERSION = 'docflowai-v67';
+const CACHE_VERSION = 'docflowai-v68';
 const CACHE_STATIC = `${CACHE_VERSION}-static`;
 
 // Assets de pre-cacheuit la install
@@ -19,6 +19,7 @@ const PRECACHE_ASSETS = [
   '/notif-widget.js',
   '/js/df-utils.js',
   '/js/admin/users.js',
+  '/js/admin/flows.js',
   '/offline.html',
 ];
 
