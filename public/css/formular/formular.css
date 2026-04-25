@@ -190,10 +190,7 @@
     #val-err-bar .val-err-inner{background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.3);color:#ff9090;padding:9px 14px;border-radius:9px;font-size:.83rem}
     .lst-wrap{padding:14px 0 0}
     .lst-tabs-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:8px}
-    .lst-tabs{display:flex;gap:4px;border-bottom:1px solid var(--df-border);flex-wrap:wrap;padding:0 2px}
-    .lst-tab{background:transparent;border:none;padding:10px 18px 12px;color:var(--df-text-3);font-size:.88rem;font-weight:500;cursor:pointer;font-family:inherit;position:relative;transition:color .15s;border-bottom:2px solid transparent;margin-bottom:-1px;display:inline-flex;align-items:center;gap:8px}
-    .lst-tab:hover{color:var(--df-text)}
-    .lst-tab.active{color:var(--df-primary-text);border-bottom-color:var(--df-primary);font-weight:600}
+    /* .lst-tabs / .lst-tab removed — înlocuite de .df-subtabs/.df-subtab din components.css */
     .lst-filters{background:rgba(255,255,255,.03);border:1px solid var(--df-border-2);border-radius:10px;padding:12px 14px;margin-bottom:12px}
     .lst-filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
     .flt-grp{display:flex;flex-direction:column;gap:4px;min-width:110px}
