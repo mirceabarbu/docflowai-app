@@ -371,8 +371,8 @@
       <select id="flowDeptFilter" onchange="loadFlowsList(false,1)" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;" disabled>
         <option value="">Toate compartimentele</option>
       </select>
-      <button class="df-action-btn teal" onclick="exportFlowsCSV()" style="flex-shrink:0;" title="Exportă CSV"><svg class="df-ic" style="margin-right:4px;"><use href="/icons.svg?v=3.9.370#ico-download"/></svg>CSV</button>
-      <button class="df-action-btn" onclick="exportFlowsPDF()" style="flex-shrink:0;background:rgba(124,92,255,.13);border-color:rgba(124,92,255,.3);color:#b39dff;" title="Exportă PDF"><svg class="df-ic" style="margin-right:4px;"><use href="/icons.svg?v=3.9.370#ico-file-text"/></svg>PDF</button>
+      <button class="df-action-btn success" onclick="exportFlowsCSV()" style="flex-shrink:0;" title="Exportă CSV"><svg class="df-ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> CSV</button>
+      <button class="df-action-btn" onclick="exportFlowsPDF()" style="flex-shrink:0;" title="Exportă PDF"><svg class="df-ic" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> PDF</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-bottom:10px;">
       <div>
@@ -582,8 +582,8 @@
 
     <!-- Rândul 3: butoane -->
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
-      <button class="df-action-btn primary" onclick="loadActivityReport()"><svg class="df-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Generează</button>
-      <button class="df-action-btn" onclick="exportActivityCSV()" title="Export CSV Excel"><svg class="df-ic" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg> CSV</button>
+      <button class="df-action-btn primary" onclick="loadActivityReport()"><svg class="df-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Încarcă</button>
+      <button class="df-action-btn success" onclick="exportActivityCSV()" title="Export CSV Excel"><svg class="df-ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> CSV</button>
       <button class="df-action-btn" onclick="exportActivityPDF()" title="Export PDF raport complet"><svg class="df-ic" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> PDF</button>
     </div>
 

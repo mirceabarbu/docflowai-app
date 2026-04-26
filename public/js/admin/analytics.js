@@ -205,7 +205,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:.72rem;color:var(--muted);">
         <span>Generat la: ${new Date(d.generatedAt).toLocaleString('ro-RO')}</span>
         <div style="display:flex;gap:8px;">
-          <button class="df-action-btn sm" onclick="loadAnalytics()">🔄 Refresh</button>
+          <button class="df-action-btn sm" onclick="loadAnalytics()">🔄 Actualizează</button>
           <button class="df-action-btn teal sm" onclick="exportAnalyticsHTML()">📄 Export HTML</button>
         </div>
       </div>

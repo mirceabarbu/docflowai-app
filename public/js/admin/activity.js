@@ -244,7 +244,7 @@
         + '</div>'
         + '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:10px;">'
         + '<div style="font-size:1.4rem;font-weight:800;color:var(--accent);">' + u.totalOps + '</div>'
-        + '<button onclick="exportUserPDF(\'' + emailEsc + '\')" style="padding:4px 10px;font-size:.72rem;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.3);border-radius:7px;color:#9db0ff;cursor:pointer;white-space:nowrap;" title="Export raport utilizator">\u{1F4C4} PDF</button>'
+        + '<button class="df-action-btn sm" onclick="exportUserPDF(\'' + emailEsc + '\')" style="background:rgba(157,176,255,.12);border-color:rgba(157,176,255,.3);color:#9db0ff;white-space:nowrap;" title="Export raport utilizator">\u{1F4C4} PDF</button>'
         + '</div></div>'
         + '<div>' + (summaryChips || '<span style="font-size:.75rem;color:var(--muted);">Nicio operațiune</span>') + '</div>'
         + '<div onclick="toggleUserDetail(\'' + emailEsc + '\')" style="font-size:.71rem;color:var(--muted);margin-top:8px;text-align:right;cursor:pointer;">▼ click pentru detalii</div>'
@@ -344,7 +344,7 @@
   }
 
   function exportActivityPDF() {
-    if (!_activityData) { alert('Genereaza mai intai un raport.'); return; }
+    if (!_activityData) { alert('Încărcați mai întâi un raport.'); return; }
     const from  = isoToDMY(_activityData?.from);
     const to    = isoToDMY(_activityData?.to);
     const users = (_activityData.users||[]).filter(u => u.totalOps > 0);
@@ -592,7 +592,7 @@
   }
 
   async function exportActivityCSV() {
-    if (!_activityData) { alert('Generează mai întâi un raport.'); return; }
+    if (!_activityData) { alert('Încărcați mai întâi un raport.'); return; }
     const lines = ['Email,Nume,Functie,Institutie,Compartiment,Data,Operatiune,Document,Motiv'];
     for (const u of _activityData.users || []) {
       for (const op of u.ops || []) {
