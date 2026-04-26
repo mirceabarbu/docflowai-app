@@ -152,7 +152,7 @@
       <button class="df-subtab"        id="ltab-verify" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-shield"/></svg> Verificare furnizor</button>
       <button class="df-subtab"        id="ltab-fo"     onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Formulare oficiale</button>
     </div>
-    <button id="btn-lst-nou" class="btn primary" style="display:none !important;padding:7px 16px;font-size:.84rem" onclick="newDocFromList()">➕ Document nou</button>
+    <button id="btn-lst-nou" class="df-action-btn primary" style="display:none !important" onclick="newDocFromList()">➕ Document nou</button>
   </div>
   <div class="lst-filters">
     <div class="lst-filter-row">
@@ -198,7 +198,7 @@
         <label class="flt-lbl">Inițiator</label>
         <input type="text" id="flt-init" class="flt-inp" placeholder="Căutați..." oninput="debouncedLoadList()"/>
       </div>
-      <button class="btn" style="padding:6px 11px;font-size:.78rem;align-self:flex-end" onclick="resetFilters()">↺</button>
+      <button class="df-action-btn sm" style="align-self:flex-end" onclick="resetFilters()">↺</button>
     </div>
   </div>
   <div id="lst-banner-df" class="df-info-banner" style="display:none">ℹ️ Documentele de Fundamentare se creează din secțiunea <strong>ALOP</strong> → butonul <strong>📋 DF</strong>. Deschideți un ALOP activ pentru a iniția sau deschide un Document de Fundamentare.</div>
@@ -222,9 +222,9 @@
     <div id="lst-loading" class="lst-empty">Se încarcă...</div>
   </div>
   <div class="lst-pagination" id="lst-pagination" style="display:none">
-    <button class="btn" id="lst-prev" onclick="changeLstPage(-1)">← Anterior</button>
+    <button class="df-action-btn sm" id="lst-prev" onclick="changeLstPage(-1)">← Anterior</button>
     <span id="lst-page-info" class="lst-page-info"></span>
-    <button class="btn" id="lst-next" onclick="changeLstPage(1)">Următor →</button>
+    <button class="df-action-btn sm" id="lst-next" onclick="changeLstPage(1)">Următor →</button>
   </div>
 </div><!-- /lst-wrap -->
 
@@ -247,8 +247,8 @@
       <div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">Conform Ordinului 1140/2025 · Angajare → Lichidare → Ordonanțare → Plată</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" id="alop-btn-sablon" style="padding:7px 14px;font-size:.82rem;display:none" onclick="openAlopSablonModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-settings"/></svg> Șablon</button>
-      <button class="btn primary" style="padding:7px 16px;font-size:.84rem" onclick="openAlopModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-plus"/></svg> ALOP nou</button>
+      <button class="df-action-btn sm" id="alop-btn-sablon" style="display:none" onclick="openAlopSablonModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-settings"/></svg> Șablon</button>
+      <button class="df-action-btn primary" onclick="openAlopModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-plus"/></svg> ALOP nou</button>
     </div>
   </div>
 
@@ -296,7 +296,7 @@
 
   <!-- Detaliu ALOP individual (4-phase stepper) -->
   <div id="alop-detail-panel" style="display:none">
-    <button class="btn" style="margin-bottom:14px;padding:6px 14px;font-size:.83rem" onclick="closeAlopDetail()">← Înapoi la lista ALOP</button>
+    <button class="df-action-btn sm" style="margin-bottom:14px" onclick="closeAlopDetail()">← Înapoi la lista ALOP</button>
     <div id="alop-detail-content"></div>
   </div>
 
@@ -402,8 +402,8 @@
         Conform HG 395/2016. 14 secțiuni cu branching condițional. Pentru Strategia Anuală de Achiziție Publică sau inițierea unui proces de achiziție.
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn" disabled style="opacity:.45;cursor:not-allowed;" title="Disponibil în Faza 2">➕ Formular nou</button>
-        <button class="btn" onclick="foListOpen('REFNEC')">📂 Listă formulare</button>
+        <button class="df-action-btn" disabled title="Disponibil în Faza 2">➕ Formular nou</button>
+        <button class="df-action-btn" onclick="foListOpen('REFNEC')">📂 Listă formulare</button>
       </div>
       <div style="margin-top:10px;font-size:.78rem;color:var(--df-text-4);font-style:italic;">În curs de implementare (Faza 2)</div>
     </div>
@@ -415,8 +415,8 @@
         Pentru cuprinderea obiectivelor de investiții în programul anual. 6 secțiuni. Generează PDF A4 cu header APROBAT/VIZAT și semnatari.
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <a href="/notafd-invest-form.html" class="btn primary">➕ Formular nou</a>
-        <button class="btn" onclick="foListOpen('NOTAFD_INVEST')">📂 Listă formulare</button>
+        <a href="/notafd-invest-form.html" class="df-action-btn primary">➕ Formular nou</a>
+        <button class="df-action-btn" onclick="foListOpen('NOTAFD_INVEST')">📂 Listă formulare</button>
       </div>
     </div>
 
@@ -426,7 +426,7 @@
   <div id="foList" style="display:none;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
       <h3 id="foListTitle" style="margin:0;font-size:1rem;"></h3>
-      <button class="btn" onclick="foListClose()" style="padding:4px 12px;font-size:.82rem;">✕ Închide</button>
+      <button class="df-action-btn sm" onclick="foListClose()">✕ Închide</button>
     </div>
     <div id="foListContent" style="background:rgba(255,255,255,.02);border:1px solid var(--df-border-2);border-radius:8px;padding:12px;">
     </div>
@@ -442,7 +442,7 @@
 <div id="section-form" style="display:none">
 
 <div class="back-bar" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-  <button id="btn-back" class="btn" onclick="showListSection()" style="padding:6px 14px;font-size:.83rem">← Înapoi la listă</button>
+  <button id="btn-back" class="df-action-btn sm" onclick="showListSection()">← Înapoi la listă</button>
   <span id="form-type-title" style="font-size:.88rem;font-weight:700;color:var(--df-text-2)"></span>
   <span id="form-save-badge" style="font-size:.74rem;color:var(--df-text-3)"></span>
 </div>
@@ -643,8 +643,8 @@
   <div class="result-title">✅ PDF generat cu succes</div>
   <div style="font-size:.8rem;color:var(--df-text-3)" id="rname-ordnt"></div>
   <div class="result-acts">
-    <button class="btn teal" onclick="dlPdf('ordnt')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-download"/></svg> Descarcă PDF</button>
-    <button class="btn primary" onclick="showFF('ordnt')">🚀 Creează flux de semnare</button>
+    <button class="df-action-btn teal" onclick="dlPdf('ordnt')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-download"/></svg> Descarcă PDF</button>
+    <button class="df-action-btn primary" onclick="showFF('ordnt')">🚀 Creează flux de semnare</button>
   </div>
   <div class="flow-form" id="ff-ordnt">
     <div style="font-size:.8rem;font-weight:700;color:var(--df-text-2);margin-bottom:8px">📝 Flux de semnare — tabel (4 semnatari)</div>
@@ -653,7 +653,7 @@
       <div class="dk-field"><label>Inițiator</label><input id="ffe-ordnt" readonly/></div>
     </div>
     <div class="actions" style="margin-top:6px">
-      <button class="btn primary" onclick="mkFlow('ordnt')">🔏 Lansează flux</button>
+      <button class="df-action-btn primary" onclick="mkFlow('ordnt')">🔏 Lansează flux</button>
     </div>
     <div id="link-flow-ordnt" style="display:none;margin-top:8px;font-size:.75rem;color:var(--df-text-3)">După lansarea fluxului, asocierea se face automat.</div>
   </div>
@@ -924,8 +924,8 @@
   <div class="result-title">✅ PDF generat cu succes</div>
   <div style="font-size:.8rem;color:var(--df-text-3)" id="rname-notafd"></div>
   <div class="result-acts">
-    <button class="btn teal" onclick="dlPdf('notafd')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-download"/></svg> Descarcă PDF</button>
-    <button class="btn primary" onclick="showFF('notafd')">🚀 Creează flux de semnare</button>
+    <button class="df-action-btn teal" onclick="dlPdf('notafd')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-download"/></svg> Descarcă PDF</button>
+    <button class="df-action-btn primary" onclick="showFF('notafd')">🚀 Creează flux de semnare</button>
   </div>
   <div class="flow-form" id="ff-notafd">
     <div style="font-size:.8rem;font-weight:700;color:var(--df-text-2);margin-bottom:8px">📝 Flux de semnare — tabel (6 semnatari)</div>
@@ -934,7 +934,7 @@
       <div class="dk-field"><label>Inițiator</label><input id="ffe-notafd" readonly/></div>
     </div>
     <div class="actions" style="margin-top:6px">
-      <button class="btn primary" onclick="mkFlow('notafd')">🔏 Lansează flux</button>
+      <button class="df-action-btn primary" onclick="mkFlow('notafd')">🔏 Lansează flux</button>
     </div>
     <div id="link-flow-notafd" style="display:none;margin-top:8px;font-size:.75rem;color:var(--df-text-3)">După lansarea fluxului, asocierea se face automat.</div>
   </div>
@@ -952,8 +952,8 @@
       oninput="filterModalUsers()" autocomplete="off"/>
     <div class="modal-list" id="modal-user-list"></div>
     <div class="modal-acts">
-      <button class="btn" onclick="closeModal()">Anulează</button>
-      <button class="btn primary" id="modal-confirm" disabled onclick="confirmP2()">Trimite la Responsabil CAB</button>
+      <button class="df-action-btn" onclick="closeModal()">Anulează</button>
+      <button class="df-action-btn primary" id="modal-confirm" disabled onclick="confirmP2()">Trimite la Responsabil CAB</button>
     </div>
   </div>
 </div>
@@ -965,8 +965,8 @@
     <p style="font-size:.85rem;color:var(--df-text-3);margin-bottom:12px">Menționați deficiențele constatate. Inițiatorul va primi documentul înapoi cu observațiile dvs.</p>
     <textarea id="return-motiv" class="dt" rows="5" maxlength="1000" placeholder="Descrieți deficiențele..."></textarea>
     <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
-      <button class="btn" onclick="closeReturnModal()">Anulează</button>
-      <button class="btn danger" id="return-confirm" onclick="confirmReturn()">↩ Returnează</button>
+      <button class="df-action-btn" onclick="closeReturnModal()">Anulează</button>
+      <button class="df-action-btn danger" id="return-confirm" onclick="confirmReturn()">↩ Returnează</button>
     </div>
   </div>
 </div>
@@ -1008,8 +1008,8 @@
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn" onclick="closeAlopModal()">Anulează</button>
-        <button class="btn primary" onclick="alopWizNext()">Continuă →</button>
+        <button class="df-action-btn" onclick="closeAlopModal()">Anulează</button>
+        <button class="df-action-btn primary" onclick="alopWizNext()">Continuă →</button>
       </div>
     </div>
     <!-- Step 2 -->
@@ -1017,8 +1017,8 @@
       <div style="font-size:.82rem;color:var(--df-text-3);margin-bottom:10px">Semnatari configurați în șablonul organizației (editabil din ⚙ Șablon)</div>
       <div id="alop-wiz-sablon-preview"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-        <button class="btn" onclick="alopWizBack()">← Înapoi</button>
-        <button class="btn primary" onclick="createAlop()"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-check"/></svg> Creează ALOP</button>
+        <button class="df-action-btn" onclick="alopWizBack()">← Înapoi</button>
+        <button class="df-action-btn primary" onclick="createAlop()"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-check"/></svg> Creează ALOP</button>
       </div>
     </div>
   </div>
@@ -1096,8 +1096,8 @@
 
     </div><!-- /scroll wrapper -->
     <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:4px">
-      <button class="btn" onclick="closeAlopSablonModal()">Anulează</button>
-      <button class="btn primary" onclick="saveAlopSablon()">💾 Salvează șablon</button>
+      <button class="df-action-btn" onclick="closeAlopSablonModal()">Anulează</button>
+      <button class="df-action-btn primary" onclick="saveAlopSablon()">💾 Salvează șablon</button>
     </div>
   </div>
 </div>
@@ -1113,8 +1113,8 @@
       style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
     <div id="revizie-modal-err" style="color:#ef4444;font-size:.78rem;min-height:1.2em;margin-top:4px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-      <button class="btn" onclick="closeRevizieModal()">Anulează</button>
-      <button class="btn primary" onclick="confirmRevizie()"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-check"/></svg> Creează revizie</button>
+      <button class="df-action-btn" onclick="closeRevizieModal()">Anulează</button>
+      <button class="df-action-btn primary" onclick="confirmRevizie()"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-check"/></svg> Creează revizie</button>
     </div>
   </div>
 </div>
@@ -1151,8 +1151,8 @@
       </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
-      <button class="btn" onclick="closeLichidareModal()">Anulează</button>
-      <button class="btn primary" onclick="confirmLichidare()">✔️ Confirm recepția</button>
+      <button class="df-action-btn" onclick="closeLichidareModal()">Anulează</button>
+      <button class="df-action-btn primary" onclick="confirmLichidare()">✔️ Confirm recepția</button>
     </div>
   </div>
 </div>
@@ -1183,8 +1183,8 @@
       </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-      <button class="btn" onclick="closePlataModal()">Anulează</button>
-      <button class="btn primary" onclick="confirmPlata()">🏦 Confirmă plata</button>
+      <button class="df-action-btn" onclick="closePlataModal()">Anulează</button>
+      <button class="df-action-btn primary" onclick="confirmPlata()">🏦 Confirmă plata</button>
     </div>
   </div>
 </div>
