@@ -326,9 +326,9 @@
           if (!$('btnSignCloud')) {
             const btn = document.createElement('button');
             btn.id = 'btnSignCloud';
-            btn.className = 'btn';
-            btn.style.cssText = 'width:100%;padding:14px;font-weight:700;background:linear-gradient(90deg,#7c5cff,#2dd4bf);border:none;margin-bottom:8px;';
-            btn.textContent = `🔐 Semnează cu ${p.label}`;
+            btn.className = 'df-action-btn cta full-width lg';
+            btn.style.marginBottom = '8px';
+            btn.innerHTML = `<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.371#ico-file-signature"/></svg>Semnează cu ${p.label}`;
             btn.addEventListener('click', () => initiateCloudSigning(providerId));
             $('signBox').insertBefore(btn, $('btnDownloadForSigning'));
           }
@@ -344,7 +344,7 @@
 
       async function initiateCloudSigning(providerId) {
         const btn = $('btnSignCloud');
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ Se inițiază sesiunea...'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = `<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.371#ico-clock"/></svg>Se inițiază sesiunea...`; }
         try {
           const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/initiate-cloud-signing`, {
             method: 'POST',
@@ -360,7 +360,7 @@
             throw new Error('Provider-ul nu a returnat URL de semnare.');
           }
         } catch(e) {
-          if (btn) { btn.disabled = false; btn.textContent = `🔐 Semnează cu provider`; }
+          if (btn) { btn.disabled = false; btn.innerHTML = `<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.371#ico-file-signature"/></svg>Semnează cu provider`; }
           showError('❌ ' + e.message);
         }
       }
