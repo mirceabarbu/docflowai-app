@@ -22,9 +22,7 @@
       border-radius:11px;color:var(--df-text);font-size:.95rem;outline:none;transition:border-color .2s,box-shadow .2s;}
     input:focus{border-color:rgba(124,92,255,.6);box-shadow:0 0 0 4px rgba(124,92,255,.15);}
     input::placeholder{color:rgba(205,216,255,.38);}
-    .btn{width:100%;padding:13px;margin-top:24px;background:linear-gradient(135deg,var(--df-brand),var(--df-teal));
-      border:none;border-radius:12px;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;transition:opacity .2s,transform .1s;}
-    .btn:hover{opacity:.88;}.btn:active{transform:scale(.98);}.btn:disabled{opacity:.4;cursor:not-allowed;}
+    /* .btn rules removed in BLOC 3.1 — login button now uses .df-action-btn.cta.full-width from components.css */
     .err{margin-top:14px;padding:10px 14px;border-radius:10px;background:rgba(255,80,80,.12);
       border:1px solid rgba(255,80,80,.28);color:#ffb3b3;font-size:.86rem;display:none;}
     .spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.25);
