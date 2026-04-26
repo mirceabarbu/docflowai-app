@@ -140,18 +140,24 @@
     <main class="df-page-body">
 
 <!-- ════════════════════════════════════════════════════════════════════════
+     BANDĂ UNICĂ DE NAVIGARE — partajată între toate secțiunile
+     (HOTFIX 3.2.1: era replicată în 4 locuri, cauza salt vizual între secțiuni)
+     ════════════════════════════════════════════════════════════════════════ -->
+<div class="df-subtabs" style="margin-bottom:16px">
+  <button class="df-subtab active" id="ltab-df"     onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.369#ico-file-text"/></svg> Documente de Fundamentare</button>
+  <button class="df-subtab"        id="ltab-ord"    onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.369#ico-file-text"/></svg> Ordonanțări de Plată</button>
+  <button class="df-subtab"        id="ltab-alop"   onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.369#ico-bar-chart"/></svg> ALOP</button>
+  <button class="df-subtab"        id="ltab-verify" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.369#ico-shield"/></svg> Verificare furnizor</button>
+  <button class="df-subtab"        id="ltab-fo"     onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.369#ico-file-text"/></svg> Formulare oficiale</button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
      SECTION 1 — CENTRALIZARE (afișată implicit)
      ════════════════════════════════════════════════════════════════════════ -->
 <div id="section-list">
 <div class="lst-wrap">
   <div class="lst-tabs-hdr">
-    <div class="df-subtabs">
-      <button class="df-subtab active" id="ltab-df"   onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Documente de Fundamentare</button>
-      <button class="df-subtab"        id="ltab-ord"  onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Ordonanțări de Plată</button>
-      <button class="df-subtab"        id="ltab-alop" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-bar-chart"/></svg> ALOP</button>
-      <button class="df-subtab"        id="ltab-verify" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-shield"/></svg> Verificare furnizor</button>
-      <button class="df-subtab"        id="ltab-fo"     onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Formulare oficiale</button>
-    </div>
+    <!-- df-subtabs mutat în banda unică sus (HOTFIX 3.2.1) -->
     <button id="btn-lst-nou" class="df-action-btn primary" style="display:none !important" onclick="newDocFromList()">➕ Document nou</button>
   </div>
   <div class="lst-filters">
@@ -231,14 +237,7 @@
 <!-- ════════════ ALOP ════════════════════════════════════════════════════════ -->
 <div id="alop-section" style="display:none">
 
-  <!-- Bara navigare — replicat din bara principală pentru navigare cross-secțiune -->
-  <div class="df-subtabs" style="margin-bottom:16px">
-    <button class="df-subtab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="df-subtab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="df-subtab active" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-bar-chart"/></svg> ALOP</button>
-    <button class="df-subtab" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-shield"/></svg> Verificare furnizor</button>
-    <button class="df-subtab" onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Formulare oficiale</button>
-  </div>
+  <!-- df-subtabs eliminat — bandă unică sus (HOTFIX 3.2.1) -->
 
   <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -305,14 +304,7 @@
 <!-- ════════════ VERIFICARE FURNIZOR ═════════════════════════════════════════ -->
 <div id="verify-section" style="display:none;">
 
-  <!-- Bara navigare — replicat din bara principală pentru navigare cross-secțiune -->
-  <div class="df-subtabs" style="margin-bottom:16px">
-    <button class="df-subtab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="df-subtab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="df-subtab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-bar-chart"/></svg> ALOP</button>
-    <button class="df-subtab active" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-shield"/></svg> Verificare furnizor</button>
-    <button class="df-subtab" onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Formulare oficiale</button>
-  </div>
+  <!-- df-subtabs eliminat — bandă unică sus (HOTFIX 3.2.1) -->
 
   <div class="df-info-banner" style="margin-bottom:18px;">
     ℹ️ Modul de verificare furnizor — tool independent. Introdu CUI-ul, IBAN-ul sau ambele pentru a valida datele înainte de a le introduce în ALOP/DF/ORD.
@@ -380,14 +372,7 @@
 <!-- ════════════ FORMULARE OFICIALE ══════════════════════════════════════════ -->
 <div id="fo-section" style="display:none;">
 
-  <!-- Bara navigare — replicat din bara principală pentru navigare cross-secțiune -->
-  <div class="df-subtabs" style="margin-bottom:16px">
-    <button class="df-subtab" onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Documente de Fundamentare</button>
-    <button class="df-subtab" onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Ordonanțări de Plată</button>
-    <button class="df-subtab" onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-bar-chart"/></svg> ALOP</button>
-    <button class="df-subtab" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-shield"/></svg> Verificare furnizor</button>
-    <button class="df-subtab active" onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.362#ico-file-text"/></svg> Formulare oficiale</button>
-  </div>
+  <!-- df-subtabs eliminat — bandă unică sus (HOTFIX 3.2.1) -->
 
   <div class="df-info-banner" style="margin-bottom:18px;">
     📑 <strong>Formulare oficiale</strong> — șabloane standalone pentru documente administrative. Se generează PDF A4 oficial.
