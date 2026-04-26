@@ -144,18 +144,19 @@
      (HOTFIX 3.2.1: era replicată în 4 locuri, cauza salt vizual între secțiuni)
      ════════════════════════════════════════════════════════════════════════ -->
 <div class="df-subtabs" style="margin-bottom:16px">
-  <button class="df-subtab active" id="ltab-df"     onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-file-text"/></svg> Documente de Fundamentare</button>
-  <button class="df-subtab"        id="ltab-ord"    onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-file-text"/></svg> Ordonanțări de Plată</button>
+  <button class="df-subtab active" id="ltab-rfn"    onclick="switchListTab('rfn')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-clipboard"/></svg> Referat de necesitate</button>
+  <button class="df-subtab"        id="ltab-nfi"    onclick="switchListTab('nfi')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-edit-pencil"/></svg> Notă de fundamentare (investiții)</button>
   <button class="df-subtab"        id="ltab-alop"   onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-bar-chart"/></svg> ALOP</button>
+  <button class="df-subtab"        id="ltab-df"     onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-file-text"/></svg> Document de Fundamentare</button>
+  <button class="df-subtab"        id="ltab-ord"    onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-file-text"/></svg> Ordonanțare de Plată</button>
   <button class="df-subtab"        id="ltab-verify" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-shield"/></svg> Verificare furnizor</button>
-  <button class="df-subtab"        id="ltab-fo"     onclick="switchListTab('fo')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-file-text"/></svg> Formulare oficiale</button>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════════
      SECTION 1 — CENTRALIZARE (afișată implicit)
      ════════════════════════════════════════════════════════════════════════ -->
 <div id="section-list">
-<div class="lst-wrap">
+<div class="lst-wrap" style="display:none;">
   <div class="lst-tabs-hdr">
     <!-- df-subtabs mutat în banda unică sus (HOTFIX 3.2.1) -->
     <button id="btn-lst-nou" class="df-action-btn primary" style="display:none !important" onclick="newDocFromList()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-plus"/></svg>Document nou</button>
@@ -369,18 +370,14 @@
   </div>
 </div><!-- /verify-section -->
 
-<!-- ════════════ FORMULARE OFICIALE ══════════════════════════════════════════ -->
-<div id="fo-section" style="display:none;">
-
-  <!-- df-subtabs eliminat — bandă unică sus (HOTFIX 3.2.1) -->
-
-  <div class="df-info-banner" style="margin-bottom:18px;">
-    📑 <strong>Formulare oficiale</strong> — șabloane standalone pentru documente administrative. Se generează PDF A4 oficial.
-  </div>
+<!-- ════════════════════════════════════════════════════════════════════════
+     SECTION — REFERAT DE NECESITATE (Faza 2 — buton creare disabled)
+     VIZIBIL IMPLICIT (tab activ default = ltab-rfn)
+     ════════════════════════════════════════════════════════════════════════ -->
+<div id="rfn-section">
 
   <div class="vf-grid-2" style="margin-bottom:18px;">
-
-    <!-- Card 1: Referat de necesitate (Faza 2) -->
+    <!-- Card: Referat de necesitate (Faza 2) -->
     <div style="background:var(--df-surface,rgba(255,255,255,.03));border:1px solid var(--df-border-2);border-radius:12px;padding:18px 20px;">
       <div style="font-size:.95rem;font-weight:700;color:var(--df-text-2);margin-bottom:10px;">📋 Referat de necesitate</div>
       <div style="color:var(--df-text-3);font-size:.87rem;margin-bottom:14px;line-height:1.5;">
@@ -392,8 +389,17 @@
       </div>
       <div style="margin-top:10px;font-size:.78rem;color:var(--df-text-4);font-style:italic;">În curs de implementare (Faza 2)</div>
     </div>
+  </div>
 
-    <!-- Card 2: Notă de fundamentare investiții (activ) -->
+</div><!-- /rfn-section -->
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     SECTION — NOTĂ DE FUNDAMENTARE (INVESTIȚII)
+     ════════════════════════════════════════════════════════════════════════ -->
+<div id="nfi-section" style="display:none;">
+
+  <div class="vf-grid-2" style="margin-bottom:18px;">
+    <!-- Card: Notă de fundamentare investiții (activ) -->
     <div style="background:var(--df-surface,rgba(255,255,255,.03));border:1px solid var(--df-border-2);border-radius:12px;padding:18px 20px;">
       <div style="font-size:.95rem;font-weight:700;color:var(--df-text-2);margin-bottom:10px;">📝 Notă de fundamentare (investiții)</div>
       <div style="color:var(--df-text-3);font-size:.87rem;margin-bottom:14px;line-height:1.5;">
@@ -404,20 +410,22 @@
         <button class="df-action-btn" onclick="foListOpen('NOTAFD_INVEST')"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-folder"/></svg>Listă formulare</button>
       </div>
     </div>
-
   </div>
 
-  <!-- Lista formulare (ascunsă inițial, apare la click pe "📂 Listă formulare") -->
-  <div id="foList" style="display:none;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <h3 id="foListTitle" style="margin:0;font-size:1rem;"></h3>
-      <button class="df-action-btn sm" onclick="foListClose()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg>Închide</button>
-    </div>
-    <div id="foListContent" style="background:rgba(255,255,255,.02);border:1px solid var(--df-border-2);border-radius:8px;padding:12px;">
-    </div>
-  </div>
+</div><!-- /nfi-section -->
 
-</div><!-- /fo-section -->
+<!-- ════════════════════════════════════════════════════════════════════════
+     foList GLOBAL — accesibil din ambele tab-uri (Referat + Notă).
+     IDs hardcoded folosite de foListOpen/foListClose din verif.js (NO-TOUCH).
+     ════════════════════════════════════════════════════════════════════════ -->
+<div id="foList" style="display:none;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <h3 id="foListTitle" style="margin:0;font-size:1rem;"></h3>
+    <button class="df-action-btn sm" onclick="foListClose()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg>Închide</button>
+  </div>
+  <div id="foListContent" style="background:rgba(255,255,255,.02);border:1px solid var(--df-border-2);border-radius:8px;padding:12px;">
+  </div>
+</div>
 
 </div><!-- /section-list -->
 
