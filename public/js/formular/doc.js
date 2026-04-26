@@ -507,7 +507,7 @@ function renderDocsList(ft,docs){
     const creator=d.created_by_nume||d.created_by_email||'';
     const creatorInfo=creator?` · ${esc(creator)}`:'';
     const pdfBtn=d.flow_id
-      ?`<button class="df-action-btn" style="padding:3px 8px;font-size:.74rem;margin-left:4px" onclick="event.stopPropagation();viewFlowPdf('${d.flow_id}')" title="PDF semnat din flux">📄 PDF flux</button>`
+      ?`<button class="df-action-btn sm" style="margin-left:4px" onclick="event.stopPropagation();viewFlowPdf('${d.flow_id}')" title="PDF semnat din flux">📄 PDF flux</button>`
       :'';
     return`<div class="doc-card" data-id="${d.id}" onclick="openDoc('${ft}','${d.id}')">
       <div class="doc-card-main">

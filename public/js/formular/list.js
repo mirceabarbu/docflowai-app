@@ -311,7 +311,7 @@ function _renderLstTable(rows,type){
   tb.innerHTML=rows.map(row=>{
     const canCancel=row.status==='draft'||(row.status==='pending_p2'&&row.isP1);
     const cancelBtn=canCancel
-      ?`<button class="df-action-btn" style="padding:3px 8px;font-size:.74rem;color:#c0392b" onclick="anuleazaDoc('${type}','${esc(row.id)}')">🚫</button>`
+      ?`<button class="df-action-btn danger sm" onclick="anuleazaDoc('${type}','${esc(row.id)}')" title="Anulează">🚫</button>`
       :'';
     const safeId=esc(row.id);
     const nr=esc(row.nr||row.id.slice(0,8));
@@ -326,7 +326,7 @@ function _renderLstTable(rows,type){
       <td>${_fmtDate(row.created_at)}</td>
       <td>${_fmtDate(row.updated_at)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
-        <button class="df-action-btn primary" style="padding:3px 8px;font-size:.74rem" onclick="openDocFromList('${type}','${safeId}')">✏ Deschide</button>
+        <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">✏ Deschide</button>
         ${cancelBtn}
       </td>
     </tr>`;
