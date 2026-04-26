@@ -142,8 +142,8 @@ async function loadAlop(){
         </td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${dt}</td>
         <td onclick="event.stopPropagation()">
-          <button class="btn" style="padding:3px 10px;font-size:.76rem" onclick="openAlop('${esc(a.id)}')">Deschide</button>
-          ${active?`<button class="btn danger" style="padding:3px 10px;font-size:.76rem;margin-left:4px" onclick="cancelAlop('${esc(a.id)}')">✕</button>`:''}
+          <button class="df-action-btn" style="padding:3px 10px;font-size:.76rem" onclick="openAlop('${esc(a.id)}')">Deschide</button>
+          ${active?`<button class="df-action-btn danger" style="padding:3px 10px;font-size:.76rem;margin-left:4px" onclick="cancelAlop('${esc(a.id)}')">✕</button>`:''}
         </td>
       </tr>`;
     }).join('');
@@ -352,27 +352,27 @@ function renderAlopDetail(a,container){
   if(!isCompleted&&!isCancelled&&isAlopOwner){
     const id=esc(a.id);
     if(!a.df_id){
-      actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id){
       actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem">🔄 DF pe fluxul de semnare — în așteptare</span>`;
     }else if(a.df_id&&!a.df_flow_id){
-      actionsHtml+=`<button class="btn primary" onclick="alopDeschideDF('${id}')">📋 Deschide DF</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Deschide DF</button>`;
     }
     if(a.status==='lichidare'&&!a.lichidare_confirmed_at){
-      actionsHtml+=`<button class="btn primary" onclick="openAlopConfirmLichidare('${id}')">✔️ Confirmă Lichidarea</button>`;
-      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmLichidare('${id}')">✔️ Confirmă Lichidarea</button>`;
+      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&!a.ord_id){
-      actionsHtml+=`<button class="btn primary" onclick="alopDeschideORD('${id}')">💰 Completează Ordonanțare de Plată</button>`;
-      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">💰 Completează Ordonanțare de Plată</button>`;
+      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_id&&!a.ord_flow_id){
-      actionsHtml+=`<button class="btn primary" onclick="alopDeschideORD('${id}')">⚙ Generează PDF + Lansează flux ORD</button>`;
-      if(a.df_id)actionsHtml+=`<button class="btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">⚙ Generează PDF + Lansează flux ORD</button>`;
+      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')" style="font-size:.82rem">↻ Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_flow_id&&!a.ord_completed_at){
-      actionsHtml+=`<button class="btn primary" onclick="alopOrdCompleted('${id}')">✅ Marchează ORD semnat complet</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopOrdCompleted('${id}')">✅ Marchează ORD semnat complet</button>`;
     }else if(a.status==='plata'){
-      actionsHtml+=`<button class="btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">🏦 Confirmă Plata</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">🏦 Confirmă Plata</button>`;
     }
-    actionsHtml+=`<button class="btn danger" onclick="cancelAlop('${id}')">✕ Anulează</button>`;
+    actionsHtml+=`<button class="df-action-btn danger" onclick="cancelAlop('${id}')">✕ Anulează</button>`;
   }
 
   const _totalCicluri=(a.cicluri_istorice?.length||0)+1;
@@ -399,7 +399,7 @@ function renderAlopDetail(a,container){
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           ${_alopStatusBadge(a.status,a.df_flow_id)}
-          ${!isCompleted&&!isCancelled?`<button class="btn" onclick="alopRefreshCurrent()" style="padding:4px 10px;font-size:.78rem;line-height:1" title="Actualizează status">↻ Actualizează</button>`:''}
+          ${!isCompleted&&!isCancelled?`<button class="df-action-btn" onclick="alopRefreshCurrent()" style="padding:4px 10px;font-size:.78rem;line-height:1" title="Actualizează status">↻ Actualizează</button>`:''}
         </div>
       </div>
     </div>
@@ -434,7 +434,7 @@ function renderAlopDetail(a,container){
     ${isCompleted&&(a.ramas>0)?`
       <div style="background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:.82rem;margin-top:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
-        <button class="btn primary" style="padding:6px 14px;font-size:.82rem" onclick="startNouaLichidare('${esc(a.id)}')">🔄 Nouă ordonanțare parțială</button>
+        <button class="df-action-btn primary" style="padding:6px 14px;font-size:.82rem" onclick="startNouaLichidare('${esc(a.id)}')">🔄 Nouă ordonanțare parțială</button>
       </div>`:''}
     ${_mesajFinal?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:6px;text-align:center">${_mesajFinal}</div>`:''}
   `;

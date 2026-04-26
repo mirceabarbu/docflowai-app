@@ -293,7 +293,7 @@ function applyOrdRoleState(status,role){
 function renderActions(ft){
   const div=document.getElementById('actions-'+ft);if(!div)return;
   const status=ST.docStatus[ft],role=ST.docRole[ft],docId=ST.docId[ft];
-  const B=(cls,txt,fn)=>`<button class="btn ${cls}" onclick="${fn}">${txt}</button>`;
+  const B=(cls,txt,fn)=>`<button class="df-action-btn ${cls}" onclick="${fn}">${txt}</button>`;
   const BNou='';
   let html='';
   // Banner "an următor" — vizibil doar pentru notafd revizie an următor
@@ -312,7 +312,7 @@ function renderActions(ft){
   }
   if(!docId){
     html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
-      +`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
+      +`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
       +B('','↺ Resetează',`resetF('${ft}')`);
   }else if(status==='draft'&&role==='p1'){
     html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
@@ -331,7 +331,7 @@ function renderActions(ft){
   }else if(status==='completed'&&role==='p1'){
     const hasPdf=!!(ST[ft]?.pdf);
     html=(hasPdf?B('primary','🔏 Lansează flux semnare',`mkFlow('${ft}')`)
-                :`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`);
+                :`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`);
   }else if(status==='transmis_flux'){
     html=`<span style="color:var(--df-text-3);font-size:.82rem">🔄 Document pe fluxul de semnare...</span>`
       +(ST.docFlowId?.[ft]?B('','📄 Descarcă PDF',`viewFlowPdf('${ST.docFlowId[ft]}')`):'');
@@ -339,7 +339,7 @@ function renderActions(ft){
     html=`<span style="color:var(--df-text-3);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
       +BNou;
   }else{
-    html=`<button id="bgen-${ft}" class="btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
+    html=`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
       +B('','↺ Resetează',`resetF('${ft}')`);
   }
   div.innerHTML=html;
@@ -507,7 +507,7 @@ function renderDocsList(ft,docs){
     const creator=d.created_by_nume||d.created_by_email||'';
     const creatorInfo=creator?` · ${esc(creator)}`:'';
     const pdfBtn=d.flow_id
-      ?`<button class="btn" style="padding:3px 8px;font-size:.74rem;margin-left:4px" onclick="event.stopPropagation();viewFlowPdf('${d.flow_id}')" title="PDF semnat din flux">📄 PDF flux</button>`
+      ?`<button class="df-action-btn" style="padding:3px 8px;font-size:.74rem;margin-left:4px" onclick="event.stopPropagation();viewFlowPdf('${d.flow_id}')" title="PDF semnat din flux">📄 PDF flux</button>`
       :'';
     return`<div class="doc-card" data-id="${d.id}" onclick="openDoc('${ft}','${d.id}')">
       <div class="doc-card-main">

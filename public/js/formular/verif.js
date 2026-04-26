@@ -349,7 +349,7 @@
           </td>
           <td style="padding:8px 10px;font-size:.85rem;color:var(--df-text-4);">${new Date(it.updated_at).toLocaleDateString('ro-RO')}</td>
           <td style="padding:8px 10px;">
-            <a href="/${editUrl}?id=${encodeURIComponent(it.id)}" class="btn small">Deschide</a>
+            <a href="/${editUrl}?id=${encodeURIComponent(it.id)}" class="df-action-btn sm">Deschide</a>
           </td>
         </tr>`).join('');
 
@@ -367,7 +367,7 @@
       console.error('[fo-list] Load failed:', err);
       content.innerHTML = `<div style="color:#ff8080;padding:20px;">
         ⚠️ Eroare la încărcare: ${_vfEsc(err.message)}<br>
-        <button onclick="foListOpen('${formType}')" class="btn small" style="margin-top:10px;">Reîncearcă</button>
+        <button onclick="foListOpen('${formType}')" class="df-action-btn sm" style="margin-top:10px;">Reîncearcă</button>
       </div>`;
     }
   }
