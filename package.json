@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.9.338",
+  "version": "3.9.378",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check": "node --check server/services/format-money.mjs && node --check server/db/index.mjs && node --check server/drive.mjs && node --check server/emailTemplates.mjs && node --check server/gws.mjs && node --check server/index.mjs && node --check server/mailer.mjs && node --check server/middleware/auth.mjs && node --check server/middleware/logger.mjs && node --check server/middleware/metrics.mjs && node --check server/middleware/rateLimiter.mjs && node --check server/push.mjs && node --check server/routes/admin.mjs && node --check server/routes/admin/outreach.mjs && node --check server/routes/auth.mjs && node --check server/routes/flows/acroform.mjs && node --check server/routes/flows/attachments.mjs && node --check server/routes/flows/cloud-signing.mjs && node --check server/routes/flows/crud.mjs && node --check server/routes/flows/email.mjs && node --check server/routes/flows/index.mjs && node --check server/routes/flows/lifecycle.mjs && node --check server/routes/flows/signing.mjs && node --check server/routes/notifications.mjs && node --check server/routes/report.mjs && node --check server/routes/templates.mjs && node --check server/routes/verify.mjs && node --check server/services/certificate-verify.mjs && node --check server/services/sign-trust-report.mjs && node --check server/signing/SigningProvider.mjs && node --check server/signing/index.mjs && node --check server/signing/providers/AlfaTrustProvider.mjs && node --check server/signing/providers/CertSignProvider.mjs && node --check server/signing/providers/CloudProviderBase.mjs && node --check server/signing/providers/LocalUploadProvider.mjs && node --check server/signing/providers/NamirialProvider.mjs && node --check server/signing/providers/STSCloudProvider.mjs && node --check server/signing/providers/TransSpedProvider.mjs && node --check server/swagger.mjs && node --check server/tests/integration/flows.test.mjs && node --check server/tests/integration/login.test.mjs && node --check server/tests/setup.mjs && node --check server/tests/unit/auth-crypto.test.mjs && node --check server/tests/unit/metrics.test.mjs && node --check server/verify.mjs && node --check server/webhook.mjs && node --check server/whatsapp.mjs",
+    "audit:pades": "node --env-file=.env scripts/audit-pades-conformity.mjs",
     "prebuild": "npm run check"
   },
   "dependencies": {

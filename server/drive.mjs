@@ -117,22 +117,33 @@ export async function archiveFlow(flowData, pool) {
         'SELECT id, filename, mime_type, data FROM flow_attachments WHERE flow_id=$1 ORDER BY uploaded_at ASC',
         [flowData.flowId]
       );
+      console.log(`[drive] archiveFlow: flow ${flowData.flowId} — found ${attachments.length} attachment(s) in DB`);
       const driveAttachments = [];
+      const failed = [];
       for (const att of attachments) {
-        const safeFn = att.filename.replace(/[^\w\-\.]/g, '_').substring(0, 100);
-        const up = await uploadFile(drive, folderId, `${prefix}_suport_${safeFn}`, att.data, att.mime_type);
-        // Actualizare drive_file_id în DB
-        await pool.query(
-          'UPDATE flow_attachments SET drive_file_id=$1, drive_file_link=$2 WHERE id=$3',
-          [up.id, up.webViewLink, att.id]
-        ).catch(() => {});
-        driveAttachments.push({ id: att.id, filename: att.filename, driveFileId: up.id, driveFileLink: up.webViewLink });
+        try {
+          const safeFn = att.filename.replace(/[^\w\-\.]/g, '_').substring(0, 100);
+          const up = await uploadFile(drive, folderId, `${prefix}_suport_${safeFn}`, att.data, att.mime_type);
+          await pool.query(
+            'UPDATE flow_attachments SET drive_file_id=$1, drive_file_link=$2 WHERE id=$3',
+            [up.id, up.webViewLink, att.id]
+          ).catch((e) => console.warn(`[drive] update attachment ${att.id} drive_file_id failed:`, e.message));
+          driveAttachments.push({ id: att.id, filename: att.filename, driveFileId: up.id, driveFileLink: up.webViewLink });
+          console.log(`[drive]   ✓ uploaded suport "${att.filename}" → ${up.id}`);
+        } catch(uploadErr) {
+          failed.push({ id: att.id, filename: att.filename, error: String(uploadErr.message || uploadErr) });
+          console.error(`[drive]   ✗ upload suport "${att.filename}" failed:`, uploadErr.message);
+        }
       }
       if (driveAttachments.length) result.driveAttachments = driveAttachments;
+      if (failed.length) result.driveAttachmentsFailed = failed;
+      console.log(`[drive] archiveFlow: flow ${flowData.flowId} — ${driveAttachments.length}/${attachments.length} attachments uploaded successfully`);
     } catch(attErr) {
-      // Non-fatal — continuăm arhivarea fără documente suport
-      console.warn('[drive] archiveFlow attachments error (non-fatal):', attErr.message);
+      console.error(`[drive] archiveFlow: attachments query FAILED for flow ${flowData.flowId}:`, attErr.message);
+      result.driveAttachmentsError = String(attErr.message || attErr);
     }
+  } else {
+    console.warn(`[drive] archiveFlow: pool not provided for flow ${flowData.flowId} — skipping attachments`);
   }
 
   // 4. Audit JSON
