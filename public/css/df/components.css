@@ -83,10 +83,7 @@
 .df-inline-action.danger:hover{background:rgba(239,68,68,.2);color:#fecaca;}
 
 /* === In-page tabs (pentru tab-uri care schimbă view fără reload) === */
-.df-pill-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center;}
-.df-pill-tab{display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:999px;border:1px solid var(--df-border-2);background:rgba(255,255,255,.04);color:var(--df-text-3);font-size:.84rem;font-weight:500;cursor:pointer;font-family:inherit;text-decoration:none;transition:background .15s,border-color .15s,color .15s;}
-.df-pill-tab:hover{background:rgba(255,255,255,.08);border-color:var(--df-border-hover);color:var(--df-text-2);}
-.df-pill-tab.active{background:var(--df-primary-bg);border-color:var(--df-primary-bd);color:var(--df-primary-text);font-weight:600;}
+/* .df-pill-tab* family removed in BLOC 3.2 — was unused (0 occurrences in HTML) */
 
 /* === Icon utility classes (sprite /icons.svg) === */
 .df-ico{width:16px;height:16px;stroke:currentColor;fill:none;flex-shrink:0;vertical-align:middle;display:inline-block;}

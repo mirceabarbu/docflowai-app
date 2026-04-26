@@ -448,14 +448,7 @@
 </div>
 <div id="val-err-bar"><div class="val-err-inner" id="val-err-msg"></div></div>
 
-<!-- tabs ascunse — sw() le folosește intern pt show/hide; nu sunt vizibile utilizatorului -->
-<div class="tabs-wrap" style="display:none" aria-hidden="true">
-  <div class="tabs">
-    <button class="tab active" onclick="sw('ordnt')">📄 ORD <span class="draft-badge" id="db-ordnt"></span></button>
-    <button class="tab" onclick="sw('notafd')">📋 DF <span class="draft-badge" id="db-notafd"></span></button>
-  </div>
-</div>
-
+<!-- BLOC 3.2: removed legacy hidden tabs-wrap (sw() and db-ordnt/db-notafd were inert; draft.js _draftShowBadge has null-safety) -->
 <div class="outer">
 <div class="status" id="sBar"></div>
 

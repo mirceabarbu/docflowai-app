@@ -34,12 +34,7 @@
     *{box-sizing:border-box;margin:0;padding:0}
     html{scroll-behavior:smooth}
 
-    /* Tabs */
-    .tabs-wrap{padding:16px 0 0}
-    .tabs{display:flex;gap:3px;background:rgba(255,255,255,.04);border-radius:12px;padding:3px;width:fit-content;border:1px solid var(--df-border-2)}
-    .tab{padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.86rem;font-weight:700;color:var(--df-text-3);border:none;background:none;transition:.2s}
-    .tab:hover{color:var(--df-text-2)}
-    .tab.active{background:linear-gradient(135deg,var(--df-brand),var(--df-teal));color:#fff;box-shadow:0 3px 12px rgba(108,79,240,.3)}
+    /* .tabs-wrap/.tabs/.tab* legacy rules removed in BLOC 3.2 — DOM block also removed */
     .draft-badge{font-size:11px;color:var(--df-text-3);margin-left:6px;font-weight:400;opacity:0;transition:opacity .4s}
     .draft-badge.show{opacity:1}
     /* Outer */
