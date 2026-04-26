@@ -205,8 +205,8 @@
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:.72rem;color:var(--muted);">
         <span>Generat la: ${new Date(d.generatedAt).toLocaleString('ro-RO')}</span>
         <div style="display:flex;gap:8px;">
-          <button onclick="loadAnalytics()" style="padding:5px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--muted);cursor:pointer;font-size:.72rem;">🔄 Refresh</button>
-          <button onclick="exportAnalyticsHTML()" style="padding:5px 12px;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);border-radius:6px;color:#2dd4bf;cursor:pointer;font-size:.72rem;font-weight:700;">📄 Export HTML</button>
+          <button class="df-action-btn sm" onclick="loadAnalytics()">🔄 Refresh</button>
+          <button class="df-action-btn teal sm" onclick="exportAnalyticsHTML()">📄 Export HTML</button>
         </div>
       </div>
     `;

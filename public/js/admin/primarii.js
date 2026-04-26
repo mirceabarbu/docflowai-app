@@ -68,10 +68,8 @@
           </td>
           <td style="padding:5px 8px;color:var(--muted);">${esc(p.judet)}</td>
           <td style="padding:5px 8px;text-align:right;white-space:nowrap;">
-            <button onclick="prEditRow(${p.id},'${esc(p.institutie)}','${esc(p.email)}','${esc(p.judet)}','${esc(p.localitate||p.institutie)}')"
-              style="padding:3px 9px;font-size:.73rem;background:rgba(157,176,255,.12);border:1px solid rgba(157,176,255,.25);border-radius:6px;color:#9db0ff;cursor:pointer;margin-right:4px;" title="Editează">✏️</button>
-            <button onclick="prDeleteRow(${p.id},'${esc(p.institutie)}')"
-              style="padding:3px 9px;font-size:.73rem;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);border-radius:6px;color:#ffaaaa;cursor:pointer;" title="Dezactivează">🗑</button>
+            <button class="df-action-btn sm" onclick="prEditRow(${p.id},'${esc(p.institutie)}','${esc(p.email)}','${esc(p.judet)}','${esc(p.localitate||p.institutie)}')" style="margin-right:4px;background:rgba(157,176,255,.12);border-color:rgba(157,176,255,.25);color:#9db0ff;" title="Editează">✏️</button>
+            <button class="df-action-btn danger sm" onclick="prDeleteRow(${p.id},'${esc(p.institutie)}')" title="Dezactivează">🗑</button>
           </td>
         </tr>`).join('') :
         '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--muted);">Niciun rezultat.</td></tr>';

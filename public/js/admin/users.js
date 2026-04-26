@@ -83,11 +83,11 @@
         <td style="color:var(--muted);font-size:.79rem">${dt}</td>
         <td style="text-align:right;white-space:nowrap">
           <div style="display:flex;gap:3px;justify-content:flex-end;">
-            <button class="df-action-btn sm" onclick='openEdit(${JSON.stringify(u)})' title="Editează" style="padding:4px 8px">✏</button>
-            <button class="df-action-btn warning sm" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale" style="padding:4px 8px">✉</button>
-            ${!u.gws_email?`<button class="df-action-btn sm" onclick="gwsRetry(${u.id},this)" title="Creează cont Workspace" style="padding:4px 8px;background:rgba(66,133,244,.15);border-color:rgba(66,133,244,.4);color:#4285F4;">G+</button>`:''}
-            ${(window._currentUserRole==='admin' && !u.org_id && u.role!=='admin')?`<button class="df-action-btn sm" onclick="openAssignOrg(${u.id},'${esc(u.nume||u.email)}')" title="Asignează organizație (org_id lipsă)" style="padding:4px 8px;background:rgba(255,176,32,.15);border-color:rgba(255,176,32,.4);color:#ffd580;">🏛</button>`:''}
-            ${!isMe?`<button class="df-action-btn danger sm" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Șterge" style="padding:4px 8px">✕</button>`:""}
+            <button class="df-action-btn sm" onclick='openEdit(${JSON.stringify(u)})' title="Editează">✏</button>
+            <button class="df-action-btn warning sm" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale">✉</button>
+            ${!u.gws_email?`<button class="df-action-btn sm" onclick="gwsRetry(${u.id},this)" title="Creează cont Workspace" style="background:rgba(66,133,244,.15);border-color:rgba(66,133,244,.4);color:#4285F4;">G+</button>`:''}
+            ${(window._currentUserRole==='admin' && !u.org_id && u.role!=='admin')?`<button class="df-action-btn sm" onclick="openAssignOrg(${u.id},'${esc(u.nume||u.email)}')" title="Asignează organizație (org_id lipsă)" style="background:rgba(255,176,32,.15);border-color:rgba(255,176,32,.4);color:#ffd580;">🏛</button>`:''}
+            ${!isMe?`<button class="df-action-btn danger sm" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Șterge">✕</button>`:""}
           </div>
         </td>`;
       tb.appendChild(tr);

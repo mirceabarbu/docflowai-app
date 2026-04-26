@@ -119,9 +119,9 @@
     const el = $('audit-pagination');
     if (!el) return;
     el.innerHTML = `
-      <button onclick="loadAuditEvents(${page - 1})" ${page <= 1 ? 'disabled' : ''} style="background:rgba(255,255,255,.07);border:none;color:#c4b5ff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:.8rem;">‹ Anterior</button>
+      <button class="df-action-btn sm" onclick="loadAuditEvents(${page - 1})" ${page <= 1 ? 'disabled' : ''}>‹ Anterior</button>
       <span style="color:var(--muted);">Pagina <strong style="color:#eaf0ff;">${page}</strong> din <strong style="color:#eaf0ff;">${pages}</strong> &nbsp;·&nbsp; ${total} înregistrări</span>
-      <button onclick="loadAuditEvents(${page + 1})" ${page >= pages ? 'disabled' : ''} style="background:rgba(255,255,255,.07);border:none;color:#c4b5ff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:.8rem;">Următor ›</button>
+      <button class="df-action-btn sm" onclick="loadAuditEvents(${page + 1})" ${page >= pages ? 'disabled' : ''}>Următor ›</button>
     `;
   }
 

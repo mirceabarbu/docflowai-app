@@ -98,10 +98,8 @@
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button onclick="openRenameOrgModal(${org.id},'${esc(org.name)}')"
-                style="padding:6px 14px;font-size:.78rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;">✏️ Redenumește</button>
-              <button onclick="openOrgModal(${org.id},'${esc(org.name)}')"
-                style="padding:6px 14px;font-size:.78rem;background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.3);border-radius:8px;color:#b39dff;cursor:pointer;">⚙ Configurare</button>
+              <button class="df-action-btn" onclick="openRenameOrgModal(${org.id},'${esc(org.name)}')">✏️ Redenumește</button>
+              <button class="df-action-btn" onclick="openOrgModal(${org.id},'${esc(org.name)}')" style="background:rgba(124,92,255,.12);border-color:rgba(124,92,255,.3);color:#b39dff;">⚙ Configurare</button>
             </div>
           </div>
           <div style="margin-top:14px;font-size:.8rem;">
@@ -512,8 +510,7 @@
           <span style="font-size:.72rem;padding:2px 8px;border-radius:10px;background:${hasConfig?'rgba(45,212,191,.12)':'rgba(255,255,255,.05)'};color:${hasConfig?'#2dd4bf':'rgba(234,240,255,.35)'};border:1px solid ${hasConfig?'rgba(45,212,191,.3)':'rgba(255,255,255,.08)'};">
             ${hasConfig ? '✓ configurat' : 'neconfigurat'}
           </span>
-          ${isEnabled ? `<button onclick="openProviderConfig('${p.id}','${p.label}')"
-            style="padding:4px 10px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.3);border-radius:6px;color:#b39dff;cursor:pointer;font-size:.78rem;white-space:nowrap;">⚙ Config</button>` : ''}
+          ${isEnabled ? `<button class="df-action-btn sm" onclick="openProviderConfig('${p.id}','${p.label}')" style="background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.3);color:#b39dff;white-space:nowrap;">⚙ Config</button>` : ''}
         ` : '<span style="font-size:.72rem;color:rgba(234,240,255,.3);">implicit</span>'}
       `;
       grid.appendChild(row);
