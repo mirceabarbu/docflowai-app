@@ -1285,13 +1285,13 @@
       Concediu și delegare
       <span id="eLeaveStatusBadge" style="margin-left:8px;font-size:.66rem;font-weight:500;padding:2px 8px;border-radius:12px;background:rgba(120,120,120,.15);color:var(--df-text-3);text-transform:none;letter-spacing:0;">Nesetat</span>
     </h4>
-    <div class="grid2">
+    <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:12px;">
       <div class="frow"><label>Început concediu</label><input type="date" id="eLeaveStart"/></div>
       <div class="frow"><label>Sfârșit concediu</label><input type="date" id="eLeaveEnd"/></div>
-    </div>
-    <div class="frow" style="margin-top:12px;">
-      <label>Delegat (cine semnează în lipsă)</label>
-      <select id="eLeaveDelegate"><option value="">— Niciun delegat —</option></select>
+      <div class="frow">
+        <label>Delegat (cine semnează în lipsă)</label>
+        <select id="eLeaveDelegate"><option value="">— Niciun delegat —</option></select>
+      </div>
     </div>
     <div class="frow" style="margin-top:12px;">
       <label>Motiv (opțional)</label>
