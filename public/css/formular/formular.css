@@ -45,7 +45,7 @@
     .status.ok{display:flex;background:rgba(30,200,174,.08);border:1px solid rgba(30,200,174,.22);color:var(--df-teal)}
     .status.info{display:flex;background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.22);color:#b0a0ff}
     /* Actions (dark) */
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;align-items:center}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;margin-bottom:18px;align-items:center}
     /* .btn* legacy eliminate — HTML/JS folosesc df-action-btn (BLOC 3.2) */
 
     @keyframes spin{to{transform:rotate(360deg)}}
@@ -313,7 +313,17 @@
     /* P2 field dark override */
     .df-block-body .p2-field{border-color:rgba(29,200,174,.5) !important;background:rgba(29,200,174,.06) !important;color:var(--df-text) !important}
     /* Locked block overlay */
-    .df-block-body.locked{pointer-events:none;opacity:.45;filter:grayscale(.2)}
+    .df-block-body.locked{pointer-events:none}
+    .df-block-body.locked input,
+    .df-block-body.locked select,
+    .df-block-body.locked textarea,
+    .df-block-body.locked .badd,
+    .df-block-body.locked .bdel,
+    .df-block-body.locked .cap-zone,
+    .df-block-body.locked .att-btn{opacity:.45;filter:grayscale(.2)}
+    /* Excepție: col.4 ORD (suma ordonanțată) — P1 editează când P2 a terminat */
+    .df-block-body.locked .df-p1-edit-cell{pointer-events:auto}
+    .df-block-body.locked .df-p1-edit{pointer-events:auto;opacity:1;filter:none;background:rgba(124,92,255,.08)!important;border-color:rgba(124,92,255,.5)!important;color:var(--df-text)!important}
     /* Layout helpers */
     .df-row{display:grid;gap:14px;margin-bottom:14px}
     .df-revizie-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(255,170,30,.15);color:#ffcc44;margin-left:8px;vertical-align:middle}

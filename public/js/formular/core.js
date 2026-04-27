@@ -116,8 +116,8 @@ function addOR(){const i=window.oI++;const tr=document.createElement('tr');tr.id
   if(ST.docRole?.ordnt==='p1'){
     tr.querySelectorAll('[data-f="suma_ordonantata_plata"]').forEach(e=>{
       e.disabled=false;
-      e.style.pointerEvents='auto';
-      e.closest('td')?.style.setProperty('pointer-events','auto');
+      e.classList.add('df-p1-edit');
+      e.closest('td')?.classList.add('df-p1-edit-cell');
     });
   }}
 function calcORRow(el){
@@ -261,7 +261,7 @@ function calcNCRow(el){
 
 /* Totals */
 function sf(bid,f){return[...document.querySelectorAll(`#${bid} input[data-f="${f}"]`)].reduce((s,i)=>s+pMR(i.value),0);}
-function st2(id,v){const e=document.getElementById(id);if(e)e.textContent=Math.round(v).toLocaleString('ro-RO');}
+function st2(id,v){const e=document.getElementById(id);if(e)e.textContent=fMR(v,2);}
 function upTot(){
   st2('o-t-rec',sf('o-tbody','receptii'));st2('o-t-plati',sf('o-tbody','plati_anterioare'));
   st2('o-t-suma',sf('o-tbody','suma_ordonantata_plata'));st2('o-t-neplat',sf('o-tbody','receptii_neplatite'));
