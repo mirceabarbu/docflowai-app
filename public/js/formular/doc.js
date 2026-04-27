@@ -139,18 +139,16 @@ function setModeP2Df(){
   document.querySelectorAll('#n-vtbody input,#n-ptbody input,#n-vtbody .bdel,#n-ptbody .bdel,#n-vtbody .badd,#n-ptbody .badd').forEach(e=>e.disabled=true);
   // Sect B deblocată + highlight
   ['n-ck-seca','n-ck-fararezv','n-sumfara','n-ck-interzis','n-ck-intrucat','n-intrucat'].forEach(id=>{
-    const e=document.getElementById(id);if(e){e.disabled=false;e.classList.add('p2-field');}
+    const e=document.getElementById(id);if(e){e.disabled=false;}
   });
-  document.querySelectorAll('#n-ctbody input').forEach(e=>{e.disabled=false;e.classList.add('p2-field');});
+  document.querySelectorAll('#n-ctbody input').forEach(e=>{e.disabled=false;});
   // Upload captură deblocat
   const czone=document.getElementById('n-czone');if(czone)czone.style.pointerEvents='';
 }
 function setModeP2Ord(){
   lockAll('ordnt',true);
-  _ordClearP1Col4();
-  document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;e.style.removeProperty('pointer-events');e.style.removeProperty('opacity');e.closest('td')?.style.removeProperty('pointer-events');e.closest('td')?.style.removeProperty('opacity');});
   // Deblochez receptii + plati_anterioare în tabel
-  document.querySelectorAll('#o-tbody input[data-f="receptii"],#o-tbody input[data-f="plati_anterioare"]').forEach(e=>{e.disabled=false;e.classList.add('p2-field');});
+  document.querySelectorAll('#o-tbody input[data-f="receptii"],#o-tbody input[data-f="plati_anterioare"]').forEach(e=>{e.disabled=false;});
   const czone=document.getElementById('o-czone');if(czone)czone.style.pointerEvents='';
 }
 
@@ -255,26 +253,6 @@ function applyDfRoleState(status,role){
   }
   if(status==='pending_p2'&&role==='p2')prefillSectBFromSectA();
   _dfSetAlopCtx('notafd');
-}
-// Marchează col.4 ORD ca editabilă pentru P1 (suma_ordonantata_plata)
-function _ordEnableP1Col4(){
-  document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{
-    e.disabled=false;
-    e.classList.add('df-p1-edit');
-    e.closest('td')?.classList.add('df-p1-edit-cell');
-    // Curăță inline-styles vechi din versiuni anterioare (defensiv)
-    e.style.removeProperty('pointer-events');
-    e.style.removeProperty('opacity');
-    const td=e.closest('td');
-    if(td){td.style.removeProperty('pointer-events');td.style.removeProperty('opacity');}
-  });
-}
-// Curăță marcajele de col.4 editabilă (la switch user/role)
-function _ordClearP1Col4(){
-  document.querySelectorAll('#o-tbody .df-p1-edit,#o-tbody .df-p1-edit-cell').forEach(e=>{
-    e.classList.remove('df-p1-edit');
-    e.classList.remove('df-p1-edit-cell');
-  });
 }
 function applyOrdRoleState(status,role){
   const p1Body=document.getElementById('ord-p1-body');
@@ -453,9 +431,8 @@ async function openDoc(ft,id){
     const status=doc.status,role=ST.docRole[ft];
     if(ST.docAprobat[ft]){
       lockAll(ft,true);
-      if(ft==='ordnt')_ordEnableP1Col4();
       lockCaptureAndAttachments(ft,true);
-      document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
+      // p2-field eliminat (uniformizare vizuală) — nu mai e nimic de curățat
       setLockedBar(ft,'✔ Document aprobat — fluxul de semnare a fost finalizat.','info');
       renderActions(ft);
       if(ft==='notafd')applyDfRoleState('aprobat',ST.docRole[ft]);
@@ -469,7 +446,7 @@ async function openDoc(ft,id){
       setLockedBar(ft,'Completați câmpurile dvs. (marcate) și apăsați Finalizez.','info');
     }else if(status==='pending_p2'&&role==='p1'){
       lockAll(ft,true);
-      if(ft==='ordnt')_ordEnableP1Col4();
+      if(ft==='ordnt')document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;});
       setLockedBar(ft,'Document trimis la Responsabil CAB. Așteptați completarea.','warn');
     }else if(status==='returnat'&&role==='p1'){
       lockAll(ft,false);
@@ -481,9 +458,8 @@ async function openDoc(ft,id){
       }
     }else if(status==='completed'){
       lockAll(ft,true);
-      if(ft==='ordnt')_ordEnableP1Col4();
       lockCaptureAndAttachments(ft,true);
-      document.querySelectorAll(`#form-${ft} .p2-field`).forEach(e=>e.classList.remove('p2-field'));
+      // p2-field eliminat (uniformizare vizuală) — nu mai e nimic de curățat
       const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
       const _completedMsg=ft==='ordnt'&&role==='p1'?' — lansați fluxul de semnare':ft==='notafd'&&role==='p1'?' — puteți genera PDF și lansa fluxul de semnare':'.';
       setLockedBar(ft,`Document complet${_revNr}${_completedMsg}`,'info');
@@ -879,7 +855,6 @@ async function completeAsP2(ft){
     ST.docStatus[ft]='completed';
     _alopLinkDoc(ft,ST.docId[ft]); // FIX: re-leagă la ALOP după completare (idempotent)
     lockAll(ft,true);
-    if(ft==='ordnt')document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;e.style.removeProperty('pointer-events');e.style.removeProperty('opacity');e.closest('td')?.style.removeProperty('pointer-events');e.closest('td')?.style.removeProperty('opacity');});
     setLockedBar(ft,'Secțiunea dvs. a fost finalizată și trimisă înapoi la P1.','info');
     renderActions(ft);refreshDocs(ft);
     setS('Finalizat cu succes! Redirecționare...','ok');
@@ -933,7 +908,6 @@ async function confirmReturn(){
     closeReturnModal();
     ST.docStatus[ft]='returnat';
     lockAll(ft,true);
-    if(ft==='ordnt')document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;e.style.removeProperty('pointer-events');e.style.removeProperty('opacity');e.closest('td')?.style.removeProperty('pointer-events');e.closest('td')?.style.removeProperty('opacity');});
     setLockedBar(ft,'Document returnat ca neconform. Inițiatorul va fi notificat.','warn');
     renderActions(ft);refreshDocs(ft);
     setS('Document returnat.','ok');
