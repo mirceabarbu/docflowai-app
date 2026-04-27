@@ -24,6 +24,9 @@ import crypto from 'crypto';
 import { emailResetPassword, emailCredentials } from '../../emailTemplates.mjs';
 import { requireAuth, hashPassword, generatePassword, escHtml } from '../../middleware/auth.mjs';
 import { pool, requireDb, invalidateOrgUserCache } from '../../db/index.mjs';
+import {
+  validateLeaveSettings, setUserLeave, clearUserLeave, getLeaveInfo, batchGetLeaveInfo,
+} from '../../services/user-leave.mjs';
 import { validatePhone } from '../../whatsapp.mjs';
 import { sendSignerEmail } from '../../mailer.mjs';
 import { gwsIsConfigured, findAvailableEmail, provisionGwsUser, verifyGws, buildLocalPart } from '../../gws.mjs';
@@ -60,7 +63,15 @@ router.get('/users', async (req, res) => {
       }
     }
     const { rows } = await pool.query(query, params);
-    res.json(rows);
+
+    // BLOC 4.1: îmbogățește fiecare user cu info concediu/delegare
+    const userIds = rows.map(u => u.id).filter(Boolean);
+    const leaveMap = await batchGetLeaveInfo(userIds);
+    const enriched = rows.map(u => ({
+      ...u,
+      leave: leaveMap.get(u.id) || null,
+    }));
+    res.json(enriched);
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -658,6 +669,152 @@ router.post('/admin/users/:id/send-credentials', csrfMiddleware, async (req, res
     // dacă emailul nu ajunge la utilizator (parola este trimisă și pe email)
     res.json({ ok: true, email: u.email, tempPassword: newPwd, message: `Credențiale trimise pe email la ${u.email}` });
   } catch(e) { res.status(500).json({ ok: false, error: 'server_error' }); }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEAVE / DELEGATION ENDPOINTS (BLOC 4.1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const LEAVE_ERR_MSG = {
+  leave_dates_required: 'Datele de concediu sunt obligatorii.',
+  leave_dates_invalid_format: 'Format dată invalid (necesar YYYY-MM-DD).',
+  leave_end_before_start: 'Data sfârșit nu poate fi înainte de data început.',
+  leave_start_in_past: 'Concediu nu poate fi setat retroactiv.',
+  delegate_invalid: 'Delegat invalid.',
+  user_not_found: 'Utilizator inexistent.',
+  delegate_not_found: 'Delegatul nu există.',
+  delegate_different_org: 'Delegatul trebuie să fie din aceeași instituție.',
+  delegate_has_own_delegate: 'Delegatul ales are deja propriul delegat (lanț de delegări neacceptat).',
+  leave_reason_too_long: 'Motivul depășește 500 de caractere.',
+};
+
+function _mapLeaveError(err, res) {
+  const code = err?.message || 'server_error';
+  const userMsg = LEAVE_ERR_MSG[code] || 'Eroare neașteptată.';
+  const status = (code in LEAVE_ERR_MSG) ? 400 : 500;
+  return res.status(status).json({ error: code, message: userMsg });
+}
+
+// ── PUT /api/users/me/leave — userul își setează singur concediu ────────────
+router.put('/api/users/me/leave', csrfMiddleware, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows: meRows } = await pool.query(
+      'SELECT id FROM users WHERE email=$1', [actor.email.toLowerCase()]
+    );
+    if (!meRows.length) return res.status(404).json({ error: 'user_not_found' });
+    const targetUserId = meRows[0].id;
+
+    const { leave_start, leave_end, delegate_user_id, leave_reason } = req.body || {};
+    const input = {
+      targetUserId,
+      leaveStart: leave_start || null,
+      leaveEnd: leave_end || null,
+      delegateUserId: delegate_user_id ? Number(delegate_user_id) : null,
+      leaveReason: leave_reason || null,
+    };
+    await validateLeaveSettings(input);
+    await setUserLeave(input);
+    invalidateOrgUserCache?.();
+    const info = await getLeaveInfo(targetUserId);
+    res.json({ ok: true, leave: info });
+  } catch (err) {
+    _mapLeaveError(err, res);
+  }
+});
+
+// ── DELETE /api/users/me/leave — userul își anulează singur concediul ──────
+router.delete('/api/users/me/leave', csrfMiddleware, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { rows: meRows } = await pool.query(
+      'SELECT id FROM users WHERE email=$1', [actor.email.toLowerCase()]
+    );
+    if (!meRows.length) return res.status(404).json({ error: 'user_not_found' });
+    await clearUserLeave(meRows[0].id);
+    invalidateOrgUserCache?.();
+    res.json({ ok: true, leave: null });
+  } catch (err) {
+    _mapLeaveError(err, res);
+  }
+});
+
+// ── PUT /admin/users/:id/leave — admin setează concediu pentru oricine ─────
+router.put('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin' && actor.role !== 'org_admin') {
+    return res.status(403).json({ error: 'admin_only' });
+  }
+
+  const targetUserId = Number(req.params.id);
+  if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+    return res.status(400).json({ error: 'invalid_user_id' });
+  }
+  try {
+    const { rows: orgRows } = await pool.query(
+      `SELECT u_actor.org_id AS actor_org, u_target.org_id AS target_org
+       FROM users u_actor
+       JOIN users u_target ON u_target.id = $2
+       WHERE u_actor.email = $1`,
+      [actor.email.toLowerCase(), targetUserId]
+    );
+    if (!orgRows.length) return res.status(404).json({ error: 'user_not_found' });
+    if (orgRows[0].actor_org !== orgRows[0].target_org) {
+      return res.status(403).json({ error: 'different_org' });
+    }
+
+    const { leave_start, leave_end, delegate_user_id, leave_reason } = req.body || {};
+    const input = {
+      targetUserId,
+      leaveStart: leave_start || null,
+      leaveEnd: leave_end || null,
+      delegateUserId: delegate_user_id ? Number(delegate_user_id) : null,
+      leaveReason: leave_reason || null,
+    };
+    await validateLeaveSettings(input);
+    await setUserLeave(input);
+    invalidateOrgUserCache?.();
+    const info = await getLeaveInfo(targetUserId);
+    res.json({ ok: true, leave: info });
+  } catch (err) {
+    _mapLeaveError(err, res);
+  }
+});
+
+// ── DELETE /admin/users/:id/leave — admin anulează concediu ────────────────
+router.delete('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin' && actor.role !== 'org_admin') {
+    return res.status(403).json({ error: 'admin_only' });
+  }
+
+  const targetUserId = Number(req.params.id);
+  if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+    return res.status(400).json({ error: 'invalid_user_id' });
+  }
+  try {
+    const { rows: orgRows } = await pool.query(
+      `SELECT u_actor.org_id AS actor_org, u_target.org_id AS target_org
+       FROM users u_actor
+       JOIN users u_target ON u_target.id = $2
+       WHERE u_actor.email = $1`,
+      [actor.email.toLowerCase(), targetUserId]
+    );
+    if (!orgRows.length) return res.status(404).json({ error: 'user_not_found' });
+    if (orgRows[0].actor_org !== orgRows[0].target_org) {
+      return res.status(403).json({ error: 'different_org' });
+    }
+    await clearUserLeave(targetUserId);
+    invalidateOrgUserCache?.();
+    res.json({ ok: true, leave: null });
+  } catch (err) {
+    _mapLeaveError(err, res);
+  }
 });
 
 export default router;
