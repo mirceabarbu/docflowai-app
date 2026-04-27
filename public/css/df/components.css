@@ -39,6 +39,12 @@
 .df-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
 .df-toolbar-spacer{flex:1;}
 
+/* ─── Modal footer — wrapper pentru butoane Anulează/Salvează în modale ─── */
+.df-modal-footer{display:flex;gap:12px;justify-content:flex-end;align-items:center;
+  padding-top:16px;margin-top:16px;border-top:1px solid var(--df-border);flex-wrap:wrap;}
+.df-modal-footer.no-border{border-top:none;padding-top:0;margin-top:8px;}
+.df-modal-footer.split{justify-content:space-between;}
+
 /* === Input placeholder consistent === */
 .card input::placeholder,.card select::placeholder{color:var(--df-text-4);}
 
@@ -152,6 +158,17 @@
 .df-action-btn.full-width{
   width:100%;
   justify-content:center;
+}
+
+.df-action-btn.ghost{
+  background:transparent;
+  border-color:transparent;
+  color:var(--df-text-3);
+}
+.df-action-btn.ghost:hover{
+  background:rgba(255,255,255,.06);
+  border-color:transparent;
+  color:var(--df-text);
 }
 
 /* ── Scalare SVG în buton — dimensiune auto după variantă ─────────── */

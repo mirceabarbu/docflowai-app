@@ -21,7 +21,7 @@
 <div id="forcePwdBanner" style="display:none;background:linear-gradient(135deg,rgba(255,165,0,.18),rgba(255,100,0,.12));border-bottom:1px solid rgba(255,165,0,.4);padding:12px 24px;text-align:center;font-size:.88rem;color:#ffd580;">
   ⚠️ <strong>Parola ta este temporară.</strong> Te rugăm să o schimbi acum pentru securitatea contului.
   &nbsp;<button class="df-action-btn warning" onclick="openChangePwdModal()"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:5px;"><use href="/icons.svg?v=3.9.298#ico-key"/></svg>Schimbă parola</button>
-  &nbsp;<button onclick="document.getElementById('forcePwdBanner').style.display='none'" style="background:transparent;border:none;color:#9db0ff;cursor:pointer;font-size:.85rem;opacity:.6;" aria-label="Închide"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg></button>
+  &nbsp;<button class="df-action-btn icon-only sm ghost" onclick="document.getElementById('forcePwdBanner').style.display='none'" aria-label="Închide"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg></button>
 </div>
 
 <!-- Modal schimbare parolă -->
@@ -603,7 +603,7 @@
   <!-- Modal Onboarding Wizard -->
   <div id="onboardingModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeOnboardingWizard()">
     <div style="background:#0f1731;border:1px solid rgba(45,212,191,.3);border-radius:18px;padding:32px;max-width:500px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);position:relative;">
-      <button onclick="closeOnboardingWizard()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;cursor:pointer;" aria-label="Închide"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg></button>
+      <button class="df-action-btn icon-only sm ghost" onclick="closeOnboardingWizard()" style="position:absolute;top:14px;right:16px;" aria-label="Închide"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg></button>
       <div style="font-size:1.1rem;font-weight:800;color:#7cf0e0;margin-bottom:4px;">🏛 Instituție nouă</div>
       <div style="font-size:.82rem;color:var(--muted);margin-bottom:22px;">Creează organizație + administrator instituție + trimite credențiale automat.</div>
 
@@ -639,9 +639,9 @@
           <div style="font-weight:700;color:#2dd4bf;margin-bottom:8px;">✅ Instituție creată cu succes!</div>
           <div id="owResultDetails" style="color:var(--sub);line-height:1.7;"></div>
         </div>
-        <div style="display:flex;gap:10px;">
-          <button onclick="closeOnboardingWizard()" style="flex:1;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
-          <button id="owSubmitBtn" onclick="doOnboarding()" style="flex:2;padding:10px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-landmark"/></svg>Creează instituția</button>
+        <div class="df-modal-footer">
+          <button class="df-action-btn" onclick="closeOnboardingWizard()">Anulează</button>
+          <button id="owSubmitBtn" class="df-action-btn primary" onclick="doOnboarding()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-landmark"/></svg>Creează instituția</button>
         </div>
       </div>
     </div>
@@ -664,9 +664,9 @@
         style="width:100%;box-sizing:border-box;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:.95rem;margin-bottom:12px;"
         onkeydown="if(event.key==='Enter')doAssignOrg()"/>
       <div id="assignOrgMsg" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button onclick="closeAssignOrg()" style="padding:9px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
-        <button onclick="doAssignOrg()" style="padding:9px 22px;background:linear-gradient(135deg,#ffd580,#ff9e40);border:none;border-radius:8px;color:#1a1a00;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:6px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-save"/></svg>Salvează</button>
+      <div class="df-modal-footer">
+        <button class="df-action-btn" onclick="closeAssignOrg()">Anulează</button>
+        <button class="df-action-btn primary" onclick="doAssignOrg()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-save"/></svg>Salvează</button>
       </div>
     </div>
   </div>
@@ -680,9 +680,9 @@
         style="width:100%;box-sizing:border-box;padding:10px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:.95rem;margin-bottom:14px;"
         onkeydown="if(event.key==='Enter')doRenameOrg()"/>
       <div id="renameOrgMsg" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button onclick="closeRenameOrgModal()" style="padding:9px 20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
-        <button onclick="doRenameOrg()" style="padding:9px 22px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:6px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-save"/></svg>Salvează</button>
+      <div class="df-modal-footer">
+        <button class="df-action-btn" onclick="closeRenameOrgModal()">Anulează</button>
+        <button class="df-action-btn primary" onclick="doRenameOrg()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-save"/></svg>Salvează</button>
       </div>
     </div>
   </div>
@@ -721,7 +721,7 @@
         <div style="display:flex;gap:8px;">
           <input id="orgWebhookSecret" type="password" placeholder="Lasă gol pentru a păstra secretul existent"
             style="flex:1;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eaf0ff;font-size:.88rem;"/>
-          <button class="df-action-btn" onclick="orgGenSecret()" style="background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.3);color:#b39dff;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-dices"/></svg>Generează</button>
+          <button class="df-action-btn" onclick="orgGenSecret()" style="background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.3);color:#b39dff;white-space:nowrap;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-dices"/></svg>Generează</button>
         </div>
         <div style="font-size:.73rem;color:var(--muted);margin-top:4px;">Header: <code>X-DocFlowAI-Signature: sha256=HMAC(secret, body)</code></div>
       </div>
@@ -808,20 +808,20 @@
             <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:10px;margin-bottom:10px;">
               <div style="font-size:.77rem;color:#b39dff;font-weight:600;margin-bottom:6px;">🔑 Generator pereche chei RSA</div>
               <div style="font-size:.73rem;color:rgba(234,240,255,.4);margin-bottom:8px;">Generați o pereche de chei RSA-2048. Cheia publică se trimite la STS, cea privată rămâne confidențială.</div>
-              <button class="df-action-btn" onclick="generateStsKeyPair()" style="background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.3);color:#b39dff;display:inline-flex;align-items:center;gap:5px;">
+              <button class="df-action-btn" onclick="generateStsKeyPair()" style="background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.3);color:#b39dff;">
                 <svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-key"/></svg>Generează pereche chei RSA-2048
               </button>
               <div id="stsKeyGenResult" style="display:none;margin-top:10px;">
                 <div style="font-size:.75rem;color:#2dd4bf;font-weight:600;margin-bottom:4px;">✅ Cheie publică (trimiteți aceasta la STS):</div>
                 <textarea id="stsPublicKeyDisplay" rows="6" readonly
                   style="width:100%;box-sizing:border-box;padding:8px;background:rgba(0,0,0,.3);border:1px solid rgba(45,212,191,.3);border-radius:6px;color:#7cf0e0;font-size:.72rem;font-family:monospace;resize:none;margin-bottom:6px;"></textarea>
-                <button class="df-action-btn teal sm" onclick="copyPublicKey()" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-clipboard"/></svg>Copiază cheia publică</button>
+                <button class="df-action-btn teal sm" onclick="copyPublicKey()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-clipboard"/></svg>Copiază cheia publică</button>
               </div>
             </div>
           </div>
 
           <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
-            <button class="df-action-btn teal" onclick="verifyProviderConfig()" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-search"/></svg>Verifică</button>
+            <button class="df-action-btn teal" onclick="verifyProviderConfig()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-search"/></svg>Verifică</button>
             <div id="orgProviderVerifyStatus" style="font-size:.77rem;flex:1;"></div>
           </div>
         </div>
@@ -829,10 +829,10 @@
 
       <!-- Butoane finale -->
       <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06);">
-        <button class="df-action-btn teal" onclick="orgTestWebhook()" style="display:inline-flex;align-items:center;gap:6px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-flask"/></svg>Test Webhook</button>
-        <div style="display:flex;gap:10px;">
-          <button onclick="closeOrgModal()" style="padding:10px 22px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
-          <button onclick="saveOrgWebhook()" style="padding:10px 22px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:6px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-save"/></svg>Salvează</button>
+        <button class="df-action-btn teal" onclick="orgTestWebhook()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-flask"/></svg>Test Webhook</button>
+        <div class="df-modal-footer no-border" style="padding-top:0;margin-top:0;">
+          <button class="df-action-btn" onclick="closeOrgModal()">Anulează</button>
+          <button class="df-action-btn primary" onclick="saveOrgWebhook()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-save"/></svg>Salvează</button>
         </div>
       </div>
       <div id="orgEditMsg" style="margin-top:12px;font-size:.83rem;"></div>
@@ -896,8 +896,8 @@
     </div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap;">
       <button onclick="orCreateCampaign()" class="df-action-btn lg primary"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-check"/></svg>Crează campanie</button>
-      <button class="df-action-btn" onclick="orFillDefaultTemplate()" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-clipboard"/></svg>Template broșură</button>
-      <button class="df-action-btn warning" onclick="orFillConvTemplate()" title="Ton direct, personal — mai eficient pentru factori de decizie" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-mail"/></svg>Template conversațional ★</button>
+      <button class="df-action-btn" onclick="orFillDefaultTemplate()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-clipboard"/></svg>Template broșură</button>
+      <button class="df-action-btn warning" onclick="orFillConvTemplate()" title="Ton direct, personal — mai eficient pentru factori de decizie"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-mail"/></svg>Template conversațional ★</button>
       <select onchange="if(this.value){$('or-c-subject').value=this.value;this.value='';}" style="padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--muted);font-size:.82rem;cursor:pointer;max-width:240px;">
         <option value="">💡 Subiecte sugerate…</option>
         <option value="Propunere digitalizare flux documente – DocFlowAI">Propunere digitalizare (generic)</option>
@@ -916,7 +916,7 @@
   <div class="card">
     <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
       📋 Campanii
-      <button class="df-action-btn" onclick="orLoadCampaigns()" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-refresh"/></svg>Reîncarcă</button>
+      <button class="df-action-btn" onclick="orLoadCampaigns()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-refresh"/></svg>Reîncarcă</button>
     </div>
     <div id="or-campaigns-list" style="min-height:60px;"></div>
   </div>
@@ -928,8 +928,8 @@
         <span>🎯 <span id="or-detail-name"></span></span>
         <div style="display:flex;gap:8px;">
           <button onclick="orSendBatch()" id="or-btn-send" class="df-action-btn lg success"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-play"/></svg>Trimite batch (50)</button>
-          <button class="df-action-btn warning" onclick="orResetErrors()" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-repeat"/></svg>Retry erori</button>
-          <button class="df-action-btn danger" onclick="orDeleteCampaign()" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-trash"/></svg>Șterge</button>
+          <button class="df-action-btn warning" onclick="orResetErrors()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-repeat"/></svg>Retry erori</button>
+          <button class="df-action-btn danger" onclick="orDeleteCampaign()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-trash"/></svg>Șterge</button>
         </div>
       </div>
 
@@ -954,7 +954,7 @@
           <textarea id="or-add-csv" rows="4" placeholder="secretariat@primariaY.ro,Primăria Y&#10;contact@primariaZ.ro,Primăria Z" style="width:100%;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.83rem;font-family:monospace;resize:vertical;"></textarea>
         </div>
         <div style="display:flex;gap:10px;align-items:center;">
-          <button class="df-action-btn" onclick="orAddRecipients()" style="background:rgba(157,176,255,.15);border-color:rgba(157,176,255,.3);color:#9db0ff;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-plus"/></svg>Adaugă</button>
+          <button class="df-action-btn" onclick="orAddRecipients()" style="background:rgba(157,176,255,.15);border-color:rgba(157,176,255,.3);color:#9db0ff;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-plus"/></svg>Adaugă</button>
           <span id="or-add-status" style="font-size:.84rem;"></span>
         </div>
       </div>
@@ -991,9 +991,9 @@
       🏛 Instituții — Baza de date Outreach
       <div style="display:flex;gap:8px;align-items:center;">
         <span id="pr-badge" style="font-size:.77rem;background:rgba(45,212,191,.12);color:#7cf0e0;padding:3px 10px;border-radius:10px;"></span>
-        <button class="df-action-btn teal" onclick="prShowAddModal()" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-plus"/></svg>Adaugă</button>
-        <button class="df-action-btn" onclick="prShowImportModal()" style="background:rgba(157,176,255,.12);border-color:rgba(157,176,255,.3);color:#9db0ff;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-download"/></svg>Import JSON/CSV</button>
-        <button class="df-action-btn" onclick="prShowExportModal()" style="background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.35);color:#c4b5ff;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-upload"/></svg>Export</button>
+        <button class="df-action-btn teal" onclick="prShowAddModal()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-plus"/></svg>Adaugă</button>
+        <button class="df-action-btn" onclick="prShowImportModal()" style="background:rgba(157,176,255,.12);border-color:rgba(157,176,255,.3);color:#9db0ff;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-download"/></svg>Import JSON/CSV</button>
+        <button class="df-action-btn" onclick="prShowExportModal()" style="background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.35);color:#c4b5ff;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-upload"/></svg>Export</button>
       </div>
     </div>
 
@@ -1010,8 +1010,8 @@
         <input id="pr-q" placeholder="Denumire localitate sau email..." oninput="prDebouncedLoad()" style="width:100%;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;"/>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0;">
-        <button class="df-action-btn" onclick="prSelectAll()" style="background:rgba(157,176,255,.12);border-color:rgba(157,176,255,.25);color:#9db0ff;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-check-square"/></svg>Selectează pagina</button>
-        <button class="df-action-btn" onclick="prDeselectAll()" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg>Deselectează</button>
+        <button class="df-action-btn" onclick="prSelectAll()" style="background:rgba(157,176,255,.12);border-color:rgba(157,176,255,.25);color:#9db0ff;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-check-square"/></svg>Selectează pagina</button>
+        <button class="df-action-btn" onclick="prDeselectAll()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg>Deselectează</button>
       </div>
     </div>
 
@@ -1023,7 +1023,7 @@
           <option value="">— selectează campanie —</option>
         </select>
       </div>
-      <button class="df-action-btn teal cta" onclick="prAddSelected()" id="pr-btn-add" style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-plus"/></svg>Adaugă selectate</button>
+      <button class="df-action-btn teal cta" onclick="prAddSelected()" id="pr-btn-add" style="white-space:nowrap;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-plus"/></svg>Adaugă selectate</button>
       <span id="pr-add-status" style="font-size:.84rem;align-self:center;"></span>
     </div>
 
@@ -1206,8 +1206,8 @@
         <span style="position:absolute;right:9px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:13px;">📅</span>
       </div>
     </div>
-    <button class="df-action-btn primary" onclick="loadAuditEvents(1)" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-search"/></svg>Caută</button>
-    <button class="df-action-btn" onclick="resetAuditFilters()" style="display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg>Resetează</button>
+    <button class="df-action-btn primary" onclick="loadAuditEvents(1)"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-search"/></svg>Caută</button>
+    <button class="df-action-btn" onclick="resetAuditFilters()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg>Resetează</button>
     <a id="audit-csv-btn" href="#" onclick="downloadAuditCsv();return false;" style="background:transparent;color:#4ade80;border:1px solid rgba(74,222,128,.25);border-radius:8px;padding:7px 14px;font-size:.83rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-download"/></svg>CSV</a>
   </div>
 
@@ -1320,7 +1320,7 @@
       <span style="color:#9db0ff;font-size:.75rem;display:block;margin-bottom:6px;">PAROLĂ TEMPORARĂ</span>
       <div style="display:flex;align-items:center;gap:10px;">
         <strong id="pwdModalPwd" style="font-family:monospace;font-size:1.3rem;color:#ffd580;letter-spacing:.05em;flex:1;"></strong>
-        <button class="df-action-btn sm" onclick="copyPwd()" id="btnCopyPwd" style="background:rgba(124,92,255,.2);border-color:rgba(124,92,255,.5);color:#c4b5ff;display:inline-flex;align-items:center;gap:5px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-clipboard"/></svg>Copiază</button>
+        <button class="df-action-btn sm" onclick="copyPwd()" id="btnCopyPwd" style="background:rgba(124,92,255,.2);border-color:rgba(124,92,255,.5);color:#c4b5ff;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-clipboard"/></svg>Copiază</button>
       </div>
     </div>
     <!-- GWS info dacă există -->
@@ -1344,7 +1344,7 @@
 <!-- ── Modal Bulk Import CSV Utilizatori ─────────────────────────────────── -->
 <div id="bulkImportModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)closeBulkImportModal()">
   <div style="background:#0f1731;border:1px solid rgba(255,176,32,.3);border-radius:18px;padding:32px;max-width:560px;width:calc(100%-32px);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.7);position:relative;">
-    <button onclick="closeBulkImportModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;cursor:pointer;" aria-label="Închide"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg></button>
+    <button class="df-action-btn icon-only sm ghost" onclick="closeBulkImportModal()" style="position:absolute;top:14px;right:16px;" aria-label="Închide"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg></button>
     <div style="font-size:1.05rem;font-weight:800;color:#ffd580;margin-bottom:4px;">📤 Import utilizatori din CSV</div>
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px;">Format: <code style="background:rgba(255,255,255,.07);padding:2px 6px;border-radius:4px;">email,nume,functie,compartiment</code> — un utilizator per linie. Header opțional.</div>
 
@@ -1358,9 +1358,9 @@
     <div id="bulkImportMsg" style="font-size:.83rem;min-height:18px;margin-bottom:12px;"></div>
     <div id="bulkImportResult" style="display:none;background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.2);border-radius:10px;padding:14px;font-size:.82rem;margin-bottom:14px;"></div>
 
-    <div style="display:flex;gap:10px;">
-      <button onclick="closeBulkImportModal()" style="flex:1;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
-      <button id="bulkImportBtn" onclick="doBulkImport()" style="flex:2;padding:10px;background:linear-gradient(135deg,#ffd580,#ff9e40);border:none;border-radius:8px;color:#1a1200;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-upload"/></svg>Importă utilizatori</button>
+    <div class="df-modal-footer">
+      <button class="df-action-btn" onclick="closeBulkImportModal()">Anulează</button>
+      <button id="bulkImportBtn" class="df-action-btn primary" onclick="doBulkImport()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-upload"/></svg>Importă utilizatori</button>
     </div>
   </div>
 </div>
@@ -1368,7 +1368,7 @@
 <!-- ── Modal 2FA TOTP ─────────────────────────────────────────────────────── -->
 <div id="twoFaModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;" onclick="if(event.target===this)close2FA()">
   <div style="background:#0f1731;border:1px solid rgba(124,92,255,.3);border-radius:18px;padding:32px;max-width:460px;width:calc(100%-32px);box-shadow:0 20px 60px rgba(0,0,0,.7);position:relative;">
-    <button onclick="close2FA()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:#888;cursor:pointer;" aria-label="Închide"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg></button>
+    <button class="df-action-btn icon-only sm ghost" onclick="close2FA()" style="position:absolute;top:14px;right:16px;" aria-label="Închide"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-x"/></svg></button>
     <div id="twoFaStep1" style="display:block;">
       <div style="font-size:1.05rem;font-weight:800;color:#c4b5ff;margin-bottom:4px;">🔐 Activare 2FA</div>
       <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px;">Scanează QR-ul cu Google Authenticator, Authy sau orice aplicație TOTP.</div>
@@ -1384,13 +1384,13 @@
         style="width:100%;box-sizing:border-box;padding:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:1.2rem;text-align:center;letter-spacing:.3em;font-family:monospace;margin-bottom:10px;"
         onkeydown="if(event.key==='Enter')confirm2FASetup()"/>
       <div id="twoFaMsg1" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
-      <button onclick="confirm2FASetup()" style="width:100%;padding:11px;background:linear-gradient(135deg,#7c5cff,#2dd4bf);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-check"/></svg>Activează 2FA</button>
+      <button class="df-action-btn primary full-width" onclick="confirm2FASetup()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-check"/></svg>Activează 2FA</button>
     </div>
     <div id="twoFaStep2" style="display:none;">
       <div style="font-size:1.05rem;font-weight:800;color:#2dd4bf;margin-bottom:12px;">✅ 2FA activat cu succes!</div>
       <div style="font-size:.82rem;color:#ffd580;font-weight:700;margin-bottom:8px;">⚠️ Salvează aceste coduri de backup — fiecare e valabil o singură dată:</div>
       <div id="twoFaBackupCodes" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:14px;font-family:monospace;font-size:.9rem;color:#eaf0ff;display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;"></div>
-      <button onclick="close2FA();location.reload();" style="width:100%;padding:11px;background:linear-gradient(135deg,#2dd4bf,#7c5cff);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-check"/></svg>Am salvat codurile — Închide</button>
+      <button class="df-action-btn primary full-width" onclick="close2FA();location.reload();"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-check"/></svg>Am salvat codurile — Închide</button>
     </div>
     <div id="twoFaDisable" style="display:none;">
       <div style="font-size:1.05rem;font-weight:800;color:#ff8080;margin-bottom:8px;">🔓 Dezactivare 2FA</div>
@@ -1399,9 +1399,9 @@
         style="width:100%;box-sizing:border-box;padding:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eaf0ff;font-size:1.1rem;text-align:center;font-family:monospace;margin-bottom:10px;"
         onkeydown="if(event.key==='Enter')do2FADisable()"/>
       <div id="twoFaMsgDisable" style="font-size:.82rem;min-height:18px;margin-bottom:12px;"></div>
-      <div style="display:flex;gap:10px;">
-        <button onclick="close2FA()" style="flex:1;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--muted);cursor:pointer;">Anulează</button>
-        <button onclick="do2FADisable()" style="flex:2;padding:10px;background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.3);border-radius:8px;color:#ff8080;font-weight:700;cursor:pointer;">Dezactivează 2FA</button>
+      <div class="df-modal-footer">
+        <button class="df-action-btn" onclick="close2FA()">Anulează</button>
+        <button class="df-action-btn danger" onclick="do2FADisable()">Dezactivează 2FA</button>
       </div>
     </div>
   </div>
