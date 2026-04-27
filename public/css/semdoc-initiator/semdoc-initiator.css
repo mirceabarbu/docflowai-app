@@ -17,11 +17,7 @@
       input, select { width:100%; padding:10px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
       .row { display:flex; gap:10px; align-items:center; }
       /* .btn rules removed in BLOC 3.3 — buttons use .df-action-btn */
-      table { width:100%; border-collapse: collapse;  table-layout: fixed;}
-      th, td { text-align:left; padding:10px; border-bottom:1px solid rgba(255,255,255,.08); vertical-align: top; }
-      td input, td select{width:100%; min-width:0;}
-
-      th { font-size: 12px; opacity:.85; }
+      /* Stiluri tabel semnatari mutate în df/components.css → .signers-table (BLOC 3.1) */
       .muted { opacity:.8; }
       .mono { font-family: var(--df-font-mono); }
       .pill { display:inline-block; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-size: 12px; }
@@ -30,7 +26,6 @@
       .bad { border-color: rgba(255,90,120,.35); background: rgba(255,90,120,.12); }
       a { color: #a9c2ff; }
       .hidden { display:none; }
-      tr.drag-over td { background: rgba(124,92,255,.18) !important; }
 
 
 /* ===== DocFlowAI Theme ===== */

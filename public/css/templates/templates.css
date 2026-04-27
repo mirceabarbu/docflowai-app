@@ -14,31 +14,14 @@
     font-size:.9rem;outline:none;transition:border .2s;}
   input:focus,select:focus{border-color:var(--accent);}
   select option{background:#0f1731;}
-  /* Tabel semnatari — identic cu semdoc-initiator */
-  .signers-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px;}
-  .signers-table th{font-size:12px;color:rgba(205,216,255,.85);text-align:left;padding:10px;
-    border-bottom:1px solid rgba(255,255,255,.08);font-weight:600;letter-spacing:.04em;}
-  .signers-table td{padding:6px 5px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle;}
-  .signers-table td input,.signers-table td select{
-    width:100%;min-width:0;padding:9px 10px;border-radius:10px;
-    border:1px solid rgba(255,255,255,.12)!important;background:rgba(0,0,0,.2)!important;
-    color:#e9eefc!important;font-size:.85rem!important;outline:none;font:inherit!important;
-    box-sizing:border-box;}
-  .signers-table td input:focus,.signers-table td select:focus{border-color:var(--accent)!important;}
-  .signers-table td select option{background:#0f1731;}
-  .signers-table tr.drag-over td{background:rgba(124,92,255,.18)!important;}
-  .drag-handle{cursor:grab;text-align:center;color:rgba(255,255,255,.35);
-    user-select:none;font-size:18px;width:32px;}
+  /* Stiluri .signers-table mutate în df/components.css (BLOC 3.1) */
   .add-row-btn{background:transparent;border:1px dashed rgba(124,92,255,.4);color:var(--accent);
     border-radius:9px;padding:8px 16px;font-size:.83rem;cursor:pointer;transition:all .2s;margin-top:4px;}
   .add-row-btn:hover{background:rgba(124,92,255,.08);border-color:var(--accent);}
   .shared-row{display:flex;align-items:center;gap:10px;margin-top:14px;}
   .shared-row label{margin:0;text-transform:none;font-size:.85rem;color:var(--sub);cursor:pointer;}
   input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer;}
-  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--df-teal));color:#fff;border:none;
-    padding:11px 24px;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;transition:all .15s;}
-  .btn-primary:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
-  .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+  /* .btn* legacy eliminate — HTML folosește df-action-btn (BLOC 3.2) */
   .create-actions{display:flex;align-items:center;gap:14px;margin-top:18px;}
   .msg{font-size:.83rem;padding:8px 14px;border-radius:8px;}
   .msg.ok{background:rgba(45,212,191,.1);color:#7cf0e0;}
@@ -70,26 +53,7 @@
   .atrib-pill{font-size:.65rem;padding:2px 7px;border-radius:6px;font-weight:700;
     background:rgba(124,92,255,.15);color:var(--accent);border:1px solid rgba(124,92,255,.2);}
   .tmpl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
-  .btn-use{background:linear-gradient(135deg,var(--accent),var(--df-teal));color:#fff;border:none;
-    padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;
-    transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:4px;}
-  .btn-use:hover{opacity:.88;filter:brightness(1.05);transform:translateY(-1px);}
-  .btn-sm{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--sub);
-    padding:6px 12px;border-radius:8px;font-size:.75rem;cursor:pointer;transition:all .15s;}
-  .btn-sm:hover{background:rgba(120,160,255,.15);border-color:rgba(120,160,255,.4);color:#e9eefc;}
-  .btn-sm.danger{color:var(--df-danger);}
-  .btn-sm.danger:hover{background:rgba(255,85,85,.12);border-color:var(--df-danger);}
-  .btn-sm.success{color:#7cf0e0;}
-  .btn-sm.success:hover{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.4);}
-  /* Butoane navigare interne (card actions) */
-  .btn{background:rgba(120,160,255,.22);border:1px solid rgba(120,160,255,.45);color:#e9eefc;
-    padding:8px 14px;border-radius:10px;cursor:pointer;font-size:.88rem;text-decoration:none;
-    display:inline-flex;align-items:center;gap:4px;transition:filter .15s,transform .12s;}
-  .btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
-  .btn.danger{background:rgba(255,85,85,.18);border-color:rgba(255,85,85,.35);color:#ff8888;}
-  .btn.danger:hover{background:rgba(255,85,85,.28);}
-  .btn.success{background:rgba(45,212,191,.18);border-color:rgba(45,212,191,.35);color:#7cf0e0;}
-  .btn.success:hover{background:rgba(45,212,191,.28);}
+  /* .btn* legacy eliminate — HTML folosește df-action-btn (BLOC 3.2) */
   .empty-state{text-align:center;padding:48px 24px;color:var(--muted);}
   .empty-icon{font-size:2.5rem;margin-bottom:12px;}
   .empty-title{font-size:1rem;font-weight:600;margin-bottom:6px;color:var(--sub);}

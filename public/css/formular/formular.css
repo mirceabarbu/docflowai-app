@@ -46,12 +46,8 @@
     .status.info{display:flex;background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.22);color:#b0a0ff}
     /* Actions (dark) */
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;align-items:center}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 20px;border-radius:10px;font-size:.86rem;font-weight:800;cursor:pointer;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--df-text);transition:.2s;font-family:inherit}
-    .btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.24)}
-    .btn.primary{background:linear-gradient(135deg,var(--df-brand),var(--df-teal));border:none;box-shadow:0 6px 24px rgba(108,79,240,.3);color:#fff}
-    .btn.primary:hover{filter:brightness(1.08)}
+    /* .btn* legacy eliminate — HTML/JS folosesc df-action-btn (BLOC 3.2) */
 
-    .btn:disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
     @keyframes spin{to{transform:rotate(360deg)}}
     .spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
     /* Result */
@@ -214,8 +210,7 @@
     .stbadge.st-respins{background:rgba(255,60,60,.1);color:#ff8888;border:1px solid rgba(255,60,60,.22)}
     .stbadge.st-anulat{background:rgba(80,80,80,.15);color:#888;border:1px solid rgba(80,80,80,.2)}
     .stbadge.st-returnat{background:rgba(255,140,0,.15);color:#ffaa44;border:1px solid rgba(255,140,0,.3)}
-    .btn.danger{background:rgba(255,60,60,.15);border:1px solid rgba(255,60,60,.35);color:#ff8888}
-    .btn.danger:hover{background:rgba(255,60,60,.25)}
+    /* .btn* legacy eliminate — HTML/JS folosesc df-action-btn (BLOC 3.2) */
     .lst-pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:6px 0}
     .lst-page-info{font-size:.82rem;color:var(--df-text-3);min-width:160px;text-align:center}
     .lst-empty{text-align:center;padding:36px 16px;color:var(--df-text-3);font-size:.84rem}

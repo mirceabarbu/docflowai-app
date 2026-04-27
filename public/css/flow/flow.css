@@ -16,24 +16,7 @@
     *{box-sizing:border-box}
     a{color:inherit}
     code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:8px;border:1px solid var(--stroke)}
-    .btn{
-      border:1px solid var(--stroke);
-      background:rgba(255,255,255,.06);
-      color:var(--txt);
-      padding:10px 12px; border-radius:14px;
-      cursor:pointer; user-select:none;
-      display:inline-flex; align-items:center; gap:8px;
-      transition:transform .06s ease, background .15s ease, border-color .15s ease, opacity .15s ease;
-      font-weight:650; font-size:.92rem;
-    }
-    .btn:hover{background:rgba(255,255,255,.08)}
-    .btn:active{transform:translateY(1px)}
-    .btn:disabled{opacity:.55; cursor:not-allowed}
-    .btn.primary{
-      background:linear-gradient(90deg, rgba(124,92,255,.95), rgba(0,214,255,.55));
-      border-color:rgba(124,92,255,.35);
-    }
-    .btn.ghost{background:transparent}
+    /* .btn* legacy eliminate — HTML folosește df-action-btn (BLOC 3.2) */
     .pill{
       display:inline-flex;align-items:center;gap:8px;
       border:1px solid var(--stroke);
