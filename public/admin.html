@@ -1279,38 +1279,35 @@
         </div>
       </div>
     </div>
-    <!-- Concediu și delegare -->
-    <details id="eLeaveSection" style="margin-top:14px;background:rgba(255,255,255,.02);border:1px solid var(--df-border-2);border-radius:10px;padding:0 14px;">
-      <summary style="padding:12px 0;cursor:pointer;font-size:.88rem;font-weight:600;color:var(--df-text-2);user-select:none;">
-        🏖️ Concediu și delegare
-        <span id="eLeaveStatusBadge" style="margin-left:8px;font-size:.72rem;font-weight:500;padding:2px 8px;border-radius:12px;background:rgba(120,120,120,.15);color:var(--df-text-3);">Nesetat</span>
-      </summary>
-      <div style="padding:6px 0 14px;display:flex;flex-direction:column;gap:10px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="frow"><label>Început concediu</label><input type="date" id="eLeaveStart"/></div>
-          <div class="frow"><label>Sfârșit concediu</label><input type="date" id="eLeaveEnd"/></div>
-        </div>
-        <div class="frow">
-          <label>Delegat (cine semnează în lipsă)</label>
-          <select id="eLeaveDelegate"><option value="">— Niciun delegat —</option></select>
-        </div>
-        <div class="frow">
-          <label>Motiv (opțional)</label>
-          <textarea id="eLeaveReason" rows="2" maxlength="500" placeholder="Ex: Concediu de odihnă"></textarea>
-        </div>
-        <div id="eLeaveMsg" style="font-size:.8rem;min-height:18px;"></div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button type="button" class="df-action-btn danger sm" onclick="adminClearLeave()">
-            <svg class="df-ic"><use href="/icons.svg?v=3.9.379#ico-x"/></svg>
-            Anulează concediul
-          </button>
-          <button type="button" class="df-action-btn primary sm" onclick="adminSaveLeave()">
-            <svg class="df-ic"><use href="/icons.svg?v=3.9.379#ico-save"/></svg>
-            Salvează concediu
-          </button>
-        </div>
-      </div>
-    </details>
+    <!-- Concediu și delegare (BLOC 4.2 fix — structură nativă) -->
+    <hr style="border:none;border-top:1px solid var(--df-border);margin:18px 0 14px;"/>
+    <h4 style="font-size:.82rem;font-weight:700;color:var(--sub);margin-bottom:12px;letter-spacing:.04em;text-transform:uppercase;">
+      Concediu și delegare
+      <span id="eLeaveStatusBadge" style="margin-left:8px;font-size:.66rem;font-weight:500;padding:2px 8px;border-radius:12px;background:rgba(120,120,120,.15);color:var(--df-text-3);text-transform:none;letter-spacing:0;">Nesetat</span>
+    </h4>
+    <div class="grid2">
+      <div class="frow"><label>Început concediu</label><input type="date" id="eLeaveStart"/></div>
+      <div class="frow"><label>Sfârșit concediu</label><input type="date" id="eLeaveEnd"/></div>
+    </div>
+    <div class="frow" style="margin-top:12px;">
+      <label>Delegat (cine semnează în lipsă)</label>
+      <select id="eLeaveDelegate"><option value="">— Niciun delegat —</option></select>
+    </div>
+    <div class="frow" style="margin-top:12px;">
+      <label>Motiv (opțional)</label>
+      <textarea id="eLeaveReason" rows="2" maxlength="500" placeholder="Ex: Concediu de odihnă" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;outline:none;font-family:inherit;resize:vertical;line-height:1.5;box-sizing:border-box;"></textarea>
+    </div>
+    <div id="eLeaveMsg" style="margin-top:8px;font-size:.8rem;min-height:18px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+      <button type="button" class="df-action-btn danger sm" onclick="adminClearLeave()">
+        <svg class="df-ic"><use href="/icons.svg?v=3.9.379#ico-x"/></svg>
+        Anulează concediul
+      </button>
+      <button type="button" class="df-action-btn primary sm" onclick="adminSaveLeave()">
+        <svg class="df-ic"><use href="/icons.svg?v=3.9.379#ico-save"/></svg>
+        Salvează concediu
+      </button>
+    </div>
 
     <!-- Status Workspace -->
     <div id="eGwsRow" style="display:none;margin-top:12px;background:rgba(66,133,244,.07);border:1px solid rgba(66,133,244,.2);border-radius:10px;padding:10px 14px;font-size:.83rem;">

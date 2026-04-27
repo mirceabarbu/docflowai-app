@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.379">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.379">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.379">
-  <link rel="stylesheet" href="/css/setari/setari.css?v=3.9.379">
   <link rel="stylesheet" href="/mobile.css?v=3.9.379">
   <script src="/js/df-utils.js?v=3.9.379"></script>
   <script src="/js/df-apifetch-shim.js?v=3.9.379"></script>
@@ -52,24 +51,13 @@
         Notificări
       </a>
     </div>
-
-    <div class="df-nav-label">Cont</div>
-    <div class="df-nav-group">
-      <a href="/setari" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-        Setări
-      </a>
-    </div>
   </aside>
 
   <main class="df-main">
     <header class="df-page-header">
       <div>
         <h1 class="df-page-title">Setări</h1>
-        <p class="df-page-subtitle">Configurează concediul și delegatul pentru semnătură</p>
+        <p class="df-page-subtitle">Preferințe cont și opțiuni personale</p>
       </div>
       <div class="df-page-actions">
         <div class="df-user-menu" id="df-user-menu">
@@ -82,6 +70,10 @@
             <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-chevron-down"/></svg>
           </button>
           <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openLeaveModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-clock"/></svg>
+              Concediu și delegare
+            </button>
             <button onclick="closeUserMenu();openChangePwdModal()">
               <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-key"/></svg>
               Schimbă parola
@@ -107,62 +99,28 @@
     </header>
 
     <section class="df-page-body">
-      <!-- Card concediu/delegare -->
-      <div class="setari-card">
-        <h2 class="setari-card-title">Concediu și delegare</h2>
-        <p class="setari-card-desc">Marchează perioada în care nu vei fi disponibil. În acest interval, fluxurile noi pe care trebuie să le semnezi vor fi atribuite automat delegatului ales.</p>
+      <!-- Card concediu — shortcut spre modal -->
+      <div style="background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);padding:24px;max-width:560px;margin-bottom:16px;">
+        <h3 style="font-size:1rem;font-weight:600;color:var(--df-text);margin-bottom:6px;">Concediu și delegare</h3>
+        <p style="font-size:.84rem;color:var(--df-text-3);margin-bottom:16px;line-height:1.5;">
+          Marchează perioada în care nu vei fi disponibil. Fluxurile noi pe care trebuie să le semnezi vor fi atribuite automat delegatului ales.
+        </p>
+        <button class="df-action-btn primary" onclick="openLeaveModal()">
+          <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-clock"/></svg>
+          Configurează concediu
+        </button>
+      </div>
 
-        <!-- Banner status curent -->
-        <div id="leaveStatusBanner" class="setari-status setari-status-none">
-          <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-info"/></svg>
-          <span id="leaveStatusText">Niciun concediu setat.</span>
-        </div>
-
-        <!-- Form -->
-        <div class="setari-form">
-          <div class="setari-row">
-            <div class="setari-field">
-              <label for="leaveStart">Data început concediu *</label>
-              <input type="date" id="leaveStart" class="setari-input"/>
-            </div>
-            <div class="setari-field">
-              <label for="leaveEnd">Data sfârșit concediu *</label>
-              <input type="date" id="leaveEnd" class="setari-input"/>
-            </div>
-          </div>
-
-          <div class="setari-field">
-            <label for="leaveDelegate">Delegat (cine semnează în lipsa ta) *</label>
-            <select id="leaveDelegate" class="setari-input">
-              <option value="">— Alege delegat —</option>
-            </select>
-            <small class="setari-hint">Doar utilizatori din aceeași instituție. Persoanele care au deja propriul delegat nu apar în listă (pentru a evita lanțuri de delegare).</small>
-          </div>
-
-          <div class="setari-field">
-            <label for="leaveReason">Motiv concediu (opțional)</label>
-            <textarea id="leaveReason" class="setari-input" rows="3" maxlength="500" placeholder="Ex: Concediu de odihnă, formare profesională, etc."></textarea>
-            <small class="setari-hint"><span id="reasonCount">0</span>/500 caractere</small>
-          </div>
-
-          <div id="leaveMsg" class="setari-msg"></div>
-
-          <div class="setari-actions">
-            <button id="btnClearLeave" class="df-action-btn danger" style="display:none;" onclick="clearLeave()">
-              <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-x"/></svg>
-              Anulează concediul
-            </button>
-            <button id="btnSaveLeave" class="df-action-btn primary" onclick="saveLeave()">
-              <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-save"/></svg>
-              Salvează
-            </button>
-          </div>
-        </div>
+      <!-- Card placeholder pentru viitor -->
+      <div style="background:var(--df-surface);border:1px dashed var(--df-border-2);border-radius:var(--df-radius-xl);padding:24px;max-width:560px;opacity:.7;">
+        <h3 style="font-size:1rem;font-weight:600;color:var(--df-text-2);margin-bottom:6px;">În curând: alte setări</h3>
+        <p style="font-size:.84rem;color:var(--df-text-4);line-height:1.5;">
+          Aici vor fi disponibile preferințe pentru notificări, temă, limbă și alte opțiuni personale.
+        </p>
       </div>
     </section>
   </main>
 </div>
 
-<script src="/js/setari/setari.js?v=3.9.379"></script>
 </body>
 </html>
