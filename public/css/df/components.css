@@ -23,7 +23,7 @@
 .pill.user{background:var(--df-primary-bg);color:var(--df-primary-text);border-color:var(--df-primary-bd);}
 
 /* === Action buttons reutilizabile === */
-.df-action-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;font-size:.8rem;background:rgba(255,255,255,.03);border:1px solid var(--df-border-2);border-radius:var(--df-radius-md);color:var(--df-text-2);cursor:pointer;font-weight:500;font-family:inherit;transition:background .15s,border-color .15s,color .15s;text-decoration:none;white-space:nowrap;}
+.df-action-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 13px;font-size:.8rem;background:rgba(255,255,255,.03);border:1px solid var(--df-border-2);border-radius:var(--df-radius-md);color:var(--df-text-2);cursor:pointer;font-weight:500;font-family:inherit;transition:background .15s,border-color .15s,color .15s;text-decoration:none;white-space:nowrap;}
 .df-action-btn:hover{background:rgba(255,255,255,.06);border-color:var(--df-border-hover);color:var(--df-text);}
 .df-action-btn:active{transform:scale(.98);}
 .df-action-btn.primary{background:var(--df-primary-bg);border-color:var(--df-primary-bd);color:var(--df-primary-text);}
@@ -38,6 +38,12 @@
 /* === Toolbar row — wrapper deasupra tabelelor dacă va fi folosit === */
 .df-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
 .df-toolbar-spacer{flex:1;}
+
+/* ─── Modal footer — wrapper pentru butoane Anulează/Salvează în modale ─── */
+.df-modal-footer{display:flex;gap:12px;justify-content:flex-end;align-items:center;
+  padding-top:16px;margin-top:16px;border-top:1px solid var(--df-border);flex-wrap:wrap;}
+.df-modal-footer.no-border{border-top:none;padding-top:0;margin-top:8px;}
+.df-modal-footer.split{justify-content:space-between;}
 
 /* === Input placeholder consistent === */
 .card input::placeholder,.card select::placeholder{color:var(--df-text-4);}
@@ -154,11 +160,41 @@
   justify-content:center;
 }
 
+.df-action-btn.ghost{
+  background:transparent;
+  border-color:transparent;
+  color:var(--df-text-3);
+}
+.df-action-btn.ghost:hover{
+  background:rgba(255,255,255,.06);
+  border-color:transparent;
+  color:var(--df-text);
+}
+
 /* ── Scalare SVG în buton — dimensiune auto după variantă ─────────── */
 
 .df-action-btn .df-ic,.df-action-btn .df-ico{width:15px;height:15px;}
 .df-action-btn.sm .df-ic,.df-action-btn.sm .df-ico{width:13px;height:13px;}
 .df-action-btn.lg .df-ic,.df-action-btn.lg .df-ico{width:18px;height:18px;}
+
+/* ─── Tabel semnatari (shared: Flux nou + Șabloane) ─── */
+.signers-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px;}
+.signers-table th{font-size:.75rem;color:var(--df-text-2);text-align:left;padding:10px;
+  border-bottom:1px solid var(--df-border);font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;white-space:nowrap;}
+.signers-table td{padding:8px 5px;border-bottom:1px solid var(--df-border);
+  vertical-align:middle;}
+.signers-table td input,.signers-table td select{
+  width:100%;min-width:0;padding:9px 10px;border-radius:var(--df-radius-md);
+  border:1px solid var(--df-border-2);background:rgba(0,0,0,.2);
+  color:var(--df-text);font-size:.85rem;line-height:1.4;outline:none;
+  font-family:inherit;font-weight:inherit;
+  box-sizing:border-box;transition:border-color .15s;}
+.signers-table td input:focus,.signers-table td select:focus{border-color:var(--df-brand);}
+.signers-table td select option{background:var(--df-bg-elevated);}
+.signers-table tr.drag-over td{background:var(--df-brand-bg) !important;}
+.signers-table .drag-handle{cursor:grab;text-align:center;color:var(--df-text-4);
+  user-select:none;font-size:18px;width:32px;}
 
 /* Grid 2 coloane pentru carduri Verificare furnizor — colapse pe mobile */
 .vf-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}

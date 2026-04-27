@@ -45,13 +45,9 @@
     .status.ok{display:flex;background:rgba(30,200,174,.08);border:1px solid rgba(30,200,174,.22);color:var(--df-teal)}
     .status.info{display:flex;background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.22);color:#b0a0ff}
     /* Actions (dark) */
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;align-items:center}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 20px;border-radius:10px;font-size:.86rem;font-weight:800;cursor:pointer;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:var(--df-text);transition:.2s;font-family:inherit}
-    .btn:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.24)}
-    .btn.primary{background:linear-gradient(135deg,var(--df-brand),var(--df-teal));border:none;box-shadow:0 6px 24px rgba(108,79,240,.3);color:#fff}
-    .btn.primary:hover{filter:brightness(1.08)}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;margin-bottom:18px;align-items:center}
+    /* .btn* legacy eliminate — HTML/JS folosesc df-action-btn (BLOC 3.2) */
 
-    .btn:disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
     @keyframes spin{to{transform:rotate(360deg)}}
     .spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
     /* Result */
@@ -175,7 +171,7 @@
     .modal-u-sub{font-size:.72rem;color:var(--df-text-3)}
     .modal-acts{display:flex;gap:8px;justify-content:flex-end}
     /* ── P2 field highlight ── */
-    .p2-field{border-color:#1ec8ae !important;background:#f0fdf9 !important}
+    /* .p2-field eliminat — secțiunile arată identic indiferent de rol */
 
     /* ═══════════════════════════════════════════════════════
        CENTRALIZARE — Section 1 (list) adăugată deasupra formularului
@@ -214,8 +210,7 @@
     .stbadge.st-respins{background:rgba(255,60,60,.1);color:#ff8888;border:1px solid rgba(255,60,60,.22)}
     .stbadge.st-anulat{background:rgba(80,80,80,.15);color:#888;border:1px solid rgba(80,80,80,.2)}
     .stbadge.st-returnat{background:rgba(255,140,0,.15);color:#ffaa44;border:1px solid rgba(255,140,0,.3)}
-    .btn.danger{background:rgba(255,60,60,.15);border:1px solid rgba(255,60,60,.35);color:#ff8888}
-    .btn.danger:hover{background:rgba(255,60,60,.25)}
+    /* .btn* legacy eliminate — HTML/JS folosesc df-action-btn (BLOC 3.2) */
     .lst-pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:6px 0}
     .lst-page-info{font-size:.82rem;color:var(--df-text-3);min-width:160px;text-align:center}
     .lst-empty{text-align:center;padding:36px 16px;color:var(--df-text-3);font-size:.84rem}
@@ -316,9 +311,17 @@
     .df-block-body .att-btn:hover{background:rgba(255,255,255,.1)}
     .df-block-body .att-chip{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px}
     /* P2 field dark override */
-    .df-block-body .p2-field{border-color:rgba(29,200,174,.5) !important;background:rgba(29,200,174,.06) !important;color:var(--df-text) !important}
+    /* .df-block-body .p2-field eliminat (uniformizare vizuală) */
     /* Locked block overlay */
-    .df-block-body.locked{pointer-events:none;opacity:.45;filter:grayscale(.2)}
+    /* .df-block-body.locked — fără efect vizual (clasa păstrată ca semnal semantic).
+       Feedback-ul „blocat" vine din input:disabled (cursor:not-allowed) + lock-bar text. */
+    .df-block-body.locked{}
+    /* Input-urile disabled din block-uri primesc cursor:not-allowed (feedback minim).
+       NU adăugăm opacity ca să păstrăm consistența vizuală cerută. */
+    .df-block-body input:disabled,
+    .df-block-body select:disabled,
+    .df-block-body textarea:disabled,
+    .doc-t input:disabled{cursor:not-allowed}
     /* Layout helpers */
     .df-row{display:grid;gap:14px;margin-bottom:14px}
     .df-revizie-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(255,170,30,.15);color:#ffcc44;margin-left:8px;vertical-align:middle}

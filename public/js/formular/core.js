@@ -112,13 +112,10 @@ function addOR(){const i=window.oI++;const tr=document.createElement('tr');tr.id
   tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="receptii" oninput="calcORRow(this)"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_anterioare" oninput="calcORRow(this)"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="suma_ordonantata_plata" oninput="calcORRow(this)"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="receptii_neplatite" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="5=(col.2)-(col.3)-(col.4) — calculat automat"/></td><td><button class="bdel" onclick="delR('or-${i}');upTot()">✕</button></td>`;
   document.getElementById('o-tbody').appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));
-  // Dacă P1 e în modul completed (col.4 editabil), noile rânduri moștenesc același drept
-  if(ST.docRole?.ordnt==='p1'){
-    tr.querySelectorAll('[data-f="suma_ordonantata_plata"]').forEach(e=>{
-      e.disabled=false;
-      e.style.pointerEvents='auto';
-      e.closest('td')?.style.setProperty('pointer-events','auto');
-    });
+  // Col.4 (suma ordonanțată) editabilă pentru P1 DOAR în pending_p2 (anticipare).
+  // În draft/returnat P1 are deja lockAll(false) global. În completed/aprobat: blocat.
+  if(ST.docRole?.ordnt==='p1'&&ST.docStatus?.ordnt==='pending_p2'){
+    tr.querySelectorAll('[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;});
   }}
 function calcORRow(el){
   const tr=el.closest('tr');
@@ -261,7 +258,7 @@ function calcNCRow(el){
 
 /* Totals */
 function sf(bid,f){return[...document.querySelectorAll(`#${bid} input[data-f="${f}"]`)].reduce((s,i)=>s+pMR(i.value),0);}
-function st2(id,v){const e=document.getElementById(id);if(e)e.textContent=Math.round(v).toLocaleString('ro-RO');}
+function st2(id,v){const e=document.getElementById(id);if(e)e.textContent=fMR(v,2);}
 function upTot(){
   st2('o-t-rec',sf('o-tbody','receptii'));st2('o-t-plati',sf('o-tbody','plati_anterioare'));
   st2('o-t-suma',sf('o-tbody','suma_ordonantata_plata'));st2('o-t-neplat',sf('o-tbody','receptii_neplatite'));

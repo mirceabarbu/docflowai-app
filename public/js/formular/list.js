@@ -344,7 +344,7 @@ function _renderLstTable(rows,type){
       <td>${_fmtDate(row.created_at)}</td>
       <td>${_fmtDate(row.updated_at)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
-        <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">✏ Deschide</button>
+        <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">Deschide</button>
         ${cancelBtn}
       </td>
     </tr>`;
