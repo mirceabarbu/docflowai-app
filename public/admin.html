@@ -234,54 +234,54 @@
       <svg class="df-ico" viewBox="0 0 24 24" style="margin-right:6px;"><use href="/icons.svg?v=3.9.298#ico-plus"/></svg>Utilizator nou
     </div>
     <div class="df-form-section-title">Date personale</div>
-    <div class="grid3">
-      <div class="frow"><label>Prenume *</label><input id="nPrenume" placeholder="Ion" oninput="updateGwsPreview()"/></div>
-      <div class="frow"><label>Nume familie *</label><input id="nNumeFamilie" placeholder="Popescu" oninput="updateGwsPreview()"/></div>
-      <div class="frow"><label>Funcție</label>
+    <div class="df-grid-3">
+      <div class="df-frow"><label>Prenume *</label><input id="nPrenume" placeholder="Ion" oninput="updateGwsPreview()"/></div>
+      <div class="df-frow"><label>Nume familie *</label><input id="nNumeFamilie" placeholder="Popescu" oninput="updateGwsPreview()"/></div>
+      <div class="df-frow"><label>Funcție</label>
         <input id="nFunctie" list="functieList" placeholder="Șef serviciu" autocomplete="off"/>
         <datalist id="functieList"></datalist>
       </div>
     </div>
     <div class="df-form-section-title">Cont și acces</div>
-    <div class="grid3" style="margin-top:12px;">
+    <div class="df-grid-3" style="margin-top:12px;">
       <!-- Email login — vizibil doar fără Workspace -->
-      <div class="frow" id="nEmailRow">
+      <div class="df-frow" id="nEmailRow">
         <label>Email (login) * <span style="color:var(--muted);font-size:.71rem;">— adresa cu care se loghează</span></label>
         <input id="nEmail" type="email" placeholder="ion.popescu@primarie.ro"/>
       </div>
       <!-- Email personal — destinația credențialelor când e Workspace activ -->
-      <div class="frow">
+      <div class="df-frow">
         <label id="nPersonalEmailLabel">Email personal <span style="color:var(--muted);font-size:.71rem;" id="nPersonalEmailHint">— opțional</span></label>
         <input id="nPersonalEmail" type="email" placeholder="ion.popescu@gmail.com"/>
       </div>
-      <div class="frow"><label>Instituție *</label>
+      <div class="df-frow"><label>Instituție *</label>
         <input id="nInstitutie" list="institutieList" placeholder="Ex: Primăria Cluj" autocomplete="off"/>
         <datalist id="institutieList"></datalist>
       </div>
     </div>
-    <div class="grid3" style="margin-top:12px;">
-      <div class="frow"><label>Compartiment</label>
+    <div class="df-grid-3" style="margin-top:12px;">
+      <div class="df-frow"><label>Compartiment</label>
         <input id="nCompartiment" list="compartimentList" placeholder="Ex: Serviciul Financiar" autocomplete="off"/>
         <datalist id="compartimentList"></datalist>
       </div>
-      <div class="frow">
+      <div class="df-frow">
         <label>Parolă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = auto</span></label>
         <input id="nPwd" type="text" placeholder="generată automat dacă e gol"/>
       </div>
-      <div class="frow"><label>Rol</label>
+      <div class="df-frow"><label>Rol</label>
         <select id="nRole" onchange="onRoleChange(this.value)"><option value="user">User</option><option value="org_admin">Admin Instituție</option><option value="admin">Admin</option></select>
       </div>
-      <div class="frow" id="nOrgRow" style="display:none;"><label>Organizație <span style="color:#ff8080;">*</span> <span style="color:var(--muted);font-size:.71rem;">— existentă sau nouă</span></label>
+      <div class="df-frow" id="nOrgRow" style="display:none;"><label>Organizație <span style="color:#ff8080;">*</span> <span style="color:var(--muted);font-size:.71rem;">— existentă sau nouă</span></label>
         <input id="nOrgName" list="orgNameList" placeholder="Ex: Primăria Cluj-Napoca" autocomplete="off"/>
         <datalist id="orgNameList"></datalist>
         <div id="nOrgHint" style="font-size:.75rem;color:var(--muted);margin-top:4px;display:none;"></div>
       </div>
     </div>
     <div class="df-form-section-title">Contact și notificări</div>
-    <div class="grid3" style="margin-top:12px;">
-      <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
+    <div class="df-grid-3" style="margin-top:12px;">
+      <div class="df-frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">— format: 07XXXXXXXX</span></label>
         <input id="nPhone" type="tel" placeholder="0712345678 sau +40712345678" oninput="phoneInputFeedback(this)"/></div>
-      <div class="frow"><label>Notificări</label>
+      <div class="df-frow"><label>Notificări</label>
         <div style="margin-top:6px;display:flex;flex-direction:column;gap:7px;">
           <label style="display:flex;align-items:center;justify-content:space-between;font-size:.83rem;color:var(--sub);cursor:pointer;">
             🔔 În aplicație <input type="checkbox" id="nNotifInapp" checked style="accent-color:var(--accent);width:15px;height:15px;"></label>
@@ -292,7 +292,7 @@
         </div>
       </div>
       <!-- ── Google Workspace ── -->
-      <div class="frow" id="gwsBox" style="background:rgba(66,133,244,.07);border:1px solid rgba(66,133,244,.25);border-radius:12px;padding:12px 14px;">
+      <div class="df-frow" id="gwsBox" style="background:rgba(66,133,244,.07);border:1px solid rgba(66,133,244,.25);border-radius:12px;padding:12px 14px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
           <strong style="font-size:.85rem;color:#9db0ff;flex:1;">Google Workspace</strong>
@@ -845,7 +845,7 @@
   <p style="color:var(--muted);font-size:.87rem;margin-bottom:22px;">Trimite prezentarea DocFlowAI către instituții publice. Limită: <strong id="or-limit-display" style="color:#c4b5ff;">—</strong> emailuri/zi.</p>
 
   <!-- Stats bar -->
-  <div class="grid3" style="margin-bottom:24px;">
+  <div class="df-grid-3" style="margin-bottom:24px;">
     <div class="card" style="padding:18px 20px;text-align:center;">
       <div style="font-size:1.8rem;font-weight:800;color:#7cf0e0;" id="or-stat-today">—</div>
       <div style="font-size:.78rem;color:var(--muted);margin-top:4px;">Trimise azi</div>
@@ -880,7 +880,7 @@
   <!-- Creare campanie nouă -->
   <div class="card" style="margin-bottom:22px;">
     <div class="card-title">➕ Campanie nouă</div>
-    <div class="grid2" style="gap:12px;margin-bottom:12px;">
+    <div class="df-grid-2" style="gap:12px;margin-bottom:12px;">
       <div>
         <label style="font-size:.8rem;color:var(--muted);display:block;margin-bottom:5px;">Nume campanie *</label>
         <input id="or-c-name" placeholder="ex. Primării Romania Martie 2026" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text);font-size:.88rem;"/>
@@ -939,7 +939,7 @@
       <!-- Adaugă destinatari -->
       <div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:16px;margin-bottom:18px;">
         <div style="font-size:.83rem;font-weight:700;color:var(--sub);margin-bottom:10px;">➕ Adaugă destinatari</div>
-        <div class="grid2" style="gap:10px;margin-bottom:10px;">
+        <div class="df-grid-2" style="gap:10px;margin-bottom:10px;">
           <div>
             <label style="font-size:.77rem;color:var(--muted);display:block;margin-bottom:4px;">Email unic</label>
             <input id="or-add-email" placeholder="secretariat@primariaX.ro" style="width:100%;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--text);font-size:.85rem;"/>
@@ -1246,29 +1246,29 @@
     <input type="hidden" id="eId"/>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
       <div>
-        <div class="frow"><label>Prenume</label><input id="ePrenume" placeholder="Ion"/></div>
-        <div class="frow"><label>Nume familie</label><input id="eNumeFamilie" placeholder="Popescu"/></div>
-        <div class="frow"><label>Funcție</label><input id="eFunctie" list="functieList" autocomplete="off"/></div>
+        <div class="df-frow"><label>Prenume</label><input id="ePrenume" placeholder="Ion"/></div>
+        <div class="df-frow"><label>Nume familie</label><input id="eNumeFamilie" placeholder="Popescu"/></div>
+        <div class="df-frow"><label>Funcție</label><input id="eFunctie" list="functieList" autocomplete="off"/></div>
       </div>
       <div>
-        <div class="frow"><label>Instituție</label><input id="eInstitutie" list="institutieList" autocomplete="off"/></div>
-        <div class="frow"><label>Compartiment</label><input id="eCompartiment" list="compartimentList" autocomplete="off"/></div>
-        <div class="frow"><label>Email (login)</label><input id="eEmail" type="email"/></div>
+        <div class="df-frow"><label>Instituție</label><input id="eInstitutie" list="institutieList" autocomplete="off"/></div>
+        <div class="df-frow"><label>Compartiment</label><input id="eCompartiment" list="compartimentList" autocomplete="off"/></div>
+        <div class="df-frow"><label>Email (login)</label><input id="eEmail" type="email"/></div>
       </div>
       <div>
-        <div class="frow"><label>Email personal</label><input id="ePersonalEmail" type="email" placeholder="gmail, yahoo..."/></div>
-        <div class="frow"><label>Rol</label>
+        <div class="df-frow"><label>Email personal</label><input id="ePersonalEmail" type="email" placeholder="gmail, yahoo..."/></div>
+        <div class="df-frow"><label>Rol</label>
           <select id="eRole"><option value="user">User</option><option value="org_admin">Admin Instituție</option><option value="admin">Admin</option></select></div>
-        <div class="frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">07XXXXXXXX</span></label>
+        <div class="df-frow"><label>Telefon &nbsp;<span style="color:var(--muted);font-size:.71rem;">07XXXXXXXX</span></label>
           <input id="ePhone" type="tel" placeholder="0712345678" oninput="phoneInputFeedback(this)"/></div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
-      <div class="frow">
+      <div class="df-frow">
         <label>Parolă nouă &nbsp;<span style="color:var(--muted);font-size:.71rem;">— lasă gol = păstrează</span></label>
         <input id="ePwd" type="text" placeholder=""/>
       </div>
-      <div class="frow"><label>Notificări preferate</label>
+      <div class="df-frow"><label>Notificări preferate</label>
         <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;">
           <label style="display:flex;align-items:center;gap:6px;font-size:.83rem;color:var(--sub);cursor:pointer;">
             <input type="checkbox" id="eNotifInapp" style="accent-color:var(--accent);width:15px;height:15px;"> 🔔 App</label>
@@ -1286,14 +1286,14 @@
       <span id="eLeaveStatusBadge" style="margin-left:8px;font-size:.66rem;font-weight:500;padding:2px 8px;border-radius:12px;background:rgba(120,120,120,.15);color:var(--df-text-3);text-transform:none;letter-spacing:0;">Nesetat</span>
     </h4>
     <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:12px;">
-      <div class="frow"><label>Început concediu</label><input type="date" id="eLeaveStart"/></div>
-      <div class="frow"><label>Sfârșit concediu</label><input type="date" id="eLeaveEnd"/></div>
-      <div class="frow">
+      <div class="df-frow"><label>Început concediu</label><input type="date" id="eLeaveStart"/></div>
+      <div class="df-frow"><label>Sfârșit concediu</label><input type="date" id="eLeaveEnd"/></div>
+      <div class="df-frow">
         <label>Delegat (cine semnează în lipsă)</label>
         <select id="eLeaveDelegate"><option value="">— Niciun delegat —</option></select>
       </div>
     </div>
-    <div class="frow" style="margin-top:12px;">
+    <div class="df-frow" style="margin-top:12px;">
       <label>Motiv (opțional)</label>
       <textarea id="eLeaveReason" rows="2" maxlength="500" placeholder="Ex: Concediu de odihnă" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;outline:none;font-family:inherit;resize:vertical;line-height:1.5;box-sizing:border-box;"></textarea>
     </div>

@@ -208,3 +208,86 @@
 }
 .df-msg--ok  { color: var(--df-success, #2dd4bf); }
 .df-msg--err { color: var(--df-danger,  #ff8080); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   BLOC 5 — Design system consolidat: modal + form row + grid + msg
+   ────────────────────────────────────────────────────────────────────── */
+
+/* ── Modal backdrop ──────────────────────────────────────────────────────── */
+.df-modal-bg{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.65);z-index:200;
+  align-items:center;justify-content:center;padding:20px;
+}
+.df-modal-bg.open{display:flex;}
+
+/* ── Modal container ─────────────────────────────────────────────────────── */
+.df-modal{
+  background:var(--df-surface);
+  border:1px solid var(--df-border);
+  border-radius:var(--df-radius-xl);
+  padding:28px 32px;
+  width:100%;max-width:920px;
+  max-height:90vh;overflow-y:auto;
+  box-shadow:0 8px 40px rgba(0,0,0,.5);
+}
+.df-modal h3{
+  font-size:.95rem;font-weight:700;color:var(--df-text-2);
+  margin:0 0 18px;
+}
+
+/* ── Modal footer (butoane) ──────────────────────────────────────────────── */
+/* NB: .df-modal-footer definit anterior în BLOC 3.3 — rămâne; .df-modal-acts = alias */
+.df-modal-acts{
+  margin-top:18px;
+  display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;
+}
+
+/* ── Form row ────────────────────────────────────────────────────────────── */
+.df-frow{margin-bottom:12px;}
+.df-frow:last-child{margin-bottom:0;}
+.df-frow label,.df-modal label{
+  display:block;font-size:.75rem;color:var(--df-text-3);
+  margin-bottom:5px;font-weight:600;letter-spacing:.03em;
+}
+.df-frow input:not([type=checkbox]):not([type=radio]),
+.df-frow select,
+.df-frow textarea,
+.df-modal input:not([type=checkbox]):not([type=radio]),
+.df-modal select,
+.df-modal textarea{
+  width:100%;padding:9px 12px;
+  background:rgba(255,255,255,.05);
+  border:1px solid var(--df-border-2);
+  border-radius:10px;
+  color:var(--df-text);font-size:.88rem;
+  outline:none;transition:border-color .2s;
+  font-family:inherit;box-sizing:border-box;
+}
+.df-frow input:not([type=checkbox]):not([type=radio]):focus,
+.df-frow select:focus,
+.df-frow textarea:focus,
+.df-modal input:not([type=checkbox]):not([type=radio]):focus,
+.df-modal select:focus,
+.df-modal textarea:focus{
+  border-color:var(--df-brand);
+  box-shadow:0 0 0 3px rgba(108,79,240,.15);
+}
+.df-frow input::placeholder,.df-modal input::placeholder{
+  color:var(--df-text-4);
+}
+.df-frow select option,.df-modal select option{
+  background:var(--df-surface);
+}
+
+/* ── Grid helpers ────────────────────────────────────────────────────────── */
+.df-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.df-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+@media(max-width:640px){
+  .df-grid-2,.df-grid-3{grid-template-columns:1fr;}
+}
+
+/* ── Message feedback inline ─────────────────────────────────────────────── */
+.df-msg{font-size:.82rem;padding:7px 12px;border-radius:8px;min-height:20px;}
+.df-msg.ok{background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.28);color:#7cf0e0;}
+.df-msg.err{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.28);color:#ffb3b3;}

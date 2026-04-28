@@ -9,42 +9,25 @@
   function injectModal() {
     if (document.getElementById('changePwdModal')) return;
     const html = `
-<div id="changePwdModal" style="display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.6);z-index:1000;align-items:center;
-  justify-content:center;">
-  <div style="background:var(--df-surface);border:1px solid var(--df-border-2);
-    border-radius:12px;padding:24px;width:92%;max-width:420px;
-    box-shadow:0 20px 40px rgba(0,0,0,.5);">
-    <h3 style="font-size:1.05rem;font-weight:600;color:var(--df-text);
-      margin:0 0 14px;">Schimbă parola</h3>
-    <label style="display:block;font-size:.75rem;color:var(--df-text-3);
-      margin-bottom:4px;">Parola curentă</label>
-    <input id="cpCurrent" type="password"
-      style="width:100%;padding:9px 11px;margin-bottom:10px;
-      background:var(--df-surface-2);border:1px solid var(--df-border-2);
-      border-radius:8px;color:var(--df-text);font-size:.88rem;outline:none;"/>
-    <label style="display:block;font-size:.75rem;color:var(--df-text-3);
-      margin-bottom:4px;">Parola nouă</label>
-    <input id="cpNew" type="password"
-      style="width:100%;padding:9px 11px;margin-bottom:10px;
-      background:var(--df-surface-2);border:1px solid var(--df-border-2);
-      border-radius:8px;color:var(--df-text);font-size:.88rem;outline:none;"/>
-    <label style="display:block;font-size:.75rem;color:var(--df-text-3);
-      margin-bottom:4px;">Confirmă parola nouă</label>
-    <input id="cpConfirm" type="password"
-      style="width:100%;padding:9px 11px;margin-bottom:14px;
-      background:var(--df-surface-2);border:1px solid var(--df-border-2);
-      border-radius:8px;color:var(--df-text);font-size:.88rem;outline:none;"/>
-    <div id="cpMsg" style="font-size:.8rem;min-height:18px;margin-bottom:10px;"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;">
-      <button onclick="closeChangePwdModal()"
-        style="padding:8px 16px;background:rgba(255,255,255,.06);
-        border:1px solid var(--df-border-2);border-radius:8px;
-        color:var(--df-text-2);cursor:pointer;font-size:.85rem;">Anulează</button>
-      <button id="cpBtn" onclick="submitChangePwd()"
-        style="padding:8px 16px;background:var(--df-primary);border:none;
-        border-radius:8px;color:#fff;cursor:pointer;font-size:.85rem;
-        font-weight:500;">Salvează</button>
+<div id="changePwdModal" class="df-modal-bg" style="z-index:1000;">
+  <div class="df-modal" style="max-width:420px;">
+    <h3>Schimbă parola</h3>
+    <div class="df-frow">
+      <label>Parola curentă</label>
+      <input id="cpCurrent" type="password"/>
+    </div>
+    <div class="df-frow">
+      <label>Parola nouă</label>
+      <input id="cpNew" type="password"/>
+    </div>
+    <div class="df-frow">
+      <label>Confirmă parola nouă</label>
+      <input id="cpConfirm" type="password"/>
+    </div>
+    <div id="cpMsg" class="df-msg" style="margin-top:8px;"></div>
+    <div class="df-modal-acts">
+      <button class="df-action-btn" onclick="closeChangePwdModal()">Anulează</button>
+      <button id="cpBtn" class="df-action-btn primary" onclick="submitChangePwd()">Salvează</button>
     </div>
   </div>
 </div>`;
@@ -54,7 +37,7 @@
   window.openChangePwdModal = function() {
     injectModal();
     const m = document.getElementById('changePwdModal');
-    m.style.display = 'flex';
+    m.classList.add('open');
     document.getElementById('cpCurrent').value = '';
     document.getElementById('cpNew').value = '';
     document.getElementById('cpConfirm').value = '';
@@ -67,7 +50,7 @@
 
   window.closeChangePwdModal = function() {
     const m = document.getElementById('changePwdModal');
-    if (m) m.style.display = 'none';
+    if (m) m.classList.remove('open');
   };
 
   window.submitChangePwd = async function() {
@@ -128,14 +111,9 @@
   function injectLeaveModal() {
     if (document.getElementById('leaveModal')) return;
     const html = `
-<div id="leaveModal" style="display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.6);z-index:1000;align-items:center;
-  justify-content:center;">
-  <div style="background:var(--df-surface);border:1px solid var(--df-border-2);
-    border-radius:12px;padding:24px;width:92%;max-width:520px;
-    box-shadow:0 20px 40px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto;">
-    <h3 style="font-size:1.05rem;font-weight:600;color:var(--df-text);
-      margin:0 0 6px;">🏖️ Concediu și delegare</h3>
+<div id="leaveModal" class="df-modal-bg" style="z-index:1000;">
+  <div class="df-modal" style="max-width:520px;">
+    <h3 style="margin:0 0 6px;">🏖️ Concediu și delegare</h3>
     <p style="font-size:.78rem;color:var(--df-text-3);margin:0 0 16px;
       line-height:1.5;">În perioada de concediu, fluxurile noi pe care trebuie
       să le semnezi vor fi atribuite automat delegatului ales.</p>
@@ -145,70 +123,42 @@
       border:1px solid var(--df-border-2);color:var(--df-text-3);
       font-weight:500;">Niciun concediu setat.</div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;
-      margin-bottom:10px;">
-      <div>
-        <label style="display:block;font-size:.75rem;color:var(--df-text-3);
-          margin-bottom:4px;">Început concediu *</label>
-        <input id="lvStart" type="date" lang="ro"
-          style="width:100%;padding:9px 11px;background:var(--df-surface-2);
-          border:1px solid var(--df-border-2);border-radius:8px;
-          color:var(--df-text);font-size:.88rem;outline:none;
-          font-family:inherit;box-sizing:border-box;color-scheme:dark;"/>
+    <div class="df-grid-2" style="margin-bottom:10px;">
+      <div class="df-frow">
+        <label>Început concediu *</label>
+        <input id="lvStart" type="date" lang="ro" style="color-scheme:dark;"/>
       </div>
-      <div>
-        <label style="display:block;font-size:.75rem;color:var(--df-text-3);
-          margin-bottom:4px;">Sfârșit concediu *</label>
-        <input id="lvEnd" type="date" lang="ro"
-          style="width:100%;padding:9px 11px;background:var(--df-surface-2);
-          border:1px solid var(--df-border-2);border-radius:8px;
-          color:var(--df-text);font-size:.88rem;outline:none;
-          font-family:inherit;box-sizing:border-box;color-scheme:dark;"/>
+      <div class="df-frow">
+        <label>Sfârșit concediu *</label>
+        <input id="lvEnd" type="date" lang="ro" style="color-scheme:dark;"/>
       </div>
     </div>
 
-    <label style="display:block;font-size:.75rem;color:var(--df-text-3);
-      margin-bottom:4px;">Delegat (cine semnează în lipsa ta) *</label>
-    <select id="lvDelegate"
-      style="width:100%;padding:9px 11px;margin-bottom:4px;
-      background:var(--df-surface-2);border:1px solid var(--df-border-2);
-      border-radius:8px;color:var(--df-text);font-size:.88rem;outline:none;
-      font-family:inherit;box-sizing:border-box;">
-      <option value="">— Alege delegat —</option>
-    </select>
+    <div class="df-frow" style="margin-bottom:4px;">
+      <label>Delegat (cine semnează în lipsa ta) *</label>
+      <select id="lvDelegate">
+        <option value="">— Alege delegat —</option>
+      </select>
+    </div>
     <small style="display:block;font-size:.72rem;color:var(--df-text-4);
       margin-bottom:12px;">Doar utilizatori din aceeași instituție.
       Persoanele cu propriul delegat nu apar (lanțuri de delegare interzise).</small>
 
-    <label style="display:block;font-size:.75rem;color:var(--df-text-3);
-      margin-bottom:4px;">Motiv (opțional)</label>
-    <textarea id="lvReason" rows="2" maxlength="500"
-      placeholder="Ex: Concediu de odihnă, formare profesională..."
-      style="width:100%;padding:9px 11px;margin-bottom:4px;
-      background:var(--df-surface-2);border:1px solid var(--df-border-2);
-      border-radius:8px;color:var(--df-text);font-size:.88rem;outline:none;
-      font-family:inherit;box-sizing:border-box;resize:vertical;
-      line-height:1.5;"></textarea>
+    <div class="df-frow" style="margin-bottom:4px;">
+      <label>Motiv (opțional)</label>
+      <textarea id="lvReason" rows="2" maxlength="500"
+        placeholder="Ex: Concediu de odihnă, formare profesională..."
+        style="resize:vertical;line-height:1.5;"></textarea>
+    </div>
     <small style="display:block;font-size:.72rem;color:var(--df-text-4);
       margin-bottom:12px;"><span id="lvReasonCount">0</span>/500 caractere</small>
 
-    <div id="lvMsg" style="font-size:.8rem;min-height:18px;margin-bottom:10px;"></div>
+    <div id="lvMsg" class="df-msg" style="margin-top:8px;"></div>
 
-    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
-      <button onclick="closeLeaveModal()"
-        style="padding:8px 16px;background:rgba(255,255,255,.06);
-        border:1px solid var(--df-border-2);border-radius:8px;
-        color:var(--df-text-2);cursor:pointer;font-size:.85rem;
-        font-family:inherit;">Închide</button>
-      <button id="lvBtnClear" onclick="submitClearLeave()"
-        style="display:none;padding:8px 16px;background:rgba(239,68,68,.15);
-        border:1px solid rgba(239,68,68,.3);border-radius:8px;
-        color:#fca5a5;cursor:pointer;font-size:.85rem;
-        font-family:inherit;font-weight:500;">Anulează concediul</button>
-      <button id="lvBtnSave" onclick="submitSaveLeave()"
-        style="padding:8px 16px;background:var(--df-primary);border:none;
-        border-radius:8px;color:#fff;cursor:pointer;font-size:.85rem;
-        font-family:inherit;font-weight:500;">Salvează</button>
+    <div class="df-modal-acts">
+      <button class="df-action-btn" onclick="closeLeaveModal()">Închide</button>
+      <button id="lvBtnClear" class="df-action-btn danger" onclick="submitClearLeave()" style="display:none;">Anulează concediul</button>
+      <button id="lvBtnSave" class="df-action-btn primary" onclick="submitSaveLeave()">Salvează</button>
     </div>
   </div>
 </div>`;
@@ -252,7 +202,7 @@
   window.openLeaveModal = async function() {
     injectLeaveModal();
     const modal = document.getElementById('leaveModal');
-    modal.style.display = 'flex';
+    modal.classList.add('open');
     document.getElementById('lvStart').value = '';
     document.getElementById('lvEnd').value = '';
     document.getElementById('lvReason').value = '';
@@ -316,7 +266,7 @@
 
   window.closeLeaveModal = function() {
     const m = document.getElementById('leaveModal');
-    if (m) m.style.display = 'none';
+    if (m) m.classList.remove('open');
   };
 
   window.submitSaveLeave = async function() {
