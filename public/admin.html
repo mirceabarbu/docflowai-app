@@ -1286,8 +1286,28 @@
       <span id="eLeaveStatusBadge" style="margin-left:8px;font-size:.66rem;font-weight:500;padding:2px 8px;border-radius:12px;background:rgba(120,120,120,.15);color:var(--df-text-3);text-transform:none;letter-spacing:0;">Nesetat</span>
     </h4>
     <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:12px;">
-      <div class="df-frow"><label>Început concediu</label><input type="date" id="eLeaveStart" lang="ro" style="color-scheme:dark;"/></div>
-      <div class="df-frow"><label>Sfârșit concediu</label><input type="date" id="eLeaveEnd" lang="ro" style="color-scheme:dark;"/></div>
+      <div class="df-frow">
+        <label>Început concediu</label>
+        <div style="position:relative;">
+          <input type="text" id="eLeaveStartDisplay" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+            style="width:100%;padding:9px 36px 9px 12px;box-sizing:border-box;"
+            oninput="window.onDateTextInput&&onDateTextInput(this,'eLeaveStart')"/>
+          <input type="date" id="eLeaveStart" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;opacity:0;cursor:pointer;"
+            onchange="onDatePickerChange&&onDatePickerChange(this,'eLeaveStartDisplay')"/>
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:14px;">📅</span>
+        </div>
+      </div>
+      <div class="df-frow">
+        <label>Sfârșit concediu</label>
+        <div style="position:relative;">
+          <input type="text" id="eLeaveEndDisplay" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+            style="width:100%;padding:9px 36px 9px 12px;box-sizing:border-box;"
+            oninput="window.onDateTextInput&&onDateTextInput(this,'eLeaveEnd')"/>
+          <input type="date" id="eLeaveEnd" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;opacity:0;cursor:pointer;"
+            onchange="onDatePickerChange&&onDatePickerChange(this,'eLeaveEndDisplay')"/>
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:14px;">📅</span>
+        </div>
+      </div>
       <div class="df-frow">
         <label>Delegat (cine semnează în lipsă)</label>
         <select id="eLeaveDelegate"><option value="">— Niciun delegat —</option></select>

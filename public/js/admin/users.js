@@ -725,8 +725,15 @@
     var eEnd = document.getElementById('eLeaveEnd');
     var eDel = document.getElementById('eLeaveDelegate');
     var eReason = document.getElementById('eLeaveReason');
-    if (eStart) eStart.value = (leave && leave.leaveStart) ? leave.leaveStart : '';
-    if (eEnd) eEnd.value = (leave && leave.leaveEnd) ? leave.leaveEnd : '';
+    var isoToDMY = (window.df && window.df.isoToDMY) ? window.df.isoToDMY : function(v) { return v; };
+    var leaveStartISO = (leave && leave.leaveStart) ? leave.leaveStart : '';
+    var leaveEndISO = (leave && leave.leaveEnd) ? leave.leaveEnd : '';
+    if (eStart) eStart.value = leaveStartISO;
+    if (eEnd) eEnd.value = leaveEndISO;
+    var startDisp = document.getElementById('eLeaveStartDisplay');
+    var endDisp = document.getElementById('eLeaveEndDisplay');
+    if (startDisp) startDisp.value = leaveStartISO ? isoToDMY(leaveStartISO) : '';
+    if (endDisp) endDisp.value = leaveEndISO ? isoToDMY(leaveEndISO) : '';
     if (eDel) eDel.value = (leave && leave.delegate && leave.delegate.id) ? leave.delegate.id : '';
     if (eReason) eReason.value = (leave && leave.leaveReason) ? leave.leaveReason : '';
 
@@ -804,7 +811,7 @@
         return;
       }
       if (msg) { msg.textContent = 'Concediu anulat.'; msg.style.color = '#4ade80'; }
-      ['eLeaveStart', 'eLeaveEnd', 'eLeaveDelegate', 'eLeaveReason'].forEach(function(id) {
+      ['eLeaveStart', 'eLeaveEnd', 'eLeaveStartDisplay', 'eLeaveEndDisplay', 'eLeaveDelegate', 'eLeaveReason'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.value = '';
       });
