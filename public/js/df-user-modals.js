@@ -355,6 +355,8 @@
       }
       msg.style.color = '#4ade80'; msg.textContent = 'Concediu salvat cu succes.';
       _lvAllUsers = null;
+      // BLOC 4.3 fix: re-fetch _dbUsers în semdoc-initiator ca dropdown să reflecte noua stare
+      if (typeof window._refreshDbUsers === 'function') window._refreshDbUsers();
       setTimeout(() => { window.openLeaveModal(); }, 1200);
     } catch (e) {
       msg.style.color = '#f28b82'; msg.textContent = 'Eroare de rețea. Încearcă din nou.';
@@ -382,6 +384,8 @@
       }
       msg.style.color = '#4ade80'; msg.textContent = 'Concediu anulat.';
       _lvAllUsers = null;
+      // BLOC 4.3 fix: re-fetch _dbUsers
+      if (typeof window._refreshDbUsers === 'function') window._refreshDbUsers();
       setTimeout(() => { closeLeaveModal(); }, 800);
     } catch (e) {
       msg.style.color = '#f28b82'; msg.textContent = 'Eroare de rețea.';

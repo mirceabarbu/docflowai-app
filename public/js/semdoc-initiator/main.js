@@ -1339,6 +1339,19 @@ async function signFromFluxuri(flowId) {
         } catch(e) { console.warn("Nu s-au putut încărca userii:", e); }
       })();
 
+      // BLOC 4.3 fix: expune refresh global pentru modal concediu
+      // Apelat din df-user-modals.js după ce userul salvează/anulează concediu
+      window._refreshDbUsers = async function() {
+        try {
+          const r = await _apiFetch('/users');
+          if (r.ok) {
+            window._dbUsers = await r.json();
+            refreshAllDropdowns?.();
+            autoFillFromProfile();
+          }
+        } catch(e) { console.warn('_refreshDbUsers failed:', e); }
+      };
+
       // ── Persistenta formular in sessionStorage ────────────────────────────
       // ══════════════════════════════════════════════════════════════════════
       // DRAFT STORE — Solutia C + IndexedDB
