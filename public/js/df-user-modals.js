@@ -150,20 +150,20 @@
       <div>
         <label style="display:block;font-size:.75rem;color:var(--df-text-3);
           margin-bottom:4px;">Început concediu *</label>
-        <input id="lvStart" type="date"
+        <input id="lvStart" type="date" lang="ro"
           style="width:100%;padding:9px 11px;background:var(--df-surface-2);
           border:1px solid var(--df-border-2);border-radius:8px;
           color:var(--df-text);font-size:.88rem;outline:none;
-          font-family:inherit;box-sizing:border-box;"/>
+          font-family:inherit;box-sizing:border-box;color-scheme:dark;"/>
       </div>
       <div>
         <label style="display:block;font-size:.75rem;color:var(--df-text-3);
           margin-bottom:4px;">Sfârșit concediu *</label>
-        <input id="lvEnd" type="date"
+        <input id="lvEnd" type="date" lang="ro"
           style="width:100%;padding:9px 11px;background:var(--df-surface-2);
           border:1px solid var(--df-border-2);border-radius:8px;
           color:var(--df-text);font-size:.88rem;outline:none;
-          font-family:inherit;box-sizing:border-box;"/>
+          font-family:inherit;box-sizing:border-box;color-scheme:dark;"/>
       </div>
     </div>
 
