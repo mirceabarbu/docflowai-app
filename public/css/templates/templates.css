@@ -60,7 +60,13 @@
   .spin{display:inline-block;width:20px;height:20px;border:2px solid rgba(124,92,255,.3);
     border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg)}}
-  /* .modal-bg, .modal, .modal-acts → df/components.css (BLOC 5) */
+  /* modal-bg + modal + modal-acts — definite local (nu sunt în df/components.css) */
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;padding:20px;}
+  .modal-bg.open{display:flex;}
+  .modal{background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);padding:28px 32px;width:100%;max-width:920px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.5);}
+  .modal h3{font-size:.95rem;font-weight:700;color:var(--df-text-2);margin-bottom:18px;}
+  .modal .df-frow{margin-bottom:12px;}
+  .modal-acts{margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
   @media(max-width:640px){
     .form-row{grid-template-columns:1fr;}
     .tmpl-grid{grid-template-columns:1fr;}

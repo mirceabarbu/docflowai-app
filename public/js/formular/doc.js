@@ -204,6 +204,11 @@ function prefillSectBFromSectA(){
     if(ssiSrc&&ssiDst&&!ssiDst.value)ssiDst.value=ssiSrc.value;
   });
 }
+function _secbSetDisabled(disabled) {
+  document.querySelectorAll(
+    '#secb-body input, #secb-body textarea, #secb-body select, #secb-body .badd, #secb-body .bdel'
+  ).forEach(e => e.disabled = disabled);
+}
 function applyDfRoleState(status,role){
   const secaBody=document.getElementById('seca-body');
   const secbBody=document.getElementById('secb-body');
@@ -213,10 +218,12 @@ function applyDfRoleState(status,role){
   secaBody.classList.remove('locked');
   document.querySelectorAll('#seca-body input[type="checkbox"]').forEach(cb=>{cb.disabled=false;});
   if(secbBody)secbBody.classList.remove('locked');
+  _secbSetDisabled(false);
   if(secaLock)secaLock.style.display='none';
   if(secbLock)secbLock.style.display='none';
   if(!status||status==='draft'){
     if(secbBody)secbBody.classList.add('locked');
+    _secbSetDisabled(true);
     if(secbLock){secbLock.style.display='flex';secbLock.className='df-lock-bar df-lock-info';secbLock.textContent='🔒 Secțiunea B se completează de Responsabilul CAB după trimiterea Secțiunii A.';}
     _dfUpdateProgress('notafd','seca');
   }else if(status==='pending_p2'){
@@ -224,15 +231,18 @@ function applyDfRoleState(status,role){
     document.querySelectorAll('#seca-body input[type="checkbox"]').forEach(cb=>{cb.disabled=true;});
     if(secaLock){secaLock.style.display='flex';secaLock.className='df-lock-bar df-lock-warn';secaLock.textContent='🔒 Secțiunea A a fost trimisă la Responsabil CAB și nu mai poate fi modificată.';}
     if(role==='p1'&&secbBody)secbBody.classList.add('locked');
+    if(role==='p1') _secbSetDisabled(true);
     _dfUpdateProgress('notafd','secb');
   }else if(status==='returnat'){
     if(secbBody)secbBody.classList.add('locked');
+    _secbSetDisabled(true);
     if(secbLock){secbLock.style.display='flex';secbLock.className='df-lock-bar df-lock-warn';secbLock.textContent='↩ Secțiunea B nu a fost aprobată — verificați deficiențele și retrimiteți.';}
     _dfUpdateProgress('notafd','seca');
   }else if(status==='completed'||status==='aprobat'){
     secaBody.classList.add('locked');
     document.querySelectorAll('#seca-body input[type="checkbox"]').forEach(cb=>{cb.disabled=true;});
     if(secbBody)secbBody.classList.add('locked');
+    _secbSetDisabled(true);
     if(secaLock){secaLock.style.display='flex';secaLock.className='df-lock-bar df-lock-ok';secaLock.textContent='✓ Secțiunea A aprobată.';}
     if(secbLock){secbLock.style.display='flex';secbLock.className='df-lock-bar df-lock-ok';secbLock.textContent='✓ Secțiunea B completată de Responsabilul CAB.';}
     _dfUpdateProgress('notafd','sign');
@@ -311,7 +321,6 @@ function renderActions(ft){
   }
   if(!docId){
     html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
-      +`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
       +B('','↺ Resetează',`resetF('${ft}')`);
   }else if(status==='draft'&&role==='p1'){
     html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
@@ -319,7 +328,7 @@ function renderActions(ft){
       +B('','↺ Câmpuri',`resetF('${ft}')`);
   }else if(status==='returnat'&&role==='p1'){
     html=B('teal','📨 Retrimite la Responsabil CAB',`showP2Modal('${ft}')`)
-      +BNou;
+      +`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`;
   }else if(status==='pending_p2'&&role==='p2'){
     html=B('','💾 Salvează',`saveDoc('${ft}')`)
       +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`)
@@ -338,7 +347,7 @@ function renderActions(ft){
     html=`<span style="color:var(--df-text-3);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
       +BNou;
   }else{
-    html=`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`
+    html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
       +B('','↺ Resetează',`resetF('${ft}')`);
   }
   div.innerHTML=html;
@@ -759,7 +768,7 @@ async function showP2Modal(ft){
   if(!ST.docId[ft]){
     setS('Se salvează documentul...','info');
     await saveDoc(ft);
-    if(!ST.docId[ft]){setS('Nu s-a putut salva documentul.','err');return;}
+    if(!ST.docId[ft]) return; // eroarea a fost deja afișată de saveDoc
     clrS();
   }
   ST.pendingFt=ft;ST.selectedP2Id=null;

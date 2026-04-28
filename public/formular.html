@@ -251,7 +251,6 @@
       <div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">Conform Ordinului 1140/2025 · Angajare → Lichidare → Ordonanțare → Plată</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="df-action-btn sm" id="alop-btn-sablon" style="display:none" onclick="openAlopSablonModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-settings"/></svg> Șablon</button>
       <button class="df-action-btn primary" onclick="openAlopModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-plus"/></svg> ALOP nou</button>
     </div>
   </div>
@@ -961,133 +960,33 @@
   </div>
 </div>
 
-<!-- ── Modal ALOP nou (wizard 2 pași) ─────────────────────────────────────── -->
+<!-- ── Modal ALOP nou (un singur pas) ─────────────────────────────────────── -->
 <div class="modal-ov" id="alop-modal" onclick="if(event.target===this)closeAlopModal()">
   <div class="modal-box" style="max-width:540px">
     <div class="modal-title">📊 ALOP nou</div>
-    <!-- Step indicator -->
-    <div class="alop-wizard-steps">
-      <div class="alop-wstep active" id="awstep-1">
-        <span class="alop-wstep-nr">1</span>
-        <span class="alop-wstep-label">Date generale</span>
-      </div>
-      <div class="alop-wstep-divider">→</div>
-      <div class="alop-wstep" id="awstep-2">
-        <span class="alop-wstep-nr">2</span>
-        <span class="alop-wstep-label">Semnatari din șablon</span>
-      </div>
-    </div>
-    <!-- Step 1 -->
-    <div id="alop-wiz-step1">
-      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-        <div>
-          <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Titlu <span style="color:#ef4444">*</span></label>
-          <input id="alop-titlu" type="text" class="dt" placeholder="ex: Servicii IT Q1 2025" maxlength="200"/>
-        </div>
-        <div>
-          <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Compartiment</label>
-          <input id="alop-compartiment" type="text" class="dt" placeholder="ex: Direcția Economică" maxlength="200"/>
-        </div>
-        <div>
-          <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Valoare totală estimată (RON)</label>
-          <input id="alop-valoare" type="text" inputmode="decimal" data-money="true" class="dt" placeholder="0,00"/>
-        </div>
-        <div>
-          <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Note</label>
-          <textarea id="alop-notes" class="dt" rows="2" maxlength="500" placeholder="Informații suplimentare..."></textarea>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="df-action-btn" onclick="closeAlopModal()">Anulează</button>
-        <button class="df-action-btn primary" onclick="alopWizNext()">Continuă →</button>
-      </div>
-    </div>
-    <!-- Step 2 -->
-    <div id="alop-wiz-step2" style="display:none">
-      <div style="font-size:.82rem;color:var(--df-text-3);margin-bottom:10px">Semnatari configurați în șablonul organizației (editabil din ⚙ Șablon)</div>
-      <div id="alop-wiz-sablon-preview"></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-        <button class="df-action-btn" onclick="alopWizBack()">← Înapoi</button>
-        <button class="df-action-btn primary" onclick="createAlop()"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-check"/></svg> Creează ALOP</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ── Modal Șablon ALOP ──────────────────────────────────────────────────── -->
-<div class="modal-ov" id="alop-sablon-modal" style="overflow:visible" onclick="if(event.target===this)closeAlopSablonModal()">
-  <div class="modal-box" style="max-width:720px;max-height:90vh;overflow:visible">
-    <div class="modal-title">⚙ Configurare Șablon ALOP</div>
-    <div style="font-size:.8rem;color:var(--df-text-3);margin-bottom:16px">Semnatarii impliciti conform OMF 1140/2025. Precompletați la crearea unui ALOP nou.</div>
-    <!-- scroll wrapper: scroll pe secțiuni, overflow:visible pe select dropdowns -->
-    <div style="overflow-y:auto;overflow-x:visible;flex:1">
-
-    <!-- DF — 6 roluri fixe -->
-    <div style="margin-bottom:20px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:14px">
-      <div style="font-size:.86rem;font-weight:700;color:#3b82f6;margin-bottom:12px">📋 Document de Fundamentare — 6 roluri fixe</div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:2px">1. Inițiator (compartiment specialitate)</div>
-        <div style="font-size:.75rem;color:var(--df-text-3);font-style:italic;padding:5px 8px;background:rgba(255,255,255,.04);border-radius:6px">completat automat cu userul curent la creare</div>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">2. Șef compartiment</div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--df-text-3);margin-bottom:4px;cursor:pointer">
-          <input type="checkbox" id="sab-sef-comp-same" onchange="alopSabSameAsInitiator(this)"> Aceeași persoană cu inițiatorul
-        </label>
-        <div id="sab-sef-comp-picker"></div>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">3. Responsabil CAB</div>
-        <div id="sab-resp-cab-picker"></div>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">4. Șef compartiment CAB</div>
-        <div id="sab-sef-cab-picker"></div>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">5. Director Economic</div>
-        <div id="sab-dir-ec-picker"></div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+      <div>
+        <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Titlu <span style="color:#ef4444">*</span></label>
+        <input id="alop-titlu" type="text" class="dt" placeholder="ex: Servicii IT Q1 2025" maxlength="200"/>
       </div>
       <div>
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">6. Ordonator de credite</div>
-        <div id="sab-ord-cred-df-picker"></div>
-      </div>
-    </div>
-
-    <!-- ORD — 4 roluri fixe -->
-    <div style="margin-bottom:20px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:14px">
-      <div style="font-size:.86rem;font-weight:700;color:#8b5cf6;margin-bottom:12px">💰 Ordonanțare de Plată — 4 roluri fixe</div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:2px">1. Compartiment specialitate</div>
-        <div style="font-size:.75rem;color:var(--df-text-3);font-style:italic;padding:5px 8px;background:rgba(255,255,255,.04);border-radius:6px">completat automat la creare</div>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">2. Responsabil CAB <span style="font-style:italic">(de obicei același cu cel din DF)</span></div>
-        <div id="sab-resp-cab-ord-picker"></div>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">3. Control financiar preventiv</div>
-        <div id="sab-cfp-picker"></div>
+        <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Compartiment</label>
+        <input id="alop-compartiment" type="text" class="dt" placeholder="ex: Direcția Economică" maxlength="200"/>
       </div>
       <div>
-        <div style="font-size:.77rem;color:var(--df-text-3);margin-bottom:4px">4. Ordonator de credite <span style="font-style:italic">(de obicei același cu cel din DF)</span></div>
-        <div id="sab-ord-cred-ord-picker"></div>
+        <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Valoare totală estimată (RON)</label>
+        <input id="alop-valoare" type="text" inputmode="decimal" data-money="true" class="dt" placeholder="0,00"/>
+      </div>
+      <div>
+        <label style="font-size:.78rem;color:var(--df-text-3);display:block;margin-bottom:4px">Note</label>
+        <textarea id="alop-notes" class="dt" rows="2" maxlength="500" placeholder="Informații suplimentare..."></textarea>
       </div>
     </div>
-
-    <!-- Lichidare — 1 persoană -->
-    <div style="margin-bottom:20px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:14px">
-      <div style="font-size:.86rem;font-weight:700;color:#f59e0b;margin-bottom:10px">✔️ Lichidare — persoana care confirmă recepția</div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--df-text-3);margin-bottom:6px;cursor:pointer">
-        <input type="checkbox" id="sab-lichidare-same" onchange="alopSabLichidareSameAsInitiator(this)"> Aceeași persoană cu inițiatorul
-      </label>
-      <div id="sab-lichidare-picker"></div>
-    </div>
-
-    </div><!-- /scroll wrapper -->
-    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:4px">
-      <button class="df-action-btn" onclick="closeAlopSablonModal()">Anulează</button>
-      <button class="df-action-btn primary" onclick="saveAlopSablon()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-save"/></svg>Salvează șablon</button>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="df-action-btn" onclick="closeAlopModal()">Anulează</button>
+      <button class="df-action-btn primary" onclick="createAlop()">
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-check"/></svg> Creează ALOP
+      </button>
     </div>
   </div>
 </div>
