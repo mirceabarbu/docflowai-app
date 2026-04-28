@@ -108,6 +108,46 @@
   // Pattern identic cu openChangePwdModal — inline-styles consistente.
   // ════════════════════════════════════════════════════════════════════════
 
+  // ── Date picker helpers pentru modal concediu ───────────────────────────
+  // Pattern identic cu cel din admin: text vizibil (zz.ll.aaaa) + date hidden (picker)
+  function _lvParseDMY(v) {
+    const p = (v || '').split('.');
+    if (p.length !== 3 || p[2].length !== 4) return null;
+    const iso = `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+    return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : null;
+  }
+  function _lvIsoToDMY(iso) {
+    if (!iso) return '';
+    const [y, m, d] = String(iso).slice(0,10).split('-');
+    return `${d}.${m}.${y}`;
+  }
+  function _lvDateTextInput(el, hiddenId) {
+    let v = el.value.replace(/[^0-9.]/g,'');
+    const digits = v.replace(/\./g,'');
+    if (digits.length > 2 && !v.includes('.')) v = digits.slice(0,2)+'.'+digits.slice(2);
+    if (digits.length > 4) {
+      const parts = v.split('.');
+      if (parts.length >= 2 && parts[1].length > 2)
+        v = parts[0]+'.'+parts[1].slice(0,2)+'.'+parts[1].slice(2)+(parts[2]||'');
+    }
+    v = v.slice(0,10);
+    el.value = v;
+    const hidden = document.getElementById(hiddenId);
+    if (hidden) hidden.value = _lvParseDMY(v) || '';
+    el.style.borderColor = v.length === 10
+      ? (_lvParseDMY(v) ? 'rgba(45,212,191,.5)' : 'rgba(255,80,80,.5)') : '';
+  }
+  function _lvDatePickerChange(pickerEl, displayId) {
+    const iso = pickerEl.value;
+    if (iso) {
+      const disp = document.getElementById(displayId);
+      if (disp) { disp.value = _lvIsoToDMY(iso); disp.style.borderColor='rgba(45,212,191,.5)'; }
+    }
+  }
+  // Expose pe window pentru a fi accesibile din onchange/oninput inline
+  window._lvDateTextInput = _lvDateTextInput;
+  window._lvDatePickerChange = _lvDatePickerChange;
+
   function injectLeaveModal() {
     if (document.getElementById('leaveModal')) return;
     const html = `
@@ -126,11 +166,37 @@
     <div class="df-grid-2" style="margin-bottom:10px;">
       <div class="df-frow">
         <label>Început concediu *</label>
-        <input id="lvStart" type="date" lang="ro" style="color-scheme:dark;"/>
+        <div style="position:relative;">
+          <input type="text" id="lvStartDisplay" placeholder="zz.ll.aaaa" maxlength="10"
+            autocomplete="off"
+            style="width:100%;padding:9px 36px 9px 11px;background:var(--df-surface-2);
+            border:1px solid var(--df-border-2);border-radius:8px;color:var(--df-text);
+            font-size:.88rem;outline:none;font-family:inherit;box-sizing:border-box;"
+            oninput="_lvDateTextInput(this,'lvStart')"/>
+          <input type="date" id="lvStart"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);
+            width:20px;height:20px;opacity:0;cursor:pointer;"
+            onchange="_lvDatePickerChange(this,'lvStartDisplay')"/>
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+            pointer-events:none;font-size:14px;">📅</span>
+        </div>
       </div>
       <div class="df-frow">
         <label>Sfârșit concediu *</label>
-        <input id="lvEnd" type="date" lang="ro" style="color-scheme:dark;"/>
+        <div style="position:relative;">
+          <input type="text" id="lvEndDisplay" placeholder="zz.ll.aaaa" maxlength="10"
+            autocomplete="off"
+            style="width:100%;padding:9px 36px 9px 11px;background:var(--df-surface-2);
+            border:1px solid var(--df-border-2);border-radius:8px;color:var(--df-text);
+            font-size:.88rem;outline:none;font-family:inherit;box-sizing:border-box;"
+            oninput="_lvDateTextInput(this,'lvEnd')"/>
+          <input type="date" id="lvEnd"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);
+            width:20px;height:20px;opacity:0;cursor:pointer;"
+            onchange="_lvDatePickerChange(this,'lvEndDisplay')"/>
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+            pointer-events:none;font-size:14px;">📅</span>
+        </div>
       </div>
     </div>
 
@@ -205,6 +271,10 @@
     modal.classList.add('open');
     document.getElementById('lvStart').value = '';
     document.getElementById('lvEnd').value = '';
+    const _sd = document.getElementById('lvStartDisplay');
+    const _ed = document.getElementById('lvEndDisplay');
+    if (_sd) { _sd.value = ''; _sd.style.borderColor = ''; }
+    if (_ed) { _ed.value = ''; _ed.style.borderColor = ''; }
     document.getElementById('lvReason').value = '';
     document.getElementById('lvReasonCount').textContent = '0';
     document.getElementById('lvMsg').textContent = '';
@@ -233,8 +303,16 @@
 
       const leave = me?.leave;
       if (leave) {
-        if (leave.leaveStart) document.getElementById('lvStart').value = leave.leaveStart;
-        if (leave.leaveEnd) document.getElementById('lvEnd').value = leave.leaveEnd;
+        if (leave.leaveStart) {
+          document.getElementById('lvStart').value = leave.leaveStart;
+          const sd = document.getElementById('lvStartDisplay');
+          if (sd) sd.value = _lvIsoToDMY(leave.leaveStart);
+        }
+        if (leave.leaveEnd) {
+          document.getElementById('lvEnd').value = leave.leaveEnd;
+          const ed = document.getElementById('lvEndDisplay');
+          if (ed) ed.value = _lvIsoToDMY(leave.leaveEnd);
+        }
         if (leave.delegate?.id) document.getElementById('lvDelegate').value = leave.delegate.id;
         if (leave.leaveReason) {
           document.getElementById('lvReason').value = leave.leaveReason;
