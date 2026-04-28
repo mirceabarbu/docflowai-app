@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>DocFlowAI — Setări</title>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.379">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.379">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.379">
+  <link rel="stylesheet" href="/mobile.css?v=3.9.379">
+  <script src="/js/df-utils.js?v=3.9.379"></script>
+  <script src="/js/df-apifetch-shim.js?v=3.9.379"></script>
+  <script src="/js/df-shell.js?v=3.9.379"></script>
+  <script src="/js/df-user-modals.js?v=3.9.379"></script>
+</head>
+<body>
+
+<div class="df-shell">
+  <aside class="df-sidebar">
+    <div class="df-sidebar-brand">
+      <img src="/Logo.png" alt="DocFlowAI"/>
+    </div>
+
+    <div class="df-nav-label">Navigare app</div>
+    <div class="df-nav-group">
+      <a href="/" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-edit"/></svg>
+        Flux nou
+      </a>
+      <a href="/?tab=flows" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-folder"/></svg>
+        Fluxurile mele
+      </a>
+      <a href="/templates" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-grid"/></svg>
+        Șabloane
+      </a>
+      <a href="/formular.html" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-file-text"/></svg>
+        Formulare
+      </a>
+    </div>
+
+    <div class="df-nav-label">Comunicare</div>
+    <div class="df-nav-group">
+      <a href="/notifications" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        Notificări
+      </a>
+    </div>
+  </aside>
+
+  <div class="df-page">
+    <header class="df-page-header">
+      <div class="df-page-titles">
+        <h1>Setări</h1>
+        <p>Preferințe cont și opțiuni personale</p>
+      </div>
+      <div class="df-page-actions">
+        <div class="df-user-menu" id="df-user-menu">
+          <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <div class="df-user-trigger-avatar">U</div>
+            <div class="df-user-trigger-info">
+              <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+              <div class="df-user-trigger-role">Utilizator</div>
+            </div>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-chevron-down"/></svg>
+          </button>
+          <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openLeaveModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-clock"/></svg>
+              Concediu și delegare
+            </button>
+            <button onclick="closeUserMenu();openChangePwdModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-key"/></svg>
+              Schimbă parola
+            </button>
+            <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-shield"/></svg>
+              Configurare 2FA
+            </button>
+            <a href="/admin" class="df-admin-link" style="text-decoration:none;">
+              <button>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-layout"/></svg>
+                Panou admin
+              </button>
+            </a>
+            <div class="df-user-dropdown-divider"></div>
+            <button class="danger" onclick="closeUserMenu();logout()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-log-out"/></svg>
+              Ieșire
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="df-page-body">
+      <!-- Card concediu — shortcut spre modal -->
+      <div style="background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);padding:24px;max-width:560px;margin-bottom:16px;">
+        <h3 style="font-size:1rem;font-weight:600;color:var(--df-text);margin-bottom:6px;">Concediu și delegare</h3>
+        <p style="font-size:.84rem;color:var(--df-text-3);margin-bottom:16px;line-height:1.5;">
+          Marchează perioada în care nu vei fi disponibil. Fluxurile noi pe care trebuie să le semnezi vor fi atribuite automat delegatului ales.
+        </p>
+        <button class="df-action-btn primary" onclick="openLeaveModal()">
+          <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.379#ico-clock"/></svg>
+          Configurează concediu
+        </button>
+      </div>
+
+      <!-- Card placeholder pentru viitor -->
+      <div style="background:var(--df-surface);border:1px dashed var(--df-border-2);border-radius:var(--df-radius-xl);padding:24px;max-width:560px;opacity:.7;">
+        <h3 style="font-size:1rem;font-weight:600;color:var(--df-text-2);margin-bottom:6px;">În curând: alte setări</h3>
+        <p style="font-size:.84rem;color:var(--df-text-4);line-height:1.5;">
+          Aici vor fi disponibile preferințe pentru notificări, temă, limbă și alte opțiuni personale.
+        </p>
+      </div>
+    </section>
+  </div>
+</div>
+
+</body>
+</html>

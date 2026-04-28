@@ -165,7 +165,9 @@
 
       const delegBadge = s.delegatedFrom
         ? `<span class="tl-actor" title="Delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)}">👥 delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)}</span>`
-        : '';
+        : (s.delegatedForName
+          ? `<span class="tl-actor" title="În delegare pentru ${esc(s.delegatedForName)}">👥 în delegare pentru ${esc(s.delegatedForName)}</span>`
+          : '');
 
       // Sub-pași: semnare + upload (dacă sunt distincte)
       const subRows = [];
@@ -350,7 +352,9 @@
       // Badge delegare
       const delegBadge = s.delegatedFrom
         ? `<div style="margin-top:5px;"><span title="Delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)} — ${esc(s.delegatedFrom.reason||'')}" style="display:inline-block;font-size:.72rem;padding:2px 8px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);cursor:help;">👥 delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)}</span></div>`
-        : '';
+        : (s.delegatedForName
+          ? `<div style="margin-top:5px;"><span title="În delegare pentru ${esc(s.delegatedForName)}" style="display:inline-block;font-size:.72rem;padding:2px 8px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);cursor:help;">👥 în delegare pentru ${esc(s.delegatedForName)}</span></div>`
+          : '');
       el.innerHTML = `
         <div class="top">
           <div style="flex:1">

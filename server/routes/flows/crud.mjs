@@ -7,6 +7,7 @@ import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml,
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { convertToPdf, ACCEPTED_EXTENSIONS } from '../../utils/convertToPdf.mjs';
+import { getActiveSigner } from '../../services/user-leave.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -147,9 +148,50 @@ const createFlow = async (req, res) => {
             w: s.ancoreFieldRect.w ?? null, h: s.ancoreFieldRect.h ?? null,
             page: s.ancoreFieldRect.page ?? null }
         : null,
+      // BLOC 4.3: marker delegare la creare (userul ales era în concediu, semnează delegatul)
+      delegatedForUserId: (s.delegatedForUserId && Number.isInteger(Number(s.delegatedForUserId)))
+        ? Number(s.delegatedForUserId) : null,
+      delegatedForName: String(s.delegatedForName || '').trim() || null,
+      delegatedForEmail: String(s.delegatedForEmail || '').trim() || null,
     }));
     normalizedSigners.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
     normalizedSigners.forEach((s, i) => { s.status = i === 0 ? 'current' : 'pending'; });
+
+    // BLOC 4.3: auto-redirect dacă primul semnatar e în concediu cu delegat
+    // (fallback pentru clienți API care n-au substituit în UI)
+    try {
+      const first = normalizedSigners[0];
+      if (first && first.email && !first.delegatedForUserId) {
+        const { rows: uRows } = await pool.query(
+          'SELECT id FROM users WHERE email=$1',
+          [first.email.toLowerCase()]
+        );
+        if (uRows.length) {
+          const userId = uRows[0].id;
+          const active = await getActiveSigner(userId);
+          if (active && active.isDelegate) {
+            const { rows: dRows } = await pool.query(
+              'SELECT id, nume, email, functie FROM users WHERE id=$1',
+              [active.userId]
+            );
+            if (dRows.length) {
+              const del = dRows[0];
+              first.delegatedForUserId = userId;
+              first.delegatedForName = first.name;
+              first.delegatedForEmail = first.email;
+              first.name = del.nume || del.email;
+              first.email = del.email;
+              first.functie = del.functie || first.functie;
+              first.token = crypto.randomBytes(16).toString('hex');
+              first.tokenCreatedAt = new Date().toISOString();
+              logger.info(`🔁 createFlow: first signer ${first.delegatedForEmail} on leave, redirected to ${del.email}`);
+            }
+          }
+        }
+      }
+    } catch (autoErr) {
+      logger.warn({ err: autoErr }, 'createFlow auto-redirect failed (non-fatal)');
+    }
 
     const createdAt = body.createdAt || new Date().toISOString();
     let initFunctie = '', initCompartiment = '', initInstitutie = body.institutie || '';

@@ -1184,6 +1184,43 @@ const MIGRATIONS = [
           ADD COLUMN IF NOT EXISTS ciclu_curent INTEGER DEFAULT 1;
       END $g$;
     `
+  },
+  {
+    id: '063_user_leave_delegate',
+    sql: `
+      DO $g$ BEGIN
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS leave_start DATE,
+          ADD COLUMN IF NOT EXISTS leave_end DATE,
+          ADD COLUMN IF NOT EXISTS delegate_user_id INTEGER,
+          ADD COLUMN IF NOT EXISTS leave_reason TEXT;
+
+        BEGIN
+          ALTER TABLE users
+            ADD CONSTRAINT users_delegate_fk
+            FOREIGN KEY (delegate_user_id) REFERENCES users(id) ON DELETE SET NULL;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+
+        BEGIN
+          ALTER TABLE users
+            ADD CONSTRAINT users_leave_dates_chk
+            CHECK (leave_end IS NULL OR leave_start IS NULL OR leave_end >= leave_start);
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+
+        BEGIN
+          ALTER TABLE users
+            ADD CONSTRAINT users_no_self_delegate_chk
+            CHECK (delegate_user_id IS NULL OR delegate_user_id != id);
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END;
+
+        CREATE INDEX IF NOT EXISTS idx_users_leave_active
+          ON users(leave_start, leave_end)
+          WHERE leave_start IS NOT NULL;
+      END $g$;
+    `
   }
 ];
 

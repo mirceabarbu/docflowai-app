@@ -13,6 +13,7 @@
     <script src="/js/df-utils.js?v=3.9.353"></script>
     <script src="/js/df-apifetch-shim-full.js?v=3.9.353"></script>
     <script src="/js/df-shell.js?v=3.9.353"></script>
+    <script src="/js/df-user-modals.js?v=3.9.353" defer></script>
     <script src="/js/df-email-modal.js?v=3.9.353" defer></script>
 </head>
 <script src="/js/semdoc-initiator/pdf-lib-loader.js?v=3.9.353"></script>
@@ -115,6 +116,10 @@
             <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-chevron-down"/></svg>
           </button>
           <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openLeaveModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-clock"/></svg>
+              Concediu și delegare
+            </button>
             <button onclick="closeUserMenu();openChangePwdModal()">
               <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.353#ico-key"/></svg>
               Schimbă parola

@@ -588,6 +588,8 @@
       $("eGwsFail").style.display="";$("eGwsFail").textContent="⚠ Provision eșuat — folosește butonul G+ din tabel";
     } else { $("eGwsRow").style.display="none"; }
     $("eMsg").textContent="";$("eMsg").className="";
+    // BLOC 4.2 — populează secțiunea concediu/delegare
+    if (typeof _loadLeaveSection === 'function') _loadLeaveSection(u.id, u.org_id);
     $("mBg").classList.add("open");$("ePrenume").focus();
   }
 
@@ -682,6 +684,144 @@
   // ── Export funcții onclick global ─────────────────────────────────────────
   window.lockOrgAdminFilters          = lockOrgAdminFilters;
   window._lockRoleDropdownsForOrgAdmin = _lockRoleDropdownsForOrgAdmin;
+  // ═════════════════════════════════════════════════════════════════════════
+  // LEAVE / DELEGATION (BLOC 4.2)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  var _leaveTargetUserId = null;
+  var _leaveAllUsers = [];
+
+  async function _loadLeaveSection(userId, userOrgId) {
+    _leaveTargetUserId = userId;
+    var msg = document.getElementById('eLeaveMsg');
+    if (msg) { msg.textContent = ''; msg.className = ''; msg.style.color = ''; }
+
+    try {
+      var r = await _apiFetch('/users');
+      _leaveAllUsers = r.ok ? await r.json() : [];
+    } catch(e) { _leaveAllUsers = []; }
+
+    var sel = document.getElementById('eLeaveDelegate');
+    if (sel) {
+      while (sel.options.length > 1) sel.remove(1);
+      var candidates = _leaveAllUsers.filter(function(u) {
+        if (u.id === userId) return false;
+        if (userOrgId && u.org_id !== userOrgId) return false;
+        if (u.leave && u.leave.delegate) return false; // NO CHAIN
+        return true;
+      });
+      candidates.sort(function(a, b) { return (a.nume || '').localeCompare(b.nume || '', 'ro'); });
+      candidates.forEach(function(u) {
+        var opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
+        sel.appendChild(opt);
+      });
+    }
+
+    var me = _leaveAllUsers.find(function(u) { return u.id === userId; });
+    var leave = me ? me.leave : null;
+    var eStart = document.getElementById('eLeaveStart');
+    var eEnd = document.getElementById('eLeaveEnd');
+    var eDel = document.getElementById('eLeaveDelegate');
+    var eReason = document.getElementById('eLeaveReason');
+    if (eStart) eStart.value = (leave && leave.leaveStart) ? leave.leaveStart : '';
+    if (eEnd) eEnd.value = (leave && leave.leaveEnd) ? leave.leaveEnd : '';
+    if (eDel) eDel.value = (leave && leave.delegate && leave.delegate.id) ? leave.delegate.id : '';
+    if (eReason) eReason.value = (leave && leave.leaveReason) ? leave.leaveReason : '';
+
+    var badge = document.getElementById('eLeaveStatusBadge');
+    if (badge) {
+      if (!leave) {
+        badge.textContent = 'Nesetat';
+        badge.style.background = 'rgba(120,120,120,.15)';
+        badge.style.color = 'var(--df-text-3)';
+      } else if (leave.onLeave) {
+        badge.textContent = 'Activ';
+        badge.style.background = 'rgba(255,170,30,.15)';
+        badge.style.color = '#ffcc44';
+      } else {
+        var today = new Date().toISOString().slice(0, 10);
+        if (leave.leaveStart && leave.leaveStart > today) {
+          badge.textContent = 'Programat';
+          badge.style.background = 'rgba(108,79,240,.15)';
+          badge.style.color = '#b0a0ff';
+        } else {
+          badge.textContent = 'Expirat';
+          badge.style.background = 'rgba(120,120,120,.15)';
+          badge.style.color = 'var(--df-text-4)';
+        }
+      }
+    }
+  }
+
+  window.adminSaveLeave = async function() {
+    var msg = document.getElementById('eLeaveMsg');
+    if (msg) { msg.className = ''; msg.textContent = ''; msg.style.color = ''; }
+    if (!_leaveTargetUserId) return;
+
+    var leave_start = document.getElementById('eLeaveStart').value || null;
+    var leave_end = document.getElementById('eLeaveEnd').value || null;
+    var delegate_user_id = document.getElementById('eLeaveDelegate').value || null;
+    var leave_reason = document.getElementById('eLeaveReason').value.trim() || null;
+
+    if (!leave_start || !leave_end) {
+      if (msg) { msg.textContent = 'Datele de început și sfârșit sunt obligatorii.'; msg.style.color = '#f87171'; }
+      return;
+    }
+    if (!delegate_user_id) {
+      if (msg) { msg.textContent = 'Alege un delegat.'; msg.style.color = '#f87171'; }
+      return;
+    }
+
+    try {
+      var r = await _apiFetch('/admin/users/' + _leaveTargetUserId + '/leave', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leave_start: leave_start, leave_end: leave_end, delegate_user_id: Number(delegate_user_id), leave_reason: leave_reason }),
+      });
+      var data = await r.json().catch(function() { return {}; });
+      if (!r.ok) {
+        if (msg) { msg.textContent = data.message || data.error || 'Eroare.'; msg.style.color = '#f87171'; }
+        return;
+      }
+      if (msg) { msg.textContent = 'Concediu salvat.'; msg.style.color = '#4ade80'; }
+      if (typeof loadUsers === 'function') loadUsers();
+    } catch(e) {
+      if (msg) { msg.textContent = 'Eroare de rețea.'; msg.style.color = '#f87171'; }
+    }
+  };
+
+  window.adminClearLeave = async function() {
+    var msg = document.getElementById('eLeaveMsg');
+    if (!_leaveTargetUserId) return;
+    if (!confirm('Anulezi concediul acestui utilizator?')) return;
+    try {
+      var r = await _apiFetch('/admin/users/' + _leaveTargetUserId + '/leave', { method: 'DELETE' });
+      var data = await r.json().catch(function() { return {}; });
+      if (!r.ok) {
+        if (msg) { msg.textContent = data.message || data.error || 'Eroare.'; msg.style.color = '#f87171'; }
+        return;
+      }
+      if (msg) { msg.textContent = 'Concediu anulat.'; msg.style.color = '#4ade80'; }
+      ['eLeaveStart', 'eLeaveEnd', 'eLeaveDelegate', 'eLeaveReason'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      var badge = document.getElementById('eLeaveStatusBadge');
+      if (badge) {
+        badge.textContent = 'Nesetat';
+        badge.style.background = 'rgba(120,120,120,.15)';
+        badge.style.color = 'var(--df-text-3)';
+      }
+      if (typeof loadUsers === 'function') loadUsers();
+    } catch(e) {
+      if (msg) { msg.textContent = 'Eroare de rețea.'; msg.style.color = '#f87171'; }
+    }
+  };
+
+  window._loadLeaveSection = _loadLeaveSection;
+
   window.onRoleChange                 = onRoleChange;
   window.filterUsers                  = filterUsers;
   window.loadUsers                    = loadUsers;
