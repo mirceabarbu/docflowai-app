@@ -1,7 +1,7 @@
 // public/js/formular/alop.js
 // DocFlowAI - Modul ALOP + REVIZIE (BLOC 2.2).
 // Cross-module export: window._alopLinkDoc (apelata din saveDoc)
-// Local state: _ALOP, ROLE_LABEL, _alopWizStep, _lichidareAlopId,
+// Local state: _ALOP, ROLE_LABEL, _lichidareAlopId,
 //   _plataAlopId, _plataOrdValoare, _revizieTargetId, _revizieAlopId
 // Runtime bare deps din formular.js: ST, _escH, pMR, fMR, getCsrf,
 //   setS, sw, loadList, switchListTab, newDocFromList, openDocFromList,
@@ -12,7 +12,6 @@
   const esc = window.df.esc;
 
   // -- State vars hoistate --------------------------------------------------
-  let _alopWizStep = 1;
   let _lichidareAlopId = null;
   let _plataAlopId = null;
   let _plataOrdValoare = 0;
@@ -45,10 +44,7 @@ async function _alopLinkDoc(ft, docId){
 // Faze: draft → angajare → lichidare → ordonantare → plata → completed
 // ══════════════════════════════════════════════════════════════════════════════
 
-const _ALOP = {
-  sablon:   null, // cache șablon org
-  orgUsers: [],   // cache utilizatori org pentru selector sablon
-};
+const _ALOP = {};
 
 const ROLE_LABEL = {
   initiator:         'Inițiator',
@@ -155,7 +151,6 @@ async function loadAlop(){
 // ── Wizard modal ──────────────────────────────────────────────────────────────
 
 async function openAlopModal(){
-  _alopWizStep=1;
   ['alop-titlu','alop-compartiment','alop-notes'].forEach(id=>{
     const e=document.getElementById(id);if(e)e.value='';
   });
@@ -172,61 +167,9 @@ async function openAlopModal(){
     compInput.style.opacity = '';
     compInput.style.cursor = '';
   }
-  _alopWizShowStep(1);
   document.getElementById('alop-modal').style.display='flex';
-  if(!_ALOP.sablon)await _alopLoadSablon();
 }
 function closeAlopModal(){document.getElementById('alop-modal').style.display='none';}
-
-async function alopWizNext(){
-  const titlu=(document.getElementById('alop-titlu')?.value||'').trim();
-  if(!titlu){alert('Titlul este obligatoriu.');return;}
-  _alopWizStep=2;
-  _alopWizShowStep(2);
-  const preview=document.getElementById('alop-wiz-sablon-preview');
-  if(preview)preview.innerHTML=_alopSablonPreviewHtml(_ALOP.sablon);
-}
-function alopWizBack(){_alopWizStep=1;_alopWizShowStep(1);}
-
-function _alopWizShowStep(step){
-  const s1=document.getElementById('alop-wiz-step1');
-  const s2=document.getElementById('alop-wiz-step2');
-  const i1=document.getElementById('awstep-1');
-  const i2=document.getElementById('awstep-2');
-  if(s1)s1.style.display=step===1?'':'none';
-  if(s2)s2.style.display=step===2?'':'none';
-  if(i1)i1.classList.toggle('active',step===1);
-  if(i2)i2.classList.toggle('active',step===2);
-}
-
-function _alopSablonPreviewHtml(sab){
-  if(!sab)return'<div style="color:var(--df-text-3);font-size:.82rem">Niciun șablon configurat. Semnatarii se adaugă manual la fiecare flux.</div>';
-  const dfList=sab.df_semnatari_sablon||[];
-  const ordList=sab.ord_semnatari_sablon||[];
-  const lich=sab.lichidare_sablon||{};
-  let html='';
-  const dfItems=dfList.filter(u=>u.user_id||u.same_as_initiator);
-  if(dfItems.length){
-    html+=`<div style="margin-bottom:8px">
-      <div style="font-size:.76rem;font-weight:600;color:#3b82f6;margin-bottom:4px">📋 Document de Fundamentare</div>
-      ${dfItems.map(u=>`<div style="font-size:.78rem;color:var(--df-text-3)">• ${esc(ROLE_LABEL[u.role]||u.role)}: ${u.same_as_initiator?'(inițiator)':esc(u.name||'—')}</div>`).join('')}
-    </div>`;
-  }
-  const ordItems=ordList.filter(u=>u.user_id);
-  if(ordItems.length){
-    html+=`<div style="margin-bottom:8px">
-      <div style="font-size:.76rem;font-weight:600;color:#8b5cf6;margin-bottom:4px">💰 Ordonanțare de Plată</div>
-      ${ordItems.map(u=>`<div style="font-size:.78rem;color:var(--df-text-3)">• ${esc(ROLE_LABEL[u.role]||u.role)}: ${esc(u.name||'—')}</div>`).join('')}
-    </div>`;
-  }
-  if(lich.user_id||lich.same_as_initiator){
-    html+=`<div style="margin-bottom:8px">
-      <div style="font-size:.76rem;font-weight:600;color:#f59e0b;margin-bottom:4px">✔️ Lichidare</div>
-      <div style="font-size:.78rem;color:var(--df-text-3)">• ${lich.same_as_initiator?'(inițiator)':esc(lich.name||'—')}</div>
-    </div>`;
-  }
-  return html||'<div style="color:var(--df-text-3);font-size:.82rem">Șablon gol — semnatarii se adaugă manual.</div>';
-}
 
 async function createAlop(){
   const titlu=(document.getElementById('alop-titlu')?.value||'').trim();
@@ -824,173 +767,6 @@ async function cancelAlop(id){
   }catch(e){alert('Eroare: '+e.message);}
 }
 
-// ── Șablon ALOP ───────────────────────────────────────────────────────────────
-async function _alopLoadSablon(){
-  try{
-    const r=await fetch('/api/alop/sablon',{credentials:'include'});
-    if(!r.ok)return;
-    const d=await r.json();
-    _ALOP.sablon=d.sablon;
-  }catch(_){}
-}
-
-function alopSabUpdateExclusions(){
-  const selects=document.querySelectorAll('#alop-sablon-modal select.alop-sab-select');
-  const selectedIds=new Set();
-  selects.forEach(sel=>{if(sel.value)selectedIds.add(sel.value);});
-  selects.forEach(sel=>{
-    const ownValue=sel.value;
-    Array.from(sel.options).forEach(opt=>{
-      if(!opt.value)return; // skip "— Neselectat —"
-      opt.disabled=selectedIds.has(opt.value)&&opt.value!==ownValue;
-      opt.style.color=opt.disabled?'#888':'';
-    });
-  });
-}
-
-function alopSabInitExclusions(){
-  const selects=document.querySelectorAll('#alop-sablon-modal select.alop-sab-select');
-  selects.forEach(sel=>{
-    sel.removeEventListener('change',alopSabUpdateExclusions);
-    sel.addEventListener('change',alopSabUpdateExclusions);
-  });
-  alopSabUpdateExclusions();
-}
-
-async function openAlopSablonModal(){
-  if(!_ALOP.orgUsers.length){
-    try{
-      const r=await fetch('/api/formulare/utilizatori-org',{credentials:'include'});
-      if(r.ok){const d=await r.json();_ALOP.orgUsers=d.users||[];}
-    }catch(_){}
-  }
-  await _alopLoadSablon();
-  _initAllPickers(_ALOP.orgUsers);
-  alopPopulateSabModal(_ALOP.sablon);
-  alopSabInitExclusions();
-  document.getElementById('alop-sablon-modal').style.display='flex';
-}
-function closeAlopSablonModal(){document.getElementById('alop-sablon-modal').style.display='none';}
-
-function _renderPickerSelect(containerId,users){
-  const el=document.getElementById(containerId);
-  if(!el)return;
-  const opts=`<option value="">— Neselectat —</option>`+
-    users.map(u=>`<option value="${esc(String(u.id))}">${esc(u.nume||u.email||'?')}${u.functie?` (${esc(u.functie)})`:''}</option>`).join('');
-  el.innerHTML=`<select class="alop-sab-select" style="width:100%;padding:5px 8px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:6px;color:var(--df-text);font-size:.8rem">${opts}</select>`;
-}
-
-function _setPickerValue(containerId,userId){
-  const el=document.getElementById(containerId);
-  if(!el)return;
-  const sel=el.querySelector('select');
-  if(sel)sel.value=userId!=null?String(userId):'';
-}
-
-function _initAllPickers(users){
-  ['sab-sef-comp-picker','sab-resp-cab-picker','sab-sef-cab-picker','sab-dir-ec-picker','sab-ord-cred-df-picker',
-   'sab-resp-cab-ord-picker','sab-cfp-picker','sab-ord-cred-ord-picker','sab-lichidare-picker']
-    .forEach(id=>_renderPickerSelect(id,users));
-}
-
-function alopPopulateSabModal(sab){
-  if(!sab)return;
-  const df=sab.df_semnatari_sablon||[];
-  const ord=sab.ord_semnatari_sablon||[];
-  const lich=sab.lichidare_sablon||{};
-  const dfByOrder={};df.forEach(u=>dfByOrder[u.order]=u);
-  const ordByOrder={};ord.forEach(u=>ordByOrder[u.order]=u);
-  // DF role 2: sef_compartiment
-  const sefComp=dfByOrder[2]||{};
-  const sefCompSame=!!sefComp.same_as_initiator;
-  const cbSefComp=document.getElementById('sab-sef-comp-same');
-  if(cbSefComp)cbSefComp.checked=sefCompSame;
-  _setPickerValue('sab-sef-comp-picker',sefComp.user_id||null);
-  const sefCompEl=document.getElementById('sab-sef-comp-picker');
-  if(sefCompEl){const s=sefCompEl.querySelector('select');if(s)s.disabled=sefCompSame;}
-  // DF roles 3-6
-  _setPickerValue('sab-resp-cab-picker',(dfByOrder[3]||{}).user_id||null);
-  _setPickerValue('sab-sef-cab-picker',(dfByOrder[4]||{}).user_id||null);
-  _setPickerValue('sab-dir-ec-picker',(dfByOrder[5]||{}).user_id||null);
-  _setPickerValue('sab-ord-cred-df-picker',(dfByOrder[6]||{}).user_id||null);
-  // ORD roles 2-4
-  _setPickerValue('sab-resp-cab-ord-picker',(ordByOrder[2]||{}).user_id||null);
-  _setPickerValue('sab-cfp-picker',(ordByOrder[3]||{}).user_id||null);
-  _setPickerValue('sab-ord-cred-ord-picker',(ordByOrder[4]||{}).user_id||null);
-  // Lichidare
-  const cbLich=document.getElementById('sab-lichidare-same');
-  if(cbLich)cbLich.checked=!!lich.same_as_initiator;
-  _setPickerValue('sab-lichidare-picker',lich.user_id||null);
-  const lichEl=document.getElementById('sab-lichidare-picker');
-  if(lichEl){const s=lichEl.querySelector('select');if(s)s.disabled=!!lich.same_as_initiator;}
-}
-
-function alopSabSameAsInitiator(cb){
-  const el=document.getElementById('sab-sef-comp-picker');
-  if(!el)return;
-  const sel=el.querySelector('select');
-  if(sel){sel.disabled=cb.checked;if(cb.checked)sel.value='';}
-}
-
-function alopSabLichidareSameAsInitiator(cb){
-  const el=document.getElementById('sab-lichidare-picker');
-  if(!el)return;
-  const sel=el.querySelector('select');
-  if(sel){sel.disabled=cb.checked;if(cb.checked)sel.value='';}
-}
-
-function alopGetSabFromUI(){
-  const users=_ALOP.orgUsers;
-  function getUser(containerId){
-    const el=document.getElementById(containerId);
-    if(!el)return null;
-    const sel=el.querySelector('select');
-    if(!sel||!sel.value)return null;
-    const uid=parseInt(sel.value,10);
-    const u=users.find(x=>x.id===uid);
-    return u?{user_id:u.id,name:u.nume||u.email||''}:null;
-  }
-  const sefCompSame=document.getElementById('sab-sef-comp-same')?.checked||false;
-  const lichSame=document.getElementById('sab-lichidare-same')?.checked||false;
-  const df_semnatari_sablon=[
-    {order:1,role:'initiator',user_id:null,name:''},
-    {order:2,role:'sef_compartiment',same_as_initiator:sefCompSame,...(!sefCompSame?(getUser('sab-sef-comp-picker')||{user_id:null,name:''}):{user_id:null,name:''})},
-    {order:3,role:'responsabil_cab',...(getUser('sab-resp-cab-picker')||{user_id:null,name:''})},
-    {order:4,role:'sef_cab',...(getUser('sab-sef-cab-picker')||{user_id:null,name:''})},
-    {order:5,role:'director_economic',...(getUser('sab-dir-ec-picker')||{user_id:null,name:''})},
-    {order:6,role:'ordonator_credite',...(getUser('sab-ord-cred-df-picker')||{user_id:null,name:''})},
-  ];
-  const ord_semnatari_sablon=[
-    {order:1,role:'initiator',user_id:null,name:''},
-    {order:2,role:'responsabil_cab',...(getUser('sab-resp-cab-ord-picker')||{user_id:null,name:''})},
-    {order:3,role:'cfp_propriu',...(getUser('sab-cfp-picker')||{user_id:null,name:''})},
-    {order:4,role:'ordonator_credite',...(getUser('sab-ord-cred-ord-picker')||{user_id:null,name:''})},
-  ];
-  const lichUser=getUser('sab-lichidare-picker');
-  const lichidare_sablon={
-    same_as_initiator:lichSame,
-    user_id:lichSame?null:(lichUser?.user_id||null),
-    name:lichSame?'':(lichUser?.name||''),
-  };
-  return{df_semnatari_sablon,ord_semnatari_sablon,lichidare_sablon};
-}
-
-async function saveAlopSablon(){
-  try{
-    const body=alopGetSabFromUI();
-    const r=await fetch('/api/alop/sablon',{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
-      body:JSON.stringify(body),
-    });
-    const data=await r.json();
-    if(!r.ok)throw new Error(data.error||'server_error');
-    _ALOP.sablon=data.sablon;
-    closeAlopSablonModal();
-    alert('Șablon salvat cu succes.');
-  }catch(e){alert('Eroare: '+e.message);}
-}
-
 // ── Revizuiri DF ──────────────────────────────────────────────────────────────
 
 function dfInitiazaRevizie(dfId){
@@ -1069,8 +845,6 @@ async function alopRevizuiesteDF(alopId,dfId){
   window.loadAlop                   = loadAlop;
   window.openAlopModal              = openAlopModal;
   window.closeAlopModal             = closeAlopModal;
-  window.alopWizNext                = alopWizNext;
-  window.alopWizBack                = alopWizBack;
   window.createAlop                 = createAlop;
   window.openAlop                   = openAlop;
   window.closeAlopDetail            = closeAlopDetail;
@@ -1091,15 +865,10 @@ async function alopRevizuiesteDF(alopId,dfId){
   window.closePlataModal            = closePlataModal;
   window.confirmPlata               = confirmPlata;
   window.cancelAlop                 = cancelAlop;
-  window.openAlopSablonModal        = openAlopSablonModal;
-  window.closeAlopSablonModal       = closeAlopSablonModal;
-  window.saveAlopSablon             = saveAlopSablon;
   window.dfInitiazaRevizie          = dfInitiazaRevizie;
   window.closeRevizieModal          = closeRevizieModal;
   window.confirmRevizie             = confirmRevizie;
   window.alopRevizuiesteDF          = alopRevizuiesteDF;
-  window.alopSabSameAsInitiator     = alopSabSameAsInitiator;
-  window.alopSabLichidareSameAsInitiator = alopSabLichidareSameAsInitiator;
   window._alopLinkDoc               = _alopLinkDoc;
 
   window.df = window.df || {};

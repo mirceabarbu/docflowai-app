@@ -15,9 +15,9 @@
      df-lock-*), badge-uri status (stbadge.st-*), modale alop/lichidare/plata
 
    ATENȚIE: multe clase sunt referite de JS și data-* attributes:
-   .dst.st-*, .df-block, .df-total, .lst-*, .stbadge.st-*, .alop-wstep,
+   .dst.st-*, .df-block, .df-total, .lst-*, .stbadge.st-*,
    .cap-zone, .att-*, .p2-field, .doc-t, .tabs .tab, #alop-modal,
-   #alop-sablon-modal, #modal-lichidare, #modal-plata, #val-err-bar.
+   #modal-lichidare, #modal-plata, #val-err-bar.
    NU redenumi.
 
    Depinde de: tokens.css, shell.css, components.css (încărcate înainte). */
@@ -158,9 +158,6 @@
     .modal-ov.show{display:flex}
     .modal-box{background:#0f1832;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:28px 32px;width:min(620px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:14px}
     .modal-title{font-size:.95rem;font-weight:800;color:var(--df-text)}
-    /* BUG1 fix — select dropdown text vizibil în modalul ALOP șablon (dark theme) */
-    #alop-sablon-modal select{color:#e8eeff !important;background-color:#1a2040 !important;border-color:rgba(255,255,255,.18) !important}
-    #alop-sablon-modal select option{color:#e8eeff !important;background-color:#1a2040 !important}
     .modal-search{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--df-text);padding:8px 10px;font-size:.84rem;outline:none;width:100%;font-family:inherit}
     .modal-search:focus{border-color:rgba(108,79,240,.5)}
     .modal-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;min-height:80px;max-height:260px}
@@ -325,15 +322,6 @@
     /* Layout helpers */
     .df-row{display:grid;gap:14px;margin-bottom:14px}
     .df-revizie-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(255,170,30,.15);color:#ffcc44;margin-left:8px;vertical-align:middle}
-    /* ALOP modal wizard steps */
-    .alop-wizard-steps{display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.08)}
-    .alop-wstep{display:flex;align-items:center;gap:8px;opacity:.4;transition:opacity .2s}
-    .alop-wstep.active{opacity:1}
-    .alop-wstep-nr{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#b8c8f0}
-    .alop-wstep.active .alop-wstep-nr{background:rgba(108,79,240,.3);border-color:rgba(108,79,240,.6);color:#b0a0ff}
-    .alop-wstep-label{font-size:13px;font-weight:500;color:#b8c8f0}
-    .alop-wstep.active .alop-wstep-label{color:#e8eeff}
-    .alop-wstep-divider{font-size:14px;color:rgba(255,255,255,.2)}
     /* DF/ORD info banner */
     .df-info-banner{background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:#b0a0ff;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     /* Modal dark fields */

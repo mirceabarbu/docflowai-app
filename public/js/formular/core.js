@@ -214,6 +214,25 @@ function p5toggle(){
   if(ptSub){ptSub.style.opacity=tabelActiv?'1':'.4';ptSub.style.pointerEvents=tabelActiv?'':'none';}
 }
 
+function _prefillPtFromVt() {
+  const srcRows = [...document.querySelectorAll('#n-vtbody tr')];
+  if (!srcRows.length) return;
+  srcRows.forEach((srcTr, i) => {
+    // Adaugă rând în ptbody dacă nu există
+    const existing = document.querySelectorAll('#n-ptbody tr');
+    if (!existing[i]) addNP();
+    const dstTr = document.querySelectorAll('#n-ptbody tr')[i];
+    if (!dstTr) return;
+    const progSrc = srcTr.querySelector('[data-f="program"]');
+    const ssiSrc  = srcTr.querySelector('[data-f="codSSI"]');
+    const progDst = dstTr.querySelector('[data-f="program"]');
+    const ssiDst  = dstTr.querySelector('[data-f="codSSI"]');
+    // Completează doar dacă câmpul destinație e gol
+    if (progSrc && progDst && !progDst.value) progDst.value = progSrc.value;
+    if (ssiSrc  && ssiDst  && !ssiDst.value)  ssiDst.value  = ssiSrc.value;
+  });
+}
+
 function p5SubToggle(el){
   const subs=['n-ck-sting','n-ck-faraplati','n-ck-cuplati'];
   if(el.checked){
@@ -230,6 +249,8 @@ function p5SubToggle(el){
     const activ=(faraplati||cuplati)&&!stingere;
     ptSub.style.opacity=activ?'1':'.4';ptSub.style.pointerEvents=activ?'':'none';
   }
+  // Auto-completare Program + Cod SSI din tabelul valori (Pct. 4)
+  if(cuplati) _prefillPtFromVt();
 }
 
 /* Col 7 = Col 5 + Col 6 (auto-calculat) */
