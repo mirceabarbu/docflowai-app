@@ -706,7 +706,7 @@
       while (sel.options.length > 1) sel.remove(1);
       var candidates = _leaveAllUsers.filter(function(u) {
         if (u.id === userId) return false;
-        if (userOrgId && u.org_id !== userOrgId) return false;
+        // org_id nu e filtrat — GET /users returnează deja useri din aceeași instituție
         if (u.leave && u.leave.delegate) return false; // NO CHAIN
         return true;
       });
