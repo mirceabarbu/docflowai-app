@@ -15,6 +15,37 @@ const ATRIBUTE = [
 ];
 let signerCounter = 0;
 
+// BLOC 4.3: helper care setează value/dataset/textContent pe option,
+// detectând concediul și marcând delegarea pentru auto-substituire la submit.
+function _tmplApplyUserToOption(opt, u) {
+  const onLeave = !!(u.leave?.onLeave);
+  const hasDelegate = !!(u.leave?.delegate?.email);
+
+  if (onLeave && hasDelegate) {
+    opt.value = u.leave.delegate.nume || u.leave.delegate.email;
+    opt.dataset.email = u.leave.delegate.email;
+    opt.dataset.functie = u.leave.delegate.functie || u.functie || '';
+    opt.dataset.delegateEmail = u.leave.delegate.email;
+    opt.dataset.delegateName = u.leave.delegate.nume || '';
+    opt.dataset.originalUserId = String(u.id);
+    opt.dataset.originalName = u.nume || '';
+    opt.dataset.originalEmail = u.email || '';
+    opt.textContent = `${u.nume || u.email} (concediu — semnează ${u.leave.delegate.nume})`;
+    opt.style.fontStyle = 'italic';
+  } else if (onLeave && !hasDelegate) {
+    opt.value = u.nume || '';
+    opt.dataset.email = u.email || '';
+    opt.disabled = true;
+    opt.textContent = `${u.nume || u.email} (concediu — fără delegat ⚠)`;
+    opt.style.color = '#999';
+  } else {
+    opt.value = u.nume || '';
+    opt.dataset.email = u.email || '';
+    opt.dataset.functie = u.functie || '';
+    opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
+  }
+}
+
 function buildAtribOptions(selected) {
   return ATRIBUTE.map(a => {
     const label = a === '__alt__' ? 'Alt atribut...' : a;
@@ -48,10 +79,7 @@ function refreshAllDropdowns(containerId) {
     (window._tmplUsers || []).forEach(u => {
       if (used.has(u.nume)) return; // ascunde utilizatorii deja selectați în alte rânduri
       const opt = document.createElement('option');
-      opt.value = u.nume || '';
-      opt.dataset.email = u.email || '';
-      opt.dataset.functie = u.functie || '';
-      opt.textContent = (u.nume || u.email) + (u.functie ? ' — ' + u.functie : '');
+      _tmplApplyUserToOption(opt, u);
       sel.appendChild(opt);
     });
 
@@ -372,8 +400,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEdit();});
         while (sel.options.length > 1) sel.remove(1);
         window._tmplUsers.forEach(u => {
           const opt = document.createElement('option');
-          opt.value = u.nume||''; opt.dataset.email = u.email||''; opt.dataset.functie = u.functie||'';
-          opt.textContent = (u.nume||u.email) + (u.functie?' — '+u.functie:'');
+          _tmplApplyUserToOption(opt, u);
           sel.appendChild(opt);
         });
 

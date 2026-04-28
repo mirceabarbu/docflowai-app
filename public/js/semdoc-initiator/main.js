@@ -400,10 +400,38 @@
         (window._dbUsers || []).forEach(u => {
           if (usedEmails.has(u.email || '')) return;
           const opt = document.createElement("option");
-          opt.value = u.nume || "";
-          opt.dataset.email = u.email || "";
-          opt.dataset.functie = u.functie || "";
-          opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
+
+          // BLOC 4.3: detectare concediu activ
+          const onLeave = !!(u.leave?.onLeave);
+          const hasDelegate = !!(u.leave?.delegate?.email);
+
+          if (onLeave && hasDelegate) {
+            // Userul e în concediu cu delegat → option special, semnează delegatul
+            opt.value = u.leave.delegate.nume || u.leave.delegate.email;
+            opt.dataset.email = u.leave.delegate.email;
+            opt.dataset.functie = u.leave.delegate.functie || u.functie || "";
+            opt.dataset.delegateEmail = u.leave.delegate.email;
+            opt.dataset.delegateName = u.leave.delegate.nume || "";
+            opt.dataset.originalUserId = String(u.id);
+            opt.dataset.originalName = u.nume || "";
+            opt.dataset.originalEmail = u.email || "";
+            opt.textContent = `${u.nume || u.email} (concediu — semnează ${u.leave.delegate.nume})`;
+            opt.style.fontStyle = "italic";
+          } else if (onLeave && !hasDelegate) {
+            // În concediu fără delegat → option dezactivat (nu poate fi ales)
+            opt.value = u.nume || "";
+            opt.dataset.email = u.email || "";
+            opt.disabled = true;
+            opt.textContent = `${u.nume || u.email} (concediu — fără delegat ⚠)`;
+            opt.style.color = "#999";
+          } else {
+            // User normal — comportament neschimbat
+            opt.value = u.nume || "";
+            opt.dataset.email = u.email || "";
+            opt.dataset.functie = u.functie || "";
+            opt.textContent = (u.nume || u.email) + (u.functie ? " — " + u.functie : "");
+          }
+
           sel.appendChild(opt);
         });
       }
@@ -1672,7 +1700,15 @@ async function signFromFluxuri(flowId) {
           const ancoreFieldName = ancoreSel?.value?.trim() || null;
           // Email citit din data-email al opțiunii selectate (nu mai avem input vizibil)
           const nameSel2 = tr.querySelector(".name-select");
-          const emailVal = (nameSel2?.options[nameSel2?.selectedIndex]?.dataset?.email || '').trim();
+          const selectedOpt = nameSel2?.options[nameSel2?.selectedIndex];
+          const emailVal = (selectedOpt?.dataset?.email || '').trim();
+
+          // BLOC 4.3: detectare delegare (userul ales era în concediu)
+          const delegatedForUserId = selectedOpt?.dataset?.originalUserId
+            ? Number(selectedOpt.dataset.originalUserId) : null;
+          const delegatedForName = selectedOpt?.dataset?.originalName || null;
+          const delegatedForEmail = selectedOpt?.dataset?.originalEmail || null;
+
           return {
             order: i + 1,
             rol: (() => { const sel = tr.querySelector(".rol"); if (sel.value === "__alt__") { return tr.querySelector(".rolCustom").value.trim().toUpperCase() || "__alt__"; } return sel.value; })(),
@@ -1681,6 +1717,12 @@ async function signFromFluxuri(flowId) {
             email: emailVal,
             // ancoreFieldName: câmpul AcroForm — prezent doar pentru flowType='ancore'
             ...(ancoreFieldName ? { ancoreFieldName } : {}),
+            // BLOC 4.3: marker delegare (doar dacă originalul e în concediu)
+            ...(delegatedForUserId ? {
+              delegatedForUserId,
+              delegatedForName,
+              delegatedForEmail,
+            } : {}),
           };
         }).filter(s => s.rol && (s.name || s.email));
       }

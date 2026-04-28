@@ -5,6 +5,7 @@
 import { Router, json as expressJson } from 'express';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
+import { getActiveSigner, getLeaveInfo } from '../../services/user-leave.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
@@ -289,6 +290,8 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
     let nextIdx = -1, bestOrder = Infinity;
     for (let i = 0; i < signers.length; i++) { const o = Number(signers[i].order) || 0; if (signers[i].status !== 'signed' && o > currentOrder && o < bestOrder) { bestOrder = o; nextIdx = i; } }
     if (nextIdx !== -1) signers.forEach((s, i) => { if (s.status !== 'signed') s.status = i === nextIdx ? 'current' : 'pending'; });
+    // BLOC 4.3: auto-redirect dacă noul semnatar curent e în concediu cu delegat
+    if (nextIdx !== -1) await _autoRedirectIfOnLeave(flowId, data, signers);
     data.signers = signers;
     const allDone = signers.every(s => s.status === 'signed' && s.pdfUploaded);
     if (allDone) { data.completed = true; data.status = 'completed'; data.completedAt = new Date().toISOString(); /* urgent păstrat intenționat — badge URGENT rămâne vizibil în admin și după finalizare */ data.events.push({ at: new Date().toISOString(), type: 'FLOW_COMPLETED', by: 'system' }); }
@@ -405,5 +408,82 @@ router.post('/flows/:flowId/regenerate-token', async (req, res) => {
 
 // ── GET /my-flows ─────────────────────────────────────────────────────────
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOC 4.3 — Auto-redirect la semnatar în concediu
+// Apelat după ce un semnatar a uploadat PDF semnat și fluxul s-a mutat la
+// următorul semnatar (status='current'). Verifică dacă noul semnatar curent
+// e în concediu și are delegat — dacă DA, transferă slot-ul automat.
+// ════════════════════════════════════════════════════════════════════════════
+async function _autoRedirectIfOnLeave(flowId, data, signers) {
+  try {
+    const currentIdx = signers.findIndex(s => s.status === 'current');
+    if (currentIdx === -1) return false;
+    const cur = signers[currentIdx];
+
+    // Lookup user după email
+    const { rows: uRows } = await pool.query(
+      'SELECT id FROM users WHERE email=$1',
+      [(cur.email || '').toLowerCase()]
+    );
+    if (!uRows.length) return false;
+    const userId = uRows[0].id;
+
+    // Verifică concediu activ + delegat
+    const active = await getActiveSigner(userId);
+    if (!active || !active.isDelegate) return false;
+
+    // Lookup datele delegatului
+    const { rows: dRows } = await pool.query(
+      'SELECT id, nume, email, functie FROM users WHERE id=$1',
+      [active.userId]
+    );
+    if (!dRows.length) return false;
+    const del = dRows[0];
+
+    // Substituție în slot
+    const originalName = cur.name;
+    const originalEmail = cur.email;
+    cur.name = del.nume || del.email;
+    cur.email = del.email;
+    cur.functie = del.functie || cur.functie;
+    cur.delegatedForUserId = userId;
+    cur.delegatedForName = originalName;
+    cur.delegatedForEmail = originalEmail;
+    cur.token = crypto.randomBytes(16).toString('hex'); // token nou pentru delegat
+    cur.tokenCreatedAt = new Date().toISOString();
+    cur.emailSent = false;
+    cur.notifiedAt = null;
+    cur.delegatedFrom = {
+      name: originalName,
+      email: originalEmail,
+      reason: 'auto: utilizator în concediu',
+      at: new Date().toISOString(),
+      by: 'system',
+    };
+
+    data.events = Array.isArray(data.events) ? data.events : [];
+    data.events.push({
+      at: new Date().toISOString(),
+      type: 'AUTO_DELEGATED_LEAVE',
+      from: originalEmail,
+      to: del.email,
+      order: cur.order,
+    });
+
+    writeAuditEvent({
+      flowId, orgId: data.orgId,
+      eventType: 'AUTO_DELEGATED_LEAVE',
+      actorEmail: 'system',
+      payload: { from: originalEmail, to: del.email, order: cur.order },
+    });
+
+    logger.info(`🔁 Auto-delegated flow ${flowId} from ${originalEmail} to ${del.email} (on leave)`);
+    return true;
+  } catch (e) {
+    logger.warn({ err: e, flowId }, '_autoRedirectIfOnLeave failed (non-fatal)');
+    return false;
+  }
+}
 
 export default router;
