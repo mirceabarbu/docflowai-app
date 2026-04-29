@@ -311,12 +311,6 @@ function updateRevizieHeaderBadge(ft, doc){
     badge.className=`df-revizie-badge${nr>0?' revizie-activa':''}`;
   }
   if(nrEl)nrEl.textContent=nr>0?`Revizia ${nr} — document revizuit`:`Revizia inițială`;
-  const tabBadge=document.getElementById('ltab-df-revizie-badge');
-  if(tabBadge){
-    tabBadge.textContent=`R${nr}`;
-    tabBadge.className=`df-revizie-badge${nr>0?' revizie-activa':''}`;
-    tabBadge.style.display='';
-  }
 }
 
 // ── Render actions bar ────────────────────────────────────────────────────────
