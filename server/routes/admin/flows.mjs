@@ -500,12 +500,11 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         if (s.refuseReason) txt += ` — REFUZ: ${s.refuseReason}`;
         if (s.delegatedFrom) {
           const fd = s.delegatedFrom;
-          const fromLine = [fd.name, fd.functie].filter(Boolean).join(' - ');
-          const functieInfo = (fd.functie_to || s.functie)
-            ? `${fd.functie_to || s.functie} — delegat de: ${fromLine}`
-            : `delegat de: ${fromLine}`;
-          txt += ` — ${functieInfo}`;
-          if (fd.reason) txt += ` [Motiv: ${fd.reason}]`;
+          const fdName = fd.name || fd.email || '';
+          const fdFunctie = fd.functie ? ` — ${fd.functie}` : '';
+          const fdReason = fd.reason && fd.reason !== 'auto: utilizator în concediu'
+            ? ` [${fd.reason}]` : '';
+          txt += ` — DELEGAT DE: ${fdName}${fdFunctie}${fdReason}`;
         }
         txt += '\n';
       }
@@ -645,14 +644,14 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         // Ordine cronologica: Delegat de (daca e cazul) → Notificat → Descarcat → Incarcat → Semnat/Refuzat
         if (s.delegatedFrom) {
           const fd = s.delegatedFrom;
-          const fromLine = [fd.name, fd.functie].filter(Boolean).join(' - ');
-          const dl1 = (fd.functie_to || s.functie)
-            ? ro(`${fd.functie_to || s.functie} — delegat de: ${fromLine}`)
-            : ro(`Delegat de: ${fromLine}`);
-          page.drawText(dl1, { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 });
+          const fdName = fd.name || fd.email || '';
+          const fdFunctie = fd.functie ? ` — ${fd.functie}` : '';
+          const fdLine = ro(`Delegat de: ${fdName}${fdFunctie}`);
+          page.drawText(fdLine, { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 });
           y -= 12;
-          if (fd.reason) {
-            page.drawText(ro(`  Motiv delegare: ${fd.reason}`), { x:MARGIN+12, y, size:7.5, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 });
+          const reason = fd.reason && fd.reason !== 'auto: utilizator în concediu' ? fd.reason : null;
+          if (reason) {
+            page.drawText(ro(`Temei: ${reason}`), { x:MARGIN+12, y, size:7.5, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 });
             y -= 12;
           }
         }

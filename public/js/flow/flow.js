@@ -165,9 +165,13 @@
 
       const _df1 = s.delegatedFrom;
       const _fromLabel1 = _df1 ? [_df1.name, _df1.functie].filter(Boolean).join(' - ') : '';
-      const _tooltip1 = _df1 ? `Delegat de ${_fromLabel1}${_df1.reason ? ' — Motiv: ' + _df1.reason : ''}` : '';
+      const _isAutoReason1 = _df1 && _df1.reason === 'auto: utilizator în concediu';
+      const _reasonStr1 = (_df1?.reason && !_isAutoReason1) ? _df1.reason : '';
+      const _tooltip1 = _df1
+        ? `Delegat de ${_fromLabel1}${_reasonStr1 ? ' · ' + _reasonStr1 : ''}`
+        : '';
       const delegBadge = _df1 && _df1.name
-        ? `<span class="tl-actor" title="${esc(_tooltip1)}">👥 delegat de ${esc(_fromLabel1)}</span>`
+        ? `<span class="tl-actor" title="${esc(_tooltip1)}">🔄 delegat de ${esc(_fromLabel1)}${_reasonStr1 ? ' · ' + esc(_reasonStr1) : ''}</span>`
         : (s.delegatedForName
           ? `<span class="tl-actor" title="În delegare pentru ${esc(s.delegatedForName)}">👥 în delegare pentru ${esc(s.delegatedForName)}</span>`
           : '');
@@ -355,11 +359,13 @@
       // Badge delegare
       const _df = s.delegatedFrom;
       const _fromLabel = _df ? [_df.name, _df.functie].filter(Boolean).join(' - ') : '';
+      const _isAutoReason = _df && _df.reason === 'auto: utilizator în concediu';
+      const _reasonStr = (_df?.reason && !_isAutoReason) ? _df.reason : '';
       const _tooltip = _df
-        ? `Delegat de ${_fromLabel}${_df.reason ? ' — Motiv: ' + _df.reason : ''}`
+        ? `Delegat de: ${_fromLabel}${_reasonStr ? ' · ' + _reasonStr : ''}`
         : '';
       const delegBadge = _df && _df.name
-        ? `<div style="margin-top:5px;"><span class="delegation-badge" title="${esc(_tooltip)}">🔄 delegat de ${esc(_fromLabel)}</span></div>`
+        ? `<div style="margin-top:5px;"><span class="delegation-badge" title="${esc(_tooltip)}">🔄 delegat${_reasonStr ? ' · ' + esc(_reasonStr) : ' de ' + esc(_fromLabel)}</span></div>`
         : (s.delegatedForName
           ? `<div style="margin-top:5px;"><span class="delegation-badge" title="În delegare pentru ${esc(s.delegatedForName)}">👥 în delegare pentru ${esc(s.delegatedForName)}</span></div>`
           : '');
