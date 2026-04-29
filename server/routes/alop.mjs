@@ -351,7 +351,14 @@ router.get('/api/alop/:id', async (req, res) => {
         a.plata_suma_efectiva AS op_valoare,
         COALESCE(a.suma_totala_platita,0) + COALESCE(a.plata_suma_efectiva,0) AS suma_platita_total,
         a.ciclu_curent,
-        cicluri.cicluri_json AS cicluri_istorice
+        cicluri.cicluri_json AS cicluri_istorice,
+        EXISTS(
+          SELECT 1 FROM formulare_df fd2
+          WHERE fd2.nr_unic_inreg = df.nr_unic_inreg
+            AND fd2.org_id = a.org_id
+            AND fd2.status IN ('draft','pending_p2','completed','returnat','transmis_flux','de_revizuit')
+            AND fd2.deleted_at IS NULL
+        ) AS df_revizie_in_lucru
       FROM alop_instances a
       LEFT JOIN users        u   ON u.id   = a.created_by
       LEFT JOIN formulare_df df  ON df.id  = a.df_id

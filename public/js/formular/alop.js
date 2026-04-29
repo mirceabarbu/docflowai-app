@@ -294,12 +294,22 @@ function renderAlopDetail(a,container){
   });
   if(!isCompleted&&!isCancelled&&isAlopOwner){
     const id=esc(a.id);
-    if(!a.df_id){
+    const dfInLucru=!!a.df_revizie_in_lucru;
+    const dfStatus=a.df_status||'';
+    if(dfInLucru){
+      actionsHtml+=`<button class="df-action-btn" disabled title="Există deja o revizie DF în lucru — finalizați revizia curentă">📋 Revizie DF în lucru...</button>`;
+    }else if(!a.df_id){
       actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
+    }else if(dfStatus==='neaprobat'){
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Revizuiește DF (neaprobat)</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id){
       actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem">🔄 DF pe fluxul de semnare — în așteptare</span>`;
+    }else if(['aprobat','transmis_flux','de_revizuit'].includes(dfStatus)){
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Deschide DF</button>`;
     }else if(a.df_id&&!a.df_flow_id){
       actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Deschide DF</button>`;
+    }else{
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
     }
     if(a.status==='lichidare'&&!a.lichidare_confirmed_at){
       actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmLichidare('${id}')">✔️ Confirmă Lichidarea</button>`;

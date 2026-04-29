@@ -151,7 +151,7 @@
   <button class="df-subtab active" id="ltab-rfn"    onclick="switchListTab('rfn')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-clipboard"/></svg> Referat de necesitate</button>
   <button class="df-subtab"        id="ltab-nfi"    onclick="switchListTab('nfi')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-edit-pencil"/></svg> Notă de fundamentare (investiții)</button>
   <button class="df-subtab"        id="ltab-alop"   onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-bar-chart"/></svg> ALOP</button>
-  <button class="df-subtab"        id="ltab-df"     onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-file-text"/></svg> Document de Fundamentare</button>
+  <button class="df-subtab"        id="ltab-df"     onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-file-text"/></svg> Document de Fundamentare<span id="ltab-df-revizie-badge" class="df-revizie-badge" style="display:none;margin-left:6px">R0</span></button>
   <button class="df-subtab"        id="ltab-ord"    onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-file-text"/></svg> Ordonanțare de Plată</button>
   <button class="df-subtab"        id="ltab-verify" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.370#ico-shield"/></svg> Verificare furnizor</button>
 </div>
@@ -658,6 +658,12 @@
 <div id="banner-an-urmator-notafd" style="display:none;max-width:1200px;margin:4px auto 6px;padding:10px 16px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:8px;font-size:.82rem;color:#93c5fd">ℹ️ Revizie pentru angajamente an următor — înregistrare în max. 3 zile lucrătoare conform OMF 1140/2025</div>
 <div id="motiv-bar-notafd" style="display:none;max-width:1200px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-notafd"></span></div>
 <div class="actions" id="actions-notafd"></div>
+
+<div id="df-revizie-header-bar" style="display:none;margin-bottom:8px;align-items:center;gap:10px">
+  <span style="font-size:.82rem;color:var(--df-text-3)">Document de Fundamentare</span>
+  <span id="df-revizie-header-badge" class="df-revizie-badge">R0</span>
+  <span id="df-revizie-header-nr" style="font-size:.78rem;color:var(--df-text-3)"></span>
+</div>
 
 <div class="df-progress">
   <div class="df-step active" id="dfp-date">Date generale</div>

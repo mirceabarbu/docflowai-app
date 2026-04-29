@@ -27,7 +27,7 @@ function ftType(ft){return ft==='ordnt'?'ord':'df';}
 // ── Status label ─────────────────────────────────────────────────────────────
 function stLabel(s,aprobat){
   if(aprobat)return['aprobat','✔ Aprobat'];
-  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La Responsabil CAB'],completed:['completed','✅ Complet'],aprobat:['aprobat','🟢 Aprobat'],transmis_flux:['transmis_flux','🔄 Pe flux'],returnat:['returnat','↩ Returnat'],respins:['respins','❌ Respins']}[s]||['draft',s];
+  return{draft:['draft','● Draft'],pending_p2:['pending','⏳ La Responsabil CAB'],completed:['completed','✅ Complet'],aprobat:['aprobat','🟢 Aprobat'],transmis_flux:['transmis_flux','🔄 Pe flux'],returnat:['returnat','↩ Returnat'],respins:['respins','❌ Respins'],neaprobat:['neaprobat','❌ Neaprobat'],de_revizuit:['de_revizuit','🔄 De revizuit']}[s]||['draft',s];
 }
 
 // ── Colectare date formular → DB ──────────────────────────────────────────────
@@ -298,6 +298,27 @@ function applyOrdRoleState(status,role){
   _dfSetAlopCtx('ordnt');
 }
 
+// ── Badge revizie în header / lateral tab ───────────────────────────────────
+function updateRevizieHeaderBadge(ft, doc){
+  if(ft!=='notafd')return;
+  const nr=doc.revizie_nr??0;
+  const hdr=document.getElementById('df-revizie-header-bar');
+  const badge=document.getElementById('df-revizie-header-badge');
+  const nrEl=document.getElementById('df-revizie-header-nr');
+  if(hdr)hdr.style.display='flex';
+  if(badge){
+    badge.textContent=`R${nr}`;
+    badge.className=`df-revizie-badge${nr>0?' revizie-activa':''}`;
+  }
+  if(nrEl)nrEl.textContent=nr>0?`Revizia ${nr} — document revizuit`:`Revizia inițială`;
+  const tabBadge=document.getElementById('ltab-df-revizie-badge');
+  if(tabBadge){
+    tabBadge.textContent=`R${nr}`;
+    tabBadge.className=`df-revizie-badge${nr>0?' revizie-activa':''}`;
+    tabBadge.style.display='';
+  }
+}
+
 // ── Render actions bar ────────────────────────────────────────────────────────
 function renderActions(ft){
   const div=document.getElementById('actions-'+ft);if(!div)return;
@@ -309,6 +330,18 @@ function renderActions(ft){
   const bannerAnUrm=document.getElementById('banner-an-urmator-notafd');
   if(bannerAnUrm) bannerAnUrm.style.display=(ft==='notafd'&&ST.docRevizieAnUrmator?.[ft])?'':'none';
 
+  if(ft==='notafd'&&ST.docStatus[ft]==='neaprobat'){
+    const revNr=ST.docRevizieNr?.[ft]??0;
+    div.innerHTML=`<span style="color:#f87171;font-size:.82rem;margin-right:8px">❌ DF neaprobat de semnatar — fluxul a fost refuzat (R${revNr}).</span>`
+      +B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`);
+    return;
+  }
+  if(ft==='notafd'&&ST.docStatus[ft]==='de_revizuit'){
+    div.innerHTML=`<span style="color:#fbbf24;font-size:.82rem;margin-right:8px">🔄 Documentul a fost trimis înapoi din flux pentru revizuire.</span>`
+      +B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
+      +B('','↺ Resetează câmpuri',`resetF('${ft}')`);
+    return;
+  }
   if(ST.docAprobat?.[ft]){
     const fid=ST.docFlowId?.[ft];
     const revNr=ST.docRevizieNr?.[ft]||0;
@@ -384,6 +417,7 @@ async function openDoc(ft,id){
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
+    updateRevizieHeaderBadge(ft, doc);
 
     // Prefill plati_anterioare ciclu 2+ — suma din cicluri finalizate anterior
     if(ft==='ordnt'){

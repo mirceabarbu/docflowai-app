@@ -291,3 +291,22 @@
 .df-msg{font-size:.82rem;padding:7px 12px;border-radius:8px;min-height:20px;}
 .df-msg.ok{background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.28);color:#7cf0e0;}
 .df-msg.err{background:rgba(255,80,80,.12);border:1px solid rgba(255,80,80,.28);color:#ffb3b3;}
+
+/* ── Badge revizie DF ────────────────────────────────────────────────────── */
+.df-revizie-badge{
+  display:inline-flex;align-items:center;
+  padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;
+  background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);
+  color:#93b4f5;vertical-align:middle;
+}
+.df-revizie-badge.revizie-activa{
+  background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.3);color:#fbbf24;
+}
+
+/* ── Statusuri noi DF în badge list ──────────────────────────────────────── */
+.stbadge.st-neaprobat{
+  background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:#f87171;
+}
+.stbadge.st-de-revizuit{
+  background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fbbf24;
+}

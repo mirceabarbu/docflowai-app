@@ -312,10 +312,12 @@ async function loadList(){
 function _stBadge(status){
   const map={draft:'📝 Draft',pending_p2:'📤 La Responsabil CAB',completed:'✅ Completat',
     generat_pdf:'📄 PDF generat',transmis_flux:'🔄 Trimis flux',
-    aprobat:'🟢 Aprobat',respins:'❌ Respins',anulat:'🚫 Anulat',returnat:'↩ Returnat'};
+    aprobat:'🟢 Aprobat',respins:'❌ Respins',anulat:'🚫 Anulat',returnat:'↩ Returnat',
+    neaprobat:'❌ Neaprobat',de_revizuit:'🔄 De revizuit'};
   const cls={draft:'st-draft',pending_p2:'st-transmis_p2',completed:'st-completat',
     generat_pdf:'st-generat_pdf',transmis_flux:'st-transmis_flux',
-    aprobat:'st-aprobat',respins:'st-respins',anulat:'st-anulat',returnat:'st-returnat'};
+    aprobat:'st-aprobat',respins:'st-respins',anulat:'st-anulat',returnat:'st-returnat',
+    neaprobat:'st-neaprobat',de_revizuit:'st-de-revizuit'};
   return`<span class="stbadge ${cls[status]||'st-draft'}">${esc(map[status]||status)}</span>`;
 }
 function _fmtDate(iso){
@@ -334,7 +336,9 @@ function _renderLstTable(rows,type){
     const safeId=esc(row.id);
     const nr=esc(row.nr||row.id.slice(0,8));
     const titlu=esc(row.titlu||'');
-    const revBadgeLst=type==='df'&&row.revizie_nr>0?`<span class="df-revizie-badge" style="vertical-align:middle;margin-left:4px">Rev. ${row.revizie_nr}</span>`:'';
+    const revBadgeLst=type==='df'
+      ?`<span class="df-revizie-badge${(row.revizie_nr||0)>0?' revizie-activa':''}" style="vertical-align:middle;margin-left:4px">R${row.revizie_nr||0}</span>`
+      :'';
     return`<tr>
       <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}</a>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>

@@ -114,6 +114,14 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
       sent.add(r.email);
       await _notify({ userEmail: r.email, flowId, type: 'REFUSED', title: '⛔ Document refuzat', message: refuseMsg, waParams: { docName: data.docName, refuserName, reason: refuseReason }, urgent: !!(data.urgent) });
     }
+    // FIX state machine: marchează DF ca neaprobat când fluxul e refuzat
+    try {
+      await pool.query(
+        `UPDATE formulare_df SET status='neaprobat', updated_at=NOW()
+         WHERE flow_id=$1 AND status='transmis_flux'`,
+        [flowId]
+      );
+    } catch(_) { /* non-fatal */ }
     return res.json({ ok: true, refused: true });
   } catch(e) { logger.error({ err: e }, 'refuse error:'); return res.status(500).json({ error: 'server_error' }); }
 });

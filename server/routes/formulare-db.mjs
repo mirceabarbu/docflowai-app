@@ -310,7 +310,7 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
     const doc = existing[0];
     if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
       return res.status(403).json({ error: 'forbidden' });
-    if (!['draft','returnat'].includes(doc.status))
+    if (!['draft','returnat','de_revizuit'].includes(doc.status))
       return res.status(409).json({ error: 'document_not_draft', status: doc.status });
 
     // Verifică că P2 e din același org
@@ -508,9 +508,9 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
     if (df.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
       return res.status(403).json({ error: 'forbidden' });
 
-    // Doar DF-uri aprobate (flux de semnare finalizat) pot fi revizuite
-    if (!df.aprobat)
-      return res.status(400).json({ error: 'Doar documentele aprobate pot fi revizuite' });
+    // Doar DF-uri aprobate (flux de semnare finalizat) sau neaprobate (refuz) pot fi revizuite
+    if (!df.aprobat && df.status !== 'neaprobat')
+      return res.status(400).json({ error: 'Doar documentele aprobate sau neaprobate pot fi revizuite' });
 
     const { motiv } = req.body || {};
 
@@ -529,6 +529,21 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
       ...r,
       valt_rev_prec: r.valt_actualiz || 0,
       influente: 0,
+    }));
+
+    // Transformă rows_ctrl — c5/c8 (af_rvz_prc) = c7/c10 (act) din revizia precedentă, c6/c9 (influente) = 0
+    const rowsCtrlOrig = Array.isArray(df.rows_ctrl)
+      ? df.rows_ctrl
+      : JSON.parse(df.rows_ctrl || '[]');
+
+    const rowsCtrlNoi = rowsCtrlOrig.map(r => ({
+      ...r,
+      sum_rezv_crdt_ang_af_rvz_prc: r.sum_rezv_crdt_ang_act || 0,
+      influente_c6: 0,
+      sum_rezv_crdt_ang_act: r.sum_rezv_crdt_ang_act || 0,
+      sum_rezv_crdt_bug_af_rvz_prc: r.sum_rezv_crdt_bug_act || 0,
+      influente_c9: 0,
+      sum_rezv_crdt_bug_act: r.sum_rezv_crdt_bug_act || 0,
     }));
 
     // FIX 1: Detectează dacă revizia e pentru "an următor" (checkbox ckbx_ang_leg_emise_ct_an_urm)
@@ -568,10 +583,10 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
         ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
         ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
         $6::boolean, $7::numeric,
-        '[]'::jsonb
+        $8::jsonb
       FROM formulare_df WHERE id = $1
       RETURNING *
-    `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '', JSON.stringify(rowsValNoi), isAnUrmator, totalValPrec]);
+    `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '', JSON.stringify(rowsValNoi), isAnUrmator, totalValPrec, JSON.stringify(rowsCtrlNoi)]);
 
     const nou = nouRows[0];
 
