@@ -397,6 +397,10 @@
       function populateSelectGlobal(sel) {
         while (sel.options.length > 1) sel.remove(1);
         const usedEmails = getUsedEmails(sel);
+        const _fmtROd = (s) => {
+          const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+          return m ? `${m[3]}.${m[2]}.${m[1]}` : (s || '');
+        };
         (window._dbUsers || []).forEach(u => {
           if (usedEmails.has(u.email || '')) return;
           const opt = document.createElement("option");
@@ -415,13 +419,8 @@
             opt.dataset.originalUserId = String(u.id);
             opt.dataset.originalName = u.nume || "";
             opt.dataset.originalEmail = u.email || "";
-            const _fmtRO = (s) => {
-              if (!s) return '';
-              const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
-              return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
-            };
             const _lp = (u.leave.leaveStart && u.leave.leaveEnd)
-              ? `${_fmtRO(u.leave.leaveStart)} – ${_fmtRO(u.leave.leaveEnd)}`
+              ? `${_fmtROd(u.leave.leaveStart)} – ${_fmtROd(u.leave.leaveEnd)}`
               : '';
             const _ref = u.leave.leaveReason ? ` · ${u.leave.leaveReason}` : '';
             const _origF = u.functie ? ` — ${u.functie}` : '';
@@ -437,7 +436,7 @@
             opt.dataset.email = u.email || "";
             opt.disabled = true;
             const _lp2 = (u.leave.leaveStart && u.leave.leaveEnd)
-              ? `${_fmtRO(u.leave.leaveStart)} – ${_fmtRO(u.leave.leaveEnd)}`
+              ? `${_fmtROd(u.leave.leaveStart)} – ${_fmtROd(u.leave.leaveEnd)}`
               : '';
             const _ref2 = u.leave.leaveReason ? ` · ${u.leave.leaveReason}` : '';
             const _origF2 = u.functie ? ` — ${u.functie}` : '';
@@ -609,7 +608,9 @@
                 ? (window._dbUsers || []).find(u => u.id === _origId)
                 : null;
               if (_orig?.leave?.onLeave) {
-                const _lp = _sOpt.dataset.leavePeriod || '';
+                const _fmtROd = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}.${m[2]}.${m[1]}` : (s || ''); };
+                const _lp = (_orig.leave.leaveStart && _orig.leave.leaveEnd)
+                  ? `${_fmtROd(_orig.leave.leaveStart)} – ${_fmtROd(_orig.leave.leaveEnd)}` : '';
                 const _ref = _sOpt.dataset.leaveReason || '';
                 const _origF = _orig.functie ? ` — ${_orig.functie}` : '';
                 _leaveNote.style.display = '';
