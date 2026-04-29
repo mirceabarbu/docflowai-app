@@ -357,7 +357,7 @@
       <input id="flowSearch" placeholder="Caută după ID, document sau email..." style="width:100%;box-sizing:border-box;padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.85rem;outline:none;"/>
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-      <select id="flowStatusFilter" onchange="loadFlowsList(false,1)" style="width:160px;flex-shrink:0;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;">
+      <select id="flowStatusFilter" onchange="loadFlowsList(false,1)" class="df-filter-select" style="flex-shrink:0;width:160px;">
         <option value="">Toate statusurile</option>
         <option value="active">Active</option>
         <option value="done">Finalizate</option>
@@ -365,10 +365,10 @@
         <option value="cancelled">Anulate</option>
         <option value="archived">💾 Arhivate în Drive</option>
       </select>
-      <select id="flowInstFilter" onchange="onFlowInstChange()" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;">
+      <select id="flowInstFilter" onchange="onFlowInstChange()" class="df-filter-select" style="flex:1;min-width:0;">
         <option value="">Toate instituțiile</option>
       </select>
-      <select id="flowDeptFilter" onchange="loadFlowsList(false,1)" style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.83rem;outline:none;min-width:0;" disabled>
+      <select id="flowDeptFilter" onchange="loadFlowsList(false,1)" class="df-filter-select" style="flex:1;min-width:0;" disabled>
         <option value="">Toate compartimentele</option>
       </select>
       <button class="df-action-btn success" onclick="exportFlowsCSV()" style="flex-shrink:0;" title="Exportă CSV"><svg class="df-ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> CSV</button>
@@ -419,10 +419,10 @@
         <button class="df-action-btn" onclick="verifyDriveConn()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-link"/></svg>Test Drive</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <select id="archiveInstFilter" onchange="onArchiveInstChange()" style="flex:1;min-width:180px;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.82rem;outline:none;">
+        <select id="archiveInstFilter" onchange="onArchiveInstChange()" class="df-filter-select" style="flex:1;min-width:180px;">
           <option value="">Toate instituțiile</option>
         </select>
-        <select id="archiveDeptFilter" style="flex:1;min-width:180px;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#eaf0ff;font-size:.82rem;outline:none;" disabled>
+        <select id="archiveDeptFilter" class="df-filter-select" style="flex:1;min-width:180px;" disabled>
           <option value="">Toate compartimentele</option>
         </select>
       </div>
@@ -455,10 +455,10 @@
         <button class="df-action-btn lg" onclick="previewCleanOld()"><svg class="df-ic"><use href="/icons.svg?v=3.9.370#ico-search"/></svg>Previzualizare</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-        <select id="delInstFilter" onchange="onDelInstChange()" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;">
+        <select id="delInstFilter" onchange="onDelInstChange()" class="df-filter-select" style="flex:1;min-width:140px;">
           <option value="">Toate instituțiile</option>
         </select>
-        <select id="delDeptFilter" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;" disabled>
+        <select id="delDeptFilter" class="df-filter-select" style="flex:1;min-width:140px;" disabled>
           <option value="">Toate compartimentele</option>
         </select>
       </div>
@@ -469,10 +469,10 @@
       <div style="font-weight:700;margin-bottom:6px;color:#ffaaaa;">💣 Șterge TOATE fluxurile</div>
       <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px;">Acțiune <strong style="color:#ffaaaa;">ireversibilă</strong> — elimină complet toate fluxurile din baza de date, inclusiv PDF-urile nearkhivate.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <select id="allInstFilter" onchange="onAllInstChange()" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,80,80,.2);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;">
+        <select id="allInstFilter" onchange="onAllInstChange()" class="df-filter-select" style="flex:1;min-width:140px;border-color:rgba(255,80,80,.25);">
           <option value="">Toate instituțiile</option>
         </select>
-        <select id="allDeptFilter" style="flex:1;min-width:140px;padding:6px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,80,80,.2);border-radius:7px;color:#eaf0ff;font-size:.78rem;outline:none;" disabled>
+        <select id="allDeptFilter" class="df-filter-select" style="flex:1;min-width:140px;" disabled>
           <option value="">Toate compartimentele</option>
         </select>
       </div>
@@ -559,22 +559,19 @@
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
       <div>
         <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Instituție</label>
-        <select id="rptInst" onchange="onRptInstChange()"
-          style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.82rem;">
+        <select id="rptInst" onchange="onRptInstChange()" class="df-filter-select">
           <option value="">— Toate instituțiile —</option>
         </select>
       </div>
       <div>
         <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Compartiment</label>
-        <select id="rptDept" disabled onchange="onRptDeptChange()"
-          style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.82rem;">
+        <select id="rptDept" disabled onchange="onRptDeptChange()" class="df-filter-select">
           <option value="">— Toate compartimentele —</option>
         </select>
       </div>
       <div>
         <label style="display:block;font-size:.76rem;color:var(--muted);margin-bottom:5px;">Utilizator</label>
-        <select id="rptUser" onchange="onRptUserChange()"
-          style="width:100%;padding:9px 12px;background:rgba(15,23,49,.9);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.82rem;">
+        <select id="rptUser" onchange="onRptUserChange()" class="df-filter-select">
           <option value="">— Toți utilizatorii —</option>
         </select>
       </div>
