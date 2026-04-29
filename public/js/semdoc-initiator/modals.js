@@ -25,7 +25,9 @@ async function submitChangePwd(){
   btn.disabled=true;btn.textContent='Se salvează...';
   try{
     // SEC-01: token din cookie HttpOnly — eliminat tok
-    const r=await fetch('/auth/change-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json','X-CSRF-Token':typeof getCsrf==='function'?getCsrf():(window._csrfToken||'')},body:JSON.stringify({current_password:cur,new_password:nw})});
+    // _apiFetch (→ window.docflow.apiFetch din notif-widget) face auto-refresh la 401
+    // și auto-retry pe 403 csrf_invalid; trimite credentials:'include' și CSRF automat.
+    const r=await (window._apiFetch||fetch)('/auth/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});
     const d=await r.json();
     if(r.ok){
       msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';btn.textContent='Salvează';
@@ -33,7 +35,10 @@ async function submitChangePwd(){
       const banner=document.getElementById('forcePwdBanner');if(banner)banner.style.display='none';
       setTimeout(closeChangePwdModal,1800);
     }
-    else{msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.':'Eroare.');btn.disabled=false;btn.textContent='Salvează';}
+    else{msg.style.color='#f28b82';msg.textContent=d.message||(d.error==='wrong_password'?'Parola curentă incorectă.'
+      :d.error==='token_invalid_or_expired'?'Sesiunea a expirat. Reîncărcați pagina.'
+      :d.error==='unauthorized'?'Sesiunea a expirat. Reîncărcați pagina.'
+      :`Eroare (${d.error||'necunoscută'}). Reîncărcați pagina.`);btn.disabled=false;btn.textContent='Salvează';}
   } catch(e){ console.error(e); msg.style.color='#f28b82'; msg.textContent='Eroare de rețea.'; btn.disabled=false; btn.textContent='Salvează'; }
 }
 
