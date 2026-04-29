@@ -208,6 +208,29 @@ const createFlow = async (req, res) => {
       logger.warn({ err: autoErr }, 'createFlow auto-redirect failed (non-fatal)');
     }
 
+    // BLOC 4.4: populează delegatedFrom pentru orice semnatar cu delegatedForUserId
+    // (setat din UI sau din auto-redirect de mai sus). UI trimite delegatedForUserId
+    // dar nu delegatedFrom — fără acest bloc cartușul PAdES, trust report, timeline,
+    // badge nu au info delegare.
+    for (const s of normalizedSigners) {
+      if (s.delegatedForUserId && !s.delegatedFrom) {
+        try {
+          const { rows: origRows } = await pool.query(
+            'SELECT functie, leave_reason FROM users WHERE id=$1',
+            [Number(s.delegatedForUserId)]
+          );
+          s.delegatedFrom = {
+            name:    s.delegatedForName  || '',
+            email:   s.delegatedForEmail || '',
+            functie: origRows[0]?.functie      || '',
+            reason:  origRows[0]?.leave_reason || '',
+            at:      new Date().toISOString(),
+            by:      'delegation',
+          };
+        } catch (_) { /* non-fatal */ }
+      }
+    }
+
     const createdAt = body.createdAt || new Date().toISOString();
     let initFunctie = '', initCompartiment = '', initInstitutie = body.institutie || '';
     try {
