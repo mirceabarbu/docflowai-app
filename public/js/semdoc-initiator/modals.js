@@ -25,7 +25,7 @@ async function submitChangePwd(){
   btn.disabled=true;btn.textContent='Se salvează...';
   try{
     // SEC-01: token din cookie HttpOnly — eliminat tok
-    const r=await fetch('/auth/change-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})});
+    const r=await fetch('/auth/change-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json','X-CSRF-Token':typeof getCsrf==='function'?getCsrf():(window._csrfToken||'')},body:JSON.stringify({current_password:cur,new_password:nw})});
     const d=await r.json();
     if(r.ok){
       msg.style.color='#34A853';msg.textContent='✅ Parola schimbată cu succes!';btn.textContent='Salvează';
