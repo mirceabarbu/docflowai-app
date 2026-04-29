@@ -153,6 +153,7 @@ const createFlow = async (req, res) => {
         ? Number(s.delegatedForUserId) : null,
       delegatedForName: String(s.delegatedForName || '').trim() || null,
       delegatedForEmail: String(s.delegatedForEmail || '').trim() || null,
+      delegatedFrom: (s.delegatedFrom && typeof s.delegatedFrom === 'object') ? s.delegatedFrom : undefined,
     }));
     normalizedSigners.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
     normalizedSigners.forEach((s, i) => { s.status = i === 0 ? 'current' : 'pending'; });
@@ -163,11 +164,13 @@ const createFlow = async (req, res) => {
       const first = normalizedSigners[0];
       if (first && first.email && !first.delegatedForUserId) {
         const { rows: uRows } = await pool.query(
-          'SELECT id FROM users WHERE email=$1',
+          'SELECT id, functie, leave_reason FROM users WHERE email=$1',
           [first.email.toLowerCase()]
         );
         if (uRows.length) {
           const userId = uRows[0].id;
+          const origFunctie = uRows[0].functie || first.functie || '';
+          const leaveReason = uRows[0].leave_reason || '';
           const active = await getActiveSigner(userId);
           if (active && active.isDelegate) {
             const { rows: dRows } = await pool.query(
@@ -176,14 +179,26 @@ const createFlow = async (req, res) => {
             );
             if (dRows.length) {
               const del = dRows[0];
+              const originalName = first.name;
+              const originalEmail = first.email;
               first.delegatedForUserId = userId;
-              first.delegatedForName = first.name;
-              first.delegatedForEmail = first.email;
+              first.delegatedForName = originalName;
+              first.delegatedForEmail = originalEmail;
               first.name = del.nume || del.email;
               first.email = del.email;
               first.functie = del.functie || first.functie;
               first.token = crypto.randomBytes(16).toString('hex');
               first.tokenCreatedAt = new Date().toISOString();
+              // Stochează info pentru cartuș + trust report + UI: cine deleagă, ce funcție avea, motiv
+              first.delegatedFrom = {
+                name: originalName,
+                email: originalEmail,
+                functie: origFunctie,
+                functie_to: del.functie || '',
+                reason: leaveReason,
+                at: new Date().toISOString(),
+                by: 'auto_leave',
+              };
               logger.info(`🔁 createFlow: first signer ${first.delegatedForEmail} on leave, redirected to ${del.email}`);
             }
           }

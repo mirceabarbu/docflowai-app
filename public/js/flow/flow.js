@@ -163,8 +163,11 @@
       else if (st === 'current')  state = 'active';
       else if (st === 'cancelled')state = 'bad';
 
-      const delegBadge = s.delegatedFrom
-        ? `<span class="tl-actor" title="Delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)}">👥 delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)}</span>`
+      const _df1 = s.delegatedFrom;
+      const _fromLabel1 = _df1 ? [_df1.name, _df1.functie].filter(Boolean).join(' - ') : '';
+      const _tooltip1 = _df1 ? `Delegat de ${_fromLabel1}${_df1.reason ? ' — Motiv: ' + _df1.reason : ''}` : '';
+      const delegBadge = _df1 && _df1.name
+        ? `<span class="tl-actor" title="${esc(_tooltip1)}">👥 delegat de ${esc(_fromLabel1)}</span>`
         : (s.delegatedForName
           ? `<span class="tl-actor" title="În delegare pentru ${esc(s.delegatedForName)}">👥 în delegare pentru ${esc(s.delegatedForName)}</span>`
           : '');
@@ -350,10 +353,15 @@
       const el = document.createElement("div");
       el.className = "item";
       // Badge delegare
-      const delegBadge = s.delegatedFrom
-        ? `<div style="margin-top:5px;"><span title="Delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)} — ${esc(s.delegatedFrom.reason||'')}" style="display:inline-block;font-size:.72rem;padding:2px 8px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);cursor:help;">👥 delegat de ${esc(s.delegatedFrom.name||s.delegatedFrom.email)}</span></div>`
+      const _df = s.delegatedFrom;
+      const _fromLabel = _df ? [_df.name, _df.functie].filter(Boolean).join(' - ') : '';
+      const _tooltip = _df
+        ? `Delegat de ${_fromLabel}${_df.reason ? ' — Motiv: ' + _df.reason : ''}`
+        : '';
+      const delegBadge = _df && _df.name
+        ? `<div style="margin-top:5px;"><span class="delegation-badge" title="${esc(_tooltip)}">🔄 delegat de ${esc(_fromLabel)}</span></div>`
         : (s.delegatedForName
-          ? `<div style="margin-top:5px;"><span title="În delegare pentru ${esc(s.delegatedForName)}" style="display:inline-block;font-size:.72rem;padding:2px 8px;border-radius:10px;background:rgba(255,200,50,.15);color:#ffd580;font-weight:700;border:1px solid rgba(255,200,50,.3);cursor:help;">👥 în delegare pentru ${esc(s.delegatedForName)}</span></div>`
+          ? `<div style="margin-top:5px;"><span class="delegation-badge" title="În delegare pentru ${esc(s.delegatedForName)}">👥 în delegare pentru ${esc(s.delegatedForName)}</span></div>`
           : '');
       el.innerHTML = `
         <div class="top">

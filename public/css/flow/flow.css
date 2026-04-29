@@ -205,3 +205,16 @@
       50%      { box-shadow: 0 0 0 6px rgba(124,92,255,0), 0 0 20px rgba(124,92,255,.35); }
     }
     .tl-step.tl-active .tl-dot { animation: tl-pulse 2s ease-in-out infinite; }
+
+    /* ── Badge delegare ── */
+    .delegation-badge {
+      display: inline-block;
+      font-size: .72rem;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: rgba(139,92,246,.15);
+      border: 1px solid rgba(139,92,246,.3);
+      color: #c4b5fd;
+      font-weight: 700;
+      cursor: help;
+    }

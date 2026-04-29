@@ -498,7 +498,15 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         txt += `${s.order}. ${s.name} <${s.email}> [${s.rol}] — ${s.status.toUpperCase()}`;
         if (s.signedAt) txt += ` la ${s.signedAt}`;
         if (s.refuseReason) txt += ` — REFUZ: ${s.refuseReason}`;
-        if (s.delegatedFrom) txt += ` — DELEGAT de ${s.delegatedFrom.email}`;
+        if (s.delegatedFrom) {
+          const fd = s.delegatedFrom;
+          const fromLine = [fd.name, fd.functie].filter(Boolean).join(' - ');
+          const functieInfo = (fd.functie_to || s.functie)
+            ? `${fd.functie_to || s.functie} — delegat de: ${fromLine}`
+            : `delegat de: ${fromLine}`;
+          txt += ` — ${functieInfo}`;
+          if (fd.reason) txt += ` [Motiv: ${fd.reason}]`;
+        }
         txt += '\n';
       }
       txt += `\n--- EVENIMENTE (${audit.events.length}) ---\n`;
@@ -635,7 +643,19 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         if (s.functie) page.drawText(ro(s.functie), { x:MARGIN+220, y, size:8, font:fontR, color:rgb(0.5,0.5,0.5) });
         y -= 13;
         // Ordine cronologica: Delegat de (daca e cazul) → Notificat → Descarcat → Incarcat → Semnat/Refuzat
-        if (s.delegatedFrom) { page.drawText(ro(`  Delegat de: ${s.delegatedFrom.email}${s.delegatedFrom.reason ? '  Motiv: ' + s.delegatedFrom.reason : ''}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 }); y -= 12; }
+        if (s.delegatedFrom) {
+          const fd = s.delegatedFrom;
+          const fromLine = [fd.name, fd.functie].filter(Boolean).join(' - ');
+          const dl1 = (fd.functie_to || s.functie)
+            ? ro(`${fd.functie_to || s.functie} — delegat de: ${fromLine}`)
+            : ro(`Delegat de: ${fromLine}`);
+          page.drawText(dl1, { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 });
+          y -= 12;
+          if (fd.reason) {
+            page.drawText(ro(`  Motiv delegare: ${fd.reason}`), { x:MARGIN+12, y, size:7.5, font:fontR, color:rgb(0.4,0.2,0.6), maxWidth:PAGE_W-MARGIN*2-20 });
+            y -= 12;
+          }
+        }
         if (s.notifiedAt)  { page.drawText(ro(`  Notificat:  ${fmtDate(s.notifiedAt)}`),  { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.3,0.3,0.6) }); y -= 12; }
         if (s.downloadedAt){ page.drawText(ro(`  Descarcat:  ${fmtDate(s.downloadedAt)}`), { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.2,0.4,0.55) }); y -= 12; }
         if (uploadedAt)    { page.drawText(ro(`  Incarcat:   ${fmtDate(uploadedAt)}`),      { x:MARGIN+12, y, size:8, font:fontR, color:rgb(0.2,0.35,0.5) }); y -= 12; }

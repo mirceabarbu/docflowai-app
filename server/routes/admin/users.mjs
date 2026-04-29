@@ -23,7 +23,7 @@ import { csrfMiddleware } from '../../middleware/csrf.mjs';
 import crypto from 'crypto';
 import { emailResetPassword, emailCredentials } from '../../emailTemplates.mjs';
 import { requireAuth, hashPassword, generatePassword, escHtml } from '../../middleware/auth.mjs';
-import { pool, requireDb, invalidateOrgUserCache } from '../../db/index.mjs';
+import { pool, requireDb, invalidateOrgUserCache, writeAuditEvent } from '../../db/index.mjs';
 import {
   validateLeaveSettings, setUserLeave, clearUserLeave, getLeaveInfo, batchGetLeaveInfo,
 } from '../../services/user-leave.mjs';
@@ -696,6 +696,36 @@ function _mapLeaveError(err, res) {
   return res.status(status).json({ error: code, message: userMsg });
 }
 
+// Helper: după setUserLeave, sincronizează tabela delegations cu functie_from/to + reason
+// și emite audit DELEGATION_SET. Non-fatal — eroarea nu propagă.
+async function _syncDelegationRecord({ targetUserId, leave_start, leave_end, delegate_user_id, leave_reason }) {
+  if (!delegate_user_id) return;
+  try {
+    const [tgtRow, delRow] = await Promise.all([
+      pool.query('SELECT email, functie, org_id FROM users WHERE id=$1', [targetUserId]),
+      pool.query('SELECT email, functie FROM users WHERE id=$1', [Number(delegate_user_id)]),
+    ]);
+    if (!tgtRow.rows.length || !delRow.rows.length) return;
+    const tgt = tgtRow.rows[0];
+    const del = delRow.rows[0];
+    const now = new Date();
+    const validFrom = leave_start ? new Date(leave_start) : now;
+    const validUntil = leave_end ? new Date(leave_end) : new Date(now.getTime() + 30 * 24 * 3600 * 1000);
+    await pool.query(`
+      INSERT INTO delegations
+        (from_email, to_email, org_id, valid_from, valid_until, reason, functie_from, functie_to)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT DO NOTHING
+    `, [
+      tgt.email, del.email, tgt.org_id || null,
+      validFrom.toISOString(), validUntil.toISOString(),
+      leave_reason || '', tgt.functie || '', del.functie || '',
+    ]);
+  } catch (e) {
+    logger.warn({ err: e, targetUserId, delegate_user_id }, '_syncDelegationRecord non-fatal');
+  }
+}
+
 // ── PUT /api/users/me/leave — userul își setează singur concediu ────────────
 router.put('/api/users/me/leave', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
@@ -718,6 +748,21 @@ router.put('/api/users/me/leave', csrfMiddleware, async (req, res) => {
     await validateLeaveSettings(input);
     await setUserLeave(input);
     invalidateOrgUserCache?.();
+    if (input.delegateUserId) {
+      await _syncDelegationRecord({
+        targetUserId,
+        leave_start, leave_end,
+        delegate_user_id: input.delegateUserId,
+        leave_reason,
+      });
+      writeAuditEvent({
+        orgId: actor.orgId,
+        eventType: 'DELEGATION_SET',
+        actorEmail: actor.email,
+        actorIp: req.ip || req.socket?.remoteAddress || null,
+        payload: { targetUserId, delegateUserId: input.delegateUserId, valid_from: leave_start, valid_until: leave_end, reason: leave_reason || '' },
+      });
+    }
     const info = await getLeaveInfo(targetUserId);
     res.json({ ok: true, leave: info });
   } catch (err) {
@@ -736,6 +781,13 @@ router.delete('/api/users/me/leave', csrfMiddleware, async (req, res) => {
     if (!meRows.length) return res.status(404).json({ error: 'user_not_found' });
     await clearUserLeave(meRows[0].id);
     invalidateOrgUserCache?.();
+    writeAuditEvent({
+      orgId: actor.orgId,
+      eventType: 'DELEGATION_REMOVED',
+      actorEmail: actor.email,
+      actorIp: req.ip || req.socket?.remoteAddress || null,
+      payload: { targetUserId: meRows[0].id },
+    });
     res.json({ ok: true, leave: null });
   } catch (err) {
     _mapLeaveError(err, res);
@@ -778,6 +830,21 @@ router.put('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
     await validateLeaveSettings(input);
     await setUserLeave(input);
     invalidateOrgUserCache?.();
+    if (input.delegateUserId) {
+      await _syncDelegationRecord({
+        targetUserId,
+        leave_start, leave_end,
+        delegate_user_id: input.delegateUserId,
+        leave_reason,
+      });
+      writeAuditEvent({
+        orgId: actor.orgId,
+        eventType: 'DELEGATION_SET',
+        actorEmail: actor.email,
+        actorIp: req.ip || req.socket?.remoteAddress || null,
+        payload: { targetUserId, delegateUserId: input.delegateUserId, valid_from: leave_start, valid_until: leave_end, reason: leave_reason || '' },
+      });
+    }
     const info = await getLeaveInfo(targetUserId);
     res.json({ ok: true, leave: info });
   } catch (err) {
@@ -811,6 +878,13 @@ router.delete('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
     }
     await clearUserLeave(targetUserId);
     invalidateOrgUserCache?.();
+    writeAuditEvent({
+      orgId: actor.orgId,
+      eventType: 'DELEGATION_REMOVED',
+      actorEmail: actor.email,
+      actorIp: req.ip || req.socket?.remoteAddress || null,
+      payload: { targetUserId },
+    });
     res.json({ ok: true, leave: null });
   } catch (err) {
     _mapLeaveError(err, res);
