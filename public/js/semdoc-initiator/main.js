@@ -415,13 +415,18 @@
             opt.dataset.originalUserId = String(u.id);
             opt.dataset.originalName = u.nume || "";
             opt.dataset.originalEmail = u.email || "";
+            const _fmtRO = (s) => {
+              if (!s) return '';
+              const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+              return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
+            };
             const _lp = (u.leave.leaveStart && u.leave.leaveEnd)
-              ? `${u.leave.leaveStart.slice(5).replace('-','.')}–${u.leave.leaveEnd.slice(5).replace('-','.')}`
+              ? `${_fmtRO(u.leave.leaveStart)} – ${_fmtRO(u.leave.leaveEnd)}`
               : '';
             const _ref = u.leave.leaveReason ? ` · ${u.leave.leaveReason}` : '';
             const _origF = u.functie ? ` — ${u.functie}` : '';
             const _delF = u.leave.delegate.functie ? ` — ${u.leave.delegate.functie}` : '';
-            opt.textContent = `${u.nume || u.email}${_origF} [CO${_lp ? ' '+_lp : ''}${_ref}] → ${u.leave.delegate.nume}${_delF}`;
+            opt.textContent = `${u.nume || u.email}${_origF} [Delegare${_lp ? ' ' + _lp : ''}${_ref}] → ${u.leave.delegate.nume}${_delF}`;
             opt.style.fontStyle = "italic";
             opt.style.color = "#fbbf24";
             opt.dataset.leaveReason = u.leave.leaveReason || '';
@@ -432,11 +437,11 @@
             opt.dataset.email = u.email || "";
             opt.disabled = true;
             const _lp2 = (u.leave.leaveStart && u.leave.leaveEnd)
-              ? `${u.leave.leaveStart.slice(5).replace('-','.')}–${u.leave.leaveEnd.slice(5).replace('-','.')}`
+              ? `${_fmtRO(u.leave.leaveStart)} – ${_fmtRO(u.leave.leaveEnd)}`
               : '';
             const _ref2 = u.leave.leaveReason ? ` · ${u.leave.leaveReason}` : '';
             const _origF2 = u.functie ? ` — ${u.functie}` : '';
-            opt.textContent = `${u.nume || u.email}${_origF2} [CO${_lp2 ? ' '+_lp2 : ''}${_ref2}] ⚠ fără delegat`;
+            opt.textContent = `${u.nume || u.email}${_origF2} [Delegare${_lp2 ? ' ' + _lp2 : ''}${_ref2}] ⚠ fără delegat`;
             opt.style.color = "#999";
           } else {
             // User normal — comportament neschimbat
@@ -609,7 +614,7 @@
                 const _origF = _orig.functie ? ` — ${_orig.functie}` : '';
                 _leaveNote.style.display = '';
                 _leaveNote.innerHTML = `🔄 Delegat pentru: <strong>${esc(_orig.nume||'')}${esc(_origF)}</strong>`
-                  + (_lp ? ` &nbsp;·&nbsp; CO ${esc(_lp)}` : '')
+                  + (_lp ? ` &nbsp;·&nbsp; Delegare ${esc(_lp)}` : '')
                   + (_ref ? ` &nbsp;·&nbsp; <em>${esc(_ref)}</em>` : '');
               } else {
                 _leaveNote.style.display = 'none';
