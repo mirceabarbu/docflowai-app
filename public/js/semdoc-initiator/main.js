@@ -457,13 +457,24 @@
 
       function refreshAllDropdowns() {
         tbody.querySelectorAll(".name-select").forEach(sel => {
-          const currentEmail = (sel.options[sel.selectedIndex] || {}).dataset?.email || "";
+          const currentOpt = sel.options[sel.selectedIndex];
+          const currentEmail = currentOpt?.dataset?.email || "";
+          const currentOriginalId = currentOpt?.dataset?.originalUserId || "";
           const currentValue = sel.value;
           populateSelectGlobal(sel);
           if (currentValue && currentEmail) {
-            const restored = [...sel.options].find(o => o.dataset.email === currentEmail);
-            if (restored) sel.value = restored.value;
-            else sel.value = "";
+            const restored = currentOriginalId
+              ? [...sel.options].find(o =>
+                  o.dataset.email === currentEmail &&
+                  o.dataset.originalUserId === currentOriginalId)
+              : [...sel.options].find(o =>
+                  o.dataset.email === currentEmail &&
+                  !o.dataset.originalUserId);
+            if (restored) {
+              sel.selectedIndex = [...sel.options].indexOf(restored);
+            } else {
+              sel.value = "";
+            }
           }
         });
       }
