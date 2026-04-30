@@ -35,28 +35,27 @@ Modificările pentru repo `docflowai-signing-service` ca să afișeze
             }
 ```
 
-Și ajustează `borderBottom` să cuprindă și linia 7. Localizează:
+Și ajustează `borderBottom` să cuprindă ÎNTOTDEAUNA linia 7 (chenar de
+aceeași dimensiune indiferent de delegare — linia 7 rămâne goală fără
+delegare). Localizează:
 ```java
             float borderBottom = y6 - 2.5f;
 ```
 Înlocuiește cu:
 ```java
-            boolean hasDeleg = req.delegatedFromText != null && !req.delegatedFromText.isBlank();
-            float borderBottom = hasDeleg ? (y6 - LINE_H - 2.5f) : (y6 - 2.5f);
+            float borderBottom = y7 - 2.5f;
 ```
 
-## 3. Mărește h (înălțime cartuș) când e delegare
+> Notă: dacă `y7` este declarat doar în interiorul blocului `if (...)` de
+> mai sus, mută declarația `float y7 = y6 - LINE_H;` ÎNAINTE de blocul `if`
+> astfel încât să fie disponibilă și pentru `borderBottom`.
 
-În Node `cloud-signing.mjs` deja transmitem `height`. Pentru linie nouă
-trebuie ~10pt în plus. Modifică în `cloud-signing.mjs`:
+## 3. Înălțime cartuș (Node side)
 
-```javascript
-const _extraH = _delegFromText ? 10 : 0;
-...
-height: 50 + _extraH,  // în loc de height: 50
-```
-
-Aplică în AMBELE apariții javaPreparePades.
+Înălțimea cartușului trimisă la Java (`padesRect.h`) este setată în
+`server/index.mjs` în funcția `stampFooterOnPdf`. Începând cu b254 e
+hardcoded la `h: 65` (anterior 54) — suficient pentru 7 linii + padding +
+chenar. NU mai trebuie modificat `cloud-signing.mjs`.
 
 ## 4. Build + deploy
 
