@@ -974,8 +974,8 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
     const signers = Array.isArray(flowData.signers) ? flowData.signers : [];
     if (signers.length) {
       const sideMargin = 40;
-      const colGap = 2;
-      const rowGap = 2;
+      const colGap = 1;
+      const rowGap = 1;
       const n = signers.length;
       let cols = 3;
       if (n === 1) cols = 1;
@@ -1053,8 +1053,8 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
         const col = i % cols;
         const x = sideMargin + col * (cellW + colGap);
         const y = startY - row * (cellH + rowGap);
-        // h=54: înălțimea exactă a conținutului Java (6 linii + padding + chenar)
-        signerRects.push({ page: cartusPageNum, x, y, w: cellW, h: 54 });
+        // h=65: 7 linii (6 + linia delegare opțională) + padding + chenar
+        signerRects.push({ page: cartusPageNum, x, y, w: cellW, h: 65 });
       }
     }
 

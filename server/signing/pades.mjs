@@ -183,9 +183,16 @@ export async function preparePadesDoc(pdfBuf, flowData, signerIdx, opts = {}) {
         x: cx+5, y: infoY+infoH-12, size: 7, font: fontB,
         color: rgb(.1,.1,.1), maxWidth: cellW-10 });
       const nf = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
+      const delegText = s.delegatedFrom?.name
+        ? ro(`delegat de ${[s.delegatedFrom.name, s.delegatedFrom.functie].filter(Boolean).join(' - ')}`)
+        : null;
+      const nfY = delegText ? infoY+infoH-20 : infoY+infoH-23;
       if (nf) cartusPage.drawText(nf, {
-        x: cx+5, y: infoY+infoH-23, size: 6.5, font: fontR,
+        x: cx+5, y: nfY, size: 6.5, font: fontR,
         color: rgb(.15,.15,.15), maxWidth: cellW-10 });
+      if (delegText) cartusPage.drawText(delegText, {
+        x: cx+5, y: nfY-10, size: 5.8, font: fontR,
+        color: rgb(.38,.18,.58), maxWidth: cellW-10 });
 
       if (i === signerIdx) {
         // Semnatar CURENT — fundal teal + text fix semnat digital QES

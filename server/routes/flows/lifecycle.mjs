@@ -160,6 +160,14 @@ router.post('/flows/:flowId/request-review', async (req, res) => {
     data.events = Array.isArray(data.events) ? data.events : [];
     data.events.push({ at: new Date().toISOString(), type: 'REVIEW_REQUESTED', by: signers[idx].email, reason: reviewReason });
     await saveFlow(flowId, data);
+    // FIX state machine: marchează DF ca de_revizuit când fluxul intră în review
+    try {
+      await pool.query(
+        `UPDATE formulare_df SET status='de_revizuit', updated_at=NOW()
+         WHERE flow_id=$1 AND status='transmis_flux'`,
+        [flowId]
+      );
+    } catch(_) { /* non-fatal */ }
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'REVIEW_REQUESTED', actorIp: _getIp(req), actorEmail: signers[idx].email, payload: { reviewerName, reason: reviewReason } });
     // Issue 5: Sterge notif YOUR_TURN ale celui care a cerut revizuire
@@ -285,6 +293,14 @@ router.post('/flows/:flowId/reinitiate-review', _largePdf, async (req, res) => {
     const first = resetSigners[0];
     if (first) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
+    // FIX state machine: la reluarea fluxului după revizuire, DF revine la draft
+    try {
+      await pool.query(
+        `UPDATE formulare_df SET status='draft', updated_at=NOW()
+         WHERE flow_id=$1 AND status='de_revizuit'`,
+        [flowId]
+      );
+    } catch(_) { /* non-fatal */ }
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_REINITIATED_AFTER_REVIEW', actorIp: _getIp(req), actorEmail: actor.email, payload: { round: data.reviewHistory.length, docName: data.docName } });
 
@@ -338,6 +354,15 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     const originalName = signers[idx].name;
     const originalEmail = signers[idx].email;
 
+    let _origFunctie = '';
+    try {
+      const { rows: _ofR } = await pool.query(
+        'SELECT functie FROM users WHERE email=$1 LIMIT 1',
+        [originalEmail.toLowerCase()]
+      );
+      _origFunctie = _ofR[0]?.functie || '';
+    } catch (_) { /* non-fatal */ }
+
     // Cautam datele delegatului in DB
     const { rows: delegatDbRows } = await pool.query(
       'SELECT nume, functie, compartiment, institutie FROM users WHERE email=$1',
@@ -358,7 +383,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
       functie: delegatDb.functie || signers[idx].functie || '',
       compartiment: delegatDb.compartiment || signers[idx].compartiment || '',
       institutie: delegatDb.institutie || signers[idx].institutie || '',
-      delegatedFrom: { name: originalName, email: originalEmail, reason: String(reason).trim(), at: new Date().toISOString(), by: actor.email },
+      delegatedFrom: { name: originalName, email: originalEmail, functie: _origFunctie, reason: String(reason).trim(), at: new Date().toISOString(), by: actor.email },
     };
     data.signers = signers;
     data.updatedAt = new Date().toISOString();

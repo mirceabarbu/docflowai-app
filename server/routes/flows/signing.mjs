@@ -114,6 +114,14 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
       sent.add(r.email);
       await _notify({ userEmail: r.email, flowId, type: 'REFUSED', title: '⛔ Document refuzat', message: refuseMsg, waParams: { docName: data.docName, refuserName, reason: refuseReason }, urgent: !!(data.urgent) });
     }
+    // FIX state machine: marchează DF ca neaprobat când fluxul e refuzat
+    try {
+      await pool.query(
+        `UPDATE formulare_df SET status='neaprobat', updated_at=NOW()
+         WHERE flow_id=$1 AND status='transmis_flux'`,
+        [flowId]
+      );
+    } catch(_) { /* non-fatal */ }
     return res.json({ ok: true, refused: true });
   } catch(e) { logger.error({ err: e }, 'refuse error:'); return res.status(500).json({ error: 'server_error' }); }
 });
@@ -444,6 +452,21 @@ async function _autoRedirectIfOnLeave(flowId, data, signers) {
     // Substituție în slot
     const originalName = cur.name;
     const originalEmail = cur.email;
+
+    // Lookup funcția + leaveReason originalului pentru cartuș/trust report
+    let origFunctie = '';
+    let origLeaveReason = 'auto: utilizator în concediu';
+    try {
+      const { rows: oRows } = await pool.query(
+        'SELECT functie, leave_reason FROM users WHERE email=$1',
+        [originalEmail.toLowerCase()]
+      );
+      if (oRows[0]) {
+        origFunctie = oRows[0].functie || '';
+        origLeaveReason = oRows[0].leave_reason || origLeaveReason;
+      }
+    } catch(_) {}
+
     cur.name = del.nume || del.email;
     cur.email = del.email;
     cur.functie = del.functie || cur.functie;
@@ -457,9 +480,11 @@ async function _autoRedirectIfOnLeave(flowId, data, signers) {
     cur.delegatedFrom = {
       name: originalName,
       email: originalEmail,
-      reason: 'auto: utilizator în concediu',
+      functie: origFunctie,
+      functie_to: del.functie || '',
+      reason: origLeaveReason,
       at: new Date().toISOString(),
-      by: 'system',
+      by: 'system-auto',
     };
 
     data.events = Array.isArray(data.events) ? data.events : [];
@@ -475,7 +500,7 @@ async function _autoRedirectIfOnLeave(flowId, data, signers) {
       flowId, orgId: data.orgId,
       eventType: 'AUTO_DELEGATED_LEAVE',
       actorEmail: 'system',
-      payload: { from: originalEmail, to: del.email, order: cur.order },
+      payload: { from: originalEmail, to: del.email, order: cur.order, origFunctie, leaveReason: origLeaveReason },
     });
 
     logger.info(`🔁 Auto-delegated flow ${flowId} from ${originalEmail} to ${del.email} (on leave)`);

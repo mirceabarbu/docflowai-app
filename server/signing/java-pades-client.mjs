@@ -40,6 +40,7 @@ export async function javaPreparePades({
   signerCertificatePem = null,  // b236: furnizat DUPĂ OAuth pentru signing-certificate-v2
   signerIndex = 0,               // b240: 0=primul semnatar, 1=al doilea etc (diagnostic)
   fieldAlreadyExists = false,    // b242: true=câmpul /Sig exista deja în PDF (pre-creat la flow creation)
+  delegatedFromText = null,      // b254: text "delegat de Nume - Funcție" — Java desenează linia 7 dacă != null
 }) {
   return postJson('/api/pades/prepare', {
     pdfBase64, fieldName, signerName, signerRole, signerFunction, reason, location, contactInfo,
@@ -47,6 +48,7 @@ export async function javaPreparePades({
     signerCertificatePem,  // null → no signing-cert-v2; string → inclus în signedAttrs
     signerIndex,
     fieldAlreadyExists,
+    delegatedFromText,
   });
 }
 

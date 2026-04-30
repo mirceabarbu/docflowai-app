@@ -72,7 +72,8 @@ export async function getLeaveInfo(userId) {
       leaveEnd,
       leaveReason: r.leave_reason || null,
       delegate: r.d_id
-        ? { id: r.d_id, nume: r.d_nume || '', email: r.d_email || '', functie: r.d_functie || '' }
+        ? { id: r.d_id, nume: r.d_nume || '', email: r.d_email || '',
+            functie: r.d_functie || '', reason: r.leave_reason || '' }
         : null,
     };
   } catch (e) {
@@ -105,7 +106,8 @@ export async function batchGetLeaveInfo(userIds) {
         leaveEnd,
         leaveReason: r.leave_reason || null,
         delegate: r.d_id
-          ? { id: r.d_id, nume: r.d_nume || '', email: r.d_email || '', functie: r.d_functie || '' }
+          ? { id: r.d_id, nume: r.d_nume || '', email: r.d_email || '',
+              functie: r.d_functie || '', reason: r.leave_reason || '' }
           : null,
       });
     }

@@ -235,6 +235,11 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
             'STS callback: Java prepare ANCORE');
 
           const certCn = extractCertificateCn(certPem) || signer?.certificateCn || signer?.name || signer?.fullName || 'Semnatar';
+          // b254: delegare → Java desenează linie suplimentară în cartuș
+          const _signerDeleg = signer?.delegatedFrom;
+          const _delegFromText = _signerDeleg?.name
+            ? `delegat de ${[_signerDeleg.name, _signerDeleg.functie].filter(Boolean).join(' - ')}`
+            : null;
           const prepareRes = await javaPreparePades({
             pdfBase64:          rawPdf,
             fieldName:          ancoreField,          // numele exact al câmpului AcroForm
@@ -255,6 +260,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
             signerIndex:        signerIdx,
             fieldAlreadyExists: fieldFound && rectFound, // false pt XFA fără /Rect widget
             appearanceMode:     'ancore',            // aparență simplă: "Semnat digital de: nume\ndata/ora"
+            delegatedFromText: _delegFromText,
           });
           if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
             throw new Error('Java prepare ancore: câmpuri lipsă în răspuns');
@@ -281,6 +287,11 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
             'STS callback: Java prepare — câmp NOU în celula cartuș');
 
           const certCn = extractCertificateCn(certPem) || signer?.certificateCn || signer?.name || signer?.fullName || 'Semnatar';
+          // b254: delegare → Java desenează linie suplimentară în cartuș
+          const _signerDeleg = signer?.delegatedFrom;
+          const _delegFromText = _signerDeleg?.name
+            ? `delegat de ${[_signerDeleg.name, _signerDeleg.functie].filter(Boolean).join(' - ')}`
+            : null;
           const prepareRes = await javaPreparePades({
             pdfBase64: rawPdf,
             fieldName,
@@ -296,6 +307,7 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
             signerCertificatePem: certPem || null,
             signerIndex: signerIdx,
             fieldAlreadyExists: false,  // b243: câmp NOU, nu pre-creat
+            delegatedFromText: _delegFromText,
           });
           if (!prepareRes?.preparedPdfBase64 || !prepareRes?.toBeSignedDigestBase64) {
             throw new Error('Java prepare: câmpuri lipsă în răspuns');

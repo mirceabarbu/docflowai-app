@@ -1088,7 +1088,12 @@
           drawPage.drawText(ro(s.rol)||"—", { x: cx+6, y: cy+cellH-13, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
           // Rând 2: "Nume Prenume - Funcție" pe un singur rând
           const nameFunc = [ro(s.name), ro(s.functie)].filter(Boolean).join(' - ');
-          if (nameFunc) drawPage.drawText(nameFunc, { x: cx+6, y: cy+cellH-24, size: 7, font: fontR, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
+          const _delegStr = s.delegatedFrom?.name
+            ? ro(`delegat de ${[s.delegatedFrom.name, s.delegatedFrom.functie].filter(Boolean).join(' - ')}`)
+            : null;
+          const _nfY = _delegStr ? cy+cellH-21 : cy+cellH-24;
+          if (nameFunc) drawPage.drawText(nameFunc, { x: cx+6, y: _nfY, size: 7, font: fontR, color: rgb(.1,.1,.1), maxWidth: cellW-12 });
+          if (_delegStr) drawPage.drawText(_delegStr, { x: cx+6, y: _nfY-8, size: 5.8, font: fontR, color: rgb(.38,.18,.58), maxWidth: cellW-12 });
 
           if (isSigned && s.signature) {
             drawPage.drawText(ro(s.signature), { x: cx+6, y: cy+18, size: 7, font: fontB, color: rgb(.1,.1,.1), maxWidth: cellW-12 });

@@ -397,6 +397,10 @@
       function populateSelectGlobal(sel) {
         while (sel.options.length > 1) sel.remove(1);
         const usedEmails = getUsedEmails(sel);
+        const _fmtROd = (s) => {
+          const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+          return m ? `${m[3]}.${m[2]}.${m[1]}` : (s || '');
+        };
         (window._dbUsers || []).forEach(u => {
           if (usedEmails.has(u.email || '')) return;
           const opt = document.createElement("option");
@@ -415,14 +419,28 @@
             opt.dataset.originalUserId = String(u.id);
             opt.dataset.originalName = u.nume || "";
             opt.dataset.originalEmail = u.email || "";
-            opt.textContent = `${u.nume || u.email} (concediu — semnează ${u.leave.delegate.nume})`;
+            const _lp = (u.leave.leaveStart && u.leave.leaveEnd)
+              ? `${_fmtROd(u.leave.leaveStart)} – ${_fmtROd(u.leave.leaveEnd)}`
+              : '';
+            const _ref = u.leave.leaveReason ? ` · ${u.leave.leaveReason}` : '';
+            const _origF = u.functie ? ` — ${u.functie}` : '';
+            const _delF = u.leave.delegate.functie ? ` — ${u.leave.delegate.functie}` : '';
+            opt.textContent = `${u.nume || u.email}${_origF} [Delegare${_lp ? ' ' + _lp : ''}${_ref}] → ${u.leave.delegate.nume}${_delF}`;
             opt.style.fontStyle = "italic";
+            opt.style.color = "#fbbf24";
+            opt.dataset.leaveReason = u.leave.leaveReason || '';
+            opt.dataset.leavePeriod = _lp;
           } else if (onLeave && !hasDelegate) {
             // În concediu fără delegat → option dezactivat (nu poate fi ales)
             opt.value = u.nume || "";
             opt.dataset.email = u.email || "";
             opt.disabled = true;
-            opt.textContent = `${u.nume || u.email} (concediu — fără delegat ⚠)`;
+            const _lp2 = (u.leave.leaveStart && u.leave.leaveEnd)
+              ? `${_fmtROd(u.leave.leaveStart)} – ${_fmtROd(u.leave.leaveEnd)}`
+              : '';
+            const _ref2 = u.leave.leaveReason ? ` · ${u.leave.leaveReason}` : '';
+            const _origF2 = u.functie ? ` — ${u.functie}` : '';
+            opt.textContent = `${u.nume || u.email}${_origF2} [Delegare${_lp2 ? ' ' + _lp2 : ''}${_ref2}] ⚠ fără delegat`;
             opt.style.color = "#999";
           } else {
             // User normal — comportament neschimbat
@@ -439,13 +457,24 @@
 
       function refreshAllDropdowns() {
         tbody.querySelectorAll(".name-select").forEach(sel => {
-          const currentEmail = (sel.options[sel.selectedIndex] || {}).dataset?.email || "";
+          const currentOpt = sel.options[sel.selectedIndex];
+          const currentEmail = currentOpt?.dataset?.email || "";
+          const currentOriginalId = currentOpt?.dataset?.originalUserId || "";
           const currentValue = sel.value;
           populateSelectGlobal(sel);
           if (currentValue && currentEmail) {
-            const restored = [...sel.options].find(o => o.dataset.email === currentEmail);
-            if (restored) sel.value = restored.value;
-            else sel.value = "";
+            const restored = currentOriginalId
+              ? [...sel.options].find(o =>
+                  o.dataset.email === currentEmail &&
+                  o.dataset.originalUserId === currentOriginalId)
+              : [...sel.options].find(o =>
+                  o.dataset.email === currentEmail &&
+                  !o.dataset.originalUserId);
+            if (restored) {
+              sel.selectedIndex = [...sel.options].indexOf(restored);
+            } else {
+              sel.value = "";
+            }
           }
         });
       }
@@ -484,6 +513,7 @@
             <select class="name-select name" style="width:100%;">
               <option value="">— Alege utilizator —</option>
             </select>
+            <div class="leave-note" style="display:none;margin-top:3px;padding:3px 8px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:6px;font-size:.72rem;color:#fbbf24;line-height:1.4"></div>
           </td>
           <td class="ancore-field-col">
             <select class="ancoreField" disabled title="Câmpul AcroForm din PDF — disponibil după detectare">
@@ -579,6 +609,29 @@
             } else {
               if (emailInput)   { emailInput.value   = ""; emailInput.readOnly   = false; emailInput.style.opacity   = "1"; emailInput.style.cursor = ""; }
               if (functieInput) { functieInput.value = ""; functieInput.readOnly = false; functieInput.style.opacity = "1"; functieInput.style.cursor = ""; }
+            }
+            // BLOC 4.3: badge .leave-note sub dropdown — afișează detalii delegat
+            const _leaveNote = tr.querySelector('.leave-note');
+            if (_leaveNote) {
+              const _sOpt = nameSelect.options[nameSelect.selectedIndex];
+              const _origId = Number(_sOpt?.dataset?.originalUserId);
+              const _orig = _origId
+                ? (window._dbUsers || []).find(u => u.id === _origId)
+                : null;
+              if (_orig?.leave?.onLeave) {
+                const _fmtROd = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}.${m[2]}.${m[1]}` : (s || ''); };
+                const _lp = (_orig.leave.leaveStart && _orig.leave.leaveEnd)
+                  ? `${_fmtROd(_orig.leave.leaveStart)} – ${_fmtROd(_orig.leave.leaveEnd)}` : '';
+                const _ref = _sOpt.dataset.leaveReason || '';
+                const _origF = _orig.functie ? ` — ${_orig.functie}` : '';
+                _leaveNote.style.display = '';
+                _leaveNote.innerHTML = `🔄 Delegat pentru: <strong>${esc(_orig.nume||'')}${esc(_origF)}</strong>`
+                  + (_lp ? ` &nbsp;·&nbsp; Delegare ${esc(_lp)}` : '')
+                  + (_ref ? ` &nbsp;·&nbsp; <em>${esc(_ref)}</em>` : '');
+              } else {
+                _leaveNote.style.display = 'none';
+                _leaveNote.innerHTML = '';
+              }
             }
             refreshAllDropdowns();
             validateForm();
@@ -970,15 +1023,24 @@
                          : null;
             const ts = _tsRaw ? new Date(_tsRaw).toLocaleString('ro-RO', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
             const rolTip = s.rol ? ` [${s.rol}]` : '';
-            const delegTip = s.delegatedFrom ? ` 👥 delegat de ${s.delegatedFrom.name||s.delegatedFrom.email}` : '';
+            const _fd = s.delegatedFrom;
+            const _fdAuto = _fd && _fd.reason === 'auto: utilizator în concediu';
+            const _fdReasonClean = (_fd?.reason && !_fdAuto) ? _fd.reason : '';
+            const delegTip = _fd
+              ? ` 👥 delegat de ${_fd.name||_fd.email||''}${_fd.functie ? ' — '+_fd.functie : ''}${_fdReasonClean ? ' · '+_fdReasonClean : ''}`
+              : '';
             const refuzTip = st==='refused' && s.refuseReason ? `\nMotiv: ${s.refuseReason}` : '';
             const tipText = `${s.name||''}${rolTip}${delegTip}${refuzTip}`.replace(/"/g,'&quot;');
             // Provider: dacă a semnat deja → signingProvider real; altfel → default org
             const _prov = s.signingProvider || (st === 'current' || st === 'pending' ? (f.orgDefaultProvider || 'local-upload') : null);
             const _provBadge = _prov ? _providerBadgeHtml(_prov) : '';
+            const _delegMtlBadge = _fd
+              ? `<div style="font-size:.64rem;color:#c4b5fd;margin-top:2px;padding:1px 4px;background:rgba(139,92,246,.1);border-radius:4px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(delegTip.trim())}">🔄 ${esc(_fdReasonClean || 'delegat')}</div>`
+              : '';
             return `<div class="mtl-step ${cls}" title="${tipText}">
               <div class="mtl-dot">${icon}</div>
               <div class="mtl-name">${esc(nameShort)}</div>
+              ${_delegMtlBadge}
               ${ts ? `<div class="mtl-ts">${ts}</div>` : ''}
               ${_provBadge}
             </div>`;

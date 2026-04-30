@@ -1221,6 +1221,15 @@ const MIGRATIONS = [
           WHERE leave_start IS NOT NULL;
       END $g$;
     `
+  },
+  {
+    id: '064_delegation_functie',
+    sql: `
+      ALTER TABLE delegations
+        ADD COLUMN IF NOT EXISTS reason       TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS functie_from TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS functie_to   TEXT NOT NULL DEFAULT '';
+    `
   }
 ];
 
