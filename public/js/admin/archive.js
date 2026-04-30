@@ -378,7 +378,7 @@
       closeDeleteModal();
       if (r.ok) {
         if (msgEl) msgEl.innerHTML = `<span style="color:#7cf0e0;">✅ ${d.deleted} flux(uri) șterse.</span>`;
-        loadFlows();
+        loadFlowsList();
       } else {
         if (msgEl) msgEl.innerHTML = `<span style="color:#ffaaaa;">Eroare: ${esc(d.error)}</span>`;
       }
