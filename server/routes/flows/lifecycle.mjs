@@ -354,6 +354,15 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     const originalName = signers[idx].name;
     const originalEmail = signers[idx].email;
 
+    let _origFunctie = '';
+    try {
+      const { rows: _ofR } = await pool.query(
+        'SELECT functie FROM users WHERE email=$1 LIMIT 1',
+        [originalEmail.toLowerCase()]
+      );
+      _origFunctie = _ofR[0]?.functie || '';
+    } catch (_) { /* non-fatal */ }
+
     // Cautam datele delegatului in DB
     const { rows: delegatDbRows } = await pool.query(
       'SELECT nume, functie, compartiment, institutie FROM users WHERE email=$1',
@@ -374,7 +383,7 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
       functie: delegatDb.functie || signers[idx].functie || '',
       compartiment: delegatDb.compartiment || signers[idx].compartiment || '',
       institutie: delegatDb.institutie || signers[idx].institutie || '',
-      delegatedFrom: { name: originalName, email: originalEmail, reason: String(reason).trim(), at: new Date().toISOString(), by: actor.email },
+      delegatedFrom: { name: originalName, email: originalEmail, functie: _origFunctie, reason: String(reason).trim(), at: new Date().toISOString(), by: actor.email },
     };
     data.signers = signers;
     data.updatedAt = new Date().toISOString();
