@@ -83,11 +83,11 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
 
     let rows;
     if (all) {
-      const { rows: r } = await pool.query('SELECT id,data,created_at FROM flows ORDER BY created_at DESC');
+      const { rows: r } = await pool.query('SELECT id,data,created_at FROM flows WHERE deleted_at IS NULL ORDER BY created_at DESC');
       rows = r;
     } else {
       const { rows: r } = await pool.query(
-        "SELECT id,data,created_at FROM flows WHERE created_at < NOW() - ($1 || ' days')::INTERVAL ORDER BY created_at DESC",
+        "SELECT id,data,created_at FROM flows WHERE deleted_at IS NULL AND created_at < NOW() - ($1 || ' days')::INTERVAL ORDER BY created_at DESC",
         [days]
       );
       rows = r;
