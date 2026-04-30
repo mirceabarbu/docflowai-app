@@ -57,7 +57,26 @@ delegare). Localizează:
 hardcoded la `h: 65` (anterior 54) — suficient pentru 7 linii + padding +
 chenar. NU mai trebuie modificat `cloud-signing.mjs`.
 
-## 4. Build + deploy
+## 4. (Recomandare) Reduce PAD_X intern în drawCustomCartus
+
+Pe lângă reducerea gap-ului între celule la 1pt în Node (`server/index.mjs`
+colGap/rowGap = 1), recomandăm reducerea padding-ului intern al celulei
+în Java pentru un cartuș mai compact și mai mult spațiu pentru text.
+
+În `PadesPrepareService.java`, localizează declarația `PAD_X` (sau
+echivalent: `padX`, `PADDING_X`, `INSET_X`):
+```java
+private static final float PAD_X = 6f;  // sau valoarea curentă
+```
+Reduce la:
+```java
+private static final float PAD_X = 2f;  // minim — text aproape de chenar
+```
+
+Aceeași logică pentru `PAD_Y` dacă există. Păstrează minim 1.5-2pt ca
+textul să nu atingă chenarul.
+
+## 5. Build + deploy
 
 ```bash
 cd docflowai-signing-service

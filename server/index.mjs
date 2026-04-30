@@ -974,8 +974,8 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
     const signers = Array.isArray(flowData.signers) ? flowData.signers : [];
     if (signers.length) {
       const sideMargin = 40;
-      const colGap = 2;
-      const rowGap = 2;
+      const colGap = 1;
+      const rowGap = 1;
       const n = signers.length;
       let cols = 3;
       if (n === 1) cols = 1;
