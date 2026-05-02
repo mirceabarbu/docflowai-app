@@ -113,6 +113,55 @@ router.post('/admin/onboarding', csrfMiddleware, async (req, res) => {
   }
 });
 
+router.get('/admin/db/diagnostics', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const [topTablesR, flowsColumnsR, flowsSizeR, flowsPdfsR, auditLogR] = await Promise.all([
+      pool.query(`
+        SELECT relname, pg_size_pretty(pg_total_relation_size(oid)) AS size,
+               pg_total_relation_size(oid) AS bytes
+        FROM pg_class WHERE relkind='r'
+        ORDER BY bytes DESC LIMIT 15
+      `),
+      pool.query(`
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name='flows'
+          AND data_type IN ('text','bytea')
+      `),
+      pool.query(`
+        SELECT pg_size_pretty(pg_total_relation_size('flows')) AS table_size,
+               COUNT(*) AS row_count,
+               pg_size_pretty(pg_total_relation_size('flows') / GREATEST(COUNT(*),1)) AS avg_row_size
+        FROM flows
+      `),
+      pool.query(`
+        SELECT pg_size_pretty(pg_total_relation_size('flows_pdfs')) AS table_size,
+               COUNT(*) AS row_count,
+               pg_size_pretty(pg_total_relation_size('flows_pdfs') / GREATEST(COUNT(*),1)) AS avg_row_size
+        FROM flows_pdfs
+      `).catch(() => ({ rows: [{ table_size: 'N/A', row_count: 0, avg_row_size: 'N/A' }] })),
+      pool.query(`
+        SELECT pg_size_pretty(pg_total_relation_size('audit_log')) AS table_size,
+               COUNT(*) AS row_count
+        FROM audit_log
+      `).catch(() => ({ rows: [{ table_size: 'N/A', row_count: 0 }] })),
+    ]);
+    res.json({
+      topTables: topTablesR.rows,
+      flowsTextByteaColumns: flowsColumnsR.rows,
+      flowsSize: flowsSizeR.rows[0],
+      flowsPdfsSize: flowsPdfsR.rows[0],
+      auditLogSize: auditLogR.rows[0],
+    });
+  } catch(e) {
+    logger.error({ err: e }, 'DB diagnostics error');
+    res.status(500).json({ error: 'server_error', detail: e.message });
+  }
+});
+
 router.post('/admin/db/vacuum', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
