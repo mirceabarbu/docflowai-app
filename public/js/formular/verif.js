@@ -333,7 +333,7 @@
         return;
       }
 
-      const editUrl = formType === 'NOTAFD_INVEST' ? 'notafd-invest-form.html' : 'notafd-invest-form.html';
+      const editUrl = formType === 'REFNEC' ? 'refnec-form.html' : 'notafd-invest-form.html';
       const stLabel = s => s==='completed'?'✓ Finalizat':s==='archived'?'🗄 Arhivat':'📝 Draft';
       const stColor = s => s==='completed'?'#5eead4':s==='archived'?'#94a3b8':'#fbbf24';
       const stBg    = s => s==='completed'?'rgba(94,234,212,.15)':s==='archived'?'rgba(148,163,184,.15)':'rgba(251,191,36,.15)';
