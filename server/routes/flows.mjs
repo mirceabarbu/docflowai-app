@@ -1,5 +1,6 @@
 // ── Test compatibility shim ─────────────────────────────────────────────────
-// flows.mjs a fost redenumit in flows.legacy.mjs (ARCH-01).
-// Routerul activ este server/routes/flows/index.mjs
-// Acest shim este doar pentru compatibilitate cu testele existente.
+// [ARCH-01] flows.mjs original a fost modularizat în server/routes/flows/.
+// Acest shim există DOAR pentru compatibilitate cu importurile din teste
+// (server/tests/integration/flows.test.mjs etc.).
+// Routerul real este server/routes/flows/index.mjs.
 export { default, injectFlowDeps } from './flows/index.mjs';

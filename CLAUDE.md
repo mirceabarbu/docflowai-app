@@ -495,3 +495,30 @@ Vezi `docs/incidents/2026-04-19-db-init-failure.md` pentru playbook:
 - **Data loss:** zero
 - **Root cause:** dual migration systems (inline + V4 file-based) without coordination — inline runs first, V4 errors non-fatal but inline errors fatal; `alop_instances` created only by V4
 - **Prevention:** rules documented above + guard pattern established for all future ALOP migrations
+
+---
+
+## Index migrații ALOP & Formulare
+
+Schema ALOP este împărțită între un fișier SQL inițial și migrații inline
+în db/index.mjs (per regula "doar inline pentru ALTER ulterioare"):
+
+| Sursă                                     | Migrație               | Conținut                                        |
+|-------------------------------------------|------------------------|-------------------------------------------------|
+| server/db/migrations/014_alop.sql         | (initial schema)       | alop_instances + alop_sabloane + indexuri       |
+| server/db/migrations/015_formulare_oficiale.sql | (initial schema) | formulare_oficiale (REFNEC, NOTAFD_INVEST)     |
+| server/db/index.mjs                       | 048_formulare_df       | Tabela formulare_df (DF workflow P1→P2)        |
+| server/db/index.mjs                       | 049_formulare_ord      | Tabela formulare_ord (ORD workflow P1→P2)      |
+| server/db/index.mjs                       | 055_alop_instances_semnatari | df_semnatari + ord_semnatari JSONB         |
+| server/db/index.mjs                       | 056_formulare_df_revizuiri | revision tracking pe DF                     |
+| server/db/index.mjs                       | 057_formulare_df_revizie_an_urmator | flag "an următor"                  |
+| server/db/index.mjs                       | 058_formulare_ord_img2 | A doua captură "Informații complete contract"  |
+| server/db/index.mjs                       | 059_alop_lichidare_documente | factură + PV pentru lichidare              |
+| server/db/index.mjs                       | 060_alop_plata_documente | nr_ordin + sumă efectivă pentru plată         |
+| server/db/index.mjs                       | 061_alop_lichidare_data_pv | data_pv extra                                |
+| server/db/index.mjs                       | 062_alop_multi_ord     | Tabela alop_ord_cicluri (multi-ORD per ALOP)    |
+| server/db/index.mjs                       | 063_user_leave_delegate | concediu + delegare                            |
+| server/db/index.mjs                       | 064_delegation_functie | funcție pentru delegare                         |
+
+Pentru orice nouă migrație ALOP/formulare, urmează regula stabilită:
+ALTER inline în db/index.mjs cu pattern `id: 'NNN_descriere'` și SQL idempotent.
