@@ -555,10 +555,10 @@ function renderDocsList(ft,docs){
 
 async function viewFlowPdf(flowId){
   try{
-    const r=await fetch(`/api/flows/${encodeURIComponent(flowId)}/signed-pdf`,{credentials:'include'});
+    const r=await fetch(`/flows/${encodeURIComponent(flowId)}/signed-pdf`,{credentials:'include'});
     if(!r.ok){
       try{
-        const r2=await fetch(`/api/flows/${encodeURIComponent(flowId)}/pdf`,{credentials:'include'});
+        const r2=await fetch(`/flows/${encodeURIComponent(flowId)}/pdf`,{credentials:'include'});
         if(r2.ok){
           const blob2=await r2.blob();
           const url2=URL.createObjectURL(blob2);
