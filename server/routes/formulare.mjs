@@ -245,29 +245,39 @@ async function generatePdfSimple(formType, data) {
   //                                  totalText pe coloane text).
   function drawTable(cols, rows, opts = {}) {
     const totals = !!opts.totals;
-    const HH1 = 22;                                       // header rând 1: titlu wrap-uit pe 2 linii
+    const HDR_FS = 6.5;          // font size header
+    const HDR_LH = 7.5;          // line height header
+    const HDR_PAD = 6;           // padding vertical total în header (3pt sus + 3pt jos)
+    const MAX_HDR_LINES = 10;    // suficient pentru SecB DF (header ~92 chars pe ~49pt → ~7 linii)
     const hasNumRow = cols.some(c => c.numLabel != null);
-    const HH2 = hasNumRow ? 11 : 0;                       // header rând 2: numere coloane
+    const HH2 = hasNumRow ? 11 : 0;
     const RH  = 13;
     const TH  = totals ? 13 : 0;
+
+    // ── Pre-calcul: wrap headers + înălțime dinamică HH1 ───────────────────
+    let maxHdrLines = 1;
+    const wrappedHdrs = cols.map(col => {
+      const lines = wrapText(str(col.header), fB, HDR_FS, col.width - 4, MAX_HDR_LINES);
+      if (lines.length > maxHdrLines) maxHdrLines = lines.length;
+      return lines;
+    });
+    const HH1 = maxHdrLines * HDR_LH + HDR_PAD;
+
     ensureY(HH1 + HH2 + RH * Math.min(Math.max(rows.length, 1), 3) + TH);
 
-    // ── Header rând 1: titluri (wrap pe maxim 2 linii) ─────────────────────
+    // ── Header rând 1: titluri (înălțime dinamică, vertical-centered) ──────
     pg.drawRectangle({ x: ML, y: y - HH1, width: CW, height: HH1,
       color: rgb(0.88, 0.88, 0.88), borderColor: rgb(0, 0, 0), borderWidth: 0.4 });
     let cx = ML;
     for (let i = 0; i < cols.length; i++) {
       const col = cols[i];
-      const fullTxt = str(col.header);
-      const maxW = col.width - 4;
-      const lines = wrapText(fullTxt, fB, 6.5, maxW, 2);
-      const lineH = 7.5;
-      const totalH = lines.length * lineH;
-      const startY = y - HH1 / 2 + totalH / 2 - lineH + 1;
+      const lines = wrappedHdrs[i];
+      const blockH = lines.length * HDR_LH;
+      const startY = y - HH1 / 2 + blockH / 2 - HDR_LH + 1;
       for (let li = 0; li < lines.length; li++) {
-        const lw = tw(lines[li], fB, 6.5);
-        pg.drawText(lines[li], { x: cx + (col.width - lw) / 2, y: startY - li * lineH,
-          font: fB, size: 6.5, color: rgb(0, 0, 0) });
+        const lw = tw(lines[li], fB, HDR_FS);
+        pg.drawText(lines[li], { x: cx + (col.width - lw) / 2, y: startY - li * HDR_LH,
+          font: fB, size: HDR_FS, color: rgb(0, 0, 0) });
       }
       if (i < cols.length - 1)
         pg.drawLine({ start: { x: cx + col.width, y }, end: { x: cx + col.width, y: y - HH1 },
@@ -371,13 +381,6 @@ async function generatePdfSimple(formType, data) {
       }
     }
     if (current && lines.length < maxLines) lines.push(current);
-    if (lines.length === maxLines) {
-      const remainingIdx = words.indexOf(current) + current.split(' ').length;
-      if (remainingIdx < words.length) {
-        const lastIdx = lines.length - 1;
-        lines[lastIdx] = clamp(lines[lastIdx] + ' ' + words.slice(remainingIdx).join(' '), font, size, maxW);
-      }
-    }
     return lines.length ? lines : [''];
   }
 
@@ -646,7 +649,7 @@ async function generatePdfSimple(formType, data) {
         numLabel: '8', numeric: true },
       { header: 'Influențe +/- (lei)',                                                                         key: 'influente_c9',                 width: wCt,
         numLabel: '9', numeric: true },
-      { header: 'Suma rezervată din credite bugetare pentru anul curent actualizată (lei)',                    key: 'sum_rezv_crdt_bug_act',        width: CW - 70 - 50 - wCt * 6,
+      { header: 'Suma rezervată din credite bugetare pentru anul curent actualizată (lei)',                    key: 'sum_rezv_crdt_bug_act',        width: CW - 70 - 50 - wCt * 7,
         numLabel: '10=8+9', numeric: true },
     ], rowsCtrl, { totals: true });
 
