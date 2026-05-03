@@ -10,6 +10,7 @@ import { csrfMiddleware }               from '../middleware/csrf.mjs';
 import { pool }                         from '../db/index.mjs';
 import { logger }                       from '../middleware/logger.mjs';
 import { generateNfInvestPdf }          from '../services/formulare-oficiale/nf-invest-pdf.mjs';
+import { generateRefnecPdf }            from '../services/formulare-oficiale/refnec-pdf.mjs';
 
 const router = Router();
 const _json  = expressJson({ limit: '2mb' });
@@ -179,6 +180,8 @@ router.post('/:id/generate-pdf', requireAuth, csrfMiddleware, async (req, res) =
 
     if (formular.form_type === 'NOTAFD_INVEST') {
       pdfBuf = await generateNfInvestPdf(formular);
+    } else if (formular.form_type === 'REFNEC') {
+      pdfBuf = await generateRefnecPdf(formular);
     } else {
       return res.status(400).json({ error: 'Generare PDF nu este suportată pentru acest tip.' });
     }
@@ -189,7 +192,8 @@ router.post('/:id/generate-pdf', requireAuth, csrfMiddleware, async (req, res) =
        WHERE id = $1
     `, [id]);
 
-    const fileName = `NF-Invest-${formular.title.replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 40)}.pdf`;
+    const typePrefix = formular.form_type === 'REFNEC' ? 'RefNec' : 'NF-Invest';
+    const fileName = `${typePrefix}-${formular.title.replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 40)}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Length', pdfBuf.length);

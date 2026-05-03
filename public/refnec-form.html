@@ -1213,8 +1213,8 @@
           <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-save"/></svg>
           Salvează draft
         </button>
-        <button id="rfn-btn-pdf" class="df-action-btn" disabled
-          title="Disponibil după implementarea completă a secțiunilor (C1.d)">
+        <button id="rfn-btn-pdf" class="df-action-btn" onclick="rfnGenPdf()"
+          title="Generează PDF Referat de Necesitate">
           <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-download"/></svg>
           Generează PDF
         </button>
@@ -2016,6 +2016,39 @@ async function rfnSave(){
     showErr('Eroare rețea la salvare.');
   }finally{
     if(btn){ btn.disabled=false; btn.innerHTML='<svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-save"/></svg> Salvează draft'; }
+  }
+}
+
+async function rfnGenPdf(){
+  if(!_rfnId){
+    showErr('Salvați referatul înainte de a genera PDF-ul.');
+    return;
+  }
+  const btn = document.getElementById('rfn-btn-pdf');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Se generează...'; }
+  try{
+    const r = await fetch(`/api/formulare-oficiale/${_rfnId}/generate-pdf`,{
+      method:'POST', credentials:'include',
+      headers:{'X-CSRF-Token':getCsrf()},
+    });
+    if(!r.ok){
+      const j = await r.json().catch(()=>({}));
+      showErr(j.error || 'Eroare la generarea PDF-ului.');
+      return;
+    }
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `RefNec-${_rfnId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 3000);
+  }catch(e){
+    showErr('Eroare rețea la generarea PDF-ului.');
+  }finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-download"/></svg> Generează PDF'; }
   }
 }
 
