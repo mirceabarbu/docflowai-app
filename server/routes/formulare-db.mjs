@@ -144,16 +144,16 @@ router.get('/api/formulare-df/aprobate', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows } = await pool.query(`
-      SELECT
+      SELECT DISTINCT ON (fd.nr_unic_inreg)
         fd.id, fd.nr_unic_inreg, fd.subtitlu_df, fd.data_revizuirii,
-        fd.rows_ctrl
+        fd.rows_ctrl, fd.revizie_nr
       FROM formulare_df fd
       JOIN flows f ON f.id = fd.flow_id
       WHERE fd.org_id = $1
         AND fd.deleted_at IS NULL
         AND fd.flow_id IS NOT NULL
         AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-      ORDER BY fd.updated_at DESC
+      ORDER BY fd.nr_unic_inreg, fd.revizie_nr DESC
     `, [actor.orgId]);
     res.json({ ok: true, documents: rows });
   } catch (e) {

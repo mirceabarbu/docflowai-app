@@ -64,7 +64,8 @@ async function loadDfAprobate(){
       +_dfAprobate.map(d=>{
         const nr=d.nr_unic_inreg?`DF ${esc(d.nr_unic_inreg)}`:'DF fără număr';
         const sub=d.subtitlu_df?` — ${esc(d.subtitlu_df.slice(0,50))}`:'';
-        return`<option value="${esc(d.id)}" style="background:#0d1630;color:#e8eeff">${nr}${sub}</option>`;
+        const rev=(d.revizie_nr>0)?` (R${d.revizie_nr})`:'';
+        return`<option value="${esc(d.id)}" style="background:#0d1630;color:#e8eeff">${nr}${sub}${rev}</option>`;
       }).join('');
   }catch(_){}
 }
