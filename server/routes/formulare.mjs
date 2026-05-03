@@ -452,16 +452,47 @@ async function generatePdfSimple(formType, data) {
       txt(clamp(str(lblObligTxt), fR, 8, CW - 16), ML + 14, cbY, { font: fR, size: 8 });
       y -= 14;
     } else {
-      // ── Antet ORD păstrat (refactor în Pas B) ───────────────────────────
-      txt(`Instituția publică: ${data.DenInstPb || ''}`, ML, y, { font: fR, size: 9 });
-      rightTxt(`Nr. ordonanță: ${data.NrOrdonantPl || ''}   Data: ${data.DataOrdontPl || ''}`, y, { font: fR, size: 8 });
-      y -= 13;
-      txt(`CIF: ${data.Cif || ''}`, ML, y, { font: fR, size: 8 });
-      y -= 9;
-      hline(y, { thickness: 0.5 });
-      y -= 9;
-      centered('ORDONANȚARE DE PLATĂ', y, { font: fB, size: 12 });
-      y -= 16;
+      // ── Antet ORD conform ghid OMF (Capitolul IV) ───────────────────────
+      // Rând 1: "Instituția publică:" + valoare (full-width, încadrat)
+      const rowH1o = 16;
+      pg.drawRectangle({ x: ML, y: y - rowH1o, width: CW, height: rowH1o,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      txt('Instituția publică:', ML + 4, y - 11, { font: fB, size: 8.5 });
+      const lblW1o = tw('Instituția publică:', fB, 8.5) + 8;
+      txt(clamp(str(data.DenInstPb || ''), fR, 9, CW - lblW1o - 6),
+          ML + lblW1o, y - 11, { font: fR, size: 9 });
+      y -= rowH1o + 2;
+
+      // Rând 2: "Cod de identificare fiscală:" + valoare
+      const rowH2o = 16;
+      pg.drawRectangle({ x: ML, y: y - rowH2o, width: CW, height: rowH2o,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      txt('Cod de identificare fiscală:', ML + 4, y - 11, { font: fB, size: 8.5 });
+      const lblW2o = tw('Cod de identificare fiscală:', fB, 8.5) + 8;
+      txt(clamp(str(data.Cif || ''), fR, 9, CW - lblW2o - 6),
+          ML + lblW2o, y - 11, { font: fR, size: 9 });
+      y -= rowH2o + 8;
+
+      // Titlu centrat
+      centered('ORDONANȚARE DE PLATĂ', y, { font: fB, size: 14 });
+      y -= 20;
+
+      // Rând "nr." + valoare | "/ data" + valoare (2 sub-celule)
+      const rowH3o = 16;
+      pg.drawRectangle({ x: ML, y: y - rowH3o, width: CW, height: rowH3o,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      const cellNrW = CW * 0.5;
+      txt('nr.', ML + 4, y - 11, { font: fB, size: 8.5 });
+      const lblNrO = tw('nr.', fB, 8.5) + 8;
+      txt(clamp(str(data.NrOrdonantPl || ''), fR, 9, cellNrW - lblNrO - 6),
+          ML + lblNrO, y - 11, { font: fR, size: 9 });
+      pg.drawLine({ start: { x: ML + cellNrW, y }, end: { x: ML + cellNrW, y: y - rowH3o },
+        thickness: 0.4, color: rgb(0, 0, 0) });
+      txt('/ data', ML + cellNrW + 4, y - 11, { font: fB, size: 8.5 });
+      const lblDataO = tw('/ data', fB, 8.5) + 8;
+      txt(clamp(str(data.DataOrdontPl || ''), fR, 9, CW - cellNrW - lblDataO - 6),
+          ML + cellNrW + lblDataO, y - 11, { font: fR, size: 9 });
+      y -= rowH3o + 6;
     }
     y -= 4;
   }
@@ -668,36 +699,110 @@ async function generatePdfSimple(formType, data) {
   function buildOrdnt() {
     const df = data.docFd || {};
 
-    secTitle('Date ordonanțare');
-    fieldLine('Nr. ordonanțare', data.NrOrdonantPl);
-    fieldLine('Data ordonanțării', data.DataOrdontPl);
+    // ── Numar unic de inregistrare al documentului de fundamentare ─────────
+    const rowDfH = 16;
+    ensureY(rowDfH + 4);
+    pg.drawRectangle({ x: ML, y: y - rowDfH, width: CW, height: rowDfH,
+      borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+    txt('Numar unic de inregistrare al documentului de fundamentare:',
+        ML + 4, y - 11, { font: fB, size: 8.5 });
+    const lblNrDf = tw('Numar unic de inregistrare al documentului de fundamentare:', fB, 8.5) + 8;
+    txt(clamp(str(df.nr_unic_inreg || ''), fR, 9, CW - lblNrDf - 6),
+        ML + lblNrDf, y - 11, { font: fR, size: 9 });
+    y -= rowDfH + 6;
 
-    y -= 4;
-    secTitle('Date beneficiar');
-    fieldLine('Beneficiar', df.beneficiar);
-    fieldLine('IBAN beneficiar', df.iban_beneficiar);
-    fieldLine('CIF beneficiar', df.cif_beneficiar);
-    if (df.banca_beneficiar)        fieldLine('Bancă beneficiar', df.banca_beneficiar);
-    if (df.nr_unic_inreg)           fieldLine('Nr. unic înregistrare', df.nr_unic_inreg);
-    if (df.documente_justificative) fieldLine('Documente justificative', df.documente_justificative);
-
-    y -= 4;
-    secTitle('Detalii plată');
+    // ── Tabel detalii plată — 8 coloane cu sub-numerotare (1.1-1.4) și (2-5) ──
     drawTable([
-      { header: 'Cod angajament',    key: 'cod_angajament',         width: 80 },
-      { header: 'Indicator',         key: 'indicator_angajament',   width: 65 },
-      { header: 'Program',           key: 'program',                width: 55 },
-      { header: 'Cod SSI',           key: 'cod_SSI',                width: 55 },
-      { header: 'Recepții',          key: 'receptii',               width: 57, numeric: true },
-      { header: 'Plăți ant.',        key: 'plati_anterioare',       width: 57, numeric: true },
-      { header: 'Sumă ordonanțată',  key: 'suma_ordonantata_plata', width: 72, numeric: true },
-      { header: 'Rec. neplatite',    key: 'receptii_neplatite',     width: CW - 80 - 65 - 55 - 55 - 57 - 57 - 72, numeric: true },
-    ], Array.isArray(df.rowTfd) ? df.rowTfd : []);
+      { header: 'Cod angajament',                  key: 'cod_angajament',         width: 78,
+        numLabel: '1.1', totalText: 'TOTAL' },
+      { header: 'Indicator angajament',            key: 'indicator_angajament',   width: 60,
+        numLabel: '1.2', totalText: 'X' },
+      { header: 'Program',                         key: 'program',                width: 55,
+        numLabel: '1.3', totalText: 'X' },
+      { header: 'Cod SSI',                         key: 'cod_SSI',                width: 60,
+        numLabel: '1.4', totalText: 'X' },
+      { header: 'Recepții (lei)',                  key: 'receptii',               width: 55,
+        numLabel: '2', numeric: true },
+      { header: 'Plăți anterioare (lei)',          key: 'plati_anterioare',       width: 60,
+        numLabel: '3', numeric: true },
+      { header: 'Suma ordonanțată la plată (lei)', key: 'suma_ordonantata_plata', width: 70,
+        numLabel: '4', numeric: true },
+      { header: 'Recepții neplătite (lei)',        key: 'receptii_neplatite',     width: CW - 78 - 60 - 55 - 60 - 55 - 60 - 70,
+        numLabel: '5 = (col.2)-(col.3)-(col.4)', numeric: true },
+    ], Array.isArray(df.rowTfd) ? df.rowTfd : [], { totals: true });
 
-    if (df.inf_pv_plata || df.inf_pv_plata1) {
-      secTitle('Informații proces-verbal plată');
-      if (df.inf_pv_plata)  fieldLine('Informații PV plată', df.inf_pv_plata);
-      if (df.inf_pv_plata1) fieldLine('Informații PV plată (2)', df.inf_pv_plata1);
+    // ── Beneficiar (rând încadrat) ──────────────────────────────────────────
+    const rowBfH = 16;
+    ensureY(rowBfH + 2);
+    pg.drawRectangle({ x: ML, y: y - rowBfH, width: CW, height: rowBfH,
+      borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+    txt('Beneficiar:', ML + 4, y - 11, { font: fB, size: 8.5 });
+    const lblBfW = tw('Beneficiar:', fB, 8.5) + 8;
+    txt(clamp(str(df.beneficiar || ''), fR, 9, CW - lblBfW - 6),
+        ML + lblBfW, y - 11, { font: fR, size: 9 });
+    y -= rowBfH + 2;
+
+    // ── Documente justificative (rând încadrat) ─────────────────────────────
+    const rowDjH = 16;
+    ensureY(rowDjH + 2);
+    pg.drawRectangle({ x: ML, y: y - rowDjH, width: CW, height: rowDjH,
+      borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+    txt('Documente justificative:', ML + 4, y - 11, { font: fB, size: 8.5 });
+    const lblDjW = tw('Documente justificative:', fB, 8.5) + 8;
+    txt(clamp(str(df.documente_justificative || ''), fR, 9, CW - lblDjW - 6),
+        ML + lblDjW, y - 11, { font: fR, size: 9 });
+    y -= rowDjH + 2;
+
+    // ── Cod de identificare fiscală beneficiar (rând încadrat) ──────────────
+    const rowCifH = 16;
+    ensureY(rowCifH + 2);
+    pg.drawRectangle({ x: ML, y: y - rowCifH, width: CW, height: rowCifH,
+      borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+    txt('Cod de identificare fiscală beneficiar:', ML + 4, y - 11, { font: fB, size: 8.5 });
+    const lblCifW = tw('Cod de identificare fiscală beneficiar:', fB, 8.5) + 8;
+    txt(clamp(str(df.cif_beneficiar || ''), fR, 9, CW - lblCifW - 6),
+        ML + lblCifW, y - 11, { font: fR, size: 9 });
+    y -= rowCifH + 2;
+
+    // ── Cod IBAN beneficiar | Cont deschis la (2 sub-celule) ────────────────
+    const rowIbnH = 16;
+    ensureY(rowIbnH + 2);
+    pg.drawRectangle({ x: ML, y: y - rowIbnH, width: CW, height: rowIbnH,
+      borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+    const cellIbW = CW * 0.6;
+    txt('Cod IBAN beneficiar:', ML + 4, y - 11, { font: fB, size: 8.5 });
+    const lblIbW = tw('Cod IBAN beneficiar:', fB, 8.5) + 8;
+    txt(clamp(str(df.iban_beneficiar || ''), fR, 9, cellIbW - lblIbW - 6),
+        ML + lblIbW, y - 11, { font: fR, size: 9 });
+    pg.drawLine({ start: { x: ML + cellIbW, y }, end: { x: ML + cellIbW, y: y - rowIbnH },
+      thickness: 0.4, color: rgb(0, 0, 0) });
+    txt('Cont deschis la:', ML + cellIbW + 4, y - 11, { font: fB, size: 8.5 });
+    const lblCdW = tw('Cont deschis la:', fB, 8.5) + 8;
+    txt(clamp(str(df.banca_beneficiar || ''), fR, 9, CW - cellIbW - lblCdW - 6),
+        ML + cellIbW + lblCdW, y - 11, { font: fR, size: 9 });
+    y -= rowIbnH + 2;
+
+    // ── Informații privind plata (casetă text multiline) ────────────────────
+    const infTxt = [df.inf_pv_plata, df.inf_pv_plata1].filter(Boolean).join(' ');
+    ensureY(LH);
+    txt('Informații privind plata:', ML, y, { font: fB, size: 8.5 });
+    y -= LH;
+    if (infTxt) {
+      const lines = wrapText(str(infTxt), fR, 8.5, CW - 8, 4);
+      const boxH = Math.max(28, lines.length * 11 + 8);
+      ensureY(boxH + 4);
+      pg.drawRectangle({ x: ML, y: y - boxH, width: CW, height: boxH,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      for (let i = 0; i < lines.length; i++) {
+        txt(lines[i], ML + 4, y - 8 - i * 11, { font: fR, size: 8.5 });
+      }
+      y -= boxH + 4;
+    } else {
+      const boxH = 28;
+      ensureY(boxH + 4);
+      pg.drawRectangle({ x: ML, y: y - boxH, width: CW, height: boxH,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      y -= boxH + 4;
     }
   }
 
