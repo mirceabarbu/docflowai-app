@@ -44,6 +44,7 @@ async function sendNotif(userId, type, title, message, data) {
 const DF_P1_FIELDS = [
   'cif','den_inst_pb','subtitlu_df','nr_unic_inreg','revizuirea','data_revizuirii',
   'compartiment_specialitate','obiect_fd_reviz_scurt','obiect_fd_reviz_lung',
+  'ckbx_oblig_tert',
   'ckbx_stab_tin_cont','ckbx_ramane_suma','ramane_suma','rows_val',
   'ckbx_fara_ang_emis_ancrt','ckbx_cu_ang_emis_ancrt','ckbx_sting_ang_in_ancrt',
   'ckbx_fara_plati_ang_in_ancrt','ckbx_cu_plati_ang_in_mmani',

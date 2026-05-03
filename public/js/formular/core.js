@@ -310,6 +310,7 @@ function colO(){return{
 function colN(){return{
   Cif:g('n-cif'),DenInstPb:g('n-den'),SubtitluDF:g('n-subtitlu'),
   NrUnicInreg:g('n-nrUnic'),Revizuirea:g('n-rev'),DataRevizuirii:g('n-data'),
+  ckbx_oblig_tert:cb('n-ck-oblig'),
   captureImageBase64:imgs['n-cimg']||null,
   attachmentsFd:JSON.parse(document.getElementById('n-fdad').value||'[]'),
   attachments:JSON.parse(document.getElementById('n-adata').value||'[]'),

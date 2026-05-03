@@ -43,6 +43,7 @@ function collectDfP1Db(){return{
   cif:g('n-cif'),den_inst_pb:g('n-den'),subtitlu_df:g('n-subtitlu'),
   nr_unic_inreg:g('n-nrUnic'),revizuirea:g('n-rev'),data_revizuirii:g('n-data'),
   compartiment_specialitate:g('n-comp'),obiect_fd_reviz_scurt:g('n-scurt'),obiect_fd_reviz_lung:g('n-lung'),
+  ckbx_oblig_tert:cb('n-ck-oblig'),
   ckbx_stab_tin_cont:cb('n-ck-stab'),ckbx_ramane_suma:cb('n-ck-ramane'),ramane_suma:g('n-ramana')||'0',
   rows_val_unchanged:!!document.getElementById('n-ck-ramane')?.checked,
   rows_val:getNV(),
@@ -87,6 +88,7 @@ function populateDf(doc){
   sv('n-cif',doc.cif);sv('n-den',doc.den_inst_pb);sv('n-subtitlu',doc.subtitlu_df);
   sv('n-nrUnic',doc.nr_unic_inreg);sv('n-rev',doc.revizuirea);sv('n-data',doc.data_revizuirii);
   sv('n-comp',doc.compartiment_specialitate);sv('n-scurt',doc.obiect_fd_reviz_scurt);sv('n-lung',doc.obiect_fd_reviz_lung);
+  sc('n-ck-oblig',doc.ckbx_oblig_tert);
   sc('n-ck-stab',doc.ckbx_stab_tin_cont);sc('n-ck-ramane',doc.ckbx_ramane_suma);sv('n-ramana',doc.ramane_suma||'0');
   if(doc.ckbx_stab_tin_cont==='1')p4toggle('stab');else if(doc.ckbx_ramane_suma==='1')p4toggle('ramane');
   sc('n-ck-faraang',doc.ckbx_fara_ang_emis_ancrt);sc('n-ck-cuang',doc.ckbx_cu_ang_emis_ancrt);

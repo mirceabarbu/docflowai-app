@@ -233,30 +233,71 @@ async function generatePdfSimple(formType, data) {
     y -= LH;
   }
 
-  // Tabel cu header gri, rânduri alternante, borduri 0.4pt
-  // cols: [{ header, key, width, numeric? }]
-  function drawTable(cols, rows) {
-    const RH = 13, HH = 14;
-    ensureY(HH + RH * Math.min(Math.max(rows.length, 1), 4));
+  // Tabel cu header gri (poate fi pe 2 rânduri: titlu + numere coloane),
+  // rânduri alternante, rând TOTAL opțional, borduri 0.4pt.
+  // cols: [{ header, key, width, numeric?, numLabel?, totalText? }]
+  //   header   = denumire completă conform ghid OMF (afișat pe rând 1 al header-ului, wrap permis)
+  //   numLabel = textul numerotării coloanei (ex. "1", "7=5+6", "5 = (col.2)-(col.3)-(col.4)")
+  //   totalText = "X" pentru coloane text marcate, undefined pentru numerice (se calculează suma),
+  //               sau string explicit (ex. "TOTAL" pe prima coloană)
+  // Dacă cel puțin un col are numLabel → se desenează rândul de numerotare sub headerul cu titluri.
+  // Dacă opțiunea totals === true → se desenează rândul TOTAL la final (sume pe coloane numerice,
+  //                                  totalText pe coloane text).
+  function drawTable(cols, rows, opts = {}) {
+    const totals = !!opts.totals;
+    const HH1 = 22;                                       // header rând 1: titlu wrap-uit pe 2 linii
+    const hasNumRow = cols.some(c => c.numLabel != null);
+    const HH2 = hasNumRow ? 11 : 0;                       // header rând 2: numere coloane
+    const RH  = 13;
+    const TH  = totals ? 13 : 0;
+    ensureY(HH1 + HH2 + RH * Math.min(Math.max(rows.length, 1), 3) + TH);
 
-    // Header
-    pg.drawRectangle({ x: ML, y: y - HH, width: CW, height: HH,
+    // ── Header rând 1: titluri (wrap pe maxim 2 linii) ─────────────────────
+    pg.drawRectangle({ x: ML, y: y - HH1, width: CW, height: HH1,
       color: rgb(0.88, 0.88, 0.88), borderColor: rgb(0, 0, 0), borderWidth: 0.4 });
     let cx = ML;
     for (let i = 0; i < cols.length; i++) {
       const col = cols[i];
-      const hdr = clamp(str(col.header), fB, 7, col.width - 3);
-      const hw  = tw(hdr, fB, 7);
-      pg.drawText(hdr, { x: cx + (col.width - hw) / 2, y: y - HH + 4.5,
-        font: fB, size: 7, color: rgb(0, 0, 0) });
+      const fullTxt = str(col.header);
+      const maxW = col.width - 4;
+      const lines = wrapText(fullTxt, fB, 6.5, maxW, 2);
+      const lineH = 7.5;
+      const totalH = lines.length * lineH;
+      const startY = y - HH1 / 2 + totalH / 2 - lineH + 1;
+      for (let li = 0; li < lines.length; li++) {
+        const lw = tw(lines[li], fB, 6.5);
+        pg.drawText(lines[li], { x: cx + (col.width - lw) / 2, y: startY - li * lineH,
+          font: fB, size: 6.5, color: rgb(0, 0, 0) });
+      }
       if (i < cols.length - 1)
-        pg.drawLine({ start: { x: cx + col.width, y }, end: { x: cx + col.width, y: y - HH },
+        pg.drawLine({ start: { x: cx + col.width, y }, end: { x: cx + col.width, y: y - HH1 },
           thickness: 0.4, color: rgb(0, 0, 0) });
       cx += col.width;
     }
-    y -= HH;
+    y -= HH1;
 
-    // Rânduri
+    // ── Header rând 2: numerotare coloane (1, 2, ..., 7=5+6) ────────────────
+    if (hasNumRow) {
+      pg.drawRectangle({ x: ML, y: y - HH2, width: CW, height: HH2,
+        color: rgb(0.94, 0.94, 0.94), borderColor: rgb(0, 0, 0), borderWidth: 0.4 });
+      cx = ML;
+      for (let i = 0; i < cols.length; i++) {
+        const col = cols[i];
+        const lbl = col.numLabel != null ? str(col.numLabel) : '';
+        if (lbl) {
+          const lw = tw(lbl, fB, 6.5);
+          pg.drawText(lbl, { x: cx + (col.width - lw) / 2, y: y - HH2 + 3,
+            font: fB, size: 6.5, color: rgb(0, 0, 0) });
+        }
+        if (i < cols.length - 1)
+          pg.drawLine({ start: { x: cx + col.width, y }, end: { x: cx + col.width, y: y - HH2 },
+            thickness: 0.4, color: rgb(0, 0, 0) });
+        cx += col.width;
+      }
+      y -= HH2;
+    }
+
+    // ── Rânduri date ────────────────────────────────────────────────────────
     const dataRows = rows.length ? rows : [null];
     for (let ri = 0; ri < dataRows.length; ri++) {
       ensureY(RH);
@@ -284,123 +325,341 @@ async function generatePdfSimple(formType, data) {
       }
       y -= RH;
     }
+
+    // ── Rând TOTAL ──────────────────────────────────────────────────────────
+    if (totals) {
+      ensureY(TH);
+      pg.drawRectangle({ x: ML, y: y - TH, width: CW, height: TH,
+        color: rgb(0.92, 0.92, 0.92), borderColor: rgb(0, 0, 0), borderWidth: 0.4 });
+      cx = ML;
+      for (let i = 0; i < cols.length; i++) {
+        const col = cols[i];
+        let cellTxt;
+        if (col.numeric) {
+          const sum = rows.reduce((s, r) => s + (parseFloat(r[col.key]) || 0), 0);
+          cellTxt = str(fmtNum(sum));
+        } else {
+          cellTxt = str(col.totalText || '');
+        }
+        const cw = tw(cellTxt, fB, 7);
+        const tx = col.numeric ? cx + col.width - 3 - cw : cx + (col.width - cw) / 2;
+        pg.drawText(cellTxt, { x: tx, y: y - TH + 4, font: fB, size: 7, color: rgb(0, 0, 0) });
+        if (i < cols.length - 1)
+          pg.drawLine({ start: { x: cx + col.width, y }, end: { x: cx + col.width, y: y - TH },
+            thickness: 0.4, color: rgb(0, 0, 0) });
+        cx += col.width;
+      }
+      y -= TH;
+    }
+
     y -= 5;
+  }
+
+  // ── Helper: wrap text pe maxim N linii (cu trunchiere ultimă linie) ──────
+  function wrapText(text, font, size, maxW, maxLines = 2) {
+    const words = String(text).split(/\s+/);
+    const lines = [];
+    let current = '';
+    for (const w of words) {
+      const trial = current ? current + ' ' + w : w;
+      if (tw(trial, font, size) <= maxW) {
+        current = trial;
+      } else {
+        if (current) lines.push(current);
+        current = w;
+        if (lines.length >= maxLines - 1) break;
+      }
+    }
+    if (current && lines.length < maxLines) lines.push(current);
+    if (lines.length === maxLines) {
+      const remainingIdx = words.indexOf(current) + current.split(' ').length;
+      if (remainingIdx < words.length) {
+        const lastIdx = lines.length - 1;
+        lines[lastIdx] = clamp(lines[lastIdx] + ' ' + words.slice(remainingIdx).join(' '), font, size, maxW);
+      }
+    }
+    return lines.length ? lines : [''];
   }
 
   // ── Header document ────────────────────────────────────────────────────────
 
   function drawDocHeader() {
-    // Rând 1: instituție stânga | nr. + dată dreapta
-    txt(`Instituția publică: ${data.DenInstPb || ''}`, ML, y, { font: fR, size: 9 });
     if (formType === 'notafd') {
-      rightTxt(`Nr. înreg.: ${data.NrUnicInreg || ''}   Data: ${data.DataRevizuirii || ''}`, y, { font: fR, size: 8 });
+      // ── Antet DF conform ghid OMF (Capitolul III) ──────────────────────
+      // Rând 1: "Instituția publică:" + valoare (full-width, înrămat)
+      const rowH1 = 16;
+      pg.drawRectangle({ x: ML, y: y - rowH1, width: CW, height: rowH1,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      txt('Instituția publică:', ML + 4, y - 11, { font: fB, size: 8.5 });
+      const lblW1 = tw('Instituția publică:', fB, 8.5) + 8;
+      txt(clamp(str(data.DenInstPb || ''), fR, 9, CW - lblW1 - 6),
+          ML + lblW1, y - 11, { font: fR, size: 9 });
+      y -= rowH1 + 2;
+
+      // Rând 2: "Cod de identificare fiscală:" + valoare
+      const rowH2 = 16;
+      pg.drawRectangle({ x: ML, y: y - rowH2, width: CW, height: rowH2,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      txt('Cod de identificare fiscală:', ML + 4, y - 11, { font: fB, size: 8.5 });
+      const lblW2 = tw('Cod de identificare fiscală:', fB, 8.5) + 8;
+      txt(clamp(str(data.Cif || ''), fR, 9, CW - lblW2 - 6),
+          ML + lblW2, y - 11, { font: fR, size: 9 });
+      y -= rowH2 + 8;
+
+      // Titlu centrat
+      centered('DOCUMENT DE FUNDAMENTARE', y, { font: fB, size: 14 });
+      y -= 20;
+
+      // Casetă subtitlu (Obiectul DF) — full-width, încadrat
+      const subH = 28;
+      pg.drawRectangle({ x: ML, y: y - subH, width: CW, height: subH,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      const subStr = clamp(str(data.SubtitluDF || ''), fR, 10, CW - 8);
+      const subW = tw(subStr, fR, 10);
+      txt(subStr, ML + (CW - subW) / 2, y - subH / 2 - 3, { font: fR, size: 10 });
+      y -= subH + 8;
+
+      // Rând: "Numar unic de inregistrare" / "revizuirea" / "data" în 3 sub-celule
+      const rowH3 = 16;
+      pg.drawRectangle({ x: ML, y: y - rowH3, width: CW, height: rowH3,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      const cell1W = CW * 0.5;
+      txt('Numar unic de inregistrare:', ML + 4, y - 11, { font: fB, size: 8 });
+      const lblNr = tw('Numar unic de inregistrare:', fB, 8) + 8;
+      txt(clamp(str(data.NrUnicInreg || ''), fR, 8.5, cell1W - lblNr - 6),
+          ML + lblNr, y - 11, { font: fR, size: 8.5 });
+      pg.drawLine({ start: { x: ML + cell1W, y }, end: { x: ML + cell1W, y: y - rowH3 },
+        thickness: 0.4, color: rgb(0, 0, 0) });
+      const cell2X = ML + cell1W;
+      const cell2W = CW * 0.25;
+      txt('revizuirea:', cell2X + 4, y - 11, { font: fB, size: 8 });
+      const lblRev = tw('revizuirea:', fB, 8) + 8;
+      txt(clamp(str(data.Revizuirea || ''), fR, 8.5, cell2W - lblRev - 6),
+          cell2X + lblRev, y - 11, { font: fR, size: 8.5 });
+      pg.drawLine({ start: { x: cell2X + cell2W, y }, end: { x: cell2X + cell2W, y: y - rowH3 },
+        thickness: 0.4, color: rgb(0, 0, 0) });
+      const cell3X = cell2X + cell2W;
+      txt('/ data:', cell3X + 4, y - 11, { font: fB, size: 8 });
+      const lblData = tw('/ data:', fB, 8) + 8;
+      txt(clamp(str(data.DataRevizuirii || ''), fR, 8.5, ML + CW - cell3X - lblData - 6),
+          cell3X + lblData, y - 11, { font: fR, size: 8.5 });
+      y -= rowH3 + 4;
+
+      // Checkbox "obligație legală terț"
+      const cbY = y;
+      drawCheckbox(ML, cbY, data.ckbx_oblig_tert);
+      const lblObligTxt = 'se referă la angajamente legale care se emit ca urmare a unei obligații legale sau de către un terț';
+      txt(clamp(str(lblObligTxt), fR, 8, CW - 16), ML + 14, cbY, { font: fR, size: 8 });
+      y -= 14;
     } else {
+      // ── Antet ORD păstrat (refactor în Pas B) ───────────────────────────
+      txt(`Instituția publică: ${data.DenInstPb || ''}`, ML, y, { font: fR, size: 9 });
       rightTxt(`Nr. ordonanță: ${data.NrOrdonantPl || ''}   Data: ${data.DataOrdontPl || ''}`, y, { font: fR, size: 8 });
+      y -= 13;
+      txt(`CIF: ${data.Cif || ''}`, ML, y, { font: fR, size: 8 });
+      y -= 9;
+      hline(y, { thickness: 0.5 });
+      y -= 9;
+      centered('ORDONANȚARE DE PLATĂ', y, { font: fB, size: 12 });
+      y -= 16;
     }
-    y -= 13;
-    // Rând 2: CIF
-    txt(`CIF: ${data.Cif || ''}`, ML, y, { font: fR, size: 8 });
-    y -= 9;
-    // Linie separator
-    hline(y, { thickness: 0.5 });
-    y -= 9;
-    // Titlu centrat bold
-    const title = formType === 'ordnt' ? 'ORDONANȚARE DE PLATĂ' : 'DOCUMENT DE FUNDAMENTARE';
-    centered(title, y, { font: fB, size: 12 });
-    y -= 16;
-    // Subtitlu / info revizuire
-    if (formType === 'notafd') {
-      if (data.SubtitluDF) {
-        centered(data.SubtitluDF, y, { font: fR, size: 9 });
-        y -= 13;
-      }
-      centered(`Revizuirea nr. ${data.Revizuirea || '—'} din ${data.DataRevizuirii || ''}`, y, { font: fR, size: 8 });
-      y -= 11;
-    }
-    y -= 6;
+    y -= 4;
   }
 
   // ── Conținut NOTAFD ────────────────────────────────────────────────────────
 
   function buildNotafd() {
-    secTitle('SECȚIUNEA A');
     const sA = data.sectiuneaA || {};
+
+    // ── Secțiunea A: Obiectul documentului de fundamentare ─────────────────
+    secTitle('Secțiunea A: Obiectul documentului de fundamentare');
+
     fieldLine('1. Compartiment de specialitate', sA.compartiment_specialitate);
-    fieldLine('2. Obiect FD (formă scurtă)', sA.obiect_fd_reviz_scurt);
-    if (sA.obiect_fd_reviz_lung) fieldLine('3. Obiect FD (formă detaliată)', sA.obiect_fd_reviz_lung);
+    fieldLine('2. Descrierea pe scurt a obiectului documentului de fundamentare/motivul revizuirii',
+              sA.obiect_fd_reviz_scurt);
 
-    // Pct. 4
-    y -= 4;
-    secTitle('4. Angajamente legale — valori');
-    const angV = sA.ang_legale_val || {};
-    checkItem(angV.ckbx_stab_tin_cont, 'Stabilirea și ținerea în evidență a angajamentelor legale (valori)');
-    checkItem(angV.ckbx_ramane_suma,   'Rămâne suma de angajat');
-    if (isChecked(angV.ckbx_ramane_suma) && (angV.ramane_suma || angV.ramane_suma === 0))
-      fieldLine('  Suma rămasă de angajat', fmtNum(angV.ramane_suma), { indent: 16 });
-    y -= 2;
-    drawTable([
-      { header: 'Element FD',       key: 'element_fd',    width: 80 },
-      { header: 'Program',          key: 'program',       width: 60 },
-      { header: 'Cod SSI',          key: 'codSSI',        width: 60 },
-      { header: 'Param FD',         key: 'param_fd',      width: 70 },
-      { header: 'Val. prec.',       key: 'valt_rev_prec', width: 60, numeric: true },
-      { header: 'Influențe',        key: 'influente',     width: 60, numeric: true },
-      { header: 'Val. actualizată', key: 'valt_actualiz', width: CW - 80 - 60 - 60 - 70 - 60 - 60, numeric: true },
-    ], Array.isArray(angV.rowT_ang_pl_val) ? angV.rowT_ang_pl_val : []);
-
-    // Pct. 5
-    y -= 4;
-    secTitle('5. Angajamente legale — plăți');
-    const angP = sA.ang_legale_plati || {};
-    checkItem(angP.ckbx_fara_ang_emis_ancrt,    'Fără angajamente emise în anul curent');
-    checkItem(angP.ckbx_cu_ang_emis_ancrt,      'Cu angajamente emise în anul curent');
-    checkItem(angP.ckbx_sting_ang_in_ancrt,     'Sting angajamentele în anul curent');
-    checkItem(angP.ckbx_fara_plati_ang_in_ancrt,'Fără plăți ale angajamentelor în anul curent');
-    checkItem(angP.ckbx_cu_plati_ang_in_mmani,  'Cu plăți ale angajamentelor în lunile următoare');
-    checkItem(angP.ckbx_ang_leg_emise_ct_an_urm,'Angajamente legale emise cu termen în ani următori');
-    const rowsPlati = Array.isArray(angP.rowT_ang_pl_plati) ? angP.rowT_ang_pl_plati : [];
-    if (rowsPlati.length) {
-      y -= 2;
-      const w = Math.floor(CW / 8);
-      drawTable([
-        { header: 'Program',      key: 'program',                width: w },
-        { header: 'Cod SSI',      key: 'codSSI',                 width: w },
-        { header: 'Plăți prec.', key: 'plati_ani_precedenti',   width: w, numeric: true },
-        { header: 'Plăți an crt.',key: 'plati_estim_ancrt',      width: w, numeric: true },
-        { header: 'Plăți an+1',  key: 'plati_estim_an_np1',     width: w, numeric: true },
-        { header: 'Plăți an+2',  key: 'plati_estim_an_np2',     width: w, numeric: true },
-        { header: 'Plăți an+3',  key: 'plati_estim_an_np3',     width: w, numeric: true },
-        { header: 'Plăți ulter.',key: 'plati_estim_ani_ulter',  width: CW - w * 7, numeric: true },
-      ], rowsPlati);
+    // 3. Descrierea pe larg — casetă text mare (multiline)
+    if (sA.obiect_fd_reviz_lung) {
+      ensureY(LH);
+      txt('3. Descrierea pe larg a stării de fapt și de drept:', ML, y, { font: fB, size: 8.5 });
+      y -= LH;
+      const longTxt = str(sA.obiect_fd_reviz_lung);
+      const lines = wrapText(longTxt, fR, 8.5, CW - 8, 12);
+      const boxH = Math.max(40, lines.length * 11 + 8);
+      ensureY(boxH + 4);
+      pg.drawRectangle({ x: ML, y: y - boxH, width: CW, height: boxH,
+        borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+      for (let i = 0; i < lines.length; i++) {
+        txt(lines[i], ML + 4, y - 8 - i * 11, { font: fR, size: 8.5 });
+      }
+      y -= boxH + 6;
     }
 
-    // Secțiunea B
+    // ── 4. Valoarea angajamentelor legale ───────────────────────────────────
+    y -= 2;
+    ensureY(LH);
+    txt('4. Valoarea angajamentelor legale (pe toată perioada de valabilitate a documentului de fundamentare):',
+        ML, y, { font: fB, size: 8.5 });
+    y -= LH;
+
+    const angV = sA.ang_legale_val || {};
+    checkItem(angV.ckbx_stab_tin_cont, 'Se stabilește ținând cont de:');
+
+    y -= 2;
+    drawTable([
+      { header: 'Element de fundamentare',                  key: 'element_fd',    width: 95,
+        numLabel: '1', totalText: 'TOTAL' },
+      { header: 'Program',                                  key: 'program',       width: 55,
+        numLabel: '2', totalText: 'X' },
+      { header: 'Cod SSI',                                  key: 'codSSI',        width: 70,
+        numLabel: '3', totalText: 'X' },
+      { header: 'Parametrii de fundamentare',               key: 'param_fd',      width: 75,
+        numLabel: '4', totalText: 'X' },
+      { header: 'Valoare totală revizie precedentă (lei)',  key: 'valt_rev_prec', width: 65,
+        numLabel: '5', numeric: true },
+      { header: 'Influențe +/- (lei)',                      key: 'influente',     width: 55,
+        numLabel: '6', numeric: true },
+      { header: 'Valoarea totală actualizată (lei)',        key: 'valt_actualiz', width: CW - 95 - 55 - 70 - 75 - 65 - 55,
+        numLabel: '7=5+6', numeric: true },
+    ], Array.isArray(angV.rowT_ang_pl_val) ? angV.rowT_ang_pl_val : [], { totals: true });
+
+    if (isChecked(angV.ckbx_ramane_suma)) {
+      ensureY(LH);
+      drawCheckbox(ML, y, true);
+      const sumStr = (angV.ramane_suma || angV.ramane_suma === 0) ? fmtNum(angV.ramane_suma) : '_____________';
+      const lbl = `rămâne în suma de ${sumStr} lei conform fundamentării aprobate într-o revizuire anterioară a prezentului document de fundamentare`;
+      txt(clamp(str(lbl), fR, 8, CW - 16), ML + 14, y, { font: fR, size: 8 });
+      y -= LH;
+    }
+
+    // ── 5. Angajamente legale ───────────────────────────────────────────────
     y -= 4;
-    secTitle('SECȚIUNEA B');
+    ensureY(LH);
+    txt('5. Angajamente legale', ML, y, { font: fB, size: 8.5 });
+    y -= LH;
+
+    const angP = sA.ang_legale_plati || {};
+
+    // Opțiunea 1: niciun angajament
+    checkItem(angP.ckbx_fara_ang_emis_ancrt,
+      'niciun angajament legal nu a fost emis și în anul curent nu se anticipează emiterea niciunui angajament legal');
+
+    // Opțiunea 2: în anul curent se anticipează... (cu 3 sub-opțiuni)
+    checkItem(angP.ckbx_cu_ang_emis_ancrt,
+      'în anul curent se anticipează emiterea a cel puțin unui angajament legal / au fost emise angajamente legale / se înregistrează creșteri ale valorii angajamentelor legale emise în anii precedenți. În ceea ce privește plățile, intenția este de a:');
+
+    // 3 sub-opțiuni indentate (16pt)
+    checkItem(angP.ckbx_sting_ang_in_ancrt,
+      'se sting în anul curent toate obligațiile de plată', { indent: 16 });
+    checkItem(angP.ckbx_fara_plati_ang_in_ancrt,
+      'nu se efectuează plăți în anul curent, planificarea acestora fiind cea din tabelul de mai jos', { indent: 16 });
+    checkItem(angP.ckbx_cu_plati_ang_in_mmani,
+      'se efectuează plăți timp de mai mulți ani bugetari, planificarea acestora fiind cea din tabelul de mai jos', { indent: 16 });
+
+    // Tabel pct 5 — 8 coloane numerotate + TOTAL
+    const rowsPlati = Array.isArray(angP.rowT_ang_pl_plati) ? angP.rowT_ang_pl_plati : [];
+    y -= 2;
+    const wPl = Math.floor((CW - 70) / 7);
+    drawTable([
+      { header: 'Program',                              key: 'program',                width: 70,
+        numLabel: '1', totalText: 'TOTAL' },
+      { header: 'Cod SSI',                              key: 'codSSI',                 width: wPl,
+        numLabel: '2', totalText: 'X' },
+      { header: 'Plăți ani precedenți (lei)',           key: 'plati_ani_precedenti',   width: wPl,
+        numLabel: '3', numeric: true },
+      { header: 'Plăți estimate an curent (lei)',       key: 'plati_estim_ancrt',      width: wPl,
+        numLabel: '4', numeric: true },
+      { header: 'Plăți estimate an n+1 (lei)',          key: 'plati_estim_an_np1',     width: wPl,
+        numLabel: '5', numeric: true },
+      { header: 'Plăți estimate an n+2 (lei)',          key: 'plati_estim_an_np2',     width: wPl,
+        numLabel: '6', numeric: true },
+      { header: 'Plăți estimate an n+3 (lei)',          key: 'plati_estim_an_np3',     width: wPl,
+        numLabel: '7', numeric: true },
+      { header: 'Plăți estimate ani ulteriori (lei)',   key: 'plati_estim_ani_ulter',  width: CW - 70 - wPl * 6,
+        numLabel: '8', numeric: true },
+    ], rowsPlati, { totals: true });
+
+    // Opțiunea 3 (sub tabel)
+    checkItem(angP.ckbx_ang_leg_emise_ct_an_urm,
+      'Angajamentele legale se vor emite în contul anului următor');
+
+    // ── Secțiunea B ─────────────────────────────────────────────────────────
+    y -= 6;
+    secTitle('Secțiunea B: Situația evidențiată în sistemul de control al angajamentelor');
+
     const sB = data.sectiuneaB || {};
-    checkItem(sB.ckbx_secta_inreg_ctrl_ang,'Secțiunea A cu înregistrări în controlul angajamentelor');
-    checkItem(sB.ckbx_fara_inreg_ctrl_ang, 'Fără înregistrări în controlul angajamentelor');
-    if (sB.sum_fara_inreg_ctrl_crdbug)
-      fieldLine('  Suma fără înregistrări control credit bugetar', String(sB.sum_fara_inreg_ctrl_crdbug), { indent: 16 });
-    checkItem(sB.ckbx_interzis_emit_ang,  'Interzis a emite angajamente');
-    checkItem(sB.ckbx_interzis_intrucat,  'Întrucât');
-    if (sB.intrucat) fieldLine('  Motivație', sB.intrucat, { indent: 16 });
+
+    checkItem(sB.ckbx_secta_inreg_ctrl_ang,
+      'Propunerile de la secțiunea A au fost înregistrate în sistemul de control al angajamentelor după cum urmează:');
+
+    // Tabel SecB — 10 coloane numerotate cu 7=5+6 și 10=8+9 + TOTAL
     const rowsCtrl = Array.isArray(sB.rowT_ang_ctrl_ang) ? sB.rowT_ang_ctrl_ang : [];
-    if (rowsCtrl.length) {
-      y -= 2;
-      const w = Math.floor(CW / 10);
-      drawTable([
-        { header: 'Cod ang.',          key: 'cod_angajament',               width: w },
-        { header: 'Indicator',         key: 'indicator_angajament',         width: w },
-        { header: 'Program',           key: 'program',                      width: w },
-        { header: 'Cod SSI',           key: 'cod_SSI',                      width: w },
-        { header: 'Rez.crdt.ang.prec', key: 'sum_rezv_crdt_ang_af_rvz_prc', width: w, numeric: true },
-        { header: 'Inf.C6',            key: 'influente_c6',                 width: w, numeric: true },
-        { header: 'Rez.crdt.ang.act',  key: 'sum_rezv_crdt_ang_act',        width: w, numeric: true },
-        { header: 'Rez.crdt.bug.prec', key: 'sum_rezv_crdt_bug_af_rvz_prc', width: w, numeric: true },
-        { header: 'Inf.C9',            key: 'influente_c9',                 width: w, numeric: true },
-        { header: 'Rez.crdt.bug.act',  key: 'sum_rezv_crdt_bug_act',        width: CW - w * 9, numeric: true },
-      ], rowsCtrl);
+    y -= 2;
+    const wCt = Math.floor((CW - 70 - 50) / 8);
+    drawTable([
+      { header: 'Cod angajament',                                                                              key: 'cod_angajament',               width: 70,
+        numLabel: '1', totalText: 'TOTAL' },
+      { header: 'Indicator angajament',                                                                        key: 'indicator_angajament',         width: 50,
+        numLabel: '2', totalText: 'X' },
+      { header: 'Program',                                                                                     key: 'program',                      width: wCt,
+        numLabel: '3', totalText: 'X' },
+      { header: 'Cod SSI',                                                                                     key: 'cod_SSI',                      width: wCt,
+        numLabel: '4', totalText: 'X' },
+      { header: 'Suma rezervată din credite de angajament pentru anul curent aferentă reviziei precedente (lei)', key: 'sum_rezv_crdt_ang_af_rvz_prc', width: wCt,
+        numLabel: '5', numeric: true },
+      { header: 'Influențe +/- (lei)',                                                                         key: 'influente_c6',                 width: wCt,
+        numLabel: '6', numeric: true },
+      { header: 'Suma rezervată din credite de angajament pentru anul curent actualizată (lei)',               key: 'sum_rezv_crdt_ang_act',        width: wCt,
+        numLabel: '7=5+6', numeric: true },
+      { header: 'Suma rezervată din credite bugetare pentru anul curent aferentă reviziei precedente (lei)',   key: 'sum_rezv_crdt_bug_af_rvz_prc', width: wCt,
+        numLabel: '8', numeric: true },
+      { header: 'Influențe +/- (lei)',                                                                         key: 'influente_c9',                 width: wCt,
+        numLabel: '9', numeric: true },
+      { header: 'Suma rezervată din credite bugetare pentru anul curent actualizată (lei)',                    key: 'sum_rezv_crdt_bug_act',        width: CW - 70 - 50 - wCt * 6,
+        numLabel: '10=8+9', numeric: true },
+    ], rowsCtrl, { totals: true });
+
+    // ── Caseta finală SecB: "Nu s-au rezervat..." ──────────────────────────
+    if (isChecked(sB.ckbx_fara_inreg_ctrl_ang)) {
+      ensureY(LH);
+      drawCheckbox(ML, y, true);
+      const sumCa = sB.sum_fara_inreg_ctrl_crdbug ? fmtNum(sB.sum_fara_inreg_ctrl_crdbug) : '_______';
+      const sumCb = sB.sum_fara_inreg_ctrl_crd_bug ? fmtNum(sB.sum_fara_inreg_ctrl_crd_bug) : '_______';
+      const lblFara = `Nu s-au rezervat în sistemul de control al angajamentelor credite de angajament în cuantum de ${sumCa} lei, respectiv credite bugetare în cuantum de ${sumCb} lei`;
+      const wrappedFara = wrapText(str(lblFara), fR, 8, CW - 16, 3);
+      for (let i = 0; i < wrappedFara.length; i++) {
+        txt(wrappedFara[i], ML + 14, y - i * 10, { font: fR, size: 8 });
+      }
+      y -= 10 * wrappedFara.length;
+
+      if (isChecked(sB.ckbx_interzis_emit_ang)) {
+        ensureY(LH);
+        drawCheckbox(ML + 14, y, true);
+        const lblIns = 'întrucât creditele de angajament și/sau creditele bugetare sunt insuficiente. Din acest motiv, este interzisă emiterea de noi angajamente legale din inițiativa instituției publice la codul SSI și programul la care creditele de angajament și/sau bugetare sunt insuficiente';
+        const wrappedIns = wrapText(str(lblIns), fR, 8, CW - 30, 3);
+        for (let i = 0; i < wrappedIns.length; i++) {
+          txt(wrappedIns[i], ML + 28, y - i * 10, { font: fR, size: 8 });
+        }
+        y -= 10 * wrappedIns.length;
+      }
+
+      if (isChecked(sB.ckbx_interzis_intrucat)) {
+        ensureY(LH);
+        drawCheckbox(ML + 14, y, true);
+        txt('întrucât:', ML + 28, y, { font: fR, size: 8 });
+        y -= LH;
+        if (sB.intrucat) {
+          const motivH = 24;
+          ensureY(motivH + 2);
+          pg.drawRectangle({ x: ML + 14, y: y - motivH, width: CW - 14, height: motivH,
+            borderColor: rgb(0, 0, 0), borderWidth: 0.4, color: rgb(1, 1, 1) });
+          const motivLines = wrapText(str(sB.intrucat), fR, 8, CW - 22, 2);
+          for (let i = 0; i < motivLines.length; i++) {
+            txt(motivLines[i], ML + 18, y - 8 - i * 10, { font: fR, size: 8 });
+          }
+          y -= motivH + 4;
+        }
+      }
     }
   }
 
