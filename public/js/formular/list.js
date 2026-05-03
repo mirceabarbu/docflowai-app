@@ -340,8 +340,11 @@ function _renderLstTable(rows,type){
     const revBadgeLst=type==='df'
       ?`<span class="df-revizie-badge${(row.revizie_nr||0)>0?' revizie-activa':''}" style="vertical-align:middle;margin-left:4px">R${row.revizie_nr||0}</span>`
       :'';
+    const istoricBadgeLst=(type==='df'&&row.has_newer_revision===true)
+      ?`<span style="vertical-align:middle;margin-left:4px;padding:1px 7px;border-radius:8px;font-size:.65rem;font-weight:600;background:rgba(148,163,184,.15);color:#94a3b8;border:1px solid rgba(148,163,184,.25);text-transform:uppercase;letter-spacing:.04em" title="Există o revizie mai recentă pentru acest DF">istoric</span>`
+      :'';
     return`<tr>
-      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}</a>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
+      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}</a>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>
       <td>${esc(row.initiator||'—')}</td>
       <td>${esc(row.p2||'—')}</td>

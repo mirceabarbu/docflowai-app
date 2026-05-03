@@ -1234,6 +1234,13 @@ router.get('/api/formulare/list', async (req, res) => {
           fd.flow_id,
           COALESCE(fd.revizie_nr, 0) AS revizie_nr,
           COALESCE(fd.este_revizie, FALSE) AS este_revizie,
+          EXISTS(
+            SELECT 1 FROM formulare_df fd2
+            WHERE fd2.nr_unic_inreg = fd.nr_unic_inreg
+              AND fd2.org_id = fd.org_id
+              AND fd2.deleted_at IS NULL
+              AND fd2.revizie_nr > fd.revizie_nr
+          ) AS has_newer_revision,
           CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
