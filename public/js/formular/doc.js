@@ -340,8 +340,15 @@ function renderActions(ft){
 
   if(ft==='notafd'&&ST.docStatus[ft]==='neaprobat'){
     const revNr=ST.docRevizieNr?.[ft]??0;
-    div.innerHTML=`<span style="color:#f87171;font-size:.82rem;margin-right:8px">❌ DF neaprobat de semnatar — fluxul a fost refuzat (R${revNr}).</span>`
-      +B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`);
+    const areNoua=ST.docAreRevizieNoua?.[ft];
+    const latest=ST.docLatestRevizieNr?.[ft]||0;
+    if(areNoua){
+      div.innerHTML=`<span style="color:#f87171;font-size:.82rem;margin-right:8px">❌ DF neaprobat de semnatar (R${revNr}).</span>`
+        +`<span style="color:var(--df-text-3);font-size:.82rem">🕒 Revizie istorică — revizia curentă este R${latest}.</span>`;
+    }else{
+      div.innerHTML=`<span style="color:#f87171;font-size:.82rem;margin-right:8px">❌ DF neaprobat de semnatar — fluxul a fost refuzat (R${revNr}).</span>`
+        +B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`);
+    }
     return;
   }
   if(ft==='notafd'&&ST.docStatus[ft]==='de_revizuit'){
@@ -354,10 +361,14 @@ function renderActions(ft){
     const fid=ST.docFlowId?.[ft];
     const revNr=ST.docRevizieNr?.[ft]||0;
     const isAnUrm=ft==='notafd'&&ST.docRevizieAnUrmator?.[ft];
+    const areNoua=ft==='notafd'&&ST.docAreRevizieNoua?.[ft];
+    const latest=ST.docLatestRevizieNr?.[ft]||0;
     const revBadge=ft==='notafd'&&revNr>0?`<span class="df-revizie-badge" style="margin-right:4px">Revizia ${revNr}</span>`:'';
+    const istoricMsg=areNoua?`<span style="color:var(--df-text-3);font-size:.82rem;margin-left:8px">🕒 Revizie istorică — revizia curentă este R${latest}.</span>`:'';
     div.innerHTML=revBadge
       +(fid?B('teal','📄 Descarcă PDF semnat',`viewFlowPdf('${fid}')`):'')
-      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
+      +((ft==='notafd'&&!areNoua)?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'')
+      +istoricMsg;
     return;
   }
   if(!docId){
@@ -422,6 +433,10 @@ async function openDoc(ft,id){
     ST.docRevizieNr[ft]=doc.revizie_nr||0;
     ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};
     ST.docRevizieAnUrmator[ft]=doc.este_revizie_an_urmator||false;
+    ST.docAreRevizieNoua=ST.docAreRevizieNoua||{};
+    ST.docAreRevizieNoua[ft]=doc.has_newer_revision===true;
+    ST.docLatestRevizieNr=ST.docLatestRevizieNr||{};
+    ST.docLatestRevizieNr[ft]=doc.latest_revizie_nr||0;
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);

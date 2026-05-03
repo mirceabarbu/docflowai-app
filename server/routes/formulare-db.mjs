@@ -185,7 +185,19 @@ router.get('/api/formulare-df/:id', async (req, res) => {
          LIMIT 1) AS alop_titlu,
         (SELECT a.valoare_totala FROM alop_instances a
          WHERE a.df_id = fd.id AND a.cancelled_at IS NULL
-         LIMIT 1) AS alop_valoare
+         LIMIT 1) AS alop_valoare,
+        (SELECT COALESCE(MAX(fd2.revizie_nr), 0)
+         FROM formulare_df fd2
+         WHERE fd2.nr_unic_inreg = fd.nr_unic_inreg
+           AND fd2.org_id = fd.org_id
+           AND fd2.deleted_at IS NULL) AS latest_revizie_nr,
+        EXISTS(
+          SELECT 1 FROM formulare_df fd3
+          WHERE fd3.nr_unic_inreg = fd.nr_unic_inreg
+            AND fd3.org_id = fd.org_id
+            AND fd3.deleted_at IS NULL
+            AND fd3.revizie_nr > fd.revizie_nr
+        ) AS has_newer_revision
       FROM formulare_df fd
       JOIN users p1 ON p1.id = fd.created_by
       LEFT JOIN users p2 ON p2.id = fd.assigned_to
@@ -523,14 +535,24 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
 
     const { motiv } = req.body || {};
 
-    // Determină numărul reviziei noi
+    // Determină numărul reviziei noi (max existent + 1)
     const { rows: maxRows } = await pool.query(
       `SELECT COALESCE(MAX(revizie_nr), 0) AS max_rev
        FROM formulare_df
        WHERE nr_unic_inreg = $1 AND org_id = $2 AND deleted_at IS NULL`,
       [df.nr_unic_inreg, actor.orgId]
     );
-    const nouaRevizie = (maxRows[0]?.max_rev ?? 0) + 1;
+    const maxRev = maxRows[0]?.max_rev ?? 0;
+
+    // GUARD: doar revizia cea mai recentă poate fi revizuită
+    // (împiedică ramificări — istoric liniar R0 → R1 → R2 → ...)
+    if ((df.revizie_nr || 0) < maxRev) {
+      return res.status(400).json({
+        error: `Această revizie (R${df.revizie_nr || 0}) nu mai este cea curentă. Revizia curentă este R${maxRev}. Doar revizia curentă poate fi revizuită.`
+      });
+    }
+
+    const nouaRevizie = maxRev + 1;
 
     // Transformă rows_val — col.5 (valt_rev_prec) = col.7 (valt_actualiz) din revizia precedentă, col.6 (influente) = 0
     const rowsValOrig = Array.isArray(df.rows_val) ? df.rows_val : JSON.parse(df.rows_val || '[]');
