@@ -312,6 +312,7 @@ function applyOrdRoleState(status,role){
 function updateRevizieHeaderBadge(ft, doc){
   if(ft!=='notafd')return;
   const nr=doc.revizie_nr??0;
+  const isAnUrm=!!doc.este_revizie_an_urmator;
   const hdr=document.getElementById('df-revizie-header-bar');
   const badge=document.getElementById('df-revizie-header-badge');
   const nrEl=document.getElementById('df-revizie-header-nr');
@@ -320,7 +321,10 @@ function updateRevizieHeaderBadge(ft, doc){
     badge.textContent=`R${nr}`;
     badge.className=`df-revizie-badge${nr>0?' revizie-activa':''}`;
   }
-  if(nrEl)nrEl.textContent=nr>0?`Revizia ${nr} — document revizuit`:`Revizia inițială`;
+  if(nrEl){
+    const baseTxt=nr>0?`Revizia ${nr}`:`Revizia 0 (inițială)`;
+    nrEl.textContent=isAnUrm?`${baseTxt} · pentru anul bugetar următor`:baseTxt;
+  }
 }
 
 // ── Render actions bar ────────────────────────────────────────────────────────
@@ -592,7 +596,7 @@ function newDoc(ft){
   ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};ST.docRevizieAnUrmator[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
   lockAll(ft,false);setLockedBar(ft,'');
-  if(ft==='notafd')applyDfRoleState(null,'p1');
+  if(ft==='notafd'){applyDfRoleState(null,'p1');updateRevizieHeaderBadge('notafd',{revizie_nr:0,este_revizie_an_urmator:false});}
   else if(ft==='ordnt')applyOrdRoleState(null,'p1');
   // Golim câmpurile
   document.querySelectorAll(`#form-${ft} input:not([type=file]):not([type=hidden]),#form-${ft} textarea`).forEach(e=>{if(e.type==='checkbox')e.checked=false;else if(e.type==='number')e.value='0';else e.value='';});

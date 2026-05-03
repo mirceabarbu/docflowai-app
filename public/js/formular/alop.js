@@ -249,15 +249,16 @@ function renderAlopDetail(a,container){
   const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
   const fmtV=v=>v>0?new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v)+' RON':'—';
 
+  const _dfRevTxt=a.df_id?(()=>{const _n=a.df_revizie_nr||0;const _a=a.df_este_revizie_an_urmator?' · an următor':'';return _n>0?` · Revizia ${_n}${_a}`:` · Revizia 0${_a}`;})():'';
   const phases=[
     {label:'Angajare',   icon:'📋',color:'#3b82f6',
      done:!!a.df_completed_at||isCompleted,
      active:a.status==='angajare',
      sub:(!a.df_id)?'Fără DF'
-        :(a.status==='angajare'&&a.df_flow_id)?'🔄 DF pe fluxul de semnare — în așteptare'
-        :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?'✅ DF aprobat'
-        :(a.status==='angajare'&&!a.df_flow_id)?'📝 DF în lucru'
-        :`DF: ${a.df_nr||a.df_id.slice(0,8)}`},
+        :(a.status==='angajare'&&a.df_flow_id)?`🔄 DF pe fluxul de semnare${_dfRevTxt}`
+        :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?`✅ DF aprobat${_dfRevTxt}`
+        :(a.status==='angajare'&&!a.df_flow_id)?`📝 DF în lucru${_dfRevTxt}`
+        :`DF: ${a.df_nr||a.df_id.slice(0,8)}${_dfRevTxt}`},
     {label:'Lichidare',  icon:'✔️',color:'#f59e0b',
      done:(!!a.lichidare_confirmed_at&&a.status!=='lichidare')||isCompleted,
      active:a.status==='lichidare',
@@ -352,6 +353,7 @@ function renderAlopDetail(a,container){
           <div style="font-size:1rem;font-weight:700;color:var(--df-text-2)">${esc(a.titlu||'ALOP')}</div>
           ${a.compartiment?`<div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">${esc(a.compartiment)}</div>`:''}
           ${a.valoare_totala?`<div style="font-size:.85rem;color:#10b981;margin-top:4px;font-weight:600">${fmtRON(a.valoare_totala)}</div>`:''}
+          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px">DF activ: <span class="df-revizie-badge${(a.df_revizie_nr||0)>0?' revizie-activa':''}">R${a.df_revizie_nr||0}</span>${(a.df_revizie_nr||0)>0?`<span>Revizia ${a.df_revizie_nr}</span>`:`<span>Revizia inițială</span>`}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}</div>`:''}
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">

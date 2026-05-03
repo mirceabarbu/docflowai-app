@@ -302,6 +302,8 @@ router.get('/api/alop/:id', async (req, res) => {
         df.status                    AS df_status,
         df.obiect_fd_reviz_scurt     AS df_obiect,
         df.compartiment_specialitate AS df_compartiment,
+        df.revizie_nr                AS df_revizie_nr,
+        df.este_revizie_an_urmator   AS df_este_revizie_an_urmator,
         fo.status                    AS ord_status,
         f1.id AS df_flow_exists,
         f2.id AS ord_flow_exists,
