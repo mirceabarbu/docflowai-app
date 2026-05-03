@@ -4,14 +4,14 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Referat de necesitate — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.406">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.406">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.406">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.406">
-  <script src="/js/df-utils.js?v=3.9.406"></script>
-  <script src="/js/df-shell.js?v=3.9.406"></script>
-  <script src="/js/df-user-modals.js?v=3.9.406"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.406">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.407">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.407">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.407">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.407">
+  <script src="/js/df-utils.js?v=3.9.407"></script>
+  <script src="/js/df-shell.js?v=3.9.407"></script>
+  <script src="/js/df-user-modals.js?v=3.9.407"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.407">
   <style>
     .nf-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
     @media(max-width:800px){.nf-form-grid{grid-template-columns:1fr;}}
@@ -93,6 +93,64 @@
     .rfn-rev-rm-btn{background:rgba(239,68,68,.12);color:#fca5a5;
       border:1px solid rgba(239,68,68,.25);padding:2px 8px;border-radius:4px;
       font-size:.75rem;cursor:pointer;}
+    /* === Lista de verificare cu DA/NU toggle === */
+    .rfn-checklist-table{
+      width:100%;border-collapse:collapse;font-size:.85rem;margin-top:8px;
+    }
+    .rfn-checklist-table th,
+    .rfn-checklist-table td{
+      border:1px solid var(--df-border-2);
+      padding:8px 10px;
+      color:var(--df-text-2);
+      vertical-align:top;
+    }
+    .rfn-checklist-table th{
+      background:rgba(255,255,255,.05);
+      font-weight:600;
+      text-align:left;
+    }
+    .rfn-checklist-table td.cl-num{
+      width:36px;text-align:center;font-weight:600;color:var(--df-text-3);
+    }
+    .rfn-checklist-table td.cl-toggle{
+      width:140px;text-align:center;
+    }
+    .rfn-cl-toggle{
+      display:inline-flex;
+      border:1px solid var(--df-border-2);
+      border-radius:6px;
+      overflow:hidden;
+      user-select:none;
+    }
+    .rfn-cl-toggle button{
+      padding:5px 14px;
+      background:transparent;
+      border:none;
+      color:var(--df-text-3);
+      font-size:.82rem;
+      font-weight:600;
+      cursor:pointer;
+      transition:background .15s, color .15s;
+      font-family:inherit;
+    }
+    .rfn-cl-toggle button.active-da{
+      background:rgba(34,197,94,.2);
+      color:#86efac;
+    }
+    .rfn-cl-toggle button.active-nu{
+      background:rgba(239,68,68,.18);
+      color:#fca5a5;
+    }
+    .rfn-cl-toggle button:not(.active-da):not(.active-nu):hover{
+      background:rgba(255,255,255,.06);
+      color:var(--df-text);
+    }
+    .rfn-cl-toggle button.active-da:hover{
+      background:rgba(34,197,94,.28);
+    }
+    .rfn-cl-toggle button.active-nu:hover{
+      background:rgba(239,68,68,.26);
+    }
   </style>
 </head>
 <body>
@@ -108,19 +166,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -128,7 +186,7 @@
     <div class="df-nav-label">Comunicare</div>
     <div class="df-nav-group">
       <a href="/notifications" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-bell"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-bell"/></svg>
         Notificări
       </a>
     </div>
@@ -136,19 +194,19 @@
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
       <a href="/admin#dashboard" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-layout"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-layout"/></svg>
         Dashboard
       </a>
       <a href="/admin#utilizatori" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-users"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-users"/></svg>
         Utilizatori
       </a>
       <a href="/admin#fluxuri" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-git-branch"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-git-branch"/></svg>
         Fluxuri documente
       </a>
       <a href="/admin#rapoarte" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-bar-chart"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-bar-chart"/></svg>
         Rapoarte
       </a>
     </div>
@@ -156,19 +214,19 @@
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
       <a href="/admin#organizatii" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-building"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-building"/></svg>
         Organizații
       </a>
       <a href="/admin#outreach" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-send"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-send"/></svg>
         Outreach
       </a>
       <a href="/admin#analytics" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-trending-up"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-trending-up"/></svg>
         Analytics
       </a>
       <a href="/admin#audit" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-search"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-search"/></svg>
         Audit
       </a>
     </div>
@@ -194,16 +252,16 @@
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openLeaveModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-clock"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-clock"/></svg>
               Concediu și delegare
             </button>
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-key"/></svg>
               Schimbă parola
             </button>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.406#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -215,7 +273,7 @@
 
       <div style="margin-bottom:16px">
         <a href="/formular.html" class="df-action-btn sm">
-          <svg class="df-ic"><use href="/icons.svg?v=3.9.406#ico-arrow-left"/></svg>
+          <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-arrow-left"/></svg>
           Înapoi la Formulare
         </a>
         <span id="rfn-saved-badge" class="nf-saved-badge">✅ Salvat</span>
@@ -1091,35 +1149,77 @@
         </div>
       </div>
 
-      <!-- STUB N -->
+      <!-- ───────── SEC N: Anexe + Lista de verificare ───────── -->
       <div class="rfn-accordion" id="rfn-acc-n">
-        <div class="rfn-acc-header stub" title="Disponibil în versiunea următoare (C1.b/c)">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-n')">
           <div class="rfn-acc-title">
-            <span class="rfn-acc-letter stub">N</span>
-            Anexe + Listă de verificare
+            <span class="rfn-acc-letter">N</span>
+            Anexe și lista de verificare a oportunității demarării achiziției
           </div>
           <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
         </div>
-        <div class="rfn-acc-body" style="display:block;">
-          <div class="rfn-acc-stub-msg">⏳ Această secțiune va fi disponibilă în versiunea următoare a aplicației.</div>
+        <div class="rfn-acc-body">
+
+          <!-- N.1 Anexe la referat (5 checkbox-uri) -->
+          <h4 style="margin:0 0 10px;font-size:.92rem;color:var(--df-text);">1. Anexe la Referatul de necesitate</h4>
+          <div style="font-size:.83rem;color:var(--df-text-3);margin-bottom:10px;">Selectați documentele care însoțesc Referatul de necesitate (multi-select):</div>
+          <div class="rfn-checks">
+            <label><input type="checkbox" id="rfn-n-anex-caiet"> Caiet de sarcini / Documentația descriptivă</label>
+            <label><input type="checkbox" id="rfn-n-anex-caracteristici"> Caracteristici pentru produse / lucrări / servicii</label>
+            <label><input type="checkbox" id="rfn-n-anex-conditii"> Propuneri de condiții contractuale relevante (corelate cu Caietul de sarcini)</label>
+            <label><input type="checkbox" id="rfn-n-anex-criterii"> Propuneri pentru forma criteriului de atribuire / factori de evaluare / elemente ciclu de viață</label>
+            <label><input type="checkbox" id="rfn-n-anex-cercetare"> Informații privind prețul unitar/total actualizat (cercetare piață sau bază istorică)</label>
+          </div>
+          <div class="nf-form-grid" style="margin-top:10px;">
+            <div class="nf-field full">
+              <label for="rfn-n-anex-altele">Alte anexe (opțional)</label>
+              <textarea id="rfn-n-anex-altele" rows="2" placeholder="Enumerați alte documente atașate care nu se încadrează în categoriile de mai sus"></textarea>
+            </div>
+          </div>
+
+          <!-- N.2 Lista de verificare - 9 elemente DA/NU -->
+          <h4 style="margin:18px 0 8px;font-size:.92rem;color:var(--df-text);">2. Lista de verificare pentru justificarea oportunității demarării</h4>
+          <div style="font-size:.83rem;color:var(--df-text-3);margin-bottom:10px;line-height:1.5;">
+            Această listă trebuie să însoțească orice referat de necesitate. Bifați DA / NU pentru fiecare element.
+          </div>
+
+          <table class="rfn-checklist-table">
+            <thead>
+              <tr>
+                <th class="cl-num">#</th>
+                <th>Element verificat</th>
+                <th class="cl-toggle">Răspuns</th>
+              </tr>
+            </thead>
+            <tbody id="rfn-n-checklist-tbody">
+              <!-- Randurile populate de rfnNRenderChecklist() -->
+            </tbody>
+          </table>
+
+          <div class="nf-form-grid" style="margin-top:14px;">
+            <div class="nf-field full">
+              <label for="rfn-n-observatii">Observații finale (opțional)</label>
+              <textarea id="rfn-n-observatii" rows="3" placeholder="Comentarii suplimentare privind oportunitatea demarării achiziției"></textarea>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- ── Acțiuni ──────────────────────────────────────────────────────── -->
       <div class="nf-actions">
         <button id="rfn-btn-save" class="df-action-btn primary" onclick="rfnSave()">
-          <svg class="df-ic"><use href="/icons.svg?v=3.9.406#ico-save"/></svg>
+          <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-save"/></svg>
           Salvează draft
         </button>
         <button id="rfn-btn-pdf" class="df-action-btn" disabled
           title="Disponibil după implementarea completă a secțiunilor (C1.d)">
-          <svg class="df-ic"><use href="/icons.svg?v=3.9.406#ico-download"/></svg>
+          <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-download"/></svg>
           Generează PDF
         </button>
         <a href="/formular.html" class="df-action-btn">
-          <svg class="df-ic"><use href="/icons.svg?v=3.9.406#ico-arrow-left"/></svg>
+          <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-arrow-left"/></svg>
           Înapoi
         </a>
         <span id="rfn-saved-badge2" class="nf-saved-badge"></span>
@@ -1271,6 +1371,72 @@ window.rfnKAdd = rfnKAdd;
 window.rfnKRm  = rfnKRm;
 window.rfnMAdd = rfnMAdd;
 window.rfnMRm  = rfnMRm;
+
+// ── Lista de verificare Sec N (9 elemente DA/NU) ─────────────────────────
+const RFN_CHECKLIST = [
+  'Este evidențiată legătura dintre necesitate și obiectivele autorității contractante',
+  'Este evidențiată legătura dintre necesitate și strategia locală/națională (după caz)',
+  'Caietul de sarcini este atașat în forma completă',
+  'Sunt identificați factorii cheie de succes pentru satisfacerea necesității și modalitatea de măsurare',
+  'Factorii interesați relevanți sunt identificați',
+  'Necesitatea a fost stabilită cu analiza opțiunilor de satisfacere a nevoii',
+  'Necesitatea nu poate fi satisfăcută prin contractele de achiziție publică existente sau acordurile-cadru în derulare',
+  'Fondurile necesare pentru realizarea achiziției sunt identificate în Referatul de necesitate',
+  'Fondurile necesare pentru utilizarea/exploatarea rezultatului sunt conștientizate și accesul la ele este posibil'
+];
+
+let _rfnChecklistState = RFN_CHECKLIST.map(() => '');
+
+function rfnNRenderChecklist(){
+  const tb = document.getElementById('rfn-n-checklist-tbody');
+  if (!tb) return;
+  tb.innerHTML = '';
+  RFN_CHECKLIST.forEach((label, idx) => {
+    const tr = document.createElement('tr');
+    const st = _rfnChecklistState[idx] || '';
+    tr.innerHTML = `
+      <td class="cl-num">${idx+1}</td>
+      <td>${label}</td>
+      <td class="cl-toggle">
+        <span class="rfn-cl-toggle">
+          <button type="button" class="${st==='DA'?'active-da':''}" data-cl-idx="${idx}" data-cl-val="DA" onclick="rfnNSetChecklist(${idx},'DA')">DA</button>
+          <button type="button" class="${st==='NU'?'active-nu':''}" data-cl-idx="${idx}" data-cl-val="NU" onclick="rfnNSetChecklist(${idx},'NU')">NU</button>
+        </span>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+function rfnNSetChecklist(idx, val){
+  if (idx < 0 || idx >= RFN_CHECKLIST.length) return;
+  if (_rfnChecklistState[idx] === val) {
+    _rfnChecklistState[idx] = '';
+  } else {
+    _rfnChecklistState[idx] = val;
+  }
+  rfnNRenderChecklist();
+}
+
+function _rfnNReadChecklist(){
+  return RFN_CHECKLIST.map((label, idx) => ({
+    idx,
+    label,
+    raspuns: _rfnChecklistState[idx] || ''
+  }));
+}
+
+function _rfnNWriteChecklist(arr){
+  if (!Array.isArray(arr)) return;
+  arr.forEach(item => {
+    if (typeof item?.idx === 'number' && item.idx >= 0 && item.idx < RFN_CHECKLIST.length){
+      _rfnChecklistState[item.idx] = item.raspuns || '';
+    }
+  });
+  rfnNRenderChecklist();
+}
+
+window.rfnNSetChecklist = rfnNSetChecklist;
 
 // ── Revizuiri table ───────────────────────────────────────────────────────────
 function rfnRevAdd(){
@@ -1519,6 +1685,18 @@ function _readForm(){
     },
     M: {
       competente: _rfnMRead()
+    },
+    N: {
+      anexe: {
+        caiet:           rc('rfn-n-anex-caiet'),
+        caracteristici:  rc('rfn-n-anex-caracteristici'),
+        conditii:        rc('rfn-n-anex-conditii'),
+        criterii:        rc('rfn-n-anex-criterii'),
+        cercetare:       rc('rfn-n-anex-cercetare'),
+        altele:          rv('rfn-n-anex-altele')
+      },
+      checklist:    _rfnNReadChecklist(),
+      observatii:   rv('rfn-n-observatii')
     }
   };
 }
@@ -1780,6 +1958,23 @@ function _writeForm(data){
     if (tb) tb.innerHTML = '';
     data.M.competente.forEach(row => rfnMAdd(row));
   }
+
+  // N — anexe + checklist
+  if (data.N){
+    if (data.N.anexe){
+      const a = data.N.anexe;
+      if (a.caiet)          document.getElementById('rfn-n-anex-caiet').checked          = true;
+      if (a.caracteristici) document.getElementById('rfn-n-anex-caracteristici').checked = true;
+      if (a.conditii)       document.getElementById('rfn-n-anex-conditii').checked       = true;
+      if (a.criterii)       document.getElementById('rfn-n-anex-criterii').checked       = true;
+      if (a.cercetare)      document.getElementById('rfn-n-anex-cercetare').checked      = true;
+      sv('rfn-n-anex-altele', a.altele);
+    }
+    if (Array.isArray(data.N.checklist)){
+      _rfnNWriteChecklist(data.N.checklist);
+    }
+    sv('rfn-n-observatii', data.N.observatii);
+  }
 }
 
 // ── Salvare ───────────────────────────────────────────────────────────────────
@@ -1820,13 +2015,16 @@ async function rfnSave(){
   }catch(e){
     showErr('Eroare rețea la salvare.');
   }finally{
-    if(btn){ btn.disabled=false; btn.innerHTML='<svg class="df-ic"><use href="/icons.svg?v=3.9.406#ico-save"/></svg> Salvează draft'; }
+    if(btn){ btn.disabled=false; btn.innerHTML='<svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-save"/></svg> Salvează draft'; }
   }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async function init(){
   _initListeners();
+
+  // Randeaza checklist-ul Sec N initial (toate elemente neselectate)
+  rfnNRenderChecklist();
 
   const params = new URLSearchParams(location.search);
   _rfnId = params.get('id') || null;
@@ -1853,6 +2051,6 @@ async function rfnSave(){
 })();
 </script>
 
-<script src="/notif-widget.js?v=3.9.406"></script>
+<script src="/notif-widget.js?v=3.9.407"></script>
 </body>
 </html>
