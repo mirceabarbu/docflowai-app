@@ -215,6 +215,16 @@ function applyDfRoleState(status,role){
   const secaLock=document.getElementById('seca-lock');
   const secbLock=document.getElementById('secb-lock');
   if(!secaBody)return;
+  // ── Antet: blocat permanent la R1+ (revizie_nr > 0) ──
+  // R0: antet editabil (P1 introduce date inițiale)
+  // R1+: antet blocat — datele preluate automat din revizia precedentă
+  const antetBody=document.getElementById('df-antet-body');
+  const antetLock=document.getElementById('df-antet-lock');
+  const _revNr=ST.docRevizieNr?.notafd||0;
+  if(antetBody){
+    antetBody.querySelectorAll('input,textarea').forEach(e=>{e.disabled=_revNr>0;});
+  }
+  if(antetLock){antetLock.style.display=_revNr>0?'flex':'none';}
   secaBody.classList.remove('locked');
   document.querySelectorAll('#seca-body input[type="checkbox"]').forEach(cb=>{cb.disabled=false;});
   if(secbBody)secbBody.classList.remove('locked');
@@ -578,6 +588,8 @@ async function viewFlowPdf(flowId){
 // ── Nou document ──────────────────────────────────────────────────────────────
 function newDoc(ft){
   ST.docAprobat=ST.docAprobat||{};ST.docAprobat[ft]=false;
+  ST.docRevizieNr=ST.docRevizieNr||{};ST.docRevizieNr[ft]=0;
+  ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};ST.docRevizieAnUrmator[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
   lockAll(ft,false);setLockedBar(ft,'');
   if(ft==='notafd')applyDfRoleState(null,'p1');
@@ -1004,7 +1016,7 @@ function resetF(ft){
   else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   document.getElementById('ff-'+ft).classList.remove('show');
-  ST[ft]={pdf:null,name:null};if(ST.docAprobat)ST.docAprobat[ft]=false;clrS();upTot();
+  ST[ft]={pdf:null,name:null};if(ST.docAprobat)ST.docAprobat[ft]=false;if(ST.docRevizieNr)ST.docRevizieNr[ft]=0;if(ST.docRevizieAnUrmator)ST.docRevizieAnUrmator[ft]=false;clrS();upTot();
   document.querySelectorAll(`#form-${ft} .err`).forEach(e=>e.classList.remove('err'));
 }
 
