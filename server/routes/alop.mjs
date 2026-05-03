@@ -157,6 +157,22 @@ router.get('/api/alop', async (req, res) => {
 
     const params = [actor.orgId];
     let where = 'a.org_id = $1 AND a.cancelled_at IS NULL';
+    if (actor.role !== 'admin' && actor.role !== 'org_admin') {
+      params.push(actor.userId);
+      where += ` AND (
+    a.created_by = $${params.length}
+    OR EXISTS (
+      SELECT 1 FROM flows fl1
+      WHERE fl1.id = a.df_flow_id
+        AND fl1.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${params.length}::text))
+    )
+    OR EXISTS (
+      SELECT 1 FROM flows fl2
+      WHERE fl2.id = a.ord_flow_id
+        AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${params.length}::text))
+    )
+  )`;
+    }
     if (status) {
       params.push(status);
       where += ` AND a.status = $${params.length}`;
@@ -325,7 +341,7 @@ router.get('/api/alop/:id', async (req, res) => {
         cicluri.cicluri_json AS cicluri_istorice,
         EXISTS(
           SELECT 1 FROM formulare_df fd2
-          WHERE fd2.nr_unic_inreg = df.nr_unic_inreg
+          WHERE fd2.parent_df_id = df.id
             AND fd2.org_id = a.org_id
             AND fd2.status IN ('draft','pending_p2','completed','returnat','transmis_flux','de_revizuit')
             AND fd2.deleted_at IS NULL

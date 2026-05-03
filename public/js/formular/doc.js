@@ -217,16 +217,14 @@ function applyDfRoleState(status,role){
   const secaLock=document.getElementById('seca-lock');
   const secbLock=document.getElementById('secb-lock');
   if(!secaBody)return;
-  // ── Antet: blocat permanent la R1+ (revizie_nr > 0) ──
-  // R0: antet editabil (P1 introduce date inițiale)
-  // R1+: antet blocat — datele preluate automat din revizia precedentă
   const antetBody=document.getElementById('df-antet-body');
   const antetLock=document.getElementById('df-antet-lock');
   const _revNr=ST.docRevizieNr?.notafd||0;
+  const _antetEditabil=(_revNr===0&&(!status||status==='draft'));
   if(antetBody){
-    antetBody.querySelectorAll('input,textarea').forEach(e=>{e.disabled=_revNr>0;});
+    antetBody.querySelectorAll('input,textarea').forEach(e=>{e.disabled=!_antetEditabil;});
   }
-  if(antetLock){antetLock.style.display=_revNr>0?'flex':'none';}
+  if(antetLock){antetLock.style.display=_antetEditabil?'none':'flex';}
   secaBody.classList.remove('locked');
   document.querySelectorAll('#seca-body input[type="checkbox"]').forEach(cb=>{cb.disabled=false;});
   if(secbBody)secbBody.classList.remove('locked');
@@ -443,11 +441,6 @@ async function openDoc(ft,id){
       }
     }
 
-    // Dacă nu avem context ALOP și documentul are alop_id, populează automat contextul
-    if(!window._alopContext&&doc.alop_id){
-      window._alopContext={alopId:doc.alop_id,titlu:doc.alop_titlu||'',valoare:doc.alop_valoare||null};
-      sessionStorage.setItem('_alopContext',JSON.stringify(window._alopContext));
-    }
     _dfSetAlopCtx(ft);
 
     // FIX 3: Precompletare automată pct.4 pentru revizie "an următor" (revizie_nr===1, pct.4 necompletat)

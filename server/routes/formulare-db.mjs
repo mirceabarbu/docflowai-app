@@ -103,7 +103,15 @@ router.get('/api/formulare-df', async (req, res) => {
       orgFilter = 'AND fd.org_id = $1';
       params = [actor.orgId];
     } else {
-      orgFilter = 'AND fd.org_id = $1 AND (fd.created_by = $2 OR fd.assigned_to = $2)';
+      orgFilter = `AND fd.org_id = $1 AND (
+  fd.created_by = $2
+  OR fd.assigned_to = $2
+  OR EXISTS (
+    SELECT 1 FROM flows fl
+    WHERE fl.id = fd.flow_id
+      AND fl.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $2::text))
+  )
+)`;
       params = [actor.orgId, actor.userId];
     }
     const { rows } = await pool.query(`
@@ -572,7 +580,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
       )
       SELECT
         org_id, $2, nr_unic_inreg,
-        $3, id, TRUE, $4, NOW(),
+        $3::integer, id, TRUE, $4, NOW(),
         'draft',
         $3::text, TO_CHAR(NOW(), 'DD.MM.YYYY'),
         cif, den_inst_pb, subtitlu_df,
@@ -647,7 +655,15 @@ router.get('/api/formulare-ord', async (req, res) => {
       orgFilter = 'AND fo.org_id = $1';
       params = [actor.orgId];
     } else {
-      orgFilter = 'AND fo.org_id = $1 AND (fo.created_by = $2 OR fo.assigned_to = $2)';
+      orgFilter = `AND fo.org_id = $1 AND (
+  fo.created_by = $2
+  OR fo.assigned_to = $2
+  OR EXISTS (
+    SELECT 1 FROM flows fl
+    WHERE fl.id = fo.flow_id
+      AND fl.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $2::text))
+  )
+)`;
       params = [actor.orgId, actor.userId];
     }
     const { rows } = await pool.query(`

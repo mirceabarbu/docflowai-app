@@ -456,8 +456,8 @@
 
 <div class="df-progress">
   <div class="df-step active" id="ordp-date">Date generale</div>
-  <div class="df-step" id="ordp-p1">Compartiment · P1</div>
-  <div class="df-step" id="ordp-p2">Resp. CAB · P2</div>
+  <div class="df-step" id="ordp-p1">Compartiment</div>
+  <div class="df-step" id="ordp-p2">Resp. CAB</div>
   <div class="df-step" id="ordp-sign">Semnare</div>
 </div>
 
@@ -504,9 +504,9 @@
 <!-- BLOC P1 — Compartiment specialitate -->
 <div class="df-block df-block-p1" id="bloc-ord-p1">
   <div class="df-block-hdr">
-    <span class="df-badge df-badge-p1">P1</span>
+    <span class="df-badge df-badge-p1" style="display:none">P1</span>
     <span class="df-block-title">Compartiment specialitate — Date beneficiar &amp; plată</span>
-    <div class="df-role-tags">
+    <div class="df-role-tags" style="display:none">
       <span class="df-role-tag df-role-can" id="ord-p1-tag-p1">P1 editează</span>
       <span class="df-role-tag df-role-no" id="ord-p1-tag-p2">P2 blocat</span>
     </div>
@@ -565,9 +565,9 @@
 <!-- BLOC P2 — Responsabil CAB -->
 <div class="df-block df-block-p2" id="bloc-ord-p2">
   <div class="df-block-hdr">
-    <span class="df-badge df-badge-p2">P2</span>
+    <span class="df-badge df-badge-p2" style="display:none">P2</span>
     <span class="df-block-title">Responsabil CAB — Tabel angajamente &amp; captură</span>
-    <div class="df-role-tags">
+    <div class="df-role-tags" style="display:none">
       <span class="df-role-tag df-role-can" id="ord-p2-tag-p1">P1 editează col.4</span>
       <span class="df-role-tag df-role-can" id="ord-p2-tag-p2">P2 editează col. 2-3</span>
     </div>
@@ -590,8 +590,8 @@
         </tr>
         <tr style="font-size:10px;text-align:center">
           <td style="color:var(--df-text-3)">1.1</td><td style="color:var(--df-text-3)">1.2</td><td style="color:var(--df-text-3)">1.3</td><td style="color:var(--df-text-3)">1.4</td>
-          <td style="color:#5dcaa5;font-weight:600">2·P2</td><td style="color:#5dcaa5;font-weight:600">3·P2</td>
-          <td style="color:#b0a0ff;font-weight:600">4·P1</td><td style="color:var(--df-text-3)">5</td><td></td>
+          <td style="color:#5dcaa5;font-weight:600">2</td><td style="color:#5dcaa5;font-weight:600">3</td>
+          <td style="color:#b0a0ff;font-weight:600">4</td><td style="color:var(--df-text-3)">5</td><td></td>
         </tr>
       </thead>
       <tbody id="o-tbody"></tbody>
@@ -620,7 +620,7 @@
     <div class="cap-zone" id="o-czone2" ondragover="dov(event,'o-czone2')" ondragleave="dlv(event,'o-czone2')" ondrop="ddp(event,'o-cimg2','o-czone2','o-cph2');document.getElementById('o-captura2-wrap').style.display=''">
       <input type="file" accept="image/*" onchange="fimg(event,'o-cimg2','o-cph2');document.getElementById('o-captura2-wrap').style.display=''"/>
       <div class="cap-ph" id="o-cph2"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="font-size:10px;margin-top:1px">PNG · JPG · BMP</p></div>
-      <img class="cap-img" id="o-cimg2"/>
+      <img class="cap-img" id="o-cimg2" style="display:none"/>
     </div>
     <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg2','o-cph2')"><svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-x"/></svg>Șterge imaginea</button></div>
     </div>
@@ -666,8 +666,8 @@
 
 <div class="df-progress">
   <div class="df-step active" id="dfp-date">Date generale</div>
-  <div class="df-step" id="dfp-seca">Secțiunea A · P1</div>
-  <div class="df-step" id="dfp-secb">Secțiunea B · P2</div>
+  <div class="df-step" id="dfp-seca">Secțiunea A</div>
+  <div class="df-step" id="dfp-secb">Secțiunea B</div>
   <div class="df-step" id="dfp-sign">Semnare</div>
 </div>
 
@@ -716,9 +716,9 @@
 <!-- BLOC SECȚIUNEA A (P1) -->
 <div class="df-block df-block-p1" id="bloc-seca">
   <div class="df-block-hdr">
-    <span class="df-badge df-badge-p1">P1</span>
+    <span class="df-badge df-badge-p1" style="display:none">P1</span>
     <span class="df-block-title">Secțiunea A — Compartiment specialitate</span>
-    <div class="df-role-tags">
+    <div class="df-role-tags" style="display:none">
       <span class="df-role-tag df-role-can" id="seca-tag-p1">P1 editează</span>
       <span class="df-role-tag df-role-no" id="seca-tag-p2">P2 blocat</span>
     </div>
@@ -827,9 +827,9 @@
 <!-- BLOC SECȚIUNEA B (P2) -->
 <div class="df-block df-block-p2" id="bloc-secb">
   <div class="df-block-hdr">
-    <span class="df-badge df-badge-p2">P2</span>
+    <span class="df-badge df-badge-p2" style="display:none">P2</span>
     <span class="df-block-title">Secțiunea B — Responsabil CAB</span>
-    <div class="df-role-tags">
+    <div class="df-role-tags" style="display:none">
       <span class="df-role-tag df-role-no" id="secb-tag-p1">P1 blocat</span>
       <span class="df-role-tag df-role-can" id="secb-tag-p2">P2 editează</span>
     </div>
@@ -1027,7 +1027,15 @@
         </div>
         <div>
           <label class="alop-lbl">Data facturii</label>
-          <input id="lich-data-factura" type="date"/>
+          <div style="position:relative;width:100%">
+            <input type="text" id="lich-data-factura-display" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+              style="width:100%;padding-right:28px;box-sizing:border-box"
+              oninput="onDateTextInput(this,'lich-data-factura')"/>
+            <input type="date" id="lich-data-factura" data-ro-date="1"
+              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer"
+              onchange="onDatePickerChange(this,'lich-data-factura-display')"/>
+            <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:13px">📅</span>
+          </div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -1037,7 +1045,15 @@
         </div>
         <div>
           <label class="alop-lbl">Data proces verbal</label>
-          <input id="lich-data-pv" type="date"/>
+          <div style="position:relative;width:100%">
+            <input type="text" id="lich-data-pv-display" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+              style="width:100%;padding-right:28px;box-sizing:border-box"
+              oninput="onDateTextInput(this,'lich-data-pv')"/>
+            <input type="date" id="lich-data-pv" data-ro-date="1"
+              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer"
+              onchange="onDatePickerChange(this,'lich-data-pv-display')"/>
+            <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:13px">📅</span>
+          </div>
         </div>
       </div>
       <div>
@@ -1065,7 +1081,15 @@
         </div>
         <div>
           <label class="alop-lbl">Data plății <span style="color:#ef4444">*</span></label>
-          <input id="plata-data" type="date"/>
+          <div style="position:relative;width:100%">
+            <input type="text" id="plata-data-display" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+              style="width:100%;padding-right:28px;box-sizing:border-box"
+              oninput="onDateTextInput(this,'plata-data')"/>
+            <input type="date" id="plata-data" data-ro-date="1"
+              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer"
+              onchange="onDatePickerChange(this,'plata-data-display')"/>
+            <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:13px">📅</span>
+          </div>
         </div>
       </div>
       <div>

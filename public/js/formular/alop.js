@@ -677,10 +677,11 @@ async function alopDfCompleted(id){
 function openAlopConfirmLichidare(id){
   if(!id||id==='null')return;
   _lichidareAlopId=id;
-  ['lich-nr-factura','lich-data-factura','lich-nr-pv','lich-data-pv','lich-observatii']
-    .forEach(eid=>{const el=document.getElementById(eid);if(el){el.value='';if(el.type==='date')el.dispatchEvent(new Event('input'));}});
+  ['lich-nr-factura','lich-data-factura','lich-data-factura-display',
+   'lich-nr-pv','lich-data-pv','lich-data-pv-display','lich-observatii']
+    .forEach(eid=>{const el=document.getElementById(eid);if(el)el.value='';});
   document.getElementById('modal-lichidare').style.display='flex';
-  setTimeout(()=>{initDateDisplayRo();document.getElementById('lich-nr-factura')?.focus();},50);
+  setTimeout(()=>{document.getElementById('lich-nr-factura')?.focus();},50);
 }
 
 function closeLichidareModal(){
@@ -728,10 +729,10 @@ function openAlopConfirmPlata(id,ordValoare){
   if(!id||id==='null')return;
   _plataAlopId=id;
   _plataOrdValoare=parseFloat(ordValoare)||0;
-  ['plata-nr-ordin','plata-data','plata-suma','plata-observatii']
-    .forEach(eid=>{const e=document.getElementById(eid);if(e){e.value='';if(e.type==='date')e.dispatchEvent(new Event('input'));}});
+  ['plata-nr-ordin','plata-data','plata-data-display','plata-suma','plata-observatii']
+    .forEach(eid=>{const e=document.getElementById(eid);if(e)e.value='';});
   document.getElementById('modal-plata').classList.add('show');
-  setTimeout(()=>{initDateDisplayRo();document.getElementById('plata-nr-ordin')?.focus();},50);
+  setTimeout(()=>{document.getElementById('plata-nr-ordin')?.focus();},50);
 }
 
 function closePlataModal(){
