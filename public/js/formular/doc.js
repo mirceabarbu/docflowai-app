@@ -379,8 +379,7 @@ function renderActions(ft){
       +BNou
       +B('','↺ Câmpuri',`resetF('${ft}')`);
   }else if(status==='returnat'&&role==='p1'){
-    html=B('teal','📨 Retrimite la Responsabil CAB',`showP2Modal('${ft}')`)
-      +`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`;
+    html=B('teal','📨 Retrimite la Responsabil CAB',`showP2Modal('${ft}')`);
   }else if(status==='pending_p2'&&role==='p2'){
     html=B('','💾 Salvează',`saveDoc('${ft}')`)
       +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`)

@@ -278,7 +278,7 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
         // P1 modifică după ce P2 a completat → reset + version++
         extraSets = ['status=$__', 'version=$__', 'completed_at=NULL', 'submitted_at=NULL'];
         extraVals = ['draft', doc.version + 1];
-      } else if (doc.status !== 'draft') {
+      } else if (!['draft', 'returnat', 'de_revizuit'].includes(doc.status)) {
         return res.status(409).json({ error: 'document_locked', status: doc.status });
       }
     }
@@ -806,7 +806,7 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
     if ((isP1 || isAdmin) && doc.status === 'completed') {
       extraSets.push('status=$__', 'version=$__', 'completed_at=NULL', 'submitted_at=NULL');
       extraVals.push('draft', doc.version + 1);
-    } else if (isP1 && doc.status !== 'draft') {
+    } else if (isP1 && !['draft', 'returnat'].includes(doc.status)) {
       return res.status(409).json({ error: 'document_locked', status: doc.status });
     }
 

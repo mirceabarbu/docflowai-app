@@ -34,7 +34,7 @@ async function loadNotifs() {
   }
 }
 
-const FORMULARE_TYPES = new Set(['formulare_df_p2','formulare_ord_p2','formulare_df_completed','formulare_ord_completed']);
+const FORMULARE_TYPES = new Set(['formulare_df_p2','formulare_ord_p2','formulare_df_completed','formulare_ord_completed','formulare_df_returnat','formulare_ord_returnat']);
 
 function typeIcon(type) {
   if (type === 'YOUR_TURN') return '✍️';
@@ -43,6 +43,7 @@ function typeIcon(type) {
   if (type === 'REVIEW_REQUESTED') return '🔄';
   if (type === 'formulare_df_p2' || type === 'formulare_ord_p2') return '📄';
   if (type === 'formulare_df_completed' || type === 'formulare_ord_completed') return '✅';
+  if (type === 'formulare_df_returnat' || type === 'formulare_ord_returnat') return '↩';
   return '🔔';
 }
 
