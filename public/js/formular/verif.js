@@ -46,7 +46,7 @@
     resultEl.style.display = 'none';
     btn.disabled = true;
     try {
-      const r = await _vfFetch(`/api/v4/verify/cui?cui=${encodeURIComponent(cui)}`);
+      const r = await _vfFetch(`/api/verify/cui?cui=${encodeURIComponent(cui)}`);
       const d = await r.json();
       if (!r.ok || !d.ok) {
         const reasonMap = {
@@ -204,7 +204,7 @@
     resultEl.style.display = 'none';
     btn.disabled = true;
     try {
-      const r = await _vfFetch(`/api/v4/verify/iban?iban=${encodeURIComponent(iban)}`);
+      const r = await _vfFetch(`/api/verify/iban?iban=${encodeURIComponent(iban)}`);
       const d = await r.json();
       if (!r.ok || !d.ok) {
         const reason = d.reason || '';
@@ -247,7 +247,7 @@
     resultEl.style.display = 'none';
     btn.disabled = true;
     try {
-      const r = await _vfFetch('/api/v4/verify/coherence', {
+      const r = await _vfFetch('/api/verify/coherence', {
         method: 'POST',
         body: JSON.stringify({ cui, iban, name }),
       });
