@@ -220,17 +220,22 @@ async function generatePdfSimple(formType, data) {
     const val  = str(value);
     ensureY(LH);
     txt(lbl, ML + indent, y, { font: fB, size });
-    dashed(valX, y - 1.5, ML + CW);
     txt(clamp(val, fR, size, valW), valX, y, { font: fR, size });
     y -= LH;
   }
 
   function checkItem(checked, label, { size = 8, indent = 0 } = {}) {
-    ensureY(LH);
     const cbX = ML + indent;
+    const lblW = CW - indent - 14;
+    const lines = wrapText(str(label), fR, size, lblW, 4);
+    const lineH = size + 2;
+    const totalH = Math.max(LH, lines.length * lineH);
+    ensureY(totalH);
     drawCheckbox(cbX, y, checked);
-    txt(clamp(str(label), fR, size, CW - indent - 14), cbX + 13, y, { font: fR, size });
-    y -= LH;
+    for (let i = 0; i < lines.length; i++) {
+      txt(lines[i], cbX + 13, y - i * lineH, { font: fR, size });
+    }
+    y -= totalH;
   }
 
   // Tabel cu header gri (poate fi pe 2 rânduri: titlu + numere coloane),
@@ -407,7 +412,7 @@ async function generatePdfSimple(formType, data) {
       const lblW2 = tw('Cod de identificare fiscală:', fB, 8.5) + 8;
       txt(clamp(str(data.Cif || ''), fR, 9, CW - lblW2 - 6),
           ML + lblW2, y - 11, { font: fR, size: 9 });
-      y -= rowH2 + 8;
+      y -= rowH2 + 18;
 
       // Titlu centrat
       centered('DOCUMENT DE FUNDAMENTARE', y, { font: fB, size: 14 });
@@ -446,7 +451,7 @@ async function generatePdfSimple(formType, data) {
       const lblData = tw('/ data:', fB, 8) + 8;
       txt(clamp(str(data.DataRevizuirii || ''), fR, 8.5, ML + CW - cell3X - lblData - 6),
           cell3X + lblData, y - 11, { font: fR, size: 8.5 });
-      y -= rowH3 + 4;
+      y -= rowH3 + 14;
 
       // Checkbox "obligație legală terț"
       const cbY = y;
@@ -474,7 +479,7 @@ async function generatePdfSimple(formType, data) {
       const lblW2o = tw('Cod de identificare fiscală:', fB, 8.5) + 8;
       txt(clamp(str(data.Cif || ''), fR, 9, CW - lblW2o - 6),
           ML + lblW2o, y - 11, { font: fR, size: 9 });
-      y -= rowH2o + 8;
+      y -= rowH2o + 18;
 
       // Titlu centrat
       centered('ORDONANȚARE DE PLATĂ', y, { font: fB, size: 14 });
@@ -613,6 +618,7 @@ async function generatePdfSimple(formType, data) {
         numLabel: '8', numeric: true },
     ], rowsPlati, { totals: true });
 
+    y -= 8;
     // Opțiunea 3 (sub tabel)
     checkItem(angP.ckbx_ang_leg_emise_ct_an_urm,
       'Angajamentele legale se vor emite în contul anului următor');
@@ -783,7 +789,7 @@ async function generatePdfSimple(formType, data) {
     const lblCdW = tw('Cont deschis la:', fB, 8.5) + 8;
     txt(clamp(str(df.banca_beneficiar || ''), fR, 9, CW - cellIbW - lblCdW - 6),
         ML + cellIbW + lblCdW, y - 11, { font: fR, size: 9 });
-    y -= rowIbnH + 2;
+    y -= rowIbnH + 10;
 
     // ── Informații privind plata (casetă text multiline) ────────────────────
     const infTxt = [df.inf_pv_plata, df.inf_pv_plata1].filter(Boolean).join(' ');
