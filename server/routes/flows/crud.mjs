@@ -569,6 +569,9 @@ router.delete('/flows/:flowId', async (req, res) => {
       'UPDATE flows SET deleted_at=$1, deleted_by=$2 WHERE id=$3',
       [now, actor.email, flowId]
     );
+    // Cleanup PDF + attachments — flow soft-deleted nu mai are nevoie de bytes
+    await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1', [flowId]).catch(() => {});
+    await pool.query('DELETE FROM flow_attachments WHERE flow_id=$1', [flowId]).catch(() => {});
     await pool.query('DELETE FROM notifications WHERE flow_id=$1', [flowId]).catch(() => {});
     logger.info(`🗑 Flow ${flowId} marcat ca sters (soft) de ${actor.email}`);
     return res.json({ ok: true, flowId, deletedBy: actor.email, deletedAt: now });

@@ -173,6 +173,73 @@ router.post('/admin/db/vacuum', csrfMiddleware, async (req, res) => {
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
 
+router.post('/admin/db/cleanup-orphans', csrfMiddleware, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const beforeR = await pool.query(`
+      SELECT
+        pg_database_size(current_database()) AS db_bytes,
+        (SELECT pg_total_relation_size('flows_pdfs')) AS pdfs_bytes,
+        (SELECT pg_total_relation_size('flow_attachments')) AS att_bytes,
+        (SELECT COUNT(*) FROM flows_pdfs WHERE flow_id IN (SELECT id FROM flows WHERE deleted_at IS NOT NULL)) AS orphan_pdfs,
+        (SELECT COUNT(*) FROM flow_attachments WHERE flow_id IN (SELECT id FROM flows WHERE deleted_at IS NOT NULL)) AS orphan_atts
+    `);
+    const before = beforeR.rows[0];
+
+    const delPdfs = await pool.query(`
+      DELETE FROM flows_pdfs
+       WHERE flow_id IN (SELECT id FROM flows WHERE deleted_at IS NOT NULL)
+    `);
+
+    const delAtts = await pool.query(`
+      DELETE FROM flow_attachments
+       WHERE flow_id IN (SELECT id FROM flows WHERE deleted_at IS NOT NULL)
+    `);
+
+    // VACUUM FULL ia ACCESS EXCLUSIVE LOCK temporar — singurul mod de a returna spațiul la OS.
+    await pool.query('VACUUM FULL flows_pdfs');
+    await pool.query('VACUUM FULL flow_attachments');
+    await pool.query('VACUUM ANALYZE flows');
+
+    const afterR = await pool.query(`
+      SELECT
+        pg_database_size(current_database()) AS db_bytes,
+        (SELECT pg_total_relation_size('flows_pdfs')) AS pdfs_bytes,
+        (SELECT pg_total_relation_size('flow_attachments')) AS att_bytes
+    `);
+    const after = afterR.rows[0];
+
+    const fmtMB = (b) => (Number(b) / 1024 / 1024).toFixed(2) + ' MB';
+    const fmtBytes = (b) => Number(b);
+
+    logger.info({
+      actor: actor.email,
+      pdfsDeleted: delPdfs.rowCount,
+      attsDeleted: delAtts.rowCount,
+      dbBefore: before.db_bytes,
+      dbAfter: after.db_bytes,
+    }, 'cleanup-orphans executat');
+
+    return res.json({
+      ok: true,
+      pdfsDeleted:        delPdfs.rowCount,
+      attachmentsDeleted: delAtts.rowCount,
+      orphanPdfsFound:    parseInt(before.orphan_pdfs),
+      orphanAttsFound:    parseInt(before.orphan_atts),
+      dbSizeBefore:       fmtMB(before.db_bytes),
+      dbSizeAfter:        fmtMB(after.db_bytes),
+      freedMB:            (fmtBytes(before.db_bytes) - fmtBytes(after.db_bytes)) / 1024 / 1024,
+      pdfsTableBefore:    fmtMB(before.pdfs_bytes),
+      pdfsTableAfter:     fmtMB(after.pdfs_bytes),
+    });
+  } catch(e) {
+    logger.error({ err: e }, 'cleanup-orphans error');
+    return res.status(500).json({ error: 'server_error', detail: e.message });
+  }
+});
+
 router.get('/admin/drive/verify', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;

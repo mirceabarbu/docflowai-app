@@ -254,6 +254,36 @@
     } catch(e) { msg.textContent = "❌ " + e.message; }
   }
 
+  async function cleanupOrphans() {
+    const msg = document.getElementById("msgVacuum");
+    const ok = confirm(
+      "Curățare fluxuri șterse:\n\n" +
+      "Această acțiune va:\n" +
+      "  • Șterge PDF-urile (BYTEA) din toate fluxurile soft-deleted\n" +
+      "  • Șterge atașamentele asociate fluxurilor soft-deleted\n" +
+      "  • Rulează VACUUM FULL pentru recuperare spațiu fizic\n\n" +
+      "⚠ Pe durata VACUUM FULL tabelele flows_pdfs și flow_attachments vor fi blocate (~30s).\n" +
+      "⚠ Fluxurile rămân vizibile în istoric, dar PDF-urile asociate NU mai pot fi descărcate.\n\n" +
+      "Continui?"
+    );
+    if (!ok) return;
+    msg.textContent = "⏳ Curățare în desfășurare (poate dura până la 1 minut)...";
+    try {
+      const r = await _apiFetch("/admin/db/cleanup-orphans", { method: "POST", headers: hdrs() });
+      const j = await r.json();
+      if (j.ok) {
+        msg.innerHTML =
+          `✅ Curățat: <strong>${j.pdfsDeleted}</strong> PDF-uri orfane, ` +
+          `<strong>${j.attachmentsDeleted}</strong> atașamente orfane. ` +
+          `DB: <strong>${esc(j.dbSizeBefore)}</strong> → <strong>${esc(j.dbSizeAfter)}</strong> ` +
+          `(eliberat ~<strong>${j.freedMB.toFixed(2)} MB</strong>).`;
+        setTimeout(() => loadDbStats(), 800);
+      } else {
+        msg.textContent = "❌ " + (j.error || "Eroare");
+      }
+    } catch(e) { msg.textContent = "❌ " + e.message; }
+  }
+
   async function loadDbStats() {
     const el = document.getElementById("dbStats");
     const msg = document.getElementById("msgVacuum");
@@ -466,6 +496,7 @@
   window.doArchiveAsync = doArchiveAsync;
   window.pollArchiveJob = pollArchiveJob;
   window.runVacuum = runVacuum;
+  window.cleanupOrphans = cleanupOrphans;
   window.loadDbStats = loadDbStats;
   window.previewCleanOld = previewCleanOld;
   window.previewCleanAll = previewCleanAll;
