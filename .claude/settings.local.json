@@ -9,7 +9,11 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(node --check server/routes/flows/crud.mjs)"
+      "Bash(node --check server/routes/flows/crud.mjs)",
+      "Bash(grep -c 'WHERE df_id=\\\\$3 AND cancelled_at IS NULL' \"D:\\\\MIM Labs\\\\Claude\\\\docflowai-app\\\\server\\\\routes\\\\flows\\\\signing.mjs\")",
+      "Bash(grep -c \"return res.json\\({ ok: true, refused: true }\\)\" \"D:\\\\MIM Labs\\\\Claude\\\\docflowai-app\\\\server\\\\routes\\\\flows\\\\signing.mjs\")",
+      "Bash(npx vitest *)",
+      "Bash(git mv *)"
     ]
   }
 }

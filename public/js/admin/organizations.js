@@ -35,10 +35,10 @@
   const _PROVIDERS_FALLBACK = [
     { id: 'local-upload', label: 'Upload local (orice certificat calificat)', mode: 'upload' },
     { id: 'sts-cloud',   label: 'STS Cloud QES (Serviciul de Telecomunicații Speciale)', mode: 'redirect' },
-    { id: 'certsign',   label: 'certSIGN / Paperless QES', mode: 'redirect' },
-    { id: 'transsped',  label: 'Trans Sped QES', mode: 'redirect' },
-    { id: 'alfatrust',  label: 'AlfaTrust / AlfaSign QES', mode: 'redirect' },
-    { id: 'namirial',   label: 'Namirial eSignAnyWhere QES', mode: 'redirect' },
+    { id: 'certsign',   label: 'certSIGN / Paperless QES', mode: 'redirect', stub: true },
+    { id: 'transsped',  label: 'Trans Sped QES', mode: 'redirect', stub: true },
+    { id: 'alfatrust',  label: 'AlfaTrust / AlfaSign QES', mode: 'redirect', stub: true },
+    { id: 'namirial',   label: 'Namirial eSignAnyWhere QES', mode: 'redirect', stub: true },
   ];
 
   // ── Change Password ───────────────────────────────────────────────────────
@@ -500,12 +500,15 @@
       row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);';
 
       const checkId = `provChk_${p.id}`;
+      const isStub  = !!p.stub;
+      const isLocked = isLocal || isStub;
       row.innerHTML = `
-        <input type="checkbox" id="${checkId}" ${isEnabled ? 'checked' : ''} ${isLocal ? 'disabled' : ''}
-          style="width:16px;height:16px;accent-color:#7c5cff;flex-shrink:0;cursor:${isLocal?'not-allowed':'pointer'};"
+        <input type="checkbox" id="${checkId}" ${isEnabled ? 'checked' : ''} ${isLocked ? 'disabled' : ''}
+          ${isStub ? 'title="În dezvoltare — nu activați în producție"' : ''}
+          style="width:16px;height:16px;accent-color:#7c5cff;flex-shrink:0;cursor:${isLocked?'not-allowed':'pointer'};opacity:${isStub?'.45':'1'};"
           onchange="toggleOrgProvider('${p.id}', this.checked)"/>
         <span style="font-size:1.1rem;">${ICONS[p.id]||'🔐'}</span>
-        <span style="flex:1;font-size:.87rem;font-weight:${isEnabled?'700':'400'};color:${isEnabled?'#eaf0ff':'rgba(234,240,255,.45)'};">${p.label}</span>
+        <span style="flex:1;font-size:.87rem;font-weight:${isEnabled?'700':'400'};color:${isStub?'rgba(234,240,255,.4)':(isEnabled?'#eaf0ff':'rgba(234,240,255,.45)')};">${p.label}${isStub?' <span style="font-size:.68rem;padding:1px 6px;border-radius:8px;background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.25);margin-left:6px;vertical-align:middle;">în dezvoltare</span>':''}</span>
         ${!isLocal ? `
           <span style="font-size:.72rem;padding:2px 8px;border-radius:10px;background:${hasConfig?'rgba(45,212,191,.12)':'rgba(255,255,255,.05)'};color:${hasConfig?'#2dd4bf':'rgba(234,240,255,.35)'};border:1px solid ${hasConfig?'rgba(45,212,191,.3)':'rgba(255,255,255,.08)'};">
             ${hasConfig ? '✓ configurat' : 'neconfigurat'}
