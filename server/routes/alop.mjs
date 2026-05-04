@@ -59,37 +59,6 @@ function canTransition(from, to) {
   return (VALID_TRANSITIONS[from] || []).includes(to);
 }
 
-// ── GET /api/alop/:id/debug — diagnostic temporar ────────────────────────────
-router.get('/api/alop/:id/debug', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rows } = await pool.query(`
-      SELECT
-        a.id, a.status, a.df_id, a.df_flow_id, a.ord_flow_id,
-        a.df_completed_at, a.lichidare_confirmed_at,
-        f1.data->>'status' as df_flow_status,
-        f1.data->>'allSigned' as df_all_signed,
-        fd.status as df_doc_status, fd.aprobat_calc
-      FROM alop_instances a
-      LEFT JOIN flows f1 ON f1.id = a.df_flow_id
-      LEFT JOIN (
-        SELECT id, status,
-          (flow_id IS NOT NULL AND EXISTS(
-            SELECT 1 FROM flows WHERE id=formulare_df.flow_id
-            AND data->>'status'='completed'
-          )) as aprobat_calc
-        FROM formulare_df
-      ) fd ON fd.id = a.df_id
-      WHERE a.id = $1 AND a.org_id = $2
-    `, [req.params.id, actor.orgId]);
-    res.json(rows[0] || {});
-  } catch (e) {
-    logger.error({ err: e }, 'alop debug error');
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ── GET /api/alop/sablon — montat ÎNAINTE de /:id ────────────────────────────
 router.get('/api/alop/sablon', async (req, res) => {
   if (requireDb(res)) return;
@@ -188,6 +157,22 @@ router.get('/api/alop', async (req, res) => {
 
     const params = [actor.orgId];
     let where = 'a.org_id = $1 AND a.cancelled_at IS NULL';
+    if (actor.role !== 'admin' && actor.role !== 'org_admin') {
+      params.push(actor.userId);
+      where += ` AND (
+    a.created_by = $${params.length}
+    OR EXISTS (
+      SELECT 1 FROM flows fl1
+      WHERE fl1.id = a.df_flow_id
+        AND fl1.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${params.length}::text))
+    )
+    OR EXISTS (
+      SELECT 1 FROM flows fl2
+      WHERE fl2.id = a.ord_flow_id
+        AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${params.length}::text))
+    )
+  )`;
+    }
     if (status) {
       params.push(status);
       where += ` AND a.status = $${params.length}`;
@@ -333,6 +318,8 @@ router.get('/api/alop/:id', async (req, res) => {
         df.status                    AS df_status,
         df.obiect_fd_reviz_scurt     AS df_obiect,
         df.compartiment_specialitate AS df_compartiment,
+        df.revizie_nr                AS df_revizie_nr,
+        df.este_revizie_an_urmator   AS df_este_revizie_an_urmator,
         fo.status                    AS ord_status,
         f1.id AS df_flow_exists,
         f2.id AS ord_flow_exists,
@@ -354,7 +341,7 @@ router.get('/api/alop/:id', async (req, res) => {
         cicluri.cicluri_json AS cicluri_istorice,
         EXISTS(
           SELECT 1 FROM formulare_df fd2
-          WHERE fd2.nr_unic_inreg = df.nr_unic_inreg
+          WHERE fd2.parent_df_id = df.id
             AND fd2.org_id = a.org_id
             AND fd2.status IN ('draft','pending_p2','completed','returnat','transmis_flux','de_revizuit')
             AND fd2.deleted_at IS NULL

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test:*)",
+      "Bash(awk -F: '$1 >= 850 && $1 <= 1600')",
+      "Bash(sed -n '1515,1540p' public/js/admin/admin.js)",
+      "Bash(sed -i 's/\"version\": \"3.9.365\"/\"version\": \"3.9.366\"/' package.json)",
+      "Bash(sed -i \"s/const CACHE_VERSION = 'docflowai-v87'/const CACHE_VERSION = 'docflowai-v88'/\" public/sw.js)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(node --check server/routes/flows/crud.mjs)",
+      "Bash(grep -c 'WHERE df_id=\\\\$3 AND cancelled_at IS NULL' \"D:\\\\MIM Labs\\\\Claude\\\\docflowai-app\\\\server\\\\routes\\\\flows\\\\signing.mjs\")",
+      "Bash(grep -c \"return res.json\\({ ok: true, refused: true }\\)\" \"D:\\\\MIM Labs\\\\Claude\\\\docflowai-app\\\\server\\\\routes\\\\flows\\\\signing.mjs\")",
+      "Bash(npx vitest *)",
+      "Bash(git mv *)"
+    ]
+  }
+}

@@ -262,7 +262,7 @@
     .df-lock-info{background:rgba(108,79,240,.08);color:#b0a0ff}
     .df-lock-ok{background:rgba(29,200,174,.08);color:#5dcaa5}
     /* Override light form elements inside df-block */
-    .df-block-body .di,.df-block-body .dt{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--df-text);font-size:12px;padding:6px 10px;font-family:inherit}
+    .df-block-body .di,.df-block-body .dt{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--df-text);font-size:12px;padding:6px 10px !important;font-family:inherit}
     .df-block-body select.di{background:#0d1630;color:#e8eeff;-webkit-appearance:none;appearance:none}
     .df-block-body .di:focus,.df-block-body .dt:focus{border-color:rgba(108,79,240,.5);background:rgba(108,79,240,.04)}
     .df-block-body .di.err,.df-block-body .dt.err{border-color:#f87171;background:rgba(248,113,113,.08)}

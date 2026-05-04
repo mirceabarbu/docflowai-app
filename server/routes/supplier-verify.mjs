@@ -1,5 +1,5 @@
 // server/routes/supplier-verify.mjs — verificare furnizor (CUI ANAF + IBAN + coerență)
-// Montat la /api/v4/verify în server/index.mjs
+// Montat la /api/verify în server/index.mjs
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.mjs';
 import { logger } from '../middleware/logger.mjs';

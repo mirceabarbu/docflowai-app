@@ -58,17 +58,18 @@ const ROLE_LABEL = {
 
 function _alopStatusBadge(status, dfFlowId){
   const m={
-    'draft':       {label:'📝 Draft',       color:'#64748b'},
-    'angajare':    {label:'🟠 DF în lucru',   color:'#f97316'},
-    'lichidare':   {label:'🟡 Lichidare',    color:'#f59e0b'},
-    'ordonantare': {label:'🟣 Ordonanțare',  color:'#8b5cf6'},
-    'plata':       {label:'🟠 Plată',        color:'#f97316'},
-    'completed':   {label:'✅ Finalizat',    color:'#10b981'},
-    'cancelled':   {label:'🔴 Anulat',       color:'#ef4444'},
+    'draft':       {icon:'ico-edit-pencil',     text:'Draft',           color:'#64748b'},
+    'angajare':    {icon:'ico-clock',           text:'DF în lucru',     color:'#f97316'},
+    'lichidare':   {icon:'ico-check-square',    text:'Lichidare',       color:'#f59e0b'},
+    'ordonantare': {icon:'ico-file-signature',  text:'Ordonanțare',     color:'#8b5cf6'},
+    'plata':       {icon:'ico-send',            text:'Plată',           color:'#f97316'},
+    'completed':   {icon:'ico-check-circle',    text:'Finalizat',       color:'#10b981'},
+    'cancelled':   {icon:'ico-x-circle',        text:'Anulat',          color:'#ef4444'},
   };
-  let s=m[status]||{label:status,color:'#64748b'};
-  if(status==='angajare'&&dfFlowId) s={label:'⏳ Pe flux — semnare',color:'#6366f1'};
-  return`<span style="background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${esc(s.label)}</span>`;
+  let s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
+  if(status==='angajare'&&dfFlowId) s={icon:'ico-pen-tool',text:'Pe flux — semnare',color:'#6366f1'};
+  const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.401#${s.icon}"/></svg>`;
+  return`<span style="display:inline-flex;align-items:center;background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_ico}${esc(s.text)}</span>`;
 }
 function _alopFazaLabel(status){
   const m={'draft':'—','angajare':'Faza 1: Angajare','lichidare':'Faza 2: Lichidare',
@@ -225,6 +226,9 @@ async function alopRefreshCurrent(){
   loadAlop();loadAlopStats();
 }
 
+const _alopIcoBtn = (name) =>
+  `<svg class="df-ic"><use href="/icons.svg?v=3.9.401#${name}"/></svg>`;
+
 function renderAlopDetail(a,container){
   if(!a||!a.id)return;
   // Suma plătită în ciclurile anterioare — folosită de populateOrd pentru prefill plati_anterioare
@@ -245,15 +249,16 @@ function renderAlopDetail(a,container){
   const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
   const fmtV=v=>v>0?new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v)+' RON':'—';
 
+  const _dfRevTxt=a.df_id?(()=>{const _n=a.df_revizie_nr||0;const _a=a.df_este_revizie_an_urmator?' · an următor':'';return _n>0?` · Revizia ${_n}${_a}`:` · Revizia 0${_a}`;})():'';
   const phases=[
     {label:'Angajare',   icon:'📋',color:'#3b82f6',
      done:!!a.df_completed_at||isCompleted,
      active:a.status==='angajare',
      sub:(!a.df_id)?'Fără DF'
-        :(a.status==='angajare'&&a.df_flow_id)?'🔄 DF pe fluxul de semnare — în așteptare'
-        :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?'✅ DF aprobat'
-        :(a.status==='angajare'&&!a.df_flow_id)?'📝 DF în lucru'
-        :`DF: ${a.df_nr||a.df_id.slice(0,8)}`},
+        :(a.status==='angajare'&&a.df_flow_id)?`🔄 DF pe fluxul de semnare${_dfRevTxt}`
+        :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?`✅ DF aprobat${_dfRevTxt}`
+        :(a.status==='angajare'&&!a.df_flow_id)?`📝 DF în lucru${_dfRevTxt}`
+        :`DF: ${a.df_nr||a.df_id.slice(0,8)}${_dfRevTxt}`},
     {label:'Lichidare',  icon:'✔️',color:'#f59e0b',
      done:(!!a.lichidare_confirmed_at&&a.status!=='lichidare')||isCompleted,
      active:a.status==='lichidare',
@@ -297,35 +302,35 @@ function renderAlopDetail(a,container){
     const dfInLucru=!!a.df_revizie_in_lucru;
     const dfStatus=a.df_status||'';
     if(dfInLucru){
-      actionsHtml+=`<button class="df-action-btn" disabled title="Există deja o revizie DF în lucru — finalizați revizia curentă">📋 Revizie DF în lucru...</button>`;
+      actionsHtml+=`<button class="df-action-btn" disabled title="Există deja o revizie DF în lucru — finalizați revizia curentă">${_alopIcoBtn('ico-file-text')}Revizie DF în lucru...</button>`;
     }else if(!a.df_id){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Completează Document de Fundamentare</button>`;
     }else if(dfStatus==='neaprobat'){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Revizuiește DF (neaprobat)</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF (neaprobat)</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id){
-      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem">🔄 DF pe fluxul de semnare — în așteptare</span>`;
+      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.401#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
     }else if(['aprobat','transmis_flux','de_revizuit'].includes(dfStatus)){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Deschide DF</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
     }else if(a.df_id&&!a.df_flow_id){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Deschide DF</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
     }else{
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">📋 Completează Document de Fundamentare</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Completează Document de Fundamentare</button>`;
     }
     if(a.status==='lichidare'&&!a.lichidare_confirmed_at){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmLichidare('${id}')">✔️ Confirmă Lichidarea</button>`;
-      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">↻ Revizuiește DF</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmLichidare('${id}')">${_alopIcoBtn('ico-check-square')}Confirmă Lichidarea</button>`;
+      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&!a.ord_id){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">💰 Completează Ordonanțare de Plată</button>`;
-      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">↻ Revizuiește DF</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-file-signature')}Completează Ordonanțare de Plată</button>`;
+      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_id&&!a.ord_flow_id){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">⚙ Generează PDF + Lansează flux ORD</button>`;
-      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">↻ Revizuiește DF</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-rocket')}Generează PDF + Lansează flux ORD</button>`;
+      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF</button>`;
     }else if(a.status==='ordonantare'&&a.ord_flow_id&&!a.ord_completed_at){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopOrdCompleted('${id}')">✅ Marchează ORD semnat complet</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="alopOrdCompleted('${id}')">${_alopIcoBtn('ico-check-circle')}Marchează ORD semnat complet</button>`;
     }else if(a.status==='plata'){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">🏦 Confirmă Plata</button>`;
+      actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">${_alopIcoBtn('ico-landmark')}Confirmă Plata</button>`;
     }
-    actionsHtml+=`<button class="df-action-btn danger" onclick="cancelAlop('${id}')">✕ Anulează</button>`;
+    actionsHtml+=`<button class="df-action-btn danger" onclick="cancelAlop('${id}')">${_alopIcoBtn('ico-x')}Anulează</button>`;
   }
 
   const _totalCicluri=(a.cicluri_istorice?.length||0)+1;
@@ -348,6 +353,7 @@ function renderAlopDetail(a,container){
           <div style="font-size:1rem;font-weight:700;color:var(--df-text-2)">${esc(a.titlu||'ALOP')}</div>
           ${a.compartiment?`<div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">${esc(a.compartiment)}</div>`:''}
           ${a.valoare_totala?`<div style="font-size:.85rem;color:#10b981;margin-top:4px;font-weight:600">${fmtRON(a.valoare_totala)}</div>`:''}
+          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px">DF activ: <span class="df-revizie-badge${(a.df_revizie_nr||0)>0?' revizie-activa':''}">R${a.df_revizie_nr||0}</span>${(a.df_revizie_nr||0)>0?`<span>Revizia ${a.df_revizie_nr}</span>`:`<span>Revizia inițială</span>`}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}</div>`:''}
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -671,10 +677,11 @@ async function alopDfCompleted(id){
 function openAlopConfirmLichidare(id){
   if(!id||id==='null')return;
   _lichidareAlopId=id;
-  ['lich-nr-factura','lich-data-factura','lich-nr-pv','lich-data-pv','lich-observatii']
-    .forEach(eid=>{const el=document.getElementById(eid);if(el){el.value='';if(el.type==='date')el.dispatchEvent(new Event('input'));}});
+  ['lich-nr-factura','lich-data-factura','lich-data-factura-display',
+   'lich-nr-pv','lich-data-pv','lich-data-pv-display','lich-observatii']
+    .forEach(eid=>{const el=document.getElementById(eid);if(el)el.value='';});
   document.getElementById('modal-lichidare').style.display='flex';
-  setTimeout(()=>{initDateDisplayRo();document.getElementById('lich-nr-factura')?.focus();},50);
+  setTimeout(()=>{document.getElementById('lich-nr-factura')?.focus();},50);
 }
 
 function closeLichidareModal(){
@@ -722,10 +729,10 @@ function openAlopConfirmPlata(id,ordValoare){
   if(!id||id==='null')return;
   _plataAlopId=id;
   _plataOrdValoare=parseFloat(ordValoare)||0;
-  ['plata-nr-ordin','plata-data','plata-suma','plata-observatii']
-    .forEach(eid=>{const e=document.getElementById(eid);if(e){e.value='';if(e.type==='date')e.dispatchEvent(new Event('input'));}});
+  ['plata-nr-ordin','plata-data','plata-data-display','plata-suma','plata-observatii']
+    .forEach(eid=>{const e=document.getElementById(eid);if(e)e.value='';});
   document.getElementById('modal-plata').classList.add('show');
-  setTimeout(()=>{initDateDisplayRo();document.getElementById('plata-nr-ordin')?.focus();},50);
+  setTimeout(()=>{document.getElementById('plata-nr-ordin')?.focus();},50);
 }
 
 function closePlataModal(){
@@ -892,8 +899,8 @@ document.addEventListener('DOMContentLoaded', function () {
   // Mapare rol ALOP → atribut semnătură în semdoc-initiator
   const ALOP_ROL={
     initiator:'ÎNTOCMIT', sef_compartiment:'VIZAT', responsabil_cab:'VERIFICAT',
-    sef_cab:'VIZAT', director_economic:'VIȚĂ ECONOMICĂ',
-    ordonator_credite:'APROBAT', cfp_propriu:'VIȚĂ CFPP'
+    sef_cab:'VIZAT', director_economic:'VIZĂ ECONOMICĂ',
+    ordonator_credite:'APROBAT', cfp_propriu:'VIZĂ CFPP'
   };
   window.mkFlow=function(ft){
     const ctx=window._alopContext;

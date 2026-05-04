@@ -254,23 +254,113 @@
     } catch(e) { msg.textContent = "❌ " + e.message; }
   }
 
+  async function cleanupOrphans() {
+    const msg = document.getElementById("msgVacuum");
+    const ok = confirm(
+      "Curățare fluxuri șterse:\n\n" +
+      "Această acțiune va:\n" +
+      "  • Șterge PDF-urile (BYTEA) din toate fluxurile soft-deleted\n" +
+      "  • Șterge atașamentele asociate fluxurilor soft-deleted\n" +
+      "  • Rulează VACUUM FULL pentru recuperare spațiu fizic\n\n" +
+      "⚠ Pe durata VACUUM FULL tabelele flows_pdfs și flow_attachments vor fi blocate (~30s).\n" +
+      "⚠ Fluxurile rămân vizibile în istoric, dar PDF-urile asociate NU mai pot fi descărcate.\n\n" +
+      "Continui?"
+    );
+    if (!ok) return;
+    msg.textContent = "⏳ Curățare în desfășurare (poate dura până la 1 minut)...";
+    try {
+      const r = await _apiFetch("/admin/db/cleanup-orphans", { method: "POST", headers: hdrs() });
+      const j = await r.json();
+      if (j.ok) {
+        msg.innerHTML =
+          `✅ Curățat: <strong>${j.pdfsDeleted}</strong> PDF-uri orfane, ` +
+          `<strong>${j.attachmentsDeleted}</strong> atașamente orfane. ` +
+          `DB: <strong>${esc(j.dbSizeBefore)}</strong> → <strong>${esc(j.dbSizeAfter)}</strong> ` +
+          `(eliberat ~<strong>${j.freedMB.toFixed(2)} MB</strong>).`;
+        setTimeout(() => loadDbStats(), 800);
+      } else {
+        msg.textContent = "❌ " + (j.error || "Eroare");
+      }
+    } catch(e) { msg.textContent = "❌ " + e.message; }
+  }
+
   async function loadDbStats() {
     const el = document.getElementById("dbStats");
     const msg = document.getElementById("msgVacuum");
+    if(msg) msg.innerHTML = '⏳ Se încarcă statistici...';
     try {
-      const r = await _apiFetch("/admin/stats", {headers: hdrs()});
-      const j = await r.json();
-      if (!r.ok) { if(msg) msg.innerHTML = `❌ ${esc(j.error||'forbidden')}`; return; }
-      const s = j.stats||{};
+      const [rStats, rDiag] = await Promise.all([
+        _apiFetch("/admin/stats", {headers: hdrs()}),
+        _apiFetch("/admin/db/diagnostics", {headers: hdrs()}),
+      ]);
+      const jStats = await rStats.json();
+      const jDiag = rDiag.ok ? await rDiag.json() : null;
+
+      if (!rStats.ok) { if(msg) msg.innerHTML = `❌ ${esc(jStats.error||'forbidden')}`; return; }
+      const s = jStats.stats||{};
       el.style.display = "block";
-      const dbSizeSpan = s.dbSize ? `<span style="color:#2dd4bf;font-weight:700;">💾 DB: ${esc(s.dbSize)}</span>` : '';
-      el.innerHTML = `
-        <span style="margin-right:16px;">📁 Fluxuri: <strong>${s.flows||0}</strong></span>
-        <span style="margin-right:16px;">🗂 Arhivate: <strong>${s.flowsArchived||0}</strong></span>
-        <span style="margin-right:16px;">👥 Utilizatori: <strong>${s.users||0}</strong></span>
-        <span style="margin-right:16px;">🔔 Notificări necitite: <strong>${s.unreadNotifications||0}</strong></span>
-        ${dbSizeSpan}
+
+      const dbSizeSpan = s.dbSize ? `<strong style="color:#2dd4bf;">💾 DB total: ${esc(s.dbSize)}</strong>` : '';
+      let summaryHtml = `
+        <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px;align-items:center;">
+          <span>📁 Fluxuri: <strong>${s.flows||0}</strong></span>
+          <span>🗂 Arhivate: <strong>${s.flowsArchived||0}</strong></span>
+          <span>👥 Utilizatori: <strong>${s.users||0}</strong></span>
+          <span>🔔 Notificări necitite: <strong>${s.unreadNotifications||0}</strong></span>
+          ${dbSizeSpan}
+        </div>
       `;
+
+      let diagHtml = '';
+      if (jDiag) {
+        const fp = jDiag.flowsPdfsSize || {};
+        const fl = jDiag.flowsSize || {};
+        const al = jDiag.auditLogSize || {};
+        const rows = (jDiag.topTables || []).map(t =>
+          `<tr>
+            <td style="padding:3px 10px 3px 0;font-family:monospace;color:#eaf0ff;">${esc(t.relname)}</td>
+            <td style="padding:3px 10px 3px 0;color:#ffd580;text-align:right;">${esc(t.size)}</td>
+          </tr>`
+        ).join('');
+
+        const textBytea = (jDiag.flowsTextByteaColumns||[]).map(c=>
+          `<span style="background:rgba(255,80,80,.15);border-radius:4px;padding:2px 6px;margin-right:4px;">${esc(c.column_name)} (${esc(c.data_type)})</span>`
+        ).join('') || '<span style="color:#2dd4bf;">— nicio coloană text/bytea directă</span>';
+
+        diagHtml = `
+          <div style="margin-top:4px;border-top:1px solid rgba(255,255,255,.07);padding-top:10px;">
+            <div style="font-size:.77rem;color:var(--muted);margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">Top tabele după dimensiune</div>
+            <table style="border-collapse:collapse;font-size:.78rem;width:100%;max-width:420px;">
+              <thead><tr>
+                <th style="text-align:left;color:var(--muted);padding-bottom:4px;">Tabelă</th>
+                <th style="text-align:right;color:var(--muted);padding-bottom:4px;">Dimensiune</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            <div style="margin-top:10px;font-size:.78rem;">
+              <span style="color:var(--muted);">flows_pdfs:</span>
+              <strong>${esc(fp.table_size||'?')}</strong> / ${esc(String(fp.row_count||0))} rânduri
+              <span style="color:var(--muted);margin-left:12px;">avg/rând:</span>
+              <strong>${esc(fp.avg_row_size||'?')}</strong>
+            </div>
+            <div style="font-size:.78rem;margin-top:4px;">
+              <span style="color:var(--muted);">flows:</span>
+              <strong>${esc(fl.table_size||'?')}</strong> / ${esc(String(fl.row_count||0))} rânduri
+              <span style="color:var(--muted);margin-left:12px;">avg/rând:</span>
+              <strong>${esc(fl.avg_row_size||'?')}</strong>
+            </div>
+            <div style="font-size:.78rem;margin-top:4px;">
+              <span style="color:var(--muted);">audit_log:</span>
+              <strong>${esc(al.table_size||'?')}</strong> / ${esc(String(al.row_count||0))} rânduri
+            </div>
+            <div style="font-size:.78rem;margin-top:8px;">
+              <span style="color:var(--muted);">Coloane text/bytea în flows:</span> ${textBytea}
+            </div>
+          </div>
+        `;
+      }
+
+      el.innerHTML = summaryHtml + diagHtml;
       if(msg) msg.textContent = "";
     } catch(e) { if(msg) msg.textContent = "❌ " + e.message; }
   }
@@ -378,7 +468,7 @@
       closeDeleteModal();
       if (r.ok) {
         if (msgEl) msgEl.innerHTML = `<span style="color:#7cf0e0;">✅ ${d.deleted} flux(uri) șterse.</span>`;
-        loadFlows();
+        loadFlowsList();
       } else {
         if (msgEl) msgEl.innerHTML = `<span style="color:#ffaaaa;">Eroare: ${esc(d.error)}</span>`;
       }
@@ -406,6 +496,7 @@
   window.doArchiveAsync = doArchiveAsync;
   window.pollArchiveJob = pollArchiveJob;
   window.runVacuum = runVacuum;
+  window.cleanupOrphans = cleanupOrphans;
   window.loadDbStats = loadDbStats;
   window.previewCleanOld = previewCleanOld;
   window.previewCleanAll = previewCleanAll;

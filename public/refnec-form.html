@@ -1,0 +1,2089 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Referat de necesitate — DocFlowAI</title>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.407">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.407">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.407">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.407">
+  <script src="/js/df-utils.js?v=3.9.407"></script>
+  <script src="/js/df-shell.js?v=3.9.407"></script>
+  <script src="/js/df-user-modals.js?v=3.9.407"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.407">
+  <style>
+    .nf-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+    @media(max-width:800px){.nf-form-grid{grid-template-columns:1fr;}}
+    .nf-form-grid .full{grid-column:1/-1;}
+    .nf-section-title{font-size:.95rem;font-weight:700;margin:24px 0 8px;padding-bottom:6px;
+      border-bottom:2px solid var(--df-border-2);color:var(--df-text);}
+    .nf-subsection-title{font-size:.85rem;font-weight:700;color:var(--df-text-3);
+      margin:16px 0 10px;text-transform:uppercase;letter-spacing:.04em;}
+    .nf-field{display:flex;flex-direction:column;gap:4px;}
+    .nf-field label{font-size:.82rem;font-weight:600;color:var(--df-text-3);}
+    .nf-field input,.nf-field textarea,.nf-field select{
+      background:rgba(255,255,255,.05);
+      border:1px solid var(--df-border-2);
+      border-radius:6px;padding:8px 10px;font-size:.9rem;
+      font-family:inherit;resize:vertical;
+      color:var(--df-text);outline:none;
+      transition:border-color .15s,background .15s;
+    }
+    .nf-field input::placeholder,.nf-field textarea::placeholder{color:var(--df-text-5);}
+    .nf-field textarea{min-height:80px;}
+    .nf-field input:focus,.nf-field textarea:focus,.nf-field select:focus{
+      border-color:var(--df-primary);background:rgba(37,99,235,.07);}
+    .nf-actions{display:flex;gap:10px;margin-top:24px;flex-wrap:wrap;align-items:center;}
+    .nf-saved-badge{display:none;background:rgba(34,197,94,.15);color:#86efac;
+      border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:4px 12px;
+      font-size:.83rem;align-items:center;}
+    .nf-saved-badge.show{display:inline-flex;}
+    .nf-err{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.3);
+      border-radius:8px;padding:10px 14px;font-size:.9rem;}
+
+    /* === Accordion Referat === */
+    .rfn-accordion{border:1px solid var(--df-border-2);border-radius:8px;margin-bottom:12px;
+      background:rgba(255,255,255,.02);overflow:hidden;}
+    .rfn-acc-header{display:flex;align-items:center;justify-content:space-between;
+      padding:12px 16px;cursor:pointer;background:rgba(255,255,255,.03);
+      transition:background .15s;user-select:none;}
+    .rfn-acc-header:hover{background:rgba(255,255,255,.06);}
+    .rfn-acc-header.stub{cursor:not-allowed;opacity:.55;}
+    .rfn-acc-title{display:flex;align-items:center;gap:10px;font-weight:600;
+      font-size:.95rem;color:var(--df-text);}
+    .rfn-acc-letter{display:inline-flex;align-items:center;justify-content:center;
+      width:26px;height:26px;border-radius:50%;background:var(--df-primary);
+      color:#fff;font-weight:700;font-size:.8rem;flex-shrink:0;}
+    .rfn-acc-letter.stub{background:var(--df-text-5);}
+    .rfn-acc-chevron{transition:transform .2s;flex-shrink:0;color:var(--df-text-4);}
+    .rfn-accordion.open .rfn-acc-chevron{transform:rotate(180deg);}
+    .rfn-acc-body{display:none;padding:16px;border-top:1px solid var(--df-border-2);
+      background:rgba(0,0,0,.15);}
+    .rfn-accordion.open .rfn-acc-body{display:block;}
+    .rfn-acc-stub-msg{color:var(--df-text-4);font-style:italic;font-size:.85rem;padding:10px 0;}
+
+    /* Radio group */
+    .rfn-radio-grp{display:flex;flex-direction:column;gap:8px;}
+    .rfn-radio-grp label{display:flex;align-items:center;gap:8px;cursor:pointer;
+      font-size:.9rem;color:var(--df-text-2);font-weight:400;}
+    .rfn-radio-grp input[type=radio]{accent-color:var(--df-primary);}
+
+    /* Checkbox group */
+    .rfn-checks label{display:flex;align-items:flex-start;gap:8px;
+      margin-bottom:6px;cursor:pointer;font-size:.88rem;}
+    .rfn-checks input[type=checkbox]{margin-top:3px;flex-shrink:0;}
+
+    /* Conditional block */
+    .rfn-cond{margin-top:8px;padding:10px 12px;background:rgba(37,99,235,.06);
+      border-left:3px solid var(--df-primary);border-radius:0 6px 6px 0;display:none;}
+    .rfn-cond.show{display:block;}
+
+    /* Revizuiri table */
+    .rfn-rev-table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:8px;}
+    .rfn-rev-table th,.rfn-rev-table td{border:1px solid var(--df-border-2);
+      padding:6px 8px;text-align:left;color:var(--df-text-2);}
+    .rfn-rev-table th{background:rgba(255,255,255,.05);font-weight:600;}
+    .rfn-rev-table input,.rfn-rev-table select{width:100%;background:transparent;
+      border:none;color:var(--df-text);font-size:.82rem;padding:2px 4px;}
+    .rfn-rev-table input:focus{background:rgba(37,99,235,.07);outline:none;}
+    .rfn-rev-add-btn{margin-top:6px;background:rgba(37,99,235,.1);color:var(--df-primary);
+      border:1px solid rgba(37,99,235,.3);padding:5px 10px;border-radius:6px;
+      font-size:.8rem;cursor:pointer;}
+    .rfn-rev-rm-btn{background:rgba(239,68,68,.12);color:#fca5a5;
+      border:1px solid rgba(239,68,68,.25);padding:2px 8px;border-radius:4px;
+      font-size:.75rem;cursor:pointer;}
+    /* === Lista de verificare cu DA/NU toggle === */
+    .rfn-checklist-table{
+      width:100%;border-collapse:collapse;font-size:.85rem;margin-top:8px;
+    }
+    .rfn-checklist-table th,
+    .rfn-checklist-table td{
+      border:1px solid var(--df-border-2);
+      padding:8px 10px;
+      color:var(--df-text-2);
+      vertical-align:top;
+    }
+    .rfn-checklist-table th{
+      background:rgba(255,255,255,.05);
+      font-weight:600;
+      text-align:left;
+    }
+    .rfn-checklist-table td.cl-num{
+      width:36px;text-align:center;font-weight:600;color:var(--df-text-3);
+    }
+    .rfn-checklist-table td.cl-toggle{
+      width:140px;text-align:center;
+    }
+    .rfn-cl-toggle{
+      display:inline-flex;
+      border:1px solid var(--df-border-2);
+      border-radius:6px;
+      overflow:hidden;
+      user-select:none;
+    }
+    .rfn-cl-toggle button{
+      padding:5px 14px;
+      background:transparent;
+      border:none;
+      color:var(--df-text-3);
+      font-size:.82rem;
+      font-weight:600;
+      cursor:pointer;
+      transition:background .15s, color .15s;
+      font-family:inherit;
+    }
+    .rfn-cl-toggle button.active-da{
+      background:rgba(34,197,94,.2);
+      color:#86efac;
+    }
+    .rfn-cl-toggle button.active-nu{
+      background:rgba(239,68,68,.18);
+      color:#fca5a5;
+    }
+    .rfn-cl-toggle button:not(.active-da):not(.active-nu):hover{
+      background:rgba(255,255,255,.06);
+      color:var(--df-text);
+    }
+    .rfn-cl-toggle button.active-da:hover{
+      background:rgba(34,197,94,.28);
+    }
+    .rfn-cl-toggle button.active-nu:hover{
+      background:rgba(239,68,68,.26);
+    }
+  </style>
+</head>
+<body>
+<span id="hUserBar" style="display:none;"></span>
+
+<div class="df-shell">
+
+  <aside class="df-sidebar">
+    <div class="df-sidebar-brand">
+      <img src="/Logo.png" alt="DocFlowAI"/>
+    </div>
+
+    <div class="df-nav-label">Navigare app</div>
+    <div class="df-nav-group">
+      <a href="/" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-edit"/></svg>
+        Flux nou
+      </a>
+      <a href="/?tab=flows" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-folder"/></svg>
+        Fluxurile mele
+      </a>
+      <a href="/templates" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-grid"/></svg>
+        Șabloane
+      </a>
+      <a href="/formular.html" class="df-nav-item active">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-file-text"/></svg>
+        Formulare
+      </a>
+    </div>
+
+    <div class="df-nav-label">Comunicare</div>
+    <div class="df-nav-group">
+      <a href="/notifications" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-bell"/></svg>
+        Notificări
+      </a>
+    </div>
+
+    <div class="df-nav-label">Administrare</div>
+    <div class="df-nav-group">
+      <a href="/admin#dashboard" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-layout"/></svg>
+        Dashboard
+      </a>
+      <a href="/admin#utilizatori" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-users"/></svg>
+        Utilizatori
+      </a>
+      <a href="/admin#fluxuri" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-git-branch"/></svg>
+        Fluxuri documente
+      </a>
+      <a href="/admin#rapoarte" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-bar-chart"/></svg>
+        Rapoarte
+      </a>
+    </div>
+
+    <div class="df-nav-label">Organizație</div>
+    <div class="df-nav-group">
+      <a href="/admin#organizatii" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-building"/></svg>
+        Organizații
+      </a>
+      <a href="/admin#outreach" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-send"/></svg>
+        Outreach
+      </a>
+      <a href="/admin#analytics" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-trending-up"/></svg>
+        Analytics
+      </a>
+      <a href="/admin#audit" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-search"/></svg>
+        Audit
+      </a>
+    </div>
+
+  </aside>
+
+  <div class="df-page">
+    <header class="df-page-header">
+      <div class="df-page-titles">
+        <h1>Referat de necesitate</h1>
+        <p>Conform HG 395/2016 — fundamentarea necesității achiziției</p>
+      </div>
+      <div class="df-page-actions">
+        <div id="userBar"></div>
+        <div class="df-user-menu" id="df-user-menu">
+          <button class="df-user-trigger" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <div class="df-user-trigger-avatar">A</div>
+            <div class="df-user-trigger-info">
+              <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
+              <div class="df-user-trigger-role">Utilizator</div>
+            </div>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="df-user-dropdown">
+            <button onclick="closeUserMenu();openLeaveModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-clock"/></svg>
+              Concediu și delegare
+            </button>
+            <button onclick="closeUserMenu();openChangePwdModal()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-key"/></svg>
+              Schimbă parola
+            </button>
+            <div class="df-user-dropdown-divider"></div>
+            <button class="danger" onclick="closeUserMenu();logout()">
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-log-out"/></svg>
+              Ieșire
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="df-page-body">
+
+      <div style="margin-bottom:16px">
+        <a href="/formular.html" class="df-action-btn sm">
+          <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-arrow-left"/></svg>
+          Înapoi la Formulare
+        </a>
+        <span id="rfn-saved-badge" class="nf-saved-badge">✅ Salvat</span>
+      </div>
+
+      <div id="rfn-err" class="nf-err" style="display:none;margin-bottom:16px;"></div>
+
+      <!-- ── Date generale ─────────────────────────────────────────────────── -->
+      <div class="nf-form-grid" style="margin-bottom:20px;">
+        <div class="nf-field">
+          <label for="rfn-title">Titlu referat <span style="color:red">*</span></label>
+          <input id="rfn-title" type="text" placeholder="Ex: Achiziție servicii tipografice 2026"/>
+        </div>
+        <div class="nf-field">
+          <label for="rfn-ref-number">Număr de referință</label>
+          <input id="rfn-ref-number" type="text" placeholder="Ex: REF-2026-001"/>
+        </div>
+      </div>
+
+      <!-- ── FRONT MATTER accordion (deschis implicit) ─────────────────────── -->
+      <div class="rfn-accordion open" id="rfn-acc-front">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-front')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter" style="background:#10b981;font-size:.75rem;">FM</span>
+            Date generale referat
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div class="nf-form-grid">
+            <div class="nf-field full">
+              <label for="rfn-autoritate">Autoritatea contractantă (denumire) <span style="color:red">*</span></label>
+              <input id="rfn-autoritate" type="text" placeholder="Denumire completă a autorității contractante"/>
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-adresa-autoritate">Adresa autorității</label>
+              <input id="rfn-adresa-autoritate" type="text" placeholder="Str. ..., nr. ..., localitate, județ"/>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-emis-de">Emis de (compartimentul) <span style="color:red">*</span></label>
+              <input id="rfn-emis-de" type="text" placeholder="Ex: Compartimentul Achiziții Publice"/>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-data-emiterii">Data emiterii <span style="color:red">*</span></label>
+              <input id="rfn-data-emiterii" type="date"/>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-aprobat-de">Aprobat de (șef compartiment specialitate)</label>
+              <input id="rfn-aprobat-de" type="text" placeholder="Prenume Nume"/>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-data-aprobarii">Data aprobării</label>
+              <input id="rfn-data-aprobarii" type="date"/>
+            </div>
+          </div>
+
+          <div class="nf-subsection-title">Persoana de contact din compartimentul beneficiar</div>
+          <div class="nf-form-grid">
+            <div class="nf-field">
+              <label for="rfn-contact-nume">Nume <span style="color:red">*</span></label>
+              <input id="rfn-contact-nume" type="text" placeholder="Nume"/>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-contact-prenume">Prenume <span style="color:red">*</span></label>
+              <input id="rfn-contact-prenume" type="text" placeholder="Prenume"/>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-contact-functie">Funcție</label>
+              <input id="rfn-contact-functie" type="text" placeholder="Ex: Referent"/>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-contact-compartiment">Compartiment</label>
+              <input id="rfn-contact-compartiment" type="text" placeholder="Ex: Direcția Tehnică"/>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-contact-email">Email</label>
+              <input id="rfn-contact-email" type="email" placeholder="email@institutie.ro"/>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-contact-telefon">Telefon</label>
+              <input id="rfn-contact-telefon" type="tel" placeholder="07xx xxx xxx"/>
+            </div>
+          </div>
+
+          <div class="nf-subsection-title">Scopul referatului</div>
+          <div class="rfn-radio-grp" id="rfn-scop-grp">
+            <label>
+              <input type="radio" name="rfn-scop" value="SAAP_PLANIFICARE"/>
+              Planificarea portofoliului de procese de achiziție publică pentru anul
+              <span style="margin-left:4px;font-size:.82rem;color:var(--df-text-3)">(SAAP)</span>
+            </label>
+            <div class="rfn-cond" id="rfn-cond-scop-an">
+              <div class="nf-field" style="max-width:160px;">
+                <label for="rfn-scop-an">Anul</label>
+                <input id="rfn-scop-an" type="text" placeholder="2026" maxlength="4"/>
+              </div>
+            </div>
+            <label>
+              <input type="radio" name="rfn-scop" value="PROCES_SPECIFIC"/>
+              Planificarea unui proces de achiziție publică (Strategia de contractare + Documentația de atribuire)
+            </label>
+          </div>
+
+          <div class="nf-subsection-title">Forma documentului</div>
+          <div class="rfn-radio-grp" id="rfn-forma-grp">
+            <label>
+              <input type="radio" name="rfn-forma" value="INITIALA"/>
+              Inițială
+            </label>
+            <label>
+              <input type="radio" name="rfn-forma" value="REVIZUITA"/>
+              Revizuită
+            </label>
+          </div>
+          <div class="rfn-cond" id="rfn-cond-revizuita" style="margin-top:10px;">
+            <div class="nf-field" style="max-width:200px;">
+              <label for="rfn-nr-revizuirii">Numărul revizuirii</label>
+              <input id="rfn-nr-revizuirii" type="number" min="1" placeholder="1"/>
+            </div>
+          </div>
+
+          <div id="rfn-rev-section" style="display:none;margin-top:16px;">
+            <div class="nf-subsection-title">Istoric revizuiri</div>
+            <div style="overflow-x:auto;">
+              <table class="rfn-rev-table">
+                <thead>
+                  <tr>
+                    <th style="min-width:40px">Nr.</th>
+                    <th style="min-width:110px">Tip</th>
+                    <th style="min-width:110px">Data</th>
+                    <th style="min-width:100px">Capitol</th>
+                    <th style="min-width:160px">Motiv</th>
+                    <th style="min-width:120px">Persoana revizuire</th>
+                    <th style="min-width:120px">Persoana aprobă</th>
+                    <th style="min-width:110px">Data aprobare</th>
+                    <th style="width:36px"></th>
+                  </tr>
+                </thead>
+                <tbody id="rfn-rev-tbody"></tbody>
+              </table>
+            </div>
+            <button class="rfn-rev-add-btn" onclick="rfnRevAdd()">+ Adaugă rând</button>
+          </div>
+
+          <div class="nf-subsection-title" style="margin-top:20px;">Documente atașate</div>
+          <div class="rfn-checks">
+            <label>
+              <input type="checkbox" id="rfn-atasat-caiet"/>
+              Are atașat Caiet de sarcini
+            </label>
+          </div>
+          <div class="rfn-cond" id="rfn-cond-caiet">
+            <div class="rfn-radio-grp" style="margin-bottom:8px;">
+              <label><input type="radio" name="rfn-caiet-stare" value="POATE_INCLUS"/>Poate fi inclus ca atare în Documentația de atribuire</label>
+              <label><input type="radio" name="rfn-caiet-stare" value="NECESITA_COMPLETARI"/>Necesită completări/revizuiri/actualizări</label>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-caiet-detalii">Detalii (dacă necesită completări)</label>
+              <textarea id="rfn-caiet-detalii" rows="3" placeholder="Descrieți completările necesare..."></textarea>
+            </div>
+          </div>
+
+          <div class="rfn-checks" style="margin-top:8px;">
+            <label>
+              <input type="checkbox" id="rfn-atasat-doc-descriptiv"/>
+              Are atașat Documentul descriptiv
+            </label>
+          </div>
+          <div class="rfn-cond" id="rfn-cond-doc-descriptiv">
+            <div class="rfn-radio-grp" style="margin-bottom:8px;">
+              <label><input type="radio" name="rfn-doc-stare" value="POATE_INCLUS"/>Poate fi inclus ca atare în Documentația de atribuire</label>
+              <label><input type="radio" name="rfn-doc-stare" value="NECESITA_COMPLETARI"/>Necesită completări/revizuiri/actualizări</label>
+            </div>
+            <div class="nf-field">
+              <label for="rfn-doc-detalii">Detalii (dacă necesită completări)</label>
+              <textarea id="rfn-doc-detalii" rows="3" placeholder="Descrieți completările necesare..."></textarea>
+            </div>
+          </div>
+
+          <div class="rfn-checks" style="margin-top:8px;">
+            <label>
+              <input type="checkbox" id="rfn-definirea-caracteristici"/>
+              Include definirea caracteristicilor solicitate (produse/lucrări/servicii)
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SECȚIUNILE A–N ────────────────────────────────────────────────── -->
+      <h2 class="nf-section-title" style="margin-top:24px;">Secțiunile A–N</h2>
+
+      <!-- Secțiunea A: Descrierea necesității (DESCHISĂ implicit) -->
+      <div class="rfn-accordion open" id="rfn-acc-a">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-a')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">A</span>
+            Descrierea necesității de produse/servicii/lucrări
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div class="nf-form-grid">
+            <div class="nf-field full">
+              <label for="rfn-a-obiect">Obiectul achiziției — produse/servicii/lucrări (descriere scurtă) <span style="color:red">*</span></label>
+              <textarea id="rfn-a-obiect" rows="4" placeholder="Descrieți pe scurt obiectul achiziției..."></textarea>
+            </div>
+          </div>
+          <div class="nf-subsection-title">Destinația achiziției</div>
+          <div class="rfn-radio-grp">
+            <label><input type="radio" name="rfn-a-destinatie" value="INTERES_PUBLIC"/>Realizarea unui interes public</label>
+            <label><input type="radio" name="rfn-a-destinatie" value="FUNCTIONARE_AC"/>Asigurarea funcționării autorității contractante</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secțiunea B: Fundamentarea necesității -->
+      <div class="rfn-accordion" id="rfn-acc-b">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-b')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">B</span>
+            Fundamentarea necesității
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div class="nf-form-grid">
+            <div class="nf-field full">
+              <label for="rfn-b-fundamentare">Argumentația <span style="color:red">*</span></label>
+              <textarea id="rfn-b-fundamentare" rows="8"
+                placeholder="• De ce urmează să se achiziționeze produsul/serviciul/lucrarea?&#10;• Toate celelalte posibilități de a satisface nevoia au fost evaluate?&#10;• Ce factor interesat susține că este nevoie de această achiziție?&#10;• Care este motivația faptului pentru care se consideră că această nevoie este o necesitate?"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secțiunea C: Contribuția la obiectivele AC -->
+      <div class="rfn-accordion" id="rfn-acc-c">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-c')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">C</span>
+            Contribuția satisfacerii necesității la îndeplinirea obiectivelor
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div class="nf-form-grid">
+            <div class="nf-field full">
+              <label for="rfn-c-necesitate">Necesitatea identificată <span style="color:red">*</span></label>
+              <textarea id="rfn-c-necesitate" rows="4" placeholder="Descrieți necesitatea identificată..."></textarea>
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-c-obiectiv-ac">Obiectivul/obiectivele autorității contractante la care contribuie <span style="color:red">*</span></label>
+              <textarea id="rfn-c-obiectiv-ac" rows="4" placeholder="Enumerați obiectivele AC vizate..."></textarea>
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-c-obiectiv-proiect">Obiectivul/obiectivele proiectului (dacă aparține unui proiect)</label>
+              <textarea id="rfn-c-obiectiv-proiect" rows="4" placeholder="Completați doar dacă achiziția face parte dintr-un proiect..."></textarea>
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-c-obiectiv-strategic">Obiectivul/obiectivele din strategia locală/regională/națională</label>
+              <textarea id="rfn-c-obiectiv-strategic" rows="4" placeholder="Referință la documente strategice relevante..."></textarea>
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-c-beneficii">Beneficii care vor fi obținute (calitative și cantitative, sociale și economice) <span style="color:red">*</span></label>
+              <textarea id="rfn-c-beneficii" rows="6" placeholder="Descrieți beneficiile așteptate..."></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secțiunea D: Justificarea modalității -->
+      <div class="rfn-accordion" id="rfn-acc-d">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-d')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">D</span>
+            Justificarea modalității de satisfacere a necesității
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div class="nf-form-grid">
+            <div class="nf-field full">
+              <label for="rfn-d-justificare">Detalii privind opțiunile analizate și decizia luată <span style="color:red">*</span></label>
+              <textarea id="rfn-d-justificare" rows="6"
+                placeholder="Descrieți opțiunile analizate (leasing/închiriere/cumpărare etc.) și decizia luată..."></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secțiunea E: Tipul achiziției -->
+      <div class="rfn-accordion" id="rfn-acc-e">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-e')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">E</span>
+            Necesitatea în contextul legislației în achiziții publice
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div class="nf-form-grid">
+            <div class="nf-field full">
+              <label>Tipul achiziției <span style="color:red">*</span></label>
+              <div class="rfn-radio-grp">
+                <label><input type="radio" name="rfn-e-tip" value="LUCRARI" onchange="rfnSwitchTipAchizitie(this.value)"> Lucrări</label>
+                <label><input type="radio" name="rfn-e-tip" value="PRODUSE" onchange="rfnSwitchTipAchizitie(this.value)"> Produse</label>
+                <label><input type="radio" name="rfn-e-tip" value="SERVICII" onchange="rfnSwitchTipAchizitie(this.value)"> Servicii</label>
+              </div>
+            </div>
+          </div>
+          <div class="rfn-cond" data-tip="LUCRARI" id="rfn-e-cond-lucrari">
+            <div class="nf-form-grid">
+              <div class="nf-field full">
+                <label for="rfn-e-obiect-lucrari">Obiectul achiziției — lucrări</label>
+                <textarea id="rfn-e-obiect-lucrari" rows="3" placeholder="Descrieți obiectul lucrărilor solicitate..."></textarea>
+              </div>
+              <div class="nf-field">
+                <label for="rfn-e-cpv-lucrari">Cod CPV</label>
+                <input type="text" id="rfn-e-cpv-lucrari" placeholder="ex. 45000000-7">
+              </div>
+              <div class="nf-field">
+                <label for="rfn-e-amplasament">Amplasament / locație</label>
+                <input type="text" id="rfn-e-amplasament" placeholder="Adresa / locul executării lucrărilor">
+              </div>
+            </div>
+          </div>
+          <div class="rfn-cond" data-tip="PRODUSE" id="rfn-e-cond-produse">
+            <div class="nf-form-grid">
+              <div class="nf-field full">
+                <label for="rfn-e-obiect-produse">Obiectul achiziției — produse</label>
+                <textarea id="rfn-e-obiect-produse" rows="3" placeholder="Descrieți produsele solicitate..."></textarea>
+              </div>
+              <div class="nf-field">
+                <label for="rfn-e-cpv-produse">Cod CPV</label>
+                <input type="text" id="rfn-e-cpv-produse" placeholder="ex. 30213000-5">
+              </div>
+              <div class="nf-field">
+                <label for="rfn-e-cantitate-produse">Cantitate</label>
+                <input type="text" id="rfn-e-cantitate-produse" placeholder="ex. 10 bucăți">
+              </div>
+            </div>
+          </div>
+          <div class="rfn-cond" data-tip="SERVICII" id="rfn-e-cond-servicii">
+            <div class="nf-form-grid">
+              <div class="nf-field full">
+                <label for="rfn-e-obiect-servicii">Obiectul achiziției — servicii</label>
+                <textarea id="rfn-e-obiect-servicii" rows="3" placeholder="Descrieți serviciile solicitate..."></textarea>
+              </div>
+              <div class="nf-field">
+                <label for="rfn-e-cpv-servicii">Cod CPV</label>
+                <input type="text" id="rfn-e-cpv-servicii" placeholder="ex. 72000000-5">
+              </div>
+              <div class="nf-field">
+                <label for="rfn-e-durata-servicii">Durata prestare</label>
+                <input type="text" id="rfn-e-durata-servicii" placeholder="ex. 12 luni">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secțiunea F: Valoarea estimată -->
+      <div class="rfn-accordion" id="rfn-acc-f">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-f')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">F</span>
+            Valoarea estimată a produselor/serviciilor/lucrărilor
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <p style="font-size:.82rem;color:#666;margin:0 0 10px">Tipul achiziției se selectează în Secțiunea E. Completați valoarea corespunzătoare tipului ales.</p>
+          <div class="rfn-cond" data-tip="LUCRARI" id="rfn-f-cond-lucrari">
+            <div class="nf-form-grid">
+              <div class="nf-field">
+                <label for="rfn-f-valoare-lucrari">Valoare estimată — lucrări</label>
+                <input type="number" id="rfn-f-valoare-lucrari" min="0" step="0.01" placeholder="0.00">
+              </div>
+              <div class="nf-field">
+                <label for="rfn-f-moneda-lucrari">Monedă</label>
+                <select id="rfn-f-moneda-lucrari">
+                  <option value="RON">RON</option>
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+              <div class="nf-field full">
+                <label for="rfn-f-sursa-lucrari">Sursa estimării</label>
+                <textarea id="rfn-f-sursa-lucrari" rows="2" placeholder="Studiu de piață, oferte orientative, deviz estimativ..."></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="rfn-cond" data-tip="PRODUSE" id="rfn-f-cond-produse">
+            <div class="nf-form-grid">
+              <div class="nf-field">
+                <label for="rfn-f-valoare-produse">Valoare estimată — produse</label>
+                <input type="number" id="rfn-f-valoare-produse" min="0" step="0.01" placeholder="0.00">
+              </div>
+              <div class="nf-field">
+                <label for="rfn-f-moneda-produse">Monedă</label>
+                <select id="rfn-f-moneda-produse">
+                  <option value="RON">RON</option>
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+              <div class="nf-field full">
+                <label for="rfn-f-sursa-produse">Sursa estimării</label>
+                <textarea id="rfn-f-sursa-produse" rows="2" placeholder="Studiu de piață, oferte orientative..."></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="rfn-cond" data-tip="SERVICII" id="rfn-f-cond-servicii">
+            <div class="nf-form-grid">
+              <div class="nf-field">
+                <label for="rfn-f-valoare-servicii">Valoare estimată — servicii</label>
+                <input type="number" id="rfn-f-valoare-servicii" min="0" step="0.01" placeholder="0.00">
+              </div>
+              <div class="nf-field">
+                <label for="rfn-f-moneda-servicii">Monedă</label>
+                <select id="rfn-f-moneda-servicii">
+                  <option value="RON">RON</option>
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+              <div class="nf-field full">
+                <label for="rfn-f-sursa-servicii">Sursa estimării</label>
+                <textarea id="rfn-f-sursa-servicii" rows="2" placeholder="Studiu de piață, oferte orientative..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secțiunea G: Calendarul procesului -->
+      <!-- Secțiunea G: Calendarul procesului de achiziție -->
+      <div class="rfn-accordion" id="rfn-acc-g">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-g')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">G</span>
+            Calendarul procesului de achiziție publică
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div style="font-size:.85rem;color:var(--df-text-3);margin-bottom:12px;line-height:1.5;">
+            Stabiliți data la care rezultatul contractului trebuie să fie recepționat și utilizabil pentru activitatea pentru care este necesar, apoi datele jaloanelor anterioare.
+          </div>
+
+          <h4 style="margin:14px 0 8px;font-size:.9rem;color:var(--df-text);">Perioade estimate (luna / an)</h4>
+          <div class="nf-form-grid">
+            <div class="nf-field">
+              <label for="rfn-g-semnare-contract">Semnarea contractului / acordului-cadru</label>
+              <input id="rfn-g-semnare-contract" type="month">
+            </div>
+            <div class="nf-field">
+              <label for="rfn-g-primul-subsecvent">Primul contract subsecvent (acord-cadru)</label>
+              <input id="rfn-g-primul-subsecvent" type="month">
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-g-finalizare">Finalizarea implementării contractului (recepție / punere în funcțiune / livrare)</label>
+              <input id="rfn-g-finalizare" type="month">
+            </div>
+            <div class="nf-field">
+              <label for="rfn-g-evaluare-obligatii">Evaluarea îndeplinirii obligațiilor de către contractor</label>
+              <input id="rfn-g-evaluare-obligatii" type="month">
+            </div>
+            <div class="nf-field">
+              <label for="rfn-g-evaluare-beneficii">Evaluarea materializării beneficiilor planificate</label>
+              <input id="rfn-g-evaluare-beneficii" type="month">
+            </div>
+          </div>
+
+          <h4 style="margin:18px 0 8px;font-size:.9rem;color:var(--df-text);">Justificarea termenelor stabilite</h4>
+          <div class="nf-form-grid">
+            <div class="nf-field full">
+              <label for="rfn-g-just-semnare">Justificare semnare contract</label>
+              <textarea id="rfn-g-just-semnare" rows="3" placeholder="Aspecte avute în vedere la stabilirea termenului"></textarea>
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-g-just-subsecvent">Justificare primul subsecvent (dacă e cazul)</label>
+              <textarea id="rfn-g-just-subsecvent" rows="3"></textarea>
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-g-just-finalizare">Justificare finalizare implementare</label>
+              <textarea id="rfn-g-just-finalizare" rows="3"></textarea>
+            </div>
+          </div>
+
+          <h4 style="margin:18px 0 8px;font-size:.9rem;color:var(--df-text);">Considerații suplimentare</h4>
+          <div class="rfn-checks">
+            <label><input type="checkbox" id="rfn-g-cb-sinergie"> Necesită combinarea rezultatului mai multor procese de achiziție (sinergie)</label>
+            <label><input type="checkbox" id="rfn-g-cb-fonduri-eu"> Implementarea implică finanțare din fonduri europene</label>
+            <label><input type="checkbox" id="rfn-g-cb-proiect-amplu"> Contractul este parte a unui proiect mai amplu</label>
+          </div>
+          <div class="nf-form-grid" style="margin-top:10px;">
+            <div class="nf-field full">
+              <label for="rfn-g-considerente">Alte considerente luate în calcul</label>
+              <textarea id="rfn-g-considerente" rows="3" placeholder="Impactul întârzierii unui contract asupra celorlalte, aprobări de la factori interesați, alte elemente care pot influența durata"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secțiunea H: Perspectiva pe termen scurt — fonduri alocate -->
+      <div class="rfn-accordion" id="rfn-acc-h">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-h')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">H</span>
+            Perspectiva pe termen scurt: fonduri alocate
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div class="nf-form-grid">
+            <div class="nf-field">
+              <label for="rfn-h-valoare">Fonduri alocate pentru satisfacerea necesității <span style="color:red">*</span></label>
+              <input id="rfn-h-valoare" type="text" inputmode="decimal" placeholder="Ex: 1.300.000,00">
+            </div>
+            <div class="nf-field">
+              <label for="rfn-h-moneda">Moneda</label>
+              <select id="rfn-h-moneda">
+                <option value="RON">RON</option>
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-h-sursa">Sursa de finanțare <span style="color:red">*</span></label>
+              <input id="rfn-h-sursa" type="text" placeholder="Ex: Buget local, Fonduri europene PNRR, Buget de stat">
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-h-pozitie">Poziția în buget / propunerea de buget</label>
+              <input id="rfn-h-pozitie" type="text" placeholder="Ex: Cap. 51.01.03, Subcap. ... art. ... alin. ...">
+            </div>
+            <div class="nf-field">
+              <label for="rfn-h-cod-ssi">Cod SSI (dacă aplicabil)</label>
+              <input id="rfn-h-cod-ssi" type="text" placeholder="Ex: 01A510103564801">
+            </div>
+            <div class="nf-field">
+              <label for="rfn-h-program">Cod program bugetar</label>
+              <input id="rfn-h-program" type="text" placeholder="Ex: 0000000550">
+            </div>
+            <div class="nf-field full">
+              <label for="rfn-h-observatii">Observații (relația cu valoarea estimată)</label>
+              <textarea id="rfn-h-observatii" rows="3" placeholder="Detalii pentru situația în care valoarea estimată diferă de fondurile alocate"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secțiunea I: Resurse complementare -->
+      <div class="rfn-accordion" id="rfn-acc-i">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-i')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">I</span>
+            Perspectiva pe termen lung: resurse complementare
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div class="nf-form-grid">
+            <div class="nf-field full">
+              <label class="rfn-checks">
+                <input type="checkbox" id="rfn-i-aplicabil" onchange="rfnToggleSecIAplicabil()">
+                Există resurse sau surse complementare identificate pentru susținerea pe termen lung
+              </label>
+            </div>
+          </div>
+          <div class="rfn-cond" id="rfn-i-cond">
+            <div class="nf-form-grid">
+              <div class="nf-field full">
+                <label for="rfn-i-surse">Surse complementare identificate</label>
+                <textarea id="rfn-i-surse" rows="3" placeholder="Enumerați sursele complementare: fonduri europene, parteneriate, venituri proprii etc."></textarea>
+              </div>
+              <div class="nf-field full">
+                <label for="rfn-i-detalii">Detalii privind sustenabilitatea pe termen lung</label>
+                <textarea id="rfn-i-detalii" rows="3" placeholder="Descrieți planul de susținere pe termen lung al achiziției..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────── SEC J: Descrierea caracteristicilor solicitate ───────── -->
+      <div class="rfn-accordion" id="rfn-acc-j">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-j')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">J</span>
+            Descrierea caracteristicilor solicitate (art. 156 alin. 1 din Legea 98/2016)
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div style="font-size:.85rem;color:var(--df-text-3);margin-bottom:14px;line-height:1.5;">
+            Selectați situația aplicabilă privind Caietul de sarcini / Documentația descriptivă.
+          </div>
+
+          <div class="rfn-radio-grp" style="margin-bottom:16px;">
+            <label><input type="radio" name="rfn-j-situatie" value="EXISTA_CAIET" onchange="rfnJSwitch()"> <strong>Opțiunea 1</strong> — Există Caiet de sarcini / Documentație descriptivă elaborat(ă) și aprobat(ă) la nivel de compartiment</label>
+            <label><input type="radio" name="rfn-j-situatie" value="FARA_CAIET" onchange="rfnJSwitch()"> <strong>Opțiunea 2</strong> — Nu există Caiet de sarcini, elaborarea se realizează ulterior</label>
+          </div>
+
+          <!-- ──────────── J1: există Caiet de sarcini ──────────── -->
+          <div class="rfn-cond" id="rfn-j-bloc-existent" data-j-situatie="EXISTA_CAIET">
+
+            <!-- J1.1 Modalitatea utilizată pentru descrierea caracteristicilor -->
+            <h4 style="margin:8px 0 8px;font-size:.92rem;color:var(--df-text);">1. Modalitatea de descriere a caracteristicilor</h4>
+            <div style="font-size:.83rem;color:var(--df-text-3);margin-bottom:8px;">Conform art. 156 alin. (1) din Legea 98/2016, selectați opțiunea aplicabilă:</div>
+            <div class="rfn-radio-grp" style="margin-bottom:10px;">
+              <label><input type="radio" name="rfn-j1-modalitate" value="PERFORMANTA"> Prin raportare la cerințe de performanță / funcționale</label>
+              <label><input type="radio" name="rfn-j1-modalitate" value="SPEC_TEHNICE_ECHIVALENT"> Prin trimitere la specificații tehnice însoțită de mențiunea „sau echivalent"</label>
+              <label><input type="radio" name="rfn-j1-modalitate" value="MIXT_PERFORMANTA_SPEC"> Prin raportare la cerințe de performanță / funcționale și prin trimitere la specificații</label>
+              <label><input type="radio" name="rfn-j1-modalitate" value="MIXT_SPEC_PERFORMANTA"> Prin trimitere la specificații pentru unele caracteristici și prin raportare la cerințe de performanță pentru altele</label>
+            </div>
+            <div class="nf-form-grid">
+              <div class="nf-field full">
+                <label for="rfn-j1-modalitate-just">Justificarea opțiunii selectate</label>
+                <textarea id="rfn-j1-modalitate-just" rows="3" placeholder="Argumentați alegerea modalității în contextul achiziției"></textarea>
+              </div>
+              <div class="nf-field full">
+                <label for="rfn-j1-spec-referinte">Referințe utilizate (dacă opțiunea = „sau echivalent")</label>
+                <textarea id="rfn-j1-spec-referinte" rows="2" placeholder="Specificați referințele utilizate în elaborarea specificațiilor tehnice"></textarea>
+              </div>
+            </div>
+
+            <h4 style="margin:18px 0 8px;font-size:.92rem;color:var(--df-text);">2. Categorii de standarde la care face trimitere Caietul de sarcini</h4>
+            <div style="font-size:.83rem;color:var(--df-text-3);margin-bottom:8px;">Conform art. 156 alin. (1) lit. b) din Legea 98/2016 (selectați toate cele aplicabile):</div>
+            <div class="rfn-checks">
+              <label><input type="checkbox" id="rfn-j1-std-sr-en-iso"> SR EN ISO</label>
+              <label><input type="checkbox" id="rfn-j1-std-eval-tehnice-eu"> Evaluări tehnice europene</label>
+              <label><input type="checkbox" id="rfn-j1-std-spec-comune"> Specificații tehnice comune</label>
+              <label><input type="checkbox" id="rfn-j1-std-internationale"> Standarde internaționale</label>
+              <label><input type="checkbox" id="rfn-j1-std-sist-referinta"> Sisteme de referință tehnice instituite de organisme de standardizare europene</label>
+              <label><input type="checkbox" id="rfn-j1-std-nationale"> Alte norme la nivel național / specificații tehnice naționale</label>
+            </div>
+
+            <!-- J1.3 Aspecte ciclu de viață -->
+            <h4 style="margin:18px 0 8px;font-size:.92rem;color:var(--df-text);">3. Aspecte legate de ciclul de viață (art. 155 alin. 2 din Legea 98/2016)</h4>
+            <div class="nf-form-grid">
+              <div class="nf-field full">
+                <label for="rfn-j1-clv-denumire">Denumirea caracteristicilor descrise în Caiet de sarcini</label>
+                <textarea id="rfn-j1-clv-denumire" rows="2" placeholder="Selectați și introduceți denumirea acestora"></textarea>
+              </div>
+            </div>
+            <div class="rfn-radio-grp" style="margin-top:8px;">
+              <label><input type="radio" name="rfn-j1-clv-fac" value="FAC"> Caracteristicile fac parte din ciclul de viață</label>
+              <label><input type="radio" name="rfn-j1-clv-fac" value="NU_FAC"> Caracteristicile NU fac parte din ciclul de viață</label>
+            </div>
+            <div style="margin-top:10px;font-size:.85rem;color:var(--df-text-3);">Caietul de sarcini vizează:</div>
+            <div class="rfn-radio-grp" style="margin-top:6px;">
+              <label><input type="radio" name="rfn-j1-clv-vizeaza" value="PROCES_EXEC"> Proces / metodă specifică de execuție / fabricație / prestare</label>
+              <label><input type="radio" name="rfn-j1-clv-vizeaza" value="PROCES_ALT_STADIU"> Un proces specific pentru un alt stadiu al ciclului de viață</label>
+            </div>
+            <div class="nf-form-grid" style="margin-top:8px;">
+              <div class="nf-field full">
+                <label for="rfn-j1-clv-just">Justificarea opțiunii și proporționalitatea în contextul achiziției</label>
+                <textarea id="rfn-j1-clv-just" rows="3" placeholder="Importanța procesului în stadiul ciclului de viață, importanța caracteristicilor în economia obiectului contractului"></textarea>
+              </div>
+            </div>
+
+            <!-- J1.4 Caracteristici ce ar putea favoriza / elimina operatori -->
+            <h4 style="margin:18px 0 8px;font-size:.92rem;color:var(--df-text);">4. Caracteristici cu potențial de favorizare / eliminare operatori sau produse</h4>
+            <div class="rfn-radio-grp" style="margin-bottom:8px;">
+              <label><input type="radio" name="rfn-j1-favoriz" value="INCLUDE" onchange="rfnJ1ToggleFavoriz()"> Caietul de sarcini INCLUDE astfel de precizări</label>
+              <label><input type="radio" name="rfn-j1-favoriz" value="NU_INCLUDE" onchange="rfnJ1ToggleFavoriz()"> Caietul de sarcini NU INCLUDE astfel de precizări</label>
+            </div>
+            <div class="rfn-cond" id="rfn-j1-favoriz-detalii">
+              <div style="font-size:.83rem;color:var(--df-text-3);margin-bottom:8px;">Selectați precizările aplicabile (multi-select):</div>
+              <div class="rfn-checks">
+                <label><input type="checkbox" id="rfn-j1-fav-producator"> Precizează un anumit producător</label>
+                <label><input type="checkbox" id="rfn-j1-fav-origine"> Precizează o anumită origine</label>
+                <label><input type="checkbox" id="rfn-j1-fav-procedeu"> Precizează un anumit procedeu</label>
+                <label><input type="checkbox" id="rfn-j1-fav-marca"> Se referă la o marcă specifică</label>
+                <label><input type="checkbox" id="rfn-j1-fav-brevet"> Se referă la un brevet specific</label>
+                <label><input type="checkbox" id="rfn-j1-fav-tip"> Se referă la un tip specific</label>
+                <label><input type="checkbox" id="rfn-j1-fav-origine-spec"> Se referă la o origine specifică</label>
+                <label><input type="checkbox" id="rfn-j1-fav-productie-spec"> Se referă la o producție specifică</label>
+                <label><input type="checkbox" id="rfn-j1-fav-proces-stadiu"> Vizează un proces specific pentru un alt stadiu al ciclului de viață</label>
+              </div>
+              <div class="nf-form-grid" style="margin-top:10px;">
+                <div class="nf-field full">
+                  <label for="rfn-j1-fav-just">Justificarea precizărilor și mențiunea „sau echivalent"</label>
+                  <textarea id="rfn-j1-fav-just" rows="3" placeholder="Justificați necesitatea precizărilor și specificați dacă „sau echivalent" este inclus în Caiet de sarcini"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- J1.5 Transfer drepturi proprietate intelectuala -->
+            <h4 style="margin:18px 0 8px;font-size:.92rem;color:var(--df-text);">5. Transferul drepturilor de proprietate intelectuală</h4>
+            <div class="rfn-radio-grp" style="margin-bottom:8px;">
+              <label><input type="radio" name="rfn-j1-ip" value="DA_TRANSFER" onchange="rfnJ1ToggleIP()"> Caietul de sarcini SOLICITĂ transferul drepturilor IP</label>
+              <label><input type="radio" name="rfn-j1-ip" value="NU_TRANSFER" onchange="rfnJ1ToggleIP()"> Caietul de sarcini NU solicită transferul drepturilor IP</label>
+              <label><input type="radio" name="rfn-j1-ip" value="NU_APLICABIL" onchange="rfnJ1ToggleIP()"> Nu este aplicabil în acest caz</label>
+            </div>
+            <div class="rfn-cond" id="rfn-j1-ip-detalii">
+              <div class="nf-form-grid">
+                <div class="nf-field full">
+                  <label for="rfn-j1-ip-just">Justificare</label>
+                  <textarea id="rfn-j1-ip-just" rows="3" placeholder="Argumentația pentru opțiunea aleasă"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- J1.6 Concept proiectare universal (toate categoriile de utilizatori) -->
+            <h4 style="margin:18px 0 8px;font-size:.92rem;color:var(--df-text);">6. Conceptul de proiectare pentru toate categoriile de utilizatori</h4>
+            <div class="rfn-radio-grp" style="margin-bottom:8px;">
+              <label><input type="radio" name="rfn-j1-design-univ" value="DA"> Conceptul a fost luat în calcul</label>
+              <label><input type="radio" name="rfn-j1-design-univ" value="NU"> Conceptul NU a fost luat în calcul</label>
+            </div>
+            <div class="nf-form-grid">
+              <div class="nf-field full">
+                <label for="rfn-j1-design-just">Detalii (paragrafe din Caiet de sarcini, acte normative UE / inexistența lor / justificare neincludere)</label>
+                <textarea id="rfn-j1-design-just" rows="4" placeholder="Introduceți paragrafele relevante sau justificarea pentru neincludere"></textarea>
+              </div>
+            </div>
+
+            <!-- J1.7 Reglementari obligatorii mediu/social/munca -->
+            <h4 style="margin:18px 0 8px;font-size:.92rem;color:var(--df-text);">7. Reglementări obligatorii (mediu / social / relații de muncă)</h4>
+            <div class="nf-form-grid">
+              <div class="nf-field full">
+                <label for="rfn-j1-regl-list">Reglementări aplicabile (UE, naționale, contracte colective)</label>
+                <textarea id="rfn-j1-regl-list" rows="4" placeholder="Precizați reglementările obligatorii care trebuie respectate pe parcursul executării contractului"></textarea>
+              </div>
+              <div class="nf-field full">
+                <label for="rfn-j1-regl-institutii">Instituții competente de la care operatorii pot obține informații detaliate</label>
+                <textarea id="rfn-j1-regl-institutii" rows="3" placeholder="Ex: Ministerul Mediului, Inspecția Muncii, ANOFM etc."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- ──────────── J2: nu există Caiet de sarcini ──────────── -->
+          <div class="rfn-cond" id="rfn-j-bloc-fara-caiet" data-j-situatie="FARA_CAIET">
+            <div style="font-size:.85rem;color:var(--df-text-3);margin-bottom:12px;line-height:1.5;">
+              Selectați această opțiune când Caietul de sarcini / Documentația descriptivă urmează să fie elaborate ulterior, prin compartimentul intern de specialitate al autorității contractante sau de către consultanți externi.
+            </div>
+            <div class="nf-form-grid">
+              <div class="nf-field full">
+                <label for="rfn-j2-elaborare">Modalitatea de elaborare a Caietului / Documentației descriptive</label>
+                <textarea id="rfn-j2-elaborare" rows="4" placeholder="Specificați cine va elabora Caietul, în ce termen, ce informații vor fi avute în vedere, eventuale colaborări inter-compartimente"></textarea>
+              </div>
+              <div class="nf-field full">
+                <label for="rfn-j2-orientare">Orientări preliminare privind caracteristicile solicitate</label>
+                <textarea id="rfn-j2-orientare" rows="4" placeholder="Descrieți cerințele cunoscute la momentul elaborării Referatului, chiar și parțial"></textarea>
+              </div>
+              <div class="nf-field full">
+                <label for="rfn-j2-termen">Termen estimat pentru finalizarea Caietului de sarcini</label>
+                <input id="rfn-j2-termen" type="text" placeholder="Ex: 30 zile de la aprobarea Referatului"/>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────── SEC K: Factori cheie pentru succes ───────── -->
+      <div class="rfn-accordion" id="rfn-acc-k">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-k')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">K</span>
+            Factori cheie pentru succesul procesului de achiziție
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div style="font-size:.85rem;color:var(--df-text-3);margin-bottom:12px;line-height:1.5;">
+            Enumerați factorii critici/cheie relevanți pentru obținerea asigurării că beneficiile anticipate vor fi obținute și că achiziția va contribui la îndeplinirea obiectivului.
+          </div>
+
+          <table class="rfn-rev-table" id="rfn-k-table">
+            <thead>
+              <tr>
+                <th style="width:30%;">Factor cheie</th>
+                <th style="width:30%;">Modalitate de măsurare a succesului</th>
+                <th style="width:30%;">Indicator de performanță (cantitativ / calitativ)</th>
+                <th style="width:10%;">Acț.</th>
+              </tr>
+            </thead>
+            <tbody id="rfn-k-tbody">
+            </tbody>
+          </table>
+          <button type="button" class="rfn-rev-add-btn" onclick="rfnKAdd()">+ Adaugă factor cheie</button>
+        </div>
+      </div>
+
+      <!-- ───────── SEC L: Factori interesati relevanti ───────── -->
+      <div class="rfn-accordion" id="rfn-acc-l">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-l')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">L</span>
+            Factori interesați relevanți
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div style="font-size:.85rem;color:var(--df-text-3);margin-bottom:12px;line-height:1.5;">
+            Includeți toți factorii interesați (din mediul intern sau extern) care au impact asupra succesului procesului de achiziție publică și care, dacă nu au fost luați în considerare, pot conduce la blocarea sau întârzierea achiziției.
+          </div>
+
+          <div class="nf-form-grid">
+            <div class="nf-field full">
+              <label for="rfn-l-factori">Factori interesați identificați *</label>
+              <textarea id="rfn-l-factori" rows="8" placeholder="Enumerați factorii interesați. Pentru fiecare, specificați:
+- Denumirea / rolul
+- Tipul interesului (intern/extern, decident/influencer/beneficiar)
+- Modalitatea în care factorul interesat poate afecta succesul achiziției
+- Acțiuni propuse pentru gestionarea relației cu acest factor"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────── SEC M: Competente necesare si disponibile ───────── -->
+      <div class="rfn-accordion" id="rfn-acc-m">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-m')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">M</span>
+            Competențe necesare și disponibile pentru finalizarea procesului
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+          <div style="font-size:.85rem;color:var(--df-text-3);margin-bottom:12px;line-height:1.5;">
+            Pentru fiecare etapă din procesul de achiziție publică, identificați competențele necesare, competențele disponibile, forma de acces la acestea și competențele care trebuie atrase din alte compartimente sau din exterior.
+          </div>
+
+          <table class="rfn-rev-table" id="rfn-m-table">
+            <thead>
+              <tr>
+                <th style="width:18%;">Etapa procesului</th>
+                <th style="width:18%;">Competențe necesare</th>
+                <th style="width:18%;">Competențe disponibile</th>
+                <th style="width:18%;">Forma de acces (intern / contract / consultant)</th>
+                <th style="width:20%;">Atrase din alt compartiment / extern</th>
+                <th style="width:8%;">Acț.</th>
+              </tr>
+            </thead>
+            <tbody id="rfn-m-tbody">
+            </tbody>
+          </table>
+          <button type="button" class="rfn-rev-add-btn" onclick="rfnMAdd()">+ Adaugă etapă</button>
+          <div style="margin-top:10px;font-size:.78rem;color:var(--df-text-4);font-style:italic;">
+            Etape sugerate: Elaborare Caiet de sarcini / Documentație descriptivă · Participare la evaluarea ofertelor · Managementul contractului · Recepție · Monitorizare execuție.
+          </div>
+        </div>
+      </div>
+
+      <!-- ───────── SEC N: Anexe + Lista de verificare ───────── -->
+      <div class="rfn-accordion" id="rfn-acc-n">
+        <div class="rfn-acc-header" onclick="rfnToggleAcc('rfn-acc-n')">
+          <div class="rfn-acc-title">
+            <span class="rfn-acc-letter">N</span>
+            Anexe și lista de verificare a oportunității demarării achiziției
+          </div>
+          <svg class="rfn-acc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rfn-acc-body">
+
+          <!-- N.1 Anexe la referat (5 checkbox-uri) -->
+          <h4 style="margin:0 0 10px;font-size:.92rem;color:var(--df-text);">1. Anexe la Referatul de necesitate</h4>
+          <div style="font-size:.83rem;color:var(--df-text-3);margin-bottom:10px;">Selectați documentele care însoțesc Referatul de necesitate (multi-select):</div>
+          <div class="rfn-checks">
+            <label><input type="checkbox" id="rfn-n-anex-caiet"> Caiet de sarcini / Documentația descriptivă</label>
+            <label><input type="checkbox" id="rfn-n-anex-caracteristici"> Caracteristici pentru produse / lucrări / servicii</label>
+            <label><input type="checkbox" id="rfn-n-anex-conditii"> Propuneri de condiții contractuale relevante (corelate cu Caietul de sarcini)</label>
+            <label><input type="checkbox" id="rfn-n-anex-criterii"> Propuneri pentru forma criteriului de atribuire / factori de evaluare / elemente ciclu de viață</label>
+            <label><input type="checkbox" id="rfn-n-anex-cercetare"> Informații privind prețul unitar/total actualizat (cercetare piață sau bază istorică)</label>
+          </div>
+          <div class="nf-form-grid" style="margin-top:10px;">
+            <div class="nf-field full">
+              <label for="rfn-n-anex-altele">Alte anexe (opțional)</label>
+              <textarea id="rfn-n-anex-altele" rows="2" placeholder="Enumerați alte documente atașate care nu se încadrează în categoriile de mai sus"></textarea>
+            </div>
+          </div>
+
+          <!-- N.2 Lista de verificare - 9 elemente DA/NU -->
+          <h4 style="margin:18px 0 8px;font-size:.92rem;color:var(--df-text);">2. Lista de verificare pentru justificarea oportunității demarării</h4>
+          <div style="font-size:.83rem;color:var(--df-text-3);margin-bottom:10px;line-height:1.5;">
+            Această listă trebuie să însoțească orice referat de necesitate. Bifați DA / NU pentru fiecare element.
+          </div>
+
+          <table class="rfn-checklist-table">
+            <thead>
+              <tr>
+                <th class="cl-num">#</th>
+                <th>Element verificat</th>
+                <th class="cl-toggle">Răspuns</th>
+              </tr>
+            </thead>
+            <tbody id="rfn-n-checklist-tbody">
+              <!-- Randurile populate de rfnNRenderChecklist() -->
+            </tbody>
+          </table>
+
+          <div class="nf-form-grid" style="margin-top:14px;">
+            <div class="nf-field full">
+              <label for="rfn-n-observatii">Observații finale (opțional)</label>
+              <textarea id="rfn-n-observatii" rows="3" placeholder="Comentarii suplimentare privind oportunitatea demarării achiziției"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Acțiuni ──────────────────────────────────────────────────────── -->
+      <div class="nf-actions">
+        <button id="rfn-btn-save" class="df-action-btn primary" onclick="rfnSave()">
+          <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-save"/></svg>
+          Salvează draft
+        </button>
+        <button id="rfn-btn-pdf" class="df-action-btn" onclick="rfnGenPdf()"
+          title="Generează PDF Referat de Necesitate">
+          <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-download"/></svg>
+          Generează PDF
+        </button>
+        <a href="/formular.html" class="df-action-btn">
+          <svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-arrow-left"/></svg>
+          Înapoi
+        </a>
+        <span id="rfn-saved-badge2" class="nf-saved-badge"></span>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function getCsrf(){
+  const m=document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return m?decodeURIComponent(m[1]):'';
+}
+
+function showErr(msg){
+  const el=document.getElementById('rfn-err');
+  if(!el)return;
+  el.textContent=msg;
+  el.style.display=msg?'block':'none';
+}
+function clearErr(){ showErr(''); }
+
+// ── Stare pagină ──────────────────────────────────────────────────────────────
+let _rfnId = null;
+
+// ── Accordion toggle ──────────────────────────────────────────────────────────
+function rfnToggleAcc(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const hdr = el.querySelector('.rfn-acc-header');
+  if(hdr && hdr.classList.contains('stub')) return;
+  el.classList.toggle('open');
+}
+
+// ── Sec E: comutare tip achiziție ─────────────────────────────────────────────
+function rfnSwitchTipAchizitie(val){
+  document.querySelectorAll('.rfn-cond[data-tip]').forEach(el=>{
+    el.classList.toggle('show', el.dataset.tip === val);
+  });
+}
+
+// ── Sec I: toggle resurse complementare ──────────────────────────────────────
+function rfnToggleSecIAplicabil(){
+  const cb = document.getElementById('rfn-i-aplicabil');
+  const cond = document.getElementById('rfn-i-cond');
+  if(cond) cond.classList.toggle('show', !!cb?.checked);
+}
+
+// ── Toggle bloc J: existent vs fara caiet ─────────────────────────────────
+function rfnJSwitch(){
+  const sit = document.querySelector('input[name="rfn-j-situatie"]:checked')?.value || '';
+  document.querySelectorAll('.rfn-cond[data-j-situatie]').forEach(el => {
+    if (el.dataset.jSituatie === sit) el.classList.add('show');
+    else el.classList.remove('show');
+  });
+}
+
+// ── Toggle detalii precizari favorizare (sub-bloc J1.4) ───────────────────
+function rfnJ1ToggleFavoriz(){
+  const v   = document.querySelector('input[name="rfn-j1-favoriz"]:checked')?.value || '';
+  const det = document.getElementById('rfn-j1-favoriz-detalii');
+  if (!det) return;
+  if (v === 'INCLUDE') det.classList.add('show');
+  else det.classList.remove('show');
+}
+
+// ── Toggle detalii transfer drepturi IP (sub-bloc J1.5) ───────────────────
+function rfnJ1ToggleIP(){
+  const v   = document.querySelector('input[name="rfn-j1-ip"]:checked')?.value || '';
+  const det = document.getElementById('rfn-j1-ip-detalii');
+  if (!det) return;
+  if (v === 'DA_TRANSFER' || v === 'NU_TRANSFER') det.classList.add('show');
+  else det.classList.remove('show');
+}
+
+// Expune global pentru onchange handlers din HTML
+window.rfnJSwitch         = rfnJSwitch;
+window.rfnJ1ToggleFavoriz = rfnJ1ToggleFavoriz;
+window.rfnJ1ToggleIP      = rfnJ1ToggleIP;
+
+// ── Tabel K: factori cheie de succes ─────────────────────────────────────
+function rfnKAdd(values){
+  const tb = document.getElementById('rfn-k-tbody');
+  if (!tb) return;
+  const tr = document.createElement('tr');
+  const v  = values || { factor:'', masurare:'', indicator:'' };
+  tr.innerHTML = `
+    <td><input type="text" data-k="factor" value="${(v.factor||'').replace(/"/g,'&quot;')}" placeholder="Ex: rezultatul contractului recepționat la termen"/></td>
+    <td><input type="text" data-k="masurare" value="${(v.masurare||'').replace(/"/g,'&quot;')}" placeholder="Ex: durata cuprinsă între identificarea necesității și recepție"/></td>
+    <td><input type="text" data-k="indicator" value="${(v.indicator||'').replace(/"/g,'&quot;')}" placeholder="Ex: deviație max. 2% planificat vs realizat"/></td>
+    <td style="text-align:center;"><button type="button" class="rfn-rev-rm-btn" onclick="rfnKRm(this)">×</button></td>
+  `;
+  tb.appendChild(tr);
+}
+function rfnKRm(btn){
+  const tr = btn?.closest('tr');
+  if (tr) tr.remove();
+}
+function _rfnKRead(){
+  const out = [];
+  document.querySelectorAll('#rfn-k-tbody tr').forEach(tr => {
+    const factor    = tr.querySelector('input[data-k="factor"]')?.value    || '';
+    const masurare  = tr.querySelector('input[data-k="masurare"]')?.value  || '';
+    const indicator = tr.querySelector('input[data-k="indicator"]')?.value || '';
+    if (factor || masurare || indicator) out.push({ factor, masurare, indicator });
+  });
+  return out;
+}
+
+// ── Tabel M: competente pe etape ─────────────────────────────────────────
+function rfnMAdd(values){
+  const tb = document.getElementById('rfn-m-tbody');
+  if (!tb) return;
+  const tr = document.createElement('tr');
+  const v  = values || { etapa:'', necesare:'', disponibile:'', acces:'', atrase:'' };
+  tr.innerHTML = `
+    <td><input type="text" data-m="etapa" value="${(v.etapa||'').replace(/"/g,'&quot;')}" placeholder="Ex: Elaborare Caiet de sarcini"/></td>
+    <td><input type="text" data-m="necesare" value="${(v.necesare||'').replace(/"/g,'&quot;')}" placeholder="Ex: tehnice, juridice"/></td>
+    <td><input type="text" data-m="disponibile" value="${(v.disponibile||'').replace(/"/g,'&quot;')}" placeholder="Ex: tehnice"/></td>
+    <td><input type="text" data-m="acces" value="${(v.acces||'').replace(/"/g,'&quot;')}" placeholder="Ex: intern / contract consultanță"/></td>
+    <td><input type="text" data-m="atrase" value="${(v.atrase||'').replace(/"/g,'&quot;')}" placeholder="Ex: jurist din departament Achiziții"/></td>
+    <td style="text-align:center;"><button type="button" class="rfn-rev-rm-btn" onclick="rfnMRm(this)">×</button></td>
+  `;
+  tb.appendChild(tr);
+}
+function rfnMRm(btn){
+  const tr = btn?.closest('tr');
+  if (tr) tr.remove();
+}
+function _rfnMRead(){
+  const out = [];
+  document.querySelectorAll('#rfn-m-tbody tr').forEach(tr => {
+    const etapa       = tr.querySelector('input[data-m="etapa"]')?.value       || '';
+    const necesare    = tr.querySelector('input[data-m="necesare"]')?.value    || '';
+    const disponibile = tr.querySelector('input[data-m="disponibile"]')?.value || '';
+    const acces       = tr.querySelector('input[data-m="acces"]')?.value       || '';
+    const atrase      = tr.querySelector('input[data-m="atrase"]')?.value      || '';
+    if (etapa || necesare || disponibile || acces || atrase){
+      out.push({ etapa, necesare, disponibile, acces, atrase });
+    }
+  });
+  return out;
+}
+
+// Expune global pentru onclick handlers din HTML
+window.rfnKAdd = rfnKAdd;
+window.rfnKRm  = rfnKRm;
+window.rfnMAdd = rfnMAdd;
+window.rfnMRm  = rfnMRm;
+
+// ── Lista de verificare Sec N (9 elemente DA/NU) ─────────────────────────
+const RFN_CHECKLIST = [
+  'Este evidențiată legătura dintre necesitate și obiectivele autorității contractante',
+  'Este evidențiată legătura dintre necesitate și strategia locală/națională (după caz)',
+  'Caietul de sarcini este atașat în forma completă',
+  'Sunt identificați factorii cheie de succes pentru satisfacerea necesității și modalitatea de măsurare',
+  'Factorii interesați relevanți sunt identificați',
+  'Necesitatea a fost stabilită cu analiza opțiunilor de satisfacere a nevoii',
+  'Necesitatea nu poate fi satisfăcută prin contractele de achiziție publică existente sau acordurile-cadru în derulare',
+  'Fondurile necesare pentru realizarea achiziției sunt identificate în Referatul de necesitate',
+  'Fondurile necesare pentru utilizarea/exploatarea rezultatului sunt conștientizate și accesul la ele este posibil'
+];
+
+let _rfnChecklistState = RFN_CHECKLIST.map(() => '');
+
+function rfnNRenderChecklist(){
+  const tb = document.getElementById('rfn-n-checklist-tbody');
+  if (!tb) return;
+  tb.innerHTML = '';
+  RFN_CHECKLIST.forEach((label, idx) => {
+    const tr = document.createElement('tr');
+    const st = _rfnChecklistState[idx] || '';
+    tr.innerHTML = `
+      <td class="cl-num">${idx+1}</td>
+      <td>${label}</td>
+      <td class="cl-toggle">
+        <span class="rfn-cl-toggle">
+          <button type="button" class="${st==='DA'?'active-da':''}" data-cl-idx="${idx}" data-cl-val="DA" onclick="rfnNSetChecklist(${idx},'DA')">DA</button>
+          <button type="button" class="${st==='NU'?'active-nu':''}" data-cl-idx="${idx}" data-cl-val="NU" onclick="rfnNSetChecklist(${idx},'NU')">NU</button>
+        </span>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+function rfnNSetChecklist(idx, val){
+  if (idx < 0 || idx >= RFN_CHECKLIST.length) return;
+  if (_rfnChecklistState[idx] === val) {
+    _rfnChecklistState[idx] = '';
+  } else {
+    _rfnChecklistState[idx] = val;
+  }
+  rfnNRenderChecklist();
+}
+
+function _rfnNReadChecklist(){
+  return RFN_CHECKLIST.map((label, idx) => ({
+    idx,
+    label,
+    raspuns: _rfnChecklistState[idx] || ''
+  }));
+}
+
+function _rfnNWriteChecklist(arr){
+  if (!Array.isArray(arr)) return;
+  arr.forEach(item => {
+    if (typeof item?.idx === 'number' && item.idx >= 0 && item.idx < RFN_CHECKLIST.length){
+      _rfnChecklistState[item.idx] = item.raspuns || '';
+    }
+  });
+  rfnNRenderChecklist();
+}
+
+window.rfnNSetChecklist = rfnNSetChecklist;
+
+// ── Revizuiri table ───────────────────────────────────────────────────────────
+function rfnRevAdd(){
+  const tbody = document.getElementById('rfn-rev-tbody');
+  if(!tbody) return;
+  const idx = tbody.rows.length + 1;
+  const tipOpts = ['modificare','adăugare','eliminare','completare','altele']
+    .map(v=>`<option value="${v}">${v}</option>`).join('');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${idx}</td>
+    <td><select class="rfn-rev-tip"><option value="">—</option>${tipOpts}</select></td>
+    <td><input type="date" class="rfn-rev-data"/></td>
+    <td><input type="text" class="rfn-rev-capitol" placeholder="capitol"/></td>
+    <td><input type="text" class="rfn-rev-motiv" placeholder="motiv"/></td>
+    <td><input type="text" class="rfn-rev-pers-rev" placeholder="nume"/></td>
+    <td><input type="text" class="rfn-rev-pers-aprob" placeholder="nume"/></td>
+    <td><input type="date" class="rfn-rev-data-aprob"/></td>
+    <td><button class="rfn-rev-rm-btn" onclick="rfnRevRm(this)">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function rfnRevRm(btn){
+  const tr = btn.closest('tr');
+  if(tr) tr.remove();
+  // Renumerotează
+  const tbody = document.getElementById('rfn-rev-tbody');
+  if(!tbody) return;
+  Array.from(tbody.rows).forEach((r,i)=>{ r.cells[0].textContent = i+1; });
+}
+
+// ── Listeners condiționali ────────────────────────────────────────────────────
+function _initListeners(){
+  // Scop
+  document.querySelectorAll('input[name="rfn-scop"]').forEach(r=>{
+    r.addEventListener('change',()=>{
+      const cond = document.getElementById('rfn-cond-scop-an');
+      if(cond) cond.classList.toggle('show', r.value==='SAAP_PLANIFICARE'&&r.checked);
+    });
+  });
+
+  // Forma — revizuită
+  document.querySelectorAll('input[name="rfn-forma"]').forEach(r=>{
+    r.addEventListener('change',()=>{
+      const isRev = document.querySelector('input[name="rfn-forma"]:checked')?.value==='REVIZUITA';
+      const condNr = document.getElementById('rfn-cond-revizuita');
+      const secRev = document.getElementById('rfn-rev-section');
+      if(condNr) condNr.classList.toggle('show', isRev);
+      if(secRev) secRev.style.display = isRev ? 'block' : 'none';
+    });
+  });
+
+  // Caiet de sarcini
+  const cbCaiet = document.getElementById('rfn-atasat-caiet');
+  if(cbCaiet) cbCaiet.addEventListener('change',()=>{
+    const cond = document.getElementById('rfn-cond-caiet');
+    if(cond) cond.classList.toggle('show', cbCaiet.checked);
+  });
+
+  // Document descriptiv
+  const cbDoc = document.getElementById('rfn-atasat-doc-descriptiv');
+  if(cbDoc) cbDoc.addEventListener('change',()=>{
+    const cond = document.getElementById('rfn-cond-doc-descriptiv');
+    if(cond) cond.classList.toggle('show', cbDoc.checked);
+  });
+}
+
+// ── Citire formular → obiect ──────────────────────────────────────────────────
+function _readForm(){
+  const rv = (id) => (document.getElementById(id)||{}).value?.trim() || '';
+  const rr = (name) => document.querySelector(`input[name="${name}"]:checked`)?.value || '';
+  const rc = (id) => document.getElementById(id)?.checked || false;
+
+  // Revizuiri
+  const revRows = [];
+  document.querySelectorAll('#rfn-rev-tbody tr').forEach(tr=>{
+    revRows.push({
+      nr:           tr.cells[0]?.textContent || '',
+      tip:          tr.querySelector('.rfn-rev-tip')?.value || '',
+      data:         tr.querySelector('.rfn-rev-data')?.value || '',
+      capitol:      tr.querySelector('.rfn-rev-capitol')?.value || '',
+      motiv:        tr.querySelector('.rfn-rev-motiv')?.value || '',
+      persoana_rev: tr.querySelector('.rfn-rev-pers-rev')?.value || '',
+      persoana_aprob: tr.querySelector('.rfn-rev-pers-aprob')?.value || '',
+      data_aprob:   tr.querySelector('.rfn-rev-data-aprob')?.value || '',
+    });
+  });
+
+  return {
+    front: {
+      autoritate:            rv('rfn-autoritate'),
+      adresa_autoritate:     rv('rfn-adresa-autoritate'),
+      emis_de:               rv('rfn-emis-de'),
+      data_emiterii:         rv('rfn-data-emiterii'),
+      aprobat_de:            rv('rfn-aprobat-de'),
+      data_aprobarii:        rv('rfn-data-aprobarii'),
+      contact: {
+        nume:          rv('rfn-contact-nume'),
+        prenume:       rv('rfn-contact-prenume'),
+        functie:       rv('rfn-contact-functie'),
+        compartiment:  rv('rfn-contact-compartiment'),
+        email:         rv('rfn-contact-email'),
+        telefon:       rv('rfn-contact-telefon'),
+      },
+      scop:                  rr('rfn-scop'),
+      scop_an:               rv('rfn-scop-an'),
+      forma:                 rr('rfn-forma'),
+      nr_revizuirii:         rv('rfn-nr-revizuirii'),
+      istoric_revizuiri:     revRows,
+      atasat_caiet:          rc('rfn-atasat-caiet'),
+      caiet_stare:           rr('rfn-caiet-stare'),
+      caiet_detalii:         rv('rfn-caiet-detalii'),
+      atasat_doc_descriptiv: rc('rfn-atasat-doc-descriptiv'),
+      doc_stare:             rr('rfn-doc-stare'),
+      doc_detalii:           rv('rfn-doc-detalii'),
+      definirea_caracteristici: rc('rfn-definirea-caracteristici'),
+    },
+    A: {
+      obiect:      rv('rfn-a-obiect'),
+      destinatie:  rr('rfn-a-destinatie'),
+    },
+    B: {
+      fundamentare: rv('rfn-b-fundamentare'),
+    },
+    C: {
+      necesitate_identificata: rv('rfn-c-necesitate'),
+      obiectiv_ac:             rv('rfn-c-obiectiv-ac'),
+      obiectiv_proiect:        rv('rfn-c-obiectiv-proiect'),
+      obiectiv_strategic:      rv('rfn-c-obiectiv-strategic'),
+      beneficii:               rv('rfn-c-beneficii'),
+    },
+    D: {
+      justificare: rv('rfn-d-justificare'),
+    },
+    E: {
+      tip:               rr('rfn-e-tip'),
+      obiect_lucrari:    rv('rfn-e-obiect-lucrari'),
+      cpv_lucrari:       rv('rfn-e-cpv-lucrari'),
+      amplasament:       rv('rfn-e-amplasament'),
+      obiect_produse:    rv('rfn-e-obiect-produse'),
+      cpv_produse:       rv('rfn-e-cpv-produse'),
+      cantitate_produse: rv('rfn-e-cantitate-produse'),
+      obiect_servicii:   rv('rfn-e-obiect-servicii'),
+      cpv_servicii:      rv('rfn-e-cpv-servicii'),
+      durata_servicii:   rv('rfn-e-durata-servicii'),
+    },
+    F: {
+      valoare_lucrari:   rv('rfn-f-valoare-lucrari'),
+      moneda_lucrari:    rv('rfn-f-moneda-lucrari'),
+      sursa_lucrari:     rv('rfn-f-sursa-lucrari'),
+      valoare_produse:   rv('rfn-f-valoare-produse'),
+      moneda_produse:    rv('rfn-f-moneda-produse'),
+      sursa_produse:     rv('rfn-f-sursa-produse'),
+      valoare_servicii:  rv('rfn-f-valoare-servicii'),
+      moneda_servicii:   rv('rfn-f-moneda-servicii'),
+      sursa_servicii:    rv('rfn-f-sursa-servicii'),
+    },
+    G: {
+      semnare_contract:    rv('rfn-g-semnare-contract'),
+      primul_subsecvent:   rv('rfn-g-primul-subsecvent'),
+      finalizare:          rv('rfn-g-finalizare'),
+      evaluare_obligatii:  rv('rfn-g-evaluare-obligatii'),
+      evaluare_beneficii:  rv('rfn-g-evaluare-beneficii'),
+      just_semnare:        rv('rfn-g-just-semnare'),
+      just_subsecvent:     rv('rfn-g-just-subsecvent'),
+      just_finalizare:     rv('rfn-g-just-finalizare'),
+      cb_sinergie:         rc('rfn-g-cb-sinergie'),
+      cb_fonduri_eu:       rc('rfn-g-cb-fonduri-eu'),
+      cb_proiect_amplu:    rc('rfn-g-cb-proiect-amplu'),
+      considerente:        rv('rfn-g-considerente'),
+    },
+    H: {
+      valoare:     rv('rfn-h-valoare'),
+      moneda:      rv('rfn-h-moneda'),
+      sursa:       rv('rfn-h-sursa'),
+      pozitie:     rv('rfn-h-pozitie'),
+      cod_ssi:     rv('rfn-h-cod-ssi'),
+      program:     rv('rfn-h-program'),
+      observatii:  rv('rfn-h-observatii'),
+    },
+    I: {
+      aplicabil: rc('rfn-i-aplicabil'),
+      surse:     rv('rfn-i-surse'),
+      detalii:   rv('rfn-i-detalii'),
+    },
+    J: {
+      situatie: rr('rfn-j-situatie'),
+      j1: {
+        modalitate:        rr('rfn-j1-modalitate'),
+        modalitate_just:   rv('rfn-j1-modalitate-just'),
+        spec_referinte:    rv('rfn-j1-spec-referinte'),
+        standarde: {
+          sr_en_iso:        rc('rfn-j1-std-sr-en-iso'),
+          eval_tehnice_eu:  rc('rfn-j1-std-eval-tehnice-eu'),
+          spec_comune:      rc('rfn-j1-std-spec-comune'),
+          internationale:   rc('rfn-j1-std-internationale'),
+          sist_referinta:   rc('rfn-j1-std-sist-referinta'),
+          nationale:        rc('rfn-j1-std-nationale')
+        },
+        ciclu_viata: {
+          denumire: rv('rfn-j1-clv-denumire'),
+          fac:      rr('rfn-j1-clv-fac'),
+          vizeaza:  rr('rfn-j1-clv-vizeaza'),
+          just:     rv('rfn-j1-clv-just')
+        },
+        favorizare: {
+          include: rr('rfn-j1-favoriz'),
+          precizari: {
+            producator:      rc('rfn-j1-fav-producator'),
+            origine:         rc('rfn-j1-fav-origine'),
+            procedeu:        rc('rfn-j1-fav-procedeu'),
+            marca:           rc('rfn-j1-fav-marca'),
+            brevet:          rc('rfn-j1-fav-brevet'),
+            tip:             rc('rfn-j1-fav-tip'),
+            origine_spec:    rc('rfn-j1-fav-origine-spec'),
+            productie_spec:  rc('rfn-j1-fav-productie-spec'),
+            proces_stadiu:   rc('rfn-j1-fav-proces-stadiu')
+          },
+          just: rv('rfn-j1-fav-just')
+        },
+        ip: {
+          decizie: rr('rfn-j1-ip'),
+          just:    rv('rfn-j1-ip-just')
+        },
+        design_univ: {
+          decizie: rr('rfn-j1-design-univ'),
+          just:    rv('rfn-j1-design-just')
+        },
+        reglementari: {
+          list:       rv('rfn-j1-regl-list'),
+          institutii: rv('rfn-j1-regl-institutii')
+        }
+      },
+      j2: {
+        elaborare:  rv('rfn-j2-elaborare'),
+        orientare:  rv('rfn-j2-orientare'),
+        termen:     rv('rfn-j2-termen')
+      }
+    },
+    K: {
+      factori: _rfnKRead()
+    },
+    L: {
+      factori_interesati: rv('rfn-l-factori')
+    },
+    M: {
+      competente: _rfnMRead()
+    },
+    N: {
+      anexe: {
+        caiet:           rc('rfn-n-anex-caiet'),
+        caracteristici:  rc('rfn-n-anex-caracteristici'),
+        conditii:        rc('rfn-n-anex-conditii'),
+        criterii:        rc('rfn-n-anex-criterii'),
+        cercetare:       rc('rfn-n-anex-cercetare'),
+        altele:          rv('rfn-n-anex-altele')
+      },
+      checklist:    _rfnNReadChecklist(),
+      observatii:   rv('rfn-n-observatii')
+    }
+  };
+}
+
+// ── Populare formular din obiect ──────────────────────────────────────────────
+function _writeForm(data){
+  if(!data) return;
+
+  // ── Migrare drafturi C1.b → patch C1.b+ pentru G și H ──────────────────────
+  if (data.G && typeof data.G === 'object') {
+    if (data.G.tip_procedura && !data.G.semnare_contract) {
+      data.G.considerente = (data.G.considerente || '') +
+        (data.G.tip_procedura   ? `\n[Migrat din C1.b: tip procedura = ${data.G.tip_procedura}]` : '') +
+        (data.G.data_start      ? `\n[Migrat din C1.b: data start = ${data.G.data_start}]` : '') +
+        (data.G.data_finalizare ? `\n[Migrat din C1.b: data finalizare = ${data.G.data_finalizare}]` : '') +
+        (data.G.durata_contract ? `\n[Migrat din C1.b: durata contract = ${data.G.durata_contract}]` : '');
+    }
+  }
+  if (data.H && typeof data.H === 'object') {
+    if (data.H.buget_alocat && !data.H.valoare)       { data.H.valoare  = data.H.buget_alocat; }
+    if (data.H.sursa_finantare && !data.H.sursa)      { data.H.sursa    = data.H.sursa_finantare; }
+    if (data.H.linie_bugetara && !data.H.pozitie)     { data.H.pozitie  = data.H.linie_bugetara; }
+    if (data.H.an_bugetar) {
+      data.H.observatii = data.H.observatii
+        ? `An bugetar: ${data.H.an_bugetar}\n${data.H.observatii}`
+        : `An bugetar: ${data.H.an_bugetar}`;
+    }
+  }
+
+  const sv = (id,v) => { const el=document.getElementById(id); if(el&&v!==undefined) el.value=v||''; };
+  const sr = (name,v) => { if(!v) return; const el=document.querySelector(`input[name="${name}"][value="${v}"]`); if(el){ el.checked=true; el.dispatchEvent(new Event('change')); } };
+  const sc = (id,v) => { const el=document.getElementById(id); if(el&&v!==undefined){ el.checked=!!v; el.dispatchEvent(new Event('change')); } };
+
+  const f = data.front || {};
+  sv('rfn-autoritate', f.autoritate);
+  sv('rfn-adresa-autoritate', f.adresa_autoritate);
+  sv('rfn-emis-de', f.emis_de);
+  sv('rfn-data-emiterii', f.data_emiterii);
+  sv('rfn-aprobat-de', f.aprobat_de);
+  sv('rfn-data-aprobarii', f.data_aprobarii);
+
+  const c = f.contact || {};
+  sv('rfn-contact-nume', c.nume);
+  sv('rfn-contact-prenume', c.prenume);
+  sv('rfn-contact-functie', c.functie);
+  sv('rfn-contact-compartiment', c.compartiment);
+  sv('rfn-contact-email', c.email);
+  sv('rfn-contact-telefon', c.telefon);
+
+  sr('rfn-scop', f.scop);
+  sv('rfn-scop-an', f.scop_an);
+  sr('rfn-forma', f.forma);
+  sv('rfn-nr-revizuirii', f.nr_revizuirii);
+  sc('rfn-atasat-caiet', f.atasat_caiet);
+  sr('rfn-caiet-stare', f.caiet_stare);
+  sv('rfn-caiet-detalii', f.caiet_detalii);
+  sc('rfn-atasat-doc-descriptiv', f.atasat_doc_descriptiv);
+  sr('rfn-doc-stare', f.doc_stare);
+  sv('rfn-doc-detalii', f.doc_detalii);
+  sc('rfn-definirea-caracteristici', f.definirea_caracteristici);
+
+  // Revizuiri
+  const tbody = document.getElementById('rfn-rev-tbody');
+  if(tbody && Array.isArray(f.istoric_revizuiri)){
+    f.istoric_revizuiri.forEach(row => {
+      rfnRevAdd();
+      const tr = tbody.rows[tbody.rows.length - 1];
+      if(!tr) return;
+      const tipSel = tr.querySelector('.rfn-rev-tip');
+      if(tipSel) tipSel.value = row.tip || '';
+      const setTr = (cls, val) => { const el=tr.querySelector(cls); if(el) el.value=val||''; };
+      setTr('.rfn-rev-data', row.data);
+      setTr('.rfn-rev-capitol', row.capitol);
+      setTr('.rfn-rev-motiv', row.motiv);
+      setTr('.rfn-rev-pers-rev', row.persoana_rev);
+      setTr('.rfn-rev-pers-aprob', row.persoana_aprob);
+      setTr('.rfn-rev-data-aprob', row.data_aprob);
+    });
+  }
+
+  const A = data.A || {};
+  sv('rfn-a-obiect', A.obiect);
+  sr('rfn-a-destinatie', A.destinatie);
+
+  const B = data.B || {};
+  sv('rfn-b-fundamentare', B.fundamentare);
+
+  const C = data.C || {};
+  sv('rfn-c-necesitate', C.necesitate_identificata);
+  sv('rfn-c-obiectiv-ac', C.obiectiv_ac);
+  sv('rfn-c-obiectiv-proiect', C.obiectiv_proiect);
+  sv('rfn-c-obiectiv-strategic', C.obiectiv_strategic);
+  sv('rfn-c-beneficii', C.beneficii);
+
+  const D = data.D || {};
+  sv('rfn-d-justificare', D.justificare);
+
+  const E = data.E || {};
+  sr('rfn-e-tip', E.tip);
+  sv('rfn-e-obiect-lucrari', E.obiect_lucrari);
+  sv('rfn-e-cpv-lucrari', E.cpv_lucrari);
+  sv('rfn-e-amplasament', E.amplasament);
+  sv('rfn-e-obiect-produse', E.obiect_produse);
+  sv('rfn-e-cpv-produse', E.cpv_produse);
+  sv('rfn-e-cantitate-produse', E.cantitate_produse);
+  sv('rfn-e-obiect-servicii', E.obiect_servicii);
+  sv('rfn-e-cpv-servicii', E.cpv_servicii);
+  sv('rfn-e-durata-servicii', E.durata_servicii);
+
+  const F = data.F || {};
+  sv('rfn-f-valoare-lucrari', F.valoare_lucrari);
+  sv('rfn-f-moneda-lucrari', F.moneda_lucrari);
+  sv('rfn-f-sursa-lucrari', F.sursa_lucrari);
+  sv('rfn-f-valoare-produse', F.valoare_produse);
+  sv('rfn-f-moneda-produse', F.moneda_produse);
+  sv('rfn-f-sursa-produse', F.sursa_produse);
+  sv('rfn-f-valoare-servicii', F.valoare_servicii);
+  sv('rfn-f-moneda-servicii', F.moneda_servicii);
+  sv('rfn-f-sursa-servicii', F.sursa_servicii);
+
+  const G = data.G || {};
+  sv('rfn-g-semnare-contract',   G.semnare_contract);
+  sv('rfn-g-primul-subsecvent',  G.primul_subsecvent);
+  sv('rfn-g-finalizare',         G.finalizare);
+  sv('rfn-g-evaluare-obligatii', G.evaluare_obligatii);
+  sv('rfn-g-evaluare-beneficii', G.evaluare_beneficii);
+  sv('rfn-g-just-semnare',       G.just_semnare);
+  sv('rfn-g-just-subsecvent',    G.just_subsecvent);
+  sv('rfn-g-just-finalizare',    G.just_finalizare);
+  sc('rfn-g-cb-sinergie',     G.cb_sinergie);
+  sc('rfn-g-cb-fonduri-eu',   G.cb_fonduri_eu);
+  sc('rfn-g-cb-proiect-amplu',G.cb_proiect_amplu);
+  sv('rfn-g-considerente',    G.considerente);
+
+  const H = data.H || {};
+  sv('rfn-h-valoare',    H.valoare);
+  sv('rfn-h-moneda',     H.moneda);
+  sv('rfn-h-sursa',      H.sursa);
+  sv('rfn-h-pozitie',    H.pozitie);
+  sv('rfn-h-cod-ssi',    H.cod_ssi);
+  sv('rfn-h-program',    H.program);
+  sv('rfn-h-observatii', H.observatii);
+
+  const I = data.I || {};
+  sc('rfn-i-aplicabil', I.aplicabil);
+  sv('rfn-i-surse', I.surse);
+  sv('rfn-i-detalii', I.detalii);
+
+  // J — Caracteristici solicitate
+  if (data.J){
+    // J - radio principal
+    if (data.J.situatie){
+      const r = document.querySelector(`input[name="rfn-j-situatie"][value="${data.J.situatie}"]`);
+      if (r){ r.checked = true; }
+    }
+    // J1 - modalitate descriere
+    if (data.J.j1){
+      const j1 = data.J.j1;
+      if (j1.modalitate){
+        const r = document.querySelector(`input[name="rfn-j1-modalitate"][value="${j1.modalitate}"]`);
+        if (r) r.checked = true;
+      }
+      sv('rfn-j1-modalitate-just', j1.modalitate_just);
+      sv('rfn-j1-spec-referinte',  j1.spec_referinte);
+      // standarde
+      if (j1.standarde){
+        const std = j1.standarde;
+        if (std.sr_en_iso)        document.getElementById('rfn-j1-std-sr-en-iso').checked        = true;
+        if (std.eval_tehnice_eu)  document.getElementById('rfn-j1-std-eval-tehnice-eu').checked  = true;
+        if (std.spec_comune)      document.getElementById('rfn-j1-std-spec-comune').checked      = true;
+        if (std.internationale)   document.getElementById('rfn-j1-std-internationale').checked   = true;
+        if (std.sist_referinta)   document.getElementById('rfn-j1-std-sist-referinta').checked   = true;
+        if (std.nationale)        document.getElementById('rfn-j1-std-nationale').checked        = true;
+      }
+      // ciclu viata
+      if (j1.ciclu_viata){
+        const clv = j1.ciclu_viata;
+        sv('rfn-j1-clv-denumire', clv.denumire);
+        if (clv.fac){
+          const r = document.querySelector(`input[name="rfn-j1-clv-fac"][value="${clv.fac}"]`);
+          if (r) r.checked = true;
+        }
+        if (clv.vizeaza){
+          const r = document.querySelector(`input[name="rfn-j1-clv-vizeaza"][value="${clv.vizeaza}"]`);
+          if (r) r.checked = true;
+        }
+        sv('rfn-j1-clv-just', clv.just);
+      }
+      // favorizare
+      if (j1.favorizare){
+        const fav = j1.favorizare;
+        if (fav.include){
+          const r = document.querySelector(`input[name="rfn-j1-favoriz"][value="${fav.include}"]`);
+          if (r) r.checked = true;
+        }
+        if (fav.precizari){
+          const p = fav.precizari;
+          if (p.producator)      document.getElementById('rfn-j1-fav-producator').checked      = true;
+          if (p.origine)         document.getElementById('rfn-j1-fav-origine').checked         = true;
+          if (p.procedeu)        document.getElementById('rfn-j1-fav-procedeu').checked        = true;
+          if (p.marca)           document.getElementById('rfn-j1-fav-marca').checked           = true;
+          if (p.brevet)          document.getElementById('rfn-j1-fav-brevet').checked          = true;
+          if (p.tip)             document.getElementById('rfn-j1-fav-tip').checked             = true;
+          if (p.origine_spec)    document.getElementById('rfn-j1-fav-origine-spec').checked    = true;
+          if (p.productie_spec)  document.getElementById('rfn-j1-fav-productie-spec').checked  = true;
+          if (p.proces_stadiu)   document.getElementById('rfn-j1-fav-proces-stadiu').checked   = true;
+        }
+        sv('rfn-j1-fav-just', fav.just);
+      }
+      // IP
+      if (j1.ip){
+        if (j1.ip.decizie){
+          const r = document.querySelector(`input[name="rfn-j1-ip"][value="${j1.ip.decizie}"]`);
+          if (r) r.checked = true;
+        }
+        sv('rfn-j1-ip-just', j1.ip.just);
+      }
+      // design universal
+      if (j1.design_univ){
+        if (j1.design_univ.decizie){
+          const r = document.querySelector(`input[name="rfn-j1-design-univ"][value="${j1.design_univ.decizie}"]`);
+          if (r) r.checked = true;
+        }
+        sv('rfn-j1-design-just', j1.design_univ.just);
+      }
+      // reglementari
+      if (j1.reglementari){
+        sv('rfn-j1-regl-list',       j1.reglementari.list);
+        sv('rfn-j1-regl-institutii', j1.reglementari.institutii);
+      }
+    }
+    // J2 - fara caiet
+    if (data.J.j2){
+      sv('rfn-j2-elaborare', data.J.j2.elaborare);
+      sv('rfn-j2-orientare', data.J.j2.orientare);
+      sv('rfn-j2-termen',    data.J.j2.termen);
+    }
+    // Sincronizare vizibilitate sub-blocuri J + sub-blocuri J1.4 + J1.5
+    rfnJSwitch();
+    rfnJ1ToggleFavoriz();
+    rfnJ1ToggleIP();
+  }
+
+  // K — factori cheie de succes
+  if (data.K && Array.isArray(data.K.factori)){
+    const tb = document.getElementById('rfn-k-tbody');
+    if (tb) tb.innerHTML = '';
+    data.K.factori.forEach(row => rfnKAdd(row));
+  }
+
+  // L — factori interesati
+  if (data.L){
+    sv('rfn-l-factori', data.L.factori_interesati);
+  }
+
+  // M — competente pe etape
+  if (data.M && Array.isArray(data.M.competente)){
+    const tb = document.getElementById('rfn-m-tbody');
+    if (tb) tb.innerHTML = '';
+    data.M.competente.forEach(row => rfnMAdd(row));
+  }
+
+  // N — anexe + checklist
+  if (data.N){
+    if (data.N.anexe){
+      const a = data.N.anexe;
+      if (a.caiet)          document.getElementById('rfn-n-anex-caiet').checked          = true;
+      if (a.caracteristici) document.getElementById('rfn-n-anex-caracteristici').checked = true;
+      if (a.conditii)       document.getElementById('rfn-n-anex-conditii').checked       = true;
+      if (a.criterii)       document.getElementById('rfn-n-anex-criterii').checked       = true;
+      if (a.cercetare)      document.getElementById('rfn-n-anex-cercetare').checked      = true;
+      sv('rfn-n-anex-altele', a.altele);
+    }
+    if (Array.isArray(data.N.checklist)){
+      _rfnNWriteChecklist(data.N.checklist);
+    }
+    sv('rfn-n-observatii', data.N.observatii);
+  }
+}
+
+// ── Salvare ───────────────────────────────────────────────────────────────────
+async function rfnSave(){
+  clearErr();
+  const title = document.getElementById('rfn-title')?.value.trim();
+  if(!title){ showErr('Titlul referatului este obligatoriu.'); return; }
+
+  const payload = {
+    form_type:  'REFNEC',
+    title:      title,
+    ref_number: document.getElementById('rfn-ref-number')?.value.trim() || null,
+    form_data:  _readForm(),
+  };
+
+  const btn = document.getElementById('rfn-btn-save');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Se salvează...'; }
+
+  try{
+    const method = _rfnId ? 'PUT' : 'POST';
+    const url    = _rfnId ? `/api/formulare-oficiale/${_rfnId}` : '/api/formulare-oficiale';
+    const r = await fetch(url, {
+      method, credentials:'include',
+      headers:{ 'Content-Type':'application/json', 'X-CSRF-Token':getCsrf() },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json();
+    if(!r.ok){ showErr(j.error || 'Eroare la salvare.'); return; }
+    if(!_rfnId && j.formular?.id){
+      _rfnId = j.formular.id;
+      history.replaceState({}, '', `/refnec-form.html?id=${_rfnId}`);
+    }
+    ['rfn-saved-badge','rfn-saved-badge2'].forEach(id=>{
+      const badge = document.getElementById(id);
+      if(badge){ badge.textContent='✅ Salvat'; badge.classList.add('show');
+        setTimeout(()=>badge.classList.remove('show'), 3000); }
+    });
+  }catch(e){
+    showErr('Eroare rețea la salvare.');
+  }finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-save"/></svg> Salvează draft'; }
+  }
+}
+
+async function rfnGenPdf(){
+  if(!_rfnId){
+    showErr('Salvați referatul înainte de a genera PDF-ul.');
+    return;
+  }
+  const btn = document.getElementById('rfn-btn-pdf');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Se generează...'; }
+  try{
+    const r = await fetch(`/api/formulare-oficiale/${_rfnId}/generate-pdf`,{
+      method:'POST', credentials:'include',
+      headers:{'X-CSRF-Token':getCsrf()},
+    });
+    if(!r.ok){
+      const j = await r.json().catch(()=>({}));
+      showErr(j.error || 'Eroare la generarea PDF-ului.');
+      return;
+    }
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `RefNec-${_rfnId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 3000);
+  }catch(e){
+    showErr('Eroare rețea la generarea PDF-ului.');
+  }finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-download"/></svg> Generează PDF'; }
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async function init(){
+  _initListeners();
+
+  // Randeaza checklist-ul Sec N initial (toate elemente neselectate)
+  rfnNRenderChecklist();
+
+  const params = new URLSearchParams(location.search);
+  _rfnId = params.get('id') || null;
+
+  if(!_rfnId) return;
+
+  try{
+    const r = await fetch(`/api/formulare-oficiale/${_rfnId}`, { credentials:'include' });
+    if(r.status === 401){ location.href = '/'; return; }
+    if(!r.ok){ showErr('Formularul nu a putut fi încărcat.'); return; }
+    const j = await r.json();
+    const el = document.getElementById('rfn-title');
+    if(el) el.value = j.title || '';
+    const elRef = document.getElementById('rfn-ref-number');
+    if(elRef) elRef.value = j.ref_number || '';
+    _writeForm(j.form_data || {});
+    ['rfn-saved-badge','rfn-saved-badge2'].forEach(id=>{
+      const badge = document.getElementById(id);
+      if(badge){ badge.textContent='✅ Salvat anterior'; badge.classList.add('show'); }
+    });
+  }catch(e){
+    showErr('Eroare la încărcarea formularului.');
+  }
+})();
+</script>
+
+<script src="/notif-widget.js?v=3.9.407"></script>
+</body>
+</html>

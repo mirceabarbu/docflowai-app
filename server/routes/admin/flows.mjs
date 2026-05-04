@@ -83,11 +83,11 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
 
     let rows;
     if (all) {
-      const { rows: r } = await pool.query('SELECT id,data,created_at FROM flows ORDER BY created_at DESC');
+      const { rows: r } = await pool.query('SELECT id,data,created_at FROM flows WHERE deleted_at IS NULL ORDER BY created_at DESC');
       rows = r;
     } else {
       const { rows: r } = await pool.query(
-        "SELECT id,data,created_at FROM flows WHERE created_at < NOW() - ($1 || ' days')::INTERVAL ORDER BY created_at DESC",
+        "SELECT id,data,created_at FROM flows WHERE deleted_at IS NULL AND created_at < NOW() - ($1 || ' days')::INTERVAL ORDER BY created_at DESC",
         [days]
       );
       rows = r;
@@ -140,40 +140,42 @@ router.post('/admin/flows/clean', csrfMiddleware, async (req, res) => {
   }
   try {
     const now = new Date().toISOString();
-    let result;
+    let idsToDelete = [];
+
     if (!institutie && !compartiment) {
-      if (all) {
-        result = await pool.query(
-          'UPDATE flows SET deleted_at=$1, deleted_by=$2 WHERE deleted_at IS NULL',
-          [now, actor.email]
-        );
-      } else {
-        result = await pool.query(
-          "UPDATE flows SET deleted_at=$1, deleted_by=$2 WHERE deleted_at IS NULL AND created_at < NOW() - ($3 || ' days')::INTERVAL",
-          [now, actor.email, parseInt(olderThanDays) || 30]
-        );
-      }
-      return res.json({ ok: true, deleted: result.rowCount });
+      const selectQ = all
+        ? 'SELECT id FROM flows WHERE deleted_at IS NULL'
+        : "SELECT id FROM flows WHERE deleted_at IS NULL AND created_at < NOW() - ($1 || ' days')::INTERVAL";
+      const selectParams = all ? [] : [parseInt(olderThanDays) || 30];
+      const { rows: idRows } = await pool.query(selectQ, selectParams);
+      idsToDelete = idRows.map(r => r.id);
+    } else {
+      const { rows: userRows } = await pool.query('SELECT email,institutie,compartiment FROM users');
+      const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
+      const { rows } = await pool.query(
+        all
+          ? 'SELECT id,data FROM flows WHERE deleted_at IS NULL'
+          : "SELECT id,data FROM flows WHERE deleted_at IS NULL AND created_at < NOW() - ($1 || ' days')::INTERVAL",
+        all ? [] : [parseInt(olderThanDays) || 30]
+      );
+      idsToDelete = rows.filter(r => {
+        const d = r.data || {}; const u = userMap[(d.initEmail || '').toLowerCase()] || {};
+        if (institutie && (u.institutie || d.institutie || '') !== institutie) return false;
+        if (compartiment && (u.compartiment || d.compartiment || '') !== compartiment) return false;
+        return true;
+      }).map(r => r.id);
     }
-    const { rows: userRows } = await pool.query('SELECT email,institutie,compartiment FROM users');
-    const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
-    const { rows } = await pool.query(
-      all
-        ? 'SELECT id,data FROM flows WHERE deleted_at IS NULL'
-        : "SELECT id,data FROM flows WHERE deleted_at IS NULL AND created_at < NOW() - ($1 || ' days')::INTERVAL",
-      all ? [] : [parseInt(olderThanDays) || 30]
-    );
-    const idsToDelete = rows.filter(r => {
-      const d = r.data || {}; const u = userMap[(d.initEmail || '').toLowerCase()] || {};
-      if (institutie && (u.institutie || d.institutie || '') !== institutie) return false;
-      if (compartiment && (u.compartiment || d.compartiment || '') !== compartiment) return false;
-      return true;
-    }).map(r => r.id);
+
     if (!idsToDelete.length) return res.json({ ok: true, deleted: 0 });
-    result = await pool.query(
+
+    const result = await pool.query(
       'UPDATE flows SET deleted_at=$1, deleted_by=$2 WHERE id = ANY($3) AND deleted_at IS NULL',
       [now, actor.email, idsToDelete]
     );
+    await pool.query('DELETE FROM flows_pdfs       WHERE flow_id = ANY($1)', [idsToDelete]).catch(() => {});
+    await pool.query('DELETE FROM flow_attachments WHERE flow_id = ANY($1)', [idsToDelete]).catch(() => {});
+    await pool.query('DELETE FROM notifications    WHERE flow_id = ANY($1)', [idsToDelete]).catch(() => {});
+
     return res.json({ ok: true, deleted: result.rowCount });
   } catch(e) { logger.error({ err: e }, 'flows/clean error'); res.status(500).json({ error: 'server_error' }); }
 });

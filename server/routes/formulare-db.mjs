@@ -44,6 +44,7 @@ async function sendNotif(userId, type, title, message, data) {
 const DF_P1_FIELDS = [
   'cif','den_inst_pb','subtitlu_df','nr_unic_inreg','revizuirea','data_revizuirii',
   'compartiment_specialitate','obiect_fd_reviz_scurt','obiect_fd_reviz_lung',
+  'ckbx_oblig_tert',
   'ckbx_stab_tin_cont','ckbx_ramane_suma','ramane_suma','rows_val',
   'ckbx_fara_ang_emis_ancrt','ckbx_cu_ang_emis_ancrt','ckbx_sting_ang_in_ancrt',
   'ckbx_fara_plati_ang_in_ancrt','ckbx_cu_plati_ang_in_mmani',
@@ -102,7 +103,15 @@ router.get('/api/formulare-df', async (req, res) => {
       orgFilter = 'AND fd.org_id = $1';
       params = [actor.orgId];
     } else {
-      orgFilter = 'AND fd.org_id = $1 AND (fd.created_by = $2 OR fd.assigned_to = $2)';
+      orgFilter = `AND fd.org_id = $1 AND (
+  fd.created_by = $2
+  OR fd.assigned_to = $2
+  OR EXISTS (
+    SELECT 1 FROM flows fl
+    WHERE fl.id = fd.flow_id
+      AND fl.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $2::text))
+  )
+)`;
       params = [actor.orgId, actor.userId];
     }
     const { rows } = await pool.query(`
@@ -135,16 +144,16 @@ router.get('/api/formulare-df/aprobate', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows } = await pool.query(`
-      SELECT
+      SELECT DISTINCT ON (fd.nr_unic_inreg)
         fd.id, fd.nr_unic_inreg, fd.subtitlu_df, fd.data_revizuirii,
-        fd.rows_ctrl
+        fd.rows_ctrl, fd.revizie_nr
       FROM formulare_df fd
       JOIN flows f ON f.id = fd.flow_id
       WHERE fd.org_id = $1
         AND fd.deleted_at IS NULL
         AND fd.flow_id IS NOT NULL
         AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-      ORDER BY fd.updated_at DESC
+      ORDER BY fd.nr_unic_inreg, fd.revizie_nr DESC
     `, [actor.orgId]);
     res.json({ ok: true, documents: rows });
   } catch (e) {
@@ -176,7 +185,19 @@ router.get('/api/formulare-df/:id', async (req, res) => {
          LIMIT 1) AS alop_titlu,
         (SELECT a.valoare_totala FROM alop_instances a
          WHERE a.df_id = fd.id AND a.cancelled_at IS NULL
-         LIMIT 1) AS alop_valoare
+         LIMIT 1) AS alop_valoare,
+        (SELECT COALESCE(MAX(fd2.revizie_nr), 0)
+         FROM formulare_df fd2
+         WHERE fd2.nr_unic_inreg = fd.nr_unic_inreg
+           AND fd2.org_id = fd.org_id
+           AND fd2.deleted_at IS NULL) AS latest_revizie_nr,
+        EXISTS(
+          SELECT 1 FROM formulare_df fd3
+          WHERE fd3.nr_unic_inreg = fd.nr_unic_inreg
+            AND fd3.org_id = fd.org_id
+            AND fd3.deleted_at IS NULL
+            AND fd3.revizie_nr > fd.revizie_nr
+        ) AS has_newer_revision
       FROM formulare_df fd
       JOIN users p1 ON p1.id = fd.created_by
       LEFT JOIN users p2 ON p2.id = fd.assigned_to
@@ -257,7 +278,7 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
         // P1 modifică după ce P2 a completat → reset + version++
         extraSets = ['status=$__', 'version=$__', 'completed_at=NULL', 'submitted_at=NULL'];
         extraVals = ['draft', doc.version + 1];
-      } else if (doc.status !== 'draft') {
+      } else if (!['draft', 'returnat', 'de_revizuit'].includes(doc.status)) {
         return res.status(409).json({ error: 'document_locked', status: doc.status });
       }
     }
@@ -514,14 +535,24 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
 
     const { motiv } = req.body || {};
 
-    // Determină numărul reviziei noi
+    // Determină numărul reviziei noi (max existent + 1)
     const { rows: maxRows } = await pool.query(
       `SELECT COALESCE(MAX(revizie_nr), 0) AS max_rev
        FROM formulare_df
        WHERE nr_unic_inreg = $1 AND org_id = $2 AND deleted_at IS NULL`,
       [df.nr_unic_inreg, actor.orgId]
     );
-    const nouaRevizie = (maxRows[0]?.max_rev ?? 0) + 1;
+    const maxRev = maxRows[0]?.max_rev ?? 0;
+
+    // GUARD: doar revizia cea mai recentă poate fi revizuită
+    // (împiedică ramificări — istoric liniar R0 → R1 → R2 → ...)
+    if ((df.revizie_nr || 0) < maxRev) {
+      return res.status(400).json({
+        error: `Această revizie (R${df.revizie_nr || 0}) nu mai este cea curentă. Revizia curentă este R${maxRev}. Doar revizia curentă poate fi revizuită.`
+      });
+    }
+
+    const nouaRevizie = maxRev + 1;
 
     // Transformă rows_val — col.5 (valt_rev_prec) = col.7 (valt_actualiz) din revizia precedentă, col.6 (influente) = 0
     const rowsValOrig = Array.isArray(df.rows_val) ? df.rows_val : JSON.parse(df.rows_val || '[]');
@@ -571,7 +602,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
       )
       SELECT
         org_id, $2, nr_unic_inreg,
-        $3, id, TRUE, $4, NOW(),
+        $3::integer, id, TRUE, $4, NOW(),
         'draft',
         $3::text, TO_CHAR(NOW(), 'DD.MM.YYYY'),
         cif, den_inst_pb, subtitlu_df,
@@ -646,7 +677,15 @@ router.get('/api/formulare-ord', async (req, res) => {
       orgFilter = 'AND fo.org_id = $1';
       params = [actor.orgId];
     } else {
-      orgFilter = 'AND fo.org_id = $1 AND (fo.created_by = $2 OR fo.assigned_to = $2)';
+      orgFilter = `AND fo.org_id = $1 AND (
+  fo.created_by = $2
+  OR fo.assigned_to = $2
+  OR EXISTS (
+    SELECT 1 FROM flows fl
+    WHERE fl.id = fo.flow_id
+      AND fl.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $2::text))
+  )
+)`;
       params = [actor.orgId, actor.userId];
     }
     const { rows } = await pool.query(`
@@ -686,7 +725,16 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         fd.nr_unic_inreg AS df_nr, fd.rows_ctrl AS df_rows_ctrl,
         CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-             THEN true ELSE false END AS aprobat
+             THEN true ELSE false END AS aprobat,
+        (SELECT a.id FROM alop_instances a
+         WHERE a.ord_id = fo.id AND a.cancelled_at IS NULL
+         LIMIT 1) AS alop_id,
+        (SELECT a.titlu FROM alop_instances a
+         WHERE a.ord_id = fo.id AND a.cancelled_at IS NULL
+         LIMIT 1) AS alop_titlu,
+        (SELECT a.valoare_totala FROM alop_instances a
+         WHERE a.ord_id = fo.id AND a.cancelled_at IS NULL
+         LIMIT 1) AS alop_valoare
       FROM formulare_ord fo
       JOIN users p1 ON p1.id = fo.created_by
       LEFT JOIN users p2 ON p2.id = fo.assigned_to
@@ -758,7 +806,7 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
     if ((isP1 || isAdmin) && doc.status === 'completed') {
       extraSets.push('status=$__', 'version=$__', 'completed_at=NULL', 'submitted_at=NULL');
       extraVals.push('draft', doc.version + 1);
-    } else if (isP1 && doc.status !== 'draft') {
+    } else if (isP1 && !['draft', 'returnat'].includes(doc.status)) {
       return res.status(409).json({ error: 'document_locked', status: doc.status });
     }
 
@@ -1195,6 +1243,13 @@ router.get('/api/formulare/list', async (req, res) => {
           fd.flow_id,
           COALESCE(fd.revizie_nr, 0) AS revizie_nr,
           COALESCE(fd.este_revizie, FALSE) AS este_revizie,
+          EXISTS(
+            SELECT 1 FROM formulare_df fd2
+            WHERE fd2.nr_unic_inreg = fd.nr_unic_inreg
+              AND fd2.org_id = fd.org_id
+              AND fd2.deleted_at IS NULL
+              AND fd2.revizie_nr > fd.revizie_nr
+          ) AS has_newer_revision,
           CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,

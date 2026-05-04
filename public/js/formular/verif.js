@@ -46,7 +46,7 @@
     resultEl.style.display = 'none';
     btn.disabled = true;
     try {
-      const r = await _vfFetch(`/api/v4/verify/cui?cui=${encodeURIComponent(cui)}`);
+      const r = await _vfFetch(`/api/verify/cui?cui=${encodeURIComponent(cui)}`);
       const d = await r.json();
       if (!r.ok || !d.ok) {
         const reasonMap = {
@@ -204,7 +204,7 @@
     resultEl.style.display = 'none';
     btn.disabled = true;
     try {
-      const r = await _vfFetch(`/api/v4/verify/iban?iban=${encodeURIComponent(iban)}`);
+      const r = await _vfFetch(`/api/verify/iban?iban=${encodeURIComponent(iban)}`);
       const d = await r.json();
       if (!r.ok || !d.ok) {
         const reason = d.reason || '';
@@ -247,7 +247,7 @@
     resultEl.style.display = 'none';
     btn.disabled = true;
     try {
-      const r = await _vfFetch('/api/v4/verify/coherence', {
+      const r = await _vfFetch('/api/verify/coherence', {
         method: 'POST',
         body: JSON.stringify({ cui, iban, name }),
       });
@@ -333,7 +333,7 @@
         return;
       }
 
-      const editUrl = formType === 'NOTAFD_INVEST' ? 'notafd-invest-form.html' : 'notafd-invest-form.html';
+      const editUrl = formType === 'REFNEC' ? 'refnec-form.html' : 'notafd-invest-form.html';
       const stLabel = s => s==='completed'?'✓ Finalizat':s==='archived'?'🗄 Arhivat':'📝 Draft';
       const stColor = s => s==='completed'?'#5eead4':s==='archived'?'#94a3b8':'#fbbf24';
       const stBg    = s => s==='completed'?'rgba(94,234,212,.15)':s==='archived'?'rgba(148,163,184,.15)':'rgba(251,191,36,.15)';

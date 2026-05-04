@@ -43,6 +43,7 @@ function collectDfP1Db(){return{
   cif:g('n-cif'),den_inst_pb:g('n-den'),subtitlu_df:g('n-subtitlu'),
   nr_unic_inreg:g('n-nrUnic'),revizuirea:g('n-rev'),data_revizuirii:g('n-data'),
   compartiment_specialitate:g('n-comp'),obiect_fd_reviz_scurt:g('n-scurt'),obiect_fd_reviz_lung:g('n-lung'),
+  ckbx_oblig_tert:cb('n-ck-oblig'),
   ckbx_stab_tin_cont:cb('n-ck-stab'),ckbx_ramane_suma:cb('n-ck-ramane'),ramane_suma:g('n-ramana')||'0',
   rows_val_unchanged:!!document.getElementById('n-ck-ramane')?.checked,
   rows_val:getNV(),
@@ -87,6 +88,7 @@ function populateDf(doc){
   sv('n-cif',doc.cif);sv('n-den',doc.den_inst_pb);sv('n-subtitlu',doc.subtitlu_df);
   sv('n-nrUnic',doc.nr_unic_inreg);sv('n-rev',doc.revizuirea);sv('n-data',doc.data_revizuirii);
   sv('n-comp',doc.compartiment_specialitate);sv('n-scurt',doc.obiect_fd_reviz_scurt);sv('n-lung',doc.obiect_fd_reviz_lung);
+  sc('n-ck-oblig',doc.ckbx_oblig_tert);
   sc('n-ck-stab',doc.ckbx_stab_tin_cont);sc('n-ck-ramane',doc.ckbx_ramane_suma);sv('n-ramana',doc.ramane_suma||'0');
   if(doc.ckbx_stab_tin_cont==='1')p4toggle('stab');else if(doc.ckbx_ramane_suma==='1')p4toggle('ramane');
   sc('n-ck-faraang',doc.ckbx_fara_ang_emis_ancrt);sc('n-ck-cuang',doc.ckbx_cu_ang_emis_ancrt);
@@ -215,6 +217,14 @@ function applyDfRoleState(status,role){
   const secaLock=document.getElementById('seca-lock');
   const secbLock=document.getElementById('secb-lock');
   if(!secaBody)return;
+  const antetBody=document.getElementById('df-antet-body');
+  const antetLock=document.getElementById('df-antet-lock');
+  const _revNr=ST.docRevizieNr?.notafd||0;
+  const _antetEditabil=(_revNr===0&&(!status||status==='draft'));
+  if(antetBody){
+    antetBody.querySelectorAll('input,textarea').forEach(e=>{e.disabled=!_antetEditabil;});
+  }
+  if(antetLock){antetLock.style.display=_antetEditabil?'none':'flex';}
   secaBody.classList.remove('locked');
   document.querySelectorAll('#seca-body input[type="checkbox"]').forEach(cb=>{cb.disabled=false;});
   if(secbBody)secbBody.classList.remove('locked');
@@ -302,6 +312,7 @@ function applyOrdRoleState(status,role){
 function updateRevizieHeaderBadge(ft, doc){
   if(ft!=='notafd')return;
   const nr=doc.revizie_nr??0;
+  const isAnUrm=!!doc.este_revizie_an_urmator;
   const hdr=document.getElementById('df-revizie-header-bar');
   const badge=document.getElementById('df-revizie-header-badge');
   const nrEl=document.getElementById('df-revizie-header-nr');
@@ -310,7 +321,10 @@ function updateRevizieHeaderBadge(ft, doc){
     badge.textContent=`R${nr}`;
     badge.className=`df-revizie-badge${nr>0?' revizie-activa':''}`;
   }
-  if(nrEl)nrEl.textContent=nr>0?`Revizia ${nr} — document revizuit`:`Revizia inițială`;
+  if(nrEl){
+    const baseTxt=nr>0?`Revizia ${nr}`:`Revizia 0 (inițială)`;
+    nrEl.textContent=isAnUrm?`${baseTxt} · pentru anul bugetar următor`:baseTxt;
+  }
 }
 
 // ── Render actions bar ────────────────────────────────────────────────────────
@@ -326,8 +340,15 @@ function renderActions(ft){
 
   if(ft==='notafd'&&ST.docStatus[ft]==='neaprobat'){
     const revNr=ST.docRevizieNr?.[ft]??0;
-    div.innerHTML=`<span style="color:#f87171;font-size:.82rem;margin-right:8px">❌ DF neaprobat de semnatar — fluxul a fost refuzat (R${revNr}).</span>`
-      +B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`);
+    const areNoua=ST.docAreRevizieNoua?.[ft];
+    const latest=ST.docLatestRevizieNr?.[ft]||0;
+    if(areNoua){
+      div.innerHTML=`<span style="color:#f87171;font-size:.82rem;margin-right:8px">❌ DF neaprobat de semnatar (R${revNr}).</span>`
+        +`<span style="color:var(--df-text-3);font-size:.82rem">🕒 Revizie istorică — revizia curentă este R${latest}.</span>`;
+    }else{
+      div.innerHTML=`<span style="color:#f87171;font-size:.82rem;margin-right:8px">❌ DF neaprobat de semnatar — fluxul a fost refuzat (R${revNr}).</span>`
+        +B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`);
+    }
     return;
   }
   if(ft==='notafd'&&ST.docStatus[ft]==='de_revizuit'){
@@ -340,10 +361,14 @@ function renderActions(ft){
     const fid=ST.docFlowId?.[ft];
     const revNr=ST.docRevizieNr?.[ft]||0;
     const isAnUrm=ft==='notafd'&&ST.docRevizieAnUrmator?.[ft];
+    const areNoua=ft==='notafd'&&ST.docAreRevizieNoua?.[ft];
+    const latest=ST.docLatestRevizieNr?.[ft]||0;
     const revBadge=ft==='notafd'&&revNr>0?`<span class="df-revizie-badge" style="margin-right:4px">Revizia ${revNr}</span>`:'';
+    const istoricMsg=areNoua?`<span style="color:var(--df-text-3);font-size:.82rem;margin-left:8px">🕒 Revizie istorică — revizia curentă este R${latest}.</span>`:'';
     div.innerHTML=revBadge
       +(fid?B('teal','📄 Descarcă PDF semnat',`viewFlowPdf('${fid}')`):'')
-      +(ft==='notafd'?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
+      +((ft==='notafd'&&!areNoua)?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'')
+      +istoricMsg;
     return;
   }
   if(!docId){
@@ -354,8 +379,7 @@ function renderActions(ft){
       +BNou
       +B('','↺ Câmpuri',`resetF('${ft}')`);
   }else if(status==='returnat'&&role==='p1'){
-    html=B('teal','📨 Retrimite la Responsabil CAB',`showP2Modal('${ft}')`)
-      +`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`;
+    html=B('teal','📨 Retrimite la Responsabil CAB',`showP2Modal('${ft}')`);
   }else if(status==='pending_p2'&&role==='p2'){
     html=B('','💾 Salvează',`saveDoc('${ft}')`)
       +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`)
@@ -408,6 +432,10 @@ async function openDoc(ft,id){
     ST.docRevizieNr[ft]=doc.revizie_nr||0;
     ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};
     ST.docRevizieAnUrmator[ft]=doc.este_revizie_an_urmator||false;
+    ST.docAreRevizieNoua=ST.docAreRevizieNoua||{};
+    ST.docAreRevizieNoua[ft]=doc.has_newer_revision===true;
+    ST.docLatestRevizieNr=ST.docLatestRevizieNr||{};
+    ST.docLatestRevizieNr[ft]=doc.latest_revizie_nr||0;
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
@@ -427,11 +455,6 @@ async function openDoc(ft,id){
       }
     }
 
-    // Dacă nu avem context ALOP și documentul are alop_id, populează automat contextul
-    if(!window._alopContext&&doc.alop_id){
-      window._alopContext={alopId:doc.alop_id,titlu:doc.alop_titlu||'',valoare:doc.alop_valoare||null};
-      sessionStorage.setItem('_alopContext',JSON.stringify(window._alopContext));
-    }
     _dfSetAlopCtx(ft);
 
     // FIX 3: Precompletare automată pct.4 pentru revizie "an următor" (revizie_nr===1, pct.4 necompletat)
@@ -555,10 +578,10 @@ function renderDocsList(ft,docs){
 
 async function viewFlowPdf(flowId){
   try{
-    const r=await fetch(`/api/flows/${encodeURIComponent(flowId)}/signed-pdf`,{credentials:'include'});
+    const r=await fetch(`/flows/${encodeURIComponent(flowId)}/signed-pdf`,{credentials:'include'});
     if(!r.ok){
       try{
-        const r2=await fetch(`/api/flows/${encodeURIComponent(flowId)}/pdf`,{credentials:'include'});
+        const r2=await fetch(`/flows/${encodeURIComponent(flowId)}/pdf`,{credentials:'include'});
         if(r2.ok){
           const blob2=await r2.blob();
           const url2=URL.createObjectURL(blob2);
@@ -578,9 +601,11 @@ async function viewFlowPdf(flowId){
 // ── Nou document ──────────────────────────────────────────────────────────────
 function newDoc(ft){
   ST.docAprobat=ST.docAprobat||{};ST.docAprobat[ft]=false;
+  ST.docRevizieNr=ST.docRevizieNr||{};ST.docRevizieNr[ft]=0;
+  ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};ST.docRevizieAnUrmator[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
   lockAll(ft,false);setLockedBar(ft,'');
-  if(ft==='notafd')applyDfRoleState(null,'p1');
+  if(ft==='notafd'){applyDfRoleState(null,'p1');updateRevizieHeaderBadge('notafd',{revizie_nr:0,este_revizie_an_urmator:false});}
   else if(ft==='ordnt')applyOrdRoleState(null,'p1');
   // Golim câmpurile
   document.querySelectorAll(`#form-${ft} input:not([type=file]):not([type=hidden]),#form-${ft} textarea`).forEach(e=>{if(e.type==='checkbox')e.checked=false;else if(e.type==='number')e.value='0';else e.value='';});
@@ -1004,7 +1029,7 @@ function resetF(ft){
   else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   document.getElementById('ff-'+ft).classList.remove('show');
-  ST[ft]={pdf:null,name:null};if(ST.docAprobat)ST.docAprobat[ft]=false;clrS();upTot();
+  ST[ft]={pdf:null,name:null};if(ST.docAprobat)ST.docAprobat[ft]=false;if(ST.docRevizieNr)ST.docRevizieNr[ft]=0;if(ST.docRevizieAnUrmator)ST.docRevizieAnUrmator[ft]=false;clrS();upTot();
   document.querySelectorAll(`#form-${ft} .err`).forEach(e=>e.classList.remove('err'));
 }
 

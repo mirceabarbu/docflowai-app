@@ -1230,6 +1230,13 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS functie_from TEXT NOT NULL DEFAULT '',
         ADD COLUMN IF NOT EXISTS functie_to   TEXT NOT NULL DEFAULT '';
     `
+  },
+  {
+    id: '065_formulare_df_ckbx_oblig_tert',
+    sql: `
+      ALTER TABLE formulare_df
+        ADD COLUMN IF NOT EXISTS ckbx_oblig_tert TEXT;
+    `
   }
 ];
 
