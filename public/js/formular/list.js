@@ -349,8 +349,13 @@ function _renderLstTable(rows,type){
       <td>${esc(row.initiator||'—')}</td>
       <td>${esc(row.p2||'—')}</td>
       <td>${_stBadge(row.aprobat ? 'aprobat' : row.status)}</td>
-      <td>${_fmtDate(row.created_at)}</td>
-      <td>${_fmtDate(row.updated_at)}</td>
+      <td>
+        <div>${_fmtDate(row.created_at)}</div>
+        ${row.initiator ? `<div style="font-size:.75rem;color:var(--df-text-3);margin-top:2px">${esc(row.initiator)}</div>` : ''}
+      </td>
+      <td>
+        <div>${_fmtDate(row.updated_at)}</div>
+      </td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">Deschide</button>
         ${cancelBtn}
