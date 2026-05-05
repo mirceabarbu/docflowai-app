@@ -473,6 +473,7 @@ import pg from 'pg';
 import crypto from 'crypto';
 import path from 'path';
 import http from 'http';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'url';
 
 // CODE-N02: versiune citită din package.json — single source of truth
@@ -907,6 +908,74 @@ function pdfLooksSigned(pdfB64) {
   } catch { return false; }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// detectMinContentY — detectează Y-ul minim al conținutului real al unei
+// pagini PDF (cel mai jos punct cu text/grafică). Folosit de stampFooterOnPdf
+// ca să decidă dacă cartușul de semnături încape pe pagina existentă sau
+// trebuie să meargă pe pagină nouă.
+//
+// Parsează content stream-ul (după FlateDecode) și caută:
+//   - 'Tm' (text matrix) → Y absolut text
+//   - 're' (rectangle) → Y bottom dreptunghi
+// Ignoră tot ce e sub 'ignoreBelow' (default 45 pt — sub footer-ul
+// DocFlowAI 'Pagina X din Y' la y=38).
+//
+// Returnează null dacă nu poate decoda (PDF criptat / structură exotică).
+// În acel caz, apelantul trebuie să forțeze pagină nouă (siguranță maximă).
+// ─────────────────────────────────────────────────────────────────────────────
+function detectMinContentY(page, ignoreBelow = 45) {
+  try {
+    const { PDFArray, PDFRawStream } = PDFLib;
+    const doc = page.doc;
+    const contentsRef = page.node.Contents();
+    if (!contentsRef) return null;
+
+    const streams = [];
+    if (contentsRef instanceof PDFArray) {
+      for (let i = 0; i < contentsRef.size(); i++) {
+        const resolved = doc.context.lookup(contentsRef.get(i));
+        if (resolved) streams.push(resolved);
+      }
+    } else {
+      const resolved = doc.context.lookup(contentsRef);
+      if (resolved) streams.push(resolved);
+    }
+
+    let minY = Infinity;
+    for (const stream of streams) {
+      if (!(stream instanceof PDFRawStream) || !stream.contents) continue;
+
+      let text;
+      try {
+        const buf = Buffer.from(stream.contents);
+        const inflated = zlib.inflateSync(buf);
+        text = inflated.toString('latin1');
+      } catch {
+        try { text = Buffer.from(stream.contents).toString('latin1'); }
+        catch { continue; }
+      }
+
+      const tokens = text.split(/[\s\n\r]+/);
+      for (let i = 0; i < tokens.length; i++) {
+        const tok = tokens[i];
+        if (tok === 'Tm' && i >= 6) {
+          const y = parseFloat(tokens[i - 1]);
+          if (!isNaN(y) && y >= ignoreBelow && y < minY) minY = y;
+        }
+        else if (tok === 're' && i >= 4) {
+          const y = parseFloat(tokens[i - 3]);
+          if (!isNaN(y) && y >= ignoreBelow && y < minY) minY = y;
+        }
+      }
+    }
+
+    return minY === Infinity ? null : minY;
+  } catch (e) {
+    logger.warn({ err: e }, 'detectMinContentY: parse error, fallback to safe');
+    return null;
+  }
+}
+
 async function stampFooterOnPdf(pdfB64, flowData = {}) {
   if (!pdfB64 || !PDFLib) return pdfB64;
 
@@ -977,15 +1046,24 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
       const rows = Math.ceil(n / cols);
 
       // ── Detectăm dacă cartușul încape pe ultima pagină existentă ──────────
-      // Calculăm înălțimea blocului de semnături (blockTopCheck).
-      // Dacă depășește 40% din înălțimea paginii → pagină nouă, cartus sus.
-      // Altfel → cartus jos pe ultima pagină, deasupra footer-ului.
+      // HOTFIX 3 (v3.9.433): parsăm content stream-ul paginii și detectăm
+      // Y-ul minim al conținutului real (cel mai jos punct cu text/grafică).
+      // Anterior foloseam heuristică simplistă (40% din înălțime) care
+      // suprapunea cartușul peste tabelele DF/ORD dense.
       const lastPageExisting = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
       const { width: pWLast, height: hLast } = lastPageExisting.getSize();
       const cellHCheck = Math.max(56, Math.min(78,
         (Math.max(120, hLast * 0.30) - ((rows - 1) * rowGap)) / rows));
-      const blockTopCheck = (footerY + 32) + rows * cellHCheck + (rows - 1) * rowGap;
-      const needsNewPage  = blockTopCheck > hLast * 0.40;
+      // Cartușul ar începe la (footerY + 32) și ar urca cu rows * cellH + gaps
+      const cartusTopIfFit = (footerY + 32) + rows * cellHCheck + (rows - 1) * rowGap;
+      // Marjă de siguranță deasupra cartușului (60pt = vizibil clar separat)
+      const SAFETY_MARGIN = 60;
+      const requiredFreeY = cartusTopIfFit + SAFETY_MARGIN;
+      // Detectăm Y-ul minim al conținutului existent (ignorăm footer-ul DocFlowAI)
+      const minContentY = detectMinContentY(lastPageExisting, 45);
+      // Decizie: pagină nouă dacă detectarea eșuează (siguranță) SAU
+      // dacă cartușul + marjă ar suprapune conținutul.
+      const needsNewPage = (minContentY === null) || (minContentY < requiredFreeY);
 
       // ── Alege / creează pagina pentru cartus ──────────────────────────────
       let cartusPage, cartusPageNum, topMargin;
@@ -1013,12 +1091,17 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
         cartusPage.drawText(fRight2, { x:pWLast-40-rW2, y:footerY, size:7,
           font:fontR, color:rgb(0.5,0.5,0.5) });
         logger.info({ flowId: flowData.flowId, n, rows,
-          blockTopCheck: Math.round(blockTopCheck), threshold: Math.round(hLast*0.40) },
-          'stampFooterOnPdf: pagina noua pentru cartus (bloc > 40% pagina)');
+          minContentY: minContentY === null ? 'unknown' : Math.round(minContentY),
+          requiredFreeY: Math.round(requiredFreeY) },
+          'stampFooterOnPdf: pagină nouă pentru cartuș (conținut prea jos)');
       } else {
         cartusPage    = lastPageExisting;
         cartusPageNum = pdfDoc.getPageCount();
         topMargin     = 40;
+        logger.info({ flowId: flowData.flowId, n, rows,
+          minContentY: Math.round(minContentY),
+          requiredFreeY: Math.round(requiredFreeY) },
+          'stampFooterOnPdf: cartuș pe pagina existentă (spațiu suficient)');
       }
 
       // ── Calculul poziției ─────────────────────────────────────────────────
