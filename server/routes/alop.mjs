@@ -189,6 +189,7 @@ router.get('/api/alop', async (req, res) => {
         u.email  AS creator_email,
         df.nr_unic_inreg AS df_nr,
         df.status        AS df_status,
+        fo.nr_ordonant_pl AS ord_nr,
         fo.status        AS ord_status,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
@@ -317,6 +318,7 @@ router.get('/api/alop/:id', async (req, res) => {
         df.nr_unic_inreg             AS df_nr,
         df.status                    AS df_status,
         df.obiect_fd_reviz_scurt     AS df_obiect,
+        fo.nr_ordonant_pl            AS ord_nr,
         df.compartiment_specialitate AS df_compartiment,
         df.revizie_nr                AS df_revizie_nr,
         df.este_revizie_an_urmator   AS df_este_revizie_an_urmator,

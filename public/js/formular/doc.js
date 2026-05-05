@@ -560,16 +560,17 @@ function renderDocsList(ft,docs){
       ?(d.nr_ordonant_pl?`ORD ${esc(d.nr_ordonant_pl)}`:'ORD fără număr')
       :(d.nr_unic_inreg?`DF ${esc(d.nr_unic_inreg)}`:'DF fără număr');
     const updated=new Date(d.updated_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const created=new Date(d.created_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const p2info=d.assigned_to_nume?` · Resp. CAB: ${esc(d.assigned_to_nume)}`:'';
     const creator=d.created_by_nume||d.created_by_email||'';
-    const creatorInfo=creator?` · ${esc(creator)}`:'';
+    const creatorInfo=creator?`Creat de: <b>${esc(creator)}</b> · `:'';
     const pdfBtn=d.flow_id
       ?`<button class="df-action-btn sm" style="margin-left:4px" onclick="event.stopPropagation();viewFlowPdf('${d.flow_id}')" title="PDF semnat din flux">📄 PDF flux</button>`
       :'';
     return`<div class="doc-card" data-id="${d.id}" onclick="openDoc('${ft}','${d.id}')">
       <div class="doc-card-main">
         <div class="doc-card-title">${title}${revBadge}</div>
-        <div class="doc-card-sub">${updated}${p2info}${creatorInfo}</div>
+        <div class="doc-card-sub">${creatorInfo}Creat: ${created} · Actualizat: ${updated}${p2info}</div>
       </div>
       <span class="dst ${cls}">${lbl}</span>${pdfBtn}
     </div>`;
