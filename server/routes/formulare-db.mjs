@@ -16,6 +16,7 @@ import { requireAuth } from '../middleware/auth.mjs';
 import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { pool } from '../db/index.mjs';
+import { loadActorComp, canEditFormular, canDestroyOnly } from '../services/authz-formular.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -265,10 +266,11 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
 
-    const isP1 = doc.created_by === actor.userId;
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+    if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    const isP1 = doc.created_by === actor.userId || authz.role === 'comp' || authz.role === 'admin';
     const isP2 = doc.assigned_to === actor.userId;
-    if (!isP1 && !isP2 && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
 
     // P1 poate modifica doar în draft (sau resetează completed → draft cu version++)
     let extraSets = [];
@@ -331,8 +333,11 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (!['draft','returnat','de_revizuit'].includes(doc.status))
       return res.status(409).json({ error: 'document_not_draft', status: doc.status });
 
@@ -374,8 +379,21 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const isAdminRole = ['admin','org_admin'].includes(actor.role);
+      let canComplete = isAdminRole || doc.assigned_to === actor.userId;
+      if (!canComplete && doc.assigned_to) {
+        const actorComp = await loadActorComp(pool, actor.userId);
+        if (actorComp) {
+          const { rows: p2rows } = await pool.query(
+            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
+            [doc.assigned_to, actorComp]
+          );
+          if (p2rows.length) canComplete = true;
+        }
+      }
+      if (!canComplete) return res.status(403).json({ error: 'forbidden' });
+    }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
 
@@ -430,8 +448,21 @@ router.post('/api/formulare-df/:id/returneaza', _csrf, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const isAdminRole = ['admin','org_admin'].includes(actor.role);
+      let canReturn = isAdminRole || doc.assigned_to === actor.userId;
+      if (!canReturn && doc.assigned_to) {
+        const actorComp = await loadActorComp(pool, actor.userId);
+        if (actorComp) {
+          const { rows: p2rows } = await pool.query(
+            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
+            [doc.assigned_to, actorComp]
+          );
+          if (p2rows.length) canReturn = true;
+        }
+      }
+      if (!canReturn) return res.status(403).json({ error: 'forbidden' });
+    }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
     await pool.query(
@@ -464,8 +495,11 @@ router.post('/api/formulare-df/:id/link-flow', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (doc.status !== 'completed')
       return res.status(409).json({ error: 'document_not_completed' });
 
@@ -530,8 +564,11 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
     if (!origRows.length) return res.status(404).json({ error: 'DF negăsit' });
     const df = origRows[0];
 
-    if (df.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, df, actorComp, { assignedCounts: true });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
 
     // Doar DF-uri aprobate (flux de semnare finalizat) sau neaprobate (refuz) pot fi revizuite
     if (!df.aprobat && df.status !== 'neaprobat')
@@ -650,8 +687,10 @@ router.delete('/api/formulare-df/:id', _csrf, async (req, res) => {
       [req.params.id, actor.orgId]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    if (rows[0].created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const authz = canDestroyOnly(actor, rows[0]);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (rows[0].status !== 'draft')
       return res.status(409).json({ error: 'only_draft_deletable' });
     await pool.query(
@@ -800,10 +839,12 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
 
-    const isP1 = doc.created_by === actor.userId;
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+    if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    const isP1 = doc.created_by === actor.userId || authz.role === 'comp' || authz.role === 'admin';
     const isP2 = doc.assigned_to === actor.userId;
     const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
-    if (!isP1 && !isP2 && !isAdmin) return res.status(403).json({ error: 'forbidden' });
 
     const extraSets = [];
     const extraVals = [];
@@ -863,8 +904,11 @@ router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (!['draft','returnat'].includes(doc.status))
       return res.status(409).json({ error: 'document_not_draft', status: doc.status });
 
@@ -905,8 +949,21 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const isAdminRole = ['admin','org_admin'].includes(actor.role);
+      let canComplete = isAdminRole || doc.assigned_to === actor.userId;
+      if (!canComplete && doc.assigned_to) {
+        const actorComp = await loadActorComp(pool, actor.userId);
+        if (actorComp) {
+          const { rows: p2rows } = await pool.query(
+            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
+            [doc.assigned_to, actorComp]
+          );
+          if (p2rows.length) canComplete = true;
+        }
+      }
+      if (!canComplete) return res.status(403).json({ error: 'forbidden' });
+    }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
 
@@ -949,8 +1006,21 @@ router.post('/api/formulare-ord/:id/returneaza', _csrf, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const isAdminRole = ['admin','org_admin'].includes(actor.role);
+      let canReturn = isAdminRole || doc.assigned_to === actor.userId;
+      if (!canReturn && doc.assigned_to) {
+        const actorComp = await loadActorComp(pool, actor.userId);
+        if (actorComp) {
+          const { rows: p2rows } = await pool.query(
+            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
+            [doc.assigned_to, actorComp]
+          );
+          if (p2rows.length) canReturn = true;
+        }
+      }
+      if (!canReturn) return res.status(403).json({ error: 'forbidden' });
+    }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
     await pool.query(
@@ -983,8 +1053,11 @@ router.post('/api/formulare-ord/:id/link-flow', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (doc.status !== 'completed')
       return res.status(409).json({ error: 'document_not_completed' });
 
@@ -1008,8 +1081,10 @@ router.delete('/api/formulare-ord/:id', _csrf, async (req, res) => {
       [req.params.id, actor.orgId]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    if (rows[0].created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const authz = canDestroyOnly(actor, rows[0]);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (rows[0].status !== 'draft')
       return res.status(409).json({ error: 'only_draft_deletable' });
     await pool.query(
@@ -1404,11 +1479,12 @@ router.post('/api/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    const isAdmin = actor.role === 'admin';
-    const isOrgAdmin = actor.role === 'org_admin';
-    if (!isAdmin && doc.org_id !== actor.orgId) return res.status(403).json({ error: 'forbidden' });
-    if (!isAdmin && !isOrgAdmin && doc.created_by !== actor.userId)
+    if (actor.role !== 'admin' && doc.org_id !== actor.orgId)
       return res.status(403).json({ error: 'forbidden' });
+    {
+      const authz = canDestroyOnly(actor, doc);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (!['draft','pending_p2','returnat'].includes(doc.status))
       return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
 
@@ -1436,11 +1512,12 @@ router.post('/api/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    const isAdmin = actor.role === 'admin';
-    const isOrgAdmin = actor.role === 'org_admin';
-    if (!isAdmin && doc.org_id !== actor.orgId) return res.status(403).json({ error: 'forbidden' });
-    if (!isAdmin && !isOrgAdmin && doc.created_by !== actor.userId)
+    if (actor.role !== 'admin' && doc.org_id !== actor.orgId)
       return res.status(403).json({ error: 'forbidden' });
+    {
+      const authz = canDestroyOnly(actor, doc);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (!['draft','pending_p2','returnat'].includes(doc.status))
       return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
 

@@ -134,6 +134,27 @@ function makeAlopRow(overrides = {}) {
   };
 }
 
+/**
+ * Prepend mocks for FEATURE 3.B authz (canEditAlop):
+ *   1. SELECT alop_instances (created_by, compartiment) — autorizare
+ *   2. SELECT compartiment FROM users (loadActorComp)
+ * Folosește created_by=1 (matches makeToken().userId) pentru a trece pe ramura 'creator'.
+ */
+function mockAuthzAlopCreator(createdBy = 1) {
+  dbModule.pool.query
+    .mockResolvedValueOnce({ rows: [{ created_by: createdBy, compartiment: '' }] })
+    .mockResolvedValueOnce({ rows: [{ compartiment: '' }] });
+}
+
+/**
+ * Prepend mock for FEATURE 3.B canDestroyOnly (cancel ALOP):
+ *   1. SELECT created_by FROM alop_instances
+ * canDestroyOnly e sync — nu apelează loadActorComp.
+ */
+function mockAuthzAlopDestroy(createdBy = 1) {
+  dbModule.pool.query.mockResolvedValueOnce({ rows: [{ created_by: createdBy }] });
+}
+
 /** App Express minimal cu alop router */
 function createTestApp() {
   const app = express();
@@ -345,6 +366,7 @@ describe('GET /api/alop/:id — detaliu ALOP', () => {
 describe('POST /api/alop/:id/cancel — anulare ALOP', () => {
   it('200 — anulare din status draft', async () => {
     const cancelled = makeAlopRow({ status: 'cancelled', cancelled_at: new Date().toISOString() });
+    mockAuthzAlopDestroy();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [cancelled] });
 
     const app = createTestApp();
@@ -358,7 +380,7 @@ describe('POST /api/alop/:id/cancel — anulare ALOP', () => {
   });
 
   it('404 — ALOP completed nu poate fi anulat', async () => {
-    // UPDATE returnează 0 rows (WHERE status != 'completed' eșuează)
+    // SELECT returnează rows goale (ALOP nu există) — pre-authz check
     dbModule.pool.query.mockResolvedValueOnce({ rows: [] });
 
     const app = createTestApp();
@@ -389,6 +411,7 @@ describe('POST /api/alop/:id/link-df — leagă Document de Fundamentare', () =>
   });
 
   it('404 — df_id nu există în org', async () => {
+    mockAuthzAlopCreator();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [] }); // SELECT formulare_df → nu există
 
@@ -404,6 +427,7 @@ describe('POST /api/alop/:id/link-df — leagă Document de Fundamentare', () =>
 
   it('200 — link-df setează df_id și avansează draft → angajare', async () => {
     const updated = makeAlopRow({ df_id: DF_ID, status: 'angajare' });
+    mockAuthzAlopCreator();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: DF_ID }] })  // SELECT formulare_df
       .mockResolvedValueOnce({ rows: [] })                // SELECT conflict (niciun conflict)
@@ -424,6 +448,7 @@ describe('POST /api/alop/:id/link-df — leagă Document de Fundamentare', () =>
   it('200 — link-df idempotent: al doilea apel cu același df_id nu dă eroare', async () => {
     // Deja cu df_id setat — WHERE (df_id IS NULL OR df_id = $1) → match
     const unchanged = makeAlopRow({ df_id: DF_ID, status: 'angajare' });
+    mockAuthzAlopCreator();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: DF_ID }] })  // SELECT formulare_df
       .mockResolvedValueOnce({ rows: [] })                // SELECT conflict (niciun conflict)
@@ -443,6 +468,7 @@ describe('POST /api/alop/:id/link-df — leagă Document de Fundamentare', () =>
   it('404 — link-df respinge df_id diferit dacă df_id deja setat', async () => {
     const OTHER_DF = 'ddddffff-0000-0000-0000-000000000002';
     // SELECT DF găsit, dar UPDATE returnează rows goale (WHERE df_id IS NULL OR df_id=$1 nu matchuiește)
+    mockAuthzAlopCreator();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: OTHER_DF }] })  // SELECT formulare_df
       .mockResolvedValueOnce({ rows: [] })                   // SELECT conflict (niciun conflict)
@@ -477,6 +503,7 @@ describe('POST /api/alop/:id/link-df-flow — leagă fluxul de semnare DF', () =
 
   it('200 — link-df-flow setează df_flow_id', async () => {
     const updated = makeAlopRow({ df_flow_id: FLOW_ID, status: 'angajare' });
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [updated] });
 
     const app = createTestApp();
@@ -493,6 +520,7 @@ describe('POST /api/alop/:id/link-df-flow — leagă fluxul de semnare DF', () =
   it('200 — link-df-flow idempotent: al doilea apel cu același flowId suprascrie fără eroare', async () => {
     // UPDATE fără condiție pe df_flow_id → mereu suprascrie cu același flow_id
     const same = makeAlopRow({ df_flow_id: FLOW_ID });
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [same] });
 
     const app = createTestApp();
@@ -521,6 +549,7 @@ describe('POST /api/alop/:id/link-df-flow — leagă fluxul de semnare DF', () =
 describe('POST /api/alop/:id/link-ord-flow — leagă fluxul de semnare ORD', () => {
   it('200 — link-ord-flow setează ord_flow_id', async () => {
     const updated = makeAlopRow({ ord_flow_id: FLOW_ID, status: 'ordonantare' });
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [updated] });
 
     const app = createTestApp();
@@ -553,6 +582,7 @@ describe('POST /api/alop/:id/link-ord-flow — leagă fluxul de semnare ORD', ()
 describe('POST /api/alop/:id/df-completed — avansare la lichidare', () => {
   it('200 — avansează la lichidare când DF flow complet', async () => {
     const lichidare = makeAlopRow({ status: 'lichidare', df_completed_at: new Date().toISOString() });
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [lichidare] });
 
     const app = createTestApp();
@@ -568,6 +598,7 @@ describe('POST /api/alop/:id/df-completed — avansare la lichidare', () => {
 
   it('400 — respinge dacă status !== angajare sau df_flow_id lipsă', async () => {
     // UPDATE WHERE ... AND df_flow_id IS NOT NULL AND status='angajare' → 0 rows
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [] });
 
     const app = createTestApp();
@@ -584,6 +615,7 @@ describe('POST /api/alop/:id/df-completed — avansare la lichidare', () => {
 describe('POST /api/alop/:id/ord-completed — avansare la plata', () => {
   it('200 — avansează la plata când ORD flow complet', async () => {
     const plata = makeAlopRow({ status: 'plata', ord_completed_at: new Date().toISOString() });
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [plata] });
 
     const app = createTestApp();
@@ -597,6 +629,7 @@ describe('POST /api/alop/:id/ord-completed — avansare la plata', () => {
   });
 
   it('400 — respinge dacă status !== ordonantare sau ord_flow_id lipsă', async () => {
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [] });
 
     const app = createTestApp();
@@ -668,9 +701,12 @@ describe('POST /api/alop/:id/confirma-lichidare', () => {
   });
 
   it('403 — user neautorizat dacă lichidare_confirmed_by e altul', async () => {
-    // lichidare_confirmed_by = 99 (alt user), actorul e userId=1, nu admin
+    // lichidare_confirmed_by = 99 (alt user), actorul e userId=1, nu admin, nu creator, fără compartiment
     const current = { lichidare_confirmed_by: 99 };
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [current] });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [current] })
+      .mockResolvedValueOnce({ rows: [{ created_by: 99, compartiment: '' }] }) // canEditAlop SELECT
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }); // loadActorComp
 
     const app = createTestApp();
     const res = await request(app)
@@ -690,6 +726,7 @@ describe('POST /api/alop/:id/confirma-lichidare', () => {
 describe('POST /api/alop/:id/confirma-plata', () => {
   it('400 — user normal fără status plata → status_invalid', async () => {
     const app = createTestApp();
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [] }); // UPDATE → 0 rows (status != 'plata')
     const res = await request(app)
       .post(`/api/alop/${ALOP_ID}/confirma-plata`)
@@ -701,21 +738,21 @@ describe('POST /api/alop/:id/confirma-plata', () => {
   });
 
   it('400 — respinge dacă nr_ordin_plata lipsește (UPDATE returnează 0 rows pe status wrong)', async () => {
-    // Serverul nu validează nr_ordin_plata explicit — INSERT fără el → status check eșuează dacă status != 'plata'
-    // Testăm că fără câmpuri corecte și status greșit → 400
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [] }); // UPDATE → 0 (status != 'plata')
 
     const app = createTestApp();
     const res = await request(app)
       .post(`/api/alop/${ALOP_ID}/confirma-plata`)
       .set('Cookie', `auth_token=${makeAdminToken()}`)
-      .send({ suma_efectiva: 1500 }); // lipsă nr_ordin_plata
+      .send({ suma_efectiva: 1500 });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('status_invalid');
   });
 
   it('400 — respinge dacă suma_efectiva <= 0 (status greșit)', async () => {
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [] });
 
     const app = createTestApp();
@@ -735,6 +772,7 @@ describe('POST /api/alop/:id/confirma-plata', () => {
       plata_suma_efectiva: '1500.00',
       completed_at:    new Date().toISOString(),
     });
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [completed] });
 
     const app = createTestApp();
@@ -751,6 +789,7 @@ describe('POST /api/alop/:id/confirma-plata', () => {
 
   it('200 — admin global poate confirma plata', async () => {
     const completed = makeAlopRow({ status: 'completed', completed_at: new Date().toISOString() });
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [completed] });
 
     const app = createTestApp();
@@ -777,6 +816,7 @@ describe('POST /api/alop/:id/confirma-plata — user normal', () => {
       plata_suma_efectiva: '1200.00',
       completed_at:       new Date().toISOString(),
     });
+    mockAuthzAlopCreator();
     dbModule.pool.query.mockResolvedValueOnce({ rows: [completed] });
 
     const app = createTestApp();
@@ -803,6 +843,7 @@ describe('POST /api/alop/:id/link-df-flow — auto-lichidare STS Cloud', () => {
       df_completed_at: new Date().toISOString(),
     });
 
+    mockAuthzAlopCreator();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [angajare] })         // UPDATE df_flow_id
       .mockResolvedValueOnce({ rows: [{ id: FLOW_ID }] }) // SELECT flows (completat)
@@ -862,6 +903,7 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [completedAlop] })       // SELECT alop
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp
       .mockResolvedValueOnce({ rows: [{ df_val: '2000' }] }) // SELECT df_val
       .mockResolvedValueOnce({ rows: [{ total: '0' }] })      // SELECT SUM cicluri anterioare
       .mockResolvedValueOnce({ rows: [] })                     // INSERT alop_ord_cicluri
@@ -889,6 +931,7 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [completedAlop] })
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp
       .mockResolvedValueOnce({ rows: [{ df_val: '2000' }] })
       .mockResolvedValueOnce({ rows: [{ total: '0' }] });
 
@@ -903,7 +946,9 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
 
   it('400 — ALOP non-completed returnează status_invalid', async () => {
     const lichidareAlop = makeAlopRow({ status: 'lichidare', df_id: DF_ID });
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [lichidareAlop] });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [lichidareAlop] })
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }); // loadActorComp
 
     const app = createTestApp();
     const res = await request(app)

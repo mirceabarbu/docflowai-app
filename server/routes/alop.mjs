@@ -20,6 +20,7 @@ import { requireAuth } from '../middleware/auth.mjs';
 import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
+import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -506,6 +507,17 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
     const { df_id } = req.body;
     if (!df_id) return res.status(400).json({ error: 'df_id obligatoriu' });
 
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows: dfRows } = await pool.query(
       'SELECT id FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
       [df_id, actor.orgId]
@@ -550,6 +562,17 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
   try {
     const { flow_id } = req.body;
     if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
+
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
@@ -598,6 +621,17 @@ router.post('/api/alop/:id/df-completed', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET df_completed_at=NOW(), status='lichidare', updated_at=NOW(), updated_by=$3
@@ -630,7 +664,12 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
     const isAdmin = ['admin', 'org_admin'].includes(actor.role);
     const isAssigned = cur[0].lichidare_confirmed_by === actor.userId;
     if (!isAdmin && !isAssigned && cur[0].lichidare_confirmed_by !== null) {
-      return res.status(403).json({ error: 'forbidden' });
+      const { rows: alopRow } = await pool.query(
+        'SELECT created_by, compartiment FROM alop_instances WHERE id=$1', [req.params.id]
+      );
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRow[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
     }
     logger.info({ alopId: req.params.id, currentStatus: cur[0].status }, 'confirma-lichidare attempt');
 
@@ -671,6 +710,17 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
     const { ord_id } = req.body;
     if (!ord_id) return res.status(400).json({ error: 'ord_id obligatoriu' });
 
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows: ordRows } = await pool.query(
       'SELECT id FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
       [ord_id, actor.orgId]
@@ -701,6 +751,17 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
     const { flow_id } = req.body;
     if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
 
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET ord_flow_id=$1, updated_at=NOW(), updated_by=$4
@@ -721,6 +782,17 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET ord_completed_at=NOW(), status='plata', updated_at=NOW(), updated_by=$3
@@ -744,6 +816,17 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { notes, nr_ordin_plata, data_plata, suma_efectiva, observatii } = req.body;
     const { rows } = await pool.query(`
       UPDATE alop_instances
@@ -782,6 +865,11 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
       [req.params.id, actor.orgId]
     );
     if (!alop) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alop, actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (alop.status !== 'completed')
       return res.status(400).json({ error: 'status_invalid', message: 'ALOP trebuie să fie finalizat (plată efectuată).' });
 
@@ -911,6 +999,16 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const { rows: cur } = await pool.query(
+      'SELECT created_by FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!cur[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const authz = canDestroyOnly(actor, cur[0]);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET status='cancelled', cancelled_at=NOW(), updated_at=NOW(), updated_by=$3
@@ -918,7 +1016,7 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
       RETURNING *
     `, [req.params.id, actor.orgId, actor.userId]);
 
-    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+    if (!rows[0]) return res.status(409).json({ error: 'cancel_blocked', message: 'ALOP completat sau deja anulat' });
     res.json({ alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop cancel error');
