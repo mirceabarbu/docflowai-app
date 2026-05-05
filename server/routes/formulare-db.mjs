@@ -298,6 +298,8 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
       pi++;
     }
     allSets.push(`updated_at=NOW()`);
+    allSets.push(`updated_by=$${allVals.length + 1}`);
+    allVals.push(actor.userId);
     allVals.push(req.params.id, actor.orgId);
 
     if (!allSets.filter(s => !s.startsWith('updated')).length && !extraSets.length)
@@ -343,10 +345,10 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
 
     const { rows: updated } = await pool.query(`
       UPDATE formulare_df
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL
+      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
-    `, [assigned_to, req.params.id, actor.orgId]);
+    `, [assigned_to, req.params.id, actor.orgId, actor.userId]);
 
     await sendNotif(assigned_to, 'formulare_df_p2',
       'Document de Fundamentare — completare solicitată',
@@ -380,6 +382,8 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
     const data = pick(req.body || {}, DF_P2_FIELDS);
     const { sets, vals } = buildUpdate(data, DF_P2_FIELDS, 1);
     sets.push(`status='completed'`, `completed_at=NOW()`, `updated_at=NOW()`);
+    sets.push(`updated_by=$${vals.length + 1}`);
+    vals.push(actor.userId);
     vals.push(req.params.id, actor.orgId);
 
     const { rows: updated } = await pool.query(`
@@ -392,9 +396,9 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
     try {
       await pool.query(
         `UPDATE alop_instances
-         SET df_completed_at=NOW(), status=CASE WHEN status='draft' THEN 'angajare' ELSE status END, updated_at=NOW()
+         SET df_completed_at=NOW(), status=CASE WHEN status='draft' THEN 'angajare' ELSE status END, updated_at=NOW(), updated_by=$3
          WHERE df_id=$1 AND org_id=$2 AND status IN ('draft','angajare')`,
-        [req.params.id, actor.orgId]
+        [req.params.id, actor.orgId, actor.userId]
       );
     } catch(e) {
       logger.warn({ err: e }, 'alop_instances update failed after P2 complete');
@@ -431,8 +435,8 @@ router.post('/api/formulare-df/:id/returneaza', _csrf, async (req, res) => {
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
     await pool.query(
-      `UPDATE formulare_df SET status='returnat', motiv_returnare=$1, updated_at=NOW() WHERE id=$2`,
-      [motiv.trim(), req.params.id]
+      `UPDATE formulare_df SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2`,
+      [motiv.trim(), req.params.id, actor.userId]
     );
     await sendNotif(doc.created_by, 'formulare_df_returnat',
       'Document de Fundamentare — returnat ca neconform',
@@ -466,15 +470,15 @@ router.post('/api/formulare-df/:id/link-flow', _csrf, async (req, res) => {
       return res.status(409).json({ error: 'document_not_completed' });
 
     await pool.query(
-      'UPDATE formulare_df SET flow_id=$1, status=\'transmis_flux\', updated_at=NOW() WHERE id=$2 AND org_id=$3',
-      [flow_id, req.params.id, actor.orgId]
+      'UPDATE formulare_df SET flow_id=$1, status=\'transmis_flux\', updated_at=NOW(), updated_by=$4 WHERE id=$2 AND org_id=$3',
+      [flow_id, req.params.id, actor.orgId, actor.userId]
     );
     // Actualizează df_flow_id în ALOP (non-fatal)
     try {
       await pool.query(
-        `UPDATE alop_instances SET df_flow_id=$1, updated_at=NOW()
+        `UPDATE alop_instances SET df_flow_id=$1, updated_at=NOW(), updated_by=$4
          WHERE df_id=$2 AND org_id=$3 AND cancelled_at IS NULL`,
-        [flow_id, req.params.id, actor.orgId]
+        [flow_id, req.params.id, actor.orgId, actor.userId]
       );
     } catch(e) {
       logger.warn({ err: e }, 'alop_instances df_flow_id update failed');
@@ -623,9 +627,9 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
 
     // Actualizează linkul ALOP → df_id la noua revizie
     await pool.query(
-      `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
+      `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$3
        WHERE df_id=$2 AND cancelled_at IS NULL`,
-      [nou.id, req.params.id]
+      [nou.id, req.params.id, actor.userId]
     );
 
     logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, isAnUrmator, actor: actor.email }, 'formulare-df revizie creata');
@@ -651,8 +655,8 @@ router.delete('/api/formulare-df/:id', _csrf, async (req, res) => {
     if (rows[0].status !== 'draft')
       return res.status(409).json({ error: 'only_draft_deletable' });
     await pool.query(
-      'UPDATE formulare_df SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1',
-      [req.params.id]
+      'UPDATE formulare_df SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1',
+      [req.params.id, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -829,6 +833,8 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
       pi++;
     }
     allSets.push(`updated_at=NOW()`);
+    allSets.push(`updated_by=$${allVals.length + 1}`);
+    allVals.push(actor.userId);
     allVals.push(req.params.id, actor.orgId);
 
     const { rows: updated } = await pool.query(`
@@ -870,10 +876,10 @@ router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
 
     const { rows: updated } = await pool.query(`
       UPDATE formulare_ord
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL
+      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
-    `, [assigned_to, req.params.id, actor.orgId]);
+    `, [assigned_to, req.params.id, actor.orgId, actor.userId]);
 
     await sendNotif(assigned_to, 'formulare_ord_p2',
       'Ordonanțare de Plată — completare solicitată',
@@ -907,6 +913,8 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
     const data = pick(req.body || {}, ORD_P2_FIELDS);
     const { sets, vals } = buildUpdate(data, ORD_P2_FIELDS, 1);
     sets.push(`status='completed'`, `completed_at=NOW()`, `updated_at=NOW()`);
+    sets.push(`updated_by=$${vals.length + 1}`);
+    vals.push(actor.userId);
     vals.push(req.params.id, actor.orgId);
 
     const { rows: updated } = await pool.query(`
@@ -946,8 +954,8 @@ router.post('/api/formulare-ord/:id/returneaza', _csrf, async (req, res) => {
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
     await pool.query(
-      `UPDATE formulare_ord SET status='returnat', motiv_returnare=$1, updated_at=NOW() WHERE id=$2`,
-      [motiv.trim(), req.params.id]
+      `UPDATE formulare_ord SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2`,
+      [motiv.trim(), req.params.id, actor.userId]
     );
     await sendNotif(doc.created_by, 'formulare_ord_returnat',
       'Ordonanțare de Plată — returnată ca neconformă',
@@ -981,8 +989,8 @@ router.post('/api/formulare-ord/:id/link-flow', _csrf, async (req, res) => {
       return res.status(409).json({ error: 'document_not_completed' });
 
     await pool.query(
-      'UPDATE formulare_ord SET flow_id=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3',
-      [flow_id, req.params.id, actor.orgId]
+      'UPDATE formulare_ord SET flow_id=$1, updated_at=NOW(), updated_by=$4 WHERE id=$2 AND org_id=$3',
+      [flow_id, req.params.id, actor.orgId, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -1005,7 +1013,7 @@ router.delete('/api/formulare-ord/:id', _csrf, async (req, res) => {
     if (rows[0].status !== 'draft')
       return res.status(409).json({ error: 'only_draft_deletable' });
     await pool.query(
-      'UPDATE formulare_ord SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1', [req.params.id]
+      'UPDATE formulare_ord SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1', [req.params.id, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -1254,11 +1262,13 @@ router.get('/api/formulare/list', async (req, res) => {
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
           COALESCE(u2.nume, u2.email) AS p2,
+          COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (fd.created_by = $${params.push(actor.userId)}) AS "isP1",
           COUNT(*) OVER() AS total
         FROM formulare_df fd
         LEFT JOIN users u1 ON u1.id = fd.created_by
         LEFT JOIN users u2 ON u2.id = fd.assigned_to
+        LEFT JOIN users u3 ON u3.id = fd.updated_by
         LEFT JOIN flows f  ON f.id::text = fd.flow_id
         ${where}
         ORDER BY fd.updated_at DESC
@@ -1314,11 +1324,13 @@ router.get('/api/formulare/list', async (req, res) => {
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
           COALESCE(u2.nume, u2.email) AS p2,
+          COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (fo.created_by = $${params.push(actor.userId)}) AS "isP1",
           COUNT(*) OVER() AS total
         FROM formulare_ord fo
         LEFT JOIN users u1 ON u1.id = fo.created_by
         LEFT JOIN users u2 ON u2.id = fo.assigned_to
+        LEFT JOIN users u3 ON u3.id = fo.updated_by
         LEFT JOIN flows f  ON f.id::text = fo.flow_id
         ${where}
         ORDER BY fo.updated_at DESC
@@ -1356,8 +1368,8 @@ router.post('/api/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
       return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
 
     await pool.query(
-      `UPDATE formulare_df SET status='anulat', updated_at=NOW() WHERE id=$1`,
-      [id]
+      `UPDATE formulare_df SET status='anulat', updated_at=NOW(), updated_by=$2 WHERE id=$1`,
+      [id, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -1388,8 +1400,8 @@ router.post('/api/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
       return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
 
     await pool.query(
-      `UPDATE formulare_ord SET status='anulat', updated_at=NOW() WHERE id=$1`,
-      [id]
+      `UPDATE formulare_ord SET status='anulat', updated_at=NOW(), updated_by=$2 WHERE id=$1`,
+      [id, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {

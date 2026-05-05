@@ -397,10 +397,10 @@ router.get('/api/alop/:id', async (req, res) => {
       try {
         const { rows: up } = await pool.query(`
           UPDATE alop_instances
-          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()
+          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW(), updated_by=$2
           WHERE id=$1 AND status='angajare'
           RETURNING status, df_completed_at
-        `, [req.params.id]);
+        `, [req.params.id, actor.userId]);
         if (up[0]) {
           alop.status = up[0].status;
           alop.df_completed_at = up[0].df_completed_at;
@@ -416,10 +416,10 @@ router.get('/api/alop/:id', async (req, res) => {
       try {
         const { rows: up } = await pool.query(`
           UPDATE alop_instances
-          SET status='plata', ord_completed_at=NOW(), updated_at=NOW()
+          SET status='plata', ord_completed_at=NOW(), updated_at=NOW(), updated_by=$2
           WHERE id=$1 AND status='ordonantare'
           RETURNING status, ord_completed_at
-        `, [req.params.id]);
+        `, [req.params.id, actor.userId]);
         if (up[0]) {
           alop.status = up[0].status;
           alop.ord_completed_at = up[0].ord_completed_at;
@@ -471,11 +471,12 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
       UPDATE alop_instances
       SET df_id = $1,
           updated_at = NOW(),
+          updated_by = $4,
           status = CASE WHEN status = 'draft' THEN 'angajare' ELSE status END
       WHERE id = $2 AND org_id = $3
         AND (df_id IS NULL OR df_id = $1)
       RETURNING *
-    `, [df_id, req.params.id, actor.orgId]);
+    `, [df_id, req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true, alop: rows[0] });
@@ -496,10 +497,10 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET df_flow_id=$1, updated_at=NOW()
+      SET df_flow_id=$1, updated_at=NOW(), updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
-    `, [flow_id, req.params.id, actor.orgId]);
+    `, [flow_id, req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
 
@@ -515,9 +516,9 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
       if (flowRows[0]) {
         await pool.query(`
           UPDATE alop_instances
-          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()
+          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW(), updated_by=$3
           WHERE id=$1 AND org_id=$2 AND status IN ('draft','angajare')
-        `, [req.params.id, actor.orgId]);
+        `, [req.params.id, actor.orgId, actor.userId]);
         logger.info(`[ALOP] link-df-flow: flux deja completat → lichidare, id=${req.params.id}`);
       }
     } catch (linkErr) {
@@ -543,10 +544,10 @@ router.post('/api/alop/:id/df-completed', _csrf, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET df_completed_at=NOW(), status='lichidare', updated_at=NOW()
+      SET df_completed_at=NOW(), status='lichidare', updated_at=NOW(), updated_by=$3
       WHERE id=$1 AND org_id=$2 AND df_flow_id IS NOT NULL AND status='angajare'
       RETURNING *
-    `, [req.params.id, actor.orgId]);
+    `, [req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(400).json({ error: 'df_flow_necesar_sau_status_invalid' });
     res.json({ alop: rows[0] });
@@ -589,7 +590,8 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
           lichidare_nr_pv=$5,
           lichidare_data_pv=$6,
           status='ordonantare',
-          updated_at=NOW()
+          updated_at=NOW(),
+          updated_by=$1
       WHERE id=$7 AND org_id=$8 AND status IN ('lichidare','ordonantare')
       RETURNING *
     `, [actor.userId, observatii || notes || '', nr_factura || null, data_factura || null, nr_pv || null, data_pv || null, req.params.id, actor.orgId]);
@@ -621,11 +623,11 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET ord_id=$1, updated_at=NOW()
+      SET ord_id=$1, updated_at=NOW(), updated_by=$4
       WHERE id=$2 AND org_id=$3
         AND (ord_id IS NULL OR ord_id = $1)
       RETURNING *
-    `, [ord_id, req.params.id, actor.orgId]);
+    `, [ord_id, req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true, alop: rows[0] });
@@ -645,10 +647,10 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET ord_flow_id=$1, updated_at=NOW()
+      SET ord_flow_id=$1, updated_at=NOW(), updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
-    `, [flow_id, req.params.id, actor.orgId]);
+    `, [flow_id, req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true, alop: rows[0] });
@@ -665,10 +667,10 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET ord_completed_at=NOW(), status='plata', updated_at=NOW()
+      SET ord_completed_at=NOW(), status='plata', updated_at=NOW(), updated_by=$3
       WHERE id=$1 AND org_id=$2 AND ord_flow_id IS NOT NULL AND status='ordonantare'
       RETURNING *
-    `, [req.params.id, actor.orgId]);
+    `, [req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(400).json({ error: 'ord_flow_necesar_sau_status_invalid' });
     res.json({ alop: rows[0] });
@@ -698,7 +700,8 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
           plata_observatii=$6,
           status='completed',
           completed_at=NOW(),
-          updated_at=NOW()
+          updated_at=NOW(),
+          updated_by=$1
       WHERE id=$7 AND org_id=$8 AND status='plata'
       RETURNING *
     `, [actor.userId, observatii || notes || '', nr_ordin_plata || null, data_plata || null,
@@ -796,10 +799,11 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
         completed_at = NULL,
         suma_totala_platita = $2,
         ciclu_curent = $3,
-        updated_at = NOW()
+        updated_at = NOW(),
+        updated_by = $4
       WHERE id=$1
       RETURNING *
-    `, [req.params.id, sumaPlata, cicluNr + 1]);
+    `, [req.params.id, sumaPlata, cicluNr + 1, actor.userId]);
 
     logger.info({ alopId: req.params.id, ciclu: cicluNr + 1, ramas }, '[ALOP] nouă lichidare pornită');
     res.json({ ok: true, alop: updated, ramas });
@@ -833,12 +837,13 @@ router.post('/api/alop/admin/repair-status', _csrf, async (req, res) => {
               ) THEN 'lichidare'
             ELSE a.status
           END,
-          updated_at = NOW()
+          updated_at = NOW(),
+          updated_by = $2
       WHERE a.cancelled_at IS NULL
         AND a.status IN ('draft','angajare','ordonantare')
         AND ($1::integer IS NULL OR a.org_id = $1)
       RETURNING id, status
-    `, [actor.role === 'admin' ? null : actor.orgId]);
+    `, [actor.role === 'admin' ? null : actor.orgId, actor.userId]);
     res.json({ repaired: r.rows });
   } catch(e) {
     logger.error({ err: e }, 'alop repair-status error');
@@ -852,10 +857,10 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET status='cancelled', cancelled_at=NOW(), updated_at=NOW()
+      SET status='cancelled', cancelled_at=NOW(), updated_at=NOW(), updated_by=$3
       WHERE id=$1 AND org_id=$2 AND status != 'completed'
       RETURNING *
-    `, [req.params.id, actor.orgId]);
+    `, [req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ alop: rows[0] });

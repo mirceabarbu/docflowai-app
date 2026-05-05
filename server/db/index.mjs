@@ -1237,6 +1237,25 @@ const MIGRATIONS = [
       ALTER TABLE formulare_df
         ADD COLUMN IF NOT EXISTS ckbx_oblig_tert TEXT;
     `
+  },
+  {
+    id: '066_updated_by_tracking',
+    sql: `
+      ALTER TABLE formulare_df
+        ADD COLUMN IF NOT EXISTS updated_by INTEGER REFERENCES users(id);
+      ALTER TABLE formulare_ord
+        ADD COLUMN IF NOT EXISTS updated_by INTEGER REFERENCES users(id);
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_updated_by ON formulare_df(updated_by);
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_updated_by ON formulare_ord(updated_by);
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+        ALTER TABLE alop_instances
+          ADD COLUMN IF NOT EXISTS updated_by INTEGER REFERENCES users(id);
+        CREATE INDEX IF NOT EXISTS idx_alop_instances_updated_by ON alop_instances(updated_by);
+      END $g$;
+    `
   }
 ];
 

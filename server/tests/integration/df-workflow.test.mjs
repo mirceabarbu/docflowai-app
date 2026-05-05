@@ -320,7 +320,7 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
       String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_flow_id=NULL')
     );
     expect(alopUpdate).toBeDefined();
-    expect(alopUpdate[1]).toEqual([DF_R1_ID, DF_ID]);
+    expect(alopUpdate[1]).toEqual([DF_R1_ID, DF_ID, 1]);
   });
 
   it('400 — refuză /revizuieste pe DF cu status=draft (neaprobat fără flag)', async () => {

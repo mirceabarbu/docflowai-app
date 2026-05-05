@@ -355,6 +355,7 @@ function _renderLstTable(rows,type){
       </td>
       <td>
         <div>${_fmtDate(row.updated_at)}</div>
+        ${row.updated_by_nume ? `<div style="font-size:.75rem;color:var(--df-text-3);margin-top:2px">${esc(row.updated_by_nume)}</div>` : ''}
       </td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">Deschide</button>
