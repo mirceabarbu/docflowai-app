@@ -1120,16 +1120,23 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
 router.get('/api/formulare/utilizatori-org', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (!actor.orgId) return res.json({ ok: true, users: [] });
+  if (!actor.orgId) return res.json({ ok: true, users: [], actor_compartiment: '' });
   try {
+    const { rows: actorRows } = await pool.query(
+      'SELECT compartiment FROM users WHERE id=$1',
+      [actor.userId]
+    );
+    const actorComp = (actorRows[0]?.compartiment || '').trim();
     const { rows } = await pool.query(
       `SELECT id, email, nume, functie, compartiment
        FROM users
        WHERE org_id=$1 AND id != $2
-       ORDER BY COALESCE(nume, email) ASC`,
-      [actor.orgId, actor.userId]
+       ORDER BY
+         CASE WHEN TRIM(COALESCE(compartiment,'')) = $3 AND $3 <> '' THEN 0 ELSE 1 END,
+         COALESCE(nume, email) ASC`,
+      [actor.orgId, actor.userId, actorComp]
     );
-    res.json({ ok: true, users: rows });
+    res.json({ ok: true, users: rows, actor_compartiment: actorComp });
   } catch (e) {
     res.status(500).json({ error: 'server_error' });
   }
@@ -1215,9 +1222,28 @@ router.get('/api/formulare/list', async (req, res) => {
       if (!isAdmin) {
         conds.push(`fd.org_id=$${params.push(actor.orgId)}`);
         if (!isOrgAdmin) {
+          const actorCompRes = await pool.query(
+            'SELECT compartiment FROM users WHERE id=$1',
+            [actor.userId]
+          );
+          const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
           const u1 = params.push(actor.userId);
           const u2 = params.push(actor.userId);
-          conds.push(`(fd.created_by=$${u1} OR fd.assigned_to=$${u2})`);
+          if (actorComp === '') {
+            conds.push(`(fd.created_by=$${u1} OR fd.assigned_to=$${u2})`);
+          } else {
+            const c1 = params.push(actorComp);
+            conds.push(`(
+              fd.created_by=$${u1}
+              OR fd.assigned_to=$${u2}
+              OR EXISTS (
+                SELECT 1 FROM users uc
+                WHERE uc.id = fd.created_by
+                  AND TRIM(uc.compartiment) = $${c1}
+                  AND TRIM(uc.compartiment) <> ''
+              )
+            )`);
+          }
         }
       }
 
@@ -1286,9 +1312,28 @@ router.get('/api/formulare/list', async (req, res) => {
       if (!isAdmin) {
         conds.push(`fo.org_id=$${params.push(actor.orgId)}`);
         if (!isOrgAdmin) {
+          const actorCompRes = await pool.query(
+            'SELECT compartiment FROM users WHERE id=$1',
+            [actor.userId]
+          );
+          const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
           const u1 = params.push(actor.userId);
           const u2 = params.push(actor.userId);
-          conds.push(`(fo.created_by=$${u1} OR fo.assigned_to=$${u2})`);
+          if (actorComp === '') {
+            conds.push(`(fo.created_by=$${u1} OR fo.assigned_to=$${u2})`);
+          } else {
+            const c1 = params.push(actorComp);
+            conds.push(`(
+              fo.created_by=$${u1}
+              OR fo.assigned_to=$${u2}
+              OR EXISTS (
+                SELECT 1 FROM users uc
+                WHERE uc.id = fo.created_by
+                  AND TRIM(uc.compartiment) = $${c1}
+                  AND TRIM(uc.compartiment) <> ''
+              )
+            )`);
+          }
         }
       }
 

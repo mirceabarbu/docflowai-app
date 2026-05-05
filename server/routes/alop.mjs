@@ -158,19 +158,38 @@ router.get('/api/alop', async (req, res) => {
     const params = [actor.orgId];
     let where = 'a.org_id = $1 AND a.cancelled_at IS NULL';
     if (actor.role !== 'admin' && actor.role !== 'org_admin') {
+      const actorCompRes = await pool.query(
+        'SELECT compartiment FROM users WHERE id=$1',
+        [actor.userId]
+      );
+      const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
       params.push(actor.userId);
+      const userIdx = params.length;
+      let compClause = '';
+      if (actorComp !== '') {
+        params.push(actorComp);
+        const compIdx = params.length;
+        compClause = `
+    OR (TRIM(a.compartiment) = $${compIdx} AND TRIM(a.compartiment) <> '')
+    OR EXISTS (
+      SELECT 1 FROM users uc
+      WHERE uc.id = a.created_by
+        AND TRIM(uc.compartiment) = $${compIdx}
+        AND TRIM(uc.compartiment) <> ''
+    )`;
+      }
       where += ` AND (
-    a.created_by = $${params.length}
+    a.created_by = $${userIdx}
     OR EXISTS (
       SELECT 1 FROM flows fl1
       WHERE fl1.id = a.df_flow_id
-        AND fl1.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${params.length}::text))
+        AND fl1.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
     )
     OR EXISTS (
       SELECT 1 FROM flows fl2
       WHERE fl2.id = a.ord_flow_id
-        AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${params.length}::text))
-    )
+        AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
+    )${compClause}
   )`;
     }
     if (status) {
@@ -310,6 +329,43 @@ router.get('/api/alop/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const detailParams = [req.params.id, actor.orgId];
+    let extraWhere = '';
+    if (actor.role !== 'admin' && actor.role !== 'org_admin') {
+      const actorCompRes = await pool.query(
+        'SELECT compartiment FROM users WHERE id=$1',
+        [actor.userId]
+      );
+      const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
+      detailParams.push(actor.userId);
+      const userIdx = detailParams.length;
+      let compClause = '';
+      if (actorComp !== '') {
+        detailParams.push(actorComp);
+        const compIdx = detailParams.length;
+        compClause = `
+          OR (TRIM(a.compartiment) = $${compIdx} AND TRIM(a.compartiment) <> '')
+          OR EXISTS (
+            SELECT 1 FROM users uc
+            WHERE uc.id = a.created_by
+              AND TRIM(uc.compartiment) = $${compIdx}
+              AND TRIM(uc.compartiment) <> ''
+          )`;
+      }
+      extraWhere = ` AND (
+        a.created_by = $${userIdx}
+        OR EXISTS (
+          SELECT 1 FROM flows fl1
+          WHERE fl1.id = a.df_flow_id
+            AND fl1.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
+        )
+        OR EXISTS (
+          SELECT 1 FROM flows fl2
+          WHERE fl2.id = a.ord_flow_id
+            AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
+        )${compClause}
+      )`;
+    }
     const { rows } = await pool.query(`
       SELECT
         a.*,
@@ -385,8 +441,8 @@ router.get('/api/alop/:id', async (req, res) => {
       ) cicluri ON true
       WHERE a.id = $1
         AND a.org_id = $2
-        AND a.cancelled_at IS NULL
-    `, [req.params.id, actor.orgId]);
+        AND a.cancelled_at IS NULL${extraWhere}
+    `, detailParams);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     const alop = rows[0];

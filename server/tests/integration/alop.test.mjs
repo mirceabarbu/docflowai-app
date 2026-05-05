@@ -196,7 +196,9 @@ describe('Securitate — autentificare obligatorie', () => {
 
   it('404 — nu poate accesa ALOP din altă organizație', async () => {
     // Token cu orgId=99, dar ALOP e pentru orgId=1 → query returnează rows goale
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [] }); // SELECT → 0 rezultate
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] })
+      .mockResolvedValueOnce({ rows: [] }); // SELECT → 0 rezultate
     const app = createTestApp();
     const res = await request(app)
       .get(`/api/alop/${ALOP_ID}`)
@@ -256,8 +258,9 @@ describe('POST /api/alop — creare ALOP nou', () => {
 describe('GET /api/alop — listare ALOP org', () => {
   it('200 — returnează lista și metadate paginare', async () => {
     const row = makeAlopRow();
-    // query 1: SELECT lista; query 2: COUNT
+    // query 0: compartiment actor; query 1: SELECT lista; query 2: COUNT
     dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] })
       .mockResolvedValueOnce({ rows: [row] })
       .mockResolvedValueOnce({ rows: [{ count: 1 }] });
 
@@ -275,6 +278,7 @@ describe('GET /api/alop — listare ALOP org', () => {
 
   it('200 — filtru status funcționează (adaugă param la query)', async () => {
     dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ count: 0 }] });
 
@@ -284,13 +288,14 @@ describe('GET /api/alop — listare ALOP org', () => {
       .set('Cookie', `auth_token=${makeToken()}`);
 
     expect(res.status).toBe(200);
-    // Verifică că al 2-lea param al query 1 este 'angajare'
-    const listCall = dbModule.pool.query.mock.calls[0];
+    // mock.calls[0] = compartiment actor; mock.calls[1] = lista
+    const listCall = dbModule.pool.query.mock.calls[1];
     expect(listCall[1]).toContain('angajare');
   });
 
   it('200 — izolat la org_id din token', async () => {
     dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ count: 0 }] });
 
@@ -299,7 +304,7 @@ describe('GET /api/alop — listare ALOP org', () => {
       .get('/api/alop')
       .set('Cookie', `auth_token=${makeToken({ orgId: 42 })}`);
 
-    const listCall = dbModule.pool.query.mock.calls[0];
+    const listCall = dbModule.pool.query.mock.calls[1];
     expect(listCall[1][0]).toBe(42); // org_id = $1
   });
 });
@@ -307,7 +312,10 @@ describe('GET /api/alop — listare ALOP org', () => {
 describe('GET /api/alop/:id — detaliu ALOP', () => {
   it('200 — returnează ALOP existent', async () => {
     const row = makeAlopRow();
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [row] });
+    // query 0: compartiment actor; query 1: SELECT detail
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] })
+      .mockResolvedValueOnce({ rows: [row] });
 
     const app = createTestApp();
     const res = await request(app)
@@ -320,7 +328,9 @@ describe('GET /api/alop/:id — detaliu ALOP', () => {
   });
 
   it('404 — ALOP inexistent', async () => {
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [] });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] })
+      .mockResolvedValueOnce({ rows: [] });
 
     const app = createTestApp();
     const res = await request(app)
