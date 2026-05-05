@@ -410,8 +410,8 @@ function renderAlopDetail(a,container){
         lichidare_nr_factura: a.lichidare_nr_factura,
         lichidare_confirmed_at: a.lichidare_confirmed_at,
         ord_valoare: a.ord_valoare,
-        ord_nr: a.ord_nr,
         ord_completed_at: a.ord_completed_at,
+        nr_ordonant_pl: a.ord_nr,
         plata_suma_efectiva: a.plata_suma_efectiva,
         plata_nr_ordin: a.plata_nr_ordin,
         plata_data: a.plata_data,
@@ -457,7 +457,7 @@ function renderAlopDetail(a,container){
               <div style="font-size:.68rem;color:#8b5cf6;margin-bottom:2px;font-weight:600">💰 Ordonanțare</div>
               <div style="color:var(--df-text-2)">${_ordAfisare}</div>
               <div style="font-size:.72rem;color:var(--df-text-3)">${_ordData ? fmtDate(_ordData) : ''}</div>
-              ${c.ord_nr?`<div style="font-size:.7rem;color:var(--df-text-3)">Nr. ${esc(c.ord_nr)}</div>`:''}
+              ${c.nr_ordonant_pl ? `<div style="font-size:.7rem;color:var(--df-text-3);font-weight:600;margin-top:2px">Nr. ${esc(c.nr_ordonant_pl)}</div>` : ''}
             </div>
             <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.18);border-radius:6px;padding:6px 10px">
               <div style="font-size:.68rem;color:#10b981;margin-bottom:2px;font-weight:600">🏦 Plată</div>

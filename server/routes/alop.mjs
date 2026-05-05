@@ -357,8 +357,30 @@ router.get('/api/alop/:id', async (req, res) => {
       LEFT JOIN users        ul  ON ul.id  = a.lichidare_confirmed_by
       LEFT JOIN users        up  ON up.id  = a.plata_confirmed_by
       LEFT JOIN LATERAL (
-        SELECT json_agg(c ORDER BY c.ciclu_nr) AS cicluri_json
+        SELECT json_agg(
+          jsonb_build_object(
+            'ciclu_nr', c.ciclu_nr,
+            'ord_id', c.ord_id,
+            'ord_flow_id', c.ord_flow_id,
+            'lichidare_confirmed_by', c.lichidare_confirmed_by,
+            'lichidare_confirmed_at', c.lichidare_confirmed_at,
+            'lichidare_nr_factura', c.lichidare_nr_factura,
+            'lichidare_data_factura', c.lichidare_data_factura,
+            'lichidare_nr_pv', c.lichidare_nr_pv,
+            'lichidare_data_pv', c.lichidare_data_pv,
+            'lichidare_notes', c.lichidare_notes,
+            'plata_confirmed_by', c.plata_confirmed_by,
+            'plata_confirmed_at', c.plata_confirmed_at,
+            'plata_nr_ordin', c.plata_nr_ordin,
+            'plata_data', c.plata_data,
+            'plata_suma_efectiva', c.plata_suma_efectiva,
+            'plata_observatii', c.plata_observatii,
+            'status', c.status,
+            'nr_ordonant_pl', fo_c.nr_ordonant_pl
+          ) ORDER BY c.ciclu_nr
+        ) AS cicluri_json
         FROM alop_ord_cicluri c
+        LEFT JOIN formulare_ord fo_c ON fo_c.id = c.ord_id
         WHERE c.alop_id = a.id
       ) cicluri ON true
       WHERE a.id = $1
