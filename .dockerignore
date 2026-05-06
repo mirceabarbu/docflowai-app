@@ -2,5 +2,12 @@ node_modules
 .git
 .env
 *.log
-tools
 coverage
+
+# Excludem tools/ în general (script-uri de migrare, dezvoltare etc.)
+# DAR păstrăm asset-urile folosite la runtime în producție:
+#   - DocFlowAI_Prezentare.pdf  → atașament email outreach (server/routes/admin/outreach.mjs)
+#   - primarii-romania.json     → seed inițial outreach_primarii (idem)
+tools/*
+!tools/DocFlowAI_Prezentare.pdf
+!tools/primarii-romania.json

@@ -19,6 +19,7 @@
     <p style="margin:0;font-size:14px;color:#1e293b;font-weight:600;">Ce oferă DocFlowAI:</p>
     <ul style="margin:8px 0 0 0;padding-left:18px;color:#334155;font-size:14px;line-height:1.8;">
       <li>Flux secvențial de semnare electronică (ÎNTOCMIT · VERIFICAT · VIZAT · APROBAT)</li>
+      <li><strong>Modul ALOP integrat</strong> — Angajament Bugetar · Lichidare · Ordonanțare · Plată, conform <strong>OMF 1140/2025</strong></li>
       <li>Notificări automate prin email, push și WhatsApp</li>
       <li>Arhivare automată în Google Drive + jurnal de audit complet</li>
       <li>Securitate avansată: JWT HttpOnly, PBKDF2, CSP, GDPR compliant</li>
@@ -50,6 +51,13 @@
     un sistem în care inițiatorul încarcă documentul, sistemul îl trimite automat
     fiecărui semnatar în ordine, iar la final totul este arhivat cu jurnal de audit complet.
   </p>
+  <p style="color:#1e293b;font-size:15px;line-height:1.8;margin:0 0 16px 0;">
+    În plus, platforma include <strong>modulul ALOP</strong> — un flux dedicat pentru
+    <em>Angajament Bugetar · Lichidare · Ordonanțare · Plată</em>, construit conform
+    <strong>OMF 1140/2025</strong>, cu pre-populare automată între etape și
+    blocare a câmpurilor pe roluri (P1/P2). Practic, întreg circuitul financiar-contabil
+    al instituției devine electronic, fără hârtie și fără registre paralele.
+  </p>
   <div style="background:#f0f4ff;padding:16px 20px;border-radius:8px;margin:20px 0;">
     <p style="margin:0;font-size:14px;color:#1e293b;">
       📋 <strong>{{institutie}}</strong> ar putea digitaliza circuitul de documente în mai puțin de o zi de implementare.
@@ -73,7 +81,7 @@
     'Propunere digitalizare flux documente – DocFlowAI',
     'Semnături electronice calificate pentru {{institutie}} — demonstrație gratuită',
     'Cum elimină {{institutie}} hârtia din circuitul intern de documente',
-    'DocFlowAI — flux electronic ÎNTOCMIT→VIZAT→APROBAT pentru instituții publice',
+    'DocFlowAI — flux electronic ÎNTOCMIT→VIZAT→APROBAT + modul ALOP',
     'O întrebare despre circuitul de documente din {{institutie}}',
   ];
 
