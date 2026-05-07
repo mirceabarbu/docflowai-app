@@ -959,7 +959,6 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
       color: rgb(0.5, 0.5, 0.5), opacity: 0.8 });
 
     const isAncore = flowData.flowType === 'ancore';
-    const stampedPdfB64 = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
 
     const signerRects = [];
     const signers = Array.isArray(flowData.signers) ? flowData.signers : [];
@@ -1048,6 +1047,12 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
         signerRects.push({ page: cartusPageNum, x, y, w: cellW, h: 65 });
       }
     }
+
+    // FIX v3.9.439: salvăm PDF-ul DUPĂ ce eventual s-a adăugat pagina
+    // nouă pentru cartuș. Anterior, save-ul era ÎNAINTE de addPage →
+    // padesRect.page=N+1 dar PDF-ul salvat avea doar N pagini → Java
+    // arunca IndexOutOfBoundsException la signExternalContainer.
+    const stampedPdfB64 = Buffer.from(await pdfDoc.save({ useObjectStreams: !isAncore })).toString('base64');
 
     if (signerRects.length) return { pdfB64: stampedPdfB64, signerRects };
     return stampedPdfB64;
