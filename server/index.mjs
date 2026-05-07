@@ -923,9 +923,21 @@ function pdfLooksSigned(pdfB64) {
 // Returnează null dacă nu poate decoda (PDF criptat / structură exotică).
 // În acel caz, apelantul trebuie să forțeze pagină nouă (siguranță maximă).
 // ─────────────────────────────────────────────────────────────────────────────
-// detectContentYs — returnează TOATE pozițiile Y unde există conținut
-// pe pagină (text matrix Y + rectangle bottom Y), sortate crescător.
-// Returnează null dacă PDF-ul nu poate fi parsat (criptat / structură exotică).
+// detectContentYs v3.9.441 — îmbunătățit pentru a prinde PDF-uri generate
+// de LibreOffice/Word/Office care folosesc Td/TD relative în loc de Tm absolut.
+//
+// Algoritm:
+//   - La 'BT' (begin text): text matrix Y = 0
+//   - La 'Tm a b c d e f': Y absolut = f
+//   - La 'Td tx ty': Y += ty (acumulare relativă)
+//   - La 'TD tx ty': Y += ty + setează leading
+//   - Capturăm Y la fiecare poziționare (NU așteptăm Tj — în PDF-urile
+//     office, Tj e atașat direct de Tf fără whitespace, deci tokenizer-ul
+//     nu îl izolează)
+//   - Capturăm și 're' (rectangles)
+//
+// Returnează array sortat ascending de Y-uri unice >= ignoreBelow,
+// SAU null dacă PDF-ul nu poate fi parsat.
 function detectContentYs(page, ignoreBelow = 45) {
   try {
     const { PDFArray, PDFRawStream } = PDFLib;
@@ -958,13 +970,49 @@ function detectContentYs(page, ignoreBelow = 45) {
       }
 
       const tokens = text.split(/[\s\n\r]+/);
+      // Stare text positioning
+      let curY = null;       // Y absolut curent în coordonate pagină (PDF bottom-up)
+      let leading = 0;       // Leading pentru T*
+
       for (let i = 0; i < tokens.length; i++) {
         const tok = tokens[i];
-        if (tok === 'Tm' && i >= 6) {
-          const y = parseFloat(tokens[i - 1]);
-          if (!isNaN(y) && y >= ignoreBelow) ySet.add(Math.round(y * 10) / 10);
-        }
-        else if (tok === 're' && i >= 4) {
+
+        if (tok === 'BT') {
+          // Begin Text: Tm = identity → poziție (0, 0)
+          curY = 0;
+        } else if (tok === 'ET') {
+          // End Text: invalidăm starea (nu se poate poziționa text în afara BT/ET)
+          curY = null;
+        } else if (tok === 'Tm' && i >= 6) {
+          // Set Text Matrix absolut: a b c d e f Tm. Y = f.
+          const f = parseFloat(tokens[i - 1]);
+          if (!isNaN(f)) {
+            curY = f;
+            if (curY >= ignoreBelow) ySet.add(Math.round(curY * 10) / 10);
+          }
+        } else if ((tok === 'Td' || tok === 'TD') && i >= 2) {
+          // Move text position relativ: tx ty Td/TD. Y += ty.
+          // Capturăm imediat curY pentru că Td/TD sunt urmate ÎNTOTDEAUNA
+          // de o operație text-show (Tj/TJ/'/")  — și tokenizer-ul nostru
+          // poate să nu izoleze Tj dacă e lipit de Tf<bytes>Tj.
+          const ty = parseFloat(tokens[i - 1]);
+          if (!isNaN(ty) && curY !== null) {
+            curY += ty;
+            if (tok === 'TD') leading = -ty;
+            if (curY >= ignoreBelow) ySet.add(Math.round(curY * 10) / 10);
+          }
+        } else if (tok === 'T*') {
+          // Move to next line: Y -= leading
+          if (curY !== null) {
+            curY -= leading;
+            if (curY >= ignoreBelow) ySet.add(Math.round(curY * 10) / 10);
+          }
+        } else if (tok === 'TL' && i >= 1) {
+          // Set leading
+          const v = parseFloat(tokens[i - 1]);
+          if (!isNaN(v)) leading = v;
+        } else if (tok === 're' && i >= 4) {
+          // Rectangle: x y w h re. Y bottom = tokens[i-3].
           const y = parseFloat(tokens[i - 3]);
           if (!isNaN(y) && y >= ignoreBelow) ySet.add(Math.round(y * 10) / 10);
         }
