@@ -560,16 +560,17 @@ function renderDocsList(ft,docs){
       ?(d.nr_ordonant_pl?`ORD ${esc(d.nr_ordonant_pl)}`:'ORD fără număr')
       :(d.nr_unic_inreg?`DF ${esc(d.nr_unic_inreg)}`:'DF fără număr');
     const updated=new Date(d.updated_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const created=new Date(d.created_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const p2info=d.assigned_to_nume?` · Resp. CAB: ${esc(d.assigned_to_nume)}`:'';
     const creator=d.created_by_nume||d.created_by_email||'';
-    const creatorInfo=creator?` · ${esc(creator)}`:'';
+    const creatorInfo=creator?`Creat de: <b>${esc(creator)}</b> · `:'';
     const pdfBtn=d.flow_id
       ?`<button class="df-action-btn sm" style="margin-left:4px" onclick="event.stopPropagation();viewFlowPdf('${d.flow_id}')" title="PDF semnat din flux">📄 PDF flux</button>`
       :'';
     return`<div class="doc-card" data-id="${d.id}" onclick="openDoc('${ft}','${d.id}')">
       <div class="doc-card-main">
         <div class="doc-card-title">${title}${revBadge}</div>
-        <div class="doc-card-sub">${updated}${p2info}${creatorInfo}</div>
+        <div class="doc-card-sub">${creatorInfo}Creat: ${created} · Actualizat: ${updated}${p2info}</div>
       </div>
       <span class="dst ${cls}">${lbl}</span>${pdfBtn}
     </div>`;
@@ -834,24 +835,66 @@ async function showP2Modal(ft){
     try{
       const r=await fetch('/api/formulare/utilizatori-org',{credentials:'include'});
       const j=await r.json();
-      if(r.ok&&j.ok)ST.orgUsers=j.users||[];
+      if(r.ok&&j.ok){
+        ST.orgUsers=j.users||[];
+        ST.actorCompartiment=j.actor_compartiment||'';
+      }
     }catch(_){}
   }
+  if(ST.p2FilterByComp===undefined) ST.p2FilterByComp=!!ST.actorCompartiment;
+  _renderP2FilterToggle();
   filterModalUsers();
+}
+
+function _renderP2FilterToggle(){
+  const searchEl=document.getElementById('modal-search');
+  if(!searchEl) return;
+  let toggleEl=document.getElementById('modal-p2-comp-toggle');
+  if(!ST.actorCompartiment){
+    if(toggleEl) toggleEl.style.display='none';
+    return;
+  }
+  if(!toggleEl){
+    toggleEl=document.createElement('label');
+    toggleEl.id='modal-p2-comp-toggle';
+    toggleEl.style.cssText='display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--df-text-2);margin:8px 0;cursor:pointer;user-select:none';
+    toggleEl.innerHTML=`
+      <input type="checkbox" id="modal-p2-comp-cb" style="cursor:pointer">
+      <span>Doar din <b>${(ST.actorCompartiment||'').replace(/</g,'&lt;')}</b></span>`;
+    searchEl.parentNode.insertBefore(toggleEl,searchEl.nextSibling);
+    document.getElementById('modal-p2-comp-cb').addEventListener('change',(e)=>{
+      ST.p2FilterByComp=e.target.checked;
+      filterModalUsers();
+    });
+  }
+  toggleEl.style.display='';
+  document.getElementById('modal-p2-comp-cb').checked=!!ST.p2FilterByComp;
 }
 function closeModal(){document.getElementById('modal-p2').classList.remove('show');}
 function filterModalUsers(){
   const q=(document.getElementById('modal-search')?.value||'').toLowerCase();
   const listEl=document.getElementById('modal-user-list');
-  const filtered=ST.orgUsers.filter(u=>(u.nume||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q));
-  if(!filtered.length){listEl.innerHTML='<div style="color:var(--df-text-3);font-size:.8rem;text-align:center;padding:10px">Niciun utilizator găsit.</div>';return;}
-  listEl.innerHTML=filtered.map(u=>`
-    <div class="modal-user${ST.selectedP2Id===u.id?' sel':''}" onclick="selectP2(${u.id})">
+  const actComp=(ST.actorCompartiment||'').trim();
+  let filtered=ST.orgUsers.filter(u=>(u.nume||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q));
+  if(ST.p2FilterByComp && actComp){
+    filtered=filtered.filter(u=>(u.compartiment||'').trim()===actComp);
+  }
+  if(!filtered.length){
+    listEl.innerHTML=`<div style="color:var(--df-text-3);font-size:.8rem;text-align:center;padding:10px">${ST.p2FilterByComp&&actComp?`Niciun utilizator în compartimentul <b>${actComp.replace(/</g,'&lt;')}</b>. Dezactivați filtrul pentru a vedea pe toți.`:'Niciun utilizator găsit.'}</div>`;
+    return;
+  }
+  listEl.innerHTML=filtered.map(u=>{
+    const uComp=(u.compartiment||'').trim();
+    const otherCompBadge=actComp && uComp && uComp!==actComp
+      ? ` <span style="font-size:.66rem;padding:1px 6px;border-radius:8px;background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.25);margin-left:4px">alt compartiment</span>`
+      : '';
+    return `<div class="modal-user${ST.selectedP2Id===u.id?' sel':''}" onclick="selectP2(${u.id})">
       <div style="flex:1">
-        <div class="modal-u-name">${(u.nume||u.email||'').replace(/</g,'&lt;')}</div>
+        <div class="modal-u-name">${(u.nume||u.email||'').replace(/</g,'&lt;')}${otherCompBadge}</div>
         <div class="modal-u-sub">${(u.email||'').replace(/</g,'&lt;')}${u.compartiment?` · ${u.compartiment.replace(/</g,'&lt;')}`:''}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 function selectP2(id){
   ST.selectedP2Id=id;

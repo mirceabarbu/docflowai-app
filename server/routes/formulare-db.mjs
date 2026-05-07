@@ -16,6 +16,7 @@ import { requireAuth } from '../middleware/auth.mjs';
 import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { pool } from '../db/index.mjs';
+import { loadActorComp, canEditFormular, canDestroyOnly } from '../services/authz-formular.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -265,10 +266,11 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
 
-    const isP1 = doc.created_by === actor.userId;
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+    if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    const isP1 = doc.created_by === actor.userId || authz.role === 'comp' || authz.role === 'admin';
     const isP2 = doc.assigned_to === actor.userId;
-    if (!isP1 && !isP2 && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
 
     // P1 poate modifica doar în draft (sau resetează completed → draft cu version++)
     let extraSets = [];
@@ -298,6 +300,8 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
       pi++;
     }
     allSets.push(`updated_at=NOW()`);
+    allSets.push(`updated_by=$${allVals.length + 1}`);
+    allVals.push(actor.userId);
     allVals.push(req.params.id, actor.orgId);
 
     if (!allSets.filter(s => !s.startsWith('updated')).length && !extraSets.length)
@@ -329,8 +333,11 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (!['draft','returnat','de_revizuit'].includes(doc.status))
       return res.status(409).json({ error: 'document_not_draft', status: doc.status });
 
@@ -343,10 +350,10 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
 
     const { rows: updated } = await pool.query(`
       UPDATE formulare_df
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL
+      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
-    `, [assigned_to, req.params.id, actor.orgId]);
+    `, [assigned_to, req.params.id, actor.orgId, actor.userId]);
 
     await sendNotif(assigned_to, 'formulare_df_p2',
       'Document de Fundamentare — completare solicitată',
@@ -372,14 +379,29 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const isAdminRole = ['admin','org_admin'].includes(actor.role);
+      let canComplete = isAdminRole || doc.assigned_to === actor.userId;
+      if (!canComplete && doc.assigned_to) {
+        const actorComp = await loadActorComp(pool, actor.userId);
+        if (actorComp) {
+          const { rows: p2rows } = await pool.query(
+            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
+            [doc.assigned_to, actorComp]
+          );
+          if (p2rows.length) canComplete = true;
+        }
+      }
+      if (!canComplete) return res.status(403).json({ error: 'forbidden' });
+    }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
 
     const data = pick(req.body || {}, DF_P2_FIELDS);
     const { sets, vals } = buildUpdate(data, DF_P2_FIELDS, 1);
     sets.push(`status='completed'`, `completed_at=NOW()`, `updated_at=NOW()`);
+    sets.push(`updated_by=$${vals.length + 1}`);
+    vals.push(actor.userId);
     vals.push(req.params.id, actor.orgId);
 
     const { rows: updated } = await pool.query(`
@@ -392,9 +414,9 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
     try {
       await pool.query(
         `UPDATE alop_instances
-         SET df_completed_at=NOW(), status=CASE WHEN status='draft' THEN 'angajare' ELSE status END, updated_at=NOW()
+         SET df_completed_at=NOW(), status=CASE WHEN status='draft' THEN 'angajare' ELSE status END, updated_at=NOW(), updated_by=$3
          WHERE df_id=$1 AND org_id=$2 AND status IN ('draft','angajare')`,
-        [req.params.id, actor.orgId]
+        [req.params.id, actor.orgId, actor.userId]
       );
     } catch(e) {
       logger.warn({ err: e }, 'alop_instances update failed after P2 complete');
@@ -426,13 +448,26 @@ router.post('/api/formulare-df/:id/returneaza', _csrf, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const isAdminRole = ['admin','org_admin'].includes(actor.role);
+      let canReturn = isAdminRole || doc.assigned_to === actor.userId;
+      if (!canReturn && doc.assigned_to) {
+        const actorComp = await loadActorComp(pool, actor.userId);
+        if (actorComp) {
+          const { rows: p2rows } = await pool.query(
+            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
+            [doc.assigned_to, actorComp]
+          );
+          if (p2rows.length) canReturn = true;
+        }
+      }
+      if (!canReturn) return res.status(403).json({ error: 'forbidden' });
+    }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
     await pool.query(
-      `UPDATE formulare_df SET status='returnat', motiv_returnare=$1, updated_at=NOW() WHERE id=$2`,
-      [motiv.trim(), req.params.id]
+      `UPDATE formulare_df SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2`,
+      [motiv.trim(), req.params.id, actor.userId]
     );
     await sendNotif(doc.created_by, 'formulare_df_returnat',
       'Document de Fundamentare — returnat ca neconform',
@@ -460,21 +495,24 @@ router.post('/api/formulare-df/:id/link-flow', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (doc.status !== 'completed')
       return res.status(409).json({ error: 'document_not_completed' });
 
     await pool.query(
-      'UPDATE formulare_df SET flow_id=$1, status=\'transmis_flux\', updated_at=NOW() WHERE id=$2 AND org_id=$3',
-      [flow_id, req.params.id, actor.orgId]
+      'UPDATE formulare_df SET flow_id=$1, status=\'transmis_flux\', updated_at=NOW(), updated_by=$4 WHERE id=$2 AND org_id=$3',
+      [flow_id, req.params.id, actor.orgId, actor.userId]
     );
     // Actualizează df_flow_id în ALOP (non-fatal)
     try {
       await pool.query(
-        `UPDATE alop_instances SET df_flow_id=$1, updated_at=NOW()
+        `UPDATE alop_instances SET df_flow_id=$1, updated_at=NOW(), updated_by=$4
          WHERE df_id=$2 AND org_id=$3 AND cancelled_at IS NULL`,
-        [flow_id, req.params.id, actor.orgId]
+        [flow_id, req.params.id, actor.orgId, actor.userId]
       );
     } catch(e) {
       logger.warn({ err: e }, 'alop_instances df_flow_id update failed');
@@ -526,8 +564,11 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
     if (!origRows.length) return res.status(404).json({ error: 'DF negăsit' });
     const df = origRows[0];
 
-    if (df.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, df, actorComp, { assignedCounts: true });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
 
     // Doar DF-uri aprobate (flux de semnare finalizat) sau neaprobate (refuz) pot fi revizuite
     if (!df.aprobat && df.status !== 'neaprobat')
@@ -623,9 +664,9 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
 
     // Actualizează linkul ALOP → df_id la noua revizie
     await pool.query(
-      `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
+      `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$3
        WHERE df_id=$2 AND cancelled_at IS NULL`,
-      [nou.id, req.params.id]
+      [nou.id, req.params.id, actor.userId]
     );
 
     logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, isAnUrmator, actor: actor.email }, 'formulare-df revizie creata');
@@ -646,13 +687,15 @@ router.delete('/api/formulare-df/:id', _csrf, async (req, res) => {
       [req.params.id, actor.orgId]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    if (rows[0].created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const authz = canDestroyOnly(actor, rows[0]);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (rows[0].status !== 'draft')
       return res.status(409).json({ error: 'only_draft_deletable' });
     await pool.query(
-      'UPDATE formulare_df SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1',
-      [req.params.id]
+      'UPDATE formulare_df SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1',
+      [req.params.id, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -796,10 +839,12 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
 
-    const isP1 = doc.created_by === actor.userId;
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+    if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    const isP1 = doc.created_by === actor.userId || authz.role === 'comp' || authz.role === 'admin';
     const isP2 = doc.assigned_to === actor.userId;
     const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
-    if (!isP1 && !isP2 && !isAdmin) return res.status(403).json({ error: 'forbidden' });
 
     const extraSets = [];
     const extraVals = [];
@@ -829,6 +874,8 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
       pi++;
     }
     allSets.push(`updated_at=NOW()`);
+    allSets.push(`updated_by=$${allVals.length + 1}`);
+    allVals.push(actor.userId);
     allVals.push(req.params.id, actor.orgId);
 
     const { rows: updated } = await pool.query(`
@@ -857,8 +904,11 @@ router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (!['draft','returnat'].includes(doc.status))
       return res.status(409).json({ error: 'document_not_draft', status: doc.status });
 
@@ -870,10 +920,10 @@ router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
 
     const { rows: updated } = await pool.query(`
       UPDATE formulare_ord
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL
+      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
-    `, [assigned_to, req.params.id, actor.orgId]);
+    `, [assigned_to, req.params.id, actor.orgId, actor.userId]);
 
     await sendNotif(assigned_to, 'formulare_ord_p2',
       'Ordonanțare de Plată — completare solicitată',
@@ -899,14 +949,29 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const isAdminRole = ['admin','org_admin'].includes(actor.role);
+      let canComplete = isAdminRole || doc.assigned_to === actor.userId;
+      if (!canComplete && doc.assigned_to) {
+        const actorComp = await loadActorComp(pool, actor.userId);
+        if (actorComp) {
+          const { rows: p2rows } = await pool.query(
+            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
+            [doc.assigned_to, actorComp]
+          );
+          if (p2rows.length) canComplete = true;
+        }
+      }
+      if (!canComplete) return res.status(403).json({ error: 'forbidden' });
+    }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
 
     const data = pick(req.body || {}, ORD_P2_FIELDS);
     const { sets, vals } = buildUpdate(data, ORD_P2_FIELDS, 1);
     sets.push(`status='completed'`, `completed_at=NOW()`, `updated_at=NOW()`);
+    sets.push(`updated_by=$${vals.length + 1}`);
+    vals.push(actor.userId);
     vals.push(req.params.id, actor.orgId);
 
     const { rows: updated } = await pool.query(`
@@ -941,13 +1006,26 @@ router.post('/api/formulare-ord/:id/returneaza', _csrf, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    if (doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const isAdminRole = ['admin','org_admin'].includes(actor.role);
+      let canReturn = isAdminRole || doc.assigned_to === actor.userId;
+      if (!canReturn && doc.assigned_to) {
+        const actorComp = await loadActorComp(pool, actor.userId);
+        if (actorComp) {
+          const { rows: p2rows } = await pool.query(
+            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
+            [doc.assigned_to, actorComp]
+          );
+          if (p2rows.length) canReturn = true;
+        }
+      }
+      if (!canReturn) return res.status(403).json({ error: 'forbidden' });
+    }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
     await pool.query(
-      `UPDATE formulare_ord SET status='returnat', motiv_returnare=$1, updated_at=NOW() WHERE id=$2`,
-      [motiv.trim(), req.params.id]
+      `UPDATE formulare_ord SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2`,
+      [motiv.trim(), req.params.id, actor.userId]
     );
     await sendNotif(doc.created_by, 'formulare_ord_returnat',
       'Ordonanțare de Plată — returnată ca neconformă',
@@ -975,14 +1053,17 @@ router.post('/api/formulare-ord/:id/link-flow', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    if (doc.created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (doc.status !== 'completed')
       return res.status(409).json({ error: 'document_not_completed' });
 
     await pool.query(
-      'UPDATE formulare_ord SET flow_id=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3',
-      [flow_id, req.params.id, actor.orgId]
+      'UPDATE formulare_ord SET flow_id=$1, updated_at=NOW(), updated_by=$4 WHERE id=$2 AND org_id=$3',
+      [flow_id, req.params.id, actor.orgId, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -1000,12 +1081,14 @@ router.delete('/api/formulare-ord/:id', _csrf, async (req, res) => {
       [req.params.id, actor.orgId]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    if (rows[0].created_by !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const authz = canDestroyOnly(actor, rows[0]);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (rows[0].status !== 'draft')
       return res.status(409).json({ error: 'only_draft_deletable' });
     await pool.query(
-      'UPDATE formulare_ord SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1', [req.params.id]
+      'UPDATE formulare_ord SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1', [req.params.id, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -1112,16 +1195,23 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
 router.get('/api/formulare/utilizatori-org', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (!actor.orgId) return res.json({ ok: true, users: [] });
+  if (!actor.orgId) return res.json({ ok: true, users: [], actor_compartiment: '' });
   try {
+    const { rows: actorRows } = await pool.query(
+      'SELECT compartiment FROM users WHERE id=$1',
+      [actor.userId]
+    );
+    const actorComp = (actorRows[0]?.compartiment || '').trim();
     const { rows } = await pool.query(
       `SELECT id, email, nume, functie, compartiment
        FROM users
        WHERE org_id=$1 AND id != $2
-       ORDER BY COALESCE(nume, email) ASC`,
-      [actor.orgId, actor.userId]
+       ORDER BY
+         CASE WHEN TRIM(COALESCE(compartiment,'')) = $3 AND $3 <> '' THEN 0 ELSE 1 END,
+         COALESCE(nume, email) ASC`,
+      [actor.orgId, actor.userId, actorComp]
     );
-    res.json({ ok: true, users: rows });
+    res.json({ ok: true, users: rows, actor_compartiment: actorComp });
   } catch (e) {
     res.status(500).json({ error: 'server_error' });
   }
@@ -1207,9 +1297,28 @@ router.get('/api/formulare/list', async (req, res) => {
       if (!isAdmin) {
         conds.push(`fd.org_id=$${params.push(actor.orgId)}`);
         if (!isOrgAdmin) {
+          const actorCompRes = await pool.query(
+            'SELECT compartiment FROM users WHERE id=$1',
+            [actor.userId]
+          );
+          const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
           const u1 = params.push(actor.userId);
           const u2 = params.push(actor.userId);
-          conds.push(`(fd.created_by=$${u1} OR fd.assigned_to=$${u2})`);
+          if (actorComp === '') {
+            conds.push(`(fd.created_by=$${u1} OR fd.assigned_to=$${u2})`);
+          } else {
+            const c1 = params.push(actorComp);
+            conds.push(`(
+              fd.created_by=$${u1}
+              OR fd.assigned_to=$${u2}
+              OR EXISTS (
+                SELECT 1 FROM users uc
+                WHERE uc.id = fd.created_by
+                  AND TRIM(uc.compartiment) = $${c1}
+                  AND TRIM(uc.compartiment) <> ''
+              )
+            )`);
+          }
         }
       }
 
@@ -1254,11 +1363,13 @@ router.get('/api/formulare/list', async (req, res) => {
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
           COALESCE(u2.nume, u2.email) AS p2,
+          COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (fd.created_by = $${params.push(actor.userId)}) AS "isP1",
           COUNT(*) OVER() AS total
         FROM formulare_df fd
         LEFT JOIN users u1 ON u1.id = fd.created_by
         LEFT JOIN users u2 ON u2.id = fd.assigned_to
+        LEFT JOIN users u3 ON u3.id = fd.updated_by
         LEFT JOIN flows f  ON f.id::text = fd.flow_id
         ${where}
         ORDER BY fd.updated_at DESC
@@ -1276,9 +1387,28 @@ router.get('/api/formulare/list', async (req, res) => {
       if (!isAdmin) {
         conds.push(`fo.org_id=$${params.push(actor.orgId)}`);
         if (!isOrgAdmin) {
+          const actorCompRes = await pool.query(
+            'SELECT compartiment FROM users WHERE id=$1',
+            [actor.userId]
+          );
+          const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
           const u1 = params.push(actor.userId);
           const u2 = params.push(actor.userId);
-          conds.push(`(fo.created_by=$${u1} OR fo.assigned_to=$${u2})`);
+          if (actorComp === '') {
+            conds.push(`(fo.created_by=$${u1} OR fo.assigned_to=$${u2})`);
+          } else {
+            const c1 = params.push(actorComp);
+            conds.push(`(
+              fo.created_by=$${u1}
+              OR fo.assigned_to=$${u2}
+              OR EXISTS (
+                SELECT 1 FROM users uc
+                WHERE uc.id = fo.created_by
+                  AND TRIM(uc.compartiment) = $${c1}
+                  AND TRIM(uc.compartiment) <> ''
+              )
+            )`);
+          }
         }
       }
 
@@ -1314,11 +1444,13 @@ router.get('/api/formulare/list', async (req, res) => {
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
           COALESCE(u2.nume, u2.email) AS p2,
+          COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (fo.created_by = $${params.push(actor.userId)}) AS "isP1",
           COUNT(*) OVER() AS total
         FROM formulare_ord fo
         LEFT JOIN users u1 ON u1.id = fo.created_by
         LEFT JOIN users u2 ON u2.id = fo.assigned_to
+        LEFT JOIN users u3 ON u3.id = fo.updated_by
         LEFT JOIN flows f  ON f.id::text = fo.flow_id
         ${where}
         ORDER BY fo.updated_at DESC
@@ -1347,17 +1479,18 @@ router.post('/api/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    const isAdmin = actor.role === 'admin';
-    const isOrgAdmin = actor.role === 'org_admin';
-    if (!isAdmin && doc.org_id !== actor.orgId) return res.status(403).json({ error: 'forbidden' });
-    if (!isAdmin && !isOrgAdmin && doc.created_by !== actor.userId)
+    if (actor.role !== 'admin' && doc.org_id !== actor.orgId)
       return res.status(403).json({ error: 'forbidden' });
+    {
+      const authz = canDestroyOnly(actor, doc);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (!['draft','pending_p2','returnat'].includes(doc.status))
       return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
 
     await pool.query(
-      `UPDATE formulare_df SET status='anulat', updated_at=NOW() WHERE id=$1`,
-      [id]
+      `UPDATE formulare_df SET status='anulat', updated_at=NOW(), updated_by=$2 WHERE id=$1`,
+      [id, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -1379,17 +1512,18 @@ router.post('/api/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    const isAdmin = actor.role === 'admin';
-    const isOrgAdmin = actor.role === 'org_admin';
-    if (!isAdmin && doc.org_id !== actor.orgId) return res.status(403).json({ error: 'forbidden' });
-    if (!isAdmin && !isOrgAdmin && doc.created_by !== actor.userId)
+    if (actor.role !== 'admin' && doc.org_id !== actor.orgId)
       return res.status(403).json({ error: 'forbidden' });
+    {
+      const authz = canDestroyOnly(actor, doc);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (!['draft','pending_p2','returnat'].includes(doc.status))
       return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
 
     await pool.query(
-      `UPDATE formulare_ord SET status='anulat', updated_at=NOW() WHERE id=$1`,
-      [id]
+      `UPDATE formulare_ord SET status='anulat', updated_at=NOW(), updated_by=$2 WHERE id=$1`,
+      [id, actor.userId]
     );
     res.json({ ok: true });
   } catch (e) {

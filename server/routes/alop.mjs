@@ -20,6 +20,7 @@ import { requireAuth } from '../middleware/auth.mjs';
 import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
+import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -158,19 +159,38 @@ router.get('/api/alop', async (req, res) => {
     const params = [actor.orgId];
     let where = 'a.org_id = $1 AND a.cancelled_at IS NULL';
     if (actor.role !== 'admin' && actor.role !== 'org_admin') {
+      const actorCompRes = await pool.query(
+        'SELECT compartiment FROM users WHERE id=$1',
+        [actor.userId]
+      );
+      const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
       params.push(actor.userId);
+      const userIdx = params.length;
+      let compClause = '';
+      if (actorComp !== '') {
+        params.push(actorComp);
+        const compIdx = params.length;
+        compClause = `
+    OR (TRIM(a.compartiment) = $${compIdx} AND TRIM(a.compartiment) <> '')
+    OR EXISTS (
+      SELECT 1 FROM users uc
+      WHERE uc.id = a.created_by
+        AND TRIM(uc.compartiment) = $${compIdx}
+        AND TRIM(uc.compartiment) <> ''
+    )`;
+      }
       where += ` AND (
-    a.created_by = $${params.length}
+    a.created_by = $${userIdx}
     OR EXISTS (
       SELECT 1 FROM flows fl1
       WHERE fl1.id = a.df_flow_id
-        AND fl1.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${params.length}::text))
+        AND fl1.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
     )
     OR EXISTS (
       SELECT 1 FROM flows fl2
       WHERE fl2.id = a.ord_flow_id
-        AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${params.length}::text))
-    )
+        AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
+    )${compClause}
   )`;
     }
     if (status) {
@@ -189,6 +209,7 @@ router.get('/api/alop', async (req, res) => {
         u.email  AS creator_email,
         df.nr_unic_inreg AS df_nr,
         df.status        AS df_status,
+        fo.nr_ordonant_pl AS ord_nr,
         fo.status        AS ord_status,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
@@ -309,6 +330,43 @@ router.get('/api/alop/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const detailParams = [req.params.id, actor.orgId];
+    let extraWhere = '';
+    if (actor.role !== 'admin' && actor.role !== 'org_admin') {
+      const actorCompRes = await pool.query(
+        'SELECT compartiment FROM users WHERE id=$1',
+        [actor.userId]
+      );
+      const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
+      detailParams.push(actor.userId);
+      const userIdx = detailParams.length;
+      let compClause = '';
+      if (actorComp !== '') {
+        detailParams.push(actorComp);
+        const compIdx = detailParams.length;
+        compClause = `
+          OR (TRIM(a.compartiment) = $${compIdx} AND TRIM(a.compartiment) <> '')
+          OR EXISTS (
+            SELECT 1 FROM users uc
+            WHERE uc.id = a.created_by
+              AND TRIM(uc.compartiment) = $${compIdx}
+              AND TRIM(uc.compartiment) <> ''
+          )`;
+      }
+      extraWhere = ` AND (
+        a.created_by = $${userIdx}
+        OR EXISTS (
+          SELECT 1 FROM flows fl1
+          WHERE fl1.id = a.df_flow_id
+            AND fl1.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
+        )
+        OR EXISTS (
+          SELECT 1 FROM flows fl2
+          WHERE fl2.id = a.ord_flow_id
+            AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
+        )${compClause}
+      )`;
+    }
     const { rows } = await pool.query(`
       SELECT
         a.*,
@@ -317,6 +375,7 @@ router.get('/api/alop/:id', async (req, res) => {
         df.nr_unic_inreg             AS df_nr,
         df.status                    AS df_status,
         df.obiect_fd_reviz_scurt     AS df_obiect,
+        fo.nr_ordonant_pl            AS ord_nr,
         df.compartiment_specialitate AS df_compartiment,
         df.revizie_nr                AS df_revizie_nr,
         df.este_revizie_an_urmator   AS df_este_revizie_an_urmator,
@@ -355,14 +414,36 @@ router.get('/api/alop/:id', async (req, res) => {
       LEFT JOIN users        ul  ON ul.id  = a.lichidare_confirmed_by
       LEFT JOIN users        up  ON up.id  = a.plata_confirmed_by
       LEFT JOIN LATERAL (
-        SELECT json_agg(c ORDER BY c.ciclu_nr) AS cicluri_json
+        SELECT json_agg(
+          jsonb_build_object(
+            'ciclu_nr', c.ciclu_nr,
+            'ord_id', c.ord_id,
+            'ord_flow_id', c.ord_flow_id,
+            'lichidare_confirmed_by', c.lichidare_confirmed_by,
+            'lichidare_confirmed_at', c.lichidare_confirmed_at,
+            'lichidare_nr_factura', c.lichidare_nr_factura,
+            'lichidare_data_factura', c.lichidare_data_factura,
+            'lichidare_nr_pv', c.lichidare_nr_pv,
+            'lichidare_data_pv', c.lichidare_data_pv,
+            'lichidare_notes', c.lichidare_notes,
+            'plata_confirmed_by', c.plata_confirmed_by,
+            'plata_confirmed_at', c.plata_confirmed_at,
+            'plata_nr_ordin', c.plata_nr_ordin,
+            'plata_data', c.plata_data,
+            'plata_suma_efectiva', c.plata_suma_efectiva,
+            'plata_observatii', c.plata_observatii,
+            'status', c.status,
+            'nr_ordonant_pl', fo_c.nr_ordonant_pl
+          ) ORDER BY c.ciclu_nr
+        ) AS cicluri_json
         FROM alop_ord_cicluri c
+        LEFT JOIN formulare_ord fo_c ON fo_c.id = c.ord_id
         WHERE c.alop_id = a.id
       ) cicluri ON true
       WHERE a.id = $1
         AND a.org_id = $2
-        AND a.cancelled_at IS NULL
-    `, [req.params.id, actor.orgId]);
+        AND a.cancelled_at IS NULL${extraWhere}
+    `, detailParams);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     const alop = rows[0];
@@ -373,10 +454,10 @@ router.get('/api/alop/:id', async (req, res) => {
       try {
         const { rows: up } = await pool.query(`
           UPDATE alop_instances
-          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()
+          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW(), updated_by=$2
           WHERE id=$1 AND status='angajare'
           RETURNING status, df_completed_at
-        `, [req.params.id]);
+        `, [req.params.id, actor.userId]);
         if (up[0]) {
           alop.status = up[0].status;
           alop.df_completed_at = up[0].df_completed_at;
@@ -392,10 +473,10 @@ router.get('/api/alop/:id', async (req, res) => {
       try {
         const { rows: up } = await pool.query(`
           UPDATE alop_instances
-          SET status='plata', ord_completed_at=NOW(), updated_at=NOW()
+          SET status='plata', ord_completed_at=NOW(), updated_at=NOW(), updated_by=$2
           WHERE id=$1 AND status='ordonantare'
           RETURNING status, ord_completed_at
-        `, [req.params.id]);
+        `, [req.params.id, actor.userId]);
         if (up[0]) {
           alop.status = up[0].status;
           alop.ord_completed_at = up[0].ord_completed_at;
@@ -426,6 +507,17 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
     const { df_id } = req.body;
     if (!df_id) return res.status(400).json({ error: 'df_id obligatoriu' });
 
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows: dfRows } = await pool.query(
       'SELECT id FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
       [df_id, actor.orgId]
@@ -447,11 +539,12 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
       UPDATE alop_instances
       SET df_id = $1,
           updated_at = NOW(),
+          updated_by = $4,
           status = CASE WHEN status = 'draft' THEN 'angajare' ELSE status END
       WHERE id = $2 AND org_id = $3
         AND (df_id IS NULL OR df_id = $1)
       RETURNING *
-    `, [df_id, req.params.id, actor.orgId]);
+    `, [df_id, req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true, alop: rows[0] });
@@ -470,12 +563,23 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
     const { flow_id } = req.body;
     if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
 
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET df_flow_id=$1, updated_at=NOW()
+      SET df_flow_id=$1, updated_at=NOW(), updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
-    `, [flow_id, req.params.id, actor.orgId]);
+    `, [flow_id, req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
 
@@ -491,9 +595,9 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
       if (flowRows[0]) {
         await pool.query(`
           UPDATE alop_instances
-          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()
+          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW(), updated_by=$3
           WHERE id=$1 AND org_id=$2 AND status IN ('draft','angajare')
-        `, [req.params.id, actor.orgId]);
+        `, [req.params.id, actor.orgId, actor.userId]);
         logger.info(`[ALOP] link-df-flow: flux deja completat → lichidare, id=${req.params.id}`);
       }
     } catch (linkErr) {
@@ -517,12 +621,23 @@ router.post('/api/alop/:id/df-completed', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET df_completed_at=NOW(), status='lichidare', updated_at=NOW()
+      SET df_completed_at=NOW(), status='lichidare', updated_at=NOW(), updated_by=$3
       WHERE id=$1 AND org_id=$2 AND df_flow_id IS NOT NULL AND status='angajare'
       RETURNING *
-    `, [req.params.id, actor.orgId]);
+    `, [req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(400).json({ error: 'df_flow_necesar_sau_status_invalid' });
     res.json({ alop: rows[0] });
@@ -549,7 +664,12 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
     const isAdmin = ['admin', 'org_admin'].includes(actor.role);
     const isAssigned = cur[0].lichidare_confirmed_by === actor.userId;
     if (!isAdmin && !isAssigned && cur[0].lichidare_confirmed_by !== null) {
-      return res.status(403).json({ error: 'forbidden' });
+      const { rows: alopRow } = await pool.query(
+        'SELECT created_by, compartiment FROM alop_instances WHERE id=$1', [req.params.id]
+      );
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRow[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
     }
     logger.info({ alopId: req.params.id, currentStatus: cur[0].status }, 'confirma-lichidare attempt');
 
@@ -565,7 +685,8 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
           lichidare_nr_pv=$5,
           lichidare_data_pv=$6,
           status='ordonantare',
-          updated_at=NOW()
+          updated_at=NOW(),
+          updated_by=$1
       WHERE id=$7 AND org_id=$8 AND status IN ('lichidare','ordonantare')
       RETURNING *
     `, [actor.userId, observatii || notes || '', nr_factura || null, data_factura || null, nr_pv || null, data_pv || null, req.params.id, actor.orgId]);
@@ -589,6 +710,17 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
     const { ord_id } = req.body;
     if (!ord_id) return res.status(400).json({ error: 'ord_id obligatoriu' });
 
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows: ordRows } = await pool.query(
       'SELECT id FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
       [ord_id, actor.orgId]
@@ -597,11 +729,11 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET ord_id=$1, updated_at=NOW()
+      SET ord_id=$1, updated_at=NOW(), updated_by=$4
       WHERE id=$2 AND org_id=$3
         AND (ord_id IS NULL OR ord_id = $1)
       RETURNING *
-    `, [ord_id, req.params.id, actor.orgId]);
+    `, [ord_id, req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true, alop: rows[0] });
@@ -619,12 +751,23 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
     const { flow_id } = req.body;
     if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
 
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET ord_flow_id=$1, updated_at=NOW()
+      SET ord_flow_id=$1, updated_at=NOW(), updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
-    `, [flow_id, req.params.id, actor.orgId]);
+    `, [flow_id, req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true, alop: rows[0] });
@@ -639,12 +782,23 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET ord_completed_at=NOW(), status='plata', updated_at=NOW()
+      SET ord_completed_at=NOW(), status='plata', updated_at=NOW(), updated_by=$3
       WHERE id=$1 AND org_id=$2 AND ord_flow_id IS NOT NULL AND status='ordonantare'
       RETURNING *
-    `, [req.params.id, actor.orgId]);
+    `, [req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(400).json({ error: 'ord_flow_necesar_sau_status_invalid' });
     res.json({ alop: rows[0] });
@@ -662,6 +816,17 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { notes, nr_ordin_plata, data_plata, suma_efectiva, observatii } = req.body;
     const { rows } = await pool.query(`
       UPDATE alop_instances
@@ -674,7 +839,8 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
           plata_observatii=$6,
           status='completed',
           completed_at=NOW(),
-          updated_at=NOW()
+          updated_at=NOW(),
+          updated_by=$1
       WHERE id=$7 AND org_id=$8 AND status='plata'
       RETURNING *
     `, [actor.userId, observatii || notes || '', nr_ordin_plata || null, data_plata || null,
@@ -699,6 +865,11 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
       [req.params.id, actor.orgId]
     );
     if (!alop) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alop, actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
     if (alop.status !== 'completed')
       return res.status(400).json({ error: 'status_invalid', message: 'ALOP trebuie să fie finalizat (plată efectuată).' });
 
@@ -772,10 +943,11 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
         completed_at = NULL,
         suma_totala_platita = $2,
         ciclu_curent = $3,
-        updated_at = NOW()
+        updated_at = NOW(),
+        updated_by = $4
       WHERE id=$1
       RETURNING *
-    `, [req.params.id, sumaPlata, cicluNr + 1]);
+    `, [req.params.id, sumaPlata, cicluNr + 1, actor.userId]);
 
     logger.info({ alopId: req.params.id, ciclu: cicluNr + 1, ramas }, '[ALOP] nouă lichidare pornită');
     res.json({ ok: true, alop: updated, ramas });
@@ -809,12 +981,13 @@ router.post('/api/alop/admin/repair-status', _csrf, async (req, res) => {
               ) THEN 'lichidare'
             ELSE a.status
           END,
-          updated_at = NOW()
+          updated_at = NOW(),
+          updated_by = $2
       WHERE a.cancelled_at IS NULL
         AND a.status IN ('draft','angajare','ordonantare')
         AND ($1::integer IS NULL OR a.org_id = $1)
       RETURNING id, status
-    `, [actor.role === 'admin' ? null : actor.orgId]);
+    `, [actor.role === 'admin' ? null : actor.orgId, actor.userId]);
     res.json({ repaired: r.rows });
   } catch(e) {
     logger.error({ err: e }, 'alop repair-status error');
@@ -826,14 +999,24 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
+    const { rows: cur } = await pool.query(
+      'SELECT created_by FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!cur[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const authz = canDestroyOnly(actor, cur[0]);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
-      SET status='cancelled', cancelled_at=NOW(), updated_at=NOW()
+      SET status='cancelled', cancelled_at=NOW(), updated_at=NOW(), updated_by=$3
       WHERE id=$1 AND org_id=$2 AND status != 'completed'
       RETURNING *
-    `, [req.params.id, actor.orgId]);
+    `, [req.params.id, actor.orgId, actor.userId]);
 
-    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+    if (!rows[0]) return res.status(409).json({ error: 'cancel_blocked', message: 'ALOP completat sau deja anulat' });
     res.json({ alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop cancel error');

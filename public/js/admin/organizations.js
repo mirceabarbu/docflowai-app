@@ -74,93 +74,191 @@
   // ── Tab Organizații & Webhook ─────────────────────────────────────────────
 
   async function loadOrganizations() {
-    const area = $('org-list-area');
-    if (!area) return;
+    const tbody = $('org-table-body');
+    if (!tbody) return;
     try {
-      const r = await _apiFetch('/admin/organizations', { headers: hdrs() });
+      const fS = window._orgStatusFilter || 'active';  // active | deactivated | all
+      const includeDel = (fS === 'all' || fS === 'deactivated');
+      const url = '/admin/organizations' + (includeDel ? '?include_deleted=1' : '');
+      const r = await _apiFetch(url, { headers: hdrs() });
       if (!r.ok) throw new Error('Eroare server');
-      const orgs = await r.json();
-      if (!orgs.length) {
-        area.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;">Nicio organizație găsită.</div>';
-        return;
-      }
-      area.innerHTML = orgs.map(org => `
-        <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:20px 24px;">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-            <div>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-                <div style="font-size:1rem;font-weight:700;color:#eaf0ff;">🏛 ${esc(org.name)}</div>
-                ${org.name === 'Default Organization' ? '<span style="font-size:.72rem;padding:2px 8px;background:rgba(255,176,32,.15);border:1px solid rgba(255,176,32,.35);border-radius:10px;color:#ffd580;">⚠ organizație principală — redenumește</span>' : ''}
-              </div>
-              <div style="font-size:.78rem;color:var(--muted);">
-                👥 ${org.user_count} utilizatori &nbsp;·&nbsp; 📁 ${org.flow_count} fluxuri
-                ${org.cif ? `&nbsp;·&nbsp; CIF: ${esc(org.cif)}` : ''}
-              </div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button class="df-action-btn" onclick="openRenameOrgModal(${org.id},'${esc(org.name)}')">✏️ Redenumește</button>
-              <button class="df-action-btn" onclick="openOrgModal(${org.id},'${esc(org.name)}')" style="background:rgba(124,92,255,.12);border-color:rgba(124,92,255,.3);color:#b39dff;">⚙ Configurare</button>
-            </div>
-          </div>
-          <div style="margin-top:14px;font-size:.8rem;">
-            ${org.webhook_url ? `
-            <div style="color:rgba(234,240,255,.55);">
-              🔗 Webhook: <code style="font-size:.76rem;background:rgba(255,255,255,.04);padding:2px 6px;border-radius:4px;">${esc(org.webhook_url)}</code>
-              <span style="margin-left:6px;font-size:.7rem;padding:1px 7px;border-radius:8px;background:${org.webhook_enabled?'rgba(45,212,191,.12)':'rgba(255,255,255,.05)'};color:${org.webhook_enabled?'#2dd4bf':'rgba(234,240,255,.35)'};border:1px solid ${org.webhook_enabled?'rgba(45,212,191,.3)':'rgba(255,255,255,.08)'};">${org.webhook_enabled?'activ':'inactiv'}</span>
-            </div>
-            <div style="color:var(--muted);margin-top:6px;">
-              Evenimente: ${(org.webhook_events||[]).join(', ') || '—'}
-            </div>` : `
-            <span style="color:var(--muted);">⚪ Webhook neconfigurat</span>`}
-          </div>
-        </div>
-      `).join('');
+      let orgs = await r.json();
+      // Filtrare client-side pentru opțiunea „doar dezactivate"
+      if (fS === 'deactivated') orgs = orgs.filter(o => !!o.deleted_at);
+
+      window._allOrgs = orgs;
+      renderOrgsTable(orgs);
     } catch(e) {
-      area.innerHTML = `<div style="color:#ffaaaa;">Eroare: ${esc(e.message)}</div>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="padding:24px;text-align:center;color:#ffaaaa;">Eroare: ${esc(e.message)}</td></tr>`;
     }
+  }
+
+  function renderOrgsTable(orgs) {
+    const tbody = $('org-table-body');
+    const empty = $('org-table-empty');
+    if (!tbody) return;
+    if (!orgs.length) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    tbody.innerHTML = orgs.map(org => {
+      const isDeactivated = !!org.deleted_at;
+      const lastAct = org.last_activity ? new Date(org.last_activity).toLocaleDateString('ro-RO') : '—';
+      const webhookIcon = org.webhook_url
+        ? (org.webhook_enabled ? '<span title="Activ" style="color:#2dd4bf;">●</span>' : '<span title="Configurat dar inactiv" style="color:#ffd580;">●</span>')
+        : '<span title="Neconfigurat" style="color:rgba(234,240,255,.25);">○</span>';
+      const statusBadge = isDeactivated
+        ? '<span style="font-size:.7rem;padding:2px 8px;border-radius:8px;background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.35);color:#ff8a8a;font-weight:700;">DEZACTIVATĂ</span>'
+        : '<span style="font-size:.7rem;padding:2px 8px;border-radius:8px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);color:#2dd4bf;font-weight:700;">ACTIVĂ</span>';
+      const rowStyle = isDeactivated ? 'opacity:.55;' : '';
+      const actions = isDeactivated
+        ? `<button class="df-action-btn sm" onclick="event.stopPropagation();reactivateOrg(${org.id},'${esc(org.name)}')" title="Reactivează" style="background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.4);color:#2dd4bf;">↻</button>`
+        : `<button class="df-action-btn sm" onclick="event.stopPropagation();openOrgDetail(${org.id})" title="Detalii"><svg class="df-ic"><use href="/icons.svg?v=3.9.441#ico-settings"/></svg></button>
+           <button class="df-action-btn danger sm" onclick="event.stopPropagation();openDeleteOrgModal(${org.id},'${esc(org.name)}',${org.user_count||0},${org.flow_count||0})" title="Șterge">🗑</button>`;
+      return `
+        <tr style="${rowStyle}" onclick="${isDeactivated?'':`openOrgDetail(${org.id})`}">
+          <td><strong style="color:#eaf0ff;">${esc(org.name)}</strong>${(org.name === 'Default Organization' && !isDeactivated) ? ' <span style="font-size:.68rem;color:#ffd580;">⚠ redenumește</span>' : ''}</td>
+          <td style="color:rgba(234,240,255,.7);">${esc(org.cif || '—')}</td>
+          <td style="text-align:right;color:rgba(234,240,255,.85);font-variant-numeric:tabular-nums;">${org.user_count || 0}</td>
+          <td style="text-align:right;color:rgba(234,240,255,.85);font-variant-numeric:tabular-nums;">${org.flow_count || 0}</td>
+          <td style="text-align:center;font-size:1.2rem;">${webhookIcon}</td>
+          <td style="text-align:center;">${statusBadge}</td>
+          <td style="color:rgba(234,240,255,.6);font-size:.82rem;">${lastAct}</td>
+          <td><div style="display:flex;gap:4px;justify-content:flex-end;">${actions}</div></td>
+        </tr>`;
+    }).join('');
+  }
+
+  function filterOrgsTable() {
+    const q = ($('orgSearchInput')?.value || '').toLowerCase().trim();
+    const all = window._allOrgs || [];
+    if (!q) { renderOrgsTable(all); return; }
+    const filtered = all.filter(o =>
+      (o.name || '').toLowerCase().includes(q) ||
+      (o.cif || '').toLowerCase().includes(q)
+    );
+    renderOrgsTable(filtered);
+  }
+
+  function onOrgStatusChange() {
+    window._orgStatusFilter = ($('orgStatusFilter')||{value:'active'}).value;
+    loadOrganizations();
   }
 
   // ── Signing Providers — variabile (IIFE-local, declarate în state block sus) ──
 
-  function openOrgModal(id, name) {
+  // ── Detail view: deschide pagina cu sub-tabs pentru o organizație ─
+  async function openOrgDetail(id) {
     _currentOrgId = id;
-    $('orgEditName').textContent = name;
-    $('orgWebhookUrl').value = '';
-    $('orgWebhookSecret').value = '';
-    $('orgWebhookEnabled').checked = false;
-    $('evtCompleted').checked = true;
-    $('evtRefused').checked = false;
-    $('evtCancelled').checked = false;
-    $('orgEditMsg').textContent = '';
-    $('orgCif').value = '';
-    $('orgCompartimenteInput').value = '';
+    // Schimbă view-ul
+    $('org-list-view').style.display   = 'none';
+    $('org-detail-view').style.display = '';
+    // Setează hash pentru bookmark + back/forward
+    if (location.hash !== `#organizatii/${id}`) {
+      history.pushState(null, '', `#organizatii/${id}`);
+    }
+    // Reset UI states
+    $('orgDetailName').textContent          = 'Se încarcă...';
+    $('orgDetailStatusBadge').innerHTML     = '';
+    $('orgDetailActions').innerHTML         = '';
+    $('orgCif').value                       = '';
+    $('orgCompartimenteInput').value        = '';
+    $('orgWebhookUrl').value                = '';
+    $('orgWebhookSecret').value             = '';
+    $('orgWebhookEnabled').checked          = false;
+    $('evtCompleted').checked               = true;
+    $('evtRefused').checked                 = false;
+    $('evtCancelled').checked               = false;
+    $('orgGeneralMsg').textContent          = '';
+    $('orgWebhookMsg').textContent          = '';
+    $('orgSigningMsg').textContent          = '';
     _orgCompartimente = [];
     _renderCompartimente();
-    // Încarcă config curentă
-    _apiFetch('/admin/organizations', { headers: hdrs() }).then(r => r.json()).then(orgs => {
-      const org = orgs.find(o => o.id === id);
-      if (!org) return;
-      $('orgWebhookUrl').value = org.webhook_url || '';
-      $('orgWebhookEnabled').checked = !!org.webhook_enabled;
-      const evts = org.webhook_events || [];
-      $('evtCompleted').checked = evts.includes('flow.completed');
-      $('evtRefused').checked = evts.includes('flow.refused');
-      $('evtCancelled').checked = evts.includes('flow.cancelled');
-      $('orgCif').value = org.cif || '';
-      _orgCompartimente = Array.isArray(org.compartimente) ? [...org.compartimente] : [];
-      _renderCompartimente();
-    }).catch(() => {});
-    // Încarcă providerii de semnare ai org-ului
+    // Default tab la deschidere
+    switchOrgSubTab('general');
+    try {
+      const r = await _apiFetch(`/admin/organizations/${id}`, { headers: hdrs() });
+      if (!r.ok) throw new Error(`Eroare ${r.status}`);
+      const org = await r.json();
+      _populateOrgDetail(org);
+    } catch(e) {
+      $('orgDetailName').textContent = '⚠ Eroare la încărcare';
+    }
+    // Provideri semnare
     _selectedProviders = new Set(['local-upload']);
     _activeConfigProvider = null;
     loadOrgSigningProviders(id);
-    $('orgEditModal').style.display = 'flex';
   }
 
-  function closeOrgModal() {
-    $('orgEditModal').style.display = 'none';
-    _currentOrgId = null;
+  function _populateOrgDetail(org) {
+    $('orgDetailName').textContent          = org.name || '—';
+    const isDeactivated = !!org.deleted_at;
+    $('orgDetailStatusBadge').innerHTML = isDeactivated
+      ? '<span style="font-size:.72rem;padding:3px 10px;border-radius:10px;background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.35);color:#ff8a8a;font-weight:700;">DEZACTIVATĂ</span>'
+      : '<span style="font-size:.72rem;padding:3px 10px;border-radius:10px;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.3);color:#2dd4bf;font-weight:700;">ACTIVĂ</span>';
+    // Acțiuni header (Redenumește + Șterge/Reactivează)
+    const actions = [];
+    if (!isDeactivated) {
+      actions.push(`<button class="df-action-btn" onclick="openRenameOrgModal(${org.id},'${esc(org.name)}')">✏️ Redenumește</button>`);
+    }
+    $('orgDetailActions').innerHTML = actions.join(' ');
+    // Câmpuri General
+    $('orgCif').value = org.cif || '';
+    _orgCompartimente = Array.isArray(org.compartimente) ? [...org.compartimente] : [];
+    _renderCompartimente();
+    $('orgDetailCreatedAt').textContent = org.created_at ? new Date(org.created_at).toLocaleString('ro-RO') : '—';
+    $('orgDetailUpdatedAt').textContent = org.updated_at ? new Date(org.updated_at).toLocaleString('ro-RO') : '—';
+    // Câmpuri Webhook
+    $('orgWebhookUrl').value     = org.webhook_url || '';
+    $('orgWebhookEnabled').checked = !!org.webhook_enabled;
+    const evts = org.webhook_events || [];
+    $('evtCompleted').checked = evts.includes('flow.completed');
+    $('evtRefused').checked   = evts.includes('flow.refused');
+    $('evtCancelled').checked = evts.includes('flow.cancelled');
+    // Zona periculoasă
+    const dz = $('orgDangerZoneContent');
+    if (dz) {
+      if (isDeactivated) {
+        const delDate = org.deleted_at ? new Date(org.deleted_at).toLocaleDateString('ro-RO') : '—';
+        dz.innerHTML = `
+          <div style="font-size:.85rem;color:rgba(234,240,255,.75);margin-bottom:10px;">Această organizație a fost dezactivată pe <strong>${delDate}</strong>. Datele sunt păstrate pentru conformitate.</div>
+          <button class="df-action-btn" onclick="reactivateOrg(${org.id},'${esc(org.name)}')" style="background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.4);color:#2dd4bf;">↻ Reactivează organizația</button>`;
+      } else {
+        dz.innerHTML = `
+          <div style="font-size:.85rem;color:rgba(234,240,255,.75);margin-bottom:10px;">Ștergerea organizației o ascunde din toate listele. Datele istorice (fluxuri, audit, semnături) rămân în baza de date.</div>
+          <button class="df-action-btn danger" onclick="openDeleteOrgModal(${org.id},'${esc(org.name)}',0,0)">🗑 Șterge organizația</button>`;
+      }
+    }
   }
+
+  function closeOrgDetail() {
+    $('org-detail-view').style.display = 'none';
+    $('org-list-view').style.display   = '';
+    _currentOrgId = null;
+    if (location.hash.startsWith('#organizatii/')) {
+      history.pushState(null, '', '#organizatii');
+    }
+    // Refresh listă pentru a reflecta eventuale modificări
+    if (typeof loadOrganizations === 'function') loadOrganizations();
+  }
+
+  function switchOrgSubTab(name) {
+    ['general','users','webhook','signing','stats'].forEach(t => {
+      const panel = $('org-subtab-' + t);
+      if (panel) panel.style.display = (t === name ? '' : 'none');
+    });
+    document.querySelectorAll('.df-subtab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.subtab === name);
+    });
+    if (name === 'users' && _currentOrgId) loadOrgUsersStats(_currentOrgId);
+    if (name === 'stats' && _currentOrgId) loadOrgStats(_currentOrgId);
+  }
+
+  // Backward-compat: vechiul openOrgModal redirecționează la openOrgDetail
+  function openOrgModal(id /*, name*/) { return openOrgDetail(id); }
+  function closeOrgModal() { return closeOrgDetail(); }
 
   // ── Asignare organizație user existent (super-admin) ─────────────────────
 
@@ -441,6 +539,77 @@
       if (msg) { msg.style.color='#ffaaaa'; msg.textContent='❌ Eroare rețea.'; }
     } finally {
       if (btn) { btn.disabled=false; btn.textContent='💾 Redenumește'; }
+    }
+  }
+
+  // ── Reactivare organizație (super-admin only) ──────────────────────
+  async function reactivateOrg(id, name) {
+    if (!confirm('Reactivezi organizația „'+name+'"?')) return;
+    try {
+      const r = await _apiFetch('/admin/organizations/'+id+'/reactivate', {
+        method: 'POST',
+        headers: hdrs()
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok) {
+        if (typeof loadOrganizations === 'function') loadOrganizations();
+      } else {
+        alert(data.message || ('Eroare la reactivare: '+(data.error||r.status)));
+      }
+    } catch(e) {
+      alert('Eroare de rețea: '+e.message);
+    }
+  }
+
+  // ── Ștergere organizație (super-admin only, cu typing-confirm) ─────
+  function openDeleteOrgModal(id, name, userCount, flowCount) {
+    const m = document.getElementById('deleteOrgModal');
+    if (!m) return;
+    document.getElementById('delOrgName').textContent     = name;
+    document.getElementById('delOrgNameTitle').textContent = name;
+    document.getElementById('delOrgUserCount').textContent = userCount || 0;
+    document.getElementById('delOrgFlowCount').textContent = flowCount || 0;
+    document.getElementById('delOrgConfirmInput').value    = '';
+    document.getElementById('delOrgMsg').innerHTML         = '';
+    m.dataset.orgId   = id;
+    m.dataset.orgName = name;
+    m.style.display   = 'flex';
+    setTimeout(() => document.getElementById('delOrgConfirmInput').focus(), 50);
+  }
+  function closeDeleteOrgModal() {
+    const m = document.getElementById('deleteOrgModal');
+    if (m) m.style.display = 'none';
+  }
+  async function doDeleteOrg() {
+    const m = document.getElementById('deleteOrgModal');
+    if (!m) return;
+    const id   = parseInt(m.dataset.orgId);
+    const name = m.dataset.orgName;
+    const typed = (document.getElementById('delOrgConfirmInput').value || '').trim();
+    const msg = document.getElementById('delOrgMsg');
+    if (typed !== name) {
+      msg.innerHTML = '<span style="color:#ffaaaa;">Numele introdus nu corespunde. Tastează exact: <strong>'+esc(name)+'</strong></span>';
+      return;
+    }
+    const btn = document.getElementById('btnDelOrgConfirm');
+    btn.disabled = true; btn.textContent = 'Se șterge...';
+    try {
+      const r = await _apiFetch('/admin/organizations/'+id, {
+        method: 'DELETE',
+        headers: { ...hdrs(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm_name: typed })
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok) {
+        closeDeleteOrgModal();
+        if (typeof loadOrganizations === 'function') loadOrganizations();
+      } else {
+        msg.innerHTML = '<span style="color:#ffaaaa;">'+esc(data.message || data.error || ('Eroare '+r.status))+'</span>';
+      }
+    } catch(e) {
+      msg.innerHTML = '<span style="color:#ffaaaa;">Eroare de rețea: '+esc(e.message)+'</span>';
+    } finally {
+      btn.disabled = false; btn.textContent = '🗑 Șterge organizația';
     }
   }
 
@@ -750,6 +919,99 @@
     } catch(e) { /* non-fatal */ }
   }
 
+  // ── Sub-tab Utilizatori ───────────────────────────────────────────
+  async function loadOrgUsersStats(orgId) {
+    const wrap = $('orgUsersStats');
+    if (!wrap) return;
+    wrap.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);">⏳ Se încarcă...</div>';
+    try {
+      const r = await _apiFetch(`/admin/organizations/${orgId}/stats`, { headers: hdrs() });
+      if (!r.ok) throw new Error('Eroare server');
+      const s = await r.json();
+      const u = s.users || {};
+      wrap.innerHTML = [
+        _kpiCard('Activi',         u.active || 0,        '#2dd4bf'),
+        _kpiCard('Dezactivați',    u.deactivated || 0,   '#ff8a8a'),
+        _kpiCard('Admin',          u.admins || 0,        '#b39dff'),
+        _kpiCard('Admin Inst.',    u.org_admins || 0,    '#7cf0e0'),
+        _kpiCard('Useri',          u.users || 0,         '#eaf0ff'),
+      ].join('');
+    } catch(e) {
+      wrap.innerHTML = `<div style="grid-column:1/-1;color:#ffaaaa;">Eroare: ${esc(e.message)}</div>`;
+    }
+  }
+
+  function goToUsersTabFiltered() {
+    if (!_currentOrgId) return;
+    const org = (window._allOrgs || []).find(o => o.id === _currentOrgId);
+    if (!org) return;
+    if (typeof switchTab === 'function') switchTab('utilizatori');
+    setTimeout(() => {
+      const f = document.getElementById('fInstitutie');
+      if (f) { f.value = org.name; if (typeof filterUsers === 'function') filterUsers(); }
+    }, 100);
+  }
+
+  function goToUsersTabAddNew() {
+    if (!_currentOrgId) return;
+    const org = (window._allOrgs || []).find(o => o.id === _currentOrgId);
+    if (!org) return;
+    if (typeof switchTab === 'function') switchTab('utilizatori');
+    setTimeout(() => {
+      // Pre-completează numele instituției în formul de creare
+      const inst = document.getElementById('nInstitutie');
+      if (inst) inst.value = org.name;
+      // Scroll la formul de creare (caută tab "Utilizator nou")
+      const newTabBtn = document.querySelector('[data-utab="new"], #subtab-new-user');
+      if (newTabBtn) newTabBtn.click();
+      const sec = document.getElementById('createUserCard') || document.getElementById('tab-utilizatori');
+      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }
+
+  // ── Sub-tab Statistici ─────────────────────────────────────────────
+  async function loadOrgStats(orgId) {
+    const wrap = $('orgStatsContent');
+    if (!wrap) return;
+    wrap.innerHTML = '<div style="text-align:center;padding:48px 24px;color:var(--muted);">⏳ Se încarcă statisticile...</div>';
+    try {
+      const r = await _apiFetch(`/admin/organizations/${orgId}/stats`, { headers: hdrs() });
+      if (!r.ok) throw new Error('Eroare server');
+      const s = await r.json();
+      const u = s.users || {};
+      const f = s.flows || {};
+      const lastAct = f.last_activity ? new Date(f.last_activity).toLocaleString('ro-RO') : '—';
+      const avgH = f.avg_completion_hours != null ? `${f.avg_completion_hours} h` : '—';
+      wrap.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px;">
+          ${_kpiCard('Total fluxuri',   f.total || 0,     '#eaf0ff')}
+          ${_kpiCard('Active',          f.active || 0,    '#7cf0e0')}
+          ${_kpiCard('Completate',      f.completed || 0, '#2dd4bf')}
+          ${_kpiCard('Refuzate',        f.refused || 0,   '#ffd580')}
+          ${_kpiCard('Anulate',         f.cancelled || 0, '#ff8a8a')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px;">
+          ${_kpiCard('Ultimele 7 zile',  f.last_7_days || 0,  '#b39dff')}
+          ${_kpiCard('Ultimele 30 zile', f.last_30_days || 0, '#b39dff')}
+          ${_kpiCard('Useri activi',     u.active || 0,       '#2dd4bf')}
+          ${_kpiCard('Useri dezactivați', u.deactivated || 0, '#ff8a8a')}
+        </div>
+        <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:.85rem;">
+          <div><span style="color:var(--muted);">Ultima activitate flux:</span><br><strong style="color:#eaf0ff;">${lastAct}</strong></div>
+          <div><span style="color:var(--muted);">Timp mediu completare:</span><br><strong style="color:#eaf0ff;">${avgH}</strong></div>
+        </div>`;
+    } catch(e) {
+      wrap.innerHTML = `<div style="text-align:center;padding:48px 24px;color:#ffaaaa;">Eroare: ${esc(e.message)}</div>`;
+    }
+  }
+
+  function _kpiCard(label, value, color) {
+    return `<div style="background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px 16px;text-align:center;">
+      <div style="font-size:1.6rem;font-weight:800;color:${color};line-height:1;margin-bottom:4px;font-variant-numeric:tabular-nums;">${value}</div>
+      <div style="font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">${esc(label)}</div>
+    </div>`;
+  }
+
   // ── Compartimente org — state + helpers ──────────────────────────────────
 
   function _renderCompartimente() {
@@ -789,27 +1051,22 @@
     setTimeout(() => { if($('orgWebhookSecret')) $('orgWebhookSecret').type = 'password'; }, 5000);
   }
 
+  // Salvează DOAR webhook config (din tab Webhook)
   async function saveOrgWebhook() {
     if (!_currentOrgId) return;
-    const msg = $('orgEditMsg');
+    const msg = $('orgWebhookMsg');
     const events = [];
     if ($('evtCompleted').checked) events.push('flow.completed');
-    if ($('evtRefused').checked) events.push('flow.refused');
+    if ($('evtRefused').checked)   events.push('flow.refused');
     if ($('evtCancelled').checked) events.push('flow.cancelled');
-    _selectedProviders.add('local-upload');
-    const compInp = $('orgCompartimenteInput');
-    if (compInp?.value.trim()) orgAddCompartiment();
     const body = {
-      webhook_url:               $('orgWebhookUrl').value.trim() || null,
-      webhook_events:            events,
-      webhook_enabled:           $('orgWebhookEnabled').checked,
-      signing_providers_enabled: [..._selectedProviders],
-      cif:                       $('orgCif').value.trim() || null,
-      compartimente:             _orgCompartimente,
+      webhook_url:     $('orgWebhookUrl').value.trim() || null,
+      webhook_events:  events,
+      webhook_enabled: $('orgWebhookEnabled').checked,
     };
     const secret = $('orgWebhookSecret').value.trim();
     if (secret) body.webhook_secret = secret;
-    msg.textContent = '⏳ Se salvează...';
+    if (msg) msg.textContent = '⏳ Se salvează...';
     try {
       const r = await _apiFetch(`/admin/organizations/${_currentOrgId}`, {
         method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
@@ -817,23 +1074,75 @@
       });
       const j = await r.json();
       if (r.ok) {
-        await saveOrgSigningProviders(_currentOrgId);
-        msg.innerHTML = '<span style="color:#2dd4bf;">✅ Salvat cu succes.</span>';
-        setTimeout(() => { closeOrgModal(); loadOrganizations(); }, 800);
+        if (msg) msg.innerHTML = '<span style="color:#2dd4bf;">✅ Webhook salvat.</span>';
+        $('orgWebhookSecret').value = '';
       } else {
-        msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(j.error||'Eroare')}</span>`;
+        if (msg) msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(j.error||'Eroare')}</span>`;
       }
     } catch(e) {
-      msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(e.message)}</span>`;
+      if (msg) msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(e.message)}</span>`;
+    }
+  }
+
+  // Salvează DOAR General (CIF + compartimente) — din tab General
+  async function saveOrgGeneral() {
+    if (!_currentOrgId) return;
+    const msg = $('orgGeneralMsg');
+    const compInp = $('orgCompartimenteInput');
+    if (compInp?.value.trim()) orgAddCompartiment();
+    const body = {
+      cif:           $('orgCif').value.trim() || null,
+      compartimente: _orgCompartimente,
+    };
+    if (msg) msg.textContent = '⏳ Se salvează...';
+    try {
+      const r = await _apiFetch(`/admin/organizations/${_currentOrgId}`, {
+        method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      if (r.ok) {
+        if (msg) msg.innerHTML = '<span style="color:#2dd4bf;">✅ Date generale salvate.</span>';
+      } else {
+        if (msg) msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(j.error||'Eroare')}</span>`;
+      }
+    } catch(e) {
+      if (msg) msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(e.message)}</span>`;
+    }
+  }
+
+  // Salvează DOAR signing providers — din tab Signing Providers
+  async function saveOrgSigningOnly() {
+    if (!_currentOrgId) return;
+    const msg = $('orgSigningMsg');
+    _selectedProviders.add('local-upload');
+    if (msg) msg.textContent = '⏳ Se salvează...';
+    try {
+      // saveOrgSigningProviders trimite atât config-ul plain cât și
+      // signing_providers_enabled prin endpoint-ul dedicat
+      await saveOrgSigningProviders(_currentOrgId);
+      // Trimitem și flag-urile enabled prin PUT-ul general
+      const r = await _apiFetch(`/admin/organizations/${_currentOrgId}`, {
+        method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signing_providers_enabled: [..._selectedProviders] }),
+      });
+      if (r.ok) {
+        if (msg) msg.innerHTML = '<span style="color:#2dd4bf;">✅ Provideri salvați.</span>';
+      } else {
+        const j = await r.json().catch(()=>({}));
+        if (msg) msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(j.error||'Eroare')}</span>`;
+      }
+    } catch(e) {
+      if (msg) msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(e.message)}</span>`;
     }
   }
 
   async function orgTestWebhook() {
     if (!_currentOrgId) return;
-    const msg = $('orgEditMsg');
+    const msg = $('orgWebhookMsg');
     const url = $('orgWebhookUrl').value.trim();
-    if (!url) { msg.innerHTML = '<span style="color:#ffd580;">⚠ Introduceți un URL înainte de test.</span>'; return; }
-    msg.textContent = '⏳ Se trimite eveniment de test...';
+    if (!url) { if (msg) msg.innerHTML = '<span style="color:#ffd580;">⚠ Introduceți un URL înainte de test.</span>'; return; }
+    if (msg) msg.textContent = '⏳ Se trimite eveniment de test...';
     try {
       await _apiFetch(`/admin/organizations/${_currentOrgId}`, {
         method: 'PUT', headers: { ...hdrs(), 'Content-Type': 'application/json' },
@@ -843,13 +1152,12 @@
         method: 'POST', headers: hdrs(),
       });
       const j = await r.json();
-      if (j.ok) {
-        msg.innerHTML = `<span style="color:#2dd4bf;">✅ ${esc(j.message)} (HTTP ${j.status})</span>`;
-      } else {
-        msg.innerHTML = `<span style="color:#ffd580;">⚠ ${esc(j.message || j.error)}</span>`;
+      if (msg) {
+        if (j.ok) msg.innerHTML = `<span style="color:#2dd4bf;">✅ ${esc(j.message)} (HTTP ${j.status})</span>`;
+        else      msg.innerHTML = `<span style="color:#ffd580;">⚠ ${esc(j.message || j.error)}</span>`;
       }
     } catch(e) {
-      msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(e.message)}</span>`;
+      if (msg) msg.innerHTML = `<span style="color:#ffaaaa;">❌ ${esc(e.message)}</span>`;
     }
   }
 
@@ -881,6 +1189,13 @@
   window.openRenameOrgModal      = openRenameOrgModal;
   window.closeRenameOrgModal     = closeRenameOrgModal;
   window.doRenameOrg             = doRenameOrg;
+  window.openDeleteOrgModal      = openDeleteOrgModal;
+  window.closeDeleteOrgModal     = closeDeleteOrgModal;
+  window.doDeleteOrg             = doDeleteOrg;
+  window.reactivateOrg           = reactivateOrg;
+  window.filterOrgsTable         = filterOrgsTable;
+  window.onOrgStatusChange       = onOrgStatusChange;
+  window.renderOrgsTable         = renderOrgsTable;
   window.loadOrgSigningProviders = loadOrgSigningProviders;
   window.toggleOrgProvider       = toggleOrgProvider;
   window.openProviderConfig      = openProviderConfig;
@@ -889,9 +1204,18 @@
   window.verifyProviderConfig    = verifyProviderConfig;
   window.orgGenSecret            = orgGenSecret;
   window.saveOrgWebhook          = saveOrgWebhook;
+  window.saveOrgGeneral          = saveOrgGeneral;
+  window.saveOrgSigningOnly      = saveOrgSigningOnly;
   window.orgTestWebhook          = orgTestWebhook;
   window.orgAddCompartiment      = orgAddCompartiment;
   window._removeCompartiment     = _removeCompartiment;
+  window.openOrgDetail           = openOrgDetail;
+  window.closeOrgDetail          = closeOrgDetail;
+  window.switchOrgSubTab         = switchOrgSubTab;
+  window.loadOrgUsersStats       = loadOrgUsersStats;
+  window.loadOrgStats            = loadOrgStats;
+  window.goToUsersTabFiltered    = goToUsersTabFiltered;
+  window.goToUsersTabAddNew      = goToUsersTabAddNew;
 
   window.df = window.df || {};
   window.df._organizationsModuleLoaded = true;

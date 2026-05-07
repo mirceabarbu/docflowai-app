@@ -23,6 +23,7 @@ window.ST = window.ST || {
   docStatus:{ordnt:null,notafd:null},
   docRole:{ordnt:null,notafd:null},  // 'p1'|'p2'|'view'
   orgUsers:[], selectedP2Id:null, pendingFt:null,
+  actorCompartiment:'', p2FilterByComp:undefined,
 };
   window.imgs = {'o-cimg':null,'o-cimg2':null,'n-cimg':null};
   const ST   = window.ST;    // alias local (referință la același obiect)

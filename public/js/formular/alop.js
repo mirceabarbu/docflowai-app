@@ -353,7 +353,7 @@ function renderAlopDetail(a,container){
           <div style="font-size:1rem;font-weight:700;color:var(--df-text-2)">${esc(a.titlu||'ALOP')}</div>
           ${a.compartiment?`<div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">${esc(a.compartiment)}</div>`:''}
           ${a.valoare_totala?`<div style="font-size:.85rem;color:#10b981;margin-top:4px;font-weight:600">${fmtRON(a.valoare_totala)}</div>`:''}
-          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px">DF activ: <span class="df-revizie-badge${(a.df_revizie_nr||0)>0?' revizie-activa':''}">R${a.df_revizie_nr||0}</span>${(a.df_revizie_nr||0)>0?`<span>Revizia ${a.df_revizie_nr}</span>`:`<span>Revizia inițială</span>`}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}</div>`:''}
+          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">DF activ: <span class="df-revizie-badge${(a.df_revizie_nr||0)>0?' revizie-activa':''}">R${a.df_revizie_nr||0}</span>${(a.df_revizie_nr||0)>0?`<span>Revizia ${a.df_revizie_nr}</span>`:`<span>Revizia inițială</span>`}${a.df_nr?`<span style="color:var(--df-text-2);font-weight:600">· Nr. ${a.df_nr}</span>`:''}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}</div>`:''}
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -411,6 +411,7 @@ function renderAlopDetail(a,container){
         lichidare_confirmed_at: a.lichidare_confirmed_at,
         ord_valoare: a.ord_valoare,
         ord_completed_at: a.ord_completed_at,
+        nr_ordonant_pl: a.ord_nr,
         plata_suma_efectiva: a.plata_suma_efectiva,
         plata_nr_ordin: a.plata_nr_ordin,
         plata_data: a.plata_data,
@@ -456,6 +457,7 @@ function renderAlopDetail(a,container){
               <div style="font-size:.68rem;color:#8b5cf6;margin-bottom:2px;font-weight:600">💰 Ordonanțare</div>
               <div style="color:var(--df-text-2)">${_ordAfisare}</div>
               <div style="font-size:.72rem;color:var(--df-text-3)">${_ordData ? fmtDate(_ordData) : ''}</div>
+              ${c.nr_ordonant_pl ? `<div style="font-size:.7rem;color:var(--df-text-3);font-weight:600;margin-top:2px">Nr. ${esc(c.nr_ordonant_pl)}</div>` : ''}
             </div>
             <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.18);border-radius:6px;padding:6px 10px">
               <div style="font-size:.68rem;color:#10b981;margin-bottom:2px;font-weight:600">🏦 Plată</div>

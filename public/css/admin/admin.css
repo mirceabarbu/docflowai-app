@@ -1,4 +1,4 @@
-    *{box-sizing:border-box;margin:0;padding:0;}
+﻿    *{box-sizing:border-box;margin:0;padding:0;}
 
     header{background:var(--df-bg-elevated);border-bottom:1px solid var(--df-border);
       padding:10px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;gap:12px;}
@@ -67,3 +67,30 @@
     }
     .df-filter-select:focus{border-color:var(--df-primary);}
     .df-filter-select:disabled{opacity:.45;cursor:not-allowed;}
+
+.df-subtab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  color: rgba(234,240,255,.5);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+  font-family: inherit;
+}
+.df-subtab-btn:hover { color: rgba(234,240,255,.85); background: rgba(124,92,255,.05); }
+.df-subtab-btn.active {
+  color: #c4b5ff;
+  border-bottom-color: #7c5cff;
+}
+#org-table tbody tr {
+  border-top: 1px solid rgba(255,255,255,.04);
+  cursor: pointer;
+  transition: background .12s ease;
+}
+#org-table tbody tr:hover { background: rgba(124,92,255,.05); }
+#org-table tbody td { padding: 12px 8px; vertical-align: middle; }
+#org-table tbody td:first-child { padding-left: 16px; }
+#org-table tbody td:last-child  { padding-right: 16px; text-align: right; white-space: nowrap; }

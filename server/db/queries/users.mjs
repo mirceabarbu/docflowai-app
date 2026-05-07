@@ -5,11 +5,11 @@
 import { query, getOne, getMany } from '../index.mjs';
 
 export async function findUserById(id) {
-  return getOne('SELECT * FROM users WHERE id=$1', [id]);
+  return getOne('SELECT * FROM users WHERE id=$1 AND deleted_at IS NULL', [id]);
 }
 
 export async function findUserByEmail(email) {
-  return getOne('SELECT * FROM users WHERE lower(email)=lower($1)', [email]);
+  return getOne('SELECT * FROM users WHERE lower(email)=lower($1) AND deleted_at IS NULL', [email]);
 }
 
 export async function listUsersForOrg(orgId, { status } = {}) {

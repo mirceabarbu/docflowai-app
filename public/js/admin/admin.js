@@ -72,10 +72,38 @@ function showMsg(id,txt,err){
 
 
 async function delUser(id,name){
-  if(!confirm('Ștergi utilizatorul "'+name+'"?\nAcțiunea este ireversibilă.'))return;
-  const r=await _apiFetch("/admin/users/"+id,{method:"DELETE",headers:hdrs()});
-  if(r.ok){const row=$("row_"+id);if(row)row.remove();}
-  else alert("Eroare la ștergere.");
+  if(!confirm('Dezactivezi utilizatorul "'+name+'"?\n\nUtilizatorul nu va mai putea face login, dar istoricul (fluxuri, semnături, audit) este păstrat.\n\nÎl poți reactiva oricând din lista de utilizatori (filtru „Doar dezactivați").'))return;
+  try {
+    const r=await _apiFetch("/admin/users/"+id,{method:"DELETE",headers:hdrs()});
+    const data = await r.json().catch(()=>({}));
+    if(r.ok){
+      // Dacă filtrul e 'active', rândul dispare; dacă e 'all'/'deactivated', re-load ca să-l vedem ca dezactivat
+      if (window._userStatusFilter === 'active' || !window._userStatusFilter) {
+        const row=$("row_"+id);if(row)row.remove();
+      } else if (typeof loadUsers === 'function') {
+        loadUsers();
+      }
+    } else {
+      alert(data.message || ('Eroare la dezactivare: '+(data.error||r.status)));
+    }
+  } catch(e) {
+    alert('Eroare de rețea: '+e.message);
+  }
+}
+
+async function reactivateUser(id,name){
+  if(!confirm('Reactivezi utilizatorul "'+name+'"?\n\nUtilizatorul va putea face login din nou.'))return;
+  try {
+    const r=await _apiFetch("/admin/users/"+id+"/reactivate",{method:"POST",headers:hdrs()});
+    const data = await r.json().catch(()=>({}));
+    if(r.ok){
+      if (typeof loadUsers === 'function') loadUsers();
+    } else {
+      alert(data.message || ('Eroare la reactivare: '+(data.error||r.status)));
+    }
+  } catch(e) {
+    alert('Eroare de rețea: '+e.message);
+  }
 }
 
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeMod();closePwdModal();closeChangePwdModal();}});
@@ -129,9 +157,16 @@ fetch("/auth/me",{headers:hdrs()})
     // Hash routing: /admin#tabname → deschide tabul respectiv
     const _validTabs = ['dashboard','utilizatori','fluxuri','rapoarte',
                         'organizatii','outreach','analytics','audit'];
-    const _initialTab = (location.hash || '').replace(/^#/,'').trim();
-    const _startTab = _validTabs.includes(_initialTab) ? _initialTab : 'dashboard';
+    const _rawHash = (location.hash || '').replace(/^#/,'').trim();
+    // Suportăm și pattern-ul `organizatii/:id` pentru detail view
+    const _hashParts = _rawHash.split('/');
+    const _startTab = _validTabs.includes(_hashParts[0]) ? _hashParts[0] : 'dashboard';
+    const _initialOrgId = (_hashParts[0] === 'organizatii' && _hashParts[1] && /^\d+$/.test(_hashParts[1])) ? parseInt(_hashParts[1]) : null;
     switchTab(_startTab);
+    if (_initialOrgId && typeof openOrgDetail === 'function') {
+      // așteptăm ca tab-ul + lista să se încarce, apoi deschidem detail-ul
+      setTimeout(() => openOrgDetail(_initialOrgId), 250);
+    }
     if (_startTab === 'analytics') loadAnalytics();
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
@@ -140,6 +175,17 @@ fetch("/auth/me",{headers:hdrs()})
     if(u.role==="org_admin") lockOrgAdminFilters(u.institutie||"");
   })
   .catch(()=>logout());
+
+// Hash routing: răspunde la back/forward în browser pentru #organizatii/:id
+window.addEventListener('hashchange', () => {
+  const m = (location.hash || '').match(/^#organizatii\/(\d+)$/);
+  if (m && typeof openOrgDetail === 'function') {
+    openOrgDetail(parseInt(m[1]));
+  } else if (location.hash === '#organizatii' && typeof closeOrgDetail === 'function') {
+    const dv = document.getElementById('org-detail-view');
+    if (dv && dv.style.display !== 'none') closeOrgDetail();
+  }
+});
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {

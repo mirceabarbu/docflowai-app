@@ -102,6 +102,7 @@ describe('POST /:id/submit — P1 trimite la P2', () => {
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [dfDraft] })
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp (FEATURE 3.B)
       .mockResolvedValueOnce({ rows: [{ id: 2, email: 'p2@primaria.ro', nume: 'P2' }] })
       .mockResolvedValueOnce({ rows: [dfUpdated] })
       .mockResolvedValueOnce({ rows: [{ email: 'p2@primaria.ro' }] })
@@ -269,6 +270,7 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ ...r0Aprobat, aprobat: true }] })
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp (FEATURE 3.B)
       .mockResolvedValueOnce({ rows: [{ max_rev: 0 }] })
       .mockResolvedValueOnce({ rows: [r1Creata] })
       .mockResolvedValueOnce({ rows: [] });
@@ -307,6 +309,7 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ ...r0Aprobat, aprobat: true }] })
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp (FEATURE 3.B)
       .mockResolvedValueOnce({ rows: [{ max_rev: 0 }] })
       .mockResolvedValueOnce({ rows: [r1] })
       .mockResolvedValueOnce({ rows: [] });
@@ -320,7 +323,7 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
       String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_flow_id=NULL')
     );
     expect(alopUpdate).toBeDefined();
-    expect(alopUpdate[1]).toEqual([DF_R1_ID, DF_ID]);
+    expect(alopUpdate[1]).toEqual([DF_R1_ID, DF_ID, 1]);
   });
 
   it('400 — refuză /revizuieste pe DF cu status=draft (neaprobat fără flag)', async () => {
@@ -341,6 +344,7 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ ...dfNeaprobat, aprobat: false }] })
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp (FEATURE 3.B)
       .mockResolvedValueOnce({ rows: [{ max_rev: 0 }] })
       .mockResolvedValueOnce({ rows: [r1] })
       .mockResolvedValueOnce({ rows: [] });
