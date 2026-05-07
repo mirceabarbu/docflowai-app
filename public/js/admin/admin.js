@@ -72,14 +72,34 @@ function showMsg(id,txt,err){
 
 
 async function delUser(id,name){
-  if(!confirm('Dezactivezi utilizatorul "'+name+'"?\n\nUtilizatorul nu va mai putea face login, dar istoricul (fluxuri, semnături, audit) este păstrat.\n\nPoți reactiva ulterior din DB dacă e nevoie.'))return;
+  if(!confirm('Dezactivezi utilizatorul "'+name+'"?\n\nUtilizatorul nu va mai putea face login, dar istoricul (fluxuri, semnături, audit) este păstrat.\n\nÎl poți reactiva oricând din lista de utilizatori (filtru „Doar dezactivați").'))return;
   try {
     const r=await _apiFetch("/admin/users/"+id,{method:"DELETE",headers:hdrs()});
     const data = await r.json().catch(()=>({}));
     if(r.ok){
-      const row=$("row_"+id);if(row)row.remove();
+      // Dacă filtrul e 'active', rândul dispare; dacă e 'all'/'deactivated', re-load ca să-l vedem ca dezactivat
+      if (window._userStatusFilter === 'active' || !window._userStatusFilter) {
+        const row=$("row_"+id);if(row)row.remove();
+      } else if (typeof loadUsers === 'function') {
+        loadUsers();
+      }
     } else {
       alert(data.message || ('Eroare la dezactivare: '+(data.error||r.status)));
+    }
+  } catch(e) {
+    alert('Eroare de rețea: '+e.message);
+  }
+}
+
+async function reactivateUser(id,name){
+  if(!confirm('Reactivezi utilizatorul "'+name+'"?\n\nUtilizatorul va putea face login din nou.'))return;
+  try {
+    const r=await _apiFetch("/admin/users/"+id+"/reactivate",{method:"POST",headers:hdrs()});
+    const data = await r.json().catch(()=>({}));
+    if(r.ok){
+      if (typeof loadUsers === 'function') loadUsers();
+    } else {
+      alert(data.message || ('Eroare la reactivare: '+(data.error||r.status)));
     }
   } catch(e) {
     alert('Eroare de rețea: '+e.message);

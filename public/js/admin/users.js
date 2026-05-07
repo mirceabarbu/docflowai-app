@@ -56,6 +56,11 @@
       tr.addEventListener("dblclick", ()=>openEdit(u));
       const dt=u.created_at?new Date(u.created_at).toLocaleDateString("ro-RO"):"—";
       const isMe=u.email===me.email;
+      const isDeactivated = !!u.deleted_at;
+      if (isDeactivated) {
+        tr.style.opacity = '.55';
+        tr.style.background = 'rgba(255,80,80,.04)';
+      }
       const notifIcons = [
         u.notif_inapp!==false ? '🔔' : '',
         u.notif_email ? '✉️' : '',
@@ -79,7 +84,7 @@
         <td style="color:var(--muted);font-size:.82rem">${esc(u.phone||"—")}</td>
         <td style="font-size:.9rem;text-align:center">${notifIcons||'—'}</td>
         <td>${gwsBadge}</td>
-        <td><span class="pill ${u.role}">${u.role==="org_admin"?"Admin Instituție":u.role==="admin"?"Admin":"User"}</span></td>
+        <td><span class="pill ${u.role}">${u.role==="org_admin"?"Admin Instituție":u.role==="admin"?"Admin":"User"}</span>${isDeactivated?` <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:8px;font-size:.68rem;font-weight:700;background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.35);color:#ff8a8a;">DEZACTIVAT</span>`:''}</td>
         <td style="color:var(--muted);font-size:.79rem">${dt}</td>
         <td style="text-align:right;white-space:nowrap">
           <div style="display:flex;gap:3px;justify-content:flex-end;">
@@ -87,7 +92,9 @@
             <button class="df-action-btn warning sm" id="btnSend_${u.id}" onclick="sendCreds(${u.id},this)" title="Trimite credențiale">✉</button>
             ${!u.gws_email?`<button class="df-action-btn sm" onclick="gwsRetry(${u.id},this)" title="Creează cont Workspace" style="background:rgba(66,133,244,.15);border-color:rgba(66,133,244,.4);color:#4285F4;">G+</button>`:''}
             ${(window._currentUserRole==='admin' && !u.org_id && u.role!=='admin')?`<button class="df-action-btn sm" onclick="openAssignOrg(${u.id},'${esc(u.nume||u.email)}')" title="Asignează organizație (org_id lipsă)" style="background:rgba(255,176,32,.15);border-color:rgba(255,176,32,.4);color:#ffd580;">🏛</button>`:''}
-            ${!isMe?`<button class="df-action-btn danger sm" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Dezactivează">✕</button>`:""}
+            ${isDeactivated
+              ? `<button class="df-action-btn sm" onclick="reactivateUser(${u.id},'${esc(u.nume||u.email)}')" title="Reactivează" style="background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.4);color:#2dd4bf;">↻</button>`
+              : (!isMe?`<button class="df-action-btn danger sm" onclick="delUser(${u.id},'${esc(u.nume||u.email)}')" title="Dezactivează">✕</button>`:"")}
           </div>
         </td>`;
       tb.appendChild(tr);
@@ -248,6 +255,13 @@
     hint.style.display = '';
   }
 
+  function onUserStatusChange() {
+    window._userStatusFilter = ($('fStatus')||{value:'active'}).value;
+    // Filtrul 'active' folosește lista deja filtrată din backend (fără ?include_deleted)
+    // Filtrele 'deactivated' și 'all' au nevoie să reîncarce backend-ul cu include_deleted=1
+    loadUsers();
+  }
+
   function filterUsers(){
     if(!window._allUsers)return;
     const fN=($('fNume')||{value:''}).value.toLowerCase();
@@ -256,13 +270,15 @@
     const fE=($('fEmail')||{value:''}).value.toLowerCase();
     const fC=($('fCompartiment')||{value:''}).value.toLowerCase();
     const fR=($('fRol')||{value:''}).value.toLowerCase();
+    const fS=window._userStatusFilter || 'active';  // active | deactivated | all
     const filtered=window._allUsers.filter(u=>
       (!fN||( u.nume||'').toLowerCase().includes(fN))&&
       (!fF||(u.functie||'').toLowerCase().includes(fF))&&
       (!fI||(u.institutie||'').toLowerCase().includes(fI))&&
       (!fE||(u.email||'').toLowerCase().includes(fE))&&
       (!fC||(u.compartiment||'').toLowerCase().includes(fC))&&
-      (!fR||(u.role||'').toLowerCase()===fR)
+      (!fR||(u.role||'').toLowerCase()===fR)&&
+      (fS==='all' || (fS==='deactivated' ? !!u.deleted_at : !u.deleted_at))
     );
     _currentPage=1;
     renderUsers(filtered);
@@ -270,7 +286,9 @@
 
   async function loadUsers(){
     try{
-      const r=await _apiFetch("/admin/users",{headers:hdrs()});
+      const showInactive = window._userStatusFilter === 'all' || window._userStatusFilter === 'deactivated';
+      const url = '/admin/users' + (showInactive ? '?include_deleted=1' : '');
+      const r=await _apiFetch(url,{headers:hdrs()});
       if(r.status===401){logout();return;}
       if(!r.ok){
         const err=await r.json().catch(()=>({}));
@@ -300,9 +318,16 @@
             <option value="org_admin">Admin Instituție</option>
             <option value="user">User</option>
           </select></th>
-          <th></th><th></th>
+          <th></th>
+          <th><select class="th-filter" onchange="onUserStatusChange()" id="fStatus" style="padding:4px 6px;">
+            <option value="active">Activi</option>
+            <option value="deactivated">Doar dezactivați</option>
+            <option value="all">Toți</option>
+          </select></th>
         </tr>
       </thead><tbody id="tb"></tbody></table>`;
+      // Restaurează valoarea selectată după re-render
+      setTimeout(()=>{ const s=$('fStatus'); if(s) s.value=window._userStatusFilter||'active'; },0);
       window._allUsers = users;
       const tb=$("tb");
       // Populează datalist instituții cu valori unice din useri existenți
@@ -831,6 +856,7 @@
 
   window.onRoleChange                 = onRoleChange;
   window.filterUsers                  = filterUsers;
+  window.onUserStatusChange           = onUserStatusChange;
   window.loadUsers                    = loadUsers;
   window.onGwsToggle                  = onGwsToggle;
   window.updateGwsPreview             = updateGwsPreview;

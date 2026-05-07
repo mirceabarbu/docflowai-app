@@ -77,32 +77,46 @@
     const area = $('org-list-area');
     if (!area) return;
     try {
-      const r = await _apiFetch('/admin/organizations', { headers: hdrs() });
+      const showInactive = !!window._orgShowInactive;
+      const url = '/admin/organizations' + (showInactive ? '?include_deleted=1' : '');
+      const r = await _apiFetch(url, { headers: hdrs() });
       if (!r.ok) throw new Error('Eroare server');
       const orgs = await r.json();
       if (!orgs.length) {
         area.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;">Nicio organizație găsită.</div>';
         return;
       }
-      area.innerHTML = orgs.map(org => `
-        <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:20px 24px;">
+      area.innerHTML = orgs.map(org => {
+        const isDeactivated = !!org.deleted_at;
+        const cardStyle = isDeactivated
+          ? 'background:rgba(255,80,80,.04);border:1px solid rgba(255,80,80,.18);border-radius:14px;padding:20px 24px;opacity:.7;'
+          : 'background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:20px 24px;';
+        const actions = isDeactivated
+          ? (window._currentUserRole === 'admin'
+              ? `<button class="df-action-btn" onclick="reactivateOrg(${org.id},'${esc(org.name)}')" style="background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.4);color:#2dd4bf;">↻ Reactivează</button>`
+              : '')
+          : `
+              <button class="df-action-btn" onclick="openRenameOrgModal(${org.id},'${esc(org.name)}')">✏️ Redenumește</button>
+              <button class="df-action-btn" onclick="openOrgModal(${org.id},'${esc(org.name)}')" style="background:rgba(124,92,255,.12);border-color:rgba(124,92,255,.3);color:#b39dff;">⚙ Configurare</button>
+              ${window._currentUserRole === 'admin' ? `<button class="df-action-btn danger" onclick="openDeleteOrgModal(${org.id},'${esc(org.name)}',${org.user_count||0},${org.flow_count||0})" title="Șterge organizație">🗑 Șterge</button>` : ''}`;
+        return `
+        <div style="${cardStyle}">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
             <div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
                 <div style="font-size:1rem;font-weight:700;color:#eaf0ff;">🏛 ${esc(org.name)}</div>
-                ${org.name === 'Default Organization' ? '<span style="font-size:.72rem;padding:2px 8px;background:rgba(255,176,32,.15);border:1px solid rgba(255,176,32,.35);border-radius:10px;color:#ffd580;">⚠ organizație principală — redenumește</span>' : ''}
+                ${isDeactivated ? '<span style="font-size:.72rem;padding:2px 8px;background:rgba(255,80,80,.15);border:1px solid rgba(255,80,80,.35);border-radius:10px;color:#ff8a8a;">DEZACTIVATĂ</span>' : ''}
+                ${(!isDeactivated && org.name === 'Default Organization') ? '<span style="font-size:.72rem;padding:2px 8px;background:rgba(255,176,32,.15);border:1px solid rgba(255,176,32,.35);border-radius:10px;color:#ffd580;">⚠ organizație principală — redenumește</span>' : ''}
               </div>
               <div style="font-size:.78rem;color:var(--muted);">
                 👥 ${org.user_count} utilizatori &nbsp;·&nbsp; 📁 ${org.flow_count} fluxuri
                 ${org.cif ? `&nbsp;·&nbsp; CIF: ${esc(org.cif)}` : ''}
+                ${isDeactivated ? `&nbsp;·&nbsp; <span style="color:#ff8a8a;">dezactivată ${new Date(org.deleted_at).toLocaleDateString('ro-RO')}</span>` : ''}
               </div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button class="df-action-btn" onclick="openRenameOrgModal(${org.id},'${esc(org.name)}')">✏️ Redenumește</button>
-              <button class="df-action-btn" onclick="openOrgModal(${org.id},'${esc(org.name)}')" style="background:rgba(124,92,255,.12);border-color:rgba(124,92,255,.3);color:#b39dff;">⚙ Configurare</button>
-              ${window._currentUserRole === 'admin' ? `<button class="df-action-btn danger" onclick="openDeleteOrgModal(${org.id},'${esc(org.name)}',${org.user_count||0},${org.flow_count||0})" title="Șterge organizație">🗑 Șterge</button>` : ''}
-            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">${actions}</div>
           </div>
+          ${!isDeactivated ? `
           <div style="margin-top:14px;font-size:.8rem;">
             ${org.webhook_url ? `
             <div style="color:rgba(234,240,255,.55);">
@@ -113,9 +127,9 @@
               Evenimente: ${(org.webhook_events||[]).join(', ') || '—'}
             </div>` : `
             <span style="color:var(--muted);">⚪ Webhook neconfigurat</span>`}
-          </div>
-        </div>
-      `).join('');
+          </div>` : ''}
+        </div>`;
+      }).join('');
     } catch(e) {
       area.innerHTML = `<div style="color:#ffaaaa;">Eroare: ${esc(e.message)}</div>`;
     }
@@ -443,6 +457,36 @@
     } finally {
       if (btn) { btn.disabled=false; btn.textContent='💾 Redenumește'; }
     }
+  }
+
+  // ── Reactivare organizație (super-admin only) ──────────────────────
+  async function reactivateOrg(id, name) {
+    if (!confirm('Reactivezi organizația „'+name+'"?')) return;
+    try {
+      const r = await _apiFetch('/admin/organizations/'+id+'/reactivate', {
+        method: 'POST',
+        headers: hdrs()
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok) {
+        if (typeof loadOrganizations === 'function') loadOrganizations();
+      } else {
+        alert(data.message || ('Eroare la reactivare: '+(data.error||r.status)));
+      }
+    } catch(e) {
+      alert('Eroare de rețea: '+e.message);
+    }
+  }
+
+  function toggleShowInactiveOrgs() {
+    window._orgShowInactive = !window._orgShowInactive;
+    const btn = document.getElementById('btnToggleInactiveOrgs');
+    if (btn) {
+      btn.innerHTML = window._orgShowInactive
+        ? '<svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.436#ico-eye"/></svg> Ascunde dezactivatele'
+        : '<svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.436#ico-eye"/></svg> Arată și dezactivatele';
+    }
+    loadOrganizations();
   }
 
   // ── Ștergere organizație (super-admin only, cu typing-confirm) ─────
@@ -937,6 +981,8 @@
   window.openDeleteOrgModal      = openDeleteOrgModal;
   window.closeDeleteOrgModal     = closeDeleteOrgModal;
   window.doDeleteOrg             = doDeleteOrg;
+  window.reactivateOrg           = reactivateOrg;
+  window.toggleShowInactiveOrgs  = toggleShowInactiveOrgs;
   window.loadOrgSigningProviders = loadOrgSigningProviders;
   window.toggleOrgProvider       = toggleOrgProvider;
   window.openProviderConfig      = openProviderConfig;

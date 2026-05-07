@@ -20,18 +20,20 @@ router.get('/admin/organizations', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   try {
+    const includeDeleted = req.query.include_deleted === '1' || req.query.include_deleted === 'true';
+    const orgFilter = includeDeleted ? '' : 'WHERE o.deleted_at IS NULL';
     const { rows } = await pool.query(`
       SELECT o.id, o.name, o.cif, o.compartimente, o.webhook_url, o.webhook_events, o.webhook_enabled,
              o.webhook_secret IS NOT NULL AS webhook_has_secret,
-             o.created_at, o.updated_at,
+             o.created_at, o.updated_at, o.deleted_at,
              COUNT(DISTINCT u.id) FILTER (WHERE u.deleted_at IS NULL)::int  AS user_count,
              COUNT(DISTINCT f.id)::int  AS flow_count
       FROM organizations o
       LEFT JOIN users u  ON u.org_id  = o.id
       LEFT JOIN flows f  ON f.org_id  = o.id
-      WHERE o.deleted_at IS NULL
+      ${orgFilter}
       GROUP BY o.id
-      ORDER BY o.name ASC
+      ORDER BY o.deleted_at IS NOT NULL, o.name ASC
     `);
     res.json(rows);
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
@@ -166,6 +168,45 @@ router.delete('/admin/organizations/:id', csrfMiddleware, async (req, res) => {
     res.json({ ok: true, deleted: true, orgId });
   } catch(e) {
     logger.error({ err: e, orgId }, 'DELETE /admin/organizations/:id error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── POST /admin/organizations/:id/reactivate (super-admin only) ────
+router.post('/admin/organizations/:id/reactivate', csrfMiddleware, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden', message: 'Doar super-administratorul poate reactiva organizații.' });
+  const orgId = parseInt(req.params.id);
+  if (isNaN(orgId)) return res.status(400).json({ error: 'invalid_id' });
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, name, deleted_at FROM organizations WHERE id=$1',
+      [orgId]
+    );
+    const org = rows[0];
+    if (!org) return res.status(404).json({ error: 'org_not_found' });
+    if (!org.deleted_at) return res.status(409).json({ error: 'not_deleted', message: 'Organizația este deja activă.' });
+
+    const { rowCount } = await pool.query(
+      'UPDATE organizations SET deleted_at = NULL WHERE id=$1 AND deleted_at IS NOT NULL',
+      [orgId]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'org_not_found_or_already_active' });
+
+    try {
+      await writeAuditEvent({
+        orgId,
+        eventType: 'ORGANIZATION_REACTIVATED',
+        actorEmail: actor.email,
+        actorIp: req.ip || req.socket?.remoteAddress || null,
+        payload: { name: org.name },
+      });
+    } catch(_) { /* audit non-fatal */ }
+
+    res.json({ ok: true, reactivated: true, orgId });
+  } catch(e) {
+    logger.error({ err: e, orgId }, 'POST /admin/organizations/:id/reactivate error');
     res.status(500).json({ error: 'server_error' });
   }
 });
