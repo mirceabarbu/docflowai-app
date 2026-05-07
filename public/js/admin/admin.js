@@ -157,9 +157,16 @@ fetch("/auth/me",{headers:hdrs()})
     // Hash routing: /admin#tabname → deschide tabul respectiv
     const _validTabs = ['dashboard','utilizatori','fluxuri','rapoarte',
                         'organizatii','outreach','analytics','audit'];
-    const _initialTab = (location.hash || '').replace(/^#/,'').trim();
-    const _startTab = _validTabs.includes(_initialTab) ? _initialTab : 'dashboard';
+    const _rawHash = (location.hash || '').replace(/^#/,'').trim();
+    // Suportăm și pattern-ul `organizatii/:id` pentru detail view
+    const _hashParts = _rawHash.split('/');
+    const _startTab = _validTabs.includes(_hashParts[0]) ? _hashParts[0] : 'dashboard';
+    const _initialOrgId = (_hashParts[0] === 'organizatii' && _hashParts[1] && /^\d+$/.test(_hashParts[1])) ? parseInt(_hashParts[1]) : null;
     switchTab(_startTab);
+    if (_initialOrgId && typeof openOrgDetail === 'function') {
+      // așteptăm ca tab-ul + lista să se încarce, apoi deschidem detail-ul
+      setTimeout(() => openOrgDetail(_initialOrgId), 250);
+    }
     if (_startTab === 'analytics') loadAnalytics();
     loadUsers();
     loadArchiveInstData(); // pre-populează dropdown-urile instituție/compartiment
@@ -168,6 +175,17 @@ fetch("/auth/me",{headers:hdrs()})
     if(u.role==="org_admin") lockOrgAdminFilters(u.institutie||"");
   })
   .catch(()=>logout());
+
+// Hash routing: răspunde la back/forward în browser pentru #organizatii/:id
+window.addEventListener('hashchange', () => {
+  const m = (location.hash || '').match(/^#organizatii\/(\d+)$/);
+  if (m && typeof openOrgDetail === 'function') {
+    openOrgDetail(parseInt(m[1]));
+  } else if (location.hash === '#organizatii' && typeof closeOrgDetail === 'function') {
+    const dv = document.getElementById('org-detail-view');
+    if (dv && dv.style.display !== 'none') closeOrgDetail();
+  }
+});
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
