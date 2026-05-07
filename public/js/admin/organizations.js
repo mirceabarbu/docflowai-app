@@ -100,6 +100,7 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button class="df-action-btn" onclick="openRenameOrgModal(${org.id},'${esc(org.name)}')">✏️ Redenumește</button>
               <button class="df-action-btn" onclick="openOrgModal(${org.id},'${esc(org.name)}')" style="background:rgba(124,92,255,.12);border-color:rgba(124,92,255,.3);color:#b39dff;">⚙ Configurare</button>
+              ${window._currentUserRole === 'admin' ? `<button class="df-action-btn danger" onclick="openDeleteOrgModal(${org.id},'${esc(org.name)}',${org.user_count||0},${org.flow_count||0})" title="Șterge organizație">🗑 Șterge</button>` : ''}
             </div>
           </div>
           <div style="margin-top:14px;font-size:.8rem;">
@@ -441,6 +442,58 @@
       if (msg) { msg.style.color='#ffaaaa'; msg.textContent='❌ Eroare rețea.'; }
     } finally {
       if (btn) { btn.disabled=false; btn.textContent='💾 Redenumește'; }
+    }
+  }
+
+  // ── Ștergere organizație (super-admin only, cu typing-confirm) ─────
+  function openDeleteOrgModal(id, name, userCount, flowCount) {
+    const m = document.getElementById('deleteOrgModal');
+    if (!m) return;
+    document.getElementById('delOrgName').textContent     = name;
+    document.getElementById('delOrgNameTitle').textContent = name;
+    document.getElementById('delOrgUserCount').textContent = userCount || 0;
+    document.getElementById('delOrgFlowCount').textContent = flowCount || 0;
+    document.getElementById('delOrgConfirmInput').value    = '';
+    document.getElementById('delOrgMsg').innerHTML         = '';
+    m.dataset.orgId   = id;
+    m.dataset.orgName = name;
+    m.style.display   = 'flex';
+    setTimeout(() => document.getElementById('delOrgConfirmInput').focus(), 50);
+  }
+  function closeDeleteOrgModal() {
+    const m = document.getElementById('deleteOrgModal');
+    if (m) m.style.display = 'none';
+  }
+  async function doDeleteOrg() {
+    const m = document.getElementById('deleteOrgModal');
+    if (!m) return;
+    const id   = parseInt(m.dataset.orgId);
+    const name = m.dataset.orgName;
+    const typed = (document.getElementById('delOrgConfirmInput').value || '').trim();
+    const msg = document.getElementById('delOrgMsg');
+    if (typed !== name) {
+      msg.innerHTML = '<span style="color:#ffaaaa;">Numele introdus nu corespunde. Tastează exact: <strong>'+esc(name)+'</strong></span>';
+      return;
+    }
+    const btn = document.getElementById('btnDelOrgConfirm');
+    btn.disabled = true; btn.textContent = 'Se șterge...';
+    try {
+      const r = await _apiFetch('/admin/organizations/'+id, {
+        method: 'DELETE',
+        headers: { ...hdrs(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm_name: typed })
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok) {
+        closeDeleteOrgModal();
+        if (typeof loadOrganizations === 'function') loadOrganizations();
+      } else {
+        msg.innerHTML = '<span style="color:#ffaaaa;">'+esc(data.message || data.error || ('Eroare '+r.status))+'</span>';
+      }
+    } catch(e) {
+      msg.innerHTML = '<span style="color:#ffaaaa;">Eroare de rețea: '+esc(e.message)+'</span>';
+    } finally {
+      btn.disabled = false; btn.textContent = '🗑 Șterge organizația';
     }
   }
 
@@ -881,6 +934,9 @@
   window.openRenameOrgModal      = openRenameOrgModal;
   window.closeRenameOrgModal     = closeRenameOrgModal;
   window.doRenameOrg             = doRenameOrg;
+  window.openDeleteOrgModal      = openDeleteOrgModal;
+  window.closeDeleteOrgModal     = closeDeleteOrgModal;
+  window.doDeleteOrg             = doDeleteOrg;
   window.loadOrgSigningProviders = loadOrgSigningProviders;
   window.toggleOrgProvider       = toggleOrgProvider;
   window.openProviderConfig      = openProviderConfig;

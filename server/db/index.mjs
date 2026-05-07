@@ -1256,6 +1256,50 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_alop_instances_updated_by ON alop_instances(updated_by);
       END $g$;
     `
+  },
+  {
+    id: '067_soft_delete_users_orgs',
+    sql: `
+      DO $g$ BEGIN
+        -- ── Users: soft-delete + partial unique pe email activ ─────
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+        -- Eliminăm constrântul UNIQUE original pe email (auto-numit)
+        -- ca să-l înlocuim cu unul partial care permite reutilizare
+        -- emailului după soft-delete.
+        DECLARE
+          c text;
+        BEGIN
+          SELECT conname INTO c
+            FROM pg_constraint
+           WHERE conrelid = 'users'::regclass
+             AND contype  = 'u'
+             AND pg_get_constraintdef(oid) ILIKE '%(email)%';
+          IF c IS NOT NULL THEN
+            EXECUTE format('ALTER TABLE users DROP CONSTRAINT %I', c);
+          END IF;
+        END;
+
+        -- Index unic parțial: doar pe useri activi (deleted_at IS NULL)
+        CREATE UNIQUE INDEX IF NOT EXISTS users_email_active_uniq
+          ON users (lower(email))
+          WHERE deleted_at IS NULL;
+
+        -- Index pentru filtrare rapidă în liste
+        CREATE INDEX IF NOT EXISTS idx_users_deleted_at
+          ON users(deleted_at)
+          WHERE deleted_at IS NOT NULL;
+
+        -- ── Organizations: soft-delete ─────────────────────────────
+        ALTER TABLE organizations
+          ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+        CREATE INDEX IF NOT EXISTS idx_organizations_deleted_at
+          ON organizations(deleted_at)
+          WHERE deleted_at IS NOT NULL;
+      END $g$;
+    `
   }
 ];
 

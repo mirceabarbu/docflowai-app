@@ -50,7 +50,7 @@ router.post('/auth/login', async (req, res) => {
     });
   }
   try {
-    const { rows } = await pool.query('SELECT * FROM users WHERE email=$1', [email.trim().toLowerCase()]);
+    const { rows } = await pool.query('SELECT * FROM users WHERE email=$1 AND deleted_at IS NULL', [email.trim().toLowerCase()]);
     const user = rows[0];
 
     // verifyPassword returnează { ok, needsRehash } în v3.3.4
@@ -151,11 +151,11 @@ router.get('/auth/me', async (req, res) => {
   try {
     let row = null;
     if (decoded.userId) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,force_password_change,token_version FROM users WHERE id=$1', [decoded.userId]);
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,force_password_change,token_version FROM users WHERE id=$1 AND deleted_at IS NULL', [decoded.userId]);
       row = rows[0] || null;
     }
     if (!row && decoded.email) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,force_password_change,token_version FROM users WHERE lower(email)=lower($1)', [decoded.email]);
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,force_password_change,token_version FROM users WHERE lower(email)=lower($1) AND deleted_at IS NULL', [decoded.email]);
       row = rows[0] || null;
       if (row) logger.warn({ userId: decoded.userId, email: decoded.email, dbId: row.id }, '[auth/me] User gasit prin email (id mismatch)');
     }
@@ -212,7 +212,7 @@ router.post('/auth/refresh', async (req, res) => {
   if (!decoded?.userId) return res.status(401).json({ error: 'token_invalid' });
   try {
     if (pool && DB_READY) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,token_version FROM users WHERE id=$1', [decoded.userId]);
+      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,token_version FROM users WHERE id=$1 AND deleted_at IS NULL', [decoded.userId]);
       if (!rows[0]) { clearAuthCookie(res); return res.status(401).json({ error: 'user_not_found' }); }
       // SEC-04: verifică token_version — invalidat la reset parolă
       const dbTv = rows[0].token_version ?? 1;
@@ -305,7 +305,7 @@ router.get('/auth/debug', async (req, res) => {
   let dbUser = null, dbError = null, dbUserByEmail = null;
   if (decoded?.userId && pool && DB_READY) {
     try {
-      const { rows } = await pool.query('SELECT id,email,nume,role,org_id,institutie FROM users WHERE id=$1', [decoded.userId]);
+      const { rows } = await pool.query('SELECT id,email,nume,role,org_id,institutie FROM users WHERE id=$1 AND deleted_at IS NULL', [decoded.userId]);
       dbUser = rows[0] || null;
     } catch(e) { dbError = e.message; }
   }

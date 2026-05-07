@@ -72,10 +72,18 @@ function showMsg(id,txt,err){
 
 
 async function delUser(id,name){
-  if(!confirm('Ștergi utilizatorul "'+name+'"?\nAcțiunea este ireversibilă.'))return;
-  const r=await _apiFetch("/admin/users/"+id,{method:"DELETE",headers:hdrs()});
-  if(r.ok){const row=$("row_"+id);if(row)row.remove();}
-  else alert("Eroare la ștergere.");
+  if(!confirm('Dezactivezi utilizatorul "'+name+'"?\n\nUtilizatorul nu va mai putea face login, dar istoricul (fluxuri, semnături, audit) este păstrat.\n\nPoți reactiva ulterior din DB dacă e nevoie.'))return;
+  try {
+    const r=await _apiFetch("/admin/users/"+id,{method:"DELETE",headers:hdrs()});
+    const data = await r.json().catch(()=>({}));
+    if(r.ok){
+      const row=$("row_"+id);if(row)row.remove();
+    } else {
+      alert(data.message || ('Eroare la dezactivare: '+(data.error||r.status)));
+    }
+  } catch(e) {
+    alert('Eroare de rețea: '+e.message);
+  }
 }
 
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeMod();closePwdModal();closeChangePwdModal();}});

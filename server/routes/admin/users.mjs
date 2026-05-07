@@ -122,11 +122,11 @@ router.get('/admin/users', async (req, res) => {
     // FIX: role='admin' (super-admin) vede TOȚI userii indiferent de org_id propriu.
     // Filtrarea pe org_id se aplică DOAR pentru org_admin.
     if (user.role === 'org_admin' && orgId) {
-      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE org_id=$1 ORDER BY institutie ASC, compartiment ASC, nume ASC';
+      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE org_id=$1 AND deleted_at IS NULL ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [orgId];
     } else {
       // admin (super-admin) — vede toți userii din toate organizațiile
-      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users ORDER BY institutie ASC, compartiment ASC, nume ASC';
+      query = 'SELECT id,email,nume,prenume,nume_familie,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,created_at,org_id,personal_email,gws_email,gws_status,gws_provisioned_at,gws_error FROM users WHERE deleted_at IS NULL ORDER BY institutie ASC, compartiment ASC, nume ASC';
       params = [];
     }
     const { rows } = await pool.query(query, params);
@@ -585,30 +585,75 @@ router.post('/admin/users/:id/reset-password', csrfMiddleware, async (req, res) 
 router.delete('/admin/users/:id', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  // FIX b75: org_admin poate șterge useri din propria organizație (consistent cu PUT/reset-password)
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const targetId = parseInt(req.params.id);
   if (isNaN(targetId)) return res.status(400).json({ error: 'invalid_id' });
-  if (actor.userId === targetId) return res.status(400).json({ error: 'cannot_delete_self' });
+  if (actor.userId === targetId) return res.status(400).json({ error: 'cannot_deactivate_self', message: 'Nu te poți dezactiva singur.' });
   try {
-    // SEC-07: verificare cross-tenant — org_admin poate șterge DOAR din propria org
-    // FIX: role='admin' (super-admin) poate șterge din orice org, indiferent de org_id propriu
+    // SEC-07: cross-tenant — org_admin poate dezactiva DOAR din propria org
     const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
     const actorOrgId = actorRows[0]?.org_id || null;
-    let deleteWhere, deleteParams;
-    if (actor.role === 'org_admin' && actorOrgId) {
-      deleteWhere  = 'DELETE FROM users WHERE id=$1 AND org_id=$2';
-      deleteParams = [targetId, actorOrgId];
-    } else {
-      // super-admin: ștergere fără restricție de org
-      deleteWhere  = 'DELETE FROM users WHERE id=$1';
-      deleteParams = [targetId];
+
+    // Citim targetul înainte (pentru audit + verificări last-admin)
+    const { rows: tgtRows } = await pool.query(
+      'SELECT id, email, nume, role, org_id, deleted_at FROM users WHERE id=$1',
+      [targetId]
+    );
+    const target = tgtRows[0];
+    if (!target) return res.status(404).json({ error: 'user_not_found' });
+    if (target.deleted_at) return res.status(409).json({ error: 'already_deactivated', message: 'Utilizatorul este deja dezactivat.' });
+
+    // Cross-tenant pentru org_admin
+    if (actor.role === 'org_admin' && target.org_id !== actorOrgId) {
+      return res.status(403).json({ error: 'forbidden', message: 'Nu poți dezactiva utilizatori din altă organizație.' });
     }
-    const { rowCount } = await pool.query(deleteWhere, deleteParams);
-    if (!rowCount) return res.status(404).json({ error: 'user_not_found_or_forbidden' });
-    invalidateOrgUserCache(actorOrgId);
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+
+    // Protecție: ultimul super-admin nu poate fi dezactivat
+    if (target.role === 'admin') {
+      const { rows: cntRows } = await pool.query(
+        "SELECT COUNT(*)::int AS cnt FROM users WHERE role='admin' AND deleted_at IS NULL"
+      );
+      if ((cntRows[0]?.cnt || 0) <= 1) {
+        return res.status(409).json({
+          error: 'last_admin',
+          message: 'Acesta este ultimul super-administrator activ. Promovează alt utilizator înainte de dezactivare.'
+        });
+      }
+    }
+
+    // Soft-delete + bump token_version (invalidează imediat sesiunile JWT existente)
+    const { rowCount } = await pool.query(
+      `UPDATE users
+          SET deleted_at = NOW(),
+              token_version = COALESCE(token_version, 0) + 1
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [targetId]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'user_not_found_or_already_deleted' });
+
+    invalidateOrgUserCache(target.org_id);
+    try {
+      await writeAuditEvent({
+        orgId: target.org_id,
+        eventType: 'USER_DEACTIVATED',
+        actorEmail: actor.email,
+        actorIp: req.ip || req.socket?.remoteAddress || null,
+        payload: { targetUserId: targetId, email: target.email, nume: target.nume }
+      });
+    } catch(_) { /* audit non-fatal */ }
+
+    res.json({ ok: true, deactivated: true, userId: targetId });
+  } catch(e) {
+    // Defensiv — soft-delete nu ar trebui să aibă FK violation, dar prindem
+    // orice eroare nesperată cu mesaj util
+    if (e && e.code === '23503') {
+      return res.status(409).json({
+        error: 'user_has_references',
+        message: 'Utilizatorul are date legate care nu permit dezactivarea. Contactează echipa tehnică.'
+      });
+    }
+    return res.status(500).json({ error: 'server_error' });
+  }
 });
 
 
