@@ -923,7 +923,10 @@ function pdfLooksSigned(pdfB64) {
 // Returnează null dacă nu poate decoda (PDF criptat / structură exotică).
 // În acel caz, apelantul trebuie să forțeze pagină nouă (siguranță maximă).
 // ─────────────────────────────────────────────────────────────────────────────
-function detectMinContentY(page, ignoreBelow = 45) {
+// detectContentYs — returnează TOATE pozițiile Y unde există conținut
+// pe pagină (text matrix Y + rectangle bottom Y), sortate crescător.
+// Returnează null dacă PDF-ul nu poate fi parsat (criptat / structură exotică).
+function detectContentYs(page, ignoreBelow = 45) {
   try {
     const { PDFArray, PDFRawStream } = PDFLib;
     const doc = page.doc;
@@ -941,10 +944,9 @@ function detectMinContentY(page, ignoreBelow = 45) {
       if (resolved) streams.push(resolved);
     }
 
-    let minY = Infinity;
+    const ySet = new Set();
     for (const stream of streams) {
       if (!(stream instanceof PDFRawStream) || !stream.contents) continue;
-
       let text;
       try {
         const buf = Buffer.from(stream.contents);
@@ -960,20 +962,44 @@ function detectMinContentY(page, ignoreBelow = 45) {
         const tok = tokens[i];
         if (tok === 'Tm' && i >= 6) {
           const y = parseFloat(tokens[i - 1]);
-          if (!isNaN(y) && y >= ignoreBelow && y < minY) minY = y;
+          if (!isNaN(y) && y >= ignoreBelow) ySet.add(Math.round(y * 10) / 10);
         }
         else if (tok === 're' && i >= 4) {
           const y = parseFloat(tokens[i - 3]);
-          if (!isNaN(y) && y >= ignoreBelow && y < minY) minY = y;
+          if (!isNaN(y) && y >= ignoreBelow) ySet.add(Math.round(y * 10) / 10);
         }
       }
     }
-
-    return minY === Infinity ? null : minY;
+    return ySet.size ? [...ySet].sort((a, b) => a - b) : null;
   } catch (e) {
-    logger.warn({ err: e }, 'detectMinContentY: parse error, fallback to safe');
+    logger.warn({ err: e }, 'detectContentYs: parse error');
     return null;
   }
+}
+
+// detectMinContentY — wrapper pentru backward compat
+function detectMinContentY(page, ignoreBelow = 45) {
+  const ys = detectContentYs(page, ignoreBelow);
+  return ys && ys.length ? ys[0] : null;
+}
+
+// findLowestUsableGap — caută cea mai JOASĂ bandă goală >= minGapSize.
+// Preferăm gap-uri jos pe pagină (cartușul stă semantic la sfârșitul
+// documentului, deasupra zonei de footer/GDPR).
+//
+// Returnează: { gapBottom, gapTop, gapSize } sau null.
+//   gapBottom = Y-ul conținutului inferior (limită inferioară a gap-ului)
+//   gapTop    = Y-ul conținutului superior (limită superioară a gap-ului)
+function findLowestUsableGap(ys, minGapSize) {
+  if (!ys || ys.length < 2) return null;
+  // ys e sortat ascending. Iterăm de la jos în sus și luăm PRIMA gap suficientă.
+  for (let i = 0; i < ys.length - 1; i++) {
+    const gapSize = ys[i + 1] - ys[i];
+    if (gapSize >= minGapSize) {
+      return { gapBottom: ys[i], gapTop: ys[i + 1], gapSize };
+    }
+  }
+  return null;
 }
 
 async function stampFooterOnPdf(pdfB64, flowData = {}) {
@@ -1053,18 +1079,46 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
       const { width: pWLast, height: hLast } = lastPageExisting.getSize();
       const cellHCheck = Math.max(56, Math.min(78,
         (Math.max(120, hLast * 0.30) - ((rows - 1) * rowGap)) / rows));
-      // Cartușul ar începe la (footerY + 32) și ar urca cu rows * cellH + gaps
-      const cartusTopIfFit = (footerY + 32) + rows * cellHCheck + (rows - 1) * rowGap;
-      // Marjă de siguranță deasupra cartușului (60pt = vizibil clar separat)
+      const cartusTotalH = rows * cellHCheck + (rows - 1) * rowGap;
+
+      // ── Detectare conținut + găsire gap optim ──────────────────────────
+      // v3.9.440: în loc să forțăm cartușul „la bază", căutăm cea mai joasă
+      // bandă goală pe pagină care încape cartușul (+ margin). Asta permite
+      // plasare mid-page când există GDPR notice / alt conținut mic la bază.
+      const contentYs = detectContentYs(lastPageExisting, 45);
+      const minContentY = contentYs && contentYs.length ? contentYs[0] : null;
+
+      // Try 1: bottom placement clasic (pentru PDF-uri aerisite — body-ul nu
+      //         coboară până jos). Cartușul stă lipit de footer.
       const SAFETY_MARGIN = 60;
-      const requiredFreeY = cartusTopIfFit + SAFETY_MARGIN;
-      // Detectăm Y-ul minim al conținutului existent (ignorăm footer-ul DocFlowAI)
-      const minContentY = detectMinContentY(lastPageExisting, 45);
-      // Decizie: pagină nouă dacă detectarea eșuează (siguranță) SAU
-      // dacă cartușul + marjă ar suprapune conținutul.
-      const needsNewPage = (minContentY === null) || (minContentY < requiredFreeY);
+      const requiredFreeY = (footerY + 32) + cartusTotalH + SAFETY_MARGIN;
+      const fitsAtBottom = (minContentY !== null) && (minContentY >= requiredFreeY);
+
+      // Try 2: gap placement mid-page (pentru PDF-uri cu GDPR/footer la bază
+      //         dar body-ul scurt). Avem nevoie de cartusH + 2*15 (margin).
+      const GAP_MARGIN = 15;
+      const REQUIRED_GAP = cartusTotalH + 2 * GAP_MARGIN;
+      let lowestGap = null;
+      if (!fitsAtBottom && contentYs) {
+        lowestGap = findLowestUsableGap(contentYs, REQUIRED_GAP);
+      }
+
+      // Decizie finală: pagină nouă DOAR dacă nici fits-at-bottom nici gap.
+      // Fallback: dacă detectarea eșuează (contentYs=null), forțăm pagină nouă.
+      const needsNewPage = (contentYs === null) || (!fitsAtBottom && !lowestGap);
+
+      logger.info({ flowId: flowData.flowId,
+        signers: signers.length, rows, cellHCheck, cartusTotalH,
+        minContentY, fitsAtBottom,
+        lowestGap: lowestGap ? `${lowestGap.gapBottom}→${lowestGap.gapTop} (${lowestGap.gapSize.toFixed(0)}pt)` : null,
+        needsNewPage,
+      }, 'stampFooterOnPdf: decizie placement cartuș');
 
       // ── Alege / creează pagina pentru cartus ──────────────────────────────
+      // gapPlacement = true → folosim lowestGap (mid-page placement)
+      // gapPlacement = false + needsNewPage = false → fits-at-bottom
+      // needsNewPage = true → pagină nouă
+      const gapPlacement = !needsNewPage && !fitsAtBottom && lowestGap !== null;
       let cartusPage, cartusPageNum, topMargin;
       if (needsNewPage) {
         // Pagină nouă — adăugăm footer pe ea și plasăm cartușul sus
@@ -1112,10 +1166,18 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
 
       let startY;
       if (needsNewPage) {
-        // Sus: prima linie de celule la (height - topMargin - cellH)
+        // Pagină nouă: sus
         startY = height - topMargin - cellH;
+      } else if (gapPlacement) {
+        // Mid-page placement: cartuș plasat în banda goală, JUST DEASUPRA
+        // conținutului inferior (visual: signature block înainte de GDPR/footer)
+        // gapBottom = Y-ul conținutului de jos. Cartușul începe la
+        // gapBottom + GAP_MARGIN. Pentru rows>1, cellH se scade pentru row 0.
+        const blockBottom = lowestGap.gapBottom + GAP_MARGIN;
+        const blockTop    = blockBottom + rows * cellH + (rows - 1) * rowGap;
+        startY = blockTop - cellH;
       } else {
-        // Jos: deasupra footer-ului
+        // Bottom placement clasic: deasupra footer-ului
         const blockBottom = footerY + 41;
         const blockTop    = blockBottom + rows * cellH + (rows - 1) * rowGap;
         startY = Math.min(height - topMargin, blockTop) - cellH;
