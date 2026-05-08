@@ -19,6 +19,10 @@ router.get('/:type/:id', requireAuth, async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: 'db_unavailable' });
 
+    // No-cache pe API per CLAUDE.md convention
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+
     const { orgId } = req.actor;
     if (!orgId) return res.status(400).json({ error: 'orgId_missing_in_token' });
 

@@ -67,7 +67,7 @@
     _state.data = null;
 
     const modal = document.getElementById('trasabilitate-modal');
-    if (modal) modal.style.display = '';
+    if (modal) modal.classList.add('is-open');
     document.body.style.overflow = 'hidden';
 
     _bindDelegation();
@@ -91,7 +91,7 @@
 
   function closeTrasabilitate() {
     const modal = document.getElementById('trasabilitate-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) modal.classList.remove('is-open');
     document.body.style.overflow = '';
     _state.data = null;
   }
@@ -336,7 +336,7 @@
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       const modal = document.getElementById('trasabilitate-modal');
-      if (modal && modal.style.display !== 'none') closeTrasabilitate();
+      if (modal && modal.classList.contains('is-open')) closeTrasabilitate();
     }
   });
 
