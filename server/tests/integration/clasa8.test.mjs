@@ -122,7 +122,7 @@ describe('GET /api/clasa8', () => {
     // SQL trebuie să fi fost apelat cu prefix-ul transformat în 'X%'
     const callArgs = dbModule.pool.query.mock.calls[0];
     expect(callArgs[0]).toContain('ILIKE');
-    expect(callArgs[1]).toContain('01A%');
+    expect(callArgs[1]).toContain('%01A%');
   });
 
   it('200 multi-tenant: orgId din JWT propagat în query ($1)', async () => {

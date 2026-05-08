@@ -40,7 +40,7 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
     throw new Error('clasa8.getClasa8Aggregate: pool și orgId sunt obligatorii');
   }
 
-  const ssiPrefix    = (filters.ssi    || '').trim();
+  const ssi          = (filters.ssi    || '').trim();
   const compartiment = (filters.compartiment || '').trim();
   const qText        = (filters.q      || '').trim();
 
@@ -74,8 +74,8 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
 
   const ordCompFilter = compartiment ? `AND fo.compartiment_specialitate = $${paramIdx}` : '';
 
-  const ssiFinalFilter = ssiPrefix ? `AND a.cod_ssi ILIKE $${++paramIdx}` : '';
-  if (ssiPrefix) params.push(`${ssiPrefix}%`);
+  const ssiFinalFilter = ssi ? `AND a.cod_ssi ILIKE $${++paramIdx}` : '';
+  if (ssi) params.push(`%${ssi}%`);
 
   const sql = `
     WITH
@@ -270,7 +270,7 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
     totals,
     count: items.length,
     filters_applied: {
-      ssi:          ssiPrefix || null,
+      ssi:          ssi || null,
       compartiment: compartiment || null,
       q:            qText || null,
     },
