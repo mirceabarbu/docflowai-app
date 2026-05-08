@@ -519,6 +519,7 @@ import { formulareDbRouter } from './routes/formulare-db.mjs';
 import alopRouter from './routes/alop.mjs';
 import convertRouter from './routes/convert.mjs';
 import formulareOficialeRouter from './routes/formulare-oficiale.mjs';
+import clasa8Router            from './routes/clasa8.mjs';
 
 const app = express();
 app.use(compression()); // PERF-FIX-07: gzip pentru toate răspunsurile — reduce ~70% din dimensiunea HTML/JSON
@@ -1755,6 +1756,7 @@ app.use('/', formulareDbRouter);      // Formulare DB: DF + ORD workflow P1→P2
 app.use('/', alopRouter);             // ALOP orchestrator: DF + ORD + fluxuri semnare
 app.use('/', convertRouter);          // Conversie fișiere non-PDF la PDF
 app.use('/api/formulare-oficiale', formulareOficialeRouter); // Formulare Oficiale CRUD (NF Invest, Referat)
+app.use('/api/clasa8',             clasa8Router);             // Centralizator Clasa 8 (read-only)
 
 app.use('/api/verify',       supplierVerifyRouter);
 

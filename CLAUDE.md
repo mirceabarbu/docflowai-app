@@ -165,6 +165,20 @@ Fiecare `organization` configurează ce provideri de semnare sunt activi (`signi
 
 ---
 
+## Pattern: requireAuth dual-mode (since v3.9.442)
+
+`server/middleware/auth.mjs` exportă `requireAuth` care funcționează în 2 moduri:
+
+- **Helper mode** (2 args: `(req, res)`) — returnează payload-ul JWT direct, sau trimite 401 și returnează null.
+  Folosit în routere vechi cu pattern: `const actor = requireAuth(req, res); if (!actor) return;`
+
+- **Middleware mode** (3 args: `(req, res, next)`) — setează `req.actor` și apelează `next()`.
+  Folosit în routere noi cu pattern: `router.post('/x', requireAuth, csrfMiddleware, handler)`
+
+⚠️ Când adaugi un router nou, alege UN pattern și fii consistent în tot fișierul. NU amesteca.
+
+---
+
 ## Convenții DB & Performance
 
 ### Indexuri importante
