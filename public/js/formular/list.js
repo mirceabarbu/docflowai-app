@@ -361,7 +361,7 @@ function _renderLstTable(rows,type){
       ?`<span style="vertical-align:middle;margin-left:4px;padding:1px 7px;border-radius:8px;font-size:.65rem;font-weight:600;background:rgba(148,163,184,.15);color:#94a3b8;border:1px solid rgba(148,163,184,.25);text-transform:uppercase;letter-spacing:.04em" title="Există o revizie mai recentă pentru acest DF">istoric</span>`
       :'';
     return`<tr>
-      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}</a>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
+      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}</a><button type="button" class="trasab-inline-btn" onclick="event.stopPropagation();openTrasabilitate('${type}','${safeId}');return false" title="Vezi trasabilitate (lanț DF↔ALOP↔ORD)">🔗</button>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>
       <td>${esc(row.initiator||'—')}</td>
       <td>${esc(row.p2||'—')}</td>
@@ -376,7 +376,7 @@ function _renderLstTable(rows,type){
       </td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">Deschide</button>
-        ${cancelBtn}
+        ${cancelBtn}<button type="button" class="df-action-btn sm" onclick="openTrasabilitate('${type}','${safeId}')" title="Trasabilitate" style="margin-left:4px">🔗</button>
       </td>
     </tr>`;
   }).join('');
