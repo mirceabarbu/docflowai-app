@@ -1,15 +1,18 @@
-// public/js/formular/trasabilitate.js
+// public/js/formular/trasabilitate.js (rewrite v3.9.450)
 // DocFlowAI — Modul Trasabilitate: modal cu arbore DF↔ALOP↔ORD.
 //
+// REWRITE v3.9.450:
+//   - Renunțat la inline onclick-uri în HTML generat dinamic (cauza bug
+//     de escape din v3.9.448 — click-urile pe noduri nu navigau)
+//   - Folosesc template literals (backticks) pentru tot HTML-ul
+//   - Atașez UN SINGUR click listener pe modal — event delegation prin
+//     data-trasab-type / data-trasab-id atribute
+//
 // Cross-module exports (window):
-//   - openTrasabilitate(type, id)  : deschide modal + fetch arbore
-//   - closeTrasabilitate()         : închide modal
-//   - _trasabOpenNode(type, id)    : intern, pentru onclick din HTML rendat dinamic
+//   - openTrasabilitate(type, id), closeTrasabilitate()
 //
 // Dependențe:
-//   - switchListTab(type)   : pentru navigare la tab-ul corect (DF/ORD/ALOP)
-//   - openDocFromList(type, id) : pentru deschidere DF/ORD în lista
-//   - openAlop(id)          : pentru deschidere ALOP în detail panel
+//   - switchListTab(type), openDocFromList(type, id), openAlop(id)
 //   - window.df.esc (cu fallback inline)
 
 (function () {
@@ -24,6 +27,7 @@
     data: null,
     loading: false,
     error: null,
+    delegationBound: false,
   };
 
   function _formatRO(n) {
@@ -47,7 +51,7 @@
       'completed':   '<span class="trasab-status trasab-status-done">✓ Completat</span>',
       'cancelled':   '<span class="trasab-status trasab-status-cancel">🚫 Anulat</span>',
     };
-    return map[status] || '<span class="trasab-status">' + esc(status||'?') + '</span>';
+    return map[status] || `<span class="trasab-status">${esc(status||'?')}</span>`;
   }
 
   // ── Modal control ───────────────────────────────────────────────────────────
@@ -66,10 +70,11 @@
     if (modal) modal.style.display = '';
     document.body.style.overflow = 'hidden';
 
+    _bindDelegation();
     _showLoading();
 
     try {
-      const r = await fetch('/api/trasabilitate/' + type + '/' + encodeURIComponent(id),
+      const r = await fetch(`/api/trasabilitate/${type}/${encodeURIComponent(id)}`,
                             { credentials: 'include' });
       if (r.status === 401) { closeTrasabilitate(); location.href = '/'; return; }
       if (r.status === 404) { _showError('Document negăsit (poate a fost șters între timp).'); return; }
@@ -91,7 +96,7 @@
     _state.data = null;
   }
 
-  // ── Render — loading / error / empty ────────────────────────────────────────
+  // ── Render — loading / error ────────────────────────────────────────────────
   function _showLoading() {
     const loading = document.getElementById('trasabilitate-loading');
     const errEl   = document.getElementById('trasabilitate-error');
@@ -110,7 +115,7 @@
     if (content) content.style.display = 'none';
   }
 
-  // ── Render — arbore principal ───────────────────────────────────────────────
+  // ── Render principal ────────────────────────────────────────────────────────
   function _render() {
     const data = _state.data;
     if (!data) return;
@@ -125,16 +130,11 @@
 
     let html = '';
 
-    // Card DF (cu badges pentru toate reviziile)
     if (data.df_revizii && data.df_revizii.length) {
       html += _renderDFCard(data.df_revizii);
-      // Connector spre ALOP-uri
-      if (data.alopuri && data.alopuri.length) {
-        html += _renderConnector();
-      }
+      if (data.alopuri && data.alopuri.length) html += _renderConnector();
     }
 
-    // Cards ALOP-uri
     if (data.alopuri && data.alopuri.length) {
       data.alopuri.forEach((alop, i) => {
         if (i > 0) html += _renderConnector();
@@ -151,7 +151,6 @@
 
   // ── Render — card DF cu badges revizii ──────────────────────────────────────
   function _renderDFCard(revizii) {
-    // Folosim ultima revizie ca sursă pentru titlu/nr
     const last = revizii[revizii.length - 1];
     const titlu = last.titlu || '(fără subtitlu)';
 
@@ -160,55 +159,50 @@
       const cls = isRoot ? 'trasab-rev-badge trasab-rev-badge-root' : 'trasab-rev-badge';
       const aprobIcon = rv.aprobat ? '✓' : '⏳';
       const tooltip = (rv.titlu||'') + (rv.aprobat ? ' (aprobat)' : ' (în curs)');
-      return '<button type="button" class="' + cls + '"'
-           + ' onclick="_trasabOpenNode(\'df\', \'' + esc(rv.id) + '\')"'
-           + ' title="' + esc(tooltip) + '">'
-           + 'R' + rv.revizie_nr + ' ' + aprobIcon
-           + (isRoot ? ' <span class="trasab-here">●</span>' : '')
-           + '</button>';
+      return `<button type="button" class="${cls}"
+                data-trasab-type="df" data-trasab-id="${esc(rv.id)}"
+                title="${esc(tooltip)}">R${rv.revizie_nr} ${aprobIcon}${isRoot ? ' <span class="trasab-here">●</span>' : ''}</button>`;
     }).join('');
 
-    return '<div class="trasab-card trasab-card-df">'
-         +   '<div class="trasab-card-icon">📄</div>'
-         +   '<div class="trasab-card-body">'
-         +     '<div class="trasab-card-kicker">DOCUMENT DE FUNDAMENTARE</div>'
-         +     '<div class="trasab-card-title">' + esc(last.nr_unic_inreg || '—') + '</div>'
-         +     '<div class="trasab-card-subtitle">' + esc(titlu) + '</div>'
-         +     '<div class="trasab-card-badges-row">'
-         +       '<span class="trasab-card-badges-label">Revizii:</span> '
-         +       badgesHtml
-         +     '</div>'
-         +   '</div>'
-         + '</div>';
+    return `<div class="trasab-card trasab-card-df">
+      <div class="trasab-card-icon">📄</div>
+      <div class="trasab-card-body">
+        <div class="trasab-card-kicker">DOCUMENT DE FUNDAMENTARE</div>
+        <div class="trasab-card-title">${esc(last.nr_unic_inreg || '—')}</div>
+        <div class="trasab-card-subtitle">${esc(titlu)}</div>
+        <div class="trasab-card-badges-row">
+          <span class="trasab-card-badges-label">Revizii:</span> ${badgesHtml}
+        </div>
+      </div>
+    </div>`;
   }
 
-  // ── Render — connector SVG vertical între cards ─────────────────────────────
+  // ── Render — connector SVG vertical ─────────────────────────────────────────
   function _renderConnector() {
-    return '<div class="trasab-connector">'
-         +   '<svg width="40" height="32" viewBox="0 0 40 32" xmlns="http://www.w3.org/2000/svg">'
-         +     '<line x1="20" y1="0" x2="20" y2="32"'
-         +           ' stroke="rgba(124,58,237,0.4)" stroke-width="2" stroke-dasharray="4 3"/>'
-         +     '<polygon points="16,24 24,24 20,32" fill="rgba(124,58,237,0.6)"/>'
-         +   '</svg>'
-         + '</div>';
+    return `<div class="trasab-connector">
+      <svg width="40" height="32" viewBox="0 0 40 32" xmlns="http://www.w3.org/2000/svg">
+        <line x1="20" y1="0" x2="20" y2="32"
+              stroke="rgba(124,58,237,0.4)" stroke-width="2" stroke-dasharray="4 3"/>
+        <polygon points="16,24 24,24 20,32" fill="rgba(124,58,237,0.6)"/>
+      </svg>
+    </div>`;
   }
 
-  // ── Render — card ALOP cu copii (ord curent + cicluri arhivate) ─────────────
+  // ── Render — card ALOP cu copii ─────────────────────────────────────────────
   function _renderAlopCard(alop) {
     const titlu = alop.titlu || '(fără titlu)';
     const valTotal = alop.valoare_totala !== null ? _formatRO(alop.valoare_totala) : '—';
     const platit   = alop.suma_totala_platita !== null ? _formatRO(alop.suma_totala_platita) : '0,00';
 
-    let metaParts = [
+    const metaParts = [
       _statusBadgeAlop(alop.status),
-      'Valoare: <strong>' + valTotal + ' lei</strong>',
-      'Plătit: <strong>' + platit + ' lei</strong>',
+      `Valoare: <strong>${valTotal} lei</strong>`,
+      `Plătit: <strong>${platit} lei</strong>`,
     ];
     if (alop.ciclu_curent && alop.ciclu_curent > 1) {
-      metaParts.push('Ciclu curent: <strong>' + alop.ciclu_curent + '</strong>');
+      metaParts.push(`Ciclu curent: <strong>${alop.ciclu_curent}</strong>`);
     }
 
-    // Construim cards copii: cicluri arhivate (sortate ASC) + ord curent la final
     let copiHtml = '';
     if (alop.cicluri_arhivate && alop.cicluri_arhivate.length) {
       alop.cicluri_arhivate.forEach(c => { copiHtml += _renderArchivedCicluCard(c); });
@@ -220,23 +214,21 @@
       copiHtml = '<div class="trasab-empty-inline">Niciun ORD generat încă (ALOP în stadiu Angajare).</div>';
     }
 
-    return '<div class="trasab-card trasab-card-alop">'
-         +   '<div class="trasab-card-header" onclick="_trasabOpenNode(\'alop\', \'' + esc(alop.id) + '\')">'
-         +     '<div class="trasab-card-icon">🏛</div>'
-         +     '<div class="trasab-card-body">'
-         +       '<div class="trasab-card-kicker">ALOP</div>'
-         +       '<div class="trasab-card-title">' + esc(titlu) + '</div>'
-         +       '<div class="trasab-card-meta">' + metaParts.join(' · ') + '</div>'
-         +     '</div>'
-         +     '<div class="trasab-card-arrow">▶</div>'
-         +   '</div>'
-         +   '<div class="trasab-card-children">'
-         +     copiHtml
-         +   '</div>'
-         + '</div>';
+    return `<div class="trasab-card trasab-card-alop">
+      <div class="trasab-card-header" data-trasab-type="alop" data-trasab-id="${esc(alop.id)}">
+        <div class="trasab-card-icon">🏛</div>
+        <div class="trasab-card-body">
+          <div class="trasab-card-kicker">ALOP</div>
+          <div class="trasab-card-title">${esc(titlu)}</div>
+          <div class="trasab-card-meta">${metaParts.join(' · ')}</div>
+        </div>
+        <div class="trasab-card-arrow">▶</div>
+      </div>
+      <div class="trasab-card-children">${copiHtml}</div>
+    </div>`;
   }
 
-  // ── Render — card ORD curent (în interiorul unui ALOP card) ─────────────────
+  // ── Render — card ORD curent ────────────────────────────────────────────────
   function _renderCurrentOrdCard(ord, cicluNr) {
     const nr = ord.nr_unic_inreg || '(fără număr)';
     const titlu = ord.titlu || '(beneficiar nedefinit)';
@@ -246,36 +238,30 @@
                      : '📝 Draft');
 
     const lichidat = ord.lichidare_confirmed_at
-      ? '<div class="trasab-step trasab-step-done">✓ Lichidat ' + _formatDate(ord.lichidare_confirmed_at)
-        + (ord.lichidare_nr_factura ? ' · F-' + esc(ord.lichidare_nr_factura) : '')
-        + (ord.lichidare_nr_pv      ? ' · PV ' + esc(ord.lichidare_nr_pv)     : '')
-        + '</div>'
+      ? `<div class="trasab-step trasab-step-done">✓ Lichidat ${_formatDate(ord.lichidare_confirmed_at)}${ord.lichidare_nr_factura ? ' · F-' + esc(ord.lichidare_nr_factura) : ''}${ord.lichidare_nr_pv ? ' · PV ' + esc(ord.lichidare_nr_pv) : ''}</div>`
       : '<div class="trasab-step trasab-step-pending">⏳ Lichidare în curs</div>';
 
     const platit = ord.plata_confirmed_at
-      ? '<div class="trasab-step trasab-step-done">✓ Plătit ' + _formatDate(ord.plata_confirmed_at)
-        + (ord.plata_nr_ordin ? ' · OP-' + esc(ord.plata_nr_ordin) : '')
-        + (ord.plata_suma_efectiva !== null ? ' · <strong>' + _formatRO(ord.plata_suma_efectiva) + ' lei</strong>' : '')
-        + '</div>'
+      ? `<div class="trasab-step trasab-step-done">✓ Plătit ${_formatDate(ord.plata_confirmed_at)}${ord.plata_nr_ordin ? ' · OP-' + esc(ord.plata_nr_ordin) : ''}${ord.plata_suma_efectiva !== null ? ' · <strong>' + _formatRO(ord.plata_suma_efectiva) + ' lei</strong>' : ''}</div>`
       : '<div class="trasab-step trasab-step-pending">⏳ Plata în curs</div>';
 
-    const cls = 'trasab-card-ord trasab-card-ord-curent' + (isRoot ? ' trasab-card-root' : '');
+    const cls = `trasab-card-ord trasab-card-ord-curent${isRoot ? ' trasab-card-root' : ''}`;
 
-    return '<div class="' + cls + '" onclick="event.stopPropagation();_trasabOpenNode(\'ord\', \'' + esc(ord.id) + '\')">'
-         +   '<div class="trasab-card-ord-header">'
-         +     '<span class="trasab-card-ord-kicker">📦 Ciclu ' + cicluNr + ' (curent)</span>'
-         +     (isRoot ? ' <span class="trasab-here-badge">● TU EȘTI AICI</span>' : '')
-         +   '</div>'
-         +   '<div class="trasab-card-ord-title">'
-         +     'ORD: ' + esc(nr) + ' <span class="trasab-card-ord-aprob">· ' + aprobLabel + '</span>'
-         +   '</div>'
-         +   '<div class="trasab-card-ord-subtitle">' + esc(titlu) + '</div>'
-         +   lichidat
-         +   platit
-         + '</div>';
+    return `<div class="${cls}" data-trasab-type="ord" data-trasab-id="${esc(ord.id)}">
+      <div class="trasab-card-ord-header">
+        <span class="trasab-card-ord-kicker">📦 Ciclu ${cicluNr} (curent)</span>
+        ${isRoot ? '<span class="trasab-here-badge">● TU EȘTI AICI</span>' : ''}
+      </div>
+      <div class="trasab-card-ord-title">
+        ORD: ${esc(nr)} <span class="trasab-card-ord-aprob">· ${aprobLabel}</span>
+      </div>
+      <div class="trasab-card-ord-subtitle">${esc(titlu)}</div>
+      ${lichidat}
+      ${platit}
+    </div>`;
   }
 
-  // ── Render — card ORD din ciclu arhivat ─────────────────────────────────────
+  // ── Render — card ORD arhivat ───────────────────────────────────────────────
   function _renderArchivedCicluCard(ciclu) {
     const nr = ciclu.ord_nr_unic_inreg || '(fără număr)';
     const titlu = ciclu.ord_titlu || '(beneficiar nedefinit)';
@@ -283,37 +269,53 @@
     const aprobLabel = ciclu.ord_aprobat ? '✓ Aprobat' : '📝 ' + esc(ciclu.ord_status || '?');
 
     const lichidat = ciclu.lichidare_confirmed_at
-      ? '<div class="trasab-step trasab-step-done">✓ Lichidat ' + _formatDate(ciclu.lichidare_confirmed_at)
-        + (ciclu.lichidare_nr_factura ? ' · F-' + esc(ciclu.lichidare_nr_factura) : '')
-        + (ciclu.lichidare_nr_pv      ? ' · PV ' + esc(ciclu.lichidare_nr_pv)     : '')
-        + '</div>'
+      ? `<div class="trasab-step trasab-step-done">✓ Lichidat ${_formatDate(ciclu.lichidare_confirmed_at)}${ciclu.lichidare_nr_factura ? ' · F-' + esc(ciclu.lichidare_nr_factura) : ''}${ciclu.lichidare_nr_pv ? ' · PV ' + esc(ciclu.lichidare_nr_pv) : ''}</div>`
       : '';
 
     const platit = ciclu.plata_confirmed_at
-      ? '<div class="trasab-step trasab-step-done">✓ Plătit ' + _formatDate(ciclu.plata_confirmed_at)
-        + (ciclu.plata_nr_ordin ? ' · OP-' + esc(ciclu.plata_nr_ordin) : '')
-        + (ciclu.plata_suma_efectiva !== null ? ' · <strong>' + _formatRO(ciclu.plata_suma_efectiva) + ' lei</strong>' : '')
-        + '</div>'
+      ? `<div class="trasab-step trasab-step-done">✓ Plătit ${_formatDate(ciclu.plata_confirmed_at)}${ciclu.plata_nr_ordin ? ' · OP-' + esc(ciclu.plata_nr_ordin) : ''}${ciclu.plata_suma_efectiva !== null ? ' · <strong>' + _formatRO(ciclu.plata_suma_efectiva) + ' lei</strong>' : ''}</div>`
       : '';
 
-    const cls = 'trasab-card-ord trasab-card-ord-archived' + (isRoot ? ' trasab-card-root' : '');
+    const cls = `trasab-card-ord trasab-card-ord-archived${isRoot ? ' trasab-card-root' : ''}`;
 
-    return '<div class="' + cls + '" onclick="event.stopPropagation();_trasabOpenNode(\'ord\', \'' + esc(ciclu.ord_id) + '\')">'
-         +   '<div class="trasab-card-ord-header">'
-         +     '<span class="trasab-card-ord-kicker">📦 Ciclu ' + ciclu.ciclu_nr + ' (arhivat)</span>'
-         +     (isRoot ? ' <span class="trasab-here-badge">● TU EȘTI AICI</span>' : '')
-         +   '</div>'
-         +   '<div class="trasab-card-ord-title">'
-         +     'ORD: ' + esc(nr) + ' <span class="trasab-card-ord-aprob">· ' + aprobLabel + '</span>'
-         +   '</div>'
-         +   '<div class="trasab-card-ord-subtitle">' + esc(titlu) + '</div>'
-         +   lichidat
-         +   platit
-         + '</div>';
+    return `<div class="${cls}" data-trasab-type="ord" data-trasab-id="${esc(ciclu.ord_id)}">
+      <div class="trasab-card-ord-header">
+        <span class="trasab-card-ord-kicker">📦 Ciclu ${ciclu.ciclu_nr} (arhivat)</span>
+        ${isRoot ? '<span class="trasab-here-badge">● TU EȘTI AICI</span>' : ''}
+      </div>
+      <div class="trasab-card-ord-title">
+        ORD: ${esc(nr)} <span class="trasab-card-ord-aprob">· ${aprobLabel}</span>
+      </div>
+      <div class="trasab-card-ord-subtitle">${esc(titlu)}</div>
+      ${lichidat}
+      ${platit}
+    </div>`;
+  }
+
+  // ── Click delegation pe modal — un SINGUR listener, idiom modern ────────────
+  function _bindDelegation() {
+    if (_state.delegationBound) return;
+    const modal = document.getElementById('trasabilitate-modal');
+    if (!modal) return;
+
+    modal.addEventListener('click', e => {
+      const node = e.target.closest('[data-trasab-type][data-trasab-id]');
+      if (!node) return;
+      if (!modal.contains(node)) return;
+
+      const type = node.dataset.trasabType;
+      const id   = node.dataset.trasabId;
+      if (!type || !id) return;
+
+      e.stopPropagation();
+      _navigateToNode(type, id);
+    });
+
+    _state.delegationBound = true;
   }
 
   // ── Click pe nod: închide modal + deschide documentul ───────────────────────
-  function _trasabOpenNode(type, id) {
+  function _navigateToNode(type, id) {
     closeTrasabilitate();
     setTimeout(() => {
       try {
@@ -325,9 +327,9 @@
           if (typeof openDocFromList === 'function') openDocFromList(type, id);
         }
       } catch(e) {
-        console.error('trasab open node error:', e);
+        console.error('trasab navigate error:', e);
       }
-    }, 50); // mic delay ca să se închidă modal-ul curat înainte de deschiderea documentului
+    }, 50);
   }
 
   // ── ESC pentru închidere ────────────────────────────────────────────────────
@@ -347,5 +349,4 @@
   // Public API
   window.openTrasabilitate  = openTrasabilitate;
   window.closeTrasabilitate = closeTrasabilitate;
-  window._trasabOpenNode    = _trasabOpenNode;
 })();
