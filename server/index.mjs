@@ -612,6 +612,7 @@ const _LARGE_PDF_PATHS = [
   '/signing-callback',        // POST — callback provider cloud signing
   '/sign',                    // POST — poate conține signedPdfB64
   '/detect-acroform-fields',  // POST — detectare câmpuri AcroForm/XFA din PDF
+  '/formulare-oficiale',      // POST/PUT/attachments — RN/NF cu form_data JSONB extins + atașamente base64
 ];
 app.use((req, res, next) => {
   const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));

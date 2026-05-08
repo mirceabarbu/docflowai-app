@@ -204,4 +204,161 @@ router.post('/:id/generate-pdf', requireAuth, csrfMiddleware, async (req, res) =
   }
 });
 
+// ═══════════════════════════════════════════════════════
+// ATTACHMENTS — Caiet sarcini (sect J), Estimare valoare (sect F), altele
+// ═══════════════════════════════════════════════════════
+
+const ATT_ALLOWED_MIME = new Set([
+  'application/pdf',
+  'application/zip', 'application/x-zip-compressed', 'application/x-zip',
+  'application/x-rar-compressed', 'application/vnd.rar', 'application/x-rar',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'image/jpeg', 'image/png',
+]);
+const ATT_MAX_BYTES = 25 * 1024 * 1024; // 25 MB per fișier
+const ATT_CATEGORIES = ['caiet_sarcini', 'estimare_valoare', 'altele'];
+
+// POST /api/formulare-oficiale/:id/attachments — upload
+router.post('/:id/attachments', requireAuth, csrfMiddleware, _json, async (req, res) => {
+  try {
+    const { orgId, userId } = req.actor;
+    const { id } = req.params;
+    const { filename, mimeType, dataB64, category, notes } = req.body || {};
+
+    if (!filename || !dataB64) return res.status(400).json({ error: 'filename_and_data_required' });
+    if (!ATT_CATEGORIES.includes(category)) return res.status(400).json({ error: 'invalid_category', message: 'Categorie invalidă.' });
+
+    // Verifică formularul există și aparține org-ului
+    const { rows: fRows } = await pool.query(
+      `SELECT id FROM formulare_oficiale WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      [id, orgId]
+    );
+    if (!fRows.length) return res.status(404).json({ error: 'formular_not_found' });
+
+    // MIME detection
+    const ext = (filename.split('.').pop() || '').toLowerCase();
+    const mimeByExt = {
+      pdf: 'application/pdf',
+      zip: 'application/zip',
+      rar: 'application/x-rar-compressed',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+    };
+    const resolvedMime = (mimeType && ATT_ALLOWED_MIME.has(mimeType)) ? mimeType : (mimeByExt[ext] || mimeType || 'application/octet-stream');
+    if (!ATT_ALLOWED_MIME.has(resolvedMime)) {
+      return res.status(400).json({ error: 'invalid_type', message: 'Tipuri acceptate: PDF, DOC(X), XLS(X), ZIP, RAR, JPG, PNG.' });
+    }
+
+    const raw = dataB64.includes(',') ? dataB64.split(',')[1] : dataB64;
+    const buf = Buffer.from(raw, 'base64');
+    if (buf.length > ATT_MAX_BYTES) return res.status(413).json({ error: 'too_large', message: 'Fișierul depășește 25 MB.' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO formular_attachments
+         (formular_id, category, uploaded_by, filename, mime_type, size_bytes, data, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING id, category, filename, mime_type, size_bytes, notes, uploaded_at`,
+      [id, category, userId, filename.slice(0, 255), resolvedMime, buf.length, buf, notes || null]
+    );
+    return res.status(201).json({ ok: true, attachment: rows[0] });
+  } catch(e) {
+    logger.error({ err: e }, 'formular attachment upload error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// GET /api/formulare-oficiale/:id/attachments — listă (opțional ?category=X)
+router.get('/:id/attachments', requireAuth, async (req, res) => {
+  try {
+    const { orgId } = req.actor;
+    const { id } = req.params;
+    const { category } = req.query;
+
+    const { rows: fRows } = await pool.query(
+      `SELECT id FROM formulare_oficiale WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      [id, orgId]
+    );
+    if (!fRows.length) return res.status(404).json({ error: 'formular_not_found' });
+
+    const params = [id];
+    let where = 'formular_id=$1 AND deleted_at IS NULL';
+    if (category && ATT_CATEGORIES.includes(category)) {
+      params.push(category);
+      where += ` AND category=$${params.length}`;
+    }
+    const { rows } = await pool.query(
+      `SELECT id, category, filename, mime_type, size_bytes, notes, uploaded_at, uploaded_by
+         FROM formular_attachments
+        WHERE ${where}
+        ORDER BY uploaded_at DESC`,
+      params
+    );
+    return res.json(rows);
+  } catch(e) {
+    logger.error({ err: e }, 'formular attachments list error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// GET /api/formulare-oficiale/:id/attachments/:attId — descarcă
+router.get('/:id/attachments/:attId', requireAuth, async (req, res) => {
+  try {
+    const { orgId } = req.actor;
+    const { id, attId } = req.params;
+
+    const { rows: fRows } = await pool.query(
+      `SELECT id FROM formulare_oficiale WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      [id, orgId]
+    );
+    if (!fRows.length) return res.status(404).json({ error: 'formular_not_found' });
+
+    const { rows } = await pool.query(
+      `SELECT filename, mime_type, data
+         FROM formular_attachments
+        WHERE id=$1 AND formular_id=$2 AND deleted_at IS NULL`,
+      [attId, id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'attachment_not_found' });
+    const att = rows[0];
+    res.setHeader('Content-Type', att.mime_type);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(att.filename)}"`);
+    res.setHeader('Content-Length', att.data.length);
+    return res.send(att.data);
+  } catch(e) {
+    logger.error({ err: e }, 'formular attachment download error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// DELETE /api/formulare-oficiale/:id/attachments/:attId — soft-delete
+router.delete('/:id/attachments/:attId', requireAuth, csrfMiddleware, async (req, res) => {
+  try {
+    const { orgId } = req.actor;
+    const { id, attId } = req.params;
+
+    const { rows: fRows } = await pool.query(
+      `SELECT id FROM formulare_oficiale WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      [id, orgId]
+    );
+    if (!fRows.length) return res.status(404).json({ error: 'formular_not_found' });
+
+    const { rowCount } = await pool.query(
+      `UPDATE formular_attachments SET deleted_at = NOW()
+        WHERE id=$1 AND formular_id=$2 AND deleted_at IS NULL`,
+      [attId, id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'attachment_not_found' });
+    return res.json({ ok: true, deleted: true });
+  } catch(e) {
+    logger.error({ err: e }, 'formular attachment delete error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
 export default router;

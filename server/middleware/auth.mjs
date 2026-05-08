@@ -77,15 +77,24 @@ export async function verifyPassword(password, stored) {
   return { ok, needsRehash: ok };
 }
 
-export function requireAuth(req, res) {
+export function requireAuth(req, res, next) {
   let token = req.cookies?.[AUTH_COOKIE] || null;
   if (!token) {
     const auth = req.get('authorization') || '';
     token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
   }
   if (!token) { res.status(401).json({ error: 'unauthorized' }); return null; }
-  try { return jwt.verify(token, JWT_SECRET); }
-  catch(e) { res.status(401).json({ error: 'token_invalid_or_expired' }); return null; }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    // Dual-mode: când e folosit ca middleware Express (next === function),
+    // setăm req.actor și avansăm pipeline-ul; când e apelat direct ca helper
+    // (`const actor = requireAuth(req, res)`), doar returnăm payload-ul.
+    if (typeof next === 'function') {
+      req.actor = payload;
+      next();
+    }
+    return payload;
+  } catch(e) { res.status(401).json({ error: 'token_invalid_or_expired' }); return null; }
 }
 
 // ── SEC-04: verificare token_version la endpoint-uri post-reset ───────────
