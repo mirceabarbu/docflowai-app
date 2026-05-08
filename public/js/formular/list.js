@@ -221,23 +221,27 @@ function switchListTab(type){
   if(ltabRfn)ltabRfn.classList.toggle('active',type==='rfn');
   const ltabNfi=document.getElementById('ltab-nfi');
   if(ltabNfi)ltabNfi.classList.toggle('active',type==='nfi');
+  const ltabClasa8=document.getElementById('ltab-clasa8');
+  if(ltabClasa8)ltabClasa8.classList.toggle('active',type==='clasa8');
   // Bannere informative pentru DF/ORD
   const bannerDf=document.getElementById('lst-banner-df');
   const bannerOrd=document.getElementById('lst-banner-ord');
   if(bannerDf)bannerDf.style.display=type==='df'?'':'none';
   if(bannerOrd)bannerOrd.style.display=type==='ord'?'':'none';
-  // Secțiuni ALOP / Verify / Formulare Oficiale
+  // Secțiuni ALOP / Verify / Clasa 8 / Formulare Oficiale
   const lstWrap=document.querySelector('#section-list .lst-wrap');
   const alopSection=document.getElementById('alop-section');
   const verifySection=document.getElementById('verify-section');
   const rfnSection=document.getElementById('rfn-section');
   const nfiSection=document.getElementById('nfi-section');
+  const clasa8Section=document.getElementById('clasa8-section');
   if(type==='alop'){
     if(lstWrap)lstWrap.style.display='none';
     if(alopSection)alopSection.style.display='';
     if(verifySection)verifySection.style.display='none';
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
     loadAlop();loadAlopStats();
     // Re-fetch detaliu dacă era deschis — statusul poate fi schimbat după semnare
@@ -251,13 +255,24 @@ function switchListTab(type){
     if(verifySection)verifySection.style.display='';
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
+  }else if(type==='clasa8'){
+    if(lstWrap)lstWrap.style.display='none';
+    if(alopSection)alopSection.style.display='none';
+    if(verifySection)verifySection.style.display='none';
+    if(rfnSection)rfnSection.style.display='none';
+    if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='';
+    const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
+    if(typeof openClasa8==='function')openClasa8();
   }else if(type==='rfn'){
     if(lstWrap)lstWrap.style.display='none';
     if(alopSection)alopSection.style.display='none';
     if(verifySection)verifySection.style.display='none';
     if(rfnSection)rfnSection.style.display='';
     if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
   }else if(type==='nfi'){
     if(lstWrap)lstWrap.style.display='none';
@@ -265,6 +280,7 @@ function switchListTab(type){
     if(verifySection)verifySection.style.display='none';
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
   }else{
     if(lstWrap)lstWrap.style.display='';
@@ -272,6 +288,7 @@ function switchListTab(type){
     if(verifySection)verifySection.style.display='none';
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
     loadList();
   }
