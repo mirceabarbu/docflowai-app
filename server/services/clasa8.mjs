@@ -2,9 +2,15 @@
  * server/services/clasa8.mjs
  *
  * Agregator centralizator Clasa 8: per Cod SSI extrage din BD:
- *   - Angajamente bugetare  (din formulare_df Sec.B, status='completed')
- *   - Ordonanțări           (din formulare_ord rows, status='completed')
- *   - Plăți (proporțional)  (din alop_ord_cicluri + alop_instances ciclu curent)
+ *   - Angajamente bugetare  (DF Sec.B rows_ctrl[].sum_rezv_crdt_bug_act col.10=8+9,
+ *                            DOAR ultima revizie per nr_unic_inreg, flow APROBAT)
+ *   - Ordonanțări           (ORD rows[].suma_ordonantata_plata col.4, flow APROBAT)
+ *   - Plăți (proporțional)  (alop_ord_cicluri + alop_instances ciclu curent,
+ *                            plata_confirmed_at IS NOT NULL)
+ *
+ * „Aprobat" = JOIN flows f ON f.id = doc.flow_id
+ *           WHERE f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true
+ * (Pattern canonic, vezi server/routes/formulare-db.mjs „DF aprobate".)
  *
  * Read-only. Nu scrie nimic în BD.
  *
@@ -38,24 +44,22 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
   const compartiment = (filters.compartiment || '').trim();
   const qText        = (filters.q      || '').trim();
 
-  // Construim filtre dinamic. $1 = orgId, restul cresc.
   const params = [orgId];
   let paramIdx = 1;
 
-  // ── Helper pentru filtre Cod SSI prefix
-  // ssiPrefix se aplică DOAR la final (după agregare), pe coloana cod_ssi.
-  // qText se aplică la nivel de DF/ORD (filtrare upstream pentru performanță).
-  const dfQFilter   = qText
+  // qText filter — aplicat la nivel de DF/ORD pentru performanță
+  const dfQFilter = qText
     ? `AND (
          fd.compartiment_specialitate ILIKE $${++paramIdx}
          OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(fd.rows_ctrl,'[]'::jsonb)) r
                     WHERE COALESCE(r->>'cod_SSI', r->>'codSSI', '') ILIKE $${paramIdx}
-                       OR COALESCE(r->>'program','') ILIKE $${paramIdx})
+                       OR COALESCE(r->>'program','') ILIKE $${paramIdx}
+                       OR COALESCE(r->>'cod_angajament','') ILIKE $${paramIdx})
        )`
     : '';
   if (qText) params.push(`%${qText}%`);
 
-  const ordQFilter  = qText
+  const ordQFilter = qText
     ? `AND (
          fo.beneficiar ILIKE $${paramIdx}
          OR fo.compartiment_specialitate ILIKE $${paramIdx}
@@ -64,13 +68,11 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
                        OR COALESCE(r->>'program','') ILIKE $${paramIdx})
        )`
     : '';
-  // (nu mai incrementăm paramIdx — aceeași legătură $${paramIdx} reutilizată)
 
   const dfCompFilter  = compartiment ? `AND fd.compartiment_specialitate = $${++paramIdx}` : '';
   if (compartiment) params.push(compartiment);
 
   const ordCompFilter = compartiment ? `AND fo.compartiment_specialitate = $${paramIdx}` : '';
-  // (același index $${paramIdx} pentru ORD)
 
   const ssiFinalFilter = ssiPrefix ? `AND a.cod_ssi ILIKE $${++paramIdx}` : '';
   if (ssiPrefix) params.push(`${ssiPrefix}%`);
@@ -78,55 +80,79 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
   const sql = `
     WITH
     -- ─────────────────────────────────────────────────────────────────────
-    -- 1) ANGAJAMENTE per cod_SSI (din DF Sec.B = rows_ctrl, status=completed)
+    -- ANGAJAMENTE BUGETARE: ultima revizie aprobată per nr_unic_inreg.
+    -- Sursă: DF Sec.B rows_ctrl[].sum_rezv_crdt_bug_act (col.10 = 8+9,
+    --        Suma rezervată din credite bugetare actualizată).
+    -- „Aprobat" = flow signing completat (NU doar form-data-entry).
     -- ─────────────────────────────────────────────────────────────────────
-    angajamente AS (
-      SELECT
-        COALESCE(r->>'cod_SSI', r->>'codSSI', '') AS cod_ssi,
-        SUM(NULLIF(r->>'sum_rezv_crdt_ang_act','')::numeric) AS suma,
-        COUNT(DISTINCT fd.id) AS df_count
+    latest_approved_df AS (
+      SELECT DISTINCT ON (fd.nr_unic_inreg)
+        fd.id, fd.rows_ctrl, fd.org_id, fd.nr_unic_inreg
       FROM formulare_df fd
-      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(fd.rows_ctrl, '[]'::jsonb)) r
+      JOIN flows f ON f.id = fd.flow_id
       WHERE fd.org_id = $1
-        AND fd.status = 'completed'
         AND fd.deleted_at IS NULL
-        AND COALESCE(r->>'cod_SSI', r->>'codSSI', '') <> ''
+        AND fd.flow_id IS NOT NULL
+        AND fd.nr_unic_inreg IS NOT NULL
+        AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
         ${dfCompFilter}
         ${dfQFilter}
-      GROUP BY 1
+      ORDER BY fd.nr_unic_inreg, fd.revizie_nr DESC NULLS LAST
+    ),
+    angajamente AS (
+      SELECT
+        cod_ssi,
+        SUM(suma) AS suma,
+        COUNT(DISTINCT df_id) AS df_count
+      FROM (
+        SELECT
+          df.id AS df_id,
+          COALESCE(r->>'cod_SSI', r->>'codSSI', '') AS cod_ssi,
+          NULLIF(r->>'sum_rezv_crdt_bug_act','')::numeric AS suma
+        FROM latest_approved_df df
+        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(df.rows_ctrl, '[]'::jsonb)) r
+      ) sub
+      WHERE cod_ssi <> ''
+      GROUP BY cod_ssi
     ),
 
     -- ─────────────────────────────────────────────────────────────────────
-    -- 2) ORDONANȚĂRI per cod_SSI (din ORD rows, status=completed)
+    -- ORDONANȚĂRI: ORD aprobate (flow completat).
+    -- Sursă: rows[].suma_ordonantata_plata (col.4 din ORD table).
+    -- ORD-urile nu au revizii ⇒ doar filtru pe aprobat.
     -- ─────────────────────────────────────────────────────────────────────
     ordonantari AS (
       SELECT
-        COALESCE(r->>'cod_SSI', r->>'codSSI', '') AS cod_ssi,
-        SUM(NULLIF(r->>'suma_ordonantata_plata','')::numeric) AS suma,
-        COUNT(DISTINCT fo.id) AS ord_count
-      FROM formulare_ord fo
-      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(fo.rows, '[]'::jsonb)) r
-      WHERE fo.org_id = $1
-        AND fo.status = 'completed'
-        AND fo.deleted_at IS NULL
-        AND COALESCE(r->>'cod_SSI', r->>'codSSI', '') <> ''
-        ${ordCompFilter}
-        ${ordQFilter}
-      GROUP BY 1
+        cod_ssi,
+        SUM(suma) AS suma,
+        COUNT(DISTINCT ord_id) AS ord_count
+      FROM (
+        SELECT
+          fo.id AS ord_id,
+          COALESCE(r->>'cod_SSI', r->>'codSSI', '') AS cod_ssi,
+          NULLIF(r->>'suma_ordonantata_plata','')::numeric AS suma
+        FROM formulare_ord fo
+        JOIN flows f ON f.id = fo.flow_id
+        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(fo.rows, '[]'::jsonb)) r
+        WHERE fo.org_id = $1
+          AND fo.deleted_at IS NULL
+          AND fo.flow_id IS NOT NULL
+          AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+          ${ordCompFilter}
+          ${ordQFilter}
+      ) sub
+      WHERE cod_ssi <> ''
+      GROUP BY cod_ssi
     ),
 
     -- ─────────────────────────────────────────────────────────────────────
-    -- 3) PLĂȚI: două surse — alop_ord_cicluri (arhivate) + alop_instances (ciclu curent)
-    --     Alocare proporțională: pentru fiecare ord plătit, distribuim
-    --     plata_suma_efectiva pe rândurile ORD-ului în raport cu
-    --     suma_ordonantata din rând (regula de 3).
+    -- PLĂȚI: două surse — alop_ord_cicluri (arhivate) + alop_instances (curent).
+    -- Alocare proporțională pe rândurile ORD (regula de 3) — neschimbat.
+    -- NU adăugăm filtru de aprobat la ORD pentru proporțional, întrucât
+    -- workflow-ul ALOP impune deja: plata se confirmă DOAR după ORD aprobat.
     -- ─────────────────────────────────────────────────────────────────────
     plati_sources AS (
-      -- a) Cicluri arhivate
-      SELECT
-        c.ord_id,
-        c.plata_suma_efectiva AS plata_suma,
-        c.org_id
+      SELECT c.ord_id, c.plata_suma_efectiva AS plata_suma, c.org_id
       FROM alop_ord_cicluri c
       WHERE c.org_id = $1
         AND c.plata_confirmed_at IS NOT NULL
@@ -135,11 +161,7 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
 
       UNION ALL
 
-      -- b) Ciclu curent al ALOP (înainte de noua-lichidare)
-      SELECT
-        ai.ord_id,
-        ai.plata_suma_efectiva AS plata_suma,
-        ai.org_id
+      SELECT ai.ord_id, ai.plata_suma_efectiva AS plata_suma, ai.org_id
       FROM alop_instances ai
       WHERE ai.org_id = $1
         AND ai.cancelled_at IS NULL
@@ -180,9 +202,7 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
       GROUP BY rr.cod_ssi
     ),
 
-    -- ─────────────────────────────────────────────────────────────────────
-    -- 4) Universul cod_SSI = unirea celor 3 surse
-    -- ─────────────────────────────────────────────────────────────────────
+    -- Universul cod_SSI = unirea celor 3 surse
     universe AS (
       SELECT cod_ssi FROM angajamente
       UNION
@@ -191,9 +211,7 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
       SELECT cod_ssi FROM plati
     ),
 
-    -- ─────────────────────────────────────────────────────────────────────
-    -- 5) Agregat final
-    -- ─────────────────────────────────────────────────────────────────────
+    -- Agregat final
     agregat AS (
       SELECT
         u.cod_ssi,
@@ -226,10 +244,9 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
 
   const { rows } = await pool.query(sql, params);
 
-  // Convertim numeric strings la Number pentru consistență client-side
   const items = rows.map(r => ({
     cod_ssi:                 r.cod_ssi,
-    buget:                   null, // Phase 2 placeholder
+    buget:                   null,
     angajamente:             Number(r.angajamente),
     ordonantari:             Number(r.ordonantari),
     plati:                   Number(r.plati),
@@ -238,7 +255,6 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
     ord_count:               Number(r.ord_count),
   }));
 
-  // Calcul totale pentru footer
   const totals = items.reduce((acc, x) => {
     acc.angajamente += x.angajamente;
     acc.ordonantari += x.ordonantari;
@@ -247,7 +263,6 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
     return acc;
   }, { angajamente: 0, ordonantari: 0, plati: 0, ramane_din_angajamente: 0 });
 
-  // Round totals la 2 zecimale
   Object.keys(totals).forEach(k => { totals[k] = Math.round(totals[k] * 100) / 100; });
 
   return {

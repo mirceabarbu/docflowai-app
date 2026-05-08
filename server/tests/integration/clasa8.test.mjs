@@ -143,4 +143,34 @@ describe('GET /api/clasa8', () => {
     expect(r.status).toBe(500);
     expect(r.body.error).toBe('server_error');
   });
+
+  it('SQL folosește sursele corecte: rows_ctrl col.10 + flow APROBAT + DISTINCT ON ultima revizie', async () => {
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [] });
+    const app = makeApp();
+    await request(app).get('/api/clasa8').set('Cookie', `auth_token=${makeToken()}`);
+
+    const sql = dbModule.pool.query.mock.calls[0][0];
+
+    // ── Pozitive: trebuie să fie prezente ────────────────────────────────
+    // Filtru aprobat (flow signing completat)
+    expect(sql).toContain('JOIN flows f');
+    expect(sql).toMatch(/f\.data->>'status'\s*=\s*'completed'/);
+    expect(sql).toMatch(/f\.data->>'completed'/);
+    // Ultima revizie per nr_unic_inreg
+    expect(sql).toContain('DISTINCT ON (fd.nr_unic_inreg)');
+    expect(sql).toMatch(/ORDER BY fd\.nr_unic_inreg,\s*fd\.revizie_nr DESC/);
+    // Angajamente: Sec.B col.10 = sum_rezv_crdt_bug_act
+    expect(sql).toContain('rows_ctrl');
+    expect(sql).toContain('sum_rezv_crdt_bug_act');
+    // Ordonanțări: ORD col.4
+    expect(sql).toContain('suma_ordonantata_plata');
+    // Plăți: confirmate efectiv
+    expect(sql).toContain('plata_confirmed_at IS NOT NULL');
+
+    // ── Negative: NU trebuie să mai fie sursa veche ──────────────────────
+    expect(sql).not.toContain('sum_rezv_crdt_ang_act'); // col.7 (credite ANG, greșit)
+    expect(sql).not.toContain('valt_actualiz');         // Sec.A (greșit ca sursă)
+    expect(sql).not.toMatch(/\bfd\.status\s*=\s*'completed'/);
+    expect(sql).not.toMatch(/\bfo\.status\s*=\s*'completed'/);
+  });
 });
