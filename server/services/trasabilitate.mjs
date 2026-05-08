@@ -108,7 +108,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
          a.ciclu_curent, a.df_id, a.ord_id,
          a.lichidare_confirmed_at, a.lichidare_nr_factura, a.lichidare_nr_pv,
          a.plata_confirmed_at, a.plata_nr_ordin, a.plata_suma_efectiva,
-         a.created_at, a.completed_at, a.cancelled_at, a.cancelled_reason,
+         a.created_at, a.completed_at, a.cancelled_at,
          foc.nr_unic_inreg AS ord_curent_nr_unic_inreg,
          foc.beneficiar    AS ord_curent_titlu,
          foc.status        AS ord_curent_status,
@@ -132,7 +132,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
          a.ciclu_curent, a.df_id, a.ord_id,
          a.lichidare_confirmed_at, a.lichidare_nr_factura, a.lichidare_nr_pv,
          a.plata_confirmed_at, a.plata_nr_ordin, a.plata_suma_efectiva,
-         a.created_at, a.completed_at, a.cancelled_at, a.cancelled_reason,
+         a.created_at, a.completed_at, a.cancelled_at,
          foc.nr_unic_inreg AS ord_curent_nr_unic_inreg,
          foc.beneficiar    AS ord_curent_titlu,
          foc.status        AS ord_curent_status,
@@ -219,7 +219,6 @@ export async function getTrasabilitate(pool, orgId, type, id) {
     created_at:          a.created_at,
     completed_at:        a.completed_at,
     cancelled_at:        a.cancelled_at,
-    cancelled_reason:    a.cancelled_reason,
 
     ord_curent: a.ord_id ? {
       id:                  a.ord_id,
