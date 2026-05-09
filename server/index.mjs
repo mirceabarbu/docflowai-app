@@ -488,7 +488,7 @@ import { WebSocketServer } from 'ws';
 import { pushToUser } from './push.mjs';
 import { fireWebhook, injectWebhookPool, injectWebhookBaseUrl } from './webhook.mjs';
 import { emailYourTurn, emailGeneric } from './emailTemplates.mjs';
-import { logger } from './middleware/logger.mjs';
+import { logger, redactUrl } from './middleware/logger.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
 let PDFLib = null;
@@ -641,7 +641,7 @@ app.use((req, res, next) => {
     const lvl = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
     logger[lvl]({
       method: req.method,
-      url: req.originalUrl,
+      url: redactUrl(req.originalUrl),
       status: res.statusCode,
       ms,
       requestId: req.requestId,
@@ -1701,13 +1701,41 @@ app.use('/admin/outreach', outreachRouter);
 // Rate limiting: 5 cereri/ora per IP — previne spam si abuz
 const _contactRateLimit = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5,
   message: 'Prea multe solicitări. Încearcă din nou în 60 de minute.' });
+
+function _stripHeaderInjection(s) {
+  return String(s || '').replace(/[\r\n]+/g, ' ').trim();
+}
+
+const CONTACT_LIMITS = { inst: 200, name: 150, email: 200, phone: 40, subject: 200, msg: 5000 };
+
 app.post('/api/contact', _contactRateLimit, async (req, res) => {
   try {
     const { inst, name, email, phone, subject, msg } = req.body || {};
-    if (!inst || !name || !email || !subject)
+
+    const _t = (v) => String(v || '').trim();
+    const instTrim    = _t(inst);
+    const nameTrim    = _t(name);
+    const emailTrim   = _t(email).toLowerCase();
+    const phoneTrim   = _t(phone);
+    const subjectTrim = _stripHeaderInjection(_t(subject));
+    const msgTrim     = _t(msg);
+
+    if (!instTrim || !nameTrim || !emailTrim || !subjectTrim)
       return res.status(400).json({ error: 'Câmpuri obligatorii lipsesc.' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+
+    if (instTrim.length    > CONTACT_LIMITS.inst    ||
+        nameTrim.length    > CONTACT_LIMITS.name    ||
+        emailTrim.length   > CONTACT_LIMITS.email   ||
+        phoneTrim.length   > CONTACT_LIMITS.phone   ||
+        subjectTrim.length > CONTACT_LIMITS.subject ||
+        msgTrim.length     > CONTACT_LIMITS.msg)
+      return res.status(400).json({ error: 'Unul sau mai multe câmpuri depășesc lungimea maximă.' });
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim))
       return res.status(400).json({ error: 'Email invalid.' });
+
+    if (phoneTrim && !/^[0-9+\-\s().]{6,40}$/.test(phoneTrim))
+      return res.status(400).json({ error: 'Telefon invalid.' });
 
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
     const MAIL_FROM = process.env.MAIL_FROM || 'DocFlowAI <noreply@docflowai.ro>';
@@ -1717,12 +1745,12 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
         <h2 style="color:#6c4ff0;">📋 Solicitare nouă — DocFlowAI Landing</h2>
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
-          <tr><td style="padding:8px;color:#666;width:160px;font-weight:600;">Instituție:</td><td style="padding:8px;">${inst}</td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;">Persoană contact:</td><td style="padding:8px;">${name}</td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;">Email:</td><td style="padding:8px;"><a href="mailto:${email}">${email}</a></td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;">Telefon:</td><td style="padding:8px;">${phone || '—'}</td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;">Solicitare:</td><td style="padding:8px;font-weight:700;color:#6c4ff0;">${subject}</td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;vertical-align:top;">Detalii:</td><td style="padding:8px;">${msg || '—'}</td></tr>
+          <tr><td style="padding:8px;color:#666;width:160px;font-weight:600;">Instituție:</td><td style="padding:8px;">${escHtml(instTrim)}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Persoană contact:</td><td style="padding:8px;">${escHtml(nameTrim)}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Email:</td><td style="padding:8px;"><a href="mailto:${escHtml(emailTrim)}">${escHtml(emailTrim)}</a></td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Telefon:</td><td style="padding:8px;">${escHtml(phoneTrim || '—')}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Solicitare:</td><td style="padding:8px;font-weight:700;color:#6c4ff0;">${escHtml(subjectTrim)}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;vertical-align:top;">Detalii:</td><td style="padding:8px;white-space:pre-wrap;">${escHtml(msgTrim || '—')}</td></tr>
         </table>
         <hr style="margin:20px 0;border:none;border-top:1px solid #eee;" />
         <p style="color:#999;font-size:12px;">Trimis automat din formularul de contact DocFlowAI · ${new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })}</p>
@@ -1734,8 +1762,8 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
       body: JSON.stringify({
         from: MAIL_FROM,
         to: 'contact@docflowai.ro',
-        reply_to: email,
-        subject: '[DocFlowAI Demo] ' + subject + ' — ' + inst,
+        reply_to: emailTrim,
+        subject: '[DocFlowAI Demo] ' + subjectTrim + ' — ' + instTrim,
         html: htmlBody,
       }),
     });
@@ -1744,7 +1772,7 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
       logger.error({ err: j }, 'contact form send failed');
       return res.status(502).json({ error: 'Eroare la trimiterea emailului.' });
     }
-    logger.info({ inst, email, subject }, '📋 Contact form trimis');
+    logger.info({ inst: instTrim, email: emailTrim, subject: subjectTrim }, '📋 Contact form trimis');
     return res.json({ ok: true });
   } catch(e) {
     logger.error({ err: e }, 'contact form error');

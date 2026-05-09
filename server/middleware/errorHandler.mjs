@@ -6,7 +6,7 @@
  */
 
 import { AppError } from '../core/errors.mjs';
-import { logger } from './logger.mjs';
+import { logger, redactUrl } from './logger.mjs';
 import config from '../config.mjs';
 
 /**
@@ -18,7 +18,7 @@ import config from '../config.mjs';
 export function errorHandler(err, req, res, next) {
   if (err instanceof AppError) {
     if (err.statusCode >= 500) {
-      logger.error({ err, method: req.method, url: req.originalUrl }, err.message);
+      logger.error({ err, method: req.method, url: redactUrl(req.originalUrl) }, err.message);
     }
 
     const body = {
@@ -35,7 +35,7 @@ export function errorHandler(err, req, res, next) {
   }
 
   // Unknown / unexpected error
-  logger.error({ err, method: req.method, url: req.originalUrl }, 'Unhandled error');
+  logger.error({ err, method: req.method, url: redactUrl(req.originalUrl) }, 'Unhandled error');
 
   return res.status(500).json({
     error: {
