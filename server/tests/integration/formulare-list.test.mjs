@@ -220,4 +220,49 @@ describe('GET /api/formulare/list', () => {
       expect(getSql()).toContain('u1.compartiment AS initiator_comp');
     });
   });
+
+  // ── Filtru Nr. ────────────────────────────────────────────────────────────
+
+  describe('DF — filtru nr', () => {
+    it('SQL conține fd.nr_unic_inreg ILIKE cu valoarea wrap-ată în %...%', async () => {
+      const { getSql, getParams } = captureListQuery();
+
+      await request(app)
+        .get('/api/formulare/list?type=df&nr=12')
+        .set('Cookie', `auth_token=${ADMIN_TOKEN}`)
+        .expect(200);
+
+      expect(getSql()).toContain('fd.nr_unic_inreg ILIKE');
+      expect(getParams().some(p => typeof p === 'string' && p === '%12%')).toBe(true);
+    });
+
+    it('nr combinat cu status — ambele condiții prezente în SQL', async () => {
+      const { getSql, getParams } = captureListQuery();
+
+      await request(app)
+        .get('/api/formulare/list?type=df&nr=ABC&status=draft')
+        .set('Cookie', `auth_token=${ADMIN_TOKEN}`)
+        .expect(200);
+
+      const sql = getSql();
+      expect(sql).toContain('fd.nr_unic_inreg ILIKE');
+      expect(sql).toContain("fd.status=");
+      expect(getParams()).toContain('draft');
+      expect(getParams().some(p => p === '%ABC%')).toBe(true);
+    });
+  });
+
+  describe('ORD — filtru nr', () => {
+    it('SQL conține fo.nr_ordonant_pl ILIKE cu valoarea wrap-ată în %...%', async () => {
+      const { getSql, getParams } = captureListQuery();
+
+      await request(app)
+        .get('/api/formulare/list?type=ord&nr=ABC')
+        .set('Cookie', `auth_token=${ADMIN_TOKEN}`)
+        .expect(200);
+
+      expect(getSql()).toContain('fo.nr_ordonant_pl ILIKE');
+      expect(getParams().some(p => typeof p === 'string' && p === '%ABC%')).toBe(true);
+    });
+  });
 });

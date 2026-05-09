@@ -1284,7 +1284,7 @@ router.get('/api/formulare/list', async (req, res) => {
   const isAdmin    = actor.role === 'admin';
   const isOrgAdmin = actor.role === 'org_admin';
 
-  const { type = 'df', status, from, to, comp, init, p2, page = '1', limit = '20' } = req.query;
+  const { type = 'df', status, from, to, comp, init, p2, nr, page = '1', limit = '20' } = req.query;
   const lim  = Math.min(parseInt(limit) || 20, 100);
   const pg   = Math.max(parseInt(page)  || 1,  1);
 
@@ -1341,6 +1341,9 @@ router.get('/api/formulare/list', async (req, res) => {
       if (p2) {
         const likeP2 = `%${p2}%`;
         conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
+      }
+      if (nr) {
+        conds.push(`fd.nr_unic_inreg ILIKE $${params.push('%' + nr + '%')}`);
       }
 
       const where = `WHERE ${conds.join(' AND ')}`;
@@ -1436,6 +1439,9 @@ router.get('/api/formulare/list', async (req, res) => {
       if (p2) {
         const likeP2 = `%${p2}%`;
         conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
+      }
+      if (nr) {
+        conds.push(`fo.nr_ordonant_pl ILIKE $${params.push('%' + nr + '%')}`);
       }
 
       const where = `WHERE ${conds.join(' AND ')}`;

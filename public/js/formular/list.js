@@ -290,6 +290,7 @@ function switchListTab(type){
     if(nfiSection)nfiSection.style.display='none';
     if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
+    if(typeof _populateCompartimente==='function')_populateCompartimente();
     loadList();
   }
 }
@@ -309,6 +310,7 @@ async function loadList(){
   const comp=(document.getElementById('flt-comp')?.value)||'';
   const init=(document.getElementById('flt-init')?.value)||'';
   const p2=(document.getElementById('flt-p2')?.value)||'';
+  const nr=(document.getElementById('flt-nr')?.value)||'';
   p.push('type='+_lstState.type);
   if(status&&status!=='all')p.push('status='+encodeURIComponent(status));
   if(from)p.push('from='+encodeURIComponent(from));
@@ -316,6 +318,7 @@ async function loadList(){
   if(comp)p.push('comp='+encodeURIComponent(comp));
   if(init)p.push('init='+encodeURIComponent(init));
   if(p2)p.push('p2='+encodeURIComponent(p2));
+  if(nr)p.push('nr='+encodeURIComponent(nr.trim()));
   p.push('page='+_lstState.page);
   p.push('limit='+_lstState.limit);
   try{
@@ -427,7 +430,7 @@ function debouncedLoadList(){
 function resetFilters(){
   const st=document.getElementById('flt-status');if(st)st.value='all';
   const cp=document.getElementById('flt-comp');if(cp)cp.value='';
-  ['flt-from','flt-to','flt-init','flt-p2','flt-from-display','flt-to-display'].forEach(id=>{
+  ['flt-from','flt-to','flt-init','flt-p2','flt-nr','flt-from-display','flt-to-display'].forEach(id=>{
     const e=document.getElementById(id);
     if(e){ e.value=''; e.style.borderColor=''; }
   });
