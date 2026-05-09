@@ -189,7 +189,7 @@
             <thead>
               <tr style="border-bottom:1px solid rgba(255,255,255,.1);">
                 <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Nume</th>
-                <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;display:none;" class="hide-sm">Email</th>
+                <th style="padding:6px 10px;text-align:left;color:var(--muted);font-weight:600;">Email</th>
                 <th style="padding:6px 10px;text-align:center;color:var(--muted);font-weight:600;">Apariții</th>
                 <th style="padding:6px 10px;text-align:center;color:#2dd4bf;font-weight:600;">Semnate</th>
                 <th style="padding:6px 10px;text-align:center;color:#ff8080;font-weight:600;">Refuzate</th>
