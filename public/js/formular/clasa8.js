@@ -344,6 +344,8 @@
     document.body.style.overflow = '';
     const fileInput = document.getElementById('clasa8-import-file');
     if (fileInput) fileInput.value = '';
+    const nameEl = document.getElementById('clasa8-import-file-name');
+    if (nameEl) { nameEl.textContent = 'Niciun fișier selectat'; nameEl.style.fontStyle = 'italic'; nameEl.style.color = 'var(--df-text-3)'; }
     const preview = document.getElementById('clasa8-import-preview');
     if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
     const errEl = document.getElementById('clasa8-import-error');
@@ -354,6 +356,18 @@
   window.clasa8CloseImport = clasa8CloseImport;
 
   async function _onImportFileChange(file) {
+    const nameEl = document.getElementById('clasa8-import-file-name');
+    if (nameEl) {
+      if (file) {
+        nameEl.textContent = file.name;
+        nameEl.style.fontStyle = 'normal';
+        nameEl.style.color = 'var(--df-text)';
+      } else {
+        nameEl.textContent = 'Niciun fișier selectat';
+        nameEl.style.fontStyle = 'italic';
+        nameEl.style.color = 'var(--df-text-3)';
+      }
+    }
     if (!file) return;
     const preview = document.getElementById('clasa8-import-preview');
     const errEl   = document.getElementById('clasa8-import-error');
@@ -379,8 +393,8 @@
       const total = _parsedRows.reduce((s, r) => s + r.valoare, 0);
       const previewRows = _parsedRows.slice(0, 10).map(r =>
         `<div style="display:flex;gap:12px;border-bottom:1px solid var(--df-border-2);padding:3px 0">
-          <span style="flex:1;font-family:monospace">${esc(r.cod_ssi)}</span>
-          <span style="min-width:110px;text-align:right">${r.valoare.toLocaleString('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2})} lei</span>
+          <span style="flex:1;font-variant-numeric:tabular-nums">${esc(r.cod_ssi)}</span>
+          <span style="min-width:110px;text-align:right;font-variant-numeric:tabular-nums">${r.valoare.toLocaleString('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2})} lei</span>
         </div>`
       ).join('');
 
@@ -461,6 +475,9 @@
     if (resetBtn)  resetBtn.addEventListener('click', _onResetFilters);
     if (exportBtn) exportBtn.addEventListener('click', _exportXLSX);
     if (importBtn) importBtn.addEventListener('click', _openImportModal);
+    document.getElementById('clasa8-import-file-btn')?.addEventListener('click', () => {
+      document.getElementById('clasa8-import-file')?.click();
+    });
     if (fileInput) fileInput.addEventListener('change', e => _onImportFileChange(e.target.files?.[0]));
     if (doImport)  doImport.addEventListener('click', _doImport);
     if (clearBtn)  clearBtn.addEventListener('click', _clearBuget);
