@@ -153,12 +153,17 @@
   function _renderDFCard(revizii) {
     const last = revizii[revizii.length - 1];
     const titlu = last.titlu || '(fără subtitlu)';
+    const valoare = last.valoare !== undefined && last.valoare !== null ? Number(last.valoare) : 0;
+    const valoareLabel = valoare > 0
+      ? `<div class="trasab-card-meta">Valoare angajament: <strong>${_formatRO(valoare)} lei</strong></div>`
+      : '';
 
     const badgesHtml = revizii.map(rv => {
       const isRoot = rv.is_root_df || rv.is_root_df_link;
       const cls = isRoot ? 'trasab-rev-badge trasab-rev-badge-root' : 'trasab-rev-badge';
       const aprobIcon = rv.aprobat ? '✓' : '⏳';
-      const tooltip = (rv.titlu||'') + (rv.aprobat ? ' (aprobat)' : ' (în curs)');
+      const valTxt = rv.valoare > 0 ? ` · ${_formatRO(rv.valoare)} lei` : '';
+      const tooltip = (rv.titlu||'') + (rv.aprobat ? ' (aprobat)' : ' (în curs)') + valTxt;
       return `<button type="button" class="${cls}"
                 data-trasab-type="df" data-trasab-id="${esc(rv.id)}"
                 title="${esc(tooltip)}">R${rv.revizie_nr} ${aprobIcon}${isRoot ? ' <span class="trasab-here">●</span>' : ''}</button>`;
@@ -170,6 +175,7 @@
         <div class="trasab-card-kicker">DOCUMENT DE FUNDAMENTARE</div>
         <div class="trasab-card-title">${esc(last.nr_unic_inreg || '—')}</div>
         <div class="trasab-card-subtitle">${esc(titlu)}</div>
+        ${valoareLabel}
         <div class="trasab-card-badges-row">
           <span class="trasab-card-badges-label">Revizii:</span> ${badgesHtml}
         </div>

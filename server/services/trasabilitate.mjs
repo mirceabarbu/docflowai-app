@@ -72,7 +72,12 @@ export async function getTrasabilitate(pool, orgId, type, id) {
               fd.status, fd.flow_id, fd.created_at, fd.updated_at,
               CASE WHEN fd.flow_id IS NOT NULL
                    AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-                   THEN TRUE ELSE FALSE END AS aprobat
+                   THEN TRUE ELSE FALSE END AS aprobat,
+              COALESCE(
+                (SELECT SUM(NULLIF(r->>'sum_rezv_crdt_bug_act', '')::numeric)
+                   FROM jsonb_array_elements(COALESCE(fd.rows_ctrl, '[]'::jsonb)) r),
+                0
+              ) AS valoare_totala
          FROM formulare_df fd
          LEFT JOIN flows f ON f.id::text = fd.flow_id
         WHERE fd.nr_unic_inreg = $1
@@ -89,6 +94,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
       este_revizie:     r.este_revizie,
       status:           r.status,
       aprobat:          r.aprobat,
+      valoare:          r.valoare_totala !== null ? Number(r.valoare_totala) : 0,
       created_at:       r.created_at,
       updated_at:       r.updated_at,
       is_root_df:       type === 'df'  && r.id === id,
@@ -213,7 +219,11 @@ export async function getTrasabilitate(pool, orgId, type, id) {
     titlu:               a.titlu || '',
     status:              a.status,
     valoare_totala:      a.valoare_totala !== null ? Number(a.valoare_totala) : null,
-    suma_totala_platita: a.suma_totala_platita !== null ? Number(a.suma_totala_platita) : null,
+    // Pattern canonic (vezi server/routes/alop.mjs total_platit / suma_platita_total):
+    //   suma_totala_platita (cicluri arhivate) + plata_suma_efectiva (ciclu curent dacă confirmat)
+    suma_totala_platita: (Number(a.suma_totala_platita || 0))
+                       + (a.plata_confirmed_at && a.plata_suma_efectiva !== null
+                          ? Number(a.plata_suma_efectiva) : 0),
     ciclu_curent:        a.ciclu_curent !== null ? Number(a.ciclu_curent) : 1,
     df_id:               a.df_id,
     created_at:          a.created_at,
