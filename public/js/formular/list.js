@@ -376,7 +376,7 @@ function _renderLstTable(rows,type){
       </td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">Deschide</button>
-        ${cancelBtn}<button type="button" class="df-action-btn sm" onclick="openTrasabilitate('${type}','${safeId}')" title="Trasabilitate" style="margin-left:4px">🔗</button>
+        ${cancelBtn}
       </td>
     </tr>`;
   }).join('');

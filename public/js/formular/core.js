@@ -130,7 +130,7 @@ function calcORRow(el){
 function getOR(){return[...document.querySelectorAll('#o-tbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
 
 function addNV(){const i=window.nVI++;const tr=document.createElement('tr');tr.id='nv-'+i;
-  tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_rev_prec"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_actualiz" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;
+  tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI" list="ssi-codes-list"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_rev_prec"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_actualiz" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;
   document.getElementById('n-vtbody').appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));
   const c5=tr.querySelector('[data-f="valt_rev_prec"]');
@@ -141,13 +141,13 @@ function addNV(){const i=window.nVI++;const tr=document.createElement('tr');tr.i
 function getNV(){return[...document.querySelectorAll('#n-vtbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
 
 function addNP(){const i=window.nPI++;const tr=document.createElement('tr');tr.id='np-'+i;
-  tr.innerHTML=`<td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_ani_precedenti" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_ancrt" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_an_np1" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_an_np2" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_an_np3" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_ani_ulter" oninput="upTot()"/></td><td><button class="bdel" onclick="delR('np-${i}');upTot()">✕</button></td>`;
+  tr.innerHTML=`<td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI" list="ssi-codes-list"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_ani_precedenti" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_ancrt" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_an_np1" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_an_np2" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_an_np3" oninput="upTot()"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_estim_ani_ulter" oninput="upTot()"/></td><td><button class="bdel" onclick="delR('np-${i}');upTot()">✕</button></td>`;
   document.getElementById('n-ptbody').appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));}
 function getNP(){return[...document.querySelectorAll('#n-ptbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
 
 function addNC(){const i=window.nCI++;const tr=document.createElement('tr');tr.id='nc-'+i;
-  tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_ang_af_rvz_prc"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente_c6"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_ang_act" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="7=5+6 — calculat automat"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_bug_af_rvz_prc"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente_c9"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_bug_act" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="10=8+9 — calculat automat"/></td><td><button class="bdel" onclick="delR('nc-${i}');upTot()">✕</button></td>`;
+  tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI" list="ssi-codes-list"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_ang_af_rvz_prc"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente_c6"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_ang_act" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="7=5+6 — calculat automat"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_bug_af_rvz_prc"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente_c9"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_bug_act" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="10=8+9 — calculat automat"/></td><td><button class="bdel" onclick="delR('nc-${i}');upTot()">✕</button></td>`;
   document.getElementById('n-ctbody').appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));
   const c5=tr.querySelector('[data-f="sum_rezv_crdt_ang_af_rvz_prc"]');
@@ -422,6 +422,22 @@ function mkFlow(ft){
     location.href = _semUrl;
   },600);
 }
+
+  // ── Datalist Cod SSI — populat din bugetul importat ─────────────────────
+  async function loadBugetCodes() {
+    try {
+      const r = await fetch('/api/clasa8/buget/coduri', { credentials: 'include' });
+      if (!r.ok) return;
+      const j = await r.json();
+      const dl = document.getElementById('ssi-codes-list');
+      if (!dl) return;
+      dl.innerHTML = (j.items || []).map(x =>
+        `<option value="${String(x.cod_ssi).replace(/"/g, '&quot;')}">`
+      ).join('');
+    } catch (_) { /* silent — fallback = free text */ }
+  }
+  window.loadBugetCodes = loadBugetCodes;
+  loadBugetCodes();
 
   // ── Exports onclick + cross-module ──────────────────────────────────────
   window._applyAutoFill     = _applyAutoFill;

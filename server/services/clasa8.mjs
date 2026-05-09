@@ -202,13 +202,18 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
       GROUP BY rr.cod_ssi
     ),
 
-    -- Universul cod_SSI = unirea celor 3 surse
+    buget AS (
+      SELECT cod_ssi, valoare AS suma
+      FROM clasa8_buget
+      WHERE org_id = $1
+    ),
+
+    -- Universul cod_SSI = unirea celor 4 surse
     universe AS (
       SELECT cod_ssi FROM angajamente
-      UNION
-      SELECT cod_ssi FROM ordonantari
-      UNION
-      SELECT cod_ssi FROM plati
+      UNION SELECT cod_ssi FROM ordonantari
+      UNION SELECT cod_ssi FROM plati
+      UNION SELECT cod_ssi FROM buget
     ),
 
     -- Agregat final
@@ -218,13 +223,18 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
         ROUND(COALESCE(a.suma, 0)::numeric, 2)  AS angajamente,
         ROUND(COALESCE(o.suma, 0)::numeric, 2)  AS ordonantari,
         ROUND(COALESCE(p.suma, 0)::numeric, 2)  AS plati,
-        ROUND((COALESCE(a.suma,0) - COALESCE(p.suma,0))::numeric, 2) AS ramane_din_angajamente,
+        ROUND((COALESCE(a.suma,0) - COALESCE(o.suma,0))::numeric, 2) AS ramane_din_angajamente,
+        b.suma AS buget,
+        CASE WHEN b.suma IS NULL THEN NULL
+             ELSE ROUND((b.suma - COALESCE(a.suma,0))::numeric, 2)
+        END AS ramane_din_buget,
         COALESCE(a.df_count,  0) AS df_count,
         COALESCE(o.ord_count, 0) AS ord_count
       FROM universe u
       LEFT JOIN angajamente  a ON a.cod_ssi = u.cod_ssi
       LEFT JOIN ordonantari  o ON o.cod_ssi = u.cod_ssi
       LEFT JOIN plati        p ON p.cod_ssi = u.cod_ssi
+      LEFT JOIN buget        b ON b.cod_ssi = u.cod_ssi
     )
 
     SELECT
@@ -233,6 +243,8 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
       a.ordonantari,
       a.plati,
       a.ramane_din_angajamente,
+      a.buget,
+      a.ramane_din_buget,
       a.df_count,
       a.ord_count
     FROM agregat a
@@ -246,22 +258,25 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
 
   const items = rows.map(r => ({
     cod_ssi:                 r.cod_ssi,
-    buget:                   null,
+    buget:                   r.buget == null ? null : Number(r.buget),
     angajamente:             Number(r.angajamente),
     ordonantari:             Number(r.ordonantari),
     plati:                   Number(r.plati),
     ramane_din_angajamente:  Number(r.ramane_din_angajamente),
+    ramane_din_buget:        r.ramane_din_buget == null ? null : Number(r.ramane_din_buget),
     df_count:                Number(r.df_count),
     ord_count:               Number(r.ord_count),
   }));
 
   const totals = items.reduce((acc, x) => {
+    if (x.buget !== null) acc.buget += x.buget;
     acc.angajamente += x.angajamente;
     acc.ordonantari += x.ordonantari;
     acc.plati       += x.plati;
+    if (x.ramane_din_buget !== null) acc.ramane_din_buget += x.ramane_din_buget;
     acc.ramane_din_angajamente += x.ramane_din_angajamente;
     return acc;
-  }, { angajamente: 0, ordonantari: 0, plati: 0, ramane_din_angajamente: 0 });
+  }, { buget: 0, angajamente: 0, ordonantari: 0, plati: 0, ramane_din_buget: 0, ramane_din_angajamente: 0 });
 
   Object.keys(totals).forEach(k => { totals[k] = Math.round(totals[k] * 100) / 100; });
 

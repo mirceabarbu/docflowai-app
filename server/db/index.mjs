@@ -1322,6 +1322,35 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_formular_att_category
         ON formular_attachments(formular_id, category, deleted_at);
     `
+  },
+  {
+    id: '069_clasa8_buget',
+    sql: `
+      CREATE TABLE IF NOT EXISTS clasa8_buget_versions (
+        id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id          INTEGER     NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        version_no      INTEGER     NOT NULL,
+        uploaded_by     INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        source_filename TEXT,
+        row_count       INTEGER     NOT NULL DEFAULT 0,
+        total_value     NUMERIC(18,2) NOT NULL DEFAULT 0,
+        UNIQUE (org_id, version_no)
+      );
+      CREATE INDEX IF NOT EXISTS idx_clasa8_buget_versions_org_latest
+        ON clasa8_buget_versions(org_id, version_no DESC);
+
+      CREATE TABLE IF NOT EXISTS clasa8_buget (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        version_id  UUID        NOT NULL REFERENCES clasa8_buget_versions(id) ON DELETE CASCADE,
+        org_id      INTEGER     NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        cod_ssi     TEXT        NOT NULL,
+        valoare     NUMERIC(18,2) NOT NULL DEFAULT 0,
+        UNIQUE (org_id, cod_ssi)
+      );
+      CREATE INDEX IF NOT EXISTS idx_clasa8_buget_org    ON clasa8_buget(org_id);
+      CREATE INDEX IF NOT EXISTS idx_clasa8_buget_codssi ON clasa8_buget(org_id, cod_ssi);
+    `
   }
 ];
 

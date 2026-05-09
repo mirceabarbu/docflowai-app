@@ -80,7 +80,8 @@ describe('GET /api/clasa8', () => {
     expect(r.body.items).toEqual([]);
     expect(r.body.count).toBe(0);
     expect(r.body.totals).toEqual({
-      angajamente: 0, ordonantari: 0, plati: 0, ramane_din_angajamente: 0,
+      buget: 0, angajamente: 0, ordonantari: 0, plati: 0,
+      ramane_din_buget: 0, ramane_din_angajamente: 0,
     });
   });
 
@@ -90,12 +91,17 @@ describe('GET /api/clasa8', () => {
         {
           cod_ssi: '01A510103',
           angajamente: '1000.00', ordonantari: '800.00', plati: '600.00',
-          ramane_din_angajamente: '400.00', df_count: 2, ord_count: 1,
+          // noua formulă: angajamente − ordonanțări = 1000 − 800 = 200
+          ramane_din_angajamente: '200.00',
+          buget: null, ramane_din_buget: null,
+          df_count: 2, ord_count: 1,
         },
         {
           cod_ssi: '02B620100',
           angajamente: '500.00', ordonantari: '500.00', plati: '500.00',
-          ramane_din_angajamente: '0.00', df_count: 1, ord_count: 1,
+          ramane_din_angajamente: '0.00',
+          buget: null, ramane_din_buget: null,
+          df_count: 1, ord_count: 1,
         },
       ]
     });
@@ -105,9 +111,12 @@ describe('GET /api/clasa8', () => {
     expect(r.body.count).toBe(2);
     expect(r.body.items[0].cod_ssi).toBe('01A510103');
     expect(r.body.items[0].angajamente).toBe(1000);
-    expect(r.body.items[0].buget).toBeNull(); // Phase 2 placeholder
+    expect(r.body.items[0].buget).toBeNull();
+    expect(r.body.items[0].ramane_din_buget).toBeNull();
+    expect(r.body.items[0].ramane_din_angajamente).toBe(200);
     expect(r.body.totals).toEqual({
-      angajamente: 1500, ordonantari: 1300, plati: 1100, ramane_din_angajamente: 400,
+      buget: 0, angajamente: 1500, ordonantari: 1300, plati: 1100,
+      ramane_din_buget: 0, ramane_din_angajamente: 200,
     });
   });
 
@@ -166,6 +175,10 @@ describe('GET /api/clasa8', () => {
     expect(sql).toContain('suma_ordonantata_plata');
     // Plăți: confirmate efectiv
     expect(sql).toContain('plata_confirmed_at IS NOT NULL');
+
+    // ── buget CTE și noua formulă ─────────────────────────────────────────
+    expect(sql).toContain('clasa8_buget');
+    expect(sql).toMatch(/-\s*COALESCE\(o\.suma,\s*0\)\)::numeric,\s*2\)\s*AS\s*ramane_din_angajamente/i);
 
     // ── Negative: NU trebuie să mai fie sursa veche ──────────────────────
     expect(sql).not.toContain('sum_rezv_crdt_ang_act'); // col.7 (credite ANG, greșit)
