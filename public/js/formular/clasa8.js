@@ -334,14 +334,22 @@
     if (doBtn) doBtn.disabled = true;
 
     const modal = document.getElementById('clasa8-import-modal');
-    if (modal) modal.classList.add('is-open');
+    if (modal) modal.classList.add('open');
     document.body.style.overflow = 'hidden';
   }
 
   function clasa8CloseImport() {
     const modal = document.getElementById('clasa8-import-modal');
-    if (modal) modal.classList.remove('is-open');
+    if (modal) modal.classList.remove('open');
     document.body.style.overflow = '';
+    const fileInput = document.getElementById('clasa8-import-file');
+    if (fileInput) fileInput.value = '';
+    const preview = document.getElementById('clasa8-import-preview');
+    if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+    const errEl = document.getElementById('clasa8-import-error');
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+    const btnDo = document.getElementById('clasa8-btn-do-import');
+    if (btnDo) btnDo.disabled = true;
   }
   window.clasa8CloseImport = clasa8CloseImport;
 
@@ -456,6 +464,18 @@
     if (fileInput) fileInput.addEventListener('change', e => _onImportFileChange(e.target.files?.[0]));
     if (doImport)  doImport.addEventListener('click', _doImport);
     if (clearBtn)  clearBtn.addEventListener('click', _clearBuget);
+
+    // Backdrop click closes modal
+    const modalBg = document.getElementById('clasa8-import-modal');
+    if (modalBg) modalBg.addEventListener('click', e => { if (e.target === modalBg) clasa8CloseImport(); });
+
+    // ESC closes modal
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        const m = document.getElementById('clasa8-import-modal');
+        if (m && m.classList.contains('open')) clasa8CloseImport();
+      }
+    });
 
     _state.initialized = true;
   }
