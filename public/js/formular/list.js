@@ -308,12 +308,14 @@ async function loadList(){
   const to=(document.getElementById('flt-to')?.value)||'';
   const comp=(document.getElementById('flt-comp')?.value)||'';
   const init=(document.getElementById('flt-init')?.value)||'';
+  const p2=(document.getElementById('flt-p2')?.value)||'';
   p.push('type='+_lstState.type);
   if(status&&status!=='all')p.push('status='+encodeURIComponent(status));
   if(from)p.push('from='+encodeURIComponent(from));
   if(to)p.push('to='+encodeURIComponent(to));
   if(comp)p.push('comp='+encodeURIComponent(comp));
   if(init)p.push('init='+encodeURIComponent(init));
+  if(p2)p.push('p2='+encodeURIComponent(p2));
   p.push('page='+_lstState.page);
   p.push('limit='+_lstState.limit);
   try{
@@ -364,6 +366,7 @@ function _renderLstTable(rows,type){
       <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}</a><button type="button" class="trasab-inline-btn" onclick="event.stopPropagation();openTrasabilitate('${type}','${safeId}');return false" title="Vezi trasabilitate (lanț DF↔ALOP↔ORD)">🔗</button>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>
       <td>${esc(row.initiator||'—')}</td>
+      <td>${esc(row.initiator_comp||'—')}</td>
       <td>${esc(row.p2||'—')}</td>
       <td>${_stBadge(row.aprobat ? 'aprobat' : row.status)}</td>
       <td>
@@ -424,7 +427,7 @@ function debouncedLoadList(){
 function resetFilters(){
   const st=document.getElementById('flt-status');if(st)st.value='all';
   const cp=document.getElementById('flt-comp');if(cp)cp.value='';
-  ['flt-from','flt-to','flt-init','flt-from-display','flt-to-display'].forEach(id=>{
+  ['flt-from','flt-to','flt-init','flt-p2','flt-from-display','flt-to-display'].forEach(id=>{
     const e=document.getElementById(id);
     if(e){ e.value=''; e.style.borderColor=''; }
   });

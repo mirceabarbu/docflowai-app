@@ -1284,7 +1284,7 @@ router.get('/api/formulare/list', async (req, res) => {
   const isAdmin    = actor.role === 'admin';
   const isOrgAdmin = actor.role === 'org_admin';
 
-  const { type = 'df', status, from, to, comp, init, page = '1', limit = '20' } = req.query;
+  const { type = 'df', status, from, to, comp, init, p2, page = '1', limit = '20' } = req.query;
   const lim  = Math.min(parseInt(limit) || 20, 100);
   const pg   = Math.max(parseInt(page)  || 1,  1);
 
@@ -1333,10 +1333,14 @@ router.get('/api/formulare/list', async (req, res) => {
       }
       if (from) conds.push(`fd.created_at >= $${params.push(from)}`);
       if (to)   conds.push(`fd.created_at <  $${params.push(to + 'T23:59:59')}`);
-      if (comp) conds.push(`fd.compartiment_specialitate=$${params.push(comp)}`);
+      if (comp) conds.push(`u1.compartiment=$${params.push(comp)}`);
       if (init) {
         const like = `%${init}%`;
         conds.push(`(u1.email ILIKE $${params.push(like)} OR u1.nume ILIKE $${params.push(like)})`);
+      }
+      if (p2) {
+        const likeP2 = `%${p2}%`;
+        conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
       }
 
       const where = `WHERE ${conds.join(' AND ')}`;
@@ -1362,6 +1366,7 @@ router.get('/api/formulare/list', async (req, res) => {
           CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
+          u1.compartiment AS initiator_comp,
           COALESCE(u2.nume, u2.email) AS p2,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (fd.created_by = $${params.push(actor.userId)}) AS "isP1",
@@ -1423,10 +1428,14 @@ router.get('/api/formulare/list', async (req, res) => {
       }
       if (from) conds.push(`fo.created_at >= $${params.push(from)}`);
       if (to)   conds.push(`fo.created_at <  $${params.push(to + 'T23:59:59')}`);
-      // formulare_ord nu are compartiment_specialitate — filtru ignorat pentru ORD
+      if (comp) conds.push(`u1.compartiment=$${params.push(comp)}`);
       if (init) {
         const like = `%${init}%`;
         conds.push(`(u1.email ILIKE $${params.push(like)} OR u1.nume ILIKE $${params.push(like)})`);
+      }
+      if (p2) {
+        const likeP2 = `%${p2}%`;
+        conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
       }
 
       const where = `WHERE ${conds.join(' AND ')}`;
@@ -1443,6 +1452,7 @@ router.get('/api/formulare/list', async (req, res) => {
           CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
+          u1.compartiment AS initiator_comp,
           COALESCE(u2.nume, u2.email) AS p2,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (fo.created_by = $${params.push(actor.userId)}) AS "isP1",
