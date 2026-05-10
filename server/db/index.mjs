@@ -1351,6 +1351,50 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_clasa8_buget_org    ON clasa8_buget(org_id);
       CREATE INDEX IF NOT EXISTS idx_clasa8_buget_codssi ON clasa8_buget(org_id, cod_ssi);
     `
+  },
+  {
+    id: '070_module_catalog',
+    sql: `
+      CREATE TABLE IF NOT EXISTS module_catalog (
+        module_key      TEXT PRIMARY KEY,
+        display_name    TEXT NOT NULL,
+        description     TEXT,
+        category        TEXT,
+        default_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        active          BOOLEAN NOT NULL DEFAULT TRUE,
+        display_order   INTEGER NOT NULL DEFAULT 100,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      INSERT INTO module_catalog (module_key, display_name, category, default_enabled, display_order)
+      VALUES
+        ('refnec',         'Referat de necesitate',           'documente',  TRUE, 10),
+        ('nf-invest',      'Notă de fundamentare investiții', 'documente',  TRUE, 20),
+        ('alop',           'ALOP (umbrella)',                 'alop',       TRUE, 30),
+        ('df',             'Document de fundamentare',        'alop',       TRUE, 40),
+        ('ord',            'Ordonanțare de plată',            'alop',       TRUE, 50),
+        ('clasa8',         'Clasa 8',                         'verificari', TRUE, 60),
+        ('verif-furnizor', 'Verificare furnizor',             'verificari', TRUE, 70)
+      ON CONFLICT (module_key) DO NOTHING;
+    `
+  },
+  {
+    id: '071_module_entitlements',
+    sql: `
+      CREATE TABLE IF NOT EXISTS module_entitlements (
+        id          BIGSERIAL PRIMARY KEY,
+        module_key  TEXT NOT NULL REFERENCES module_catalog(module_key) ON DELETE CASCADE,
+        scope_type  TEXT NOT NULL CHECK (scope_type IN ('org','comp','user')),
+        scope_id    TEXT NOT NULL,
+        enabled     BOOLEAN NOT NULL,
+        set_by      INTEGER NOT NULL REFERENCES users(id),
+        set_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        notes       TEXT,
+        UNIQUE (module_key, scope_type, scope_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_module_entitlements_lookup
+        ON module_entitlements (scope_type, scope_id, module_key);
+    `
   }
 ];
 
