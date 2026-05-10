@@ -803,6 +803,19 @@ router.post('/api/formulare-ord', _csrf, async (req, res) => {
   try {
     const body = req.body || {};
     const data = pick(body, ORD_P1_FIELDS);
+    if (data.nr_ordonant_pl) {
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM formulare_ord
+         WHERE nr_ordonant_pl = $1 AND org_id = $2 AND deleted_at IS NULL`,
+        [data.nr_ordonant_pl, actor.orgId]
+      );
+      if (dup.length > 0) {
+        return res.status(409).json({
+          error: 'nr_ord_duplicat',
+          message: 'Numărul ordonanțării există deja. Folosiți alt număr.'
+        });
+      }
+    }
     const cols = ['org_id', 'created_by'];
     const vals = [actor.orgId, actor.userId];
 
@@ -857,6 +870,19 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
 
     const allowedFields = isP2 && !isP1 && !isAdmin ? ORD_P2_FIELDS : [...ORD_P1_FIELDS];
     const data = pick(req.body || {}, allowedFields);
+    if (data.nr_ordonant_pl && data.nr_ordonant_pl !== doc.nr_ordonant_pl) {
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM formulare_ord
+         WHERE nr_ordonant_pl = $1 AND org_id = $2 AND deleted_at IS NULL AND id != $3`,
+        [data.nr_ordonant_pl, actor.orgId, req.params.id]
+      );
+      if (dup.length > 0) {
+        return res.status(409).json({
+          error: 'nr_ord_duplicat',
+          message: 'Numărul ordonanțării există deja. Folosiți alt număr.'
+        });
+      }
+    }
     const { sets, vals } = buildUpdate(data, allowedFields, 1);
 
     const allSets = [...sets];
