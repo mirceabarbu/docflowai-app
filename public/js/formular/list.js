@@ -19,6 +19,15 @@
 
 // ── Auto-save DB (debounce 800ms, silențios) ──────────────────────────────────
 const _autoSaveTimers={};
+const _DUP_ERRORS = { nr_ord_duplicat: 'o-nr', nr_unic_duplicat: 'n-nrUnic' };
+function _markDupField(inputId, msg) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.style.borderColor = '#dc3545';
+  el.title = msg;
+  function _clear() { el.style.borderColor = ''; el.title = ''; el.removeEventListener('input', _clear); }
+  el.addEventListener('input', _clear);
+}
 async function _autoSaveDb(ft){
   if(!ST.user)return;
   // Dacă documentul e blocat (P1 asteaptă P2 sau completat) → nu auto-salvăm
@@ -39,7 +48,13 @@ async function _autoSaveDb(ft){
       j=await r.json();
       if(r.ok&&j.ok)ST.docStatus[ft]=j.document.status;
     }
-    if(!r||!j||!r.ok)return;
+    if(!r||!j||!r.ok){
+      if(r&&r.status===409&&j&&_DUP_ERRORS[j.error]){
+        _markDupField(_DUP_ERRORS[j.error], j.message);
+        _draftShowBadge(ft,'🔴 '+j.message);
+      }
+      return;
+    }
     const iid=ft==='ordnt'?'o-cimg':'n-cimg';
     if(imgs[iid]&&ST.docId[ft])await uploadCaptura(ft);
     _draftShowBadge(ft,'💾 '+new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}));
