@@ -68,7 +68,7 @@ function _alopStatusBadge(status, dfFlowId){
   };
   let s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
   if(status==='angajare'&&dfFlowId) s={icon:'ico-pen-tool',text:'Pe flux — semnare',color:'#6366f1'};
-  const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.468#${s.icon}"/></svg>`;
+  const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.469#${s.icon}"/></svg>`;
   return`<span style="display:inline-flex;align-items:center;background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_ico}${esc(s.text)}</span>`;
 }
 function _alopFazaLabel(status){
@@ -199,7 +199,7 @@ async function loadAlop(){
         <td style="font-size:.78rem;color:var(--df-text-3)">${dt}</td>
         <td onclick="event.stopPropagation()">
           <button class="df-action-btn sm" onclick="openAlop('${esc(a.id)}')">Deschide</button>
-          ${a.has_opme_lines?`<button class="df-action-btn sm" style="margin-left:4px" onclick="openOpmeLinesForAlop('${esc(a.id)}')" title="Vezi OP-uri OPME atașate"><svg class="df-ico"><use href="/icons.svg?v=3.9.468#ico-landmark"/></svg></button>`:''}
+          ${a.has_opme_lines?`<button class="df-action-btn sm" style="margin-left:4px" onclick="openOpmeLinesForAlop('${esc(a.id)}')" title="Vezi OP-uri OPME atașate"><svg class="df-ico"><use href="/icons.svg?v=3.9.469#ico-landmark"/></svg></button>`:''}
           ${active?`<button class="df-action-btn danger sm" style="margin-left:4px" onclick="cancelAlop('${esc(a.id)}')" title="Anulează ALOP">✕</button>`:''}
         </td>
       </tr>`;
@@ -287,7 +287,7 @@ async function alopRefreshCurrent(){
 }
 
 const _alopIcoBtn = (name) =>
-  `<svg class="df-ic"><use href="/icons.svg?v=3.9.468#${name}"/></svg>`;
+  `<svg class="df-ic"><use href="/icons.svg?v=3.9.469#${name}"/></svg>`;
 
 // ── Format dată plată (acceptă ISO sau YYYY-MM-DD; returnează dd.mm.yyyy) ───
 function _fmtPlataData(v){
@@ -414,6 +414,8 @@ function _renderAlopCicluri(a, container, opmeGroups, isCompleted, isCancelled, 
         </div>
         <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.18);border-radius:6px;padding:6px 10px;position:relative">
           <div style="font-size:.68rem;color:#10b981;margin-bottom:2px;font-weight:600">🏦 Plată ${_badge}</div>
+          ${_platConfirmat && _source==='opme_auto' && _hasOpme
+            ? `<div style="font-size:.72rem;color:#34d399;font-weight:600;margin-bottom:4px">Plată confirmată automat din OPME${_opmeLines[0]?.import_nr_document ? ' nr.' + esc(_opmeLines[0].import_nr_document) : ''}${_opmeLines[0]?.import_data_op ? ' / ' + esc(_fmtPlataData(_opmeLines[0].import_data_op)) : ''}</div>` : ''}
           ${_hasOpme
             ? _renderOpmeLinesList(_opmeLines, `${a.id}-${c.id||'cur'}`)
             : `<div style="color:${_platConfirmat ? '#34d399' : 'var(--df-text-2)'};font-weight:${_platConfirmat ? '700' : '400'}">${_platAfisare}</div>
@@ -513,7 +515,7 @@ function renderAlopDetail(a,container){
     }else if(dfStatus==='neaprobat'){
       actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF (neaprobat)</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id){
-      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.468#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
+      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.469#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
     }else if(['aprobat','transmis_flux','de_revizuit'].includes(dfStatus)){
       actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
     }else if(a.df_id&&!a.df_flow_id){

@@ -178,9 +178,14 @@
       <div class="df-modal-footer">
         ${canRematch
           ? `<button type="button" class="df-action-btn" id="df-opme-btn-rematch">
-              <svg class="df-ico"><use href="/icons.svg?v=3.9.468#ico-rotate-cw"/></svg>
+              <svg class="df-ico"><use href="/icons.svg?v=3.9.469#ico-rotate-cw"/></svg>
               Re-rulează matching
-            </button>` : ''}
+            </button>
+            <a href="/api/opme/imports/${encodeURIComponent(_state.importId)}/export.csv"
+               class="df-action-btn" id="df-opme-btn-csv" download>
+              <svg class="df-ico"><use href="/icons.svg?v=3.9.469#ico-download"/></svg>
+              Export CSV
+            </a>` : ''}
         <button type="button" class="df-action-btn primary" id="df-opme-btn-close">Închide</button>
       </div>
     `;

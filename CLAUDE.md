@@ -245,6 +245,45 @@ Microserviciu separat pentru operații PAdES iText. Configurat via `SIGNING_SERV
 
 ---
 
+## OPME (F1129) Import
+
+Modul de import plăți OPME din fișiere F1129 ale Trezoreriei (PDF XFA). Permite auto-confirmare ALOP-uri aflate în status `plata`.
+
+**Schema:**
+- `opme_imports` — header import (nr_document, data_op, file_hash UNIQUE per org)
+- `opme_lines` — rânduri OP cu match_status (pending/auto/manual/ambiguous/unmatched/partial)
+- `plata_source` pe `alop_instances` + `alop_ord_cicluri` — 'opme_auto' | 'manual'
+- Migrări: 072 (opme_imports/opme_lines) + 073 (coloane opme pe alop_instances)
+
+**Rute** (`server/routes/opme.mjs`):
+| Metodă | Path | Rol |
+|--------|------|-----|
+| POST | `/api/opme/import` | P2/admin — upload + auto-match |
+| GET | `/api/opme/imports` | auth — listă paginabilă |
+| GET | `/api/opme/imports/:id` | auth — detaliu + linii |
+| GET | `/api/opme/imports/:id/export.csv` | P2/admin — CSV audit |
+| POST | `/api/opme/imports/:id/rematch` | P2/admin — re-rulează matcher |
+| POST | `/api/opme/rematch-all` | admin — re-match la nivel org |
+| GET | `/api/opme/lines/by-alop/:alopId` | auth — linii per ALOP |
+
+**Servicii:**
+- `server/services/opme-parser.mjs` — extrage XFA din PDF → header + lines
+- `server/services/opme-matcher.mjs` — matching pe triplet (cod_angajament, indicator_angajament, cif_beneficiar), auto-confirm la sumă egală
+
+**Matching:** Per linie OPME, caută ALOP cu ORD al cărui cif_beneficiar și (cod, indicator) din rows matchează. Suma liniilor OPME grupate pe ALOP se compară cu suma ORD: egală → auto-confirm, parțială → pending, mai mulți candidați → ambiguous.
+
+**Audit:** `audit_log.event_type = 'plata_auto_opme'` cu payload JSON (alop_id, line_ids, suma, triplet).
+
+**Absorbție retro:** `tryAutoConfirmAlop(alopId)` — apelat la tranziții ALOP către `plata`, absoarbe linii OPME deja încărcate.
+
+**UI:** `opme-import-modal.js` (upload), `opme-report-drawer.js` (raport linii), `alop.js` (badge Auto + lista OP).
+
+**Format nou trezorerie:** Creează parser în services/, respectă interfața `{ header, lines, raw_meta }`, înregistrează în `opme.mjs`. Matcher-ul funcționează identic.
+
+Documentație completă: `docs/opme-import.md`.
+
+---
+
 ## Modul Outreach
 
 Campanii email către ~2.950 municipalități românești. Tabele: `outreach_institutions`, `outreach_campaigns`, `outreach_recipients`. Router separat în `server/routes/admin/outreach.mjs`.

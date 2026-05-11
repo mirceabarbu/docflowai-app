@@ -128,7 +128,7 @@ function renderList() {
         </div>
       </div>
       ${!n.read ? '<div class="notif-unread-dot"></div>' : ''}
-      <button class="notif-del" title="Șterge" onclick="deleteNotif(event,${n.id})"><svg class="df-ic" viewBox="0 0 24 24" style="width:14px;height:14px;"><use href="/icons.svg?v=3.9.468#ico-x"/></svg></button>
+      <button class="notif-del" title="Șterge" onclick="deleteNotif(event,${n.id})"><svg class="df-ic" viewBox="0 0 24 24" style="width:14px;height:14px;"><use href="/icons.svg?v=3.9.469#ico-x"/></svg></button>
     `;
     // Click → marchează citit + navighează
     card.onclick = async (e) => {

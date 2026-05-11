@@ -500,4 +500,156 @@ router.post('/api/opme/imports/:id/rematch', csrfMiddleware, async (req, res) =>
   }
 });
 
+// ── GET /api/opme/imports/:id/export.csv — export CSV pentru audit contabil ──
+router.get('/api/opme/imports/:id/export.csv', async (req, res) => {
+  if (_requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (!actor.orgId) return res.status(403).json({ error: 'org_required' });
+  if (!_hasOpmeImportRole(actor)) {
+    return res.status(403).json({ error: 'forbidden', message: 'Doar P2 sau super-admin pot exporta.' });
+  }
+
+  const importId = req.params.id;
+  if (!importId || importId === 'null' || importId === 'undefined') {
+    return res.status(400).json({ error: 'id_invalid' });
+  }
+
+  try {
+    const { rows: header } = await pool.query(
+      'SELECT nr_document, data_op FROM opme_imports WHERE id=$1 AND org_id=$2',
+      [importId, actor.orgId]
+    );
+    if (!header[0]) return res.status(404).json({ error: 'not_found' });
+
+    const { rows: lines } = await pool.query(`
+      SELECT
+        l.nr_op, l.cod_angajament, l.indicator_angajament,
+        l.cif_beneficiar, l.den_beneficiar, l.iban_beneficiar,
+        l.suma_op, l.explicatii,
+        l.match_status, l.match_notes,
+        l.matched_alop_id,
+        a.titlu AS alop_titlu,
+        df.nr_unic_inreg AS df_nr
+      FROM opme_lines l
+      LEFT JOIN alop_instances a ON a.id = l.matched_alop_id
+      LEFT JOIN formulare_df   df ON df.id = a.df_id
+      WHERE l.opme_import_id = $1 AND l.org_id = $2
+      ORDER BY l.row_index
+    `, [importId, actor.orgId]);
+
+    const h = header[0];
+    const dataOpStr = h.data_op ? new Date(h.data_op).toISOString().slice(0, 10) : 'export';
+    const filename = `opme_${h.nr_document || 'import'}_${dataOpStr}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const BOM = '﻿';
+    const CRLF = '\r\n';
+    const csvHeaders = [
+      'nr_op', 'cod_angajament', 'indicator_angajament', 'cif_beneficiar',
+      'den_beneficiar', 'iban_beneficiar', 'suma_op', 'data_op', 'explicatii',
+      'match_status', 'match_notes', 'alop_id', 'alop_titlu', 'df_nr',
+    ];
+
+    let csv = BOM + csvHeaders.join(',') + CRLF;
+    for (const l of lines) {
+      const sumaRO = l.suma_op != null
+        ? String(Number(l.suma_op).toFixed(2)).replace('.', ',')
+        : '';
+      const row = [
+        l.nr_op || '', l.cod_angajament || '', l.indicator_angajament || '',
+        l.cif_beneficiar || '', l.den_beneficiar || '', l.iban_beneficiar || '',
+        sumaRO, dataOpStr, l.explicatii || '',
+        l.match_status || '', l.match_notes || '',
+        l.matched_alop_id || '', l.alop_titlu || '', l.df_nr || '',
+      ];
+      csv += row.map(_csvEscape).join(',') + CRLF;
+    }
+    res.end(csv);
+  } catch (e) {
+    logger.error({ err: e, importId }, 'opme export.csv error');
+    if (!res.headersSent) res.status(500).json({ error: 'server_error' });
+  }
+});
+
+function _csvEscape(val) {
+  const s = String(val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes(';')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+// ── POST /api/opme/rematch-all — re-rulează matching pe toate importurile org ─
+const _rematchAllLast = new Map(); // orgId → timestamp
+
+router.post('/api/opme/rematch-all', csrfMiddleware, async (req, res) => {
+  if (_requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (!actor.orgId) return res.status(403).json({ error: 'org_required' });
+  if (actor.role !== 'admin') {
+    return res.status(403).json({ error: 'forbidden', message: 'Doar super-admin.' });
+  }
+
+  const now = Date.now();
+  const last = _rematchAllLast.get(actor.orgId) || 0;
+  if (now - last < 3600_000) {
+    const retryAfter = Math.ceil((3600_000 - (now - last)) / 1000);
+    return res.status(429).json({
+      error: 'rate_limited',
+      message: `Reîncercați peste ${Math.ceil(retryAfter / 60)} minute.`,
+      retry_after_seconds: retryAfter,
+    });
+  }
+
+  try {
+    const { rows: imports } = await pool.query(`
+      SELECT DISTINCT i.id
+        FROM opme_imports i
+        JOIN opme_lines l ON l.opme_import_id = i.id
+       WHERE i.org_id = $1
+         AND l.match_status IN ('pending','unmatched','ambiguous','partial')
+    `, [actor.orgId]);
+
+    _rematchAllLast.set(actor.orgId, Date.now());
+
+    let totalConfirmed = 0;
+    const summary = [];
+
+    for (const imp of imports) {
+      try {
+        await pool.query(`
+          UPDATE opme_lines
+             SET match_status='pending', match_notes=NULL
+           WHERE opme_import_id = $1 AND org_id = $2
+             AND match_status IN ('unmatched','ambiguous','partial')
+        `, [imp.id, actor.orgId]);
+
+        const rep = await matchImport(imp.id);
+        totalConfirmed += rep.confirmed_alopuri.length;
+        summary.push({
+          import_id: imp.id,
+          matched: rep.matched,
+          ambiguous: rep.ambiguous,
+          unmatched: rep.unmatched,
+          partial: rep.partial,
+          confirmed: rep.confirmed_alopuri.length,
+        });
+      } catch (e) {
+        logger.warn({ err: e, importId: imp.id }, 'opme rematch-all: import failed (non-fatal)');
+        summary.push({ import_id: imp.id, error: e.message });
+      }
+    }
+
+    logger.info({ orgId: actor.orgId, processed: imports.length, totalConfirmed }, 'opme rematch-all done');
+    res.json({ ok: true, processed: imports.length, total_confirmed: totalConfirmed, summary });
+  } catch (e) {
+    logger.error({ err: e }, 'opme rematch-all error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 export default router;

@@ -122,15 +122,18 @@ export async function matchImport(importId, opts = {}) {
       `, [imp.org_id, cif, cod, ind]);
 
       if (cands.length === 0) {
+        logger.info({ line_id: line.id, triplet: { cif, cod, ind } }, 'opme.match.unmatched');
         await _markLine(client, line.id, 'unmatched',
           'Nu există ALOP activ în plată cu acest beneficiar și angajament.');
         report.unmatched++;
       } else if (cands.length > 1) {
         const list = cands.map(c => c.alop_id).slice(0, 5).join(', ');
+        logger.warn({ line_id: line.id, alop_ids: list, triplet: { cif, cod, ind } }, 'opme.match.ambiguous');
         await _markLine(client, line.id, 'ambiguous',
           `Mai multe ALOP active potrivite: ${list}`);
         report.ambiguous++;
       } else {
+        logger.info({ line_id: line.id, candidates_count: 1, triplet: { cif, cod, ind } }, 'opme.match.candidate');
         lineCandidates.set(line.id, cands[0].alop_id);
       }
     }
@@ -366,10 +369,33 @@ async function _processGroup(client, args) {
     }
 
     await _bulkMarkMatched(client, lineArr, alopId, 'auto');
+
+    logger.info({ alop_id: alopId, suma: actual, lines_count: lineCount, triplet: { cod, ind, cif } }, 'opme.match.confirmed');
+
+    try {
+      await client.query(`
+        INSERT INTO audit_log (flow_id, org_id, event_type, actor_email, payload)
+        VALUES (NULL, $1, 'plata_auto_opme', NULL, $2::jsonb)
+      `, [org_id, JSON.stringify({
+        alop_id: alopId,
+        opme_import_ids: Array.from(importIds),
+        opme_line_ids: lineArr,
+        nr_op_list: nrOps,
+        suma_efectiva: actual,
+        data_op: importDataOp,
+        cif_beneficiar: cif,
+        cod_angajament: cod,
+        actor_user_id: actorUserId,
+      })]);
+    } catch (_auditErr) {
+      logger.warn({ err: _auditErr, alop_id: alopId }, 'opme.match.audit_log insert failed (non-fatal)');
+    }
+
     return { alop_id: alopId, triplet, result: 'matched', expected, actual, line_count: lineCount };
   }
 
   // (c2/c3) partial / overpay → marchează liniile, NU confirmă
+  logger.warn({ alop_id: alopId, expected, actual, lines_count: lineCount, triplet: { cod, ind, cif } }, 'opme.match.partial');
   const partialNote = actual < expected
     ? `Plată parțială ${actual.toFixed(2)} din ${expected.toFixed(2)} RON`
     : `Suma OPME (${actual.toFixed(2)}) depășește valoarea ORD (${expected.toFixed(2)} RON)`;
