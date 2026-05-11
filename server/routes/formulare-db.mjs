@@ -14,6 +14,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.mjs';
 import { csrfMiddleware } from '../middleware/csrf.mjs';
+import { requireModule } from '../middleware/require-module.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { pool } from '../db/index.mjs';
 import { loadActorComp, canEditFormular, canDestroyOnly } from '../services/authz-formular.mjs';
@@ -217,7 +218,7 @@ router.get('/api/formulare-df/:id', async (req, res) => {
 });
 
 // POST /api/formulare-df — creare draft (P1)
-router.post('/api/formulare-df', _csrf, async (req, res) => {
+router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df'), async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
@@ -797,7 +798,7 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
 });
 
 // POST /api/formulare-ord — creare draft (P1)
-router.post('/api/formulare-ord', _csrf, async (req, res) => {
+router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('ord'), async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {

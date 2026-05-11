@@ -7,6 +7,7 @@
 import { Router, json as expressJson } from 'express';
 import { requireAuth }                  from '../middleware/auth.mjs';
 import { csrfMiddleware }               from '../middleware/csrf.mjs';
+import { requireModule }                from '../middleware/require-module.mjs';
 import { pool }                         from '../db/index.mjs';
 import { logger }                       from '../middleware/logger.mjs';
 import { generateNfInvestPdf }          from '../services/formulare-oficiale/nf-invest-pdf.mjs';
@@ -14,6 +15,17 @@ import { generateRefnecPdf }            from '../services/formulare-oficiale/ref
 
 const router = Router();
 const _json  = expressJson({ limit: '2mb' });
+
+// Gate per form_type: REFNEC → modulul 'refnec', NOTAFD_INVEST → 'nf-invest'.
+// Dacă form_type lipsește/e invalid, lăsăm handler-ul să răspundă 400.
+function gateFormularOficial(req, res, next) {
+  const ft = req.body?.form_type;
+  const moduleKey =
+    ft === 'REFNEC'        ? 'refnec'    :
+    ft === 'NOTAFD_INVEST' ? 'nf-invest' : null;
+  if (!moduleKey) return next();
+  return requireModule(moduleKey)(req, res, next);
+}
 
 // ── GET /api/formulare-oficiale ───────────────────────────────────────────────
 // Listare paginată (20/pagină) filtrată per org + opțional form_type
@@ -63,7 +75,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // ── POST /api/formulare-oficiale ──────────────────────────────────────────────
-router.post('/', requireAuth, csrfMiddleware, _json, async (req, res) => {
+router.post('/', requireAuth, csrfMiddleware, _json, gateFormularOficial, async (req, res) => {
   try {
     const { orgId, userId } = req.actor;
     const { form_type, title, ref_number, form_data } = req.body || {};

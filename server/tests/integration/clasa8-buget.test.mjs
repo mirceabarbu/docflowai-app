@@ -35,6 +35,11 @@ vi.mock('../../middleware/logger.mjs', () => ({
             child: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })) },
 }));
 
+// Bypass requireModule — entitlements sunt testate separat
+vi.mock('../../middleware/require-module.mjs', () => ({
+  requireModule: () => (_req, _res, next) => next(),
+}));
+
 import * as dbModule  from '../../db/index.mjs';
 import clasa8Router   from '../../routes/clasa8.mjs';
 

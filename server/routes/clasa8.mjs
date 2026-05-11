@@ -8,6 +8,7 @@
 import { Router } from 'express';
 import { requireAuth }    from '../middleware/auth.mjs';
 import { csrfMiddleware } from '../middleware/csrf.mjs';
+import { requireModule }  from '../middleware/require-module.mjs';
 import { logger }         from '../middleware/logger.mjs';
 import { pool }           from '../db/index.mjs';
 import { getClasa8Aggregate } from '../services/clasa8.mjs';
@@ -93,7 +94,7 @@ router.get('/buget/coduri', requireAuth, async (req, res) => {
 });
 
 // POST /api/clasa8/buget/import — import fișier buget (versionat)
-router.post('/buget/import', requireAuth, csrfMiddleware, async (req, res) => {
+router.post('/buget/import', requireAuth, csrfMiddleware, requireModule('clasa8'), async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: 'db_unavailable' });
     const { orgId, userId } = req.actor;

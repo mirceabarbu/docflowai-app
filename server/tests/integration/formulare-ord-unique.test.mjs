@@ -33,6 +33,10 @@ vi.mock('../../middleware/csrf.mjs', () => ({
   csrfMiddleware: (_req, _res, next) => next(),
 }));
 
+vi.mock('../../middleware/require-module.mjs', () => ({
+  requireModule: () => (_req, _res, next) => next(),
+}));
+
 vi.mock('../../services/authz-formular.mjs', () => ({
   loadActorComp: vi.fn().mockResolvedValue('Compartiment Test'),
   canEditFormular: vi.fn().mockResolvedValue({ allowed: true, role: 'comp' }),

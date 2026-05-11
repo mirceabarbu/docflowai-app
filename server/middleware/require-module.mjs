@@ -13,13 +13,20 @@
 
 import { pool } from '../db/index.mjs';
 import { isModuleEnabled } from '../services/entitlements.mjs';
+import { getOptionalActor } from './auth.mjs';
 
 export function requireModule(moduleKey) {
   if (!moduleKey || typeof moduleKey !== 'string') {
     throw new Error('requireModule: moduleKey lipsă');
   }
   return async (req, res, next) => {
-    const actor = req.actor;
+    // Fie req.actor e setat (pattern middleware-mode requireAuth), fie îl
+    // recuperăm singuri din JWT (pattern helper-mode — auth se face în handler).
+    let actor = req.actor;
+    if (!actor) {
+      actor = getOptionalActor(req);
+      if (actor) req.actor = actor;
+    }
     if (!actor) return res.status(401).json({ error: 'unauthorized' });
 
     // Bypass superadmin global (role='admin' AND orgId nesetat)
