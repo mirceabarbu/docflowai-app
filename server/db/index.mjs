@@ -1395,6 +1395,77 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_module_entitlements_lookup
         ON module_entitlements (scope_type, scope_id, module_key);
     `
+  },
+  {
+    id: '072_opme_imports',
+    sql: `
+      CREATE TABLE IF NOT EXISTS opme_imports (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id          INTEGER NOT NULL REFERENCES organizations(id),
+        uploaded_by     INTEGER NOT NULL REFERENCES users(id),
+        file_hash       TEXT NOT NULL,
+        file_name       TEXT,
+        nr_document     TEXT,
+        data_op         DATE,
+        an_r            INTEGER,
+        luna_r          INTEGER,
+        cif_platitor    TEXT,
+        den_platitor    TEXT,
+        adresa_platitor TEXT,
+        nr_inregistrari INTEGER,
+        suma_totala     NUMERIC(15,2),
+        universal_code  TEXT,
+        raw_meta        JSONB NOT NULL DEFAULT '{}',
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      DO $$ BEGIN
+        ALTER TABLE opme_imports
+          ADD CONSTRAINT opme_imports_org_hash_key UNIQUE (org_id, file_hash);
+      EXCEPTION
+        WHEN duplicate_table THEN NULL;
+        WHEN duplicate_object THEN NULL;
+      END $$;
+
+      CREATE TABLE IF NOT EXISTS opme_lines (
+        id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        opme_import_id        UUID NOT NULL REFERENCES opme_imports(id) ON DELETE CASCADE,
+        org_id                INTEGER NOT NULL REFERENCES organizations(id),
+        row_index             INTEGER NOT NULL,
+        nr_op                 TEXT,
+        iban_platitor         TEXT,
+        den_trezorerie        TEXT,
+        cod_program           TEXT,
+        cod_angajament        TEXT,
+        indicator_angajament  TEXT,
+        den_beneficiar        TEXT,
+        cif_beneficiar        TEXT,
+        iban_beneficiar       TEXT,
+        den_banca_trez        TEXT,
+        suma_op               NUMERIC(15,2) NOT NULL,
+        nr_evid_platii        TEXT,
+        explicatii            TEXT,
+        matched_alop_id       UUID,
+        matched_ciclu_id      UUID,
+        matched_at            TIMESTAMPTZ,
+        match_status          TEXT NOT NULL DEFAULT 'pending',
+        match_notes           TEXT,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT opme_lines_match_status_chk
+          CHECK (match_status IN ('pending','auto','manual','unmatched','ambiguous','partial'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_opme_imports_org
+        ON opme_imports(org_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_opme_lines_import
+        ON opme_lines(opme_import_id);
+      CREATE INDEX IF NOT EXISTS idx_opme_lines_match
+        ON opme_lines(org_id, match_status);
+      CREATE INDEX IF NOT EXISTS idx_opme_lines_triplet
+        ON opme_lines(org_id, cod_angajament, indicator_angajament, cif_beneficiar)
+        WHERE match_status IN ('pending','unmatched');
+      CREATE INDEX IF NOT EXISTS idx_opme_lines_matched_ciclu
+        ON opme_lines(matched_ciclu_id) WHERE matched_ciclu_id IS NOT NULL;
+    `
   }
 ];
 
