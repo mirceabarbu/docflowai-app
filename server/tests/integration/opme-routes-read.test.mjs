@@ -308,8 +308,8 @@ describe('GET /api/me/can-import-opme', () => {
 
   it('user asignat ca P2 pe un DF (assigned_to) → can:true', async () => {
     installPoolHandlers([
-      H(s => s.includes('formulare_df') && s.includes('assigned_to'),
-        async () => ({ rows: [{ '?column?': 1 }] })),
+      H(s => s.includes('EXISTS') && s.includes('formulare_df'),
+        async () => ({ rows: [{ can: true }] })),
     ]);
     const r = await request(makeApp())
       .get('/api/me/can-import-opme')
@@ -320,8 +320,8 @@ describe('GET /api/me/can-import-opme', () => {
 
   it('user asignat ca P2 pe un ORD (assigned_to) → can:true', async () => {
     installPoolHandlers([
-      H(s => s.includes('formulare_ord') && s.includes('assigned_to'),
-        async () => ({ rows: [{ '?column?': 1 }] })),
+      H(s => s.includes('EXISTS') && s.includes('formulare_ord'),
+        async () => ({ rows: [{ can: true }] })),
     ]);
     const r = await request(makeApp())
       .get('/api/me/can-import-opme')
@@ -331,7 +331,10 @@ describe('GET /api/me/can-import-opme', () => {
   });
 
   it('user fără nicio asignare → can:false', async () => {
-    // Default pool.query returns empty rows
+    installPoolHandlers([
+      H(s => s.includes('EXISTS') && s.includes('formulare_df'),
+        async () => ({ rows: [{ can: false }] })),
+    ]);
     const r = await request(makeApp())
       .get('/api/me/can-import-opme')
       .set('Cookie', authCookie(makeToken({ role: 'user' })));
@@ -339,14 +342,33 @@ describe('GET /api/me/can-import-opme', () => {
     expect(r.body.can).toBe(false);
   });
 
-  it('user din alt org cu responsabil_cab → can:false (tenant isolation)', async () => {
-    // Query filtrează pe org_id=$1 → dacă user-ul e din org 1 dar sablonul e din org 2, no match
-    // Default mock returns empty → false
+  it('user din alt org → can:false (tenant isolation)', async () => {
+    installPoolHandlers([
+      H(s => s.includes('EXISTS') && s.includes('formulare_df'),
+        async () => ({ rows: [{ can: false }] })),
+    ]);
     const r = await request(makeApp())
       .get('/api/me/can-import-opme')
       .set('Cookie', authCookie(makeToken({ role: 'user', orgId: 999 })));
     expect(r.status).toBe(200);
     expect(r.body.can).toBe(false);
+  });
+
+  it('SQL gating folosește EXISTS, nu UNION+LIMIT (regression)', async () => {
+    let capturedSql = null;
+    installPoolHandlers([
+      H(s => s.includes('formulare_df'), async (sql) => {
+        capturedSql = sql;
+        return { rows: [{ can: false }] };
+      }),
+    ]);
+    await request(makeApp())
+      .get('/api/me/can-import-opme')
+      .set('Cookie', authCookie(makeToken({ role: 'user' })));
+    expect(capturedSql).toBeTruthy();
+    expect(capturedSql).toMatch(/EXISTS/i);
+    expect(capturedSql).not.toMatch(/UNION\s+ALL/i);
+    expect(capturedSql).not.toMatch(/LIMIT/i);
   });
 
   it('401 fără auth', async () => {

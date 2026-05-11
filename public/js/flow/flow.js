@@ -681,10 +681,10 @@
             <div style="font-size:.82rem;color:var(--muted);margin-bottom:8px;">Încarcă un document revizuit (PDF, DOCX, XLSX, PPTX, ODT, imagine). Fișierele non-PDF vor fi convertite automat.</div>
             <input type="file" id="reviewPdfInput" accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp,.jpg,.jpeg,.png,.webp,.gif,.bmp" style="display:none;" onchange="const n=document.getElementById('reviewPdfName');n.textContent=this.files[0]?.name||'Niciun fișier selectat';n.style.color=this.files[0]?'var(--df-text)':'var(--muted)';" />
             <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
-              <button type="button" onclick="document.getElementById('reviewPdfInput').click()" class="df-action-btn"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.471#ico-folder"/></svg>Alege fișier</button>
+              <button type="button" onclick="document.getElementById('reviewPdfInput').click()" class="df-action-btn"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-folder"/></svg>Alege fișier</button>
               <span id="reviewPdfName" style="color:var(--muted);font-size:.83rem;">Niciun fișier selectat</span>
             </div>
-            <button id="btnUploadReviewPdf" class="df-action-btn success"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.471#ico-upload-cloud"/></svg>Trimite documentul revizuit și repornește fluxul</button>
+            <button id="btnUploadReviewPdf" class="df-action-btn success"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-upload-cloud"/></svg>Trimite documentul revizuit și repornește fluxul</button>
             <div id="reviewUploadStatus" style="margin-top:8px;font-size:.83rem;"></div>
           </div>
           ` : '<div style="font-size:.82rem;color:var(--muted);margin-top:4px;">Inițiatorul va re-uploada un document revizuit și va reporni fluxul.</div>'}

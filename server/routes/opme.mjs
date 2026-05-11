@@ -42,15 +42,17 @@ async function _hasOpmeImportRole(actor) {
   if (!actor.orgId || !actor.userId) return false;
   try {
     const { rows } = await pool.query(`
-      SELECT 1 FROM formulare_df
-       WHERE org_id = $1 AND assigned_to = $2
-       LIMIT 1
-      UNION ALL
-      SELECT 1 FROM formulare_ord
-       WHERE org_id = $1 AND assigned_to = $2
-       LIMIT 1
+      SELECT (
+        EXISTS (
+          SELECT 1 FROM formulare_df
+           WHERE org_id = $1 AND assigned_to = $2
+        ) OR EXISTS (
+          SELECT 1 FROM formulare_ord
+           WHERE org_id = $1 AND assigned_to = $2
+        )
+      ) AS can
     `, [actor.orgId, actor.userId]);
-    return rows.length > 0;
+    return rows[0]?.can === true;
   } catch (e) {
     logger.warn({ err: e, userId: actor.userId }, 'opme gating: query failed (fallback deny)');
     return false;

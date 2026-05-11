@@ -125,8 +125,8 @@ describe('POST /api/opme/import — auth & CSRF', () => {
   });
 
   it('admite user asignat ca P2 pe un DF (assigned_to)', async () => {
-    // Gating query returns a row → allowed
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+    // Gating query returns can=true → allowed
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ can: true }] });
     setupSuccessMocks();
     const tok = makeToken({ role: 'user' });
     const r = await request(makeApp())
