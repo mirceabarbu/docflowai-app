@@ -115,7 +115,7 @@
       const rowStyle = isDeactivated ? 'opacity:.55;' : '';
       const actions = isDeactivated
         ? `<button class="df-action-btn sm" onclick="event.stopPropagation();reactivateOrg(${org.id},'${esc(org.name)}')" title="Reactivează" style="background:rgba(45,212,191,.15);border-color:rgba(45,212,191,.4);color:#2dd4bf;">↻</button>`
-        : `<button class="df-action-btn sm" onclick="event.stopPropagation();openOrgDetail(${org.id})" title="Detalii"><svg class="df-ic"><use href="/icons.svg?v=3.9.467#ico-settings"/></svg></button>
+        : `<button class="df-action-btn sm" onclick="event.stopPropagation();openOrgDetail(${org.id})" title="Detalii"><svg class="df-ic"><use href="/icons.svg?v=3.9.468#ico-settings"/></svg></button>
            <button class="df-action-btn danger sm" onclick="event.stopPropagation();openDeleteOrgModal(${org.id},'${esc(org.name)}',${org.user_count||0},${org.flow_count||0})" title="Șterge">🗑</button>`;
       return `
         <tr style="${rowStyle}" onclick="${isDeactivated?'':`openOrgDetail(${org.id})`}">

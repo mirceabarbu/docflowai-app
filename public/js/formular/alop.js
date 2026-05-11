@@ -68,7 +68,7 @@ function _alopStatusBadge(status, dfFlowId){
   };
   let s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
   if(status==='angajare'&&dfFlowId) s={icon:'ico-pen-tool',text:'Pe flux — semnare',color:'#6366f1'};
-  const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.467#${s.icon}"/></svg>`;
+  const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.468#${s.icon}"/></svg>`;
   return`<span style="display:inline-flex;align-items:center;background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_ico}${esc(s.text)}</span>`;
 }
 function _alopFazaLabel(status){
@@ -97,8 +97,67 @@ function _updateAlopSablonBtnVisibility(){
   btn.style.display=(role==='admin'||role==='org_admin')?'':'none';
 }
 
+// ── Gating buton OPME — admin SAU functie_rol='p2' (mirror cu backend) ──────
+function _canImportOpme(){
+  const u=ST.user;
+  if(!u)return false;
+  const role=String(u.role||'').toLowerCase();
+  if(role==='admin'||role==='org_admin')return true;
+  const fn=String(u.functie_rol||u.functieRol||u.alopRole||'').toLowerCase();
+  return fn==='p2';
+}
+function _updateOpmeBtnVisibility(){
+  const btn=document.getElementById('btn-opme-import');
+  if(!btn)return;
+  btn.style.display=_canImportOpme()?'':'none';
+}
+
+// ── Buton OPME în antet ─────────────────────────────────────────────────────
+function openOpmeImport(){
+  if(!window.DFOpmeImportModal){
+    alert('Componenta de import OPME nu s-a încărcat.');
+    return;
+  }
+  window.DFOpmeImportModal.open({
+    onSuccess:(rep, importId)=>{
+      // Reîncarcă lista ALOP (auto-confirm poate fi avansat ciclurile)
+      loadAlop(); loadAlopStats();
+      // Dacă suntem pe detaliu, refresh
+      if(window._currentAlopId) openAlop(window._currentAlopId);
+      // Oferă drawer-ul cu raport
+      if(importId && window.DFOpmeReportDrawer){
+        setTimeout(()=>window.DFOpmeReportDrawer.open({ importId }), 250);
+      }
+    }
+  });
+}
+function openOpmeLinesForAlop(alopId){
+  if(!window.DFOpmeReportDrawer){ alert('Componenta raport OPME nu s-a încărcat.'); return; }
+  // Deschidem drawer-ul în mod „by-alop": deocamdată, dacă există un import
+  // identificabil prin liniile cuplate la ALOP, deschidem acel import. Altfel,
+  // afișăm doar lista liniilor în cardul Plată (deja prezent).
+  // Implementare simplă: dacă există linii cu opme_import_id, deschide primul
+  // import distinct (cel mai vechi).
+  fetch(`/api/opme/lines/by-alop/${encodeURIComponent(alopId)}`,{credentials:'include'})
+    .then(r=>r.json())
+    .then(d=>{
+      const lines=d?.lines||[];
+      const importIds=Array.from(new Set(lines.map(l=>l.opme_import_id).filter(Boolean)));
+      if(importIds.length===1){
+        window.DFOpmeReportDrawer.open({ importId: importIds[0] });
+      }else if(importIds.length>1){
+        // Mai multe import-uri — deschide-l pe cel mai recent (prima poziție după sort DESC)
+        window.DFOpmeReportDrawer.open({ importId: importIds[0] });
+      }else{
+        alert('Acest ALOP nu are linii OPME atașate.');
+      }
+    })
+    .catch(e=>alert('Eroare: '+e.message));
+}
+
 async function loadAlop(){
   _updateAlopSablonBtnVisibility();
+  _updateOpmeBtnVisibility();
   const tb=document.getElementById('alop-tbody');
   if(!tb)return;
   tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--df-text-3)">Se încarcă...</td></tr>';
@@ -140,6 +199,7 @@ async function loadAlop(){
         <td style="font-size:.78rem;color:var(--df-text-3)">${dt}</td>
         <td onclick="event.stopPropagation()">
           <button class="df-action-btn sm" onclick="openAlop('${esc(a.id)}')">Deschide</button>
+          ${a.has_opme_lines?`<button class="df-action-btn sm" style="margin-left:4px" onclick="openOpmeLinesForAlop('${esc(a.id)}')" title="Vezi OP-uri OPME atașate"><svg class="df-ico"><use href="/icons.svg?v=3.9.468#ico-landmark"/></svg></button>`:''}
           ${active?`<button class="df-action-btn danger sm" style="margin-left:4px" onclick="cancelAlop('${esc(a.id)}')" title="Anulează ALOP">✕</button>`:''}
         </td>
       </tr>`;
@@ -227,7 +287,152 @@ async function alopRefreshCurrent(){
 }
 
 const _alopIcoBtn = (name) =>
-  `<svg class="df-ic"><use href="/icons.svg?v=3.9.467#${name}"/></svg>`;
+  `<svg class="df-ic"><use href="/icons.svg?v=3.9.468#${name}"/></svg>`;
+
+// ── Format dată plată (acceptă ISO sau YYYY-MM-DD; returnează dd.mm.yyyy) ───
+function _fmtPlataData(v){
+  if(!v)return '';
+  const s=String(v); const datePart=s.substring(0,10);
+  const m=datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?`${m[3]}.${m[2]}.${m[1]}`:s;
+}
+
+// ── Render listă OP-uri OPME în cardul Plată ────────────────────────────────
+// Returnează HTML cu max 3 linii vizibile + buton expand pentru rest.
+function _renderOpmeLinesList(lines, cicluKey){
+  if(!lines||!lines.length)return '';
+  const fmtRON=v=>new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(parseFloat(v||0))+' RON';
+  const total=lines.reduce((s,l)=>s+parseFloat(l.suma_op||0),0);
+  const visible=lines.slice(0,3);
+  const rest=lines.length-visible.length;
+  const items=visible.map(l=>`
+    <div class="df-opme-line-item">
+      <span class="df-opme-line-item__nr">OP ${esc(l.nr_op||'—')}</span>
+      <span class="df-opme-line-item__sum">${esc(fmtRON(l.suma_op))}</span>
+      <span class="df-opme-line-item__date">${esc(_fmtPlataData(l.import_data_op))}</span>
+    </div>`).join('');
+  const moreId=`opme-more-${cicluKey}`;
+  const hiddenItems=lines.slice(3).map(l=>`
+    <div class="df-opme-line-item">
+      <span class="df-opme-line-item__nr">OP ${esc(l.nr_op||'—')}</span>
+      <span class="df-opme-line-item__sum">${esc(fmtRON(l.suma_op))}</span>
+      <span class="df-opme-line-item__date">${esc(_fmtPlataData(l.import_data_op))}</span>
+    </div>`).join('');
+  return `
+    <div style="margin-top:6px;padding-top:6px;border-top:1px dashed rgba(255,255,255,.08)">
+      <div style="font-size:.66rem;color:var(--df-text-4);margin-bottom:3px">${lines.length} OP · total ${esc(fmtRON(total))}</div>
+      ${items}
+      ${rest>0?`
+        <div id="${moreId}" style="display:none">${hiddenItems}</div>
+        <button type="button" class="df-opme-line-more" onclick="(()=>{const d=document.getElementById('${moreId}'); if(d){d.style.display=d.style.display==='none'?'':'none'; this.textContent=d.style.display==='none'?'+${rest} mai multe':'Ascunde';}})()">+${rest} mai multe</button>
+      `:''}
+    </div>`;
+}
+
+// ── Render bloc cicluri + augmentare cu OPME ────────────────────────────────
+function _fetchOpmeLinesAndRenderCicluri(a, container, isCompleted, isCancelled, fmtV, fmtDate){
+  // Default fără OPME — render imediat pentru a evita flicker; după fetch
+  // re-randăm cu lista de OP-uri.
+  _renderAlopCicluri(a, container, { active: [], byCiclu: {} }, isCompleted, isCancelled, fmtV, fmtDate);
+  fetch(`/api/opme/lines/by-alop/${encodeURIComponent(a.id)}`,{credentials:'include'})
+    .then(r=>{ if(!r.ok) return null; return r.json(); })
+    .then(d=>{
+      if(!d) return;
+      const groups=d.groups||{active:[],byCiclu:{}};
+      _renderAlopCicluri(a, container, groups, isCompleted, isCancelled, fmtV, fmtDate);
+    })
+    .catch(()=>{ /* non-fatal */ });
+}
+
+function _renderAlopCicluri(a, container, opmeGroups, isCompleted, isCancelled, fmtV, fmtDate){
+  // Elimină render-ul anterior (pentru re-render după fetch async)
+  const existing = container.querySelector('[data-alop-cicluri]');
+  if (existing) existing.remove();
+
+  const _istorice = a.cicluri_istorice || [];
+  const _cicluCurent = a.ciclu_curent || 1;
+  const _areCicluCurent = _cicluCurent > 0 && !isCancelled;
+  const _toate = [..._istorice];
+  if (_areCicluCurent) {
+    _toate.push({
+      ciclu_nr: _cicluCurent,
+      lichidare_nr_factura: a.lichidare_nr_factura,
+      lichidare_confirmed_at: a.lichidare_confirmed_at,
+      ord_valoare: a.ord_valoare,
+      ord_completed_at: a.ord_completed_at,
+      nr_ordonant_pl: a.ord_nr,
+      plata_suma_efectiva: a.plata_suma_efectiva,
+      plata_nr_ordin: a.plata_nr_ordin,
+      plata_data: a.plata_data,
+      plata_confirmed_at: a.plata_confirmed_at,
+      plata_source: a.plata_source,
+      _isCurrent: true,
+      _status: a.status,
+    });
+  }
+  if (_toate.length === 0) return;
+
+  let _html = `<div data-alop-cicluri style="margin:12px 0 8px"><div style="font-size:.72rem;font-weight:700;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Cicluri</div>`;
+  _toate.forEach(c => {
+    const _curBadge = c._isCurrent && !isCompleted
+      ? `<span style="font-size:.66rem;font-weight:600;color:#38bdf8;background:rgba(56,189,248,.12);padding:2px 8px;border-radius:8px;margin-left:8px">în curs</span>`
+      : '';
+    const _lichConfirmat = !!c.lichidare_confirmed_at;
+    const _lichFact = c.lichidare_nr_factura ? `Fact. ${esc(c.lichidare_nr_factura)}` : (c._isCurrent && !_lichConfirmat ? '⏳ în curs' : '—');
+    const _ordVal = parseFloat(c._isCurrent ? (c.ord_valoare || 0) : (c.plata_suma_efectiva || 0));
+    const _ordAfisare = c._isCurrent && !c.ord_completed_at && _ordVal === 0 ? '⏳ în curs' : fmtV(_ordVal);
+    const _ordData = c._isCurrent ? (c.ord_completed_at || '') : (c.plata_confirmed_at || '');
+    const _platConfirmat = !!c.plata_confirmed_at;
+    const _platSuma = parseFloat(c.plata_suma_efectiva || 0);
+    const _platAfisare = _platConfirmat ? fmtV(_platSuma) : (c._isCurrent ? '⏳ în curs' : '—');
+    const _platDetaliu = _platConfirmat
+      ? `${c.plata_nr_ordin ? `OP ${esc(c.plata_nr_ordin)} · ` : ''}${_fmtPlataData(c.plata_data)}`
+      : '';
+    // Linii OPME asociate acestui ciclu
+    const _opmeLines = c._isCurrent
+      ? (opmeGroups.active || [])
+      : (opmeGroups.byCiclu && opmeGroups.byCiclu[c.id] ? opmeGroups.byCiclu[c.id] : []);
+    const _hasOpme = _opmeLines && _opmeLines.length > 0;
+    const _source = c.plata_source || 'manual';
+    const _badge = _platConfirmat
+      ? `<span class="df-opme-badge df-opme-badge--${_source==='opme_auto'?'auto':'manual'}">${_source==='opme_auto'?'Auto':'Manual'}</span>`
+      : '';
+
+    _html += `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:.8rem">
+      <div style="font-weight:700;color:var(--df-text-2);margin-bottom:6px">Ciclu ${c.ciclu_nr}${_curBadge}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+        <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.18);border-radius:6px;padding:6px 10px">
+          <div style="font-size:.68rem;color:#f59e0b;margin-bottom:2px;font-weight:600">✔ Lichidare</div>
+          <div style="color:var(--df-text-2)">${_lichFact}</div>
+          <div style="font-size:.72rem;color:var(--df-text-3)">${_lichConfirmat ? fmtDate(c.lichidare_confirmed_at) : ''}</div>
+        </div>
+        <div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.18);border-radius:6px;padding:6px 10px">
+          <div style="font-size:.68rem;color:#8b5cf6;margin-bottom:2px;font-weight:600">💰 Ordonanțare</div>
+          <div style="color:var(--df-text-2)">${_ordAfisare}</div>
+          <div style="font-size:.72rem;color:var(--df-text-3)">${_ordData ? fmtDate(_ordData) : ''}</div>
+          ${c.nr_ordonant_pl ? `<div style="font-size:.7rem;color:var(--df-text-3);font-weight:600;margin-top:2px">Nr. ${esc(c.nr_ordonant_pl)}</div>` : ''}
+        </div>
+        <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.18);border-radius:6px;padding:6px 10px;position:relative">
+          <div style="font-size:.68rem;color:#10b981;margin-bottom:2px;font-weight:600">🏦 Plată ${_badge}</div>
+          ${_hasOpme
+            ? _renderOpmeLinesList(_opmeLines, `${a.id}-${c.id||'cur'}`)
+            : `<div style="color:${_platConfirmat ? '#34d399' : 'var(--df-text-2)'};font-weight:${_platConfirmat ? '700' : '400'}">${_platAfisare}</div>
+               <div style="font-size:.72rem;color:var(--df-text-3)">${_platDetaliu}</div>`}
+        </div>
+      </div>
+    </div>`;
+  });
+  const _totalIst = _istorice.reduce((s,c) => s + parseFloat(c.plata_suma_efectiva || 0), 0);
+  const _totalCurentPlatit = parseFloat(a.plata_suma_efectiva || 0);
+  const _totalGlobal = _totalIst + _totalCurentPlatit;
+  _html += `<div style="text-align:right;font-size:.8rem;color:var(--df-text-3);padding:4px 4px 8px">Total plătit (toate ciclurile): <strong style="color:var(--df-text)">${fmtV(_totalGlobal)}</strong></div></div>`;
+  const _vBlock = container.querySelector('[data-valori]');
+  if (_vBlock) {
+    const _d = document.createElement('div');
+    _d.innerHTML = _html;
+    _vBlock.parentNode.insertBefore(_d.firstChild, _vBlock);
+  }
+}
 
 function renderAlopDetail(a,container){
   if(!a||!a.id)return;
@@ -308,7 +513,7 @@ function renderAlopDetail(a,container){
     }else if(dfStatus==='neaprobat'){
       actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF (neaprobat)</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id){
-      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.467#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
+      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.468#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
     }else if(['aprobat','transmis_flux','de_revizuit'].includes(dfStatus)){
       actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
     }else if(a.df_id&&!a.df_flow_id){
@@ -399,86 +604,10 @@ function renderAlopDetail(a,container){
   `;
   // Bloc cicluri — detaliat: istoric + ciclu curent cu aceleași culori ca stepper-ul de sus
   // Culori: Lichidare #f59e0b | Ordonanțare #8b5cf6 | Plată #10b981
-  {
-    const _istorice = a.cicluri_istorice || [];
-    const _cicluCurent = a.ciclu_curent || 1;
-    const _areCicluCurent = _cicluCurent > 0 && !isCancelled;
-    const _toate = [..._istorice];
-    if (_areCicluCurent) {
-      _toate.push({
-        ciclu_nr: _cicluCurent,
-        lichidare_nr_factura: a.lichidare_nr_factura,
-        lichidare_confirmed_at: a.lichidare_confirmed_at,
-        ord_valoare: a.ord_valoare,
-        ord_completed_at: a.ord_completed_at,
-        nr_ordonant_pl: a.ord_nr,
-        plata_suma_efectiva: a.plata_suma_efectiva,
-        plata_nr_ordin: a.plata_nr_ordin,
-        plata_data: a.plata_data,
-        plata_confirmed_at: a.plata_confirmed_at,
-        _isCurrent: true,
-        _status: a.status,
-      });
-    }
-    if (_toate.length > 0) {
-      let _html = `<div style="margin:12px 0 8px"><div style="font-size:.72rem;font-weight:700;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Cicluri</div>`;
-      _toate.forEach(c => {
-        const _curBadge = c._isCurrent && !isCompleted
-          ? `<span style="font-size:.66rem;font-weight:600;color:#38bdf8;background:rgba(56,189,248,.12);padding:2px 8px;border-radius:8px;margin-left:8px">în curs</span>`
-          : '';
-        const _lichConfirmat = !!c.lichidare_confirmed_at;
-        const _lichFact = c.lichidare_nr_factura ? `Fact. ${esc(c.lichidare_nr_factura)}` : (c._isCurrent && !_lichConfirmat ? '⏳ în curs' : '—');
-        const _ordVal = parseFloat(c._isCurrent ? (c.ord_valoare || 0) : (c.plata_suma_efectiva || 0));
-        const _ordAfisare = c._isCurrent && !c.ord_completed_at && _ordVal === 0 ? '⏳ în curs' : fmtV(_ordVal);
-        const _ordData = c._isCurrent ? (c.ord_completed_at || '') : (c.plata_confirmed_at || '');
-        const _platConfirmat = !!c.plata_confirmed_at;
-        const _platSuma = parseFloat(c.plata_suma_efectiva || 0);
-        const _platAfisare = _platConfirmat ? fmtV(_platSuma) : (c._isCurrent ? '⏳ în curs' : '—');
-        // FIX v3.9.338: plata_data poate veni ca ISO complet (ciclul curent) sau YYYY-MM-DD (cicluri istorice). Normalizăm la dd.mm.yyyy.
-        const _fmtPlataData = (v) => {
-          if (!v) return '';
-          const s = String(v);
-          const datePart = s.substring(0, 10);
-          const m = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-          return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
-        };
-        const _platDetaliu = _platConfirmat
-          ? `${c.plata_nr_ordin ? `OP ${esc(c.plata_nr_ordin)} · ` : ''}${_fmtPlataData(c.plata_data)}`
-          : '';
-        _html += `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:.8rem">
-          <div style="font-weight:700;color:var(--df-text-2);margin-bottom:6px">Ciclu ${c.ciclu_nr}${_curBadge}</div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
-            <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.18);border-radius:6px;padding:6px 10px">
-              <div style="font-size:.68rem;color:#f59e0b;margin-bottom:2px;font-weight:600">✔ Lichidare</div>
-              <div style="color:var(--df-text-2)">${_lichFact}</div>
-              <div style="font-size:.72rem;color:var(--df-text-3)">${_lichConfirmat ? fmtDate(c.lichidare_confirmed_at) : ''}</div>
-            </div>
-            <div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.18);border-radius:6px;padding:6px 10px">
-              <div style="font-size:.68rem;color:#8b5cf6;margin-bottom:2px;font-weight:600">💰 Ordonanțare</div>
-              <div style="color:var(--df-text-2)">${_ordAfisare}</div>
-              <div style="font-size:.72rem;color:var(--df-text-3)">${_ordData ? fmtDate(_ordData) : ''}</div>
-              ${c.nr_ordonant_pl ? `<div style="font-size:.7rem;color:var(--df-text-3);font-weight:600;margin-top:2px">Nr. ${esc(c.nr_ordonant_pl)}</div>` : ''}
-            </div>
-            <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.18);border-radius:6px;padding:6px 10px">
-              <div style="font-size:.68rem;color:#10b981;margin-bottom:2px;font-weight:600">🏦 Plată</div>
-              <div style="color:${_platConfirmat ? '#34d399' : 'var(--df-text-2)'};font-weight:${_platConfirmat ? '700' : '400'}">${_platAfisare}</div>
-              <div style="font-size:.72rem;color:var(--df-text-3)">${_platDetaliu}</div>
-            </div>
-          </div>
-        </div>`;
-      });
-      const _totalIst = _istorice.reduce((s,c) => s + parseFloat(c.plata_suma_efectiva || 0), 0);
-      const _totalCurentPlatit = parseFloat(a.plata_suma_efectiva || 0);
-      const _totalGlobal = _totalIst + _totalCurentPlatit;
-      _html += `<div style="text-align:right;font-size:.8rem;color:var(--df-text-3);padding:4px 4px 8px">Total plătit (toate ciclurile): <strong style="color:var(--df-text)">${fmtV(_totalGlobal)}</strong></div></div>`;
-      const _vBlock = container.querySelector('[data-valori]');
-      if (_vBlock) {
-        const _d = document.createElement('div');
-        _d.innerHTML = _html;
-        _vBlock.parentNode.insertBefore(_d, _vBlock);
-      }
-    }
-  }
+  // Pachet C: fetch OPME lines + grupare pe matched_ciclu_id pentru cardul Plată.
+  // Rendering-ul ciclurilor a fost extras într-o funcție; aici doar pornim
+  // fetch-ul OPME (non-blocant) și apoi delegăm.
+  _fetchOpmeLinesAndRenderCicluri(a, container, isCompleted, isCancelled, fmtV, fmtDate);
   // Auto-refresh status la 15s cât ALOP e activ (detectează tranziții după semnare)
   clearInterval(window._alopRefreshInterval);
   if(!isCompleted&&!isCancelled){
@@ -889,6 +1018,8 @@ async function alopRevizuiesteDF(alopId,dfId){
   window.confirmRevizie             = confirmRevizie;
   window.alopRevizuiesteDF          = alopRevizuiesteDF;
   window._alopLinkDoc               = _alopLinkDoc;
+  window.openOpmeImport             = openOpmeImport;
+  window.openOpmeLinesForAlop       = openOpmeLinesForAlop;
 
   window.df = window.df || {};
   window.df._formularAlopLoaded = true;

@@ -236,7 +236,10 @@ router.get('/api/alop', async (req, res) => {
         ) AS total_ord_valoare,
         (
           COALESCE(a.suma_totala_platita, 0) + COALESCE(a.plata_suma_efectiva, 0)
-        ) AS total_platit
+        ) AS total_platit,
+        EXISTS (
+          SELECT 1 FROM opme_lines ol WHERE ol.matched_alop_id = a.id
+        ) AS has_opme_lines
       FROM alop_instances a
       LEFT JOIN users        u  ON u.id  = a.created_by
       LEFT JOIN formulare_df df ON df.id = a.df_id
