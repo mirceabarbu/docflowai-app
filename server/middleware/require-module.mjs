@@ -2,8 +2,9 @@
  * DocFlowAI — requireModule middleware (PASUL 2)
  *
  * Gardă pe endpoint-uri sensibile pe modul: blochează utilizatorii pentru care
- * modulul nu este activat (entitlement off). Superadmin (role='admin' AND
- * org_id IS NULL) trece întotdeauna.
+ * modulul nu este activat (entitlement off). Superadmin global (role='admin')
+ * trece întotdeauna, indiferent de org_id — aliniat cu restul aplicației
+ * (vezi server/routes/admin/_helpers.mjs: "admin vede totul").
  *
  * Folosire:
  *   router.post('/api/refnec', requireAuth, csrfMiddleware, requireModule('refnec'), handler);
@@ -29,8 +30,8 @@ export function requireModule(moduleKey) {
     }
     if (!actor) return res.status(401).json({ error: 'unauthorized' });
 
-    // Bypass superadmin global (role='admin' AND orgId nesetat)
-    if (actor.role === 'admin' && (actor.orgId == null)) return next();
+    // Bypass superadmin global: role='admin' indiferent de org_id (pattern aplicație).
+    if (actor.role === 'admin') return next();
 
     try {
       const enabled = await isModuleEnabled(pool, {

@@ -231,6 +231,18 @@ describe('POST /api/clasa8/buget/import — gardă requireModule(clasa8)', () =>
       .send({}); // body invalid → handler returnează 400 rows_required, dar NU module_disabled
     expect(res.body?.error).not.toBe('module_disabled');
   });
+
+  it('admin cu org_id setat — trece de gardă (superadmin global, indiferent de org_id)', async () => {
+    // Regresie v3.9.464: înainte, requireModule cerea orgId IS NULL pentru
+    // bypass-ul de admin. Aliniat acum cu pattern-ul aplicației (admin =
+    // superadmin global indiferent de org_id).
+    setModulesEnabled({});
+    const res = await request(makeApp())
+      .post('/api/clasa8/buget/import')
+      .set('Cookie', `auth_token=${makeSuperadminToken({ orgId: 5 })}`)
+      .send({});
+    expect(res.body?.error).not.toBe('module_disabled');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

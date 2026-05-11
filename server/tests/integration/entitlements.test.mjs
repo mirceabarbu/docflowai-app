@@ -14,7 +14,9 @@
  *   Endpoint /api/admin/entitlements:
  *     ✓ PUT cu user normal → 403
  *     ✓ PUT cu org_admin → 403 (nu superadmin)
- *     ✓ PUT cu superadmin → 200 + invocă upsert
+ *     ✓ PUT cu superadmin (orgId=null) → 200 + invocă upsert
+ *     ✓ PUT cu admin care are orgId setat → 200 (admin = superadmin global,
+ *        indiferent de org_id; aliniat cu pattern-ul aplicației)
  *
  *   Endpoint /api/entitlements/me:
  *     ✓ returnează mapa pentru user logat
@@ -218,7 +220,7 @@ describe('PUT /api/admin/entitlements — gardă superadmin', () => {
     expect(res.status).toBe(403);
   });
 
-  it('200 — superadmin → upsert returnează entitlement', async () => {
+  it('200 — superadmin (orgId=null) → upsert returnează entitlement', async () => {
     // Sequence:
     //  1) SELECT module_key FROM module_catalog → exists
     //  2) SELECT enabled FROM module_entitlements (old) → empty
@@ -246,6 +248,30 @@ describe('PUT /api/admin/entitlements — gardă superadmin', () => {
     const insertCall = dbModule.pool.query.mock.calls[2];
     expect(insertCall[0]).toMatch(/INSERT INTO module_entitlements/i);
     expect(insertCall[1]).toEqual(expect.arrayContaining(['refnec', 'user', '100', true]));
+  });
+
+  it('200 — admin cu org_id setat (superadmin global, aliniat cu pattern aplicației)', async () => {
+    // Regresie: înainte de v3.9.464 endpoint-ul refuza adminul dacă avea
+    // org_id setat. Restul aplicației tratează role='admin' ca superadmin
+    // global indiferent de org_id (vezi server/routes/admin/_helpers.mjs).
+    const insertedRow = {
+      id: 43, module_key: 'alop', scope_type: 'org', scope_id: '7',
+      enabled: false, set_by: 1, set_at: new Date().toISOString(), notes: null,
+    };
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ module_key: 'alop' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [insertedRow] });
+
+    const app = createAdminApp();
+    const res = await request(app)
+      .put('/api/admin/entitlements')
+      .set('Cookie', `auth_token=${makeSuperadminToken({ orgId: 5 })}`)
+      .send({ module_key: 'alop', scope_type: 'org', scope_id: '7', enabled: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.entitlement).toEqual(insertedRow);
   });
 });
 

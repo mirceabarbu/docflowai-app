@@ -8,7 +8,8 @@
  *   DELETE /                         — șterge entitlement
  *   GET    /resolve                  — diagnostic: valoarea efectivă + lanțul de override
  *
- * Gardă: role='admin' AND org_id IS NULL (super-admin). Org-admin = 403.
+ * Gardă: role='admin' (super-admin global, indiferent de org_id — aliniat cu
+ * pattern-ul aplicației: vezi server/routes/admin/_helpers.mjs). Org-admin = 403.
  */
 
 import { Router } from 'express';
@@ -21,11 +22,11 @@ import { invalidate, resolveDetailed } from '../../services/entitlements.mjs';
 const router = Router();
 const _csrf  = csrfMiddleware;
 
-/** Gardă superadmin global. Returnează actor sau trimite 403/401 și null. */
+/** Gardă superadmin global (role='admin'). Returnează actor sau trimite 403/401 și null. */
 function requireSuperadmin(req, res) {
   const actor = requireAuth(req, res);
   if (!actor) return null;
-  if (actor.role !== 'admin' || actor.orgId != null) {
+  if (actor.role !== 'admin') {
     res.status(403).json({ error: 'forbidden' });
     return null;
   }
