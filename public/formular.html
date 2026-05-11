@@ -8,11 +8,12 @@
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.461">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.461">
   <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.461">
-  <script src="/js/df-utils.js?v=3.9.461"></script>
-  <script src="/js/df-shell.js?v=3.9.461"></script>
-  <script src="/js/df-user-modals.js?v=3.9.461"></script>
-  <script src="/js/df-subtabs.js?v=3.9.461"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.461">
+  <script src="/js/df-utils.js?v=3.9.463"></script>
+  <script src="/js/df-entitlements.js?v=3.9.463"></script>
+  <script src="/js/df-shell.js?v=3.9.463"></script>
+  <script src="/js/df-user-modals.js?v=3.9.463"></script>
+  <script src="/js/df-subtabs.js?v=3.9.463"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.463">
 </head>
 <body>
 <span id="hUserBar" style="display:none;"></span>
@@ -148,13 +149,13 @@
      (HOTFIX 3.2.1: era replicată în 4 locuri, cauza salt vizual între secțiuni)
      ════════════════════════════════════════════════════════════════════════ -->
 <div class="df-subtabs" style="margin-bottom:16px">
-  <button class="df-subtab active" id="ltab-rfn"    onclick="switchListTab('rfn')"><svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-clipboard"/></svg> Referat de necesitate</button>
-  <button class="df-subtab"        id="ltab-nfi"    onclick="switchListTab('nfi')"><svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-edit-pencil"/></svg> Notă de fundamentare (investiții)</button>
-  <button class="df-subtab"        id="ltab-alop"   onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-bar-chart"/></svg> ALOP</button>
-  <button class="df-subtab"        id="ltab-df"     onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-file-text"/></svg> Document de Fundamentare</button>
-  <button class="df-subtab"        id="ltab-ord"    onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-file-text"/></svg> Ordonanțare de Plată</button>
-  <button class="df-subtab"        id="ltab-clasa8" onclick="switchListTab('clasa8')"><svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-landmark"/></svg> Clasa 8</button>
-  <button class="df-subtab"        id="ltab-verify" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-shield"/></svg> Verificare furnizor</button>
+  <button class="df-subtab active" id="ltab-rfn"    data-df-module="refnec"         onclick="switchListTab('rfn')"><svg class="df-ico"><use href="/icons.svg?v=3.9.463#ico-clipboard"/></svg> Referat de necesitate</button>
+  <button class="df-subtab"        id="ltab-nfi"    data-df-module="nf-invest"      onclick="switchListTab('nfi')"><svg class="df-ico"><use href="/icons.svg?v=3.9.463#ico-edit-pencil"/></svg> Notă de fundamentare (investiții)</button>
+  <button class="df-subtab"        id="ltab-alop"   data-df-module="alop"           onclick="switchListTab('alop')"><svg class="df-ico"><use href="/icons.svg?v=3.9.463#ico-bar-chart"/></svg> ALOP</button>
+  <button class="df-subtab"        id="ltab-df"     data-df-module="df"             onclick="switchListTab('df')"><svg class="df-ico"><use href="/icons.svg?v=3.9.463#ico-file-text"/></svg> Document de Fundamentare</button>
+  <button class="df-subtab"        id="ltab-ord"    data-df-module="ord"            onclick="switchListTab('ord')"><svg class="df-ico"><use href="/icons.svg?v=3.9.463#ico-file-text"/></svg> Ordonanțare de Plată</button>
+  <button class="df-subtab"        id="ltab-clasa8" data-df-module="clasa8"         onclick="switchListTab('clasa8')"><svg class="df-ico"><use href="/icons.svg?v=3.9.463#ico-landmark"/></svg> Clasa 8</button>
+  <button class="df-subtab"        id="ltab-verify" data-df-module="verif-furnizor" onclick="switchListTab('verify')"><svg class="df-ico"><use href="/icons.svg?v=3.9.463#ico-shield"/></svg> Verificare furnizor</button>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════════
@@ -269,7 +270,7 @@
       <div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">Conform Ordinului 1140/2025 · Angajare → Lichidare → Ordonanțare → Plată</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="df-action-btn primary" onclick="openAlopModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-plus"/></svg> ALOP nou</button>
+      <button class="df-action-btn primary" data-df-module="alop" onclick="openAlopModal()"><svg class="df-ico"><use href="/icons.svg?v=3.9.463#ico-plus"/></svg> ALOP nou</button>
     </div>
   </div>
 
@@ -357,8 +358,8 @@
       <svg class="df-ic"><use href="/icons.svg?v=3.9.461#ico-refresh"/></svg> Reset
     </button>
     <span id="clasa8-counter" style="margin-left:auto;font-size:.83rem;color:var(--df-text-3);">— înregistrări</span>
-    <button id="clasa8-btn-import" type="button" class="df-action-btn">
-      <svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-upload-cloud"/></svg> Import buget
+    <button id="clasa8-btn-import" type="button" class="df-action-btn" data-df-module="clasa8">
+      <svg class="df-ico"><use href="/icons.svg?v=3.9.463#ico-upload-cloud"/></svg> Import buget
     </button>
     <button id="clasa8-btn-export" type="button" class="df-action-btn primary">
       <svg class="df-ico"><use href="/icons.svg?v=3.9.461#ico-download"/></svg> Export Excel
@@ -526,7 +527,7 @@
       <input id="vf-coh-name" type="text" placeholder="ex: SC EXEMPLU SRL"
              style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:8px;color:var(--df-text);font-size:.88rem;box-sizing:border-box;">
     </div>
-    <button class="df-action-btn primary" onclick="vfLookupCoherence()" id="vf-coh-btn"><svg class="df-ic"><use href="/icons.svg?v=3.9.461#ico-link"/></svg>Analizează coerență</button>
+    <button class="df-action-btn primary" onclick="vfLookupCoherence()" id="vf-coh-btn" data-df-module="verif-furnizor"><svg class="df-ic"><use href="/icons.svg?v=3.9.463#ico-link"/></svg>Analizează coerență</button>
     <div id="vf-coh-result" style="display:none;margin-top:14px;"></div>
     <div id="vf-coh-msg" style="font-size:.82rem;min-height:18px;margin-top:8px;"></div>
   </div>
@@ -546,8 +547,8 @@
         Conform HG 395/2016. 14 secțiuni cu branching condițional. Pentru Strategia Anuală de Achiziție Publică sau inițierea unui proces de achiziție.
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <a href="/refnec-form.html" class="df-action-btn primary"><svg class="df-ic"><use href="/icons.svg?v=3.9.461#ico-plus"/></svg>Formular nou</a>
-        <button class="df-action-btn" onclick="foListOpen('REFNEC')"><svg class="df-ic"><use href="/icons.svg?v=3.9.461#ico-folder"/></svg>Listă formulare</button>
+        <a href="/refnec-form.html" data-df-module="refnec" class="df-action-btn primary"><svg class="df-ic"><use href="/icons.svg?v=3.9.463#ico-plus"/></svg>Formular nou</a>
+        <button class="df-action-btn" onclick="foListOpen('REFNEC')"><svg class="df-ic"><use href="/icons.svg?v=3.9.463#ico-folder"/></svg>Listă formulare</button>
       </div>
     </div>
   </div>
@@ -567,8 +568,8 @@
         Pentru cuprinderea obiectivelor de investiții în programul anual. 6 secțiuni. Generează PDF A4 cu header APROBAT/VIZAT și semnatari.
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <a href="/notafd-invest-form.html" class="df-action-btn primary"><svg class="df-ic"><use href="/icons.svg?v=3.9.461#ico-plus"/></svg>Formular nou</a>
-        <button class="df-action-btn" onclick="foListOpen('NOTAFD_INVEST')"><svg class="df-ic"><use href="/icons.svg?v=3.9.461#ico-folder"/></svg>Listă formulare</button>
+        <a href="/notafd-invest-form.html" data-df-module="nf-invest" class="df-action-btn primary"><svg class="df-ic"><use href="/icons.svg?v=3.9.463#ico-plus"/></svg>Formular nou</a>
+        <button class="df-action-btn" onclick="foListOpen('NOTAFD_INVEST')"><svg class="df-ic"><use href="/icons.svg?v=3.9.463#ico-folder"/></svg>Listă formulare</button>
       </div>
     </div>
   </div>

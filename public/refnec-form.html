@@ -8,10 +8,11 @@
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.461">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.461">
   <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.461">
-  <script src="/js/df-utils.js?v=3.9.461"></script>
-  <script src="/js/df-shell.js?v=3.9.461"></script>
-  <script src="/js/df-user-modals.js?v=3.9.461"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.461">
+  <script src="/js/df-utils.js?v=3.9.463"></script>
+  <script src="/js/df-entitlements.js?v=3.9.463"></script>
+  <script src="/js/df-shell.js?v=3.9.463"></script>
+  <script src="/js/df-user-modals.js?v=3.9.463"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.463">
   <style>
     .nf-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
     @media(max-width:800px){.nf-form-grid{grid-template-columns:1fr;}}
@@ -271,9 +272,16 @@
 
     <main class="df-page-body">
 
+      <!-- Mesaj „modul dezactivat" — afișat doar la creare (URL fără ?id=) când entitlement-ul lipsește -->
+      <div id="rfn-module-disabled" style="display:none;background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:16px 20px;font-size:.95rem;margin-bottom:16px;">
+        <strong>Modul dezactivat.</strong> Crearea unui Referat de necesitate nu este permisă pentru contul dvs. Contactați administratorul.
+        <div style="margin-top:10px;"><a href="/formular.html" class="df-action-btn sm"><svg class="df-ic"><use href="/icons.svg?v=3.9.463#ico-arrow-left"/></svg> Înapoi la Formulare</a></div>
+      </div>
+      <div id="rfn-form-wrap">
+
       <div style="margin-bottom:16px">
         <a href="/formular.html" class="df-action-btn sm">
-          <svg class="df-ic"><use href="/icons.svg?v=3.9.461#ico-arrow-left"/></svg>
+          <svg class="df-ic"><use href="/icons.svg?v=3.9.463#ico-arrow-left"/></svg>
           Înapoi la Formulare
         </a>
         <span id="rfn-saved-badge" class="nf-saved-badge">✅ Salvat</span>
@@ -1266,9 +1274,32 @@
         <span id="rfn-saved-badge2" class="nf-saved-badge"></span>
       </div>
 
+      </div><!-- /rfn-form-wrap -->
+
     </main>
   </div>
 </div>
+
+<script>
+// Guard creare nou: dacă URL fără ?id= și entitlement 'refnec' lipsește → ascunde formularul
+(function(){
+  var p = new URLSearchParams(location.search);
+  if (p.get('id')) return; // edit existent — accesibil indiferent
+  function applyGuard(){
+    if (window.df && window.df.canUseModule && !window.df.canUseModule('refnec')) {
+      var wrap = document.getElementById('rfn-form-wrap');
+      var msg  = document.getElementById('rfn-module-disabled');
+      if (wrap) wrap.style.display = 'none';
+      if (msg)  msg.style.display  = '';
+    }
+  }
+  if (window.df && window.df.entitlementsReady) {
+    window.df.entitlementsReady.then(applyGuard);
+  } else {
+    document.addEventListener('df:entitlements-ready', applyGuard);
+  }
+})();
+</script>
 
 <script>
 // ── Helpers ──────────────────────────────────────────────────────────────────
