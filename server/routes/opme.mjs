@@ -16,6 +16,7 @@ import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { parseOpmePdf } from '../services/opme-parser.mjs';
+import { matchImport, summarizeReport } from '../services/opme-matcher.mjs';
 
 const router = Router();
 
@@ -196,11 +197,34 @@ router.post('/api/opme/import', csrfMiddleware, (req, res) => {
       await client.query('COMMIT');
       logger.info({ orgId: actor.orgId, importId, lines: lines.length, suma: header.suma_totala },
         'opme import: success');
+
+      // ── Pachet B: matching engine sincron post-import ────────────────────
+      // Rulează în propria tranzacție; eșecul NU invalidează upload-ul, ci
+      // doar suprimă raportul de matching din răspuns.
+      let match_report = null;
+      try {
+        const rep = await matchImport(importId);
+        match_report = {
+          matched: rep.matched,
+          ambiguous: rep.ambiguous,
+          unmatched: rep.unmatched,
+          partial: rep.partial,
+          confirmed_alopuri: rep.confirmed_alopuri,
+          summary_text: summarizeReport(rep),
+        };
+        logger.info({ orgId: actor.orgId, importId, ...match_report },
+          'opme import: matcher done');
+      } catch (matchErr) {
+        logger.warn({ err: matchErr, importId },
+          'opme import: matcher failed (non-fatal — lines remain pending)');
+      }
+
       return _respond(201, {
         ok: true,
         import_id: importId,
         header,
         lines_count: lines.length,
+        match_report,
       });
     } catch (e) {
       try { await client.query('ROLLBACK'); } catch {}

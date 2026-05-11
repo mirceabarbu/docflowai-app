@@ -79,7 +79,7 @@
           label.innerHTML = `
             <input type="radio" name="providerSel" value="${esc(p.id)}" ${isSel ? 'checked' : ''} style="accent-color:#7c5cff; width:14px; height:14px;" />
             <span style="font-size:.84rem; color:${isSel ? meta.color : 'var(--sub)'}; font-weight:600; display:inline-flex; align-items:center; gap:5px;">
-              <svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#${meta.iconId}"/></svg>${esc(p.label)}
+              <svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#${meta.iconId}"/></svg>${esc(p.label)}
             </span>
           `;
           label.querySelector('input').addEventListener('change', () => onProviderChange(p.id));
@@ -851,7 +851,7 @@
         box.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <strong style="font-size:1rem;color:#eaf0ff;">📋 Alege un șablon</strong>
-            <button onclick="document.getElementById('tmplPickerOverlay').remove()" class="df-action-btn icon-only sm" aria-label="Închide"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-x"/></svg></button>
+            <button onclick="document.getElementById('tmplPickerOverlay').remove()" class="df-action-btn icon-only sm" aria-label="Închide"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-x"/></svg></button>
           </div>
           <div style="display:flex;flex-direction:column;gap:8px;">
             ${templates.map(t => `
@@ -1063,8 +1063,8 @@
           // Salvăm datele fluxului pentru modalul de email (stocăm orice flux finalizat)
           if (successFinal || pdfReady) { window._flowsEmailData = window._flowsEmailData || {}; window._flowsEmailData[f.flowId] = f; }
           const dlBtn = pdfReady
-            ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" class="df-action-btn primary"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-download"/></svg>PDF semnat</a>
-               <button onclick="downloadTrustReportInit('${f.flowId}', this)" class="df-action-btn"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-file-text"/></svg>Raport conformitate</button>`
+            ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" class="df-action-btn primary"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-download"/></svg>PDF semnat</a>
+               <button onclick="downloadTrustReportInit('${f.flowId}', this)" class="df-action-btn"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-file-text"/></svg>Raport conformitate</button>`
             : successFinal
             ? `<span style="color:var(--warn);font-size:.8rem;">⏳ Se procesează PDF...</span>`
             : isReviewRequested
@@ -1084,15 +1084,15 @@
                 ${isUrgent ? '<span style="background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>' : ''}
                 ${statusBadge}
                 <span id="emailBadge_${f.flowId}" style="display:none;"></span>
-                ${!isCancelled && mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" class="df-action-btn cta sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-pen-tool"/></svg>Semnează</button>` : ''}
-                <a href="/flow.html?flow=${f.flowId}" class="df-action-btn"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-search"/></svg>Vezi flow</a>
+                ${!isCancelled && mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" class="df-action-btn cta sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-pen-tool"/></svg>Semnează</button>` : ''}
+                <a href="/flow.html?flow=${f.flowId}" class="df-action-btn"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-search"/></svg>Vezi flow</a>
                 ${!isCancelled ? dlBtn : ''}
-                ${pdfReady ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-mail"/></svg>Trimite</button>` : ''}
-                ${!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-refresh"/></svg>Reinițiază</button>` : ''}
+                ${pdfReady ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-mail"/></svg>Trimite</button>` : ''}
+                ${!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-refresh"/></svg>Reinițiază</button>` : ''}
                 ${refusedByAprobat && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<span style="color:#ffaaaa;font-size:.78rem;font-weight:600;">⛔ Refuzat de APROBATOR — flux nou necesar</span>` : ''}
-                ${!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-upload"/></svg>Doc revizuit</button>` : ''}
-                ${!isCancelled && ((f.initEmail||'').toLowerCase() === currentUserEmail || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'admin' || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'org_admin') && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn danger icon-only sm" title="Șterge flux" aria-label="Șterge flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-trash"/></svg></button>` : ''}
-                ${!isCancelled && (!isRefused || canReinitiate) && !f.allSigned && !f.completed && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn sm" title="Anulează flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-ban"/></svg>Anulează</button>` : ''}
+                ${!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-upload"/></svg>Doc revizuit</button>` : ''}
+                ${!isCancelled && ((f.initEmail||'').toLowerCase() === currentUserEmail || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'admin' || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'org_admin') && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn danger icon-only sm" title="Șterge flux" aria-label="Șterge flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-trash"/></svg></button>` : ''}
+                ${!isCancelled && (!isRefused || canReinitiate) && !f.allSigned && !f.completed && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn sm" title="Anulează flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-ban"/></svg>Anulează</button>` : ''}
               </div>
             </div>
             <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
@@ -1823,7 +1823,7 @@ async function signFromFluxuri(flowId) {
             <span style="color:#b39dff;">📄</span>
             <span style="flex:1;color:var(--sub);">${af.file.name}</span>
             <span style="color:var(--muted);">${(af.file.size/1024).toFixed(0)} KB</span>
-            <button onclick="_removeAttach(${i})" class="df-action-btn icon-only sm" title="Elimină" aria-label="Elimină"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.298#ico-x"/></svg></button>
+            <button onclick="_removeAttach(${i})" class="df-action-btn icon-only sm" title="Elimină" aria-label="Elimină"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-x"/></svg></button>
           </div>`).join('');
       }
       window._removeAttach = (i) => { _attachFiles.splice(i, 1); _renderAttachList(); };

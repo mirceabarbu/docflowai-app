@@ -1466,6 +1466,39 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_opme_lines_matched_ciclu
         ON opme_lines(matched_ciclu_id) WHERE matched_ciclu_id IS NOT NULL;
     `
+  },
+  {
+    // Pachet B: distinge confirmările de plată manuale vs cele auto din OPME.
+    // alop_instances primește CHECK constraint (sursa "live"); alop_ord_cicluri
+    // arhivează valoarea ulterior, fără CHECK (acceptă orice valoare istorică).
+    id: '073_alop_plata_source',
+    sql: `
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+
+        ALTER TABLE alop_instances
+          ADD COLUMN IF NOT EXISTS plata_source TEXT DEFAULT 'manual';
+
+        BEGIN
+          ALTER TABLE alop_instances
+            ADD CONSTRAINT alop_instances_plata_source_chk
+            CHECK (plata_source IN ('manual','opme_auto'));
+        EXCEPTION
+          WHEN duplicate_object THEN NULL;
+        END;
+      END $g$;
+
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_ord_cicluri'
+        ) THEN RETURN; END IF;
+
+        ALTER TABLE alop_ord_cicluri
+          ADD COLUMN IF NOT EXISTS plata_source TEXT;
+      END $g$;
+    `
   }
 ];
 

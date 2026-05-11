@@ -36,7 +36,7 @@
   <div class="dfem-dialog">
     <button class="dfem-close" type="button" aria-label="Închide">✕</button>
     <div class="dfem-title" id="dfem-title">
-      <svg class="df-ico df-ico-lg" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.284#ico-mail"/></svg>
+      <svg class="df-ico df-ico-lg" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-mail"/></svg>
       Trimite document pe email
     </div>
     <div class="dfem-subtitle" id="dfem-docname"></div>
@@ -67,7 +67,7 @@
 
       <div class="dfem-field">
         <label class="dfem-label">
-          <svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.284#ico-paperclip"/></svg>
+          <svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-paperclip"/></svg>
           Atașamente suplimentare<span class="dfem-hint">— opțional, max 20 MB total</span>
         </label>
         <div class="dfem-attach-row">
@@ -81,7 +81,7 @@
       <div class="dfem-msg" id="dfem-msg"></div>
 
       <button class="dfem-submit" id="dfem-submit" type="button">
-        <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.284#ico-send"/></svg>
+        <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.467#ico-send"/></svg>
         <span>Trimite email</span>
       </button>
     </div>
