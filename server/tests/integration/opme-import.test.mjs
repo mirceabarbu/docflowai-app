@@ -100,8 +100,8 @@ describe('POST /api/opme/import — auth & CSRF', () => {
     expect(r.status).toBe(401);
   });
 
-  it('403 dacă lipsește rolul P2/admin', async () => {
-    // Body minim — testăm doar respingerea, nu parsarea
+  it('403 dacă userul nu e asignat ca responsabil_cab', async () => {
+    // pool.query default returns empty rows → gating query returns false
     const tok = makeToken({ role: 'user' });
     const r = await request(makeApp())
       .post('/api/opme/import')
@@ -124,9 +124,11 @@ describe('POST /api/opme/import — auth & CSRF', () => {
     expect(r.body.error).toBe('csrf_invalid');
   });
 
-  it('admite rol P2 (lowercase, în câmpul functie_rol)', async () => {
+  it('admite responsabil_cab asignat în alop_sabloane', async () => {
+    // Gating query returns a row → allowed
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
     setupSuccessMocks();
-    const tok = makeToken({ role: 'user', functie_rol: 'p2' });
+    const tok = makeToken({ role: 'user' });
     const r = await request(makeApp())
       .post('/api/opme/import')
       .set('Cookie', authCookie(tok))

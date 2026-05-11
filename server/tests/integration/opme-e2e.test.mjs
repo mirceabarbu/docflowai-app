@@ -352,16 +352,18 @@ describe('OPME E2E — flux complet F1129 → ALOP confirmat → export CSV', ()
     expect(res.body.summary).toHaveLength(2);
   }, 30_000);
 
-  it('POST rematch-all — 403 pentru non-admin', async () => {
+  it('POST rematch-all — 403 pentru non-admin (chiar cu responsabil_cab)', async () => {
+    // rematch-all is admin-only, responsabil_cab is not enough
     const res = await request(makeApp())
       .post('/api/opme/rematch-all')
-      .set('Cookie', authCookie(makeToken({ role: 'user', functie_rol: 'P2' })))
+      .set('Cookie', authCookie(makeToken({ role: 'user' })))
       .set('X-CSRF-Token', CSRF);
 
     expect(res.status).toBe(403);
   }, 30_000);
 
-  it('GET export.csv — 403 fără rol P2/admin', async () => {
+  it('GET export.csv — 403 fără asignare responsabil_cab', async () => {
+    // pool.query default returns empty → gating denies
     const res = await request(makeApp())
       .get('/api/opme/imports/imp-csv/export.csv')
       .set('Cookie', authCookie(makeToken({ role: 'user' })));

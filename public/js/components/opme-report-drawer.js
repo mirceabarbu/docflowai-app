@@ -19,7 +19,7 @@
   const csrf = () => (window.df && window.df.getCsrf ? window.df.getCsrf() : '');
 
   let _rootEl = null;
-  let _state = { importId: null, data: null, filter: 'all', onRematch: null };
+  let _state = { importId: null, data: null, filter: 'all', onRematch: null, canRematch: false };
 
   function ensureDOM() {
     if (_rootEl) return;
@@ -77,13 +77,13 @@
     return `<span class="df-opme-status df-opme-status--${x.cls}">${esc(x.label)}</span>`;
   }
 
-  function isAdminOrP2() {
-    const u = window.ST && window.ST.user;
-    if (!u) return false;
-    const role = String(u.role || '').toLowerCase();
-    if (role === 'admin' || role === 'org_admin') return true;
-    const fnRole = String(u.functie_rol || u.functieRol || u.alopRole || '').toLowerCase();
-    return fnRole === 'p2';
+  async function _fetchCanOpme() {
+    try {
+      const r = await fetch('/api/me/can-import-opme', { credentials: 'include' });
+      if (!r.ok) return false;
+      const j = await r.json();
+      return !!j.can;
+    } catch { return false; }
   }
 
   function render() {
@@ -113,7 +113,7 @@
     else if (filter === 'bad')  filtered = lines.filter(l => l.match_status === 'ambiguous' || l.match_status === 'unmatched' || l.match_status === 'partial');
     else                         filtered = lines;
 
-    const canRematch = isAdminOrP2();
+    const canRematch = _state.canRematch || false;
 
     body.innerHTML = `
       <div class="df-opme-stats">
@@ -178,12 +178,12 @@
       <div class="df-modal-footer">
         ${canRematch
           ? `<button type="button" class="df-action-btn" id="df-opme-btn-rematch">
-              <svg class="df-ico"><use href="/icons.svg?v=3.9.469#ico-rotate-cw"/></svg>
+              <svg class="df-ico"><use href="/icons.svg?v=3.9.470#ico-rotate-cw"/></svg>
               Re-rulează matching
             </button>
             <a href="/api/opme/imports/${encodeURIComponent(_state.importId)}/export.csv"
                class="df-action-btn" id="df-opme-btn-csv" download>
-              <svg class="df-ico"><use href="/icons.svg?v=3.9.469#ico-download"/></svg>
+              <svg class="df-ico"><use href="/icons.svg?v=3.9.470#ico-download"/></svg>
               Export CSV
             </a>` : ''}
         <button type="button" class="df-action-btn primary" id="df-opme-btn-close">Închide</button>
@@ -208,12 +208,16 @@
 
   async function load(importId) {
     try {
-      const r = await fetch(`/api/opme/imports/${encodeURIComponent(importId)}`, { credentials: 'include' });
+      const [r, canR] = await Promise.all([
+        fetch(`/api/opme/imports/${encodeURIComponent(importId)}`, { credentials: 'include' }),
+        _fetchCanOpme(),
+      ]);
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${r.status}`);
       }
       _state.data = await r.json();
+      _state.canRematch = canR;
       render();
     } catch (e) {
       const body = _rootEl.querySelector('#df-opme-drawer-body');
@@ -269,7 +273,7 @@
     if (!_rootEl) return;
     _rootEl.classList.remove('is-open');
     _rootEl.style.display = 'none';
-    _state = { importId: null, data: null, filter: 'all', onRematch: null };
+    _state = { importId: null, data: null, filter: 'all', onRematch: null, canRematch: false };
   }
 
   window.DFOpmeReportDrawer = { open, close };

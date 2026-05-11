@@ -83,13 +83,21 @@ ALOP status:  draft → angajare → lichidare → ordonantare → plata → com
 
 | Metodă | Path | Rol | Descriere |
 |--------|------|-----|-----------|
-| POST | `/api/opme/import` | P2/admin | Upload PDF F1129, auto-match |
+| POST | `/api/opme/import` | responsabil_cab/admin | Upload PDF F1129, auto-match |
 | GET | `/api/opme/imports` | orice auth | Listă import-uri org (paginat) |
 | GET | `/api/opme/imports/:id` | orice auth | Detaliu import + linii |
-| GET | `/api/opme/imports/:id/export.csv` | P2/admin | Export CSV pentru audit |
-| POST | `/api/opme/imports/:id/rematch` | P2/admin | Re-rulează matcher pe un import |
+| GET | `/api/opme/imports/:id/export.csv` | responsabil_cab/admin | Export CSV pentru audit |
+| POST | `/api/opme/imports/:id/rematch` | responsabil_cab/admin | Re-rulează matcher pe un import |
 | POST | `/api/opme/rematch-all` | admin | Re-rulează matcher pe toate importurile org |
 | GET | `/api/opme/lines/by-alop/:alopId` | orice auth | Linii OPME atașate unui ALOP |
+| GET | `/api/me/can-import-opme` | orice auth | Gating server-driven (`{ can: boolean }`) |
+
+### Cine poate importa OPME
+
+- **admin** — acces necondiționat
+- **responsabil_cab** — orice utilizator asignat ca `responsabil_cab` în `alop_sabloane.df_semnatari_sablon` / `ord_semnatari_sablon` sau într-o `alop_instances.df_semnatari` / `ord_semnatari` din org-ul său
+
+Frontend-ul verifică permisiunea via `GET /api/me/can-import-opme` (cache 30s).
 
 ## Schema tabel
 

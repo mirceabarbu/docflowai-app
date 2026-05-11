@@ -258,13 +258,14 @@ Modul de import plăți OPME din fișiere F1129 ale Trezoreriei (PDF XFA). Permi
 **Rute** (`server/routes/opme.mjs`):
 | Metodă | Path | Rol |
 |--------|------|-----|
-| POST | `/api/opme/import` | P2/admin — upload + auto-match |
+| POST | `/api/opme/import` | responsabil_cab/admin — upload + auto-match |
 | GET | `/api/opme/imports` | auth — listă paginabilă |
 | GET | `/api/opme/imports/:id` | auth — detaliu + linii |
-| GET | `/api/opme/imports/:id/export.csv` | P2/admin — CSV audit |
-| POST | `/api/opme/imports/:id/rematch` | P2/admin — re-rulează matcher |
+| GET | `/api/opme/imports/:id/export.csv` | responsabil_cab/admin — CSV audit |
+| POST | `/api/opme/imports/:id/rematch` | responsabil_cab/admin — re-rulează matcher |
 | POST | `/api/opme/rematch-all` | admin — re-match la nivel org |
 | GET | `/api/opme/lines/by-alop/:alopId` | auth — linii per ALOP |
+| GET | `/api/me/can-import-opme` | auth — gating server-driven (`{ can: bool }`) |
 
 **Servicii:**
 - `server/services/opme-parser.mjs` — extrage XFA din PDF → header + lines

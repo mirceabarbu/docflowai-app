@@ -36,24 +36,54 @@ function _drainBody(req) {
   } catch {}
 }
 
-// Pachet A: admite admin sau orice user cu rol P2 (case-insensitive). Pachet B
-// va înlocui asta cu gating pe compartiment via authz-formular.canEditAlop.
-function _hasOpmeImportRole(actor) {
-  const role = String(actor?.role || '').toLowerCase();
-  if (role === 'admin') return true;
-  const fnRoles = [actor?.functie_rol, actor?.functieRol, actor?.alopRole]
-    .filter(Boolean).map(s => String(s).toLowerCase());
-  return fnRoles.includes('p2');
+async function _hasOpmeImportRole(actor) {
+  if (!actor) return false;
+  if (actor.role === 'admin') return true;
+  if (!actor.orgId || !actor.userId) return false;
+  try {
+    const { rows } = await pool.query(`
+      SELECT 1
+      FROM alop_sabloane s
+      WHERE s.org_id = $1
+        AND (
+          EXISTS (SELECT 1 FROM jsonb_array_elements(s.df_semnatari_sablon) e
+                  WHERE e->>'role' = 'responsabil_cab'
+                    AND (e->>'user_id')::int = $2)
+          OR
+          EXISTS (SELECT 1 FROM jsonb_array_elements(s.ord_semnatari_sablon) e
+                  WHERE e->>'role' = 'responsabil_cab'
+                    AND (e->>'user_id')::int = $2)
+        )
+      UNION ALL
+      SELECT 1
+      FROM alop_instances a
+      WHERE a.org_id = $1
+        AND (
+          EXISTS (SELECT 1 FROM jsonb_array_elements(a.df_semnatari) e
+                  WHERE e->>'role' = 'responsabil_cab'
+                    AND (e->>'user_id')::int = $2)
+          OR
+          EXISTS (SELECT 1 FROM jsonb_array_elements(a.ord_semnatari) e
+                  WHERE e->>'role' = 'responsabil_cab'
+                    AND (e->>'user_id')::int = $2)
+        )
+      LIMIT 1
+    `, [actor.orgId, actor.userId]);
+    return rows.length > 0;
+  } catch (e) {
+    logger.warn({ err: e, userId: actor.userId }, 'opme gating: query failed (fallback deny)');
+    return false;
+  }
 }
 
-router.post('/api/opme/import', csrfMiddleware, (req, res) => {
+router.post('/api/opme/import', csrfMiddleware, async (req, res) => {
   if (_requireDb(res)) { _drainBody(req); return; }
   const actor = requireAuth(req, res);
   if (!actor) { _drainBody(req); return; }
   if (!actor.orgId) { _drainBody(req); return res.status(403).json({ error: 'org_required' }); }
-  if (!_hasOpmeImportRole(actor)) {
+  if (!(await _hasOpmeImportRole(actor))) {
     _drainBody(req);
-    return res.status(403).json({ error: 'forbidden', message: 'Doar P2 sau super-admin pot importa OPME.' });
+    return res.status(403).json({ error: 'forbidden', message: 'Doar responsabil CAB sau super-admin pot importa OPME.' });
   }
 
   let bb;
@@ -252,6 +282,16 @@ router.post('/api/opme/import', csrfMiddleware, (req, res) => {
   });
 
   req.pipe(bb);
+});
+
+// ── GET /api/me/can-import-opme — gating server-driven pentru UI ─────────────
+router.get('/api/me/can-import-opme', async (req, res) => {
+  if (_requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  const can = await _hasOpmeImportRole(actor);
+  res.setHeader('Cache-Control', 'private, max-age=30');
+  res.json({ can });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -457,8 +497,8 @@ router.post('/api/opme/imports/:id/rematch', csrfMiddleware, async (req, res) =>
   const actor = requireAuth(req, res);
   if (!actor) return;
   if (!actor.orgId) return res.status(403).json({ error: 'org_required' });
-  if (!_hasOpmeImportRole(actor)) {
-    return res.status(403).json({ error: 'forbidden', message: 'Doar P2 sau super-admin pot re-rula matching.' });
+  if (!(await _hasOpmeImportRole(actor))) {
+    return res.status(403).json({ error: 'forbidden', message: 'Doar responsabil CAB sau super-admin pot re-rula matching.' });
   }
 
   const importId = req.params.id;
@@ -506,8 +546,8 @@ router.get('/api/opme/imports/:id/export.csv', async (req, res) => {
   const actor = requireAuth(req, res);
   if (!actor) return;
   if (!actor.orgId) return res.status(403).json({ error: 'org_required' });
-  if (!_hasOpmeImportRole(actor)) {
-    return res.status(403).json({ error: 'forbidden', message: 'Doar P2 sau super-admin pot exporta.' });
+  if (!(await _hasOpmeImportRole(actor))) {
+    return res.status(403).json({ error: 'forbidden', message: 'Doar responsabil CAB sau super-admin pot exporta.' });
   }
 
   const importId = req.params.id;

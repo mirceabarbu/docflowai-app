@@ -61,7 +61,7 @@ function H(matcher, responder) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   process.env.JWT_SECRET = TEST_JWT_SECRET;
 });
 
@@ -272,7 +272,8 @@ describe('POST /api/opme/imports/:id/rematch', () => {
     expect(r.status).toBe(403);
   });
 
-  it('403 dacă userul nu e admin sau P2', async () => {
+  it('403 dacă userul nu e asignat ca responsabil_cab', async () => {
+    // pool.query default returns empty → gating denies
     const r = await request(makeApp())
       .post('/api/opme/imports/imp-1/rematch')
       .set('Cookie', authCookie(makeToken({ role: 'user' })))
@@ -289,5 +290,68 @@ describe('POST /api/opme/imports/:id/rematch', () => {
       .set('Cookie', authCookie(makeToken()))
       .set('X-CSRF-Token', CSRF);
     expect(r.status).toBe(404);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// GET /api/me/can-import-opme — gating server-driven
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/me/can-import-opme', () => {
+  it('admin → can:true fără asignări necesare', async () => {
+    const r = await request(makeApp())
+      .get('/api/me/can-import-opme')
+      .set('Cookie', authCookie(makeToken({ role: 'admin' })));
+    expect(r.status).toBe(200);
+    expect(r.body.can).toBe(true);
+  });
+
+  it('user cu responsabil_cab în alop_sabloane → can:true', async () => {
+    installPoolHandlers([
+      H(s => s.includes('alop_sabloane') && s.includes('responsabil_cab'),
+        async () => ({ rows: [{ '?column?': 1 }] })),
+    ]);
+    const r = await request(makeApp())
+      .get('/api/me/can-import-opme')
+      .set('Cookie', authCookie(makeToken({ role: 'user' })));
+    expect(r.status).toBe(200);
+    expect(r.body.can).toBe(true);
+  });
+
+  it('user cu responsabil_cab într-o alop_instances → can:true', async () => {
+    installPoolHandlers([
+      H(s => s.includes('alop_sabloane') && s.includes('responsabil_cab'),
+        async () => ({ rows: [{ '?column?': 1 }] })),
+    ]);
+    const r = await request(makeApp())
+      .get('/api/me/can-import-opme')
+      .set('Cookie', authCookie(makeToken({ role: 'user' })));
+    expect(r.status).toBe(200);
+    expect(r.body.can).toBe(true);
+  });
+
+  it('user fără nicio asignare → can:false', async () => {
+    // Default pool.query returns empty rows
+    const r = await request(makeApp())
+      .get('/api/me/can-import-opme')
+      .set('Cookie', authCookie(makeToken({ role: 'user' })));
+    expect(r.status).toBe(200);
+    expect(r.body.can).toBe(false);
+  });
+
+  it('user din alt org cu responsabil_cab → can:false (tenant isolation)', async () => {
+    // Query filtrează pe org_id=$1 → dacă user-ul e din org 1 dar sablonul e din org 2, no match
+    // Default mock returns empty → false
+    const r = await request(makeApp())
+      .get('/api/me/can-import-opme')
+      .set('Cookie', authCookie(makeToken({ role: 'user', orgId: 999 })));
+    expect(r.status).toBe(200);
+    expect(r.body.can).toBe(false);
+  });
+
+  it('401 fără auth', async () => {
+    const r = await request(makeApp())
+      .get('/api/me/can-import-opme');
+    expect(r.status).toBe(401);
   });
 });
