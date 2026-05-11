@@ -43,12 +43,14 @@
   let _initialState = {};     // module_key → {kind: 'inherit'|'on'|'off', enabled}
 
   // ── /auth/me — check superadmin ─────────────────────────────────────────────
+  // Aliniat cu pattern-ul aplicației (vezi server/routes/admin/_helpers.mjs):
+  // role='admin' = superadmin global, indiferent dacă are org_id setat sau nu.
   async function _checkSuperadmin() {
     try {
       const r = await fetch('/auth/me', { credentials: 'include' });
       if (!r.ok) return false;
       const u = await r.json();
-      return (u && u.role === 'admin' && (u.orgId == null || u.org_id == null));
+      return !!(u && u.role === 'admin');
     } catch (_) { return false; }
   }
 
@@ -92,13 +94,37 @@
     const sel = $('ent-scope-id');
     sel.innerHTML = '<option value="">— Alege un compartiment (după ce alegi org) —</option>';
     _showOrgPickerExtras(true);
+    _setMsg(null);
     const orgSel = $('ent-parent-org');
     orgSel.innerHTML = '<option value="">— Alege organizația —</option>' +
       _orgs.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
-    orgSel.onchange = () => {
+    orgSel.onchange = async () => {
       const orgId = orgSel.value;
-      const org = _orgs.find((o) => String(o.id) === String(orgId));
-      const comp = (org && Array.isArray(org.compartimente)) ? org.compartimente : [];
+      sel.innerHTML = '<option value="">— Se încarcă… —</option>';
+      _setMsg(null);
+      if (!orgId) {
+        sel.innerHTML = '<option value="">— Alege compartimentul —</option>';
+        return;
+      }
+      // Sursă autoritativă: GET /admin/organizations/:id (returnează compartimente complete).
+      // Folosim asta în locul cache-ului _orgs pentru robustețe — vezi server/routes/admin/organizations.mjs:60.
+      let comp = [];
+      try {
+        const r = await fetch(`/admin/organizations/${encodeURIComponent(orgId)}`, { credentials: 'include' });
+        if (!r.ok) throw new Error('http_' + r.status);
+        const org = await r.json();
+        comp = Array.isArray(org && org.compartimente) ? org.compartimente : [];
+      } catch (e) {
+        sel.innerHTML = '<option value="">—</option>';
+        _setMsg('Eroare la încărcarea compartimentelor pentru organizația selectată.', 'err');
+        return;
+      }
+      if (!comp.length) {
+        sel.innerHTML = '<option value="">— Nu există compartimente configurate —</option>';
+        sel.querySelector('option').disabled = true;
+        _setMsg('Organizația nu are compartimente configurate. Adaugă compartimente din pagina Organizații.', 'err');
+        return;
+      }
       sel.innerHTML = '<option value="">— Alege compartimentul —</option>' +
         comp.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
     };
@@ -124,9 +150,19 @@
     if (wrap) wrap.style.display = show ? '' : 'none';
   }
 
+  function _setMsg(text, kind) {
+    const el = $('ent-scope-id-msg');
+    if (!el) return;
+    if (!text) { el.style.display = 'none'; el.textContent = ''; el.className = 'df-msg'; return; }
+    el.style.display = '';
+    el.textContent = text;
+    el.className = 'df-msg ' + (kind === 'err' ? 'err' : 'ok');
+  }
+
   function _onScopeTypeChange() {
     const type = $('ent-scope-type').value;
     _renderTable(null); // golește tabel
+    _setMsg(null);
     if (!type) { $('ent-scope-id').innerHTML = '<option value="">—</option>'; _showOrgPickerExtras(false); return; }
     if (type === 'org')  _populateScopeIdForOrg();
     if (type === 'comp') _populateScopeIdForComp();

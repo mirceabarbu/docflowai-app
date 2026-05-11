@@ -13,7 +13,7 @@
   <script src="/js/df-entitlements.js?v=3.9.463"></script>
   <script src="/js/df-shell.js?v=3.9.464"></script>
   <script src="/js/df-user-modals.js?v=3.9.463"></script>
-  <script src="/js/setari/entitlements.js?v=3.9.463" defer></script>
+  <script src="/js/setari/entitlements.js?v=3.9.465" defer></script>
 </head>
 <body>
 
@@ -121,24 +121,25 @@
           Activează / dezactivează modulele DocFlowAI per organizație, compartiment sau utilizator. Regula: <em>cel mai specific override câștigă</em> (user &gt; compartiment &gt; organizație &gt; default catalog). „Moștenit" = nicio regulă explicită, se aplică nivelul superior.
         </p>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          <div>
-            <label style="display:block;font-size:.8rem;color:var(--df-text-3);margin-bottom:4px;">Tip scope</label>
-            <select id="ent-scope-type" style="width:100%;padding:8px 10px;background:rgba(255,255,255,.05);border:1px solid var(--df-border-2);border-radius:6px;color:var(--df-text);font-size:.88rem;">
+        <div class="df-grid-2" style="margin-bottom:14px;">
+          <div class="df-frow">
+            <label for="ent-scope-type">Tip scope</label>
+            <select id="ent-scope-type">
               <option value="">— Alege —</option>
             </select>
           </div>
-          <div id="ent-parent-org-wrap" style="display:none;">
-            <label style="display:block;font-size:.8rem;color:var(--df-text-3);margin-bottom:4px;">Organizație părinte</label>
-            <select id="ent-parent-org" style="width:100%;padding:8px 10px;background:rgba(255,255,255,.05);border:1px solid var(--df-border-2);border-radius:6px;color:var(--df-text);font-size:.88rem;">
+          <div class="df-frow" id="ent-parent-org-wrap" style="display:none;">
+            <label for="ent-parent-org">Organizație părinte</label>
+            <select id="ent-parent-org">
               <option value="">— Alege —</option>
             </select>
           </div>
-          <div style="grid-column:1/-1;">
-            <label style="display:block;font-size:.8rem;color:var(--df-text-3);margin-bottom:4px;">Țintă</label>
-            <select id="ent-scope-id" style="width:100%;padding:8px 10px;background:rgba(255,255,255,.05);border:1px solid var(--df-border-2);border-radius:6px;color:var(--df-text);font-size:.88rem;">
+          <div class="df-frow" style="grid-column:1/-1;">
+            <label for="ent-scope-id">Țintă</label>
+            <select id="ent-scope-id">
               <option value="">—</option>
             </select>
+            <div id="ent-scope-id-msg" class="df-msg" style="display:none;margin-top:6px;"></div>
           </div>
         </div>
 
