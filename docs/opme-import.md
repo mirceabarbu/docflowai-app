@@ -95,7 +95,7 @@ ALOP status:  draft → angajare → lichidare → ordonantare → plata → com
 ### Cine poate importa OPME
 
 - **admin** — acces necondiționat
-- **responsabil_cab** — orice utilizator asignat ca `responsabil_cab` în `alop_sabloane.df_semnatari_sablon` / `ord_semnatari_sablon` sau într-o `alop_instances.df_semnatari` / `ord_semnatari` din org-ul său
+- **P2 (assigned_to)** — orice utilizator care e (sau a fost) asignat ca P2 (`assigned_to`) pe cel puțin un Document de Fundamentare (`formulare_df`) sau o Ordonanțare de Plată (`formulare_ord`) din org-ul său
 
 Frontend-ul verifică permisiunea via `GET /api/me/can-import-opme` (cache 30s).
 

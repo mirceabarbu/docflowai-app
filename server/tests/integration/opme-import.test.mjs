@@ -100,7 +100,7 @@ describe('POST /api/opme/import — auth & CSRF', () => {
     expect(r.status).toBe(401);
   });
 
-  it('403 dacă userul nu e asignat ca responsabil_cab', async () => {
+  it('403 dacă userul nu e asignat ca P2 (assigned_to)', async () => {
     // pool.query default returns empty rows → gating query returns false
     const tok = makeToken({ role: 'user' });
     const r = await request(makeApp())
@@ -124,7 +124,7 @@ describe('POST /api/opme/import — auth & CSRF', () => {
     expect(r.body.error).toBe('csrf_invalid');
   });
 
-  it('admite responsabil_cab asignat în alop_sabloane', async () => {
+  it('admite user asignat ca P2 pe un DF (assigned_to)', async () => {
     // Gating query returns a row → allowed
     dbModule.pool.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
     setupSuccessMocks();

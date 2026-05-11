@@ -42,32 +42,13 @@ async function _hasOpmeImportRole(actor) {
   if (!actor.orgId || !actor.userId) return false;
   try {
     const { rows } = await pool.query(`
-      SELECT 1
-      FROM alop_sabloane s
-      WHERE s.org_id = $1
-        AND (
-          EXISTS (SELECT 1 FROM jsonb_array_elements(s.df_semnatari_sablon) e
-                  WHERE e->>'role' = 'responsabil_cab'
-                    AND (e->>'user_id')::int = $2)
-          OR
-          EXISTS (SELECT 1 FROM jsonb_array_elements(s.ord_semnatari_sablon) e
-                  WHERE e->>'role' = 'responsabil_cab'
-                    AND (e->>'user_id')::int = $2)
-        )
+      SELECT 1 FROM formulare_df
+       WHERE org_id = $1 AND assigned_to = $2
+       LIMIT 1
       UNION ALL
-      SELECT 1
-      FROM alop_instances a
-      WHERE a.org_id = $1
-        AND (
-          EXISTS (SELECT 1 FROM jsonb_array_elements(a.df_semnatari) e
-                  WHERE e->>'role' = 'responsabil_cab'
-                    AND (e->>'user_id')::int = $2)
-          OR
-          EXISTS (SELECT 1 FROM jsonb_array_elements(a.ord_semnatari) e
-                  WHERE e->>'role' = 'responsabil_cab'
-                    AND (e->>'user_id')::int = $2)
-        )
-      LIMIT 1
+      SELECT 1 FROM formulare_ord
+       WHERE org_id = $1 AND assigned_to = $2
+       LIMIT 1
     `, [actor.orgId, actor.userId]);
     return rows.length > 0;
   } catch (e) {

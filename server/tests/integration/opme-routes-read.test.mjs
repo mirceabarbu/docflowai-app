@@ -272,7 +272,7 @@ describe('POST /api/opme/imports/:id/rematch', () => {
     expect(r.status).toBe(403);
   });
 
-  it('403 dacă userul nu e asignat ca responsabil_cab', async () => {
+  it('403 dacă userul nu e asignat ca P2 (assigned_to)', async () => {
     // pool.query default returns empty → gating denies
     const r = await request(makeApp())
       .post('/api/opme/imports/imp-1/rematch')
@@ -306,9 +306,9 @@ describe('GET /api/me/can-import-opme', () => {
     expect(r.body.can).toBe(true);
   });
 
-  it('user cu responsabil_cab în alop_sabloane → can:true', async () => {
+  it('user asignat ca P2 pe un DF (assigned_to) → can:true', async () => {
     installPoolHandlers([
-      H(s => s.includes('alop_sabloane') && s.includes('responsabil_cab'),
+      H(s => s.includes('formulare_df') && s.includes('assigned_to'),
         async () => ({ rows: [{ '?column?': 1 }] })),
     ]);
     const r = await request(makeApp())
@@ -318,9 +318,9 @@ describe('GET /api/me/can-import-opme', () => {
     expect(r.body.can).toBe(true);
   });
 
-  it('user cu responsabil_cab într-o alop_instances → can:true', async () => {
+  it('user asignat ca P2 pe un ORD (assigned_to) → can:true', async () => {
     installPoolHandlers([
-      H(s => s.includes('alop_sabloane') && s.includes('responsabil_cab'),
+      H(s => s.includes('formulare_ord') && s.includes('assigned_to'),
         async () => ({ rows: [{ '?column?': 1 }] })),
     ]);
     const r = await request(makeApp())

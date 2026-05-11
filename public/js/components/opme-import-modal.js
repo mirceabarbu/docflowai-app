@@ -30,13 +30,13 @@
   <div class="df-opme-dialog">
     <button class="df-opme-close" type="button" aria-label="Închide">&times;</button>
     <div class="df-opme-title" id="df-opme-title">
-      <svg class="df-ico df-ico-lg"><use href="/icons.svg?v=3.9.470#ico-upload-cloud"/></svg>
+      <svg class="df-ico df-ico-lg"><use href="/icons.svg?v=3.9.471#ico-upload-cloud"/></svg>
       Import OPME — F1129
     </div>
     <div class="df-opme-subtitle">Ordine de plată multiple (formular F1129 generat de Forexebug). Maxim 5&nbsp;MB.</div>
 
     <div class="df-opme-modal__dropzone" id="df-opme-dropzone" tabindex="0" role="button">
-      <svg class="df-ico df-ico-xl df-opme-modal__dz-icon"><use href="/icons.svg?v=3.9.470#ico-upload"/></svg>
+      <svg class="df-ico df-ico-xl df-opme-modal__dz-icon"><use href="/icons.svg?v=3.9.471#ico-upload"/></svg>
       <div class="df-opme-modal__dz-text">
         <strong>Trage fișierul aici</strong> sau
         <button type="button" class="df-opme-modal__dz-btn" id="df-opme-btn-pick">Alege fișier</button>
@@ -47,7 +47,7 @@
 
     <div class="df-opme-preview" id="df-opme-preview" style="display:none">
       <div class="df-opme-preview__row">
-        <svg class="df-ico"><use href="/icons.svg?v=3.9.470#ico-file-text"/></svg>
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.471#ico-file-text"/></svg>
         <span class="df-opme-preview__name" id="df-opme-preview-name">—</span>
         <span class="df-opme-preview__size" id="df-opme-preview-size">—</span>
         <button type="button" class="df-opme-preview__remove" id="df-opme-btn-remove" title="Elimină">&times;</button>
@@ -64,7 +64,7 @@
     <div class="df-modal-footer">
       <button type="button" class="df-action-btn" id="df-opme-btn-cancel">Anulează</button>
       <button type="button" class="df-action-btn primary" id="df-opme-btn-upload" disabled>
-        <svg class="df-ico"><use href="/icons.svg?v=3.9.470#ico-upload-cloud"/></svg>
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.471#ico-upload-cloud"/></svg>
         Încarcă
       </button>
     </div>
