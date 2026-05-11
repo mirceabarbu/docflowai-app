@@ -511,6 +511,8 @@ import signerStatusRouter from './routes/flows/signer-status.mjs';
 import verifyRouter  from './routes/verify.mjs';
 import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
+import entitlementsAdminRouter from './routes/admin/entitlements.mjs';
+import { getAllModulesForUser as _getAllModulesForUser } from './services/entitlements.mjs';
 import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
@@ -1696,6 +1698,26 @@ app.get('/p/:trackingId', async (req, res) => {
   });
 });
 app.use('/admin/outreach', outreachRouter);
+app.use('/api/admin/entitlements', entitlementsAdminRouter);
+
+// ── GET /api/entitlements/me — modulele active pentru actor curent ─────────
+// Public sub auth (orice utilizator logat). Folosit de frontend pentru a afișa
+// /ascunde tabs/butoane în funcție de modulele activate per user.
+app.get('/api/entitlements/me', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const modules = await _getAllModulesForUser(pool, {
+      userId: actor.userId,
+      compartiment: actor.compartiment || null,
+      orgId: actor.orgId ?? null,
+    });
+    res.json({ modules });
+  } catch (e) {
+    logger.error({ err: e }, '/api/entitlements/me error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
 
 // ── POST /api/contact — formular contact landing page ─────────────────────
 // Rate limiting: 5 cereri/ora per IP — previne spam si abuz
