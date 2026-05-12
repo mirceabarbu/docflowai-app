@@ -333,6 +333,36 @@ Două niveluri de cache există:
 
 ---
 
+## Date trezorerii ANAF
+
+**Sursa de adevăr:** `server/services/verify/data/trezorerii-anaf.json`
+(committed în git). Conține ~243 entries — 41 județe + 7 entries București
+hardcoded — fiecare cu `{ code, city, county, type, fullName, verified, source }`.
+
+**Generat de:** `tools/scrape-trezorerii-anaf.mjs` din paginile oficiale
+ANAF (`static.anaf.ro/.../iban2014/<Județ>.htm`). Paginile sunt declarate
+windows-1252; scraperul decodează explicit acest charset și normalizează
+diacriticele vechi (`ţ`→`ț`, `ş`→`ș`).
+
+**Consumat de:** `server/services/verify/ibanValidator.mjs` — citește JSON-ul
+la load și folosește `entries[localityCode]` pentru a popula
+`treasuryCity`, `treasuryCounty`, `treasuryBranchName`, `treasuryType`,
+`treasuryVerified`. Nu mai există listă hardcoded în validator (cea veche
+avea 156/200 entries fabricate `unverified`).
+
+**Refresh (anual recomandat, sau la apariția de trezorerii noi):**
+
+1. `npm run scrape:trezorerii` (sau `node tools/scrape-trezorerii-anaf.mjs`)
+2. Verifică `tools/output/trezorerii-diff.md` pentru schimbări așteptate
+3. Dacă diff-ul arată schimbări OK, commit JSON-ul actualizat
+4. `npm test` verde
+5. PR develop → main
+
+Tool-ul e idempotent (sortare deterministă a cheilor). `tools/output/` e
+git-ignored — rapoartele sunt locale.
+
+---
+
 ## Database Migrations — Lessons learned (incident 2026-04-19)
 
 ### Arhitectura duală — cum funcționează
