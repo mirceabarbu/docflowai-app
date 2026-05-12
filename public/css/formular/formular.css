@@ -362,6 +362,12 @@
   input[data-f="indicator_angajament"] { min-width:  5ch; }
   input[data-f="program"]              { min-width: 12ch; }
   input[data-f="cod_SSI"]              { min-width: 17ch; }
+  /* Forțează <td>-ul să se expandeze suficient pentru input. min-width pe
+     input singur nu lărgește td în tabel auto-layout cu width:100% pe input. */
+  td:has(> input[data-f="cod_angajament"])       { min-width: 13ch; }
+  td:has(> input[data-f="indicator_angajament"]) { min-width:  5ch; }
+  td:has(> input[data-f="program"])              { min-width: 12ch; }
+  td:has(> input[data-f="cod_SSI"])              { min-width: 17ch; }
 
   /* ─── Header compact DF/ORD (back-btn + titlu + status pe un rând) ─── */
   .df-form-header-row {

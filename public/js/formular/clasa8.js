@@ -234,7 +234,7 @@
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = orig || '<svg class="df-ico"><use href="/icons.svg?v=3.9.473#ico-download"/></svg> Export Excel';
+        btn.innerHTML = orig || '<svg class="df-ico"><use href="/icons.svg?v=3.9.474#ico-download"/></svg> Export Excel';
       }
     }
   }
