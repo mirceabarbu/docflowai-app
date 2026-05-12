@@ -618,6 +618,9 @@ const _LARGE_PDF_PATHS = [
   '/sign',                    // POST — poate conține signedPdfB64
   '/detect-acroform-fields',  // POST — detectare câmpuri AcroForm/XFA din PDF
   '/formulare-oficiale',      // POST/PUT/attachments — RN/NF cu form_data JSONB extins + atașamente base64
+  '/formulare-ord',           // PUT — ORD cu img2 base64 (captură 2 ~1-5MB)
+  '/formulare-df',            // PUT — DF (paritate cu ORD, capturi posibile)
+  '/formulare/generate',      // POST — PDF gen primește captureImageBase64 + _2
 ];
 app.use((req, res, next) => {
   const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));

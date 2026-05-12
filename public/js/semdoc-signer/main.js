@@ -34,8 +34,8 @@
         bar.innerHTML =
           (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
           ((u.role === 'admin' || u.role === 'org_admin') ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
-          `<button class="df-action-btn sm" onclick="openChangePwdModal()"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-key"/></svg>Parolă</button>` +
-          `<button class="df-action-btn sm danger" onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-log-out"/></svg>Ieșire</button>`;
+          `<button class="df-action-btn sm" onclick="openChangePwdModal()"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-key"/></svg>Parolă</button>` +
+          `<button class="df-action-btn sm danger" onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-log-out"/></svg>Ieșire</button>`;
         if (localStorage.getItem("docflow_force_pwd") === "1") {
           const banner = document.getElementById("forcePwdBanner");
           if (banner) banner.style.display = "block";
@@ -328,7 +328,7 @@
             btn.id = 'btnSignCloud';
             btn.className = 'df-action-btn cta full-width lg';
             btn.style.marginBottom = '8px';
-            btn.innerHTML = `<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-file-signature"/></svg>Semnează cu ${p.label}`;
+            btn.innerHTML = `<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-file-signature"/></svg>Semnează cu ${p.label}`;
             btn.addEventListener('click', () => initiateCloudSigning(providerId));
             $('signBox').insertBefore(btn, $('btnDownloadForSigning'));
           }
@@ -344,7 +344,7 @@
 
       async function initiateCloudSigning(providerId) {
         const btn = $('btnSignCloud');
-        if (btn) { btn.disabled = true; btn.innerHTML = `<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-clock"/></svg>Se inițiază sesiunea...`; }
+        if (btn) { btn.disabled = true; btn.innerHTML = `<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-clock"/></svg>Se inițiază sesiunea...`; }
         try {
           const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/initiate-cloud-signing`, {
             method: 'POST',
@@ -360,7 +360,7 @@
             throw new Error('Provider-ul nu a returnat URL de semnare.');
           }
         } catch(e) {
-          if (btn) { btn.disabled = false; btn.innerHTML = `<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-file-signature"/></svg>Semnează cu provider`; }
+          if (btn) { btn.disabled = false; btn.innerHTML = `<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-file-signature"/></svg>Semnează cu provider`; }
           showError('❌ ' + e.message);
         }
       }

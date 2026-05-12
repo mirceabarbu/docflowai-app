@@ -296,20 +296,20 @@ function buildCard(t,idx) {
       </div>
     </div>`).join('');
   const shareBtnContent = t.shared
-    ? '<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-shield"/></svg>Fă privat'
-    : '<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-building"/></svg>Share';
+    ? '<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-shield"/></svg>Fă privat'
+    : '<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-building"/></svg>Share';
   const actions = t.isOwner ? `
-    <button class="df-action-btn sm" onclick='openEdit(${JSON.stringify(t)})'><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-edit"/></svg>Editează</button>
+    <button class="df-action-btn sm" onclick='openEdit(${JSON.stringify(t)})'><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-edit"/></svg>Editează</button>
     <button class="df-action-btn sm" onclick="toggleShared(${t.id},${t.shared})">${shareBtnContent}</button>
-    <button class="df-action-btn danger sm" onclick="deleteTemplate(${t.id},'${esc(t.name)}')"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-trash"/></svg>Șterge</button>
-    <button class="df-action-btn sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-clipboard"/></svg>Copiază</button>`
-  : `<button class="df-action-btn success sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-clipboard"/></svg>Copiază ca al meu</button>`;
+    <button class="df-action-btn danger sm" onclick="deleteTemplate(${t.id},'${esc(t.name)}')"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-trash"/></svg>Șterge</button>
+    <button class="df-action-btn sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-clipboard"/></svg>Copiază</button>`
+  : `<button class="df-action-btn success sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-clipboard"/></svg>Copiază ca al meu</button>`;
   div.innerHTML=`
     <div class="tmpl-name">${esc(t.name)} ${badge}</div>
     <div class="tmpl-meta">${(t.signers||[]).length} semnatari · ${dt}</div>
     <div class="tmpl-signers">${signersHtml}</div>
     <div class="tmpl-actions">
-      <button class="df-action-btn cta sm" onclick="useTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.472#ico-play"/></svg>Folosește</button>
+      <button class="df-action-btn cta sm" onclick="useTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.473#ico-play"/></svg>Folosește</button>
       ${actions}
     </div>`;
   return div;

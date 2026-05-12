@@ -66,6 +66,10 @@ function sw(tab){
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='ordnt')||(i===1&&tab==='notafd')));
   document.getElementById('form-ordnt').style.display=tab==='ordnt'?'':'none';
   document.getElementById('form-notafd').style.display=tab==='notafd'?'':'none';
+  // locked-bar-ordnt/notafd au fost mutate în back-bar (header compact); curăță
+  // bara inactivă ca să nu rămână mesajul vechi vizibil când se schimbă forma.
+  const inactiveBar=document.getElementById('locked-bar-'+(tab==='ordnt'?'notafd':'ordnt'));
+  if(inactiveBar){inactiveBar.className='locked-bar';inactiveBar.textContent='';}
   clrS();
 }
 function setS(msg,type='info'){const el=document.getElementById('sBar');el.className='status '+type;el.innerHTML=(type==='err'?'❌ ':type==='ok'?'✅ ':'⏳ ')+msg;}

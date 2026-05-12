@@ -68,7 +68,7 @@ function _alopStatusBadge(status, dfFlowId){
   };
   let s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
   if(status==='angajare'&&dfFlowId) s={icon:'ico-pen-tool',text:'Pe flux — semnare',color:'#6366f1'};
-  const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.472#${s.icon}"/></svg>`;
+  const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.473#${s.icon}"/></svg>`;
   return`<span style="display:inline-flex;align-items:center;background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_ico}${esc(s.text)}</span>`;
 }
 function _alopFazaLabel(status){
@@ -204,7 +204,7 @@ async function loadAlop(){
         <td style="font-size:.78rem;color:var(--df-text-3)">${dt}</td>
         <td onclick="event.stopPropagation()">
           <button class="df-action-btn sm" onclick="openAlop('${esc(a.id)}')">Deschide</button>
-          ${a.has_opme_lines?`<button class="df-action-btn sm" style="margin-left:4px" onclick="openOpmeLinesForAlop('${esc(a.id)}')" title="Vezi OP-uri OPME atașate"><svg class="df-ico"><use href="/icons.svg?v=3.9.472#ico-landmark"/></svg></button>`:''}
+          ${a.has_opme_lines?`<button class="df-action-btn sm" style="margin-left:4px" onclick="openOpmeLinesForAlop('${esc(a.id)}')" title="Vezi OP-uri OPME atașate"><svg class="df-ico"><use href="/icons.svg?v=3.9.473#ico-landmark"/></svg></button>`:''}
           ${active?`<button class="df-action-btn danger sm" style="margin-left:4px" onclick="cancelAlop('${esc(a.id)}')" title="Anulează ALOP">✕</button>`:''}
         </td>
       </tr>`;
@@ -292,7 +292,7 @@ async function alopRefreshCurrent(){
 }
 
 const _alopIcoBtn = (name) =>
-  `<svg class="df-ic"><use href="/icons.svg?v=3.9.472#${name}"/></svg>`;
+  `<svg class="df-ic"><use href="/icons.svg?v=3.9.473#${name}"/></svg>`;
 
 // ── Format dată plată (acceptă ISO sau YYYY-MM-DD; returnează dd.mm.yyyy) ───
 function _fmtPlataData(v){
@@ -520,7 +520,7 @@ function renderAlopDetail(a,container){
     }else if(dfStatus==='neaprobat'){
       actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF (neaprobat)</button>`;
     }else if(a.status==='angajare'&&a.df_flow_id){
-      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.472#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
+      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.473#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
     }else if(['aprobat','transmis_flux','de_revizuit'].includes(dfStatus)){
       actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
     }else if(a.df_id&&!a.df_flow_id){
@@ -724,7 +724,15 @@ async function alopDeschideORD(alopId){
       await new Promise(res=>setTimeout(res,100));
       try{history.replaceState({},'',`${location.pathname}?tip=ord&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
       newDocFromList();
-      if(alop.df_id)setTimeout(()=>{const s=document.getElementById('o-df-sel');if(s)s.value=alop.df_id;},400);
+      if(alop.df_id)setTimeout(()=>{
+        const s=document.getElementById('o-df-sel');
+        if(!s)return;
+        s.value=alop.df_id;
+        // dispatch 'change' ca să trigger-uim onchange="selectDfAprobat()" — set
+        // programatic .value NU declanșează handler-ul, ceea ce împiedica
+        // auto-popularea rândurilor din DF la prima deschidere.
+        s.dispatchEvent(new Event('change'));
+      },400);
     }
   }catch(e){console.error('alopDeschideORD',e);}
 }
@@ -743,7 +751,12 @@ function alopGoToORD(alopId,dfId){
   try{history.replaceState({},'',`${location.pathname}?tip=ord&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
   setTimeout(()=>{
     newDocFromList();
-    if(dfId)setTimeout(()=>{const s=document.getElementById('o-df-sel');if(s)s.value=dfId;},400);
+    if(dfId)setTimeout(()=>{
+      const s=document.getElementById('o-df-sel');
+      if(!s)return;
+      s.value=dfId;
+      s.dispatchEvent(new Event('change'));
+    },400);
   },100);
 }
 

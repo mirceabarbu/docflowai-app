@@ -353,3 +353,27 @@
   /* Date inputs */
   input[type="date"]{-webkit-date-and-time-value:{text-align:left}}
   input[type="date"]::-webkit-datetime-edit-fields-wrapper{direction:ltr}
+
+  /* ─── Lățimi inputs tabel DF Sec B + ORD ─── */
+  /* Identifică prin data-f — selector global, prinde atât tabela DF Sec B
+     cât și tabela ORD col. 1-4 (cod_angajament, indicator_angajament,
+     program, cod_SSI). */
+  input[data-f="cod_angajament"]       { min-width: 13ch; }
+  input[data-f="indicator_angajament"] { min-width:  5ch; }
+  input[data-f="program"]              { min-width: 12ch; }
+  input[data-f="cod_SSI"]              { min-width: 17ch; }
+
+  /* ─── Header compact DF/ORD (back-btn + titlu + status pe un rând) ─── */
+  .df-form-header-row {
+    display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+    margin-bottom: .5rem;
+  }
+  .df-form-header-row .locked-bar {
+    display: none;
+    margin: 0;
+    padding: .35rem .65rem;
+    font-size: .8rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .df-form-header-row .locked-bar.show { display: inline-flex; align-items: center; }
