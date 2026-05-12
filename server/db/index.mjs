@@ -1300,6 +1300,205 @@ const MIGRATIONS = [
           WHERE deleted_at IS NOT NULL;
       END $g$;
     `
+  },
+  {
+    id: '068_formular_attachments',
+    sql: `
+      CREATE TABLE IF NOT EXISTS formular_attachments (
+        id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        formular_id   UUID        NOT NULL REFERENCES formulare_oficiale(id) ON DELETE CASCADE,
+        category      TEXT        NOT NULL CHECK (category IN ('caiet_sarcini','estimare_valoare','altele')),
+        uploaded_by   INTEGER     NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+        filename      TEXT        NOT NULL,
+        mime_type     TEXT        NOT NULL DEFAULT 'application/octet-stream',
+        size_bytes    INTEGER     NOT NULL DEFAULT 0,
+        data          BYTEA       NOT NULL,
+        notes         TEXT,
+        uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at    TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_formular_att_formular
+        ON formular_attachments(formular_id, deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_formular_att_category
+        ON formular_attachments(formular_id, category, deleted_at);
+    `
+  },
+  {
+    id: '069_clasa8_buget',
+    sql: `
+      CREATE TABLE IF NOT EXISTS clasa8_buget_versions (
+        id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id          INTEGER     NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        version_no      INTEGER     NOT NULL,
+        uploaded_by     INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        source_filename TEXT,
+        row_count       INTEGER     NOT NULL DEFAULT 0,
+        total_value     NUMERIC(18,2) NOT NULL DEFAULT 0,
+        UNIQUE (org_id, version_no)
+      );
+      CREATE INDEX IF NOT EXISTS idx_clasa8_buget_versions_org_latest
+        ON clasa8_buget_versions(org_id, version_no DESC);
+
+      CREATE TABLE IF NOT EXISTS clasa8_buget (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        version_id  UUID        NOT NULL REFERENCES clasa8_buget_versions(id) ON DELETE CASCADE,
+        org_id      INTEGER     NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        cod_ssi     TEXT        NOT NULL,
+        valoare     NUMERIC(18,2) NOT NULL DEFAULT 0,
+        UNIQUE (org_id, cod_ssi)
+      );
+      CREATE INDEX IF NOT EXISTS idx_clasa8_buget_org    ON clasa8_buget(org_id);
+      CREATE INDEX IF NOT EXISTS idx_clasa8_buget_codssi ON clasa8_buget(org_id, cod_ssi);
+    `
+  },
+  {
+    id: '070_module_catalog',
+    sql: `
+      CREATE TABLE IF NOT EXISTS module_catalog (
+        module_key      TEXT PRIMARY KEY,
+        display_name    TEXT NOT NULL,
+        description     TEXT,
+        category        TEXT,
+        default_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        active          BOOLEAN NOT NULL DEFAULT TRUE,
+        display_order   INTEGER NOT NULL DEFAULT 100,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      INSERT INTO module_catalog (module_key, display_name, category, default_enabled, display_order)
+      VALUES
+        ('refnec',         'Referat de necesitate',           'documente',  TRUE, 10),
+        ('nf-invest',      'Notă de fundamentare investiții', 'documente',  TRUE, 20),
+        ('alop',           'ALOP (umbrella)',                 'alop',       TRUE, 30),
+        ('df',             'Document de fundamentare',        'alop',       TRUE, 40),
+        ('ord',            'Ordonanțare de plată',            'alop',       TRUE, 50),
+        ('clasa8',         'Clasa 8',                         'verificari', TRUE, 60),
+        ('verif-furnizor', 'Verificare furnizor',             'verificari', TRUE, 70)
+      ON CONFLICT (module_key) DO NOTHING;
+    `
+  },
+  {
+    id: '071_module_entitlements',
+    sql: `
+      CREATE TABLE IF NOT EXISTS module_entitlements (
+        id          BIGSERIAL PRIMARY KEY,
+        module_key  TEXT NOT NULL REFERENCES module_catalog(module_key) ON DELETE CASCADE,
+        scope_type  TEXT NOT NULL CHECK (scope_type IN ('org','comp','user')),
+        scope_id    TEXT NOT NULL,
+        enabled     BOOLEAN NOT NULL,
+        set_by      INTEGER NOT NULL REFERENCES users(id),
+        set_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        notes       TEXT,
+        UNIQUE (module_key, scope_type, scope_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_module_entitlements_lookup
+        ON module_entitlements (scope_type, scope_id, module_key);
+    `
+  },
+  {
+    id: '072_opme_imports',
+    sql: `
+      CREATE TABLE IF NOT EXISTS opme_imports (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id          INTEGER NOT NULL REFERENCES organizations(id),
+        uploaded_by     INTEGER NOT NULL REFERENCES users(id),
+        file_hash       TEXT NOT NULL,
+        file_name       TEXT,
+        nr_document     TEXT,
+        data_op         DATE,
+        an_r            INTEGER,
+        luna_r          INTEGER,
+        cif_platitor    TEXT,
+        den_platitor    TEXT,
+        adresa_platitor TEXT,
+        nr_inregistrari INTEGER,
+        suma_totala     NUMERIC(15,2),
+        universal_code  TEXT,
+        raw_meta        JSONB NOT NULL DEFAULT '{}',
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      DO $$ BEGIN
+        ALTER TABLE opme_imports
+          ADD CONSTRAINT opme_imports_org_hash_key UNIQUE (org_id, file_hash);
+      EXCEPTION
+        WHEN duplicate_table THEN NULL;
+        WHEN duplicate_object THEN NULL;
+      END $$;
+
+      CREATE TABLE IF NOT EXISTS opme_lines (
+        id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        opme_import_id        UUID NOT NULL REFERENCES opme_imports(id) ON DELETE CASCADE,
+        org_id                INTEGER NOT NULL REFERENCES organizations(id),
+        row_index             INTEGER NOT NULL,
+        nr_op                 TEXT,
+        iban_platitor         TEXT,
+        den_trezorerie        TEXT,
+        cod_program           TEXT,
+        cod_angajament        TEXT,
+        indicator_angajament  TEXT,
+        den_beneficiar        TEXT,
+        cif_beneficiar        TEXT,
+        iban_beneficiar       TEXT,
+        den_banca_trez        TEXT,
+        suma_op               NUMERIC(15,2) NOT NULL,
+        nr_evid_platii        TEXT,
+        explicatii            TEXT,
+        matched_alop_id       UUID,
+        matched_ciclu_id      UUID,
+        matched_at            TIMESTAMPTZ,
+        match_status          TEXT NOT NULL DEFAULT 'pending',
+        match_notes           TEXT,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT opme_lines_match_status_chk
+          CHECK (match_status IN ('pending','auto','manual','unmatched','ambiguous','partial'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_opme_imports_org
+        ON opme_imports(org_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_opme_lines_import
+        ON opme_lines(opme_import_id);
+      CREATE INDEX IF NOT EXISTS idx_opme_lines_match
+        ON opme_lines(org_id, match_status);
+      CREATE INDEX IF NOT EXISTS idx_opme_lines_triplet
+        ON opme_lines(org_id, cod_angajament, indicator_angajament, cif_beneficiar)
+        WHERE match_status IN ('pending','unmatched');
+      CREATE INDEX IF NOT EXISTS idx_opme_lines_matched_ciclu
+        ON opme_lines(matched_ciclu_id) WHERE matched_ciclu_id IS NOT NULL;
+    `
+  },
+  {
+    // Pachet B: distinge confirmările de plată manuale vs cele auto din OPME.
+    // alop_instances primește CHECK constraint (sursa "live"); alop_ord_cicluri
+    // arhivează valoarea ulterior, fără CHECK (acceptă orice valoare istorică).
+    id: '073_alop_plata_source',
+    sql: `
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+
+        ALTER TABLE alop_instances
+          ADD COLUMN IF NOT EXISTS plata_source TEXT DEFAULT 'manual';
+
+        BEGIN
+          ALTER TABLE alop_instances
+            ADD CONSTRAINT alop_instances_plata_source_chk
+            CHECK (plata_source IN ('manual','opme_auto'));
+        EXCEPTION
+          WHEN duplicate_object THEN NULL;
+        END;
+      END $g$;
+
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_ord_cicluri'
+        ) THEN RETURN; END IF;
+
+        ALTER TABLE alop_ord_cicluri
+          ADD COLUMN IF NOT EXISTS plata_source TEXT;
+      END $g$;
+    `
   }
 ];
 

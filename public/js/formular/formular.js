@@ -34,6 +34,8 @@
           ? org.compartimente_utilizatori
           : (org.compartimente||[]);
         ST.orgProfile={name:org.name||'',cif:org.cif||'',_compList:compList};
+        // Re-populare dropdown filtru — fix race condition cu showListSection
+        if(typeof window._populateCompartimente==='function')window._populateCompartimente();
       }
       // org null → ST.orgProfile rămâne null; câmpurile vor fi editabile manual
     }

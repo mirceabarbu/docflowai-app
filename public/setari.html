@@ -4,14 +4,16 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Setări</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.407">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.407">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.407">
-  <link rel="stylesheet" href="/mobile.css?v=3.9.407">
-  <script src="/js/df-utils.js?v=3.9.407"></script>
-  <script src="/js/df-apifetch-shim.js?v=3.9.407"></script>
-  <script src="/js/df-shell.js?v=3.9.407"></script>
-  <script src="/js/df-user-modals.js?v=3.9.407"></script>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.475">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.475">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.475">
+  <link rel="stylesheet" href="/mobile.css?v=3.9.475">
+  <script src="/js/df-utils.js?v=3.9.475"></script>
+  <script src="/js/df-apifetch-shim.js?v=3.9.475"></script>
+  <script src="/js/df-entitlements.js?v=3.9.475"></script>
+  <script src="/js/df-shell.js?v=3.9.475"></script>
+  <script src="/js/df-user-modals.js?v=3.9.475"></script>
+  <script src="/js/setari/entitlements.js?v=3.9.475" defer></script>
 </head>
 <body>
 
@@ -24,19 +26,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -67,30 +69,30 @@
               <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
               <div class="df-user-trigger-role">Utilizator</div>
             </div>
-            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-chevron-down"/></svg>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-chevron-down"/></svg>
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openLeaveModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-clock"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-clock"/></svg>
               Concediu și delegare
             </button>
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -106,9 +108,59 @@
           Marchează perioada în care nu vei fi disponibil. Fluxurile noi pe care trebuie să le semnezi vor fi atribuite automat delegatului ales.
         </p>
         <button class="df-action-btn primary" onclick="openLeaveModal()">
-          <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-clock"/></svg>
+          <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-clock"/></svg>
           Configurează concediu
         </button>
+      </div>
+
+      <!-- ── Module & permisiuni (SUPERADMIN ONLY) ─────────────────────────── -->
+      <!-- Vizibilitate controlată din js/setari/entitlements.js după /auth/me. -->
+      <div id="ent-section" style="display:none;background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);padding:24px;margin-bottom:16px;max-width:1100px;">
+        <h3 style="font-size:1rem;font-weight:600;color:var(--df-text);margin-bottom:6px;">Module &amp; permisiuni</h3>
+        <p style="font-size:.84rem;color:var(--df-text-3);margin-bottom:16px;line-height:1.5;">
+          Activează / dezactivează modulele DocFlowAI per organizație, compartiment sau utilizator. Regula: <em>cel mai specific override câștigă</em> (user &gt; compartiment &gt; organizație &gt; default catalog). „Moștenit" = nicio regulă explicită, se aplică nivelul superior.
+        </p>
+
+        <div class="df-grid-2" style="margin-bottom:14px;">
+          <div class="df-frow">
+            <label for="ent-scope-type">Tip scope</label>
+            <select id="ent-scope-type">
+              <option value="">— Alege —</option>
+            </select>
+          </div>
+          <div class="df-frow" id="ent-parent-org-wrap" style="display:none;">
+            <label for="ent-parent-org">Organizație părinte</label>
+            <select id="ent-parent-org">
+              <option value="">— Alege —</option>
+            </select>
+          </div>
+          <div class="df-frow" style="grid-column:1/-1;">
+            <label for="ent-scope-id">Țintă</label>
+            <select id="ent-scope-id">
+              <option value="">—</option>
+            </select>
+            <div id="ent-scope-id-msg" class="df-msg" style="display:none;margin-top:6px;"></div>
+          </div>
+        </div>
+
+        <div id="ent-table-wrap" style="display:none;border:1px solid var(--df-border-2);border-radius:8px;overflow:hidden;margin-bottom:12px;">
+          <table style="width:100%;border-collapse:collapse;font-size:.86rem;">
+            <thead style="background:rgba(255,255,255,.03);">
+              <tr>
+                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Modul</th>
+                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Categorie</th>
+                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Stare</th>
+                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Efectiv</th>
+              </tr>
+            </thead>
+            <tbody id="ent-tbody"></tbody>
+          </table>
+        </div>
+
+        <div style="display:flex;gap:12px;align-items:center;">
+          <button class="df-action-btn primary" id="ent-save-btn" disabled>Salvează</button>
+          <span id="ent-status" style="font-size:.82rem;color:var(--df-text-3);"></span>
+        </div>
       </div>
 
       <!-- Card placeholder pentru viitor -->

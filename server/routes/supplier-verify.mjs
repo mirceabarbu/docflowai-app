@@ -2,6 +2,7 @@
 // Montat la /api/verify în server/index.mjs
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.mjs';
+import { requireModule } from '../middleware/require-module.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { lookupCui } from '../services/verify/anafClient.mjs';
 import { verifyIban } from '../services/verify/ibanValidator.mjs';
@@ -38,7 +39,7 @@ router.get('/iban', async (req, res) => {
 });
 
 // POST /api/v4/verify/coherence  body: {cui, iban, name}
-router.post('/coherence', async (req, res) => {
+router.post('/coherence', requireModule('verif-furnizor'), async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   const { cui, iban, name } = req.body || {};
   if (!cui && !iban) return res.status(400).json({ error: 'cui_or_iban_required' });

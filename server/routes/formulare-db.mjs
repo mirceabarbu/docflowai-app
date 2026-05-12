@@ -14,6 +14,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.mjs';
 import { csrfMiddleware } from '../middleware/csrf.mjs';
+import { requireModule } from '../middleware/require-module.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { pool } from '../db/index.mjs';
 import { loadActorComp, canEditFormular, canDestroyOnly } from '../services/authz-formular.mjs';
@@ -217,7 +218,7 @@ router.get('/api/formulare-df/:id', async (req, res) => {
 });
 
 // POST /api/formulare-df — creare draft (P1)
-router.post('/api/formulare-df', _csrf, async (req, res) => {
+router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df'), async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
@@ -797,12 +798,25 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
 });
 
 // POST /api/formulare-ord — creare draft (P1)
-router.post('/api/formulare-ord', _csrf, async (req, res) => {
+router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('ord'), async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const body = req.body || {};
     const data = pick(body, ORD_P1_FIELDS);
+    if (data.nr_ordonant_pl) {
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM formulare_ord
+         WHERE nr_ordonant_pl = $1 AND org_id = $2 AND deleted_at IS NULL`,
+        [data.nr_ordonant_pl, actor.orgId]
+      );
+      if (dup.length > 0) {
+        return res.status(409).json({
+          error: 'nr_ord_duplicat',
+          message: 'Numărul ordonanțării există deja. Folosiți alt număr.'
+        });
+      }
+    }
     const cols = ['org_id', 'created_by'];
     const vals = [actor.orgId, actor.userId];
 
@@ -857,6 +871,19 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
 
     const allowedFields = isP2 && !isP1 && !isAdmin ? ORD_P2_FIELDS : [...ORD_P1_FIELDS];
     const data = pick(req.body || {}, allowedFields);
+    if (data.nr_ordonant_pl && data.nr_ordonant_pl !== doc.nr_ordonant_pl) {
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM formulare_ord
+         WHERE nr_ordonant_pl = $1 AND org_id = $2 AND deleted_at IS NULL AND id != $3`,
+        [data.nr_ordonant_pl, actor.orgId, req.params.id]
+      );
+      if (dup.length > 0) {
+        return res.status(409).json({
+          error: 'nr_ord_duplicat',
+          message: 'Numărul ordonanțării există deja. Folosiți alt număr.'
+        });
+      }
+    }
     const { sets, vals } = buildUpdate(data, allowedFields, 1);
 
     const allSets = [...sets];
@@ -1284,7 +1311,7 @@ router.get('/api/formulare/list', async (req, res) => {
   const isAdmin    = actor.role === 'admin';
   const isOrgAdmin = actor.role === 'org_admin';
 
-  const { type = 'df', status, from, to, comp, init, page = '1', limit = '20' } = req.query;
+  const { type = 'df', status, from, to, comp, init, p2, nr, page = '1', limit = '20' } = req.query;
   const lim  = Math.min(parseInt(limit) || 20, 100);
   const pg   = Math.max(parseInt(page)  || 1,  1);
 
@@ -1333,10 +1360,17 @@ router.get('/api/formulare/list', async (req, res) => {
       }
       if (from) conds.push(`fd.created_at >= $${params.push(from)}`);
       if (to)   conds.push(`fd.created_at <  $${params.push(to + 'T23:59:59')}`);
-      if (comp) conds.push(`fd.compartiment_specialitate=$${params.push(comp)}`);
+      if (comp) conds.push(`u1.compartiment=$${params.push(comp)}`);
       if (init) {
         const like = `%${init}%`;
         conds.push(`(u1.email ILIKE $${params.push(like)} OR u1.nume ILIKE $${params.push(like)})`);
+      }
+      if (p2) {
+        const likeP2 = `%${p2}%`;
+        conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
+      }
+      if (nr) {
+        conds.push(`fd.nr_unic_inreg ILIKE $${params.push('%' + nr + '%')}`);
       }
 
       const where = `WHERE ${conds.join(' AND ')}`;
@@ -1362,6 +1396,7 @@ router.get('/api/formulare/list', async (req, res) => {
           CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
+          u1.compartiment AS initiator_comp,
           COALESCE(u2.nume, u2.email) AS p2,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (fd.created_by = $${params.push(actor.userId)}) AS "isP1",
@@ -1423,10 +1458,17 @@ router.get('/api/formulare/list', async (req, res) => {
       }
       if (from) conds.push(`fo.created_at >= $${params.push(from)}`);
       if (to)   conds.push(`fo.created_at <  $${params.push(to + 'T23:59:59')}`);
-      // formulare_ord nu are compartiment_specialitate — filtru ignorat pentru ORD
+      if (comp) conds.push(`u1.compartiment=$${params.push(comp)}`);
       if (init) {
         const like = `%${init}%`;
         conds.push(`(u1.email ILIKE $${params.push(like)} OR u1.nume ILIKE $${params.push(like)})`);
+      }
+      if (p2) {
+        const likeP2 = `%${p2}%`;
+        conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
+      }
+      if (nr) {
+        conds.push(`fo.nr_ordonant_pl ILIKE $${params.push('%' + nr + '%')}`);
       }
 
       const where = `WHERE ${conds.join(' AND ')}`;
@@ -1443,6 +1485,7 @@ router.get('/api/formulare/list', async (req, res) => {
           CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,
+          u1.compartiment AS initiator_comp,
           COALESCE(u2.nume, u2.email) AS p2,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (fo.created_by = $${params.push(actor.userId)}) AS "isP1",

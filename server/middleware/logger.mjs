@@ -47,6 +47,36 @@ function serializeError(err) {
   };
 }
 
+const SENSITIVE_QUERY_KEYS = new Set([
+  'token', 'signer_token', 'signertoken',
+  'secret', 'apikey', 'api_key', 'api-key',
+  'code', 'state', 'session', 'sessionid', 'session_id',
+  'pending_token', 'pendingtoken',
+  'access_token', 'refresh_token', 'id_token',
+  'password', 'pwd', 'authorization',
+]);
+
+export function redactUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+  const qIdx = rawUrl.indexOf('?');
+  if (qIdx === -1) return rawUrl;
+  const path = rawUrl.slice(0, qIdx);
+  const qs = rawUrl.slice(qIdx + 1);
+  const hashIdx = qs.indexOf('#');
+  const queryPart = hashIdx === -1 ? qs : qs.slice(0, hashIdx);
+  const fragment = hashIdx === -1 ? '' : qs.slice(hashIdx);
+  const redacted = queryPart.split('&').map(pair => {
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx === -1) return pair;
+    const key = pair.slice(0, eqIdx);
+    const value = pair.slice(eqIdx + 1);
+    if (!value) return pair;
+    if (SENSITIVE_QUERY_KEYS.has(key.toLowerCase())) return `${key}=[REDACTED]`;
+    return pair;
+  }).join('&');
+  return `${path}?${redacted}${fragment}`;
+}
+
 function write(numLevel, ctx, msg) {
   if (numLevel < currentLvl) return;
 

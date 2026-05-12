@@ -180,8 +180,27 @@
     .lst-tabs-hdr{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
     /* .lst-tabs / .lst-tab removed — înlocuite de .df-subtabs/.df-subtab din components.css */
     .lst-filters{background:rgba(255,255,255,.03);border:1px solid var(--df-border-2);border-radius:10px;padding:12px 14px;margin-bottom:12px}
-    .lst-filter-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
-    .flt-grp{display:flex;flex-direction:column;gap:4px;min-width:110px}
+    .lst-filter-row{display:flex;flex-wrap:nowrap;gap:10px;align-items:flex-end}
+    .flt-grp{display:flex;flex-direction:column;gap:4px;flex:1 1 0;min-width:0}
+    /* Lățimi proporționale per filtru (oglindesc ordinea și nevoile coloanelor) */
+    .flt-grp#flt-nr-grp{flex:0.5 1 70px}
+    .flt-grp#flt-init-grp{flex:1.1 1 110px}
+    .flt-grp#flt-comp-wrap{flex:1.4 1 140px}
+    .flt-grp#flt-p2-grp{flex:1.1 1 110px}
+    .flt-grp#flt-from-grp,
+    .flt-grp#flt-to-grp{flex:1.3 1 130px}
+    .flt-grp .flt-sel,
+    .flt-grp .flt-inp{width:100%;box-sizing:border-box}
+    @media (max-width:1100px){
+      .lst-filter-row{flex-wrap:wrap}
+      .flt-grp{flex:1 1 140px}
+      .flt-grp#flt-nr-grp,
+      .flt-grp#flt-init-grp,
+      .flt-grp#flt-comp-wrap,
+      .flt-grp#flt-p2-grp,
+      .flt-grp#flt-from-grp,
+      .flt-grp#flt-to-grp{flex:1 1 140px}
+    }
     .flt-lbl{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--df-text-3)}
     .flt-sel,.flt-inp{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--df-text);font-size:.82rem;padding:6px 8px;outline:none;font-family:inherit;transition:.15s}
     .flt-sel:focus,.flt-inp:focus{border-color:rgba(108,79,240,.5)}
@@ -334,3 +353,33 @@
   /* Date inputs */
   input[type="date"]{-webkit-date-and-time-value:{text-align:left}}
   input[type="date"]::-webkit-datetime-edit-fields-wrapper{direction:ltr}
+
+  /* ─── Lățimi inputs tabel DF Sec B + ORD ─── */
+  /* Identifică prin data-f — selector global, prinde atât tabela DF Sec B
+     cât și tabela ORD col. 1-4 (cod_angajament, indicator_angajament,
+     program, cod_SSI). */
+  input[data-f="cod_angajament"]       { min-width: 13ch; }
+  input[data-f="indicator_angajament"] { min-width:  5ch; }
+  input[data-f="program"]              { min-width: 12ch; }
+  input[data-f="cod_SSI"]              { min-width: 17ch; }
+  /* Forțează <td>-ul să se expandeze suficient pentru input. min-width pe
+     input singur nu lărgește td în tabel auto-layout cu width:100% pe input. */
+  td:has(> input[data-f="cod_angajament"])       { min-width: 13ch; }
+  td:has(> input[data-f="indicator_angajament"]) { min-width:  5ch; }
+  td:has(> input[data-f="program"])              { min-width: 12ch; }
+  td:has(> input[data-f="cod_SSI"])              { min-width: 17ch; }
+
+  /* ─── Header compact DF/ORD (back-btn + titlu + status pe un rând) ─── */
+  .df-form-header-row {
+    display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+    margin-bottom: .5rem;
+  }
+  .df-form-header-row .locked-bar {
+    display: none;
+    margin: 0;
+    padding: .35rem .65rem;
+    font-size: .8rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .df-form-header-row .locked-bar.show { display: inline-flex; align-items: center; }

@@ -14,7 +14,7 @@ import util from 'util';
 
 const _pbkdf2 = util.promisify(crypto.pbkdf2);
 import jwt from 'jsonwebtoken';
-import { logger } from './logger.mjs';
+import { logger, redactUrl } from './logger.mjs';
 
 if (!process.env.JWT_SECRET) {
   logger.error('FATAL: JWT_SECRET nu este setat!');
@@ -77,15 +77,24 @@ export async function verifyPassword(password, stored) {
   return { ok, needsRehash: ok };
 }
 
-export function requireAuth(req, res) {
+export function requireAuth(req, res, next) {
   let token = req.cookies?.[AUTH_COOKIE] || null;
   if (!token) {
     const auth = req.get('authorization') || '';
     token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
   }
   if (!token) { res.status(401).json({ error: 'unauthorized' }); return null; }
-  try { return jwt.verify(token, JWT_SECRET); }
-  catch(e) { res.status(401).json({ error: 'token_invalid_or_expired' }); return null; }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    // Dual-mode: când e folosit ca middleware Express (next === function),
+    // setăm req.actor și avansăm pipeline-ul; când e apelat direct ca helper
+    // (`const actor = requireAuth(req, res)`), doar returnăm payload-ul.
+    if (typeof next === 'function') {
+      req.actor = payload;
+      next();
+    }
+    return payload;
+  } catch(e) { res.status(401).json({ error: 'token_invalid_or_expired' }); return null; }
 }
 
 // ── SEC-04: verificare token_version la endpoint-uri post-reset ───────────
@@ -134,11 +143,11 @@ export async function requireAdmin(req, res) {
       if (provided === ADMIN_SECRET) {
         await _adminClearRate(req, ip);
         _writeAdminSecretAudit(req).catch(() => {});
-        logger.warn({ ip, method: req.method, url: req.originalUrl }, 'ADMIN_SECRET bypass utilizat');
+        logger.warn({ ip, method: req.method, url: redactUrl(req.originalUrl) }, 'ADMIN_SECRET bypass utilizat');
         return false;
       }
       await _adminRecordFail(req, ip);
-      logger.warn({ ip, url: req.originalUrl }, 'ADMIN_SECRET: secret incorect');
+      logger.warn({ ip, url: redactUrl(req.originalUrl) }, 'ADMIN_SECRET: secret incorect');
       // Re-verificăm după înregistrare pentru a returna remainSec corect
       const recheckAfterFail = await _adminCheckRate(req, ip);
       if (recheckAfterFail.blocked) {
@@ -163,7 +172,7 @@ async function _writeAdminSecretAudit(req) {
       eventType: 'ADMIN_SECRET_ACCESS',
       actorEmail: 'system/admin-secret',
       actorIp: req.ip || null,
-      payload: { method: req.method, url: req.originalUrl },
+      payload: { method: req.method, url: redactUrl(req.originalUrl) },
     });
   } catch(_) { /* fire-and-forget */ }
 }

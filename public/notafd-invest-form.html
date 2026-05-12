@@ -4,14 +4,15 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Notă de Fundamentare Investiții — DocFlowAI</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.407">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.407">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.407">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.407">
-  <script src="/js/df-utils.js?v=3.9.407"></script>
-  <script src="/js/df-shell.js?v=3.9.407"></script>
-  <script src="/js/df-user-modals.js?v=3.9.407"></script>
-  <link rel="stylesheet" href="/mobile.css?v=3.9.407">
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.475">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.475">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.475">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.475">
+  <script src="/js/df-utils.js?v=3.9.475"></script>
+  <script src="/js/df-entitlements.js?v=3.9.475"></script>
+  <script src="/js/df-shell.js?v=3.9.475"></script>
+  <script src="/js/df-user-modals.js?v=3.9.475"></script>
+  <link rel="stylesheet" href="/mobile.css?v=3.9.475">
   <style>
     .nf-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
     @media(max-width:800px){.nf-form-grid{grid-template-columns:1fr;}}
@@ -54,19 +55,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item active">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -74,7 +75,7 @@
     <div class="df-nav-label">Comunicare</div>
     <div class="df-nav-group">
       <a href="/notifications" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-bell"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-bell"/></svg>
         Notificări
       </a>
     </div>
@@ -82,39 +83,39 @@
     <div class="df-nav-label">Administrare</div>
     <div class="df-nav-group">
       <a href="/admin#dashboard" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-layout"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-layout"/></svg>
         Dashboard
       </a>
       <a href="/admin#utilizatori" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-users"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-users"/></svg>
         Utilizatori
       </a>
+      <a href="/admin#organizatii" class="df-nav-item">
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-building"/></svg>
+        Organizații
+      </a>
       <a href="/admin#fluxuri" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-git-branch"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-git-branch"/></svg>
         Fluxuri documente
       </a>
       <a href="/admin#rapoarte" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-bar-chart"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-bar-chart"/></svg>
         Rapoarte
       </a>
     </div>
 
     <div class="df-nav-label">Organizație</div>
     <div class="df-nav-group">
-      <a href="/admin#organizatii" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-building"/></svg>
-        Organizații
-      </a>
       <a href="/admin#outreach" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-send"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-send"/></svg>
         Outreach
       </a>
       <a href="/admin#analytics" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-trending-up"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-trending-up"/></svg>
         Analytics
       </a>
       <a href="/admin#audit" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-search"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-search"/></svg>
         Audit
       </a>
     </div>
@@ -140,16 +141,16 @@
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openLeaveModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-clock"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-clock"/></svg>
               Concediu și delegare
             </button>
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-key"/></svg>
               Schimbă parola
             </button>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.407#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -158,6 +159,12 @@
     </header>
 
     <main class="df-page-body">
+
+      <div id="nf-module-disabled" style="display:none;background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:16px 20px;font-size:.95rem;margin-bottom:16px;">
+        <strong>Modul dezactivat.</strong> Crearea unei Note de Fundamentare (investiții) nu este permisă pentru contul dvs. Contactați administratorul.
+        <div style="margin-top:10px;"><a href="/formular.html" class="df-action-btn sm">← Înapoi la Formulare</a></div>
+      </div>
+      <div id="nf-form-wrap">
 
       <div style="margin-bottom:16px">
         <a href="/formular.html?tab=fo" class="df-action-btn sm">← Înapoi la Formulare oficiale</a>
@@ -337,14 +344,37 @@
 
       <!-- ── Acțiuni ───────────────────────────────────────────────────── -->
       <div class="nf-actions">
-        <button class="df-action-btn primary" onclick="nfSave()"><svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-save"/></svg>Salvează</button>
-        <button class="df-action-btn" onclick="nfGeneratePdf()" id="nf-btn-pdf"><svg class="df-ic"><use href="/icons.svg?v=3.9.407#ico-file-text"/></svg>Generează PDF</button>
+        <button class="df-action-btn primary" id="nf-btn-save" onclick="nfSave()"><svg class="df-ic"><use href="/icons.svg?v=3.9.475#ico-save"/></svg>Salvează</button>
+        <button class="df-action-btn" onclick="nfGeneratePdf()" id="nf-btn-pdf"><svg class="df-ic"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Generează PDF</button>
         <button class="df-action-btn" onclick="location.href='/formular.html?tab=fo'">Anulează</button>
       </div>
+
+      </div><!-- /nf-form-wrap -->
 
     </main>
   </div>
 </div>
+
+<script>
+// Guard creare nou: dacă URL fără ?id= și entitlement 'nf-invest' lipsește → ascunde formularul
+(function(){
+  var p = new URLSearchParams(location.search);
+  if (p.get('id')) return;
+  function applyGuard(){
+    if (window.df && window.df.canUseModule && !window.df.canUseModule('nf-invest')) {
+      var wrap = document.getElementById('nf-form-wrap');
+      var msg  = document.getElementById('nf-module-disabled');
+      if (wrap) wrap.style.display = 'none';
+      if (msg)  msg.style.display  = '';
+    }
+  }
+  if (window.df && window.df.entitlementsReady) {
+    window.df.entitlementsReady.then(applyGuard);
+  } else {
+    document.addEventListener('df:entitlements-ready', applyGuard);
+  }
+})();
+</script>
 
 <script>
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -428,30 +458,55 @@ async function nfSave(){
   const title = document.getElementById('nf-title').value.trim();
   if(!title){ showErr('Titlul este obligatoriu.'); return; }
 
-  const payload = {
-    form_type:  'NOTAFD_INVEST',
-    title:      title,
-    ref_number: document.getElementById('nf-ref_number').value.trim() || null,
-    form_data:  _readForm(),
-  };
+  let payload;
+  try {
+    payload = {
+      form_type:  'NOTAFD_INVEST',
+      title:      title,
+      ref_number: document.getElementById('nf-ref_number').value.trim() || null,
+      form_data:  _readForm(),
+    };
+  } catch(e) {
+    showErr('Eroare la citirea formularului: ' + (e.message || e));
+    return;
+  }
+
+  const payloadStr = JSON.stringify(payload);
+  const sizeKB = Math.round(payloadStr.length / 1024);
+  if (sizeKB > 30 * 1024) {
+    showErr(`Formular foarte mare (${sizeKB} KB). Reduceți conținutul.`);
+    return;
+  }
+
+  const btn = document.getElementById('nf-btn-save');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Se salvează...'; }
+
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 60_000);
 
   const csrf = getCsrf();
   try{
-    let r, method, url;
-    if(_nfId){
-      method = 'PUT';
-      url    = `/api/formulare-oficiale/${_nfId}`;
-    }else{
-      method = 'POST';
-      url    = '/api/formulare-oficiale';
-    }
-    r = await fetch(url, {
+    const method = _nfId ? 'PUT' : 'POST';
+    const url    = _nfId ? `/api/formulare-oficiale/${_nfId}` : '/api/formulare-oficiale';
+    const r = await fetch(url, {
       method, credentials:'include',
       headers:{ 'Content-Type':'application/json', 'X-CSRF-Token':csrf },
-      body: JSON.stringify(payload),
+      body: payloadStr,
+      signal: ctrl.signal,
     });
-    const j = await r.json();
-    if(!r.ok){ showErr(j.error || 'Eroare la salvare.'); return; }
+
+    const ct = r.headers.get('content-type') || '';
+    const j = ct.includes('application/json') ? await r.json().catch(()=>({})) : {};
+
+    if(!r.ok){
+      let msg;
+      if (r.status === 413)      msg = `Formular prea mare (${sizeKB} KB). Server a respins cu 413 Payload Too Large.`;
+      else if (r.status === 403) msg = 'Sesiune expirată sau token CSRF invalid. Reîncărcați pagina (Ctrl+F5).';
+      else if (r.status === 401) msg = 'Nu sunteți autentificat. Reîncărcați pagina.';
+      else                       msg = j.error || j.message || `Eroare ${r.status} la salvare.`;
+      showErr(msg);
+      return;
+    }
     if(!_nfId && j.formular?.id){
       _nfId = j.formular.id;
       history.replaceState({},'', `/notafd-invest-form.html?id=${_nfId}`);
@@ -463,7 +518,14 @@ async function nfSave(){
       setTimeout(()=>badge.classList.remove('show'), 3000);
     }
   }catch(e){
-    showErr('Eroare rețea la salvare.');
+    if (e.name === 'AbortError') {
+      showErr('Salvarea a depășit 60 de secunde. Verificați conexiunea și reîncercați.');
+    } else {
+      showErr('Eroare rețea la salvare: ' + (e.message || e));
+    }
+  }finally{
+    clearTimeout(timeoutId);
+    if(btn){ btn.disabled = false; btn.innerHTML = '<svg class="df-ic"><use href="/icons.svg?v=3.9.475#ico-save"/></svg>Salvează'; }
   }
 }
 
@@ -500,6 +562,6 @@ async function nfGeneratePdf(){
 }
 </script>
 
-<script src="/notif-widget.js?v=3.9.407"></script>
+<script src="/notif-widget.js?v=3.9.475"></script>
 </body>
 </html>

@@ -53,6 +53,8 @@
     }
   }
 
+  var SETARI_GEAR_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+
   // Injectează link „Setări" în dropdown-ul profile (prima poziție, înainte de Schimbă parola)
   document.addEventListener('DOMContentLoaded', function() {
     var dropdown = document.querySelector('.df-user-dropdown');
@@ -61,10 +63,31 @@
       link.href = '/setari';
       link.style.textDecoration = 'none';
       var btn = document.createElement('button');
-      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Setări';
+      btn.innerHTML = SETARI_GEAR_SVG + ' Setări';
       link.appendChild(btn);
       dropdown.insertBefore(link, dropdown.firstChild);
     }
+  });
+
+  // Injectează link „Setări" în sidebar, sub secțiunea „Navigare app", după ultimul item
+  document.addEventListener('DOMContentLoaded', function() {
+    var labels = document.querySelectorAll('.df-nav-label');
+    var navGroup = null;
+    for (var i = 0; i < labels.length; i++) {
+      if (labels[i].textContent.trim() === 'Navigare app') {
+        var sib = labels[i].nextElementSibling;
+        if (sib && sib.classList.contains('df-nav-group')) { navGroup = sib; break; }
+      }
+    }
+    if (!navGroup) return;
+    if (navGroup.querySelector('a[href="/setari"]')) return; // idempotent
+    var a = document.createElement('a');
+    a.href = '/setari';
+    a.className = 'df-nav-item';
+    var path = (location.pathname || '').replace(/\/$/, '');
+    if (path === '/setari' || path === '/setari.html') a.classList.add('active');
+    a.innerHTML = SETARI_GEAR_SVG + ' Setări';
+    navGroup.appendChild(a);
   });
 
   document.addEventListener('DOMContentLoaded', function() {

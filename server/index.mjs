@@ -488,7 +488,7 @@ import { WebSocketServer } from 'ws';
 import { pushToUser } from './push.mjs';
 import { fireWebhook, injectWebhookPool, injectWebhookBaseUrl } from './webhook.mjs';
 import { emailYourTurn, emailGeneric } from './emailTemplates.mjs';
-import { logger } from './middleware/logger.mjs';
+import { logger, redactUrl } from './middleware/logger.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
 let PDFLib = null;
@@ -511,6 +511,8 @@ import signerStatusRouter from './routes/flows/signer-status.mjs';
 import verifyRouter  from './routes/verify.mjs';
 import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
+import entitlementsAdminRouter from './routes/admin/entitlements.mjs';
+import { getAllModulesForUser as _getAllModulesForUser } from './services/entitlements.mjs';
 import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
@@ -518,7 +520,10 @@ import { formulareRouter } from './routes/formulare.mjs';
 import { formulareDbRouter } from './routes/formulare-db.mjs';
 import alopRouter from './routes/alop.mjs';
 import convertRouter from './routes/convert.mjs';
+import opmeRouter from './routes/opme.mjs';
 import formulareOficialeRouter from './routes/formulare-oficiale.mjs';
+import clasa8Router            from './routes/clasa8.mjs';
+import trasabilitateRouter     from './routes/trasabilitate.mjs';
 
 const app = express();
 app.use(compression()); // PERF-FIX-07: gzip pentru toate răspunsurile — reduce ~70% din dimensiunea HTML/JSON
@@ -612,6 +617,10 @@ const _LARGE_PDF_PATHS = [
   '/signing-callback',        // POST — callback provider cloud signing
   '/sign',                    // POST — poate conține signedPdfB64
   '/detect-acroform-fields',  // POST — detectare câmpuri AcroForm/XFA din PDF
+  '/formulare-oficiale',      // POST/PUT/attachments — RN/NF cu form_data JSONB extins + atașamente base64
+  '/formulare-ord',           // PUT — ORD cu img2 base64 (captură 2 ~1-5MB)
+  '/formulare-df',            // PUT — DF (paritate cu ORD, capturi posibile)
+  '/formulare/generate',      // POST — PDF gen primește captureImageBase64 + _2
 ];
 app.use((req, res, next) => {
   const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));
@@ -638,7 +647,7 @@ app.use((req, res, next) => {
     const lvl = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
     logger[lvl]({
       method: req.method,
-      url: req.originalUrl,
+      url: redactUrl(req.originalUrl),
       status: res.statusCode,
       ms,
       requestId: req.requestId,
@@ -1693,18 +1702,66 @@ app.get('/p/:trackingId', async (req, res) => {
   });
 });
 app.use('/admin/outreach', outreachRouter);
+app.use('/api/admin/entitlements', entitlementsAdminRouter);
+
+// ── GET /api/entitlements/me — modulele active pentru actor curent ─────────
+// Public sub auth (orice utilizator logat). Folosit de frontend pentru a afișa
+// /ascunde tabs/butoane în funcție de modulele activate per user.
+app.get('/api/entitlements/me', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const modules = await _getAllModulesForUser(pool, {
+      userId: actor.userId,
+      compartiment: actor.compartiment || null,
+      orgId: actor.orgId ?? null,
+    });
+    res.json({ modules });
+  } catch (e) {
+    logger.error({ err: e }, '/api/entitlements/me error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
 
 // ── POST /api/contact — formular contact landing page ─────────────────────
 // Rate limiting: 5 cereri/ora per IP — previne spam si abuz
 const _contactRateLimit = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5,
   message: 'Prea multe solicitări. Încearcă din nou în 60 de minute.' });
+
+function _stripHeaderInjection(s) {
+  return String(s || '').replace(/[\r\n]+/g, ' ').trim();
+}
+
+const CONTACT_LIMITS = { inst: 200, name: 150, email: 200, phone: 40, subject: 200, msg: 5000 };
+
 app.post('/api/contact', _contactRateLimit, async (req, res) => {
   try {
     const { inst, name, email, phone, subject, msg } = req.body || {};
-    if (!inst || !name || !email || !subject)
+
+    const _t = (v) => String(v || '').trim();
+    const instTrim    = _t(inst);
+    const nameTrim    = _t(name);
+    const emailTrim   = _t(email).toLowerCase();
+    const phoneTrim   = _t(phone);
+    const subjectTrim = _stripHeaderInjection(_t(subject));
+    const msgTrim     = _t(msg);
+
+    if (!instTrim || !nameTrim || !emailTrim || !subjectTrim)
       return res.status(400).json({ error: 'Câmpuri obligatorii lipsesc.' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+
+    if (instTrim.length    > CONTACT_LIMITS.inst    ||
+        nameTrim.length    > CONTACT_LIMITS.name    ||
+        emailTrim.length   > CONTACT_LIMITS.email   ||
+        phoneTrim.length   > CONTACT_LIMITS.phone   ||
+        subjectTrim.length > CONTACT_LIMITS.subject ||
+        msgTrim.length     > CONTACT_LIMITS.msg)
+      return res.status(400).json({ error: 'Unul sau mai multe câmpuri depășesc lungimea maximă.' });
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim))
       return res.status(400).json({ error: 'Email invalid.' });
+
+    if (phoneTrim && !/^[0-9+\-\s().]{6,40}$/.test(phoneTrim))
+      return res.status(400).json({ error: 'Telefon invalid.' });
 
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
     const MAIL_FROM = process.env.MAIL_FROM || 'DocFlowAI <noreply@docflowai.ro>';
@@ -1714,12 +1771,12 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
         <h2 style="color:#6c4ff0;">📋 Solicitare nouă — DocFlowAI Landing</h2>
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
-          <tr><td style="padding:8px;color:#666;width:160px;font-weight:600;">Instituție:</td><td style="padding:8px;">${inst}</td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;">Persoană contact:</td><td style="padding:8px;">${name}</td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;">Email:</td><td style="padding:8px;"><a href="mailto:${email}">${email}</a></td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;">Telefon:</td><td style="padding:8px;">${phone || '—'}</td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;">Solicitare:</td><td style="padding:8px;font-weight:700;color:#6c4ff0;">${subject}</td></tr>
-          <tr><td style="padding:8px;color:#666;font-weight:600;vertical-align:top;">Detalii:</td><td style="padding:8px;">${msg || '—'}</td></tr>
+          <tr><td style="padding:8px;color:#666;width:160px;font-weight:600;">Instituție:</td><td style="padding:8px;">${escHtml(instTrim)}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Persoană contact:</td><td style="padding:8px;">${escHtml(nameTrim)}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Email:</td><td style="padding:8px;"><a href="mailto:${escHtml(emailTrim)}">${escHtml(emailTrim)}</a></td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Telefon:</td><td style="padding:8px;">${escHtml(phoneTrim || '—')}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;">Solicitare:</td><td style="padding:8px;font-weight:700;color:#6c4ff0;">${escHtml(subjectTrim)}</td></tr>
+          <tr><td style="padding:8px;color:#666;font-weight:600;vertical-align:top;">Detalii:</td><td style="padding:8px;white-space:pre-wrap;">${escHtml(msgTrim || '—')}</td></tr>
         </table>
         <hr style="margin:20px 0;border:none;border-top:1px solid #eee;" />
         <p style="color:#999;font-size:12px;">Trimis automat din formularul de contact DocFlowAI · ${new Date().toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })}</p>
@@ -1731,8 +1788,8 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
       body: JSON.stringify({
         from: MAIL_FROM,
         to: 'contact@docflowai.ro',
-        reply_to: email,
-        subject: '[DocFlowAI Demo] ' + subject + ' — ' + inst,
+        reply_to: emailTrim,
+        subject: '[DocFlowAI Demo] ' + subjectTrim + ' — ' + instTrim,
         html: htmlBody,
       }),
     });
@@ -1741,7 +1798,7 @@ app.post('/api/contact', _contactRateLimit, async (req, res) => {
       logger.error({ err: j }, 'contact form send failed');
       return res.status(502).json({ error: 'Eroare la trimiterea emailului.' });
     }
-    logger.info({ inst, email, subject }, '📋 Contact form trimis');
+    logger.info({ inst: instTrim, email: emailTrim, subject: subjectTrim }, '📋 Contact form trimis');
     return res.json({ ok: true });
   } catch(e) {
     logger.error({ err: e }, 'contact form error');
@@ -1753,7 +1810,10 @@ app.use('/', formulareRouter);         // Formulare oficiale: ORDNT + NOTAFD (ge
 app.use('/', formulareDbRouter);      // Formulare DB: DF + ORD workflow P1→P2
 app.use('/', alopRouter);             // ALOP orchestrator: DF + ORD + fluxuri semnare
 app.use('/', convertRouter);          // Conversie fișiere non-PDF la PDF
+app.use('/', opmeRouter);             // OPME F1129 import (pachet A — fără matching)
 app.use('/api/formulare-oficiale', formulareOficialeRouter); // Formulare Oficiale CRUD (NF Invest, Referat)
+app.use('/api/clasa8',             clasa8Router);             // Centralizator Clasa 8 (read-only)
+app.use('/api/trasabilitate',      trasabilitateRouter);      // Arbore trasabilitate DF↔ALOP↔ORD
 
 app.use('/api/verify',       supplierVerifyRouter);
 

@@ -624,6 +624,20 @@ function newDoc(ft){
 
 // _alopLinkDoc → mutat în alop.js (BLOC 2.2)
 // ── Salvare în DB ─────────────────────────────────────────────────────────────
+const _DUP_FIELDS = { nr_ord_duplicat: 'o-nr', nr_unic_duplicat: 'n-nrUnic' };
+function _handleDup409(j) {
+  const fid = _DUP_FIELDS[j.error];
+  if (!fid) return false;
+  setS(j.message || 'Număr duplicat!', 'err');
+  const el = document.getElementById(fid);
+  if (el) {
+    el.style.borderColor = '#dc3545';
+    el.focus();
+    function _clear() { el.style.borderColor = ''; el.removeEventListener('input', _clear); }
+    el.addEventListener('input', _clear);
+  }
+  return true;
+}
 async function saveDoc(ft){
   if(ST.docAprobat?.[ft])return;
   const docId=ST.docId[ft];
@@ -636,14 +650,15 @@ async function saveDoc(ft){
     if(!docId){
       r=await fetch(ftApi(ft),{method:'POST',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
-      if(r.status===409){setS(j.message||'Număr unic duplicat!','err');document.getElementById('n-nrUnic')?.focus();return;}
+      if(r.status===409&&_handleDup409(j))return;
       if(r.ok&&j.ok){
         ST.docId[ft]=j.document.id;ST.docStatus[ft]='draft';ST.docRole[ft]='p1';
-        _alopLinkDoc(ft,j.document.id); // FIX: leagă imediat la ALOP la primul save
+        _alopLinkDoc(ft,j.document.id);
       }
     }else{
       r=await fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
+      if(r.status===409&&_handleDup409(j))return;
       if(r.ok&&j.ok){ST.docStatus[ft]=j.document.status;}
     }
     if(!r.ok||!j.ok){setS(j.error||'Eroare la salvare','err');return;}

@@ -18,9 +18,13 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.mjs';
 import { csrfMiddleware } from '../middleware/csrf.mjs';
+import { requireModule } from '../middleware/require-module.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
+// Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
+// Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
+import * as _opmeMatcher from '../services/opme-matcher.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -232,7 +236,10 @@ router.get('/api/alop', async (req, res) => {
         ) AS total_ord_valoare,
         (
           COALESCE(a.suma_totala_platita, 0) + COALESCE(a.plata_suma_efectiva, 0)
-        ) AS total_platit
+        ) AS total_platit,
+        EXISTS (
+          SELECT 1 FROM opme_lines ol WHERE ol.matched_alop_id = a.id
+        ) AS has_opme_lines
       FROM alop_instances a
       LEFT JOIN users        u  ON u.id  = a.created_by
       LEFT JOIN formulare_df df ON df.id = a.df_id
@@ -260,7 +267,7 @@ router.get('/api/alop', async (req, res) => {
 });
 
 // ── POST /api/alop — creare ALOP nou (status: draft) ─────────────────────────
-router.post('/api/alop', _csrf, async (req, res) => {
+router.post('/api/alop', _csrf, requireModule('alop'), async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
@@ -481,6 +488,14 @@ router.get('/api/alop/:id', async (req, res) => {
           alop.status = up[0].status;
           alop.ord_completed_at = up[0].ord_completed_at;
           logger.info(`[ALOP] lazy auto-tranziție ordonantare→plata (STS), id=${req.params.id}`);
+          // Pachet B: încearcă absorbția liniilor OPME deja existente
+          try {
+            const r = await _opmeMatcher.tryAutoConfirmAlop(req.params.id, { actorUserId: actor.userId });
+            if (r?.confirmed) logger.info({ alopId: req.params.id }, '[ALOP] OPME auto-confirm (lazy)');
+          } catch (mErr) {
+            logger.warn({ err: mErr, alopId: req.params.id },
+              '[ALOP] OPME auto-confirm failed (non-fatal)');
+          }
         }
       } catch (autoErr) {
         logger.warn({ err: autoErr }, '[ALOP] lazy tranziție plata failed (non-fatal)');
@@ -801,12 +816,70 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
     `, [req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(400).json({ error: 'ord_flow_necesar_sau_status_invalid' });
+
+    // Pachet B: încearcă absorbția liniilor OPME deja existente
+    try {
+      const r = await _opmeMatcher.tryAutoConfirmAlop(req.params.id, { actorUserId: actor.userId });
+      if (r?.confirmed) logger.info({ alopId: req.params.id }, '[ALOP] OPME auto-confirm (ord-completed)');
+    } catch (mErr) {
+      logger.warn({ err: mErr, alopId: req.params.id },
+        '[ALOP] OPME auto-confirm failed (non-fatal)');
+    }
+
     res.json({ alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop ord-completed error');
     res.status(500).json({ error: 'server_error' });
   }
 });
+
+// ── Helper privat: aplică side-effects de confirmare plată ───────────────────
+// Folosit de:
+//   • endpoint-ul manual POST /api/alop/:id/confirma-plata (source='manual')
+//   • matcher-ul OPME (source='opme_auto', pachet B)
+// Garda WHERE include plata_confirmed_at IS NULL pentru idempotență sub race.
+// Returnează row-ul actualizat sau null (deja confirmat / status diferit / not found).
+export async function applyPlataConfirmedSideEffects(executor, alopId, orgId, payload) {
+  const {
+    userId,
+    notes = '',
+    nr_ordin_plata = null,
+    data_plata = null,
+    suma_efectiva = null,
+    observatii = null,
+    source = 'manual',
+  } = payload || {};
+  const { rows } = await executor.query(`
+    UPDATE alop_instances
+    SET plata_confirmed_by=$1,
+        plata_confirmed_at=NOW(),
+        plata_notes=$2,
+        plata_nr_ordin=$3,
+        plata_data=$4,
+        plata_suma_efectiva=$5,
+        plata_observatii=$6,
+        plata_source=$9,
+        status='completed',
+        completed_at=NOW(),
+        updated_at=NOW(),
+        updated_by=$1
+    WHERE id=$7 AND org_id=$8
+      AND status='plata'
+      AND plata_confirmed_at IS NULL
+    RETURNING *
+  `, [
+    userId,
+    notes,
+    nr_ordin_plata,
+    data_plata,
+    suma_efectiva,
+    observatii,
+    alopId,
+    orgId,
+    source,
+  ]);
+  return rows[0] || null;
+}
 
 // ── POST /api/alop/:id/confirma-plata → status: completed ────────────────────
 router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
@@ -828,26 +901,18 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
     }
 
     const { notes, nr_ordin_plata, data_plata, suma_efectiva, observatii } = req.body;
-    const { rows } = await pool.query(`
-      UPDATE alop_instances
-      SET plata_confirmed_by=$1,
-          plata_confirmed_at=NOW(),
-          plata_notes=$2,
-          plata_nr_ordin=$3,
-          plata_data=$4,
-          plata_suma_efectiva=$5,
-          plata_observatii=$6,
-          status='completed',
-          completed_at=NOW(),
-          updated_at=NOW(),
-          updated_by=$1
-      WHERE id=$7 AND org_id=$8 AND status='plata'
-      RETURNING *
-    `, [actor.userId, observatii || notes || '', nr_ordin_plata || null, data_plata || null,
-        suma_efectiva || null, observatii || null, req.params.id, actor.orgId]);
+    const row = await applyPlataConfirmedSideEffects(pool, req.params.id, actor.orgId, {
+      userId: actor.userId,
+      notes: observatii || notes || '',
+      nr_ordin_plata: nr_ordin_plata || null,
+      data_plata: data_plata || null,
+      suma_efectiva: suma_efectiva || null,
+      observatii: observatii || null,
+      source: 'manual',
+    });
 
-    if (!rows[0]) return res.status(400).json({ error: 'status_invalid' });
-    res.json({ ok: true, alop: rows[0] });
+    if (!row) return res.status(400).json({ error: 'status_invalid' });
+    res.json({ ok: true, alop: row });
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-plata error');
     res.status(500).json({ error: e.message || 'server_error' });
@@ -908,7 +973,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
 
     // Arhivează ciclul curent
     const cicluNr = alop.ciclu_curent || 1;
-    await pool.query(`
+    const { rows: cicluRows } = await pool.query(`
       INSERT INTO alop_ord_cicluri (
         alop_id, org_id, ciclu_nr, ord_id, ord_flow_id,
         lichidare_confirmed_by, lichidare_confirmed_at,
@@ -916,8 +981,10 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
         lichidare_nr_pv, lichidare_data_pv, lichidare_notes,
         plata_confirmed_by, plata_confirmed_at,
         plata_nr_ordin, plata_data, plata_suma_efectiva, plata_observatii,
+        plata_source,
         status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'completed')
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'completed')
+      RETURNING id
     `, [
       req.params.id, actor.orgId, cicluNr,
       alop.ord_id, alop.ord_flow_id,
@@ -927,7 +994,24 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
       alop.plata_confirmed_by, alop.plata_confirmed_at,
       alop.plata_nr_ordin, alop.plata_data,
       alop.plata_suma_efectiva, alop.plata_observatii,
+      alop.plata_source || 'manual',
     ]);
+    const newCicluId = cicluRows[0]?.id;
+
+    // Pachet B: populează matched_ciclu_id pe liniile OPME absorbite în acest ALOP
+    if (newCicluId) {
+      try {
+        await pool.query(`
+          UPDATE opme_lines
+             SET matched_ciclu_id = $1
+           WHERE matched_alop_id  = $2
+             AND matched_ciclu_id IS NULL
+        `, [newCicluId, req.params.id]);
+      } catch (mErr) {
+        logger.warn({ err: mErr, alopId: req.params.id, cicluId: newCicluId },
+          '[ALOP] noua-lichidare: backfill matched_ciclu_id failed (non-fatal)');
+      }
+    }
 
     // Reset pentru noul ciclu
     const { rows: [updated] } = await pool.query(`
@@ -940,6 +1024,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
         plata_confirmed_by = NULL, plata_confirmed_at = NULL,
         plata_nr_ordin = NULL, plata_data = NULL,
         plata_suma_efectiva = NULL, plata_observatii = NULL,
+        plata_source = 'manual',
         completed_at = NULL,
         suma_totala_platita = $2,
         ciclu_curent = $3,
@@ -988,6 +1073,19 @@ router.post('/api/alop/admin/repair-status', _csrf, async (req, res) => {
         AND ($1::integer IS NULL OR a.org_id = $1)
       RETURNING id, status
     `, [actor.role === 'admin' ? null : actor.orgId, actor.userId]);
+
+    // Pachet B: încearcă absorbția pe fiecare ALOP care a ajuns în 'plata'
+    for (const row of (r.rows || [])) {
+      if (row?.status !== 'plata') continue;
+      try {
+        const m = await _opmeMatcher.tryAutoConfirmAlop(row.id, { actorUserId: actor.userId });
+        if (m?.confirmed) logger.info({ alopId: row.id }, '[ALOP] OPME auto-confirm (repair-status)');
+      } catch (mErr) {
+        logger.warn({ err: mErr, alopId: row.id },
+          '[ALOP] OPME auto-confirm failed (non-fatal)');
+      }
+    }
+
     res.json({ repaired: r.rows });
   } catch(e) {
     logger.error({ err: e }, 'alop repair-status error');

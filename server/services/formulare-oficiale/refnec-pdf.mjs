@@ -148,21 +148,52 @@ export async function generateRefnecPdf(formular) {
     y -= size + 4;
   };
 
-  /** Rând casetă full-width cu etichetă bold + valoare inline. */
+  /** Wrap text pe mai multe linii, cu char-level break pt cuvinte lungi. */
+  const wrapText = (text, font, size, maxW) => {
+    const t = str(text);
+    if (!t) return [''];
+    const words = t.split(/\s+/);
+    const lines = [];
+    let current = '';
+    for (const w of words) {
+      if (font.widthOfTextAtSize(w, size) > maxW) {
+        if (current) { lines.push(current); current = ''; }
+        let chunk = '';
+        for (const ch of w) {
+          if (font.widthOfTextAtSize(chunk + ch, size) > maxW && chunk) {
+            lines.push(chunk); chunk = ch;
+          } else { chunk += ch; }
+        }
+        current = chunk;
+        continue;
+      }
+      const trial = current ? current + ' ' + w : w;
+      if (font.widthOfTextAtSize(trial, size) <= maxW) {
+        current = trial;
+      } else {
+        if (current) lines.push(current);
+        current = w;
+      }
+    }
+    if (current) lines.push(current);
+    return lines.length ? lines : [''];
+  };
+
+  /** Rând casetă full-width cu etichetă bold + valoare inline (wrap dacă depășește). */
   const rowBox = (label, value, { hh = 16 } = {}) => {
-    ensureY(hh + 2);
-    pg.drawRectangle({ x: ML, y: y - hh, width: CW, height: hh,
-      borderColor: C_BLACK, borderWidth: 0.4, color: rgb(1,1,1) });
     const lw = fB.widthOfTextAtSize(label + ': ', 8.5);
+    const avail = CW - lw - 10;
+    const valLines = wrapText(str(value), fR, 9, avail);
+    const lineH = 11;
+    const realH = Math.max(hh, valLines.length * lineH + 5);
+    ensureY(realH + 2);
+    pg.drawRectangle({ x: ML, y: y - realH, width: CW, height: realH,
+      borderColor: C_BLACK, borderWidth: 0.4, color: rgb(1,1,1) });
     pg.drawText(label + ': ', { x: ML + 4, y: y - 11, font: fB, size: 8.5, color: C_BLACK });
-    const valStr = str(value);
-    const avail  = CW - lw - 10;
-    const disp   = fR.widthOfTextAtSize(valStr, 9) > avail
-      ? valStr.slice(0, Math.floor(valStr.length * avail /
-          fR.widthOfTextAtSize(valStr, 9))) + '…'
-      : valStr;
-    pg.drawText(disp, { x: ML + 4 + lw, y: y - 11, font: fR, size: 9, color: C_BLACK });
-    y -= hh + 2;
+    for (let i = 0; i < valLines.length; i++) {
+      pg.drawText(valLines[i], { x: ML + 4 + lw, y: y - 11 - i * lineH, font: fR, size: 9, color: C_BLACK });
+    }
+    y -= realH + 2;
   };
 
   /** Tabel generic cu coloane definite ca [{header, width, key?}]. */
@@ -203,29 +234,35 @@ export async function generateRefnecPdf(formular) {
       return;
     }
 
+    const ROW_LH = 10;
+    const ROW_PAD = 6;
     rows.forEach(row => {
-      ensureY(rowH + 2);
+      const cellWraps = cols.map((col, i) => {
+        const val = str(col.key ? row[col.key] : '');
+        return val ? wrapText(val, fR, 8, widths[i] - 6) : [''];
+      });
+      const maxLines = Math.max(1, ...cellWraps.map(l => l.length));
+      const realRowH = Math.max(rowH, maxLines * ROW_LH + ROW_PAD);
+      ensureY(realRowH + 2);
       let rx = ML;
-      pg.drawRectangle({ x: ML, y: y - rowH, width: CW, height: rowH,
+      pg.drawRectangle({ x: ML, y: y - realRowH, width: CW, height: realRowH,
         borderColor: C_BLACK, borderWidth: 0.3, color: rgb(1,1,1) });
       cols.forEach((col, i) => {
-        const val = str(col.key ? row[col.key] : '');
-        if (val) {
-          const disp = fR.widthOfTextAtSize(val, 8) > widths[i] - 4
-            ? val.slice(0, Math.floor(val.length * (widths[i]-4) /
-                fR.widthOfTextAtSize(val, 8))) + '…'
-            : val;
-          pg.drawText(disp, { x: rx + 3, y: y - rowH + (rowH - 8) / 2,
-            font: fR, size: 8, color: C_BLACK });
+        const lines = cellWraps[i];
+        for (let li = 0; li < lines.length; li++) {
+          if (lines[li]) {
+            pg.drawText(lines[li], { x: rx + 3, y: y - ROW_PAD / 2 - ROW_LH * (li + 1) + 2,
+              font: fR, size: 8, color: C_BLACK });
+          }
         }
         if (i < cols.length - 1) {
           pg.drawLine({ start: { x: rx + widths[i], y },
-                        end:   { x: rx + widths[i], y: y - rowH },
+                        end:   { x: rx + widths[i], y: y - realRowH },
                         thickness: 0.3, color: C_BLACK });
         }
         rx += widths[i];
       });
-      y -= rowH;
+      y -= realRowH;
     });
   };
 

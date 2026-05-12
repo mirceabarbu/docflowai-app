@@ -19,6 +19,15 @@
 
 // ── Auto-save DB (debounce 800ms, silențios) ──────────────────────────────────
 const _autoSaveTimers={};
+const _DUP_ERRORS = { nr_ord_duplicat: 'o-nr', nr_unic_duplicat: 'n-nrUnic' };
+function _markDupField(inputId, msg) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.style.borderColor = '#dc3545';
+  el.title = msg;
+  function _clear() { el.style.borderColor = ''; el.title = ''; el.removeEventListener('input', _clear); }
+  el.addEventListener('input', _clear);
+}
 async function _autoSaveDb(ft){
   if(!ST.user)return;
   // Dacă documentul e blocat (P1 asteaptă P2 sau completat) → nu auto-salvăm
@@ -39,7 +48,13 @@ async function _autoSaveDb(ft){
       j=await r.json();
       if(r.ok&&j.ok)ST.docStatus[ft]=j.document.status;
     }
-    if(!r||!j||!r.ok)return;
+    if(!r||!j||!r.ok){
+      if(r&&r.status===409&&j&&_DUP_ERRORS[j.error]){
+        _markDupField(_DUP_ERRORS[j.error], j.message);
+        _draftShowBadge(ft,'🔴 '+j.message);
+      }
+      return;
+    }
     const iid=ft==='ordnt'?'o-cimg':'n-cimg';
     if(imgs[iid]&&ST.docId[ft])await uploadCaptura(ft);
     _draftShowBadge(ft,'💾 '+new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}));
@@ -221,23 +236,27 @@ function switchListTab(type){
   if(ltabRfn)ltabRfn.classList.toggle('active',type==='rfn');
   const ltabNfi=document.getElementById('ltab-nfi');
   if(ltabNfi)ltabNfi.classList.toggle('active',type==='nfi');
+  const ltabClasa8=document.getElementById('ltab-clasa8');
+  if(ltabClasa8)ltabClasa8.classList.toggle('active',type==='clasa8');
   // Bannere informative pentru DF/ORD
   const bannerDf=document.getElementById('lst-banner-df');
   const bannerOrd=document.getElementById('lst-banner-ord');
   if(bannerDf)bannerDf.style.display=type==='df'?'':'none';
   if(bannerOrd)bannerOrd.style.display=type==='ord'?'':'none';
-  // Secțiuni ALOP / Verify / Formulare Oficiale
+  // Secțiuni ALOP / Verify / Clasa 8 / Formulare Oficiale
   const lstWrap=document.querySelector('#section-list .lst-wrap');
   const alopSection=document.getElementById('alop-section');
   const verifySection=document.getElementById('verify-section');
   const rfnSection=document.getElementById('rfn-section');
   const nfiSection=document.getElementById('nfi-section');
+  const clasa8Section=document.getElementById('clasa8-section');
   if(type==='alop'){
     if(lstWrap)lstWrap.style.display='none';
     if(alopSection)alopSection.style.display='';
     if(verifySection)verifySection.style.display='none';
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
     loadAlop();loadAlopStats();
     // Re-fetch detaliu dacă era deschis — statusul poate fi schimbat după semnare
@@ -251,13 +270,24 @@ function switchListTab(type){
     if(verifySection)verifySection.style.display='';
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
+  }else if(type==='clasa8'){
+    if(lstWrap)lstWrap.style.display='none';
+    if(alopSection)alopSection.style.display='none';
+    if(verifySection)verifySection.style.display='none';
+    if(rfnSection)rfnSection.style.display='none';
+    if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='';
+    const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
+    if(typeof openClasa8==='function')openClasa8();
   }else if(type==='rfn'){
     if(lstWrap)lstWrap.style.display='none';
     if(alopSection)alopSection.style.display='none';
     if(verifySection)verifySection.style.display='none';
     if(rfnSection)rfnSection.style.display='';
     if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
   }else if(type==='nfi'){
     if(lstWrap)lstWrap.style.display='none';
@@ -265,6 +295,7 @@ function switchListTab(type){
     if(verifySection)verifySection.style.display='none';
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
   }else{
     if(lstWrap)lstWrap.style.display='';
@@ -272,7 +303,9 @@ function switchListTab(type){
     if(verifySection)verifySection.style.display='none';
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
+    if(typeof _populateCompartimente==='function')_populateCompartimente();
     loadList();
   }
 }
@@ -291,12 +324,16 @@ async function loadList(){
   const to=(document.getElementById('flt-to')?.value)||'';
   const comp=(document.getElementById('flt-comp')?.value)||'';
   const init=(document.getElementById('flt-init')?.value)||'';
+  const p2=(document.getElementById('flt-p2')?.value)||'';
+  const nr=(document.getElementById('flt-nr')?.value)||'';
   p.push('type='+_lstState.type);
   if(status&&status!=='all')p.push('status='+encodeURIComponent(status));
   if(from)p.push('from='+encodeURIComponent(from));
   if(to)p.push('to='+encodeURIComponent(to));
   if(comp)p.push('comp='+encodeURIComponent(comp));
   if(init)p.push('init='+encodeURIComponent(init));
+  if(p2)p.push('p2='+encodeURIComponent(p2));
+  if(nr)p.push('nr='+encodeURIComponent(nr.trim()));
   p.push('page='+_lstState.page);
   p.push('limit='+_lstState.limit);
   try{
@@ -344,9 +381,10 @@ function _renderLstTable(rows,type){
       ?`<span style="vertical-align:middle;margin-left:4px;padding:1px 7px;border-radius:8px;font-size:.65rem;font-weight:600;background:rgba(148,163,184,.15);color:#94a3b8;border:1px solid rgba(148,163,184,.25);text-transform:uppercase;letter-spacing:.04em" title="Există o revizie mai recentă pentru acest DF">istoric</span>`
       :'';
     return`<tr>
-      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}</a>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
+      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}</a><button type="button" class="trasab-inline-btn" onclick="event.stopPropagation();openTrasabilitate('${type}','${safeId}');return false" title="Vezi trasabilitate (lanț DF↔ALOP↔ORD)">🔗</button>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>
       <td>${esc(row.initiator||'—')}</td>
+      <td>${esc(row.initiator_comp||'—')}</td>
       <td>${esc(row.p2||'—')}</td>
       <td>${_stBadge(row.aprobat ? 'aprobat' : row.status)}</td>
       <td>
@@ -407,7 +445,7 @@ function debouncedLoadList(){
 function resetFilters(){
   const st=document.getElementById('flt-status');if(st)st.value='all';
   const cp=document.getElementById('flt-comp');if(cp)cp.value='';
-  ['flt-from','flt-to','flt-init','flt-from-display','flt-to-display'].forEach(id=>{
+  ['flt-from','flt-to','flt-init','flt-p2','flt-nr','flt-from-display','flt-to-display'].forEach(id=>{
     const e=document.getElementById(id);
     if(e){ e.value=''; e.style.borderColor=''; }
   });

@@ -312,33 +312,70 @@ async function generatePdfSimple(formType, data) {
       y -= HH2;
     }
 
-    // ── Rânduri date ────────────────────────────────────────────────────────
+    // ── Rânduri date (wrap text, înălțime dinamică) ──────────────────────────
+    const ROW_LH = 8;
+    const ROW_PAD = 5;
+    const ROW_FS = 7;
     const dataRows = rows.length ? rows : [null];
     for (let ri = 0; ri < dataRows.length; ri++) {
-      ensureY(RH);
       const row = dataRows[ri];
-      const bg  = ri % 2 === 0 ? rgb(1, 1, 1) : rgb(0.96, 0.96, 0.96);
-      pg.drawRectangle({ x: ML, y: y - RH, width: CW, height: RH,
-        color: bg, borderColor: rgb(0, 0, 0), borderWidth: 0.4 });
       if (row === null) {
+        ensureY(RH);
+        const bg = rgb(1, 1, 1);
+        pg.drawRectangle({ x: ML, y: y - RH, width: CW, height: RH,
+          color: bg, borderColor: rgb(0, 0, 0), borderWidth: 0.4 });
         pg.drawText(str('(nicio înregistrare)'), { x: ML + 4, y: y - RH + 4,
-          font: fR, size: 7, color: rgb(0.5, 0.5, 0.5) });
-      } else {
-        cx = ML;
-        for (let i = 0; i < cols.length; i++) {
-          const col = cols[i];
-          const rawVal = row[col.key] ?? '';
-          const val = clamp(str(col.numeric ? fmtNum(rawVal) : rawVal), fR, 7, col.width - 4);
-          const vw  = tw(val, fR, 7);
-          const tx  = col.numeric ? cx + col.width - 3 - vw : cx + 2;
-          pg.drawText(val, { x: tx, y: y - RH + 4, font: fR, size: 7, color: rgb(0, 0, 0) });
-          if (i < cols.length - 1)
-            pg.drawLine({ start: { x: cx + col.width, y }, end: { x: cx + col.width, y: y - RH },
-              thickness: 0.4, color: rgb(0, 0, 0) });
-          cx += col.width;
-        }
+          font: fR, size: ROW_FS, color: rgb(0.5, 0.5, 0.5) });
+        y -= RH;
+        continue;
       }
-      y -= RH;
+      const cellWraps = [];
+      const cellFonts = [];
+      let maxLines = 1;
+      for (const col of cols) {
+        const rawVal = row[col.key] ?? '';
+        const cellPad = col.width - 4;
+        let fs = ROW_FS;
+        let lines;
+        if (col.numeric) {
+          const numStr = str(fmtNum(rawVal));
+          if (tw(numStr, fR, fs) > cellPad) {
+            for (fs = 6.5; fs >= 6; fs -= 0.5) {
+              if (tw(numStr, fR, fs) <= cellPad) break;
+            }
+          }
+          lines = tw(numStr, fR, fs) <= cellPad
+            ? [numStr]
+            : wrapText(numStr, fR, fs, cellPad);
+        } else {
+          lines = wrapText(str(rawVal), fR, fs, cellPad);
+        }
+        cellWraps.push(lines);
+        cellFonts.push(fs);
+        if (lines.length > maxLines) maxLines = lines.length;
+      }
+      const rowH = Math.max(RH, maxLines * ROW_LH + ROW_PAD);
+      ensureY(rowH);
+      const bg = ri % 2 === 0 ? rgb(1, 1, 1) : rgb(0.96, 0.96, 0.96);
+      pg.drawRectangle({ x: ML, y: y - rowH, width: CW, height: rowH,
+        color: bg, borderColor: rgb(0, 0, 0), borderWidth: 0.4 });
+      cx = ML;
+      for (let i = 0; i < cols.length; i++) {
+        const col = cols[i];
+        const lines = cellWraps[i];
+        const fs = cellFonts[i];
+        for (let li = 0; li < lines.length; li++) {
+          const lw = tw(lines[li], fR, fs);
+          const tx = col.numeric ? cx + col.width - 3 - lw : cx + 2;
+          pg.drawText(lines[li], { x: tx, y: y - ROW_PAD / 2 - ROW_LH * (li + 1) + 2,
+            font: fR, size: fs, color: rgb(0, 0, 0) });
+        }
+        if (i < cols.length - 1)
+          pg.drawLine({ start: { x: cx + col.width, y }, end: { x: cx + col.width, y: y - rowH },
+            thickness: 0.4, color: rgb(0, 0, 0) });
+        cx += col.width;
+      }
+      y -= rowH;
     }
 
     // ── Rând TOTAL ──────────────────────────────────────────────────────────
@@ -370,12 +407,28 @@ async function generatePdfSimple(formType, data) {
     y -= 5;
   }
 
-  // ── Helper: wrap text pe maxim N linii (cu trunchiere ultimă linie) ──────
-  function wrapText(text, font, size, maxW, maxLines = 2) {
-    const words = String(text).split(/\s+/);
+  // ── Helper: wrap text pe mai multe linii, cu char-level break pt cuvinte lungi
+  function wrapText(text, font, size, maxW, maxLines = 999) {
+    const t = String(text ?? '');
+    if (!t) return [''];
+    const words = t.split(/\s+/);
     const lines = [];
     let current = '';
     for (const w of words) {
+      if (tw(w, font, size) > maxW) {
+        if (current) { lines.push(current); current = ''; }
+        if (lines.length >= maxLines) break;
+        let chunk = '';
+        for (const ch of w) {
+          if (tw(chunk + ch, font, size) > maxW && chunk) {
+            lines.push(chunk); chunk = ch;
+            if (lines.length >= maxLines) break;
+          } else { chunk += ch; }
+        }
+        if (lines.length >= maxLines) break;
+        current = chunk;
+        continue;
+      }
       const trial = current ? current + ' ' + w : w;
       if (tw(trial, font, size) <= maxW) {
         current = trial;

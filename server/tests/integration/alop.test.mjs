@@ -71,6 +71,11 @@ vi.mock('../../middleware/csrf.mjs', () => ({
   csrfMiddleware: (_req, _res, next) => next(),
 }));
 
+// Bypass requireModule în teste de logică ALOP — entitlements sunt testate separat
+vi.mock('../../middleware/require-module.mjs', () => ({
+  requireModule: () => (_req, _res, next) => next(),
+}));
+
 // ── Importuri după mock-uri ───────────────────────────────────────────────────
 
 import * as dbModule from '../../db/index.mjs';
