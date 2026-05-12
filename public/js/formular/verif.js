@@ -215,6 +215,18 @@
       const validColor = i.valid ? '#5eead4' : '#ff8080';
       const validText  = i.valid ? '✓ IBAN valid (mod-97 OK)' : '✗ IBAN invalid (check digit failed)';
       const trezBadge = i.isTreasury ? '<span style="background:rgba(245,158,11,.2);color:#fbbf24;padding:2px 8px;border-radius:10px;font-size:.72rem;margin-left:6px;">⚠ Trezorerie</span>' : '';
+      const TREZ_TYPE_LABEL = {
+        judeteana: 'Județeană', municipiu: 'Municipiu', oras: 'Oraș',
+        comuna: 'Comună', operativa: 'Operativă', sector: 'Sector',
+      };
+      const typeLbl = i.treasuryType ? TREZ_TYPE_LABEL[i.treasuryType] : '';
+      const typeBadge = typeLbl ? `<span style="background:rgba(94,234,212,.15);color:#5eead4;padding:2px 8px;border-radius:10px;font-size:.72rem;margin-left:6px;">${_vfEsc(typeLbl)}</span>` : '';
+      const branchRow = (i.isTreasury && i.treasuryBranchName)
+        ? `<div style="color:var(--df-text-4);">Trezorerie</div><div>${_vfEsc(i.treasuryBranchName)}${typeBadge}</div>`
+        : '';
+      const locRow = (i.isTreasury && (i.treasuryCity || i.treasuryCounty))
+        ? `<div style="color:var(--df-text-4);">Localitate</div><div>${_vfEsc(i.treasuryCity || '—')}${i.treasuryCounty && i.treasuryCounty !== i.treasuryCity ? ' <span style="color:var(--df-text-4);">· jud. ' + _vfEsc(i.treasuryCounty) + '</span>' : ''}</div>`
+        : '';
       resultEl.innerHTML = `
         <div style="background:rgba(255,255,255,.03);border:1px solid var(--df-border);border-radius:8px;padding:14px;display:grid;grid-template-columns:140px 1fr;gap:8px 12px;font-size:.85rem;">
           <div style="color:var(--df-text-4);">IBAN</div><div style="font-family:monospace;">${_vfEsc(i.iban)}</div>
@@ -222,6 +234,8 @@
           <div style="color:var(--df-text-4);">Țară</div><div>${_vfEsc(i.country)}</div>
           <div style="color:var(--df-text-4);">Cod bancă</div><div style="font-family:monospace;">${_vfEsc(i.bankCode || '—')}</div>
           <div style="color:var(--df-text-4);">Instituție</div><div>${_vfEsc(i.bankName || '—')}${trezBadge}</div>
+          ${branchRow}
+          ${locRow}
           <div style="color:var(--df-text-4);">Tip cont</div><div>${i.accountType === 'treasury' ? '🏛 Trezorerie' : i.accountType === 'commercial' ? '🏦 Bancă comercială' : i.accountType === 'foreign' ? '🌍 Bancă străină' : '? Necunoscut'}</div>
         </div>
       `;

@@ -1,0 +1,2197 @@
+{
+  "_meta": {
+    "fetchedAt": "2026-05-12T10:28:36.552Z",
+    "source": "static.anaf.ro/Iban2014",
+    "totalEntries": 243,
+    "failures": []
+  },
+  "entries": {
+    "100": {
+      "code": "100",
+      "city": "Bistrița Năsăud",
+      "county": "Bistrița-Năsăud",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeana Bistrița Năsăud",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "101": {
+      "code": "101",
+      "city": "Bistrița",
+      "county": "Bistrița-Năsăud",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Bistrița",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "102": {
+      "code": "102",
+      "city": "Beclean",
+      "county": "Bistrița-Năsăud",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Beclean",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "103": {
+      "code": "103",
+      "city": "Năsăud",
+      "county": "Bistrița-Năsăud",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Năsăud",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "104": {
+      "code": "104",
+      "city": "Sângeorz Băi",
+      "county": "Bistrița-Năsăud",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Sângeorz Băi",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "115": {
+      "code": "115",
+      "city": "Botoșani",
+      "county": "Botoșani",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Botoșani",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "116": {
+      "code": "116",
+      "city": "Botoșani",
+      "county": "Botoșani",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Botoșani",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "117": {
+      "code": "117",
+      "city": "Dorohoi",
+      "county": "Botoșani",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Dorohoi",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "118": {
+      "code": "118",
+      "city": "Dărăbani",
+      "county": "Botoșani",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Dărăbani",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "119": {
+      "code": "119",
+      "city": "Săveni",
+      "county": "Botoșani",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Săveni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "130": {
+      "code": "130",
+      "city": "Brașov",
+      "county": "Brașov",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Brașov",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "131": {
+      "code": "131",
+      "city": "Brașov",
+      "county": "Brașov",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Brașov",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "132": {
+      "code": "132",
+      "city": "Făgăraș",
+      "county": "Brașov",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Făgăraș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "133": {
+      "code": "133",
+      "city": "Rupea",
+      "county": "Brașov",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Rupea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "136": {
+      "code": "136",
+      "city": "Săcele",
+      "county": "Brașov",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Săcele",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "137": {
+      "code": "137",
+      "city": "Codlea",
+      "county": "Brașov",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Codlea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "138": {
+      "code": "138",
+      "city": "Rașnov",
+      "county": "Brașov",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Rașnov",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "150": {
+      "code": "150",
+      "city": "Brăila",
+      "county": "Brăila",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Brăila",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "151": {
+      "code": "151",
+      "city": "Brăila",
+      "county": "Brăila",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Brăila",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "152": {
+      "code": "152",
+      "city": "Insurăței",
+      "county": "Brăila",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Insurăței",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "153": {
+      "code": "153",
+      "city": "Făurei",
+      "county": "Brăila",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Făurei",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "154": {
+      "code": "154",
+      "city": "Ianca",
+      "county": "Brăila",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Ianca",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "165": {
+      "code": "165",
+      "city": "Buzău",
+      "county": "Buzău",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Buzău",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "166": {
+      "code": "166",
+      "city": "Buzău",
+      "county": "Buzău",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Buzău",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "167": {
+      "code": "167",
+      "city": "Râmnicu Sărat",
+      "county": "Buzău",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Râmnicu Sărat",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "169": {
+      "code": "169",
+      "city": "Pătârlagele",
+      "county": "Buzău",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Pătârlagele",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "170": {
+      "code": "170",
+      "city": "Pogoanele",
+      "county": "Buzău",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Pogoanele",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "180": {
+      "code": "180",
+      "city": "Caraș Severin",
+      "county": "Caraș-Severin",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Caraș Severin",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "181": {
+      "code": "181",
+      "city": "Reșita",
+      "county": "Caraș-Severin",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Reșita",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "182": {
+      "code": "182",
+      "city": "Caransebeș",
+      "county": "Caraș-Severin",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Caransebeș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "185": {
+      "code": "185",
+      "city": "Moldova Nouă",
+      "county": "Caraș-Severin",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Moldova Nouă",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "187": {
+      "code": "187",
+      "city": "Oravița",
+      "county": "Caraș-Severin",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Oravița",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "188": {
+      "code": "188",
+      "city": "Oțelul Roșu",
+      "county": "Caraș-Severin",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Oțelul Roșu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "190": {
+      "code": "190",
+      "city": "Bozovici",
+      "county": "Caraș-Severin",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Bozovici",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "200": {
+      "code": "200",
+      "city": "Călărași",
+      "county": "Călărași",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Călărași",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "201": {
+      "code": "201",
+      "city": "Călărași",
+      "county": "Călărași",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Călărași",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "202": {
+      "code": "202",
+      "city": "Oltenița",
+      "county": "Călărași",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Oltenița",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "203": {
+      "code": "203",
+      "city": "Lehliu Gară",
+      "county": "Călărași",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Lehliu Gară",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "204": {
+      "code": "204",
+      "city": "Budești",
+      "county": "Călărași",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Budești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "215": {
+      "code": "215",
+      "city": "Cluj",
+      "county": "Cluj",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Cluj",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "216": {
+      "code": "216",
+      "city": "Cluj Napoca",
+      "county": "Cluj",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Cluj Napoca",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "217": {
+      "code": "217",
+      "city": "Dej",
+      "county": "Cluj",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Dej",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "218": {
+      "code": "218",
+      "city": "Gherla",
+      "county": "Cluj",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Gherla",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "219": {
+      "code": "219",
+      "city": "Turda",
+      "county": "Cluj",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Turda",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "221": {
+      "code": "221",
+      "city": "Huedin",
+      "county": "Cluj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Huedin",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "230": {
+      "code": "230",
+      "city": "Constanța",
+      "county": "Constanța",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Constanța",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "231": {
+      "code": "231",
+      "city": "Constanța",
+      "county": "Constanța",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Constanța",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "232": {
+      "code": "232",
+      "city": "Medgidia",
+      "county": "Constanța",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Medgidia",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "233": {
+      "code": "233",
+      "city": "Mangalia",
+      "county": "Constanța",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Mangalia",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "236": {
+      "code": "236",
+      "city": "Eforie",
+      "county": "Constanța",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Eforie",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "238": {
+      "code": "238",
+      "city": "Hârșova",
+      "county": "Constanța",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Hârșova",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "255": {
+      "code": "255",
+      "city": "Covasna",
+      "county": "Covasna",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Covasna",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "256": {
+      "code": "256",
+      "city": "Sfântu Gheorghe",
+      "county": "Covasna",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Sfântu Gheorghe",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "257": {
+      "code": "257",
+      "city": "Târgu Secuiesc",
+      "county": "Covasna",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Târgu Secuiesc",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "259": {
+      "code": "259",
+      "city": "Baraolt",
+      "county": "Covasna",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Baraolt",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "270": {
+      "code": "270",
+      "city": "Dâmbovița",
+      "county": "Dâmbovița",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Dâmbovița",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "271": {
+      "code": "271",
+      "city": "Târgoviște",
+      "county": "Dâmbovița",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Târgoviște",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "273": {
+      "code": "273",
+      "city": "Găiești",
+      "county": "Dâmbovița",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Găiești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "274": {
+      "code": "274",
+      "city": "Moreni",
+      "county": "Dâmbovița",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Moreni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "275": {
+      "code": "275",
+      "city": "Pucioasa",
+      "county": "Dâmbovița",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Pucioasa",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "276": {
+      "code": "276",
+      "city": "Titu",
+      "county": "Dâmbovița",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Titu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "290": {
+      "code": "290",
+      "city": "Dolj",
+      "county": "Dolj",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Dolj",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "291": {
+      "code": "291",
+      "city": "Craiova",
+      "county": "Dolj",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Craiova",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "292": {
+      "code": "292",
+      "city": "Băilești",
+      "county": "Dolj",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Băilești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "293": {
+      "code": "293",
+      "city": "Calafat",
+      "county": "Dolj",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Calafat",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "294": {
+      "code": "294",
+      "city": "Filiași",
+      "county": "Dolj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Filiași",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "295": {
+      "code": "295",
+      "city": "Segarcea",
+      "county": "Dolj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Segarcea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "297": {
+      "code": "297",
+      "city": "Bechet",
+      "county": "Dolj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Bechet",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "305": {
+      "code": "305",
+      "city": "Galați",
+      "county": "Galați",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Galați",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "306": {
+      "code": "306",
+      "city": "Galați",
+      "county": "Galați",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Galați",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "307": {
+      "code": "307",
+      "city": "Tecuci",
+      "county": "Galați",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Tecuci",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "308": {
+      "code": "308",
+      "city": "Târgu Bujor",
+      "county": "Galați",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Târgu Bujor",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "320": {
+      "code": "320",
+      "city": "Giurgiu",
+      "county": "Giurgiu",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Giurgiu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "321": {
+      "code": "321",
+      "city": "Giurgiu",
+      "county": "Giurgiu",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Giurgiu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "322": {
+      "code": "322",
+      "city": "Bolintin Vale",
+      "county": "Giurgiu",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Bolintin Vale",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "323": {
+      "code": "323",
+      "city": "Mihăilești",
+      "county": "Giurgiu",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Mihăilești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "335": {
+      "code": "335",
+      "city": "Gorj",
+      "county": "Gorj",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Gorj",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "336": {
+      "code": "336",
+      "city": "Târgu Jiu",
+      "county": "Gorj",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Târgu Jiu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "337": {
+      "code": "337",
+      "city": "Târgu Cărbunești",
+      "county": "Gorj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Târgu Cărbunești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "338": {
+      "code": "338",
+      "city": "Motru",
+      "county": "Gorj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Motru",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "339": {
+      "code": "339",
+      "city": "Novaci",
+      "county": "Gorj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Novaci",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "340": {
+      "code": "340",
+      "city": "Rovinari",
+      "county": "Gorj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Rovinari",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "350": {
+      "code": "350",
+      "city": "Harghita",
+      "county": "Harghita",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Harghita",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "351": {
+      "code": "351",
+      "city": "Miercurea Ciuc",
+      "county": "Harghita",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Miercurea Ciuc",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "352": {
+      "code": "352",
+      "city": "Odorheiul Secuiesc",
+      "county": "Harghita",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Odorheiul Secuiesc",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "353": {
+      "code": "353",
+      "city": "Gheorghieni",
+      "county": "Harghita",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Gheorghieni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "354": {
+      "code": "354",
+      "city": "Toplița",
+      "county": "Harghita",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Toplița",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "365": {
+      "code": "365",
+      "city": "Hunedoara",
+      "county": "Hunedoara",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Hunedoara",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "366": {
+      "code": "366",
+      "city": "Deva",
+      "county": "Hunedoara",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Deva",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "367": {
+      "code": "367",
+      "city": "Hunedoara",
+      "county": "Hunedoara",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Hunedoara",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "368": {
+      "code": "368",
+      "city": "Petroșani",
+      "county": "Hunedoara",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Petroșani",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "369": {
+      "code": "369",
+      "city": "Brad",
+      "county": "Hunedoara",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Brad",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "370": {
+      "code": "370",
+      "city": "Orăștie",
+      "county": "Hunedoara",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Orăștie",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "371": {
+      "code": "371",
+      "city": "Hațeg",
+      "county": "Hunedoara",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Hațeg",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "390": {
+      "code": "390",
+      "city": "Ialomița",
+      "county": "Ialomița",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Ialomița",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "391": {
+      "code": "391",
+      "city": "Slobozia",
+      "county": "Ialomița",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Slobozia",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "392": {
+      "code": "392",
+      "city": "Fetești",
+      "county": "Ialomița",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Fetești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "393": {
+      "code": "393",
+      "city": "Urziceni",
+      "county": "Ialomița",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Urziceni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "405": {
+      "code": "405",
+      "city": "Tezoreria județeana Iasi",
+      "county": "Iași",
+      "type": "unknown",
+      "fullName": "Tezoreria județeana Iasi",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "406": {
+      "code": "406",
+      "city": "Iași",
+      "county": "Iași",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Iași",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "407": {
+      "code": "407",
+      "city": "Pașcani",
+      "county": "Iași",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Pașcani",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "408": {
+      "code": "408",
+      "city": "Târgu Frumos",
+      "county": "Iași",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Târgu Frumos",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "409": {
+      "code": "409",
+      "city": "Hârlău",
+      "county": "Iași",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Hârlău",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "410": {
+      "code": "410",
+      "city": "Răducăneni",
+      "county": "Iași",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Răducăneni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "420": {
+      "code": "420",
+      "city": "Ilfov",
+      "county": "Ilfov",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Ilfov",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "421": {
+      "code": "421",
+      "city": "Ilfov",
+      "county": "Ilfov",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Ilfov",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "422": {
+      "code": "422",
+      "city": "Buftea",
+      "county": "Ilfov",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Buftea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "435": {
+      "code": "435",
+      "city": "Maramureș",
+      "county": "Maramureș",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Maramureș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "436": {
+      "code": "436",
+      "city": "Baia Mare",
+      "county": "Maramureș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Baia Mare",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "437": {
+      "code": "437",
+      "city": "Sighetul Marmației",
+      "county": "Maramureș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Sighetul Marmației",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "440": {
+      "code": "440",
+      "city": "Târgu Lăpuș",
+      "county": "Maramureș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Târgu Lăpuș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "441": {
+      "code": "441",
+      "city": "Vișeul de Sus",
+      "county": "Maramureș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Vișeul de Sus",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "460": {
+      "code": "460",
+      "city": "Mehedinți",
+      "county": "Mehedinți",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Mehedinți",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "461": {
+      "code": "461",
+      "city": "Drobeta-Turnu Severin",
+      "county": "Mehedinți",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Drobeta-Turnu Severin",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "462": {
+      "code": "462",
+      "city": "Baia de Aramă",
+      "county": "Mehedinți",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Baia de Aramă",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "463": {
+      "code": "463",
+      "city": "Orșova",
+      "county": "Mehedinți",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Orșova",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "464": {
+      "code": "464",
+      "city": "Strehaia",
+      "county": "Mehedinți",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Strehaia",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "465": {
+      "code": "465",
+      "city": "Vânju Mare",
+      "county": "Mehedinți",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Vânju Mare",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "475": {
+      "code": "475",
+      "city": "Mureș",
+      "county": "Mureș",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Mureș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "476": {
+      "code": "476",
+      "city": "Târgu Mureș",
+      "county": "Mureș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Târgu Mureș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "477": {
+      "code": "477",
+      "city": "Reghin",
+      "county": "Mureș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Reghin",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "478": {
+      "code": "478",
+      "city": "Sighișoara",
+      "county": "Mureș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Sighișoara",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "479": {
+      "code": "479",
+      "city": "Târnăveni",
+      "county": "Mureș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Târnăveni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "480": {
+      "code": "480",
+      "city": "Luduș",
+      "county": "Mureș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Luduș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "482": {
+      "code": "482",
+      "city": "Sovata",
+      "county": "Mureș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Sovata",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "490": {
+      "code": "490",
+      "city": "Neamț",
+      "county": "Neamț",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Neamț",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "491": {
+      "code": "491",
+      "city": "Piatra Neamț",
+      "county": "Neamț",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Piatra Neamț",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "492": {
+      "code": "492",
+      "city": "Roman",
+      "county": "Neamț",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Roman",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "493": {
+      "code": "493",
+      "city": "Târgu Neamț",
+      "county": "Neamț",
+      "type": "oras",
+      "fullName": "Trezoreria operativă Oraș Târgu Neamț",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "494": {
+      "code": "494",
+      "city": "Bicaz",
+      "county": "Neamț",
+      "type": "oras",
+      "fullName": "Trezoreria operativă Oraș Bicaz",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "505": {
+      "code": "505",
+      "city": "Olt",
+      "county": "Olt",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Olt",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "506": {
+      "code": "506",
+      "city": "Slatina",
+      "county": "Olt",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiu Slatina",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "507": {
+      "code": "507",
+      "city": "Caracal",
+      "county": "Olt",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Caracal",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "508": {
+      "code": "508",
+      "city": "Balș",
+      "county": "Olt",
+      "type": "oras",
+      "fullName": "Trezoreria operativă Orașul Balș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "509": {
+      "code": "509",
+      "city": "Corabia",
+      "county": "Olt",
+      "type": "oras",
+      "fullName": "Trezoreria operativă Orașul Corabia",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "520": {
+      "code": "520",
+      "city": "Prahova",
+      "county": "Prahova",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Prahova",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "521": {
+      "code": "521",
+      "city": "Ploiești",
+      "county": "Prahova",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Ploiești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "522": {
+      "code": "522",
+      "city": "Câmpina",
+      "county": "Prahova",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Câmpina",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "524": {
+      "code": "524",
+      "city": "Mizil",
+      "county": "Prahova",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Mizil",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "526": {
+      "code": "526",
+      "city": "Slănic",
+      "county": "Prahova",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Slănic",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "528": {
+      "code": "528",
+      "city": "Vălenii de Munte",
+      "county": "Prahova",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Vălenii de Munte",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "529": {
+      "code": "529",
+      "city": "Bușteni",
+      "county": "Prahova",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Bușteni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "539": {
+      "code": "539",
+      "city": "Boldești - Scăeni",
+      "county": "Prahova",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Boldești - Scăeni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "545": {
+      "code": "545",
+      "city": "Satu Mare",
+      "county": "Satu Mare",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Satu Mare",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "546": {
+      "code": "546",
+      "city": "Satu Mare",
+      "county": "Satu Mare",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Satu Mare",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "547": {
+      "code": "547",
+      "city": "Carei",
+      "county": "Satu Mare",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Carei",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "548": {
+      "code": "548",
+      "city": "Negrești Oaș",
+      "county": "Satu Mare",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Negrești Oaș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "549": {
+      "code": "549",
+      "city": "Tășnad",
+      "county": "Satu Mare",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Tășnad",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "560": {
+      "code": "560",
+      "city": "Sălaj",
+      "county": "Sălaj",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Sălaj",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "561": {
+      "code": "561",
+      "city": "Zalău",
+      "county": "Sălaj",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Zalău",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "562": {
+      "code": "562",
+      "city": "Cehu Silvaniei",
+      "county": "Sălaj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Cehu Silvaniei",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "563": {
+      "code": "563",
+      "city": "Șimleul Silvaniei",
+      "county": "Sălaj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Șimleul Silvaniei",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "564": {
+      "code": "564",
+      "city": "Jibou",
+      "county": "Sălaj",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Jibou",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "575": {
+      "code": "575",
+      "city": "Sibiu",
+      "county": "Sibiu",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Sibiu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "576": {
+      "code": "576",
+      "city": "Sibiu",
+      "county": "Sibiu",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Sibiu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "577": {
+      "code": "577",
+      "city": "Mediaș",
+      "county": "Sibiu",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Mediaș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "578": {
+      "code": "578",
+      "city": "Agnita",
+      "county": "Sibiu",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Agnita",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "581": {
+      "code": "581",
+      "city": "Avrig",
+      "county": "Sibiu",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Avrig",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "585": {
+      "code": "585",
+      "city": "Săliște",
+      "county": "Sibiu",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Săliște",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "590": {
+      "code": "590",
+      "city": "Suceava",
+      "county": "Suceava",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Suceava",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "591": {
+      "code": "591",
+      "city": "Suceava",
+      "county": "Suceava",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Suceava",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "592": {
+      "code": "592",
+      "city": "Câmpulung Moldovenesc",
+      "county": "Suceava",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Câmpulung Moldovenesc",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "593": {
+      "code": "593",
+      "city": "Fălticeni",
+      "county": "Suceava",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Fălticeni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "594": {
+      "code": "594",
+      "city": "Gura Humorului",
+      "county": "Suceava",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Gura Humorului",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "595": {
+      "code": "595",
+      "city": "Rădăuți",
+      "county": "Suceava",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Rădăuți",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "596": {
+      "code": "596",
+      "city": "Siret",
+      "county": "Suceava",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Siret",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "597": {
+      "code": "597",
+      "city": "Vatra Dornei",
+      "county": "Suceava",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Vatra Dornei",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "605": {
+      "code": "605",
+      "city": "Teleorman",
+      "county": "Teleorman",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Teleorman",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "606": {
+      "code": "606",
+      "city": "Alexandria",
+      "county": "Teleorman",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Alexandria",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "607": {
+      "code": "607",
+      "city": "Turnu Măgurele",
+      "county": "Teleorman",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Turnu Măgurele",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "608": {
+      "code": "608",
+      "city": "Roșiori de Vede",
+      "county": "Teleorman",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Roșiori de Vede",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "609": {
+      "code": "609",
+      "city": "Videle",
+      "county": "Teleorman",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Videle",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "610": {
+      "code": "610",
+      "city": "Zimnicea",
+      "county": "Teleorman",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Zimnicea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "620": {
+      "code": "620",
+      "city": "Timiș",
+      "county": "Timiș",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Timiș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "621": {
+      "code": "621",
+      "city": "Timișoara",
+      "county": "Timiș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Timișoara",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "623": {
+      "code": "623",
+      "city": "Lugoj",
+      "county": "Timiș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Lugoj",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "624": {
+      "code": "624",
+      "city": "Deta",
+      "county": "Timiș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Deta",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "625": {
+      "code": "625",
+      "city": "Jimbolia",
+      "county": "Timiș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Jimbolia",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "626": {
+      "code": "626",
+      "city": "Buziaș",
+      "county": "Timiș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Buziaș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "627": {
+      "code": "627",
+      "city": "Sânnicolau Mare",
+      "county": "Timiș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Sânnicolau Mare",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "628": {
+      "code": "628",
+      "city": "Făget",
+      "county": "Timiș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Făget",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "640": {
+      "code": "640",
+      "city": "Tulcea",
+      "county": "Tulcea",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Tulcea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "641": {
+      "code": "641",
+      "city": "Tulcea",
+      "county": "Tulcea",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Tulcea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "642": {
+      "code": "642",
+      "city": "Măcin",
+      "county": "Tulcea",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Măcin",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "644": {
+      "code": "644",
+      "city": "Sulina",
+      "county": "Tulcea",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Sulina",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "645": {
+      "code": "645",
+      "city": "Babadag",
+      "county": "Tulcea",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Babadag",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "646": {
+      "code": "646",
+      "city": "Baia",
+      "county": "Tulcea",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Baia",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "655": {
+      "code": "655",
+      "city": "Vaslui",
+      "county": "Vaslui",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Vaslui",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "656": {
+      "code": "656",
+      "city": "Vaslui",
+      "county": "Vaslui",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Vaslui",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "657": {
+      "code": "657",
+      "city": "Bârlad",
+      "county": "Vaslui",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Bârlad",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "658": {
+      "code": "658",
+      "city": "Huși",
+      "county": "Vaslui",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Huși",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "659": {
+      "code": "659",
+      "city": "Negrești",
+      "county": "Vaslui",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Negrești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "670": {
+      "code": "670",
+      "city": "Valcea",
+      "county": "Vâlcea",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Valcea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "671": {
+      "code": "671",
+      "city": "Râmnicu Vâlcea",
+      "county": "Vâlcea",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Râmnicu Vâlcea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "672": {
+      "code": "672",
+      "city": "Drăgășani",
+      "county": "Vâlcea",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Drăgășani",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "674": {
+      "code": "674",
+      "city": "Horezu",
+      "county": "Vâlcea",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Horezu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "676": {
+      "code": "676",
+      "city": "Gura Lotrului",
+      "county": "Vâlcea",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Gura Lotrului",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "679": {
+      "code": "679",
+      "city": "Bălcești",
+      "county": "Vâlcea",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Bălcești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "682": {
+      "code": "682",
+      "city": "Băbeni",
+      "county": "Vâlcea",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Băbeni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "690": {
+      "code": "690",
+      "city": "Vrancea",
+      "county": "Vrancea",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Vrancea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "691": {
+      "code": "691",
+      "city": "Focșani",
+      "county": "Vrancea",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Focșani",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "692": {
+      "code": "692",
+      "city": "Adjud",
+      "county": "Vrancea",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Adjud",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "694": {
+      "code": "694",
+      "city": "Panciu",
+      "county": "Vrancea",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Panciu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "700": {
+      "code": "700",
+      "city": "București",
+      "county": "București",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul București",
+      "verified": true,
+      "source": "ANAF (hardcoded)"
+    },
+    "701": {
+      "code": "701",
+      "city": "București Sector 1",
+      "county": "București",
+      "type": "sector",
+      "fullName": "Trezoreria operativă Sector 1",
+      "verified": true,
+      "source": "ANAF (hardcoded)"
+    },
+    "702": {
+      "code": "702",
+      "city": "București Sector 2",
+      "county": "București",
+      "type": "sector",
+      "fullName": "Trezoreria operativă Sector 2",
+      "verified": true,
+      "source": "ANAF (hardcoded)"
+    },
+    "703": {
+      "code": "703",
+      "city": "București Sector 3",
+      "county": "București",
+      "type": "sector",
+      "fullName": "Trezoreria operativă Sector 3",
+      "verified": true,
+      "source": "ANAF (hardcoded)"
+    },
+    "704": {
+      "code": "704",
+      "city": "București Sector 4",
+      "county": "București",
+      "type": "sector",
+      "fullName": "Trezoreria operativă Sector 4",
+      "verified": true,
+      "source": "ANAF (hardcoded)"
+    },
+    "705": {
+      "code": "705",
+      "city": "București Sector 5",
+      "county": "București",
+      "type": "sector",
+      "fullName": "Trezoreria operativă Sector 5",
+      "verified": true,
+      "source": "ANAF (hardcoded)"
+    },
+    "706": {
+      "code": "706",
+      "city": "București Sector 6",
+      "county": "București",
+      "type": "sector",
+      "fullName": "Trezoreria operativă Sector 6",
+      "verified": true,
+      "source": "ANAF (hardcoded)"
+    },
+    "001": {
+      "code": "001",
+      "city": "Alba",
+      "county": "Alba",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Alba",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "002": {
+      "code": "002",
+      "city": "Alba Iulia",
+      "county": "Alba",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Alba Iulia",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "003": {
+      "code": "003",
+      "city": "Blaj",
+      "county": "Alba",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Blaj",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "004": {
+      "code": "004",
+      "city": "Aiud",
+      "county": "Alba",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Aiud",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "005": {
+      "code": "005",
+      "city": "Sebeș",
+      "county": "Alba",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Sebeș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "006": {
+      "code": "006",
+      "city": "Câmpeni",
+      "county": "Alba",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Câmpeni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "009": {
+      "code": "009",
+      "city": "Cugir",
+      "county": "Alba",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Cugir",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "020": {
+      "code": "020",
+      "city": "Arad",
+      "county": "Arad",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Arad",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "021": {
+      "code": "021",
+      "city": "Arad",
+      "county": "Arad",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Arad",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "022": {
+      "code": "022",
+      "city": "Chișinau Criș",
+      "county": "Arad",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Chișinau Criș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "024": {
+      "code": "024",
+      "city": "Ineu",
+      "county": "Arad",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Ineu",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "025": {
+      "code": "025",
+      "city": "Lipova",
+      "county": "Arad",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Lipova",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "028": {
+      "code": "028",
+      "city": "Sebiș",
+      "county": "Arad",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Sebiș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "032": {
+      "code": "032",
+      "city": "Săvârșin",
+      "county": "Arad",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Săvârșin",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "045": {
+      "code": "045",
+      "city": "Argeș",
+      "county": "Argeș",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Argeș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "046": {
+      "code": "046",
+      "city": "Pitești",
+      "county": "Argeș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Pitești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "047": {
+      "code": "047",
+      "city": "Câmpulung",
+      "county": "Argeș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Câmpulung",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "048": {
+      "code": "048",
+      "city": "Curtea de Argeș",
+      "county": "Argeș",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Curtea de Argeș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "049": {
+      "code": "049",
+      "city": "Mioveni",
+      "county": "Argeș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Mioveni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "050": {
+      "code": "050",
+      "city": "Costești",
+      "county": "Argeș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Costești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "051": {
+      "code": "051",
+      "city": "Topoloveni",
+      "county": "Argeș",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Topoloveni",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "060": {
+      "code": "060",
+      "city": "Bacău",
+      "county": "Bacău",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Bacău",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "061": {
+      "code": "061",
+      "city": "Bacău",
+      "county": "Bacău",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Bacău",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "062": {
+      "code": "062",
+      "city": "Onești",
+      "county": "Bacău",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Onești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "063": {
+      "code": "063",
+      "city": "Moinești",
+      "county": "Bacău",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Moinești",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "066": {
+      "code": "066",
+      "city": "Buhuși",
+      "county": "Bacău",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Buhuși",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "071": {
+      "code": "071",
+      "city": "Podu Turcului",
+      "county": "Bacău",
+      "type": "comuna",
+      "fullName": "Trezoreria operativă Comunala Podu Turcului",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "075": {
+      "code": "075",
+      "city": "Bihor",
+      "county": "Bihor",
+      "type": "judeteana",
+      "fullName": "Trezoreria județeană Bihor",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "076": {
+      "code": "076",
+      "city": "Oradea",
+      "county": "Bihor",
+      "type": "municipiu",
+      "fullName": "Trezoreria operativă Municipiul Oradea",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "078": {
+      "code": "078",
+      "city": "Beiuș",
+      "county": "Bihor",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Beiuș",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "081": {
+      "code": "081",
+      "city": "Aleșd",
+      "county": "Bihor",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Aleșd",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "082": {
+      "code": "082",
+      "city": "Marghita",
+      "county": "Bihor",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Marghita",
+      "verified": true,
+      "source": "ANAF"
+    },
+    "083": {
+      "code": "083",
+      "city": "Salonta",
+      "county": "Bihor",
+      "type": "operativa",
+      "fullName": "Trezoreria operativă Salonta",
+      "verified": true,
+      "source": "ANAF"
+    }
+  }
+}
