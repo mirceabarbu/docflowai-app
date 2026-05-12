@@ -499,10 +499,7 @@ async function openDoc(ft,id){
       else if(ft==='ordnt')applyOrdRoleState('aprobat',ST.docRole[ft]);
       refreshDocs(ft);
       document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.toggle('active',c.dataset.id===id));
-      // setLockedBar (chemat sus) deja informează „✔ Document aprobat — fluxul..."
-      // în header; bara sBar verde ar fi redundantă. clrS() șterge eventual mesaj
-      // de la încărcare anterioară (ex. „Se încarcă...").
-      clrS();
+      setS('Document aprobat','ok');
       return;
     }else if(status==='pending_p2'&&role==='p2'){
       if(ft==='ordnt')setModeP2Ord();else setModeP2Df();
