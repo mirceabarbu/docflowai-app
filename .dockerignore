@@ -10,4 +10,5 @@ coverage
 #   - primarii-romania.json     → seed inițial outreach_primarii (idem)
 tools/*
 !tools/DocFlowAI_Prezentare.pdf
+!tools/Ghid_utilizare_DocFlowAI.pdf
 !tools/primarii-romania.json

@@ -28,6 +28,7 @@ const __dirname_outreach = path.dirname(fileURLToPath(import.meta.url));
 const DAILY_SEND_LIMIT    = parseInt(process.env.OUTREACH_DAILY_LIMIT || '100');
 const FROM_EMAIL          = process.env.OUTREACH_FROM || 'DocFlowAI <contact@docflowai.ro>';
 const PDF_PATH            = process.env.OUTREACH_PDF_PATH || null;
+const GHID_PATH           = process.env.OUTREACH_GHID_PATH || null;
 // B — b97: aliniat cu restul aplicației — PUBLIC_BASE_URL în loc de APP_URL
 const APP_URL = process.env.PUBLIC_BASE_URL || process.env.APP_URL || '';
 
@@ -695,12 +696,26 @@ router.post('/campaigns/:id/send', async (req, res) => {
       return res.json({ sent: 0, message: 'Nu există destinatari în așteptare.' });
     }
 
-    // PDF atașament (opțional)
-    let attachment = null;
+    // Atașamente (opționale): Prezentare + Ghid de utilizare
+    // Ambele sunt încărcate o singură dată în memorie și reutilizate pentru toți destinatarii batch-ului.
+    const attachments = [];
     const pdfPath = PDF_PATH || path.join(process.cwd(), 'tools', 'DocFlowAI_Prezentare.pdf');
     if (fs.existsSync(pdfPath)) {
-      const pdfBuf = fs.readFileSync(pdfPath);
-      attachment = { filename: 'DocFlowAI_Prezentare.pdf', content: pdfBuf };
+      attachments.push({
+        filename: 'DocFlowAI_Prezentare.pdf',
+        content: fs.readFileSync(pdfPath).toString('base64'),
+      });
+    } else {
+      logger.warn({ pdfPath }, 'outreach: Prezentare PDF lipsește — se trimite fără atașament Prezentare');
+    }
+    const ghidPath = GHID_PATH || path.join(process.cwd(), 'tools', 'Ghid_utilizare_DocFlowAI.pdf');
+    if (fs.existsSync(ghidPath)) {
+      attachments.push({
+        filename: 'Ghid_utilizare_DocFlowAI.pdf',
+        content: fs.readFileSync(ghidPath).toString('base64'),
+      });
+    } else {
+      logger.warn({ ghidPath }, 'outreach: Ghid PDF lipsește — se trimite fără atașament Ghid');
     }
 
     let sentCount = 0, errorCount = 0;
@@ -720,7 +735,7 @@ router.post('/campaigns/:id/send', async (req, res) => {
           to: recip.email,
           subject,
           html,
-          ...(attachment ? { attachments: [{ filename: attachment.filename, content: attachment.content.toString('base64') }] } : {}),
+          ...(attachments.length ? { attachments } : {}),
         });
         await pool.query(
           `UPDATE outreach_recipients SET status='sent', sent_at=NOW() WHERE id=$1`,

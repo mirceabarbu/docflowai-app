@@ -666,6 +666,7 @@ router.get('/my-flows', async (req, res) => {
     const myFlows = rows.map(r => r.data).filter(Boolean).map(d => ({
       flowId: d.flowId, docName: d.docName || '—', initName: d.initName, initEmail: d.initEmail,
       createdAt: d.createdAt, updatedAt: d.updatedAt,
+      completed:    !!d.completed,           // BUGFIX v3.9.477: lipsea → pasul Final apărea gri în mini-timeline
       completedAt:  d.completedAt  || null,
       refusedAt:    d.refusedAt    || null,  // nivel flux — pentru pasul Final
       cancelledAt:  d.cancelledAt  || null,  // nivel flux — fallback semnatari anulați
