@@ -9,21 +9,61 @@
   let _activityData = null;
   let _rptGenerated = false;
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Dicționar traduceri event-uri audit_log
+  // SoT: TREBUIE SĂ FIE IDENTIC între public/js/admin/activity.js și
+  //      public/js/admin/audit.js. Sincronizează MANUAL la fiecare modif.
+  // Sursa event-urilor: server/ — `grep -rhn "eventType: '" --include="*.mjs"`
+  // La adăugarea unui event type nou în backend, COMPLETEAZĂ AMBELE
+  // dicționare — altfel apare neredus în UI ca tag raw.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const OP_LABELS_RO = {
+    // ─── Ciclul de viață al fluxului ──────────────────────────────────
     FLOW_CREATED:                   'Flux inițiat',
+    FLOW_COMPLETED:                 'Flux finalizat',
+    FLOW_CANCELLED:                 'Flux anulat',
+    FLOW_REINITIATED:               'Flux reinițiat după refuz',
+    FLOW_REINITIATED_AFTER_REVIEW:  'Flux reinițiat după revizuire',
+    REINITIATED_AFTER_REVIEW:       'Reinițiere marcată',
+
+    // ─── Acțiuni semnatari ────────────────────────────────────────────
     SIGNED:                         'Semnat și avansat',
     SIGNED_PDF_UPLOADED:            'PDF semnat încărcat',
     REFUSED:                        'Refuzat',
     REVIEW_REQUESTED:               'Trimis la revizuire',
-    FLOW_REINITIATED:               'Flux reinițiat după refuz',
-    FLOW_REINITIATED_AFTER_REVIEW:  'Reinițiat după revizuire',
-    REINITIATED_AFTER_REVIEW:       'Reinițiere marcată',
-    FLOW_COMPLETED:                 'Flux finalizat',
-    FLOW_CANCELLED:                 'Flux anulat',
+
+    // ─── Delegări ─────────────────────────────────────────────────────
     DELEGATE:                       'Delegare semnătură',
     DELEGATED:                      'Delegare semnătură',
-    YOUR_TURN:                      'Notificat',
+    DELEGATION_SET:                 'Delegare configurată',
+    DELEGATION_REMOVED:             'Delegare anulată',
+    AUTO_DELEGATED_LEAVE:           'Delegare automată (concediu)',
+
+    // ─── Notificări & comunicare ──────────────────────────────────────
+    YOUR_TURN:                      'Notificat — e rândul tău',
     EMAIL_SENT:                     'Email extern trimis',
+    EMAIL_OPENED:                   'Email deschis',
+    PDF_DOWNLOADED:                 'PDF descărcat',
+    ATTACHMENT_ADDED:               'Atașament adăugat',
+
+    // ─── Administrare utilizatori & organizații ──────────────────────
+    USER_DEACTIVATED:               'Utilizator dezactivat',
+    USER_REACTIVATED:               'Utilizator reactivat',
+    ORGANIZATION_DELETED:           'Organizație ștearsă',
+    ORGANIZATION_REACTIVATED:       'Organizație reactivată',
+    ADMIN_SECRET_ACCESS:            'Acces administrator (secrete)',
+
+    // ─── Drepturi & module ───────────────────────────────────────────
+    entitlement_change:             'Modificare drepturi modul',
+
+    // ─── Integrări specializate ──────────────────────────────────────
+    plata_auto_opme:                'Plată confirmată automat (OPME)',
+
+    // ─── Autentificare ───────────────────────────────────────────────
+    'auth.login.success':           'Autentificare reușită',
+    'auth.login.failed':            'Autentificare eșuată',
+    USER_LOGIN:                     'Autentificare',
+    USER_LOGOUT:                    'Deconectare',
   };
 
   const OP_COLORS = {
@@ -31,12 +71,26 @@
     REVIEW_REQUESTED: '#ffd580', FLOW_REINITIATED: '#ff9955', FLOW_REINITIATED_AFTER_REVIEW: '#ff9955',
     FLOW_COMPLETED: '#26d07c', FLOW_CANCELLED: '#888888', DELEGATE: '#9db0ff', YOUR_TURN: '#aaa',
     REINITIATED_AFTER_REVIEW: '#ffaaaa', EMAIL_SENT: '#2dd4bf',
+    DELEGATION_SET: '#9db0ff', DELEGATION_REMOVED: '#888888', AUTO_DELEGATED_LEAVE: '#ffd580',
+    EMAIL_OPENED: '#7c5cff', PDF_DOWNLOADED: '#26d07c', ATTACHMENT_ADDED: '#aaa',
+    USER_DEACTIVATED: '#ff5050', USER_REACTIVATED: '#26d07c',
+    ORGANIZATION_DELETED: '#ff5050', ORGANIZATION_REACTIVATED: '#26d07c',
+    ADMIN_SECRET_ACCESS: '#ffd580', entitlement_change: '#7c5cff', plata_auto_opme: '#2dd4bf',
+    USER_LOGIN: '#26d07c', USER_LOGOUT: '#888888',
+    'auth.login.success': '#26d07c', 'auth.login.failed': '#ff5050',
   };
   const OP_ICONS = {
     FLOW_CREATED: '📝', SIGNED_PDF_UPLOADED: '✅', REFUSED: '⛔',
     REVIEW_REQUESTED: '🔄', FLOW_REINITIATED: '🔁', FLOW_REINITIATED_AFTER_REVIEW: '🔁',
     FLOW_COMPLETED: '🏁', FLOW_CANCELLED: '🚫', DELEGATE: '👥', YOUR_TURN: '🔔',
     REINITIATED_AFTER_REVIEW: '🔁', EMAIL_SENT: '📧',
+    DELEGATION_SET: '🔗', DELEGATION_REMOVED: '🔓', AUTO_DELEGATED_LEAVE: '🏖️',
+    EMAIL_OPENED: '👁️', PDF_DOWNLOADED: '⬇️', ATTACHMENT_ADDED: '📎',
+    USER_DEACTIVATED: '🚫', USER_REACTIVATED: '✅',
+    ORGANIZATION_DELETED: '🏢', ORGANIZATION_REACTIVATED: '🏢',
+    ADMIN_SECRET_ACCESS: '🔐', entitlement_change: '⚙️', plata_auto_opme: '💰',
+    USER_LOGIN: '🔑', USER_LOGOUT: '🚪',
+    'auth.login.success': '🔑', 'auth.login.failed': '⛔',
   };
 
   /** Formatează Date object → zz.ll.aaaa */

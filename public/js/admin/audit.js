@@ -5,25 +5,57 @@
 
   let _auditCurrentPage = 1;
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Dicționar traduceri event-uri audit_log
+  // SoT: TREBUIE SĂ FIE IDENTIC între public/js/admin/activity.js și
+  //      public/js/admin/audit.js. Sincronizează MANUAL la fiecare modif.
+  // Sursa event-urilor: server/ — `grep -rhn "eventType: '" --include="*.mjs"`
+  // La adăugarea unui event type nou în backend, COMPLETEAZĂ AMBELE
+  // dicționare — altfel apare neredus în UI ca tag raw.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const AUDIT_EVENT_LABELS = {
-    'FLOW_CREATED':                  'Flux creat',
+    // ─── Ciclul de viață al fluxului ──────────────────────────────────
+    'FLOW_CREATED':                  'Flux inițiat',
     'FLOW_COMPLETED':                'Flux finalizat',
     'FLOW_CANCELLED':                'Flux anulat',
-    'FLOW_REFUSED':                  'Flux refuzat',
-    'FLOW_REINITIATED':              'Flux reinițiat',
+    'FLOW_REINITIATED':              'Flux reinițiat după refuz',
     'FLOW_REINITIATED_AFTER_REVIEW': 'Flux reinițiat după revizuire',
-    'FLOW_DELEGATED':                'Delegare semnătură',
-    'SIGNED':                        'Semnat',
+    'REINITIATED_AFTER_REVIEW':      'Reinițiere marcată',
+
+    // ─── Acțiuni semnatari ────────────────────────────────────────────
+    'SIGNED':                        'Semnat și avansat',
+    'SIGNED_PDF_UPLOADED':           'PDF semnat încărcat',
     'REFUSED':                       'Refuzat',
+    'REVIEW_REQUESTED':              'Trimis la revizuire',
+
+    // ─── Delegări ─────────────────────────────────────────────────────
+    'DELEGATE':                      'Delegare semnătură',
     'DELEGATED':                     'Delegare semnătură',
-    'SIGNED_PDF_UPLOADED':           'Document semnat încărcat',
+    'DELEGATION_SET':                'Delegare configurată',
+    'DELEGATION_REMOVED':            'Delegare anulată',
+    'AUTO_DELEGATED_LEAVE':          'Delegare automată (concediu)',
+
+    // ─── Notificări & comunicare ──────────────────────────────────────
+    'YOUR_TURN':                     'Notificat — e rândul tău',
+    'EMAIL_SENT':                    'Email extern trimis',
+    'EMAIL_OPENED':                  'Email deschis',
     'PDF_DOWNLOADED':                'PDF descărcat',
     'ATTACHMENT_ADDED':              'Atașament adăugat',
-    'EMAIL_SENT':                    'Email trimis',
-    'REVIEW_REQUESTED':              'Revizuire solicitată',
-    'SIGNER_NOTIFIED':               'Semnatar notificat',
-    'ARCHIVE_COMPLETED':             'Arhivat',
-    'TRUST_REPORT_GENERATED':        'Raport trust generat',
+
+    // ─── Administrare utilizatori & organizații ──────────────────────
+    'USER_DEACTIVATED':              'Utilizator dezactivat',
+    'USER_REACTIVATED':              'Utilizator reactivat',
+    'ORGANIZATION_DELETED':          'Organizație ștearsă',
+    'ORGANIZATION_REACTIVATED':      'Organizație reactivată',
+    'ADMIN_SECRET_ACCESS':           'Acces administrator (secrete)',
+
+    // ─── Drepturi & module ───────────────────────────────────────────
+    'entitlement_change':            'Modificare drepturi modul',
+
+    // ─── Integrări specializate ──────────────────────────────────────
+    'plata_auto_opme':               'Plată confirmată automat (OPME)',
+
+    // ─── Autentificare ───────────────────────────────────────────────
     'auth.login.success':            'Autentificare reușită',
     'auth.login.failed':             'Autentificare eșuată',
     'USER_LOGIN':                    'Autentificare',
