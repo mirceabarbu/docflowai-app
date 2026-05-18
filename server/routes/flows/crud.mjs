@@ -25,6 +25,7 @@ const _readRateLimit   = createRateLimiter({ windowMs: 60_000, max: 60, message:
 
 
 // Deps injectate din flows/index.mjs
+import { allocateNumber as _allocateRegNumber } from '../../services/registratura.mjs';
 let _notify, _wsPush, _PDFLib, _stampFooterOnPdf, _isSignerTokenExpired;
 let _newFlowId, _buildSignerLink, _stripSensitive, _stripPdfB64, _sendSignerEmail, _fireWebhook;
 export function _injectDeps(d) {
@@ -261,6 +262,22 @@ const createFlow = async (req, res) => {
     // ale autoritatii emitente. Orice modificare (chiar si pdf-lib save) le invalideaza.
     // Campurile de semnatura predefinite (AcroForm) raman intacte.
 
+    // Registratură Faza 1: alocă numărul ÎNAINTE de footer (fereastra QES-safe).
+    // Idempotent pe (org, general, flow, flowId) → reinitiate nu dublează.
+    // Nu blochează fluxul dacă pică (allocateNumber întoarce null).
+    let _reg = null;
+    try {
+      _reg = await _allocateRegNumber({
+        orgId,
+        sursaId: flowId,
+        sursaTip: 'flow',
+        flowId,
+        obiect: docName || '',
+        expeditor: initInstitutie || '',
+        compartiment: initCompartiment || null,
+      });
+    } catch (e) { logger.warn({ err: e, flowId }, 'registratura: alocare la creare eșuată'); }
+
     if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
       try {
         // b242: stampFooterOnPdf returnează { pdfB64, signerFields }
@@ -274,6 +291,7 @@ const createFlow = async (req, res) => {
           compartiment: initCompartiment,
           flowType: body.flowType || 'tabel',
           signers: normalizedSigners,
+          nrInregistrareFormat: _reg ? _reg.numarFormat : null,
           preventRewriteIfSigned: true,
         });
         if (_stampResult && typeof _stampResult === 'object' && _stampResult.pdfB64) {
@@ -301,6 +319,8 @@ const createFlow = async (req, res) => {
       completedAt: null,
       originalPdfB64: preFooterPdfB64,  // PDF curat (convertit dacă era non-PDF), fără footer — pentru reinitiate
       pdfB64: finalPdfB64,
+      nrInregistrare:      _reg ? _reg.numarFormat : null,  // Registratură Faza 1
+      nrInregistrareData:  _reg ? _reg.data        : null,
       signers: normalizedSigners,
       createdAt, updatedAt: new Date().toISOString(),
       events: [{ at: new Date().toISOString(), type: 'FLOW_CREATED', by: initEmail, urgent: !!(body.urgent) }],

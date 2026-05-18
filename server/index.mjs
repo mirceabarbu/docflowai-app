@@ -521,6 +521,7 @@ import { formulareDbRouter } from './routes/formulare-db.mjs';
 import alopRouter from './routes/alop.mjs';
 import convertRouter from './routes/convert.mjs';
 import opmeRouter from './routes/opme.mjs';
+import registraturaRouter from './routes/registratura.mjs';
 import formulareOficialeRouter from './routes/formulare-oficiale.mjs';
 import clasa8Router            from './routes/clasa8.mjs';
 import trasabilitateRouter     from './routes/trasabilitate.mjs';
@@ -693,6 +694,7 @@ app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'noti
 app.get('/verifica', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'verifica.html')));
 app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
 app.get('/setari', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'setari.html')));
+app.get('/registratura', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'registratura.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
 // ── API Docs — OpenAPI 3.0 ───────────────────────────────────────────────────
@@ -1096,7 +1098,11 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
     ].filter(Boolean).join(', ');
 
     const footerLeft  = createdDate + (parts ? '  |  ' + parts : '');
-    const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
+    // Registratură Faza 1: prefix aditiv. Absent → identic cu comportamentul vechi.
+    const _regPrefix  = flowData.nrInregistrareFormat
+      ? ro('Nr. inreg. ' + flowData.nrInregistrareFormat) + '  |  '
+      : '';
+    const footerRight = _regPrefix + ro(flowData.flowId || '') + '  |  DocFlowAI';
     const rightWidth  = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
     const rightX      = pW - MARGIN - rightWidth;
     const leftMaxWidth = rightX - MARGIN - 8;
@@ -1811,6 +1817,7 @@ app.use('/', formulareDbRouter);      // Formulare DB: DF + ORD workflow P1→P2
 app.use('/', alopRouter);             // ALOP orchestrator: DF + ORD + fluxuri semnare
 app.use('/', convertRouter);          // Conversie fișiere non-PDF la PDF
 app.use('/', opmeRouter);             // OPME F1129 import (pachet A — fără matching)
+app.use('/', registraturaRouter);     // Registratură Faza 1: numerotare documente emise
 app.use('/api/formulare-oficiale', formulareOficialeRouter); // Formulare Oficiale CRUD (NF Invest, Referat)
 app.use('/api/clasa8',             clasa8Router);             // Centralizator Clasa 8 (read-only)
 app.use('/api/trasabilitate',      trasabilitateRouter);      // Arbore trasabilitate DF↔ALOP↔ORD

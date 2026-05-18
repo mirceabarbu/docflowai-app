@@ -1499,6 +1499,61 @@ const MIGRATIONS = [
           ADD COLUMN IF NOT EXISTS plata_source TEXT;
       END $g$;
     `
+  },
+  {
+    id: '074_registratura',
+    sql: `
+      -- Registratură Faza 1: serii de numerotare + intrări registru.
+      -- Faza 1 folosește DOAR registru='general', directie='iesire'.
+      -- Schema permite extindere (petitii/544/intrare) fără migrare nouă.
+
+      CREATE TABLE IF NOT EXISTS registru_serii (
+        org_id     INTEGER     NOT NULL REFERENCES organizations(id),
+        registru   TEXT        NOT NULL DEFAULT 'general',
+        an         INTEGER     NOT NULL,
+        pattern    TEXT        NOT NULL DEFAULT '{nr}/{dd}.{mm}.{yyyy}',
+        contor     INTEGER     NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, registru, an)
+      );
+
+      CREATE TABLE IF NOT EXISTS registru_intrari (
+        id           BIGSERIAL   PRIMARY KEY,
+        org_id       INTEGER     NOT NULL REFERENCES organizations(id),
+        registru     TEXT        NOT NULL DEFAULT 'general',
+        an           INTEGER     NOT NULL,
+        numar        INTEGER     NOT NULL,
+        numar_format TEXT        NOT NULL,
+        data_inreg   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        directie     TEXT        NOT NULL DEFAULT 'iesire'
+                                 CHECK (directie IN ('iesire','intrare','intern')),
+        sursa_tip    TEXT        NOT NULL DEFAULT 'flow',
+        sursa_id     TEXT        NOT NULL,
+        flow_id      TEXT,
+        obiect       TEXT        NOT NULL DEFAULT '',
+        expeditor    TEXT        NOT NULL DEFAULT '',
+        destinatar   TEXT        NOT NULL DEFAULT '',
+        compartiment TEXT,
+        created_by   INTEGER     REFERENCES users(id),
+        meta         JSONB       NOT NULL DEFAULT '{}',
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      -- Idempotență: o sursă = o singură poziție per registru per org.
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_registru_sursa
+        ON registru_intrari (org_id, registru, sursa_tip, sursa_id);
+      CREATE INDEX IF NOT EXISTS idx_registru_org_an
+        ON registru_intrari (org_id, registru, an, numar DESC);
+      CREATE INDEX IF NOT EXISTS idx_registru_flow
+        ON registru_intrari (flow_id) WHERE flow_id IS NOT NULL;
+
+      INSERT INTO module_catalog
+        (module_key, display_name, category, default_enabled, display_order)
+      VALUES
+        ('registratura', 'Registratură', 'documente', TRUE, 80)
+      ON CONFLICT (module_key) DO NOTHING;
+    `
   }
 ];
 
