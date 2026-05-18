@@ -42,6 +42,9 @@ export async function allocateNumber(p = {}) {
   const sursaId = String(p.sursaId || '').trim();
   const registru = String(p.registru || 'general').trim() || 'general';
   const sursaTip = String(p.sursaTip || 'flow').trim() || 'flow';
+  const directie = String(p.directie || 'iesire').trim() || 'iesire';
+  const status   = p.status || null;                 // doar pentru intrate
+  const termenZile = Number.isFinite(+p.termenZile) ? +p.termenZile : null;
   if (!pool || !orgId || !sursaId) return null;
 
   const now = new Date();
@@ -89,18 +92,25 @@ export async function allocateNumber(p = {}) {
     const numarFormat = _fmt(pattern, { nr: numar, d: now });
 
     // 3. Inserare poziție. ON CONFLICT acoperă cursa cu un retry concurent.
+    const termenAt = (termenZile != null)
+      ? new Date(now.getTime() + termenZile * 86400000)
+      : null;
     const ins = await client.query(
       `INSERT INTO registru_intrari
          (org_id, registru, an, numar, numar_format, data_inreg, directie,
           sursa_tip, sursa_id, flow_id, obiect, expeditor, destinatar,
-          compartiment, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,'iesire',$7,$8,$9,$10,$11,$12,$13,$14)
+          compartiment, created_by, status, mod_primire, nr_doc_expeditor,
+          data_doc_expeditor, termen_zile, termen_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+               $16,$17,$18,$19,$20,$21)
        ON CONFLICT (org_id, registru, sursa_tip, sursa_id) DO NOTHING
        RETURNING numar, numar_format, data_inreg, an`,
-      [orgId, registru, an, numar, numarFormat, now, sursaTip, sursaId,
+      [orgId, registru, an, numar, numarFormat, now, directie, sursaTip, sursaId,
        p.flowId || null, String(p.obiect || ''), String(p.expeditor || ''),
        String(p.destinatar || ''), p.compartiment || null,
-       p.createdBy || null]
+       p.createdBy || null, status, p.modPrimire || null,
+       p.nrDocExpeditor || null, p.dataDocExpeditor || null,
+       termenZile, termenAt]
     );
 
     if (!ins.rows.length) {

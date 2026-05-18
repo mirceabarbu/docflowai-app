@@ -55,6 +55,11 @@
     // ─── Integrări specializate ──────────────────────────────────────
     'plata_auto_opme':               'Plată confirmată automat (OPME)',
 
+    // ─── Registratură ────────────────────────────────────────────────
+    'registratura_intrare_creata':   'Document intrat înregistrat',
+    'registratura_intrare_status':   'Status intrare modificat',
+    'registratura_legatura_raspuns': 'Răspuns legat de intrare',
+
     // ─── Autentificare ───────────────────────────────────────────────
     'auth.login.success':            'Autentificare reușită',
     'auth.login.failed':             'Autentificare eșuată',

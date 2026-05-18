@@ -1554,6 +1554,54 @@ const MIGRATIONS = [
         ('registratura', 'Registratură', 'documente', TRUE, 80)
       ON CONFLICT (module_key) DO NOTHING;
     `
+  },
+  {
+    id: '075_registratura_faza2',
+    sql: `
+      -- Faza 2: coloane lifecycle/intrate pe registru_intrari + atașamente.
+      -- Documentele emise (Faza 1) au aceste coloane NULL — comportament neschimbat.
+
+      ALTER TABLE registru_intrari
+        ADD COLUMN IF NOT EXISTS status            TEXT,
+        ADD COLUMN IF NOT EXISTS mod_primire       TEXT,
+        ADD COLUMN IF NOT EXISTS nr_doc_expeditor  TEXT,
+        ADD COLUMN IF NOT EXISTS data_doc_expeditor DATE,
+        ADD COLUMN IF NOT EXISTS termen_zile       INTEGER,
+        ADD COLUMN IF NOT EXISTS termen_at         DATE,
+        ADD COLUMN IF NOT EXISTS repartizat_la     TEXT,
+        ADD COLUMN IF NOT EXISTS repartizat_at     TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS solutionat_at     TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS clasat_at         TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS raspuns_flow_id   TEXT;
+
+      DO $g$ BEGIN
+        ALTER TABLE registru_intrari
+          ADD CONSTRAINT registru_status_chk
+          CHECK (status IS NULL OR status IN
+            ('inregistrat','repartizat','in_lucru','solutionat','clasat'));
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $g$;
+
+      CREATE INDEX IF NOT EXISTS idx_registru_intrari_dir
+        ON registru_intrari (org_id, directie, an, numar DESC);
+      CREATE INDEX IF NOT EXISTS idx_registru_raspuns
+        ON registru_intrari (raspuns_flow_id) WHERE raspuns_flow_id IS NOT NULL;
+
+      CREATE TABLE IF NOT EXISTS registru_atasamente (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        intrare_id  BIGINT      NOT NULL REFERENCES registru_intrari(id) ON DELETE CASCADE,
+        org_id      INTEGER     NOT NULL REFERENCES organizations(id),
+        filename    TEXT        NOT NULL,
+        mime_type   TEXT        NOT NULL DEFAULT 'application/pdf',
+        size_bytes  INTEGER     NOT NULL DEFAULT 0,
+        data        BYTEA       NOT NULL,
+        uploaded_by INTEGER     REFERENCES users(id),
+        uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at  TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_registru_atas_intrare
+        ON registru_atasamente (intrare_id, deleted_at);
+    `
   }
 ];
 

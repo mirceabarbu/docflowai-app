@@ -622,6 +622,7 @@ const _LARGE_PDF_PATHS = [
   '/formulare-ord',           // PUT — ORD cu img2 base64 (captură 2 ~1-5MB)
   '/formulare-df',            // PUT — DF (paritate cu ORD, capturi posibile)
   '/formulare/generate',      // POST — PDF gen primește captureImageBase64 + _2
+  '/registratura/intrari',    // POST atașament — PDF scanat base64 (cap 15MB pe buf)
 ];
 app.use((req, res, next) => {
   const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));

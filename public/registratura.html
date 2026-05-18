@@ -4,16 +4,17 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Registratură</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.479">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.479">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.479">
-  <link rel="stylesheet" href="/mobile.css?v=3.9.479">
-  <script src="/js/df-utils.js?v=3.9.479"></script>
-  <script src="/js/df-apifetch-shim.js?v=3.9.479"></script>
-  <script src="/js/df-entitlements.js?v=3.9.479"></script>
-  <script src="/js/df-shell.js?v=3.9.479"></script>
-  <script src="/js/df-user-modals.js?v=3.9.479"></script>
-  <script src="/js/registratura/main.js?v=3.9.479" defer></script>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.480">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.480">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.480">
+  <link rel="stylesheet" href="/mobile.css?v=3.9.480">
+  <script src="/js/df-utils.js?v=3.9.480"></script>
+  <script src="/js/df-apifetch-shim.js?v=3.9.480"></script>
+  <script src="/js/df-entitlements.js?v=3.9.480"></script>
+  <script src="/js/df-shell.js?v=3.9.480"></script>
+  <script src="/js/df-user-modals.js?v=3.9.480"></script>
+  <script src="/js/df-subtabs.js?v=3.9.480" defer></script>
+  <script src="/js/registratura/main.js?v=3.9.480" defer></script>
 </head>
 <body>
 
@@ -26,19 +27,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -59,7 +60,7 @@
     <header class="df-page-header">
       <div class="df-page-titles">
         <h1>Registratură</h1>
-        <p>Registrul de intrare-ieșire — documente emise</p>
+        <p>Registrul de intrare-ieșire — documente emise și intrate</p>
       </div>
       <div class="df-page-actions">
         <div class="df-user-menu" id="df-user-menu">
@@ -69,30 +70,30 @@
               <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
               <div class="df-user-trigger-role">Utilizator</div>
             </div>
-            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-chevron-down"/></svg>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-chevron-down"/></svg>
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openLeaveModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-clock"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-clock"/></svg>
               Concediu și delegare
             </button>
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.479#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.480#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -100,7 +101,7 @@
       </div>
     </header>
 
-    <section class="df-page-body">
+    <section class="df-page-body" id="reg-root">
       <div id="reg-inactive" style="display:none;background:var(--df-surface);border:1px dashed var(--df-border-2);border-radius:var(--df-radius-xl);padding:24px;max-width:720px;">
         <h3 style="font-size:1rem;font-weight:600;color:var(--df-text-2);margin-bottom:6px;">Modul inactiv pentru organizația ta</h3>
         <p style="font-size:.84rem;color:var(--df-text-4);line-height:1.5;margin:0;">
@@ -109,62 +110,200 @@
       </div>
 
       <div id="reg-content" style="display:none;">
-        <div style="background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);padding:18px 20px;margin-bottom:14px;">
-          <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
-            <div class="df-frow" style="min-width:120px;">
-              <label for="reg-an">An</label>
-              <select id="reg-an"></select>
+
+        <div class="df-subtabs" data-subtabs-group="registratura">
+          <button class="df-subtab" data-subtab="iesiri">Ieșiri</button>
+          <button class="df-subtab" data-subtab="intrari">Intrări</button>
+        </div>
+
+        <!-- ── Subtab IEȘIRI (Faza 1, neschimbat funcțional) ───────────────── -->
+        <div class="df-subview" data-subview="iesiri">
+          <div style="background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);padding:18px 20px;margin-bottom:14px;">
+            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+              <div class="df-frow" style="min-width:120px;">
+                <label for="reg-an">An</label>
+                <select id="reg-an"></select>
+              </div>
+              <div class="df-frow" style="flex:1;min-width:220px;">
+                <label for="reg-q">Căutare (obiect / nr înregistrare)</label>
+                <input type="text" id="reg-q" placeholder="Caută…" autocomplete="off"/>
+              </div>
+              <div class="df-frow" style="min-width:180px;">
+                <label for="reg-status">Status</label>
+                <select id="reg-status">
+                  <option value="">Toate</option>
+                  <option value="inregistrat">Înregistrat</option>
+                  <option value="in_lucru">În lucru</option>
+                  <option value="finalizat">Finalizat</option>
+                  <option value="refuzat">Refuzat</option>
+                  <option value="anulat">Anulat</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="df-action-btn" id="reg-refresh" type="button">Reîncarcă</button>
+                <button class="df-action-btn primary" id="reg-export" type="button">Export CSV</button>
+              </div>
             </div>
-            <div class="df-frow" style="flex:1;min-width:220px;">
-              <label for="reg-q">Căutare (obiect / nr înregistrare)</label>
-              <input type="text" id="reg-q" placeholder="Caută…" autocomplete="off"/>
-            </div>
-            <div class="df-frow" style="min-width:180px;">
-              <label for="reg-status">Status</label>
-              <select id="reg-status">
-                <option value="">Toate</option>
-                <option value="inregistrat">Înregistrat</option>
-                <option value="in_lucru">În lucru</option>
-                <option value="finalizat">Finalizat</option>
-                <option value="refuzat">Refuzat</option>
-                <option value="anulat">Anulat</option>
-              </select>
-            </div>
-            <div style="display:flex;gap:8px;">
-              <button class="df-action-btn" id="reg-refresh" type="button">Reîncarcă</button>
-              <button class="df-action-btn primary" id="reg-export" type="button">Export CSV</button>
+          </div>
+
+          <div style="background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:.86rem;">
+              <thead style="background:rgba(255,255,255,.03);">
+                <tr>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Nr. înregistrare</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Data</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Obiect</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Expeditor</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Compartiment</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Status</th>
+                </tr>
+              </thead>
+              <tbody id="reg-tbody">
+                <tr><td colspan="6" style="padding:24px;text-align:center;color:var(--df-text-3);">Se încarcă…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 4px;font-size:.84rem;color:var(--df-text-3);">
+            <span id="reg-total">—</span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="df-action-btn" id="reg-prev" type="button" disabled>‹ Anterior</button>
+              <span id="reg-page">1</span>
+              <button class="df-action-btn" id="reg-next" type="button" disabled>Următor ›</button>
             </div>
           </div>
         </div>
+        <!-- /df-subview iesiri -->
 
-        <div style="background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);overflow:hidden;">
-          <table style="width:100%;border-collapse:collapse;font-size:.86rem;">
-            <thead style="background:rgba(255,255,255,.03);">
-              <tr>
-                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Nr. înregistrare</th>
-                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Data</th>
-                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Obiect</th>
-                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Expeditor</th>
-                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Compartiment</th>
-                <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Status</th>
-              </tr>
-            </thead>
-            <tbody id="reg-tbody">
-              <tr><td colspan="6" style="padding:24px;text-align:center;color:var(--df-text-3);">Se încarcă…</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <!-- ── Subtab INTRĂRI (Faza 2) ─────────────────────────────────────── -->
+        <div class="df-subview" data-subview="intrari">
+          <div style="background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);padding:18px 20px;margin-bottom:14px;">
+            <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+              <div class="df-frow" style="min-width:120px;">
+                <label for="regin-an">An</label>
+                <select id="regin-an"></select>
+              </div>
+              <div class="df-frow" style="min-width:160px;">
+                <label for="regin-registru">Registru</label>
+                <select id="regin-registru">
+                  <option value="">Toate</option>
+                  <option value="intrare">Intrări generale</option>
+                  <option value="petitii">Petiții (OG 27/2002)</option>
+                  <option value="544">Cereri 544/2001</option>
+                </select>
+              </div>
+              <div class="df-frow" style="flex:1;min-width:220px;">
+                <label for="regin-q">Căutare (obiect / nr înregistrare)</label>
+                <input type="text" id="regin-q" placeholder="Caută…" autocomplete="off"/>
+              </div>
+              <div class="df-frow" style="min-width:160px;">
+                <label for="regin-status">Status</label>
+                <select id="regin-status">
+                  <option value="">Toate</option>
+                  <option value="inregistrat">Înregistrat</option>
+                  <option value="repartizat">Repartizat</option>
+                  <option value="in_lucru">În lucru</option>
+                  <option value="solutionat">Soluționat</option>
+                  <option value="clasat">Clasat</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="df-action-btn" id="regin-refresh" type="button">Reîncarcă</button>
+                <button class="df-action-btn primary" id="regin-new" type="button">+ Înregistrare intrare</button>
+              </div>
+            </div>
+          </div>
 
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 4px;font-size:.84rem;color:var(--df-text-3);">
-          <span id="reg-total">—</span>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button class="df-action-btn" id="reg-prev" type="button" disabled>‹ Anterior</button>
-            <span id="reg-page">1</span>
-            <button class="df-action-btn" id="reg-next" type="button" disabled>Următor ›</button>
+          <div style="background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:.86rem;">
+              <thead style="background:rgba(255,255,255,.03);">
+                <tr>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Nr. înreg.</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Data</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Registru</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Obiect</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Expeditor</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Termen</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Status</th>
+                  <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--df-border-2);">Acțiuni</th>
+                </tr>
+              </thead>
+              <tbody id="regin-tbody">
+                <tr><td colspan="8" style="padding:24px;text-align:center;color:var(--df-text-3);">Se încarcă…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 4px;font-size:.84rem;color:var(--df-text-3);">
+            <span id="regin-total">—</span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="df-action-btn" id="regin-prev" type="button" disabled>‹ Anterior</button>
+              <span id="regin-page">1</span>
+              <button class="df-action-btn" id="regin-next" type="button" disabled>Următor ›</button>
+            </div>
           </div>
         </div>
-      </div>
+        <!-- /df-subview intrari -->
+
+      </div><!-- /reg-content -->
     </section>
+  </div>
+</div>
+
+<!-- ── Modal: înregistrare intrare ───────────────────────────────────────── -->
+<div id="regin-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:24px;">
+    <h2 style="font-size:1.1rem;font-weight:600;margin-bottom:6px;">Înregistrare document intrat</h2>
+    <p style="font-size:.82rem;color:var(--df-text-3);margin-bottom:16px;">Documentul primește număr din seria corespunzătoare; termenul legal se calculează automat (Petiții 30 zile, 544 — 10 zile).</p>
+
+    <div class="df-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="df-frow" style="grid-column:1/-1;">
+        <label for="regin-f-registru">Registru</label>
+        <select id="regin-f-registru">
+          <option value="intrare">Intrări generale</option>
+          <option value="petitii">Petiții (OG 27/2002 — 30 zile)</option>
+          <option value="544">Cereri 544/2001 (10 zile)</option>
+        </select>
+      </div>
+      <div class="df-frow" style="grid-column:1/-1;">
+        <label for="regin-f-obiect">Obiect *</label>
+        <input type="text" id="regin-f-obiect" placeholder="Ex: Cerere acces informații publice"/>
+      </div>
+      <div class="df-frow" style="grid-column:1/-1;">
+        <label for="regin-f-expeditor">Expeditor</label>
+        <input type="text" id="regin-f-expeditor" placeholder="Nume / instituție"/>
+      </div>
+      <div class="df-frow">
+        <label for="regin-f-mod">Mod primire</label>
+        <select id="regin-f-mod">
+          <option value="">—</option>
+          <option value="ghiseu">Ghișeu</option>
+          <option value="posta">Poștă</option>
+          <option value="email">Email</option>
+          <option value="fax">Fax</option>
+          <option value="altul">Altul</option>
+        </select>
+      </div>
+      <div class="df-frow">
+        <label for="regin-f-comp">Compartiment</label>
+        <input type="text" id="regin-f-comp" placeholder="Opțional"/>
+      </div>
+      <div class="df-frow">
+        <label for="regin-f-nrdoc">Nr. doc. expeditor</label>
+        <input type="text" id="regin-f-nrdoc"/>
+      </div>
+      <div class="df-frow">
+        <label for="regin-f-datadoc">Dată doc. expeditor</label>
+        <input type="date" id="regin-f-datadoc"/>
+      </div>
+    </div>
+
+    <div id="regin-modal-msg" class="df-msg" style="margin-top:12px;display:none;"></div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+      <button class="df-action-btn" type="button" id="regin-modal-cancel">Renunță</button>
+      <button class="df-action-btn primary" type="button" id="regin-modal-save">Înregistrează</button>
+    </div>
   </div>
 </div>
 
