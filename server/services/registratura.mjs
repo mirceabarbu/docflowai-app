@@ -16,7 +16,9 @@ function _fmt(pattern, { nr, d }) {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = String(d.getFullYear());
-  return String(pattern || '{nr}/{dd}.{mm}.{yyyy}')
+  const nr5 = String(nr).padStart(5, '0');
+  return String(pattern || '{nr5}')
+    .replace('{nr5}', nr5)
     .replace('{nr}', String(nr))
     .replace('{dd}', dd)
     .replace('{mm}', mm)

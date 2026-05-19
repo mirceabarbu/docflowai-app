@@ -1602,6 +1602,18 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_registru_atas_intrare
         ON registru_atasamente (intrare_id, deleted_at);
     `
+  },
+  {
+    id: '076_registratura_format',
+    sql: `
+      -- Numărul de înregistrare se afișează doar ca număr zero-pad 5 cifre
+      -- ({nr5}); data e coloană separată. Seriile existente cu pattern-ul
+      -- vechi sunt migrate; default-ul coloanei devine {nr5} pentru serii noi.
+      ALTER TABLE registru_serii ALTER COLUMN pattern SET DEFAULT '{nr5}';
+      UPDATE registru_serii
+         SET pattern = '{nr5}'
+       WHERE pattern = '{nr}/{dd}.{mm}.{yyyy}';
+    `
   }
 ];
 

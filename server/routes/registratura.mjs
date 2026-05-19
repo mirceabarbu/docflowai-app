@@ -197,16 +197,20 @@ router.post('/api/registratura/intrari', _csrf, async (req, res) => {
     const obiect = String(b.obiect || '').trim();
     if (!obiect) return res.status(400).json({ error: 'obiect_required' });
 
+    const _sursaId = randomUUID();
+    const _comp = (b.compartiment && String(b.compartiment).trim())
+      || (actor.compartiment && String(actor.compartiment).trim())
+      || null;
     const reg = await allocateNumber({
       orgId: actor.orgId,
-      sursaId: randomUUID(),
+      sursaId: _sursaId,
       sursaTip: 'manual',
       registru,
       directie: 'intrare',
       status: 'inregistrat',
       obiect,
       expeditor: String(b.expeditor || '').trim(),
-      compartiment: b.compartiment || null,
+      compartiment: _comp,
       modPrimire: b.modPrimire || null,
       nrDocExpeditor: b.nrDocExpeditor || null,
       dataDocExpeditor: b.dataDocExpeditor || null,
@@ -215,11 +219,21 @@ router.post('/api/registratura/intrari', _csrf, async (req, res) => {
     });
     if (!reg) return res.status(500).json({ error: 'alocare_esuata' });
 
+    let newId = null;
+    try {
+      const idr = await pool.query(
+        `SELECT id FROM registru_intrari
+          WHERE org_id=$1 AND registru=$2 AND sursa_tip='manual' AND sursa_id=$3
+          LIMIT 1`,
+        [actor.orgId, registru, _sursaId]);
+      newId = idr.rows.length ? idr.rows[0].id : null;
+    } catch (e) { logger.warn({ err: e }, 'registratura: re-citire id eșuată'); }
+
     await writeAuditEvent({
       orgId: actor.orgId, eventType: 'registratura_intrare_creata',
       actorEmail: actor.email, payload: { registru, numar: reg.numarFormat, obiect },
     }).catch(() => {});
-    res.json({ ok: true, numar: reg.numar, numarFormat: reg.numarFormat,
+    res.json({ ok: true, id: newId, numar: reg.numar, numarFormat: reg.numarFormat,
                data: reg.data, an: reg.an, registru });
   } catch (e) {
     logger.error({ err: e }, 'registratura: creare intrare eșuată');

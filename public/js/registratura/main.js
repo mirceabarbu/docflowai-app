@@ -20,6 +20,11 @@
     let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
   });
 
+  function _csrfHdr() {
+    const t = (window.df && window.df.getCsrf) ? window.df.getCsrf() : null;
+    return t ? { 'x-csrf-token': t } : {};
+  }
+
   // ───── helpers comune ─────────────────────────────────────────────────────
 
   function statusBadge(st) {
@@ -103,7 +108,7 @@
     }
     tbody.innerHTML = items.map((it) => `
       <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);font-weight:600;">${esc(it.numarFormat)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);font-weight:600;">${esc(String(it.numar).padStart(5, '0'))}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(fmtDate(it.data))}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(it.obiect || '—')}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(it.expeditor || '—')}</td>
@@ -212,7 +217,7 @@
     }
     tbody.innerHTML = items.map((it) => `
       <tr data-id="${it.id}">
-        <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);font-weight:600;">${esc(it.numarFormat)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);font-weight:600;">${esc(String(it.numar).padStart(5, '0'))}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(fmtDate(it.data))}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(REGISTRU_LBL[it.registru] || it.registru || '—')}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(it.obiect || '—')}</td>
@@ -250,7 +255,7 @@
     try {
       const r = await fetch(`/api/registratura/intrari/${id}/status`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: Object.assign({ 'Content-Type': 'application/json' }, _csrfHdr()),
         credentials: 'include',
         body: JSON.stringify(Object.assign({ status: next }, extra)),
       });
@@ -269,7 +274,7 @@
     try {
       const r = await fetch(`/api/registratura/intrari/${id}/leaga-raspuns`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: Object.assign({ 'Content-Type': 'application/json' }, _csrfHdr()),
         credentials: 'include',
         body: JSON.stringify({ flowId: flowId.trim() }),
       });
@@ -306,7 +311,7 @@
       const dataUrl = await fileToBase64(file);
       const r = await fetch(`/api/registratura/intrari/${id}/atasament`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: Object.assign({ 'Content-Type': 'application/json' }, _csrfHdr()),
         credentials: 'include',
         body: JSON.stringify({ filename: file.name, mimeType: file.type || 'application/pdf', fileB64: dataUrl }),
       });
@@ -339,20 +344,49 @@
 
   // ───── Modal înregistrare intrare ─────────────────────────────────────────
 
-  function openModal() {
+  let _meCache = null;
+  async function fetchMe() {
+    if (_meCache) return _meCache;
+    try {
+      const r = await fetch('/auth/me', { credentials: 'same-origin' });
+      if (!r.ok) return null;
+      _meCache = await r.json();
+      return _meCache;
+    } catch { return null; }
+  }
+
+  async function openModal() {
     ['regin-f-obiect','regin-f-expeditor','regin-f-comp','regin-f-nrdoc','regin-f-datadoc'].forEach((id) => { const el = $(id); if (el) el.value = ''; });
     const reg = $('regin-f-registru'); if (reg) reg.value = 'intrare';
     const mod = $('regin-f-mod'); if (mod) mod.value = '';
+    const fileInp = $('regin-f-file'); if (fileInp) fileInp.value = '';
     const msg = $('regin-modal-msg'); if (msg) { msg.style.display = 'none'; msg.textContent = ''; }
     $('regin-modal').style.display = 'flex';
+    // Prefill compartiment din profil (rămâne editabil; server-side garantat oricum).
+    try {
+      const me = await fetchMe();
+      const compEl = $('regin-f-comp');
+      if (me && me.compartiment && compEl && !compEl.value) compEl.value = me.compartiment;
+    } catch {}
   }
   function closeModal() { $('regin-modal').style.display = 'none'; }
+
+  function fileFromInput(id) {
+    const inp = $(id);
+    if (!inp || !inp.files || !inp.files.length) return null;
+    return inp.files[0];
+  }
 
   async function saveModal() {
     const obiect = $('regin-f-obiect').value.trim();
     const msg = $('regin-modal-msg');
     if (!obiect) {
       if (msg) { msg.textContent = 'Obiectul este obligatoriu.'; msg.className = 'df-msg df-msg--err'; msg.style.display = ''; }
+      return;
+    }
+    const file = fileFromInput('regin-f-file');
+    if (file && file.size > 15 * 1024 * 1024) {
+      if (msg) { msg.textContent = 'Fișierul depășește 15 MB.'; msg.className = 'df-msg df-msg--err'; msg.style.display = ''; }
       return;
     }
     const body = {
@@ -367,14 +401,36 @@
     try {
       const r = await fetch('/api/registratura/intrari', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, _csrfHdr()),
+        credentials: 'same-origin',
         body: JSON.stringify(body),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         if (msg) { msg.textContent = 'Eroare: ' + (j.error || r.status); msg.className = 'df-msg df-msg--err'; msg.style.display = ''; }
         return;
+      }
+      // Upload atașament dacă a fost ales fișier și avem id.
+      if (file && j && j.id) {
+        try {
+          const dataUrl = await fileToBase64(file);
+          const ru = await fetch(`/api/registratura/intrari/${j.id}/atasament`, {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, _csrfHdr()),
+            credentials: 'same-origin',
+            body: JSON.stringify({ filename: file.name, mimeType: file.type || 'application/pdf', fileB64: dataUrl }),
+          });
+          if (!ru.ok) {
+            const ju = await ru.json().catch(() => ({}));
+            if (msg) { msg.textContent = 'Document înregistrat, dar atașamentul a eșuat: ' + (ju.error || ru.status); msg.className = 'df-msg df-msg--err'; msg.style.display = ''; }
+            loadIn();
+            return;
+          }
+        } catch {
+          if (msg) { msg.textContent = 'Document înregistrat, dar atașamentul a eșuat la upload.'; msg.className = 'df-msg df-msg--err'; msg.style.display = ''; }
+          loadIn();
+          return;
+        }
       }
       closeModal();
       loadIn();
