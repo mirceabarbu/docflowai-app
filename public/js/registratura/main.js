@@ -355,11 +355,17 @@
     } catch { return null; }
   }
 
+  function resetFilePick() {
+    const fIn = $('regin-f-file'); if (fIn) fIn.value = '';
+    const fBox = $('regin-f-file-name'); if (fBox) fBox.style.display = 'none';
+    const fLbl = $('regin-f-file-label'); if (fLbl) fLbl.textContent = '—';
+  }
+
   async function openModal() {
     ['regin-f-obiect','regin-f-expeditor','regin-f-comp','regin-f-nrdoc','regin-f-datadoc'].forEach((id) => { const el = $(id); if (el) el.value = ''; });
     const reg = $('regin-f-registru'); if (reg) reg.value = 'intrare';
     const mod = $('regin-f-mod'); if (mod) mod.value = '';
-    const fileInp = $('regin-f-file'); if (fileInp) fileInp.value = '';
+    resetFilePick();
     const msg = $('regin-modal-msg'); if (msg) { msg.style.display = 'none'; msg.textContent = ''; }
     $('regin-modal').style.display = 'flex';
     // Prefill compartiment din profil (rămâne editabil; server-side garantat oricum).
@@ -369,7 +375,7 @@
       if (me && me.compartiment && compEl && !compEl.value) compEl.value = me.compartiment;
     } catch {}
   }
-  function closeModal() { $('regin-modal').style.display = 'none'; }
+  function closeModal() { $('regin-modal').style.display = 'none'; resetFilePick(); }
 
   function fileFromInput(id) {
     const inp = $(id);
@@ -389,6 +395,9 @@
       if (msg) { msg.textContent = 'Fișierul depășește 15 MB.'; msg.className = 'df-msg df-msg--err'; msg.style.display = ''; }
       return;
     }
+    const _dataIso = (window.df && window.df.parseDMYtoISO)
+      ? window.df.parseDMYtoISO(($('regin-f-datadoc')?.value || '').trim())
+      : '';
     const body = {
       registru: $('regin-f-registru').value,
       obiect,
@@ -396,7 +405,7 @@
       compartiment: $('regin-f-comp').value.trim() || null,
       modPrimire: $('regin-f-mod').value || null,
       nrDocExpeditor: $('regin-f-nrdoc').value.trim() || null,
-      dataDocExpeditor: $('regin-f-datadoc').value || null,
+      dataDocExpeditor: _dataIso || null,
     };
     try {
       const r = await fetch('/api/registratura/intrari', {
@@ -443,6 +452,31 @@
     $('regin-modal-cancel').addEventListener('click', closeModal);
     $('regin-modal-save').addEventListener('click', saveModal);
     $('regin-modal').addEventListener('click', (e) => { if (e.target.id === 'regin-modal') closeModal(); });
+
+    const fIn  = $('regin-f-file');
+    const fBtn = $('regin-f-file-btn');
+    const fBox = $('regin-f-file-name');
+    const fLbl = $('regin-f-file-label');
+    const fClr = $('regin-f-file-clear');
+    if (fIn && fBtn && fBox && fLbl && fClr) {
+      fBtn.addEventListener('click', () => fIn.click());
+      fIn.addEventListener('change', () => {
+        const msg = $('regin-modal-msg');
+        const f = fIn.files && fIn.files[0];
+        if (!f) { fBox.style.display = 'none'; return; }
+        if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) {
+          if (msg) { msg.textContent = 'Doar fișiere PDF sunt acceptate.'; msg.className = 'df-msg df-msg--err'; msg.style.display = ''; }
+          fIn.value = ''; fBox.style.display = 'none'; return;
+        }
+        if (f.size > 15 * 1024 * 1024) {
+          if (msg) { msg.textContent = 'Fișierul depășește 15 MB.'; msg.className = 'df-msg df-msg--err'; msg.style.display = ''; }
+          fIn.value = ''; fBox.style.display = 'none'; return;
+        }
+        fLbl.textContent = f.name;
+        fBox.style.display = 'flex';
+      });
+      fClr.addEventListener('click', () => { fIn.value = ''; fBox.style.display = 'none'; fLbl.textContent = '—'; });
+    }
   }
 
   // ───── Init ───────────────────────────────────────────────────────────────
