@@ -23,7 +23,7 @@ const router = Router();
 const _csrf = csrfMiddleware;
 
 // Termene legale implicite per registru (zile calendaristice).
-const TERMEN_REGISTRU = { petitii: 30, '544': 10, intrare: null, general: null };
+const TERMEN_REGISTRU = { general: null, petitii: 30, '544': 10 };
 
 // Tranziții lifecycle valide pentru documente intrate.
 const TRANZITII = {
@@ -192,8 +192,10 @@ router.post('/api/registratura/intrari', _csrf, async (req, res) => {
     if (!can) return res.status(403).json({ error: 'module_disabled' });
 
     const b = req.body || {};
-    const registru = ['intrare', 'petitii', '544'].includes(String(b.registru))
-      ? String(b.registru) : 'intrare';
+    // 'general' = serie comună cu ieșirile (numerotare continuă).
+    // petiții/544 = serii proprii (legi speciale). Default = general.
+    const registru = ['general', 'petitii', '544'].includes(String(b.registru))
+      ? String(b.registru) : 'general';
     const obiect = String(b.obiect || '').trim();
     if (!obiect) return res.status(400).json({ error: 'obiect_required' });
 

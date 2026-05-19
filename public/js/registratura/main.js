@@ -86,7 +86,7 @@
 
   async function loadOut() {
     const tbody = $('reg-tbody');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--df-text-3);">Se încarcă…</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--df-text-3);">Se încarcă…</td></tr>';
     try {
       const r = await fetch('/api/registratura/intrari?' + buildQueryOut(), { credentials: 'include' });
       if (!r.ok) throw new Error('http_' + r.status);
@@ -95,15 +95,20 @@
       renderOut(data.items || []);
       renderPagOut();
     } catch (e) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--df-text-3);">Eroare la încărcare.</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--df-text-3);">Eroare la încărcare.</td></tr>';
     }
+  }
+
+  function fluxCell(it) {
+    if (!it.flowId) return '<span style="color:var(--df-text-4);">—</span>';
+    return `<a href="/flow.html?id=${encodeURIComponent(it.flowId)}" target="_blank" rel="noopener" class="df-action-btn" style="font-size:.78rem;padding:4px 8px;text-decoration:none;">🔗 flux</a>`;
   }
 
   function renderOut(items) {
     const tbody = $('reg-tbody');
     if (!tbody) return;
     if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--df-text-3);">Niciun document înregistrat.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--df-text-3);">Niciun document înregistrat.</td></tr>';
       return;
     }
     tbody.innerHTML = items.map((it) => `
@@ -114,6 +119,7 @@
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(it.expeditor || '—')}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(it.compartiment || '—')}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${statusBadge(it.status)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${fluxCell(it)}</td>
       </tr>
     `).join('');
   }
@@ -176,7 +182,7 @@
     }
   }
 
-  const REGISTRU_LBL = { intrare: 'Intrări', petitii: 'Petiții', '544': '544/2001' };
+  const REGISTRU_LBL = { general: 'Intrări', intrare: 'Intrări', petitii: 'Petiții', '544': '544/2001' };
 
   function termenCell(it) {
     if (!it.termenAt) return '<span style="color:var(--df-text-4);">—</span>';

@@ -1614,6 +1614,50 @@ const MIGRATIONS = [
          SET pattern = '{nr5}'
        WHERE pattern = '{nr}/{dd}.{mm}.{yyyy}';
     `
+  },
+  {
+    id: '077_registratura_serie_comuna',
+    sql: `
+      -- Numerotare continuă comună pentru ieșiri + intrări GENERALE.
+      -- Intrările generale (registru='intrare') trec pe registru='general'
+      -- și se renumerotează continuând după max(numar) existent pe org/an,
+      -- ca să nu colizioneze cu numerele deja alocate ieșirilor.
+      -- Petiții/544 NU se ating (serii proprii).
+      WITH base AS (
+        SELECT org_id, an, COALESCE(MAX(numar), 0) AS maxn
+          FROM registru_intrari
+         WHERE registru = 'general'
+         GROUP BY org_id, an
+      ),
+      ren AS (
+        SELECT i.id,
+               COALESCE(b.maxn, 0)
+                 + ROW_NUMBER() OVER (PARTITION BY i.org_id, i.an
+                                      ORDER BY i.numar, i.id) AS newnum
+          FROM registru_intrari i
+          LEFT JOIN base b ON b.org_id = i.org_id AND b.an = i.an
+         WHERE i.registru = 'intrare'
+      )
+      UPDATE registru_intrari t
+         SET registru     = 'general',
+             numar        = r.newnum,
+             numar_format = lpad(r.newnum::text, 5, '0')
+        FROM ren r
+       WHERE t.id = r.id;
+
+      -- Re-seed contorul seriei 'general' la max(numar) pe org/an
+      INSERT INTO registru_serii (org_id, registru, an, contor)
+        SELECT org_id, 'general', an, MAX(numar)
+          FROM registru_intrari
+         WHERE registru = 'general'
+         GROUP BY org_id, an
+      ON CONFLICT (org_id, registru, an)
+        DO UPDATE SET contor = GREATEST(registru_serii.contor, EXCLUDED.contor),
+                      updated_at = NOW();
+
+      -- Seria 'intrare' nu mai e folosită
+      DELETE FROM registru_serii WHERE registru = 'intrare';
+    `
   }
 ];
 
