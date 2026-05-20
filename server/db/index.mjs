@@ -120,8 +120,18 @@ import { logger } from '../middleware/logger.mjs';
 const { Pool } = pg;
 
 export const DATABASE_URL = process.env.DATABASE_URL;
+// HANG-FIX (incident 2026-05-20): timeouts ca un query stuck să nu țină
+// procesul ostatec. statement_timeout=30s ucide query-urile care depășesc;
+// connectionTimeoutMillis=5s ca pool-ul să nu blocheze indefinit pe achiziție.
 export const pool = DATABASE_URL
-  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 20, idleTimeoutMillis: 30000 })
+  ? new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+      statement_timeout: 30000,
+    })
   : null;
 
 export let DB_READY = false;

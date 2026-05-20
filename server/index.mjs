@@ -660,8 +660,18 @@ app.use((req, res, next) => {
   next();
 });
 
-process.on('unhandledRejection', (err) => logger.error({ err }, 'unhandledRejection'));
-process.on('uncaughtException',  (err) => logger.error({ err }, 'uncaughtException'));
+// HANG-FIX (incident 2026-05-20): log + exit(1) ca Railway să restarteze procesul.
+// Hang-ul era cauzat de unhandled rejections care doar logau, lăsând procesul UP
+// dar inert — Railway nu restartează un proces care „există".
+process.on('unhandledRejection', (err) => {
+  logger.error({ err }, 'unhandledRejection — exiting');
+  // setTimeout 0 ca să apuce să se flush-eze log-ul Pino înainte de exit
+  setTimeout(() => process.exit(1), 100);
+});
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'uncaughtException — exiting');
+  setTimeout(() => process.exit(1), 100);
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
