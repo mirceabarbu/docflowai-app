@@ -229,7 +229,11 @@
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(it.obiect || '—')}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${esc(it.expeditor || '—')}</td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${termenCell(it)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${statusBadge(it.status)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">
+          ${statusBadge(it.status)}
+          ${it.repartizatLa ? `<div style="font-size:.72rem;color:var(--df-text-3);margin-top:4px;">→ ${esc(String(it.repartizatLa).slice(0, 60))}</div>` : ''}
+          ${it.motivClasare ? `<div title="${esc(it.motivClasare)}" style="font-size:.72rem;color:var(--df-text-3);margin-top:4px;font-style:italic;">motiv: ${esc(String(it.motivClasare).slice(0, 40))}${it.motivClasare.length > 40 ? '…' : ''}</div>` : ''}
+        </td>
         <td style="padding:10px 12px;border-bottom:1px solid var(--df-border-2);">${actionsCell(it)}</td>
       </tr>
     `).join('');
@@ -250,20 +254,26 @@
   // ───── Acțiuni rând (status / atașament / link) ───────────────────────────
 
   async function doStatus(id, next) {
-    let extra = {};
-    if (next === 'repartizat') {
-      const r = prompt('Repartizat la (compartiment/persoană)?', '');
-      if (r === null) return;
-      extra.repartizatLa = r.trim();
+    // BLOC Registratură UX: pentru tranziții cu input → modal dedicat.
+    if (next === 'repartizat' || next === 'clasat' || next === 'solutionat') {
+      if (!window.DFRegistraturaActionModal) {
+        alert('Componentă modal indisponibilă. Reîncarcă pagina.');
+        return;
+      }
+      window.DFRegistraturaActionModal.open({
+        intrareId: id,
+        action: next,
+        onSuccess: () => loadIn(),
+      });
+      return;
     }
-    if (next === 'clasat' && !confirm('Confirmi clasarea acestei intrări?')) return;
-    if (next === 'solutionat' && !confirm('Confirmi soluționarea acestei intrări?')) return;
+    // Restul tranzițiilor (ex. in_lucru) — fără confirmare modală.
     try {
       const r = await fetch(`/api/registratura/intrari/${id}/status`, {
         method: 'POST',
         headers: Object.assign({ 'Content-Type': 'application/json' }, _csrfHdr()),
         credentials: 'include',
-        body: JSON.stringify(Object.assign({ status: next }, extra)),
+        body: JSON.stringify({ status: next }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {

@@ -106,7 +106,7 @@ router.get('/api/registratura/intrari', async (req, res) => {
     const sql = `
       SELECT r.id, r.numar, r.numar_format, r.data_inreg, r.directie, r.registru,
              r.obiect, r.expeditor, r.destinatar, r.compartiment, r.flow_id,
-             r.termen_at, r.mod_primire, r.repartizat_la, r.status AS status_raw,
+             r.termen_at, r.mod_primire, r.repartizat_la, r.motiv_clasare, r.rezolutie, r.status AS status_raw,
              r.raspuns_flow_id,
              ${_STATUS_SQL} AS status,
              COUNT(*) OVER() AS total_count
@@ -128,6 +128,7 @@ router.get('/api/registratura/intrari', async (req, res) => {
         statusRaw: r.status_raw,
         termenAt: r.termen_at, modPrimire: r.mod_primire,
         repartizatLa: r.repartizat_la, raspunsFlowId: r.raspuns_flow_id,
+        motivClasare: r.motiv_clasare, rezolutie: r.rezolutie,
       })),
     });
   } catch (e) {
@@ -262,12 +263,33 @@ router.post('/api/registratura/intrari/:id/status', _csrf, async (req, res) => {
 
     const sets = ['status = $1'];
     const vals = [next];
+    const body = req.body || {};
     if (next === 'repartizat') {
-      vals.push(String((req.body || {}).repartizatLa || '').trim() || null);
+      vals.push(String(body.repartizatLa || '').trim() || null);
       sets.push(`repartizat_la = $${vals.length}`, `repartizat_at = NOW()`);
+      // BLOC Registratură UX: rezoluție opțională la repartizare
+      const rez = String(body.rezolutie || '').trim();
+      if (rez) {
+        vals.push(rez);
+        sets.push(`rezolutie = $${vals.length}`);
+      }
     }
-    if (next === 'solutionat') sets.push(`solutionat_at = NOW()`);
-    if (next === 'clasat')     sets.push(`clasat_at = NOW()`);
+    if (next === 'solutionat') {
+      sets.push(`solutionat_at = NOW()`);
+      const rez = String(body.rezolutie || '').trim();
+      if (rez) {
+        vals.push(rez);
+        sets.push(`rezolutie = $${vals.length}`);
+      }
+    }
+    if (next === 'clasat') {
+      sets.push(`clasat_at = NOW()`);
+      // BLOC Registratură UX: motiv obligatoriu la clasare
+      const mot = String(body.motivClasare || '').trim();
+      if (!mot) return res.status(400).json({ error: 'motiv_obligatoriu' });
+      vals.push(mot);
+      sets.push(`motiv_clasare = $${vals.length}`);
+    }
     vals.push(id, actor.orgId);
     await pool.query(
       `UPDATE registru_intrari SET ${sets.join(', ')}
@@ -377,6 +399,52 @@ router.get('/api/registratura/atasament/:attId', async (req, res) => {
     res.send(rows[0].data);
   } catch (e) {
     logger.error({ err: e }, 'registratura: download atașament eșuat');
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+// ─── GET /api/registratura/asignatari ──────────────────────────────────────
+// Compartimente (din profil org) + utilizatori activi din aceeași org.
+// Accesibil oricărui utilizator autentificat al org-ului — necesar pentru
+// modal-ul de Repartizează/Clasează în Registratură.
+router.get('/api/registratura/asignatari', async (req, res) => {
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (!_db(res)) return;
+  try {
+    const orgId = actor.orgId || null;
+    if (!orgId) return res.json({ ok: true, compartimente: [], users: [] });
+
+    const [orgR, usersR] = await Promise.allSettled([
+      pool.query(
+        `SELECT compartimente FROM organizations WHERE id=$1 LIMIT 1`,
+        [orgId]
+      ),
+      pool.query(
+        `SELECT id, nume, compartiment
+           FROM users
+          WHERE org_id=$1
+            AND deleted_at IS NULL
+          ORDER BY nume ASC`,
+        [orgId]
+      ),
+    ]);
+
+    const compOfic = orgR.status === 'fulfilled'
+      ? (orgR.value.rows[0]?.compartimente || [])
+      : [];
+    const users = usersR.status === 'fulfilled' ? usersR.value.rows : [];
+
+    // Compartimente: union compartimente_oficiale + cele găsite pe users.
+    const fromUsers = [...new Set(users
+      .map(u => (u.compartiment || '').trim())
+      .filter(Boolean))];
+    const compartimente = [...new Set([...compOfic, ...fromUsers])]
+      .sort((a, b) => a.localeCompare(b, 'ro'));
+
+    res.json({ ok: true, compartimente, users });
+  } catch (e) {
+    logger.error({ err: e }, 'registratura: asignatari listare eșuată');
     res.status(500).json({ error: 'internal' });
   }
 });
