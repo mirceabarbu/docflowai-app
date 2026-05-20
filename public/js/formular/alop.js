@@ -654,6 +654,9 @@ async function startNouaLichidare(alopId){
 // ── Navigare la formulare ─────────────────────────────────────────────────────
 async function alopDeschideDF(alopId){
   try{
+    // HOTFIX v3.9.484: ALOP-ul căruia îi aparținea DF-ul din sesiune,
+    // capturat ÎNAINTE ca _alopContext să fie suprascris mai jos.
+    const _prevCtxAlop = window._alopContext && window._alopContext.alopId;
     // FIX 3: citim starea curentă din server — singura sursă de adevăr pentru df_id
     const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
     if(!r.ok)return;
@@ -665,10 +668,15 @@ async function alopDeschideDF(alopId){
       // DF există pe ALOP → deschide direct
       openDocFromList('df',alop.df_id);
     }else if(ST.docId?.['notafd']){
-      // FIX 2: DF creat în sesiunea curentă dar link-df nu s-a salvat pe server
+      // FIX 2: DF creat în sesiunea curentă dar link-df nu s-a salvat pe server.
+      // HOTFIX v3.9.484: reutilizează DOAR dacă DF-ul din sesiune aparținea
+      // ACESTUI ALOP și e cu adevărat în lucru. Altfel (anulat/refuzat/aprobat/
+      // alt ALOP/necunoscut) → DF nou gol, NU resuscita un document mort.
       const docStatus=ST.docStatus?.['notafd'];
-      if(docStatus==='aprobat'||docStatus==='transmis_flux'){
-        // Nu re-lega un DF aprobat — resetează și creează unul nou
+      const _safeReuse = (_prevCtxAlop===alop.id)
+        && ['draft','returnat','de_revizuit'].includes(docStatus);
+      if(!_safeReuse){
+        // Nu re-lega un DF nesigur — resetează și creează unul nou
         ST.docId['notafd']=null;
         ST.docStatus['notafd']=null;
         document.getElementById('section-list').style.display='';

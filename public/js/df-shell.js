@@ -90,6 +90,27 @@
     navGroup.appendChild(a);
   });
 
+  // Injectează link „Registratură" în sidebar (pattern identic cu Setări, idempotent)
+  document.addEventListener('DOMContentLoaded', function() {
+    var labels = document.querySelectorAll('.df-nav-label');
+    var navGroup = null;
+    for (var i = 0; i < labels.length; i++) {
+      if (labels[i].textContent.trim() === 'Navigare app') {
+        var sib = labels[i].nextElementSibling;
+        if (sib && sib.classList.contains('df-nav-group')) { navGroup = sib; break; }
+      }
+    }
+    if (!navGroup) return;
+    if (navGroup.querySelector('a[href="/registratura"]')) return; // idempotent
+    var a = document.createElement('a');
+    a.href = '/registratura';
+    a.className = 'df-nav-item';
+    var path = (location.pathname || '').replace(/\/$/, '');
+    if (path === '/registratura' || path === '/registratura.html') a.classList.add('active');
+    a.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0"><path d="M4 4h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4z"/><path d="M4 4v16"/><path d="M8 8h6M8 12h6M8 16h4"/></svg> Registratură';
+    navGroup.appendChild(a);
+  });
+
   document.addEventListener('DOMContentLoaded', function() {
     // 1. Populate from localStorage cache immediately (no flash)
     var cached = JSON.parse(localStorage.getItem('docflow_user') || '{}');

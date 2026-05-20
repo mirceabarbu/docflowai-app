@@ -521,6 +521,7 @@ import { formulareDbRouter } from './routes/formulare-db.mjs';
 import alopRouter from './routes/alop.mjs';
 import convertRouter from './routes/convert.mjs';
 import opmeRouter from './routes/opme.mjs';
+import registraturaRouter from './routes/registratura.mjs';
 import formulareOficialeRouter from './routes/formulare-oficiale.mjs';
 import clasa8Router            from './routes/clasa8.mjs';
 import trasabilitateRouter     from './routes/trasabilitate.mjs';
@@ -621,6 +622,7 @@ const _LARGE_PDF_PATHS = [
   '/formulare-ord',           // PUT — ORD cu img2 base64 (captură 2 ~1-5MB)
   '/formulare-df',            // PUT — DF (paritate cu ORD, capturi posibile)
   '/formulare/generate',      // POST — PDF gen primește captureImageBase64 + _2
+  '/registratura/intrari',    // POST atașament — PDF scanat base64 (cap 15MB pe buf)
 ];
 app.use((req, res, next) => {
   const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));
@@ -658,8 +660,18 @@ app.use((req, res, next) => {
   next();
 });
 
-process.on('unhandledRejection', (err) => logger.error({ err }, 'unhandledRejection'));
-process.on('uncaughtException',  (err) => logger.error({ err }, 'uncaughtException'));
+// HANG-FIX (incident 2026-05-20): log + exit(1) ca Railway să restarteze procesul.
+// Hang-ul era cauzat de unhandled rejections care doar logau, lăsând procesul UP
+// dar inert — Railway nu restartează un proces care „există".
+process.on('unhandledRejection', (err) => {
+  logger.error({ err }, 'unhandledRejection — exiting');
+  // setTimeout 0 ca să apuce să se flush-eze log-ul Pino înainte de exit
+  setTimeout(() => process.exit(1), 100);
+});
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'uncaughtException — exiting');
+  setTimeout(() => process.exit(1), 100);
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -693,6 +705,7 @@ app.get('/notifications', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'noti
 app.get('/verifica', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'verifica.html')));
 app.get('/templates', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'templates.html')));
 app.get('/setari', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'setari.html')));
+app.get('/registratura', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'registratura.html')));
 
 // ── Health public ─────────────────────────────────────────────────────────
 // ── API Docs — OpenAPI 3.0 ───────────────────────────────────────────────────
@@ -1096,7 +1109,11 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
     ].filter(Boolean).join(', ');
 
     const footerLeft  = createdDate + (parts ? '  |  ' + parts : '');
-    const footerRight = ro(flowData.flowId || '') + '  |  DocFlowAI';
+    // Registratură Faza 1: prefix aditiv. Absent → identic cu comportamentul vechi.
+    const _regPrefix  = flowData.nrInregistrareFormat
+      ? ro('Nr. inreg. ' + flowData.nrInregistrareFormat) + '  |  '
+      : '';
+    const footerRight = _regPrefix + ro(flowData.flowId || '') + '  |  DocFlowAI';
     const rightWidth  = fontR.widthOfTextAtSize(footerRight, FONT_SIZE);
     const rightX      = pW - MARGIN - rightWidth;
     const leftMaxWidth = rightX - MARGIN - 8;
@@ -1811,6 +1828,7 @@ app.use('/', formulareDbRouter);      // Formulare DB: DF + ORD workflow P1→P2
 app.use('/', alopRouter);             // ALOP orchestrator: DF + ORD + fluxuri semnare
 app.use('/', convertRouter);          // Conversie fișiere non-PDF la PDF
 app.use('/', opmeRouter);             // OPME F1129 import (pachet A — fără matching)
+app.use('/', registraturaRouter);     // Registratură Faza 1: numerotare documente emise
 app.use('/api/formulare-oficiale', formulareOficialeRouter); // Formulare Oficiale CRUD (NF Invest, Referat)
 app.use('/api/clasa8',             clasa8Router);             // Centralizator Clasa 8 (read-only)
 app.use('/api/trasabilitate',      trasabilitateRouter);      // Arbore trasabilitate DF↔ALOP↔ORD

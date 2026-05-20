@@ -120,8 +120,18 @@ import { logger } from '../middleware/logger.mjs';
 const { Pool } = pg;
 
 export const DATABASE_URL = process.env.DATABASE_URL;
+// HANG-FIX (incident 2026-05-20): timeouts ca un query stuck să nu țină
+// procesul ostatec. statement_timeout=30s ucide query-urile care depășesc;
+// connectionTimeoutMillis=5s ca pool-ul să nu blocheze indefinit pe achiziție.
 export const pool = DATABASE_URL
-  ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 20, idleTimeoutMillis: 30000 })
+  ? new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+      statement_timeout: 30000,
+    })
   : null;
 
 export let DB_READY = false;
@@ -1498,6 +1508,165 @@ const MIGRATIONS = [
         ALTER TABLE alop_ord_cicluri
           ADD COLUMN IF NOT EXISTS plata_source TEXT;
       END $g$;
+    `
+  },
+  {
+    id: '074_registratura',
+    sql: `
+      -- Registratură Faza 1: serii de numerotare + intrări registru.
+      -- Faza 1 folosește DOAR registru='general', directie='iesire'.
+      -- Schema permite extindere (petitii/544/intrare) fără migrare nouă.
+
+      CREATE TABLE IF NOT EXISTS registru_serii (
+        org_id     INTEGER     NOT NULL REFERENCES organizations(id),
+        registru   TEXT        NOT NULL DEFAULT 'general',
+        an         INTEGER     NOT NULL,
+        pattern    TEXT        NOT NULL DEFAULT '{nr}/{dd}.{mm}.{yyyy}',
+        contor     INTEGER     NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (org_id, registru, an)
+      );
+
+      CREATE TABLE IF NOT EXISTS registru_intrari (
+        id           BIGSERIAL   PRIMARY KEY,
+        org_id       INTEGER     NOT NULL REFERENCES organizations(id),
+        registru     TEXT        NOT NULL DEFAULT 'general',
+        an           INTEGER     NOT NULL,
+        numar        INTEGER     NOT NULL,
+        numar_format TEXT        NOT NULL,
+        data_inreg   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        directie     TEXT        NOT NULL DEFAULT 'iesire'
+                                 CHECK (directie IN ('iesire','intrare','intern')),
+        sursa_tip    TEXT        NOT NULL DEFAULT 'flow',
+        sursa_id     TEXT        NOT NULL,
+        flow_id      TEXT,
+        obiect       TEXT        NOT NULL DEFAULT '',
+        expeditor    TEXT        NOT NULL DEFAULT '',
+        destinatar   TEXT        NOT NULL DEFAULT '',
+        compartiment TEXT,
+        created_by   INTEGER     REFERENCES users(id),
+        meta         JSONB       NOT NULL DEFAULT '{}',
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      -- Idempotență: o sursă = o singură poziție per registru per org.
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_registru_sursa
+        ON registru_intrari (org_id, registru, sursa_tip, sursa_id);
+      CREATE INDEX IF NOT EXISTS idx_registru_org_an
+        ON registru_intrari (org_id, registru, an, numar DESC);
+      CREATE INDEX IF NOT EXISTS idx_registru_flow
+        ON registru_intrari (flow_id) WHERE flow_id IS NOT NULL;
+
+      INSERT INTO module_catalog
+        (module_key, display_name, category, default_enabled, display_order)
+      VALUES
+        ('registratura', 'Registratură', 'documente', TRUE, 80)
+      ON CONFLICT (module_key) DO NOTHING;
+    `
+  },
+  {
+    id: '075_registratura_faza2',
+    sql: `
+      -- Faza 2: coloane lifecycle/intrate pe registru_intrari + atașamente.
+      -- Documentele emise (Faza 1) au aceste coloane NULL — comportament neschimbat.
+
+      ALTER TABLE registru_intrari
+        ADD COLUMN IF NOT EXISTS status            TEXT,
+        ADD COLUMN IF NOT EXISTS mod_primire       TEXT,
+        ADD COLUMN IF NOT EXISTS nr_doc_expeditor  TEXT,
+        ADD COLUMN IF NOT EXISTS data_doc_expeditor DATE,
+        ADD COLUMN IF NOT EXISTS termen_zile       INTEGER,
+        ADD COLUMN IF NOT EXISTS termen_at         DATE,
+        ADD COLUMN IF NOT EXISTS repartizat_la     TEXT,
+        ADD COLUMN IF NOT EXISTS repartizat_at     TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS solutionat_at     TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS clasat_at         TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS raspuns_flow_id   TEXT;
+
+      DO $g$ BEGIN
+        ALTER TABLE registru_intrari
+          ADD CONSTRAINT registru_status_chk
+          CHECK (status IS NULL OR status IN
+            ('inregistrat','repartizat','in_lucru','solutionat','clasat'));
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $g$;
+
+      CREATE INDEX IF NOT EXISTS idx_registru_intrari_dir
+        ON registru_intrari (org_id, directie, an, numar DESC);
+      CREATE INDEX IF NOT EXISTS idx_registru_raspuns
+        ON registru_intrari (raspuns_flow_id) WHERE raspuns_flow_id IS NOT NULL;
+
+      CREATE TABLE IF NOT EXISTS registru_atasamente (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        intrare_id  BIGINT      NOT NULL REFERENCES registru_intrari(id) ON DELETE CASCADE,
+        org_id      INTEGER     NOT NULL REFERENCES organizations(id),
+        filename    TEXT        NOT NULL,
+        mime_type   TEXT        NOT NULL DEFAULT 'application/pdf',
+        size_bytes  INTEGER     NOT NULL DEFAULT 0,
+        data        BYTEA       NOT NULL,
+        uploaded_by INTEGER     REFERENCES users(id),
+        uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at  TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_registru_atas_intrare
+        ON registru_atasamente (intrare_id, deleted_at);
+    `
+  },
+  {
+    id: '076_registratura_format',
+    sql: `
+      -- Numărul de înregistrare se afișează doar ca număr zero-pad 5 cifre
+      -- ({nr5}); data e coloană separată. Seriile existente cu pattern-ul
+      -- vechi sunt migrate; default-ul coloanei devine {nr5} pentru serii noi.
+      ALTER TABLE registru_serii ALTER COLUMN pattern SET DEFAULT '{nr5}';
+      UPDATE registru_serii
+         SET pattern = '{nr5}'
+       WHERE pattern = '{nr}/{dd}.{mm}.{yyyy}';
+    `
+  },
+  {
+    id: '077_registratura_serie_comuna',
+    sql: `
+      -- Numerotare continuă comună pentru ieșiri + intrări GENERALE.
+      -- Intrările generale (registru='intrare') trec pe registru='general'
+      -- și se renumerotează continuând după max(numar) existent pe org/an,
+      -- ca să nu colizioneze cu numerele deja alocate ieșirilor.
+      -- Petiții/544 NU se ating (serii proprii).
+      WITH base AS (
+        SELECT org_id, an, COALESCE(MAX(numar), 0) AS maxn
+          FROM registru_intrari
+         WHERE registru = 'general'
+         GROUP BY org_id, an
+      ),
+      ren AS (
+        SELECT i.id,
+               COALESCE(b.maxn, 0)
+                 + ROW_NUMBER() OVER (PARTITION BY i.org_id, i.an
+                                      ORDER BY i.numar, i.id) AS newnum
+          FROM registru_intrari i
+          LEFT JOIN base b ON b.org_id = i.org_id AND b.an = i.an
+         WHERE i.registru = 'intrare'
+      )
+      UPDATE registru_intrari t
+         SET registru     = 'general',
+             numar        = r.newnum,
+             numar_format = lpad(r.newnum::text, 5, '0')
+        FROM ren r
+       WHERE t.id = r.id;
+
+      -- Re-seed contorul seriei 'general' la max(numar) pe org/an
+      INSERT INTO registru_serii (org_id, registru, an, contor)
+        SELECT org_id, 'general', an, MAX(numar)
+          FROM registru_intrari
+         WHERE registru = 'general'
+         GROUP BY org_id, an
+      ON CONFLICT (org_id, registru, an)
+        DO UPDATE SET contor = GREATEST(registru_serii.contor, EXCLUDED.contor),
+                      updated_at = NOW();
+
+      -- Seria 'intrare' nu mai e folosită
+      DELETE FROM registru_serii WHERE registru = 'intrare';
     `
   }
 ];
