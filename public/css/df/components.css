@@ -545,10 +545,12 @@
 .df-filter-actions{
   display:flex;
   gap:8px;
-  align-self:flex-end;
+  align-self:stretch;       /* ia înălțimea rândului flex (= max child = .df-frow ~60px) */
+  align-items:flex-end;     /* butoanele la fundul wrapper-ului */
 }
 .df-filter-actions .df-action-btn{
-  padding:9px 13px;       /* match .df-frow input/select padding vertical */
-  font-size:.88rem;       /* match .df-frow input/select font-size */
-  line-height:1.2;        /* explicit ca să nu inheritm un line-height variabil */
+  height:38px;              /* înălțime explicită — match aproximativ cu input ~37-38px */
+  padding:0 13px;           /* zero vertical padding când height e fix */
+  font-size:.88rem;         /* match cu .df-frow input/select */
+  /* line-height nu mai e necesar — .df-action-btn are display:inline-flex + align-items:center */
 }
