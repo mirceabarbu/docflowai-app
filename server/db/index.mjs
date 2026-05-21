@@ -1668,6 +1668,15 @@ const MIGRATIONS = [
       -- Seria 'intrare' nu mai e folosită
       DELETE FROM registru_serii WHERE registru = 'intrare';
     `
+  },
+  {
+    id: '078_registratura_motiv_rezolutie',
+    sql: `
+      -- BLOC Registratură UX: justificări pentru clasare + rezoluție pe repartizare/soluționare.
+      ALTER TABLE registru_intrari
+        ADD COLUMN IF NOT EXISTS motiv_clasare TEXT,
+        ADD COLUMN IF NOT EXISTS rezolutie     TEXT;
+    `
   }
 ];
 
