@@ -534,3 +534,21 @@
   .df-opme-stats{grid-template-columns:repeat(2,1fr);}
   .df-opme-dialog{padding:18px 16px;}
 }
+
+/* ── Filter actions (butoane în rândul de filtre alături de .df-frow) ────────
+   Aliniază vizual butoanele cu inputurile dintr-un container parent care
+   are display:flex; align-items:flex-end. Wrapper-ul se duce la bottom
+   prin align-self, iar butoanele dinăuntru match-ează padding-ul vertical
+   ȘI font-size-ul inputurilor (.df-frow input/select) ca să arate la fel
+   ca un câmp de formular. Folosit în registratura.html (subview-uri
+   Intrări + Ieșiri) și disponibil pentru orice altă pagină cu filter bar. */
+.df-filter-actions{
+  display:flex;
+  gap:8px;
+  align-self:flex-end;
+}
+.df-filter-actions .df-action-btn{
+  padding:9px 13px;       /* match .df-frow input/select padding vertical */
+  font-size:.88rem;       /* match .df-frow input/select font-size */
+  line-height:1.2;        /* explicit ca să nu inheritm un line-height variabil */
+}
