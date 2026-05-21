@@ -545,12 +545,17 @@
 .df-filter-actions{
   display:flex;
   gap:8px;
-  align-self:stretch;       /* ia înălțimea rândului flex (= max child = .df-frow ~60px) */
-  align-items:flex-end;     /* butoanele la fundul wrapper-ului */
+  /* margin-bottom match cu .df-frow (12px default) — în parent-ul flex cu
+     align-items:flex-end, outer-bottoms (cu margin) se aliniază, deci
+     inner-bottoms vizibile (input vs button) se aliniază doar dacă
+     margin-bottom e identic pe toți copiii. Asta era root cause-ul
+     misalinierii din v3.9.486-489. */
+  margin-bottom:12px;
 }
 .df-filter-actions .df-action-btn{
-  height:38px;              /* înălțime explicită — match aproximativ cu input ~37-38px */
-  padding:0 13px;           /* zero vertical padding când height e fix */
-  font-size:.88rem;         /* match cu .df-frow input/select */
-  /* line-height nu mai e necesar — .df-action-btn are display:inline-flex + align-items:center */
+  /* height explicit ca să match-ăm input-ul .df-frow:
+     padding 9+9 + font-size .88rem (line-height normal ~17px) + border 1+1 ≈ 37-38px */
+  height:38px;
+  padding:0 13px;
+  font-size:.88rem;
 }
