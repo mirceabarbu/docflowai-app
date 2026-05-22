@@ -66,6 +66,13 @@ function sw(tab){
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='ordnt')||(i===1&&tab==='notafd')));
   document.getElementById('form-ordnt').style.display=tab==='ordnt'?'':'none';
   document.getElementById('form-notafd').style.display=tab==='notafd'?'':'none';
+  // v3.9.497 (Finding #1 audit Pas 3): bara de revizie e proprietate doar a DF (notafd).
+  // O sincronizăm cu tab-ul: vizibilă doar când suntem pe notafd și avem doc încărcat.
+  const _revBar=document.getElementById('df-revizie-header-bar');
+  if(_revBar){
+    if(tab==='notafd'&&ST?.docId?.notafd) _revBar.style.display='flex';
+    else _revBar.style.display='none';
+  }
   // locked-bar-ordnt/notafd au fost mutate în back-bar (header compact); curăță
   // bara inactivă ca să nu rămână mesajul vechi vizibil când se schimbă forma.
   const inactiveBar=document.getElementById('locked-bar-'+(tab==='ordnt'?'notafd':'ordnt'));

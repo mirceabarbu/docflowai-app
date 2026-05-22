@@ -310,7 +310,13 @@ function applyOrdRoleState(status,role){
 
 // ── Badge revizie în header / lateral tab ───────────────────────────────────
 function updateRevizieHeaderBadge(ft, doc){
-  if(ft!=='notafd')return;
+  if(ft!=='notafd'){
+    // v3.9.497 (Finding #1 audit Pas 3): defensive — dacă suntem invocați pe ft non-notafd,
+    // ascundem bara (revizia e proprietate doar a DF).
+    const _h=document.getElementById('df-revizie-header-bar');
+    if(_h)_h.style.display='none';
+    return;
+  }
   const nr=doc.revizie_nr??0;
   const isAnUrm=!!doc.este_revizie_an_urmator;
   const hdr=document.getElementById('df-revizie-header-bar');
