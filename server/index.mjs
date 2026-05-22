@@ -1164,7 +1164,12 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
 
       // Try 1: bottom placement clasic (pentru PDF-uri aerisite — body-ul nu
       //         coboară până jos). Cartușul stă lipit de footer.
-      const SAFETY_MARGIN = 60;
+      // v3.9.493: redus de la 60 la 25 — PDF-uri Office dense (scrisori, formulare)
+      //   au body până aproape de footer. 60pt forța pagină nouă chiar și când
+      //   diferența era de doar 10-20pt. 25pt e suficient pentru separare vizuală
+      //   cartuș/body fără overlap. Repro: raspuns_adresa_22_04.docx → minContentY=167,
+      //   requiredFreeY cu 60 = 184 (fails), cu 25 = 149 (fits).
+      const SAFETY_MARGIN = 25;
       const requiredFreeY = (footerY + 32) + cartusTotalH + SAFETY_MARGIN;
       const fitsAtBottom = (minContentY !== null) && (minContentY >= requiredFreeY);
 
