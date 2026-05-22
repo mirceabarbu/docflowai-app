@@ -60,6 +60,11 @@
     'registratura_intrare_status':   'Status intrare modificat',
     'registratura_legatura_raspuns': 'Răspuns legat de intrare',
 
+    // ─── Validare PAdES & raport trust ────────────────────────────────
+    'CERTIFICATE_EXTRACTED':         'Certificat extras',
+    'TRUST_REPORT_GENERATED':        'Raport validare generat',
+    'TOKEN_REGENERATED':             'Link semnare reînnoit',
+
     // ─── Autentificare ───────────────────────────────────────────────
     'auth.login.success':            'Autentificare reușită',
     'auth.login.failed':             'Autentificare eșuată',
