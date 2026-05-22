@@ -243,15 +243,29 @@ const createFlow = async (req, res) => {
     const flowId = _newFlowId(initInstitutie);
     let finalPdfB64 = body.pdfB64 ?? null;
 
-    // Conversie automată fișiere non-PDF (DOCX, XLSX, imagini) la PDF
+    // Conversie automată fișiere non-PDF (DOCX, XLSX, imagini) la PDF.
+    // v3.9.495 — FIX: dacă buffer-ul e DEJA PDF (frontend-ul a făcut conversia
+    // înainte de upload prin /api/convert-to-pdf), NU reconvertim. Re-conversia
+    // prin LibreOffice deschide PDF-ul în Draw și îl reexportă cu draw_pdf_Export,
+    // distrugând alignment-ul justify și semantica de paragraph.
+    // Decizia se ia după magic bytes ai buffer-ului, NU după extensia din
+    // originalFileName (care rămâne ".docx" deși conținutul e deja PDF).
     if (finalPdfB64 && body.originalFileName) {
-      try {
-        const rawB64 = finalPdfB64.includes('base64,') ? finalPdfB64.split('base64,')[1] : finalPdfB64;
-        const inputBuf = Buffer.from(rawB64, 'base64');
-        const convertedBuf = await convertToPdf(inputBuf, body.originalFileName);
-        finalPdfB64 = convertedBuf.toString('base64');
-      } catch(convErr) {
-        logger.warn({ err: convErr, originalFileName: body.originalFileName }, 'convertToPdf non-fatal, using original');
+      const rawB64 = finalPdfB64.includes('base64,') ? finalPdfB64.split('base64,')[1] : finalPdfB64;
+      const inputBuf = Buffer.from(rawB64, 'base64');
+      const isAlreadyPdf = inputBuf.length >= 5
+        && inputBuf.subarray(0, 5).toString('latin1') === '%PDF-';
+      if (isAlreadyPdf) {
+        logger.info({ flowId, originalFileName: body.originalFileName },
+          'crud: skip re-conversion (buffer already PDF, magic bytes match)');
+      } else {
+        try {
+          const convertedBuf = await convertToPdf(inputBuf, body.originalFileName);
+          finalPdfB64 = convertedBuf.toString('base64');
+        } catch(convErr) {
+          logger.warn({ err: convErr, originalFileName: body.originalFileName },
+            'convertToPdf non-fatal, using original');
+        }
       }
     }
     // PDF-ul convertit fără footer — pentru reinitiate (dacă fișierul era non-PDF, body.pdfB64 era DOCX/imagine)
