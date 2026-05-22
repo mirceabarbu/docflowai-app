@@ -64,6 +64,11 @@
     registratura_intrare_status:    'Status intrare modificat',
     registratura_legatura_raspuns:  'Răspuns legat de intrare',
 
+    // ─── Validare PAdES & raport trust ────────────────────────────────
+    CERTIFICATE_EXTRACTED:          'Certificat extras',
+    TRUST_REPORT_GENERATED:         'Raport validare generat',
+    TOKEN_REGENERATED:              'Link semnare reînnoit',
+
     // ─── Autentificare ───────────────────────────────────────────────
     'auth.login.success':           'Autentificare reușită',
     'auth.login.failed':            'Autentificare eșuată',
@@ -82,6 +87,7 @@
     ORGANIZATION_DELETED: '#ff5050', ORGANIZATION_REACTIVATED: '#26d07c',
     ADMIN_SECRET_ACCESS: '#ffd580', entitlement_change: '#7c5cff', plata_auto_opme: '#2dd4bf',
     USER_LOGIN: '#26d07c', USER_LOGOUT: '#888888',
+    CERTIFICATE_EXTRACTED: '#9db0ff', TRUST_REPORT_GENERATED: '#26d07c', TOKEN_REGENERATED: '#ffd580',
     'auth.login.success': '#26d07c', 'auth.login.failed': '#ff5050',
   };
   const OP_ICONS = {
@@ -95,6 +101,7 @@
     ORGANIZATION_DELETED: '🏢', ORGANIZATION_REACTIVATED: '🏢',
     ADMIN_SECRET_ACCESS: '🔐', entitlement_change: '⚙️', plata_auto_opme: '💰',
     USER_LOGIN: '🔑', USER_LOGOUT: '🚪',
+    CERTIFICATE_EXTRACTED: '🔎', TRUST_REPORT_GENERATED: '📜', TOKEN_REGENERATED: '🔗',
     'auth.login.success': '🔑', 'auth.login.failed': '⛔',
   };
 

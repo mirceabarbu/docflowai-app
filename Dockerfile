@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libreoffice-draw \
   fonts-liberation \
   fonts-dejavu-core \
+  fonts-crosextra-carlito \
+  fonts-crosextra-caladea \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 

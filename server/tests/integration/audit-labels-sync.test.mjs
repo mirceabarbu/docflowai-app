@@ -26,16 +26,33 @@ function walkMjs(dir, out = []) {
 function extractEventTypesFromBackend() {
   const files = walkMjs(path.join(REPO, 'server'));
   const types = new Set();
-  const re = /eventType:\s*'([A-Za-z_.][A-Za-z_.0-9]*)'/g;
+
+  // Pattern 1: audit_log via writeAuditEvent
+  const reAudit = /eventType:\s*'([A-Za-z_.][A-Za-z_.0-9]*)'/g;
+
+  // Pattern 2: flow_events JSONB — type: '...' într-un obiect care conține și `at:`
+  // (filtrare strictă pentru a evita match-uri în notificări/payloads)
+  const reFlowEv = /\{[^{}]*\bat:\s*[^,{}]+,[^{}]*\btype:\s*'([A-Z_][A-Z_0-9]*)'[^{}]*\}/g;
+  const reFlowEvAlt = /\{[^{}]*\btype:\s*'([A-Z_][A-Z_0-9]*)'[^{}]*\bat:\s*[^,{}]+[^{}]*\}/g;
+
   for (const f of files) {
     if (f.includes(`${path.sep}tests${path.sep}`)) continue;
     const s = readFileSync(f, 'utf8');
     let m;
-    while ((m = re.exec(s)) !== null) types.add(m[1]);
+    while ((m = reAudit.exec(s)) !== null) types.add(m[1]);
+    while ((m = reFlowEv.exec(s)) !== null) types.add(m[1]);
+    while ((m = reFlowEvAlt.exec(s)) !== null) types.add(m[1]);
   }
-  // Adaugă manual cele scrise direct cu raw SQL (rar, dar există)
+
+  // Eventuri scrise cu raw SQL (rar) sau în notify pipelines fără `at:` în literal
   types.add('plata_auto_opme');
   types.add('entitlement_change');
+
+  // Excludem eventuri tehnice care NU au `by:` setat (deci nu apar în Rapoarte)
+  // NOTIFY/NOTIFY_FAILED sunt notificări auto, fără actor uman
+  types.delete('NOTIFY');
+  types.delete('NOTIFY_FAILED');
+
   return types;
 }
 
