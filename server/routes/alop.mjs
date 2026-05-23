@@ -21,6 +21,7 @@ import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { requireModule } from '../middleware/require-module.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
+import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
@@ -28,6 +29,13 @@ import * as _opmeMatcher from '../services/opme-matcher.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
+
+// v3.9.499 (Finding E): rate limit pentru endpoint-uri admin destructive
+const _alopAdminRateLimit = createRateLimiter({
+  windowMs: 60 * 60 * 1000,  // 1 oră
+  max: 5,
+  message: 'Prea multe încercări de reparare ALOP. Așteptați 1 oră.'
+});
 
 function requireDb(res) {
   if (!pool) { res.status(503).json({ error: 'db_unavailable' }); return true; }
@@ -1044,7 +1052,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
 
 // ── POST /api/alop/:id/cancel ─────────────────────────────────────────────────
 // ── POST /api/alop/admin/repair-status — reparare status ALOP pentru fluxuri deja semnate ─
-router.post('/api/alop/admin/repair-status', _csrf, async (req, res) => {
+router.post('/api/alop/admin/repair-status', _alopAdminRateLimit, _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (!['admin','org_admin'].includes(actor.role)) return res.status(403).json({ error: 'forbidden' });

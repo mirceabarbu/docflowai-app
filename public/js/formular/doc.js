@@ -31,13 +31,14 @@ function stLabel(s,aprobat){
 }
 
 // ── Colectare date formular → DB ──────────────────────────────────────────────
+// v3.9.499 (Finding D): img2 ELIMINAT din collectOrdDb. Captura 2 se persistă
+// exclusiv via /api/formulare-capturi/ord/:id?slot=2 (vezi uploadCaptura).
 function collectOrdDb(){return{
   cif:g('o-cif'),den_inst_pb:g('o-den'),nr_ordonant_pl:g('o-nr'),data_ordont_pl:g('o-data'),
   nr_unic_inreg:g('o-nrUnic'),beneficiar:g('o-benef'),documente_justificative:g('o-docsj'),
   iban_beneficiar:g('o-iban'),cif_beneficiar:g('o-cifb'),banca_beneficiar:g('o-banca'),
   inf_pv_plata:g('o-inf1'),inf_pv_plata1:g('o-inf2'),rows:getOR(),
   df_id:document.getElementById('o-df-id')?.value||null,
-  img2:imgs['o-cimg2']||null,
 };}
 function collectDfP1Db(){return{
   cif:g('n-cif'),den_inst_pb:g('n-den'),subtitlu_df:g('n-subtitlu'),
@@ -63,7 +64,7 @@ function collectDfP2Db(){return{
 function sv(id,val){const e=document.getElementById(id);if(e&&val!==null&&val!==undefined)e.value=e.dataset.money?fMR(parseFloat(val)||0):val;}
 function sc(id,val){const e=document.getElementById(id);if(e)e.checked=val==='1'||val===true;}
 
-function populateOrd(doc){
+async function populateOrd(doc){
   sv('o-cif',doc.cif);sv('o-den',doc.den_inst_pb);sv('o-nr',doc.nr_ordonant_pl);sv('o-data',doc.data_ordont_pl);
   sv('o-nrUnic',doc.nr_unic_inreg);sv('o-benef',doc.beneficiar);sv('o-docsj',doc.documente_justificative);
   sv('o-iban',doc.iban_beneficiar);sv('o-cifb',doc.cif_beneficiar);sv('o-banca',doc.banca_beneficiar);
@@ -73,22 +74,36 @@ function populateOrd(doc){
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
   (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});});
-  // v3.9.498 (Issue R-A): defensive validation img2 — broken icon apărea
-  // când doc.img2 era truthy dar nu un data URL valid (string corupt,
-  // "[object Object]", "null", base64 trunchiat). Validăm prefixul ÎNAINTE
-  // de showImg. Dacă invalid, ascundem wrap-ul (placeholder normal apare)
-  // și logăm pentru investigare root cause.
+  // v3.9.499: captura 2 fetch via formulare_capturi(slot=2) — sursa primară.
+  // Fallback la doc.img2 (defensive validation v3.9.498) pentru ord-uri vechi
+  // care încă au valoarea inline în formulare_ord.img2 (pre-migrare 079 backfill).
   const _wrap2=document.getElementById('o-captura2-wrap');
-  const _img2Valid=typeof doc.img2==='string'
-    && doc.img2.length>32
-    && /^data:image\/(png|jpe?g|webp|gif|bmp);base64,/i.test(doc.img2);
-  if(_wrap2)_wrap2.style.display=_img2Valid?'':'none';
-  if(_img2Valid){
-    showImg('o-cimg2','o-cph2',doc.img2);
-  }else if(doc.img2){
-    // Valoare truthy dar invalidă — log pentru investigare
-    console.warn('[v3.9.498] populateOrd: doc.img2 invalid (preview):',
-      typeof doc.img2, String(doc.img2).slice(0,80));
+  try{
+    const capR2=await fetch(`/api/formulare-capturi/ord/${doc.id||ST.docId.ordnt}?slot=2`,{credentials:'include'});
+    if(capR2.ok&&capR2.headers.get('content-type')?.startsWith('image')){
+      const blob=await capR2.blob();
+      const reader=new FileReader();
+      reader.onload=e=>{
+        if(_wrap2)_wrap2.style.display='';
+        showImg('o-cimg2','o-cph2',e.target.result);
+      };
+      reader.readAsDataURL(blob);
+    } else {
+      // Fallback la doc.img2 (defensive v3.9.498)
+      const _img2Valid=typeof doc.img2==='string'
+        && doc.img2.length>32
+        && /^data:image\/(png|jpe?g|webp|gif|bmp);base64,/i.test(doc.img2);
+      if(_wrap2)_wrap2.style.display=_img2Valid?'':'none';
+      if(_img2Valid){
+        showImg('o-cimg2','o-cph2',doc.img2);
+      }else if(doc.img2){
+        console.warn('[v3.9.499] populateOrd: doc.img2 invalid + no slot=2 (preview):',
+          typeof doc.img2, String(doc.img2).slice(0,80));
+      }
+    }
+  }catch(e){
+    console.warn('[v3.9.499] populateOrd: captura slot=2 fetch error', e);
+    if(_wrap2)_wrap2.style.display='none';
   }
   upTot();
   // Ciclu 2+: prefill plati_anterioare
@@ -683,9 +698,11 @@ async function saveDoc(ft){
     }
     if(!r.ok||!j.ok){setS(j.error||'Eroare la salvare','err');return;}
 
-    // Upload captură dacă există
-    const iid=ft==='ordnt'?'o-cimg':'n-cimg';
-    if(imgs[iid]&&ST.docId[ft])await uploadCaptura(ft);
+    // v3.9.499: upload ambele sloturi (slot 1 pentru DF/ORD, slot 2 doar ORD)
+    if(ST.docId[ft]){
+      if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']) await uploadCaptura(ft, 1);
+      if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
+    }
 
     renderActions(ft);refreshDocs(ft);
     setS('Salvat cu succes.','ok');
@@ -693,19 +710,25 @@ async function saveDoc(ft){
 }
 
 // ── Upload captură ────────────────────────────────────────────────────────────
-async function uploadCaptura(ft){
-  const iid=ft==='ordnt'?'o-cimg':'n-cimg';
+// v3.9.499: uploadCaptura acceptă slot. Slot 1 = captura principală (DF + ORD),
+// slot 2 = captura 2 ORD ("Informații complete contract"). Datele se persistă în
+// formulare_capturi via endpoint dedicat (BYTEA), eliminând asimetria veche unde
+// captura 2 era inline base64 în coloana formulare_ord.img2.
+async function uploadCaptura(ft, slot){
+  const _slot=slot===2?2:1;
+  // Slot 2 e doar pentru ord. Slot 1 e default pentru ambele.
+  if(_slot===2&&ft!=='ordnt')return;
+  const iid=_slot===2?'o-cimg2':(ft==='ordnt'?'o-cimg':'n-cimg');
   const dataUrl=imgs[iid];if(!dataUrl||!ST.docId[ft])return;
   try{
-    // dataUrl = 'data:image/png;base64,...'
     const[header,b64]=dataUrl.split(',');
     const mime=header.match(/:(.*?);/)?.[1]||'image/png';
     const bin=atob(b64);const arr=new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
     const blob=new Blob([arr],{type:mime});
-    await fetch(`/api/formulare-capturi/${ftType(ft)}/${ST.docId[ft]}`,{
+    await fetch(`/api/formulare-capturi/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`,{
       method:'POST',credentials:'include',
-      headers:{'Content-Type':mime,'X-CSRF-Token':df.getCsrf(),'X-Filename':`captura_${ft}.png`},
+      headers:{'Content-Type':mime,'X-CSRF-Token':df.getCsrf(),'X-Filename':`captura_${ft}_${_slot}.png`},
       body:blob,
     });
   }catch(_){}
@@ -981,8 +1004,10 @@ async function completeAsP2(ft){
   if(!validateSecB(ft))return;
   if(!ST.docId[ft])return;
   const body=ft==='ordnt'?{rows:getOR()}:collectDfP2Db();
-  // Upload captură
-  await uploadCaptura(ft);
+  // v3.9.499: upload ambele sloturi când P2 finalizează (root cause R-A fix —
+  // înainte, captura 2 era pierdută pentru că completeAsP2 trimitea doar slot 1)
+  await uploadCaptura(ft, 1);
+  if(ft==='ordnt') await uploadCaptura(ft, 2);
   try{
     setS('Se finalizează...','info');
     const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/complete`,{

@@ -14,7 +14,7 @@ const REPO = path.resolve(__dirname, '../../..');
 describe('populateOrd: defensive img2 validation', () => {
   it('verifică prefix "data:image/" înainte de showImg', () => {
     const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
-    expect(src).toMatch(/v3\.9\.498.*Issue R-A/);
+    expect(src).toMatch(/v3\.9\.49[89].*(?:Issue R-A|captura 2 fetch)/);
     // Validarea trebuie să folosească regex pe prefixul data URL
     expect(src).toMatch(/data:image\\\/\(png\|jpe\?g\|webp\|gif\|bmp\)/);
     // _img2Valid trebuie să fie folosit ca guard pentru showImg
@@ -24,6 +24,6 @@ describe('populateOrd: defensive img2 validation', () => {
 
   it('când invalid, loghează warning cu preview', () => {
     const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
-    expect(src).toMatch(/console\.warn\([^)]*v3\.9\.498[^)]*img2/);
+    expect(src).toMatch(/console\.warn\([^)]*v3\.9\.49[89][^)]*img2/);
   });
 });

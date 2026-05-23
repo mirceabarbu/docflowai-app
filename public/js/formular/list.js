@@ -55,8 +55,11 @@ async function _autoSaveDb(ft){
       }
       return;
     }
-    const iid=ft==='ordnt'?'o-cimg':'n-cimg';
-    if(imgs[iid]&&ST.docId[ft])await uploadCaptura(ft);
+    // v3.9.499: auto-save uploadează ambele sloturi (slot 2 doar pentru ord)
+    if(ST.docId[ft]){
+      if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']) await uploadCaptura(ft, 1);
+      if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
+    }
     _draftShowBadge(ft,'💾 '+new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}));
   }catch(_){_draftShowBadge(ft,'⚠');}
 }

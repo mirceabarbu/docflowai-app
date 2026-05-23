@@ -59,13 +59,14 @@ const DF_P2_FIELDS = [
   'ckbx_interzis_emit_ang','ckbx_interzis_intrucat','intrucat','rows_ctrl',
 ];
 
-/** Câmpuri ORD P1 */
+// v3.9.499: img2 ELIMINAT — captura 2 migrată la formulare_capturi(slot=2)
+// via endpoint dedicat /api/formulare-capturi/ord/:id?slot=2. Coloana img2
+// rămâne în DB pentru fallback citire ord-uri vechi (vezi populateOrd).
 const ORD_P1_FIELDS = [
   'cif','den_inst_pb','nr_ordonant_pl','data_ordont_pl',
   'nr_unic_inreg','beneficiar','documente_justificative',
   'iban_beneficiar','cif_beneficiar','banca_beneficiar',
   'inf_pv_plata','inf_pv_plata1','rows','compartiment_specialitate',
-  'img2',
 ];
 
 /** Câmpuri ORD P2 (actualizare rânduri cu receptii/plati/receptii_neplatite) */
@@ -1162,18 +1163,21 @@ router.post('/api/formulare-capturi/:type/:id', _csrf, async (req, res) => {
     const mimetype = req.headers['content-type'] || 'image/png';
     const filename = req.headers['x-filename'] || `captura_${Date.now()}.png`;
 
-    // Ștergem captura anterioară dacă există
+    // v3.9.499: ștergem doar captura din același slot (default 1 backward compat)
+    const slotRaw = parseInt(req.query.slot || '1', 10);
+    const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
     await pool.query(
-      'DELETE FROM formulare_capturi WHERE form_type=$1 AND form_id=$2', [type, id]
+      'DELETE FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3',
+      [type, id, slot]
     );
 
     const { rows: inserted } = await pool.query(`
-      INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, filename, mimetype, size_bytes, created_at
-    `, [type, id, actor.userId, filename, mimetype, data.length, data]);
+      INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data, slot)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, filename, mimetype, size_bytes, slot, created_at
+    `, [type, id, actor.userId, filename, mimetype, data.length, data, slot]);
 
-    logger.info({ type, id, size: data.length, actor: actor.email }, 'formulare-captura upload');
+    logger.info({ type, id, slot, size: data.length, actor: actor.email }, 'formulare-captura upload');
     res.json({ ok: true, captura: inserted[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-captura upload error');
@@ -1200,11 +1204,14 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
       || actor.role === 'admin' || actor.role === 'org_admin';
     if (!canView) return res.status(403).json({ error: 'forbidden' });
 
+    // v3.9.499: filtrare pe slot (default 1 backward compat pentru DF + clienti vechi)
+    const slotRaw = parseInt(req.query.slot || '1', 10);
+    const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
     const { rows } = await pool.query(
-      'SELECT filename, mimetype, data FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 ORDER BY created_at DESC LIMIT 1',
-      [type, id]
+      'SELECT filename, mimetype, data FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3 ORDER BY created_at DESC LIMIT 1',
+      [type, id, slot]
     );
-    if (!rows.length) return res.status(404).json({ error: 'no_captura' });
+    if (!rows.length) return res.status(404).json({ error: 'no_captura', slot });
     const { filename, mimetype, data } = rows[0];
     res.setHeader('Content-Type', mimetype || 'image/png');
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
