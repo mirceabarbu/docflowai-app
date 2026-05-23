@@ -74,36 +74,35 @@ async function populateOrd(doc){
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
   (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});});
-  // v3.9.499: captura 2 fetch via formulare_capturi(slot=2) — sursa primară.
-  // Fallback la doc.img2 (defensive validation v3.9.498) pentru ord-uri vechi
-  // care încă au valoarea inline în formulare_ord.img2 (pre-migrare 079 backfill).
+  // v3.9.500 (Issue I-2): wrap-ul captura 2 e VIZIBIL mereu, ca P2 să poată
+  // încărca chiar și când DB nu are nimic în slot=2 yet. IMG-ul intern
+  // (o-cimg2) afișează data doar când există; placeholder (o-cph2) altfel.
+  // Fetch slot=2 din formulare_capturi (v3.9.499) cu fallback la doc.img2.
   const _wrap2=document.getElementById('o-captura2-wrap');
+  if(_wrap2)_wrap2.style.display='';  // mereu vizibil
+  clrImg('o-cimg2','o-cph2');  // resetare default (placeholder vizibil)
   try{
     const capR2=await fetch(`/api/formulare-capturi/ord/${doc.id||ST.docId.ordnt}?slot=2`,{credentials:'include'});
     if(capR2.ok&&capR2.headers.get('content-type')?.startsWith('image')){
       const blob=await capR2.blob();
       const reader=new FileReader();
-      reader.onload=e=>{
-        if(_wrap2)_wrap2.style.display='';
-        showImg('o-cimg2','o-cph2',e.target.result);
-      };
+      reader.onload=e=>showImg('o-cimg2','o-cph2',e.target.result);
       reader.readAsDataURL(blob);
     } else {
-      // Fallback la doc.img2 (defensive v3.9.498)
+      // Fallback la doc.img2 (defensive v3.9.498) pentru ord-uri pre-backfill 079
       const _img2Valid=typeof doc.img2==='string'
         && doc.img2.length>32
         && /^data:image\/(png|jpe?g|webp|gif|bmp);base64,/i.test(doc.img2);
-      if(_wrap2)_wrap2.style.display=_img2Valid?'':'none';
       if(_img2Valid){
         showImg('o-cimg2','o-cph2',doc.img2);
       }else if(doc.img2){
-        console.warn('[v3.9.499] populateOrd: doc.img2 invalid + no slot=2 (preview):',
+        console.warn('[v3.9.500] populateOrd: doc.img2 invalid + no slot=2 (preview):',
           typeof doc.img2, String(doc.img2).slice(0,80));
       }
     }
   }catch(e){
-    console.warn('[v3.9.499] populateOrd: captura slot=2 fetch error', e);
-    if(_wrap2)_wrap2.style.display='none';
+    console.warn('[v3.9.500] populateOrd: captura slot=2 fetch error', e);
+    // NU ascunde wrap-ul pe eroare — vrem ca P2 să poată retry upload
   }
   upTot();
   // Ciclu 2+: prefill plati_anterioare
@@ -180,7 +179,9 @@ function setModeP2Ord(){
   lockAll('ordnt',true);
   // Deblochez receptii + plati_anterioare în tabel
   document.querySelectorAll('#o-tbody input[data-f="receptii"],#o-tbody input[data-f="plati_anterioare"]').forEach(e=>{e.disabled=false;});
+  // v3.9.500 (Issue I-2): pointer-events pe AMBELE zone de captură pentru P2
   const czone=document.getElementById('o-czone');if(czone)czone.style.pointerEvents='';
+  const czone2=document.getElementById('o-czone2');if(czone2)czone2.style.pointerEvents='';
 }
 
 // ── DF/ORD dark redesign — visual role state ──────────────────────────────────
@@ -517,6 +518,9 @@ async function openDoc(ft,id){
       }
     }catch(_){}
 
+    // v3.9.500: încarcă lista de atașamente server-side (înlocuiește o-adata local)
+    if(ft==='ordnt') await fetchAttachments(ft);
+
     // Ascunde motiv bar implicit; se afișează doar pentru 'returnat'
     const _mb=document.getElementById('motiv-bar-'+ft);
     if(_mb)_mb.style.display='none';
@@ -650,6 +654,26 @@ function newDoc(ft){
     document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';
     const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
     const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
+    // v3.9.500 (Issue I-1): prefill plati_anterioare la creare ord nou pe ciclu 2+
+    // Înainte: prefill rula doar în loadDoc (existing ord) → P1 vedea 0,00, P2 vedea valoarea
+    const _ctx=window._alopContext;
+    const _alopId=_ctx?.alopId||new URLSearchParams(location.search).get('alop_id');
+    if(_alopId){
+      fetch(`/api/alop/${encodeURIComponent(_alopId)}`,{credentials:'include'})
+        .then(r=>r.ok?r.json():null).catch(()=>null)
+        .then(_ra=>{
+          if(!_ra?.alop)return;
+          const _totalAnt=(_ra.alop.cicluri_istorice||[])
+            .reduce((s,c)=>s+parseFloat(c.plata_suma_efectiva||0),0);
+          if(_totalAnt>0){
+            const _firstRow=document.querySelector('#o-tbody input[data-f="plati_anterioare"]');
+            if(_firstRow&&(parseFloat(_firstRow.value)||0)===0){
+              _firstRow.value=fMR(_totalAnt);
+              calcORRow(_firstRow);
+            }
+          }
+        });
+    }
   }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   ST[ft]={pdf:null,name:null};upTot();clrS();renderActions(ft);
@@ -703,6 +727,8 @@ async function saveDoc(ft){
       if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']) await uploadCaptura(ft, 1);
       if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
     }
+    // v3.9.500: upload atașamente pending (cele fără id)
+    if(ft==='ordnt' && ST.docId[ft]) await uploadAttachments(ft);
 
     renderActions(ft);refreshDocs(ft);
     setS('Salvat cu succes.','ok');
@@ -732,6 +758,111 @@ async function uploadCaptura(ft, slot){
       body:blob,
     });
   }catch(_){}
+}
+
+// ── Atașamente (Compartiment specialitate) v3.9.500 ───────────────────────────
+async function uploadAttachments(ft){
+  if(ft!=='ordnt')return;
+  if(!ST.docId[ft])return;
+  const did=ft==='ordnt'?'o-adata':'n-adata';
+  const lid=ft==='ordnt'?'o-alist':'n-alist';
+  let cur;try{cur=JSON.parse(document.getElementById(did).value||'[]');}catch(_){return;}
+  if(!Array.isArray(cur))return;
+  let changed=false;
+  for(let i=0;i<cur.length;i++){
+    const item=cur[i];
+    if(item?.id||!item?.data)continue;
+    try{
+      const[header,b64]=String(item.data).split(',');
+      if(!b64)continue;
+      const mime=header.match(/:(.*?);/)?.[1]||item.type||'application/octet-stream';
+      const bin=atob(b64);const arr=new Uint8Array(bin.length);
+      for(let j=0;j<bin.length;j++)arr[j]=bin.charCodeAt(j);
+      const blob=new Blob([arr],{type:mime});
+      const r=await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}`,{
+        method:'POST',credentials:'include',
+        headers:{
+          'Content-Type':mime,
+          'X-CSRF-Token':df.getCsrf(),
+          'X-Filename':item.name||'atasament',
+        },
+        body:blob,
+      });
+      const j=await r.json().catch(()=>null);
+      if(r.ok&&j?.atasament){
+        cur[i]={id:j.atasament.id,filename:j.atasament.filename,mime_type:j.atasament.mime_type,size_bytes:j.atasament.size_bytes};
+        changed=true;
+      }
+    }catch(e){console.warn('[v3.9.500] uploadAttachments error',item?.name,e);}
+  }
+  if(changed){
+    document.getElementById(did).value=JSON.stringify(cur);
+    renderAttachments(ft);
+  }
+}
+
+async function fetchAttachments(ft){
+  if(ft!=='ordnt')return;
+  if(!ST.docId[ft])return;
+  const did=ft==='ordnt'?'o-adata':'n-adata';
+  try{
+    const r=await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}`,{credentials:'include'});
+    if(!r.ok)return;
+    const j=await r.json();
+    if(!j.ok||!Array.isArray(j.atasamente))return;
+    const list=j.atasamente.map(a=>({
+      id:a.id,filename:a.filename,mime_type:a.mime_type,size_bytes:a.size_bytes
+    }));
+    document.getElementById(did).value=JSON.stringify(list);
+    renderAttachments(ft);
+  }catch(e){console.warn('[v3.9.500] fetchAttachments error',e);}
+}
+
+function renderAttachments(ft){
+  if(ft!=='ordnt')return;
+  const did=ft==='ordnt'?'o-adata':'n-adata';
+  const lid=ft==='ordnt'?'o-alist':'n-alist';
+  const list=document.getElementById(lid);if(!list)return;
+  list.innerHTML='';
+  let cur;try{cur=JSON.parse(document.getElementById(did).value||'[]');}catch(_){return;}
+  if(!Array.isArray(cur))return;
+  const docId=ST.docId[ft];
+  cur.forEach((item,idx)=>{
+    const chip=document.createElement('span');
+    chip.className='att-chip';
+    const name=item.filename||item.name||'fișier';
+    const safe=String(name).replace(/[<>"]/g,'');
+    if(item.id&&docId){
+      const url=`/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
+      chip.innerHTML=`📎 <a href="${url}" target="_blank" style="color:inherit">${safe}</a> <button onclick="remAttServer(${idx},'${lid}','${did}','${item.id}',this)">✕</button>`;
+    } else {
+      chip.innerHTML=`📎 ${safe} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
+    }
+    list.appendChild(chip);
+  });
+}
+
+async function remAttServer(idx,lid,did,attId,btn){
+  const ft=lid.startsWith('o-')?'ordnt':'notafd';
+  if(!ST.docId[ft]){
+    if(typeof window.remAtt==='function')return window.remAtt(idx,lid,did,btn);
+    return;
+  }
+  try{
+    const r=await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}/${encodeURIComponent(attId)}`,{
+      method:'DELETE',credentials:'include',
+      headers:{'X-CSRF-Token':df.getCsrf()},
+    });
+    if(!r.ok){
+      const j=await r.json().catch(()=>null);
+      alert(j?.error==='document_locked'?'Document complet — atașamentul nu poate fi șters.':'Eroare la ștergere.');
+      return;
+    }
+    let cur;try{cur=JSON.parse(document.getElementById(did).value||'[]');}catch(_){cur=[];}
+    cur.splice(idx,1);
+    document.getElementById(did).value=JSON.stringify(cur);
+    renderAttachments(ft);
+  }catch(e){alert('Eroare rețea: '+e.message);}
 }
 
 // ── Validare câmpuri obligatorii înainte de P2 ───────────────────────────────
@@ -1008,6 +1139,8 @@ async function completeAsP2(ft){
   // înainte, captura 2 era pierdută pentru că completeAsP2 trimitea doar slot 1)
   await uploadCaptura(ft, 1);
   if(ft==='ordnt') await uploadCaptura(ft, 2);
+  // v3.9.500: upload atașamente pending înainte de complete
+  if(ft==='ordnt') await uploadAttachments(ft);
   try{
     setS('Se finalizează...','info');
     const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/complete`,{
@@ -1171,6 +1304,10 @@ function resetF(ft){
   window.newDoc                     = newDoc;
   window.saveDoc                    = saveDoc;
   window.uploadCaptura              = uploadCaptura;
+  window.uploadAttachments          = uploadAttachments;
+  window.fetchAttachments           = fetchAttachments;
+  window.renderAttachments          = renderAttachments;
+  window.remAttServer               = remAttServer;
 
   // Validation
   window._validateDf                = _validateDf;

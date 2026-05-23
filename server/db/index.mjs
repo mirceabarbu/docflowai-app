@@ -1724,6 +1724,31 @@ const MIGRATIONS = [
       -- Marchează img2 ca deprecated în comentariu (col rămâne pentru fallback citire)
       COMMENT ON COLUMN formulare_ord.img2 IS 'DEPRECATED v3.9.499 — datele migrate la formulare_capturi(slot=2). Coloană păstrată pentru fallback citire ord-uri vechi.';
     `
+  },
+  {
+    id: '080_formulare_atasamente',
+    sql: `
+      -- v3.9.500: atașamente pentru DF/ORD (Compartiment specialitate → "Atașează fișiere").
+      -- Înainte: atașamentele trăiau doar în memoria clientului (o-adata JSON) și se foloseau
+      -- exclusiv pentru generarea PDF-ului. Nu erau persistate în DB → pierdute la reload sau
+      -- viewer diferit. Pattern simetric cu formulare_capturi (BYTEA + endpoint dedicat).
+      CREATE TABLE IF NOT EXISTS formulare_atasamente (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        form_type   TEXT        NOT NULL CHECK (form_type IN ('df','ord')),
+        form_id     UUID        NOT NULL,
+        uploaded_by INTEGER     NOT NULL REFERENCES users(id),
+        filename    TEXT        NOT NULL,
+        mime_type   TEXT        NOT NULL DEFAULT 'application/octet-stream',
+        size_bytes  INTEGER     NOT NULL DEFAULT 0,
+        data        BYTEA       NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at  TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_formulare_atasamente_form
+        ON formulare_atasamente(form_type, form_id) WHERE deleted_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_atasamente_uploader
+        ON formulare_atasamente(uploaded_by);
+    `
   }
 ];
 

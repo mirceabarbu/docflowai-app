@@ -1223,6 +1223,165 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// v3.9.500: ATAȘAMENTE (DF și ORD) — pattern simetric cu formulare_capturi
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /api/formulare-atasamente/:type/:id — upload atașament (max 10MB)
+router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { type, id } = req.params;
+  if (!['df', 'ord'].includes(type)) return res.status(400).json({ error: 'type_invalid' });
+
+  const table = type === 'df' ? 'formulare_df' : 'formulare_ord';
+
+  try {
+    const { rows: existing } = await pool.query(
+      `SELECT created_by, assigned_to, status FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      [id, actor.orgId]
+    );
+    if (!existing.length) return res.status(404).json({ error: 'not_found' });
+    const doc = existing[0];
+    const canUpload = doc.created_by === actor.userId
+      || doc.assigned_to === actor.userId
+      || actor.role === 'admin' || actor.role === 'org_admin';
+    if (!canUpload) return res.status(403).json({ error: 'forbidden' });
+
+    const chunks = [];
+    req.on('data', c => chunks.push(c));
+    await new Promise((resolve, reject) => {
+      req.on('end', resolve);
+      req.on('error', reject);
+    });
+    const data = Buffer.concat(chunks);
+    if (data.length === 0) return res.status(400).json({ error: 'fisier_gol' });
+    if (data.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'fisier_prea_mare' });
+
+    const mime_type = req.headers['content-type'] || 'application/octet-stream';
+    const filename = req.headers['x-filename'] || `atasament_${Date.now()}`;
+
+    const { rows: inserted } = await pool.query(`
+      INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, filename, mime_type, size_bytes, created_at
+    `, [type, id, actor.userId, filename, mime_type, data.length, data]);
+
+    logger.info({ type, id, attId: inserted[0].id, size: data.length, actor: actor.email }, 'formulare-atasament upload');
+    res.json({ ok: true, atasament: inserted[0] });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-atasament upload error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// GET /api/formulare-atasamente/:type/:id — listă atașamente (fără data)
+router.get('/api/formulare-atasamente/:type/:id', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { type, id } = req.params;
+  if (!['df', 'ord'].includes(type)) return res.status(400).json({ error: 'type_invalid' });
+
+  try {
+    const table = type === 'df' ? 'formulare_df' : 'formulare_ord';
+    const { rows: docRows } = await pool.query(
+      `SELECT created_by, assigned_to FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      [id, actor.orgId]
+    );
+    if (!docRows.length) return res.status(404).json({ error: 'not_found' });
+    const doc = docRows[0];
+    const canView = doc.created_by === actor.userId
+      || doc.assigned_to === actor.userId
+      || actor.role === 'admin' || actor.role === 'org_admin';
+    if (!canView) return res.status(403).json({ error: 'forbidden' });
+
+    const { rows } = await pool.query(
+      `SELECT id, filename, mime_type, size_bytes, uploaded_by, created_at
+       FROM formulare_atasamente
+       WHERE form_type=$1 AND form_id=$2 AND deleted_at IS NULL
+       ORDER BY created_at ASC`,
+      [type, id]
+    );
+    res.json({ ok: true, atasamente: rows });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-atasamente list error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// GET /api/formulare-atasamente/:type/:id/:attId — descărcare atașament
+router.get('/api/formulare-atasamente/:type/:id/:attId', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { type, id, attId } = req.params;
+  if (!['df', 'ord'].includes(type)) return res.status(400).json({ error: 'type_invalid' });
+
+  try {
+    const table = type === 'df' ? 'formulare_df' : 'formulare_ord';
+    const { rows: docRows } = await pool.query(
+      `SELECT created_by, assigned_to FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      [id, actor.orgId]
+    );
+    if (!docRows.length) return res.status(404).json({ error: 'not_found' });
+    const doc = docRows[0];
+    const canView = doc.created_by === actor.userId
+      || doc.assigned_to === actor.userId
+      || actor.role === 'admin' || actor.role === 'org_admin';
+    if (!canView) return res.status(403).json({ error: 'forbidden' });
+
+    const { rows } = await pool.query(
+      `SELECT filename, mime_type, data FROM formulare_atasamente
+       WHERE id=$1 AND form_type=$2 AND form_id=$3 AND deleted_at IS NULL`,
+      [attId, type, id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const att = rows[0];
+    res.setHeader('Content-Type', att.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(att.filename)}"`);
+    res.send(att.data);
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-atasament get error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// DELETE /api/formulare-atasamente/:type/:id/:attId — ștergere soft
+router.delete('/api/formulare-atasamente/:type/:id/:attId', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const { type, id, attId } = req.params;
+  if (!['df', 'ord'].includes(type)) return res.status(400).json({ error: 'type_invalid' });
+
+  try {
+    const table = type === 'df' ? 'formulare_df' : 'formulare_ord';
+    const { rows: docRows } = await pool.query(
+      `SELECT created_by, assigned_to, status FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      [id, actor.orgId]
+    );
+    if (!docRows.length) return res.status(404).json({ error: 'not_found' });
+    const doc = docRows[0];
+    const canDelete = doc.created_by === actor.userId
+      || doc.assigned_to === actor.userId
+      || actor.role === 'admin' || actor.role === 'org_admin';
+    if (!canDelete) return res.status(403).json({ error: 'forbidden' });
+    if (['completed','aprobat'].includes(doc.status) && !['admin','org_admin'].includes(actor.role)) {
+      return res.status(409).json({ error: 'document_locked', status: doc.status });
+    }
+
+    const { rowCount } = await pool.query(
+      `UPDATE formulare_atasamente SET deleted_at=NOW()
+       WHERE id=$1 AND form_type=$2 AND form_id=$3 AND deleted_at IS NULL`,
+      [attId, type, id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'not_found' });
+    logger.info({ type, id, attId, actor: actor.email }, 'formulare-atasament soft delete');
+    res.json({ ok: true });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-atasament delete error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UTILIZATORI DIN ORG (pentru selectorul P2)
 // ─────────────────────────────────────────────────────────────────────────────
 
