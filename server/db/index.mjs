@@ -1750,6 +1750,18 @@ const MIGRATIONS = [
         ON formulare_atasamente(uploaded_by);
     `
   }
+  ,{
+    id: '081_formulare_atasamente_slot',
+    sql: `
+      -- v3.9.501: slot column pentru multiple seturi atașamente per formular
+      ALTER TABLE formulare_atasamente
+        ADD COLUMN IF NOT EXISTS slot SMALLINT NOT NULL DEFAULT 1;
+
+      DROP INDEX IF EXISTS idx_formulare_atasamente_form;
+      CREATE INDEX IF NOT EXISTS idx_formulare_atasamente_form
+        ON formulare_atasamente(form_type, form_id, slot) WHERE deleted_at IS NULL;
+    `
+  }
 ];
 
 async function runMigrations(client) {

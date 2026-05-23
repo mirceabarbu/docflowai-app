@@ -60,8 +60,11 @@ async function _autoSaveDb(ft){
       if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']) await uploadCaptura(ft, 1);
       if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
     }
-    // v3.9.500: auto-save uploadează atașamente pending
-    if(ft==='ordnt' && ST.docId[ft]) await uploadAttachments(ft);
+    // v3.9.501: auto-save uploadează atașamente pending pentru ambele sloturi
+    if(ST.docId[ft]){
+      await uploadAttachments(ft, 1);
+      if(ft==='notafd') await uploadAttachments(ft, 2);
+    }
     _draftShowBadge(ft,'💾 '+new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}));
   }catch(_){_draftShowBadge(ft,'⚠');}
 }

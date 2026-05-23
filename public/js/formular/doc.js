@@ -518,8 +518,9 @@ async function openDoc(ft,id){
       }
     }catch(_){}
 
-    // v3.9.500: încarcă lista de atașamente server-side (înlocuiește o-adata local)
-    if(ft==='ordnt') await fetchAttachments(ft);
+    // v3.9.501: încarcă lista de atașamente server-side pentru ambele sloturi
+    await fetchAttachments(ft, 1);
+    if(ft==='notafd') await fetchAttachments(ft, 2);
 
     // Ascunde motiv bar implicit; se afișează doar pentru 'returnat'
     const _mb=document.getElementById('motiv-bar-'+ft);
@@ -727,8 +728,11 @@ async function saveDoc(ft){
       if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']) await uploadCaptura(ft, 1);
       if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
     }
-    // v3.9.500: upload atașamente pending (cele fără id)
-    if(ft==='ordnt' && ST.docId[ft]) await uploadAttachments(ft);
+    // v3.9.501: upload atașamente pending pentru ambele sloturi (ORD slot 1, DF slot 1+2)
+    if(ST.docId[ft]){
+      await uploadAttachments(ft, 1);
+      if(ft==='notafd') await uploadAttachments(ft, 2);
+    }
 
     renderActions(ft);refreshDocs(ft);
     setS('Salvat cu succes.','ok');
@@ -760,83 +764,92 @@ async function uploadCaptura(ft, slot){
   }catch(_){}
 }
 
-// ── Atașamente (Compartiment specialitate) v3.9.500 ───────────────────────────
-async function uploadAttachments(ft){
-  if(ft!=='ordnt')return;
-  if(!ST.docId[ft])return;
-  const did=ft==='ordnt'?'o-adata':'n-adata';
-  const lid=ft==='ordnt'?'o-alist':'n-alist';
-  let cur;try{cur=JSON.parse(document.getElementById(did).value||'[]');}catch(_){return;}
-  if(!Array.isArray(cur))return;
-  let changed=false;
-  for(let i=0;i<cur.length;i++){
-    const item=cur[i];
-    if(item?.id||!item?.data)continue;
-    try{
-      const[header,b64]=String(item.data).split(',');
-      if(!b64)continue;
-      const mime=header.match(/:(.*?);/)?.[1]||item.type||'application/octet-stream';
-      const bin=atob(b64);const arr=new Uint8Array(bin.length);
-      for(let j=0;j<bin.length;j++)arr[j]=bin.charCodeAt(j);
-      const blob=new Blob([arr],{type:mime});
-      const r=await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}`,{
-        method:'POST',credentials:'include',
-        headers:{
-          'Content-Type':mime,
-          'X-CSRF-Token':df.getCsrf(),
-          'X-Filename':item.name||'atasament',
+// ── Atașamente (Compartiment specialitate + secțiunea B) ──────────────────────
+// v3.9.501: extins cu slot pentru DF (n-fdad slot=1, n-adata slot=2)
+function _attIds(ft, slot) {
+  const s = slot === 2 ? 2 : 1;
+  if (ft === 'ordnt') return s === 1 ? { did:'o-adata', lid:'o-alist' } : null;
+  if (ft === 'notafd') return s === 1 ? { did:'n-fdad',  lid:'n-fdal' }
+                                       : { did:'n-adata', lid:'n-alist' };
+  return null;
+}
+
+async function uploadAttachments(ft, slot = 1){
+  const ids = _attIds(ft, slot); if (!ids) return;
+  if (!ST.docId[ft]) return;
+  const { did, lid } = ids;
+  const _slot = slot === 2 ? 2 : 1;
+  let cur; try { cur = JSON.parse(document.getElementById(did)?.value || '[]'); } catch (_) { return; }
+  if (!Array.isArray(cur)) return;
+  let changed = false;
+  for (let i = 0; i < cur.length; i++) {
+    const item = cur[i];
+    if (item?.id || !item?.data) continue;
+    try {
+      const [header, b64] = String(item.data).split(',');
+      if (!b64) continue;
+      const mime = header.match(/:(.*?);/)?.[1] || item.type || 'application/octet-stream';
+      const bin = atob(b64); const arr = new Uint8Array(bin.length);
+      for (let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
+      const blob = new Blob([arr], { type: mime });
+      const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`, {
+        method: 'POST', credentials: 'include',
+        headers: {
+          'Content-Type': mime,
+          'X-CSRF-Token': df.getCsrf(),
+          'X-Filename': item.name || 'atasament',
         },
-        body:blob,
+        body: blob,
       });
-      const j=await r.json().catch(()=>null);
-      if(r.ok&&j?.atasament){
-        cur[i]={id:j.atasament.id,filename:j.atasament.filename,mime_type:j.atasament.mime_type,size_bytes:j.atasament.size_bytes};
-        changed=true;
+      const j = await r.json().catch(() => null);
+      if (r.ok && j?.atasament) {
+        cur[i] = { id: j.atasament.id, filename: j.atasament.filename, mime_type: j.atasament.mime_type, size_bytes: j.atasament.size_bytes };
+        changed = true;
       }
-    }catch(e){console.warn('[v3.9.500] uploadAttachments error',item?.name,e);}
+    } catch (e) { console.warn('[v3.9.501] uploadAttachments error', item?.name, e); }
   }
-  if(changed){
-    document.getElementById(did).value=JSON.stringify(cur);
-    renderAttachments(ft);
+  if (changed) {
+    document.getElementById(did).value = JSON.stringify(cur);
+    renderAttachments(ft, _slot);
   }
 }
 
-async function fetchAttachments(ft){
-  if(ft!=='ordnt')return;
-  if(!ST.docId[ft])return;
-  const did=ft==='ordnt'?'o-adata':'n-adata';
-  try{
-    const r=await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}`,{credentials:'include'});
-    if(!r.ok)return;
-    const j=await r.json();
-    if(!j.ok||!Array.isArray(j.atasamente))return;
-    const list=j.atasamente.map(a=>({
-      id:a.id,filename:a.filename,mime_type:a.mime_type,size_bytes:a.size_bytes
+async function fetchAttachments(ft, slot = 1){
+  const ids = _attIds(ft, slot); if (!ids) return;
+  if (!ST.docId[ft]) return;
+  const { did } = ids;
+  const _slot = slot === 2 ? 2 : 1;
+  try {
+    const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`, { credentials: 'include' });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (!j.ok || !Array.isArray(j.atasamente)) return;
+    const list = j.atasamente.map(a => ({
+      id: a.id, filename: a.filename, mime_type: a.mime_type, size_bytes: a.size_bytes
     }));
-    document.getElementById(did).value=JSON.stringify(list);
-    renderAttachments(ft);
-  }catch(e){console.warn('[v3.9.500] fetchAttachments error',e);}
+    document.getElementById(did).value = JSON.stringify(list);
+    renderAttachments(ft, _slot);
+  } catch (e) { console.warn('[v3.9.501] fetchAttachments error', e); }
 }
 
-function renderAttachments(ft){
-  if(ft!=='ordnt')return;
-  const did=ft==='ordnt'?'o-adata':'n-adata';
-  const lid=ft==='ordnt'?'o-alist':'n-alist';
-  const list=document.getElementById(lid);if(!list)return;
-  list.innerHTML='';
-  let cur;try{cur=JSON.parse(document.getElementById(did).value||'[]');}catch(_){return;}
-  if(!Array.isArray(cur))return;
-  const docId=ST.docId[ft];
-  cur.forEach((item,idx)=>{
-    const chip=document.createElement('span');
-    chip.className='att-chip';
-    const name=item.filename||item.name||'fișier';
-    const safe=String(name).replace(/[<>"]/g,'');
-    if(item.id&&docId){
-      const url=`/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
-      chip.innerHTML=`📎 <a href="${url}" target="_blank" style="color:inherit">${safe}</a> <button onclick="remAttServer(${idx},'${lid}','${did}','${item.id}',this)">✕</button>`;
+function renderAttachments(ft, slot = 1){
+  const ids = _attIds(ft, slot); if (!ids) return;
+  const { did, lid } = ids;
+  const list = document.getElementById(lid); if (!list) return;
+  list.innerHTML = '';
+  let cur; try { cur = JSON.parse(document.getElementById(did)?.value || '[]'); } catch (_) { return; }
+  if (!Array.isArray(cur)) return;
+  const docId = ST.docId[ft];
+  cur.forEach((item, idx) => {
+    const chip = document.createElement('span');
+    chip.className = 'att-chip';
+    const name = item.filename || item.name || 'fișier';
+    const safe = String(name).replace(/[<>"]/g, '');
+    if (item.id && docId) {
+      const url = `/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
+      chip.innerHTML = `📎 <a href="${url}" target="_blank" style="color:inherit">${safe}</a> <button onclick="remAttServer(${idx},'${lid}','${did}','${item.id}',this)">✕</button>`;
     } else {
-      chip.innerHTML=`📎 ${safe} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
+      chip.innerHTML = `📎 ${safe} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
     }
     list.appendChild(chip);
   });
@@ -1139,8 +1152,9 @@ async function completeAsP2(ft){
   // înainte, captura 2 era pierdută pentru că completeAsP2 trimitea doar slot 1)
   await uploadCaptura(ft, 1);
   if(ft==='ordnt') await uploadCaptura(ft, 2);
-  // v3.9.500: upload atașamente pending înainte de complete
-  if(ft==='ordnt') await uploadAttachments(ft);
+  // v3.9.501: upload atașamente pending (ambele sloturi pentru DF, slot 1 pentru ORD)
+  await uploadAttachments(ft, 1);
+  if(ft==='notafd') await uploadAttachments(ft, 2);
   try{
     setS('Se finalizează...','info');
     const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/complete`,{

@@ -1247,6 +1247,10 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
       || actor.role === 'admin' || actor.role === 'org_admin';
     if (!canUpload) return res.status(403).json({ error: 'forbidden' });
 
+    // v3.9.501: slot pentru a permite multiple seturi per formular (DF n-fdad vs n-adata)
+    const slotRaw = parseInt(req.query.slot || '1', 10);
+    const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+
     const chunks = [];
     req.on('data', c => chunks.push(c));
     await new Promise((resolve, reject) => {
@@ -1261,12 +1265,12 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     const filename = req.headers['x-filename'] || `atasament_${Date.now()}`;
 
     const { rows: inserted } = await pool.query(`
-      INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, filename, mime_type, size_bytes, created_at
-    `, [type, id, actor.userId, filename, mime_type, data.length, data]);
+      INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, filename, mime_type, size_bytes, slot, created_at
+    `, [type, id, actor.userId, filename, mime_type, data.length, data, slot]);
 
-    logger.info({ type, id, attId: inserted[0].id, size: data.length, actor: actor.email }, 'formulare-atasament upload');
+    logger.info({ type, id, slot, attId: inserted[0].id, size: data.length, actor: actor.email }, 'formulare-atasament upload');
     res.json({ ok: true, atasament: inserted[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-atasament upload error');
@@ -1294,12 +1298,16 @@ router.get('/api/formulare-atasamente/:type/:id', async (req, res) => {
       || actor.role === 'admin' || actor.role === 'org_admin';
     if (!canView) return res.status(403).json({ error: 'forbidden' });
 
+    // v3.9.501: filtrare per slot (default 1 backward compat)
+    const slotRaw = parseInt(req.query.slot || '1', 10);
+    const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+
     const { rows } = await pool.query(
-      `SELECT id, filename, mime_type, size_bytes, uploaded_by, created_at
+      `SELECT id, filename, mime_type, size_bytes, uploaded_by, slot, created_at
        FROM formulare_atasamente
-       WHERE form_type=$1 AND form_id=$2 AND deleted_at IS NULL
+       WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND deleted_at IS NULL
        ORDER BY created_at ASC`,
-      [type, id]
+      [type, id, slot]
     );
     res.json({ ok: true, atasamente: rows });
   } catch (e) {

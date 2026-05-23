@@ -46,9 +46,10 @@ describe('I-2: wrap captura 2 vizibil mereu + setModeP2Ord pe o-czone2', () => {
 describe('I-3: atașamente — funcții declarate și exportate', () => {
   it('uploadAttachments / fetchAttachments / renderAttachments / remAttServer declarate', () => {
     const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
-    expect(src).toMatch(/async function uploadAttachments\(ft\)/);
-    expect(src).toMatch(/async function fetchAttachments\(ft\)/);
-    expect(src).toMatch(/function renderAttachments\(ft\)/);
+    // v3.9.501: signature extinsă cu slot (ft, slot=1)
+    expect(src).toMatch(/async function uploadAttachments\(ft(?:,\s*slot\s*=\s*1)?\)/);
+    expect(src).toMatch(/async function fetchAttachments\(ft(?:,\s*slot\s*=\s*1)?\)/);
+    expect(src).toMatch(/function renderAttachments\(ft(?:,\s*slot\s*=\s*1)?\)/);
     expect(src).toMatch(/async function remAttServer/);
   });
 
@@ -63,14 +64,16 @@ describe('I-3: atașamente — funcții declarate și exportate', () => {
   it('uploadAttachments apelat în completeAsP2 + saveDoc + _autoSaveDb', () => {
     const docSrc  = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
     const listSrc = readFileSync(path.join(REPO, 'public/js/formular/list.js'), 'utf8');
-    const docCount = (docSrc.match(/await uploadAttachments\(ft\)/g) || []).length;
+    // v3.9.501: apeluri cu slot explicit (ft, 1) și (ft, 2)
+    const docCount = (docSrc.match(/await uploadAttachments\(ft(?:,\s*\d)?\)/g) || []).length;
     expect(docCount).toBeGreaterThanOrEqual(2);
-    expect(listSrc).toMatch(/await uploadAttachments\(ft\)/);
+    expect(listSrc).toMatch(/await uploadAttachments\(ft(?:,\s*\d)?\)/);
   });
 
   it('loadDoc apelează fetchAttachments după încărcare captură', () => {
     const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
-    expect(src).toMatch(/v3\.9\.500: încarcă lista de atașamente/);
-    expect(src).toMatch(/await fetchAttachments\(ft\)/);
+    // v3.9.501: comentariu actualizat + apel cu slot explicit
+    expect(src).toMatch(/v3\.9\.50[01]: încarcă lista de atașamente/);
+    expect(src).toMatch(/await fetchAttachments\(ft(?:,\s*\d)?\)/);
   });
 });
