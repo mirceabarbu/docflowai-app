@@ -73,9 +73,23 @@ function populateOrd(doc){
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
   (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});});
+  // v3.9.498 (Issue R-A): defensive validation img2 — broken icon apărea
+  // când doc.img2 era truthy dar nu un data URL valid (string corupt,
+  // "[object Object]", "null", base64 trunchiat). Validăm prefixul ÎNAINTE
+  // de showImg. Dacă invalid, ascundem wrap-ul (placeholder normal apare)
+  // și logăm pentru investigare root cause.
   const _wrap2=document.getElementById('o-captura2-wrap');
-  if(_wrap2)_wrap2.style.display=doc.img2?'':'none';
-  if(doc.img2)showImg('o-cimg2','o-cph2',doc.img2);
+  const _img2Valid=typeof doc.img2==='string'
+    && doc.img2.length>32
+    && /^data:image\/(png|jpe?g|webp|gif|bmp);base64,/i.test(doc.img2);
+  if(_wrap2)_wrap2.style.display=_img2Valid?'':'none';
+  if(_img2Valid){
+    showImg('o-cimg2','o-cph2',doc.img2);
+  }else if(doc.img2){
+    // Valoare truthy dar invalidă — log pentru investigare
+    console.warn('[v3.9.498] populateOrd: doc.img2 invalid (preview):',
+      typeof doc.img2, String(doc.img2).slice(0,80));
+  }
   upTot();
   // Ciclu 2+: prefill plati_anterioare
   const _sumaAnt=window._alopSumaPlataAnterioara||0;

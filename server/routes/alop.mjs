@@ -1107,6 +1107,25 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
+    // v3.9.498 (Issue R-B): block cancel dacă ALOP are DF emis (df_id setat
+    // și DF ne-șters). Refuze (R0) eliberează df_id=NULL → cancel redevine
+    // permis. Simetric cu logica refuse din v3.9.497.
+    const { rows: dfCheck } = await pool.query(`
+      SELECT a.df_id, fd.nr_unic_inreg, fd.status AS df_status
+      FROM alop_instances a
+      LEFT JOIN formulare_df fd ON fd.id = a.df_id AND fd.deleted_at IS NULL
+      WHERE a.id=$1 AND a.org_id=$2
+    `, [req.params.id, actor.orgId]);
+    if (dfCheck[0]?.df_id && dfCheck[0]?.df_status) {
+      return res.status(409).json({
+        error: 'cancel_blocked_df_exists',
+        message: `Nu se poate anula ALOP-ul: există un DF emis (${dfCheck[0].nr_unic_inreg || 'fără nr.'}, status: ${dfCheck[0].df_status}). Anulați sau refuzați DF-ul mai întâi.`,
+        df_id: dfCheck[0].df_id,
+        df_nr: dfCheck[0].nr_unic_inreg,
+        df_status: dfCheck[0].df_status,
+      });
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET status='cancelled', cancelled_at=NOW(), updated_at=NOW(), updated_by=$3
