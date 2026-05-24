@@ -449,12 +449,46 @@ function setLockedBar(ft,msg,type=''){
   el.textContent=msg;
 }
 
+// v3.9.505 (BUG CRITIC): resetare completă state la fetch fail în openDoc.
+// Înainte: dacă GET /api/formulare-{df|ord}/:id returna 403/404/500, early return
+// lăsa ST.doc*, locked-bar, renderActions, populate fields din openDoc-ul anterior.
+// Rezultat vizual: "Document aprobat" + butoane "Descarcă PDF / Revizuiește" pentru
+// un alt document, plus eroare 'forbidden' în sBar. Confuzie + percepție bug.
+function _resetDocStateOnError(ft){
+  ST.docId[ft]                = null;
+  ST.docStatus[ft]            = null;
+  ST.docRole[ft]              = 'view';
+  ST.docAprobat               = ST.docAprobat || {};         ST.docAprobat[ft]            = false;
+  ST.docFlowId                = ST.docFlowId || {};          ST.docFlowId[ft]             = null;
+  ST.docRevizieNr             = ST.docRevizieNr || {};       ST.docRevizieNr[ft]          = 0;
+  ST.docRevizieAnUrmator      = ST.docRevizieAnUrmator || {};  ST.docRevizieAnUrmator[ft] = false;
+  ST.docAreRevizieNoua        = ST.docAreRevizieNoua || {};  ST.docAreRevizieNoua[ft]     = false;
+  ST.docLatestRevizieNr       = ST.docLatestRevizieNr || {}; ST.docLatestRevizieNr[ft]    = 0;
+  // UI: locked-bar, motiv-bar, banner an următor — toate ascunse / golite
+  if (typeof setLockedBar === 'function') setLockedBar(ft, '');
+  const mb = document.getElementById('motiv-bar-' + ft);
+  if (mb) mb.style.display = 'none';
+  const ban = document.getElementById('banner-an-urmator-' + ft);
+  if (ban) ban.style.display = 'none';
+  // Butoanele de acțiune golite (renderActions cu docId=null nu mai afișează nimic relevant)
+  const div = document.getElementById('actions-' + ft);
+  if (div) div.innerHTML = '';
+  // Deselectează doc card din lista laterală
+  document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c => c.classList.remove('active'));
+}
+
 // ── Open document ─────────────────────────────────────────────────────────────
 async function openDoc(ft,id){
   try{
     const r=await fetch(`${ftApi(ft)}/${id}`,{credentials:'include'});
-    const j=await r.json();
-    if(!r.ok||!j.ok){setS(j.error||'Eroare la încărcare','err');return;}
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.ok){
+      // v3.9.505 (BUG CRITIC): resetare state înainte de return, altfel
+      // UI-ul rămâne în state-ul documentului anterior.
+      _resetDocStateOnError(ft);
+      setS(j.error||`Eroare la încărcare (HTTP ${r.status})`,'err');
+      return;
+    }
     const doc=j.document;
     ST.docId[ft]=doc.id;
     ST.docStatus[ft]=doc.status;
