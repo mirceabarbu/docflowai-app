@@ -6,7 +6,7 @@
  */
 
 import { Router } from 'express';
-import { generateCsrfToken } from '../middleware/csrf.mjs';
+import { generateCsrfToken, csrfMiddleware } from '../middleware/csrf.mjs';
 import jwt from 'jsonwebtoken';
 import {
   JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC,
@@ -259,7 +259,9 @@ router.post('/auth/logout', (req, res) => {
 });
 
 // ── POST /auth/change-password — schimbare parolă de către utilizatorul logat ──
-router.post('/auth/change-password', async (req, res) => {
+// v3.9.502 (A-4 P1): adăugare CSRF — endpoint sensibil (schimbare parolă) lipsea
+// protecție anti-CSRF. Vector real pentru attacker care cunoaște email targetului.
+router.post('/auth/change-password', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   const { current_password, new_password } = req.body || {};

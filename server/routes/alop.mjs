@@ -21,6 +21,7 @@ import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { requireModule } from '../middleware/require-module.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
+import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
@@ -28,6 +29,13 @@ import * as _opmeMatcher from '../services/opme-matcher.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
+
+// v3.9.499 (Finding E): rate limit pentru endpoint-uri admin destructive
+const _alopAdminRateLimit = createRateLimiter({
+  windowMs: 60 * 60 * 1000,  // 1 oră
+  max: 5,
+  message: 'Prea multe încercări de reparare ALOP. Așteptați 1 oră.'
+});
 
 function requireDb(res) {
   if (!pool) { res.status(503).json({ error: 'db_unavailable' }); return true; }
@@ -1044,7 +1052,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
 
 // ── POST /api/alop/:id/cancel ─────────────────────────────────────────────────
 // ── POST /api/alop/admin/repair-status — reparare status ALOP pentru fluxuri deja semnate ─
-router.post('/api/alop/admin/repair-status', _csrf, async (req, res) => {
+router.post('/api/alop/admin/repair-status', _alopAdminRateLimit, _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (!['admin','org_admin'].includes(actor.role)) return res.status(403).json({ error: 'forbidden' });
@@ -1105,6 +1113,25 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
     {
       const authz = canDestroyOnly(actor, cur[0]);
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
+    // v3.9.498 (Issue R-B): block cancel dacă ALOP are DF emis (df_id setat
+    // și DF ne-șters). Refuze (R0) eliberează df_id=NULL → cancel redevine
+    // permis. Simetric cu logica refuse din v3.9.497.
+    const { rows: dfCheck } = await pool.query(`
+      SELECT a.df_id, fd.nr_unic_inreg, fd.status AS df_status
+      FROM alop_instances a
+      LEFT JOIN formulare_df fd ON fd.id = a.df_id AND fd.deleted_at IS NULL
+      WHERE a.id=$1 AND a.org_id=$2
+    `, [req.params.id, actor.orgId]);
+    if (dfCheck[0]?.df_id && dfCheck[0]?.df_status) {
+      return res.status(409).json({
+        error: 'cancel_blocked_df_exists',
+        message: `Nu se poate anula ALOP-ul: există un DF emis (${dfCheck[0].nr_unic_inreg || 'fără nr.'}, status: ${dfCheck[0].df_status}). Anulați sau refuzați DF-ul mai întâi.`,
+        df_id: dfCheck[0].df_id,
+        df_nr: dfCheck[0].nr_unic_inreg,
+        df_status: dfCheck[0].df_status,
+      });
     }
 
     const { rows } = await pool.query(`

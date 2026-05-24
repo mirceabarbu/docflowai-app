@@ -36,6 +36,21 @@ export function _injectDeps(d) {
   _stripPdfB64 = d.stripPdfB64; _sendSignerEmail = d.sendSignerEmail;
 }
 
+// v3.9.502 (A-3 P0): helper centralizat pentru verificare ACL pe flow read access.
+// Înainte: GET /flows/:flowId permitea citire pentru ORICE user autentificat → leak
+// metadata cross-org (signers, events, institutie). Acum: doar initiator, signer,
+// sau admin/org_admin din aceeași org. Plus signer token (pentru semnatari neînregistrați).
+function canActorReadFlow(actor, data, signerToken) {
+  if (signerToken && (data.signers || []).some(s => s.token === signerToken)) return true;
+  if (!actor) return false;
+  const email = String(actor.email || '').toLowerCase();
+  const isInit = String(data.initEmail || '').toLowerCase() === email;
+  const isSigner = (data.signers || []).some(s => String(s.email || '').toLowerCase() === email);
+  const sameOrg = actor.orgId && data.orgId && String(actor.orgId) === String(data.orgId);
+  const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+  return isInit || isSigner || (isAdmin && sameOrg);
+}
+
 const router = Router();
 
 import { emailDelegare, emailSendExtern } from '../../emailTemplates.mjs';
@@ -243,15 +258,29 @@ const createFlow = async (req, res) => {
     const flowId = _newFlowId(initInstitutie);
     let finalPdfB64 = body.pdfB64 ?? null;
 
-    // Conversie automată fișiere non-PDF (DOCX, XLSX, imagini) la PDF
+    // Conversie automată fișiere non-PDF (DOCX, XLSX, imagini) la PDF.
+    // v3.9.495 — FIX: dacă buffer-ul e DEJA PDF (frontend-ul a făcut conversia
+    // înainte de upload prin /api/convert-to-pdf), NU reconvertim. Re-conversia
+    // prin LibreOffice deschide PDF-ul în Draw și îl reexportă cu draw_pdf_Export,
+    // distrugând alignment-ul justify și semantica de paragraph.
+    // Decizia se ia după magic bytes ai buffer-ului, NU după extensia din
+    // originalFileName (care rămâne ".docx" deși conținutul e deja PDF).
     if (finalPdfB64 && body.originalFileName) {
-      try {
-        const rawB64 = finalPdfB64.includes('base64,') ? finalPdfB64.split('base64,')[1] : finalPdfB64;
-        const inputBuf = Buffer.from(rawB64, 'base64');
-        const convertedBuf = await convertToPdf(inputBuf, body.originalFileName);
-        finalPdfB64 = convertedBuf.toString('base64');
-      } catch(convErr) {
-        logger.warn({ err: convErr, originalFileName: body.originalFileName }, 'convertToPdf non-fatal, using original');
+      const rawB64 = finalPdfB64.includes('base64,') ? finalPdfB64.split('base64,')[1] : finalPdfB64;
+      const inputBuf = Buffer.from(rawB64, 'base64');
+      const isAlreadyPdf = inputBuf.length >= 5
+        && inputBuf.subarray(0, 5).toString('latin1') === '%PDF-';
+      if (isAlreadyPdf) {
+        logger.info({ flowId, originalFileName: body.originalFileName },
+          'crud: skip re-conversion (buffer already PDF, magic bytes match)');
+      } else {
+        try {
+          const convertedBuf = await convertToPdf(inputBuf, body.originalFileName);
+          finalPdfB64 = convertedBuf.toString('base64');
+        } catch(convErr) {
+          logger.warn({ err: convErr, originalFileName: body.originalFileName },
+            'convertToPdf non-fatal, using original');
+        }
       }
     }
     // PDF-ul convertit fără footer — pentru reinitiate (dacă fișierul era non-PDF, body.pdfB64 era DOCX/imagine)
@@ -500,11 +529,9 @@ const getFlowHandler = async (req, res) => {
     const actor = getOptionalActor(req);
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (!actor && signerToken) {
-      if (!(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
-    } else if (!actor) {
-      return res.status(401).json({ error: 'unauthorized' });
-    }
+    // v3.9.502 (A-3 P0): verificare ACL prin canActorReadFlow — nu mai e "any logged in user"
+    if (!actor && !signerToken) return res.status(401).json({ error: 'unauthorized' });
+    if (!canActorReadFlow(actor, data, signerToken)) return res.status(403).json({ error: 'forbidden' });
 
     // FEAT-06: ETag bazat pe flowId + updatedAt — permite cache client-side
     // Fluxurile completed sunt imuabile — ETag-ul nu se mai schimbă niciodată
@@ -725,29 +752,47 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
   if (!actor) actor = requireAuth(req, res);
   if (!actor) return;
   try {
-    const { rows } = await pool.query('SELECT data FROM flows WHERE id=$1', [req.params.flowId]);
-    const d = rows[0]?.data;
+    // v3.9.502 (A-2 P0): folosim getFlowData() care rehidratează signedPdfB64
+    // din flows_pdfs (arhitectură nouă), nu SELECT direct care ratează coloana.
+    // Plus fix typo: variabila e `d`, nu `data` (cauza ReferenceError la runtime).
+    const d = await getFlowData(req.params.flowId);
     if (!d) return res.status(404).json({ error: 'not_found' });
-    const email = actor.email.toLowerCase();
+
+    const email = (actor.email || '').toLowerCase();
     const isInit = (d.initEmail || '').toLowerCase() === email;
     const isSigner = (d.signers || []).some(s => (s.email || '').toLowerCase() === email);
-    if (!isInit && !isSigner) return res.status(403).json({ error: 'forbidden' });
+    const sameOrg = actor.orgId && d.orgId && String(actor.orgId) === String(d.orgId);
+    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+    if (!isInit && !isSigner && !(isAdmin && sameOrg)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
     if (!d.signedPdfB64) {
       if (d.storage === 'drive' && d.driveFileIdFinal) {
         try {
           const { streamFromDrive } = await import('../../drive.mjs');
-          const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
-          res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
-          await streamFromDrive(d.driveFileIdFinal, res); return;
-        } catch(driveErr) { return res.status(502).json({ error: 'drive_unavailable' }); }
+          const safeName = safeDocName(d.docName, req.params.flowId || d.flowId || '');
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+          await streamFromDrive(d.driveFileIdFinal, res);
+          return;
+        } catch(driveErr) {
+          logger.error({ err: driveErr, flowId: req.params.flowId }, 'drive stream failed');
+          return res.status(502).json({ error: 'drive_unavailable' });
+        }
       }
       return res.status(404).json({ error: 'no_signed_pdf' });
     }
+
     const buf = Buffer.from(d.signedPdfB64.split(',')[1] || d.signedPdfB64, 'base64');
-    const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
-    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
+    const safeName = safeDocName(d.docName, req.params.flowId || d.flowId || '');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
     res.send(buf);
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+  } catch(e) {
+    logger.error({ err: e, flowId: req.params.flowId }, 'download endpoint error');
+    res.status(500).json({ error: 'server_error' });
+  }
 });
 
 // ── POST /flows/:flowId/reinitiate ─────────────────────────────────────────

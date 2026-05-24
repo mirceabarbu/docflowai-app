@@ -31,6 +31,7 @@
     SIGNED_PDF_UPLOADED:            'PDF semnat încărcat',
     REFUSED:                        'Refuzat',
     REVIEW_REQUESTED:               'Trimis la revizuire',
+    SIGN_FAILED:                    'Semnare eșuată',
 
     // ─── Delegări ─────────────────────────────────────────────────────
     DELEGATE:                       'Delegare semnătură',

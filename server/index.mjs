@@ -489,6 +489,7 @@ import { pushToUser } from './push.mjs';
 import { fireWebhook, injectWebhookPool, injectWebhookBaseUrl } from './webhook.mjs';
 import { emailYourTurn, emailGeneric } from './emailTemplates.mjs';
 import { logger, redactUrl } from './middleware/logger.mjs';
+import { detectContentYs as _detectContentYs, findLowestUsableGap } from './utils/pdf-content-detect.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
 let PDFLib = null;
@@ -621,6 +622,7 @@ const _LARGE_PDF_PATHS = [
   '/formulare-oficiale',      // POST/PUT/attachments — RN/NF cu form_data JSONB extins + atașamente base64
   '/formulare-ord',           // PUT — ORD cu img2 base64 (captură 2 ~1-5MB)
   '/formulare-df',            // PUT — DF (paritate cu ORD, capturi posibile)
+  '/formulare-atasamente',    // POST — upload fișiere generice (max 10MB raw body)
   '/formulare/generate',      // POST — PDF gen primește captureImageBase64 + _2
   '/registratura/intrari',    // POST atașament — PDF scanat base64 (cap 15MB pe buf)
 ];
@@ -930,146 +932,10 @@ function pdfLooksSigned(pdfB64) {
   } catch { return false; }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// detectMinContentY — detectează Y-ul minim al conținutului real al unei
-// pagini PDF (cel mai jos punct cu text/grafică). Folosit de stampFooterOnPdf
-// ca să decidă dacă cartușul de semnături încape pe pagina existentă sau
-// trebuie să meargă pe pagină nouă.
-//
-// Parsează content stream-ul (după FlateDecode) și caută:
-//   - 'Tm' (text matrix) → Y absolut text
-//   - 're' (rectangle) → Y bottom dreptunghi
-// Ignoră tot ce e sub 'ignoreBelow' (default 45 pt — sub footer-ul
-// DocFlowAI 'Pagina X din Y' la y=38).
-//
-// Returnează null dacă nu poate decoda (PDF criptat / structură exotică).
-// În acel caz, apelantul trebuie să forțeze pagină nouă (siguranță maximă).
-// ─────────────────────────────────────────────────────────────────────────────
-// detectContentYs v3.9.441 — îmbunătățit pentru a prinde PDF-uri generate
-// de LibreOffice/Word/Office care folosesc Td/TD relative în loc de Tm absolut.
-//
-// Algoritm:
-//   - La 'BT' (begin text): text matrix Y = 0
-//   - La 'Tm a b c d e f': Y absolut = f
-//   - La 'Td tx ty': Y += ty (acumulare relativă)
-//   - La 'TD tx ty': Y += ty + setează leading
-//   - Capturăm Y la fiecare poziționare (NU așteptăm Tj — în PDF-urile
-//     office, Tj e atașat direct de Tf fără whitespace, deci tokenizer-ul
-//     nu îl izolează)
-//   - Capturăm și 're' (rectangles)
-//
-// Returnează array sortat ascending de Y-uri unice >= ignoreBelow,
-// SAU null dacă PDF-ul nu poate fi parsat.
+// detectContentYs + findLowestUsableGap — importate din server/utils/pdf-content-detect.mjs (v3.9.496)
+// Wrapper care injectează PDFLib (load async la pornire — nu poate fi import direct)
 function detectContentYs(page, ignoreBelow = 45) {
-  try {
-    const { PDFArray, PDFRawStream } = PDFLib;
-    const doc = page.doc;
-    const contentsRef = page.node.Contents();
-    if (!contentsRef) return null;
-
-    const streams = [];
-    if (contentsRef instanceof PDFArray) {
-      for (let i = 0; i < contentsRef.size(); i++) {
-        const resolved = doc.context.lookup(contentsRef.get(i));
-        if (resolved) streams.push(resolved);
-      }
-    } else {
-      const resolved = doc.context.lookup(contentsRef);
-      if (resolved) streams.push(resolved);
-    }
-
-    const ySet = new Set();
-    for (const stream of streams) {
-      if (!(stream instanceof PDFRawStream) || !stream.contents) continue;
-      let text;
-      try {
-        const buf = Buffer.from(stream.contents);
-        const inflated = zlib.inflateSync(buf);
-        text = inflated.toString('latin1');
-      } catch {
-        try { text = Buffer.from(stream.contents).toString('latin1'); }
-        catch { continue; }
-      }
-
-      const tokens = text.split(/[\s\n\r]+/);
-      // Stare text positioning
-      let curY = null;       // Y absolut curent în coordonate pagină (PDF bottom-up)
-      let leading = 0;       // Leading pentru T*
-
-      for (let i = 0; i < tokens.length; i++) {
-        const tok = tokens[i];
-
-        if (tok === 'BT') {
-          // Begin Text: Tm = identity → poziție (0, 0)
-          curY = 0;
-        } else if (tok === 'ET') {
-          // End Text: invalidăm starea (nu se poate poziționa text în afara BT/ET)
-          curY = null;
-        } else if (tok === 'Tm' && i >= 6) {
-          // Set Text Matrix absolut: a b c d e f Tm. Y = f.
-          const f = parseFloat(tokens[i - 1]);
-          if (!isNaN(f)) {
-            curY = f;
-            if (curY >= ignoreBelow) ySet.add(Math.round(curY * 10) / 10);
-          }
-        } else if ((tok === 'Td' || tok === 'TD') && i >= 2) {
-          // Move text position relativ: tx ty Td/TD. Y += ty.
-          // Capturăm imediat curY pentru că Td/TD sunt urmate ÎNTOTDEAUNA
-          // de o operație text-show (Tj/TJ/'/")  — și tokenizer-ul nostru
-          // poate să nu izoleze Tj dacă e lipit de Tf<bytes>Tj.
-          const ty = parseFloat(tokens[i - 1]);
-          if (!isNaN(ty) && curY !== null) {
-            curY += ty;
-            if (tok === 'TD') leading = -ty;
-            if (curY >= ignoreBelow) ySet.add(Math.round(curY * 10) / 10);
-          }
-        } else if (tok === 'T*') {
-          // Move to next line: Y -= leading
-          if (curY !== null) {
-            curY -= leading;
-            if (curY >= ignoreBelow) ySet.add(Math.round(curY * 10) / 10);
-          }
-        } else if (tok === 'TL' && i >= 1) {
-          // Set leading
-          const v = parseFloat(tokens[i - 1]);
-          if (!isNaN(v)) leading = v;
-        } else if (tok === 're' && i >= 4) {
-          // Rectangle: x y w h re. Y bottom = tokens[i-3].
-          const y = parseFloat(tokens[i - 3]);
-          if (!isNaN(y) && y >= ignoreBelow) ySet.add(Math.round(y * 10) / 10);
-        }
-      }
-    }
-    return ySet.size ? [...ySet].sort((a, b) => a - b) : null;
-  } catch (e) {
-    logger.warn({ err: e }, 'detectContentYs: parse error');
-    return null;
-  }
-}
-
-// detectMinContentY — wrapper pentru backward compat
-function detectMinContentY(page, ignoreBelow = 45) {
-  const ys = detectContentYs(page, ignoreBelow);
-  return ys && ys.length ? ys[0] : null;
-}
-
-// findLowestUsableGap — caută cea mai JOASĂ bandă goală >= minGapSize.
-// Preferăm gap-uri jos pe pagină (cartușul stă semantic la sfârșitul
-// documentului, deasupra zonei de footer/GDPR).
-//
-// Returnează: { gapBottom, gapTop, gapSize } sau null.
-//   gapBottom = Y-ul conținutului inferior (limită inferioară a gap-ului)
-//   gapTop    = Y-ul conținutului superior (limită superioară a gap-ului)
-function findLowestUsableGap(ys, minGapSize) {
-  if (!ys || ys.length < 2) return null;
-  // ys e sortat ascending. Iterăm de la jos în sus și luăm PRIMA gap suficientă.
-  for (let i = 0; i < ys.length - 1; i++) {
-    const gapSize = ys[i + 1] - ys[i];
-    if (gapSize >= minGapSize) {
-      return { gapBottom: ys[i], gapTop: ys[i + 1], gapSize };
-    }
-  }
-  return null;
+  return _detectContentYs(page, ignoreBelow, PDFLib);
 }
 
 async function stampFooterOnPdf(pdfB64, flowData = {}) {

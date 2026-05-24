@@ -1677,6 +1677,90 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS motiv_clasare TEXT,
         ADD COLUMN IF NOT EXISTS rezolutie     TEXT;
     `
+  },
+  {
+    id: '079_formulare_capturi_slot',
+    sql: `
+      -- v3.9.499: extindere formulare_capturi cu slot pentru a permite multiple
+      -- capturi per formular (ord captura 1 + captura 2). DF folosește doar slot=1.
+      ALTER TABLE formulare_capturi
+        ADD COLUMN IF NOT EXISTS slot SMALLINT NOT NULL DEFAULT 1;
+
+      -- Drop indexul vechi non-unique pe (form_type, form_id) ca să facem unique pe triplet
+      DROP INDEX IF EXISTS idx_formulare_capturi_form;
+      CREATE INDEX IF NOT EXISTS idx_formulare_capturi_form
+        ON formulare_capturi(form_type, form_id);
+
+      -- Constraint unic pe triplet pentru a permite upsert per slot
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_formulare_capturi_form_slot
+        ON formulare_capturi(form_type, form_id, slot);
+
+      -- Backfill din formulare_ord.img2 → formulare_capturi(slot=2)
+      -- Numai rândurile cu img2 valid (data URL format). Idempotent prin ON CONFLICT.
+      INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data, slot)
+      SELECT
+        'ord',
+        fo.id,
+        fo.created_by,
+        'captura2_backfill.png',
+        COALESCE(substring(fo.img2 from '^data:([^;]+);'), 'image/png'),
+        CASE
+          WHEN fo.img2 ~ '^data:image\\/[a-z]+;base64,'
+          THEN length(decode(split_part(fo.img2, ',', 2), 'base64'))
+          ELSE 0
+        END,
+        CASE
+          WHEN fo.img2 ~ '^data:image\\/[a-z]+;base64,'
+          THEN decode(split_part(fo.img2, ',', 2), 'base64')
+          ELSE NULL
+        END,
+        2
+      FROM formulare_ord fo
+      WHERE fo.img2 IS NOT NULL
+        AND fo.img2 ~ '^data:image\\/[a-z]+;base64,'
+        AND length(fo.img2) > 100
+      ON CONFLICT (form_type, form_id, slot) DO NOTHING;
+
+      -- Marchează img2 ca deprecated în comentariu (col rămâne pentru fallback citire)
+      COMMENT ON COLUMN formulare_ord.img2 IS 'DEPRECATED v3.9.499 — datele migrate la formulare_capturi(slot=2). Coloană păstrată pentru fallback citire ord-uri vechi.';
+    `
+  },
+  {
+    id: '080_formulare_atasamente',
+    sql: `
+      -- v3.9.500: atașamente pentru DF/ORD (Compartiment specialitate → "Atașează fișiere").
+      -- Înainte: atașamentele trăiau doar în memoria clientului (o-adata JSON) și se foloseau
+      -- exclusiv pentru generarea PDF-ului. Nu erau persistate în DB → pierdute la reload sau
+      -- viewer diferit. Pattern simetric cu formulare_capturi (BYTEA + endpoint dedicat).
+      CREATE TABLE IF NOT EXISTS formulare_atasamente (
+        id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        form_type   TEXT        NOT NULL CHECK (form_type IN ('df','ord')),
+        form_id     UUID        NOT NULL,
+        uploaded_by INTEGER     NOT NULL REFERENCES users(id),
+        filename    TEXT        NOT NULL,
+        mime_type   TEXT        NOT NULL DEFAULT 'application/octet-stream',
+        size_bytes  INTEGER     NOT NULL DEFAULT 0,
+        data        BYTEA       NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at  TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_formulare_atasamente_form
+        ON formulare_atasamente(form_type, form_id) WHERE deleted_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_atasamente_uploader
+        ON formulare_atasamente(uploaded_by);
+    `
+  }
+  ,{
+    id: '081_formulare_atasamente_slot',
+    sql: `
+      -- v3.9.501: slot column pentru multiple seturi atașamente per formular
+      ALTER TABLE formulare_atasamente
+        ADD COLUMN IF NOT EXISTS slot SMALLINT NOT NULL DEFAULT 1;
+
+      DROP INDEX IF EXISTS idx_formulare_atasamente_form;
+      CREATE INDEX IF NOT EXISTS idx_formulare_atasamente_form
+        ON formulare_atasamente(form_type, form_id, slot) WHERE deleted_at IS NULL;
+    `
   }
 ];
 

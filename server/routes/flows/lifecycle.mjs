@@ -457,6 +457,34 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     if (!Array.isArray(data.events)) data.events = [];
     data.events.push({ at: now, type: 'FLOW_CANCELLED', by: actor.email, reason: data.cancelReason });
     await saveFlow(flowId, data);
+    // FIX state machine v3.9.497 (Finding #2 audit Pas 4):
+    // La cancel, DF legat (dacă e în transmis_flux) revine la 'completed' — userul
+    // poate retrimite același DF. ALOP păstrează df_id (DF rămâne revizia curentă)
+    // dar curăță df_flow_id + df_completed_at (fluxul mort nu mai e activ).
+    // Asimetric față de refuse (care setează neaprobat + eliberează df_id pentru R0)
+    // pentru că cancel nu e rejection, doar "undo putting in flux".
+    try {
+      const { rows: dfRows } = await pool.query(
+        `UPDATE formulare_df SET status='completed', updated_at=NOW()
+         WHERE flow_id=$1 AND status='transmis_flux'
+         RETURNING id, revizie_nr, parent_df_id`,
+        [flowId]
+      );
+      if (dfRows.length) {
+        const cancelledDf = dfRows[0];
+        await pool.query(
+          `UPDATE alop_instances
+           SET df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
+           WHERE df_id=$1 AND cancelled_at IS NULL`,
+          [cancelledDf.id]
+        );
+        logger.info({ dfId: cancelledDf.id, revizieNr: cancelledDf.revizie_nr, flowId },
+          `[ALOP] flow cancelled → DF R${cancelledDf.revizie_nr || 0} revenit la completed, ALOP df_flow_id=NULL`);
+      }
+    } catch (alopCancelErr) {
+      // Non-fatal: cancel-ul fluxului a reușit oricum (data.status='cancelled' salvat).
+      logger.error({ err: alopCancelErr, flowId }, '[ALOP] restore on cancel failed (non-fatal)');
+    }
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_CANCELLED', actorIp: _getIp(req), actorEmail: actor.email, payload: { reason: data.cancelReason } });
     // FEAT-N01: webhook flow.cancelled (fire-and-forget)

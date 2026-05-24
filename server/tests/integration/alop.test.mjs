@@ -372,6 +372,7 @@ describe('POST /api/alop/:id/cancel — anulare ALOP', () => {
   it('200 — anulare din status draft', async () => {
     const cancelled = makeAlopRow({ status: 'cancelled', cancelled_at: new Date().toISOString() });
     mockAuthzAlopDestroy();
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ df_id: null, df_status: null }] });
     dbModule.pool.query.mockResolvedValueOnce({ rows: [cancelled] });
 
     const app = createTestApp();

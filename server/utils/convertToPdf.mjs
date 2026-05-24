@@ -3,10 +3,69 @@ import { promisify } from 'util';
 import { writeFile, readFile, unlink, mkdtemp, rm, access } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join, extname, basename } from 'path';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFArray, PDFRawStream } from 'pdf-lib';
+import zlib from 'zlib';
 import crypto from 'crypto';
 
 const exec = promisify(execFile);
+
+// v3.9.494: LibreOffice produce uneori pagini trailing goale când conversia
+// DOCX→PDF interpretează layout-ul diferit de Word (paginare diferită).
+// Trim-uim paginile trailing fără conținut real înainte de stamping pentru
+// a evita „pagina albă între body și cartuș".
+export function pageHasRenderableContent(page) {
+  try {
+    const ctx = page.doc.context;
+    const contentsRef = page.node.Contents();
+    if (!contentsRef) return false;
+
+    const streams = [];
+    if (contentsRef instanceof PDFArray) {
+      for (let i = 0; i < contentsRef.size(); i++) {
+        const r = ctx.lookup(contentsRef.get(i));
+        if (r) streams.push(r);
+      }
+    } else {
+      const r = ctx.lookup(contentsRef);
+      if (r) streams.push(r);
+    }
+
+    for (const s of streams) {
+      if (!(s instanceof PDFRawStream) || !s.contents) continue;
+      let text;
+      try { text = zlib.inflateSync(Buffer.from(s.contents)).toString('latin1'); }
+      catch { text = Buffer.from(s.contents).toString('latin1'); }
+
+      // Caut text-show operators (Tj, TJ, ', ") SAU rectangle (re) SAU
+      // image-show (Do). Orice paginare LibreOffice care a vrut să tipărească
+      // ceva pe pagină ar lăsa măcar un Tj/TJ. Pagini cu doar CTM/empty BT/ET
+      // sunt considerate trailing-empty.
+      if (/\bTj\b|\bTJ\b|\bDo\b/.test(text)) return true;
+      // Forme geometrice — linii (l), curbe (c), umpleri (f), stroke (S)
+      // după path-construction. Verific path operators de bază.
+      if (/\bre\s+[fFSsBb]\b|\bm\s+[\d.\-\s]+\bl\b/.test(text)) return true;
+    }
+    return false;
+  } catch {
+    // Pe orice eroare, fii conservativ — păstrează pagina (nu pierde date).
+    return true;
+  }
+}
+
+export async function trimEmptyTrailingPages(pdfBuffer) {
+  const doc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+  const total = doc.getPageCount();
+  if (total <= 1) return pdfBuffer;
+
+  let trimCount = 0;
+  for (let i = total - 1; i > 0; i--) {
+    if (pageHasRenderableContent(doc.getPage(i))) break;
+    doc.removePage(i);
+    trimCount++;
+  }
+  if (trimCount === 0) return pdfBuffer;
+  return Buffer.from(await doc.save());
+}
 
 // pdf-lib suportă nativ doar jpg/png — fast path, fără subprocess
 const FAST_IMAGE_EXTS = ['.jpg', '.jpeg', '.png'];
@@ -62,7 +121,11 @@ export async function convertToPdf(buffer, originalName) {
 
       // Verificare explicită: dacă LibreOffice a eșuat silențios
       await access(outPath);
-      return await readFile(outPath);
+      const raw = await readFile(outPath);
+      // v3.9.494: trim pagini trailing goale (LibreOffice produce uneori
+      // pagina suplimentară goală când layout-ul DOCX diferă de Word).
+      try { return await trimEmptyTrailingPages(raw); }
+      catch { return raw; }
     } finally {
       await unlink(inPath).catch(() => {});
       await unlink(outPath).catch(() => {});
