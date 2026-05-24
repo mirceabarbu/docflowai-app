@@ -533,13 +533,14 @@ async function openDoc(ft,id){
       lockAll(ft,true);
       lockCaptureAndAttachments(ft,true);
       // p2-field eliminat (uniformizare vizuală) — nu mai e nimic de curățat
-      setLockedBar(ft,'✔ Document aprobat — fluxul de semnare a fost finalizat.','info');
+      // v3.9.505: tip 'ok' (verde) pentru semantic success + elimină redundanța sBar
+      // (mesajul era duplicat: locked-bar de sus + sBar de jos cu același conținut)
+      setLockedBar(ft,'✔ Document aprobat — fluxul de semnare a fost finalizat.','ok');
       renderActions(ft);
       if(ft==='notafd')applyDfRoleState('aprobat',ST.docRole[ft]);
       else if(ft==='ordnt')applyOrdRoleState('aprobat',ST.docRole[ft]);
       refreshDocs(ft);
       document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.toggle('active',c.dataset.id===id));
-      setS('Document aprobat','ok');
       return;
     }else if(status==='pending_p2'&&role==='p2'){
       if(ft==='ordnt')setModeP2Ord();else setModeP2Df();
