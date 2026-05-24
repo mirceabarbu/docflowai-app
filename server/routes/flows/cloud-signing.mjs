@@ -444,8 +444,49 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
           'PAdES: PDF semnat QES generat local (fallback)');
       }
     } catch(padesErr) {
-      logger.error({ err: padesErr, flowId }, 'PAdES finalize error — fallback la pdfB64 (cu tabel)');
-      signedPdfB64 = (data.pdfB64 || '').includes(',') ? data.pdfB64.split(',')[1] : (data.pdfB64 || '');
+      // v3.9.502 (A-1 P0 CRITIC): fail CLOSED. Înainte: fallback la pdfB64 original
+      // (nesemnat) + marcare 'signed' — produsul QES marca semnături calificate
+      // reușite pentru documente fără nicio semnătură embedată. Prejudiciu juridic.
+      // Acum: status='error' pe semnatar, event SIGN_FAILED, response 502.
+      // Semnatarul/adminul pot reîncerca. PDF-ul NU se salvează ca signed.
+      logger.error({ err: padesErr, flowId, signerIdx: idx, signerEmail: signer.email },
+        'PAdES finalize FAILED — fail closed, semnătura NU se înregistrează');
+
+      signers[idx].stsPending     = false;
+      signers[idx].status         = 'error';
+      signers[idx].signError      = 'pades_finalize_failed';
+      signers[idx].signErrorAt    = new Date().toISOString();
+      signers[idx].signErrorMessage = String(padesErr?.message || padesErr).slice(0, 500);
+
+      data.signers    = signers;
+      data.updatedAt  = new Date().toISOString();
+      if (!Array.isArray(data.events)) data.events = [];
+      data.events.push({
+        at: new Date().toISOString(),
+        type: 'SIGN_FAILED',
+        by: signer.email,
+        order: signer.order,
+        provider: 'sts-cloud',
+        reason: 'pades_finalize_failed',
+        message: signers[idx].signErrorMessage,
+      });
+
+      // Cleanup PAdES temp data (același comportament ca în finally — îl facem
+      // explicit aici pentru că vom face return înainte de finally să ruleze)
+      delete data[`_padesPdf_${idx}`];
+      delete data[`_signedAttrs_${idx}`];
+
+      await saveFlow(flowId, data);
+      writeAuditEvent({
+        flowId, orgId: data.orgId, eventType: 'SIGN_FAILED',
+        actorEmail: signer.email,
+        payload: { provider: 'sts-cloud', reason: 'pades_finalize_failed', message: signers[idx].signErrorMessage }
+      });
+
+      return res.status(502).json({
+        error: 'pades_finalize_failed',
+        message: 'Semnătura STS a fost primită, dar PDF-ul PAdES nu a putut fi finalizat. Reîncercați sau contactați adminul.',
+      });
     } finally {
       delete data[`_padesPdf_${idx}`];
       delete data[`_signedAttrs_${idx}`];
