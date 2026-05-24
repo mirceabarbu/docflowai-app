@@ -569,7 +569,25 @@ function renderAlopDetail(a,container){
         <div>
           <div style="font-size:1rem;font-weight:700;color:var(--df-text-2)">${esc(a.titlu||'ALOP')}</div>
           ${a.compartiment?`<div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">${esc(a.compartiment)}</div>`:''}
-          ${a.valoare_totala?`<div style="font-size:.85rem;color:#10b981;margin-top:4px;font-weight:600">${fmtRON(a.valoare_totala)}</div>`:''}
+          ${(() => {
+            // v3.9.503: în header arătăm valoarea estimată (la creare) + valoarea
+            // DF-ului activ (din cea mai recentă revizie). Userul vede ambele în
+            // header fără să scrolează la cardul "VALOARE DF" de jos. Util când
+            // revizia DF a schimbat valoarea față de estimatul inițial.
+            const _vEst = parseFloat(a.valoare_totala || 0);
+            const _vDf  = parseFloat(a.df_valoare || 0);
+            const _hasEst = _vEst > 0;
+            const _hasDf  = _vDf > 0 && !!a.df_id;
+            if (!_hasEst && !_hasDf) return '';
+            const _est = _hasEst
+              ? `<span style="color:#10b981;font-weight:600" title="Valoare estimată la creare ALOP">${fmtRON(_vEst)}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">estimat</span></span>`
+              : '';
+            const _df = _hasDf
+              ? `<span style="color:#b0a0ff;font-weight:600" title="Valoare din DF activ (cea mai recentă revizie)">${fmtRON(_vDf)}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">DF actual</span></span>`
+              : '';
+            const _sep = (_est && _df) ? '<span style="color:var(--df-text-4);margin:0 8px">·</span>' : '';
+            return `<div style="font-size:.85rem;margin-top:4px;display:flex;align-items:center;flex-wrap:wrap">${_est}${_sep}${_df}</div>`;
+          })()}
           ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">DF activ: <span class="df-revizie-badge${(a.df_revizie_nr||0)>0?' revizie-activa':''}">R${a.df_revizie_nr||0}</span>${(a.df_revizie_nr||0)>0?`<span>Revizia ${a.df_revizie_nr}</span>`:`<span>Revizia inițială</span>`}${a.df_nr?`<span style="color:var(--df-text-2);font-weight:600">· Nr. ${a.df_nr}</span>`:''}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}</div>`:''}
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
