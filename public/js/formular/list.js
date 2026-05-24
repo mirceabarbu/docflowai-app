@@ -159,6 +159,64 @@ function selectBenef(id,den,cif,iban,banca){
   const drop=document.getElementById('o-benef-drop');
   if(drop)drop.style.display='none';
 }
+// ── v3.9.504: CIF lookup → auto-fill beneficiar (local → ANAF fallback) ────────
+async function _lookupByCif(){
+  const cifEl=document.getElementById('o-cifb');
+  if(!cifEl)return;
+  let cif=(cifEl.value||'').trim().toUpperCase().replace(/^RO\s*/,'');
+  cifEl.value=cif;
+  if(!/^\d{2,10}$/.test(cif))return;
+
+  const spin=document.getElementById('o-cifb-spin');
+  const showSpin=v=>{if(spin)spin.style.display=v?'inline-block':'none';};
+  const setF=(id,val)=>{const e=document.getElementById(id);if(e&&val!=null)e.value=val;};
+  const _setS=(msg,type)=>{if(typeof window.setS==='function')window.setS(msg,type);};
+
+  showSpin(true);
+  let resolved=false;
+
+  // 1. Caută local întâi (după CIF exact match)
+  try{
+    const r=await fetch('/api/beneficiari?q='+encodeURIComponent(cif),{credentials:'include'});
+    if(r.ok){
+      const j=await r.json();
+      const match=(j.beneficiari||[]).find(b=>String(b.cif||'')===cif);
+      if(match){
+        setF('o-benef',match.denumire||'');
+        setF('o-iban',match.iban||'');
+        setF('o-banca',match.banca||'');
+        _setS('Beneficiar găsit local: '+(match.denumire||cif),'ok');
+        resolved=true;
+      }
+    }
+  }catch(_){/* fall through to ANAF */}
+
+  // 2. Fallback ANAF doar dacă nu am găsit local
+  if(!resolved){
+    _setS('Verificare CIF la ANAF...','info');
+    try{
+      const r=await fetch('/api/v4/verify/cui?cui='+encodeURIComponent(cif),{credentials:'include'});
+      if(r.ok){
+        const j=await r.json();
+        if(j.ok&&j.data&&j.data.name){
+          setF('o-benef',j.data.name);
+          _setS('Denumire preluată ANAF: '+j.data.name,'ok');
+          resolved=true;
+        } else {
+          _setS('CIF '+cif+' negăsit la ANAF','err');
+        }
+      } else {
+        _setS('Eroare verificare ANAF (HTTP '+r.status+')','err');
+      }
+    }catch(e){
+      _setS('Eroare rețea verificare ANAF','err');
+    }
+  }
+
+  showSpin(false);
+}
+window._lookupByCif=_lookupByCif;
+
 // Închide dropdown la click în afară
 document.addEventListener('click',e=>{
   const drop=document.getElementById('o-benef-drop');

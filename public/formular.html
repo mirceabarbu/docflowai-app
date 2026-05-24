@@ -699,8 +699,8 @@
     <div class="doc-hr"></div>
     <div class="df-row df-row-3">
       <div>
-        <div class="dl req">CIF beneficiar</div>
-        <input id="o-cifb" class="di" maxlength="10"/>
+        <div class="dl req">CIF beneficiar <span id="o-cifb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
+        <input id="o-cifb" class="di" maxlength="12" onblur="window._lookupByCif&&window._lookupByCif()" autocomplete="off"/>
       </div>
       <div>
         <div class="dl req">IBAN beneficiar</div>
