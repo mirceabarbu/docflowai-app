@@ -153,7 +153,6 @@
     .locked-bar.show{display:block}
     .locked-bar.warn{background:rgba(255,170,30,.08);border:1px solid rgba(255,170,30,.2);color:#ffcc44}
     .locked-bar.info{background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);color:#b0a0ff}
-    .locked-bar.ok{background:rgba(29,200,174,.08);border:1px solid rgba(29,200,174,.2);color:#5dcaa5}
     /* ── Modal P2 ── */
     .modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:500;align-items:center;justify-content:center}
     .modal-ov.show{display:flex}
