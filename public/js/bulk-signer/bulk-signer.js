@@ -251,6 +251,20 @@ function showPhaseDone(j) {
   $('phase-init').style.display  = 'none';
   $('phase-done').style.display  = 'block';
 
+  // v3.9.507: render initial cu datele primite de la backend
+  _renderDoneState(j);
+
+  // v3.9.507: dacă există items cu status='error', verificăm statusul real al
+  // flow-urilor — bulk-signing.mjs poate clasifica greșit ca eroare items
+  // deja semnate. Vezi context comentariu funcție _reverifyErrorItems.
+  if (Array.isArray(j.items) && j.items.some(i => i.status === 'error')) {
+    _reverifyErrorItems(j);
+  }
+}
+
+// v3.9.507: render state extras din showPhaseDone — folosit și la re-render
+// după re-verificare automată items cu status='error'.
+function _renderDoneState(j) {
   const signed = j.signed || 0;
   const errors = j.errors || 0;
   const total  = j.total  || j.flowCount || (signed + errors);
@@ -280,7 +294,8 @@ function showPhaseDone(j) {
             <div class="item-icon">${i.status === 'signed' ? '✅' : '❌'}</div>
             <div style="flex:1;min-width:0">
               <div class="item-name">${esc(i.docName || i.flowId)}</div>
-              ${i.error ? `<div class="item-sub" style="color:#ffaaaa">${esc(i.error)}</div>` : ''}
+              ${i.error && i.status !== 'signed' ? `<div class="item-sub" style="color:#ffaaaa">${esc(i.error)}</div>` : ''}
+              ${i._verifiedAfterError ? `<div class="item-sub" style="color:#8ac4ff">🔄 Verificat ulterior — semnătura QES validă</div>` : ''}
             </div>
             <span class="item-status ${i.status === 'signed' ? 'status-signed' : 'status-error'}">
               ${i.status === 'signed' ? '✅ Semnat' : '❌ Eroare'}
@@ -295,5 +310,67 @@ function showPhaseDone(j) {
               : ''}
           </div>`).join('')}
       </div>`;
+  }
+}
+
+// v3.9.507: re-verificare automată a items cu status='error'. Bulk-signing
+// poate raporta greșit ca eroare items care au semnătură QES validă
+// (cauză suspectă: retry loop în pipeline-ul backend care iterează peste
+// items deja procesate; placeholder șters după prima rulare → next iteration
+// vede placeholder lipsă și aruncă eroare deși semnătura s-a făcut).
+// Fix: verificăm pentru fiecare item de eroare statusul REAL al flow-ului
+// prin GET /flows/:flowId. Dacă flow.completed === true sau toți signers
+// sunt status='signed', reclasificăm item ca semnat (cu badge "verificat").
+async function _reverifyErrorItems(j) {
+  // Spinner mic în UI
+  const msgEl = document.getElementById('doneMsg');
+  const originalMsg = msgEl ? msgEl.textContent : '';
+  if (msgEl) {
+    msgEl.innerHTML = `${esc(originalMsg)} <span style="display:inline-block;margin-left:10px;color:#8ac4ff;font-size:.9em">🔄 Verificăm statusul real...</span>`;
+  }
+
+  const errorItems = j.items.filter(i => i.status === 'error');
+  const checks = errorItems.map(async (item) => {
+    try {
+      const r = await fetch(`/flows/${encodeURIComponent(item.flowId)}`, { credentials: 'include' });
+      if (!r.ok) return { item, isActuallySigned: false };
+      const flowData = await r.json();
+      // Criteriu: flow.completed === true SAU toți signers cu status='signed'
+      const completed = flowData.completed === true || flowData.status === 'completed';
+      const allSignersSigned = Array.isArray(flowData.signers) && flowData.signers.length > 0
+        && flowData.signers.every(s => s.status === 'signed');
+      const isActuallySigned = completed || allSignersSigned;
+      return { item, isActuallySigned };
+    } catch(_) {
+      return { item, isActuallySigned: false };
+    }
+  });
+
+  const results = await Promise.allSettled(checks);
+
+  // Reclasificăm items pe baza rezultatelor
+  let reclassified = 0;
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value.isActuallySigned) {
+      const it = r.value.item;
+      // Marchez în obiectul original din j.items (find by reference flowId)
+      const target = j.items.find(x => x.flowId === it.flowId);
+      if (target) {
+        target.status = 'signed';
+        target._verifiedAfterError = true;
+        reclassified++;
+      }
+    }
+  }
+
+  if (reclassified > 0) {
+    // Update count-uri
+    j.signed = (j.signed || 0) + reclassified;
+    j.errors = Math.max(0, (j.errors || 0) - reclassified);
+    // Re-render complet
+    _renderDoneState(j);
+  } else {
+    // Niciuna nu s-a confirmat — restaurăm mesajul fără spinner
+    if (msgEl) msgEl.textContent = originalMsg;
   }
 }
