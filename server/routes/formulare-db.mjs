@@ -17,7 +17,7 @@ import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { requireModule } from '../middleware/require-module.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { pool } from '../db/index.mjs';
-import { loadActorComp, canEditFormular, canDestroyOnly } from '../services/authz-formular.mjs';
+import { loadActorComp, canEditFormular, canViewFormular, canDestroyOnly } from '../services/authz-formular.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -106,6 +106,8 @@ router.get('/api/formulare-df', async (req, res) => {
       orgFilter = 'AND fd.org_id = $1';
       params = [actor.orgId];
     } else {
+      const _acRes = await pool.query('SELECT compartiment FROM users WHERE id=$1', [actor.userId]);
+      const actorComp = (_acRes.rows[0]?.compartiment || '').trim();
       orgFilter = `AND fd.org_id = $1 AND (
   fd.created_by = $2
   OR fd.assigned_to = $2
@@ -114,8 +116,16 @@ router.get('/api/formulare-df', async (req, res) => {
     WHERE fl.id = fd.flow_id
       AND fl.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $2::text))
   )
+  OR ($3::text <> '' AND EXISTS (
+    SELECT 1 FROM users u_p1 WHERE u_p1.id = fd.created_by
+      AND TRIM(u_p1.compartiment) = $3 AND TRIM(u_p1.compartiment) <> ''
+  ))
+  OR ($3::text <> '' AND EXISTS (
+    SELECT 1 FROM users u_p2 WHERE u_p2.id = fd.assigned_to
+      AND TRIM(u_p2.compartiment) = $3 AND TRIM(u_p2.compartiment) <> ''
+  ))
 )`;
-      params = [actor.orgId, actor.userId];
+      params = [actor.orgId, actor.userId, actorComp];
     }
     const { rows } = await pool.query(`
       SELECT
@@ -209,8 +219,11 @@ router.get('/api/formulare-df/:id', async (req, res) => {
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    if (doc.created_by !== actor.userId && doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const view = await canViewFormular(pool, actor, doc, actorComp);
+      if (!view.allowed) return res.status(403).json({ error: view.reason });
+    }
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df get error');
@@ -272,7 +285,7 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
     const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
     if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     const isP1 = doc.created_by === actor.userId || authz.role === 'comp' || authz.role === 'admin';
-    const isP2 = doc.assigned_to === actor.userId;
+    const isP2 = doc.assigned_to === actor.userId || authz.role === 'p2_comp';
 
     // P1 poate modifica doar în draft (sau resetează completed → draft cu version++)
     let extraSets = [];
@@ -382,19 +395,14 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
     {
-      const isAdminRole = ['admin','org_admin'].includes(actor.role);
-      let canComplete = isAdminRole || doc.assigned_to === actor.userId;
-      if (!canComplete && doc.assigned_to) {
-        const actorComp = await loadActorComp(pool, actor.userId);
-        if (actorComp) {
-          const { rows: p2rows } = await pool.query(
-            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
-            [doc.assigned_to, actorComp]
-          );
-          if (p2rows.length) canComplete = true;
-        }
-      }
-      if (!canComplete) return res.status(403).json({ error: 'forbidden' });
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+      // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
+      // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
+      // creator ȘI assigned_to (helper-ul prioritizează rolul 'creator').
+      const isP2Side = authz.allowed
+        && (['admin','assigned','p2_comp'].includes(authz.role) || doc.assigned_to === actor.userId);
+      if (!isP2Side) return res.status(403).json({ error: 'forbidden' });
     }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
@@ -451,19 +459,14 @@ router.post('/api/formulare-df/:id/returneaza', _csrf, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
     {
-      const isAdminRole = ['admin','org_admin'].includes(actor.role);
-      let canReturn = isAdminRole || doc.assigned_to === actor.userId;
-      if (!canReturn && doc.assigned_to) {
-        const actorComp = await loadActorComp(pool, actor.userId);
-        if (actorComp) {
-          const { rows: p2rows } = await pool.query(
-            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
-            [doc.assigned_to, actorComp]
-          );
-          if (p2rows.length) canReturn = true;
-        }
-      }
-      if (!canReturn) return res.status(403).json({ error: 'forbidden' });
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+      // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
+      // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
+      // creator ȘI assigned_to (helper-ul prioritizează rolul 'creator').
+      const isP2Side = authz.allowed
+        && (['admin','assigned','p2_comp'].includes(authz.role) || doc.assigned_to === actor.userId);
+      if (!isP2Side) return res.status(403).json({ error: 'forbidden' });
     }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
@@ -722,6 +725,8 @@ router.get('/api/formulare-ord', async (req, res) => {
       orgFilter = 'AND fo.org_id = $1';
       params = [actor.orgId];
     } else {
+      const _acRes = await pool.query('SELECT compartiment FROM users WHERE id=$1', [actor.userId]);
+      const actorComp = (_acRes.rows[0]?.compartiment || '').trim();
       orgFilter = `AND fo.org_id = $1 AND (
   fo.created_by = $2
   OR fo.assigned_to = $2
@@ -730,8 +735,16 @@ router.get('/api/formulare-ord', async (req, res) => {
     WHERE fl.id = fo.flow_id
       AND fl.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $2::text))
   )
+  OR ($3::text <> '' AND EXISTS (
+    SELECT 1 FROM users u_p1 WHERE u_p1.id = fo.created_by
+      AND TRIM(u_p1.compartiment) = $3 AND TRIM(u_p1.compartiment) <> ''
+  ))
+  OR ($3::text <> '' AND EXISTS (
+    SELECT 1 FROM users u_p2 WHERE u_p2.id = fo.assigned_to
+      AND TRIM(u_p2.compartiment) = $3 AND TRIM(u_p2.compartiment) <> ''
+  ))
 )`;
-      params = [actor.orgId, actor.userId];
+      params = [actor.orgId, actor.userId, actorComp];
     }
     const { rows } = await pool.query(`
       SELECT
@@ -789,8 +802,11 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
-    if (doc.created_by !== actor.userId && doc.assigned_to !== actor.userId && actor.role !== 'admin' && actor.role !== 'org_admin')
-      return res.status(403).json({ error: 'forbidden' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const view = await canViewFormular(pool, actor, doc, actorComp);
+      if (!view.allowed) return res.status(403).json({ error: view.reason });
+    }
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord get error');
@@ -858,7 +874,7 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
     const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
     if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     const isP1 = doc.created_by === actor.userId || authz.role === 'comp' || authz.role === 'admin';
-    const isP2 = doc.assigned_to === actor.userId;
+    const isP2 = doc.assigned_to === actor.userId || authz.role === 'p2_comp';
     const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
 
     const extraSets = [];
@@ -978,19 +994,14 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
     {
-      const isAdminRole = ['admin','org_admin'].includes(actor.role);
-      let canComplete = isAdminRole || doc.assigned_to === actor.userId;
-      if (!canComplete && doc.assigned_to) {
-        const actorComp = await loadActorComp(pool, actor.userId);
-        if (actorComp) {
-          const { rows: p2rows } = await pool.query(
-            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
-            [doc.assigned_to, actorComp]
-          );
-          if (p2rows.length) canComplete = true;
-        }
-      }
-      if (!canComplete) return res.status(403).json({ error: 'forbidden' });
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+      // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
+      // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
+      // creator ȘI assigned_to (helper-ul prioritizează rolul 'creator').
+      const isP2Side = authz.allowed
+        && (['admin','assigned','p2_comp'].includes(authz.role) || doc.assigned_to === actor.userId);
+      if (!isP2Side) return res.status(403).json({ error: 'forbidden' });
     }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
@@ -1035,19 +1046,14 @@ router.post('/api/formulare-ord/:id/returneaza', _csrf, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
     {
-      const isAdminRole = ['admin','org_admin'].includes(actor.role);
-      let canReturn = isAdminRole || doc.assigned_to === actor.userId;
-      if (!canReturn && doc.assigned_to) {
-        const actorComp = await loadActorComp(pool, actor.userId);
-        if (actorComp) {
-          const { rows: p2rows } = await pool.query(
-            "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
-            [doc.assigned_to, actorComp]
-          );
-          if (p2rows.length) canReturn = true;
-        }
-      }
-      if (!canReturn) return res.status(403).json({ error: 'forbidden' });
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+      // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
+      // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
+      // creator ȘI assigned_to (helper-ul prioritizează rolul 'creator').
+      const isP2Side = authz.allowed
+        && (['admin','assigned','p2_comp'].includes(authz.role) || doc.assigned_to === actor.userId);
+      if (!isP2Side) return res.status(403).json({ error: 'forbidden' });
     }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });

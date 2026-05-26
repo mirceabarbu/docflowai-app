@@ -297,6 +297,33 @@ describe('POST /api/opme/imports/:id/rematch', () => {
 // GET /api/me/can-import-opme — gating server-driven
 // ───────────────────────────────────────────────────────────────────────────
 
+describe('POST /api/opme/rematch-all — gating org_admin', () => {
+  it('org_admin poate face rematch-all pe org propriu', async () => {
+    installPoolHandlers([
+      H('FROM opme_imports', async () => ({ rows: [] })), // niciun import de reprocesat
+    ]);
+    const r = await request(makeApp())
+      .post('/api/opme/rematch-all')
+      .set('Cookie', authCookie(makeToken({ role: 'org_admin', orgId: 8123 })))
+      .set('X-CSRF-Token', CSRF);
+    // 200 normal; 429 dacă rate-limiter (per-org, module-level) tocmai a rulat
+    expect([200, 429]).toContain(r.status);
+    if (r.status === 200) {
+      expect(r.body.ok).toBe(true);
+      expect(r.body.processed).toBe(0);
+    }
+  });
+
+  it('user obișnuit: 403', async () => {
+    const r = await request(makeApp())
+      .post('/api/opme/rematch-all')
+      .set('Cookie', authCookie(makeToken({ role: 'user', orgId: 8124 })))
+      .set('X-CSRF-Token', CSRF);
+    expect(r.status).toBe(403);
+    expect(r.body.error).toBe('forbidden');
+  });
+});
+
 describe('GET /api/me/can-import-opme', () => {
   it('admin → can:true fără asignări necesare', async () => {
     const r = await request(makeApp())

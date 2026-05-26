@@ -223,6 +223,63 @@ describe('POST /api/opme/import — validări fișier', () => {
   });
 });
 
+describe('OPME — gating extins org_admin + P2-comp', () => {
+  it('org_admin poate importa OPME (early return, fără query de gating)', async () => {
+    setupSuccessMocks('imp-orgadmin'); // doar dup-check + tranzacție; gating nu interoghează
+    const tok = makeToken({ role: 'org_admin', userId: 5 });
+    const r = await request(makeApp())
+      .post('/api/opme/import')
+      .set('Cookie', authCookie(tok))
+      .set('X-CSRF-Token', CSRF)
+      .attach('file', FIXTURE);
+    expect(r.status).toBe(201);
+  });
+
+  it('user P2-comp (același compartiment ca un assigned_to) poate importa', async () => {
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ can: true }] }); // gating P2-comp → true
+    setupSuccessMocks('imp-p2comp');
+    const tok = makeToken({ role: 'user', userId: 7 });
+    const r = await request(makeApp())
+      .post('/api/opme/import')
+      .set('Cookie', authCookie(tok))
+      .set('X-CSRF-Token', CSRF)
+      .attach('file', FIXTURE);
+    expect(r.status).toBe(201);
+  });
+
+  it('user fără compartiment matching → 403', async () => {
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ can: false }] }); // gating → false
+    const tok = makeToken({ role: 'user', userId: 8 });
+    const r = await request(makeApp())
+      .post('/api/opme/import')
+      .set('Cookie', authCookie(tok))
+      .set('X-CSRF-Token', CSRF)
+      .set('Content-Type', 'multipart/form-data; boundary=----xtest')
+      .send('------xtest--\r\n');
+    expect(r.status).toBe(403);
+    expect(r.body.error).toBe('forbidden');
+  });
+
+  it('GET /api/me/can-import-opme → can:true pentru org_admin (fără query)', async () => {
+    const tok = makeToken({ role: 'org_admin', userId: 5 });
+    const r = await request(makeApp())
+      .get('/api/me/can-import-opme')
+      .set('Cookie', authCookie(tok));
+    expect(r.status).toBe(200);
+    expect(r.body.can).toBe(true);
+  });
+
+  it('GET /api/me/can-import-opme → can:true pentru P2-comp', async () => {
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ can: true }] });
+    const tok = makeToken({ role: 'user', userId: 7 });
+    const r = await request(makeApp())
+      .get('/api/me/can-import-opme')
+      .set('Cookie', authCookie(tok));
+    expect(r.status).toBe(200);
+    expect(r.body.can).toBe(true);
+  });
+});
+
 describe('POST /api/opme/import — tenant isolation', () => {
   it('același fișier importat de două org diferite → fiecare are propriul import (file_hash unic per org)', async () => {
     // Org 1

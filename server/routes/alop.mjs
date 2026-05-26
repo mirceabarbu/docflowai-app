@@ -189,6 +189,25 @@ router.get('/api/alop', async (req, res) => {
       WHERE uc.id = a.created_by
         AND TRIM(uc.compartiment) = $${compIdx}
         AND TRIM(uc.compartiment) <> ''
+    )
+    OR EXISTS (
+      SELECT 1 FROM users u_p2
+      WHERE TRIM(u_p2.compartiment) = $${compIdx}
+        AND TRIM(u_p2.compartiment) <> ''
+        AND (
+          u_p2.id IN (
+            SELECT fd.assigned_to FROM formulare_df fd WHERE fd.id = a.df_id AND fd.assigned_to IS NOT NULL
+            UNION ALL
+            SELECT fo.assigned_to FROM formulare_ord fo WHERE fo.id = a.ord_id AND fo.assigned_to IS NOT NULL
+          )
+          OR u_p2.id::text IN (
+            SELECT s->>'user_id' FROM jsonb_array_elements(COALESCE(a.df_semnatari,'[]'::jsonb)) s
+              WHERE s->>'role' = 'responsabil_cab' AND s->>'user_id' IS NOT NULL
+            UNION ALL
+            SELECT s->>'user_id' FROM jsonb_array_elements(COALESCE(a.ord_semnatari,'[]'::jsonb)) s
+              WHERE s->>'role' = 'responsabil_cab' AND s->>'user_id' IS NOT NULL
+          )
+        )
     )`;
       }
       where += ` AND (
@@ -366,6 +385,25 @@ router.get('/api/alop/:id', async (req, res) => {
             WHERE uc.id = a.created_by
               AND TRIM(uc.compartiment) = $${compIdx}
               AND TRIM(uc.compartiment) <> ''
+          )
+          OR EXISTS (
+            SELECT 1 FROM users u_p2
+            WHERE TRIM(u_p2.compartiment) = $${compIdx}
+              AND TRIM(u_p2.compartiment) <> ''
+              AND (
+                u_p2.id IN (
+                  SELECT fd.assigned_to FROM formulare_df fd WHERE fd.id = a.df_id AND fd.assigned_to IS NOT NULL
+                  UNION ALL
+                  SELECT fo.assigned_to FROM formulare_ord fo WHERE fo.id = a.ord_id AND fo.assigned_to IS NOT NULL
+                )
+                OR u_p2.id::text IN (
+                  SELECT s->>'user_id' FROM jsonb_array_elements(COALESCE(a.df_semnatari,'[]'::jsonb)) s
+                    WHERE s->>'role' = 'responsabil_cab' AND s->>'user_id' IS NOT NULL
+                  UNION ALL
+                  SELECT s->>'user_id' FROM jsonb_array_elements(COALESCE(a.ord_semnatari,'[]'::jsonb)) s
+                    WHERE s->>'role' = 'responsabil_cab' AND s->>'user_id' IS NOT NULL
+                )
+              )
           )`;
       }
       extraWhere = ` AND (

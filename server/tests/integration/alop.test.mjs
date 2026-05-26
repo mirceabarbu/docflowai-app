@@ -992,3 +992,161 @@ describe('Guard id invalid', () => {
     expect(res.body.error).toBe('id_invalid');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P2-comp — acces VIEW pe LIST + DETAIL
+//
+// Notă: pool.query e mock-uit, deci clauza SQL nu filtrează efectiv rândurile.
+// Verificăm DOUĂ lucruri concrete: (1) când actorul are compartiment, SQL-ul
+// generat conține clauza P2-comp (u_p2 + responsabil_cab + assigned_to pe DF/ORD);
+// (2) compartimentul actorului e legat ca parametru. Filtrarea reală e treaba DB-ului.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/alop — P2-comp access (LIST)', () => {
+  it('user din compartimentul Responsabil CAB efectiv → SQL include clauza P2-comp', async () => {
+    const row = makeAlopRow({ created_by: 99 }); // non-creator (actor.userId=1)
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: 'CAB' }] }) // SELECT compartiment actor
+      .mockResolvedValueOnce({ rows: [row] })                      // SELECT lista
+      .mockResolvedValueOnce({ rows: [{ count: 1 }] });            // COUNT
+
+    const app = createTestApp();
+    const res = await request(app)
+      .get('/api/alop')
+      .set('Cookie', `auth_token=${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.alop).toHaveLength(1);
+
+    const listSql    = dbModule.pool.query.mock.calls[1][0];
+    const listParams = dbModule.pool.query.mock.calls[1][1];
+    expect(listSql).toContain('u_p2');
+    expect(listSql).toMatch(/responsabil_cab/);
+    expect(listSql).toContain('assigned_to');
+    expect(listParams).toContain('CAB'); // compartiment legat ca param
+  });
+
+  it('user din compartimentul slot responsabil_cab → SQL acoperă df_semnatari/ord_semnatari', async () => {
+    const row = makeAlopRow({
+      created_by:   99,
+      df_semnatari: JSON.stringify([{ order: 3, role: 'responsabil_cab', user_id: 1, name: 'CAB User' }]),
+    });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: 'CAB' }] })
+      .mockResolvedValueOnce({ rows: [row] })
+      .mockResolvedValueOnce({ rows: [{ count: 1 }] });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .get('/api/alop')
+      .set('Cookie', `auth_token=${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    const listSql = dbModule.pool.query.mock.calls[1][0];
+    expect(listSql).toContain('df_semnatari');
+    expect(listSql).toContain('ord_semnatari');
+    expect(listSql).toMatch(/responsabil_cab/);
+  });
+
+  it('user dintr-un compartiment diferit, fără relație → listă goală (DB filtrează)', async () => {
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: 'ALT_COMP' }] })
+      .mockResolvedValueOnce({ rows: [] })          // DB nu returnează niciun ALOP
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .get('/api/alop')
+      .set('Cookie', `auth_token=${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.alop).toHaveLength(0);
+  });
+
+  it('user FĂRĂ compartiment → SQL NU conține clauza P2-comp (gated pe compartiment)', async () => {
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: '' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .get('/api/alop')
+      .set('Cookie', `auth_token=${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    const listSql = dbModule.pool.query.mock.calls[1][0];
+    expect(listSql).not.toContain('u_p2');
+  });
+});
+
+describe('GET /api/alop/:id — P2-comp access (DETAIL)', () => {
+  it('actor cu compartiment → SQL detaliu include clauza P2-comp', async () => {
+    const row = makeAlopRow({ created_by: 99 });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ compartiment: 'CAB' }] }) // SELECT compartiment actor
+      .mockResolvedValueOnce({ rows: [row] });                     // SELECT detaliu
+
+    const app = createTestApp();
+    const res = await request(app)
+      .get(`/api/alop/${ALOP_ID}`)
+      .set('Cookie', `auth_token=${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.alop.id).toBe(ALOP_ID);
+
+    const detailSql = dbModule.pool.query.mock.calls[1][0];
+    expect(detailSql).toContain('u_p2');
+    expect(detailSql).toMatch(/responsabil_cab/);
+    expect(detailSql).toContain('assigned_to');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Autorizare EDIT non-creator prin canEditAlop (link-df)
+//
+// link-df încarcă DOAR { created_by, compartiment } pentru canEditAlop, deci
+// ramura reachable pentru un non-creator e `comp` (membru compartiment). Ramura
+// `p2_comp` (via df_semnatari) e exercitată de SQL-ul LIST/DETAIL de mai sus.
+// Aici verificăm integrarea: non-creator autorizat (comp) → 200, nerelaționat → 403.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/alop/:id/link-df — autorizare non-creator (canEditAlop)', () => {
+  it('200 — non-creator din același compartiment (comp) poate face link-df', async () => {
+    const updated = makeAlopRow({ df_id: DF_ID, status: 'angajare', created_by: 99 });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ created_by: 99, compartiment: 'CAB' }] }) // SELECT alop (authz)
+      .mockResolvedValueOnce({ rows: [{ compartiment: 'CAB' }] })                  // loadActorComp
+      // canEditAlop: alopComp 'CAB' === actorComp 'CAB' → role 'comp' (fără query extra)
+      .mockResolvedValueOnce({ rows: [{ id: DF_ID }] }) // SELECT formulare_df
+      .mockResolvedValueOnce({ rows: [] })               // SELECT conflict
+      .mockResolvedValueOnce({ rows: [updated] });        // UPDATE
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/link-df`)
+      .set('Cookie', `auth_token=${makeToken()}`) // userId=1, role=user (non-creator)
+      .send({ df_id: DF_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.alop.df_id).toBe(DF_ID);
+  });
+
+  it('403 — user fără nicio relație cu ALOP nu poate face link-df', async () => {
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ created_by: 99, compartiment: 'SECRETARIAT' }] }) // SELECT alop
+      .mockResolvedValueOnce({ rows: [{ compartiment: 'CONTABILITATE' }] })               // loadActorComp
+      .mockResolvedValueOnce({ rows: [] }); // _userIsInComp(created_by, actorComp) → gol
+      // isInAlopP2Comp: alop fără df_semnatari/df_id → [] → false → forbidden
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/link-df`)
+      .set('Cookie', `auth_token=${makeToken()}`)
+      .send({ df_id: DF_ID });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('forbidden');
+  });
+});
