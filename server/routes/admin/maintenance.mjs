@@ -167,10 +167,47 @@ router.post('/admin/db/vacuum', csrfMiddleware, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   if (actor.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
   try {
+    const beforeR = await pool.query(`
+      SELECT
+        pg_database_size(current_database()) AS db_bytes,
+        pg_total_relation_size('flows_pdfs') AS pdfs_bytes,
+        pg_total_relation_size('flow_attachments') AS att_bytes
+    `);
+    // VACUUM FULL ia ACCESS EXCLUSIVE LOCK temporar — singurul mod de a returna spațiul la OS.
+    // Pe flows_pdfs (~168 MB) și flow_attachments (~253 MB) lock-ul durează ~30s pe prod.
+    await pool.query('VACUUM FULL flows_pdfs');
+    await pool.query('VACUUM FULL flow_attachments');
     await pool.query('VACUUM ANALYZE flows');
-    const sizeR = await pool.query('SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size');
-    return res.json({ ok: true, message: 'VACUUM ANALYZE flows executat.', dbSize: sizeR.rows[0].db_size });
-  } catch(e) { return res.status(500).json({ error: 'server_error' }); }
+    const afterR = await pool.query(`
+      SELECT
+        pg_database_size(current_database()) AS db_bytes,
+        pg_total_relation_size('flows_pdfs') AS pdfs_bytes,
+        pg_total_relation_size('flow_attachments') AS att_bytes
+    `);
+    const before = beforeR.rows[0], after = afterR.rows[0];
+    const fmtMB = (b) => (Number(b) / 1024 / 1024).toFixed(2) + ' MB';
+    const freedMB = (Number(before.db_bytes) - Number(after.db_bytes)) / 1024 / 1024;
+    logger.info({
+      actor: actor.email,
+      dbBefore: before.db_bytes,
+      dbAfter: after.db_bytes,
+      freedMB,
+    }, 'VACUUM FULL flows_pdfs + flow_attachments + ANALYZE flows executat');
+    return res.json({
+      ok: true,
+      message: 'VACUUM FULL flows_pdfs + flow_attachments + ANALYZE flows executat.',
+      dbSizeBefore:    fmtMB(before.db_bytes),
+      dbSizeAfter:     fmtMB(after.db_bytes),
+      freedMB:         freedMB.toFixed(2),
+      pdfsTableBefore: fmtMB(before.pdfs_bytes),
+      pdfsTableAfter:  fmtMB(after.pdfs_bytes),
+      attTableBefore:  fmtMB(before.att_bytes),
+      attTableAfter:   fmtMB(after.att_bytes),
+    });
+  } catch(e) {
+    logger.error({ err: e }, 'vacuum error');
+    return res.status(500).json({ error: 'server_error', detail: e.message });
+  }
 });
 
 router.post('/admin/db/cleanup-orphans', csrfMiddleware, async (req, res) => {
@@ -184,7 +221,8 @@ router.post('/admin/db/cleanup-orphans', csrfMiddleware, async (req, res) => {
         (SELECT pg_total_relation_size('flows_pdfs')) AS pdfs_bytes,
         (SELECT pg_total_relation_size('flow_attachments')) AS att_bytes,
         (SELECT COUNT(*) FROM flows_pdfs WHERE flow_id IN (SELECT id FROM flows WHERE deleted_at IS NOT NULL)) AS orphan_pdfs,
-        (SELECT COUNT(*) FROM flow_attachments WHERE flow_id IN (SELECT id FROM flows WHERE deleted_at IS NOT NULL)) AS orphan_atts
+        (SELECT COUNT(*) FROM flow_attachments WHERE flow_id IN (SELECT id FROM flows WHERE deleted_at IS NOT NULL)) AS orphan_atts,
+        (SELECT COUNT(*) FROM flow_attachments WHERE drive_file_id IS NOT NULL AND data IS NOT NULL) AS archived_atts_with_data
     `);
     const before = beforeR.rows[0];
 
@@ -196,6 +234,16 @@ router.post('/admin/db/cleanup-orphans', csrfMiddleware, async (req, res) => {
     const delAtts = await pool.query(`
       DELETE FROM flow_attachments
        WHERE flow_id IN (SELECT id FROM flows WHERE deleted_at IS NOT NULL)
+    `);
+
+    // Nullify BYTEA pentru atașamente ARHIVATE în Drive (drive_file_id setat).
+    // Download-ul are fallback streamFromDrive (vezi attachments.mjs).
+    // Trebuie să ruleze ÎNAINTE de VACUUM FULL ca spațiul eliberat să fie returnat la OS.
+    const nullifyArchived = await pool.query(`
+      UPDATE flow_attachments
+         SET data = NULL
+       WHERE drive_file_id IS NOT NULL
+         AND data IS NOT NULL
     `);
 
     // VACUUM FULL ia ACCESS EXCLUSIVE LOCK temporar — singurul mod de a returna spațiul la OS.
@@ -218,21 +266,24 @@ router.post('/admin/db/cleanup-orphans', csrfMiddleware, async (req, res) => {
       actor: actor.email,
       pdfsDeleted: delPdfs.rowCount,
       attsDeleted: delAtts.rowCount,
+      archivedAttsNullified: nullifyArchived.rowCount,
       dbBefore: before.db_bytes,
       dbAfter: after.db_bytes,
-    }, 'cleanup-orphans executat');
+    }, 'cleanup-orphans executat (extins cu nullify atașamente arhivate)');
 
     return res.json({
       ok: true,
-      pdfsDeleted:        delPdfs.rowCount,
-      attachmentsDeleted: delAtts.rowCount,
-      orphanPdfsFound:    parseInt(before.orphan_pdfs),
-      orphanAttsFound:    parseInt(before.orphan_atts),
-      dbSizeBefore:       fmtMB(before.db_bytes),
-      dbSizeAfter:        fmtMB(after.db_bytes),
-      freedMB:            (fmtBytes(before.db_bytes) - fmtBytes(after.db_bytes)) / 1024 / 1024,
-      pdfsTableBefore:    fmtMB(before.pdfs_bytes),
-      pdfsTableAfter:     fmtMB(after.pdfs_bytes),
+      pdfsDeleted:           delPdfs.rowCount,
+      attachmentsDeleted:    delAtts.rowCount,
+      attachmentsNullified:  nullifyArchived.rowCount,
+      orphanPdfsFound:       parseInt(before.orphan_pdfs),
+      orphanAttsFound:       parseInt(before.orphan_atts),
+      archivedAttsNullified: parseInt(before.archived_atts_with_data),
+      dbSizeBefore:          fmtMB(before.db_bytes),
+      dbSizeAfter:           fmtMB(after.db_bytes),
+      freedMB:               (fmtBytes(before.db_bytes) - fmtBytes(after.db_bytes)) / 1024 / 1024,
+      pdfsTableBefore:       fmtMB(before.pdfs_bytes),
+      pdfsTableAfter:        fmtMB(after.pdfs_bytes),
     });
   } catch(e) {
     logger.error({ err: e }, 'cleanup-orphans error');

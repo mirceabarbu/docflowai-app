@@ -123,14 +123,36 @@ router.get('/flows/:flowId/attachments/:attId', async (req, res) => {
     if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken))
       return res.status(403).json({ error: 'forbidden' });
     const { rows } = await pool.query(
-      'SELECT filename, mime_type, data FROM flow_attachments WHERE id=$1 AND flow_id=$2',
+      'SELECT filename, mime_type, data, drive_file_id FROM flow_attachments WHERE id=$1 AND flow_id=$2',
       [parseInt(attId), flowId]
     );
     if (!rows.length) return res.status(404).json({ error: 'attachment_not_found' });
     const att = rows[0];
     const safeName = att.filename.replace(/[^\w\-\.]/g, '_');
-    res.setHeader('Content-Type', att.mime_type);
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    // Header-ele de download se setează DOAR pe căile care chiar trimit fișierul,
+    // ca răspunsurile de eroare (404/502) să rămână application/json curat.
+    const setDownloadHeaders = () => {
+      res.setHeader('Content-Type', att.mime_type);
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    };
+    // Dacă BYTEA a fost curățat post-arhivare, citim direct din Drive
+    if ((!att.data || att.data.length === 0) && att.drive_file_id) {
+      try {
+        const { streamFromDrive } = await import('../../drive.mjs');
+        setDownloadHeaders();
+        await streamFromDrive(att.drive_file_id, res);
+        return;
+      } catch (driveErr) {
+        // Dacă streaming-ul a început deja, nu mai putem trimite un body JSON.
+        if (res.headersSent) return;
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(502).json({ error: 'drive_unavailable', message: 'Atașamentul e arhivat în Drive dar nu poate fi descărcat acum.' });
+      }
+    }
+    if (!att.data || att.data.length === 0) {
+      return res.status(404).json({ error: 'attachment_data_missing' });
+    }
+    setDownloadHeaders();
     return res.status(200).send(att.data);
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
