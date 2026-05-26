@@ -5,7 +5,7 @@
  * - Offline fallback pentru HTML pages
  */
 
-const CACHE_VERSION = 'docflowai-v227';
+const CACHE_VERSION = 'docflowai-v228';
 const CACHE_STATIC = `${CACHE_VERSION}-static`;
 
 // Assets de pre-cacheuit la install
