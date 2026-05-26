@@ -1150,3 +1150,92 @@ describe('POST /api/alop/:id/link-df — autorizare non-creator (canEditAlop)', 
     expect(res.body.error).toBe('forbidden');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST endpoint-uri ALOP — P2-comp via slot responsabil_cab PUR (fără DF/ORD)
+//
+// De la 3.9.511 SELECT-ul pre-authz din handler-ele POST include df_semnatari/
+// ord_semnatari/df_id/ord_id, deci canEditAlop → isInAlopP2Comp poate detecta
+// P2-comp declarat DOAR în slotul 'responsabil_cab' al șablonului (df_id/ord_id
+// încă null). Un coleg din ACELAȘI compartiment ca semnatarul responsabil_cab
+// primește edit (p2_comp). Un user din alt compartiment rămâne 403.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST endpoint-uri ALOP — P2-comp via slot responsabil_cab pur (fără DF/ORD)', () => {
+  // Slotul responsabil_cab referă user 50; actorul (userId=1) e în același
+  // compartiment ('CAB') ca user 50, dar NU e creatorul (created_by=99).
+  it('200 — user în compartimentul slot responsabil_cab poate face link-df', async () => {
+    const updated = makeAlopRow({ df_id: DF_ID, status: 'angajare', created_by: 99 });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{                       // SELECT alop (authz)
+        created_by: 99, compartiment: 'SECRETARIAT',
+        df_id: null, ord_id: null,
+        df_semnatari: [{ order: 3, role: 'responsabil_cab', user_id: 50, name: 'CAB User' }],
+        ord_semnatari: [],
+      }] })
+      .mockResolvedValueOnce({ rows: [{ compartiment: 'CAB' }] }) // loadActorComp(actor=1)
+      .mockResolvedValueOnce({ rows: [] })                        // _userIsInComp(99,'CAB') → fals
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })       // isInAlopP2Comp users → user 50 ∈ CAB
+      .mockResolvedValueOnce({ rows: [{ id: DF_ID }] })           // SELECT formulare_df
+      .mockResolvedValueOnce({ rows: [] })                        // SELECT conflict
+      .mockResolvedValueOnce({ rows: [updated] });                // UPDATE
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/link-df`)
+      .set('Cookie', `auth_token=${makeToken()}`) // userId=1, role=user (non-creator)
+      .send({ df_id: DF_ID });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.alop.df_id).toBe(DF_ID);
+  });
+
+  it('200 — user în compartimentul slot responsabil_cab poate face confirma-lichidare', async () => {
+    const updated = makeAlopRow({ status: 'ordonantare', created_by: 99 });
+    dbModule.pool.query
+      // guard: lichidare_confirmed_by != null && != actor && nu admin → intră pe canEditAlop
+      .mockResolvedValueOnce({ rows: [{ lichidare_confirmed_by: 88, status: 'lichidare' }] })
+      .mockResolvedValueOnce({ rows: [{                       // SELECT alop (authz, fără org_id)
+        created_by: 99, compartiment: 'SECRETARIAT',
+        df_id: null, ord_id: null,
+        df_semnatari: [{ order: 3, role: 'responsabil_cab', user_id: 50, name: 'CAB User' }],
+        ord_semnatari: [],
+      }] })
+      .mockResolvedValueOnce({ rows: [{ compartiment: 'CAB' }] }) // loadActorComp
+      .mockResolvedValueOnce({ rows: [] })                        // _userIsInComp(99,'CAB') → fals
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })       // isInAlopP2Comp users → user 50 ∈ CAB
+      .mockResolvedValueOnce({ rows: [updated] });                // UPDATE → ordonantare
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/confirma-lichidare`)
+      .set('Cookie', `auth_token=${makeToken()}`)
+      .send({ observatii: 'confirm lichidare' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.alop.status).toBe('ordonantare');
+  });
+
+  it('403 — user fără relație cu slotul responsabil_cab (alt compartiment)', async () => {
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{                       // SELECT alop (authz)
+        created_by: 99, compartiment: 'SECRETARIAT',
+        df_id: null, ord_id: null,
+        df_semnatari: [{ order: 3, role: 'responsabil_cab', user_id: 50, name: 'CAB User' }],
+        ord_semnatari: [],
+      }] })
+      .mockResolvedValueOnce({ rows: [{ compartiment: 'CONTABILITATE' }] }) // loadActorComp
+      .mockResolvedValueOnce({ rows: [] })  // _userIsInComp(99,'CONTABILITATE') → fals
+      .mockResolvedValueOnce({ rows: [] }); // isInAlopP2Comp: user 50 NU e în CONTABILITATE → fals
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/link-df`)
+      .set('Cookie', `auth_token=${makeToken()}`)
+      .send({ df_id: DF_ID });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('forbidden');
+  });
+});
