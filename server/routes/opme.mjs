@@ -39,16 +39,31 @@ function _drainBody(req) {
 async function _hasOpmeImportRole(actor) {
   if (!actor) return false;
   if (actor.role === 'admin') return true;
+  if (actor.role === 'org_admin' && actor.orgId) return true;
   if (!actor.orgId || !actor.userId) return false;
   try {
     const { rows } = await pool.query(`
       SELECT (
+        -- Responsabil CAB efectiv (assigned_to)
         EXISTS (
           SELECT 1 FROM formulare_df
            WHERE org_id = $1 AND assigned_to = $2
         ) OR EXISTS (
           SELECT 1 FROM formulare_ord
            WHERE org_id = $1 AND assigned_to = $2
+        )
+        -- P2-comp: actor are același compartiment ca un Responsabil CAB din org
+        OR EXISTS (
+          SELECT 1
+          FROM users me
+          JOIN users p2 ON TRIM(p2.compartiment) = TRIM(me.compartiment)
+                        AND TRIM(p2.compartiment) <> ''
+          WHERE me.id = $2
+            AND p2.org_id = $1
+            AND (
+              EXISTS (SELECT 1 FROM formulare_df  WHERE org_id = $1 AND assigned_to = p2.id)
+              OR EXISTS (SELECT 1 FROM formulare_ord WHERE org_id = $1 AND assigned_to = p2.id)
+            )
         )
       ) AS can
     `, [actor.orgId, actor.userId]);
@@ -613,8 +628,8 @@ router.post('/api/opme/rematch-all', csrfMiddleware, async (req, res) => {
   const actor = requireAuth(req, res);
   if (!actor) return;
   if (!actor.orgId) return res.status(403).json({ error: 'org_required' });
-  if (actor.role !== 'admin') {
-    return res.status(403).json({ error: 'forbidden', message: 'Doar super-admin.' });
+  if (!['admin','org_admin'].includes(actor.role)) {
+    return res.status(403).json({ error: 'forbidden', message: 'Doar admin sau org_admin.' });
   }
 
   const now = Date.now();
