@@ -4,18 +4,18 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>DocFlowAI — Registratură</title>
-  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.508">
-  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.508">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.508">
-  <link rel="stylesheet" href="/mobile.css?v=3.9.508">
-  <script src="/js/df-utils.js?v=3.9.508"></script>
-  <script src="/js/df-apifetch-shim.js?v=3.9.508"></script>
-  <script src="/js/df-entitlements.js?v=3.9.508"></script>
-  <script src="/js/df-shell.js?v=3.9.508"></script>
-  <script src="/js/df-user-modals.js?v=3.9.508"></script>
-  <script src="/js/df-subtabs.js?v=3.9.508" defer></script>
-  <script src="/js/components/registratura-action-modal.js?v=3.9.508"></script>
-  <script src="/js/registratura/main.js?v=3.9.508" defer></script>
+  <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.509">
+  <link rel="stylesheet" href="/css/df/shell.css?v=3.9.509">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.509">
+  <link rel="stylesheet" href="/mobile.css?v=3.9.509">
+  <script src="/js/df-utils.js?v=3.9.509"></script>
+  <script src="/js/df-apifetch-shim.js?v=3.9.509"></script>
+  <script src="/js/df-entitlements.js?v=3.9.509"></script>
+  <script src="/js/df-shell.js?v=3.9.509"></script>
+  <script src="/js/df-user-modals.js?v=3.9.509"></script>
+  <script src="/js/df-subtabs.js?v=3.9.509" defer></script>
+  <script src="/js/components/registratura-action-modal.js?v=3.9.509"></script>
+  <script src="/js/registratura/main.js?v=3.9.509" defer></script>
 </head>
 <body>
 
@@ -28,19 +28,19 @@
     <div class="df-nav-label">Navigare app</div>
     <div class="df-nav-group">
       <a href="/" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-edit"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-edit"/></svg>
         Flux nou
       </a>
       <a href="/?tab=flows" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-folder"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-folder"/></svg>
         Fluxurile mele
       </a>
       <a href="/templates" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-grid"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-grid"/></svg>
         Șabloane
       </a>
       <a href="/formular.html" class="df-nav-item">
-        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-file-text"/></svg>
+        <svg class="df-nav-icon" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-file-text"/></svg>
         Formulare
       </a>
     </div>
@@ -71,30 +71,30 @@
               <div class="df-user-trigger-name"><span id="hdrUser">—</span></div>
               <div class="df-user-trigger-role">Utilizator</div>
             </div>
-            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-chevron-down"/></svg>
+            <svg class="df-user-trigger-chevron" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-chevron-down"/></svg>
           </button>
           <div class="df-user-dropdown">
             <button onclick="closeUserMenu();openLeaveModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-clock"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-clock"/></svg>
               Concediu și delegare
             </button>
             <button onclick="closeUserMenu();openChangePwdModal()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-key"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-key"/></svg>
               Schimbă parola
             </button>
             <button id="hdr2faBtn" onclick="closeUserMenu();alert('Configurare 2FA disponibilă doar în panoul admin.')" style="display:none;">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-shield"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-shield"/></svg>
               Configurare 2FA
             </button>
             <a href="/admin" class="df-admin-link" style="text-decoration:none;">
               <button>
-                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-layout"/></svg>
+                <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-layout"/></svg>
                 Panou admin
               </button>
             </a>
             <div class="df-user-dropdown-divider"></div>
             <button class="danger" onclick="closeUserMenu();logout()">
-              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-log-out"/></svg>
+              <svg viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-log-out"/></svg>
               Ieșire
             </button>
           </div>
@@ -303,11 +303,11 @@
         <label for="regin-f-file-btn">Document scanat (PDF, opțional)</label>
         <input type="file" id="regin-f-file" accept="application/pdf,.pdf" style="display:none"/>
         <button type="button" class="df-action-btn" id="regin-f-file-btn">
-          <svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-upload"/></svg>
+          <svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-upload"/></svg>
           Alege fișier
         </button>
         <div class="df-file-pick" id="regin-f-file-name" style="display:none;align-items:center;gap:8px;margin-top:8px;font-size:.82rem;color:var(--df-text-2);">
-          <svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.508#ico-file-text"/></svg>
+          <svg class="df-ico" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.509#ico-file-text"/></svg>
           <span id="regin-f-file-label">—</span>
           <button type="button" class="df-action-btn sm ghost" id="regin-f-file-clear" title="Elimină">&times;</button>
         </div>
