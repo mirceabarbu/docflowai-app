@@ -1,42 +1,45 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// authz-formular.mjs — helper centralizat pentru autorizare DF/ORD/ALOP
+// authz-formular.mjs — autorizare DF/ORD/ALOP centralizată
 //
-// Reguli (FEATURE 3.A + 3.B):
-//   1. admin / org_admin → întotdeauna access
-//   2. compartiment match strict (case-sensitive, după trim)
-//   3. compartiment '' = doar creator/assigned (fără grup virtual)
-//   4. ALOP = uniunea (alop.compartiment text + users.compartiment al creatorului)
+// Roluri returnate:
+//   'admin'      → admin / org_admin
+//   'creator'    → autorul documentului
+//   'assigned'   → P2 efectiv (assigned_to)
+//   'comp'       → P1-comp (membru comp inițiator). Nume istoric, back-compat.
+//   'p2_comp'    → P2-comp (membru comp Responsabil CAB). NOU.
+//   'flow_viewer'→ semnatar în fluxul de semnare (view-only pe DF/ORD)
+//
+// canDestroyOnly  → creator + admin
+// canEditFormular → admin + creator + (assigned dacă assignedCounts) + comp + p2_comp
+// canViewFormular → canEditFormular ∪ flow_viewer
+// canEditAlop     → admin + creator + comp + p2_comp (NU semnatari flux)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Încarcă compartiment-ul actor-ului din DB.
- * @returns string trimmed (poate fi '')
- */
 export async function loadActorComp(pool, userId) {
   const { rows } = await pool.query('SELECT compartiment FROM users WHERE id=$1', [userId]);
   return (rows[0]?.compartiment || '').trim();
 }
 
-/**
- * Verifică dacă userul cu id=createdBy are compartimentul targetComp.
- */
-async function _creatorIsInComp(pool, createdBy, targetComp) {
-  if (!targetComp || !createdBy) return false;
+async function _userIsInComp(pool, targetUserId, targetComp) {
+  if (!targetComp || !targetUserId) return false;
   const { rows } = await pool.query(
     "SELECT 1 FROM users WHERE id=$1 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''",
-    [createdBy, targetComp]
+    [targetUserId, targetComp]
   );
   return rows.length > 0;
 }
 
-/**
- * Verifică acces editare pe DF/ORD.
- * @param {Object} doc - rândul DB (formulare_df sau formulare_ord)
- * @param {string} actorComp - compartiment actor (trimmed)
- * @param {Object} opts
- * @param {boolean} opts.assignedCounts - true dacă assigned_to=actor dă acces (PUT, complete, returneaza)
- * @returns {Promise<{allowed: boolean, reason?: string, role?: 'creator'|'assigned'|'comp'|'admin'}>}
- */
+async function _isInFlowSigners(pool, flowId, userId) {
+  if (!flowId || !userId) return false;
+  const { rows } = await pool.query(
+    `SELECT 1 FROM flows
+       WHERE id = $1
+         AND data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $2::text))`,
+    [flowId, userId]
+  );
+  return rows.length > 0;
+}
+
 export async function canEditFormular(pool, actor, doc, actorComp, opts = {}) {
   if (['admin','org_admin'].includes(actor.role))
     return { allowed: true, role: 'admin' };
@@ -44,16 +47,63 @@ export async function canEditFormular(pool, actor, doc, actorComp, opts = {}) {
     return { allowed: true, role: 'creator' };
   if (opts.assignedCounts !== false && doc.assigned_to === actor.userId)
     return { allowed: true, role: 'assigned' };
-  if (actorComp && await _creatorIsInComp(pool, doc.created_by, actorComp))
-    return { allowed: true, role: 'comp' };
+  if (actorComp) {
+    if (await _userIsInComp(pool, doc.created_by, actorComp))
+      return { allowed: true, role: 'comp' };  // P1-comp (back-compat)
+    if (doc.assigned_to && await _userIsInComp(pool, doc.assigned_to, actorComp))
+      return { allowed: true, role: 'p2_comp' };
+  }
   return { allowed: false, reason: 'forbidden' };
 }
 
-/**
- * Verifică acces editare pe ALOP.
- * @param {Object} alop - rândul alop_instances
- * @param {string} actorComp - compartiment actor (trimmed)
- */
+export async function canViewFormular(pool, actor, doc, actorComp) {
+  const edit = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+  if (edit.allowed) return { allowed: true, role: edit.role, mode: 'edit' };
+  if (doc.flow_id && await _isInFlowSigners(pool, doc.flow_id, actor.userId))
+    return { allowed: true, role: 'flow_viewer', mode: 'view_only' };
+  return { allowed: false, reason: 'forbidden' };
+}
+
+export async function getAlopP2UserIds(pool, alop) {
+  const ids = new Set();
+  for (const arr of [alop.df_semnatari, alop.ord_semnatari]) {
+    if (Array.isArray(arr)) {
+      for (const s of arr) {
+        if (s?.role === 'responsabil_cab' && s?.user_id != null) {
+          ids.add(String(s.user_id));
+        }
+      }
+    }
+  }
+  if (alop.df_id || alop.ord_id) {
+    try {
+      const { rows } = await pool.query(`
+        SELECT assigned_to FROM formulare_df  WHERE id=$1 AND assigned_to IS NOT NULL
+        UNION
+        SELECT assigned_to FROM formulare_ord WHERE id=$2 AND assigned_to IS NOT NULL
+      `, [alop.df_id || null, alop.ord_id || null]);
+      for (const r of rows) if (r.assigned_to != null) ids.add(String(r.assigned_to));
+    } catch (_) { /* tabele opționale */ }
+  }
+  return Array.from(ids);
+}
+
+export async function isInAlopP2Comp(pool, alop, actorComp) {
+  if (!actorComp) return false;
+  const p2Ids = await getAlopP2UserIds(pool, alop);
+  const numericIds = p2Ids.map(Number).filter(Number.isFinite);
+  if (numericIds.length === 0) return false;
+  const { rows } = await pool.query(
+    `SELECT 1 FROM users
+       WHERE id = ANY($1::int[])
+         AND TRIM(compartiment) = $2
+         AND TRIM(compartiment) <> ''
+       LIMIT 1`,
+    [numericIds, actorComp]
+  );
+  return rows.length > 0;
+}
+
 export async function canEditAlop(pool, actor, alop, actorComp) {
   if (['admin','org_admin'].includes(actor.role))
     return { allowed: true, role: 'admin' };
@@ -63,16 +113,14 @@ export async function canEditAlop(pool, actor, alop, actorComp) {
     const alopComp = (alop.compartiment || '').trim();
     if (alopComp && alopComp === actorComp)
       return { allowed: true, role: 'comp' };
-    if (await _creatorIsInComp(pool, alop.created_by, actorComp))
+    if (await _userIsInComp(pool, alop.created_by, actorComp))
       return { allowed: true, role: 'comp' };
+    if (await isInAlopP2Comp(pool, alop, actorComp))
+      return { allowed: true, role: 'p2_comp' };
   }
   return { allowed: false, reason: 'forbidden' };
 }
 
-/**
- * Verificare STRICTĂ pentru acțiuni distructive (anulare, delete).
- * Doar creator + admin/org_admin. NU compartiment, NU assigned.
- */
 export function canDestroyOnly(actor, doc) {
   if (['admin','org_admin'].includes(actor.role))
     return { allowed: true, role: 'admin' };
