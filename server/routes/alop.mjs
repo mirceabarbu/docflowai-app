@@ -529,6 +529,143 @@ router.get('/api/alop/:id', async (req, res) => {
       }
     }
 
+    // ── Self-heal #1 (v3.9.517): ord_id orphan recovery ──────────────────────
+    // Scenariu: status='ordonantare' AND ord_id IS NULL, dar există un ORD
+    // orfan (df_id=alop.df_id, ne-asociat altui ALOP/ciclu activ) → link automat.
+    // Heuristic: pickeăm DOAR dacă există EXACT 1 candidat orfan
+    // (2+ = ambiguitate → log warn, lasă user-ul să decidă manual).
+    // Idempotent: UPDATE cu guard `AND ord_id IS NULL` în WHERE.
+    if (alop.status === 'ordonantare' && !alop.ord_id && alop.df_id) {
+      try {
+        const { rows: cands } = await pool.query(`
+          SELECT fo.id, fo.flow_id,
+            CASE WHEN fo.flow_id IS NOT NULL AND (
+              f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true
+            ) THEN true ELSE false END AS aprobat
+          FROM formulare_ord fo
+          LEFT JOIN flows f ON f.id::text = fo.flow_id
+          WHERE fo.df_id  = $1
+            AND fo.org_id = $2
+            AND fo.deleted_at IS NULL
+            AND fo.status <> 'anulat'
+            AND NOT EXISTS (
+              SELECT 1 FROM alop_instances a2
+              WHERE a2.ord_id = fo.id AND a2.cancelled_at IS NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM alop_ord_cicluri c WHERE c.ord_id = fo.id
+            )
+          ORDER BY fo.created_at DESC
+          LIMIT 2
+        `, [alop.df_id, alop.org_id]);
+
+        if (cands.length === 1) {
+          const cand = cands[0];
+          const sets = ['ord_id = $1', 'updated_at = NOW()', 'updated_by = $2'];
+          const vals = [cand.id, actor.userId];
+          let p = 3;
+          if (cand.flow_id) {
+            sets.push(`ord_flow_id = $${p++}`);
+            vals.push(cand.flow_id);
+          }
+          const willTransitionToPlata = !!cand.aprobat;
+          if (willTransitionToPlata) {
+            sets.push(`status = 'plata'`, `ord_completed_at = NOW()`);
+          }
+          vals.push(req.params.id);
+          const { rows: linked } = await pool.query(`
+            UPDATE alop_instances
+            SET ${sets.join(', ')}
+            WHERE id = $${p}
+              AND status = 'ordonantare'
+              AND ord_id IS NULL
+            RETURNING ord_id, ord_flow_id, status, ord_completed_at
+          `, vals);
+
+          if (linked[0]) {
+            alop.ord_id           = linked[0].ord_id;
+            alop.ord_flow_id      = linked[0].ord_flow_id;
+            alop.status           = linked[0].status;
+            alop.ord_completed_at = linked[0].ord_completed_at;
+            if (willTransitionToPlata) alop.ord_aprobat = true;
+            logger.info({
+              alopId: req.params.id, ordId: cand.id, flowId: cand.flow_id,
+              aprobat: cand.aprobat, newStatus: linked[0].status,
+            }, '[ALOP] self-heal #1: orphan ORD auto-linked');
+            if (willTransitionToPlata) {
+              try {
+                const r = await _opmeMatcher.tryAutoConfirmAlop(req.params.id, { actorUserId: actor.userId });
+                if (r?.confirmed) logger.info({ alopId: req.params.id }, '[ALOP] OPME auto-confirm (self-heal #1)');
+              } catch (mErr) {
+                logger.warn({ err: mErr, alopId: req.params.id }, '[ALOP] OPME auto-confirm failed (non-fatal, self-heal #1)');
+              }
+            }
+          }
+        } else if (cands.length > 1) {
+          logger.warn({
+            alopId: req.params.id, dfId: alop.df_id, candidateCount: cands.length,
+          }, '[ALOP] self-heal #1: ambiguous (multiple orphan ORDs), skipped');
+        }
+      } catch (healErr) {
+        logger.warn({ err: healErr, alopId: req.params.id }, '[ALOP] self-heal #1 orphan ORD failed (non-fatal)');
+      }
+    }
+
+    // ── Self-heal #2 (v3.9.517): ord_flow_id back-fill ───────────────────────
+    // Scenariu: status='ordonantare' AND ord_id setat AND ord_flow_id NULL, dar
+    // formulare_ord.flow_id e setat (link-ord-flow s-a ratat). Idempotent prin
+    // guard `AND ord_flow_id IS NULL` în WHERE.
+    if (alop.status === 'ordonantare' && alop.ord_id && !alop.ord_flow_id) {
+      try {
+        const { rows: fo } = await pool.query(`
+          SELECT fo.flow_id,
+            CASE WHEN fo.flow_id IS NOT NULL AND (
+              f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true
+            ) THEN true ELSE false END AS aprobat
+          FROM formulare_ord fo
+          LEFT JOIN flows f ON f.id::text = fo.flow_id
+          WHERE fo.id=$1 AND fo.org_id=$2 AND fo.deleted_at IS NULL
+        `, [alop.ord_id, alop.org_id]);
+
+        if (fo[0]?.flow_id) {
+          const sets = ['ord_flow_id = $1', 'updated_at = NOW()', 'updated_by = $2'];
+          const vals = [fo[0].flow_id, actor.userId];
+          const willTransitionToPlata = !!fo[0].aprobat;
+          if (willTransitionToPlata) {
+            sets.push(`status = 'plata'`, `ord_completed_at = NOW()`);
+          }
+          vals.push(req.params.id);
+          const { rows: linked } = await pool.query(`
+            UPDATE alop_instances
+            SET ${sets.join(', ')}
+            WHERE id = $${vals.length}
+              AND ord_flow_id IS NULL
+              AND status = 'ordonantare'
+            RETURNING ord_flow_id, status, ord_completed_at
+          `, vals);
+          if (linked[0]) {
+            alop.ord_flow_id      = linked[0].ord_flow_id;
+            alop.status           = linked[0].status;
+            alop.ord_completed_at = linked[0].ord_completed_at;
+            if (willTransitionToPlata) alop.ord_aprobat = true;
+            logger.info({
+              alopId: req.params.id, flowId: fo[0].flow_id, aprobat: fo[0].aprobat,
+            }, '[ALOP] self-heal #2: ord_flow_id back-filled');
+            if (willTransitionToPlata) {
+              try {
+                const r = await _opmeMatcher.tryAutoConfirmAlop(req.params.id, { actorUserId: actor.userId });
+                if (r?.confirmed) logger.info({ alopId: req.params.id }, '[ALOP] OPME auto-confirm (self-heal #2)');
+              } catch (mErr) {
+                logger.warn({ err: mErr, alopId: req.params.id }, '[ALOP] OPME auto-confirm failed (non-fatal, self-heal #2)');
+              }
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn({ err: e, alopId: req.params.id }, '[ALOP] self-heal #2 ord_flow_id failed (non-fatal)');
+      }
+    }
+
     // ORD aprobat dar ALOP încă în ordonantare → plata
     if (alop.ord_aprobat && alop.status === 'ordonantare') {
       try {

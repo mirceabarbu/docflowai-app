@@ -1762,6 +1762,14 @@ const MIGRATIONS = [
         ON formulare_atasamente(form_type, form_id, slot) WHERE deleted_at IS NULL;
     `
   }
+  ,{
+    id: '082_formulare_ord_df_id_idx',
+    sql: `
+      -- v3.9.517: index pentru self-heal ALOP — query lookup ORD orfan WHERE fo.df_id=$1
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_df_id
+        ON formulare_ord(df_id) WHERE deleted_at IS NULL AND df_id IS NOT NULL;
+    `
+  }
 ];
 
 async function runMigrations(client) {
