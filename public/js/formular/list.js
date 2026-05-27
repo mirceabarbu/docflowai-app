@@ -195,7 +195,7 @@ async function _lookupByCif(){
   if(!resolved){
     _setS('Verificare CIF la ANAF...','info');
     try{
-      const r=await fetch('/api/v4/verify/cui?cui='+encodeURIComponent(cif),{credentials:'include'});
+      const r=await fetch('/api/verify/cui?cui='+encodeURIComponent(cif),{credentials:'include'});
       if(r.ok){
         const j=await r.json();
         if(j.ok&&j.data&&j.data.name){

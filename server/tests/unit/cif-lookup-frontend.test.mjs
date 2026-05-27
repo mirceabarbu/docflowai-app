@@ -46,9 +46,9 @@ describe('CIF lookup auto-fill (v3.9.504)', () => {
     expect(m, 'corpul funcției _lookupByCif nu a fost găsit').toBeTruthy();
     const body = m[0];
     const idxLocal = body.indexOf('/api/beneficiari');
-    const idxAnaf  = body.indexOf('/api/v4/verify/cui');
+    const idxAnaf  = body.indexOf('/api/verify/cui');
     expect(idxLocal, '/api/beneficiari trebuie să fie în corp').toBeGreaterThan(-1);
-    expect(idxAnaf,  '/api/v4/verify/cui trebuie să fie în corp').toBeGreaterThan(-1);
+    expect(idxAnaf,  '/api/verify/cui trebuie să fie în corp').toBeGreaterThan(-1);
     expect(idxLocal, 'local trebuie apelat ÎNAINTE de ANAF').toBeLessThan(idxAnaf);
     // ANAF e gated de `if(!resolved)`
     expect(body).toMatch(/if\(!resolved\)/);

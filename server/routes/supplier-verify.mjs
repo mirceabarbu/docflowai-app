@@ -10,7 +10,7 @@ import { analyzeCoherence } from '../services/verify/coherence.mjs';
 
 const router = Router();
 
-// GET /api/v4/verify/cui?cui=12345678
+// GET /api/verify/cui?cui=12345678
 router.get('/cui', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   const cui = (req.query.cui || '').toString();
@@ -24,7 +24,7 @@ router.get('/cui', async (req, res) => {
   }
 });
 
-// GET /api/v4/verify/iban?iban=RO12...
+// GET /api/verify/iban?iban=RO12...
 router.get('/iban', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   const iban = (req.query.iban || '').toString();
@@ -38,7 +38,7 @@ router.get('/iban', async (req, res) => {
   }
 });
 
-// POST /api/v4/verify/coherence  body: {cui, iban, name}
+// POST /api/verify/coherence  body: {cui, iban, name}
 router.post('/coherence', requireModule('verif-furnizor'), async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   const { cui, iban, name } = req.body || {};
