@@ -76,8 +76,8 @@
     } else {
       deptSel.disabled = true;
     }
-    // Re-filtrează fără reload din server
-    loadFlowsList(false);
+    // Re-filtrează fără reload din server, reset la pagina 1
+    loadFlowsList(false, 1);
   }
 
   function debounceAdminFlows() {

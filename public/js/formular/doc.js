@@ -952,7 +952,10 @@ function _validateDf(){
       errs.push({id:'n-ck-sting',label:'Pct. 5: bifați una din sub-opțiunile angajamentelor curente'});
     } else if(ckCuPlati){
       const rows=[...document.querySelectorAll('#n-ptbody tr')];
-      const hasVal=rows.some(tr=>[...tr.querySelectorAll('input[type=number]')].some(i=>(parseFloat(i.value)||0)>0));
+      // Inputurile tabelului de plăți sunt type=text cu data-money="true" și format monetar
+      // românesc (virgulă decimală). Folosim pMR pentru parsing — parseFloat pe "4.900,00"
+      // returnează 4.9 (incorect — separatorul de mii e luat ca punct zecimal).
+      const hasVal=rows.some(tr=>[...tr.querySelectorAll('input[data-money="true"]')].some(i=>(pMR(i.value)||0)>0));
       if(!hasVal) errs.push({id:null,label:'Pct. 5: completați cel puțin un rând în tabelul de plăți'});
     }
   }

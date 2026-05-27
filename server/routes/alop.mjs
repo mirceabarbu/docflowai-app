@@ -502,19 +502,27 @@ router.get('/api/alop/:id', async (req, res) => {
     const alop = rows[0];
 
     // ── Lazy auto-tranziție pentru fluxuri STS Cloud (completed=true fără status='completed') ──
-    // DF aprobat dar ALOP încă în angajare → lichidare
-    if (alop.df_aprobat && alop.status === 'angajare') {
+    // DF aprobat dar ALOP rămas în 'draft' sau 'angajare' → recuperare la 'lichidare'.
+    // Cazul 'draft' acoperă scenarii rare în care propagarea normală a eșuat silent
+    // (P2 /complete sau link-df-flow → catch silentioase). Idempotent: UPDATE limitat
+    // la stările eligibile, logger pentru audit dacă se declanșează.
+    if (alop.df_aprobat && ['draft', 'angajare'].includes(alop.status)) {
       try {
+        const fromStatus = alop.status;
         const { rows: up } = await pool.query(`
           UPDATE alop_instances
-          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW(), updated_by=$2
-          WHERE id=$1 AND status='angajare'
+          SET status = 'lichidare',
+              df_completed_at = COALESCE(df_completed_at, NOW()),
+              updated_at = NOW(),
+              updated_by = $2
+          WHERE id = $1
+            AND status IN ('draft', 'angajare')
           RETURNING status, df_completed_at
         `, [req.params.id, actor.userId]);
         if (up[0]) {
           alop.status = up[0].status;
           alop.df_completed_at = up[0].df_completed_at;
-          logger.info(`[ALOP] lazy auto-tranziție angajare→lichidare (STS), id=${req.params.id}`);
+          logger.info(`[ALOP] lazy auto-tranziție ${fromStatus}→lichidare (STS), id=${req.params.id}`);
         }
       } catch (autoErr) {
         logger.warn({ err: autoErr }, '[ALOP] lazy tranziție lichidare failed (non-fatal)');
@@ -569,7 +577,7 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
     if (!df_id) return res.status(400).json({ error: 'df_id obligatoriu' });
 
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -625,7 +633,7 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
     if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
 
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -683,7 +691,7 @@ router.post('/api/alop/:id/df-completed', _csrf, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -726,7 +734,7 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
     const isAssigned = cur[0].lichidare_confirmed_by === actor.userId;
     if (!isAdmin && !isAssigned && cur[0].lichidare_confirmed_by !== null) {
       const { rows: alopRow } = await pool.query(
-        'SELECT created_by, compartiment FROM alop_instances WHERE id=$1', [req.params.id]
+        'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1', [req.params.id]
       );
       const actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditAlop(pool, actor, alopRow[0], actorComp);
@@ -772,7 +780,7 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
     if (!ord_id) return res.status(400).json({ error: 'ord_id obligatoriu' });
 
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -813,7 +821,7 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
     if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
 
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -844,7 +852,7 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -936,7 +944,7 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });

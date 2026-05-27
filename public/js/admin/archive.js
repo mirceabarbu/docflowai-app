@@ -245,12 +245,26 @@
 
   async function runVacuum() {
     const msg = document.getElementById("msgVacuum");
-    msg.textContent = "⏳ Se execută VACUUM ANALYZE...";
+    const ok = confirm(
+      "Rulează VACUUM:\n\n" +
+      "VACUUM FULL pe flows_pdfs și flow_attachments returnează spațiul la OS\n" +
+      "+ VACUUM ANALYZE pe flows.\n\n" +
+      "⚠ Tabelele vor fi blocate (ACCESS EXCLUSIVE) ~30s pe prod.\n\n" +
+      "Continui?"
+    );
+    if (!ok) return;
+    msg.textContent = "⏳ Se execută VACUUM FULL (poate dura ~30s)...";
     try {
       const r = await _apiFetch("/admin/db/vacuum", {method:"POST", headers:hdrs()});
       const j = await r.json();
-      if (j.ok) msg.innerHTML = `✅ VACUUM complet. Dimensiune DB: <strong>${esc(j.dbSize||"")}</strong>`;
-      else msg.textContent = "❌ " + (j.error||"Eroare");
+      if (j.ok) {
+        msg.innerHTML =
+          `✅ VACUUM complet. DB: <strong>${esc(j.dbSizeBefore||"")}</strong> → ` +
+          `<strong>${esc(j.dbSizeAfter||"")}</strong> (eliberat ~<strong>${esc(j.freedMB||"0")} MB</strong>).`;
+        setTimeout(() => loadDbStats(), 800);
+      } else {
+        msg.textContent = "❌ " + (j.error||"Eroare");
+      }
     } catch(e) { msg.textContent = "❌ " + e.message; }
   }
 
@@ -274,9 +288,10 @@
       if (j.ok) {
         msg.innerHTML =
           `✅ Curățat: <strong>${j.pdfsDeleted}</strong> PDF-uri orfane, ` +
-          `<strong>${j.attachmentsDeleted}</strong> atașamente orfane. ` +
+          `<strong>${j.attachmentsDeleted}</strong> atașamente orfane, ` +
+          `<strong>${j.attachmentsNullified ?? 0}</strong> atașamente arhivate golite (BYTEA→Drive). ` +
           `DB: <strong>${esc(j.dbSizeBefore)}</strong> → <strong>${esc(j.dbSizeAfter)}</strong> ` +
-          `(eliberat ~<strong>${j.freedMB.toFixed(2)} MB</strong>).`;
+          `(eliberat ~<strong>${(j.freedMB ?? 0).toFixed(2)} MB</strong>).`;
         setTimeout(() => loadDbStats(), 800);
       } else {
         msg.textContent = "❌ " + (j.error || "Eroare");
