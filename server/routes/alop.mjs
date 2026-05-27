@@ -502,19 +502,27 @@ router.get('/api/alop/:id', async (req, res) => {
     const alop = rows[0];
 
     // ── Lazy auto-tranziție pentru fluxuri STS Cloud (completed=true fără status='completed') ──
-    // DF aprobat dar ALOP încă în angajare → lichidare
-    if (alop.df_aprobat && alop.status === 'angajare') {
+    // DF aprobat dar ALOP rămas în 'draft' sau 'angajare' → recuperare la 'lichidare'.
+    // Cazul 'draft' acoperă scenarii rare în care propagarea normală a eșuat silent
+    // (P2 /complete sau link-df-flow → catch silentioase). Idempotent: UPDATE limitat
+    // la stările eligibile, logger pentru audit dacă se declanșează.
+    if (alop.df_aprobat && ['draft', 'angajare'].includes(alop.status)) {
       try {
+        const fromStatus = alop.status;
         const { rows: up } = await pool.query(`
           UPDATE alop_instances
-          SET status='lichidare', df_completed_at=NOW(), updated_at=NOW(), updated_by=$2
-          WHERE id=$1 AND status='angajare'
+          SET status = 'lichidare',
+              df_completed_at = COALESCE(df_completed_at, NOW()),
+              updated_at = NOW(),
+              updated_by = $2
+          WHERE id = $1
+            AND status IN ('draft', 'angajare')
           RETURNING status, df_completed_at
         `, [req.params.id, actor.userId]);
         if (up[0]) {
           alop.status = up[0].status;
           alop.df_completed_at = up[0].df_completed_at;
-          logger.info(`[ALOP] lazy auto-tranziție angajare→lichidare (STS), id=${req.params.id}`);
+          logger.info(`[ALOP] lazy auto-tranziție ${fromStatus}→lichidare (STS), id=${req.params.id}`);
         }
       } catch (autoErr) {
         logger.warn({ err: autoErr }, '[ALOP] lazy tranziție lichidare failed (non-fatal)');
