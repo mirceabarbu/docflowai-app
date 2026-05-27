@@ -1131,7 +1131,45 @@ async function confirmP2(){
 
 // ── P2 finalizează ────────────────────────────────────────────────────────────
 function validateSecB(ft){
-  if(ft!=='notafd')return true;
+  if(ft==='ordnt'){
+    // Validare rânduri ORD — col. 5 (Recepții neplătite) trebuie ≥ 0
+    // Formula: c5 = c2(recepții) - c3(plăți anterioare) - c4(suma ordonanțată)
+    // c5 < 0 ⇒ ordonanțare > disponibil ⇒ blocat
+    const tbody=document.getElementById('o-tbody');
+    if(!tbody)return true;
+    const rows=[...tbody.querySelectorAll('tr')];
+    const negative=[];
+    rows.forEach((tr,idx)=>{
+      const c2=pMR(tr.querySelector('[data-f="receptii"]')?.value);
+      const c3=pMR(tr.querySelector('[data-f="plati_anterioare"]')?.value);
+      const c4=pMR(tr.querySelector('[data-f="suma_ordonantata_plata"]')?.value);
+      const c5=c2-c3-c4;
+      if(c5<-0.001){ // toleranță floating point
+        negative.push({idx:idx+1,c5,cell:tr.querySelector('[data-f="receptii_neplatite"]')});
+      }
+    });
+    if(negative.length){
+      // Marcaj vizual roșu pe celulele afectate
+      negative.forEach(n=>{
+        if(n.cell){
+          n.cell.style.borderColor='#ef4444';
+          n.cell.style.color='#ef4444';
+          n.cell.style.fontWeight='600';
+          // Curăță marcajul la următoarea modificare a rândului
+          const tr=n.cell.closest('tr');
+          const clear=()=>{n.cell.style.borderColor='';n.cell.style.color='';n.cell.style.fontWeight='';
+            tr.querySelectorAll('input').forEach(i=>i.removeEventListener('input',clear));};
+          tr.querySelectorAll('input').forEach(i=>i.addEventListener('input',clear,{once:true}));
+        }
+      });
+      const lst=negative.map(n=>`rândul ${n.idx} (${fMR(n.c5)})`).join(', ');
+      setS('⛔ Recepții neplătite negative: '+lst+'. Suma ordonanțată (col.4) depășește disponibilul (col.2 − col.3). Reduceți col.4 sau verificați col.2/col.3.','err');
+      negative[0].cell?.scrollIntoView({behavior:'smooth',block:'center'});
+      return false;
+    }
+    return true;
+  }
+  // DF (notafd)
   const ckSeca=document.getElementById('n-ck-seca');
   if(ckSeca&&!ckSeca.checked){
     setS('Bifați "Propunerile de la secțiunea A au fost înregistrate..." pentru a finaliza.','err');
@@ -1166,7 +1204,15 @@ async function completeAsP2(ft){
       body:JSON.stringify(body),
     });
     const j=await r.json();
-    if(!r.ok||!j.ok){setS(j.error||'Eroare','err');return;}
+    if(!r.ok||!j.ok){
+      if(j.error==='receptii_neplatite_negative'){
+        const det=Array.isArray(j.rows)?j.rows.map(b=>`r${b.idx}: ${b.c5}`).join(', '):'';
+        setS('⛔ '+j.message+(det?' ('+det+')':''),'err');
+      }else{
+        setS(j.error||'Eroare','err');
+      }
+      return;
+    }
     ST.docStatus[ft]='completed';
     _alopLinkDoc(ft,ST.docId[ft]); // FIX: re-leagă la ALOP după completare (idempotent)
     lockAll(ft,true);

@@ -1007,6 +1007,34 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
 
     const data = pick(req.body || {}, ORD_P2_FIELDS);
+    // Validare col. 5 (Recepții neplătite) ≥ 0 pe fiecare rând
+    // Formula: c5 = c2(recepții) - c3(plăți anterioare) - c4(suma ordonanțată)
+    // Defense-in-depth: backend respinge chiar dacă frontend e bypass-at
+    if (Array.isArray(data.rows)) {
+      const _num = v => {
+        if (v === null || v === undefined || v === '') return 0;
+        // getOR() (core.js) trimite valorile ca String(pMR(...)) — număr JS normalizat
+        // (punct zecimal, fără separator de mii), ex: "1234.56" / "1500". NU format RO.
+        const n = Number(String(v).trim().replace(/\s/g,''));
+        return isNaN(n) ? 0 : n;
+      };
+      const bad = [];
+      data.rows.forEach((r, i) => {
+        const c2 = _num(r.receptii);
+        const c3 = _num(r.plati_anterioare);
+        const c4 = _num(r.suma_ordonantata_plata);
+        const c5 = c2 - c3 - c4;
+        if (c5 < -0.001) bad.push({ idx: i + 1, c5: c5.toFixed(2) });
+      });
+      if (bad.length) {
+        return res.status(422).json({
+          error: 'receptii_neplatite_negative',
+          message: 'Coloana 5 (Recepții neplătite) trebuie să fie ≥ 0 pe fiecare rând. Suma ordonanțată depășește disponibilul.',
+          rows: bad,
+        });
+      }
+    }
+
     const { sets, vals } = buildUpdate(data, ORD_P2_FIELDS, 1);
     sets.push(`status='completed'`, `completed_at=NOW()`, `updated_at=NOW()`);
     sets.push(`updated_by=$${vals.length + 1}`);
