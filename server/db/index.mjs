@@ -126,7 +126,8 @@ export const DATABASE_URL = process.env.DATABASE_URL;
 export const pool = DATABASE_URL
   ? new Pool({
       connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      // Railway cere SSL (default). Testele pe Postgres local/CI setează DB_DISABLE_SSL=1.
+      ssl: process.env.DB_DISABLE_SSL === '1' ? false : { rejectUnauthorized: false },
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
@@ -1866,6 +1867,81 @@ async function initDbOnce() {
 }
 
 export function markDbReady() { DB_READY = true; DB_LAST_ERROR = null; }
+
+// Folosit DOAR de harness-ul de teste (server/tests/helpers/db-real.mjs).
+// Aplică schema completă pe pool-ul curent (idempotent), apoi marchează DB_READY=true.
+//
+// Context: DocFlowAI are DOUĂ sisteme de migrări (inline în acest fișier + file-based V4
+// în migrations/*.sql). În producție inline rulează ÎNTÂI, apoi V4 — și V4 001-013 (tabele
+// core: organizations/users/flows...) sunt deja marcate applied istoric, deci nu se re-rulează.
+// Pe un DB FRESH (cum e cel de test) cele două sisteme intră în conflict pe tabelele comune:
+// V4 001_organizations presupune organizations.slug, dar inline creează organizations FĂRĂ slug
+// (CREATE IF NOT EXISTS → no-op) → V4 eșuează pe index(slug). De aceea NU rulăm migrate.mjs.
+//
+// Strategie (reproduce schema de producție = cea inline):
+//   1. Inline, dar PRE-marcăm "applied" migrările inline care referă tabele V4-only
+//      (alop_instances/alop_sabloane/formulare_oficiale) ca să fie sărite — altfel
+//      068_formular_attachments (FK formulare_oficiale) eșuează, iar 054-066 (alop) s-ar
+//      auto-skip prin guard lăsând coloane lipsă (ex. alop_instances.updated_by).
+//   2. Aplicăm DOAR fișierele V4 care creează tabele V4-only (014_alop, 015_formulare_oficiale);
+//      acestea referă doar organizations/users (create de inline) → sigure pe DB fresh.
+//   3. Ștergem din schema_migrations migrările deferred și le re-rulăm: acum tabelele V4 există
+//      și SQL-ul idempotent reușește (adaugă coloanele, creează formular_attachments etc.).
+export async function migrateForTests() {
+  if (!pool) throw new Error('migrateForTests: DATABASE_URL/TEST_DATABASE_URL lipsește');
+
+  const V4_ONLY = /alop_instances|alop_sabloane|formulare_oficiale/i;
+  const deferredIds = MIGRATIONS.filter(m => V4_ONLY.test(m.sql)).map(m => m.id);
+
+  // 1. Inline (fără cele deferred — pre-marcate ca applied ca runMigrations să le sară).
+  {
+    const client = await pool.connect();
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+      if (deferredIds.length) {
+        await client.query(
+          `INSERT INTO schema_migrations (id) SELECT unnest($1::text[]) ON CONFLICT (id) DO NOTHING`,
+          [deferredIds]
+        );
+      }
+      await runMigrations(client);
+    } finally { client.release(); }
+  }
+
+  // 2. Aplică DOAR fișierele V4 care creează tabele V4-only (idempotent: doar dacă lipsesc).
+  {
+    const { readFile } = await import('node:fs/promises');
+    const { join, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const migDir = join(dirname(fileURLToPath(import.meta.url)), 'migrations');
+    const v4only = [
+      ['alop_instances', '014_alop.sql'],
+      ['formulare_oficiale', '015_formulare_oficiale.sql'],
+    ];
+    const client = await pool.connect();
+    try {
+      for (const [marker, file] of v4only) {
+        const { rows } = await client.query(
+          `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=$1`,
+          [marker]
+        );
+        if (rows.length) continue;
+        await client.query(await readFile(join(migDir, file), 'utf8'));
+      }
+    } finally { client.release(); }
+  }
+
+  // 3. Re-aplică migrările inline deferred (acum tabelele V4 există). SQL idempotent.
+  if (deferredIds.length) {
+    const client = await pool.connect();
+    try {
+      await client.query(`DELETE FROM schema_migrations WHERE id = ANY($1::text[])`, [deferredIds]);
+      await runMigrations(client);
+    } finally { client.release(); }
+  }
+
+  markDbReady();
+}
 
 export async function initDbWithRetry() {
   const delays = [1000, 2000, 4000, 8000, 15000];

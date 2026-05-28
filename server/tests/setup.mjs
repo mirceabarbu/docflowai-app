@@ -13,5 +13,16 @@ process.env.NODE_ENV           = 'test';
 process.env.LOG_LEVEL          = 'error';   // Silențiem logurile în output teste
 process.env.LOG_PRETTY         = '0';
 
+// ── Postgres real (doar pentru server/tests/db/**) ───────────────────────────
+// Dacă există TEST_DATABASE_URL, îl punem pe DATABASE_URL ÎNAINTE ca db/index.mjs
+// să fie importat (pool-ul se creează la import). Testele mock-uite ignoră complet
+// asta (înlocuiesc modulul prin vi.mock).
+if (process.env.TEST_DATABASE_URL && !process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+}
+if (process.env.TEST_DATABASE_URL) {
+  process.env.DB_DISABLE_SSL = '1';
+}
+
 // ── Cleanup după toate testele ────────────────────────────────────────────────
 // (nimic de cleanup global deocamdată — fiecare test suite face cleanup propriu)

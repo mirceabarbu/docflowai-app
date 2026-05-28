@@ -321,6 +321,27 @@ Teste de integrare în `server/tests/integration/` folosesc Supertest contra une
 
 **Înainte de orice modificare:** rulează `npm test` și verifică că toate testele trec. Nu livra cod cu teste care pică.
 
+### Testare — două niveluri
+
+1. **Mock (rapid, default)** — `npm test`
+   - 758 teste, `pool.query` mock-uit, rulează fără DB. Pattern pozițional (mockResolvedValueOnce).
+   - Bun pentru logică pură / guards. Fragil la refactor SQL (cuplat de implementare).
+
+2. **Postgres real (plasă de siguranță)** — `npm run test:db`
+   - `server/tests/db/**`, rulează routerele reale peste un Postgres efemer.
+   - Verifică REZULTATUL (status code + starea din DB), nu ordinea apelurilor → sigur la refactor.
+   - Local: `npm run db:test:up` (Docker), exportă TEST_DATABASE_URL afișat, apoi `npm run test:db`,
+     iar la final `npm run db:test:down`.
+   - Fără TEST_DATABASE_URL, testele DB se auto-skip (npm test rămâne verde).
+   - CI rulează ambele (serviciu postgres:16 în GitHub Actions).
+   - Harness-ul (`migrateForTests` în `db/index.mjs`) reproduce ordinea de la boot: inline întâi,
+     apoi V4 (`migrate.mjs`), apoi re-aplică migrările inline care ating `alop_instances`/`alop_sabloane`
+     (guard-skip-uite pe DB fresh) — altfel coloane ca `alop_instances.updated_by` lipsesc.
+
+REGULĂ: orice modificare pe rutele de formulare/ALOP (liste, ștergere, cancel, revizii)
+trebuie acoperită întâi de un test în `server/tests/db/**` care captează comportamentul curent,
+APOI refactorizezi. Testele DB sunt sursa de adevăr pentru regresii.
+
 ---
 
 ## Cache busting — când modifici JS/CSS
