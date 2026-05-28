@@ -42,11 +42,24 @@ async function _autoSaveDb(ft){
     if(!docId){
       r=await fetch(ftApi(ft),{method:'POST',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
-      if(r.ok&&j.ok){ST.docId[ft]=j.document.id;ST.docStatus[ft]='draft';ST.docRole[ft]='p1';renderActions(ft);}
+      if(r.ok&&j.ok){
+        ST.docId[ft]=j.document.id;ST.docStatus[ft]='draft';ST.docRole[ft]='p1';
+        renderActions(ft);
+        // v3.9.518 (FIX CAUZA ROOT REGRESIE): leagă documentul la ALOP imediat la auto-save POST.
+        // Înainte: doar saveDoc manual făcea linkul; auto-save-ul (debounce 800ms)
+        // câștiga cursa și crea ORD-ul fără link → ord_id rămânea NULL pe ALOP.
+        window._alopLinkDoc?.(ft,j.document.id);
+      }
     }else{
       r=await fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
-      if(r.ok&&j.ok)ST.docStatus[ft]=j.document.status;
+      if(r.ok&&j.ok){
+        ST.docStatus[ft]=j.document.status;
+        // v3.9.518: safety net — dacă linkul ratează pe POST (eroare rețea, race
+        // condition cu schimbarea de _alopContext), PUT-urile ulterioare retry-uiesc.
+        // _alopLinkDoc e idempotent (SQL UPDATE cu guard ord_id IS NULL OR = $1).
+        window._alopLinkDoc?.(ft,docId);
+      }
     }
     if(!r||!j||!r.ok){
       if(r&&r.status===409&&j&&_DUP_ERRORS[j.error]){

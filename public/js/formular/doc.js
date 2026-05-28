@@ -719,7 +719,13 @@ async function saveDoc(ft){
       r=await fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
       if(r.status===409&&_handleDup409(j))return;
-      if(r.ok&&j.ok){ST.docStatus[ft]=j.document.status;}
+      if(r.ok&&j.ok){
+        ST.docStatus[ft]=j.document.status;
+        // v3.9.518: safety net — retry link la save manual chiar dacă docId există deja.
+        // Acoperă cazul în care _autoSaveDb a creat ORD-ul cu link ratat, iar user-ul
+        // dă click pe "Salvează" manual ulterior. Idempotent prin SQL guard.
+        _alopLinkDoc(ft,docId);
+      }
     }
     if(!r.ok||!j.ok){setS(j.error||'Eroare la salvare','err');return;}
 
