@@ -1607,6 +1607,14 @@ router.get('/api/formulare/list', async (req, res) => {
           u1.compartiment AS initiator_comp,
           COALESCE(u2.nume, u2.email) AS p2,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
+          (
+            ${(isAdmin || isOrgAdmin) ? 'TRUE' : `fd.created_by = $${params.push(actor.userId)}`}
+            AND fd.flow_id IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM formulare_ord fo_chk
+              WHERE fo_chk.df_id = fd.id AND fo_chk.deleted_at IS NULL
+            )
+          ) AS can_delete,
           (fd.created_by = $${params.push(actor.userId)}) AS "isP1",
           COUNT(*) OVER() AS total
         FROM formulare_df fd
@@ -1696,6 +1704,10 @@ router.get('/api/formulare/list', async (req, res) => {
           u1.compartiment AS initiator_comp,
           COALESCE(u2.nume, u2.email) AS p2,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
+          (
+            ${(isAdmin || isOrgAdmin) ? 'TRUE' : `fo.created_by = $${params.push(actor.userId)}`}
+            AND fo.flow_id IS NULL
+          ) AS can_delete,
           (fo.created_by = $${params.push(actor.userId)}) AS "isP1",
           COUNT(*) OVER() AS total
         FROM formulare_ord fo
@@ -1717,15 +1729,18 @@ router.get('/api/formulare/list', async (req, res) => {
   }
 });
 
-// ── POST /api/formulare-df/:id/anuleaza ───────────────────────────────────────
-router.post('/api/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
+// ── POST /api/formulare-df/:id/sterge — ȘTERGERE (soft-delete) ─────────────────
+// Permis dacă DF NU e pe flux (flow_id IS NULL) ȘI nu are ORD legată ne-ștearsă.
+// Pentru revizii: condiția se aplică pe rândul reviziei. Relink ALOP (mirror refuse).
+router.post('/api/formulare-df/:id/sterge', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res);
   if (!actor) return;
   const { id } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT created_by, org_id, status FROM formulare_df WHERE id=$1 AND deleted_at IS NULL`,
+      `SELECT created_by, org_id, status, flow_id, revizie_nr, parent_df_id, nr_unic_inreg
+         FROM formulare_df WHERE id=$1 AND deleted_at IS NULL`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
@@ -1736,29 +1751,72 @@ router.post('/api/formulare-df/:id/anuleaza', _csrf, async (req, res) => {
       const authz = canDestroyOnly(actor, doc);
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
-    if (!['draft','pending_p2','returnat'].includes(doc.status))
-      return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
+    if (doc.flow_id)
+      return res.status(409).json({ error: 'cannot_delete_on_flow', message: 'Documentul a fost trimis pe fluxul de semnare și nu poate fi șters.' });
+
+    const { rows: ordRows } = await pool.query(
+      `SELECT id, nr_ordonant_pl FROM formulare_ord WHERE df_id=$1 AND deleted_at IS NULL LIMIT 1`,
+      [id]
+    );
+    if (ordRows.length)
+      return res.status(409).json({ error: 'cannot_delete_has_ord', message: `Nu se poate șterge DF-ul: există o Ordonanțare de Plată legată (${ordRows[0].nr_ordonant_pl || 'fără nr.'}). Ștergeți întâi ORD-ul.` });
 
     await pool.query(
-      `UPDATE formulare_df SET status='anulat', updated_at=NOW(), updated_by=$2 WHERE id=$1`,
+      `UPDATE formulare_df SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1`,
       [id, actor.userId]
     );
+
+    // Relink ALOP (mirror după signing.mjs refuse): R0 → eliberează; R1+ → restore parent aprobat
+    try {
+      if ((doc.revizie_nr || 0) === 0 || !doc.parent_df_id) {
+        await pool.query(
+          `UPDATE alop_instances
+             SET df_id=NULL, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$2
+           WHERE df_id=$1 AND cancelled_at IS NULL`,
+          [id, actor.userId]
+        );
+      } else {
+        const { rows: parentRows } = await pool.query(
+          `SELECT id, flow_id, status FROM formulare_df WHERE id=$1 AND deleted_at IS NULL LIMIT 1`,
+          [doc.parent_df_id]
+        );
+        if (parentRows.length && parentRows[0].status === 'aprobat' && parentRows[0].flow_id) {
+          await pool.query(
+            `UPDATE alop_instances
+               SET df_id=$1, df_flow_id=$2, df_completed_at=NOW(), updated_at=NOW(), updated_by=$4
+             WHERE df_id=$3 AND cancelled_at IS NULL`,
+            [parentRows[0].id, parentRows[0].flow_id, id, actor.userId]
+          );
+        } else {
+          await pool.query(
+            `UPDATE alop_instances
+               SET df_id=NULL, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$2
+             WHERE df_id=$1 AND cancelled_at IS NULL`,
+            [id, actor.userId]
+          );
+        }
+      }
+    } catch (relinkErr) {
+      logger.error({ err: relinkErr, dfId: id }, 'sterge df: ALOP relink failed (non-fatal)');
+    }
+
     res.json({ ok: true });
   } catch (e) {
-    logger.error({ err: e }, 'anuleaza df error');
+    logger.error({ err: e }, 'sterge df error');
     res.status(500).json({ error: 'server_error' });
   }
 });
 
-// ── POST /api/formulare-ord/:id/anuleaza ──────────────────────────────────────
-router.post('/api/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
+// ── POST /api/formulare-ord/:id/sterge — ȘTERGERE (soft-delete) ────────────────
+// Permis dacă ORD NU a fost trimisă pe flux (flow_id IS NULL). Relink ALOP (eliberează ord_id).
+router.post('/api/formulare-ord/:id/sterge', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res);
   if (!actor) return;
   const { id } = req.params;
   try {
     const { rows } = await pool.query(
-      `SELECT created_by, org_id, status FROM formulare_ord WHERE id=$1 AND deleted_at IS NULL`,
+      `SELECT created_by, org_id, status, flow_id FROM formulare_ord WHERE id=$1 AND deleted_at IS NULL`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
@@ -1769,16 +1827,29 @@ router.post('/api/formulare-ord/:id/anuleaza', _csrf, async (req, res) => {
       const authz = canDestroyOnly(actor, doc);
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
-    if (!['draft','pending_p2','returnat'].includes(doc.status))
-      return res.status(400).json({ error: 'cannot_cancel', message: 'Doar documentele draft, transmis_p2 sau returnate pot fi anulate.' });
+    if (doc.flow_id)
+      return res.status(409).json({ error: 'cannot_delete_on_flow', message: 'Ordonanțarea a fost trimisă pe fluxul de semnare și nu poate fi ștearsă.' });
 
     await pool.query(
-      `UPDATE formulare_ord SET status='anulat', updated_at=NOW(), updated_by=$2 WHERE id=$1`,
+      `UPDATE formulare_ord SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1`,
       [id, actor.userId]
     );
+
+    // Relink ALOP: eliberează ord_id → butonul "Completează Ordonanțare" reapare
+    try {
+      await pool.query(
+        `UPDATE alop_instances
+           SET ord_id=NULL, ord_flow_id=NULL, ord_completed_at=NULL, updated_at=NOW(), updated_by=$2
+         WHERE ord_id=$1 AND cancelled_at IS NULL`,
+        [id, actor.userId]
+      );
+    } catch (relinkErr) {
+      logger.error({ err: relinkErr, ordId: id }, 'sterge ord: ALOP relink failed (non-fatal)');
+    }
+
     res.json({ ok: true });
   } catch (e) {
-    logger.error({ err: e }, 'anuleaza ord error');
+    logger.error({ err: e }, 'sterge ord error');
     res.status(500).json({ error: 'server_error' });
   }
 });

@@ -1298,22 +1298,34 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
-    // v3.9.498 (Issue R-B): block cancel dacă ALOP are DF emis (df_id setat
-    // și DF ne-șters). Refuze (R0) eliberează df_id=NULL → cancel redevine
-    // permis. Simetric cu logica refuse din v3.9.497.
+    // ALOP se poate ȘTERGE doar dacă NU are DF/ORD legat (pe documente ne-șterse).
+    // Păstrăm codul cancel_blocked_df_exists pentru DF (compat. clienți + teste);
+    // adăugăm ramura ORD. Refuzul (R0) eliberează df_id=NULL → ștergerea redevine permisă.
     const { rows: dfCheck } = await pool.query(`
-      SELECT a.df_id, fd.nr_unic_inreg, fd.status AS df_status
+      SELECT a.df_id, a.ord_id,
+             fd.nr_unic_inreg, fd.status AS df_status,
+             fo.nr_ordonant_pl AS ord_nr, fo.status AS ord_status
       FROM alop_instances a
-      LEFT JOIN formulare_df fd ON fd.id = a.df_id AND fd.deleted_at IS NULL
+      LEFT JOIN formulare_df  fd ON fd.id = a.df_id  AND fd.deleted_at IS NULL
+      LEFT JOIN formulare_ord fo ON fo.id = a.ord_id AND fo.deleted_at IS NULL
       WHERE a.id=$1 AND a.org_id=$2
     `, [req.params.id, actor.orgId]);
     if (dfCheck[0]?.df_id && dfCheck[0]?.df_status) {
       return res.status(409).json({
         error: 'cancel_blocked_df_exists',
-        message: `Nu se poate anula ALOP-ul: există un DF emis (${dfCheck[0].nr_unic_inreg || 'fără nr.'}, status: ${dfCheck[0].df_status}). Anulați sau refuzați DF-ul mai întâi.`,
+        message: `Nu se poate șterge ALOP-ul: există un DF legat (${dfCheck[0].nr_unic_inreg || 'fără nr.'}, status: ${dfCheck[0].df_status}). Ștergeți sau refuzați DF-ul mai întâi.`,
         df_id: dfCheck[0].df_id,
         df_nr: dfCheck[0].nr_unic_inreg,
         df_status: dfCheck[0].df_status,
+      });
+    }
+    if (dfCheck[0]?.ord_id && dfCheck[0]?.ord_status) {
+      return res.status(409).json({
+        error: 'cancel_blocked_ord_exists',
+        message: `Nu se poate șterge ALOP-ul: există o Ordonanțare de Plată legată (${dfCheck[0].ord_nr || 'fără nr.'}, status: ${dfCheck[0].ord_status}). Ștergeți întâi ORD-ul.`,
+        ord_id: dfCheck[0].ord_id,
+        ord_nr: dfCheck[0].ord_nr,
+        ord_status: dfCheck[0].ord_status,
       });
     }
 

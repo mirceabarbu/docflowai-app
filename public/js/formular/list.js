@@ -4,7 +4,7 @@
 // Cross-module exports (window):
 //   - switchListTab : apelată din HTML onclick + alte module
 //   - showListSection, showFormSection, newDocFromList
-//   - loadList, openDocFromList, anuleazaDoc, changeLstPage, debouncedLoadList, resetFilters
+//   - loadList, openDocFromList, stergeDoc, changeLstPage, debouncedLoadList, resetFilters
 //   - loadDfAprobate, selectDfAprobat, onDfSelect (apelate din DOC BLOC 2.5)
 //   - debouncedBenefSearch, selectBenef, _saveBeneficiarIfNew
 //   - _autoSaveDb, _scheduleAutoSaveDb
@@ -446,9 +446,9 @@ function _renderLstTable(rows,type){
   const tb=document.getElementById('lst-tbody');
   if(!tb)return;
   tb.innerHTML=rows.map(row=>{
-    const canCancel=row.status==='draft'||(row.status==='pending_p2'&&row.isP1);
-    const cancelBtn=canCancel
-      ?`<button class="df-action-btn danger sm" onclick="anuleazaDoc('${type}','${esc(row.id)}')" title="Anulează">🚫</button>`
+    const canDelete=row.can_delete===true;
+    const cancelBtn=canDelete
+      ?`<button class="df-action-btn danger sm" onclick="stergeDoc('${type}','${esc(row.id)}')" title="Șterge">🗑</button>`
       :'';
     const safeId=esc(row.id);
     const nr=esc(row.nr||row.id.slice(0,8));
@@ -505,15 +505,23 @@ function openDocFromList(type,id){
   try{history.replaceState({},'',`${location.pathname}?id=${encodeURIComponent(id)}&tip=${type}`);}catch(_){}
   setTimeout(()=>openDoc(ft,id),200);
 }
-async function anuleazaDoc(type,id){
-  if(!confirm('Anulați acest document? Operațiunea nu poate fi inversată.'))return;
+async function stergeDoc(type,id){
+  const eticheta=type==='ord'?'ordonanțare':'document de fundamentare';
+  if(!confirm(`Ștergeți acest ${eticheta}? Operațiunea nu poate fi inversată.`))return;
   try{
-    const r=await fetch(`/api/formulare-${type}/${id}/anuleaza`,{
+    const r=await fetch(`/api/formulare-${type}/${id}/sterge`,{
       method:'POST',credentials:'include',
       headers:{'X-CSRF-Token':df.getCsrf()},
     });
     const j=await r.json();
-    if(!r.ok||!j.ok){alert(j.error||'Eroare la anulare');return;}
+    if(!r.ok||!j.ok){
+      const msg=j.message||({
+        cannot_delete_on_flow:'Documentul este pe fluxul de semnare și nu poate fi șters.',
+        cannot_delete_has_ord:'Există o ORD legată — ștergeți întâi ORD-ul.',
+      }[j.error])||j.error||'Eroare la ștergere';
+      alert(msg);
+      return;
+    }
     loadList();
   }catch(e){alert('Eroare: '+e.message);}
 }
@@ -547,7 +555,7 @@ function _populateCompartimente(){
   window.newDocFromList         = newDocFromList;
   window.loadList               = loadList;
   window.openDocFromList        = openDocFromList;
-  window.anuleazaDoc            = anuleazaDoc;
+  window.stergeDoc              = stergeDoc;
   window.changeLstPage          = changeLstPage;
   window.debouncedLoadList      = debouncedLoadList;
   window.resetFilters           = resetFilters;
