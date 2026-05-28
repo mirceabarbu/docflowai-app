@@ -264,6 +264,7 @@ router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df
     `;
     const { rows } = await pool.query(q, allVals);
     logger.info({ id: rows[0].id, actor: actor.email }, 'formulare-df creat');
+    rows[0].capabilities = computeDocCapabilities(rows[0], actor, 'notafd');
     res.json({ ok: true, document: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df create error');
@@ -329,6 +330,7 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
       WHERE id=$${allVals.length - 1} AND org_id=$${allVals.length}
       RETURNING *
     `, allVals);
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd');
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df update error');
@@ -378,6 +380,7 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
       { form_type: 'df', form_id: req.params.id });
 
     logger.info({ id: req.params.id, p2: p2.email, actor: actor.email }, 'formulare-df trimis la P2');
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd');
     res.json({ ok: true, document: updated[0], assigned_to: p2 });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df submit error');
@@ -440,6 +443,7 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
       { form_type: 'df', form_id: req.params.id });
 
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-df completat de P2');
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd');
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df complete error');
@@ -854,6 +858,7 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
       vals
     );
     logger.info({ id: rows[0].id, actor: actor.email }, 'formulare-ord creat');
+    rows[0].capabilities = computeDocCapabilities(rows[0], actor, 'ordnt');
     res.json({ ok: true, document: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord create error');
@@ -930,6 +935,7 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
       WHERE id=$${allVals.length - 1} AND org_id=$${allVals.length}
       RETURNING *
     `, allVals);
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord update error');
@@ -978,6 +984,7 @@ router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
       { form_type: 'ord', form_id: req.params.id });
 
     logger.info({ id: req.params.id, p2: p2.email, actor: actor.email }, 'formulare-ord trimis la P2');
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
     res.json({ ok: true, document: updated[0], assigned_to: p2 });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord submit error');
@@ -1056,6 +1063,7 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
       { form_type: 'ord', form_id: req.params.id });
 
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-ord completat de P2');
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord complete error');
