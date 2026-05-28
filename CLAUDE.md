@@ -315,32 +315,31 @@ Campanii email către ~2.950 municipalități românești. Tabele: `outreach_ins
 
 ---
 
-## Testing
+## Testing — două niveluri
 
-Teste de integrare în `server/tests/integration/` folosesc Supertest contra unei baze de date reale (configurată în `server/tests/setup.mjs`). PBKDF2 (~200ms) implică timeout de 15s în `vitest.config.mjs`. Coverage exclude: Google Drive, GWS, WhatsApp, Web Push.
+**Nivel 1 — Mock (rapid, default): `npm test`**
+- ~758 teste (62 fișiere) în `server/tests/**` + `server/services/**/__tests__/**`.
+- `pool.query` este **mock-uit** (`vi.mock('../../db/index.mjs')`) — rulează **fără** Postgres.
+  ATENȚIE: testele NU lovesc o DB reală; afirmația veche „contra unei baze de date reale" era greșită.
+- Pattern poziţional (`mockResolvedValueOnce` în secvență) → cuplat de implementare, fragil la refactor SQL.
+- PBKDF2 (~200ms) → timeout 15s în `vitest.config.mjs`. Coverage exclude: Drive, GWS, WhatsApp, Web Push.
 
-**Înainte de orice modificare:** rulează `npm test` și verifică că toate testele trec. Nu livra cod cu teste care pică.
+**Nivel 2 — Postgres real (plasă de siguranță): `npm run test:db`**
+- `server/tests/db/**` (config separat `vitest.config.db.mjs`, `fileParallelism:false`).
+- Rulează routerele REALE peste un Postgres efemer; `db/index.mjs` NU e mock-uit.
+- Verifică **rezultatul** (status code + starea din DB), nu ordinea apelurilor → sigur la refactor.
+- Local: `npm run db:test:up` (Docker) → exportă `TEST_DATABASE_URL` afișat → `npm run test:db` → `npm run db:test:down`.
+- Fără `TEST_DATABASE_URL` se auto-skip (exit 0) — de aceea `npm test` rămâne verde și fără DB.
+- CI rulează ambele (serviciu `postgres:16` în GitHub Actions).
 
-### Testare — două niveluri
+**Baseline teste = 758.** Orice modificare care atinge testarea trebuie să confirme numărul exact
+prin `npm test` (NU prin `grep it(` — numărătoarea statică ratează al doilea pattern din
+`vitest.config.mjs` și testele generate în buclă). După Etapa 1, plus `npm run test:db` verde.
 
-1. **Mock (rapid, default)** — `npm test`
-   - 758 teste, `pool.query` mock-uit, rulează fără DB. Pattern pozițional (mockResolvedValueOnce).
-   - Bun pentru logică pură / guards. Fragil la refactor SQL (cuplat de implementare).
-
-2. **Postgres real (plasă de siguranță)** — `npm run test:db`
-   - `server/tests/db/**`, rulează routerele reale peste un Postgres efemer.
-   - Verifică REZULTATUL (status code + starea din DB), nu ordinea apelurilor → sigur la refactor.
-   - Local: `npm run db:test:up` (Docker), exportă TEST_DATABASE_URL afișat, apoi `npm run test:db`,
-     iar la final `npm run db:test:down`.
-   - Fără TEST_DATABASE_URL, testele DB se auto-skip (npm test rămâne verde).
-   - CI rulează ambele (serviciu postgres:16 în GitHub Actions).
-   - Harness-ul (`migrateForTests` în `db/index.mjs`) reproduce ordinea de la boot: inline întâi,
-     apoi V4 (`migrate.mjs`), apoi re-aplică migrările inline care ating `alop_instances`/`alop_sabloane`
-     (guard-skip-uite pe DB fresh) — altfel coloane ca `alop_instances.updated_by` lipsesc.
-
-REGULĂ: orice modificare pe rutele de formulare/ALOP (liste, ștergere, cancel, revizii)
-trebuie acoperită întâi de un test în `server/tests/db/**` care captează comportamentul curent,
-APOI refactorizezi. Testele DB sunt sursa de adevăr pentru regresii.
+**Înainte de orice modificare:** rulează `npm test` (și `npm run test:db` dacă atingi formulare/ALOP/DB).
+Nu livra cod cu teste care pică. Pentru rute de formulare/ALOP (liste, ștergere, cancel, revizii),
+adaugă întâi un test de caracterizare în `server/tests/db/**` care captează comportamentul curent,
+APOI refactorizează — testele DB sunt sursa de adevăr pentru regresii.
 
 ---
 
@@ -452,6 +451,35 @@ dropdb docflowai_dev && createdb docflowai_dev && npm start
 | `CREATE TABLE ... REFERENCES alop_instances` fără guard | FK fail pe fresh DB | Wrap în același guard |
 | `DO $$ BEGIN ... END $$` nested în `DO $$ ... END $$` | Dollar-quoting conflict | Folosește `$g$` sau alt tag pentru outer |
 | Migrare inline care presupune V4 rulat deja | Race condition garantată | V4 rulează DUPĂ inline, întotdeauna |
+
+### ⚠️ Garda rezolvă 503-ul, dar lasă un GOL TĂCUT de schemă pe fresh DB
+
+Garda `DO $g$ IF NOT EXISTS (table) THEN RETURN` (Regula 1) previne ROLLBACK-ul/503, DAR are un cost
+ascuns: pe o **bază fresh**, ALTER-ul gardat **sare** (tabela V4 nu există încă, fiindcă inline rulează
+înaintea V4), migrarea se marchează „applied" și **nu se mai reia niciodată**. Coloana/constraint-ul
+**nu se adaugă** — fără nicio eroare în log. În prod/staging „merge" doar pentru că bazele s-au construit
+incremental (tabela exista deja când a rulat ALTER-ul gardat).
+
+**Goluri de fresh-provision cunoscute (de remediat — task dedicat):**
+- `alop_instances`: `updated_by` (+ index), coloanele de semnatari (mig. 055), CHECK `plata_source`,
+  tabela-copil `alop_ord_cicluri` (FK spre `alop_instances`) — toate gardate, toate sar pe fresh boot.
+- `organizations.slug`: V4 `001_organizations.sql` îl cere `NOT NULL`, dar inline creează `organizations`
+  fără slug primul → `CREATE TABLE IF NOT EXISTS` din V4 sare → `slug`/`idx_org_slug` lipsesc pe fresh.
+
+**Consecință runtime:** relink-ul ALOP la ștergere/refuz scrie `alop_instances.updated_by`; pe o schemă
+fresh fără coloana asta, scrierea eșuează — și fiindcă relink-ul e în `try/catch` non-fatal, eșuează
+**tăcut**. Pe prod merge (coloana există).
+
+**Regula 4 e necesară dar NU suficientă:** „verifică în logs că nu e ROLLBACK" nu prinde golul, fiindcă
+o gardă care sare nu produce eroare. Verificarea autoritară de fresh-provision e acum **`npm run test:db`**
+(`server/tests/db/**`): construiește schema fresh și rulează rute reale care ar pica dacă o coloană lipsește.
+Bootstrap-ul fresh canonic e în `server/tests/helpers/db-real.mjs` (`migrateForTests`): inline-first cu
+migrările V4-dependente pre-marcate „applied", apoi `014_alop.sql` + `015_formulare_oficiale.sql`, apoi
+re-aplică inline-ul deferred — reconstruind ordinea pe care prod o are din creștere incrementală.
+
+**Regula 5 — coloane care TREBUIE să existe pe tabele V4 NU se pun ca ALTER inline gardat.**
+Garda le face opționale de facto (lipsesc pe fresh). Pune-le în migrarea V4 care deține tabela de bază
+(ex. o nouă `016_*.sql` lângă `014_alop.sql`), unde tabela există garantat la momentul ALTER-ului.
 
 ---
 
