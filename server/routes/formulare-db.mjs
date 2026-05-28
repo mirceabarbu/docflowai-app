@@ -18,6 +18,7 @@ import { requireModule } from '../middleware/require-module.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { pool } from '../db/index.mjs';
 import { loadActorComp, canEditFormular, canViewFormular, canDestroyOnly } from '../services/authz-formular.mjs';
+import { computeDocCapabilities } from '../services/formular-capabilities.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -224,6 +225,7 @@ router.get('/api/formulare-df/:id', async (req, res) => {
       const view = await canViewFormular(pool, actor, doc, actorComp);
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
+    doc.capabilities = computeDocCapabilities(doc, actor, 'notafd');
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df get error');
@@ -807,6 +809,7 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
       const view = await canViewFormular(pool, actor, doc, actorComp);
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
+    doc.capabilities = computeDocCapabilities(doc, actor, 'ordnt');
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord get error');
