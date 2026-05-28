@@ -476,8 +476,8 @@ router.post('/api/formulare-df/:id/returneaza', _csrf, async (req, res) => {
     }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
-    await pool.query(
-      `UPDATE formulare_df SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2`,
+    const { rows: upd } = await pool.query(
+      `UPDATE formulare_df SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2 RETURNING *`,
       [motiv.trim(), req.params.id, actor.userId]
     );
     await sendNotif(doc.created_by, 'formulare_df_returnat',
@@ -485,7 +485,9 @@ router.post('/api/formulare-df/:id/returneaza', _csrf, async (req, res) => {
       `${actor.nume || actor.email} a returnat DF "${doc.nr_unic_inreg || 'fără număr'}" cu observații`,
       { form_type: 'df', form_id: req.params.id });
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-df returnat de P2');
-    res.json({ ok: true });
+    const outDf = upd[0];
+    outDf.capabilities = computeDocCapabilities(outDf, actor, 'notafd');
+    res.json({ ok: true, document: outDf });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df returneaza error');
     res.status(500).json({ error: 'server_error' });
@@ -1096,8 +1098,8 @@ router.post('/api/formulare-ord/:id/returneaza', _csrf, async (req, res) => {
     }
     if (doc.status !== 'pending_p2')
       return res.status(409).json({ error: 'status_invalid', status: doc.status });
-    await pool.query(
-      `UPDATE formulare_ord SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2`,
+    const { rows: upd } = await pool.query(
+      `UPDATE formulare_ord SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2 RETURNING *`,
       [motiv.trim(), req.params.id, actor.userId]
     );
     await sendNotif(doc.created_by, 'formulare_ord_returnat',
@@ -1105,7 +1107,9 @@ router.post('/api/formulare-ord/:id/returneaza', _csrf, async (req, res) => {
       `${actor.nume || actor.email} a returnat ORD "${doc.nr_ordonant_pl || 'fără număr'}" cu observații`,
       { form_type: 'ord', form_id: req.params.id });
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-ord returnat de P2');
-    res.json({ ok: true });
+    const outOrd = upd[0];
+    outOrd.capabilities = computeDocCapabilities(outOrd, actor, 'ordnt');
+    res.json({ ok: true, document: outOrd });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord returneaza error');
     res.status(500).json({ error: 'server_error' });
