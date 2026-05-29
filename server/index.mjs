@@ -1223,7 +1223,8 @@ async function _runReminderJob() {
     const cutoff1 = new Date(Date.now() - R1_MS).toISOString();
     const { rows } = await pool.query(
       `SELECT id, data FROM flows
-       WHERE (data->>'completed') IS DISTINCT FROM 'true'
+       WHERE deleted_at IS NULL
+         AND (data->>'completed') IS DISTINCT FROM 'true'
          AND (data->>'status') NOT IN ('refused','cancelled','review_requested')
          AND updated_at < $1
        LIMIT 300`,
@@ -1367,6 +1368,25 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
   if (!pool || !DB_READY) return;
   const email = (userEmail || '').toLowerCase();
   if (!email) return;
+
+  // Anti-duplicat (Bug-1): tipurile terminale se trimit o singură dată per flux+user
+  // într-o fereastră scurtă. Cauza duplicatelor: COMPLETED emis din mai multe căi de
+  // finalizare (callback STS + polling) în signing/cloud-signing/bulk-signing (NO-TOUCH).
+  const ONCE_PER_FLOW_TYPES = new Set(['COMPLETED', 'REFUSED']);
+  if (flowId && ONCE_PER_FLOW_TYPES.has(type)) {
+    const { rows: dup } = await pool.query(
+      `SELECT 1 FROM notifications
+        WHERE user_email=$1 AND flow_id=$2 AND type=$3
+          AND created_at > NOW() - INTERVAL '30 minutes'
+        LIMIT 1`,
+      [email, flowId, type]
+    );
+    if (dup.length) {
+      logger.info({ email, flowId, type }, 'notify: duplicat suprimat (anti-spam terminal)');
+      return;
+    }
+  }
+
   const [uRow] = (await pool.query('SELECT phone, notif_inapp, notif_whatsapp, notif_email FROM users WHERE email=$1', [email])).rows;
 
   // FIX: fiecare canal evaluat independent
