@@ -23,6 +23,7 @@ import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
+import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
@@ -266,7 +267,8 @@ router.get('/api/alop', async (req, res) => {
         ) AS total_platit,
         EXISTS (
           SELECT 1 FROM opme_lines ol WHERE ol.matched_alop_id = a.id
-        ) AS has_opme_lines
+        ) AS has_opme_lines,
+        (a.status NOT IN ('completed','cancelled') AND a.df_id IS NULL AND a.ord_id IS NULL) AS can_delete
       FROM alop_instances a
       LEFT JOIN users        u  ON u.id  = a.created_by
       LEFT JOIN formulare_df df ON df.id = a.df_id
@@ -698,6 +700,7 @@ router.get('/api/alop/:id', async (req, res) => {
     const sumaPlatita = parseFloat(alop.suma_platita_total || 0);
     alop.ramas = dfVal > 0 ? Math.max(0, dfVal - sumaPlatita) : 0;
 
+    alop.capabilities = computeAlopCapabilities(alop, actor);
     res.json({ alop });
   } catch (e) {
     logger.error({ err: e }, 'alop get error');
