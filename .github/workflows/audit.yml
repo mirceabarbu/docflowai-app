@@ -6,7 +6,7 @@ name: Security Audit
 
 on:
   push:
-    branches: [ main, production ]
+    branches: [ main, production, develop ]
   pull_request:
     branches: [ main ]
   schedule:
