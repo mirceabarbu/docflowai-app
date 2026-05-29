@@ -22,9 +22,14 @@ d('Răspunsurile de mutație DF/ORD includ document.capabilities', () => {
   it('PUT DF (draft, creator) → capabilities prezent', async () => {
     const created = await request(app).post('/api/formulare-df').set('Cookie', cookie()).send({});
     const id = created.body.document.id;
-    const res = await request(app).put(`/api/formulare-df/${id}`).set('Cookie', cookie()).send({ notes: 'x' });
+    // subtitlu_df e în DF_P1_FIELDS (text liber, fără constraint-uri) → PUT valid
+    const res = await request(app).put(`/api/formulare-df/${id}`).set('Cookie', cookie())
+      .send({ subtitlu_df: 'updated by test' });
     expect(res.status).toBe(200);
     expect(res.body.document.capabilities).toBeTruthy();
+    // draft + creator → can_send_p2 + can_reset
+    expect(res.body.document.capabilities.can_send_p2).toBe(true);
+    expect(res.body.document.status).toBe('draft');
   });
 
   it('POST create ORD → capabilities (draft → can_send_p2)', async () => {
