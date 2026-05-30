@@ -162,6 +162,18 @@ router.get('/admin/db/diagnostics', async (req, res) => {
   }
 });
 
+async function runVacuumFull() {
+  const client = await pool.connect();
+  try {
+    await client.query("SET statement_timeout = '15min'");
+    await client.query('VACUUM FULL flows_pdfs');
+    await client.query('VACUUM FULL flow_attachments');
+    await client.query('VACUUM ANALYZE flows');
+  } finally {
+    client.release();
+  }
+}
+
 router.post('/admin/db/vacuum', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
@@ -174,10 +186,8 @@ router.post('/admin/db/vacuum', csrfMiddleware, async (req, res) => {
         pg_total_relation_size('flow_attachments') AS att_bytes
     `);
     // VACUUM FULL ia ACCESS EXCLUSIVE LOCK temporar — singurul mod de a returna spațiul la OS.
-    // Pe flows_pdfs (~168 MB) și flow_attachments (~253 MB) lock-ul durează ~30s pe prod.
-    await pool.query('VACUUM FULL flows_pdfs');
-    await pool.query('VACUUM FULL flow_attachments');
-    await pool.query('VACUUM ANALYZE flows');
+    // Rulează pe client dedicat cu statement_timeout extins (vezi runVacuumFull).
+    await runVacuumFull();
     const afterR = await pool.query(`
       SELECT
         pg_database_size(current_database()) AS db_bytes,
@@ -247,9 +257,8 @@ router.post('/admin/db/cleanup-orphans', csrfMiddleware, async (req, res) => {
     `);
 
     // VACUUM FULL ia ACCESS EXCLUSIVE LOCK temporar — singurul mod de a returna spațiul la OS.
-    await pool.query('VACUUM FULL flows_pdfs');
-    await pool.query('VACUUM FULL flow_attachments');
-    await pool.query('VACUUM ANALYZE flows');
+    // Rulează pe client dedicat cu statement_timeout extins (vezi runVacuumFull).
+    await runVacuumFull();
 
     const afterR = await pool.query(`
       SELECT
