@@ -178,9 +178,8 @@ async function loadAlop(){
     const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON',maximumFractionDigits:0}).format(v):'—';
     tb.innerHTML=rows.map(a=>{
       const dt=new Date(a.updated_at||a.created_at).toLocaleDateString('ro-RO');
-      const active=a.status!=='completed'&&a.status!=='cancelled';
-      // v3.9.498 (Issue R-B): blochăm cancel dacă DF emis (df_id setat)
-      const canCancel=active&&!a.df_id;
+      // Ștergere: flag server-side (can_delete din /api/alop). 1:1 cu vechiul active&&!df_id&&!ord_id.
+      const canCancel=a.can_delete===true;
       return`<tr onclick="openAlop('${esc(a.id)}')" style="cursor:pointer">
         <td><span style="font-weight:600;color:var(--df-text)">${esc(a.titlu||'—')}</span>
           ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--df-text-3)">${esc(a.compartiment)}</span>`:''}
@@ -207,7 +206,7 @@ async function loadAlop(){
         <td onclick="event.stopPropagation()">
           <button class="df-action-btn sm" onclick="openAlop('${esc(a.id)}')">Deschide</button>
           ${a.has_opme_lines?`<button class="df-action-btn sm" style="margin-left:4px" onclick="openOpmeLinesForAlop('${esc(a.id)}')" title="Vezi OP-uri OPME atașate"><svg class="df-ico"><use href="/icons.svg?v=3.9.475#ico-landmark"/></svg></button>`:''}
-          ${canCancel?`<button class="df-action-btn danger sm" style="margin-left:4px" onclick="cancelAlop('${esc(a.id)}')" title="Anulează ALOP">✕</button>`:''}
+          ${canCancel?`<button class="df-action-btn danger sm" style="margin-left:4px" onclick="cancelAlop('${esc(a.id)}')" title="Șterge ALOP">🗑</button>`:''}
         </td>
       </tr>`;
     }).join('');
@@ -459,6 +458,7 @@ function renderAlopDetail(a,container){
   sessionStorage.setItem('_alopContext',JSON.stringify(window._alopContext));
   const isCompleted=a.status==='completed';
   const isCancelled=a.status==='cancelled';
+  const caps=a.capabilities||{}; // sursă unică server-side (Etapa 3)
   const fmtDate=iso=>iso?new Date(iso).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
   const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
   const fmtV=v=>v>0?new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v)+' RON':'—';
@@ -502,51 +502,48 @@ function renderAlopDetail(a,container){
   stepperHtml+=`</div>`;
 
   let actionsHtml='';
-  const currentUserId = ST.user?.userId;
-  const isAlopOwner = !currentUserId || String(a.created_by) === String(currentUserId)
-    || ST.user?.role === 'admin'
-    || ST.user?.role === 'org_admin';
-  console.log('[ALOP owner check]', {
-    currentUserId, aCreatedBy: a.created_by,
-    match: String(a.created_by) === String(currentUserId),
-    role: ST.user?.role, isAlopOwner
-  });
-  if(!isCompleted&&!isCancelled&&isAlopOwner){
+  {
     const id=esc(a.id);
-    const dfInLucru=!!a.df_revizie_in_lucru;
-    const dfStatus=a.df_status||'';
-    if(dfInLucru){
-      actionsHtml+=`<button class="df-action-btn" disabled title="Există deja o revizie DF în lucru — finalizați revizia curentă">${_alopIcoBtn('ico-file-text')}Revizie DF în lucru...</button>`;
-    }else if(!a.df_id){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Completează Document de Fundamentare</button>`;
-    }else if(dfStatus==='neaprobat'){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF (neaprobat)</button>`;
-    }else if(a.status==='angajare'&&a.df_flow_id){
-      actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.475#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
-    }else if(['aprobat','transmis_flux','de_revizuit'].includes(dfStatus)){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
-    }else if(a.df_id&&!a.df_flow_id){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
-    }else{
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Completează Document de Fundamentare</button>`;
+    // DF action — enum din caps decide butonul; label/icon/onclick = prezentare (1:1 cu vechiul if/else)
+    switch(caps.df_action){
+      case 'in_lucru_disabled':
+        actionsHtml+=`<button class="df-action-btn" disabled title="Există deja o revizie DF în lucru — finalizați revizia curentă">${_alopIcoBtn('ico-file-text')}Revizie DF în lucru...</button>`;
+        break;
+      case 'completeaza':
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Completează Document de Fundamentare</button>`;
+        break;
+      case 'revizuieste_neaprobat':
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF (neaprobat)</button>`;
+        break;
+      case 'flow_waiting':
+        actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.475#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
+        break;
+      case 'deschide':
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
+        break;
     }
-    if(a.status==='lichidare'&&!a.lichidare_confirmed_at){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmLichidare('${id}')">${_alopIcoBtn('ico-check-square')}Confirmă Lichidarea</button>`;
-      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF</button>`;
-    }else if(a.status==='ordonantare'&&!a.ord_id){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-file-signature')}Completează Ordonanțare de Plată</button>`;
-      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF</button>`;
-    }else if(a.status==='ordonantare'&&a.ord_id&&!a.ord_flow_id){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-rocket')}Generează PDF + Lansează flux ORD</button>`;
-      if(a.df_id)actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF</button>`;
-    }else if(a.status==='ordonantare'&&a.ord_flow_id&&!a.ord_completed_at){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="alopOrdCompleted('${id}')">${_alopIcoBtn('ico-check-circle')}Marchează ORD semnat complet</button>`;
-    }else if(a.status==='plata'){
-      actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">${_alopIcoBtn('ico-landmark')}Confirmă Plata</button>`;
+    // Phase action — enum din caps; "Revizuiește DF" secundar gated de can_revise_df
+    const reviseBtn=caps.can_revise_df?`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF</button>`:'';
+    switch(caps.phase_action){
+      case 'confirma_lichidare':
+        actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmLichidare('${id}')">${_alopIcoBtn('ico-check-square')}Confirmă Lichidarea</button>`+reviseBtn;
+        break;
+      case 'completeaza_ord':
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-file-signature')}Completează Ordonanțare de Plată</button>`+reviseBtn;
+        break;
+      case 'genereaza_lanseaza_ord':
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-rocket')}Generează PDF + Lansează flux ORD</button>`+reviseBtn;
+        break;
+      case 'marcheaza_ord_semnat':
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopOrdCompleted('${id}')">${_alopIcoBtn('ico-check-circle')}Marchează ORD semnat complet</button>`;
+        break;
+      case 'confirma_plata':
+        actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">${_alopIcoBtn('ico-landmark')}Confirmă Plata</button>`;
+        break;
     }
-    // v3.9.498 (Issue R-B): ascunde Anulează când DF emis (df_id setat)
-    if(!a.df_id){
-      actionsHtml+=`<button class="df-action-btn danger" onclick="cancelAlop('${id}')">${_alopIcoBtn('ico-x')}Anulează</button>`;
+    // Ștergere (owner-gated în caps.can_delete)
+    if(caps.can_delete){
+      actionsHtml+=`<button class="df-action-btn danger" onclick="cancelAlop('${id}')">${_alopIcoBtn('ico-trash')}Șterge</button>`;
     }
   }
 
@@ -593,7 +590,7 @@ function renderAlopDetail(a,container){
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           ${_alopStatusBadge(a.status,a.df_flow_id)}
-          ${!isCompleted&&!isCancelled?`<button class="df-action-btn sm" onclick="alopRefreshCurrent()" title="Actualizează status">↻ Actualizează</button>`:''}
+          ${caps.can_refresh?`<button class="df-action-btn sm" onclick="alopRefreshCurrent()" title="Actualizează status">↻ Actualizează</button>`:''}
         </div>
       </div>
     </div>
@@ -625,7 +622,7 @@ function renderAlopDetail(a,container){
     })()}
     ${actionsHtml?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">${actionsHtml}</div>`:''}
     ${isCompleted?`<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;text-align:center;color:#10b981;font-weight:600">✅ ALOP finalizat complet — Angajare → Lichidare → Ordonanțare → Plată executată<br><span style="font-size:.8rem;font-weight:400;opacity:.8">${fmtDate(a.completed_at)}</span></div>`:''}
-    ${isCompleted&&(a.ramas>0)?`
+    ${caps.can_start_noua_ordonantare?`
       <div style="background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:.82rem;margin-top:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
         <button class="df-action-btn primary" onclick="startNouaLichidare('${esc(a.id)}')">🔄 Nouă ordonanțare parțială</button>
@@ -955,16 +952,15 @@ async function confirmPlata(){
 }
 
 async function cancelAlop(id){
-  if(!confirm('Anulezi acest ALOP? Documentele DF/ORD nu vor fi șterse.'))return;
+  if(!confirm('Ștergeți acest ALOP? Operațiunea nu poate fi inversată.'))return;
   try{
     const r=await fetch(`/api/alop/${encodeURIComponent(id)}/cancel`,{
       method:'POST',credentials:'include',headers:{'X-CSRF-Token':df.getCsrf()},
     });
     const data=await r.json();
     if(!r.ok){
-      // v3.9.498 (Issue R-B): mesaj user-friendly pentru block-ul DF
-      if(data.error==='cancel_blocked_df_exists'){
-        alert(data.message||'ALOP nu poate fi anulat: există DF emis.');
+      if(data.error==='cancel_blocked_df_exists'||data.error==='cancel_blocked_ord_exists'){
+        alert(data.message||'ALOP nu poate fi șters: are DF/ORD legat.');
         return;
       }
       throw new Error(data.error||'server_error');

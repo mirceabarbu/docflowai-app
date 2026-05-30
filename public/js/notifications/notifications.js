@@ -101,6 +101,12 @@ function renderList() {
   const list = filtered();
   const area = $('listArea');
   updateTabCounts();
+  const _bd = $('btnDeleteCat');
+  if (_bd) {
+    _bd.style.display = list.length ? 'inline-flex' : 'none';
+    const _lbl = $('btnDeleteCatLabel');
+    if (_lbl) _lbl.textContent = `Șterge afișate (${list.length})`;
+  }
   if (!list.length) {
     area.innerHTML = `<div class="empty-state">
       <div class="empty-icon">🔕</div>
@@ -187,6 +193,22 @@ $('btnReadAll').onclick = async () => {
   updateTabCounts();
   renderList(); updateReadAllBtn();
   await _apiFetch('/api/notifications/read-all', { method:'POST' }).catch(()=>{});
+};
+
+const _btnDeleteCat = $('btnDeleteCat');
+if (_btnDeleteCat) _btnDeleteCat.onclick = async () => {
+  const ids = filtered().map(n => n.id);
+  if (!ids.length) return;
+  const eticheta = currentFilter === 'all' ? 'toate notificările' : 'notificările din această categorie';
+  if (!confirm(`Ștergeți ${eticheta} (${ids.length})? Operațiunea nu poate fi inversată.`)) return;
+  const idSet = new Set(ids);
+  allNotifs = allNotifs.filter(n => !idSet.has(n.id));
+  renderList(); updateReadAllBtn(); updateTabCounts();
+  await _apiFetch('/api/notifications/delete-bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  }).catch(()=>{});
 };
 
 // ── WebSocket ──────────────────────────────────────────────

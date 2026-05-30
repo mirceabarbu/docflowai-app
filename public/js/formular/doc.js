@@ -367,76 +367,80 @@ function updateRevizieHeaderBadge(ft, doc){
 function renderActions(ft){
   const div=document.getElementById('actions-'+ft);if(!div)return;
   const status=ST.docStatus[ft],role=ST.docRole[ft],docId=ST.docId[ft];
+  const caps=ST.docCapabilities?.[ft]||{};
   const B=(cls,txt,fn)=>`<button class="df-action-btn ${cls}" onclick="${fn}">${txt}</button>`;
-  const BNou='';
-  let html='';
-  // Banner "an următor" — vizibil doar pentru notafd revizie an următor
+  // Banner "an următor" — vizibil doar pentru notafd revizie an următor (prezentare, neschimbat)
   const bannerAnUrm=document.getElementById('banner-an-urmator-notafd');
   if(bannerAnUrm) bannerAnUrm.style.display=(ft==='notafd'&&ST.docRevizieAnUrmator?.[ft])?'':'none';
 
-  if(ft==='notafd'&&ST.docStatus[ft]==='neaprobat'){
-    const revNr=ST.docRevizieNr?.[ft]??0;
-    const areNoua=ST.docAreRevizieNoua?.[ft];
-    const latest=ST.docLatestRevizieNr?.[ft]||0;
-    if(areNoua){
+  // Etichete = prezentare (gated de caps): "Retrimite" doar la returnat&p1; "Câmpuri" doar la draft&p1.
+  const lblSend =(status==='returnat'&&role==='p1')?'📨 Retrimite la Responsabil CAB':'📨 Trimite la Responsabil CAB';
+  const lblReset=(status==='draft'&&role==='p1')?'↺ Câmpuri':'↺ Resetează';
+
+  // Formular nesalvat (fără docId) → set fix de acțiuni (identic cu vechiul branch !docId)
+  if(!docId){
+    div.innerHTML=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
+      +B('','↺ Resetează',`resetF('${ft}')`);
+    return;
+  }
+
+  const revNr=ST.docRevizieNr?.[ft]||0;
+  const latest=ST.docLatestRevizieNr?.[ft]||0;
+
+  // Stări terminale/informaționale — text identic cu originalul, butoane gated de caps:
+  if(caps.is_neaprobat){
+    if(caps.is_historic_revision){
       div.innerHTML=`<span style="color:#f87171;font-size:.82rem;margin-right:8px">❌ DF neaprobat de semnatar (R${revNr}).</span>`
         +`<span style="color:var(--df-text-3);font-size:.82rem">🕒 Revizie istorică — revizia curentă este R${latest}.</span>`;
     }else{
       div.innerHTML=`<span style="color:#f87171;font-size:.82rem;margin-right:8px">❌ DF neaprobat de semnatar — fluxul a fost refuzat (R${revNr}).</span>`
-        +B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`);
+        +(caps.can_revise?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'');
     }
     return;
   }
-  if(ft==='notafd'&&ST.docStatus[ft]==='de_revizuit'){
+  if(caps.is_de_revizuit){
     div.innerHTML=`<span style="color:#fbbf24;font-size:.82rem;margin-right:8px">🔄 Documentul a fost trimis înapoi din flux pentru revizuire.</span>`
       +B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
       +B('','↺ Resetează câmpuri',`resetF('${ft}')`);
     return;
   }
-  if(ST.docAprobat?.[ft]){
+  if(caps.aprobat){
     const fid=ST.docFlowId?.[ft];
-    const revNr=ST.docRevizieNr?.[ft]||0;
-    const isAnUrm=ft==='notafd'&&ST.docRevizieAnUrmator?.[ft];
-    const areNoua=ft==='notafd'&&ST.docAreRevizieNoua?.[ft];
-    const latest=ST.docLatestRevizieNr?.[ft]||0;
     const revBadge=ft==='notafd'&&revNr>0?`<span class="df-revizie-badge" style="margin-right:4px">Revizia ${revNr}</span>`:'';
-    const istoricMsg=areNoua?`<span style="color:var(--df-text-3);font-size:.82rem;margin-left:8px">🕒 Revizie istorică — revizia curentă este R${latest}.</span>`:'';
+    const istoricMsg=caps.is_historic_revision?`<span style="color:var(--df-text-3);font-size:.82rem;margin-left:8px">🕒 Revizie istorică — revizia curentă este R${latest}.</span>`:'';
     div.innerHTML=revBadge
-      +(fid?B('teal','📄 Descarcă PDF semnat',`viewFlowPdf('${fid}')`):'')
-      +((ft==='notafd'&&!areNoua)?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'')
+      +(caps.can_download_signed?B('teal','📄 Descarcă PDF semnat',`viewFlowPdf('${fid}')`):'')
+      +(caps.can_revise?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'')
       +istoricMsg;
     return;
   }
-  if(!docId){
-    html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
-      +B('','↺ Resetează',`resetF('${ft}')`);
-  }else if(status==='draft'&&role==='p1'){
-    html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
-      +BNou
-      +B('','↺ Câmpuri',`resetF('${ft}')`);
-  }else if(status==='returnat'&&role==='p1'){
-    html=B('teal','📨 Retrimite la Responsabil CAB',`showP2Modal('${ft}')`);
-  }else if(status==='pending_p2'&&role==='p2'){
-    html=B('','💾 Salvează',`saveDoc('${ft}')`)
-      +B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`)
-      +B('danger','↩ Returnează ca neconform',`showReturnModal('${ft}')`);
-  }else if(status==='pending_p2'&&role==='p1'){
-    html=`<span style="color:var(--df-text-3);font-size:.82rem">⏳ Așteptare Responsabil CAB...</span>`
-      +BNou;
-  }else if(status==='completed'&&role==='p1'){
-    const hasPdf=!!(ST[ft]?.pdf);
-    html=(hasPdf?B('primary','🔏 Lansează flux semnare',`mkFlow('${ft}')`)
-                :`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`);
-  }else if(status==='transmis_flux'){
-    html=`<span style="color:var(--df-text-3);font-size:.82rem">🔄 Document pe fluxul de semnare...</span>`
-      +(ST.docFlowId?.[ft]?B('','📄 Descarcă PDF',`viewFlowPdf('${ST.docFlowId[ft]}')`):'');
-  }else if(status==='completed'&&role==='p2'){
-    html=`<span style="color:var(--df-text-3);font-size:.82rem">✅ Secțiunea ta este completată.</span>`
-      +BNou;
-  }else{
-    html=B('teal','📨 Trimite la Responsabil CAB',`showP2Modal('${ft}')`)
-      +B('','↺ Resetează',`resetF('${ft}')`);
+  if(caps.is_waiting_p2){
+    div.innerHTML=`<span style="color:var(--df-text-3);font-size:.82rem">⏳ Așteptare Responsabil CAB...</span>`;
+    return;
   }
+  if(caps.is_completed_p2){
+    div.innerHTML=`<span style="color:var(--df-text-3);font-size:.82rem">✅ Secțiunea ta este completată.</span>`;
+    return;
+  }
+  if(caps.is_on_flow){
+    div.innerHTML=`<span style="color:var(--df-text-3);font-size:.82rem">🔄 Document pe fluxul de semnare...</span>`
+      +(caps.can_download_flux?B('','📄 Descarcă PDF',`viewFlowPdf('${ST.docFlowId?.[ft]}')`):'');
+    return;
+  }
+  if(caps.can_generate_or_launch){
+    const hasPdf=!!(ST[ft]?.pdf);
+    div.innerHTML=(hasPdf?B('primary','🔏 Lansează flux semnare',`mkFlow('${ft}')`)
+      :`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`);
+    return;
+  }
+
+  // Acțiuni „active" (draft/p1, returnat/p1, pending_p2/p2, fallback) — asamblate din caps:
+  let html='';
+  if(caps.can_send_p2)     html+=B('teal',lblSend,`showP2Modal('${ft}')`);
+  if(caps.can_save)        html+=B('','💾 Salvează',`saveDoc('${ft}')`);
+  if(caps.can_complete_p2) html+=B('primary','✅ Finalizez secțiunea',`completeAsP2('${ft}')`);
+  if(caps.can_return)      html+=B('danger','↩ Returnează ca neconform',`showReturnModal('${ft}')`);
+  if(caps.can_reset)       html+=B('',lblReset,`resetF('${ft}')`);
   div.innerHTML=html;
 }
 
@@ -472,6 +476,8 @@ async function openDoc(ft,id){
     ST.docAreRevizieNoua[ft]=doc.has_newer_revision===true;
     ST.docLatestRevizieNr=ST.docLatestRevizieNr||{};
     ST.docLatestRevizieNr[ft]=doc.latest_revizie_nr||0;
+    ST.docCapabilities=ST.docCapabilities||{};
+    ST.docCapabilities[ft]=doc.capabilities||null;
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
@@ -645,6 +651,7 @@ function newDoc(ft){
   ST.docRevizieNr=ST.docRevizieNr||{};ST.docRevizieNr[ft]=0;
   ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};ST.docRevizieAnUrmator[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
+  ST.docCapabilities=ST.docCapabilities||{};ST.docCapabilities[ft]=null;
   lockAll(ft,false);setLockedBar(ft,'');
   if(ft==='notafd'){applyDfRoleState(null,'p1');updateRevizieHeaderBadge('notafd',{revizie_nr:0,este_revizie_an_urmator:false});}
   else if(ft==='ordnt')applyOrdRoleState(null,'p1');
@@ -719,7 +726,13 @@ async function saveDoc(ft){
       r=await fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
       if(r.status===409&&_handleDup409(j))return;
-      if(r.ok&&j.ok){ST.docStatus[ft]=j.document.status;}
+      if(r.ok&&j.ok){
+        ST.docStatus[ft]=j.document.status;
+        // v3.9.518: safety net — retry link la save manual chiar dacă docId există deja.
+        // Acoperă cazul în care _autoSaveDb a creat ORD-ul cu link ratat, iar user-ul
+        // dă click pe "Salvează" manual ulterior. Idempotent prin SQL guard.
+        _alopLinkDoc(ft,docId);
+      }
     }
     if(!r.ok||!j.ok){setS(j.error||'Eroare la salvare','err');return;}
 
@@ -734,6 +747,8 @@ async function saveDoc(ft){
       if(ft==='notafd') await uploadAttachments(ft, 2);
     }
 
+    ST.docCapabilities=ST.docCapabilities||{};
+    ST.docCapabilities[ft]=j.document?.capabilities||null;
     renderActions(ft);refreshDocs(ft);
     setS('Salvat cu succes.','ok');
   }catch(e){setS('Eroare rețea: '+e.message,'err');}
@@ -1123,6 +1138,8 @@ async function confirmP2(){
     const j=await r.json();
     if(!r.ok||!j.ok){setS(j.error||'Eroare la trimitere','err');return;}
     ST.docStatus[ft]='pending_p2';
+    ST.docCapabilities=ST.docCapabilities||{};
+    ST.docCapabilities[ft]=j.document?.capabilities||null;
     // Redirect automat la centralizare după trimite P2
     setTimeout(()=>showListSection(),1200);
     setS(`Trimis la ${j.assigned_to?.nume||j.assigned_to?.email||'Responsabil CAB'}.`,'ok');
@@ -1131,7 +1148,45 @@ async function confirmP2(){
 
 // ── P2 finalizează ────────────────────────────────────────────────────────────
 function validateSecB(ft){
-  if(ft!=='notafd')return true;
+  if(ft==='ordnt'){
+    // Validare rânduri ORD — col. 5 (Recepții neplătite) trebuie ≥ 0
+    // Formula: c5 = c2(recepții) - c3(plăți anterioare) - c4(suma ordonanțată)
+    // c5 < 0 ⇒ ordonanțare > disponibil ⇒ blocat
+    const tbody=document.getElementById('o-tbody');
+    if(!tbody)return true;
+    const rows=[...tbody.querySelectorAll('tr')];
+    const negative=[];
+    rows.forEach((tr,idx)=>{
+      const c2=pMR(tr.querySelector('[data-f="receptii"]')?.value);
+      const c3=pMR(tr.querySelector('[data-f="plati_anterioare"]')?.value);
+      const c4=pMR(tr.querySelector('[data-f="suma_ordonantata_plata"]')?.value);
+      const c5=c2-c3-c4;
+      if(c5<-0.001){ // toleranță floating point
+        negative.push({idx:idx+1,c5,cell:tr.querySelector('[data-f="receptii_neplatite"]')});
+      }
+    });
+    if(negative.length){
+      // Marcaj vizual roșu pe celulele afectate
+      negative.forEach(n=>{
+        if(n.cell){
+          n.cell.style.borderColor='#ef4444';
+          n.cell.style.color='#ef4444';
+          n.cell.style.fontWeight='600';
+          // Curăță marcajul la următoarea modificare a rândului
+          const tr=n.cell.closest('tr');
+          const clear=()=>{n.cell.style.borderColor='';n.cell.style.color='';n.cell.style.fontWeight='';
+            tr.querySelectorAll('input').forEach(i=>i.removeEventListener('input',clear));};
+          tr.querySelectorAll('input').forEach(i=>i.addEventListener('input',clear,{once:true}));
+        }
+      });
+      const lst=negative.map(n=>`rândul ${n.idx} (${fMR(n.c5)})`).join(', ');
+      setS('⛔ Recepții neplătite negative: '+lst+'. Suma ordonanțată (col.4) depășește disponibilul (col.2 − col.3). Reduceți col.4 sau verificați col.2/col.3.','err');
+      negative[0].cell?.scrollIntoView({behavior:'smooth',block:'center'});
+      return false;
+    }
+    return true;
+  }
+  // DF (notafd)
   const ckSeca=document.getElementById('n-ck-seca');
   if(ckSeca&&!ckSeca.checked){
     setS('Bifați "Propunerile de la secțiunea A au fost înregistrate..." pentru a finaliza.','err');
@@ -1166,8 +1221,18 @@ async function completeAsP2(ft){
       body:JSON.stringify(body),
     });
     const j=await r.json();
-    if(!r.ok||!j.ok){setS(j.error||'Eroare','err');return;}
+    if(!r.ok||!j.ok){
+      if(j.error==='receptii_neplatite_negative'){
+        const det=Array.isArray(j.rows)?j.rows.map(b=>`r${b.idx}: ${b.c5}`).join(', '):'';
+        setS('⛔ '+j.message+(det?' ('+det+')':''),'err');
+      }else{
+        setS(j.error||'Eroare','err');
+      }
+      return;
+    }
     ST.docStatus[ft]='completed';
+    ST.docCapabilities=ST.docCapabilities||{};
+    ST.docCapabilities[ft]=j.document?.capabilities||null;
     _alopLinkDoc(ft,ST.docId[ft]); // FIX: re-leagă la ALOP după completare (idempotent)
     lockAll(ft,true);
     setLockedBar(ft,'Secțiunea dvs. a fost finalizată și trimisă înapoi la P1.','info');
@@ -1192,6 +1257,8 @@ async function resetDocToP1(ft){
     const j=await r.json();
     if(!r.ok||!j.ok){setS(j.error||'Eroare','err');return;}
     ST.docStatus[ft]='draft';
+    ST.docCapabilities=ST.docCapabilities||{};
+    ST.docCapabilities[ft]=j.document?.capabilities||null;
     lockAll(ft,false);setLockedBar(ft,'');renderActions(ft);refreshDocs(ft);
     setS('Document redeschis pentru modificare.','ok');
   }catch(e){setS('Eroare: '+e.message,'err');}
@@ -1222,6 +1289,8 @@ async function confirmReturn(){
     if(!r.ok||!j.ok){setS(j.error||'Eroare','err');return;}
     closeReturnModal();
     ST.docStatus[ft]='returnat';
+    ST.docCapabilities=ST.docCapabilities||{};
+    ST.docCapabilities[ft]=j.document?.capabilities||null;
     lockAll(ft,true);
     setLockedBar(ft,'Document returnat ca neconform. Inițiatorul va fi notificat.','warn');
     renderActions(ft);refreshDocs(ft);

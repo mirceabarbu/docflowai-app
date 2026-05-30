@@ -19,6 +19,9 @@ export default defineConfig({
     // Pattern fișiere de test
     include: ['server/tests/**/*.test.mjs', 'server/services/**/__tests__/*.test.mjs'],
 
+    // Testele pe Postgres real au config propriu (vitest.config.db.mjs) + `npm run test:db`.
+    exclude: ['**/node_modules/**', 'server/tests/db/**'],
+
     // Timeout per test (PBKDF2 100k iterații durează ~200ms)
     testTimeout: 15_000,
 

@@ -315,11 +315,65 @@ Campanii email către ~2.950 municipalități românești. Tabele: `outreach_ins
 
 ---
 
-## Testing
+## Testing — două niveluri
 
-Teste de integrare în `server/tests/integration/` folosesc Supertest contra unei baze de date reale (configurată în `server/tests/setup.mjs`). PBKDF2 (~200ms) implică timeout de 15s în `vitest.config.mjs`. Coverage exclude: Google Drive, GWS, WhatsApp, Web Push.
+**Nivel 1 — Mock (rapid, default): `npm test`**
+- ~758 teste (62 fișiere) în `server/tests/**` + `server/services/**/__tests__/**`.
+- `pool.query` este **mock-uit** (`vi.mock('../../db/index.mjs')`) — rulează **fără** Postgres.
+  ATENȚIE: testele NU lovesc o DB reală; afirmația veche „contra unei baze de date reale" era greșită.
+- Pattern poziţional (`mockResolvedValueOnce` în secvență) → cuplat de implementare, fragil la refactor SQL.
+- PBKDF2 (~200ms) → timeout 15s în `vitest.config.mjs`. Coverage exclude: Drive, GWS, WhatsApp, Web Push.
 
-**Înainte de orice modificare:** rulează `npm test` și verifică că toate testele trec. Nu livra cod cu teste care pică.
+**Nivel 2 — Postgres real (plasă de siguranță): `npm run test:db`**
+- `server/tests/db/**` (config separat `vitest.config.db.mjs`, `fileParallelism:false`).
+- Rulează routerele REALE peste un Postgres efemer; `db/index.mjs` NU e mock-uit.
+- Verifică **rezultatul** (status code + starea din DB), nu ordinea apelurilor → sigur la refactor.
+- Local: `npm run db:test:up` (Docker) → exportă `TEST_DATABASE_URL` afișat → `npm run test:db` → `npm run db:test:down`.
+- Fără `TEST_DATABASE_URL` se auto-skip (exit 0) — de aceea `npm test` rămâne verde și fără DB.
+- ⚠️ **Skipped ≠ passed.** Un raport local „test:db verde" cu teste *sărite* (fără Docker) NU e dovadă —
+  doar testele *passed* contează. Lecție din practică (mai 2026): un test scris greșit a trecut „verde"
+  prin skip două commit-uri la rând, apoi a picat la primul push în CI. Confirmă DB-tests prin CI
+  (push pe `develop`) sau local cu Docker — niciodată prin skip.
+- CI rulează ambele (serviciu `postgres:16` în GitHub Actions) și pe `push: develop`.
+
+**Baseline teste — crește în timp** (≈800 la mai/2026; era 758 la Etapa 1). Confirmă prin `npm test`
+că e **verde, fără regresii** — NU hardcoda un număr în prompturi (suita crește) și NU folosi `grep it(`
+(ratează al doilea pattern din `vitest.config.mjs` + testele generate în buclă). Plus `npm run test:db`
+verde (în CI sau cu Docker).
+
+**Înainte de orice modificare:** rulează `npm test` (și `npm run test:db` dacă atingi formulare/ALOP/DB).
+Nu livra cod cu teste care pică. Pentru rute de formulare/ALOP (liste, ștergere, cancel, revizii),
+adaugă întâi un test de caracterizare în `server/tests/db/**` care captează comportamentul curent,
+APOI refactorizează — testele DB sunt sursa de adevăr pentru regresii.
+
+---
+
+## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)
+
+Logica „ce acțiuni/butoane sunt disponibile pe un document" se calculează **server-side**, ca să nu
+existe divergență server↔frontend. Frontend-ul DOAR randează din `capabilities`.
+
+- `server/services/formular-capabilities.mjs` → `computeDocCapabilities(doc, actor, ft)` (DF/ORD).
+  Atașat pe `document.capabilities` la GET detaliu ȘI pe toate răspunsurile de mutație
+  (create/PUT/submit/complete/returneaza) din `server/routes/formulare-db.mjs`.
+- `server/services/alop-capabilities.mjs` → `computeAlopCapabilities(alop, actor)` (ALOP):
+  `df_action`/`phase_action` (enum), `can_revise_df`/`can_delete`/`can_refresh`/`can_start_noua_ordonantare`.
+  Atașat pe GET detaliu `/api/alop/:id` + `can_delete` pe lista `/api/alop`.
+
+Frontend: `doc.js` → `renderActions`, `alop.js` → `renderAlopDetail`, `list.js` → `can_delete`.
+Caps decid CE butoane apar; `status`×`rol` aleg DOAR eticheta (prezentare: „Trimite"/„Retrimite",
+„Câmpuri"/„Resetează"). Singura decizie client legitimă rămasă e `hasPdf` la DF completed&p1
+(Generează PDF vs Lansează flux) — stare locală, nu există pe server.
+
+**Regula:** NU reintroduce decizii status×rol în frontend. Pentru un buton nou condiționat, adaugă un
+flag în funcția de capabilities (server) + un test, apoi randează din el. Funcțiile sunt PURE și
+acoperite de teste unit + caracterizare DB (`server/tests/db/*capabilities*`,
+`server/tests/unit/alop-capabilities.test.mjs`). „Hint de afișare, NU autorizare" — mutațiile rămân
+păzite independent pe rutele server (ex. ștergerea fluxurilor e `admin`-only pe backend, indiferent de UI).
+
+**Prospețime caps:** DF/ORD fac update optimist local în `doc.js` → caps trebuie reîmprospătate din
+`j.document.capabilities` după FIECARE mutație (de aceea caps e atașat și pe răspunsurile de mutație, nu
+doar pe GET). ALOP re-fetch-uiește via `openAlop()` după orice acțiune → caps mereu proaspăt din GET detaliu.
 
 ---
 
@@ -327,7 +381,13 @@ Teste de integrare în `server/tests/integration/` folosesc Supertest contra une
 
 Două niveluri de cache există:
 
-1. **Browser cache** → rezolvat prin `?v=VERSION` pe toate link-urile CSS/JS din HTML. Bump-ează `version` în `package.json` și rulează `sed` pe `?v=` în `public/*.html`.
+1. **Browser cache** → `?v=VERSION` pe link-urile CSS/JS din HTML. Bump-ează `version` în `package.json`
+   ȘI bump-ează `?v=` DOAR pe asset-urile schimbate.
+   ⚠️ **`?v=` driftează** față de `package.json`: la commit-uri backend-only NU rulezi `sed`, deci `?v=`
+   rămâne în urmă (văzut: `df-shell.js` la `518` în 11 fișiere și `524` în unul, cu `package.json` la `528`).
+   NU presupune `OLD` din `package.json` — bump **țintit pe numele asset-ului**, independent de valoarea curentă:
+   `sed -i -E "s#(nume-asset\.js\?v=)[0-9.]+#\1$NEW#g" public/*.html` (uniformizează și drift-ul existent).
+   Citește `?v=` curent din HTML (`grep`), nu-l deduce din versiune.
 
 2. **Service Worker** (`sw.js`) → cache-uiește agresiv assets în `PRECACHE_ASSETS`. Când modifici un fișier din acea listă (`notif-widget.js`, `mobile.css`, `Logo.png`, etc.), bump-ează manual `CACHE_VERSION` în `public/sw.js` (ex. `v7` → `v8`). Fără bump, utilizatorii primesc versiunea veche până la hard refresh.
 
@@ -431,6 +491,35 @@ dropdb docflowai_dev && createdb docflowai_dev && npm start
 | `CREATE TABLE ... REFERENCES alop_instances` fără guard | FK fail pe fresh DB | Wrap în același guard |
 | `DO $$ BEGIN ... END $$` nested în `DO $$ ... END $$` | Dollar-quoting conflict | Folosește `$g$` sau alt tag pentru outer |
 | Migrare inline care presupune V4 rulat deja | Race condition garantată | V4 rulează DUPĂ inline, întotdeauna |
+
+### ⚠️ Garda rezolvă 503-ul, dar lasă un GOL TĂCUT de schemă pe fresh DB
+
+Garda `DO $g$ IF NOT EXISTS (table) THEN RETURN` (Regula 1) previne ROLLBACK-ul/503, DAR are un cost
+ascuns: pe o **bază fresh**, ALTER-ul gardat **sare** (tabela V4 nu există încă, fiindcă inline rulează
+înaintea V4), migrarea se marchează „applied" și **nu se mai reia niciodată**. Coloana/constraint-ul
+**nu se adaugă** — fără nicio eroare în log. În prod/staging „merge" doar pentru că bazele s-au construit
+incremental (tabela exista deja când a rulat ALTER-ul gardat).
+
+**Goluri de fresh-provision cunoscute (de remediat — task dedicat):**
+- `alop_instances`: `updated_by` (+ index), coloanele de semnatari (mig. 055), CHECK `plata_source`,
+  tabela-copil `alop_ord_cicluri` (FK spre `alop_instances`) — toate gardate, toate sar pe fresh boot.
+- `organizations.slug`: V4 `001_organizations.sql` îl cere `NOT NULL`, dar inline creează `organizations`
+  fără slug primul → `CREATE TABLE IF NOT EXISTS` din V4 sare → `slug`/`idx_org_slug` lipsesc pe fresh.
+
+**Consecință runtime:** relink-ul ALOP la ștergere/refuz scrie `alop_instances.updated_by`; pe o schemă
+fresh fără coloana asta, scrierea eșuează — și fiindcă relink-ul e în `try/catch` non-fatal, eșuează
+**tăcut**. Pe prod merge (coloana există).
+
+**Regula 4 e necesară dar NU suficientă:** „verifică în logs că nu e ROLLBACK" nu prinde golul, fiindcă
+o gardă care sare nu produce eroare. Verificarea autoritară de fresh-provision e acum **`npm run test:db`**
+(`server/tests/db/**`): construiește schema fresh și rulează rute reale care ar pica dacă o coloană lipsește.
+Bootstrap-ul fresh canonic e în `server/tests/helpers/db-real.mjs` (`migrateForTests`): inline-first cu
+migrările V4-dependente pre-marcate „applied", apoi `014_alop.sql` + `015_formulare_oficiale.sql`, apoi
+re-aplică inline-ul deferred — reconstruind ordinea pe care prod o are din creștere incrementală.
+
+**Regula 5 — coloane care TREBUIE să existe pe tabele V4 NU se pun ca ALTER inline gardat.**
+Garda le face opționale de facto (lipsesc pe fresh). Pune-le în migrarea V4 care deține tabela de bază
+(ex. o nouă `016_*.sql` lângă `014_alop.sql`), unde tabela există garantat la momentul ALTER-ului.
 
 ---
 

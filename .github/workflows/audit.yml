@@ -6,7 +6,7 @@ name: Security Audit
 
 on:
   push:
-    branches: [ main, production ]
+    branches: [ main, production, develop ]
   pull_request:
     branches: [ main ]
   schedule:
@@ -44,10 +44,25 @@ jobs:
     runs-on: ubuntu-latest
     needs: audit
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: docflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       JWT_SECRET: test-jwt-secret-github-actions-2025
       NODE_ENV: test
       LOG_LEVEL: error
+      TEST_DATABASE_URL: postgres://postgres:test@localhost:5432/docflow_test
 
     steps:
       - name: Checkout
@@ -62,5 +77,8 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefer-offline
 
-      - name: Run test suite
+      - name: Run test suite (mock)
         run: npm test
+
+      - name: Run DB test suite (Postgres real)
+        run: npm run test:db

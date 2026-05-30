@@ -81,6 +81,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.JWT_SECRET = TEST_JWT_SECRET;
   dbModule.pool.query.mockResolvedValue({ rows: [] });
+  dbModule.pool.connect.mockResolvedValue({
+    query: vi.fn().mockResolvedValue({}),
+    release: vi.fn(),
+  });
   dbModule.getFlowData.mockResolvedValue({ signers: [] }); // flux există → trece de guard
 });
 
@@ -88,8 +92,8 @@ beforeEach(() => {
 // POST /admin/db/cleanup-orphans — nullify atașamente arhivate
 // ─────────────────────────────────────────────────────────────────────────────
 describe('POST /admin/db/cleanup-orphans — nullify atașamente arhivate', () => {
-  // Ordinea query-urilor în handler:
-  //   1 beforeR, 2 delPdfs, 3 delAtts, 4 nullifyArchived, 5-7 VACUUM, 8 afterR
+  // Ordinea query-urilor pe pool.query (VACUUM rulează separat pe client dedicat):
+  //   1 beforeR, 2 delPdfs, 3 delAtts, 4 nullifyArchived, 5 afterR
   function mockCleanupSequence({ archivedWithData = 1, nullifiedRows = 1 } = {}) {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{                      // 1 beforeR
@@ -99,13 +103,34 @@ describe('POST /admin/db/cleanup-orphans — nullify atașamente arhivate', () =
       .mockResolvedValueOnce({ rowCount: 0 })                // 2 delPdfs
       .mockResolvedValueOnce({ rowCount: 0 })                // 3 delAtts
       .mockResolvedValueOnce({ rowCount: nullifiedRows })    // 4 nullifyArchived
-      .mockResolvedValueOnce({})                             // 5 VACUUM FULL flows_pdfs
-      .mockResolvedValueOnce({})                             // 6 VACUUM FULL flow_attachments
-      .mockResolvedValueOnce({})                             // 7 VACUUM ANALYZE flows
-      .mockResolvedValueOnce({ rows: [{                      // 8 afterR
+      .mockResolvedValueOnce({ rows: [{                      // 5 afterR
         db_bytes: 700_000, pdfs_bytes: 400_000, att_bytes: 100_000,
       }] });
   }
+
+  it('VACUUM rulează pe client dedicat cu statement_timeout extins (fix v3.9.533)', async () => {
+    mockCleanupSequence({ archivedWithData: 0, nullifiedRows: 0 });
+    const client = { query: vi.fn().mockResolvedValue({}), release: vi.fn() };
+    dbModule.pool.connect.mockResolvedValue(client);
+
+    const res = await request(makeApp())
+      .post('/admin/db/cleanup-orphans')
+      .set('Cookie', adminCookie(makeAdminToken()))
+      .set('X-CSRF-Token', CSRF);
+
+    expect(res.status).toBe(200);
+    expect(dbModule.pool.connect).toHaveBeenCalled();
+
+    const clientSql = client.query.mock.calls.map(c => String(c[0]));
+    expect(clientSql.some(s => /SET\s+statement_timeout/i.test(s))).toBe(true);
+    expect(clientSql.some(s => /VACUUM\s+FULL\s+flows_pdfs/i.test(s))).toBe(true);
+    expect(clientSql.some(s => /VACUUM\s+FULL\s+flow_attachments/i.test(s))).toBe(true);
+    expect(client.release).toHaveBeenCalled();
+    const pooledVacuum = dbModule.pool.query.mock.calls
+      .map(c => String(c[0]))
+      .some(s => /VACUUM\s+FULL/i.test(s));
+    expect(pooledVacuum).toBe(false);
+  });
 
   it('nullifiază data BYTEA pe atașamente cu drive_file_id setat', async () => {
     mockCleanupSequence({ archivedWithData: 3, nullifiedRows: 3 });

@@ -23,6 +23,7 @@ import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
+import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
@@ -266,7 +267,8 @@ router.get('/api/alop', async (req, res) => {
         ) AS total_platit,
         EXISTS (
           SELECT 1 FROM opme_lines ol WHERE ol.matched_alop_id = a.id
-        ) AS has_opme_lines
+        ) AS has_opme_lines,
+        (a.status NOT IN ('completed','cancelled') AND a.df_id IS NULL AND a.ord_id IS NULL) AS can_delete
       FROM alop_instances a
       LEFT JOIN users        u  ON u.id  = a.created_by
       LEFT JOIN formulare_df df ON df.id = a.df_id
@@ -529,6 +531,143 @@ router.get('/api/alop/:id', async (req, res) => {
       }
     }
 
+    // ── Self-heal #1 (v3.9.517): ord_id orphan recovery ──────────────────────
+    // Scenariu: status='ordonantare' AND ord_id IS NULL, dar există un ORD
+    // orfan (df_id=alop.df_id, ne-asociat altui ALOP/ciclu activ) → link automat.
+    // Heuristic: pickeăm DOAR dacă există EXACT 1 candidat orfan
+    // (2+ = ambiguitate → log warn, lasă user-ul să decidă manual).
+    // Idempotent: UPDATE cu guard `AND ord_id IS NULL` în WHERE.
+    if (alop.status === 'ordonantare' && !alop.ord_id && alop.df_id) {
+      try {
+        const { rows: cands } = await pool.query(`
+          SELECT fo.id, fo.flow_id,
+            CASE WHEN fo.flow_id IS NOT NULL AND (
+              f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true
+            ) THEN true ELSE false END AS aprobat
+          FROM formulare_ord fo
+          LEFT JOIN flows f ON f.id::text = fo.flow_id
+          WHERE fo.df_id  = $1
+            AND fo.org_id = $2
+            AND fo.deleted_at IS NULL
+            AND fo.status <> 'anulat'
+            AND NOT EXISTS (
+              SELECT 1 FROM alop_instances a2
+              WHERE a2.ord_id = fo.id AND a2.cancelled_at IS NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM alop_ord_cicluri c WHERE c.ord_id = fo.id
+            )
+          ORDER BY fo.created_at DESC
+          LIMIT 2
+        `, [alop.df_id, alop.org_id]);
+
+        if (cands.length === 1) {
+          const cand = cands[0];
+          const sets = ['ord_id = $1', 'updated_at = NOW()', 'updated_by = $2'];
+          const vals = [cand.id, actor.userId];
+          let p = 3;
+          if (cand.flow_id) {
+            sets.push(`ord_flow_id = $${p++}`);
+            vals.push(cand.flow_id);
+          }
+          const willTransitionToPlata = !!cand.aprobat;
+          if (willTransitionToPlata) {
+            sets.push(`status = 'plata'`, `ord_completed_at = NOW()`);
+          }
+          vals.push(req.params.id);
+          const { rows: linked } = await pool.query(`
+            UPDATE alop_instances
+            SET ${sets.join(', ')}
+            WHERE id = $${p}
+              AND status = 'ordonantare'
+              AND ord_id IS NULL
+            RETURNING ord_id, ord_flow_id, status, ord_completed_at
+          `, vals);
+
+          if (linked[0]) {
+            alop.ord_id           = linked[0].ord_id;
+            alop.ord_flow_id      = linked[0].ord_flow_id;
+            alop.status           = linked[0].status;
+            alop.ord_completed_at = linked[0].ord_completed_at;
+            if (willTransitionToPlata) alop.ord_aprobat = true;
+            logger.info({
+              alopId: req.params.id, ordId: cand.id, flowId: cand.flow_id,
+              aprobat: cand.aprobat, newStatus: linked[0].status,
+            }, '[ALOP] self-heal #1: orphan ORD auto-linked');
+            if (willTransitionToPlata) {
+              try {
+                const r = await _opmeMatcher.tryAutoConfirmAlop(req.params.id, { actorUserId: actor.userId });
+                if (r?.confirmed) logger.info({ alopId: req.params.id }, '[ALOP] OPME auto-confirm (self-heal #1)');
+              } catch (mErr) {
+                logger.warn({ err: mErr, alopId: req.params.id }, '[ALOP] OPME auto-confirm failed (non-fatal, self-heal #1)');
+              }
+            }
+          }
+        } else if (cands.length > 1) {
+          logger.warn({
+            alopId: req.params.id, dfId: alop.df_id, candidateCount: cands.length,
+          }, '[ALOP] self-heal #1: ambiguous (multiple orphan ORDs), skipped');
+        }
+      } catch (healErr) {
+        logger.warn({ err: healErr, alopId: req.params.id }, '[ALOP] self-heal #1 orphan ORD failed (non-fatal)');
+      }
+    }
+
+    // ── Self-heal #2 (v3.9.517): ord_flow_id back-fill ───────────────────────
+    // Scenariu: status='ordonantare' AND ord_id setat AND ord_flow_id NULL, dar
+    // formulare_ord.flow_id e setat (link-ord-flow s-a ratat). Idempotent prin
+    // guard `AND ord_flow_id IS NULL` în WHERE.
+    if (alop.status === 'ordonantare' && alop.ord_id && !alop.ord_flow_id) {
+      try {
+        const { rows: fo } = await pool.query(`
+          SELECT fo.flow_id,
+            CASE WHEN fo.flow_id IS NOT NULL AND (
+              f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true
+            ) THEN true ELSE false END AS aprobat
+          FROM formulare_ord fo
+          LEFT JOIN flows f ON f.id::text = fo.flow_id
+          WHERE fo.id=$1 AND fo.org_id=$2 AND fo.deleted_at IS NULL
+        `, [alop.ord_id, alop.org_id]);
+
+        if (fo[0]?.flow_id) {
+          const sets = ['ord_flow_id = $1', 'updated_at = NOW()', 'updated_by = $2'];
+          const vals = [fo[0].flow_id, actor.userId];
+          const willTransitionToPlata = !!fo[0].aprobat;
+          if (willTransitionToPlata) {
+            sets.push(`status = 'plata'`, `ord_completed_at = NOW()`);
+          }
+          vals.push(req.params.id);
+          const { rows: linked } = await pool.query(`
+            UPDATE alop_instances
+            SET ${sets.join(', ')}
+            WHERE id = $${vals.length}
+              AND ord_flow_id IS NULL
+              AND status = 'ordonantare'
+            RETURNING ord_flow_id, status, ord_completed_at
+          `, vals);
+          if (linked[0]) {
+            alop.ord_flow_id      = linked[0].ord_flow_id;
+            alop.status           = linked[0].status;
+            alop.ord_completed_at = linked[0].ord_completed_at;
+            if (willTransitionToPlata) alop.ord_aprobat = true;
+            logger.info({
+              alopId: req.params.id, flowId: fo[0].flow_id, aprobat: fo[0].aprobat,
+            }, '[ALOP] self-heal #2: ord_flow_id back-filled');
+            if (willTransitionToPlata) {
+              try {
+                const r = await _opmeMatcher.tryAutoConfirmAlop(req.params.id, { actorUserId: actor.userId });
+                if (r?.confirmed) logger.info({ alopId: req.params.id }, '[ALOP] OPME auto-confirm (self-heal #2)');
+              } catch (mErr) {
+                logger.warn({ err: mErr, alopId: req.params.id }, '[ALOP] OPME auto-confirm failed (non-fatal, self-heal #2)');
+              }
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn({ err: e, alopId: req.params.id }, '[ALOP] self-heal #2 ord_flow_id failed (non-fatal)');
+      }
+    }
+
     // ORD aprobat dar ALOP încă în ordonantare → plata
     if (alop.ord_aprobat && alop.status === 'ordonantare') {
       try {
@@ -561,6 +700,7 @@ router.get('/api/alop/:id', async (req, res) => {
     const sumaPlatita = parseFloat(alop.suma_platita_total || 0);
     alop.ramas = dfVal > 0 ? Math.max(0, dfVal - sumaPlatita) : 0;
 
+    alop.capabilities = computeAlopCapabilities(alop, actor);
     res.json({ alop });
   } catch (e) {
     logger.error({ err: e }, 'alop get error');
@@ -1161,22 +1301,34 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
-    // v3.9.498 (Issue R-B): block cancel dacă ALOP are DF emis (df_id setat
-    // și DF ne-șters). Refuze (R0) eliberează df_id=NULL → cancel redevine
-    // permis. Simetric cu logica refuse din v3.9.497.
+    // ALOP se poate ȘTERGE doar dacă NU are DF/ORD legat (pe documente ne-șterse).
+    // Păstrăm codul cancel_blocked_df_exists pentru DF (compat. clienți + teste);
+    // adăugăm ramura ORD. Refuzul (R0) eliberează df_id=NULL → ștergerea redevine permisă.
     const { rows: dfCheck } = await pool.query(`
-      SELECT a.df_id, fd.nr_unic_inreg, fd.status AS df_status
+      SELECT a.df_id, a.ord_id,
+             fd.nr_unic_inreg, fd.status AS df_status,
+             fo.nr_ordonant_pl AS ord_nr, fo.status AS ord_status
       FROM alop_instances a
-      LEFT JOIN formulare_df fd ON fd.id = a.df_id AND fd.deleted_at IS NULL
+      LEFT JOIN formulare_df  fd ON fd.id = a.df_id  AND fd.deleted_at IS NULL
+      LEFT JOIN formulare_ord fo ON fo.id = a.ord_id AND fo.deleted_at IS NULL
       WHERE a.id=$1 AND a.org_id=$2
     `, [req.params.id, actor.orgId]);
     if (dfCheck[0]?.df_id && dfCheck[0]?.df_status) {
       return res.status(409).json({
         error: 'cancel_blocked_df_exists',
-        message: `Nu se poate anula ALOP-ul: există un DF emis (${dfCheck[0].nr_unic_inreg || 'fără nr.'}, status: ${dfCheck[0].df_status}). Anulați sau refuzați DF-ul mai întâi.`,
+        message: `Nu se poate șterge ALOP-ul: există un DF legat (${dfCheck[0].nr_unic_inreg || 'fără nr.'}, status: ${dfCheck[0].df_status}). Ștergeți sau refuzați DF-ul mai întâi.`,
         df_id: dfCheck[0].df_id,
         df_nr: dfCheck[0].nr_unic_inreg,
         df_status: dfCheck[0].df_status,
+      });
+    }
+    if (dfCheck[0]?.ord_id && dfCheck[0]?.ord_status) {
+      return res.status(409).json({
+        error: 'cancel_blocked_ord_exists',
+        message: `Nu se poate șterge ALOP-ul: există o Ordonanțare de Plată legată (${dfCheck[0].ord_nr || 'fără nr.'}, status: ${dfCheck[0].ord_status}). Ștergeți întâi ORD-ul.`,
+        ord_id: dfCheck[0].ord_id,
+        ord_nr: dfCheck[0].ord_nr,
+        ord_status: dfCheck[0].ord_status,
       });
     }
 
