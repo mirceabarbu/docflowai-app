@@ -111,6 +111,29 @@ router.delete('/api/notifications/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
+router.post('/api/notifications/delete-bulk', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.map(n => parseInt(n)).filter(Number.isInteger)
+      : [];
+    if (!ids.length) return res.json({ ok: true, deleted: 0 });
+    const { rowCount } = await pool.query(
+      'DELETE FROM notifications WHERE id = ANY($1::int[]) AND user_email=$2',
+      [ids, actor.email.toLowerCase()]
+    );
+    try {
+      const { rows } = await pool.query(
+        'SELECT COUNT(*)::int AS c FROM notifications WHERE user_email=$1 AND read=FALSE',
+        [actor.email.toLowerCase()]
+      );
+      _wsPush?.(actor.email, { event: 'unread_count', count: rows[0]?.c || 0 });
+    } catch {}
+    res.json({ ok: true, deleted: rowCount });
+  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+});
+
 router.get('/api/my-signer-token/:flowId', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
