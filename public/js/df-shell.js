@@ -135,12 +135,18 @@
         var isAdmin = u.role === 'admin' || u.role === 'superadmin';
         var isOrgAdmin = u.role === 'admin' || u.role === 'org_admin' || u.role === 'superadmin';
 
-        if (!isAdmin) {
+        if (!isAdmin && !isOrgAdmin) {
           document.querySelectorAll('.df-nav-label').forEach(function(l) {
             if (l.textContent.trim() === 'Administrare') {
               l.style.display = 'none';
               if (l.nextElementSibling) l.nextElementSibling.style.display = 'none';
             }
+          });
+        }
+        if (isOrgAdmin && !isAdmin) {
+          document.querySelectorAll('.df-nav-item').forEach(function(item) {
+            var href = item.getAttribute('href') || '';
+            if (href.indexOf('/admin#organizatii') !== -1) item.style.display = 'none';
           });
         }
         if (!isOrgAdmin) {

@@ -150,6 +150,8 @@ fetch("/auth/me",{headers:hdrs()})
       if(outreachTabBtn) outreachTabBtn.style.display="none";
       const orgTabBtn=$('org-tab-btn');
       if(orgTabBtn) orgTabBtn.style.display="none";
+      document.querySelectorAll('[data-subtab="flows-admin"],[data-subview="flows-admin"]')
+        .forEach(function(el){ el.style.display="none"; });
     }
     if(u.role==="org_admin") window._orgAdminInstitutie = u.institutie || "";
     // BUG-FIX: org_admin poate vedea/selecta doar rol 'user' — filtrăm dropdown-urile
