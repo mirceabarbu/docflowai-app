@@ -44,6 +44,11 @@ async function _autoSaveDb(ft){
       j=await r.json();
       if(r.ok&&j.ok){
         ST.docId[ft]=j.document.id;ST.docStatus[ft]='draft';ST.docRole[ft]='p1';
+        // FIX v3.9.534 (buton "Trimite la Responsabil CAB" dispărea după auto-save):
+        // actualizează capabilities din răspuns ÎNAINTE de renderActions. După ce docId
+        // devine setat, renderActions rula cu caps={} (stale) → bara de acțiuni goală.
+        ST.docCapabilities=ST.docCapabilities||{};
+        ST.docCapabilities[ft]=j.document?.capabilities||null;
         renderActions(ft);
         // v3.9.518 (FIX CAUZA ROOT REGRESIE): leagă documentul la ALOP imediat la auto-save POST.
         // Înainte: doar saveDoc manual făcea linkul; auto-save-ul (debounce 800ms)
@@ -55,6 +60,9 @@ async function _autoSaveDb(ft){
       j=await r.json();
       if(r.ok&&j.ok){
         ST.docStatus[ft]=j.document.status;
+        // FIX v3.9.534: ține capabilities în sincron și pe PUT (status se poate schimba).
+        ST.docCapabilities=ST.docCapabilities||{};
+        ST.docCapabilities[ft]=j.document?.capabilities||null;
         // v3.9.518: safety net — dacă linkul ratează pe POST (eroare rețea, race
         // condition cu schimbarea de _alopContext), PUT-urile ulterioare retry-uiesc.
         // _alopLinkDoc e idempotent (SQL UPDATE cu guard ord_id IS NULL OR = $1).
