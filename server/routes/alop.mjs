@@ -434,10 +434,11 @@ router.get('/api/alop/:id', async (req, res) => {
         df.compartiment_specialitate AS df_compartiment,
         df.revizie_nr                AS df_revizie_nr,
         df.este_revizie_an_urmator   AS df_este_revizie_an_urmator,
+        df.flow_id                   AS df_authoritative_flow_id,
         fo.status                    AS ord_status,
         f1.id AS df_flow_exists,
         f2.id AS ord_flow_exists,
-        CASE WHEN a.df_flow_id IS NOT NULL AND (
+        CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL AND (
           f1.data->>'status' = 'completed' OR (f1.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS df_aprobat,
         CASE WHEN a.ord_flow_id IS NOT NULL AND (
@@ -464,7 +465,7 @@ router.get('/api/alop/:id', async (req, res) => {
       LEFT JOIN users        u   ON u.id   = a.created_by
       LEFT JOIN formulare_df df  ON df.id  = a.df_id
       LEFT JOIN formulare_ord fo ON fo.id  = a.ord_id
-      LEFT JOIN flows        f1  ON f1.id  = a.df_flow_id
+      LEFT JOIN flows        f1  ON f1.id  = COALESCE(df.flow_id, a.df_flow_id)
       LEFT JOIN flows        f2  ON f2.id  = a.ord_flow_id
       LEFT JOIN users        ul  ON ul.id  = a.lichidare_confirmed_by
       LEFT JOIN users        up  ON up.id  = a.plata_confirmed_by
@@ -511,20 +512,26 @@ router.get('/api/alop/:id', async (req, res) => {
     if (alop.df_aprobat && ['draft', 'angajare'].includes(alop.status)) {
       try {
         const fromStatus = alop.status;
+        // Resync df_flow_id când pointerul de pe ALOP a rămas pe un flux zombi
+        // diferit de fluxul autoritar al DF-ului (formulare_df.flow_id).
+        const authoritativeFlow = alop.df_authoritative_flow_id || null;
+        const needsResync = authoritativeFlow && authoritativeFlow !== alop.df_flow_id;
         const { rows: up } = await pool.query(`
           UPDATE alop_instances
           SET status = 'lichidare',
               df_completed_at = COALESCE(df_completed_at, NOW()),
+              df_flow_id = COALESCE($3, df_flow_id),
               updated_at = NOW(),
               updated_by = $2
           WHERE id = $1
             AND status IN ('draft', 'angajare')
-          RETURNING status, df_completed_at
-        `, [req.params.id, actor.userId]);
+          RETURNING status, df_completed_at, df_flow_id
+        `, [req.params.id, actor.userId, needsResync ? authoritativeFlow : null]);
         if (up[0]) {
           alop.status = up[0].status;
           alop.df_completed_at = up[0].df_completed_at;
-          logger.info(`[ALOP] lazy auto-tranziție ${fromStatus}→lichidare (STS), id=${req.params.id}`);
+          alop.df_flow_id = up[0].df_flow_id;
+          logger.info(`[ALOP] lazy auto-tranziție ${fromStatus}→lichidare (STS), id=${req.params.id}${needsResync ? ' + resync df_flow_id' : ''}`);
         }
       } catch (autoErr) {
         logger.warn({ err: autoErr }, '[ALOP] lazy tranziție lichidare failed (non-fatal)');

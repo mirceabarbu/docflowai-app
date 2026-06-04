@@ -12,6 +12,7 @@
 import { Router, json as expressJson } from 'express';
 import { requireAuth }                  from '../middleware/auth.mjs';
 import { logger }                       from '../middleware/logger.mjs';
+import { pool }                          from '../db/index.mjs';
 import fs                               from 'fs';
 import path                             from 'path';
 import { fileURLToPath }               from 'url';
@@ -939,11 +940,39 @@ router.post('/api/formulare/generate', _json5m, async (req, res) => {
   try {
     const actor = requireAuth(req, res); if (!actor) return;
 
-    const { formType, data } = req.body || {};
+    const { formType, data, docId } = req.body || {};
     if (!formType || !data)
       return res.status(400).json({ error: 'formType si data sunt obligatorii' });
     if (!['ordnt', 'notafd'].includes(formType))
       return res.status(400).json({ error: 'formType invalid. Valori: ordnt, notafd' });
+
+    // Blocare server-side a (re)generării pentru un DF deja aflat pe flux activ.
+    // Frontend-ul trimite docId-ul documentului curent; dacă DF-ul are un flux
+    // de semnare NON-terminal, refuzăm cu același contract ca link-flow (409).
+    if (formType === 'notafd' && docId && pool) {
+      try {
+        const { rows: act } = await pool.query(
+          `SELECT 1
+             FROM formulare_df fd
+             JOIN flows f ON f.id = fd.flow_id
+            WHERE fd.id = $1
+              AND fd.org_id = $2
+              AND fd.deleted_at IS NULL
+              AND (f.data->>'completed') IS DISTINCT FROM 'true'
+              AND (f.data->>'status') <> 'cancelled'`,
+          [docId, actor.orgId]
+        );
+        if (act.length) {
+          return res.status(409).json({
+            error: 'df_already_on_active_flow',
+            message: 'Documentul este deja pe un flux de semnare activ. Anulați fluxul curent înainte de a-l retrimite.'
+          });
+        }
+      } catch (guardErr) {
+        // best-effort: nu blocăm generarea dacă verificarea eșuează (DB hiccup)
+        logger.warn({ err: guardErr }, 'formulare generate: guard flux activ a eșuat (non-fatal)');
+      }
+    }
 
     const errs = formType === 'ordnt' ? validateOrdnt(data) : validateNotafd(data);
     if (errs.length > 0)

@@ -191,6 +191,10 @@ router.get('/api/formulare-df/:id', async (req, res) => {
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
              THEN true ELSE false END AS aprobat,
+        CASE WHEN fd.flow_id IS NOT NULL
+              AND (f.data->>'completed') IS DISTINCT FROM 'true'
+              AND (f.data->>'status') IS DISTINCT FROM 'cancelled'
+             THEN true ELSE false END AS flow_active,
         (SELECT a.id FROM alop_instances a
          WHERE a.df_id = fd.id AND a.cancelled_at IS NULL
          LIMIT 1) AS alop_id,
@@ -515,6 +519,26 @@ router.post('/api/formulare-df/:id/link-flow', _csrf, async (req, res) => {
     }
     if (doc.status !== 'completed')
       return res.status(409).json({ error: 'document_not_completed' });
+
+    // Guard cauză-rădăcină: nu permite relansarea pe un AL DOILEA flux cât timp
+    // DF-ul are deja un flux de semnare NON-terminal (nici completed, nici cancelled).
+    // Altfel: formulare_df.flow_id urmărește fluxul nou, dar alop_instances.df_flow_id
+    // rămâne agățat de fluxul vechi (zombi) → auto-tranziția ALOP nu se mai declanșează.
+    if (doc.flow_id) {
+      const { rows: activeFlow } = await pool.query(
+        `SELECT 1 FROM flows
+          WHERE id = $1
+            AND (data->>'completed') IS DISTINCT FROM 'true'
+            AND (data->>'status') <> 'cancelled'`,
+        [doc.flow_id]
+      );
+      if (activeFlow.length) {
+        return res.status(409).json({
+          error: 'df_already_on_active_flow',
+          message: 'Documentul este deja pe un flux de semnare activ. Anulați fluxul curent înainte de a-l retrimite.'
+        });
+      }
+    }
 
     await pool.query(
       'UPDATE formulare_df SET flow_id=$1, status=\'transmis_flux\', updated_at=NOW(), updated_by=$4 WHERE id=$2 AND org_id=$3',
