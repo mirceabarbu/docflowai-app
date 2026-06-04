@@ -29,25 +29,35 @@ export function computeAlopCapabilities(alop, actor) {
   caps.can_refresh = !caps.is_completed && !caps.is_cancelled;
   caps.can_start_noua_ordonantare = caps.is_completed && parseFloat(alop.ramas || 0) > 0;
 
+  // FIX 6: „Revizuiește DF" disponibil permanent în toate fazele post-angajare,
+  // INCLUSIV pentru ALOP completat (ciclu închis). Owner-gated; fals la cancelled
+  // și în angajare (acolo accesul la DF e prin df_action). Setat ÎNAINTE de return-ul
+  // devreme ca să fie true și pentru ALOP completat (care iese la linia de mai jos).
+  caps.can_revise_df = caps.is_owner && !caps.is_cancelled && !!alop.df_id && status !== 'angajare';
+
   if (caps.is_completed || caps.is_cancelled || !caps.is_owner) return caps;
 
-  // DF action (7-way, primul match)
-  const dfStatus = alop.df_status || '';
-  if (alop.df_revizie_in_lucru) caps.df_action = 'in_lucru_disabled';
-  else if (!alop.df_id) caps.df_action = 'completeaza';
-  else if (dfStatus === 'neaprobat') caps.df_action = 'revizuieste_neaprobat';
-  else if (status === 'angajare' && alop.df_flow_id) caps.df_action = 'flow_waiting';
-  else if (['aprobat', 'transmis_flux', 'de_revizuit'].includes(dfStatus)) caps.df_action = 'deschide';
-  else if (alop.df_id && !alop.df_flow_id) caps.df_action = 'deschide';
-  else caps.df_action = 'completeaza';
+  // FIX 4: DF action se calculează DOAR în faza 'angajare'. Post-aprobare (lichidare/
+  // ordonantare/plata) butonul „Completează/Deschide DF" NU mai apare în zona de acțiuni —
+  // accesul la DF rămâne prin „Revizuiește DF" (can_revise_df) și prin tab-ul DF.
+  if (status === 'angajare') {
+    const dfStatus = alop.df_status || '';
+    if (alop.df_revizie_in_lucru) caps.df_action = 'in_lucru_disabled';
+    else if (!alop.df_id) caps.df_action = 'completeaza';
+    else if (dfStatus === 'neaprobat') caps.df_action = 'revizuieste_neaprobat';
+    else if (alop.df_flow_id) caps.df_action = 'flow_waiting';
+    else if (['aprobat', 'transmis_flux', 'de_revizuit'].includes(dfStatus)) caps.df_action = 'deschide';
+    else if (alop.df_id && !alop.df_flow_id) caps.df_action = 'deschide';
+    else caps.df_action = 'completeaza';
+  }
 
-  // Phase action (primul match) + can_revise_df
+  // Phase action (primul match)
   if (status === 'lichidare' && !alop.lichidare_confirmed_at) {
-    caps.phase_action = 'confirma_lichidare'; caps.can_revise_df = !!alop.df_id;
+    caps.phase_action = 'confirma_lichidare';
   } else if (status === 'ordonantare' && !alop.ord_id) {
-    caps.phase_action = 'completeaza_ord'; caps.can_revise_df = !!alop.df_id;
+    caps.phase_action = 'completeaza_ord';
   } else if (status === 'ordonantare' && alop.ord_id && !alop.ord_flow_id) {
-    caps.phase_action = 'genereaza_lanseaza_ord'; caps.can_revise_df = !!alop.df_id;
+    caps.phase_action = 'genereaza_lanseaza_ord';
   } else if (status === 'ordonantare' && alop.ord_flow_id && !alop.ord_completed_at) {
     caps.phase_action = 'marcheaza_ord_semnat';
   } else if (status === 'plata') {

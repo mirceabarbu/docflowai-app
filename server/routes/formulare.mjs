@@ -946,14 +946,19 @@ router.post('/api/formulare/generate', _json5m, async (req, res) => {
     if (!['ordnt', 'notafd'].includes(formType))
       return res.status(400).json({ error: 'formType invalid. Valori: ordnt, notafd' });
 
-    // Blocare server-side a (re)generării pentru un DF deja aflat pe flux activ.
-    // Frontend-ul trimite docId-ul documentului curent; dacă DF-ul are un flux
+    // Blocare server-side a (re)generării pentru un DF/ORD deja aflat pe flux activ.
+    // Frontend-ul trimite docId-ul documentului curent; dacă documentul are un flux
     // de semnare NON-terminal, refuzăm cu același contract ca link-flow (409).
-    if (formType === 'notafd' && docId && pool) {
+    if (docId && pool && (formType === 'notafd' || formType === 'ordnt')) {
+      const tbl = formType === 'notafd' ? 'formulare_df' : 'formulare_ord';
+      const errCode = formType === 'notafd' ? 'df_already_on_active_flow' : 'ord_already_on_active_flow';
+      const errMsg = formType === 'notafd'
+        ? 'Documentul este deja pe un flux de semnare activ. Anulați fluxul curent înainte de a-l retrimite.'
+        : 'Ordonanțarea este deja pe un flux de semnare activ. Anulați fluxul curent înainte de a o retrimite.';
       try {
         const { rows: act } = await pool.query(
           `SELECT 1
-             FROM formulare_df fd
+             FROM ${tbl} fd
              JOIN flows f ON f.id = fd.flow_id
             WHERE fd.id = $1
               AND fd.org_id = $2
@@ -963,10 +968,7 @@ router.post('/api/formulare/generate', _json5m, async (req, res) => {
           [docId, actor.orgId]
         );
         if (act.length) {
-          return res.status(409).json({
-            error: 'df_already_on_active_flow',
-            message: 'Documentul este deja pe un flux de semnare activ. Anulați fluxul curent înainte de a-l retrimite.'
-          });
+          return res.status(409).json({ error: errCode, message: errMsg });
         }
       } catch (guardErr) {
         // best-effort: nu blocăm generarea dacă verificarea eșuează (DB hiccup)

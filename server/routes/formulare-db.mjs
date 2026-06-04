@@ -816,6 +816,10 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
         fd.nr_unic_inreg AS df_nr, fd.rows_ctrl AS df_rows_ctrl,
         CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
              THEN true ELSE false END AS aprobat,
+        CASE WHEN fo.flow_id IS NOT NULL
+              AND (f.data->>'completed') IS DISTINCT FROM 'true'
+              AND (f.data->>'status') IS DISTINCT FROM 'cancelled'
+             THEN true ELSE false END AS flow_active,
         (SELECT a.id FROM alop_instances a
          WHERE a.ord_id = fo.id AND a.cancelled_at IS NULL
          LIMIT 1) AS alop_id,
@@ -1149,7 +1153,7 @@ router.post('/api/formulare-ord/:id/link-flow', _csrf, async (req, res) => {
     if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
 
     const { rows: existing } = await pool.query(
-      'SELECT created_by, status FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
+      'SELECT created_by, status, flow_id FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
       [req.params.id, actor.orgId]
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
@@ -1162,12 +1166,43 @@ router.post('/api/formulare-ord/:id/link-flow', _csrf, async (req, res) => {
     if (doc.status !== 'completed')
       return res.status(409).json({ error: 'document_not_completed' });
 
+    // Guard cauză-rădăcină (paritate cu DF link-flow): nu permite relansarea pe un
+    // AL DOILEA flux cât timp ORD-ul are deja un flux de semnare NON-terminal (nici
+    // completed, nici cancelled). Altfel ord_flow_id-ul din ALOP rămâne agățat de
+    // fluxul vechi (zombi) → auto-tranziția ordonanțare→plata nu se mai declanșează.
+    if (doc.flow_id) {
+      const { rows: activeFlow } = await pool.query(
+        `SELECT 1 FROM flows
+          WHERE id = $1
+            AND (data->>'completed') IS DISTINCT FROM 'true'
+            AND (data->>'status') <> 'cancelled'`,
+        [doc.flow_id]
+      );
+      if (activeFlow.length) {
+        return res.status(409).json({
+          error: 'ord_already_on_active_flow',
+          message: 'Ordonanțarea este deja pe un flux de semnare activ. Anulați fluxul curent înainte de a o retrimite.'
+        });
+      }
+    }
+
     await pool.query(
       'UPDATE formulare_ord SET flow_id=$1, updated_at=NOW(), updated_by=$4 WHERE id=$2 AND org_id=$3',
       [flow_id, req.params.id, actor.orgId, actor.userId]
     );
+    // Sincronizează ord_flow_id în ALOP (non-fatal) — paritate cu DF.
+    try {
+      await pool.query(
+        `UPDATE alop_instances SET ord_flow_id=$1, updated_at=NOW(), updated_by=$4
+         WHERE ord_id=$2 AND org_id=$3 AND cancelled_at IS NULL`,
+        [flow_id, req.params.id, actor.orgId, actor.userId]
+      );
+    } catch (e) {
+      logger.warn({ err: e }, 'alop_instances ord_flow_id update failed');
+    }
     res.json({ ok: true });
   } catch (e) {
+    logger.error({ err: e }, 'formulare-ord link-flow error');
     res.status(500).json({ error: 'server_error' });
   }
 });
