@@ -114,6 +114,7 @@ describe('GET /api/trasabilitate/:type/:id', () => {
         id: 'alop-uuid-1', titlu: 'Achiziție mobilier Q1 2026',
         status: 'completed', valoare_totala: '50000.00', suma_totala_platita: '30000.00',
         ciclu_curent: 2, df_id: VALID_UUID2, ord_id: 'ord-curent-uuid',
+        df_valoare: '60000.00',
         lichidare_confirmed_at: '2026-04-10', lichidare_nr_factura: 'F-22',
         lichidare_nr_pv: 'PV-15',
         plata_confirmed_at: null, plata_nr_ordin: null, plata_suma_efectiva: null,
@@ -153,6 +154,7 @@ describe('GET /api/trasabilitate/:type/:id', () => {
     expect(r.body.alopuri).toHaveLength(1);
     expect(r.body.alopuri[0].titlu).toBe('Achiziție mobilier Q1 2026');
     expect(r.body.alopuri[0].valoare_totala).toBe(50000); // Number, not string
+    expect(r.body.alopuri[0].df_valoare).toBe(60000);     // SUM(valt_actualiz) al DF activ, ca Number
     expect(r.body.alopuri[0].ord_curent).not.toBeNull();
     expect(r.body.alopuri[0].ord_curent.nr_unic_inreg).toBe('ORD-2026-042');
     expect(r.body.alopuri[0].cicluri_arhivate).toHaveLength(1);

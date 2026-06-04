@@ -115,6 +115,10 @@ export async function getTrasabilitate(pool, orgId, type, id) {
          a.lichidare_confirmed_at, a.lichidare_nr_factura, a.lichidare_nr_pv,
          a.plata_confirmed_at, a.plata_nr_ordin, a.plata_suma_efectiva,
          a.created_at, a.completed_at, a.cancelled_at,
+         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
+            FROM formulare_df fd_v
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(fd_v.rows_val,'[]'::jsonb)) r
+           WHERE fd_v.id = a.df_id) AS df_valoare,
          foc.nr_unic_inreg AS ord_curent_nr_unic_inreg,
          foc.beneficiar    AS ord_curent_titlu,
          foc.status        AS ord_curent_status,
@@ -139,6 +143,10 @@ export async function getTrasabilitate(pool, orgId, type, id) {
          a.lichidare_confirmed_at, a.lichidare_nr_factura, a.lichidare_nr_pv,
          a.plata_confirmed_at, a.plata_nr_ordin, a.plata_suma_efectiva,
          a.created_at, a.completed_at, a.cancelled_at,
+         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
+            FROM formulare_df fd_v
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(fd_v.rows_val,'[]'::jsonb)) r
+           WHERE fd_v.id = a.df_id) AS df_valoare,
          foc.nr_unic_inreg AS ord_curent_nr_unic_inreg,
          foc.beneficiar    AS ord_curent_titlu,
          foc.status        AS ord_curent_status,
@@ -219,6 +227,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
     titlu:               a.titlu || '',
     status:              a.status,
     valoare_totala:      a.valoare_totala !== null ? Number(a.valoare_totala) : null,
+    df_valoare:          a.df_valoare !== null ? Number(a.df_valoare) : null,
     // Pattern canonic (vezi server/routes/alop.mjs total_platit / suma_platita_total):
     //   suma_totala_platita (cicluri arhivate) + plata_suma_efectiva (ciclu curent dacă confirmat)
     suma_totala_platita: (Number(a.suma_totala_platita || 0))

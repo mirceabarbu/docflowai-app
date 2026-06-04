@@ -197,12 +197,22 @@
   // ── Render — card ALOP cu copii ─────────────────────────────────────────────
   function _renderAlopCard(alop) {
     const titlu = alop.titlu || '(fără titlu)';
-    const valTotal = alop.valoare_totala !== null ? _formatRO(alop.valoare_totala) : '—';
     const platit   = alop.suma_totala_platita !== null ? _formatRO(alop.suma_totala_platita) : '0,00';
+
+    // Oglindă a header-ului din detaliul ALOP (alop.js): estimat (la creare) +
+    // DF actual (valt_actualiz al DF-ului activ). După o revizie DF, cele două diferă.
+    const _vEst = Number(alop.valoare_totala || 0);
+    const _vDf  = Number(alop.df_valoare || 0);
+    const _valParts = [];
+    if (_vEst > 0) _valParts.push(`<strong>${_formatRO(_vEst)} lei</strong> estimat`);
+    if (_vDf > 0)  _valParts.push(`<strong>${_formatRO(_vDf)} lei</strong> DF actual`);
+    const valoareLabel = _valParts.length
+      ? `Valoare: ${_valParts.join(' · ')}`
+      : `Valoare: <strong>—</strong>`;
 
     const metaParts = [
       _statusBadgeAlop(alop.status),
-      `Valoare: <strong>${valTotal} lei</strong>`,
+      valoareLabel,
       `Plătit: <strong>${platit} lei</strong>`,
     ];
     if (alop.ciclu_curent && alop.ciclu_curent > 1) {
