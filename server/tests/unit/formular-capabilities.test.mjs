@@ -48,6 +48,18 @@ describe('computeDocCapabilities (DF=notafd) — oglindă renderActions', () => 
     expect(c.can_generate_or_launch).toBe(true);
   });
 
+  it('completed + p1 + flux activ agățat → NU generate_or_launch (is_on_flow)', () => {
+    const c = C({ status: 'completed', created_by: 1, flow_active: true });
+    expect(c.can_generate_or_launch).toBe(false);
+    expect(c.is_on_flow).toBe(true);
+  });
+
+  it('transmis_flux pe flux activ → fără generate_or_launch', () => {
+    const c = C({ status: 'transmis_flux', created_by: 1, flow_id: 'f1', flow_active: true });
+    expect(c.can_generate_or_launch).toBe(false);
+    expect(c.is_on_flow).toBe(true);
+  });
+
   it('completed + p2 → completed_p2, fără acțiuni', () => {
     const c = C({ status: 'completed', created_by: 2, assigned_to: 1 });
     expect(c.is_completed_p2).toBe(true);

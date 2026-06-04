@@ -24,7 +24,7 @@ d('GET /api/alop/:id → alop.capabilities (caracterizare)', () => {
     expect(c.can_refresh).toBe(true);
   });
 
-  it('ALOP lichidare cu DF aprobat → confirma_lichidare + can_revise_df + can_delete=false', async () => {
+  it('ALOP lichidare cu DF aprobat → confirma_lichidare + can_revise_df + df_action=null (FIX 4) + can_delete=false', async () => {
     const fid = await seedFlowApproved();
     const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: fid });
     const id = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId, dfFlowId: fid });
@@ -32,7 +32,8 @@ d('GET /api/alop/:id → alop.capabilities (caracterizare)', () => {
     const c = res.body.alop.capabilities;
     expect(c.phase_action).toBe('confirma_lichidare');
     expect(c.can_revise_df).toBe(true);
-    expect(c.df_action).toBe('deschide');
+    // FIX 4: niciun buton DF în zona de acțiuni post-angajare
+    expect(c.df_action).toBeNull();
     expect(c.can_delete).toBe(false);
   });
 
@@ -49,7 +50,11 @@ d('GET /api/alop/:id → alop.capabilities (caracterizare)', () => {
     const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: fid });
     const id = await seedAlop({ orgId: 1, createdBy: 1, status: 'plata', dfId, dfFlowId: fid, ordId: null });
     const res = await request(app).get(`/api/alop/${id}`).set('Cookie', cookie());
-    expect(res.body.alop.capabilities.phase_action).toBe('confirma_plata');
+    const c = res.body.alop.capabilities;
+    expect(c.phase_action).toBe('confirma_plata');
+    // FIX 4 + FIX 6: niciun buton DF primar, dar „Revizuiește DF" rămâne disponibil în plată
+    expect(c.df_action).toBeNull();
+    expect(c.can_revise_df).toBe(true);
   });
 
   it('lista → can_delete pe rânduri active fără DF/ORD', async () => {

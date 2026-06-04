@@ -522,17 +522,16 @@ function renderAlopDetail(a,container){
         actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
         break;
     }
-    // Phase action — enum din caps; "Revizuiește DF" secundar gated de can_revise_df
-    const reviseBtn=caps.can_revise_df?`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF</button>`:'';
+    // Phase action — enum din caps decide butonul primar.
     switch(caps.phase_action){
       case 'confirma_lichidare':
-        actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmLichidare('${id}')">${_alopIcoBtn('ico-check-square')}Confirmă Lichidarea</button>`+reviseBtn;
+        actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmLichidare('${id}')">${_alopIcoBtn('ico-check-square')}Confirmă Lichidarea</button>`;
         break;
       case 'completeaza_ord':
-        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-file-signature')}Completează Ordonanțare de Plată</button>`+reviseBtn;
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-file-signature')}Completează Ordonanțare de Plată</button>`;
         break;
       case 'genereaza_lanseaza_ord':
-        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-rocket')}Generează PDF + Lansează flux ORD</button>`+reviseBtn;
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-rocket')}Generează PDF + Lansează flux ORD</button>`;
         break;
       case 'marcheaza_ord_semnat':
         actionsHtml+=`<button class="df-action-btn primary" onclick="alopOrdCompleted('${id}')">${_alopIcoBtn('ico-check-circle')}Marchează ORD semnat complet</button>`;
@@ -540,6 +539,11 @@ function renderAlopDetail(a,container){
       case 'confirma_plata':
         actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">${_alopIcoBtn('ico-landmark')}Confirmă Plata</button>`;
         break;
+    }
+    // FIX 6: „Revizuiește DF" — randat o SINGURĂ dată, independent de phase_action,
+    // gated doar de caps.can_revise_df (true în toate fazele post-angajare + ciclu închis).
+    if(caps.can_revise_df){
+      actionsHtml+=`<button class="df-action-btn" onclick="alopRevizuiesteDF('${id}','${esc(a.df_id)}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF</button>`;
     }
     // Ștergere (owner-gated în caps.can_delete)
     if(caps.can_delete){

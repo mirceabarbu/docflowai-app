@@ -198,10 +198,10 @@
             </div>
 
             <div class="col-12">
-              <div id="pdfPreviewBox" style="display:none; margin-top:4px;">
-                <div class="muted" style="margin-bottom:6px; font-size:.83rem;">Preview PDF:</div>
-                <div id="pdfPagesContainer" style="width:100%; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2); min-height:200px; max-height:90vh; padding:8px; overflow-y:auto;"><p style="color:rgba(255,255,255,.4);text-align:center;padding:40px 0;">Se incarca documentul...</p></div>
-              </div>
+              <details id="pdfPreviewBox" open style="display:none; margin-top:4px;">
+                <summary class="muted" style="cursor:pointer; margin-bottom:6px; font-size:.83rem; user-select:none;">Preview document</summary>
+                <div id="pdfPagesContainer" style="width:100%; border:1px solid rgba(255,255,255,.15); border-radius:12px; background:rgba(0,0,0,.2); min-height:200px; max-height:480px; padding:8px; overflow-y:auto;"><p style="color:rgba(255,255,255,.4);text-align:center;padding:40px 0;">Se incarca documentul...</p></div>
+              </details>
             </div>
 
             <!-- F-06: Documente suport -->
@@ -361,7 +361,7 @@
   </div>
 </div>
 
-    <script src="/js/semdoc-initiator/main.js?v=3.9.518" defer></script>
+    <script src="/js/semdoc-initiator/main.js?v=3.9.536" defer></script>
   <script src="/notif-widget.js?v=3.9.518"></script>
 
 <!-- Modal incarcare document revizuit -->

@@ -40,6 +40,21 @@ describe('ALOP↔ORD link în _autoSaveDb (v3.9.518 fix cauza root)', () => {
     expect(count, '_alopLinkDoc trebuie apelat de minim 2 ori în _autoSaveDb (POST + PUT)').toBeGreaterThanOrEqual(2);
   });
 
+  it('list.js: _autoSaveDb setează docCapabilities din răspuns pe POST înainte de renderActions (fix v3.9.534 buton dispărut)', () => {
+    const m = LIST.match(/async function _autoSaveDb\(ft\)\{[\s\S]*?\n\}\s*\nfunction _scheduleAutoSaveDb/);
+    expect(m, 'corpul _autoSaveDb nu a fost găsit').toBeTruthy();
+    const body = m[0];
+    // Caps trebuie setate din j.document.capabilities, altfel renderActions rulează
+    // cu caps={} și butonul "Trimite la Responsabil CAB" dispare după auto-save.
+    expect(body).toMatch(/docCapabilities\[ft\]\s*=\s*j\.document\?\.\s*capabilities/);
+    // Pe ramura POST: atribuirea caps apare ÎNAINTEA primului renderActions.
+    const idxCaps   = body.indexOf('docCapabilities[ft]=j.document?.capabilities');
+    const idxRender = body.indexOf('renderActions(ft)');
+    expect(idxCaps).toBeGreaterThan(-1);
+    expect(idxRender).toBeGreaterThan(-1);
+    expect(idxCaps).toBeLessThan(idxRender);
+  });
+
   it('doc.js: saveDoc apelează _alopLinkDoc și pe ramura PUT (safety net)', () => {
     const m = DOC.match(/async function saveDoc\(ft\)\{[\s\S]*?\n\}\s*\n/);
     expect(m, 'corpul saveDoc nu a fost găsit').toBeTruthy();

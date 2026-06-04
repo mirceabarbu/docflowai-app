@@ -156,12 +156,37 @@ describe('GET /api/alop/:id — lazy recovery din draft cu DF aprobat', () => {
     const calls = lazyUpdateCalls();
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toContain('COALESCE(df_completed_at, NOW())');
-    expect(calls[0][1]).toEqual([ALOP_ID, 2]); // [id, actor.userId]
+    // [id, actor.userId, resyncFlow] — fără df_authoritative_flow_id în row → fără resync (null)
+    expect(calls[0][1]).toEqual([ALOP_ID, 2, null]);
 
     // Audit log emis cu status-ul de pornire
     expect(logger.info).toHaveBeenCalledWith(
       expect.stringContaining('lazy auto-tranziție draft→lichidare')
     );
+  });
+
+  it('ALOP angajare + DF aprobat pe flux autoritar diferit → resync df_flow_id', async () => {
+    const T1 = new Date('2026-05-20T12:00:00.000Z').toISOString();
+    // df_flow_id (zombi) ≠ df_authoritative_flow_id (formulare_df.flow_id real)
+    const row = makeAlopRow({
+      status: 'angajare', df_aprobat: true, df_completed_at: null,
+      df_flow_id: 'FLOW_ZOMBIE', df_authoritative_flow_id: 'FLOW_AUTORITAR',
+    });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [row] })
+      .mockResolvedValueOnce({ rows: [{ status: 'lichidare', df_completed_at: T1, df_flow_id: 'FLOW_AUTORITAR' }] });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .get(`/api/alop/${ALOP_ID}`)
+      .set('Cookie', `auth_token=${makeAdminToken()}`);
+
+    expect(res.status).toBe(200);
+    const calls = lazyUpdateCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toContain('df_flow_id = COALESCE($3, df_flow_id)');
+    expect(calls[0][1]).toEqual([ALOP_ID, 2, 'FLOW_AUTORITAR']); // [id, actor.userId, resyncFlow]
+    expect(res.body.alop.df_flow_id).toBe('FLOW_AUTORITAR');
   });
 
   it('ALOP angajare + DF aprobat → tot la lichidare (back-compat preexistent)', async () => {

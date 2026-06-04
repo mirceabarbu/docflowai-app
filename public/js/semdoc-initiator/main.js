@@ -1555,6 +1555,8 @@ async function signFromFluxuri(flowId) {
               pdfB64 = savedPdf;
               const fname = (state.pdfName || "").replace(/^Selectat: /, "").replace(/ \(\d+ KB\)\.?$/, "");
               setPdfInfo("✅ " + (fname || "document.pdf") + " (restaurat)");
+              const _box = $("pdfPreviewBox");
+              if (_box) { _box.style.display = "block"; renderPdfJsInit(pdfB64); }
               const cb = $("btnClearPdf");
               if (cb) {
                 cb.disabled = false; cb.style.opacity = "1"; cb.style.pointerEvents = "auto";
@@ -2020,6 +2022,8 @@ async function signFromFluxuri(flowId) {
           if (_pPdf) {
             pdfB64 = _pPdf;
             setPdfInfo("✅ Document din formulare (prefill)");
+            const _box = $("pdfPreviewBox");
+            if (_box) _box.style.display = "block";
             setTimeout(() => renderPdfJsInit(pdfB64), 400);
           }
           if (_pType === "tabel") {

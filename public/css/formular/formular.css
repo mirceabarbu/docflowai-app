@@ -158,6 +158,11 @@
     .modal-ov.show{display:flex}
     .modal-box{background:#0f1832;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:28px 32px;width:min(620px,95vw);max-height:85vh;display:flex;flex-direction:column;gap:14px}
     .modal-title{font-size:.95rem;font-weight:800;color:var(--df-text)}
+    /* Inputurile din modale folosesc .dt/.di (stil document, fundal deschis) — le forțăm dark,
+       consistent cu .df-block-body .dt, ca să nu arate ca un câmp-document alb în modalul dark. */
+    .modal-box .dt,.modal-box .di,.modal-box textarea,.modal-box input.dt,.modal-box input.di{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--df-text);font-family:inherit}
+    .modal-box .dt:focus,.modal-box .di:focus,.modal-box textarea:focus,.modal-box input.dt:focus,.modal-box input.di:focus{border-color:rgba(108,79,240,.5);background:rgba(108,79,240,.04)}
+    .modal-box .dt.err,.modal-box .di.err{border-color:#f87171;background:rgba(248,113,113,.08)}
     .modal-search{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:var(--df-text);padding:8px 10px;font-size:.84rem;outline:none;width:100%;font-family:inherit}
     .modal-search:focus{border-color:rgba(108,79,240,.5)}
     .modal-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;min-height:80px;max-height:260px}

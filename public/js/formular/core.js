@@ -382,8 +382,9 @@ async function genPdf(ft){
   const timeout=setTimeout(()=>ctrl.abort(),90000); // 90s timeout
   try{
     const data=ft==='ordnt'?colO():colN();
+    const docId=ST.docId?.[ft]||null;
     const r=await fetch('/api/formulare/generate',{method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({formType:ft,data}),
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({formType:ft,data,docId}),
       signal:ctrl.signal});
     clearTimeout(timeout);
     const j=await r.json();

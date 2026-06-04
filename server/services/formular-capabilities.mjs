@@ -62,6 +62,10 @@ export function computeDocCapabilities(doc, actor, ft) {
   const latest   = doc.latest_revizie_nr || 0;
   const areNoua  = doc.has_newer_revision === true;
   const isNotafd = ft === 'notafd';
+  // DF/ORD aflat pe un flux de semnare NON-terminal (nici completed, nici cancelled).
+  // Server-driven: detaliul calculează `flow_active`. Blochează (re)generarea/relansarea
+  // ca să nu apară un al doilea flux peste primul activ (cauza zombi df_flow_id).
+  const onActiveFlow = doc.flow_active === true;
 
   caps.aprobat = aprobat;
   caps.revizie_nr = revNr;
@@ -112,7 +116,10 @@ export function computeDocCapabilities(doc, actor, ft) {
     return caps;
   }
   if (status === 'completed' && role === 'p1') {
-    caps.can_generate_or_launch = true;
+    // Dacă DF-ul are deja un flux activ agățat (status n-a fost încă mutat la
+    // transmis_flux dar flow_id non-terminal e setat), ascunde butonul.
+    caps.can_generate_or_launch = !onActiveFlow;
+    if (onActiveFlow) caps.is_on_flow = true;
     return caps;
   }
   if (status === 'transmis_flux') {
