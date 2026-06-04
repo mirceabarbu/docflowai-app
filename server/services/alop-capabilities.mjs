@@ -33,14 +33,15 @@ export function computeAlopCapabilities(alop, actor) {
   // INCLUSIV pentru ALOP completat (ciclu închis). Owner-gated; fals la cancelled
   // și în angajare (acolo accesul la DF e prin df_action). Setat ÎNAINTE de return-ul
   // devreme ca să fie true și pentru ALOP completat (care iese la linia de mai jos).
-  caps.can_revise_df = caps.is_owner && !caps.is_cancelled && !!alop.df_id && status !== 'angajare';
+  caps.can_revise_df = caps.is_owner && !caps.is_cancelled && !!alop.df_id && !['draft', 'angajare'].includes(status);
 
   if (caps.is_completed || caps.is_cancelled || !caps.is_owner) return caps;
 
-  // FIX 4: DF action se calculează DOAR în faza 'angajare'. Post-aprobare (lichidare/
-  // ordonantare/plata) butonul „Completează/Deschide DF" NU mai apare în zona de acțiuni —
-  // accesul la DF rămâne prin „Revizuiește DF" (can_revise_df) și prin tab-ul DF.
-  if (status === 'angajare') {
+  // FIX 4: DF action se calculează DOAR în faza de creare/aprobare a DF-ului ('draft' +
+  // 'angajare'). Post-aprobare (lichidare/ordonantare/plata) butonul „Completează/Deschide DF"
+  // NU mai apare în zona de acțiuni — accesul la DF rămâne prin „Revizuiește DF"
+  // (can_revise_df) și prin tab-ul DF. ('draft' = ALOP nou fără df_id → 'completeaza'.)
+  if (['draft', 'angajare'].includes(status)) {
     const dfStatus = alop.df_status || '';
     if (alop.df_revizie_in_lucru) caps.df_action = 'in_lucru_disabled';
     else if (!alop.df_id) caps.df_action = 'completeaza';
