@@ -261,7 +261,7 @@ async function _saveBeneficiarIfNew(){
 }
 
 // ── Centralizare: navigare secțiuni ──────────────────────────────────────────
-let _lstState={type:'rfn',page:1,limit:20};
+let _lstState={type:'alop',page:1,limit:20};
 let _lstDebTimer=null;
 
 function showListSection(tab){
@@ -272,7 +272,7 @@ function showListSection(tab){
   if(_tEl)_tEl.textContent='Formulare oficiale';
   if(_sEl)_sEl.textContent='Document de Fundamentare, Ordonanțare de Plată, ALOP';
   try{history.replaceState({},'',location.pathname);}catch(_){}
-  if(tab)switchListTab(tab);
+  switchListTab(tab||'alop');
   loadList();
 }
 function _updateBackBtn(ft){
