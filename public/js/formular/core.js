@@ -287,6 +287,9 @@ function calcNCRow(el){
   const c10=tr.querySelector('[data-f="sum_rezv_crdt_bug_act"]');
   if(c10)c10.value=fMR(c8+c9);
   upTot();
+  // Soft-warning depășire credite bugetare la completarea col.10 (CAB). No-op
+  // dacă nu suntem în modul de completare Sec.B (buget nu e încărcat).
+  if(typeof window._checkSecBBuget==='function')window._checkSecBBuget();
 }
 
 /* Totals */

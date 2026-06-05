@@ -145,6 +145,103 @@ function populateDf(doc){
   upTot();
 }
 
+// ── Soft-warning buget Sec.B (depășire credite bugetare, CAB) ─────────────────
+// Map(cod_SSI → {buget,angajat_aprobat,disponibil}) sau null când nu suntem în
+// modul de completare Sec.B (CAB). Read-only — pură validare client, nimic nu se
+// persistă. Sursa: GET /api/clasa8/buget/disponibil (regula Clasa 8, server-side).
+let _bugetDisponibil = null;
+
+function _resetSecBBuget(){
+  _bugetDisponibil = null;
+  document.querySelectorAll('#n-ctbody .secb-buget-badge').forEach(b=>b.remove());
+  document.querySelectorAll('#n-ctbody tr.secb-buget-over').forEach(tr=>tr.classList.remove('secb-buget-over'));
+  const warn=document.getElementById('secb-buget-warn');
+  if(warn){warn.style.display='none';warn.innerHTML='';}
+}
+
+async function _loadBugetDisponibil(docId){
+  try{
+    const qs=docId?`?exclude_df=${encodeURIComponent(docId)}`:'';
+    const r=await fetch(`/api/clasa8/buget/disponibil${qs}`,{credentials:'include'});
+    if(!r.ok){_bugetDisponibil=new Map();_checkSecBBuget();return;}
+    const j=await r.json();
+    _bugetDisponibil=new Map();
+    (j.items||[]).forEach(it=>{
+      _bugetDisponibil.set(String(it.cod_ssi||'').trim(),{
+        buget:it.buget,angajat_aprobat:it.angajat_aprobat,disponibil:it.disponibil,
+      });
+    });
+  }catch(e){
+    console.warn('[buget] disponibil fetch error',e);
+    _bugetDisponibil=new Map();
+  }
+  _checkSecBBuget();
+}
+
+function _checkSecBBuget(){
+  const warn=document.getElementById('secb-buget-warn');
+  // reset markers
+  document.querySelectorAll('#n-ctbody .secb-buget-badge').forEach(b=>b.remove());
+  document.querySelectorAll('#n-ctbody tr.secb-buget-over').forEach(tr=>tr.classList.remove('secb-buget-over'));
+  if(!_bugetDisponibil){if(warn){warn.style.display='none';warn.innerHTML='';}return;}
+
+  // Σ col.10 per cod_SSI peste TOATE rândurile Sec.B curente
+  const sums=new Map(), rowsByCode=new Map();
+  document.querySelectorAll('#n-ctbody tr').forEach(tr=>{
+    const cod=(tr.querySelector('[data-f="cod_SSI"]')?.value||'').trim();
+    if(!cod)return;
+    const c10=pMR(tr.querySelector('[data-f="sum_rezv_crdt_bug_act"]')?.value)||0;
+    sums.set(cod,(sums.get(cod)||0)+c10);
+    if(!rowsByCode.has(cod))rowsByCode.set(cod,[]);
+    rowsByCode.get(cod).push(tr);
+  });
+
+  const over=[];
+  sums.forEach((sum,cod)=>{
+    const info=_bugetDisponibil.get(cod);
+    if(!info||info.disponibil==null)return; // fără buget importat pentru codul ăsta
+    if(sum>info.disponibil+0.005){
+      const dep=sum-info.disponibil;
+      over.push({cod,dep});
+      (rowsByCode.get(cod)||[]).forEach(tr=>{
+        tr.classList.add('secb-buget-over');
+        const cell=tr.querySelector('[data-f="cod_SSI"]')?.closest('td');
+        if(cell&&!cell.querySelector('.secb-buget-badge')){
+          const b=document.createElement('span');
+          b.className='secb-buget-badge';
+          b.textContent='⚠ depășire';
+          b.title=`Depășire credite bugetare disponibile: ${fMR(dep)} lei`;
+          cell.appendChild(b);
+        }
+      });
+    }
+  });
+
+  if(warn){
+    if(over.length){
+      warn.innerHTML='⚠ Depășire credite bugetare disponibile: '+
+        over.map(o=>`SSI ${esc(o.cod)} −${esc(fMR(o.dep))} lei`).join('; ');
+      warn.style.display='';
+    }else{warn.style.display='none';warn.innerHTML='';}
+  }
+}
+
+// Expus pentru core.js (recalc live col.10) și re-fetch la schimbarea cod_SSI.
+window._checkSecBBuget   = _checkSecBBuget;
+window._loadBugetDisponibil = _loadBugetDisponibil;
+
+// Re-fetch buget când CAB schimbă un cod_SSI în Sec.B (delegat, o singură dată).
+(function(){
+  const tb=document.getElementById('n-ctbody');
+  if(!tb)return;
+  tb.addEventListener('change',e=>{
+    const t=e.target;
+    if(_bugetDisponibil&&t&&t.matches&&t.matches('[data-f="cod_SSI"]')){
+      _loadBugetDisponibil(ST?.docId?.notafd);
+    }
+  });
+})();
+
 // ── Lock câmpuri pe secțiuni ──────────────────────────────────────────────────
 function lockAll(ft,lock){
   document.querySelectorAll(`#form-${ft} input:not([type=file]):not([type=hidden]),#form-${ft} textarea,#form-${ft} select,#form-${ft} .badd,#form-${ft} .bdel`).forEach(e=>e.disabled=lock);
@@ -301,7 +398,13 @@ function applyDfRoleState(status,role){
     if(t.p1b){t.p1b.className='df-role-tag df-role-no';t.p1b.textContent='P1 blocat';}
     if(t.p2b){t.p2b.className='df-role-tag df-role-can';t.p2b.textContent='P2 editează';}
   }
-  if(status==='pending_p2'&&role==='p2')prefillSectBFromSectA();
+  if(status==='pending_p2'&&role==='p2'){
+    prefillSectBFromSectA();
+    // Soft-warning depășire credite bugetare — doar când Sec.B e editabilă de CAB.
+    _loadBugetDisponibil(ST?.docId?.notafd);
+  }else{
+    _resetSecBBuget();
+  }
   _dfSetAlopCtx('notafd');
 }
 function applyOrdRoleState(status,role){

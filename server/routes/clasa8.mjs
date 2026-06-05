@@ -11,7 +11,7 @@ import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { requireModule }  from '../middleware/require-module.mjs';
 import { logger }         from '../middleware/logger.mjs';
 import { pool }           from '../db/index.mjs';
-import { getClasa8Aggregate } from '../services/clasa8.mjs';
+import { getClasa8Aggregate, getBugetDisponibil } from '../services/clasa8.mjs';
 
 const router = Router();
 
@@ -37,6 +37,29 @@ router.get('/', requireAuth, async (req, res) => {
     return res.json(result);
   } catch (e) {
     logger.error({ err: e, requestId: req.requestId }, 'clasa8 aggregate error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// GET /api/clasa8/buget/disponibil?exclude_df=<uuid?>
+// Read-only — buget disponibil per cod_SSI pentru soft-warning Sec.B (CAB).
+router.get('/buget/disponibil', requireAuth, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'db_unavailable' });
+
+    const { orgId } = req.actor;
+    if (!orgId) return res.status(400).json({ error: 'orgId_missing_in_token' });
+
+    const excludeDf = typeof req.query.exclude_df === 'string' ? req.query.exclude_df.trim() : '';
+    if (excludeDf &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(excludeDf)) {
+      return res.status(400).json({ error: 'exclude_df_invalid' });
+    }
+
+    const result = await getBugetDisponibil(pool, orgId, excludeDf || null);
+    return res.json(result);
+  } catch (e) {
+    logger.error({ err: e, requestId: req.requestId }, 'clasa8 buget disponibil error');
     return res.status(500).json({ error: 'server_error' });
   }
 });
