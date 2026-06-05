@@ -478,6 +478,7 @@ async function openDoc(ft,id){
     ST.docLatestRevizieNr[ft]=doc.latest_revizie_nr||0;
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=doc.capabilities||null;
+    _updateAuditBtn(ft);
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
@@ -652,6 +653,7 @@ function newDoc(ft){
   ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};ST.docRevizieAnUrmator[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
   ST.docCapabilities=ST.docCapabilities||{};ST.docCapabilities[ft]=null;
+  _updateAuditBtn(ft);
   lockAll(ft,false);setLockedBar(ft,'');
   if(ft==='notafd'){applyDfRoleState(null,'p1');updateRevizieHeaderBadge('notafd',{revizie_nr:0,este_revizie_an_urmator:false});}
   else if(ft==='ordnt')applyOrdRoleState(null,'p1');
@@ -1300,6 +1302,61 @@ async function confirmReturn(){
   finally{if(btn)btn.disabled=false;}
 }
 
+// ── Audit per formular (admin / org_admin) ──────────────────────────────────────
+const _AUDIT_LABELS={creat:'Creat',trimis_p2:'Trimis la Responsabil CAB',completat:'Completat de Responsabil CAB',legat_alop:'Legat de ALOP',returnat:'Returnat',transmis_flux:'Transmis în flux',revizuit:'Revizuit',sters:'Șters'};
+
+// Afișează/ascunde butonul Audit în funcție de rol + existența unui document salvat
+function _updateAuditBtn(ft){
+  const b=document.getElementById('btn-audit-form');if(!b)return;
+  const isAdmin=ST.user&&(ST.user.role==='admin'||ST.user.role==='org_admin');
+  const hasDoc=ft&&ST.docId&&ST.docId[ft];
+  b.style.display=(isAdmin&&hasDoc)?'':'none';
+  b.dataset.ft=ft||'';
+}
+
+async function openFormAudit(){
+  const ft=document.getElementById('btn-audit-form')?.dataset.ft||(ST.curFt||'notafd');
+  const type=ftType(ft),docId=ST.docId&&ST.docId[ft];
+  if(!docId){setS('Salvați documentul înainte de a vedea auditul.','warn');return;}
+  const ov=document.getElementById('audit-modal');if(ov)ov.classList.add('show');
+  const tl=document.getElementById('audit-timeline');
+  const meta=document.getElementById('audit-doc-meta');
+  if(tl)tl.innerHTML='<div style="color:var(--df-text-3);font-size:.84rem">Se încarcă...</div>';
+  if(meta)meta.textContent='';
+  // Handlere export (download)
+  const base=`/api/formulare-audit/${type}/${encodeURIComponent(docId)}`;
+  const csvBtn=document.getElementById('audit-export-csv');
+  const pdfBtn=document.getElementById('audit-export-pdf');
+  if(csvBtn)csvBtn.onclick=()=>window.open(base+'?format=csv','_blank');
+  if(pdfBtn)pdfBtn.onclick=()=>window.open(base+'?format=pdf','_blank');
+  try{
+    const r=await fetch(base,{credentials:'include'});
+    const j=await r.json();
+    if(!r.ok){if(tl)tl.innerHTML=`<div class="err" style="font-size:.84rem">${esc(j.error||'Eroare la încărcare')}</div>`;return;}
+    const esc2=window.df?.esc||(s=>(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+    const d=j.document||{};
+    if(meta)meta.innerHTML=`${esc2(d.nr||'fără număr')} · ${esc2(d.den_inst_pb||'')}${d.compartiment?' · '+esc2(d.compartiment):''}`;
+    const evs=j.events||[];
+    if(!evs.length){if(tl)tl.innerHTML='<div style="color:var(--df-text-3);font-size:.84rem">Niciun eveniment înregistrat.</div>';return;}
+    const fmt=iso=>iso?new Date(iso).toLocaleString('ro-RO',{timeZone:'Europe/Bucharest'}):'—';
+    if(tl)tl.innerHTML=evs.map(e=>{
+      const lbl=_AUDIT_LABELS[e.event_type]||e.event_type;
+      const actor=e.actor_name||e.actor_email||'—';
+      const trans=(e.from_status||e.to_status)?`<span style="color:var(--df-text-3)">${esc2(e.from_status||'—')} → ${esc2(e.to_status||'—')}</span>`:'';
+      const motiv=e.meta&&e.meta.motiv?`<div style="font-size:.78rem;color:#e0a458;margin-top:2px">Motiv: ${esc2(e.meta.motiv)}</div>`:'';
+      return`<div style="padding:8px 0;border-bottom:1px solid var(--df-border)">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+          <span style="font-weight:600;color:var(--df-text-2);font-size:.86rem">${esc2(lbl)}</span>
+          <span style="font-size:.74rem;color:var(--df-text-3);white-space:nowrap">${fmt(e.created_at)}</span>
+        </div>
+        <div style="font-size:.78rem;color:var(--df-text-3);margin-top:2px">de: ${esc2(actor)} ${trans}</div>
+        ${motiv}
+      </div>`;
+    }).join('');
+  }catch(e){if(tl)tl.innerHTML='<div class="err" style="font-size:.84rem">Eroare rețea.</div>';}
+}
+function closeFormAudit(){const ov=document.getElementById('audit-modal');if(ov)ov.classList.remove('show');}
+
 // ── link-flow section show — noop, asocierea se face automat din semdoc-initiator ─
 function showLinkFlowSection(ft){}
 
@@ -1418,6 +1475,11 @@ function resetF(ft){
 
   // Reset
   window.resetF                     = resetF;
+
+  // Audit per formular
+  window.openFormAudit              = openFormAudit;
+  window.closeFormAudit             = closeFormAudit;
+  window._updateAuditBtn            = _updateAuditBtn;
 
   window.df = window.df || {};
   window.df._formularDocLoaded = true;

@@ -297,6 +297,7 @@ function showFormSection(ft){
   if(_tEl)_tEl.textContent=_titles[ft]||'Formular';
   if(_sEl)_sEl.textContent=_subs[ft]||'';
   const sb=document.getElementById('form-save-badge');if(sb)sb.textContent='';
+  const ab=document.getElementById('btn-audit-form');if(ab)ab.style.display='none';
   const ti=document.getElementById('form-type-title');
   if(ti)ti.textContent=ft==='ordnt'?'📄 Ordonanțare de Plată':'📋 Document de Fundamentare';
   sw(ft||'ordnt');
