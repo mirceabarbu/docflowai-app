@@ -2023,7 +2023,8 @@ router.get('/api/formulare-audit/:type/:id', async (req, res) => {
     const table = type === 'ord' ? 'formulare_ord' : 'formulare_df';
     const nrCol = type === 'ord' ? 'nr_ordonant_pl' : 'nr_unic_inreg';
     const { rows: docRows } = await pool.query(
-      `SELECT d.id, d.org_id, d.${nrCol} AS nr, d.den_inst_pb, d.compartiment_specialitate,
+      `SELECT d.id, d.org_id, d.${nrCol} AS nr, d.den_inst_pb,
+              COALESCE(NULLIF(TRIM(u.compartiment), ''), NULLIF(TRIM(d.compartiment_specialitate), '')) AS compartiment,
               d.status, d.created_at, d.updated_at, d.created_by,
               u.nume AS init_name, u.email AS init_email
          FROM ${table} d
@@ -2043,7 +2044,7 @@ router.get('/api/formulare-audit/:type/:id', async (req, res) => {
     const header = {
       type, id: doc.id, nr: doc.nr || null,
       den_inst_pb: doc.den_inst_pb || null,
-      compartiment: doc.compartiment_specialitate || null,
+      compartiment: doc.compartiment || null,
       status: doc.status, created_at: doc.created_at, updated_at: doc.updated_at,
       initiator: doc.init_name || doc.init_email || null,
       initiator_email: doc.init_email || null,
@@ -2074,7 +2075,7 @@ router.get('/api/formulare-audit/:type/:id', async (req, res) => {
       if (!PDFLibFormular) return res.status(503).json({ error: 'pdf_lib_not_available' });
       const { PDFDocument, rgb, StandardFonts } = PDFLibFormular;
       const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
-      const ro = t => String(t || '').replace(/[^\x00-\xFF]/g, '').split('').map(ch => diacr[ch] || ch).join('');
+      const ro = t => String(t || '').split('').map(ch => diacr[ch] || ch).join('').replace(/[^\x00-\xFF]/g, '');
       const pdfDoc = await PDFDocument.create();
       const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);

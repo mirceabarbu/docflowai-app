@@ -1422,8 +1422,8 @@ async function openFormAudit(type,docId){
   const base=`/api/formulare-audit/${type}/${encodeURIComponent(docId)}`;
   const csvBtn=document.getElementById('audit-export-csv');
   const pdfBtn=document.getElementById('audit-export-pdf');
-  if(csvBtn)csvBtn.onclick=()=>window.open(base+'?format=csv','_blank');
-  if(pdfBtn)pdfBtn.onclick=()=>window.open(base+'?format=pdf','_blank');
+  if(csvBtn)csvBtn.onclick=()=>{window.open(base+'?format=csv','_blank');closeFormAudit();};
+  if(pdfBtn)pdfBtn.onclick=()=>{window.open(base+'?format=pdf','_blank');closeFormAudit();};
   try{
     const r=await fetch(base,{credentials:'include'});
     const j=await r.json();
