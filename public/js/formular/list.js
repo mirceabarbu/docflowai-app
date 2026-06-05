@@ -297,7 +297,6 @@ function showFormSection(ft){
   if(_tEl)_tEl.textContent=_titles[ft]||'Formular';
   if(_sEl)_sEl.textContent=_subs[ft]||'';
   const sb=document.getElementById('form-save-badge');if(sb)sb.textContent='';
-  const ab=document.getElementById('btn-audit-form');if(ab)ab.style.display='none';
   const ti=document.getElementById('form-type-title');
   if(ti)ti.textContent=ft==='ordnt'?'📄 Ordonanțare de Plată':'📋 Document de Fundamentare';
   sw(ft||'ordnt');
@@ -459,6 +458,10 @@ function _renderLstTable(rows,type){
     const cancelBtn=canDelete
       ?`<button class="df-action-btn danger sm" onclick="stergeDoc('${type}','${esc(row.id)}')" title="Șterge">🗑</button>`
       :'';
+    const isAdm=window.ST?.user?.role==='admin'||window.ST?.user?.role==='org_admin';
+    const auditBtn=isAdm
+      ?`<button class="df-action-btn teal sm" onclick="openFormAudit('${type}','${esc(row.id)}')" title="Audit document"><svg class="df-ico"><use href="/icons.svg?v=3.9.540#ico-clipboard"/></svg></button>`
+      :'';
     const safeId=esc(row.id);
     const nr=esc(row.nr||row.id.slice(0,8));
     const titlu=esc(row.titlu||'');
@@ -485,6 +488,7 @@ function _renderLstTable(rows,type){
       </td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">Deschide</button>
+        ${auditBtn}
         ${cancelBtn}
       </td>
     </tr>`;

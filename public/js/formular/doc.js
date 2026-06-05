@@ -478,7 +478,6 @@ async function openDoc(ft,id){
     ST.docLatestRevizieNr[ft]=doc.latest_revizie_nr||0;
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=doc.capabilities||null;
-    _updateAuditBtn(ft);
 
     // Populare câmpuri
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
@@ -653,7 +652,6 @@ function newDoc(ft){
   ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};ST.docRevizieAnUrmator[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
   ST.docCapabilities=ST.docCapabilities||{};ST.docCapabilities[ft]=null;
-  _updateAuditBtn(ft);
   lockAll(ft,false);setLockedBar(ft,'');
   if(ft==='notafd'){applyDfRoleState(null,'p1');updateRevizieHeaderBadge('notafd',{revizie_nr:0,este_revizie_an_urmator:false});}
   else if(ft==='ordnt')applyOrdRoleState(null,'p1');
@@ -1305,18 +1303,12 @@ async function confirmReturn(){
 // ── Audit per formular (admin / org_admin) ──────────────────────────────────────
 const _AUDIT_LABELS={creat:'Creat',trimis_p2:'Trimis la Responsabil CAB',completat:'Completat de Responsabil CAB',legat_alop:'Legat de ALOP',returnat:'Returnat',transmis_flux:'Transmis în flux',revizuit:'Revizuit',sters:'Șters'};
 
-// Afișează/ascunde butonul Audit în funcție de rol + existența unui document salvat
-function _updateAuditBtn(ft){
-  const b=document.getElementById('btn-audit-form');if(!b)return;
-  const isAdmin=ST.user&&(ST.user.role==='admin'||ST.user.role==='org_admin');
-  const hasDoc=ft&&ST.docId&&ST.docId[ft];
-  b.style.display=(isAdmin&&hasDoc)?'':'none';
-  b.dataset.ft=ft||'';
-}
-
-async function openFormAudit(){
-  const ft=document.getElementById('btn-audit-form')?.dataset.ft||(ST.curFt||'notafd');
-  const type=ftType(ft),docId=ST.docId&&ST.docId[ft];
+async function openFormAudit(type,docId){
+  // Apelat per-rând din listă: openFormAudit('df'|'ord', uuid)
+  if(!type||!docId){
+    const ft=ST.curFt||'notafd';
+    type=ftType(ft);docId=ST.docId&&ST.docId[ft];
+  }
   if(!docId){setS('Salvați documentul înainte de a vedea auditul.','warn');return;}
   const ov=document.getElementById('audit-modal');if(ov)ov.classList.add('show');
   const tl=document.getElementById('audit-timeline');
@@ -1479,7 +1471,6 @@ function resetF(ft){
   // Audit per formular
   window.openFormAudit              = openFormAudit;
   window.closeFormAudit             = closeFormAudit;
-  window._updateAuditBtn            = _updateAuditBtn;
 
   window.df = window.df || {};
   window.df._formularDocLoaded = true;
