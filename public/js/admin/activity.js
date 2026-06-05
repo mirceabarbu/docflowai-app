@@ -75,6 +75,16 @@
     'auth.login.failed':            'Autentificare eșuată',
     USER_LOGIN:                     'Autentificare',
     USER_LOGOUT:                    'Deconectare',
+
+    // ─── Formulare DF/ORD (audit per formular) ───────────────────────
+    creat:                          'Document creat',
+    trimis_p2:                      'Trimis la Responsabil CAB',
+    completat:                      'Completat de Responsabil CAB',
+    legat_alop:                     'Legat de ALOP',
+    returnat:                       'Returnat ca neconform',
+    transmis_flux:                  'Transmis în flux de semnare',
+    revizuit:                       'Revizuit',
+    sters:                          'Șters',
   };
 
   const OP_COLORS = {

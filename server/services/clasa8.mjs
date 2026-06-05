@@ -291,3 +291,92 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
     },
   };
 }
+
+/**
+ * Buget disponibil per cod_SSI (read-only) — sursa pentru soft-warning la
+ * completarea Sec.B (col.10) de către Responsabilul CAB.
+ *
+ * Reutilizează EXACT aceeași regulă de agregare ca `getClasa8Aggregate`:
+ *   - `angajat_aprobat` = Σ col.10 (`sum_rezv_crdt_bug_act`) din DF-urile
+ *     APROBATE (flow `completed`), DOAR ultima revizie per `nr_unic_inreg`;
+ *   - `disponibil = buget − angajat_aprobat` (null dacă nu există buget importat).
+ *
+ * `excludeDfId`: dacă e dat, rezolvă `nr_unic_inreg`-ul acelui DF și exclude din
+ * `angajat_aprobat` TOATE DF-urile cu același `nr_unic_inreg` (ca să nu numărăm
+ * dublu o revizie anterioară aprobată a documentului aflat în curs de editare).
+ *
+ * @param {object} pool - PostgreSQL pool
+ * @param {number} orgId - ID organizație (filtru obligatoriu, multi-tenant)
+ * @param {string|null} [excludeDfId] - UUID DF de exclus (revizia în lucru)
+ * @returns {Promise<{items: Array<{cod_ssi,buget,angajat_aprobat,disponibil}>}>}
+ */
+export async function getBugetDisponibil(pool, orgId, excludeDfId = null) {
+  if (!pool || !orgId) {
+    throw new Error('clasa8.getBugetDisponibil: pool și orgId sunt obligatorii');
+  }
+
+  const params = [orgId, excludeDfId || null];
+
+  const sql = `
+    WITH
+    latest_approved_df AS (
+      SELECT DISTINCT ON (fd.nr_unic_inreg)
+        fd.id, fd.rows_ctrl, fd.nr_unic_inreg
+      FROM formulare_df fd
+      JOIN flows f ON f.id = fd.flow_id
+      WHERE fd.org_id = $1
+        AND fd.deleted_at IS NULL
+        AND fd.flow_id IS NOT NULL
+        AND fd.nr_unic_inreg IS NOT NULL
+        AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+        AND ($2::uuid IS NULL OR fd.nr_unic_inreg IS DISTINCT FROM
+             (SELECT nr_unic_inreg FROM formulare_df WHERE id = $2::uuid))
+      ORDER BY fd.nr_unic_inreg, fd.revizie_nr DESC NULLS LAST
+    ),
+    angajamente AS (
+      SELECT cod_ssi, SUM(suma) AS suma
+      FROM (
+        SELECT
+          COALESCE(r->>'cod_SSI', r->>'codSSI', '') AS cod_ssi,
+          NULLIF(r->>'sum_rezv_crdt_bug_act','')::numeric AS suma
+        FROM latest_approved_df df
+        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(df.rows_ctrl, '[]'::jsonb)) r
+      ) sub
+      WHERE cod_ssi <> ''
+      GROUP BY cod_ssi
+    ),
+    buget AS (
+      SELECT cod_ssi, valoare AS suma
+      FROM clasa8_buget
+      WHERE org_id = $1
+    ),
+    universe AS (
+      SELECT cod_ssi FROM angajamente
+      UNION SELECT cod_ssi FROM buget
+    )
+    SELECT
+      u.cod_ssi,
+      b.suma AS buget,
+      ROUND(COALESCE(a.suma, 0)::numeric, 2) AS angajat_aprobat,
+      CASE WHEN b.suma IS NULL THEN NULL
+           ELSE ROUND((b.suma - COALESCE(a.suma, 0))::numeric, 2)
+      END AS disponibil
+    FROM universe u
+    LEFT JOIN angajamente a ON a.cod_ssi = u.cod_ssi
+    LEFT JOIN buget       b ON b.cod_ssi = u.cod_ssi
+    WHERE u.cod_ssi <> ''
+    ORDER BY u.cod_ssi ASC
+    LIMIT 5000
+  `;
+
+  const { rows } = await pool.query(sql, params);
+
+  return {
+    items: rows.map(r => ({
+      cod_ssi:          r.cod_ssi,
+      buget:            r.buget == null ? null : Number(r.buget),
+      angajat_aprobat:  Number(r.angajat_aprobat),
+      disponibil:       r.disponibil == null ? null : Number(r.disponibil),
+    })),
+  };
+}

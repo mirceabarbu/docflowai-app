@@ -261,7 +261,7 @@ async function _saveBeneficiarIfNew(){
 }
 
 // ── Centralizare: navigare secțiuni ──────────────────────────────────────────
-let _lstState={type:'rfn',page:1,limit:20};
+let _lstState={type:'alop',page:1,limit:20};
 let _lstDebTimer=null;
 
 function showListSection(tab){
@@ -272,7 +272,7 @@ function showListSection(tab){
   if(_tEl)_tEl.textContent='Formulare oficiale';
   if(_sEl)_sEl.textContent='Document de Fundamentare, Ordonanțare de Plată, ALOP';
   try{history.replaceState({},'',location.pathname);}catch(_){}
-  if(tab)switchListTab(tab);
+  switchListTab(tab||'alop');
   loadList();
 }
 function _updateBackBtn(ft){
@@ -458,6 +458,10 @@ function _renderLstTable(rows,type){
     const cancelBtn=canDelete
       ?`<button class="df-action-btn danger sm" onclick="stergeDoc('${type}','${esc(row.id)}')" title="Șterge">🗑</button>`
       :'';
+    const isAdm=window.ST?.user?.role==='admin'||window.ST?.user?.role==='org_admin';
+    const auditBtn=isAdm
+      ?`<button class="df-action-btn teal sm" onclick="openFormAudit('${type}','${esc(row.id)}')" title="Audit document"><svg class="df-ico"><use href="/icons.svg?v=3.9.540#ico-clipboard"/></svg></button>`
+      :'';
     const safeId=esc(row.id);
     const nr=esc(row.nr||row.id.slice(0,8));
     const titlu=esc(row.titlu||'');
@@ -484,6 +488,7 @@ function _renderLstTable(rows,type){
       </td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">Deschide</button>
+        ${auditBtn}
         ${cancelBtn}
       </td>
     </tr>`;

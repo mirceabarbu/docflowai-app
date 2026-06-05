@@ -1771,6 +1771,27 @@ const MIGRATIONS = [
         ON formulare_ord(df_id) WHERE deleted_at IS NULL AND df_id IS NOT NULL;
     `
   }
+  ,{
+    id: '083_formulare_audit',
+    sql: `
+      -- v3.9.539: trail de audit per formular DF/ORD (timeline + export CSV/PDF)
+      CREATE TABLE IF NOT EXISTS formulare_audit (
+        id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+        org_id      INTEGER NOT NULL REFERENCES organizations(id),
+        form_type   TEXT    NOT NULL,   -- 'df' | 'ord'
+        form_id     UUID    NOT NULL,
+        actor_id    INTEGER REFERENCES users(id),
+        actor_email TEXT,
+        event_type  TEXT    NOT NULL,
+        from_status TEXT,
+        to_status   TEXT,
+        meta        JSONB   NOT NULL DEFAULT '{}',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_formulare_audit_form ON formulare_audit(form_type, form_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_formulare_audit_org  ON formulare_audit(org_id, created_at DESC);
+    `
+  }
 ];
 
 async function runMigrations(client) {

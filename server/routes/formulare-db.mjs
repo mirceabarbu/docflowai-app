@@ -19,6 +19,11 @@ import { logger } from '../middleware/logger.mjs';
 import { pool } from '../db/index.mjs';
 import { loadActorComp, canEditFormular, canViewFormular, canDestroyOnly } from '../services/authz-formular.mjs';
 import { computeDocCapabilities } from '../services/formular-capabilities.mjs';
+import { recordFormularAudit, listFormularAudit } from '../db/queries/formulare-audit.mjs';
+import { isAdminOrOrgAdmin } from './admin/_helpers.mjs';
+
+let PDFLibFormular = null;
+try { PDFLibFormular = await import('pdf-lib'); } catch (e) { logger.warn('⚠️ pdf-lib indisponibil pentru export audit formular PDF'); }
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -268,6 +273,8 @@ router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df
     `;
     const { rows } = await pool.query(q, allVals);
     logger.info({ id: rows[0].id, actor: actor.email }, 'formulare-df creat');
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: rows[0].id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'creat', toStatus: 'draft' });
     rows[0].capabilities = computeDocCapabilities(rows[0], actor, 'notafd');
     res.json({ ok: true, document: rows[0] });
   } catch (e) {
@@ -334,6 +341,12 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
       WHERE id=$${allVals.length - 1} AND org_id=$${allVals.length}
       RETURNING *
     `, allVals);
+    // Reopen completed → draft (P1 modifică după ce P2 a completat) = revizie
+    if (doc.status === 'completed' && extraSets.length) {
+      await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
+        actorId: actor.userId, actorEmail: actor.email, eventType: 'revizuit',
+        fromStatus: 'completed', toStatus: 'draft', meta: { version_nou: doc.version + 1 } });
+    }
     updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd');
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
@@ -384,6 +397,9 @@ router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
       { form_type: 'df', form_id: req.params.id });
 
     logger.info({ id: req.params.id, p2: p2.email, actor: actor.email }, 'formulare-df trimis la P2');
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
+      fromStatus: doc.status, toStatus: 'pending_p2', meta: { assigned_to } });
     updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd');
     res.json({ ok: true, document: updated[0], assigned_to: p2 });
   } catch (e) {
@@ -430,13 +446,16 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
     `, vals);
 
     // Actualizează statusul ALOP legat de acest DF: draft → angajare (non-fatal)
+    let linkedAlopId = null;
     try {
-      await pool.query(
+      const { rows: alopRows } = await pool.query(
         `UPDATE alop_instances
          SET df_completed_at=NOW(), status=CASE WHEN status='draft' THEN 'angajare' ELSE status END, updated_at=NOW(), updated_by=$3
-         WHERE df_id=$1 AND org_id=$2 AND status IN ('draft','angajare')`,
+         WHERE df_id=$1 AND org_id=$2 AND status IN ('draft','angajare')
+         RETURNING id`,
         [req.params.id, actor.orgId, actor.userId]
       );
+      if (alopRows.length) linkedAlopId = alopRows[0].id;
     } catch(e) {
       logger.warn({ err: e }, 'alop_instances update failed after P2 complete');
     }
@@ -447,6 +466,14 @@ router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
       { form_type: 'df', form_id: req.params.id });
 
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-df completat de P2');
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'completat',
+      fromStatus: doc.status, toStatus: 'completed' });
+    if (linkedAlopId) {
+      await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
+        actorId: actor.userId, actorEmail: actor.email, eventType: 'legat_alop',
+        meta: { alop_id: linkedAlopId } });
+    }
     updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd');
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
@@ -489,6 +516,9 @@ router.post('/api/formulare-df/:id/returneaza', _csrf, async (req, res) => {
       `${actor.nume || actor.email} a returnat DF "${doc.nr_unic_inreg || 'fără număr'}" cu observații`,
       { form_type: 'df', form_id: req.params.id });
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-df returnat de P2');
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'returnat',
+      fromStatus: doc.status, toStatus: 'returnat', meta: { motiv: motiv.trim() } });
     const outDf = upd[0];
     outDf.capabilities = computeDocCapabilities(outDf, actor, 'notafd');
     res.json({ ok: true, document: outDf });
@@ -554,6 +584,9 @@ router.post('/api/formulare-df/:id/link-flow', _csrf, async (req, res) => {
     } catch(e) {
       logger.warn({ err: e }, 'alop_instances df_flow_id update failed');
     }
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'transmis_flux',
+      fromStatus: doc.status, toStatus: 'transmis_flux', meta: { flow_id } });
     res.json({ ok: true });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df link-flow error');
@@ -707,6 +740,9 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
     );
 
     logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, isAnUrmator, actor: actor.email }, 'formulare-df revizie creata');
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'revizuit',
+      meta: { version_nou: nouaRevizie, revizie_id: nou.id } });
     res.json({ ok: true, df: { ...nou, total_val_prec: totalValPrec }, mesaj: `Revizia ${nouaRevizie} creată cu succes` });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df revizuieste error');
@@ -734,6 +770,8 @@ router.delete('/api/formulare-df/:id', _csrf, async (req, res) => {
       'UPDATE formulare_df SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1',
       [req.params.id, actor.userId]
     );
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'sters', fromStatus: rows[0].status });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'server_error' });
@@ -888,6 +926,8 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
       vals
     );
     logger.info({ id: rows[0].id, actor: actor.email }, 'formulare-ord creat');
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: rows[0].id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'creat', toStatus: 'draft' });
     rows[0].capabilities = computeDocCapabilities(rows[0], actor, 'ordnt');
     res.json({ ok: true, document: rows[0] });
   } catch (e) {
@@ -965,6 +1005,12 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
       WHERE id=$${allVals.length - 1} AND org_id=$${allVals.length}
       RETURNING *
     `, allVals);
+    // Reopen completed → draft (P1 modifică după ce P2 a completat) = revizie
+    if (doc.status === 'completed' && extraSets.length) {
+      await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
+        actorId: actor.userId, actorEmail: actor.email, eventType: 'revizuit',
+        fromStatus: 'completed', toStatus: 'draft', meta: { version_nou: doc.version + 1 } });
+    }
     updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
@@ -1014,6 +1060,9 @@ router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
       { form_type: 'ord', form_id: req.params.id });
 
     logger.info({ id: req.params.id, p2: p2.email, actor: actor.email }, 'formulare-ord trimis la P2');
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
+      fromStatus: doc.status, toStatus: 'pending_p2', meta: { assigned_to } });
     updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
     res.json({ ok: true, document: updated[0], assigned_to: p2 });
   } catch (e) {
@@ -1093,6 +1142,9 @@ router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
       { form_type: 'ord', form_id: req.params.id });
 
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-ord completat de P2');
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'completat',
+      fromStatus: doc.status, toStatus: 'completed' });
     updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
@@ -1135,6 +1187,9 @@ router.post('/api/formulare-ord/:id/returneaza', _csrf, async (req, res) => {
       `${actor.nume || actor.email} a returnat ORD "${doc.nr_ordonant_pl || 'fără număr'}" cu observații`,
       { form_type: 'ord', form_id: req.params.id });
     logger.info({ id: req.params.id, actor: actor.email }, 'formulare-ord returnat de P2');
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'returnat',
+      fromStatus: doc.status, toStatus: 'returnat', meta: { motiv: motiv.trim() } });
     const outOrd = upd[0];
     outOrd.capabilities = computeDocCapabilities(outOrd, actor, 'ordnt');
     res.json({ ok: true, document: outOrd });
@@ -1200,6 +1255,9 @@ router.post('/api/formulare-ord/:id/link-flow', _csrf, async (req, res) => {
     } catch (e) {
       logger.warn({ err: e }, 'alop_instances ord_flow_id update failed');
     }
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'transmis_flux',
+      fromStatus: doc.status, meta: { flow_id } });
     res.json({ ok: true });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord link-flow error');
@@ -1226,6 +1284,8 @@ router.delete('/api/formulare-ord/:id', _csrf, async (req, res) => {
     await pool.query(
       'UPDATE formulare_ord SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1', [req.params.id, actor.userId]
     );
+    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'sters', fromStatus: rows[0].status });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'server_error' });
@@ -1839,6 +1899,8 @@ router.post('/api/formulare-df/:id/sterge', _csrf, async (req, res) => {
       `UPDATE formulare_df SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1`,
       [id, actor.userId]
     );
+    await recordFormularAudit({ orgId: doc.org_id, formType: 'df', formId: id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'sters', fromStatus: doc.status });
 
     // Relink ALOP (mirror după signing.mjs refuse): R0 → eliberează; R1+ → restore parent aprobat
     try {
@@ -1908,6 +1970,8 @@ router.post('/api/formulare-ord/:id/sterge', _csrf, async (req, res) => {
       `UPDATE formulare_ord SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1`,
       [id, actor.userId]
     );
+    await recordFormularAudit({ orgId: doc.org_id, formType: 'ord', formId: id,
+      actorId: actor.userId, actorEmail: actor.email, eventType: 'sters', fromStatus: doc.status });
 
     // Relink ALOP: eliberează ord_id → butonul "Completează Ordonanțare" reapare
     try {
@@ -1925,6 +1989,170 @@ router.post('/api/formulare-ord/:id/sterge', _csrf, async (req, res) => {
   } catch (e) {
     logger.error({ err: e }, 'sterge ord error');
     res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT per formular — citire/export (admin / org_admin)
+// GET /api/formulare-audit/:type/:id?format=json|csv|pdf
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Etichete RO pentru event_type (folosite în timeline, CSV, PDF)
+const FORMULAR_AUDIT_LABELS = {
+  creat:         'CREAT',
+  trimis_p2:     'TRIMIS LA RESPONSABIL CAB',
+  completat:     'COMPLETAT DE RESPONSABIL CAB',
+  legat_alop:    'LEGAT DE ALOP',
+  returnat:      'RETURNAT',
+  transmis_flux: 'TRANSMIS ÎN FLUX',
+  revizuit:      'REVIZUIT',
+  sters:         'ȘTERS',
+};
+
+router.get('/api/formulare-audit/:type/:id', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+
+  const type = String(req.params.type || '').toLowerCase();
+  if (type !== 'df' && type !== 'ord') return res.status(400).json({ error: 'invalid_type' });
+  const id = req.params.id;
+  const format = String(req.query.format || 'json').toLowerCase();
+
+  try {
+    const table = type === 'ord' ? 'formulare_ord' : 'formulare_df';
+    const nrCol = type === 'ord' ? 'nr_ordonant_pl' : 'nr_unic_inreg';
+    const { rows: docRows } = await pool.query(
+      `SELECT d.id, d.org_id, d.${nrCol} AS nr, d.den_inst_pb,
+              COALESCE(NULLIF(TRIM(u.compartiment), ''), NULLIF(TRIM(d.compartiment_specialitate), '')) AS compartiment,
+              d.status, d.created_at, d.updated_at, d.created_by,
+              u.nume AS init_name, u.email AS init_email
+         FROM ${table} d
+         LEFT JOIN users u ON u.id = d.created_by
+        WHERE d.id = $1`,
+      [id]
+    );
+    if (!docRows.length) return res.status(404).json({ error: 'not_found' });
+    const doc = docRows[0];
+
+    // Scoping org_admin: vede doar org-ul propriu
+    if (actor.role === 'org_admin' && doc.org_id !== actor.orgId)
+      return res.status(403).json({ error: 'forbidden' });
+
+    const events = await listFormularAudit(type, id);
+
+    const header = {
+      type, id: doc.id, nr: doc.nr || null,
+      den_inst_pb: doc.den_inst_pb || null,
+      compartiment: doc.compartiment || null,
+      status: doc.status, created_at: doc.created_at, updated_at: doc.updated_at,
+      initiator: doc.init_name || doc.init_email || null,
+      initiator_email: doc.init_email || null,
+    };
+
+    const fmtDate = iso => iso ? new Date(iso).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—';
+    const evLabel = t => FORMULAR_AUDIT_LABELS[t] || (t || '').replace(/_/g, ' ').toUpperCase();
+    const typeLabel = type === 'ord' ? 'Ordonanțare de Plată' : 'Document de Fundamentare';
+
+    // ── CSV ──────────────────────────────────────────────────────────────────
+    if (format === 'csv') {
+      const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
+      const lines = ['timestamp,event,actor,from,to,meta'];
+      for (const e of events) {
+        lines.push([
+          q(fmtDate(e.created_at)), q(evLabel(e.event_type)), q(e.actor_name || e.actor_email || ''),
+          q(e.from_status || ''), q(e.to_status || ''),
+          q(e.meta && Object.keys(e.meta).length ? JSON.stringify(e.meta) : ''),
+        ].join(','));
+      }
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="audit_${type}_${id}.csv"`);
+      return res.send('﻿' + lines.join('\n'));
+    }
+
+    // ── PDF (mirror al patternului din admin/flows.mjs) ────────────────────────
+    if (format === 'pdf') {
+      if (!PDFLibFormular) return res.status(503).json({ error: 'pdf_lib_not_available' });
+      const { PDFDocument, rgb, StandardFonts } = PDFLibFormular;
+      const diacr = {'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ş':'s','ţ':'t','Ş':'S','Ţ':'T'};
+      const ro = t => String(t || '').split('').map(ch => diacr[ch] || ch).join('').replace(/[^\x00-\xFF]/g, '');
+      const pdfDoc = await PDFDocument.create();
+      const fontB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const fontR = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const PAGE_W = 595, PAGE_H = 842, MARGIN = 50;
+      let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+      let y = PAGE_H - MARGIN;
+      const SECTION_GAP = 10;
+      const newPage = () => { page = pdfDoc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN; };
+      const ensureSpace = needed => { if (y < MARGIN + needed) newPage(); };
+      const drawText = (text, x, size, font, color) => {
+        ensureSpace(size + 6);
+        page.drawText(ro(text), { x, y, size, font: font || fontR, color: color || rgb(0.2,0.2,0.2), maxWidth: PAGE_W - x - MARGIN });
+        y -= size + 6;
+      };
+      const drawLine = () => {
+        ensureSpace(8);
+        page.drawLine({ start:{x:MARGIN,y:y+4}, end:{x:PAGE_W-MARGIN,y:y+4}, thickness:0.5, color:rgb(0.75,0.75,0.75) });
+        y -= 8;
+      };
+      // Header albastru
+      page.drawRectangle({ x:0, y:PAGE_H-70, width:PAGE_W, height:70, color:rgb(0.1,0.1,0.25) });
+      page.drawText('AUDIT FORMULAR', { x:MARGIN, y:PAGE_H-35, size:20, font:fontB, color:rgb(1,1,1) });
+      page.drawText(ro(`DocFlowAI — ${typeLabel}`), { x:MARGIN, y:PAGE_H-52, size:9, font:fontR, color:rgb(0.7,0.8,1) });
+      page.drawText(ro(`Generat: ${fmtDate(new Date().toISOString())}`), { x:PAGE_W-200, y:PAGE_H-35, size:9, font:fontR, color:rgb(0.7,0.8,1) });
+      y = PAGE_H - 85;
+      // Metadate document
+      drawText('INFORMATII DOCUMENT', MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
+      drawLine();
+      const infoRows = [
+        ['Tip:', typeLabel],
+        ['Numar:', header.nr || '—'],
+        ['Institutie:', header.den_inst_pb || '—'],
+        ['Compartiment:', header.compartiment || '—'],
+        ['Initiator:', header.initiator ? `${header.initiator}${header.initiator_email ? ' <' + header.initiator_email + '>' : ''}` : '—'],
+        ['Status:', header.status || '—'],
+        ['Creat:', fmtDate(header.created_at)],
+        ['Actualizat:', fmtDate(header.updated_at)],
+      ];
+      for (const [lbl, val] of infoRows) {
+        ensureSpace(18);
+        page.drawText(ro(lbl), { x:MARGIN, y, size:9, font:fontB, color:rgb(0.3,0.3,0.3) });
+        page.drawText(ro(String(val || '—')), { x:MARGIN+100, y, size:9, font:fontR, color:rgb(0.15,0.15,0.15), maxWidth:PAGE_W-MARGIN-110 });
+        y -= 16;
+      }
+      y -= SECTION_GAP;
+      // Tabel evenimente (cronologic: cele mai vechi întâi în PDF)
+      drawText(`JURNAL EVENIMENTE (${events.length})`, MARGIN, 11, fontB, rgb(0.15,0.15,0.6));
+      drawLine();
+      const sorted = [...events].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+      const EVENT_FONT_SIZE = 8;
+      const COL_TS = MARGIN, COL_TYPE = MARGIN + 120, COL_DETAIL = MARGIN + 120 + 175;
+      const DETAIL_MAX_W = PAGE_W - COL_DETAIL - MARGIN;
+      for (const e of sorted) {
+        ensureSpace(16);
+        const transition = (e.from_status || e.to_status)
+          ? `${e.from_status || '—'} -> ${e.to_status || '—'}` : '';
+        const metaStr = e.meta && Object.keys(e.meta).length
+          ? Object.entries(e.meta).map(([k, v]) => `${k}:${v}`).join(' ') : '';
+        const detail = [e.actor_name ? `de:${e.actor_name}` : '', transition, metaStr].filter(Boolean).join('  ');
+        page.drawText(ro(`[${fmtDate(e.created_at)}]`), { x:COL_TS, y, size:EVENT_FONT_SIZE, font:fontR, color:rgb(0.5,0.5,0.5) });
+        page.drawText(ro(evLabel(e.event_type)), { x:COL_TYPE, y, size:EVENT_FONT_SIZE, font:fontB, color:rgb(0.2,0.2,0.5) });
+        if (detail) page.drawText(ro(detail), { x:COL_DETAIL, y, size:EVENT_FONT_SIZE, font:fontR, color:rgb(0.4,0.4,0.4), maxWidth:DETAIL_MAX_W });
+        y -= 14;
+      }
+      if (!sorted.length) drawText('(niciun eveniment inregistrat)', MARGIN, 8, fontR, rgb(0.5,0.5,0.5));
+
+      const bytes = await pdfDoc.save();
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="audit_${type}_${id}.pdf"`);
+      return res.send(Buffer.from(bytes));
+    }
+
+    // ── JSON (default) ─────────────────────────────────────────────────────────
+    return res.json({ document: header, events });
+  } catch (e) {
+    logger.error({ err: e, type, id }, 'formulare-audit export error');
+    return res.status(500).json({ error: 'server_error' });
   }
 });
 
