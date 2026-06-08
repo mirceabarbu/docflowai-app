@@ -3,7 +3,7 @@
  *
  * Lifecycle DF/ORD consolidat, parametrizat pe `formType` ('df' | 'ord').
  *
- * Rutele din server/routes/formulare-db.mjs sunt wrappers subțiri peste aceste
+ * Rutele din server/routes/formulare/ sunt wrappers subțiri peste aceste
  * funcții: `const r = await submitFormular(...); res.status(r.status).json(r.body)`.
  * Fiecare funcție întoarce `{ status, body }` — fără cuplare la `res`, ușor de testat.
  *

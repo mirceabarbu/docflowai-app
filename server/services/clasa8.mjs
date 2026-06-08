@@ -10,7 +10,7 @@
  *
  * „Aprobat" = JOIN flows f ON f.id = doc.flow_id
  *           WHERE f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true
- * (Pattern canonic, vezi server/routes/formulare-db.mjs „DF aprobate".)
+ * (Pattern canonic, vezi server/routes/formulare/df.mjs „DF aprobate".)
  *
  * Read-only. Nu scrie nimic în BD.
  *

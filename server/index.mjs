@@ -518,7 +518,7 @@ import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
 import { formulareRouter } from './routes/formulare.mjs';
-import { formulareDbRouter } from './routes/formulare-db.mjs';
+import { formulareDbRouter } from './routes/formulare/index.mjs';
 import alopRouter from './routes/alop.mjs';
 import convertRouter from './routes/convert.mjs';
 import opmeRouter from './routes/opme.mjs';

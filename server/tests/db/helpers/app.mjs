@@ -17,7 +17,7 @@ vi.mock('../../../middleware/logger.mjs', () => ({
   redactUrl: (u) => u,
 }));
 
-const { formulareDbRouter } = await import('../../../routes/formulare-db.mjs');
+const { formulareDbRouter } = await import('../../../routes/formulare/index.mjs');
 const alopRouter = (await import('../../../routes/alop.mjs')).default;
 
 export function buildApp() {

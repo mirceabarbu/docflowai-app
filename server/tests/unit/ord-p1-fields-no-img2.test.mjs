@@ -11,7 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '../../..');
 
 // Refactor Etapa 1 (v3.9.544): ORD_P1_FIELDS + comentariul de deprecare s-au mutat
-// din server/routes/formulare-db.mjs în server/services/formular-shared.mjs.
+// din server/routes/formulare-db.mjs (acum routes/formulare/) în server/services/formular-shared.mjs.
 const FIELDS_SRC = 'server/services/formular-shared.mjs';
 
 describe('ORD_P1_FIELDS: img2 eliminat (v3.9.499)', () => {
