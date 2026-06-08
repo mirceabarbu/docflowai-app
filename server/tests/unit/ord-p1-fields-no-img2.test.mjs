@@ -10,9 +10,13 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '../../..');
 
+// Refactor Etapa 1 (v3.9.544): ORD_P1_FIELDS + comentariul de deprecare s-au mutat
+// din server/routes/formulare-db.mjs în server/services/formular-shared.mjs.
+const FIELDS_SRC = 'server/services/formular-shared.mjs';
+
 describe('ORD_P1_FIELDS: img2 eliminat (v3.9.499)', () => {
   it('definiția ORD_P1_FIELDS nu conține literalul "img2"', () => {
-    const src = readFileSync(path.join(REPO, 'server/routes/formulare-db.mjs'), 'utf8');
+    const src = readFileSync(path.join(REPO, FIELDS_SRC), 'utf8');
     const m = src.match(/const ORD_P1_FIELDS\s*=\s*\[([\s\S]*?)\];/);
     expect(m, 'ORD_P1_FIELDS nu e găsit').toBeTruthy();
     const arrayBody = m[1];
@@ -21,7 +25,7 @@ describe('ORD_P1_FIELDS: img2 eliminat (v3.9.499)', () => {
   });
 
   it('comentariul de deprecare e prezent', () => {
-    const src = readFileSync(path.join(REPO, 'server/routes/formulare-db.mjs'), 'utf8');
+    const src = readFileSync(path.join(REPO, FIELDS_SRC), 'utf8');
     expect(src).toMatch(/v3\.9\.499.*img2 ELIMINAT/);
   });
 

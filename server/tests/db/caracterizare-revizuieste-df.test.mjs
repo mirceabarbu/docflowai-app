@@ -83,11 +83,19 @@ d('POST /api/formulare-df/:id/revizuieste (caracterizare)', () => {
     expect(res.body.error).toBe('DF negăsit');
   });
 
-  // FINDING (preexistent, NU se repară în Etapa 0): formulare_df.id e UUID, iar un id
-  // malformat (ex. "999999") face SELECT-ul să arunce `invalid input syntax for type uuid`
-  // → handler-ul întoarce 500 (server_error) în loc de 404. Edge-case ne-fatal pe UI
-  // (frontend-ul trimite mereu UUID-uri reale). De curățat la consolidare (validare id / cast guard).
-  it.todo('FINDING: revizuieste cu id malformat (non-UUID) → 500 în loc de 404 (de remediat la consolidare)');
+  // FINDING #2 reparat în Etapa 1 (v3.9.544): formulare_df.id e UUID; un id malformat
+  // (ex. "999999") arunca anterior `invalid input syntax for type uuid` în SELECT → 500.
+  // Guard-ul `isUuid(id)` din handler îl tratează acum ca document inexistent (404 not_found),
+  // consistent cu restul rutelor. (todo → activ; singura aserțiune Etapa 0 atinsă.)
+  it('revizuieste cu id malformat (non-UUID) → 404 not_found (fix Etapa 1)', async () => {
+    const res = await request(app).post(`/api/formulare-df/999999/revizuieste`).set('Cookie', p1()).send({});
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('not_found');
+    // aliasul /revizie respectă același guard
+    const res2 = await request(app).post(`/api/formulare-df/not-a-uuid/revizie`).set('Cookie', p1()).send({});
+    expect(res2.status).toBe(404);
+    expect(res2.body.error).toBe('not_found');
+  });
 
   // ── guard istoric liniar: doar revizia curentă poate fi revizuită ────────────────
   it('DF R0 când există deja R1 (aceeași nr_unic) → 400 „revizia curentă"', async () => {

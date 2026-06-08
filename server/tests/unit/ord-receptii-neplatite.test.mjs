@@ -22,11 +22,13 @@ describe('ORD col.5 (Recepții neplătite) ≥ 0 — v3.9.516', () => {
     expect(src).toMatch(/c5\s*<\s*-?\s*0\.001/);
   });
 
-  it('formulare-db.mjs: complete ORD respinge rânduri cu c5 < 0', () => {
-    const src = readFileSync(path.join(REPO, 'server/routes/formulare-db.mjs'), 'utf8');
+  // Refactor Etapa 1 (v3.9.544): validarea col.5 s-a mutat din formulare-db.mjs în
+  // serviciul partajat formular-shared.mjs (helper validateOrdCol5, întoarce { status, body }).
+  it('formular-shared.mjs: complete ORD respinge rânduri cu c5 < 0', () => {
+    const src = readFileSync(path.join(REPO, 'server/services/formular-shared.mjs'), 'utf8');
     expect(src).toMatch(/receptii_neplatite_negative/);
     expect(src).toMatch(/Coloana 5 .*Recepții neplătite/);
-    // Status 422 pentru validare semantică
-    expect(src).toMatch(/status\(422\)[\s\S]{0,200}receptii_neplatite_negative/);
+    // Status 422 pentru validare semantică (acum ca { status: 422 } în contractul service-ului)
+    expect(src).toMatch(/status:\s*422[\s\S]{0,200}receptii_neplatite_negative/);
   });
 });

@@ -21,6 +21,11 @@ import { loadActorComp, canEditFormular, canViewFormular, canDestroyOnly } from 
 import { computeDocCapabilities } from '../services/formular-capabilities.mjs';
 import { recordFormularAudit, listFormularAudit } from '../db/queries/formulare-audit.mjs';
 import { isAdminOrOrgAdmin } from './admin/_helpers.mjs';
+import {
+  pick, buildUpdate,
+  DF_P1_FIELDS, DF_P2_FIELDS, ORD_P1_FIELDS, ORD_P2_FIELDS,
+  submitFormular, completeFormular, returnFormular, linkFlowFormular, stergeFormular,
+} from '../services/formular-shared.mjs';
 
 let PDFLibFormular = null;
 try { PDFLibFormular = await import('pdf-lib'); } catch (e) { logger.warn('⚠️ pdf-lib indisponibil pentru export audit formular PDF'); }
@@ -35,65 +40,13 @@ function requireDb(res) {
   return false;
 }
 
-/** Trimite notificare in-app corect (user_email + data JSONB) */
-async function sendNotif(userId, type, title, message, data) {
-  try {
-    const { rows } = await pool.query('SELECT email FROM users WHERE id=$1', [userId]);
-    if (!rows.length) return;
-    await pool.query(
-      `INSERT INTO notifications (user_email, type, title, message, data)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [rows[0].email.toLowerCase(), type, title, message, JSON.stringify(data)]
-    );
-  } catch (_) { /* non-fatal */ }
-}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(s) { return typeof s === 'string' && UUID_RE.test(s); }
 
-/** Câmpuri DF sectiunea A (P1) */
-const DF_P1_FIELDS = [
-  'cif','den_inst_pb','subtitlu_df','nr_unic_inreg','revizuirea','data_revizuirii',
-  'compartiment_specialitate','obiect_fd_reviz_scurt','obiect_fd_reviz_lung',
-  'ckbx_oblig_tert',
-  'ckbx_stab_tin_cont','ckbx_ramane_suma','ramane_suma','rows_val',
-  'ckbx_fara_ang_emis_ancrt','ckbx_cu_ang_emis_ancrt','ckbx_sting_ang_in_ancrt',
-  'ckbx_fara_plati_ang_in_ancrt','ckbx_cu_plati_ang_in_mmani',
-  'ckbx_ang_leg_emise_ct_an_urm','rows_plati',
-];
-
-/** Câmpuri DF sectiunea B (P2) */
-const DF_P2_FIELDS = [
-  'ckbx_secta_inreg_ctrl_ang','ckbx_fara_inreg_ctrl_ang','sum_fara_inreg_ctrl_crdbug',
-  'ckbx_interzis_emit_ang','ckbx_interzis_intrucat','intrucat','rows_ctrl',
-];
-
-// v3.9.499: img2 ELIMINAT — captura 2 migrată la formulare_capturi(slot=2)
-// via endpoint dedicat /api/formulare-capturi/ord/:id?slot=2. Coloana img2
-// rămâne în DB pentru fallback citire ord-uri vechi (vezi populateOrd).
-const ORD_P1_FIELDS = [
-  'cif','den_inst_pb','nr_ordonant_pl','data_ordont_pl',
-  'nr_unic_inreg','beneficiar','documente_justificative',
-  'iban_beneficiar','cif_beneficiar','banca_beneficiar',
-  'inf_pv_plata','inf_pv_plata1','rows','compartiment_specialitate',
-];
-
-/** Câmpuri ORD P2 (actualizare rânduri cu receptii/plati/receptii_neplatite) */
-const ORD_P2_FIELDS = ['rows'];
-
-function pick(obj, fields) {
-  const out = {};
-  for (const f of fields) if (f in obj) out[f] = obj[f];
-  return out;
-}
-
-function buildUpdate(data, fields, startIdx = 1) {
-  const sets = [];
-  const vals = [];
-  for (const f of fields) {
-    if (!(f in data)) continue;
-    vals.push(typeof data[f] === 'object' ? JSON.stringify(data[f]) : data[f]);
-    sets.push(`${f}=$${startIdx + vals.length - 1}`);
-  }
-  return { sets, vals };
-}
+// sendNotif, pick, buildUpdate, DF_P1_FIELDS/DF_P2_FIELDS/ORD_P1_FIELDS/ORD_P2_FIELDS
+// și lifecycle-ul DF/ORD (submit/complete/returneaza/link-flow/sterge) trăiesc acum în
+// ../services/formular-shared.mjs (parametrizat pe formType). Rutele de mai jos sunt
+// wrappers subțiri peste service; create/PUT/capturi rămân aici și reutilizează helperele.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DOCUMENT DE FUNDAMENTARE (DF)
@@ -359,239 +312,32 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
 router.post('/api/formulare-df/:id/submit', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { assigned_to } = req.body || {};
-    if (!assigned_to) return res.status(400).json({ error: 'assigned_to obligatoriu' });
-
-    const { rows: existing } = await pool.query(
-      'SELECT * FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
-    if (!existing.length) return res.status(404).json({ error: 'not_found' });
-    const doc = existing[0];
-    {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
-      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
-    }
-    if (!['draft','returnat','de_revizuit'].includes(doc.status))
-      return res.status(409).json({ error: 'document_not_draft', status: doc.status });
-
-    // Verifică că P2 e din același org
-    const { rows: p2rows } = await pool.query(
-      'SELECT id, email, nume FROM users WHERE id=$1 AND org_id=$2', [assigned_to, actor.orgId]
-    );
-    if (!p2rows.length) return res.status(400).json({ error: 'utilizator_invalid' });
-    const p2 = p2rows[0];
-
-    const { rows: updated } = await pool.query(`
-      UPDATE formulare_df
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
-      WHERE id=$2 AND org_id=$3
-      RETURNING *
-    `, [assigned_to, req.params.id, actor.orgId, actor.userId]);
-
-    await sendNotif(assigned_to, 'formulare_df_p2',
-      'Document de Fundamentare — completare solicitată',
-      `${actor.nume || actor.email} vă solicită completarea Secțiunii B din DF "${doc.nr_unic_inreg || 'fără număr'}"`,
-      { form_type: 'df', form_id: req.params.id });
-
-    logger.info({ id: req.params.id, p2: p2.email, actor: actor.email }, 'formulare-df trimis la P2');
-    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
-      fromStatus: doc.status, toStatus: 'pending_p2', meta: { assigned_to } });
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd');
-    res.json({ ok: true, document: updated[0], assigned_to: p2 });
-  } catch (e) {
-    logger.error({ err: e }, 'formulare-df submit error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await submitFormular({ type: 'df', id: req.params.id, actor, body: req.body });
+  res.status(r.status).json(r.body);
 });
 
 // POST /api/formulare-df/:id/complete — P2 finalizează sectiunea B
 router.post('/api/formulare-df/:id/complete', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rows: existing } = await pool.query(
-      'SELECT * FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
-    if (!existing.length) return res.status(404).json({ error: 'not_found' });
-    const doc = existing[0];
-    {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
-      // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
-      // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
-      // creator ȘI assigned_to (helper-ul prioritizează rolul 'creator').
-      const isP2Side = authz.allowed
-        && (['admin','assigned','p2_comp'].includes(authz.role) || doc.assigned_to === actor.userId);
-      if (!isP2Side) return res.status(403).json({ error: 'forbidden' });
-    }
-    if (doc.status !== 'pending_p2')
-      return res.status(409).json({ error: 'status_invalid', status: doc.status });
-
-    const data = pick(req.body || {}, DF_P2_FIELDS);
-    const { sets, vals } = buildUpdate(data, DF_P2_FIELDS, 1);
-    sets.push(`status='completed'`, `completed_at=NOW()`, `updated_at=NOW()`);
-    sets.push(`updated_by=$${vals.length + 1}`);
-    vals.push(actor.userId);
-    vals.push(req.params.id, actor.orgId);
-
-    const { rows: updated } = await pool.query(`
-      UPDATE formulare_df SET ${sets.join(', ')}
-      WHERE id=$${vals.length - 1} AND org_id=$${vals.length}
-      RETURNING *
-    `, vals);
-
-    // Actualizează statusul ALOP legat de acest DF: draft → angajare (non-fatal)
-    let linkedAlopId = null;
-    try {
-      const { rows: alopRows } = await pool.query(
-        `UPDATE alop_instances
-         SET df_completed_at=NOW(), status=CASE WHEN status='draft' THEN 'angajare' ELSE status END, updated_at=NOW(), updated_by=$3
-         WHERE df_id=$1 AND org_id=$2 AND status IN ('draft','angajare')
-         RETURNING id`,
-        [req.params.id, actor.orgId, actor.userId]
-      );
-      if (alopRows.length) linkedAlopId = alopRows[0].id;
-    } catch(e) {
-      logger.warn({ err: e }, 'alop_instances update failed after P2 complete');
-    }
-
-    await sendNotif(doc.created_by, 'formulare_df_completed',
-      'Document de Fundamentare — completat de Responsabil CAB',
-      `${actor.nume || actor.email} a completat Secțiunea B din DF "${doc.nr_unic_inreg || 'fără număr'}"`,
-      { form_type: 'df', form_id: req.params.id });
-
-    logger.info({ id: req.params.id, actor: actor.email }, 'formulare-df completat de P2');
-    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'completat',
-      fromStatus: doc.status, toStatus: 'completed' });
-    if (linkedAlopId) {
-      await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
-        actorId: actor.userId, actorEmail: actor.email, eventType: 'legat_alop',
-        meta: { alop_id: linkedAlopId } });
-    }
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd');
-    res.json({ ok: true, document: updated[0] });
-  } catch (e) {
-    logger.error({ err: e }, 'formulare-df complete error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await completeFormular({ type: 'df', id: req.params.id, actor, body: req.body });
+  res.status(r.status).json(r.body);
 });
 
 // POST /api/formulare-df/:id/returneaza — P2 returnează documentul ca neconform
 router.post('/api/formulare-df/:id/returneaza', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { motiv } = req.body || {};
-    if (!motiv || !motiv.trim()) return res.status(400).json({ error: 'motiv_obligatoriu' });
-    const { rows } = await pool.query(
-      'SELECT * FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    const doc = rows[0];
-    {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
-      // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
-      // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
-      // creator ȘI assigned_to (helper-ul prioritizează rolul 'creator').
-      const isP2Side = authz.allowed
-        && (['admin','assigned','p2_comp'].includes(authz.role) || doc.assigned_to === actor.userId);
-      if (!isP2Side) return res.status(403).json({ error: 'forbidden' });
-    }
-    if (doc.status !== 'pending_p2')
-      return res.status(409).json({ error: 'status_invalid', status: doc.status });
-    const { rows: upd } = await pool.query(
-      `UPDATE formulare_df SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2 RETURNING *`,
-      [motiv.trim(), req.params.id, actor.userId]
-    );
-    await sendNotif(doc.created_by, 'formulare_df_returnat',
-      'Document de Fundamentare — returnat ca neconform',
-      `${actor.nume || actor.email} a returnat DF "${doc.nr_unic_inreg || 'fără număr'}" cu observații`,
-      { form_type: 'df', form_id: req.params.id });
-    logger.info({ id: req.params.id, actor: actor.email }, 'formulare-df returnat de P2');
-    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'returnat',
-      fromStatus: doc.status, toStatus: 'returnat', meta: { motiv: motiv.trim() } });
-    const outDf = upd[0];
-    outDf.capabilities = computeDocCapabilities(outDf, actor, 'notafd');
-    res.json({ ok: true, document: outDf });
-  } catch (e) {
-    logger.error({ err: e }, 'formulare-df returneaza error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await returnFormular({ type: 'df', id: req.params.id, actor, body: req.body });
+  res.status(r.status).json(r.body);
 });
 
 // POST /api/formulare-df/:id/link-flow — P1 leagă documentul de fluxul de semnare
 router.post('/api/formulare-df/:id/link-flow', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { flow_id } = req.body || {};
-    if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
-
-    const { rows: existing } = await pool.query(
-      'SELECT * FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
-    if (!existing.length) return res.status(404).json({ error: 'not_found' });
-    const doc = existing[0];
-    {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
-      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
-    }
-    if (doc.status !== 'completed')
-      return res.status(409).json({ error: 'document_not_completed' });
-
-    // Guard cauză-rădăcină: nu permite relansarea pe un AL DOILEA flux cât timp
-    // DF-ul are deja un flux de semnare NON-terminal (nici completed, nici cancelled).
-    // Altfel: formulare_df.flow_id urmărește fluxul nou, dar alop_instances.df_flow_id
-    // rămâne agățat de fluxul vechi (zombi) → auto-tranziția ALOP nu se mai declanșează.
-    if (doc.flow_id) {
-      const { rows: activeFlow } = await pool.query(
-        `SELECT 1 FROM flows
-          WHERE id = $1
-            AND (data->>'completed') IS DISTINCT FROM 'true'
-            AND (data->>'status') <> 'cancelled'`,
-        [doc.flow_id]
-      );
-      if (activeFlow.length) {
-        return res.status(409).json({
-          error: 'df_already_on_active_flow',
-          message: 'Documentul este deja pe un flux de semnare activ. Anulați fluxul curent înainte de a-l retrimite.'
-        });
-      }
-    }
-
-    await pool.query(
-      'UPDATE formulare_df SET flow_id=$1, status=\'transmis_flux\', updated_at=NOW(), updated_by=$4 WHERE id=$2 AND org_id=$3',
-      [flow_id, req.params.id, actor.orgId, actor.userId]
-    );
-    // Actualizează df_flow_id în ALOP (non-fatal)
-    try {
-      await pool.query(
-        `UPDATE alop_instances SET df_flow_id=$1, updated_at=NOW(), updated_by=$4
-         WHERE df_id=$2 AND org_id=$3 AND cancelled_at IS NULL`,
-        [flow_id, req.params.id, actor.orgId, actor.userId]
-      );
-    } catch(e) {
-      logger.warn({ err: e }, 'alop_instances df_flow_id update failed');
-    }
-    await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'transmis_flux',
-      fromStatus: doc.status, toStatus: 'transmis_flux', meta: { flow_id } });
-    res.json({ ok: true });
-  } catch (e) {
-    logger.error({ err: e }, 'formulare-df link-flow error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await linkFlowFormular({ type: 'df', id: req.params.id, actor, body: req.body });
+  res.status(r.status).json(r.body);
 });
 
 // GET /api/formulare-df/:id/revizii — toate reviziile aceluiași document
@@ -623,6 +369,9 @@ router.get('/api/formulare-df/:id/revizii', async (req, res) => {
 router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie'], _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
+  // formulare_df.id e UUID — un id malformat ar arunca „invalid input syntax for type uuid"
+  // în SELECT (→ 500). Tratăm ca document inexistent (404), consistent cu restul rutelor.
+  if (!isUuid(req.params.id)) return res.status(404).json({ error: 'not_found' });
   try {
     const { rows: origRows } = await pool.query(`
       SELECT fd.*,
@@ -1023,246 +772,32 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
 router.post('/api/formulare-ord/:id/submit', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { assigned_to } = req.body || {};
-    if (!assigned_to) return res.status(400).json({ error: 'assigned_to obligatoriu' });
-
-    const { rows: existing } = await pool.query(
-      'SELECT * FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
-    if (!existing.length) return res.status(404).json({ error: 'not_found' });
-    const doc = existing[0];
-    {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
-      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
-    }
-    if (!['draft','returnat'].includes(doc.status))
-      return res.status(409).json({ error: 'document_not_draft', status: doc.status });
-
-    const { rows: p2rows } = await pool.query(
-      'SELECT id, email, nume FROM users WHERE id=$1 AND org_id=$2', [assigned_to, actor.orgId]
-    );
-    if (!p2rows.length) return res.status(400).json({ error: 'utilizator_invalid' });
-    const p2 = p2rows[0];
-
-    const { rows: updated } = await pool.query(`
-      UPDATE formulare_ord
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
-      WHERE id=$2 AND org_id=$3
-      RETURNING *
-    `, [assigned_to, req.params.id, actor.orgId, actor.userId]);
-
-    await sendNotif(assigned_to, 'formulare_ord_p2',
-      'Ordonanțare de Plată — completare solicitată',
-      `${actor.nume || actor.email} vă solicită completarea ORD "${doc.nr_ordonant_pl || 'fără număr'}"`,
-      { form_type: 'ord', form_id: req.params.id });
-
-    logger.info({ id: req.params.id, p2: p2.email, actor: actor.email }, 'formulare-ord trimis la P2');
-    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
-      fromStatus: doc.status, toStatus: 'pending_p2', meta: { assigned_to } });
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
-    res.json({ ok: true, document: updated[0], assigned_to: p2 });
-  } catch (e) {
-    logger.error({ err: e }, 'formulare-ord submit error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await submitFormular({ type: 'ord', id: req.params.id, actor, body: req.body });
+  res.status(r.status).json(r.body);
 });
 
 // POST /api/formulare-ord/:id/complete — P2 finalizează
 router.post('/api/formulare-ord/:id/complete', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rows: existing } = await pool.query(
-      'SELECT * FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
-    if (!existing.length) return res.status(404).json({ error: 'not_found' });
-    const doc = existing[0];
-    {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
-      // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
-      // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
-      // creator ȘI assigned_to (helper-ul prioritizează rolul 'creator').
-      const isP2Side = authz.allowed
-        && (['admin','assigned','p2_comp'].includes(authz.role) || doc.assigned_to === actor.userId);
-      if (!isP2Side) return res.status(403).json({ error: 'forbidden' });
-    }
-    if (doc.status !== 'pending_p2')
-      return res.status(409).json({ error: 'status_invalid', status: doc.status });
-
-    const data = pick(req.body || {}, ORD_P2_FIELDS);
-    // Validare col. 5 (Recepții neplătite) ≥ 0 pe fiecare rând
-    // Formula: c5 = c2(recepții) - c3(plăți anterioare) - c4(suma ordonanțată)
-    // Defense-in-depth: backend respinge chiar dacă frontend e bypass-at
-    if (Array.isArray(data.rows)) {
-      const _num = v => {
-        if (v === null || v === undefined || v === '') return 0;
-        // getOR() (core.js) trimite valorile ca String(pMR(...)) — număr JS normalizat
-        // (punct zecimal, fără separator de mii), ex: "1234.56" / "1500". NU format RO.
-        const n = Number(String(v).trim().replace(/\s/g,''));
-        return isNaN(n) ? 0 : n;
-      };
-      const bad = [];
-      data.rows.forEach((r, i) => {
-        const c2 = _num(r.receptii);
-        const c3 = _num(r.plati_anterioare);
-        const c4 = _num(r.suma_ordonantata_plata);
-        const c5 = c2 - c3 - c4;
-        if (c5 < -0.001) bad.push({ idx: i + 1, c5: c5.toFixed(2) });
-      });
-      if (bad.length) {
-        return res.status(422).json({
-          error: 'receptii_neplatite_negative',
-          message: 'Coloana 5 (Recepții neplătite) trebuie să fie ≥ 0 pe fiecare rând. Suma ordonanțată depășește disponibilul.',
-          rows: bad,
-        });
-      }
-    }
-
-    const { sets, vals } = buildUpdate(data, ORD_P2_FIELDS, 1);
-    sets.push(`status='completed'`, `completed_at=NOW()`, `updated_at=NOW()`);
-    sets.push(`updated_by=$${vals.length + 1}`);
-    vals.push(actor.userId);
-    vals.push(req.params.id, actor.orgId);
-
-    const { rows: updated } = await pool.query(`
-      UPDATE formulare_ord SET ${sets.join(', ')}
-      WHERE id=$${vals.length - 1} AND org_id=$${vals.length}
-      RETURNING *
-    `, vals);
-
-    await sendNotif(doc.created_by, 'formulare_ord_completed',
-      'Ordonanțare de Plată — completată de Responsabil CAB',
-      `${actor.nume || actor.email} a completat ORD "${doc.nr_ordonant_pl || 'fără număr'}"`,
-      { form_type: 'ord', form_id: req.params.id });
-
-    logger.info({ id: req.params.id, actor: actor.email }, 'formulare-ord completat de P2');
-    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'completat',
-      fromStatus: doc.status, toStatus: 'completed' });
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
-    res.json({ ok: true, document: updated[0] });
-  } catch (e) {
-    logger.error({ err: e }, 'formulare-ord complete error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await completeFormular({ type: 'ord', id: req.params.id, actor, body: req.body });
+  res.status(r.status).json(r.body);
 });
 
 // POST /api/formulare-ord/:id/returneaza — P2 returnează documentul ca neconform
 router.post('/api/formulare-ord/:id/returneaza', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { motiv } = req.body || {};
-    if (!motiv || !motiv.trim()) return res.status(400).json({ error: 'motiv_obligatoriu' });
-    const { rows } = await pool.query(
-      'SELECT * FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    const doc = rows[0];
-    {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
-      // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
-      // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
-      // creator ȘI assigned_to (helper-ul prioritizează rolul 'creator').
-      const isP2Side = authz.allowed
-        && (['admin','assigned','p2_comp'].includes(authz.role) || doc.assigned_to === actor.userId);
-      if (!isP2Side) return res.status(403).json({ error: 'forbidden' });
-    }
-    if (doc.status !== 'pending_p2')
-      return res.status(409).json({ error: 'status_invalid', status: doc.status });
-    const { rows: upd } = await pool.query(
-      `UPDATE formulare_ord SET status='returnat', motiv_returnare=$1, updated_at=NOW(), updated_by=$3 WHERE id=$2 RETURNING *`,
-      [motiv.trim(), req.params.id, actor.userId]
-    );
-    await sendNotif(doc.created_by, 'formulare_ord_returnat',
-      'Ordonanțare de Plată — returnată ca neconformă',
-      `${actor.nume || actor.email} a returnat ORD "${doc.nr_ordonant_pl || 'fără număr'}" cu observații`,
-      { form_type: 'ord', form_id: req.params.id });
-    logger.info({ id: req.params.id, actor: actor.email }, 'formulare-ord returnat de P2');
-    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'returnat',
-      fromStatus: doc.status, toStatus: 'returnat', meta: { motiv: motiv.trim() } });
-    const outOrd = upd[0];
-    outOrd.capabilities = computeDocCapabilities(outOrd, actor, 'ordnt');
-    res.json({ ok: true, document: outOrd });
-  } catch (e) {
-    logger.error({ err: e }, 'formulare-ord returneaza error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await returnFormular({ type: 'ord', id: req.params.id, actor, body: req.body });
+  res.status(r.status).json(r.body);
 });
 
 // POST /api/formulare-ord/:id/link-flow — leagă de fluxul de semnare
 router.post('/api/formulare-ord/:id/link-flow', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { flow_id } = req.body || {};
-    if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
-
-    const { rows: existing } = await pool.query(
-      'SELECT created_by, status, flow_id FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
-    if (!existing.length) return res.status(404).json({ error: 'not_found' });
-    const doc = existing[0];
-    {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
-      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
-    }
-    if (doc.status !== 'completed')
-      return res.status(409).json({ error: 'document_not_completed' });
-
-    // Guard cauză-rădăcină (paritate cu DF link-flow): nu permite relansarea pe un
-    // AL DOILEA flux cât timp ORD-ul are deja un flux de semnare NON-terminal (nici
-    // completed, nici cancelled). Altfel ord_flow_id-ul din ALOP rămâne agățat de
-    // fluxul vechi (zombi) → auto-tranziția ordonanțare→plata nu se mai declanșează.
-    if (doc.flow_id) {
-      const { rows: activeFlow } = await pool.query(
-        `SELECT 1 FROM flows
-          WHERE id = $1
-            AND (data->>'completed') IS DISTINCT FROM 'true'
-            AND (data->>'status') <> 'cancelled'`,
-        [doc.flow_id]
-      );
-      if (activeFlow.length) {
-        return res.status(409).json({
-          error: 'ord_already_on_active_flow',
-          message: 'Ordonanțarea este deja pe un flux de semnare activ. Anulați fluxul curent înainte de a o retrimite.'
-        });
-      }
-    }
-
-    await pool.query(
-      'UPDATE formulare_ord SET flow_id=$1, updated_at=NOW(), updated_by=$4 WHERE id=$2 AND org_id=$3',
-      [flow_id, req.params.id, actor.orgId, actor.userId]
-    );
-    // Sincronizează ord_flow_id în ALOP (non-fatal) — paritate cu DF.
-    try {
-      await pool.query(
-        `UPDATE alop_instances SET ord_flow_id=$1, updated_at=NOW(), updated_by=$4
-         WHERE ord_id=$2 AND org_id=$3 AND cancelled_at IS NULL`,
-        [flow_id, req.params.id, actor.orgId, actor.userId]
-      );
-    } catch (e) {
-      logger.warn({ err: e }, 'alop_instances ord_flow_id update failed');
-    }
-    await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: req.params.id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'transmis_flux',
-      fromStatus: doc.status, meta: { flow_id } });
-    res.json({ ok: true });
-  } catch (e) {
-    logger.error({ err: e }, 'formulare-ord link-flow error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await linkFlowFormular({ type: 'ord', id: req.params.id, actor, body: req.body });
+  res.status(r.status).json(r.body);
 });
 
 // DELETE /api/formulare-ord/:id — soft delete
@@ -1870,77 +1405,8 @@ router.post('/api/formulare-df/:id/sterge', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res);
   if (!actor) return;
-  const { id } = req.params;
-  try {
-    const { rows } = await pool.query(
-      `SELECT created_by, org_id, status, flow_id, revizie_nr, parent_df_id, nr_unic_inreg
-         FROM formulare_df WHERE id=$1 AND deleted_at IS NULL`,
-      [id]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    const doc = rows[0];
-    if (actor.role !== 'admin' && doc.org_id !== actor.orgId)
-      return res.status(403).json({ error: 'forbidden' });
-    {
-      const authz = canDestroyOnly(actor, doc);
-      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
-    }
-    if (doc.flow_id)
-      return res.status(409).json({ error: 'cannot_delete_on_flow', message: 'Documentul a fost trimis pe fluxul de semnare și nu poate fi șters.' });
-
-    const { rows: ordRows } = await pool.query(
-      `SELECT id, nr_ordonant_pl FROM formulare_ord WHERE df_id=$1 AND deleted_at IS NULL LIMIT 1`,
-      [id]
-    );
-    if (ordRows.length)
-      return res.status(409).json({ error: 'cannot_delete_has_ord', message: `Nu se poate șterge DF-ul: există o Ordonanțare de Plată legată (${ordRows[0].nr_ordonant_pl || 'fără nr.'}). Ștergeți întâi ORD-ul.` });
-
-    await pool.query(
-      `UPDATE formulare_df SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1`,
-      [id, actor.userId]
-    );
-    await recordFormularAudit({ orgId: doc.org_id, formType: 'df', formId: id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'sters', fromStatus: doc.status });
-
-    // Relink ALOP (mirror după signing.mjs refuse): R0 → eliberează; R1+ → restore parent aprobat
-    try {
-      if ((doc.revizie_nr || 0) === 0 || !doc.parent_df_id) {
-        await pool.query(
-          `UPDATE alop_instances
-             SET df_id=NULL, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$2
-           WHERE df_id=$1 AND cancelled_at IS NULL`,
-          [id, actor.userId]
-        );
-      } else {
-        const { rows: parentRows } = await pool.query(
-          `SELECT id, flow_id, status FROM formulare_df WHERE id=$1 AND deleted_at IS NULL LIMIT 1`,
-          [doc.parent_df_id]
-        );
-        if (parentRows.length && parentRows[0].status === 'aprobat' && parentRows[0].flow_id) {
-          await pool.query(
-            `UPDATE alop_instances
-               SET df_id=$1, df_flow_id=$2, df_completed_at=NOW(), updated_at=NOW(), updated_by=$4
-             WHERE df_id=$3 AND cancelled_at IS NULL`,
-            [parentRows[0].id, parentRows[0].flow_id, id, actor.userId]
-          );
-        } else {
-          await pool.query(
-            `UPDATE alop_instances
-               SET df_id=NULL, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$2
-             WHERE df_id=$1 AND cancelled_at IS NULL`,
-            [id, actor.userId]
-          );
-        }
-      }
-    } catch (relinkErr) {
-      logger.error({ err: relinkErr, dfId: id }, 'sterge df: ALOP relink failed (non-fatal)');
-    }
-
-    res.json({ ok: true });
-  } catch (e) {
-    logger.error({ err: e }, 'sterge df error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await stergeFormular({ type: 'df', id: req.params.id, actor });
+  res.status(r.status).json(r.body);
 });
 
 // ── POST /api/formulare-ord/:id/sterge — ȘTERGERE (soft-delete) ────────────────
@@ -1949,47 +1415,8 @@ router.post('/api/formulare-ord/:id/sterge', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res);
   if (!actor) return;
-  const { id } = req.params;
-  try {
-    const { rows } = await pool.query(
-      `SELECT created_by, org_id, status, flow_id FROM formulare_ord WHERE id=$1 AND deleted_at IS NULL`,
-      [id]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    const doc = rows[0];
-    if (actor.role !== 'admin' && doc.org_id !== actor.orgId)
-      return res.status(403).json({ error: 'forbidden' });
-    {
-      const authz = canDestroyOnly(actor, doc);
-      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
-    }
-    if (doc.flow_id)
-      return res.status(409).json({ error: 'cannot_delete_on_flow', message: 'Ordonanțarea a fost trimisă pe fluxul de semnare și nu poate fi ștearsă.' });
-
-    await pool.query(
-      `UPDATE formulare_ord SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1`,
-      [id, actor.userId]
-    );
-    await recordFormularAudit({ orgId: doc.org_id, formType: 'ord', formId: id,
-      actorId: actor.userId, actorEmail: actor.email, eventType: 'sters', fromStatus: doc.status });
-
-    // Relink ALOP: eliberează ord_id → butonul "Completează Ordonanțare" reapare
-    try {
-      await pool.query(
-        `UPDATE alop_instances
-           SET ord_id=NULL, ord_flow_id=NULL, ord_completed_at=NULL, updated_at=NOW(), updated_by=$2
-         WHERE ord_id=$1 AND cancelled_at IS NULL`,
-        [id, actor.userId]
-      );
-    } catch (relinkErr) {
-      logger.error({ err: relinkErr, ordId: id }, 'sterge ord: ALOP relink failed (non-fatal)');
-    }
-
-    res.json({ ok: true });
-  } catch (e) {
-    logger.error({ err: e }, 'sterge ord error');
-    res.status(500).json({ error: 'server_error' });
-  }
+  const r = await stergeFormular({ type: 'ord', id: req.params.id, actor });
+  res.status(r.status).json(r.body);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
