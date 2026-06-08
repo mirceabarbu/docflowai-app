@@ -78,21 +78,33 @@ export async function seedFlowApproved(id = `flow-${Date.now()}-${Math.random().
   return id;
 }
 
-// DF. Implicit: draft, R0, fără flow. Pasează flowId+status='aprobat' pentru "aprobat".
-export async function seedDf({ orgId, createdBy, status = 'draft', flowId = null, nrUnic = 'DF-2026-001', revizieNr = 0, parentDfId = null } = {}) {
+// Adaugă un al doilea (sau N-lea) utilizator într-o organizație EXISTENTĂ.
+// Util pentru testele P1→P2: creatorul vine din seedOrgUser, P2 din seedUser.
+export async function seedUser({ orgId, email = 'p2@x.ro', role = 'user', compartiment = '', nume = 'P2' } = {}) {
   const { rows } = await pool.query(
-    `INSERT INTO formulare_df (org_id, created_by, status, flow_id, nr_unic_inreg, revizie_nr, parent_df_id, este_revizie)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-    [orgId, createdBy, status, flowId, nrUnic, revizieNr, parentDfId, (revizieNr || 0) > 0]
+    `INSERT INTO users (email, password_hash, nume, role, compartiment, org_id)
+     VALUES ($1, 'x', $2, $3, $4, $5) RETURNING id`,
+    [email, nume, role, compartiment, orgId]
   );
   return rows[0].id;
 }
 
-export async function seedOrd({ orgId, createdBy, status = 'draft', flowId = null, dfId = null, nrOrd = 'ORD-2026-001' } = {}) {
+// DF. Implicit: draft, R0, fără flow. Pasează flowId+status='aprobat' pentru "aprobat".
+// assignedTo → setează assigned_to (P2) pentru testele de complete/returneaza din pending_p2.
+export async function seedDf({ orgId, createdBy, status = 'draft', flowId = null, nrUnic = 'DF-2026-001', revizieNr = 0, parentDfId = null, assignedTo = null } = {}) {
   const { rows } = await pool.query(
-    `INSERT INTO formulare_ord (org_id, created_by, status, flow_id, df_id, nr_ordonant_pl)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-    [orgId, createdBy, status, flowId, dfId, nrOrd]
+    `INSERT INTO formulare_df (org_id, created_by, status, flow_id, nr_unic_inreg, revizie_nr, parent_df_id, este_revizie, assigned_to)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+    [orgId, createdBy, status, flowId, nrUnic, revizieNr, parentDfId, (revizieNr || 0) > 0, assignedTo]
+  );
+  return rows[0].id;
+}
+
+export async function seedOrd({ orgId, createdBy, status = 'draft', flowId = null, dfId = null, nrOrd = 'ORD-2026-001', assignedTo = null } = {}) {
+  const { rows } = await pool.query(
+    `INSERT INTO formulare_ord (org_id, created_by, status, flow_id, df_id, nr_ordonant_pl, assigned_to)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [orgId, createdBy, status, flowId, dfId, nrOrd, assignedTo]
   );
   return rows[0].id;
 }
