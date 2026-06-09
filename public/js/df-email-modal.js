@@ -78,6 +78,16 @@
         <div class="dfem-attach-list" id="dfem-attach-list"></div>
       </div>
 
+      <div class="dfem-field dfem-field-check">
+        <label class="dfem-check" for="dfem-include-report">
+          <input type="checkbox" id="dfem-include-report" checked />
+          <span class="dfem-check-text">
+            Atașează Raportul de Conformitate
+            <span class="dfem-hint">— certifică semnăturile calificate (eIDAS / Legea 455/2001)</span>
+          </span>
+        </label>
+      </div>
+
       <div class="dfem-msg" id="dfem-msg"></div>
 
       <button class="dfem-submit" id="dfem-submit" type="button">
@@ -297,13 +307,15 @@
       extraAttachments.push({ filename: f.name, dataB64: b64 });
     }
 
+    const includeTrustReport = !!_rootEl.querySelector('#dfem-include-report')?.checked;
+
     try {
       const jwt = localStorage.getItem('docflow_token') || localStorage.getItem('jwt') || '';
       const r = await fetch(`/flows/${encodeURIComponent(_flowId)}/send-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(jwt ? { 'Authorization': 'Bearer ' + jwt } : {}) },
         credentials: 'include',
-        body: JSON.stringify({ to: valid, subject, bodyText, extraAttachments }),
+        body: JSON.stringify({ to: valid, subject, bodyText, extraAttachments, includeTrustReport }),
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok) {
@@ -477,6 +489,8 @@ Cu stimă,
 Nume: ${senderName}${functieStr}${institutieStr}${compartimentStr}
 Data: ${today}`;
     _rootEl.querySelector('#dfem-to-input').value = '';
+    const inclChk = _rootEl.querySelector('#dfem-include-report');
+    if (inclChk) inclChk.checked = true;
     setMsg('');
     const btn = _rootEl.querySelector('#dfem-submit');
     btn.disabled = false; btn.querySelector('span').textContent = 'Trimite email';
