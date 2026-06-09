@@ -78,3 +78,64 @@
 .dfem-ac-name{font-size:.82rem;color:var(--df-text);font-weight:600;grid-column:1;grid-row:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .dfem-ac-email{font-size:.78rem;color:var(--df-teal,#2dd4bf);grid-column:2;grid-row:1 / span 2;align-self:center;white-space:nowrap;}
 .dfem-ac-loc{font-size:.73rem;color:var(--df-text-4);grid-column:1;grid-row:2;}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Izolare defensivă față de CSS-ul generic al paginii-gazdă.
+   Pagini ca semdoc-initiator.css încarcă DUPĂ acest fișier selectori pe
+   element gol — unii cu !important:
+     input,select{width:100%;padding:10px;border-radius:10px;border;background}
+     input,select,textarea{background!important;color!important;border!important;border-radius!important}
+     label{display:block;font-size:12px;opacity:.85;margin-bottom:6px}
+     .muted,.card-sub,label{color!important;opacity!important}
+   Scopăm sub .dfem-overlay cu specificitate suficientă (și !important DOAR
+   unde gazda îl folosește) ca să batem aceste reguli. Valorile = exact
+   designul propriu al modalului, deci flow.html (unde scurgerea nu există)
+   rămâne identic vizual; semdoc-initiator.html se repară.
+   NU folosi `.dfem-overlay label{...}` generic — ar bate .dfem-check (flex).
+   ────────────────────────────────────────────────────────────────────── */
+
+/* Checkbox „Raportul de Conformitate": nu trebuie întins de input{width:100%},
+   umflat de input{padding:10px}, sau „cutiat" de input{...!important}. */
+.dfem-overlay input[type="checkbox"]{
+  width:auto !important;
+  height:auto !important;
+  padding:0 !important;
+  background:none !important;
+  border:none !important;
+  border-radius:0 !important;
+}
+
+/* Câmp destinatari (input în chip-wrap): rămâne transparent, fără chenar. */
+.dfem-overlay .dfem-chip-input{
+  width:auto !important;
+  background:transparent !important;
+  border:none !important;
+  border-radius:0 !important;
+  color:var(--df-text) !important;
+}
+
+/* Subiect / Mesaj: păstrează fundalul/chenarul propriu al modalului. */
+.dfem-overlay .dfem-input,
+.dfem-overlay .dfem-textarea{
+  background:rgba(255,255,255,.06) !important;
+  border:1px solid var(--df-border-2) !important;
+  border-radius:var(--df-radius-md) !important;
+  color:var(--df-text) !important;
+}
+.dfem-overlay .dfem-input:focus,
+.dfem-overlay .dfem-textarea:focus{
+  border-color:var(--df-primary) !important;
+  background:rgba(255,255,255,.08) !important;
+}
+
+/* Etichete: neutralizează label{opacity;margin-bottom} + label{color!important;opacity!important}.
+   display:flex de pe .dfem-check rămâne (0,1,0 bate label{display:block}). */
+.dfem-overlay .dfem-label{
+  color:var(--df-text-3) !important;
+  opacity:1 !important;
+  margin-bottom:0 !important;
+}
+.dfem-overlay .dfem-check{
+  opacity:1 !important;
+  margin-bottom:0 !important;
+}
