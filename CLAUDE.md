@@ -230,6 +230,33 @@ Toate frontendurile sunt SPA-uri single-file (HTML + JS inline), servite static 
 
 **Helper universal:** `esc(str)` — escaping HTML obligatoriu pentru orice date utilizator afișate în DOM. Niciodată `innerHTML` cu date neescapate.
 
+### CSS: scoping & componente globale (din v3.9.551)
+
+CSS-ul NU e scopat per component — într-o pagină fără Shadow DOM, fiecare stylesheet se aplică
+*fiecărui* element din document, inclusiv componentelor injectate în `<body>` la runtime (modaluri,
+toast-uri, widget-uri globale).
+
+**Regula 1 — CSS de pagină = selectori scopați la wrapper-ul paginii, NICIODATĂ pe element gol.**
+Un `input{width:100%}` sau `label{display:block}` într-un CSS de pagină (ex. `semdoc-initiator.css`)
+se scurge în orice component global injectat în body și îi rupe stilul. Scopează la wrapper-ul de
+conținut: `.df-shell input{…}`. Componentele se atașează în `<body>` ca frate al `.df-shell`, deci
+rămân în afara razei.
+
+**Regula 2 — componentele globale își declară DEFENSIV toate proprietățile (auto-conținere).**
+Un component montat în body (ex. `df-email-modal`) NU se bazează pe igiena CSS a paginii-gazdă:
+declară explicit width/display/etc. pe propriile clase, scopate sub rădăcina lui (`.dfem-overlay`),
+cu specificitate suficientă cât să bată selectorii pe element gol ai paginii (și `!important`-ul lor,
+dacă există). O proprietate nedeclarată = un gol pe care pagina-gazdă îl umple cu regulile ei generice.
+
+**Stratul dublu e INTENȚIONAT, nu redundanță:** pagină scopată (Regula 1) + component auto-conținut
+(Regula 2). Fiecare acoperă ce ratează celălalt; împreună fac montarea unui component pe orice pagină
+sigură. NU „curăța" defensiva unui component pe motiv că pagina a fost scopată.
+
+Incident de referință: modalul de email apărea rupt pe `semdoc-initiator.html` (dar corect pe
+`flow.html`) fiindcă `semdoc-initiator.css` avea `input{width:100%}` + `input,select,textarea{…!important}`
+pe element gol. Fix: defensivă în `email-modal.css` (v3.9.549) + scoping la `.df-shell` în
+`semdoc-initiator.css` (v3.9.550).
+
 ---
 
 ## Java Signing Service (Spring Boot)
