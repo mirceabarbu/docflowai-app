@@ -11,3 +11,9 @@ backups/
 
 # Output rapoarte tool-uri (regenerate la fiecare rulare)
 tools/output/
+
+# Leftover-uri scriere atomică + scratch (ex. foo.js.tmp.<pid>.<hash>)
+*.tmp
+*.tmp.*
+*.bak
+*.orig

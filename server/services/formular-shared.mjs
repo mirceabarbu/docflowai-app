@@ -18,7 +18,7 @@ import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import { computeDocCapabilities } from './formular-capabilities.mjs';
 import { loadActorComp, canEditFormular, canDestroyOnly } from './authz-formular.mjs';
 
-// ── helpers partajate (și de rutele create/PUT/capturi din formulare-db.mjs) ─────
+// ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
 /** Trimite notificare in-app corect (user_email + data JSONB) */
 export async function sendNotif(userId, type, title, message, data) {

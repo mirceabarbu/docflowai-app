@@ -6,7 +6,7 @@
  * 'draft' SAU 'angajare' → recuperare automată la 'lichidare' la GET /api/alop/:id.
  *
  * Înainte: condiția cerea exact status==='angajare'. Dacă propagarea normală
- * (P2 /complete în formulare-db.mjs sau link-df-flow) eșua silent, ALOP rămânea
+ * (P2 /complete în routes/formulare/ sau link-df-flow) eșua silent, ALOP rămânea
  * blocat în 'draft' permanent chiar cu DF aprobat.
  *
  * Cazuri:
