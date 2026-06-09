@@ -13,8 +13,8 @@
       .card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
       .grid { display:grid; gap:10px; grid-template-columns: repeat(12, 1fr); }
       .col-2 { grid-column: span 2; } .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; } .col-6 { grid-column: span 6; } .col-12 { grid-column: span 12; }
-      label { display:block; font-size: 12px; opacity:.85; margin-bottom:6px; }
-      input, select { width:100%; padding:10px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
+      .df-shell label { display:block; font-size: 12px; opacity:.85; margin-bottom:6px; }
+      .df-shell input, .df-shell select { width:100%; padding:10px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.2); color:#e9eefc; }
       .row { display:flex; gap:10px; align-items:center; }
       /* .btn rules removed in BLOC 3.3 — buttons use .df-action-btn */
       /* Stiluri tabel semnatari mutate în df/components.css → .signers-table (BLOC 3.1) */
@@ -33,7 +33,7 @@
   --shadow: 0 20px 60px rgba(0,0,0,.35);
   --radius:18px;
 }
-.muted, .card-sub, label{ color: var(--sub) !important; opacity: .9 !important; }
+.df-shell .muted, .df-shell .card-sub, .df-shell label{ color: var(--sub) !important; opacity: .9 !important; }
 a:not(.df-nav-item):not(.df-nav-item *){ color: var(--muted) !important; }
 
 /* Cards / panels */
@@ -45,15 +45,15 @@ a:not(.df-nav-item):not(.df-nav-item *){ color: var(--muted) !important; }
 }
 
 /* Inputs */
-input, select, textarea{
+.df-shell input, .df-shell select, .df-shell textarea{
   background: rgba(255,255,255,.04) !important;
   color: var(--text) !important;
   border: 1px solid var(--line) !important;
   border-radius: 14px !important;
 }
-input::placeholder, textarea::placeholder{ color: rgba(205,216,255,.65) !important; }
+.df-shell input::placeholder, .df-shell textarea::placeholder{ color: rgba(205,216,255,.65) !important; }
 
-input:focus, select:focus, textarea:focus{
+.df-shell input:focus, .df-shell select:focus, .df-shell textarea:focus{
   outline: none !important;
   border-color: rgba(124,92,255,.55) !important;
   box-shadow: 0 0 0 4px rgba(124,92,255,.18);
