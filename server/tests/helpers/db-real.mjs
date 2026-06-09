@@ -91,11 +91,13 @@ export async function seedUser({ orgId, email = 'p2@x.ro', role = 'user', compar
 
 // DF. Implicit: draft, R0, fără flow. Pasează flowId+status='aprobat' pentru "aprobat".
 // assignedTo → setează assigned_to (P2) pentru testele de complete/returneaza din pending_p2.
-export async function seedDf({ orgId, createdBy, status = 'draft', flowId = null, nrUnic = 'DF-2026-001', revizieNr = 0, parentDfId = null, assignedTo = null } = {}) {
+// rowsVal (opțional) → rows_val JSONB; folosit de noua-lichidare pentru a calcula
+// valoarea DF aprobat (SUM valt_actualiz). Nu schimbă semnătura pentru testele curente.
+export async function seedDf({ orgId, createdBy, status = 'draft', flowId = null, nrUnic = 'DF-2026-001', revizieNr = 0, parentDfId = null, assignedTo = null, rowsVal = null } = {}) {
   const { rows } = await pool.query(
-    `INSERT INTO formulare_df (org_id, created_by, status, flow_id, nr_unic_inreg, revizie_nr, parent_df_id, este_revizie, assigned_to)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-    [orgId, createdBy, status, flowId, nrUnic, revizieNr, parentDfId, (revizieNr || 0) > 0, assignedTo]
+    `INSERT INTO formulare_df (org_id, created_by, status, flow_id, nr_unic_inreg, revizie_nr, parent_df_id, este_revizie, assigned_to, rows_val)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10::jsonb,'[]'::jsonb)) RETURNING id`,
+    [orgId, createdBy, status, flowId, nrUnic, revizieNr, parentDfId, (revizieNr || 0) > 0, assignedTo, rowsVal ? JSON.stringify(rowsVal) : null]
   );
   return rows[0].id;
 }
@@ -109,13 +111,52 @@ export async function seedOrd({ orgId, createdBy, status = 'draft', flowId = nul
   return rows[0].id;
 }
 
-export async function seedAlop({ orgId, createdBy, status = 'draft', dfId = null, dfFlowId = null, ordId = null, ordFlowId = null, titlu = 'ALOP Test' } = {}) {
+// seedAlop — câmpurile noi (compartiment, lichidareConfirmedBy, plataSumaEfectiva,
+// cicluCurent, sumaTotalaPlatita, dfCompletedAt, ordCompletedAt, cancelledAt) sunt
+// OPȚIONALE și se adaugă în INSERT doar dacă sunt furnizate (nu schimbă semnătura
+// existentă folosită de testele DB curente).
+export async function seedAlop({
+  orgId, createdBy, status = 'draft',
+  dfId = null, dfFlowId = null, ordId = null, ordFlowId = null, titlu = 'ALOP Test',
+  compartiment, lichidareConfirmedBy, lichidareConfirmedAt,
+  plataSumaEfectiva, cicluCurent, sumaTotalaPlatita,
+  dfCompletedAt, ordCompletedAt, cancelledAt,
+} = {}) {
+  const cols = ['org_id', 'created_by', 'status', 'titlu', 'df_id', 'df_flow_id', 'ord_id', 'ord_flow_id'];
+  const vals = [orgId, createdBy, status, titlu, dfId, dfFlowId, ordId, ordFlowId];
+  const opt = {
+    compartiment, lichidare_confirmed_by: lichidareConfirmedBy,
+    lichidare_confirmed_at: lichidareConfirmedAt,
+    plata_suma_efectiva: plataSumaEfectiva, ciclu_curent: cicluCurent,
+    suma_totala_platita: sumaTotalaPlatita, df_completed_at: dfCompletedAt,
+    ord_completed_at: ordCompletedAt, cancelled_at: cancelledAt,
+  };
+  for (const [col, v] of Object.entries(opt)) {
+    if (v !== undefined) { cols.push(col); vals.push(v); }
+  }
+  const ph = vals.map((_, i) => `$${i + 1}`).join(',');
   const { rows } = await pool.query(
-    `INSERT INTO alop_instances (org_id, created_by, status, titlu, df_id, df_flow_id, ord_id, ord_flow_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-    [orgId, createdBy, status, titlu, dfId, dfFlowId, ordId, ordFlowId]
+    `INSERT INTO alop_instances (${cols.join(', ')}) VALUES (${ph}) RETURNING id`,
+    vals
   );
   return rows[0].id;
+}
+
+// Citește ciclurile arhivate în alop_ord_cicluri (pentru testele noua-lichidare / multi-ORD).
+export async function getAlopCicluri(alopId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM alop_ord_cicluri WHERE alop_id=$1 ORDER BY ciclu_nr`, [alopId]
+  );
+  return rows;
+}
+
+// Flux generic. completed=false → flux în lucru (NU declanșează auto-tranziția din link-*-flow).
+export async function seedFlow({ id = `flow-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, completed = false } = {}) {
+  await pool.query(
+    `INSERT INTO flows (id, data) VALUES ($1, $2::jsonb)`,
+    [id, JSON.stringify(completed ? { status: 'completed', completed: true } : { status: 'pending' })]
+  );
+  return id;
 }
 
 export async function getAlop(id) {
