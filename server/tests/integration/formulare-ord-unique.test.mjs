@@ -46,7 +46,7 @@ vi.mock('../../services/authz-formular.mjs', () => ({
 // ── Importuri după mock-uri ───────────────────────────────────────────────────
 
 import * as dbModule from '../../db/index.mjs';
-import { formulareDbRouter } from '../../routes/formulare-db.mjs';
+import { formulareDbRouter } from '../../routes/formulare/index.mjs';
 
 // ── App Express minimală ──────────────────────────────────────────────────────
 

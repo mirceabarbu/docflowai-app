@@ -43,7 +43,7 @@ vi.mock('../../middleware/csrf.mjs', () => ({
 }));
 
 import * as dbModule from '../../db/index.mjs';
-import { formulareDbRouter } from '../../routes/formulare-db.mjs';
+import { formulareDbRouter } from '../../routes/formulare/index.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-vitest-docflowai-2025';
 

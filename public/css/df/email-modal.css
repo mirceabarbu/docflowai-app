@@ -51,6 +51,13 @@
 .dfem-attach-item-size{color:var(--df-text-4);}
 .dfem-attach-item-remove{background:none;border:none;color:#ff8080;cursor:pointer;font-size:.85rem;padding:0 4px;}
 
+/* Checkbox — atașează Raport de Conformitate */
+.dfem-field-check{margin-top:4px;}
+.dfem-check{display:flex;align-items:flex-start;gap:8px;cursor:pointer;}
+.dfem-check input[type="checkbox"]{margin-top:3px;flex:0 0 auto;cursor:pointer;accent-color:var(--df-primary);}
+.dfem-check-text{font-size:.82rem;line-height:1.4;color:var(--df-text-2);}
+.dfem-check-text .dfem-hint{color:var(--df-text-4);font-size:.72rem;font-weight:400;}
+
 /* Status message */
 .dfem-msg{font-size:.82rem;min-height:18px;}
 .dfem-msg.dfem-msg-err{color:#ffaaaa;}

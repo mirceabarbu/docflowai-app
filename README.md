@@ -1,4 +1,4 @@
-# DocFlowAI v3.9.426
+# DocFlowAI v3.9.547
 
 **Platformă SaaS de circulație și semnare electronică calificată pentru administrația publică din România.**
 
@@ -38,7 +38,7 @@ DocFlowAI gestionează fluxuri complete de aprobare și semnare electronică cal
 | Conversie DOCX → PDF | LibreOffice headless |
 | Logging | Pino structured |
 | Metrics | Prometheus endpoint |
-| Testing | Vitest + Supertest (293 teste) |
+| Testing | Vitest + Supertest (mock + Postgres real) |
 | Deploy | Railway (Node app + Java sidecar) |
 
 ---
@@ -86,7 +86,12 @@ server/
       email.mjs                 ← Email semnatari
       signer-status.mjs         ← Status real-time semnatari
     formulare.mjs               ← DF/ORD generare PDF (pdf-lib + NotoSans)
-    formulare-db.mjs            ← DF/ORD CRUD + workflow P1→P2 + revizii R0/R1+
+    formulare/                  ← Modular (model flows/): DF/ORD CRUD + workflow P1→P2 + revizii
+      index.mjs                 ← Orchestrator, export formulareDbRouter
+      df.mjs                    ← Rute /api/formulare-df* (CRUD, lifecycle, revizii R0/R1+)
+      ord.mjs                   ← Rute /api/formulare-ord*
+      shared.mjs                ← Capturi, atașamente, beneficiari, list, audit (:type)
+      _helpers.mjs              ← requireDb partajat
     formulare-oficiale.mjs      ← Referat Necesitate + Notă Fundamentare Investiții
     alop.mjs                    ← ALOP state machine (draft → angajare → lichidare → ordonanțare → plată)
     notifications.mjs           ← Notificări in-app
@@ -95,6 +100,9 @@ server/
     verify.mjs                  ← Rute publice verificare PDF (Trust Report)
     report.mjs                  ← Rapoarte
   services/
+    formular-shared.mjs         ← Lifecycle DF/ORD parametrizat pe formType (FORMULAR_TYPES)
+    formular-capabilities.mjs   ← Decizii UI server-side (computeDocCapabilities)
+    authz-formular.mjs          ← Autorizare DF/ORD (canEdit/canView/canDestroy)
     formulare-oficiale/         ← Generatoare PDF formulare oficiale
     verify/                     ← Logică verificare CUI ANAF + IBAN + coerență
     sign-trust-report.mjs       ← Generare Trust Report PDF cu QR code
@@ -204,11 +212,16 @@ Migrările DB rulează **automat la startup** (sistem dual: 65 migrații inline 
 
 ### Teste
 
+Două niveluri (detalii în CLAUDE.md → Testing):
+
 ```bash
-npm test           # Vitest run (293 teste)
-npm run test:watch # Watch mode
-npm run check      # node --check pe toate fișierele server
+npm test            # Nivel 1 — Vitest mock/unit + integration (rapid, fără DB)
+npm run db:test:up  # pornește Postgres efemer (Docker) → exportă TEST_DATABASE_URL afișat
+npm run test:db     # Nivel 2 — Postgres real: plasă de caracterizare (sursa de adevăr pt. regresii)
+npm run check       # node --check sintaxă pe fișierele server
 ```
+
+⚠️ `test:db` *sărit* (fără Docker) ≠ *trecut*. Confirmarea autoritară e CI (`push: develop`, `postgres:16`).
 
 ---
 
@@ -364,6 +377,17 @@ Audit complet pre-prod cu eliminare ~7.000 linii cod mort în 5 livrări increme
 | v3.9.426 | B4 | Consolidare loader-e identice semdoc → `public/js/common/` |
 
 **Beneficii:** surface area redusă, mentenanță simplificată, codebase mai ușor de înțeles, zero regresii (293 teste verzi).
+
+---
+
+## Consolidare anti-regresie v3.9.543 → v3.9.546
+
+| Versiune | Etapă | Schimbare |
+|---|---|---|
+| v3.9.543 | Etapa 0 | Plasă caracterizare DB DF/ORD (submit/complete/returneaza/revizuieste) |
+| v3.9.544 | Etapa 1 | Lifecycle DF/ORD → `formular-shared.mjs` parametrizat pe formType (−587 linii duplicat) |
+| v3.9.545 | Etapa 2 | Split `formulare-db.mjs` → `routes/formulare/{df,ord,shared,index}` |
+| v3.9.546 | Etapa 0-ALOP | Plasă caracterizare DB mașină de stare ALOP (progresie, lazy-resync, ciclu multi-ORD) |
 
 ---
 

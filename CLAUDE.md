@@ -348,6 +348,48 @@ APOI refactorizează — testele DB sunt sursa de adevăr pentru regresii.
 
 ---
 
+## Consolidare DF/ORD & asimetrii (anti-regresie) (din v3.9.544)
+
+Lifecycle-ul DF/ORD e consolidat într-un singur service parametrizat pe `formType`, NU duplicat:
+
+- `server/services/formular-shared.mjs` → `FORMULAR_TYPES` (config per tip) + funcții lifecycle
+  (`submitFormular`/`completeFormular`/`returnFormular`/`linkFlowFormular`/`stergeFormular`), contract
+  `{ status, body }`. Rutele din `server/routes/formulare/{df,ord}.mjs` sunt wrappers subțiri.
+
+**Regula de aur:** orice diferență DF↔ORD trăiește ca o CHEIE EXPLICITĂ în `FORMULAR_TYPES`, niciodată ca
+`if (ft === 'ord')` îngropat într-un handler. O asimetrie tăcută într-un handler duplicat e vectorul #1 de
+regresie (fix pe DF uitat pe ORD; sau uniformizare care șterge o regulă intenționată).
+
+Asimetrii intenționate DEJA cimentate (test în `server/tests/db/caracterizare-*`) — **NU le uniformiza**:
+- `submitStatuses` — DF acceptă `de_revizuit`, ORD nu.
+- `budgetCheck` — ORD hard `422 receptii_neplatite_negative` (col.5 ≥ 0); DF `none` (buget = soft-warning
+  DOAR în frontend, by design).
+- `alopOnComplete` — DF complete avansează ALOP `draft→angajare` + audit `legat_alop`; ORD nu atinge ALOP
+  la complete.
+- `linkFlow*` — DF setează `status='transmis_flux'`; ORD doar `flow_id`. ⚠️ ORD link-flow folosește o
+  proiecție îngustă de coloane — `canEditFormular` citește `doc.assigned_to` pe ramura `p2_comp`, deci ce
+  coloane încarci AFECTEAZĂ autorizarea. NU lărgi `SELECT`-ul fără să verifici impactul de authz.
+- `relinkOnDelete` — DF conștient de revizii (R0 eliberează / R1+ restore parent aprobat); ORD simplu.
+
+**Workflow obligatoriu când atingi formulare/ALOP:**
+1. **Caracterizează întâi.** Dacă zona n-are test de caracterizare DB, adaugă-l în `server/tests/db/**`
+   (status code + stare DB curentă) ÎNAINTE de orice schimbare. Vezi secțiunea Testing.
+2. **Consolidează ce atingi.** Dacă lovești o pereche DF/ORD încă duplicată (ex. `/api/formulare/list`,
+   create/PUT), pliază diferențele în config + funcție shared — nu adăuga o a treia copie.
+3. **Asimetrie nouă = cheie nouă de config + test + comentariu „NU uniformiza".** Niciodată un `if` mut.
+
+**Split de fișiere = MUTARE verbatim, nu rescriere.** Modelul e `routes/flows/` (orchestrator `index.mjs`
++ submodule). Capcană: Express potrivește în ordinea înregistrării — rutele statice (`/aprobate`) TREBUIE
+înregistrate ÎNAINTEA celor cu param (`/:id`), altfel `:id` le prinde. Un test anti-shadowing în
+`server/tests/db/` dovedește asta.
+
+**Stare caracterizată la nivel DB (plasă activă):** formulare DF/ORD
+(submit/complete/returneaza/revizuieste/sterge), ALOP (progresie stări, lazy-resync GET, ciclu multi-ORD,
+gărzi tranziție), capabilities, zombie-flow, cancel. **Încă pe mock (fără plasă DB — caracterizează
+înainte să atingi):** flows lifecycle, signing, entitlements, registratură, OPME.
+
+---
+
 ## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)
 
 Logica „ce acțiuni/butoane sunt disponibile pe un document" se calculează **server-side**, ca să nu
@@ -355,7 +397,7 @@ existe divergență server↔frontend. Frontend-ul DOAR randează din `capabilit
 
 - `server/services/formular-capabilities.mjs` → `computeDocCapabilities(doc, actor, ft)` (DF/ORD).
   Atașat pe `document.capabilities` la GET detaliu ȘI pe toate răspunsurile de mutație
-  (create/PUT/submit/complete/returneaza) din `server/routes/formulare-db.mjs`.
+  (create/PUT/submit/complete/returneaza) din `server/routes/formulare/{df,ord}.mjs`.
 - `server/services/alop-capabilities.mjs` → `computeAlopCapabilities(alop, actor)` (ALOP):
   `df_action`/`phase_action` (enum), `can_revise_df`/`can_delete`/`can_refresh`/`can_start_noua_ordonantare`.
   Atașat pe GET detaliu `/api/alop/:id` + `can_delete` pe lista `/api/alop`.

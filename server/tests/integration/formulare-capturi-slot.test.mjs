@@ -47,7 +47,7 @@ vi.mock('../../services/authz-formular.mjs', () => ({
 }));
 
 import * as dbModule from '../../db/index.mjs';
-import { formulareDbRouter } from '../../routes/formulare-db.mjs';
+import { formulareDbRouter } from '../../routes/formulare/index.mjs';
 
 const ORD_ID = 'ddddffff-0000-0000-0000-00000000ABCD';
 

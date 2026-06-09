@@ -48,7 +48,7 @@ vi.mock('../../services/authz-formular.mjs', () => ({
 }));
 
 import * as dbModule from '../../db/index.mjs';
-import { formulareDbRouter } from '../../routes/formulare-db.mjs';
+import { formulareDbRouter } from '../../routes/formulare/index.mjs';
 
 const DF_ID  = 'aaaadddd-0000-0000-0000-00000000DF01';
 const ATT_S1 = 'aaaa1111-1111-1111-1111-111111111111';

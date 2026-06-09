@@ -56,7 +56,7 @@ vi.mock('../../services/authz-formular.mjs', () => ({
 // ── Imports după mock-uri ────────────────────────────────────────────────────
 import * as dbModule from '../../db/index.mjs';
 import { isModuleEnabled } from '../../services/entitlements.mjs';
-import { formulareDbRouter } from '../../routes/formulare-db.mjs';
+import { formulareDbRouter } from '../../routes/formulare/index.mjs';
 import alopRouter from '../../routes/alop.mjs';
 import clasa8Router from '../../routes/clasa8.mjs';
 import supplierVerifyRouter from '../../routes/supplier-verify.mjs';

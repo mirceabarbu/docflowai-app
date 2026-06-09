@@ -11,7 +11,7 @@
  *
  * Multi-tenant: orgId e filtru obligatoriu pe TOATE query-urile.
  *
- * Identificare „aprobat" (pattern canonic, vezi formulare-db.mjs):
+ * Identificare „aprobat" (pattern canonic, vezi server/routes/formulare/):
  *   flow_id IS NOT NULL
  *   AND (f.data->>'status' = 'completed'
  *        OR (f.data->>'completed')::boolean = true)

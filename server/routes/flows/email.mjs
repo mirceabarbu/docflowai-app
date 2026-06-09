@@ -38,6 +38,7 @@ export function _injectDeps(d) {
 const router = Router();
 
 import { emailSendExtern } from '../../emailTemplates.mjs';
+import { generateTrustReport } from '../../services/sign-trust-report.mjs';
 
 
 
@@ -46,7 +47,7 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { flowId } = req.params;
-    let { to, subject, bodyText, extraAttachments = [] } = req.body || {};
+    let { to, subject, bodyText, extraAttachments = [], includeTrustReport = false } = req.body || {};
     // Normalize: acceptă string sau array, output întotdeauna array de adrese unice validate
     const recipientList = Array.isArray(to) ? to : (to ? [to] : []);
     const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -121,6 +122,43 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
       attachments.push({ filename: att.filename, content: clean });
     }
 
+    // Raport de Conformitate (Trust Report) — opțional, NON-FATAL.
+    // Reutilizează pattern-ul cache→generate din report.mjs (sign-trust-report.mjs se cachează singur).
+    if (includeTrustReport) {
+      try {
+        let reportBuf = null;
+        // 1) cache
+        const cache = await pool.query(
+          'SELECT report_pdf FROM trust_reports WHERE flow_id = $1', [flowId]
+        );
+        if (cache.rows[0]?.report_pdf) {
+          reportBuf = Buffer.isBuffer(cache.rows[0].report_pdf)
+            ? cache.rows[0].report_pdf
+            : Buffer.from(cache.rows[0].report_pdf);
+        } else {
+          // 2) generează (se cachează singur) — folosește bytes-ul PDF-ului semnat
+          let pdfBytes = null;
+          const srcB64 = data.signedPdfB64 || data.pdfB64;
+          if (srcB64) {
+            const clean = srcB64.includes(',') ? srcB64.split(',')[1] : srcB64;
+            pdfBytes = Buffer.from(clean, 'base64');
+          }
+          const { pdfBytes: out } = await generateTrustReport({ flowId, flowData: data, pdfBytes, pool });
+          reportBuf = out;
+        }
+        if (reportBuf && reportBuf.length > 100) {
+          attachments.push({
+            filename: `Raport_Conformitate_${flowId}.pdf`,
+            content: reportBuf.toString('base64'),
+          });
+        }
+      } catch (e) {
+        // NON-FATAL: emailul pleacă oricum, fără raport. NU bloca trimiterea documentului.
+        logger.warn({ err: e, flowId }, 'trust report attach failed — email continuă fără raport');
+      }
+    }
+    const trustReportAttached = attachments.some(a => a.filename?.startsWith('Raport_Conformitate_'));
+
     if (!Array.isArray(data.events)) data.events = [];
     const now = new Date().toISOString();
     const failures = [];
@@ -152,10 +190,13 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
             to: recipient, subject: subject.trim(),
             trackingId,
             extraAttachmentsCount: extraAttachments.length,
+            includeTrustReport: !!includeTrustReport,
+            trustReportAttached,
           });
           writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'EMAIL_SENT',
             actorIp: _getIp(req), actorEmail: actor.email,
-            payload: { to: recipient, subject: subject.trim(), resendId: j.id, trackingId } });
+            payload: { to: recipient, subject: subject.trim(), resendId: j.id, trackingId,
+              includeTrustReport: !!includeTrustReport, trustReportAttached } });
           logger.info({ flowId, to: recipient, actor: actor.email, trackingId }, '📧 Email extern trimis');
         }
       } catch(sendErr) {
