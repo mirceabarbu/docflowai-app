@@ -163,6 +163,15 @@ iau decizia **explicit la call-site** și setează `data.preSignedUpload = true`
 `PRESIGNED_UPLOAD_DETECTED`; răspunsul `POST /flows` întoarce `preSignedUpload` pentru bannerul din
 inițiator.
 
+**UX avertizare (din v3.9.553):** avertismentul nu depinde de niciun timer. Apare în trei locuri:
+(1) **la selectarea fișierului** — `clientPdfLooksSigned` în `public/js/semdoc-initiator/main.js`,
+REPLICĂ manual-sincronizată a euristicii `pdfLooksSigned` server-side (schimbi una, schimbi ambele);
+(2) **după POST /flows** — când `preSignedUpload:true`, fără redirect automat: banner persistent +
+buton manual „Am înțeles — continuă..." (PDF normal păstrează redirect-ul pe timer 900ms);
+(3) **pe semdoc-signer** — banner informativ deasupra zonei de semnare, citit din `preSignedUpload`
+expus de `GET /flows/:flowId` (flag-ul trece prin `stripSensitive` ca parte din `...rest` — test în
+`presigned-upload.test.mjs`).
+
 ⚠️ Fallback-ul de coordonate hardcodate din `cloud-signing.mjs` (NO-TOUCH) trebuie să rămână **cod mort** —
 `padesRect` e garantat populat acum. **Orice path nou care creează fluxuri TREBUIE să populeze `padesRect`**
 (stampFooterOnPdf pentru PDF nesemnat, computeSignerRectsReadOnly pentru cel semnat). Geometria celulelor

@@ -191,6 +191,11 @@
             </button>
           </div>
 
+          <!-- PDF pre-semnat la upload — banner informativ, fără timer/dismiss (v3.9.553) -->
+          <div id="preSignedBanner" style="display:none; margin-bottom:12px; padding:10px 14px; border:1px solid var(--df-warning-bd); background:var(--df-warning-bg); border-radius:10px; color:var(--df-warning); line-height:1.5; font-size:.88rem;">
+            ⚠️ Documentul încărcat conține deja o semnătură electronică. Pentru a nu o invalida, antetul/footer-ul și cartușul DocFlowAI nu vor fi aplicate; semnăturile QES vor fi plasate în spațiul liber de pe ultima pagină.
+          </div>
+
           <!-- Semnătură electronică calificată — flux unic -->
           <div id="signBox" style="background:rgba(124,92,255,.08); border:1px solid rgba(124,92,255,.3); border-radius:14px; padding:16px;">
             <div style="font-weight:700; margin-bottom:10px;">✍️ Semnătură electronică calificată</div>
@@ -277,7 +282,7 @@
       </div>
     </main>
 
-    <script src="/js/semdoc-signer/main.js?v=3.9.518" defer></script>
+    <script src="/js/semdoc-signer/main.js?v=3.9.553" defer></script>
   <script src="/notif-widget.js?v=3.9.518"></script>
 <script src="/js/semdoc-signer/post-dom-handlers.js?v=3.9.518" defer></script>
 

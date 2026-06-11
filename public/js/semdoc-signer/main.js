@@ -491,6 +491,10 @@
           // URGENT banner
           const urgentBanner = $("urgentBanner");
           if (urgentBanner) { urgentBanner.style.display = j.urgent ? "flex" : "none"; }
+          // PDF pre-semnat la upload (v3.9.553): footer/cartuș omise by design —
+          // bannerul explică semnatarului de ce documentul nu are tabelul DocFlowAI.
+          const preSignedBanner = $("preSignedBanner");
+          if (preSignedBanner) { preSignedBanner.style.display = j.preSignedUpload ? "block" : "none"; }
 
           // Flux refuzat — afișează mesaj clar și blochează tot
           if (j.status === "refused" || (j.signers||[]).some(s => s.status === "refused")) {

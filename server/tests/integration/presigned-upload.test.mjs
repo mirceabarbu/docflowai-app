@@ -7,6 +7,9 @@
  *   - răspunsul API conține preSignedUpload:true
  * Creare flux cu PDF normal: comportament neschimbat (footer aplicat,
  *   stampFooterOnPdf apelat, fără flag).
+ * GET /flows/:flowId cu token de semnatar (v3.9.553): preSignedUpload e expus
+ *   în răspuns când e setat pe data (bannerul din semdoc-signer depinde de el)
+ *   și e false/absent altfel.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -78,6 +81,21 @@ const CLEAN_PDF  = buildPdf();                       // pdfLooksSigned → false
 
 const stampSpy = vi.fn().mockImplementation(async (pdf) => pdf);
 
+// Copie fidelă a stripSensitive din server/index.mjs — identitatea ar masca o
+// regresie în care flag-ul preSignedUpload e stripat din răspunsul pentru semnatar.
+function stripSensitiveReal(data, callerSignerToken = null) {
+  if (!data || typeof data !== 'object') return data;
+  const { pdfB64, signedPdfB64, ...rest } = data;
+  return {
+    ...rest, hasPdf: !!pdfB64,
+    hasSignedPdf: !!(signedPdfB64 || (data.storage === 'drive' && (data.driveFileLinkFinal || data.driveFileIdFinal))),
+    signers: (data.signers || []).map(s => {
+      const { token, ...signerRest } = s;
+      return callerSignerToken && s.token === callerSignerToken ? { ...signerRest, token } : signerRest;
+    }),
+  };
+}
+
 function createTestApp() {
   injectFlowDeps({
     notify:                vi.fn().mockResolvedValue(undefined),
@@ -87,7 +105,7 @@ function createTestApp() {
     isSignerTokenExpired:  vi.fn().mockReturnValue(false),
     newFlowId:             vi.fn().mockReturnValue('TEST_PRESIGN001'),
     buildSignerLink:       vi.fn().mockReturnValue('https://app.test/sign'),
-    stripSensitive:        vi.fn().mockImplementation((d) => d),
+    stripSensitive:        vi.fn().mockImplementation(stripSensitiveReal),
     stripPdfB64:           vi.fn().mockImplementation((d) => d),
     sendSignerEmail:       vi.fn().mockResolvedValue({ ok: true }),
     jsonPdfParser:         express.json({ limit: '52mb' }),
@@ -165,5 +183,42 @@ describe('POST /flows — PDF pre-semnat la upload', () => {
     const saved = dbModule.saveFlow.mock.calls[0][1];
     expect(saved.preSignedUpload).toBe(false);
     expect(saved.events.find(e => e.type === 'PRESIGNED_UPLOAD_DETECTED')).toBeFalsy();
+  });
+});
+
+describe('GET /flows/:flowId — expunere preSignedUpload pentru semnatar', () => {
+  function flowData(overrides = {}) {
+    return {
+      flowId:    'TEST_PRESIGN001',
+      docName:   'Document deja semnat',
+      initEmail: 'initiator@primaria.ro',
+      orgId:     1,
+      pdfB64:    SIGNED_PDF,
+      signers: [
+        { order: 1, name: 'Maria Ionescu', email: 'maria@primaria.ro', rol: 'APROBAT', token: 'tok-maria', status: 'current' },
+      ],
+      createdAt: '2026-06-11T08:00:00.000Z',
+      updatedAt: '2026-06-11T08:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  it('flag setat → răspunsul include preSignedUpload:true (fără pdfB64)', async () => {
+    const app = createTestApp();
+    dbModule.getFlowData.mockResolvedValue(flowData({ preSignedUpload: true }));
+
+    const res = await request(app).get('/flows/TEST_PRESIGN001?token=tok-maria');
+    expect(res.status).toBe(200);
+    expect(res.body.preSignedUpload).toBe(true);
+    expect(res.body.pdfB64).toBeUndefined(); // stripSensitive activ — nu leak-uim PDF-ul
+  });
+
+  it('fără flag → preSignedUpload false/absent în răspuns', async () => {
+    const app = createTestApp();
+    dbModule.getFlowData.mockResolvedValue(flowData({ preSignedUpload: false }));
+
+    const res = await request(app).get('/flows/TEST_PRESIGN001?token=tok-maria');
+    expect(res.status).toBe(200);
+    expect(res.body.preSignedUpload || false).toBe(false);
   });
 });
