@@ -490,6 +490,7 @@ import { fireWebhook, injectWebhookPool, injectWebhookBaseUrl } from './webhook.
 import { emailYourTurn, emailGeneric } from './emailTemplates.mjs';
 import { logger, redactUrl } from './middleware/logger.mjs';
 import { detectContentYs as _detectContentYs, findLowestUsableGap } from './utils/pdf-content-detect.mjs';
+import { pdfLooksSigned } from './utils/pdf-signed-placement.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
 let PDFLib = null;
@@ -914,23 +915,8 @@ function isSignerTokenExpired(signer) {
 // Footer stamp — linia de identificare pe ultima pagina.
 // Pentru flowType 'ancore': salvare cu useObjectStreams:false pentru a nu degrada AcroForm/campuri semnatura.
 // Pentru flowType 'tabel': comportament implicit (useObjectStreams:true).
-function pdfLooksSigned(pdfB64) {
-  try {
-    if (!pdfB64) return false;
-    const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    const buf = Buffer.from(clean, 'base64');
-    const sample = buf.toString('latin1');
-    return (
-      sample.includes('/ByteRange') ||
-      sample.includes('/Contents<') ||
-      sample.includes('/Contents <') ||
-      sample.includes('/SubFilter/ETSI.CAdES.detached') ||
-      sample.includes('/SubFilter /ETSI.CAdES.detached') ||
-      sample.includes('/Type/Sig') ||
-      sample.includes('/Type /Sig')
-    );
-  } catch { return false; }
-}
+// pdfLooksSigned — mutată în server/utils/pdf-signed-placement.mjs (v3.9.552),
+// importată mai sus. Comportament identic; refolosită la call-site (crud/lifecycle).
 
 // detectContentYs + findLowestUsableGap — importate din server/utils/pdf-content-detect.mjs (v3.9.496)
 // Wrapper care injectează PDFLib (load async la pornire — nu poate fi import direct)

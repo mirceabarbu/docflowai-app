@@ -150,6 +150,25 @@ Semnatar descarcă PDF unsigned → semnează offline cu aplicație desktop QES 
 - La semnare ulterioară, iText recunoaște propriile câmpuri și scrie MINIM în incremental update
 - Cartuș vizual „SEMNAT SI APROBAT" afișează rol, nume, funcție per celulă
 
+### PDF-uri pre-semnate la upload (din v3.9.552)
+Dacă PDF-ul încărcat **conține deja o semnătură QES** (`pdfLooksSigned` → `/ByteRange`),
+`stampFooterOnPdf` se sare **intenționat** (guard `preventRewriteIfSigned`) — un re-save pdf-lib ar
+invalida semnătura existentă. Deci **fără footer, fără cartuș desenat**, by design.
+
+În schimb, `padesRect` per semnatar se calculează **read-only** prin
+`computeSignerRectsReadOnly(pdfB64, signers, PDFLib)` din `server/utils/pdf-signed-placement.mjs`:
+PDF-ul NU se salvează niciodată, rect-urile se plasează în spațiul liber de pe **ultima pagină**
+(bottom → gap → forced), `page` 1-based. `crud.mjs` + `lifecycle.mjs` (ambele call-site-uri reinitiate)
+iau decizia **explicit la call-site** și setează `data.preSignedUpload = true` + eveniment
+`PRESIGNED_UPLOAD_DETECTED`; răspunsul `POST /flows` întoarce `preSignedUpload` pentru bannerul din
+inițiator.
+
+⚠️ Fallback-ul de coordonate hardcodate din `cloud-signing.mjs` (NO-TOUCH) trebuie să rămână **cod mort** —
+`padesRect` e garantat populat acum. **Orice path nou care creează fluxuri TREBUIE să populeze `padesRect`**
+(stampFooterOnPdf pentru PDF nesemnat, computeSignerRectsReadOnly pentru cel semnat). Geometria celulelor
+e **sincronizată manual** între `stampFooterOnPdf` și `computeSignerRectsReadOnly` — schimbi una, schimbi
+ambele.
+
 ---
 
 ## Multi-tenancy

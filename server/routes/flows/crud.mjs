@@ -8,6 +8,7 @@ import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getU
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { convertToPdf, ACCEPTED_EXTENSIONS } from '../../utils/convertToPdf.mjs';
 import { getActiveSigner } from '../../services/user-leave.mjs';
+import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -307,7 +308,25 @@ const createFlow = async (req, res) => {
       });
     } catch (e) { logger.warn({ err: e, flowId }, 'registratura: alocare la creare eșuată'); }
 
-    if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
+    // PDF pre-semnat la upload: conține deja o semnătură QES aplicată extern.
+    // NU rescriem PDF-ul (footer/cartuș omise — ar invalida semnătura existentă),
+    // dar calculăm read-only padesRect per semnatar ca aparențele iText să fie
+    // plasate corect în spațiul liber de pe ultima pagină. Decizie EXPLICITĂ la
+    // call-site — stampFooterOnPdf oricum ar sări intern (preventRewriteIfSigned).
+    let _preSignedUpload = false;
+    let _preSignedPlacement = null;
+    if (finalPdfB64 && _PDFLib && (body.flowType || 'tabel') !== 'ancore' && pdfLooksSigned(finalPdfB64)) {
+      _preSignedUpload = true;
+      try {
+        const _ro = await computeSignerRectsReadOnly(finalPdfB64, normalizedSigners, _PDFLib, logger);
+        _preSignedPlacement = _ro.placement;
+        (_ro.signerRects || []).forEach((rect, idx) => {
+          if (normalizedSigners[idx] && rect) normalizedSigners[idx].padesRect = rect;
+        });
+        logger.info({ flowId, signers: normalizedSigners.length, placement: _ro.placement },
+          'crud: PDF pre-semnat — footer/cartuș omise, padesRect read-only calculat');
+      } catch(e) { logger.warn({ err: e, flowId }, 'computeSignerRectsReadOnly la creare error:'); }
+    } else if (finalPdfB64 && _stampFooterOnPdf && (body.flowType || 'tabel') !== 'ancore') {
       try {
         // b242: stampFooterOnPdf returnează { pdfB64, signerFields }
         // signerFields = [{fieldName, pageIndex}] — câmpurile /Sig pre-create
@@ -351,9 +370,18 @@ const createFlow = async (req, res) => {
       nrInregistrare:      _reg ? _reg.numarFormat : null,  // Registratură Faza 1
       nrInregistrareData:  _reg ? _reg.data        : null,
       signers: normalizedSigners,
+      preSignedUpload: _preSignedUpload,  // PDF deja semnat la upload → footer/cartuș omise
       createdAt, updatedAt: new Date().toISOString(),
       events: [{ at: new Date().toISOString(), type: 'FLOW_CREATED', by: initEmail, urgent: !!(body.urgent) }],
     };
+    if (_preSignedUpload) {
+      data.events.push({
+        at: new Date().toISOString(),
+        type: 'PRESIGNED_UPLOAD_DETECTED',
+        detail: 'Footer/cartuș omise pentru a păstra validitatea semnăturii existente',
+        placement: _preSignedPlacement,
+      });
+    }
     const first = data.signers.find(s => s.status === 'current');
     const initIsSigner = first && first.email.toLowerCase() === initEmail.toLowerCase();
     if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
@@ -429,7 +457,7 @@ const createFlow = async (req, res) => {
         message: `${initName} te-a adăugat ca semnatar pe documentul „${data.docName}". Intră în aplicație pentru a semna.`,
         waParams: { signerName: first.name || first.email, docName: data.docName, signerToken: first.token, initName, initFunctie, institutie: initInstitutie, compartiment: initCompartiment }, urgent: !!(data.urgent) });
     }
-    return res.json({ ok: true, flowId, firstSignerEmail: first?.email || null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null });
+    return res.json({ ok: true, flowId, firstSignerEmail: first?.email || null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null, preSignedUpload: _preSignedUpload });
   } catch(e) { logger.error({ err: e }, 'POST /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 };
 

@@ -1975,27 +1975,43 @@ async function signFromFluxuri(flowId) {
             sessionStorage.removeItem("alop_id_for_flow");
           }
 
+          // PDF pre-semnat la upload: documentul conține deja o semnătură QES.
+          // Banner persistent + redirect mai lent ca inițiatorul să citească.
+          // Inline-styled (scoped pe element) — fără selectori bare per CSS scoping.
+          const _preSigned = !!j.preSignedUpload;
+          if (_preSigned) {
+            sessionStorage.setItem("docflow_presigned_notice", "1");
+          }
+          const _preSignedBanner = _preSigned
+            ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid #f0c36d;background:#fff8e6;border-radius:8px;color:#7a5c00;line-height:1.45;font-size:13px;">
+                 ⚠️ Documentul încărcat conține deja o semnătură electronică. Pentru a nu o invalida,
+                 antetul/footer-ul și cartușul DocFlowAI nu vor fi aplicate; semnăturile QES vor fi
+                 plasate în spațiul liber de pe ultima pagină.
+               </div>`
+            : ``;
+          const _redirectDelay = _preSigned ? 4500 : 900;
+
           // Redirect UX:
           // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
           // - altfel -> mergi la pagina dedicată flow (status/timeline)
           if (j.initIsSigner) {
             if (j.signerToken) {
-              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar — te redirecționăm la semnare...</strong>`;
+              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar — te redirecționăm la semnare...</strong>${_preSignedBanner}`;
               setTimeout(() => {
                 location.href = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(j.signerToken)}&fromInit=1`;
-              }, 900);
+              }, _redirectDelay);
             } else {
               // Fallback safe: fără token nu putem deschide semnarea direct
-              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar</strong>, dar lipsește token-ul de semnare. Te ducem la statusul fluxului.`;
+              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar</strong>, dar lipsește token-ul de semnare. Te ducem la statusul fluxului.${_preSignedBanner}`;
               setTimeout(() => {
                 location.href = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
-              }, 900);
+              }, _redirectDelay);
             }
           } else {
-            $("createResult").innerHTML = `✅ Flux creat. Notificare trimisă primului semnatar. Te ducem la statusul fluxului.`;
+            $("createResult").innerHTML = `✅ Flux creat. Notificare trimisă primului semnatar. Te ducem la statusul fluxului.${_preSignedBanner}`;
             setTimeout(() => {
               location.href = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
-            }, 900);
+            }, _redirectDelay);
           }
 } catch (e) {
           $("createResult").textContent = `❌ Eroare: ${String(e.message || e)}`;

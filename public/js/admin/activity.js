@@ -25,6 +25,7 @@
     FLOW_REINITIATED:               'Flux reinițiat după refuz',
     FLOW_REINITIATED_AFTER_REVIEW:  'Flux reinițiat după revizuire',
     REINITIATED_AFTER_REVIEW:       'Reinițiere marcată',
+    PRESIGNED_UPLOAD_DETECTED:      'PDF deja semnat — footer omis',
 
     // ─── Acțiuni semnatari ────────────────────────────────────────────
     SIGNED:                         'Semnat și avansat',
