@@ -24,6 +24,9 @@ import { requireDb } from './_helpers.mjs';
 const router = Router();
 const _csrf  = csrfMiddleware;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(s) { return typeof s === 'string' && UUID_RE.test(s); }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ORDONANȚARE DE PLATĂ (ORD)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -159,6 +162,8 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
     const vals = [actor.orgId, actor.userId];
 
     if (body.df_id) { cols.push('df_id'); vals.push(body.df_id); }
+    // v3.9.554: proveniență ALOP (simetric cu DF) — persistată la INSERT, nu se schimbă la PUT
+    if (isUuid(body.source_alop_id)) { cols.push('source_alop_id'); vals.push(body.source_alop_id); }
 
     for (const f of ORD_P1_FIELDS) {
       if (!(f in data)) continue;

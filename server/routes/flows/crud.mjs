@@ -8,6 +8,7 @@ import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getU
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { convertToPdf, ACCEPTED_EXTENSIONS } from '../../utils/convertToPdf.mjs';
 import { getActiveSigner } from '../../services/user-leave.mjs';
+import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
@@ -417,6 +418,9 @@ const createFlow = async (req, res) => {
             `UPDATE formulare_df SET status='aprobat', updated_at=NOW()
              WHERE flow_id=$1 AND status!='aprobat'`, [flowId]
           );
+          // v3.9.554: self-heal — re-leagă ALOP-ul (via source_alop_id) dacă legătura
+          // s-a pierdut (refuz R0 → re-aprobare, link-df eșuat silențios). Idempotent.
+          await selfHealAlopDfLink(pool, flowId);
           await pool.query(
             `UPDATE alop_instances
              SET status='lichidare', df_completed_at=NOW(), updated_at=NOW()

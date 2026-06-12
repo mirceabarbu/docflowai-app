@@ -6,6 +6,7 @@ import { Router, json as expressJson } from 'express';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { getActiveSigner, getLeaveInfo } from '../../services/user-leave.mjs';
+import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
@@ -391,6 +392,9 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
               `UPDATE formulare_df SET status = 'aprobat', updated_at = NOW() WHERE flow_id = $1`,
               [flowId]
             ).catch(() => {});
+            // v3.9.554: self-heal — re-leagă ALOP-ul (via source_alop_id) dacă legătura
+            // s-a pierdut (refuz R0 → re-aprobare, link-df eșuat silențios). Idempotent.
+            await selfHealAlopDfLink(pool, flowId);
             const [alopDf, alopOrd] = await Promise.all([
               pool.query(`SELECT id, status FROM alop_instances WHERE df_flow_id=$1 AND cancelled_at IS NULL`, [flowId]),
               pool.query(`SELECT id, status FROM alop_instances WHERE ord_flow_id=$1 AND cancelled_at IS NULL`, [flowId])

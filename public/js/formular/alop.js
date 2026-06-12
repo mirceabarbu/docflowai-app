@@ -34,8 +34,16 @@ async function _alopLinkDoc(ft, docId){
     });
     const j=await r.json();
     if(r.ok)console.log(`✅ link-df ok:`,alopId,docId);
-    else console.warn(`ALOP ${endpoint} warn:`,j.error);
-  }catch(e){console.warn(`ALOP ${endpoint} error:`,e);}
+    else{
+      console.warn(`ALOP ${endpoint} warn:`,j.error);
+      // v3.9.554 (A3): eroarea de legare nu mai e silențioasă — fără asta, documentul
+      // pare salvat OK dar ALOP-ul rămâne „Fără DF" și utilizatorul nu află.
+      setS(`Documentul a fost salvat, dar legarea la dosarul ALOP a eșuat: ${esc(j.message||j.error||('HTTP '+r.status))}. Reîncercați salvarea sau legați documentul din dosarul ALOP.`,'err');
+    }
+  }catch(e){
+    console.warn(`ALOP ${endpoint} error:`,e);
+    setS('Documentul a fost salvat, dar legarea la dosarul ALOP a eșuat (eroare de rețea). Reîncercați salvarea.','err');
+  }
 }
 
 

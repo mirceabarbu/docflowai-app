@@ -198,8 +198,15 @@ router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df
     }
     const { sets, vals } = buildUpdate(data, DF_P1_FIELDS, 3);
     const cols = ['org_id', 'created_by', ...Object.keys(data)];
-    const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
     const allVals = [actor.orgId, actor.userId, ...vals];
+    // v3.9.554: proveniență ALOP — frontend-ul trimite source_alop_id când DF-ul e creat
+    // din context ALOP. Persistat la INSERT (nu e în DF_P1_FIELDS — nu se schimbă la PUT);
+    // folosit pentru self-heal relink la aprobarea fluxului (alop-link.mjs).
+    if (isUuid(req.body?.source_alop_id)) {
+      cols.push('source_alop_id');
+      allVals.push(req.body.source_alop_id);
+    }
+    const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
 
     const q = `
       INSERT INTO formulare_df (${cols.join(', ')})
@@ -440,7 +447,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
         ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
         ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
         este_revizie_an_urmator, total_val_prec,
-        rows_ctrl
+        rows_ctrl, source_alop_id
       )
       SELECT
         org_id, $2, nr_unic_inreg,
@@ -456,7 +463,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
         ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
         ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
         $6::boolean, $7::numeric,
-        $8::jsonb
+        $8::jsonb, source_alop_id
       FROM formulare_df WHERE id = $1
       RETURNING *
     `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '', JSON.stringify(rowsValNoi), isAnUrmator, totalValPrec, JSON.stringify(rowsCtrlNoi)]);

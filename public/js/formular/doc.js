@@ -39,6 +39,9 @@ function collectOrdDb(){return{
   iban_beneficiar:g('o-iban'),cif_beneficiar:g('o-cifb'),banca_beneficiar:g('o-banca'),
   inf_pv_plata:g('o-inf1'),inf_pv_plata1:g('o-inf2'),rows:getOR(),
   df_id:document.getElementById('o-df-id')?.value||null,
+  // v3.9.554: proveniență ALOP — backend-ul o persistă DOAR la creare (POST);
+  // permite self-heal relink dacă link-ord eșuează silențios.
+  source_alop_id:window._alopContext?.alopId||null,
 };}
 function collectDfP1Db(){return{
   cif:g('n-cif'),den_inst_pb:g('n-den'),subtitlu_df:g('n-subtitlu'),
@@ -52,6 +55,9 @@ function collectDfP1Db(){return{
   ckbx_sting_ang_in_ancrt:cb('n-ck-sting'),ckbx_fara_plati_ang_in_ancrt:cb('n-ck-faraplati'),
   ckbx_cu_plati_ang_in_mmani:cb('n-ck-cuplati'),ckbx_ang_leg_emise_ct_an_urm:cb('n-ck-anurmatori'),
   rows_plati:getNP(),
+  // v3.9.554: proveniență ALOP — backend-ul o persistă DOAR la creare (POST);
+  // permite self-heal relink la aprobare dacă link-df eșuează silențios.
+  source_alop_id:window._alopContext?.alopId||null,
 };}
 function collectDfP2Db(){return{
   ckbx_secta_inreg_ctrl_ang:cb('n-ck-seca'),ckbx_fara_inreg_ctrl_ang:cb('n-ck-fararezv'),

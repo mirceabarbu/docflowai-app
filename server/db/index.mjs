@@ -1792,6 +1792,21 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_formulare_audit_org  ON formulare_audit(org_id, created_at DESC);
     `
   }
+  ,{
+    id: '084_formulare_source_alop',
+    sql: `
+      -- v3.9.554: proveniență persistentă DF/ORD → ALOP. Legarea inițială (link-df/link-ord)
+      -- depinde exclusiv de frontend și poate eșua silențios (409/403/CSRF/rețea) — cu
+      -- source_alop_id persistat la creare, aprobarea fluxului poate re-lega automat ALOP-ul
+      -- (self-heal în server/services/alop-link.mjs). Backfill istoric nu e necesar.
+      ALTER TABLE formulare_df  ADD COLUMN IF NOT EXISTS source_alop_id UUID NULL;
+      ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS source_alop_id UUID NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_source_alop
+        ON formulare_df(source_alop_id) WHERE source_alop_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_source_alop
+        ON formulare_ord(source_alop_id) WHERE source_alop_id IS NOT NULL;
+    `
+  }
 ];
 
 async function runMigrations(client) {

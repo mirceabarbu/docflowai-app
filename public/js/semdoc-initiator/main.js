@@ -1991,6 +1991,9 @@ async function signFromFluxuri(flowId) {
           const _alopId      = _urlParams.get('alop_id')        || sessionStorage.getItem('alop_id_for_flow')?.split('|')[0];
           const _alopDocType = _urlParams.get('alop_doc_type')  || sessionStorage.getItem('alop_id_for_flow')?.split('|')[1];
           console.log('🔍 ALOP check:', '_alopId=', _alopId, 'j.flowId=', j.flowId);
+          // v3.9.554 (A3): erorile de legare ALOP nu mai sunt silențioase — se afișează
+          // banner persistent (fără redirect automat) ca utilizatorul să afle imediat.
+          let _alopLinkErr = null;
           if (_alopId && j.flowId) {
             const _isDfFlow = _alopDocType === "notafd";
             try {
@@ -1998,25 +2001,40 @@ async function signFromFluxuri(flowId) {
               if (_prefDocId) {
                 const _lnkDoc = _isDfFlow ? "link-df" : "link-ord";
                 console.log(`ALOP ${_lnkDoc}: ${_alopId} → ${_prefDocId}`);
-                await fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
-                  method: "POST", credentials: "include",
-                  headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
-                  body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
-                }).catch(e => console.error('❌ link-df FAILED:', e));
+                try {
+                  const _rDoc = await fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
+                    method: "POST", credentials: "include",
+                    headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                    body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
+                  });
+                  if (!_rDoc.ok) {
+                    const _jDoc = await _rDoc.json().catch(() => null);
+                    _alopLinkErr = _jDoc?.message || _jDoc?.error || `HTTP ${_rDoc.status}`;
+                    console.error(`❌ ${_lnkDoc} FAILED:`, _alopLinkErr);
+                  }
+                } catch (e) { _alopLinkErr = 'eroare de rețea'; console.error('❌ link-df FAILED:', e); }
               }
               // Link fluxul de semnare
               const _lnkFlow = _isDfFlow ? "link-df-flow" : "link-ord-flow";
               console.log(`ALOP ${_lnkFlow}: ${_alopId} → ${j.flowId}`);
-              console.log('📤 Calling link-df-flow:', _alopId, 'flowId:', j.flowId);
-              console.log('📤 link-df-flow sending:', _alopId, j.flowId);
-              await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
-                method: "POST", credentials: "include",
-                headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
-                body: JSON.stringify({ flow_id: j.flowId })
-              }).catch(e => console.error('❌ link-df-flow FAILED:', e));
+              try {
+                const _rFlow = await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
+                  method: "POST", credentials: "include",
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                  body: JSON.stringify({ flow_id: j.flowId })
+                });
+                if (!_rFlow.ok) {
+                  const _jFlow = await _rFlow.json().catch(() => null);
+                  _alopLinkErr = _alopLinkErr || _jFlow?.message || _jFlow?.error || `HTTP ${_rFlow.status}`;
+                  console.error(`❌ ${_lnkFlow} FAILED:`, _jFlow?.error || _rFlow.status);
+                }
+              } catch (e) { _alopLinkErr = _alopLinkErr || 'eroare de rețea'; console.error('❌ link-df-flow FAILED:', e); }
             } catch(_) {}
             sessionStorage.removeItem("alop_id_for_flow");
           }
+          const _alopWarnBanner = _alopLinkErr
+            ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--df-warning-bd);background:var(--df-warning-bg);border-radius:var(--df-radius-md);color:var(--df-warning);line-height:1.45;font-size:13px;">⚠️ Fluxul a fost creat, dar <strong>legarea la dosarul ALOP a eșuat</strong>: ${esc(_alopLinkErr)}. Verificați dosarul ALOP și legați documentul manual.</div>`
+            : ``;
 
           // PDF pre-semnat la upload: documentul conține deja o semnătură QES.
           // Avertismentul NU depinde de un timer (v3.9.553): banner persistent +
@@ -2049,9 +2067,9 @@ async function signFromFluxuri(flowId) {
             _btnLabel  = `Am înțeles — continuă la statusul fluxului`;
           }
 
-          if (_preSigned) {
-            // FĂRĂ timer — bannerul rămâne pe ecran până la click
-            $("createResult").innerHTML = `${_msgManual}${_preSignedBanner}
+          if (_preSigned || _alopLinkErr) {
+            // FĂRĂ timer — bannerul (presigned și/sau eroare ALOP) rămâne pe ecran până la click
+            $("createResult").innerHTML = `${_msgManual}${_preSignedBanner}${_alopWarnBanner}
               <div style="margin-top:10px;">
                 <button id="btnPreSignedContinue" class="df-action-btn primary" type="button">${_btnLabel}</button>
               </div>`;
