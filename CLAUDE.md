@@ -445,6 +445,30 @@ gărzi tranziție), capabilities, zombie-flow, cancel. **Încă pe mock (fără 
 
 ---
 
+## Linking DF↔ALOP & authz atașamente (din v3.9.554)
+
+**Proveniență persistentă:** DF/ORD create din context ALOP poartă `source_alop_id` (migrarea 084;
+frontend-ul îl trimite din `window._alopContext.alopId`, backend-ul îl persistă DOAR la INSERT;
+revizia îl copiază din părinte). **Self-heal la aprobare:** `server/services/alop-link.mjs` →
+`selfHealAlopDfLink(pool, flowId)`, apelat din `signing.mjs` (allDone) + `crud.mjs` (edge-case flux
+deja completed) — re-leagă ALOP-ul dacă `df_id` e NULL (refuz R0, link-df eșuat silențios) sau
+pointează la o revizie veche din același `nr_unic_inreg`. Erorile de link-df/link-ord sunt vizibile
+în UI (setS în `alop.js`, banner în `semdoc-initiator/main.js`) — nu doar `console.warn`.
+
+🔒 **INVARIANT — NU modifica:** relink-ul de revizie (`df.mjs` /revizuieste) și self-heal-ul se
+aplică **INTENȚIONAT și ALOP-urilor `completed`** (doar `cancelled_at IS NULL` exclude) — e
+mecanismul care permite: ALOP finalizat → revizuire DF (valoare mărită) → `noua-lichidare`
+recalculează `ramas` pe valoarea reviziei noi → ciclu nou. NU adăuga filtre `completed_at IS NULL`
+pe aceste query-uri. Test: `server/tests/db/alop-df-relink-selfheal.test.mjs`.
+
+**Authz atașamente/capturi:** rutele `formulare-atasamente` + `formulare-capturi` (`shared.mjs`)
+folosesc **exclusiv** `authz-formular.mjs` (`canEditFormular` upload/delete, `canViewFormular`
+listă/download) — include drepturile prin compartiment (comp/p2_comp), pe care verificarea veche
+creator/assigned/admin le refuza cu 403. Test prin lanțul real de middleware (json adaptiv + CSRF
+real): `server/tests/db/formulare-atasamente-authz.test.mjs`.
+
+---
+
 ## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)
 
 Logica „ce acțiuni/butoane sunt disponibile pe un document" se calculează **server-side**, ca să nu
