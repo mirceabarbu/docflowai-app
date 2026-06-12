@@ -125,6 +125,8 @@
     .att-list{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:3px}
     .att-chip{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:3px;background:#d4e6f1;border:1px solid #a8c7e0;font-size:9.5px;color:#1a4060}
     .att-chip button{background:none;border:none;cursor:pointer;color:#900;font-size:10px;padding:0}
+    /* v3.9.554 (B2): chip cu upload eșuat — triada danger pe tema paper (vezi title pentru motiv) */
+    .att-chip.att-chip-err{background:#f8d7da;border-color:#dba5ac;color:#842029}
     .att-br{display:flex;justify-content:flex-end;margin-top:4px;gap:6px}
     .att-btn{padding:4px 12px;border-radius:2px;border:1px solid #888;background:#f0f0f0;font-size:11px;cursor:pointer;font-family:inherit;color:#222}
     .att-btn:hover{background:#e0e0e0}
@@ -335,6 +337,7 @@
     .df-block-body .att-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:var(--df-text-2);border-radius:6px;font-family:inherit}
     .df-block-body .att-btn:hover{background:rgba(255,255,255,.1)}
     .df-block-body .att-chip{background:rgba(108,79,240,.15);border:1px solid rgba(108,79,240,.3);color:#b0a0ff;border-radius:4px}
+    .df-block-body .att-chip.att-chip-err{background:var(--df-danger-bg);border:1px solid var(--df-danger-bd);color:var(--df-danger)}
     /* P2 field dark override */
     /* .df-block-body .p2-field eliminat (uniformizare vizuală) */
     /* Locked block overlay */

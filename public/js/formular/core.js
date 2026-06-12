@@ -103,6 +103,10 @@ function addAtt(ev,lid,did){
       const chip=document.createElement('span');chip.className='att-chip';
       chip.innerHTML=`📎 ${f.name} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
       list.appendChild(chip);
+      // v3.9.554 (B3): setarea programatică a input-ului ascuns nu emite 'input'/'change',
+      // deci autosave-ul nu pornea — fișier atașat + navigare fără alt edit = pierdut.
+      // Derivăm ft din did ('o-*' → ordnt, 'n-*' → notafd), consecvent cu remAttServer.
+      window._scheduleAutoSaveDb?.(did.startsWith('o-')?'ordnt':'notafd');
     };
     rd.readAsDataURL(f);
   }

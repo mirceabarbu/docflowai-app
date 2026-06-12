@@ -851,15 +851,21 @@ async function saveDoc(ft){
       if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
     }
     // v3.9.501: upload atașamente pending pentru ambele sloturi (ORD slot 1, DF slot 1+2)
+    // v3.9.554 (B2): colectează eșecurile — nu mai raportăm „Salvat cu succes" peste ele
+    let _attFailed=[];
     if(ST.docId[ft]){
-      await uploadAttachments(ft, 1);
-      if(ft==='notafd') await uploadAttachments(ft, 2);
+      _attFailed=_attFailed.concat(await uploadAttachments(ft, 1)||[]);
+      if(ft==='notafd') _attFailed=_attFailed.concat(await uploadAttachments(ft, 2)||[]);
     }
 
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=j.document?.capabilities||null;
     renderActions(ft);refreshDocs(ft);
-    setS('Salvat cu succes.','ok');
+    if(_attFailed.length){
+      setS(`Document salvat, dar ${_attFailed.length} atașament(e) nu au putut fi încărcate: ${df.esc(_attFailed.map(f=>`${f.name} (${f.reason})`).join(', '))}. Se reîncearcă la următoarea salvare.`,'err');
+    }else{
+      setS('Salvat cu succes.','ok');
+    }
   }catch(e){setS('Eroare rețea: '+e.message,'err');}
 }
 
@@ -898,14 +904,17 @@ function _attIds(ft, slot) {
   return null;
 }
 
+// v3.9.554 (B2): returnează lista eșecurilor [{name, reason}] — apelanții (saveDoc,
+// _autoSaveDb) o folosesc ca să NU raporteze „Salvat cu succes" peste upload-uri picate.
 async function uploadAttachments(ft, slot = 1){
-  const ids = _attIds(ft, slot); if (!ids) return;
-  if (!ST.docId[ft]) return;
+  const ids = _attIds(ft, slot); if (!ids) return [];
+  if (!ST.docId[ft]) return [];
   const { did, lid } = ids;
   const _slot = slot === 2 ? 2 : 1;
-  let cur; try { cur = JSON.parse(document.getElementById(did)?.value || '[]'); } catch (_) { return; }
-  if (!Array.isArray(cur)) return;
+  let cur; try { cur = JSON.parse(document.getElementById(did)?.value || '[]'); } catch (_) { return []; }
+  if (!Array.isArray(cur)) return [];
   let changed = false;
+  const failed = [];
   for (let i = 0; i < cur.length; i++) {
     const item = cur[i];
     if (item?.id || !item?.data) continue;
@@ -929,13 +938,25 @@ async function uploadAttachments(ft, slot = 1){
       if (r.ok && j?.atasament) {
         cur[i] = { id: j.atasament.id, filename: j.atasament.filename, mime_type: j.atasament.mime_type, size_bytes: j.atasament.size_bytes };
         changed = true;
+      } else {
+        const reason = j?.error || ('HTTP ' + r.status);
+        cur[i]._err = reason;   // marcaj vizual pe chip (att-chip-err); item.data rămâne → retry la următorul save
+        failed.push({ name: item.name || 'fișier', reason });
+        changed = true;
+        console.warn('[v3.9.554] uploadAttachments HTTP fail', item?.name, reason);
       }
-    } catch (e) { console.warn('[v3.9.501] uploadAttachments error', item?.name, e); }
+    } catch (e) {
+      if (cur[i]) cur[i]._err = 'rețea';
+      failed.push({ name: item?.name || 'fișier', reason: 'eroare de rețea' });
+      changed = true;
+      console.warn('[v3.9.501] uploadAttachments error', item?.name, e);
+    }
   }
   if (changed) {
     document.getElementById(did).value = JSON.stringify(cur);
     renderAttachments(ft, _slot);
   }
+  return failed;
 }
 
 async function fetchAttachments(ft, slot = 1){
@@ -945,7 +966,14 @@ async function fetchAttachments(ft, slot = 1){
   const _slot = slot === 2 ? 2 : 1;
   try {
     const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`, { credentials: 'include' });
-    if (!r.ok) return;
+    if (!r.ok) {
+      // v3.9.554 (B2): la 403/500 lista nu mai dispare tăcut — indicator discret de eroare
+      const jErr = await r.json().catch(() => null);
+      console.warn('[v3.9.554] fetchAttachments HTTP', r.status, jErr?.error);
+      const listEl = document.getElementById(ids.lid);
+      if (listEl) listEl.innerHTML = `<span class="att-chip att-chip-err" title="${df.esc(jErr?.error || ('HTTP ' + r.status))}">⚠ atașamentele nu au putut fi încărcate</span>`;
+      return;
+    }
     const j = await r.json();
     if (!j.ok || !Array.isArray(j.atasamente)) return;
     const list = j.atasamente.map(a => ({
@@ -966,7 +994,8 @@ function renderAttachments(ft, slot = 1){
   const docId = ST.docId[ft];
   cur.forEach((item, idx) => {
     const chip = document.createElement('span');
-    chip.className = 'att-chip';
+    chip.className = 'att-chip' + (item._err ? ' att-chip-err' : '');
+    if (item._err) chip.title = 'Upload eșuat: ' + item._err + ' — se reîncearcă la următoarea salvare';
     const name = item.filename || item.name || 'fișier';
     const safe = String(name).replace(/[<>"]/g, '');
     if (item.id && docId) {

@@ -41,13 +41,17 @@ vi.mock('../../middleware/require-module.mjs', () => ({
   requireModule: () => (_req, _res, next) => next(),
 }));
 
+// v3.9.554 (B1): rutele de atașamente/capturi folosesc acum authz centralizat —
+// canEditFormular (upload/delete) + canViewFormular (listă/download).
 vi.mock('../../services/authz-formular.mjs', () => ({
   canDestroyOnly:  vi.fn().mockReturnValue({ allowed: true }),
   canEditFormular: vi.fn().mockReturnValue({ allowed: true }),
-  loadActorComp:   vi.fn().mockResolvedValue(undefined),
+  canViewFormular: vi.fn().mockReturnValue({ allowed: true, mode: 'edit' }),
+  loadActorComp:   vi.fn().mockResolvedValue(''),
 }));
 
 import * as dbModule from '../../db/index.mjs';
+import * as authzModule from '../../services/authz-formular.mjs';
 import { formulareDbRouter } from '../../routes/formulare/index.mjs';
 
 const ORD_ID = 'ddddffff-0000-0000-0000-00000000ABCD';
@@ -103,6 +107,8 @@ describe('POST /api/formulare-atasamente/:type/:id', () => {
   it('upload fără permisiune → 403', async () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ created_by: 999, assigned_to: 888, status: 'draft' }], rowCount: 1 });
+    // B1: decizia 403 vine acum din canEditFormular (authz centralizat)
+    authzModule.canEditFormular.mockReturnValueOnce({ allowed: false, reason: 'forbidden' });
 
     const res = await request(createTestApp())
       .post(`/api/formulare-atasamente/ord/${ORD_ID}`)
