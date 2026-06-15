@@ -55,6 +55,9 @@ function collectDfP1Db(){return{
   ckbx_sting_ang_in_ancrt:cb('n-ck-sting'),ckbx_fara_plati_ang_in_ancrt:cb('n-ck-faraplati'),
   ckbx_cu_plati_ang_in_mmani:cb('n-ck-cuplati'),ckbx_ang_leg_emise_ct_an_urm:cb('n-ck-anurmatori'),
   rows_plati:getNP(),
+  // FEATURE buget multi-anual (v3.9.558): an absolut care ancorează benzile rows_plati.
+  // La creare backend-ul îl default-ează la anul curent dacă lipsește; la revizie e moștenit.
+  an_referinta:g('n-anref')||'',
   // v3.9.554: proveniență ALOP — backend-ul o persistă DOAR la creare (POST);
   // permite self-heal relink la aprobare dacă link-df eșuează silențios.
   source_alop_id:window._alopContext?.alopId||null,
@@ -133,6 +136,13 @@ function populateDf(doc){
   sv('n-sumfara',doc.sum_fara_inreg_ctrl_crdbug||'0');
   sc('n-ck-interzis',doc.ckbx_interzis_emit_ang);sc('n-ck-intrucat',doc.ckbx_interzis_intrucat);
   sv('n-intrucat',doc.intrucat);
+  // FEATURE buget multi-anual (v3.9.558): restabilește an_referinta (NULL legacy → anul curent
+  // afișat, fără a-l forța la salvare). La revizie câmpul e read-only (moștenit din părinte).
+  sv('n-anref',doc.an_referinta!=null?doc.an_referinta:'');
+  { const _ar=document.getElementById('n-anref');
+    if(_ar){ _ar.readOnly=!!(doc.este_revizie||doc.parent_df_id||(doc.revizie_nr|0)>0); }
+  }
+  if(typeof anrefSync==='function')anrefSync();
   ['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{const el=document.getElementById(tid);if(el)el.innerHTML='';});
   nVI=nPI=nCI=0;
   (doc.rows_val||[]).forEach(row=>{addNV();const tr=document.getElementById('n-vtbody').querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});});
@@ -791,7 +801,11 @@ function newDoc(ft){
           }
         });
     }
-  }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
+  }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');
+    // FEATURE buget multi-anual (v3.9.558): DF nou → an de referință = anul curent (editabil).
+    { const _ar=document.getElementById('n-anref'); if(_ar){ _ar.value=new Date().getFullYear(); _ar.readOnly=false; } }
+    if(typeof anrefSync==='function')anrefSync();
+  }
   document.getElementById('result-'+ft).classList.remove('show');
   ST[ft]={pdf:null,name:null};upTot();clrS();renderActions(ft);
   document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.remove('active'));
@@ -1364,8 +1378,9 @@ async function completeAsP2(ft){
         const det=Array.isArray(j.rows)?j.rows.map(b=>`r${b.idx}: ${b.c5}`).join(', '):'';
         setS('⛔ '+j.message+(det?' ('+det+')':''),'err');
       }else if(j.error==='buget_an_curent_depasit'){
-        // FIX B (v3.9.557): plafon hard pe bugetul anului curent (rows_plati.plati_estim_ancrt).
-        setS('⛔ '+(j.message||'Suma ordonanțată depășește bugetul anului curent.'),'err');
+        // FIX B (v3.9.557) → buget multi-anual (v3.9.558): plafon hard pe bugetul anului de
+        // exercițiu (banda rows_plati ancorată pe an_referinta). Mesajul server include anul.
+        setS('⛔ '+(j.message||'Suma ordonanțată depășește bugetul anului de exercițiu.'),'err');
       }else{
         setS(j.error||'Eroare','err');
       }

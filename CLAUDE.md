@@ -497,6 +497,49 @@ ale DF-ului). Teste: `server/tests/db/ord-buget-an-curent-plafon.test.mjs` +
 
 ---
 
+## Buget multi-anual — an_referinta ancorează benzile la ani absoluți (din v3.9.558)
+
+FIX B (v3.9.557) trata `rows_plati` ca **mono-an** — plafonul fix pe `plati_estim_ancrt`. Corect pentru
+2026, dar `rows_plati` are benzi **RELATIVE** (`ancrt`/`np1`/`np2`/`np3`/`ani_precedenti`/`ani_ulter`) și
+nicăieri nu se stoca CARE an absolut e „ancrt". La 1 ian. 2027 plafonul ar fi trebuit să devină `np1`.
+
+**Ancorare:** `formulare_df.an_referinta` (INTEGER, migrarea **085**) = anul absolut al benzii `ancrt`;
+`np1`→`+1`, … `ani_ulter`→`>+3`. „Anul de exercițiu" pentru plafon = `EXTRACT(YEAR FROM NOW())`
+(fără setting per-org în iterația 1 — documentat). La **creare** se setează din body sau default anul
+curent; la **revizie** se moștenește din părinte (copiat în INSERT-ul `/revizuieste`, NU re-trimis din
+frontend) — o suplimentare în 2026 rămâne ancorată pe 2026. DF legacy (pre-085) = `an_referinta` NULL,
+**fără backfill**.
+
+**Helper central PUR:** `server/services/buget-an.mjs` → `bugetPentruAnul(rowsPlati, anReferinta,
+anExercitiu)` mapează `offset = anExercitiu − anReferinta` la banda corectă și întoarce `SUM`-ul peste
+rânduri. `anReferinta` NULL → `null` („nedeclarat"). Acoperit de `server/tests/unit/buget-an.test.mjs`.
+
+**Decizia owner pentru DF legacy (an_referinta NULL):** **block mono-an pe `ancrt`** (identic FIX B) —
+apelanții coalescează `anReferinta ← anExercitiu` ⇒ offset 0 ⇒ banda `ancrt`, deci plafonul 422 rămâne
+activ. (NU skip+warn.)
+
+**Cumul PER an de exercițiu (migrarea 086):** `alop_ord_cicluri.an_exercitiu` (INTEGER) marchează anul
+plății arhivate; populat la `noua-lichidare` din anul `plata_data` (fallback anul curent). Cumulul de
+ordonanțări filtrează ciclurile pe anul de exercițiu: `COALESCE(an_exercitiu,
+YEAR(plata_data), YEAR(created_at)) = an_exercitiu_curent` — o plată din 2026 NU consumă bugetul 2027.
+
+**Trei puncte de control** (toate prin helper / fragment SQL sincronizat):
+(1) **plafon ORD** (`formular-shared.mjs` → `validateOrdBugetAnCurent`): banda anului de exercițiu +
+cumul filtrat pe an; 422 `buget_an_curent_depasit` (body include `anExercitiu`).
+(2) **noua-lichidare** (`alop.mjs`): `ramas = bugetPentruAnul(...) − sumaPlatitaInAnulExercitiului`.
+(3) **card ALOP** (FIX A, list+detail): `df_buget_an_curent` via fragmentul SQL `sqlBugetAnExercitiu`.
+
+⚠️ **Geometria benzii e SINCRONIZATĂ MANUAL** între `bandaPentruOffset()` (JS, buget-an.mjs) și
+`sqlBugetAnExercitiu()` (SQL, alop.mjs) — schimbi mapping-ul într-una, schimbi-l în ambele.
+
+**Frontend:** câmp `an_referinta` (`n-anref`) în formularul DF — default anul curent la creare, read-only
+la revizie; etichetele coloanelor `rows_plati` afișează anii absoluți (`anrefSync()`); cardul ALOP arată
+„Buget exercițiu <an>"; eroarea 422 menționează anul. Teste:
+`server/tests/db/buget-multianual-an-referinta.test.mjs` (offset 0/1/−1, cumul per an, legacy block,
+revizie moștenește, default la creare).
+
+---
+
 ## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)
 
 Logica „ce acțiuni/butoane sunt disponibile pe un document" se calculează **server-side**, ca să nu
@@ -841,6 +884,8 @@ Schema ALOP este împărțită între un fișier SQL inițial și migrații inli
 | server/db/index.mjs                       | 062_alop_multi_ord     | Tabela alop_ord_cicluri (multi-ORD per ALOP)    |
 | server/db/index.mjs                       | 063_user_leave_delegate | concediu + delegare                            |
 | server/db/index.mjs                       | 064_delegation_functie | funcție pentru delegare                         |
+| server/db/index.mjs                       | 085_formulare_df_an_referinta | an absolut ancorare benzi rows_plati     |
+| server/db/index.mjs                       | 086_alop_ord_cicluri_an_exercitiu | an de exercițiu per ciclu arhivat    |
 
 Pentru orice nouă migrație ALOP/formulare, urmează regula stabilită:
 ALTER inline în db/index.mjs cu pattern `id: 'NNN_descriere'` și SQL idempotent.

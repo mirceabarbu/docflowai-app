@@ -958,13 +958,21 @@
     </div>
     <label class="dck" style="margin-top:3px"><input type="checkbox" id="n-ck-faraang" onchange="p5toggle()"/>Fără angajamente emise în exercițiul curent</label>
 
+    <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--df-text-2)">
+      <span style="font-weight:700">An de referință (exercițiu buget):</span>
+      <input id="n-anref" class="di" type="number" min="2000" max="2100" step="1"
+        style="width:90px" onchange="anrefSync()"
+        title="Anul absolut căruia îi corespunde banda „Plăți estimate în anul curent”. Ancorează benzile multianuale (N+1, N+2…). La revizie e moștenit din document."/>
+      <span style="opacity:.7">— ancorează benzile de plăți la ani absoluți</span>
+    </label>
+
     <div style="overflow-x:auto;margin-top:6px">
     <table class="doc-t" id="n-p5-tabel" style="opacity:.4;pointer-events:none">
       <thead>
         <tr>
           <th>Program</th><th>Cod SSI</th>
-          <th>Plăți efectuate în anii precedenți</th><th>Plăți estimate în anul curent</th>
-          <th>Estimări an N+1</th><th>Estimări an N+2</th><th>Estimări an N+3</th><th>Ani ulteriori</th>
+          <th id="n-th-pprec">Plăți efectuate în anii precedenți</th><th id="n-th-pancrt">Plăți estimate în anul curent</th>
+          <th id="n-th-pnp1">Estimări an N+1</th><th id="n-th-pnp2">Estimări an N+2</th><th id="n-th-pnp3">Estimări an N+3</th><th id="n-th-pulter">Ani ulteriori</th>
           <th style="width:22px"></th>
         </tr>
       </thead>
@@ -1292,16 +1300,16 @@
 </div>
 
 <script src="/notif-widget.js?v=3.9.528"></script>
-<script src="/js/formular/core.js?v=3.9.554" defer></script>
+<script src="/js/formular/core.js?v=3.9.558" defer></script>
 <script src="/js/formular/verif.js?v=3.9.528" defer></script>
-<script src="/js/formular/alop.js?v=3.9.556" defer></script>
+<script src="/js/formular/alop.js?v=3.9.558" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.528" defer></script>
 <script src="/js/components/opme-report-drawer.js?v=3.9.528" defer></script>
 <script src="/js/formular/draft.js?v=3.9.528" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.528" defer></script>
 <script src="/js/formular/list.js?v=3.9.554" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.537" defer></script>
-<script src="/js/formular/doc.js?v=3.9.557" defer></script>
+<script src="/js/formular/doc.js?v=3.9.558" defer></script>
 <script src="/js/formular/formular.js?v=3.9.528" defer></script>
 <!-- ════════════ TRASABILITATE MODAL ════════════════════════════════════════ -->
 <style>
