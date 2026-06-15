@@ -52,25 +52,28 @@ d('Linking DF↔ALOP — invariant relink-pe-completed + self-heal', () => {
 
   it('noua-lichidare după revizie cu valoare mărită → ramas pe valoarea reviziei noi, ciclu nou, completed_at=NULL', async () => {
     const flowId = await seedFlowApproved();
-    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId, nrUnic: 'DF-INV-2', rowsVal: [{ valt_actualiz: '1000' }] });
+    // FIX B (v3.9.557): `ramas` din noua-lichidare se calculează pe bugetul anului curent
+    // = SUM(rows_plati.plati_estim_ancrt), NU pe angajamentul total SUM(rows_val.valt_actualiz).
+    // Seed coerent: angajament total ≥ buget an curent.
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId, nrUnic: 'DF-INV-2', rowsVal: [{ valt_actualiz: '1000' }], rowsPlati: [{ plati_estim_ancrt: '1000' }] });
     const alopId = await seedAlop({
       orgId: 1, createdBy: 1, status: 'completed', dfId, dfFlowId: flowId,
       dfCompletedAt: new Date(), plataSumaEfectiva: 1000, cicluCurent: 1,
     });
 
-    // Revizuire → ALOP relink la R1; valoarea reviziei crește la 1500 (aprobat)
+    // Revizuire → ALOP relink la R1; bugetul anului curent al reviziei crește la 1500 (aprobat)
     const rev = await request(app).post(`/api/formulare-df/${dfId}/revizuieste`).set('Cookie', p1()).send({ motiv: 'suplimentare' });
     expect(rev.status).toBe(200);
     const revId = rev.body.df.id;
     const revFlowId = await seedFlowApproved();
     await pool.query(
-      `UPDATE formulare_df SET rows_val=$2::jsonb, status='aprobat', flow_id=$3 WHERE id=$1`,
-      [revId, JSON.stringify([{ valt_actualiz: '1500' }]), revFlowId]
+      `UPDATE formulare_df SET rows_val=$2::jsonb, rows_plati=$3::jsonb, status='aprobat', flow_id=$4 WHERE id=$1`,
+      [revId, JSON.stringify([{ valt_actualiz: '1500' }]), JSON.stringify([{ plati_estim_ancrt: '1500' }]), revFlowId]
     );
 
     const res = await request(app).post(`/api/alop/${alopId}/noua-lichidare`).set('Cookie', p1()).send({});
     expect(res.status).toBe(200);
-    expect(Number(res.body.ramas)).toBe(500);  // 1500 (revizie) - 1000 (plătit) — NU 0 pe valoarea veche
+    expect(Number(res.body.ramas)).toBe(500);  // 1500 (buget an curent revizie, plati_estim_ancrt) - 1000 (plătit) — NU 0 pe vechea bază valt_actualiz
 
     const a = await getAlop(alopId);
     expect(a.status).toBe('lichidare');
