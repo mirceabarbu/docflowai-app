@@ -1806,6 +1806,39 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_formulare_ord_source_alop
         ON formulare_ord(source_alop_id) WHERE source_alop_id IS NOT NULL;
     `
+  },
+  {
+    // v3.9.558 (FEATURE buget multi-anual): ancorare an absolut pe DF.
+    // `rows_plati` are benzi RELATIVE (ancrt/np1/np2/np3/ani_precedenti/ani_ulter).
+    // `an_referinta` stochează anul absolut căruia îi aparține `plati_estim_ancrt`;
+    // np1 → an_referinta+1, ... ani_ulter → > an_referinta+3. NULL = legacy / nedeclarat
+    // (DF create înainte de această migrare) — NU se backfillează automat. Decizia owner:
+    // pentru NULL plafonul rămâne mono-an pe `ancrt` (block hard 422, identic FIX B).
+    id: '085_formulare_df_an_referinta',
+    sql: `
+      ALTER TABLE formulare_df ADD COLUMN IF NOT EXISTS an_referinta INTEGER NULL;
+    `
+  },
+  {
+    // v3.9.558 (FEATURE buget multi-anual): an de exercițiu pe ciclurile arhivate.
+    // Pentru cumul corect PER an de exercițiu (o ordonanțare făcută în 2026 consumă
+    // bugetul 2026, nu pe cel din 2027), ciclul arhivat marchează explicit anul plății.
+    // Populat la arhivare din anul `plata_data` (fallback derivat la calcul pentru
+    // ciclurile istorice fără valoare). Tabela e creată inline (062) dar GARDATĂ pe
+    // fresh boot (alop_instances vine din V4) → ALTER-ul TREBUIE gardat la fel (vezi 073).
+    id: '086_alop_ord_cicluri_an_exercitiu',
+    sql: `
+      -- depinde de alop_instances (tabela-părinte V4): acest token forțează deferral-ul
+      -- în migrateForTests (V4_ONLY regex) ca ALTER-ul să ruleze DUPĂ ce 062 creează
+      -- alop_ord_cicluri pe DB fresh — fără el guard-ul ar sări tăcut și coloana ar lipsi.
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_ord_cicluri'
+        ) THEN RETURN; END IF;
+        ALTER TABLE alop_ord_cicluri
+          ADD COLUMN IF NOT EXISTS an_exercitiu INTEGER;
+      END $g$;
+    `
   }
 ];
 
