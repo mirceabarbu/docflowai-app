@@ -478,6 +478,23 @@ real): `server/tests/db/formulare-atasamente-authz.test.mjs`.
 nouă (validarea hard pe bugetul anului curent vine separat). Test:
 `server/tests/db/alop-buget-an-curent.test.mjs`.
 
+**Ordonanțare plafonată hard pe bugetul anului curent (din v3.9.557, FIX B):** ordonanțarea/plata
+se poate face DOAR în limita bugetului anului curent = `SUM(formulare_df.rows_plati[].plati_estim_ancrt)`
+al DF-ului legat (`ord.df_id` / `alop.df_id`, revizia activă), NU în limita angajamentului total
+multianual (`rows_val.valt_actualiz`). Două puncte de control:
+(1) **la finalizarea ORD** (`formular-shared.mjs` → `validateOrdBugetAnCurent`, gated de
+`budgetCheck==='hard_col5'`): col.5 ≥ 0 rămâne validare SEPARATĂ și rulează ÎNAINTE; apoi, dacă
+`suma_ordonanțată_cumulată_an_curent > buget + 0.001` → `422 buget_an_curent_depasit`. Cumulul =
+suma rândurilor noi ORD (`data.rows`) + plățile ciclurilor arhivate (`alop_ord_cicluri.plata_suma_efectiva`)
+ale ALOP-ului legat de același DF — REFOLOSEȘTE logica `total_ord_valoare` din `alop.mjs` (fără dublă
+numărare). Skip dacă ORD-ul nu are `df_id`.
+(2) **la `noua-lichidare`** (`alop.mjs`): `ramas = bugetAnCurent − sumaPlata` (înainte: `dfVal` =
+`SUM(valt_actualiz)`); `limita_depasita` când bugetul an curent e epuizat chiar dacă angajamentul total
+mai are loc. După revizie de DF care mărește `plati_estim_ancrt`, `alop.df_id` relegat → ramas crește →
+ciclu nou posibil (invariant relink v3.9.554). Modelare „an curent" = mono-an (toate ciclurile active
+ale DF-ului). Teste: `server/tests/db/ord-buget-an-curent-plafon.test.mjs` +
+`server/tests/db/alop-noua-lichidare-ciclu.test.mjs`.
+
 ---
 
 ## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)

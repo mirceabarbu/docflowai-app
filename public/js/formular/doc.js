@@ -1363,6 +1363,9 @@ async function completeAsP2(ft){
       if(j.error==='receptii_neplatite_negative'){
         const det=Array.isArray(j.rows)?j.rows.map(b=>`r${b.idx}: ${b.c5}`).join(', '):'';
         setS('⛔ '+j.message+(det?' ('+det+')':''),'err');
+      }else if(j.error==='buget_an_curent_depasit'){
+        // FIX B (v3.9.557): plafon hard pe bugetul anului curent (rows_plati.plati_estim_ancrt).
+        setS('⛔ '+(j.message||'Suma ordonanțată depășește bugetul anului curent.'),'err');
       }else{
         setS(j.error||'Eroare','err');
       }

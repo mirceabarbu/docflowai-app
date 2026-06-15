@@ -910,7 +910,7 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [completedAlop] })       // SELECT alop
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp
-      .mockResolvedValueOnce({ rows: [{ df_val: '2000' }] }) // SELECT df_val
+      .mockResolvedValueOnce({ rows: [{ buget_an_curent: '2000' }] }) // SELECT buget an curent (FIX B: rows_plati.plati_estim_ancrt)
       .mockResolvedValueOnce({ rows: [{ total: '0' }] })      // SELECT SUM cicluri anterioare
       .mockResolvedValueOnce({ rows: [] })                     // INSERT alop_ord_cicluri
       .mockResolvedValueOnce({ rows: [resetAlop] });           // UPDATE alop
@@ -928,7 +928,7 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     expect(res.body.ramas).toBeCloseTo(1000); // 2000 - (0 + 1000) = 1000
   });
 
-  it('400 — suma epuizată (plata_suma >= df_val) returnează limita_depasita', async () => {
+  it('400 — buget an curent epuizat (plata_suma >= buget) returnează limita_depasita', async () => {
     const completedAlop = makeAlopRow({
       status:              'completed',
       df_id:               DF_ID,
@@ -938,7 +938,7 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [completedAlop] })
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp
-      .mockResolvedValueOnce({ rows: [{ df_val: '2000' }] })
+      .mockResolvedValueOnce({ rows: [{ buget_an_curent: '2000' }] }) // FIX B: bugetul anului curent
       .mockResolvedValueOnce({ rows: [{ total: '0' }] });
 
     const app = createTestApp();

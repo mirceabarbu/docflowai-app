@@ -1152,23 +1152,27 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
     if (alop.status !== 'completed')
       return res.status(400).json({ error: 'status_invalid', message: 'ALOP trebuie să fie finalizat (plată efectuată).' });
 
-    // Valoarea DF aprobat
+    // Bugetul anului curent al DF-ului aprobat (FIX B, v3.9.557): plafonul efectiv pentru
+    // ordonanțare/plată este SUM(rows_plati.plati_estim_ancrt) — „Plăți estimate în anul
+    // curent" — NU angajamentul total multianual SUM(rows_val.valt_actualiz). După o revizie
+    // de DF, alop.df_id pointează deja la revizia activă, deci bugetul se recalculează corect
+    // pe valorile reviziei (ciclu nou posibil dacă revizia mărește plati_estim_ancrt).
     const { rows: [dfRow] } = await pool.query(
       `SELECT COALESCE(
-        (SELECT SUM((r->>'valt_actualiz')::numeric)
+        (SELECT SUM((r->>'plati_estim_ancrt')::numeric)
          FROM jsonb_array_elements(
-           CASE WHEN fd.rows_val IS NOT NULL
-                AND jsonb_array_length(fd.rows_val) > 0
-           THEN fd.rows_val ELSE '[]'::jsonb END
+           CASE WHEN fd.rows_plati IS NOT NULL
+                AND jsonb_array_length(fd.rows_plati) > 0
+           THEN fd.rows_plati ELSE '[]'::jsonb END
          ) r
-         WHERE (r->>'valt_actualiz') IS NOT NULL
-           AND (r->>'valt_actualiz') ~ '^[0-9.]+$'
+         WHERE (r->>'plati_estim_ancrt') IS NOT NULL
+           AND (r->>'plati_estim_ancrt') ~ '^[0-9.]+$'
         ), 0
-       ) AS df_val
+       ) AS buget_an_curent
        FROM formulare_df fd WHERE fd.id=$1`,
       [alop.df_id]
     );
-    const dfVal = parseFloat(dfRow?.df_val || 0);
+    const bugetAnCurent = parseFloat(dfRow?.buget_an_curent || 0);
 
     // Suma totală plătită din cicluri anterioare arhivate
     const { rows: [sumaRow] } = await pool.query(
@@ -1178,11 +1182,11 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
     const sumaPlata = parseFloat(sumaRow?.total || 0)
       + parseFloat(alop.plata_suma_efectiva || 0);
 
-    const ramas = dfVal - sumaPlata;
+    const ramas = bugetAnCurent - sumaPlata;
     if (ramas <= 0)
       return res.status(400).json({
         error: 'limita_depasita',
-        message: `Valoarea DF (${dfVal} RON) a fost integral ordonanțată.`
+        message: `Bugetul estimat al anului curent (${bugetAnCurent} RON) a fost integral ordonanțat.`
       });
 
     // Arhivează ciclul curent

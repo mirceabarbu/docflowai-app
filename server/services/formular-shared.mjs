@@ -192,6 +192,67 @@ function validateOrdCol5(rows) {
   return null;
 }
 
+// ── plafon hard: suma ordonanțată cumulată în anul curent ≤ bugetul anului curent ─
+// (v3.9.557, FIX B) Regula de business confirmată: ordonanțarea se poate face DOAR în
+// limita „Plăților estimate în anul curent" = SUM(formulare_df.rows_plati[].plati_estim_ancrt)
+// al DF-ului legat (revizia activă, via ord.df_id), NU în limita angajamentului total
+// multianual (rows_val.valt_actualiz). Depășirea = blocaj hard 422, simetric cu col.5.
+//
+// Cumulul refolosește aceeași logică de sumare ca agregarea `total_ord_valoare` din
+// alop.mjs (~254): suma ORD-ului CURENT (rândurile noi din data.rows, nu cele din DB —
+// evită dubla numărare la re-completare) PLUS plățile arhivate ale ciclurilor anterioare
+// (alop_ord_cicluri.plata_suma_efectiva) ale ALOP-ului legat de același DF.
+//
+// Modelare „an curent": mono-an. Schema nu marchează explicit anul pe ORD/cicluri, deci
+// TOATE ciclurile active ale DF-ului se consideră în anul curent (model actual). Logica
+// multi-an, dacă va fi necesară, e alt sprint.
+//
+// Întoarce `{ status, body }` la depășire, altfel `null`. Skip (null) dacă ORD-ul nu are
+// `df_id` — fără DF legat nu există buget de verificat.
+async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
+  if (!ordDoc || !ordDoc.df_id) return null;
+  const _num = v => {
+    if (v === null || v === undefined || v === '') return 0;
+    const n = Number(String(v).trim().replace(/\s/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+  const ordCurentNou = (Array.isArray(newRows) ? newRows : [])
+    .reduce((s, r) => s + _num(r && r.suma_ordonantata_plata), 0);
+
+  const { rows } = await pool.query(
+    `SELECT
+       COALESCE((
+         SELECT SUM((r->>'plati_estim_ancrt')::numeric)
+         FROM jsonb_array_elements(COALESCE(df.rows_plati,'[]'::jsonb)) r
+         WHERE (r->>'plati_estim_ancrt') ~ '^[0-9.]+$'
+       ), 0) AS buget_an_curent,
+       COALESCE((
+         SELECT SUM(c.plata_suma_efectiva)
+         FROM alop_ord_cicluri c
+         JOIN alop_instances a ON a.id = c.alop_id
+         WHERE a.df_id = df.id AND a.org_id = $2 AND a.cancelled_at IS NULL
+       ), 0) AS cicluri_arhivate
+     FROM formulare_df df
+     WHERE df.id = $1`,
+    [ordDoc.df_id, orgId]
+  );
+  if (!rows.length) return null; // DF inexistent — nimic de verificat
+
+  const bugetAnCurent = parseFloat(rows[0].buget_an_curent || 0);
+  const cicluriArhivate = parseFloat(rows[0].cicluri_arhivate || 0);
+  const ordonantatCumulat = ordCurentNou + cicluriArhivate;
+
+  if (ordonantatCumulat > bugetAnCurent + 0.001) {
+    return { status: 422, body: {
+      error: 'buget_an_curent_depasit',
+      message: `Suma ordonanțată în anul curent (${ordonantatCumulat.toFixed(2)} RON) depășește bugetul estimat al anului curent (${bugetAnCurent.toFixed(2)} RON).`,
+      bugetAnCurent,
+      ordonantat: ordonantatCumulat,
+    } };
+  }
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LIFECYCLE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -272,9 +333,13 @@ export async function completeFormular({ type, id, actor, body }) {
     const data = pick(body || {}, cfg.p2Fields);
 
     // ASIMETRIE buget: ORD validează hard col.5 (422); DF nu (soft-warning e DOAR frontend).
+    // Ordinea verificărilor (documentată): col.5 ≥ 0 ÎNTÂI (per rând), apoi plafonul
+    // pe bugetul anului curent (FIX B, v3.9.557). Cele două sunt validări SEPARATE.
     if (cfg.budgetCheck === 'hard_col5') {
       const bad = validateOrdCol5(data.rows);
       if (bad) return bad;
+      const overBudget = await validateOrdBugetAnCurent({ ordDoc: doc, newRows: data.rows, orgId: actor.orgId });
+      if (overBudget) return overBudget;
     }
 
     const { sets, vals } = buildUpdate(data, cfg.p2Fields, 1);
