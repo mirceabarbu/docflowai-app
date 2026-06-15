@@ -461,6 +461,11 @@ mecanismul care permite: ALOP finalizat → revizuire DF (valoare mărită) → 
 recalculează `ramas` pe valoarea reviziei noi → ciclu nou. NU adăuga filtre `completed_at IS NULL`
 pe aceste query-uri. Test: `server/tests/db/alop-df-relink-selfheal.test.mjs`.
 
+**Revizii — atașamente/capturi (din v3.9.555):** `/revizuieste` copiază în aceeași tranzacție
+rândurile `formulare_atasamente` (nedeleted) și `formulare_capturi` ale părintelui pe noua revizie
+(`form_id` nou, `uploaded_by`/`created_at` originale păstrate) — fără asta R1 pornea fără anexele
+R0. Test: `server/tests/db/revizie-df-copiere-atasamente.test.mjs`.
+
 **Authz atașamente/capturi:** rutele `formulare-atasamente` + `formulare-capturi` (`shared.mjs`)
 folosesc **exclusiv** `authz-formular.mjs` (`canEditFormular` upload/delete, `canViewFormular`
 listă/download) — include drepturile prin compartiment (comp/p2_comp), pe care verificarea veche

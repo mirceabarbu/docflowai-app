@@ -24,8 +24,11 @@ import jwt from 'jsonwebtoken';
 
 vi.mock('../../db/index.mjs', () => {
   const mockQuery = vi.fn();
+  const mockClient = { query: vi.fn(), release: vi.fn() };
+  const mockConnect = vi.fn(() => Promise.resolve(mockClient));
   return {
-    pool:          { query: mockQuery },
+    pool:          { query: mockQuery, connect: mockConnect },
+    __mockClient:  mockClient,
     DB_READY:      true,
     requireDb:     vi.fn(() => false),
     DB_LAST_ERROR: null,
@@ -89,7 +92,23 @@ beforeEach(() => {
   vi.clearAllMocks();
   dbModule.pool.query.mockReset();
   dbModule.pool.query.mockResolvedValue({ rows: [] });
+  dbModule.pool.connect.mockReset();
+  dbModule.pool.connect.mockResolvedValue(dbModule.__mockClient);
+  dbModule.__mockClient.query.mockReset();
+  dbModule.__mockClient.query.mockResolvedValue({ rows: [], rowCount: 0 });
+  dbModule.__mockClient.release.mockReset();
 });
+
+// /revizuieste: INSERT revizie + copiere atașamente/capturi + relink ALOP rulează
+// în tranzacție pe un client dedicat (pool.connect), nu pe pool.query direct.
+function setupRevizieClient(newRow) {
+  dbModule.__mockClient.query.mockImplementation((sql) => {
+    if (String(sql).includes('INSERT INTO formulare_df')) {
+      return Promise.resolve({ rows: [newRow], rowCount: 1 });
+    }
+    return Promise.resolve({ rows: [], rowCount: 0 });
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Submit: P1 → P2
@@ -271,9 +290,8 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ ...r0Aprobat, aprobat: true }] })
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp (FEATURE 3.B)
-      .mockResolvedValueOnce({ rows: [{ max_rev: 0 }] })
-      .mockResolvedValueOnce({ rows: [r1Creata] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ max_rev: 0 }] });
+    setupRevizieClient(r1Creata);
 
     const res = await request(createTestApp())
       .post(`/api/formulare-df/${DF_ID}/revizuieste`)
@@ -285,7 +303,7 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
     expect(res.body.df.revizie_nr).toBe(1);
     expect(res.body.df.parent_df_id).toBe(DF_ID);
 
-    const insertCall = dbModule.pool.query.mock.calls.find(c =>
+    const insertCall = dbModule.__mockClient.query.mock.calls.find(c =>
       String(c[0]).includes('INSERT INTO formulare_df')
     );
     expect(insertCall).toBeDefined();
@@ -310,16 +328,15 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ ...r0Aprobat, aprobat: true }] })
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp (FEATURE 3.B)
-      .mockResolvedValueOnce({ rows: [{ max_rev: 0 }] })
-      .mockResolvedValueOnce({ rows: [r1] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ max_rev: 0 }] });
+    setupRevizieClient(r1);
 
     await request(createTestApp())
       .post(`/api/formulare-df/${DF_ID}/revizuieste`)
       .set('Cookie', `auth_token=${makeToken()}`)
       .send({ motiv: 'test' });
 
-    const alopUpdate = dbModule.pool.query.mock.calls.find(c =>
+    const alopUpdate = dbModule.__mockClient.query.mock.calls.find(c =>
       String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_flow_id=NULL')
     );
     expect(alopUpdate).toBeDefined();
@@ -345,9 +362,8 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ ...dfNeaprobat, aprobat: false }] })
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp (FEATURE 3.B)
-      .mockResolvedValueOnce({ rows: [{ max_rev: 0 }] })
-      .mockResolvedValueOnce({ rows: [r1] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ max_rev: 0 }] });
+    setupRevizieClient(r1);
 
     const res = await request(createTestApp())
       .post(`/api/formulare-df/${DF_ID}/revizuieste`)

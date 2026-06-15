@@ -432,52 +432,86 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
 
     // Copiază câmpurile SecA (P1); SecB se resetează explicit la []
     // rows_val se transmite ca parametru JS (transformat), rows_plati se copiază din SQL
-    const { rows: nouRows } = await pool.query(`
-      INSERT INTO formulare_df (
-        org_id, created_by, nr_unic_inreg,
-        revizie_nr, parent_df_id, este_revizie, revizie_motiv, revizie_at,
-        status,
-        revizuirea, data_revizuirii,
-        cif, den_inst_pb, subtitlu_df,
-        compartiment_specialitate,
-        obiect_fd_reviz_scurt, obiect_fd_reviz_lung,
-        ckbx_stab_tin_cont, ckbx_ramane_suma, ramane_suma,
-        rows_val, rows_plati,
-        ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
-        ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
-        ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
-        este_revizie_an_urmator, total_val_prec,
-        rows_ctrl, source_alop_id
-      )
-      SELECT
-        org_id, $2, nr_unic_inreg,
-        $3::integer, id, TRUE, $4, NOW(),
-        'draft',
-        $3::text, TO_CHAR(NOW(), 'DD.MM.YYYY'),
-        cif, den_inst_pb, subtitlu_df,
-        compartiment_specialitate,
-        obiect_fd_reviz_scurt, obiect_fd_reviz_lung,
-        ckbx_stab_tin_cont, ckbx_ramane_suma, ramane_suma,
-        $5::jsonb, rows_plati,
-        ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
-        ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
-        ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
-        $6::boolean, $7::numeric,
-        $8::jsonb, source_alop_id
-      FROM formulare_df WHERE id = $1
-      RETURNING *
-    `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '', JSON.stringify(rowsValNoi), isAnUrmator, totalValPrec, JSON.stringify(rowsCtrlNoi)]);
+    //
+    // Tranzacție: INSERT revizie + copiere atașamente/capturi + relink ALOP — totul
+    // sau nimic (fix v3.9.555: revizia anterioară pornea fără anexele R0).
+    const client = await pool.connect();
+    let nou, atasameCopiate, capturiCopiate;
+    try {
+      await client.query('BEGIN');
 
-    const nou = nouRows[0];
+      const { rows: nouRows } = await client.query(`
+        INSERT INTO formulare_df (
+          org_id, created_by, nr_unic_inreg,
+          revizie_nr, parent_df_id, este_revizie, revizie_motiv, revizie_at,
+          status,
+          revizuirea, data_revizuirii,
+          cif, den_inst_pb, subtitlu_df,
+          compartiment_specialitate,
+          obiect_fd_reviz_scurt, obiect_fd_reviz_lung,
+          ckbx_stab_tin_cont, ckbx_ramane_suma, ramane_suma,
+          rows_val, rows_plati,
+          ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
+          ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
+          ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
+          este_revizie_an_urmator, total_val_prec,
+          rows_ctrl, source_alop_id
+        )
+        SELECT
+          org_id, $2, nr_unic_inreg,
+          $3::integer, id, TRUE, $4, NOW(),
+          'draft',
+          $3::text, TO_CHAR(NOW(), 'DD.MM.YYYY'),
+          cif, den_inst_pb, subtitlu_df,
+          compartiment_specialitate,
+          obiect_fd_reviz_scurt, obiect_fd_reviz_lung,
+          ckbx_stab_tin_cont, ckbx_ramane_suma, ramane_suma,
+          $5::jsonb, rows_plati,
+          ckbx_fara_ang_emis_ancrt, ckbx_cu_ang_emis_ancrt,
+          ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
+          ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
+          $6::boolean, $7::numeric,
+          $8::jsonb, source_alop_id
+        FROM formulare_df WHERE id = $1
+        RETURNING *
+      `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '', JSON.stringify(rowsValNoi), isAnUrmator, totalValPrec, JSON.stringify(rowsCtrlNoi)]);
 
-    // Actualizează linkul ALOP → df_id la noua revizie
-    await pool.query(
-      `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$3
-       WHERE df_id=$2 AND cancelled_at IS NULL`,
-      [nou.id, req.params.id, actor.userId]
-    );
+      nou = nouRows[0];
 
-    logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, isAnUrmator, actor: actor.email }, 'formulare-df revizie creata');
+      // Copiază atașamentele părintelui pe noua revizie (proveniență păstrată: uploaded_by, created_at originale)
+      const { rowCount: attCount } = await client.query(`
+        INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot, created_at)
+        SELECT form_type, $1, uploaded_by, filename, mime_type, size_bytes, data, slot, created_at
+        FROM formulare_atasamente
+        WHERE form_type='df' AND form_id=$2 AND deleted_at IS NULL
+      `, [nou.id, req.params.id]);
+      atasameCopiate = attCount;
+
+      // Idem pentru capturile de ecran
+      const { rowCount: capCount } = await client.query(`
+        INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data, slot, created_at)
+        SELECT form_type, $1, uploaded_by, filename, mimetype, size_bytes, data, slot, created_at
+        FROM formulare_capturi
+        WHERE form_type='df' AND form_id=$2
+      `, [nou.id, req.params.id]);
+      capturiCopiate = capCount;
+
+      // Actualizează linkul ALOP → df_id la noua revizie
+      await client.query(
+        `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$3
+         WHERE df_id=$2 AND cancelled_at IS NULL`,
+        [nou.id, req.params.id, actor.userId]
+      );
+
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, isAnUrmator, atasameCopiate, capturiCopiate, actor: actor.email }, 'formulare-df revizie creata');
     await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
       actorId: actor.userId, actorEmail: actor.email, eventType: 'revizuit',
       meta: { version_nou: nouaRevizie, revizie_id: nou.id } });

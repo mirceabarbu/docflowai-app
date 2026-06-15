@@ -514,6 +514,9 @@ export async function stergeFormular({ type, id, actor }) {
         return { status: 409, body: { error: 'cannot_delete_has_ord', message: `Nu se poate șterge DF-ul: există o Ordonanțare de Plată legată (${ordRows[0].nr_ordonant_pl || 'fără nr.'}). Ștergeți întâi ORD-ul.` } };
     }
 
+    // Soft delete: atașamentele/capturile copiate pe această revizie (form_id=id) rămân
+    // legate de rândul șters — invizibile prin filtrarea curentă (JOIN pe form_id, fără
+    // deleted_at pe formulare_capturi). Lăsate intenționat orfane, pentru audit.
     await pool.query(
       `UPDATE ${cfg.table} SET deleted_at=NOW(), updated_at=NOW(), updated_by=$2 WHERE id=$1`,
       [id, actor.userId]
