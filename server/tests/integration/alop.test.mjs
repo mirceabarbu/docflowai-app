@@ -910,8 +910,10 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [completedAlop] })       // SELECT alop
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp
-      .mockResolvedValueOnce({ rows: [{ buget_an_curent: '2000' }] }) // SELECT buget an curent (FIX B: rows_plati.plati_estim_ancrt)
-      .mockResolvedValueOnce({ rows: [{ total: '0' }] })      // SELECT SUM cicluri anterioare
+      // v3.9.558 buget multi-anual: query întoarce an_referinta + rows_plati (helper alege banda).
+      // an_referinta NULL → mono-an pe `ancrt` (= 2000), identic comportament FIX B.
+      .mockResolvedValueOnce({ rows: [{ an_referinta: null, rows_plati: [{ plati_estim_ancrt: '2000' }] }] }) // SELECT df an_referinta + rows_plati
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })      // SELECT SUM cicluri anul de exercițiu
       .mockResolvedValueOnce({ rows: [] })                     // INSERT alop_ord_cicluri
       .mockResolvedValueOnce({ rows: [resetAlop] });           // UPDATE alop
 

@@ -24,12 +24,34 @@ import { logger } from '../middleware/logger.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
+import { bugetPentruAnul } from '../services/buget-an.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
+
+// FEATURE buget multi-anual (v3.9.558): fragment SQL care sumează banda `rows_plati`
+// corespunzătoare ANULUI DE EXERCIȚIU CURENT, ancorată pe `df.an_referinta`.
+//   offset = an_exercitiu_curent − an_referinta  (NULL an_referinta → 0 ⇒ banda `ancrt`)
+//   offset <0 → ani_precedenti | 0 → ancrt | 1→np1 | 2→np2 | 3→np3 | >3 → ani_ulter
+// ⚠️ SINCRONIZAT MANUAL cu `bandaPentruOffset()` din services/buget-an.mjs (folosit de
+// plafonul ORD din formular-shared.mjs). Schimbi mapping-ul aici → schimbă-l și acolo.
+// `df` = aliasul tabelei formulare_df în query-ul apelant.
+function sqlBugetAnExercitiu(df) {
+  const off = `(EXTRACT(YEAR FROM NOW())::int - COALESCE(${df}.an_referinta, EXTRACT(YEAR FROM NOW())::int))`;
+  const band = `(CASE
+        WHEN ${off} < 0 THEN 'plati_ani_precedenti'
+        WHEN ${off} = 0 THEN 'plati_estim_ancrt'
+        WHEN ${off} = 1 THEN 'plati_estim_an_np1'
+        WHEN ${off} = 2 THEN 'plati_estim_an_np2'
+        WHEN ${off} = 3 THEN 'plati_estim_an_np3'
+        ELSE 'plati_estim_ani_ulter' END)`;
+  return `(SELECT COALESCE(SUM((r->>${band})::numeric),0)
+           FROM jsonb_array_elements(COALESCE(${df}.rows_plati,'[]'::jsonb)) r
+           WHERE (r->>${band}) ~ '^[0-9.]+$')`;
+}
 
 // v3.9.499 (Finding E): rate limit pentru endpoint-uri admin destructive
 const _alopAdminRateLimit = createRateLimiter({
@@ -245,8 +267,8 @@ router.get('/api/alop', async (req, res) => {
         fo.status        AS ord_status,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
-        (SELECT COALESCE(SUM((r->>'plati_estim_ancrt')::numeric),0)
-         FROM jsonb_array_elements(COALESCE(df.rows_plati,'[]'::jsonb)) r) AS df_buget_an_curent,
+        ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
+        df.an_referinta AS df_an_referinta,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
         a.plata_suma_efectiva AS op_valoare,
@@ -451,8 +473,8 @@ router.get('/api/alop/:id', async (req, res) => {
         up.nume AS plata_by_name,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
-        (SELECT COALESCE(SUM((r->>'plati_estim_ancrt')::numeric),0)
-         FROM jsonb_array_elements(COALESCE(df.rows_plati,'[]'::jsonb)) r) AS df_buget_an_curent,
+        ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
+        df.an_referinta AS df_an_referinta,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
         a.plata_suma_efectiva AS op_valoare,
@@ -1152,32 +1174,29 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
     if (alop.status !== 'completed')
       return res.status(400).json({ error: 'status_invalid', message: 'ALOP trebuie să fie finalizat (plată efectuată).' });
 
-    // Bugetul anului curent al DF-ului aprobat (FIX B, v3.9.557): plafonul efectiv pentru
-    // ordonanțare/plată este SUM(rows_plati.plati_estim_ancrt) — „Plăți estimate în anul
-    // curent" — NU angajamentul total multianual SUM(rows_val.valt_actualiz). După o revizie
-    // de DF, alop.df_id pointează deja la revizia activă, deci bugetul se recalculează corect
-    // pe valorile reviziei (ciclu nou posibil dacă revizia mărește plati_estim_ancrt).
+    // Bugetul ANULUI DE EXERCIȚIU al DF-ului aprobat (FIX B v3.9.557 → FEATURE buget multi-anual
+    // v3.9.558): plafonul efectiv pentru ordonanțare/plată e banda `rows_plati` a anului de
+    // exercițiu curent, ancorată pe `an_referinta` (an_referinta NULL → mono-an pe `ancrt`,
+    // decizia owner). NU angajamentul total multianual SUM(rows_val.valt_actualiz). După o
+    // revizie de DF, alop.df_id pointează deja la revizia activă, deci bugetul se recalculează
+    // pe valorile reviziei (ciclu nou posibil dacă revizia mărește banda anului de exercițiu).
+    const anExercitiu = new Date().getFullYear();
     const { rows: [dfRow] } = await pool.query(
-      `SELECT COALESCE(
-        (SELECT SUM((r->>'plati_estim_ancrt')::numeric)
-         FROM jsonb_array_elements(
-           CASE WHEN fd.rows_plati IS NOT NULL
-                AND jsonb_array_length(fd.rows_plati) > 0
-           THEN fd.rows_plati ELSE '[]'::jsonb END
-         ) r
-         WHERE (r->>'plati_estim_ancrt') IS NOT NULL
-           AND (r->>'plati_estim_ancrt') ~ '^[0-9.]+$'
-        ), 0
-       ) AS buget_an_curent
-       FROM formulare_df fd WHERE fd.id=$1`,
+      `SELECT df.an_referinta, df.rows_plati FROM formulare_df df WHERE df.id=$1`,
       [alop.df_id]
     );
-    const bugetAnCurent = parseFloat(dfRow?.buget_an_curent || 0);
+    const anRef = dfRow?.an_referinta == null ? anExercitiu : dfRow.an_referinta;
+    const bugetAnCurent = bugetPentruAnul(dfRow?.rows_plati, anRef, anExercitiu) || 0;
 
-    // Suma totală plătită din cicluri anterioare arhivate
+    // Suma plătită în ACELAȘI an de exercițiu din ciclurile anterioare arhivate (cumul per an:
+    // plățile din 2026 nu consumă bugetul 2027). Fallback derivat din plata_data/created_at
+    // pentru ciclurile istorice fără `an_exercitiu` (mig. 086) populat.
     const { rows: [sumaRow] } = await pool.query(
-      'SELECT COALESCE(SUM(plata_suma_efectiva),0) AS total FROM alop_ord_cicluri WHERE alop_id=$1',
-      [req.params.id]
+      `SELECT COALESCE(SUM(plata_suma_efectiva),0) AS total
+         FROM alop_ord_cicluri
+        WHERE alop_id=$1
+          AND COALESCE(an_exercitiu, EXTRACT(YEAR FROM plata_data)::int, EXTRACT(YEAR FROM created_at)::int) = $2`,
+      [req.params.id, anExercitiu]
     );
     const sumaPlata = parseFloat(sumaRow?.total || 0)
       + parseFloat(alop.plata_suma_efectiva || 0);
@@ -1186,7 +1205,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
     if (ramas <= 0)
       return res.status(400).json({
         error: 'limita_depasita',
-        message: `Bugetul estimat al anului curent (${bugetAnCurent} RON) a fost integral ordonanțat.`
+        message: `Bugetul estimat al anului de exercițiu ${anExercitiu} (${bugetAnCurent} RON) a fost integral ordonanțat.`
       });
 
     // Arhivează ciclul curent
@@ -1200,8 +1219,9 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
         plata_confirmed_by, plata_confirmed_at,
         plata_nr_ordin, plata_data, plata_suma_efectiva, plata_observatii,
         plata_source,
+        an_exercitiu,
         status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'completed')
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'completed')
       RETURNING id
     `, [
       req.params.id, actor.orgId, cicluNr,
@@ -1213,6 +1233,8 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
       alop.plata_nr_ordin, alop.plata_data,
       alop.plata_suma_efectiva, alop.plata_observatii,
       alop.plata_source || 'manual',
+      // an de exercițiu al ciclului arhivat = anul plății efective (fallback: anul curent)
+      alop.plata_data ? new Date(alop.plata_data).getFullYear() : anExercitiu,
     ]);
     const newCicluId = cicluRows[0]?.id;
 

@@ -196,6 +196,15 @@ router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df
         });
       }
     }
+    // FEATURE buget multi-anual (v3.9.558): an_referinta ancorează benzile rows_plati la ani
+    // absoluți. La creare: din body (frontend trimite anul ales) sau default anul curent.
+    // (DF legacy fără an_referinta rămân NULL — create înainte de migrarea 085, nu se backfill.)
+    if (data.an_referinta == null || data.an_referinta === '') {
+      data.an_referinta = new Date().getFullYear();
+    } else {
+      const y = parseInt(data.an_referinta, 10);
+      data.an_referinta = Number.isNaN(y) ? new Date().getFullYear() : y;
+    }
     const { sets, vals } = buildUpdate(data, DF_P1_FIELDS, 3);
     const cols = ['org_id', 'created_by', ...Object.keys(data)];
     const allVals = [actor.orgId, actor.userId, ...vals];
@@ -455,7 +464,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
           ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
           ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
           este_revizie_an_urmator, total_val_prec,
-          rows_ctrl, source_alop_id
+          rows_ctrl, source_alop_id, an_referinta
         )
         SELECT
           org_id, $2, nr_unic_inreg,
@@ -471,7 +480,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
           ckbx_sting_ang_in_ancrt, ckbx_fara_plati_ang_in_ancrt,
           ckbx_cu_plati_ang_in_mmani, ckbx_ang_leg_emise_ct_an_urm,
           $6::boolean, $7::numeric,
-          $8::jsonb, source_alop_id
+          $8::jsonb, source_alop_id, an_referinta
         FROM formulare_df WHERE id = $1
         RETURNING *
       `, [req.params.id, actor.userId, nouaRevizie, motiv ?? '', JSON.stringify(rowsValNoi), isAnUrmator, totalValPrec, JSON.stringify(rowsCtrlNoi)]);

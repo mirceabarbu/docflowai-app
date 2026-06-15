@@ -17,6 +17,7 @@ import { logger } from '../middleware/logger.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import { computeDocCapabilities } from './formular-capabilities.mjs';
 import { loadActorComp, canEditFormular, canDestroyOnly } from './authz-formular.mjs';
+import { bugetPentruAnul } from './buget-an.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
@@ -61,6 +62,10 @@ export const DF_P1_FIELDS = [
   'ckbx_fara_ang_emis_ancrt','ckbx_cu_ang_emis_ancrt','ckbx_sting_ang_in_ancrt',
   'ckbx_fara_plati_ang_in_ancrt','ckbx_cu_plati_ang_in_mmani',
   'ckbx_ang_leg_emise_ct_an_urm','rows_plati',
+  // FEATURE buget multi-anual (v3.9.558): an absolut care ancorează banda `ancrt` din
+  // rows_plati. Editabil de P1 la creare; la REVIZIE se moștenește din părinte (copiat în
+  // INSERT-ul din df.mjs /revizuieste, NU re-trimis din frontend). Vezi services/buget-an.mjs.
+  'an_referinta',
 ];
 
 /** Câmpuri DF sectiunea B (P2) */
@@ -192,20 +197,25 @@ function validateOrdCol5(rows) {
   return null;
 }
 
-// ── plafon hard: suma ordonanțată cumulată în anul curent ≤ bugetul anului curent ─
-// (v3.9.557, FIX B) Regula de business confirmată: ordonanțarea se poate face DOAR în
-// limita „Plăților estimate în anul curent" = SUM(formulare_df.rows_plati[].plati_estim_ancrt)
-// al DF-ului legat (revizia activă, via ord.df_id), NU în limita angajamentului total
-// multianual (rows_val.valt_actualiz). Depășirea = blocaj hard 422, simetric cu col.5.
+// ── plafon hard: suma ordonanțată cumulată în anul de exercițiu ≤ bugetul acelui an ─
+// (v3.9.557 FIX B → v3.9.558 FEATURE buget multi-anual) Regula de business: ordonanțarea
+// se poate face DOAR în limita bugetului ANULUI DE EXERCIȚIU al DF-ului legat (revizia
+// activă, via ord.df_id), NU în limita angajamentului total multianual (rows_val.valt_actualiz).
+// Depășirea = blocaj hard 422, simetric cu col.5.
 //
-// Cumulul refolosește aceeași logică de sumare ca agregarea `total_ord_valoare` din
-// alop.mjs (~254): suma ORD-ului CURENT (rândurile noi din data.rows, nu cele din DB —
-// evită dubla numărare la re-completare) PLUS plățile arhivate ale ciclurilor anterioare
-// (alop_ord_cicluri.plata_suma_efectiva) ale ALOP-ului legat de același DF.
+// ANCORARE PE AN ABSOLUT (v3.9.558): banda din `rows_plati` se alege prin `bugetPentruAnul`
+// în funcție de offset = anExercitiu − df.an_referinta (offset 0 → ancrt, 1 → np1, ...).
+//   • `an_referinta` setat → plafon pe banda anului de exercițiu curent.
+//   • `an_referinta` NULL (DF legacy, pre-migrarea 085) → DECIZIA OWNER = block mono-an pe
+//     `ancrt` (identic FIX B): coalescem an_referinta ← anExercitiu ⇒ offset 0 ⇒ banda ancrt.
 //
-// Modelare „an curent": mono-an. Schema nu marchează explicit anul pe ORD/cicluri, deci
-// TOATE ciclurile active ale DF-ului se consideră în anul curent (model actual). Logica
-// multi-an, dacă va fi necesară, e alt sprint.
+// AN DE EXERCIȚIU: `EXTRACT(YEAR FROM NOW())` (fără setting per-org în iterația 1 — documentat).
+//
+// CUMUL PER AN DE EXERCIȚIU: o ordonanțare făcută în 2026 consumă bugetul 2026, nu pe cel
+// din 2027. Suma ORD-ului CURENT (data.rows noi — evită dubla numărare la re-completare)
+// PLUS plățile arhivate ale ciclurilor (alop_ord_cicluri.plata_suma_efectiva) ale ALOP-ului
+// legat de același DF, FILTRATE pe anul de exercițiu: `an_exercitiu` (mig. 086) cu fallback
+// derivat din `plata_data` apoi `created_at` pentru ciclurile istorice fără valoare populată.
 //
 // Întoarce `{ status, body }` la depășire, altfel `null`. Skip (null) dacă ORD-ul nu are
 // `df_id` — fără DF legat nu există buget de verificat.
@@ -216,36 +226,42 @@ async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
     const n = Number(String(v).trim().replace(/\s/g, ''));
     return isNaN(n) ? 0 : n;
   };
+  const anExercitiu = new Date().getFullYear();
   const ordCurentNou = (Array.isArray(newRows) ? newRows : [])
     .reduce((s, r) => s + _num(r && r.suma_ordonantata_plata), 0);
 
   const { rows } = await pool.query(
     `SELECT
-       COALESCE((
-         SELECT SUM((r->>'plati_estim_ancrt')::numeric)
-         FROM jsonb_array_elements(COALESCE(df.rows_plati,'[]'::jsonb)) r
-         WHERE (r->>'plati_estim_ancrt') ~ '^[0-9.]+$'
-       ), 0) AS buget_an_curent,
+       df.an_referinta,
+       df.rows_plati,
        COALESCE((
          SELECT SUM(c.plata_suma_efectiva)
          FROM alop_ord_cicluri c
          JOIN alop_instances a ON a.id = c.alop_id
          WHERE a.df_id = df.id AND a.org_id = $2 AND a.cancelled_at IS NULL
+           AND COALESCE(
+                 c.an_exercitiu,
+                 EXTRACT(YEAR FROM c.plata_data)::int,
+                 EXTRACT(YEAR FROM c.created_at)::int
+               ) = $3
        ), 0) AS cicluri_arhivate
      FROM formulare_df df
      WHERE df.id = $1`,
-    [ordDoc.df_id, orgId]
+    [ordDoc.df_id, orgId, anExercitiu]
   );
   if (!rows.length) return null; // DF inexistent — nimic de verificat
 
-  const bugetAnCurent = parseFloat(rows[0].buget_an_curent || 0);
+  // an_referinta NULL → coalesce la anExercitiu ⇒ offset 0 ⇒ banda `ancrt` (block mono-an, FIX B).
+  const anRef = rows[0].an_referinta == null ? anExercitiu : rows[0].an_referinta;
+  const bugetAnCurent = bugetPentruAnul(rows[0].rows_plati, anRef, anExercitiu) || 0;
   const cicluriArhivate = parseFloat(rows[0].cicluri_arhivate || 0);
   const ordonantatCumulat = ordCurentNou + cicluriArhivate;
 
   if (ordonantatCumulat > bugetAnCurent + 0.001) {
     return { status: 422, body: {
       error: 'buget_an_curent_depasit',
-      message: `Suma ordonanțată în anul curent (${ordonantatCumulat.toFixed(2)} RON) depășește bugetul estimat al anului curent (${bugetAnCurent.toFixed(2)} RON).`,
+      message: `Suma ordonanțată în anul de exercițiu ${anExercitiu} (${ordonantatCumulat.toFixed(2)} RON) depășește bugetul estimat al anului ${anExercitiu} (${bugetAnCurent.toFixed(2)} RON).`,
+      anExercitiu,
       bugetAnCurent,
       ordonantat: ordonantatCumulat,
     } };
