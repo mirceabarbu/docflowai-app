@@ -621,6 +621,7 @@ function renderAlopDetail(a,container){
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
         <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Valoare DF</div>
         <div style="font-size:1rem;font-weight:700;color:#b0a0ff;margin-top:4px">${fmtV(a.df_valoare||0)}</div>
+        <div style="font-size:.7rem;color:var(--df-text-3);margin-top:2px">Buget an curent: ${fmtV(a.df_buget_an_curent||0)}</div>
       </div>
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
         <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Valoare ORD${_areCicluriAnterioare ? ' · Total' : ''}</div>

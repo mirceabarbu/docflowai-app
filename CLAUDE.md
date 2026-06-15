@@ -472,6 +472,12 @@ listă/download) — include drepturile prin compartiment (comp/p2_comp), pe car
 creator/assigned/admin le refuza cu 403. Test prin lanțul real de middleware (json adaptiv + CSRF
 real): `server/tests/db/formulare-atasamente-authz.test.mjs`.
 
+**Buget an curent (din v3.9.556):** cardul ALOP expune `df_buget_an_curent` =
+`SUM(formulare_df.rows_plati[].plati_estim_ancrt)` al DF-ului activ (`alop.df_id`), alături de
+`df_valoare` = angajamentul total (`SUM(rows_val[].valt_actualiz)`) — doar afișare, fără validare
+nouă (validarea hard pe bugetul anului curent vine separat). Test:
+`server/tests/db/alop-buget-an-curent.test.mjs`.
+
 ---
 
 ## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)

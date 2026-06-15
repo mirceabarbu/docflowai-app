@@ -245,6 +245,8 @@ router.get('/api/alop', async (req, res) => {
         fo.status        AS ord_status,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
+        (SELECT COALESCE(SUM((r->>'plati_estim_ancrt')::numeric),0)
+         FROM jsonb_array_elements(COALESCE(df.rows_plati,'[]'::jsonb)) r) AS df_buget_an_curent,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
         a.plata_suma_efectiva AS op_valoare,
@@ -449,6 +451,8 @@ router.get('/api/alop/:id', async (req, res) => {
         up.nume AS plata_by_name,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
+        (SELECT COALESCE(SUM((r->>'plati_estim_ancrt')::numeric),0)
+         FROM jsonb_array_elements(COALESCE(df.rows_plati,'[]'::jsonb)) r) AS df_buget_an_curent,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
         a.plata_suma_efectiva AS op_valoare,
