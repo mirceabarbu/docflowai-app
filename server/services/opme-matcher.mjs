@@ -48,18 +48,28 @@ const _eq = (a, b) => Math.abs(Number(a) - Number(b)) < TOLERANCE;
 /**
  * matchImport — procesează toate liniile pending dintr-un import.
  *
+ * Model tranzacțional (din v3.9.562): NU mai există un singur BEGIN/COMMIT care
+ * înconjoară întreaga buclă. Decizia owner: importul OPME NU necesită atomicitate
+ * de batch — dacă grupul N eșuează, grupurile confirmate înainte RĂMÂN confirmate.
+ * Fiecare grup rulează în propria tranzacție scurtă (`BEGIN` → `FOR UPDATE` pe
+ * ALOP-ul lui → muncă → `COMMIT`). La eroare pe un grup: `ROLLBACK` DOAR pe grupul
+ * ăla, se înregistrează în `errors[]` și bucla CONTINUĂ. Per-grup elimină
+ * deadlock-ul multi-ALOP prin construcție (max 1 lock de ALOP odată), fără pre-lock
+ * global. Clasificarea liniilor (unmatched/ambiguous) rulează în autocommit — sunt
+ * write-uri per-linie independente, fără lock de ALOP.
+ *
  * @param {string} importId
  * @param {{ client?: any }} [opts]
  * @returns {Promise<{
  *   matched: number, ambiguous: number, unmatched: number, partial: number,
- *   confirmed_alopuri: string[], details: object[]
+ *   confirmed_alopuri: string[], errors: {alop_id: string, reason: string}[],
+ *   error_count: number, details: object[]
  * }>}
  */
 export async function matchImport(importId, opts = {}) {
   const { client: externalClient } = opts;
   const ownClient = !externalClient;
   const client = externalClient || await pool.connect();
-  if (ownClient) await client.query('BEGIN');
 
   try {
     // ── 1. Header import (org + uploaded_by ca actor pentru audit) ──────────
@@ -69,7 +79,6 @@ export async function matchImport(importId, opts = {}) {
       [importId]
     );
     if (!impRows[0]) {
-      if (ownClient) await client.query('ROLLBACK');
       return _emptyReport();
     }
     const imp = impRows[0];
@@ -84,7 +93,6 @@ export async function matchImport(importId, opts = {}) {
     `, [importId]);
 
     if (lines.length === 0) {
-      if (ownClient) await client.query('COMMIT');
       return _emptyReport();
     }
 
@@ -156,34 +164,47 @@ export async function matchImport(importId, opts = {}) {
       g.sumLocal += Number(line.suma_op || 0);
     }
 
-    // ── 5. Pentru fiecare grup, procesează prin tryAutoConfirmAlop (cu
-    //      liniile candidate adăugate explicit la pool-ul de absorbție).
+    // ── 5. Pentru fiecare grup, propria tranzacție scurtă. Un grup picat face
+    //      ROLLBACK doar pe el, se înregistrează în errors[] și bucla continuă.
     for (const g of groups.values()) {
-      const out = await _processGroup(client, {
-        alopId: g.alopId,
-        org_id: imp.org_id,
-        triplet: { cod: g.cod, ind: g.ind, cif: g.cif },
-        primaryLineIds: g.lineIds,
-        actorUserId: imp.uploaded_by,
-        importNrDocument: imp.nr_document,
-        importDataOp: imp.data_op,
-      });
-      report.details.push(out);
-      if (out.result === 'matched') {
-        report.matched += out.line_count;
-        report.confirmed_alopuri.push(g.alopId);
-      } else if (out.result === 'partial' || out.result === 'overpay') {
-        report.partial += out.line_count;
-      } else if (out.result === 'already_confirmed') {
-        // re-marchează liniile ca matched_alop_id pentru consistență vizuală,
-        // dar nu intră în contor matched (nu am produs confirmarea aici)
+      try {
+        if (ownClient) await client.query('BEGIN');
+        const out = await _processGroup(client, {
+          alopId: g.alopId,
+          org_id: imp.org_id,
+          triplet: { cod: g.cod, ind: g.ind, cif: g.cif },
+          primaryLineIds: g.lineIds,
+          actorUserId: imp.uploaded_by,
+          importNrDocument: imp.nr_document,
+          importDataOp: imp.data_op,
+        });
+        if (ownClient) await client.query('COMMIT');
+
+        report.details.push(out);
+        if (out.result === 'matched') {
+          report.matched += out.line_count;
+          report.confirmed_alopuri.push(g.alopId);
+        } else if (out.result === 'partial' || out.result === 'overpay') {
+          report.partial += out.line_count;
+        } else if (out.result === 'already_confirmed') {
+          // re-marchează liniile ca matched_alop_id pentru consistență vizuală,
+          // dar nu intră în contor matched (nu am produs confirmarea aici)
+        }
+      } catch (groupErr) {
+        if (ownClient) { try { await client.query('ROLLBACK'); } catch {} }
+        const reason = groupErr?.message || String(groupErr);
+        logger.error({ err: groupErr, alop_id: g.alopId, importId },
+          'opme-matcher: group failed (non-fatal, lines stay pending)');
+        report.errors.push({ alop_id: g.alopId, reason });
+        report.error_count++;
+        report.details.push({ alop_id: g.alopId, triplet: { cod: g.cod, ind: g.ind, cif: g.cif }, result: 'error', reason });
+        // continuă bucla — un grup picat NU abortează importul.
       }
     }
 
-    if (ownClient) await client.query('COMMIT');
     return report;
   } catch (e) {
-    if (ownClient) { try { await client.query('ROLLBACK'); } catch {} }
+    // Eșec real de infra (read header/linii) — re-aruncă pentru 500 la call-site.
     logger.error({ err: e, importId }, 'opme-matcher: matchImport failed');
     throw e;
   } finally {
@@ -451,6 +472,8 @@ function _emptyReport() {
     unmatched: 0,
     partial: 0,
     confirmed_alopuri: [],
+    errors: [],        // [{ alop_id, reason }] — grupuri picate (non-fatal)
+    error_count: 0,
     details: [],
   };
 }
@@ -463,5 +486,6 @@ function _fmtDate(d) {
 
 export function summarizeReport(rep) {
   const lines = (rep.matched + rep.ambiguous + rep.unmatched + rep.partial);
-  return `${lines} linii citite · ${rep.confirmed_alopuri.length} ALOP confirmate automat · ${rep.ambiguous} ambigue · ${rep.unmatched} fără match${rep.partial ? ' · ' + rep.partial + ' parțiale' : ''}`;
+  const errCount = rep.error_count || (rep.errors ? rep.errors.length : 0);
+  return `${lines} linii citite · ${rep.confirmed_alopuri.length} ALOP confirmate automat · ${rep.ambiguous} ambigue · ${rep.unmatched} fără match${rep.partial ? ' · ' + rep.partial + ' parțiale' : ''}${errCount ? ' · ' + errCount + ' erori' : ''}`;
 }

@@ -238,8 +238,13 @@
       const body = await r.json();
       if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
       const rep = body.match_report;
+      // Rezultat parțial: grupuri picate → toast galben + lista motivelor.
+      const errCount = rep && (rep.error_count || (rep.errors && rep.errors.length)) || 0;
       if (window.DFOpmeToast && window.DFOpmeToast.show) {
-        window.DFOpmeToast.show(rep.summary_text || 'Matching re-rulat.', 'ok');
+        const msg = errCount
+          ? `${rep.summary_text || 'Matching re-rulat.'} — ${errCount} grup(uri) cu eroare (linii rămase în așteptare).`
+          : (rep.summary_text || 'Matching re-rulat.');
+        window.DFOpmeToast.show(msg, errCount ? 'warn' : 'ok');
       }
       // Reîncarcă datele
       await load(_state.importId);
