@@ -31,10 +31,16 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefer-offline
 
-      - name: Run security audit (high+critical)
-        run: npm audit --audit-level=high
-        # --audit-level=high: esueaza doar pe HIGH si CRITICAL
-        # moderate/low sunt raportate dar nu blocheaza
+      - name: Security audit (production deps — blochează la high/critical)
+        run: npm audit --omit=dev --audit-level=high
+        # Artefactul de productie e construit cu `npm ci --omit=dev` (vezi Dockerfile),
+        # deci poarta blocanta auditeaza exact ce ruleaza in prod.
+        # --audit-level=high: esueaza doar pe HIGH si CRITICAL.
+
+      - name: Security audit (full tree — informativ, nu blochează)
+        run: npm audit --audit-level=high || true
+        # Auditeaza si devDependencies (build/test tooling). Advisory-urile de pe
+        # sculele de dev raman vizibile in log, dar nu opresc deploy-ul (|| true).
 
       - name: Run syntax check
         run: npm run check
