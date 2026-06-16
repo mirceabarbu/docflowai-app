@@ -103,13 +103,15 @@ export async function seedDf({ orgId, createdBy, status = 'draft', flowId = null
   return rows[0].id;
 }
 
-export async function seedOrd({ orgId, createdBy, status = 'draft', flowId = null, dfId = null, nrOrd = 'ORD-2026-001', assignedTo = null } = {}) {
-  const { rows } = await pool.query(
-    `INSERT INTO formulare_ord (org_id, created_by, status, flow_id, df_id, nr_ordonant_pl, assigned_to)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-    [orgId, createdBy, status, flowId, dfId, nrOrd, assignedTo]
+// rows (opțional) → formulare_ord.rows JSONB; folosit de confirma-plata pentru
+// plafonul plată ≤ ord (SUM rows.suma_ordonantata_plata).
+export async function seedOrd({ orgId, createdBy, status = 'draft', flowId = null, dfId = null, nrOrd = 'ORD-2026-001', assignedTo = null, rows = null } = {}) {
+  const { rows: r } = await pool.query(
+    `INSERT INTO formulare_ord (org_id, created_by, status, flow_id, df_id, nr_ordonant_pl, assigned_to, rows)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::jsonb,'[]'::jsonb)) RETURNING id`,
+    [orgId, createdBy, status, flowId, dfId, nrOrd, assignedTo, rows ? JSON.stringify(rows) : null]
   );
-  return rows[0].id;
+  return r[0].id;
 }
 
 // seedAlop — câmpurile noi (compartiment, lichidareConfirmedBy, plataSumaEfectiva,

@@ -286,6 +286,13 @@ async function _processGroup(client, args) {
   } = args;
   const { cod, ind, cif } = triplet;
 
+  // P0.2: lock rândul ALOP înainte de read-modify-write-ul confirmării. Punct unic de
+  // choke pentru AMBII apelanți (matchImport + tryAutoConfirmAlop), care rulează deja
+  // într-o tranzacție. Astfel confirmarea OPME se serializează cu confirma-plata manuală
+  // (care blochează același rând FOR UPDATE) → o singură confirmare câștigă; cealaltă vede
+  // plata_confirmed_at setat prin garda din applyPlataConfirmedSideEffects.
+  await client.query('SELECT id FROM alop_instances WHERE id=$1 FOR UPDATE', [alopId]);
+
   // (a) calc expected din rândurile ORD ale ALOP-ului care matchează tripletul.
   const { rows: expRows } = await client.query(`
     SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata','')::numeric), 0) AS expected

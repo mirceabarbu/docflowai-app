@@ -119,6 +119,34 @@ d('POST /api/alop/:id/noua-lichidare — ciclu multi-ORD', () => {
     expect((await getAlop(alopId)).status).toBe('lichidare');
   });
 
+  it('CONCURENȚĂ (P0.2): două noua-lichidare simultane → exact un ciclu arhivat', async () => {
+    // Buget 5000, plătit 1000 → ramas 4000: o singură arhivare e legitimă. Fără FOR UPDATE
+    // ambele apeluri ar trece de garda ramas>0 și ar arhiva dublu ciclul.
+    const dfId = await seedDf({
+      orgId: 1, createdBy: 1,
+      rowsVal: [{ valt_actualiz: '9000000' }],
+      rowsPlati: [{ plati_estim_ancrt: '5000' }],
+    });
+    const alopId = await seedAlop({
+      orgId: 1, createdBy: 1, status: 'completed', dfId,
+      plataSumaEfectiva: 1000, cicluCurent: 1,
+    });
+
+    const [a, b] = await Promise.all([
+      request(app).post(`/api/alop/${alopId}/noua-lichidare`).set('Cookie', cookie()).send({}),
+      request(app).post(`/api/alop/${alopId}/noua-lichidare`).set('Cookie', cookie()).send({}),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([200, 400]);
+
+    // exact un ciclu arhivat, ciclu_curent incrementat o singură dată (1 → 2)
+    const cicluri = await getAlopCicluri(alopId);
+    expect(cicluri.length).toBe(1);
+    const alop = await getAlop(alopId);
+    expect(alop.ciclu_curent).toBe(2);
+    expect(alop.status).toBe('lichidare');
+  });
+
   it('ALOP cancelled → 404 not_found', async () => {
     const dfId = await seedDf({ orgId: 1, createdBy: 1, rowsVal: [{ valt_actualiz: '1000' }] });
     const alopId = await seedAlop({
