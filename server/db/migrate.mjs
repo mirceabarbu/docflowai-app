@@ -14,6 +14,10 @@ import { logger } from '../middleware/logger.mjs';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dir, 'migrations');
 
+// Cheie constantă pentru pg_advisory_lock — previne cursa între două instanțe care
+// rulează migrările simultan la rolling deploy Railway. Valoare arbitrară dar fixă.
+const MIGRATION_LOCK_KEY = 778899001;
+
 /**
  * Run all pending migrations against the given pg Pool.
  *
@@ -21,6 +25,20 @@ const MIGRATIONS_DIR = join(__dir, 'migrations');
  * @returns {Promise<void>}
  */
 export async function runMigrations(pool) {
+  // Advisory lock pe o conexiune DEDICATĂ: lock-urile session-level sunt per-conexiune,
+  // deci NU putem folosi pool.query (ar nimeri conexiuni diferite la lock vs unlock).
+  // Serializează rularea migrărilor între instanțe concurente (rolling deploy).
+  const lockClient = await pool.connect();
+  try {
+    await lockClient.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+    await runMigrationsLocked(pool);
+  } finally {
+    try { await lockClient.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]); } catch { /* best-effort */ }
+    lockClient.release();
+  }
+}
+
+async function runMigrationsLocked(pool) {
   // Ensure the tracking table exists first (runs outside any transaction to avoid
   // "CREATE TABLE IF NOT EXISTS inside transaction" issues on some PG versions)
   await pool.query(`

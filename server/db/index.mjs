@@ -1931,11 +1931,22 @@ async function initDbOnce() {
     else logger.error('Niciun admin in sistem si admin@docflowai.ro nu exista!');
   }
 
-  DB_READY = true; DB_LAST_ERROR = null;
-  logger.info('DB ready.');
+  // NU marcăm DB_READY=true aici. Readiness se declară DOAR după ce rulează și
+  // migrările file-based V4 (runMigrationsV4) — vezi callback-ul de boot din index.mjs.
+  // Altfel o migrare .sql picată ar lăsa appul să servească pe o schemă ne-migrată
+  // (incident 2026-04-19). Inline migrations au reușit aici → schema inline e OK.
+  DB_LAST_ERROR = null;
+  logger.info('Inline migrations applied (DB_READY pending V4 migrations).');
 }
 
 export function markDbReady() { DB_READY = true; DB_LAST_ERROR = null; }
+
+// Închide gate-ul de readiness: o migrare (inline sau V4) a picat ⇒ appul NU mai
+// servește rute DB ca „ready" (requireDb → 503, /readyz → 503).
+export function markDbFailed(err) {
+  DB_READY = false;
+  DB_LAST_ERROR = err ? String(err?.message || err) : 'db_not_ready';
+}
 
 // Folosit DOAR de harness-ul de teste (server/tests/helpers/db-real.mjs).
 // Aplică schema completă pe pool-ul curent (idempotent), apoi marchează DB_READY=true.
