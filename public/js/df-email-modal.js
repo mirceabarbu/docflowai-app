@@ -475,6 +475,7 @@
     const senderName = u.nume || u.email || '';
     const today = new Date().toLocaleDateString('ro-RO');
     const functieStr = u.functie ? `\nFuncție: ${u.functie}` : '';
+    const emailStr = u.email ? `\nEmail: ${u.email}` : '';
     const institutieStr = (u.institutie || institutie) ? `\nInstituție: ${u.institutie || institutie}` : '';
     const compartimentStr = (u.compartiment || compartiment) ? `\nCompartiment: ${u.compartiment || compartiment}` : '';
 
@@ -486,7 +487,7 @@
 Vă transmitem atașat documentul „${docName}", în vederea aplicării prevederilor legale.
 
 Cu stimă,
-Nume: ${senderName}${functieStr}${institutieStr}${compartimentStr}
+Nume: ${senderName}${functieStr}${emailStr}${institutieStr}${compartimentStr}
 Data: ${today}`;
     _rootEl.querySelector('#dfem-to-input').value = '';
     const inclChk = _rootEl.querySelector('#dfem-include-report');

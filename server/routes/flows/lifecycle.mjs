@@ -9,6 +9,7 @@ import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 
 const _largePdf = expressJson({ limit: '50mb' });
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
@@ -78,7 +79,19 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     // Dacă nu există (fluxuri vechi), cădem pe pdfB64 ca fallback.
     if (_stampFooterOnPdf && (data.flowType || 'tabel') !== 'ancore') {
       const baseForStamp = newData.originalPdfB64 || newData.pdfB64;
-      if (baseForStamp) {
+      if (baseForStamp && _PDFLib && pdfLooksSigned(baseForStamp)) {
+        // PDF pre-semnat: NU rescriem (păstrăm validitatea semnăturii existente),
+        // calculăm read-only padesRect pe ultima pagină. Vezi crud.mjs.
+        newData.preSignedUpload = true;
+        try {
+          const _ro = await computeSignerRectsReadOnly(baseForStamp, remainingSigners, _PDFLib, logger);
+          (_ro.signerRects || []).forEach((rect, idx) => {
+            if (remainingSigners[idx] && rect) remainingSigners[idx].padesRect = rect;
+          });
+          newData.events.push({ at: newCreatedAt, type: 'PRESIGNED_UPLOAD_DETECTED',
+            detail: 'Footer/cartuș omise pentru a păstra validitatea semnăturii existente', placement: _ro.placement });
+        } catch(e) { logger.warn({ err: e }, 'computeSignerRectsReadOnly on reinitiate error:'); }
+      } else if (baseForStamp) {
         try {
           newData.pdfB64 = await _stampFooterOnPdf(baseForStamp, {
             flowId: newFlowId2, createdAt: newCreatedAt,
@@ -252,7 +265,17 @@ router.post('/flows/:flowId/reinitiate-review', _largePdf, async (req, res) => {
 
     // Aplică footer pe noul PDF (pastrează ACELASI flowId în footer) — doar pentru tabel
     let finalPdfB64 = pdfB64;
-    if (finalPdfB64 && _stampFooterOnPdf && (data.flowType || 'tabel') !== 'ancore') {
+    // PDF pre-semnat: NU rescriem; calculăm read-only padesRect (aplicat pe
+    // resetSigners mai jos). Vezi crud.mjs.
+    let _reviewPreSigned = false, _reviewPreSignedRects = null, _reviewPreSignedPlacement = null;
+    if (finalPdfB64 && _PDFLib && (data.flowType || 'tabel') !== 'ancore' && pdfLooksSigned(finalPdfB64)) {
+      _reviewPreSigned = true;
+      try {
+        const _ro = await computeSignerRectsReadOnly(finalPdfB64, data.signers || [], _PDFLib, logger);
+        _reviewPreSignedRects = _ro.signerRects || [];
+        _reviewPreSignedPlacement = _ro.placement;
+      } catch(e) { logger.warn({ err: e }, 'computeSignerRectsReadOnly on reinitiate-review error:'); }
+    } else if (finalPdfB64 && _stampFooterOnPdf && (data.flowType || 'tabel') !== 'ancore') {
       try {
         finalPdfB64 = await _stampFooterOnPdf(finalPdfB64, {
           flowId, createdAt: now,
@@ -275,6 +298,12 @@ router.post('/flows/:flowId/reinitiate-review', _largePdf, async (req, res) => {
         signedAt: null, signature: null, pdfUploaded: false, emailSent: false,
         refuseReason: undefined, refusedAt: undefined, uploadedHash: undefined,
       }));
+    // padesRect read-only pentru PDF pre-semnat — aplicat pe ordinea sortată
+    if (_reviewPreSigned && _reviewPreSignedRects) {
+      _reviewPreSignedRects.forEach((rect, idx) => {
+        if (resetSigners[idx] && rect) resetSigners[idx].padesRect = rect;
+      });
+    }
 
     // Actualizăm fluxul IN-PLACE — aceleași ID
     data.pdfB64 = finalPdfB64;
@@ -288,6 +317,11 @@ router.post('/flows/:flowId/reinitiate-review', _largePdf, async (req, res) => {
     // Adaugă evenimentul de reinitiere — FARA să marcheze evenimentele vechi (istoricul rămâne nativ în aceeași listă)
     if (!Array.isArray(data.events)) data.events = [];
     data.events.push({ at: now, type: 'FLOW_REINITIATED_AFTER_REVIEW', by: actor.email, round: data.reviewHistory.length, reviewReason: data.reviewHistory[data.reviewHistory.length - 1]?.reviewReason });
+    data.preSignedUpload = _reviewPreSigned;
+    if (_reviewPreSigned) {
+      data.events.push({ at: now, type: 'PRESIGNED_UPLOAD_DETECTED',
+        detail: 'Footer/cartuș omise pentru a păstra validitatea semnăturii existente', placement: _reviewPreSignedPlacement });
+    }
 
     // Notifică primul semnatar (același flowId)
     const first = resetSigners[0];

@@ -34,8 +34,16 @@ async function _alopLinkDoc(ft, docId){
     });
     const j=await r.json();
     if(r.ok)console.log(`✅ link-df ok:`,alopId,docId);
-    else console.warn(`ALOP ${endpoint} warn:`,j.error);
-  }catch(e){console.warn(`ALOP ${endpoint} error:`,e);}
+    else{
+      console.warn(`ALOP ${endpoint} warn:`,j.error);
+      // v3.9.554 (A3): eroarea de legare nu mai e silențioasă — fără asta, documentul
+      // pare salvat OK dar ALOP-ul rămâne „Fără DF" și utilizatorul nu află.
+      setS(`Documentul a fost salvat, dar legarea la dosarul ALOP a eșuat: ${esc(j.message||j.error||('HTTP '+r.status))}. Reîncercați salvarea sau legați documentul din dosarul ALOP.`,'err');
+    }
+  }catch(e){
+    console.warn(`ALOP ${endpoint} error:`,e);
+    setS('Documentul a fost salvat, dar legarea la dosarul ALOP a eșuat (eroare de rețea). Reîncercați salvarea.','err');
+  }
 }
 
 
@@ -613,6 +621,7 @@ function renderAlopDetail(a,container){
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
         <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Valoare DF</div>
         <div style="font-size:1rem;font-weight:700;color:#b0a0ff;margin-top:4px">${fmtV(a.df_valoare||0)}</div>
+        <div style="font-size:.7rem;color:var(--df-text-3);margin-top:2px" title="${a.df_an_referinta ? 'An de referință DF: '+a.df_an_referinta : 'DF fără an de referință (legacy) — buget pe anul curent'}">Buget exercițiu ${new Date().getFullYear()}: ${fmtV(a.df_buget_an_curent||0)}</div>
       </div>
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
         <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Valoare ORD${_areCicluriAnterioare ? ' · Total' : ''}</div>

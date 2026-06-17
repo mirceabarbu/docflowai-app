@@ -49,8 +49,20 @@ import jwt from 'jsonwebtoken';
 
 vi.mock('../../db/index.mjs', () => {
   const mockQuery = vi.fn();
+  // P0.2: confirma-plata / noua-lichidare folosesc acum un client tranzacțional
+  // (pool.connect + FOR UPDATE). Clientul mock deleagă query-urile reale la același
+  // mockQuery (deci secvențele poziționale se păstrează), dar short-circuit-ează
+  // verbele de tranzacție (BEGIN/COMMIT/ROLLBACK) ca să NU consume slot-uri de mock.
+  const _txControl = /^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)/i;
+  const mockConnect = vi.fn(async () => ({
+    query: vi.fn(async (sql, params) => {
+      if (typeof sql === 'string' && _txControl.test(sql)) return { rows: [] };
+      return mockQuery(sql, params);
+    }),
+    release: vi.fn(),
+  }));
   return {
-    pool:          { query: mockQuery },
+    pool:          { query: mockQuery, connect: mockConnect },
     DB_READY:      true,
     requireDb:     vi.fn(() => false),   // false = DB disponibil
     DB_LAST_ERROR: null,
@@ -733,7 +745,9 @@ describe('POST /api/alop/:id/confirma-plata', () => {
   it('400 — user normal fără status plata → status_invalid', async () => {
     const app = createTestApp();
     mockAuthzAlopCreator();
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [] }); // UPDATE → 0 rows (status != 'plata')
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'angajare', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
+      .mockResolvedValueOnce({ rows: [] }); // UPDATE → 0 rows (status != 'plata')
     const res = await request(app)
       .post(`/api/alop/${ALOP_ID}/confirma-plata`)
       .set('Cookie', `auth_token=${makeToken({ role: 'user' })}`)
@@ -745,7 +759,9 @@ describe('POST /api/alop/:id/confirma-plata', () => {
 
   it('400 — respinge dacă nr_ordin_plata lipsește (UPDATE returnează 0 rows pe status wrong)', async () => {
     mockAuthzAlopCreator();
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [] }); // UPDATE → 0 (status != 'plata')
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'angajare', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
+      .mockResolvedValueOnce({ rows: [] }); // UPDATE → 0 (status != 'plata')
 
     const app = createTestApp();
     const res = await request(app)
@@ -759,7 +775,9 @@ describe('POST /api/alop/:id/confirma-plata', () => {
 
   it('400 — respinge dacă suma_efectiva <= 0 (status greșit)', async () => {
     mockAuthzAlopCreator();
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [] });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'angajare', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
+      .mockResolvedValueOnce({ rows: [] });
 
     const app = createTestApp();
     const res = await request(app)
@@ -779,7 +797,9 @@ describe('POST /api/alop/:id/confirma-plata', () => {
       completed_at:    new Date().toISOString(),
     });
     mockAuthzAlopCreator();
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [completed] });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'plata', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
+      .mockResolvedValueOnce({ rows: [completed] }); // UPDATE → completed
 
     const app = createTestApp();
     const res = await request(app)
@@ -796,7 +816,9 @@ describe('POST /api/alop/:id/confirma-plata', () => {
   it('200 — admin global poate confirma plata', async () => {
     const completed = makeAlopRow({ status: 'completed', completed_at: new Date().toISOString() });
     mockAuthzAlopCreator();
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [completed] });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'plata', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
+      .mockResolvedValueOnce({ rows: [completed] }); // UPDATE → completed
 
     const app = createTestApp();
     const res = await request(app)
@@ -806,6 +828,23 @@ describe('POST /api/alop/:id/confirma-plata', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
+  });
+
+  it('400 — plata_peste_ord: suma_efectiva > total ORD → block hard (P0.2)', async () => {
+    mockAuthzAlopCreator();
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'plata', plata_confirmed_at: null, ord_id: ORD_ID }] }) // FOR UPDATE lock
+      .mockResolvedValueOnce({ rows: [{ ord_total: '1000' }] }); // SELECT SUM ord rows
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/confirma-plata`)
+      .set('Cookie', `auth_token=${makeAdminToken()}`)
+      .send({ nr_ordin_plata: 'OP-X', data_plata: '2025-03-01', suma_efectiva: 1500 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('plata_peste_ord');
+    expect(res.body.ord_total).toBe(1000);
   });
 });
 
@@ -823,7 +862,9 @@ describe('POST /api/alop/:id/confirma-plata — user normal', () => {
       completed_at:       new Date().toISOString(),
     });
     mockAuthzAlopCreator();
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [completed] });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'plata', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
+      .mockResolvedValueOnce({ rows: [completed] }); // UPDATE → completed
 
     const app = createTestApp();
     const res = await request(app)
@@ -910,8 +951,10 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [completedAlop] })       // SELECT alop
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp
-      .mockResolvedValueOnce({ rows: [{ df_val: '2000' }] }) // SELECT df_val
-      .mockResolvedValueOnce({ rows: [{ total: '0' }] })      // SELECT SUM cicluri anterioare
+      // v3.9.558 buget multi-anual: query întoarce an_referinta + rows_plati (helper alege banda).
+      // an_referinta NULL → mono-an pe `ancrt` (= 2000), identic comportament FIX B.
+      .mockResolvedValueOnce({ rows: [{ an_referinta: null, rows_plati: [{ plati_estim_ancrt: '2000' }] }] }) // SELECT df an_referinta + rows_plati
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })      // SELECT SUM cicluri anul de exercițiu
       .mockResolvedValueOnce({ rows: [] })                     // INSERT alop_ord_cicluri
       .mockResolvedValueOnce({ rows: [resetAlop] });           // UPDATE alop
 
@@ -928,7 +971,7 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     expect(res.body.ramas).toBeCloseTo(1000); // 2000 - (0 + 1000) = 1000
   });
 
-  it('400 — suma epuizată (plata_suma >= df_val) returnează limita_depasita', async () => {
+  it('400 — buget an curent epuizat (plata_suma >= buget) returnează limita_depasita', async () => {
     const completedAlop = makeAlopRow({
       status:              'completed',
       df_id:               DF_ID,
@@ -938,7 +981,7 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [completedAlop] })
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp
-      .mockResolvedValueOnce({ rows: [{ df_val: '2000' }] })
+      .mockResolvedValueOnce({ rows: [{ buget_an_curent: '2000' }] }) // FIX B: bugetul anului curent
       .mockResolvedValueOnce({ rows: [{ total: '0' }] });
 
     const app = createTestApp();

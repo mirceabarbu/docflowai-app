@@ -27,6 +27,22 @@ function _requireDb(res) {
   return false;
 }
 
+// Forma răspunsului de matching expusă către UI. Include rezultatul PARȚIAL:
+// erori per-grup (`errors`/`error_count`) — un grup picat nu mai e înghițit
+// într-un 500, ci raportat aici, conform deciziei owner (v3.9.562).
+function _toMatchReport(rep) {
+  return {
+    matched: rep.matched,
+    ambiguous: rep.ambiguous,
+    unmatched: rep.unmatched,
+    partial: rep.partial,
+    confirmed_alopuri: rep.confirmed_alopuri,
+    errors: rep.errors || [],
+    error_count: rep.error_count || 0,
+    summary_text: summarizeReport(rep),
+  };
+}
+
 // Goleste body-ul cand respingem inainte de busboy. Fara asta, clienti
 // care au inceput sa stream-ureze multipart-ul primesc ECONNRESET pe socket.
 function _drainBody(req) {
@@ -232,15 +248,10 @@ router.post('/api/opme/import', csrfMiddleware, async (req, res) => {
       let match_report = null;
       try {
         const rep = await matchImport(importId);
-        match_report = {
-          matched: rep.matched,
-          ambiguous: rep.ambiguous,
-          unmatched: rep.unmatched,
-          partial: rep.partial,
-          confirmed_alopuri: rep.confirmed_alopuri,
-          summary_text: summarizeReport(rep),
-        };
-        logger.info({ orgId: actor.orgId, importId, ...match_report },
+        match_report = _toMatchReport(rep);
+        logger.info({ orgId: actor.orgId, importId,
+          matched: rep.matched, ambiguous: rep.ambiguous, unmatched: rep.unmatched,
+          partial: rep.partial, error_count: rep.error_count },
           'opme import: matcher done');
       } catch (matchErr) {
         logger.warn({ err: matchErr, importId },
@@ -522,16 +533,10 @@ router.post('/api/opme/imports/:id/rematch', csrfMiddleware, async (req, res) =>
          AND match_status IN ('unmatched','ambiguous','partial')
     `, [importId, actor.orgId]);
 
+    // Erorile per-grup vin în match_report.errors; matchImport aruncă DOAR la
+    // eșec real de infra (ex. DB down) → 500 legitim. Un grup picat NU dă 500.
     const rep = await matchImport(importId);
-    const match_report = {
-      matched: rep.matched,
-      ambiguous: rep.ambiguous,
-      unmatched: rep.unmatched,
-      partial: rep.partial,
-      confirmed_alopuri: rep.confirmed_alopuri,
-      summary_text: summarizeReport(rep),
-    };
-    res.json({ ok: true, match_report });
+    res.json({ ok: true, match_report: _toMatchReport(rep) });
   } catch (e) {
     logger.error({ err: e, importId }, 'opme rematch error');
     res.status(500).json({ error: 'server_error' });
@@ -655,6 +660,7 @@ router.post('/api/opme/rematch-all', csrfMiddleware, async (req, res) => {
     _rematchAllLast.set(actor.orgId, Date.now());
 
     let totalConfirmed = 0;
+    let totalGroupErrors = 0;
     const summary = [];
 
     for (const imp of imports) {
@@ -668,6 +674,7 @@ router.post('/api/opme/rematch-all', csrfMiddleware, async (req, res) => {
 
         const rep = await matchImport(imp.id);
         totalConfirmed += rep.confirmed_alopuri.length;
+        totalGroupErrors += rep.error_count || 0;
         summary.push({
           import_id: imp.id,
           matched: rep.matched,
@@ -675,15 +682,19 @@ router.post('/api/opme/rematch-all', csrfMiddleware, async (req, res) => {
           unmatched: rep.unmatched,
           partial: rep.partial,
           confirmed: rep.confirmed_alopuri.length,
+          // erori per-grup (non-fatal) agregate per import
+          errors: rep.errors || [],
+          error_count: rep.error_count || 0,
         });
       } catch (e) {
+        // eșec de infra pe TOT importul (ex. read header/linii) — non-fatal la nivel batch
         logger.warn({ err: e, importId: imp.id }, 'opme rematch-all: import failed (non-fatal)');
         summary.push({ import_id: imp.id, error: e.message });
       }
     }
 
-    logger.info({ orgId: actor.orgId, processed: imports.length, totalConfirmed }, 'opme rematch-all done');
-    res.json({ ok: true, processed: imports.length, total_confirmed: totalConfirmed, summary });
+    logger.info({ orgId: actor.orgId, processed: imports.length, totalConfirmed, totalGroupErrors }, 'opme rematch-all done');
+    res.json({ ok: true, processed: imports.length, total_confirmed: totalConfirmed, total_errors: totalGroupErrors, summary });
   } catch (e) {
     logger.error({ err: e }, 'opme rematch-all error');
     res.status(500).json({ error: 'server_error' });

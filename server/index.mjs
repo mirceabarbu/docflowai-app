@@ -490,13 +490,15 @@ import { fireWebhook, injectWebhookPool, injectWebhookBaseUrl } from './webhook.
 import { emailYourTurn, emailGeneric } from './emailTemplates.mjs';
 import { logger, redactUrl } from './middleware/logger.mjs';
 import { detectContentYs as _detectContentYs, findLowestUsableGap } from './utils/pdf-content-detect.mjs';
+import { pdfLooksSigned } from './utils/pdf-signed-placement.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
 
-import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, markDbReady } from './db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, markDbReady, markDbFailed } from './db/index.mjs';
 import { runMigrations as runMigrationsV4 } from './db/migrate.mjs';
+import { makeHealthRouter } from './routes/health.mjs';
 import supplierVerifyRouter   from './routes/supplier-verify.mjs';
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml, injectTokenVersionChecker } from './middleware/auth.mjs';
 
@@ -566,6 +568,25 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+// SEC-CSP-P0: politică strictă REPORT-ONLY — colectare violări fără enforcement.
+// Faza 0 vizibilitate: raportăm ce ar pica dacă am scoate unsafe-inline.
+// Politica enforcing (helmet de mai sus) RĂMÂNE NESCHIMBATĂ.
+const _cspReportLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 20,
+  message: 'Prea multe rapoarte CSP.',
+});
+app.use((req, res, next) => {
+  const nonce = crypto.randomBytes(16).toString('base64');
+  res.setHeader('Content-Security-Policy-Report-Only', [
+    `script-src 'self' 'nonce-${nonce}' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com`,
+    `script-src-attr 'none'`,
+    `style-src 'self'`,
+    `report-uri /api/csp-report`,
+  ].join('; '));
   next();
 });
 
@@ -766,21 +787,14 @@ app.get('/api-docs', (req, res) => {
 </html>`);
 });
 
-app.get('/health', (req, res) => {
-  const mem = process.memoryUsage();
-  res.json({
-    ok: true,
-    service: 'DocFlowAI',
-    version: APP_VERSION,
-    ts: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-    memory: {
-      rss: Math.round(mem.rss / 1024 / 1024) + 'MB',
-      heapUsed: Math.round(mem.heapUsed / 1024 / 1024) + 'MB',
-      heapTotal: Math.round(mem.heapTotal / 1024 / 1024) + 'MB',
-    },
-  });
-});
+// Liveness (/health) + readiness (/readyz) — vezi server/routes/health.mjs.
+// /health rămâne liveness pur (200 + ok:true, independent de DB). /readyz reflectă DB_READY.
+app.use(makeHealthRouter({
+  version: APP_VERSION,
+  pool,
+  getReady: () => DB_READY,
+  getLastError: () => DB_LAST_ERROR,
+}));
 
 // ── GET /admin/reminder-status — status job reminder si configuratie ────────
 app.get('/admin/reminder-status', async (req, res) => {
@@ -914,23 +928,8 @@ function isSignerTokenExpired(signer) {
 // Footer stamp — linia de identificare pe ultima pagina.
 // Pentru flowType 'ancore': salvare cu useObjectStreams:false pentru a nu degrada AcroForm/campuri semnatura.
 // Pentru flowType 'tabel': comportament implicit (useObjectStreams:true).
-function pdfLooksSigned(pdfB64) {
-  try {
-    if (!pdfB64) return false;
-    const clean = pdfB64.includes(',') ? pdfB64.split(',')[1] : pdfB64;
-    const buf = Buffer.from(clean, 'base64');
-    const sample = buf.toString('latin1');
-    return (
-      sample.includes('/ByteRange') ||
-      sample.includes('/Contents<') ||
-      sample.includes('/Contents <') ||
-      sample.includes('/SubFilter/ETSI.CAdES.detached') ||
-      sample.includes('/SubFilter /ETSI.CAdES.detached') ||
-      sample.includes('/Type/Sig') ||
-      sample.includes('/Type /Sig')
-    );
-  } catch { return false; }
-}
+// pdfLooksSigned — mutată în server/utils/pdf-signed-placement.mjs (v3.9.552),
+// importată mai sus. Comportament identic; refolosită la call-site (crud/lifecycle).
 
 // detectContentYs + findLowestUsableGap — importate din server/utils/pdf-content-detect.mjs (v3.9.496)
 // Wrapper care injectează PDFLib (load async la pornire — nu poate fi import direct)
@@ -1727,6 +1726,30 @@ app.use('/api/trasabilitate',      trasabilitateRouter);      // Arbore trasabil
 app.use('/api/verify',       supplierVerifyRouter);
 
 
+// SEC-CSP-P0: endpoint colectare rapoarte CSP Report-Only.
+// Acceptă application/csp-report (browser vechi) și application/reports+json (Reporting API v1).
+// Rate-limited per IP — oricine poate POST-a, deci capăm logurile.
+const _cspReportParser = express.json({
+  type: ['application/csp-report', 'application/reports+json'],
+  limit: '64kb',
+});
+app.post('/api/csp-report', _cspReportLimiter, _cspReportParser, (req, res) => {
+  try {
+    const body = req.body;
+    if (!body) return res.status(204).end();
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/reports+json') && Array.isArray(body)) {
+      for (const report of body) {
+        logger.info({ cspViolation: report }, 'csp-violation');
+      }
+    } else {
+      const violation = body['csp-report'] ?? body;
+      logger.info({ cspViolation: violation }, 'csp-violation');
+    }
+  } catch (_) { /* corp malformat — ignorat */ }
+  res.status(204).end();
+});
+
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
@@ -1841,12 +1864,16 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   logger.info({ port: PORT }, 'WebSocket ready');
   initDbWithRetry().then(async () => {
     // Run schema migrations (v3 inline + .sql files via runMigrationsV4)
+    // Readiness gate: DB_READY devine true DOAR după ce și migrările V4 (.sql) trec.
+    // O migrare V4 picată ⇒ markDbFailed ⇒ /readyz 503 + requireDb 503 (appul NU
+    // servește rute DB ca „ready"). Liveness (/health) rămâne 200. (Incident 2026-04-19.)
     try {
       await runMigrationsV4(pool);
       markDbReady();
-      logger.info('Schema migrations applied successfully');
+      logger.info('Schema migrations applied successfully — DB ready.');
     } catch(e) {
-      logger.error({ err: e }, 'Migration error (non-fatal)');
+      markDbFailed(e);
+      logger.error({ err: e }, 'Migration error — readiness gate CLOSED (DB_READY=false)');
     }
 
     // BUG-N01: Recovery archive_jobs blocate în 'processing' după restart Railway

@@ -1792,6 +1792,54 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_formulare_audit_org  ON formulare_audit(org_id, created_at DESC);
     `
   }
+  ,{
+    id: '084_formulare_source_alop',
+    sql: `
+      -- v3.9.554: proveniență persistentă DF/ORD → ALOP. Legarea inițială (link-df/link-ord)
+      -- depinde exclusiv de frontend și poate eșua silențios (409/403/CSRF/rețea) — cu
+      -- source_alop_id persistat la creare, aprobarea fluxului poate re-lega automat ALOP-ul
+      -- (self-heal în server/services/alop-link.mjs). Backfill istoric nu e necesar.
+      ALTER TABLE formulare_df  ADD COLUMN IF NOT EXISTS source_alop_id UUID NULL;
+      ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS source_alop_id UUID NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_df_source_alop
+        ON formulare_df(source_alop_id) WHERE source_alop_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_formulare_ord_source_alop
+        ON formulare_ord(source_alop_id) WHERE source_alop_id IS NOT NULL;
+    `
+  },
+  {
+    // v3.9.558 (FEATURE buget multi-anual): ancorare an absolut pe DF.
+    // `rows_plati` are benzi RELATIVE (ancrt/np1/np2/np3/ani_precedenti/ani_ulter).
+    // `an_referinta` stochează anul absolut căruia îi aparține `plati_estim_ancrt`;
+    // np1 → an_referinta+1, ... ani_ulter → > an_referinta+3. NULL = legacy / nedeclarat
+    // (DF create înainte de această migrare) — NU se backfillează automat. Decizia owner:
+    // pentru NULL plafonul rămâne mono-an pe `ancrt` (block hard 422, identic FIX B).
+    id: '085_formulare_df_an_referinta',
+    sql: `
+      ALTER TABLE formulare_df ADD COLUMN IF NOT EXISTS an_referinta INTEGER NULL;
+    `
+  },
+  {
+    // v3.9.558 (FEATURE buget multi-anual): an de exercițiu pe ciclurile arhivate.
+    // Pentru cumul corect PER an de exercițiu (o ordonanțare făcută în 2026 consumă
+    // bugetul 2026, nu pe cel din 2027), ciclul arhivat marchează explicit anul plății.
+    // Populat la arhivare din anul `plata_data` (fallback derivat la calcul pentru
+    // ciclurile istorice fără valoare). Tabela e creată inline (062) dar GARDATĂ pe
+    // fresh boot (alop_instances vine din V4) → ALTER-ul TREBUIE gardat la fel (vezi 073).
+    id: '086_alop_ord_cicluri_an_exercitiu',
+    sql: `
+      -- depinde de alop_instances (tabela-părinte V4): acest token forțează deferral-ul
+      -- în migrateForTests (V4_ONLY regex) ca ALTER-ul să ruleze DUPĂ ce 062 creează
+      -- alop_ord_cicluri pe DB fresh — fără el guard-ul ar sări tăcut și coloana ar lipsi.
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_ord_cicluri'
+        ) THEN RETURN; END IF;
+        ALTER TABLE alop_ord_cicluri
+          ADD COLUMN IF NOT EXISTS an_exercitiu INTEGER;
+      END $g$;
+    `
+  }
 ];
 
 async function runMigrations(client) {
@@ -1883,11 +1931,22 @@ async function initDbOnce() {
     else logger.error('Niciun admin in sistem si admin@docflowai.ro nu exista!');
   }
 
-  DB_READY = true; DB_LAST_ERROR = null;
-  logger.info('DB ready.');
+  // NU marcăm DB_READY=true aici. Readiness se declară DOAR după ce rulează și
+  // migrările file-based V4 (runMigrationsV4) — vezi callback-ul de boot din index.mjs.
+  // Altfel o migrare .sql picată ar lăsa appul să servească pe o schemă ne-migrată
+  // (incident 2026-04-19). Inline migrations au reușit aici → schema inline e OK.
+  DB_LAST_ERROR = null;
+  logger.info('Inline migrations applied (DB_READY pending V4 migrations).');
 }
 
 export function markDbReady() { DB_READY = true; DB_LAST_ERROR = null; }
+
+// Închide gate-ul de readiness: o migrare (inline sau V4) a picat ⇒ appul NU mai
+// servește rute DB ca „ready" (requireDb → 503, /readyz → 503).
+export function markDbFailed(err) {
+  DB_READY = false;
+  DB_LAST_ERROR = err ? String(err?.message || err) : 'db_not_ready';
+}
 
 // Folosit DOAR de harness-ul de teste (server/tests/helpers/db-real.mjs).
 // Aplică schema completă pe pool-ul curent (idempotent), apoi marchează DB_READY=true.

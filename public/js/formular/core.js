@@ -103,6 +103,10 @@ function addAtt(ev,lid,did){
       const chip=document.createElement('span');chip.className='att-chip';
       chip.innerHTML=`📎 ${f.name} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
       list.appendChild(chip);
+      // v3.9.554 (B3): setarea programatică a input-ului ascuns nu emite 'input'/'change',
+      // deci autosave-ul nu pornea — fișier atașat + navigare fără alt edit = pierdut.
+      // Derivăm ft din did ('o-*' → ordnt, 'n-*' → notafd), consecvent cu remAttServer.
+      window._scheduleAutoSaveDb?.(did.startsWith('o-')?'ordnt':'notafd');
     };
     rd.readAsDataURL(f);
   }
@@ -305,6 +309,22 @@ function upTot(){
   st2('n-t-c5',sf('n-ctbody','sum_rezv_crdt_ang_af_rvz_prc'));st2('n-t-c6',sf('n-ctbody','influente_c6'));
   st2('n-t-c7',sf('n-ctbody','sum_rezv_crdt_ang_act'));st2('n-t-c8',sf('n-ctbody','sum_rezv_crdt_bug_af_rvz_prc'));
   st2('n-t-c9',sf('n-ctbody','influente_c9'));st2('n-t-c10',sf('n-ctbody','sum_rezv_crdt_bug_act'));
+}
+
+/* FEATURE buget multi-anual (v3.9.558): etichetele benzilor de plăți afișează anul absolut
+   calculat din an_referinta (banda „an curent” = an_referinta; N+1 = +1; etc.). Sincronizat
+   la încărcare, la schimbarea câmpului și la creare (default = anul curent). */
+function anrefSync(){
+  const inp=document.getElementById('n-anref');
+  let y=parseInt(inp?.value,10);
+  if(!y||isNaN(y)){y=new Date().getFullYear();if(inp&&!inp.value)inp.value=y;}
+  const set=(id,txt)=>{const e=document.getElementById(id);if(e)e.textContent=txt;};
+  set('n-th-pprec',`Plăți efectuate în anii precedenți (< ${y})`);
+  set('n-th-pancrt',`Plăți estimate în anul curent (${y})`);
+  set('n-th-pnp1',`Estimări an N+1 (${y+1})`);
+  set('n-th-pnp2',`Estimări an N+2 (${y+2})`);
+  set('n-th-pnp3',`Estimări an N+3 (${y+3})`);
+  set('n-th-pulter',`Ani ulteriori (> ${y+3})`);
 }
 
 /* Collect */

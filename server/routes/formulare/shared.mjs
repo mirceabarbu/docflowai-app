@@ -18,6 +18,7 @@ import { logger } from '../../middleware/logger.mjs';
 import { pool } from '../../db/index.mjs';
 import { listFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import { isAdminOrOrgAdmin } from '../admin/_helpers.mjs';
+import { loadActorComp, canEditFormular, canViewFormular } from '../../services/authz-formular.mjs';
 import { requireDb } from './_helpers.mjs';
 
 let PDFLibFormular = null;
@@ -38,18 +39,19 @@ router.post('/api/formulare-capturi/:type/:id', _csrf, async (req, res) => {
   if (!['df', 'ord'].includes(type)) return res.status(400).json({ error: 'type_invalid' });
 
   const table = type === 'df' ? 'formulare_df' : 'formulare_ord';
-  const assignedField = 'assigned_to';
 
   try {
     const { rows: existing } = await pool.query(
-      `SELECT created_by, ${assignedField}, status FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      `SELECT created_by, assigned_to, status FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
       [id, actor.orgId]
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    const canUpload = doc.created_by === actor.userId || doc[assignedField] === actor.userId
-      || actor.role === 'admin' || actor.role === 'org_admin';
-    if (!canUpload) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.554 (B1): authz centralizat — include drepturile prin compartiment (comp/p2_comp),
+    // pe care verificarea veche creator/assigned/admin le refuza cu 403.
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp);
+    if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
 
     // Citim body raw (imagine)
     const chunks = [];
@@ -97,14 +99,15 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
   try {
     const table = type === 'df' ? 'formulare_df' : 'formulare_ord';
     const { rows: docRows } = await pool.query(
-      `SELECT created_by, assigned_to FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      `SELECT created_by, assigned_to, flow_id FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
       [id, actor.orgId]
     );
     if (!docRows.length) return res.status(404).json({ error: 'not_found' });
     const doc = docRows[0];
-    const canView = doc.created_by === actor.userId || doc.assigned_to === actor.userId
-      || actor.role === 'admin' || actor.role === 'org_admin';
-    if (!canView) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.554 (B1): authz centralizat — view include comp/p2_comp + semnatari în flux
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const view = await canViewFormular(pool, actor, doc, actorComp);
+    if (!view.allowed) return res.status(403).json({ error: 'forbidden' });
 
     // v3.9.499: filtrare pe slot (default 1 backward compat pentru DF + clienti vechi)
     const slotRaw = parseInt(req.query.slot || '1', 10);
@@ -144,10 +147,10 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
-    const canUpload = doc.created_by === actor.userId
-      || doc.assigned_to === actor.userId
-      || actor.role === 'admin' || actor.role === 'org_admin';
-    if (!canUpload) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.554 (B1): authz centralizat — include drepturile prin compartiment (comp/p2_comp)
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp);
+    if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
 
     // v3.9.501: slot pentru a permite multiple seturi per formular (DF n-fdad vs n-adata)
     const slotRaw = parseInt(req.query.slot || '1', 10);
@@ -190,15 +193,15 @@ router.get('/api/formulare-atasamente/:type/:id', async (req, res) => {
   try {
     const table = type === 'df' ? 'formulare_df' : 'formulare_ord';
     const { rows: docRows } = await pool.query(
-      `SELECT created_by, assigned_to FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      `SELECT created_by, assigned_to, flow_id FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
       [id, actor.orgId]
     );
     if (!docRows.length) return res.status(404).json({ error: 'not_found' });
     const doc = docRows[0];
-    const canView = doc.created_by === actor.userId
-      || doc.assigned_to === actor.userId
-      || actor.role === 'admin' || actor.role === 'org_admin';
-    if (!canView) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.554 (B1): authz centralizat — view include comp/p2_comp + semnatari în flux
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const view = await canViewFormular(pool, actor, doc, actorComp);
+    if (!view.allowed) return res.status(403).json({ error: 'forbidden' });
 
     // v3.9.501: filtrare per slot (default 1 backward compat)
     const slotRaw = parseInt(req.query.slot || '1', 10);
@@ -228,15 +231,15 @@ router.get('/api/formulare-atasamente/:type/:id/:attId', async (req, res) => {
   try {
     const table = type === 'df' ? 'formulare_df' : 'formulare_ord';
     const { rows: docRows } = await pool.query(
-      `SELECT created_by, assigned_to FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      `SELECT created_by, assigned_to, flow_id FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
       [id, actor.orgId]
     );
     if (!docRows.length) return res.status(404).json({ error: 'not_found' });
     const doc = docRows[0];
-    const canView = doc.created_by === actor.userId
-      || doc.assigned_to === actor.userId
-      || actor.role === 'admin' || actor.role === 'org_admin';
-    if (!canView) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.554 (B1): authz centralizat — view include comp/p2_comp + semnatari în flux
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const view = await canViewFormular(pool, actor, doc, actorComp);
+    if (!view.allowed) return res.status(403).json({ error: 'forbidden' });
 
     const { rows } = await pool.query(
       `SELECT filename, mime_type, data FROM formulare_atasamente
@@ -269,10 +272,10 @@ router.delete('/api/formulare-atasamente/:type/:id/:attId', _csrf, async (req, r
     );
     if (!docRows.length) return res.status(404).json({ error: 'not_found' });
     const doc = docRows[0];
-    const canDelete = doc.created_by === actor.userId
-      || doc.assigned_to === actor.userId
-      || actor.role === 'admin' || actor.role === 'org_admin';
-    if (!canDelete) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.554 (B1): authz centralizat — include drepturile prin compartiment (comp/p2_comp)
+    const actorComp = await loadActorComp(pool, actor.userId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp);
+    if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
     if (['completed','aprobat'].includes(doc.status) && !['admin','org_admin'].includes(actor.role)) {
       return res.status(409).json({ error: 'document_locked', status: doc.status });
     }

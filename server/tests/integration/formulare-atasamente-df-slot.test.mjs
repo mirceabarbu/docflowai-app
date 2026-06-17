@@ -44,7 +44,9 @@ vi.mock('../../middleware/require-module.mjs', () => ({
 vi.mock('../../services/authz-formular.mjs', () => ({
   canDestroyOnly:  vi.fn().mockReturnValue({ allowed: true }),
   canEditFormular: vi.fn().mockReturnValue({ allowed: true }),
-  loadActorComp:   vi.fn().mockResolvedValue(undefined),
+  // v3.9.554 (B1): listă/download folosesc canViewFormular (authz centralizat)
+  canViewFormular: vi.fn().mockReturnValue({ allowed: true, mode: 'edit' }),
+  loadActorComp:   vi.fn().mockResolvedValue(''),
 }));
 
 import * as dbModule from '../../db/index.mjs';

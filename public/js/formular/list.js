@@ -82,11 +82,17 @@ async function _autoSaveDb(ft){
       if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
     }
     // v3.9.501: auto-save uploadează atașamente pending pentru ambele sloturi
+    // v3.9.554 (B2): eșecurile de upload nu mai sunt mascate de badge-ul 💾
+    let _attFailed=[];
     if(ST.docId[ft]){
-      await uploadAttachments(ft, 1);
-      if(ft==='notafd') await uploadAttachments(ft, 2);
+      _attFailed=_attFailed.concat(await uploadAttachments(ft, 1)||[]);
+      if(ft==='notafd') _attFailed=_attFailed.concat(await uploadAttachments(ft, 2)||[]);
     }
-    _draftShowBadge(ft,'💾 '+new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}));
+    if(_attFailed.length){
+      _draftShowBadge(ft,'⚠ '+_attFailed.length+' atașament(e) neîncărcate');
+    }else{
+      _draftShowBadge(ft,'💾 '+new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}));
+    }
   }catch(_){_draftShowBadge(ft,'⚠');}
 }
 function _scheduleAutoSaveDb(ft){

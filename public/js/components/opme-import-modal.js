@@ -197,7 +197,10 @@
         const summary = rep && rep.summary_text
           ? rep.summary_text
           : `Import reușit: ${body.lines_count || 0} linii.`;
-        showToast(summary, 'ok', rep && body.import_id ? {
+        // Rezultat parțial: dacă unul sau mai multe grupuri au eșuat, semnalează
+        // vizibil (toast galben) — liniile lor rămân „în așteptare", de re-rulat.
+        const hasErrors = rep && (rep.error_count || (rep.errors && rep.errors.length));
+        showToast(summary, hasErrors ? 'warn' : 'ok', rep && body.import_id ? {
           label: 'Vezi raport',
           action: () => {
             if (window.DFOpmeReportDrawer && window.DFOpmeReportDrawer.open) {

@@ -181,9 +181,45 @@
         }
       }
 
+      // ── PDF pre-semnat la upload — detecție client-side (v3.9.553) ─────────
+      // Text unic, refolosit la detecție (sub upload) și după POST /flows.
+      const PRESIGNED_WARN_TEXT = "⚠️ Documentul încărcat conține deja o semnătură electronică. " +
+        "Pentru a nu o invalida, antetul/footer-ul și cartușul DocFlowAI nu vor fi aplicate; " +
+        "semnăturile QES vor fi plasate în spațiul liber de pe ultima pagină.";
+
+      // REPLICĂ a euristicii pdfLooksSigned din server/utils/pdf-signed-placement.mjs
+      // (sincronizare MANUALĂ — schimbi una, schimbi ambele). Bytes decodați ca
+      // latin1; substring-urile căutate sunt pur ASCII, deci decodarea e sigură.
+      function clientPdfLooksSigned(arrayBuffer) {
+        try {
+          const sample = new TextDecoder("latin1").decode(arrayBuffer);
+          // Magic bytes: %PDF trebuie să apară în primii 1024 bytes (per spec PDF)
+          if (!sample.slice(0, 1024).includes("%PDF")) return false;
+          return (
+            sample.includes("/ByteRange") ||
+            sample.includes("/Contents<") ||
+            sample.includes("/Contents <") ||
+            sample.includes("/SubFilter/ETSI.CAdES.detached") ||
+            sample.includes("/SubFilter /ETSI.CAdES.detached") ||
+            sample.includes("/Type/Sig") ||
+            sample.includes("/Type /Sig")
+          );
+        } catch { return false; }
+      }
+
+      // Banner persistent sub zona de upload — rămâne vizibil până la schimbarea
+      // fișierului sau crearea fluxului. Informativ, NU blochează fluxul.
+      function showPreSignedDetect(show) {
+        const box = $("preSignedDetectBox");
+        if (!box) return;
+        if (show) { box.textContent = PRESIGNED_WARN_TEXT; box.style.display = "block"; }
+        else { box.style.display = "none"; box.textContent = ""; }
+      }
+
       $("pdfFile").addEventListener("change", async () => {
         const clearBtn = $("btnClearPdf");
         const f = $("pdfFile").files?.[0];
+        showPreSignedDetect(false); // reset la fiecare schimbare de fișier
         if (!f) { pdfB64=null; originalFileName=null; setPdfInfo("Nu ai selectat încă un fișier."); return; }
 
         const ACCEPTED = ['.pdf','.docx','.doc','.xlsx','.xls',
@@ -223,6 +259,12 @@
           originalFileName = f.name;
           window._rawFileForConversion = null;
           setPdfInfo(`Selectat: ${f.name} (${Math.round(f.size/1024)} KB).`);
+          // Detecție pre-semnat ÎNAINTE de creare — doar PDF nativ (fișierele
+          // convertite server-side nu pot conține semnături PAdES). Non-fatal.
+          try {
+            const _ab = await f.arrayBuffer();
+            if (clientPdfLooksSigned(_ab)) showPreSignedDetect(true);
+          } catch {}
           const reader = new FileReader();
           reader.onload = () => {
             pdfB64 = reader.result;
@@ -301,6 +343,7 @@
         idb.clear();
         validateForm();
         setPdfInfo("Nu ai selectat încă un fișier.");
+        showPreSignedDetect(false);
         const box = $("pdfPreviewBox");
         const cont = $("pdfPagesContainer");
         if (box) { if(cont) cont.innerHTML = ""; box.style.display = "none"; }
@@ -1948,6 +1991,9 @@ async function signFromFluxuri(flowId) {
           const _alopId      = _urlParams.get('alop_id')        || sessionStorage.getItem('alop_id_for_flow')?.split('|')[0];
           const _alopDocType = _urlParams.get('alop_doc_type')  || sessionStorage.getItem('alop_id_for_flow')?.split('|')[1];
           console.log('🔍 ALOP check:', '_alopId=', _alopId, 'j.flowId=', j.flowId);
+          // v3.9.554 (A3): erorile de legare ALOP nu mai sunt silențioase — se afișează
+          // banner persistent (fără redirect automat) ca utilizatorul să afle imediat.
+          let _alopLinkErr = null;
           if (_alopId && j.flowId) {
             const _isDfFlow = _alopDocType === "notafd";
             try {
@@ -1955,47 +2001,82 @@ async function signFromFluxuri(flowId) {
               if (_prefDocId) {
                 const _lnkDoc = _isDfFlow ? "link-df" : "link-ord";
                 console.log(`ALOP ${_lnkDoc}: ${_alopId} → ${_prefDocId}`);
-                await fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
-                  method: "POST", credentials: "include",
-                  headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
-                  body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
-                }).catch(e => console.error('❌ link-df FAILED:', e));
+                try {
+                  const _rDoc = await fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
+                    method: "POST", credentials: "include",
+                    headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                    body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
+                  });
+                  if (!_rDoc.ok) {
+                    const _jDoc = await _rDoc.json().catch(() => null);
+                    _alopLinkErr = _jDoc?.message || _jDoc?.error || `HTTP ${_rDoc.status}`;
+                    console.error(`❌ ${_lnkDoc} FAILED:`, _alopLinkErr);
+                  }
+                } catch (e) { _alopLinkErr = 'eroare de rețea'; console.error('❌ link-df FAILED:', e); }
               }
               // Link fluxul de semnare
               const _lnkFlow = _isDfFlow ? "link-df-flow" : "link-ord-flow";
               console.log(`ALOP ${_lnkFlow}: ${_alopId} → ${j.flowId}`);
-              console.log('📤 Calling link-df-flow:', _alopId, 'flowId:', j.flowId);
-              console.log('📤 link-df-flow sending:', _alopId, j.flowId);
-              await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
-                method: "POST", credentials: "include",
-                headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
-                body: JSON.stringify({ flow_id: j.flowId })
-              }).catch(e => console.error('❌ link-df-flow FAILED:', e));
+              try {
+                const _rFlow = await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
+                  method: "POST", credentials: "include",
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                  body: JSON.stringify({ flow_id: j.flowId })
+                });
+                if (!_rFlow.ok) {
+                  const _jFlow = await _rFlow.json().catch(() => null);
+                  _alopLinkErr = _alopLinkErr || _jFlow?.message || _jFlow?.error || `HTTP ${_rFlow.status}`;
+                  console.error(`❌ ${_lnkFlow} FAILED:`, _jFlow?.error || _rFlow.status);
+                }
+              } catch (e) { _alopLinkErr = _alopLinkErr || 'eroare de rețea'; console.error('❌ link-df-flow FAILED:', e); }
             } catch(_) {}
             sessionStorage.removeItem("alop_id_for_flow");
           }
+          const _alopWarnBanner = _alopLinkErr
+            ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--df-warning-bd);background:var(--df-warning-bg);border-radius:var(--df-radius-md);color:var(--df-warning);line-height:1.45;font-size:13px;">⚠️ Fluxul a fost creat, dar <strong>legarea la dosarul ALOP a eșuat</strong>: ${esc(_alopLinkErr)}. Verificați dosarul ALOP și legați documentul manual.</div>`
+            : ``;
+
+          // PDF pre-semnat la upload: documentul conține deja o semnătură QES.
+          // Avertismentul NU depinde de un timer (v3.9.553): banner persistent +
+          // buton manual de continuare. Inline-styled cu tokens df (scoped pe
+          // element) — fără selectori bare per CSS scoping.
+          const _preSigned = !!j.preSignedUpload;
+          const _preSignedBanner = _preSigned
+            ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--df-warning-bd);background:var(--df-warning-bg);border-radius:var(--df-radius-md);color:var(--df-warning);line-height:1.45;font-size:13px;">${PRESIGNED_WARN_TEXT}</div>`
+            : ``;
 
           // Redirect UX:
           // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
           // - altfel -> mergi la pagina dedicată flow (status/timeline)
-          if (j.initIsSigner) {
-            if (j.signerToken) {
-              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar — te redirecționăm la semnare...</strong>`;
-              setTimeout(() => {
-                location.href = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(j.signerToken)}&fromInit=1`;
-              }, 900);
-            } else {
-              // Fallback safe: fără token nu putem deschide semnarea direct
-              $("createResult").innerHTML = `✅ Flux creat. <strong>Ești primul semnatar</strong>, dar lipsește token-ul de semnare. Te ducem la statusul fluxului.`;
-              setTimeout(() => {
-                location.href = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
-              }, 900);
-            }
+          let _dest, _msgAuto, _msgManual, _btnLabel;
+          if (j.initIsSigner && j.signerToken) {
+            _dest = `/semdoc-signer.html?flow=${encodeURIComponent(j.flowId)}&token=${encodeURIComponent(j.signerToken)}&fromInit=1`;
+            _msgAuto   = `✅ Flux creat. <strong>Ești primul semnatar — te redirecționăm la semnare...</strong>`;
+            _msgManual = `✅ Flux creat. <strong>Ești primul semnatar.</strong>`;
+            _btnLabel  = `Am înțeles — continuă la semnare`;
+          } else if (j.initIsSigner) {
+            // Fallback safe: fără token nu putem deschide semnarea direct
+            _dest = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
+            _msgAuto   = `✅ Flux creat. <strong>Ești primul semnatar</strong>, dar lipsește token-ul de semnare. Te ducem la statusul fluxului.`;
+            _msgManual = `✅ Flux creat. <strong>Ești primul semnatar</strong>, dar lipsește token-ul de semnare.`;
+            _btnLabel  = `Am înțeles — continuă la statusul fluxului`;
           } else {
-            $("createResult").innerHTML = `✅ Flux creat. Notificare trimisă primului semnatar. Te ducem la statusul fluxului.`;
-            setTimeout(() => {
-              location.href = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
-            }, 900);
+            _dest = `/flow.html?flow=${encodeURIComponent(j.flowId)}`;
+            _msgAuto   = `✅ Flux creat. Notificare trimisă primului semnatar. Te ducem la statusul fluxului.`;
+            _msgManual = `✅ Flux creat. Notificare trimisă primului semnatar.`;
+            _btnLabel  = `Am înțeles — continuă la statusul fluxului`;
+          }
+
+          if (_preSigned || _alopLinkErr) {
+            // FĂRĂ timer — bannerul (presigned și/sau eroare ALOP) rămâne pe ecran până la click
+            $("createResult").innerHTML = `${_msgManual}${_preSignedBanner}${_alopWarnBanner}
+              <div style="margin-top:10px;">
+                <button id="btnPreSignedContinue" class="df-action-btn primary" type="button">${_btnLabel}</button>
+              </div>`;
+            $("btnPreSignedContinue").addEventListener("click", () => { location.href = _dest; });
+          } else {
+            $("createResult").innerHTML = _msgAuto;
+            setTimeout(() => { location.href = _dest; }, 900);
           }
 } catch (e) {
           $("createResult").textContent = `❌ Eroare: ${String(e.message || e)}`;

@@ -24,12 +24,34 @@ import { logger } from '../middleware/logger.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
+import { bugetPentruAnul } from '../services/buget-an.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
+
+// FEATURE buget multi-anual (v3.9.558): fragment SQL care sumează banda `rows_plati`
+// corespunzătoare ANULUI DE EXERCIȚIU CURENT, ancorată pe `df.an_referinta`.
+//   offset = an_exercitiu_curent − an_referinta  (NULL an_referinta → 0 ⇒ banda `ancrt`)
+//   offset <0 → ani_precedenti | 0 → ancrt | 1→np1 | 2→np2 | 3→np3 | >3 → ani_ulter
+// ⚠️ SINCRONIZAT MANUAL cu `bandaPentruOffset()` din services/buget-an.mjs (folosit de
+// plafonul ORD din formular-shared.mjs). Schimbi mapping-ul aici → schimbă-l și acolo.
+// `df` = aliasul tabelei formulare_df în query-ul apelant.
+function sqlBugetAnExercitiu(df) {
+  const off = `(EXTRACT(YEAR FROM NOW())::int - COALESCE(${df}.an_referinta, EXTRACT(YEAR FROM NOW())::int))`;
+  const band = `(CASE
+        WHEN ${off} < 0 THEN 'plati_ani_precedenti'
+        WHEN ${off} = 0 THEN 'plati_estim_ancrt'
+        WHEN ${off} = 1 THEN 'plati_estim_an_np1'
+        WHEN ${off} = 2 THEN 'plati_estim_an_np2'
+        WHEN ${off} = 3 THEN 'plati_estim_an_np3'
+        ELSE 'plati_estim_ani_ulter' END)`;
+  return `(SELECT COALESCE(SUM((r->>${band})::numeric),0)
+           FROM jsonb_array_elements(COALESCE(${df}.rows_plati,'[]'::jsonb)) r
+           WHERE (r->>${band}) ~ '^[0-9.]+$')`;
+}
 
 // v3.9.499 (Finding E): rate limit pentru endpoint-uri admin destructive
 const _alopAdminRateLimit = createRateLimiter({
@@ -245,6 +267,8 @@ router.get('/api/alop', async (req, res) => {
         fo.status        AS ord_status,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
+        ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
+        df.an_referinta AS df_an_referinta,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
         a.plata_suma_efectiva AS op_valoare,
@@ -449,6 +473,8 @@ router.get('/api/alop/:id', async (req, res) => {
         up.nume AS plata_by_name,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
+        ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
+        df.an_referinta AS df_an_referinta,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
         a.plata_suma_efectiva AS op_valoare,
@@ -1111,18 +1137,71 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
     }
 
     const { notes, nr_ordin_plata, data_plata, suma_efectiva, observatii } = req.body;
-    const row = await applyPlataConfirmedSideEffects(pool, req.params.id, actor.orgId, {
-      userId: actor.userId,
-      notes: observatii || notes || '',
-      nr_ordin_plata: nr_ordin_plata || null,
-      data_plata: data_plata || null,
-      suma_efectiva: suma_efectiva || null,
-      observatii: observatii || null,
-      source: 'manual',
-    });
+    const sumaEfectivaNum = (suma_efectiva === undefined || suma_efectiva === null || suma_efectiva === '')
+      ? null : Number(suma_efectiva);
 
-    if (!row) return res.status(400).json({ error: 'status_invalid' });
-    res.json({ ok: true, alop: row });
+    // P0.2: tranzacție explicită cu FOR UPDATE pe rândul ALOP — serializează
+    // confirmarea manuală cu confirmarea OPME (opme-matcher blochează același rând)
+    // și previne dubla confirmare sub race. Garda din applyPlataConfirmedSideEffects
+    // (status='plata' AND plata_confirmed_at IS NULL) rămâne sursa de idempotență.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: locked } = await client.query(
+        `SELECT id, status, plata_confirmed_at, ord_id
+           FROM alop_instances WHERE id=$1 AND org_id=$2 FOR UPDATE`,
+        [req.params.id, actor.orgId]
+      );
+      if (!locked[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'not_found' });
+      }
+
+      // P0.2 / decizie owner: plată ≤ ordonanțat (block hard). Totalul ORD =
+      // SUM(rows.suma_ordonantata_plata) al ORD-ului legat. Skip dacă plata nu e
+      // furnizată (null) sau ORD-ul nu are valoare (total 0 — fără rânduri/ORD).
+      if (sumaEfectivaNum != null && locked[0].ord_id) {
+        const { rows: ordTot } = await client.query(
+          `SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata','')::numeric),0) AS ord_total
+             FROM formulare_ord fo
+             LEFT JOIN jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r ON true
+            WHERE fo.id=$1`,
+          [locked[0].ord_id]
+        );
+        const ordTotal = Number(ordTot[0]?.ord_total || 0);
+        if (ordTotal > 0 && sumaEfectivaNum > ordTotal + 0.01) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: 'plata_peste_ord',
+            message: `Suma plătită (${sumaEfectivaNum.toFixed(2)} RON) depășește suma ordonanțată (${ordTotal.toFixed(2)} RON).`,
+            suma: sumaEfectivaNum,
+            ord_total: ordTotal,
+          });
+        }
+      }
+
+      const row = await applyPlataConfirmedSideEffects(client, req.params.id, actor.orgId, {
+        userId: actor.userId,
+        notes: observatii || notes || '',
+        nr_ordin_plata: nr_ordin_plata || null,
+        data_plata: data_plata || null,
+        suma_efectiva: sumaEfectivaNum,
+        observatii: observatii || null,
+        source: 'manual',
+      });
+
+      if (!row) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'status_invalid' });
+      }
+      await client.query('COMMIT');
+      res.json({ ok: true, alop: row });
+    } catch (txErr) {
+      try { await client.query('ROLLBACK'); } catch {}
+      throw txErr;
+    } finally {
+      client.release();
+    }
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-plata error');
     res.status(500).json({ error: e.message || 'server_error' });
@@ -1135,80 +1214,127 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { rows: [alop] } = await pool.query(
-      'SELECT * FROM alop_instances WHERE id=$1 AND org_id=$2 AND cancelled_at IS NULL',
-      [req.params.id, actor.orgId]
-    );
-    if (!alop) return res.status(404).json({ error: 'not_found' });
-    {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alop, actorComp);
-      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    // P0.2: read-modify-write pe sume (buget an exercițiu → ramas → arhivare ciclu →
+    // reset) rulează într-o tranzacție explicită cu FOR UPDATE pe rândul ALOP. Previne
+    // dubla arhivare la apeluri concurente (ambele ar fi trecut de garda ramas>0) și
+    // serializează cu confirma-plata/OPME (care blochează același rând).
+    const client = await pool.connect();
+    let updated = null, ramas = 0, newCicluId = null, cicluNr = 1;
+    try {
+      await client.query('BEGIN');
+      const { rows: [alop] } = await client.query(
+        'SELECT * FROM alop_instances WHERE id=$1 AND org_id=$2 AND cancelled_at IS NULL FOR UPDATE',
+        [req.params.id, actor.orgId]
+      );
+      if (!alop) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not_found' }); }
+      {
+        const actorComp = await loadActorComp(client, actor.userId);
+        const authz = await canEditAlop(client, actor, alop, actorComp);
+        if (!authz.allowed) { await client.query('ROLLBACK'); return res.status(403).json({ error: authz.reason }); }
+      }
+      if (alop.status !== 'completed') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'status_invalid', message: 'ALOP trebuie să fie finalizat (plată efectuată).' });
+      }
+
+      // Bugetul ANULUI DE EXERCIȚIU al DF-ului aprobat (FIX B v3.9.557 → FEATURE buget multi-anual
+      // v3.9.558): plafonul efectiv pentru ordonanțare/plată e banda `rows_plati` a anului de
+      // exercițiu curent, ancorată pe `an_referinta` (an_referinta NULL → mono-an pe `ancrt`,
+      // decizia owner). NU angajamentul total multianual SUM(rows_val.valt_actualiz). După o
+      // revizie de DF, alop.df_id pointează deja la revizia activă, deci bugetul se recalculează
+      // pe valorile reviziei (ciclu nou posibil dacă revizia mărește banda anului de exercițiu).
+      const anExercitiu = new Date().getFullYear();
+      const { rows: [dfRow] } = await client.query(
+        `SELECT df.an_referinta, df.rows_plati FROM formulare_df df WHERE df.id=$1`,
+        [alop.df_id]
+      );
+      const anRef = dfRow?.an_referinta == null ? anExercitiu : dfRow.an_referinta;
+      const bugetAnCurent = bugetPentruAnul(dfRow?.rows_plati, anRef, anExercitiu) || 0;
+
+      // Suma plătită în ACELAȘI an de exercițiu din ciclurile anterioare arhivate (cumul per an:
+      // plățile din 2026 nu consumă bugetul 2027). Fallback derivat din plata_data/created_at
+      // pentru ciclurile istorice fără `an_exercitiu` (mig. 086) populat.
+      const { rows: [sumaRow] } = await client.query(
+        `SELECT COALESCE(SUM(plata_suma_efectiva),0) AS total
+           FROM alop_ord_cicluri
+          WHERE alop_id=$1
+            AND COALESCE(an_exercitiu, EXTRACT(YEAR FROM plata_data)::int, EXTRACT(YEAR FROM created_at)::int) = $2`,
+        [req.params.id, anExercitiu]
+      );
+      const sumaPlata = parseFloat(sumaRow?.total || 0)
+        + parseFloat(alop.plata_suma_efectiva || 0);
+
+      ramas = bugetAnCurent - sumaPlata;
+      if (ramas <= 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: 'limita_depasita',
+          message: `Bugetul estimat al anului de exercițiu ${anExercitiu} (${bugetAnCurent} RON) a fost integral ordonanțat.`
+        });
+      }
+
+      // Arhivează ciclul curent
+      cicluNr = alop.ciclu_curent || 1;
+      const { rows: cicluRows } = await client.query(`
+        INSERT INTO alop_ord_cicluri (
+          alop_id, org_id, ciclu_nr, ord_id, ord_flow_id,
+          lichidare_confirmed_by, lichidare_confirmed_at,
+          lichidare_nr_factura, lichidare_data_factura,
+          lichidare_nr_pv, lichidare_data_pv, lichidare_notes,
+          plata_confirmed_by, plata_confirmed_at,
+          plata_nr_ordin, plata_data, plata_suma_efectiva, plata_observatii,
+          plata_source,
+          an_exercitiu,
+          status
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'completed')
+        RETURNING id
+      `, [
+        req.params.id, actor.orgId, cicluNr,
+        alop.ord_id, alop.ord_flow_id,
+        alop.lichidare_confirmed_by, alop.lichidare_confirmed_at,
+        alop.lichidare_nr_factura, alop.lichidare_data_factura,
+        alop.lichidare_nr_pv, alop.lichidare_data_pv, alop.lichidare_notes,
+        alop.plata_confirmed_by, alop.plata_confirmed_at,
+        alop.plata_nr_ordin, alop.plata_data,
+        alop.plata_suma_efectiva, alop.plata_observatii,
+        alop.plata_source || 'manual',
+        // an de exercițiu al ciclului arhivat = anul plății efective (fallback: anul curent)
+        alop.plata_data ? new Date(alop.plata_data).getFullYear() : anExercitiu,
+      ]);
+      newCicluId = cicluRows[0]?.id;
+
+      // Reset pentru noul ciclu
+      ({ rows: [updated] } = await client.query(`
+        UPDATE alop_instances SET
+          status = 'lichidare',
+          ord_id = NULL, ord_flow_id = NULL, ord_completed_at = NULL,
+          lichidare_confirmed_by = NULL, lichidare_confirmed_at = NULL,
+          lichidare_nr_factura = NULL, lichidare_data_factura = NULL,
+          lichidare_nr_pv = NULL, lichidare_data_pv = NULL, lichidare_notes = NULL,
+          plata_confirmed_by = NULL, plata_confirmed_at = NULL,
+          plata_nr_ordin = NULL, plata_data = NULL,
+          plata_suma_efectiva = NULL, plata_observatii = NULL,
+          plata_source = 'manual',
+          completed_at = NULL,
+          suma_totala_platita = $2,
+          ciclu_curent = $3,
+          updated_at = NOW(),
+          updated_by = $4
+        WHERE id=$1
+        RETURNING *
+      `, [req.params.id, sumaPlata, cicluNr + 1, actor.userId]));
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      try { await client.query('ROLLBACK'); } catch {}
+      throw txErr;
+    } finally {
+      client.release();
     }
-    if (alop.status !== 'completed')
-      return res.status(400).json({ error: 'status_invalid', message: 'ALOP trebuie să fie finalizat (plată efectuată).' });
 
-    // Valoarea DF aprobat
-    const { rows: [dfRow] } = await pool.query(
-      `SELECT COALESCE(
-        (SELECT SUM((r->>'valt_actualiz')::numeric)
-         FROM jsonb_array_elements(
-           CASE WHEN fd.rows_val IS NOT NULL
-                AND jsonb_array_length(fd.rows_val) > 0
-           THEN fd.rows_val ELSE '[]'::jsonb END
-         ) r
-         WHERE (r->>'valt_actualiz') IS NOT NULL
-           AND (r->>'valt_actualiz') ~ '^[0-9.]+$'
-        ), 0
-       ) AS df_val
-       FROM formulare_df fd WHERE fd.id=$1`,
-      [alop.df_id]
-    );
-    const dfVal = parseFloat(dfRow?.df_val || 0);
-
-    // Suma totală plătită din cicluri anterioare arhivate
-    const { rows: [sumaRow] } = await pool.query(
-      'SELECT COALESCE(SUM(plata_suma_efectiva),0) AS total FROM alop_ord_cicluri WHERE alop_id=$1',
-      [req.params.id]
-    );
-    const sumaPlata = parseFloat(sumaRow?.total || 0)
-      + parseFloat(alop.plata_suma_efectiva || 0);
-
-    const ramas = dfVal - sumaPlata;
-    if (ramas <= 0)
-      return res.status(400).json({
-        error: 'limita_depasita',
-        message: `Valoarea DF (${dfVal} RON) a fost integral ordonanțată.`
-      });
-
-    // Arhivează ciclul curent
-    const cicluNr = alop.ciclu_curent || 1;
-    const { rows: cicluRows } = await pool.query(`
-      INSERT INTO alop_ord_cicluri (
-        alop_id, org_id, ciclu_nr, ord_id, ord_flow_id,
-        lichidare_confirmed_by, lichidare_confirmed_at,
-        lichidare_nr_factura, lichidare_data_factura,
-        lichidare_nr_pv, lichidare_data_pv, lichidare_notes,
-        plata_confirmed_by, plata_confirmed_at,
-        plata_nr_ordin, plata_data, plata_suma_efectiva, plata_observatii,
-        plata_source,
-        status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'completed')
-      RETURNING id
-    `, [
-      req.params.id, actor.orgId, cicluNr,
-      alop.ord_id, alop.ord_flow_id,
-      alop.lichidare_confirmed_by, alop.lichidare_confirmed_at,
-      alop.lichidare_nr_factura, alop.lichidare_data_factura,
-      alop.lichidare_nr_pv, alop.lichidare_data_pv, alop.lichidare_notes,
-      alop.plata_confirmed_by, alop.plata_confirmed_at,
-      alop.plata_nr_ordin, alop.plata_data,
-      alop.plata_suma_efectiva, alop.plata_observatii,
-      alop.plata_source || 'manual',
-    ]);
-    const newCicluId = cicluRows[0]?.id;
-
-    // Pachet B: populează matched_ciclu_id pe liniile OPME absorbite în acest ALOP
+    // Pachet B: populează matched_ciclu_id pe liniile OPME absorbite în acest ALOP.
+    // Rămâne NON-FATAL și DUPĂ COMMIT (pe pool): o eroare aici nu trebuie să rateze
+    // arhivarea ciclului deja comisă, iar într-o tranzacție ar fi otrăvit tot blocul.
     if (newCicluId) {
       try {
         await pool.query(`
@@ -1222,27 +1348,6 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
           '[ALOP] noua-lichidare: backfill matched_ciclu_id failed (non-fatal)');
       }
     }
-
-    // Reset pentru noul ciclu
-    const { rows: [updated] } = await pool.query(`
-      UPDATE alop_instances SET
-        status = 'lichidare',
-        ord_id = NULL, ord_flow_id = NULL, ord_completed_at = NULL,
-        lichidare_confirmed_by = NULL, lichidare_confirmed_at = NULL,
-        lichidare_nr_factura = NULL, lichidare_data_factura = NULL,
-        lichidare_nr_pv = NULL, lichidare_data_pv = NULL, lichidare_notes = NULL,
-        plata_confirmed_by = NULL, plata_confirmed_at = NULL,
-        plata_nr_ordin = NULL, plata_data = NULL,
-        plata_suma_efectiva = NULL, plata_observatii = NULL,
-        plata_source = 'manual',
-        completed_at = NULL,
-        suma_totala_platita = $2,
-        ciclu_curent = $3,
-        updated_at = NOW(),
-        updated_by = $4
-      WHERE id=$1
-      RETURNING *
-    `, [req.params.id, sumaPlata, cicluNr + 1, actor.userId]);
 
     logger.info({ alopId: req.params.id, ciclu: cicluNr + 1, ramas }, '[ALOP] nouă lichidare pornită');
     res.json({ ok: true, alop: updated, ramas });

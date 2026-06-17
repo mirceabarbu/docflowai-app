@@ -129,11 +129,15 @@ router.get('/flows/:flowId/attachments/:attId', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'attachment_not_found' });
     const att = rows[0];
     const safeName = att.filename.replace(/[^\w\-\.]/g, '_');
+    const isPreview = req.query.preview === '1' && att.mime_type === 'application/pdf';
     // Header-ele de download se setează DOAR pe căile care chiar trimit fișierul,
     // ca răspunsurile de eroare (404/502) să rămână application/json curat.
     const setDownloadHeaders = () => {
       res.setHeader('Content-Type', att.mime_type);
-      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      res.setHeader('Content-Disposition', isPreview
+        ? `inline; filename="${safeName}"`
+        : `attachment; filename="${safeName}"`);
+      if (isPreview) res.setHeader('X-Content-Type-Options', 'nosniff');
     };
     // Dacă BYTEA a fost curățat post-arhivare, citim direct din Drive
     if ((!att.data || att.data.length === 0) && att.drive_file_id) {

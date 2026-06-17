@@ -39,6 +39,9 @@ function collectOrdDb(){return{
   iban_beneficiar:g('o-iban'),cif_beneficiar:g('o-cifb'),banca_beneficiar:g('o-banca'),
   inf_pv_plata:g('o-inf1'),inf_pv_plata1:g('o-inf2'),rows:getOR(),
   df_id:document.getElementById('o-df-id')?.value||null,
+  // v3.9.554: proveniență ALOP — backend-ul o persistă DOAR la creare (POST);
+  // permite self-heal relink dacă link-ord eșuează silențios.
+  source_alop_id:window._alopContext?.alopId||null,
 };}
 function collectDfP1Db(){return{
   cif:g('n-cif'),den_inst_pb:g('n-den'),subtitlu_df:g('n-subtitlu'),
@@ -52,6 +55,12 @@ function collectDfP1Db(){return{
   ckbx_sting_ang_in_ancrt:cb('n-ck-sting'),ckbx_fara_plati_ang_in_ancrt:cb('n-ck-faraplati'),
   ckbx_cu_plati_ang_in_mmani:cb('n-ck-cuplati'),ckbx_ang_leg_emise_ct_an_urm:cb('n-ck-anurmatori'),
   rows_plati:getNP(),
+  // FEATURE buget multi-anual (v3.9.558): an absolut care ancorează benzile rows_plati.
+  // La creare backend-ul îl default-ează la anul curent dacă lipsește; la revizie e moștenit.
+  an_referinta:g('n-anref')||'',
+  // v3.9.554: proveniență ALOP — backend-ul o persistă DOAR la creare (POST);
+  // permite self-heal relink la aprobare dacă link-df eșuează silențios.
+  source_alop_id:window._alopContext?.alopId||null,
 };}
 function collectDfP2Db(){return{
   ckbx_secta_inreg_ctrl_ang:cb('n-ck-seca'),ckbx_fara_inreg_ctrl_ang:cb('n-ck-fararezv'),
@@ -127,6 +136,13 @@ function populateDf(doc){
   sv('n-sumfara',doc.sum_fara_inreg_ctrl_crdbug||'0');
   sc('n-ck-interzis',doc.ckbx_interzis_emit_ang);sc('n-ck-intrucat',doc.ckbx_interzis_intrucat);
   sv('n-intrucat',doc.intrucat);
+  // FEATURE buget multi-anual (v3.9.558): restabilește an_referinta (NULL legacy → anul curent
+  // afișat, fără a-l forța la salvare). La revizie câmpul e read-only (moștenit din părinte).
+  sv('n-anref',doc.an_referinta!=null?doc.an_referinta:'');
+  { const _ar=document.getElementById('n-anref');
+    if(_ar){ _ar.readOnly=!!(doc.este_revizie||doc.parent_df_id||(doc.revizie_nr|0)>0); }
+  }
+  if(typeof anrefSync==='function')anrefSync();
   ['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{const el=document.getElementById(tid);if(el)el.innerHTML='';});
   nVI=nPI=nCI=0;
   (doc.rows_val||[]).forEach(row=>{addNV();const tr=document.getElementById('n-vtbody').querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});});
@@ -785,7 +801,11 @@ function newDoc(ft){
           }
         });
     }
-  }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
+  }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');
+    // FEATURE buget multi-anual (v3.9.558): DF nou → an de referință = anul curent (editabil).
+    { const _ar=document.getElementById('n-anref'); if(_ar){ _ar.value=new Date().getFullYear(); _ar.readOnly=false; } }
+    if(typeof anrefSync==='function')anrefSync();
+  }
   document.getElementById('result-'+ft).classList.remove('show');
   ST[ft]={pdf:null,name:null};upTot();clrS();renderActions(ft);
   document.querySelectorAll(`#docs-list-${ft} .doc-card`).forEach(c=>c.classList.remove('active'));
@@ -845,15 +865,21 @@ async function saveDoc(ft){
       if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
     }
     // v3.9.501: upload atașamente pending pentru ambele sloturi (ORD slot 1, DF slot 1+2)
+    // v3.9.554 (B2): colectează eșecurile — nu mai raportăm „Salvat cu succes" peste ele
+    let _attFailed=[];
     if(ST.docId[ft]){
-      await uploadAttachments(ft, 1);
-      if(ft==='notafd') await uploadAttachments(ft, 2);
+      _attFailed=_attFailed.concat(await uploadAttachments(ft, 1)||[]);
+      if(ft==='notafd') _attFailed=_attFailed.concat(await uploadAttachments(ft, 2)||[]);
     }
 
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=j.document?.capabilities||null;
     renderActions(ft);refreshDocs(ft);
-    setS('Salvat cu succes.','ok');
+    if(_attFailed.length){
+      setS(`Document salvat, dar ${_attFailed.length} atașament(e) nu au putut fi încărcate: ${df.esc(_attFailed.map(f=>`${f.name} (${f.reason})`).join(', '))}. Se reîncearcă la următoarea salvare.`,'err');
+    }else{
+      setS('Salvat cu succes.','ok');
+    }
   }catch(e){setS('Eroare rețea: '+e.message,'err');}
 }
 
@@ -892,14 +918,17 @@ function _attIds(ft, slot) {
   return null;
 }
 
+// v3.9.554 (B2): returnează lista eșecurilor [{name, reason}] — apelanții (saveDoc,
+// _autoSaveDb) o folosesc ca să NU raporteze „Salvat cu succes" peste upload-uri picate.
 async function uploadAttachments(ft, slot = 1){
-  const ids = _attIds(ft, slot); if (!ids) return;
-  if (!ST.docId[ft]) return;
+  const ids = _attIds(ft, slot); if (!ids) return [];
+  if (!ST.docId[ft]) return [];
   const { did, lid } = ids;
   const _slot = slot === 2 ? 2 : 1;
-  let cur; try { cur = JSON.parse(document.getElementById(did)?.value || '[]'); } catch (_) { return; }
-  if (!Array.isArray(cur)) return;
+  let cur; try { cur = JSON.parse(document.getElementById(did)?.value || '[]'); } catch (_) { return []; }
+  if (!Array.isArray(cur)) return [];
   let changed = false;
+  const failed = [];
   for (let i = 0; i < cur.length; i++) {
     const item = cur[i];
     if (item?.id || !item?.data) continue;
@@ -923,13 +952,25 @@ async function uploadAttachments(ft, slot = 1){
       if (r.ok && j?.atasament) {
         cur[i] = { id: j.atasament.id, filename: j.atasament.filename, mime_type: j.atasament.mime_type, size_bytes: j.atasament.size_bytes };
         changed = true;
+      } else {
+        const reason = j?.error || ('HTTP ' + r.status);
+        cur[i]._err = reason;   // marcaj vizual pe chip (att-chip-err); item.data rămâne → retry la următorul save
+        failed.push({ name: item.name || 'fișier', reason });
+        changed = true;
+        console.warn('[v3.9.554] uploadAttachments HTTP fail', item?.name, reason);
       }
-    } catch (e) { console.warn('[v3.9.501] uploadAttachments error', item?.name, e); }
+    } catch (e) {
+      if (cur[i]) cur[i]._err = 'rețea';
+      failed.push({ name: item?.name || 'fișier', reason: 'eroare de rețea' });
+      changed = true;
+      console.warn('[v3.9.501] uploadAttachments error', item?.name, e);
+    }
   }
   if (changed) {
     document.getElementById(did).value = JSON.stringify(cur);
     renderAttachments(ft, _slot);
   }
+  return failed;
 }
 
 async function fetchAttachments(ft, slot = 1){
@@ -939,7 +980,14 @@ async function fetchAttachments(ft, slot = 1){
   const _slot = slot === 2 ? 2 : 1;
   try {
     const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`, { credentials: 'include' });
-    if (!r.ok) return;
+    if (!r.ok) {
+      // v3.9.554 (B2): la 403/500 lista nu mai dispare tăcut — indicator discret de eroare
+      const jErr = await r.json().catch(() => null);
+      console.warn('[v3.9.554] fetchAttachments HTTP', r.status, jErr?.error);
+      const listEl = document.getElementById(ids.lid);
+      if (listEl) listEl.innerHTML = `<span class="att-chip att-chip-err" title="${df.esc(jErr?.error || ('HTTP ' + r.status))}">⚠ atașamentele nu au putut fi încărcate</span>`;
+      return;
+    }
     const j = await r.json();
     if (!j.ok || !Array.isArray(j.atasamente)) return;
     const list = j.atasamente.map(a => ({
@@ -960,7 +1008,8 @@ function renderAttachments(ft, slot = 1){
   const docId = ST.docId[ft];
   cur.forEach((item, idx) => {
     const chip = document.createElement('span');
-    chip.className = 'att-chip';
+    chip.className = 'att-chip' + (item._err ? ' att-chip-err' : '');
+    if (item._err) chip.title = 'Upload eșuat: ' + item._err + ' — se reîncearcă la următoarea salvare';
     const name = item.filename || item.name || 'fișier';
     const safe = String(name).replace(/[<>"]/g, '');
     if (item.id && docId) {
@@ -1328,6 +1377,10 @@ async function completeAsP2(ft){
       if(j.error==='receptii_neplatite_negative'){
         const det=Array.isArray(j.rows)?j.rows.map(b=>`r${b.idx}: ${b.c5}`).join(', '):'';
         setS('⛔ '+j.message+(det?' ('+det+')':''),'err');
+      }else if(j.error==='buget_an_curent_depasit'){
+        // FIX B (v3.9.557) → buget multi-anual (v3.9.558): plafon hard pe bugetul anului de
+        // exercițiu (banda rows_plati ancorată pe an_referinta). Mesajul server include anul.
+        setS('⛔ '+(j.message||'Suma ordonanțată depășește bugetul anului de exercițiu.'),'err');
       }else{
         setS(j.error||'Eroare','err');
       }

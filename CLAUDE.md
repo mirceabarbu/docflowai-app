@@ -150,6 +150,34 @@ Semnatar descarcă PDF unsigned → semnează offline cu aplicație desktop QES 
 - La semnare ulterioară, iText recunoaște propriile câmpuri și scrie MINIM în incremental update
 - Cartuș vizual „SEMNAT SI APROBAT" afișează rol, nume, funcție per celulă
 
+### PDF-uri pre-semnate la upload (din v3.9.552)
+Dacă PDF-ul încărcat **conține deja o semnătură QES** (`pdfLooksSigned` → `/ByteRange`),
+`stampFooterOnPdf` se sare **intenționat** (guard `preventRewriteIfSigned`) — un re-save pdf-lib ar
+invalida semnătura existentă. Deci **fără footer, fără cartuș desenat**, by design.
+
+În schimb, `padesRect` per semnatar se calculează **read-only** prin
+`computeSignerRectsReadOnly(pdfB64, signers, PDFLib)` din `server/utils/pdf-signed-placement.mjs`:
+PDF-ul NU se salvează niciodată, rect-urile se plasează în spațiul liber de pe **ultima pagină**
+(bottom → gap → forced), `page` 1-based. `crud.mjs` + `lifecycle.mjs` (ambele call-site-uri reinitiate)
+iau decizia **explicit la call-site** și setează `data.preSignedUpload = true` + eveniment
+`PRESIGNED_UPLOAD_DETECTED`; răspunsul `POST /flows` întoarce `preSignedUpload` pentru bannerul din
+inițiator.
+
+**UX avertizare (din v3.9.553):** avertismentul nu depinde de niciun timer. Apare în trei locuri:
+(1) **la selectarea fișierului** — `clientPdfLooksSigned` în `public/js/semdoc-initiator/main.js`,
+REPLICĂ manual-sincronizată a euristicii `pdfLooksSigned` server-side (schimbi una, schimbi ambele);
+(2) **după POST /flows** — când `preSignedUpload:true`, fără redirect automat: banner persistent +
+buton manual „Am înțeles — continuă..." (PDF normal păstrează redirect-ul pe timer 900ms);
+(3) **pe semdoc-signer** — banner informativ deasupra zonei de semnare, citit din `preSignedUpload`
+expus de `GET /flows/:flowId` (flag-ul trece prin `stripSensitive` ca parte din `...rest` — test în
+`presigned-upload.test.mjs`).
+
+⚠️ Fallback-ul de coordonate hardcodate din `cloud-signing.mjs` (NO-TOUCH) trebuie să rămână **cod mort** —
+`padesRect` e garantat populat acum. **Orice path nou care creează fluxuri TREBUIE să populeze `padesRect`**
+(stampFooterOnPdf pentru PDF nesemnat, computeSignerRectsReadOnly pentru cel semnat). Geometria celulelor
+e **sincronizată manual** între `stampFooterOnPdf` și `computeSignerRectsReadOnly` — schimbi una, schimbi
+ambele.
+
 ---
 
 ## Multi-tenancy
@@ -229,6 +257,33 @@ Toate frontendurile sunt SPA-uri single-file (HTML + JS inline), servite static 
 | `sw.js` | — | Service Worker offline |
 
 **Helper universal:** `esc(str)` — escaping HTML obligatoriu pentru orice date utilizator afișate în DOM. Niciodată `innerHTML` cu date neescapate.
+
+### CSS: scoping & componente globale (din v3.9.551)
+
+CSS-ul NU e scopat per component — într-o pagină fără Shadow DOM, fiecare stylesheet se aplică
+*fiecărui* element din document, inclusiv componentelor injectate în `<body>` la runtime (modaluri,
+toast-uri, widget-uri globale).
+
+**Regula 1 — CSS de pagină = selectori scopați la wrapper-ul paginii, NICIODATĂ pe element gol.**
+Un `input{width:100%}` sau `label{display:block}` într-un CSS de pagină (ex. `semdoc-initiator.css`)
+se scurge în orice component global injectat în body și îi rupe stilul. Scopează la wrapper-ul de
+conținut: `.df-shell input{…}`. Componentele se atașează în `<body>` ca frate al `.df-shell`, deci
+rămân în afara razei.
+
+**Regula 2 — componentele globale își declară DEFENSIV toate proprietățile (auto-conținere).**
+Un component montat în body (ex. `df-email-modal`) NU se bazează pe igiena CSS a paginii-gazdă:
+declară explicit width/display/etc. pe propriile clase, scopate sub rădăcina lui (`.dfem-overlay`),
+cu specificitate suficientă cât să bată selectorii pe element gol ai paginii (și `!important`-ul lor,
+dacă există). O proprietate nedeclarată = un gol pe care pagina-gazdă îl umple cu regulile ei generice.
+
+**Stratul dublu e INTENȚIONAT, nu redundanță:** pagină scopată (Regula 1) + component auto-conținut
+(Regula 2). Fiecare acoperă ce ratează celălalt; împreună fac montarea unui component pe orice pagină
+sigură. NU „curăța" defensiva unui component pe motiv că pagina a fost scopată.
+
+Incident de referință: modalul de email apărea rupt pe `semdoc-initiator.html` (dar corect pe
+`flow.html`) fiindcă `semdoc-initiator.css` avea `input{width:100%}` + `input,select,textarea{…!important}`
+pe element gol. Fix: defensivă în `email-modal.css` (v3.9.549) + scoping la `.df-shell` în
+`semdoc-initiator.css` (v3.9.550).
 
 ---
 
@@ -387,6 +442,101 @@ Asimetrii intenționate DEJA cimentate (test în `server/tests/db/caracterizare-
 (submit/complete/returneaza/revizuieste/sterge), ALOP (progresie stări, lazy-resync GET, ciclu multi-ORD,
 gărzi tranziție), capabilities, zombie-flow, cancel. **Încă pe mock (fără plasă DB — caracterizează
 înainte să atingi):** flows lifecycle, signing, entitlements, registratură, OPME.
+
+---
+
+## Linking DF↔ALOP & authz atașamente (din v3.9.554)
+
+**Proveniență persistentă:** DF/ORD create din context ALOP poartă `source_alop_id` (migrarea 084;
+frontend-ul îl trimite din `window._alopContext.alopId`, backend-ul îl persistă DOAR la INSERT;
+revizia îl copiază din părinte). **Self-heal la aprobare:** `server/services/alop-link.mjs` →
+`selfHealAlopDfLink(pool, flowId)`, apelat din `signing.mjs` (allDone) + `crud.mjs` (edge-case flux
+deja completed) — re-leagă ALOP-ul dacă `df_id` e NULL (refuz R0, link-df eșuat silențios) sau
+pointează la o revizie veche din același `nr_unic_inreg`. Erorile de link-df/link-ord sunt vizibile
+în UI (setS în `alop.js`, banner în `semdoc-initiator/main.js`) — nu doar `console.warn`.
+
+🔒 **INVARIANT — NU modifica:** relink-ul de revizie (`df.mjs` /revizuieste) și self-heal-ul se
+aplică **INTENȚIONAT și ALOP-urilor `completed`** (doar `cancelled_at IS NULL` exclude) — e
+mecanismul care permite: ALOP finalizat → revizuire DF (valoare mărită) → `noua-lichidare`
+recalculează `ramas` pe valoarea reviziei noi → ciclu nou. NU adăuga filtre `completed_at IS NULL`
+pe aceste query-uri. Test: `server/tests/db/alop-df-relink-selfheal.test.mjs`.
+
+**Revizii — atașamente/capturi (din v3.9.555):** `/revizuieste` copiază în aceeași tranzacție
+rândurile `formulare_atasamente` (nedeleted) și `formulare_capturi` ale părintelui pe noua revizie
+(`form_id` nou, `uploaded_by`/`created_at` originale păstrate) — fără asta R1 pornea fără anexele
+R0. Test: `server/tests/db/revizie-df-copiere-atasamente.test.mjs`.
+
+**Authz atașamente/capturi:** rutele `formulare-atasamente` + `formulare-capturi` (`shared.mjs`)
+folosesc **exclusiv** `authz-formular.mjs` (`canEditFormular` upload/delete, `canViewFormular`
+listă/download) — include drepturile prin compartiment (comp/p2_comp), pe care verificarea veche
+creator/assigned/admin le refuza cu 403. Test prin lanțul real de middleware (json adaptiv + CSRF
+real): `server/tests/db/formulare-atasamente-authz.test.mjs`.
+
+**Buget an curent (din v3.9.556):** cardul ALOP expune `df_buget_an_curent` =
+`SUM(formulare_df.rows_plati[].plati_estim_ancrt)` al DF-ului activ (`alop.df_id`), alături de
+`df_valoare` = angajamentul total (`SUM(rows_val[].valt_actualiz)`) — doar afișare, fără validare
+nouă (validarea hard pe bugetul anului curent vine separat). Test:
+`server/tests/db/alop-buget-an-curent.test.mjs`.
+
+**Ordonanțare plafonată hard pe bugetul anului curent (din v3.9.557, FIX B):** ordonanțarea/plata
+se poate face DOAR în limita bugetului anului curent = `SUM(formulare_df.rows_plati[].plati_estim_ancrt)`
+al DF-ului legat (`ord.df_id` / `alop.df_id`, revizia activă), NU în limita angajamentului total
+multianual (`rows_val.valt_actualiz`). Două puncte de control:
+(1) **la finalizarea ORD** (`formular-shared.mjs` → `validateOrdBugetAnCurent`, gated de
+`budgetCheck==='hard_col5'`): col.5 ≥ 0 rămâne validare SEPARATĂ și rulează ÎNAINTE; apoi, dacă
+`suma_ordonanțată_cumulată_an_curent > buget + 0.001` → `422 buget_an_curent_depasit`. Cumulul =
+suma rândurilor noi ORD (`data.rows`) + plățile ciclurilor arhivate (`alop_ord_cicluri.plata_suma_efectiva`)
+ale ALOP-ului legat de același DF — REFOLOSEȘTE logica `total_ord_valoare` din `alop.mjs` (fără dublă
+numărare). Skip dacă ORD-ul nu are `df_id`.
+(2) **la `noua-lichidare`** (`alop.mjs`): `ramas = bugetAnCurent − sumaPlata` (înainte: `dfVal` =
+`SUM(valt_actualiz)`); `limita_depasita` când bugetul an curent e epuizat chiar dacă angajamentul total
+mai are loc. După revizie de DF care mărește `plati_estim_ancrt`, `alop.df_id` relegat → ramas crește →
+ciclu nou posibil (invariant relink v3.9.554). Modelare „an curent" = mono-an (toate ciclurile active
+ale DF-ului). Teste: `server/tests/db/ord-buget-an-curent-plafon.test.mjs` +
+`server/tests/db/alop-noua-lichidare-ciclu.test.mjs`.
+
+---
+
+## Buget multi-anual — an_referinta ancorează benzile la ani absoluți (din v3.9.558)
+
+FIX B (v3.9.557) trata `rows_plati` ca **mono-an** — plafonul fix pe `plati_estim_ancrt`. Corect pentru
+2026, dar `rows_plati` are benzi **RELATIVE** (`ancrt`/`np1`/`np2`/`np3`/`ani_precedenti`/`ani_ulter`) și
+nicăieri nu se stoca CARE an absolut e „ancrt". La 1 ian. 2027 plafonul ar fi trebuit să devină `np1`.
+
+**Ancorare:** `formulare_df.an_referinta` (INTEGER, migrarea **085**) = anul absolut al benzii `ancrt`;
+`np1`→`+1`, … `ani_ulter`→`>+3`. „Anul de exercițiu" pentru plafon = `EXTRACT(YEAR FROM NOW())`
+(fără setting per-org în iterația 1 — documentat). La **creare** se setează din body sau default anul
+curent; la **revizie** se moștenește din părinte (copiat în INSERT-ul `/revizuieste`, NU re-trimis din
+frontend) — o suplimentare în 2026 rămâne ancorată pe 2026. DF legacy (pre-085) = `an_referinta` NULL,
+**fără backfill**.
+
+**Helper central PUR:** `server/services/buget-an.mjs` → `bugetPentruAnul(rowsPlati, anReferinta,
+anExercitiu)` mapează `offset = anExercitiu − anReferinta` la banda corectă și întoarce `SUM`-ul peste
+rânduri. `anReferinta` NULL → `null` („nedeclarat"). Acoperit de `server/tests/unit/buget-an.test.mjs`.
+
+**Decizia owner pentru DF legacy (an_referinta NULL):** **block mono-an pe `ancrt`** (identic FIX B) —
+apelanții coalescează `anReferinta ← anExercitiu` ⇒ offset 0 ⇒ banda `ancrt`, deci plafonul 422 rămâne
+activ. (NU skip+warn.)
+
+**Cumul PER an de exercițiu (migrarea 086):** `alop_ord_cicluri.an_exercitiu` (INTEGER) marchează anul
+plății arhivate; populat la `noua-lichidare` din anul `plata_data` (fallback anul curent). Cumulul de
+ordonanțări filtrează ciclurile pe anul de exercițiu: `COALESCE(an_exercitiu,
+YEAR(plata_data), YEAR(created_at)) = an_exercitiu_curent` — o plată din 2026 NU consumă bugetul 2027.
+
+**Trei puncte de control** (toate prin helper / fragment SQL sincronizat):
+(1) **plafon ORD** (`formular-shared.mjs` → `validateOrdBugetAnCurent`): banda anului de exercițiu +
+cumul filtrat pe an; 422 `buget_an_curent_depasit` (body include `anExercitiu`).
+(2) **noua-lichidare** (`alop.mjs`): `ramas = bugetPentruAnul(...) − sumaPlatitaInAnulExercitiului`.
+(3) **card ALOP** (FIX A, list+detail): `df_buget_an_curent` via fragmentul SQL `sqlBugetAnExercitiu`.
+
+⚠️ **Geometria benzii e SINCRONIZATĂ MANUAL** între `bandaPentruOffset()` (JS, buget-an.mjs) și
+`sqlBugetAnExercitiu()` (SQL, alop.mjs) — schimbi mapping-ul într-una, schimbi-l în ambele.
+
+**Frontend:** câmp `an_referinta` (`n-anref`) în formularul DF — default anul curent la creare, read-only
+la revizie; etichetele coloanelor `rows_plati` afișează anii absoluți (`anrefSync()`); cardul ALOP arată
+„Buget exercițiu <an>"; eroarea 422 menționează anul. Teste:
+`server/tests/db/buget-multianual-an-referinta.test.mjs` (offset 0/1/−1, cumul per an, legacy block,
+revizie moștenește, default la creare).
 
 ---
 
@@ -734,6 +884,8 @@ Schema ALOP este împărțită între un fișier SQL inițial și migrații inli
 | server/db/index.mjs                       | 062_alop_multi_ord     | Tabela alop_ord_cicluri (multi-ORD per ALOP)    |
 | server/db/index.mjs                       | 063_user_leave_delegate | concediu + delegare                            |
 | server/db/index.mjs                       | 064_delegation_functie | funcție pentru delegare                         |
+| server/db/index.mjs                       | 085_formulare_df_an_referinta | an absolut ancorare benzi rows_plati     |
+| server/db/index.mjs                       | 086_alop_ord_cicluri_an_exercitiu | an de exercițiu per ciclu arhivat    |
 
 Pentru orice nouă migrație ALOP/formulare, urmează regula stabilită:
 ALTER inline în db/index.mjs cu pattern `id: 'NNN_descriere'` și SQL idempotent.
