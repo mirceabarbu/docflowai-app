@@ -53,6 +53,30 @@ function sqlBugetAnExercitiu(df) {
            WHERE (r->>${band}) ~ '^[0-9.]+$')`;
 }
 
+// ── ramas_an_curent (card ALOP) — OGLINDEȘTE EXACT garda din noua-lichidare ────
+// = bugetul benzii anului de exercițiu (sqlBugetAnExercitiu) − suma plătită în ACELAȘI
+//   an de exercițiu (cicluri arhivate filtrate pe an + plata live `a.plata_suma_efectiva`,
+//   neoglindită încă într-un ciclu). Valoare CARD-ONLY (citire): calea de scriere financiară
+//   (garda din noua-lichidare ~:1257-1267) rămâne neatinsă.
+// ⚠️ Filtrul de an al ciclurilor + adăugarea plății live TREBUIE să rămână IDENTICE cu garda;
+//    orice divergență ar afișa un „rămas" pe care garda nu-l respectă (card zice X, garda Y).
+// `df` = alias formulare_df, `a` = alias alop_instances în query-ul apelant.
+// fără DF (a.df_id NULL) → NULL (nicio bază de buget; frontend afișează „—", nu NaN).
+function sqlRamasAnExercitiu(df, a) {
+  return `(CASE WHEN ${a}.df_id IS NULL THEN NULL ELSE
+    ${sqlBugetAnExercitiu(df)} - (
+      COALESCE((
+        SELECT SUM(c_re.plata_suma_efectiva)
+          FROM alop_ord_cicluri c_re
+         WHERE c_re.alop_id = ${a}.id
+           AND COALESCE(c_re.an_exercitiu,
+                        EXTRACT(YEAR FROM c_re.plata_data)::int,
+                        EXTRACT(YEAR FROM c_re.created_at)::int) = EXTRACT(YEAR FROM NOW())::int
+      ), 0) + COALESCE(${a}.plata_suma_efectiva, 0)
+    )
+  END)`;
+}
+
 // v3.9.499 (Finding E): rate limit pentru endpoint-uri admin destructive
 const _alopAdminRateLimit = createRateLimiter({
   windowMs: 60 * 60 * 1000,  // 1 oră
@@ -474,6 +498,7 @@ router.get('/api/alop/:id', async (req, res) => {
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
         ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
+        ${sqlRamasAnExercitiu('df','a')} AS ramas_an_curent,
         df.an_referinta AS df_an_referinta,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,

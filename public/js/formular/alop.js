@@ -637,7 +637,10 @@ function renderAlopDetail(a,container){
     ${isCompleted?`<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;text-align:center;color:#10b981;font-weight:600">✅ ALOP finalizat complet — Angajare → Lichidare → Ordonanțare → Plată executată<br><span style="font-size:.8rem;font-weight:400;opacity:.8">${fmtDate(a.completed_at)}</span></div>`:''}
     ${caps.can_start_noua_ordonantare?`
       <div style="background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:.82rem;margin-top:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
+          <span style="font-size:.78rem;color:var(--df-text-2)">📅 Rămas de ordonanțat (exercițiu ${new Date().getFullYear()}): <strong style="color:#b0a0ff">${a.ramas_an_curent==null?'—':fmtRON(a.ramas_an_curent)}</strong>${a.ramas_an_curent==null?'':` din buget exercițiu (${fmtRON(parseFloat(a.df_buget_an_curent||0))})`}</span>
+        </div>
         <button class="df-action-btn primary" onclick="startNouaLichidare('${esc(a.id)}')">🔄 Nouă ordonanțare parțială</button>
       </div>`:''}
     ${_mesajFinal?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:6px;text-align:center">${_mesajFinal}</div>`:''}
