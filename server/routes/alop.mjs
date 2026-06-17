@@ -1228,8 +1228,8 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
       );
       if (!alop) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not_found' }); }
       {
-        const actorComp = await loadActorComp(pool, actor.userId);
-        const authz = await canEditAlop(pool, actor, alop, actorComp);
+        const actorComp = await loadActorComp(client, actor.userId);
+        const authz = await canEditAlop(client, actor, alop, actorComp);
         if (!authz.allowed) { await client.query('ROLLBACK'); return res.status(403).json({ error: authz.reason }); }
       }
       if (alop.status !== 'completed') {
