@@ -571,6 +571,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// SEC-CSP-P0: politică strictă REPORT-ONLY — colectare violări fără enforcement.
+// Faza 0 vizibilitate: raportăm ce ar pica dacă am scoate unsafe-inline.
+// Politica enforcing (helmet de mai sus) RĂMÂNE NESCHIMBATĂ.
+const _cspReportLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 20,
+  message: 'Prea multe rapoarte CSP.',
+});
+app.use((req, res, next) => {
+  const nonce = crypto.randomBytes(16).toString('base64');
+  res.setHeader('Content-Security-Policy-Report-Only', [
+    `script-src 'self' 'nonce-${nonce}' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com`,
+    `script-src-attr 'none'`,
+    `style-src 'self'`,
+    `report-uri /api/csp-report`,
+  ].join('; '));
+  next();
+});
+
 // ── CORS ──────────────────────────────────────────────────────────────────
 // FIX v3.2.2: origin:true cu credentials:true e periculos (accept orice domeniu).
 // Fallback la domeniu explicit din PUBLIC_BASE_URL dacă CORS_ORIGIN nu e setat.
@@ -1706,6 +1725,30 @@ app.use('/api/trasabilitate',      trasabilitateRouter);      // Arbore trasabil
 
 app.use('/api/verify',       supplierVerifyRouter);
 
+
+// SEC-CSP-P0: endpoint colectare rapoarte CSP Report-Only.
+// Acceptă application/csp-report (browser vechi) și application/reports+json (Reporting API v1).
+// Rate-limited per IP — oricine poate POST-a, deci capăm logurile.
+const _cspReportParser = express.json({
+  type: ['application/csp-report', 'application/reports+json'],
+  limit: '64kb',
+});
+app.post('/api/csp-report', _cspReportLimiter, _cspReportParser, (req, res) => {
+  try {
+    const body = req.body;
+    if (!body) return res.status(204).end();
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/reports+json') && Array.isArray(body)) {
+      for (const report of body) {
+        logger.info({ cspViolation: report }, 'csp-violation');
+      }
+    } else {
+      const violation = body['csp-report'] ?? body;
+      logger.info({ cspViolation: violation }, 'csp-violation');
+    }
+  } catch (_) { /* corp malformat — ignorat */ }
+  res.status(204).end();
+});
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
