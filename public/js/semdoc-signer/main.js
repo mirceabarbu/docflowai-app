@@ -118,15 +118,20 @@
           if (!atts.length || !box || !list) return;
           box.style.display = '';
           const iconByMime = t => t.includes('pdf') ? '📄' : t.includes('zip') ? '🗜️' : t.includes('rar') ? '🗜️' : '📎';
-          list.innerHTML = atts.map(a => `
-            <a href="/flows/${encodeURIComponent(flow)}/attachments/${a.id}?token=${encodeURIComponent(token||'')}"
-               download="${a.filename.replace(/"/g,'')}"
-               style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(124,92,255,.1);border-radius:7px;text-decoration:none;color:var(--df-text);font-size:.82rem;">
+          list.innerHTML = atts.map(a => {
+            const attUrl = `/flows/${encodeURIComponent(flow)}/attachments/${a.id}?token=${encodeURIComponent(token||'')}`;
+            const previewBtn = a.mimeType === 'application/pdf'
+              ? `<a href="${attUrl}&preview=1" target="_blank" rel="noopener noreferrer" style="color:#b39dff;font-size:.75rem;font-weight:700;text-decoration:none;">👁 Previzualizează</a>`
+              : '';
+            return `
+            <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(124,92,255,.1);border-radius:7px;font-size:.82rem;">
               <span>${iconByMime(a.mimeType)}</span>
-              <span style="flex:1;">${a.filename}</span>
+              <span style="flex:1;color:var(--df-text);">${a.filename}</span>
               <span style="color:var(--muted);font-size:.75rem;">${(a.sizeBytes/1024).toFixed(0)} KB</span>
-              <span style="color:#b39dff;font-size:.75rem;font-weight:700;">⬇ Descarcă</span>
-            </a>`).join('');
+              <a href="${attUrl}" download="${a.filename.replace(/"/g,'')}" style="color:#b39dff;font-size:.75rem;font-weight:700;text-decoration:none;">⬇ Descarcă</a>
+              ${previewBtn}
+            </div>`;
+          }).join('');
         } catch(e) { /* non-fatal */ }
       }
 
