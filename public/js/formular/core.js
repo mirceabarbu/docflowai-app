@@ -309,6 +309,10 @@ function upTot(){
   st2('n-t-c5',sf('n-ctbody','sum_rezv_crdt_ang_af_rvz_prc'));st2('n-t-c6',sf('n-ctbody','influente_c6'));
   st2('n-t-c7',sf('n-ctbody','sum_rezv_crdt_ang_act'));st2('n-t-c8',sf('n-ctbody','sum_rezv_crdt_bug_af_rvz_prc'));
   st2('n-t-c9',sf('n-ctbody','influente_c9'));st2('n-t-c10',sf('n-ctbody','sum_rezv_crdt_bug_act'));
+  // Atenționare inline buget an exercițiu ORD (soft). No-op dacă nu e încărcat contextul
+  // (pagină DF, sau ORD fără df_id). upTot e chokepoint-ul tuturor mutațiilor de rânduri ORD
+  // (input col.4 → calcORRow→upTot, add, del), deci o singură inserție acoperă tot.
+  if(typeof window._checkOrdBuget==='function')window._checkOrdBuget();
 }
 
 /* FEATURE buget multi-anual (v3.9.558): etichetele benzilor de plăți afișează anul absolut

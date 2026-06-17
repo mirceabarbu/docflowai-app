@@ -124,7 +124,7 @@ async function selectDfAprobat(){
   const id=sel?.value||'';
   const hiddenId=document.getElementById('o-df-id');
   if(hiddenId)hiddenId.value=id;
-  if(!id){document.getElementById('o-nrUnic').value='';return;}
+  if(!id){document.getElementById('o-nrUnic').value='';if(typeof window._resetOrdBuget==='function')window._resetOrdBuget();return;}
   await onDfSelect(id);
 }
 
@@ -153,6 +153,8 @@ async function onDfSelect(dfId){
       });
     });
     upTot();
+    // Încarcă contextul de buget al DF-ului selectat → atenționare inline ORD (paritate server).
+    if(typeof window._loadOrdBuget==='function')window._loadOrdBuget(dfId);
   }catch(_){}
 }
 

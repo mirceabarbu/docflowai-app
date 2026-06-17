@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.528">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.528">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.528">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.554">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.569">
   <script src="/js/df-utils.js?v=3.9.528"></script>
   <script src="/js/df-entitlements.js?v=3.9.528"></script>
   <script src="/js/df-shell.js?v=3.9.531"></script>
@@ -770,6 +770,9 @@
       </tfoot>
     </table>
     </div>
+    <!-- Atenționare inline buget an exercițiu (P1+P2) — soft, vizuală. Blocajul hard rămâne
+         la finalizare (server). Paritate cu validateOrdBugetAnCurent via valorile din GET. -->
+    <div id="ord-buget-warn" class="secb-buget-warn" style="display:none"></div>
     <div class="cap-lbl">Captură imagine din sistemul de control al angajamentelor bugetare (anexă la ordonanțarea de plată)</div>
     <div class="cap-zone" id="o-czone" ondragover="dov(event,'o-czone')" ondragleave="dlv(event,'o-czone')" ondrop="ddp(event,'o-cimg','o-czone','o-cph')">
       <input type="file" accept="image/*" onchange="fimg(event,'o-cimg','o-cph')"/>
@@ -1300,16 +1303,16 @@
 </div>
 
 <script src="/notif-widget.js?v=3.9.528"></script>
-<script src="/js/formular/core.js?v=3.9.558" defer></script>
+<script src="/js/formular/core.js?v=3.9.569" defer></script>
 <script src="/js/formular/verif.js?v=3.9.528" defer></script>
 <script src="/js/formular/alop.js?v=3.9.568" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.562" defer></script>
 <script src="/js/components/opme-report-drawer.js?v=3.9.562" defer></script>
 <script src="/js/formular/draft.js?v=3.9.528" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.528" defer></script>
-<script src="/js/formular/list.js?v=3.9.554" defer></script>
+<script src="/js/formular/list.js?v=3.9.569" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.537" defer></script>
-<script src="/js/formular/doc.js?v=3.9.558" defer></script>
+<script src="/js/formular/doc.js?v=3.9.569" defer></script>
 <script src="/js/formular/formular.js?v=3.9.528" defer></script>
 <!-- ════════════ TRASABILITATE MODAL ════════════════════════════════════════ -->
 <style>

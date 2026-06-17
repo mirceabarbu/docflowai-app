@@ -81,6 +81,11 @@ async function populateOrd(doc){
   // Restabilește selecția DF legat
   const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value=doc.df_id||'';
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
+  // Context buget an exercițiu pentru atenționarea inline — REZOLVAT de backend pe GET detaliu
+  // (paritate cu garda hard). Setat ÎNAINTE de upTot() ca verificarea live să-l vadă.
+  if(doc.buget_an_curent!=null){
+    _ordBugetCtx={buget_an_curent:doc.buget_an_curent,cicluri_arhivate:doc.cicluri_arhivate,an_exercitiu:doc.an_exercitiu};
+  }else{_ordBugetCtx=null;}
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
   (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});});
   // v3.9.500 (Issue I-2): wrap-ul captura 2 e VIZIBIL mereu, ca P2 să poată
@@ -257,6 +262,63 @@ window._loadBugetDisponibil = _loadBugetDisponibil;
     }
   });
 })();
+
+// ── Atenționare inline buget an exercițiu ORD (P1 + P2) ───────────────────────
+// PARITATE: verdictul inline reproduce EXACT validateOrdBugetAnCurent (server). Valorile
+// `buget_an_curent` + `cicluri_arhivate` (+ `an_exercitiu`) vin REZOLVATE din backend (GET
+// detaliu ORD sau /api/formulare-ord/buget-context?df_id=), via computeOrdBudgetContext —
+// frontend-ul NU replică geometria benzilor. Soft: marchează vizual, NU blochează tastarea;
+// blocajul hard rămâne la submit/complete (server). `null` = ORD fără df_id → fără plafon.
+let _ordBugetCtx = null;
+
+function _resetOrdBuget(){
+  _ordBugetCtx = null;
+  const warn=document.getElementById('ord-buget-warn');
+  if(warn){warn.style.display='none';warn.innerHTML='';}
+  document.querySelectorAll('#o-tbody tr.ord-buget-over').forEach(tr=>tr.classList.remove('ord-buget-over'));
+}
+
+async function _loadOrdBuget(dfId){
+  if(!dfId){_ordBugetCtx=null;_checkOrdBuget();return;}
+  try{
+    const r=await fetch(`/api/formulare-ord/buget-context?df_id=${encodeURIComponent(dfId)}`,{credentials:'include'});
+    const j=await r.json();
+    _ordBugetCtx=(r.ok&&j.ok&&j.context)?j.context:null;
+  }catch(e){
+    console.warn('[buget-ord] context fetch error',e);
+    _ordBugetCtx=null;
+  }
+  _checkOrdBuget();
+}
+
+function _checkOrdBuget(){
+  const warn=document.getElementById('ord-buget-warn');
+  document.querySelectorAll('#o-tbody tr.ord-buget-over').forEach(tr=>tr.classList.remove('ord-buget-over'));
+  if(!_ordBugetCtx){if(warn){warn.style.display='none';warn.innerHTML='';}return;}
+  const buget=Number(_ordBugetCtx.buget_an_curent)||0;
+  const arhivat=Number(_ordBugetCtx.cicluri_arhivate)||0;
+  const an=_ordBugetCtx.an_exercitiu;
+  // Σ col.4 (suma ordonanțată) peste rândurile curente din UI — același input ca newRows server.
+  const ordNou=[...document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]')]
+    .reduce((s,i)=>s+(pMR(i.value)||0),0);
+  const cumul=ordNou+arhivat;
+  // ACEEAȘI toleranță ca backend (validateOrdBugetAnCurent): cumul > buget + 0.001 → depășire.
+  const over=cumul>buget+0.001;
+  if(over){
+    document.querySelectorAll('#o-tbody tr').forEach(tr=>tr.classList.add('ord-buget-over'));
+    if(warn){
+      const dep=cumul-buget;
+      warn.innerHTML='⛔ Suma ordonanțată '+(arhivat>0?`cumulată în anul ${esc(an)} (${esc(fMR(cumul))} lei, din care ${esc(fMR(arhivat))} lei deja plătiți în cicluri anterioare)`:`(${esc(fMR(cumul))} lei)`)+
+        ` depășește bugetul estimat al anului ${esc(an)} (${esc(fMR(buget))} lei) cu ${esc(fMR(dep))} lei. Finalizarea va fi blocată.`;
+      warn.style.display='';
+    }
+  }else if(warn){warn.style.display='none';warn.innerHTML='';}
+}
+
+// Expus pentru core.js (recalc live la fiecare mutație de rând în upTot) + list.js (la DF-select).
+window._checkOrdBuget = _checkOrdBuget;
+window._loadOrdBuget  = _loadOrdBuget;
+window._resetOrdBuget = _resetOrdBuget;
 
 // ── Lock câmpuri pe secțiuni ──────────────────────────────────────────────────
 function lockAll(ft,lock){
@@ -781,6 +843,7 @@ function newDoc(ft){
     document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';
     const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
     const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
+    _resetOrdBuget(); // fără DF selectat → fără context de plafon (se încarcă la DF-select)
     // v3.9.500 (Issue I-1): prefill plati_anterioare la creare ord nou pe ciclu 2+
     // Înainte: prefill rula doar în loadDoc (existing ord) → P1 vedea 0,00, P2 vedea valoarea
     const _ctx=window._alopContext;
@@ -1288,7 +1351,18 @@ async function confirmP2(){
       body:JSON.stringify({assigned_to:ST.selectedP2Id}),
     });
     const j=await r.json();
-    if(!r.ok||!j.ok){setS(j.error||'Eroare la trimitere','err');return;}
+    if(!r.ok||!j.ok){
+      // Garda buget la P1 (Varianta A): aceleași 422 ca la finalizarea P2.
+      if(j.error==='receptii_neplatite_negative'){
+        const det=Array.isArray(j.rows)?j.rows.map(b=>`r${b.idx}: ${b.c5}`).join(', '):'';
+        setS('⛔ '+(j.message||'Recepții neplătite negative.')+(det?' ('+det+')':''),'err');
+      }else if(j.error==='buget_an_curent_depasit'){
+        setS('⛔ '+(j.message||'Suma ordonanțată depășește bugetul anului de exercițiu.'),'err');
+      }else{
+        setS(j.error||'Eroare la trimitere','err');
+      }
+      return;
+    }
     ST.docStatus[ft]='pending_p2';
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=j.document?.capabilities||null;
@@ -1552,7 +1626,7 @@ function resetF(ft){
   draftClear(ft);
   document.querySelectorAll(`#form-${ft} input:not([type=file]),#form-${ft} textarea`)
     .forEach(e=>{if(e.type==='checkbox')e.checked=false;else e.value=(e.type==='number'?'0':'');});
-  if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';}
+  if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';_resetOrdBuget();}
   else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   document.getElementById('ff-'+ft).classList.remove('show');

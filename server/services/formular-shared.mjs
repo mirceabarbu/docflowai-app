@@ -217,19 +217,18 @@ function validateOrdCol5(rows) {
 // legat de același DF, FILTRATE pe anul de exercițiu: `an_exercitiu` (mig. 086) cu fallback
 // derivat din `plata_data` apoi `created_at` pentru ciclurile istorice fără valoare populată.
 //
-// Întoarce `{ status, body }` la depășire, altfel `null`. Skip (null) dacă ORD-ul nu are
-// `df_id` — fără DF legat nu există buget de verificat.
-async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
-  if (!ordDoc || !ordDoc.df_id) return null;
-  const _num = v => {
-    if (v === null || v === undefined || v === '') return 0;
-    const n = Number(String(v).trim().replace(/\s/g, ''));
-    return isNaN(n) ? 0 : n;
-  };
+// ── helper PARITATE (read-only) — context de buget pentru un DF legat ────────────
+// SURSĂ UNICĂ de adevăr pentru plafonul ORD: o folosesc ȘI validateOrdBugetAnCurent
+// (decizia hard la finalizare/submit) ȘI rutele GET care alimentează atenționarea inline
+// din UI (P1 + P2). Astfel verdictul inline reproduce EXACT verdictul backend-ului —
+// frontend-ul nu replică geometria benzilor (`bandaPentruOffset`), primește deja banda
+// rezolvată ca un singur număr `bugetAnCurent` + `cicluriArhivate` per an de exercițiu.
+//
+// Întoarce `{ anExercitiu, bugetAnCurent, cicluriArhivate }`, sau `null` dacă nu există
+// `dfId` ori DF-ul nu există (nimic de plafonat).
+export async function computeOrdBudgetContext({ dfId, orgId }) {
+  if (!dfId) return null;
   const anExercitiu = new Date().getFullYear();
-  const ordCurentNou = (Array.isArray(newRows) ? newRows : [])
-    .reduce((s, r) => s + _num(r && r.suma_ordonantata_plata), 0);
-
   const { rows } = await pool.query(
     `SELECT
        df.an_referinta,
@@ -247,7 +246,7 @@ async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
        ), 0) AS cicluri_arhivate
      FROM formulare_df df
      WHERE df.id = $1`,
-    [ordDoc.df_id, orgId, anExercitiu]
+    [dfId, orgId, anExercitiu]
   );
   if (!rows.length) return null; // DF inexistent — nimic de verificat
 
@@ -255,6 +254,23 @@ async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
   const anRef = rows[0].an_referinta == null ? anExercitiu : rows[0].an_referinta;
   const bugetAnCurent = bugetPentruAnul(rows[0].rows_plati, anRef, anExercitiu) || 0;
   const cicluriArhivate = parseFloat(rows[0].cicluri_arhivate || 0);
+  return { anExercitiu, bugetAnCurent, cicluriArhivate };
+}
+
+// Întoarce `{ status, body }` la depășire, altfel `null`. Skip (null) dacă ORD-ul nu are
+// `df_id` — fără DF legat nu există buget de verificat.
+async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
+  if (!ordDoc || !ordDoc.df_id) return null;
+  const _num = v => {
+    if (v === null || v === undefined || v === '') return 0;
+    const n = Number(String(v).trim().replace(/\s/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+  const ctx = await computeOrdBudgetContext({ dfId: ordDoc.df_id, orgId });
+  if (!ctx) return null; // DF inexistent — nimic de verificat
+  const { anExercitiu, bugetAnCurent, cicluriArhivate } = ctx;
+  const ordCurentNou = (Array.isArray(newRows) ? newRows : [])
+    .reduce((s, r) => s + _num(r && r.suma_ordonantata_plata), 0);
   const ordonantatCumulat = ordCurentNou + cicluriArhivate;
 
   if (ordonantatCumulat > bugetAnCurent + 0.001) {
@@ -293,6 +309,17 @@ export async function submitFormular({ type, id, actor, body }) {
     }
     if (!cfg.submitStatuses.includes(doc.status))
       return { status: 409, body: { error: 'document_not_draft', status: doc.status } };
+
+    // GARDĂ BUGET LA P1 (Varianta A, owner): depășirea blochează HARD finalizarea P1, exact
+    // ca la P2 — ACEEAȘI verificare (col.5 ≥ 0 ÎNTÂI, apoi plafonul pe bugetul anului de
+    // exercițiu). Rulează ÎNAINTE de UPDATE-ul de status. Rândurile sunt cele DEJA salvate
+    // (autosave): `doc.rows`, NU body. Gated de cfg.budgetCheck (DF='none' → sare; ORD='hard_col5').
+    if (cfg.budgetCheck === 'hard_col5') {
+      const bad = validateOrdCol5(doc.rows);
+      if (bad) return bad;
+      const overBudget = await validateOrdBugetAnCurent({ ordDoc: doc, newRows: doc.rows, orgId: actor.orgId });
+      if (overBudget) return overBudget;
+    }
 
     // Verifică că P2 e din același org
     const { rows: p2rows } = await pool.query(
