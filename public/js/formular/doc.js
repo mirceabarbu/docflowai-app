@@ -1352,11 +1352,9 @@ async function confirmP2(){
     });
     const j=await r.json();
     if(!r.ok||!j.ok){
-      // Garda buget la P1 (Varianta A): aceleași 422 ca la finalizarea P2.
-      if(j.error==='receptii_neplatite_negative'){
-        const det=Array.isArray(j.rows)?j.rows.map(b=>`r${b.idx}: ${b.c5}`).join(', '):'';
-        setS('⛔ '+(j.message||'Recepții neplătite negative.')+(det?' ('+det+')':''),'err');
-      }else if(j.error==='buget_an_curent_depasit'){
+      // Garda buget la P1 (Varianta A): DOAR plafonul de buget e hard la trimitere (col.5 e
+      // strict la P2 — receptii e câmpul lui P2). Mesaj clar pe 422 buget_an_curent_depasit.
+      if(j.error==='buget_an_curent_depasit'){
         setS('⛔ '+(j.message||'Suma ordonanțată depășește bugetul anului de exercițiu.'),'err');
       }else{
         setS(j.error||'Eroare la trimitere','err');

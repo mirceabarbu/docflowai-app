@@ -310,13 +310,15 @@ export async function submitFormular({ type, id, actor, body }) {
     if (!cfg.submitStatuses.includes(doc.status))
       return { status: 409, body: { error: 'document_not_draft', status: doc.status } };
 
-    // GARDĂ BUGET LA P1 (Varianta A, owner): depășirea blochează HARD finalizarea P1, exact
-    // ca la P2 — ACEEAȘI verificare (col.5 ≥ 0 ÎNTÂI, apoi plafonul pe bugetul anului de
-    // exercițiu). Rulează ÎNAINTE de UPDATE-ul de status. Rândurile sunt cele DEJA salvate
+    // GARDĂ BUGET LA P1 (Varianta A, owner): depășirea plafonului de buget blochează HARD
+    // trimiterea la P2. Rulează ÎNAINTE de UPDATE-ul de status, pe rândurile DEJA salvate
     // (autosave): `doc.rows`, NU body. Gated de cfg.budgetCheck (DF='none' → sare; ORD='hard_col5').
+    //
+    // ⚠️ DOAR plafonul de buget la P1 — NU `validateOrdCol5`. Motiv (owner + cod): col.5 =
+    // receptii(col.2) − plati_anterioare(col.3) − suma_ordonantata(col.4); `receptii` e completată
+    // de P2, nu de P1. La P1 `receptii=0` ⇒ c5 ar deveni negativ de îndată ce P1 pune o sumă și ar
+    // bloca FALS trimiterea. col.5 rămâne STRICT la P2 (garda din completeFormular, neschimbată).
     if (cfg.budgetCheck === 'hard_col5') {
-      const bad = validateOrdCol5(doc.rows);
-      if (bad) return bad;
       const overBudget = await validateOrdBugetAnCurent({ ordDoc: doc, newRows: doc.rows, orgId: actor.orgId });
       if (overBudget) return overBudget;
     }

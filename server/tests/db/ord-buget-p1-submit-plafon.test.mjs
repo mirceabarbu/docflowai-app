@@ -1,10 +1,12 @@
 /**
- * Varianta A (owner): garda de buget ORD rulează ȘI la P1 (submit draft→pending_p2), HARD,
- * cu ACEEAȘI verificare ca la P2 (col.5 ≥ 0 ÎNTÂI, apoi plafonul pe bugetul anului de exercițiu).
+ * Varianta A (owner): garda de buget ORD rulează ȘI la P1 (submit draft→pending_p2), HARD.
+ * La P1 se validează DOAR plafonul de buget (validateOrdBugetAnCurent), NU col.5 —
+ * `receptii` (col.2) e completată de P2, deci la P1 receptii=0 ar face c5 fals negativ și ar
+ * bloca trimiterea. col.5 rămâne STRICT la P2 (garda din completeFormular, neschimbată).
  *
  * Caracterizare a SCHIMBĂRII intenționate: înainte, P1 submit reușea chiar și peste buget.
- * Acum P1 submit peste buget → 422, exact ca finalizarea P2. Garda P2 NU se schimbă (vezi
- * ord-buget-an-curent-plafon.test.mjs — rămâne verde).
+ * Acum P1 submit peste buget → 422. Garda P2 NU se schimbă (vezi
+ * ord-buget-an-curent-plafon.test.mjs — rămâne verde, col.5 + buget).
  *
  * Submit folosește rândurile DEJA salvate (doc.rows, autosave), NU body — de aceea seedOrd
  * primește `rows`.
@@ -64,15 +66,27 @@ d('POST /api/formulare-ord/:id/submit — plafon buget an curent la P1 (Varianta
     expect((await getOrd(ordId)).status).toBe('draft'); // neschimbat — nu a fost trimis la P2
   });
 
-  it('ordinea verificărilor: col.5 negativă → 422 receptii_neplatite_negative ÎNAINTE de plafon', async () => {
+  it('col.5 NU se verifică la P1: c5 negativ dar buget OK → 200 pending_p2', async () => {
+    // Decizie owner: la P1 se validează DOAR plafonul de buget, NU col.5 — `receptii` (col.2)
+    // e completată de P2, deci la P1 receptii=0 ar face c5 fals negativ și ar bloca trimiterea.
     const dfId = await seedDfBudget('29000', '15000000');
-    // c5 = 100 - 0 - 200 = -100 (col.5 pică) ȘI 200 ≤ 29000 buget. Trebuie să iasă col.5.
+    // c5 = 100 - 0 - 200 = -100 (col.5 ar pica la P2) DAR 200 ≤ 29000 buget. La P1 → trece.
     const rows = [{ receptii: '100', plati_anterioare: '0', suma_ordonantata_plata: '200' }];
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'draft', dfId, rows });
     const res = await request(app).post(`/api/formulare-ord/${ordId}/submit`).set('Cookie', p1()).send({ assigned_to: 2 });
-    expect(res.status).toBe(422);
-    expect(res.body.error).toBe('receptii_neplatite_negative');
-    expect((await getOrd(ordId)).status).toBe('draft');
+    expect(res.status).toBe(200);
+    expect((await getOrd(ordId)).status).toBe('pending_p2');
+  });
+
+  it('caz realist P1: receptii=0 (le pune P2) + sumă ≤ buget → 200 (col.5 NU blochează)', async () => {
+    // Fără excepția de col.5 la P1, acest caz tipic ar pica fals: c5 = 0 − 0 − 5000 = −5000.
+    // Cu garda doar-buget, 5000 ≤ 29000 → trece, cum trebuie.
+    const dfId = await seedDfBudget('29000', '15000000');
+    const rows = [{ receptii: '0', plati_anterioare: '0', suma_ordonantata_plata: '5000' }];
+    const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'draft', dfId, rows });
+    const res = await request(app).post(`/api/formulare-ord/${ordId}/submit`).set('Cookie', p1()).send({ assigned_to: 2 });
+    expect(res.status).toBe(200);
+    expect((await getOrd(ordId)).status).toBe('pending_p2');
   });
 
   it('cumul peste cicluri arhivate (fără dublă numărare) → 422 la P1', async () => {
