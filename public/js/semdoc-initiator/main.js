@@ -2045,6 +2045,13 @@ async function signFromFluxuri(flowId) {
             ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--df-warning-bd);background:var(--df-warning-bg);border-radius:var(--df-radius-md);color:var(--df-warning);line-height:1.45;font-size:13px;">${PRESIGNED_WARN_TEXT}</div>`
             : ``;
 
+          // fix 3/4: atașamentele formularului (DF/ORD) au fost preluate automat ca
+          // documente suport în flux — utilizatorul NU trebuie să le reîncarce.
+          const _formAttN = Number(j.formAttachmentsCopied || 0);
+          const _formAttBanner = _formAttN > 0
+            ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--df-info-bd,var(--df-border));background:var(--df-info-bg,var(--df-surface-2));border-radius:var(--df-radius-md);color:var(--df-text);line-height:1.45;font-size:13px;">📎 ${_formAttN} atașament(e) de pe formular au fost preluate automat ca documente suport în flux. Nu este nevoie să le reîncărcați.</div>`
+            : ``;
+
           // Redirect UX:
           // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
           // - altfel -> mergi la pagina dedicată flow (status/timeline)
@@ -2067,9 +2074,10 @@ async function signFromFluxuri(flowId) {
             _btnLabel  = `Am înțeles — continuă la statusul fluxului`;
           }
 
-          if (_preSigned || _alopLinkErr) {
-            // FĂRĂ timer — bannerul (presigned și/sau eroare ALOP) rămâne pe ecran până la click
-            $("createResult").innerHTML = `${_msgManual}${_preSignedBanner}${_alopWarnBanner}
+          if (_preSigned || _alopLinkErr || _formAttN > 0) {
+            // FĂRĂ timer — bannerul (presigned / eroare ALOP / atașamente preluate) rămâne
+            // pe ecran până la click, ca utilizatorul să-l poată citi.
+            $("createResult").innerHTML = `${_msgManual}${_preSignedBanner}${_alopWarnBanner}${_formAttBanner}
               <div style="margin-top:10px;">
                 <button id="btnPreSignedContinue" class="df-action-btn primary" type="button">${_btnLabel}</button>
               </div>`;
