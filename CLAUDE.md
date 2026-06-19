@@ -538,6 +538,14 @@ la revizie; etichetele coloanelor `rows_plati` afișează anii absoluți (`anref
 `server/tests/db/buget-multianual-an-referinta.test.mjs` (offset 0/1/−1, cumul per an, legacy block,
 revizie moștenește, default la creare).
 
+**Cardurile ALOP — buget exercițiu = cifră dominantă (var. B, frontend `alop.js`):** cardul „VALOARE DF"
+afișează `df_buget_an_curent` ca cifră MARE („Buget exercițiu <an curent>"), cu `df_valoare` (angajament
+total) pe linia secundară; header-ul adaugă „buget ex. <an>" lângă „estimat"/„DF actual". Fallback la
+`df_valoare` („Angajament total DF" + „(exercițiu nedefinit)") când `df_an_referinta` e null (DF legacy/
+neancorat). ⚠️ Distinge null de 0: DF ancorat cu buget 0 (plăți doar în N+1) afișează „0,00 RON" via
+`fmtRON` — NU `fmtV`, care întoarce „—" pe 0. Anul afișat = exercițiul curent; `an_referinta` e doar
+gate-ul ancorării.
+
 ---
 
 ## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)

@@ -594,8 +594,17 @@ function renderAlopDetail(a,container){
             const _df = _hasDf
               ? `<span style="color:#b0a0ff;font-weight:600" title="Valoare din DF activ (cea mai recentă revizie)">${fmtRON(_vDf)}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">DF actual</span></span>`
               : '';
-            const _sep = (_est && _df) ? '<span style="color:var(--df-text-4);margin:0 8px">·</span>' : '';
-            return `<div style="font-size:.85rem;margin-top:4px;display:flex;align-items:center;flex-wrap:wrap">${_est}${_sep}${_df}</div>`;
+            // var. B: bugetul exercițiului curent ca linie secundară în header, lângă
+            // „estimat"/„DF actual". Aici NU e cifra dominantă → DF legacy/neancorat
+            // (an_referinta null) afișează discret „—".
+            const _exAn = new Date().getFullYear();
+            const _bugAncorat = a.df_an_referinta != null && a.df_buget_an_curent != null;
+            const _bug = a.df_id
+              ? `<span style="color:var(--df-text-2);font-weight:600" title="${a.df_an_referinta ? 'Buget exercițiu '+_exAn+' (DF ancorat pe '+a.df_an_referinta+')' : 'DF fără an de referință — exercițiu nedefinit'}">${_bugAncorat ? fmtRON(parseFloat(a.df_buget_an_curent||0)) : '—'}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">buget ex. ${_exAn}</span></span>`
+              : '';
+            const _sepHtml = '<span style="color:var(--df-text-4);margin:0 8px">·</span>';
+            const _parts = [_est, _df, _bug].filter(Boolean);
+            return `<div style="font-size:.85rem;margin-top:4px;display:flex;align-items:center;flex-wrap:wrap">${_parts.join(_sepHtml)}</div>`;
           })()}
           ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">DF activ: <span class="df-revizie-badge${(a.df_revizie_nr||0)>0?' revizie-activa':''}">R${a.df_revizie_nr||0}</span>${(a.df_revizie_nr||0)>0?`<span>Revizia ${a.df_revizie_nr}</span>`:`<span>Revizia inițială</span>`}${a.df_nr?`<span style="color:var(--df-text-2);font-weight:600">· Nr. ${a.df_nr}</span>`:''}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}</div>`:''}
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
@@ -619,9 +628,29 @@ function renderAlopDetail(a,container){
       return `
     <div data-valori style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0">
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
-        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Valoare DF</div>
-        <div style="font-size:1rem;font-weight:700;color:#b0a0ff;margin-top:4px">${fmtV(a.df_valoare||0)}</div>
-        <div style="font-size:.7rem;color:var(--df-text-3);margin-top:2px" title="${a.df_an_referinta ? 'An de referință DF: '+a.df_an_referinta : 'DF fără an de referință (legacy) — buget pe anul curent'}">Buget exercițiu ${new Date().getFullYear()}: ${fmtV(a.df_buget_an_curent||0)}</div>
+        ${(() => {
+          // var. B (decizie owner): bugetul exercițiului curent = cifra DOMINANTĂ;
+          // angajamentul total multianual trece pe linia secundară. Fallback la
+          // angajament total pe DF neancorat (an_referinta null), cu „(exercițiu
+          // nedefinit)". Distinge null de 0: DF ancorat cu buget 0 (plăți doar în N+1)
+          // afișează legitim „0,00 RON" → fmtRON(0), NU fmtV (care întoarce „—" pe 0).
+          // Anul = exercițiul curent (sursa deja folosită aici); an_referinta e DOAR
+          // gate-ul ancorării + tooltip, nu eticheta anului.
+          const _exAn = new Date().getFullYear();
+          const _vDfTot = parseFloat(a.df_valoare || 0);
+          const _ancorat = a.df_an_referinta != null && a.df_buget_an_curent != null;
+          if (_ancorat) {
+            const _bug = parseFloat(a.df_buget_an_curent || 0);
+            return `
+        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em" title="DF ancorat pe an de referință ${a.df_an_referinta}">Buget exercițiu ${_exAn}</div>
+        <div style="font-size:1.05rem;font-weight:700;color:#b0a0ff;margin-top:4px">${fmtRON(_bug)}</div>
+        <div style="font-size:.7rem;color:var(--df-text-3);margin-top:2px">Angajament total DF: ${fmtV(_vDfTot)}</div>`;
+          }
+          return `
+        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Angajament total DF</div>
+        <div style="font-size:1.05rem;font-weight:700;color:#b0a0ff;margin-top:4px">${fmtRON(_vDfTot)}</div>
+        <div style="font-size:.7rem;color:var(--df-text-4);margin-top:2px" title="DF fără an de referință (legacy) — bugetul exercițiului nu poate fi determinat">(exercițiu nedefinit)</div>`;
+        })()}
       </div>
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;text-align:center">
         <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em">Valoare ORD${_areCicluriAnterioare ? ' · Total' : ''}</div>
