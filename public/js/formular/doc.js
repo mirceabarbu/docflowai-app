@@ -1077,12 +1077,25 @@ function renderAttachments(ft, slot = 1){
     const safe = String(name).replace(/[<>"]/g, '');
     if (item.id && docId) {
       const url = `/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
-      chip.innerHTML = `📎 <a href="${url}" target="_blank" style="color:inherit">${safe}</a> <button onclick="remAttServer(${idx},'${lid}','${did}','${item.id}',this)">✕</button>`;
+      // v3.9.570: nume clickabil → preview inline (pdf.js/imagine); link separat = descărcare fallback
+      chip.innerHTML = `📎 <a href="#" onclick="previewAttFromChip('${ft}',${slot},${idx});return false;" style="color:inherit;cursor:pointer">${safe}</a> <a href="${url}" target="_blank" download title="Descarcă" style="color:inherit;text-decoration:none;opacity:.75">⬇</a> <button onclick="remAttServer(${idx},'${lid}','${did}','${item.id}',this)">✕</button>`;
     } else {
       chip.innerHTML = `📎 ${safe} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
     }
     list.appendChild(chip);
   });
+}
+
+// v3.9.570: rezolvă item-ul din JSON-ul curent (evită escaping de nume fișier în onclick) și deleagă la modalul de preview global
+function previewAttFromChip(ft, slot, idx){
+  const ids = _attIds(ft, slot); if (!ids) return;
+  let cur; try { cur = JSON.parse(document.getElementById(ids.did)?.value || '[]'); } catch (_) { return; }
+  const item = Array.isArray(cur) ? cur[idx] : null;
+  const docId = ST.docId[ft];
+  if (!item || !item.id || !docId) return;
+  const url = `/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
+  const name = item.filename || item.name || 'fișier';
+  window.openAttPreview?.(url, name, item.mime_type || '');
 }
 
 async function remAttServer(idx,lid,did,attId,btn){
@@ -1671,6 +1684,7 @@ function resetF(ft){
   window.fetchAttachments           = fetchAttachments;
   window.renderAttachments          = renderAttachments;
   window.remAttServer               = remAttServer;
+  window.previewAttFromChip         = previewAttFromChip;
 
   // Validation
   window._validateDf                = _validateDf;

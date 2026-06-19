@@ -13,6 +13,9 @@
   <script src="/js/df-shell.js?v=3.9.531"></script>
   <script src="/js/df-user-modals.js?v=3.9.528"></script>
   <script src="/js/df-subtabs.js?v=3.9.528"></script>
+  <!-- v3.9.570: pdf.js — preview inline atașamente DF/ORD (aceeași sursă/versiune ca semdoc-signer.html) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="/js/common/pdfjs-worker.js?v=3.9.518"></script>
   <link rel="stylesheet" href="/mobile.css?v=3.9.528">
 </head>
 <body>
@@ -1312,7 +1315,8 @@
 <script src="/js/formular/clasa8.js?v=3.9.528" defer></script>
 <script src="/js/formular/list.js?v=3.9.569" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.537" defer></script>
-<script src="/js/formular/doc.js?v=3.9.569" defer></script>
+<script src="/js/formular/doc.js?v=3.9.570" defer></script>
+<script src="/js/formular/att-preview.js?v=3.9.570" defer></script>
 <script src="/js/formular/formular.js?v=3.9.528" defer></script>
 <!-- ════════════ TRASABILITATE MODAL ════════════════════════════════════════ -->
 <style>
@@ -1541,6 +1545,26 @@
   </div>
 </div>
 <!-- /TRASABILITATE MODAL -->
+
+<!-- ── Modal Preview atașament (PDF/imagine, read-only, fără descărcare) ──── -->
+<div id="att-preview-modal" class="df-modal-bg">
+  <div class="df-modal" style="max-width:860px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px">
+      <h3 id="att-preview-title" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Previzualizare atașament</h3>
+      <button type="button" class="df-action-btn sm icon-only" onclick="closeAttPreview()" title="Închide">
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.539#ico-x"/></svg>
+      </button>
+    </div>
+    <div id="att-preview-body" style="min-height:160px"></div>
+    <div class="df-modal-footer">
+      <a id="att-preview-download" class="df-action-btn" href="#" target="_blank" download>
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.539#ico-download"/></svg> Descarcă
+      </a>
+      <button type="button" class="df-action-btn primary" onclick="closeAttPreview()">Închide</button>
+    </div>
+  </div>
+</div>
+<!-- /ATT PREVIEW MODAL -->
 
 </body>
 </html>
