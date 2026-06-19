@@ -577,6 +577,13 @@ doar pe GET). ALOP re-fetch-uiește via `openAlop()` după orice acțiune → ca
 
 ---
 
+**Preview atașamente (din v3.9.574):** modal unic `window.openAttPreview` (self-contained,
+`public/js/shared/att-preview.js`), folosit pe DF/ORD (`formular.html`) ȘI semnare/flux
+(`semdoc-signer.html`) — fără pagină nouă (`window.open`); creează markup-ul modalului dacă pagina
+nu îl are deja static, reutilizând `.df-modal`/`.df-modal-bg` din `public/css/df/components.css`.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:

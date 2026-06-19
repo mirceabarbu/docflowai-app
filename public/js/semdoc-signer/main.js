@@ -107,21 +107,23 @@
         }).join('');
       }
 
+      let _lastAtts = [];
       async function loadAttachments() {
         try {
           const r = await _apiFetch(`/flows/${encodeURIComponent(flow)}/attachments?token=${encodeURIComponent(token||'')}`);
           if (!r.ok) return;
           const j = await r.json();
           const atts = j.attachments || [];
+          _lastAtts = atts;
           const box = document.getElementById('attachmentsBox');
           const list = document.getElementById('attachmentsList');
           if (!atts.length || !box || !list) return;
           box.style.display = '';
           const iconByMime = t => t.includes('pdf') ? '📄' : t.includes('zip') ? '🗜️' : t.includes('rar') ? '🗜️' : '📎';
-          list.innerHTML = atts.map(a => {
+          list.innerHTML = atts.map((a, idx) => {
             const attUrl = `/flows/${encodeURIComponent(flow)}/attachments/${a.id}?token=${encodeURIComponent(token||'')}`;
             const previewBtn = a.mimeType === 'application/pdf'
-              ? `<a href="${attUrl}&preview=1" target="_blank" rel="noopener noreferrer" style="color:#b39dff;font-size:.75rem;font-weight:700;text-decoration:none;">👁 Previzualizează</a>`
+              ? `<a href="#" onclick="previewSupportAtt(${idx});return false;" style="color:#b39dff;font-size:.75rem;font-weight:700;text-decoration:none;">👁 Previzualizează</a>`
               : '';
             return `
             <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(124,92,255,.1);border-radius:7px;font-size:.82rem;">
@@ -133,6 +135,16 @@
             </div>`;
           }).join('');
         } catch(e) { /* non-fatal */ }
+      }
+
+      // v3.9.574: deleagă la modalul de preview global (window.openAttPreview, din
+      // /js/shared/att-preview.js) — index, NU embed direct de filename în onclick
+      // (evită escaping, pattern identic cu previewAttFromChip din formular/doc.js).
+      function previewSupportAtt(idx) {
+        const a = _lastAtts[idx];
+        if (!a) return;
+        const attUrl = `/flows/${encodeURIComponent(flow)}/attachments/${a.id}?token=${encodeURIComponent(token||'')}`;
+        window.openAttPreview?.(attUrl, a.filename, a.mimeType);
       }
 
 

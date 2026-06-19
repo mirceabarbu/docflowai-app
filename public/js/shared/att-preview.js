@@ -1,7 +1,14 @@
-// public/js/formular/att-preview.js
-// DocFlowAI — Preview inline (modal) pentru atașamentele DF/ORD deja uploadate.
-// Read-only: doar randare, NU schimbă stocarea. Reutilizează pdf.js (aceeași
-// sursă CDN + worker ca semdoc-signer.html — vezi formular.html <head>).
+// public/js/shared/att-preview.js
+// DocFlowAI — Preview inline (modal) pentru atașamente, shared între DF/ORD
+// (formular.html) și semnare/flux (semdoc-signer.html). Read-only: doar
+// randare, NU schimbă stocarea. Reutilizează pdf.js deja încărcat de
+// pagina-gazdă (același CDN/versiune ca formular.html și semdoc-signer.html).
+//
+// Self-contained: dacă markup-ul modalului (#att-preview-modal) NU există deja
+// în DOM (cazul DF/ORD — injectat static în formular.html), componenta îl
+// creează idempotent la primul apel. Stilul (.df-modal/.df-modal-bg) vine din
+// public/css/df/components.css, încărcat pe ambele pagini — nicio regulă CSS
+// proprie aici (CSP-safe, fără <style> inline).
 //
 // API public: window.openAttPreview(url, filename, mimeType), window.closeAttPreview()
 
@@ -18,6 +25,35 @@
   function isImage(mime, name) {
     if (mime && mime.indexOf('image/') === 0) return true;
     return /\.(png|jpe?g|webp|gif|bmp)$/i.test(name || '');
+  }
+
+  // Creează markup-ul modalului dacă pagina-gazdă nu îl are deja static
+  // (DF/ORD îl are din formular.html — atunci doar îl reutilizează).
+  function ensureModal() {
+    let modal = $('att-preview-modal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'att-preview-modal';
+    modal.className = 'df-modal-bg';
+    modal.innerHTML =
+      '<div class="df-modal" style="max-width:860px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px">' +
+          '<h3 id="att-preview-title" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Previzualizare atașament</h3>' +
+          '<button type="button" class="df-action-btn sm icon-only" onclick="closeAttPreview()" title="Închide">' +
+            '<svg class="df-ico"><use href="/icons.svg#ico-x"/></svg>' +
+          '</button>' +
+        '</div>' +
+        '<div id="att-preview-body" style="min-height:160px"></div>' +
+        '<div class="df-modal-footer">' +
+          '<a id="att-preview-download" class="df-action-btn" href="#" target="_blank" download>' +
+            '<svg class="df-ico"><use href="/icons.svg#ico-download"/></svg> Descarcă' +
+          '</a>' +
+          '<button type="button" class="df-action-btn primary" onclick="closeAttPreview()">Închide</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeAttPreview(); });
+    return modal;
   }
 
   function waitForPdfJs() {
@@ -49,7 +85,7 @@
   }
 
   async function openAttPreview(url, filename, mimeType) {
-    const modal = $('att-preview-modal');
+    const modal = ensureModal();
     const body = $('att-preview-body');
     const title = $('att-preview-title');
     const dl = $('att-preview-download');
@@ -99,6 +135,10 @@
     if (body) body.innerHTML = '';
   }
 
+  // Caz DF/ORD: markup-ul există deja static în formular.html la parse time
+  // — atașăm handler-ul de close-on-backdrop direct pe el (byte-identic cu
+  // comportamentul de azi). Caz signer: markup-ul nu există încă aici —
+  // ensureModal() îl creează + atașează handler-ul la primul openAttPreview().
   document.addEventListener('DOMContentLoaded', () => {
     const modal = $('att-preview-modal');
     if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeAttPreview(); });
