@@ -201,6 +201,7 @@ function p4toggle(src){
     tbl.style.opacity='.4';tbl.style.pointerEvents='none';
     inp.disabled=true;
   }
+  _updateSumaPlatiIndicator();
 }
 
 /* Pct 5 - Cu angajamente / Fara angajamente mutually exclusive */
@@ -228,6 +229,7 @@ function p5toggle(){
   const tabelActiv=(faraplati||cuplati||faraang||anurmatori)&&!stingere;
   const ptSub=document.getElementById('n-p5-tabel');
   if(ptSub){ptSub.style.opacity=tabelActiv?'1':'.4';ptSub.style.pointerEvents=tabelActiv?'':'none';}
+  _updateSumaPlatiIndicator();
 }
 
 function _prefillPtFromVt() {
@@ -267,6 +269,7 @@ function p5SubToggle(el){
   }
   // Auto-completare Program + Cod SSI din tabelul valori (Pct. 4)
   if(cuplati) _prefillPtFromVt();
+  _updateSumaPlatiIndicator();
 }
 
 /* Col 7 = Col 5 + Col 6 (auto-calculat) */
@@ -313,6 +316,70 @@ function upTot(){
   // (pagină DF, sau ORD fără df_id). upTot e chokepoint-ul tuturor mutațiilor de rânduri ORD
   // (input col.4 → calcORRow→upTot, add, del), deci o singură inserție acoperă tot.
   if(typeof window._checkOrdBuget==='function')window._checkOrdBuget();
+  if(typeof window._updateSumaPlatiIndicator==='function')window._updateSumaPlatiIndicator();
+}
+
+/* ── Verificare suma plăți (pct.5) == total angajament actualizat (pct.4) ─────────────
+   Conform logicii ALOP / OMF 1140/2025, suma TUTUROR benzilor din tabelul de planificare a
+   plăților (pct.5: ani precedenți, an curent, N+1..N+3, ani ulteriori) trebuie să fie egală cu
+   totalul „Val. totală actualizată" din pct.4. Verificarea NU se aplică pentru toate bifele pct.5:
+   pentru „Stingere angajamente în exercițiul curent" tabelul de planificare e DEZACTIVAT (suma 0)
+   → gate-ul s-ar declanșa fals; deci aplicabil=false acolo. */
+const _P5_BANDS=['plati_ani_precedenti','plati_estim_ancrt','plati_estim_an_np1','plati_estim_an_np2','plati_estim_an_np3','plati_estim_ani_ulter'];
+
+/*__P5_PURE_START__*/
+/* Funcție PURĂ (fără DOM) — decide rezultatul din starea numerică + bifele pct.4/pct.5.
+   state: { sumaAngajament, sumaPlati, cuang, cuplati, faraplati, stingere }.
+   Întoarce { ok, sumaPlati, sumaAngajament, diferenta, aplicabil }.
+   aplicabil=true DOAR când tabelul de plăți e activ/relevant:
+     - „Cu angajamente" bifat ȘI NU „Stingere" (tabel disabled),
+     - sub-opțiunea „Cu plăți" (tabel garantat populat de validarea ≥1 rând),
+       SAU „Fără plăți" dar cu benzi efectiv completate (sumaPlati>0) — altfel un tabel intenționat
+       gol ar bloca fals,
+     - și există un angajament de comparat (sumaAngajament>0). */
+function evalSumaPlatiPure(state){
+  const r2=v=>Math.round((Number(v)||0)*100)/100;
+  const sumaAngajament=r2(state&&state.sumaAngajament);
+  const sumaPlati=r2(state&&state.sumaPlati);
+  const diferenta=r2(sumaPlati-sumaAngajament);
+  const cuang=!!(state&&state.cuang), stingere=!!(state&&state.stingere);
+  const cuplati=!!(state&&state.cuplati), faraplati=!!(state&&state.faraplati);
+  const tabelActiv=cuang && !stingere && (cuplati || (faraplati && sumaPlati>0));
+  const aplicabil=tabelActiv && sumaAngajament>0;
+  const ok=Math.abs(diferenta)<=0.01; // toleranță bani (2 zecimale, floating-point)
+  return { ok, sumaPlati, sumaAngajament, diferenta, aplicabil };
+}
+/*__P5_PURE_END__*/
+
+/* Citește starea din DOM și deleagă la funcția pură. */
+function verificaSumaPlati(){
+  const cb=id=>!!document.getElementById(id)?.checked;
+  // Total angajament actualizat (pct.4): „Se stabilește" → suma col.7 din tabel;
+  // „Rămâne în suma de" → valoarea fixă din input.
+  const sumaAngajament=cb('n-ck-stab')
+    ? sf('n-vtbody','valt_actualiz')
+    : (cb('n-ck-ramane') ? pMR(document.getElementById('n-ramana')?.value) : sf('n-vtbody','valt_actualiz'));
+  const sumaPlati=_P5_BANDS.reduce((s,f)=>s+sf('n-ptbody',f),0);
+  return evalSumaPlatiPure({
+    sumaAngajament, sumaPlati,
+    cuang:cb('n-ck-cuang'), cuplati:cb('n-ck-cuplati'),
+    faraplati:cb('n-ck-faraplati'), stingere:cb('n-ck-sting')
+  });
+}
+
+/* Actualizează indicatorul vizual sub tabelul pct.5 (verde=coincide / roșu=diferă). */
+function _updateSumaPlatiIndicator(){
+  const box=document.getElementById('n-p5-check');
+  if(!box)return;
+  const r=verificaSumaPlati();
+  if(!r.aplicabil){box.className='p5-suma-check';box.textContent='';return;}
+  if(r.ok){
+    box.className='p5-suma-check ok';
+    box.textContent=`✓ Plăți planificate (${fMR(r.sumaPlati)} lei) = Angajament total actualizat (${fMR(r.sumaAngajament)} lei).`;
+  }else{
+    box.className='p5-suma-check bad';
+    box.textContent=`⛔ Suma planificării plăților (${fMR(r.sumaPlati)} lei) NU coincide cu totalul angajamentelor actualizat (${fMR(r.sumaAngajament)} lei) — diferență ${fMR(r.diferenta)} lei. Corectați tabelul de plăți înainte de a trimite la P2.`;
+  }
 }
 
 /* FEATURE buget multi-anual (v3.9.558): etichetele benzilor de plăți afișează anul absolut
@@ -511,6 +578,8 @@ function mkFlow(ft){
   window.p4toggle           = p4toggle;
   window.p5toggle           = p5toggle;
   window.p5SubToggle        = p5SubToggle;
+  window.verificaSumaPlati  = verificaSumaPlati;
+  window._updateSumaPlatiIndicator = _updateSumaPlatiIndicator;
 
   window.g                  = g;
   window.cb                 = cb;

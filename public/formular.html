@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.528">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.528">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.528">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.569">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.571">
   <script src="/js/df-utils.js?v=3.9.528"></script>
   <script src="/js/df-entitlements.js?v=3.9.528"></script>
   <script src="/js/df-shell.js?v=3.9.531"></script>
@@ -949,7 +949,7 @@
     <label class="dck" style="margin-top:6px">
       <input type="checkbox" id="n-ck-ramane" onchange="p4toggle('ramane')"/>
       Rămâne în suma de
-      <input id="n-ramana" class="di" type="text" inputmode="decimal" data-money="true" value="0,00" style="width:100px;display:inline;margin:0 4px" disabled/>
+      <input id="n-ramana" class="di" type="text" inputmode="decimal" data-money="true" value="0,00" oninput="upTot()" style="width:100px;display:inline;margin:0 4px" disabled/>
       lei conform fundamentării aprobate într-o revizuire anterioară a prezentului document de fundamentare
     </label>
 
@@ -994,6 +994,10 @@
       </tfoot>
     </table>
     </div>
+
+    <!-- Verificare blocantă (OMF 1140/2025): suma benzilor de plăți (pct.5) trebuie să fie egală
+         cu totalul „Val. totală actualizată" (pct.4). Doar afișare/gate când tabelul e activ. -->
+    <div id="n-p5-check" class="p5-suma-check" aria-live="polite"></div>
 
     <label class="dck" style="margin-top:6px"><input type="checkbox" id="n-ck-anurmatori" onchange="p5toggle()"/>Angajamentele legale se vor emite în contul anului următor</label>
 
@@ -1306,7 +1310,7 @@
 </div>
 
 <script src="/notif-widget.js?v=3.9.528"></script>
-<script src="/js/formular/core.js?v=3.9.569" defer></script>
+<script src="/js/formular/core.js?v=3.9.571" defer></script>
 <script src="/js/formular/verif.js?v=3.9.528" defer></script>
 <script src="/js/formular/alop.js?v=3.9.568" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.562" defer></script>
@@ -1315,7 +1319,7 @@
 <script src="/js/formular/clasa8.js?v=3.9.528" defer></script>
 <script src="/js/formular/list.js?v=3.9.569" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.537" defer></script>
-<script src="/js/formular/doc.js?v=3.9.570" defer></script>
+<script src="/js/formular/doc.js?v=3.9.571" defer></script>
 <script src="/js/formular/att-preview.js?v=3.9.570" defer></script>
 <script src="/js/formular/formular.js?v=3.9.528" defer></script>
 <!-- ════════════ TRASABILITATE MODAL ════════════════════════════════════════ -->

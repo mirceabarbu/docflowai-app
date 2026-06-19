@@ -1203,6 +1203,16 @@ function _validateDf(){
     }
   }
 
+  // Gate blocant: suma benzilor de plăți (pct.5) trebuie să fie egală cu totalul „Val. totală
+  // actualizată" (pct.4). Se aplică DOAR când tabelul de plăți e activ (verificaSumaPlati →
+  // aplicabil); „Stingere" / tabel dezactivat → sărit (N/A), fără blocaj fals.
+  if(typeof verificaSumaPlati==='function'){
+    const vp=verificaSumaPlati();
+    if(vp.aplicabil && !vp.ok){
+      errs.push({id:'n-p5-tabel',label:`Pct. 5: planificarea plăților (${fMR(vp.sumaPlati)} lei) trebuie să fie egală cu totalul angajamentelor actualizat (${fMR(vp.sumaAngajament)} lei) — diferență ${fMR(vp.diferenta)} lei.`});
+    }
+  }
+
   return errs;
 }
 
