@@ -715,6 +715,7 @@ async function openDoc(ft,id){
 
     // Lock / mode
     lockAll(ft,false);
+    lockCaptureAndAttachments(ft,false);
     const status=doc.status,role=ST.docRole[ft];
     if(ST.docAprobat[ft]){
       lockAll(ft,true);
@@ -833,7 +834,7 @@ function newDoc(ft){
   ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};ST.docRevizieAnUrmator[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
   ST.docCapabilities=ST.docCapabilities||{};ST.docCapabilities[ft]=null;
-  lockAll(ft,false);setLockedBar(ft,'');
+  lockAll(ft,false);lockCaptureAndAttachments(ft,false);setLockedBar(ft,'');
   if(ft==='notafd'){applyDfRoleState(null,'p1');updateRevizieHeaderBadge('notafd',{revizie_nr:0,este_revizie_an_urmator:false});}
   else if(ft==='ordnt')applyOrdRoleState(null,'p1');
   // Golim câmpurile

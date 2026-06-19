@@ -584,6 +584,14 @@ nu îl are deja static, reutilizând `.df-modal`/`.df-modal-bg` din `public/css/
 
 ---
 
+**Lock atașare/captură SPA (din v3.9.575):** `lockCaptureAndAttachments(ft,false)` trebuie resetat
+explicit în `newDoc`/`loadDoc` (`public/js/formular/doc.js`), oglindind `lockAll(ft,false)` și ÎNAINTE
+de ramurile condiționale care reaplică `lock=true` — altfel `disabled` rămas de la un document
+`completed`/`aprobat` anterior persistă în SPA și blochează atașarea pe documentul următor din aceeași
+sesiune.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:
