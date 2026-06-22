@@ -88,7 +88,7 @@ d('POST /flows/:flowId/cancel — cleanup pointer ALOP simetric DF↔ORD (fix 9)
     // Formularul ORD se deblochează (flow_active=false fiindcă fluxul e cancelled)
     const ordDet = await request(app).get(`/api/formulare-ord/${ordId}`).set('Cookie', cookie());
     expect(ordDet.status).toBe(200);
-    expect(ordDet.body.flow_active).toBe(false);
+    expect(ordDet.body.document.flow_active).toBe(false);
   });
 
   it('(2) Paritate DF: cancel readuce DF transmis_flux → completed și curăță df_flow_id', async () => {
