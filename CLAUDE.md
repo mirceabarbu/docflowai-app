@@ -636,6 +636,17 @@ fluxul curent — pasul critic): `server/tests/db/formular-link-flow-attachments
 
 ---
 
+**Trasabilitate — cardul ORD afișează numărul propriu al ORD (din v3.9.580):** modalul „Trasabilitate"
+afișează pe fiecare card ORD `nr_ordonant_pl` (numărul propriu al ordonanțării), NU `nr_unic_inreg`
+(numărul DF) — altfel toate ciclurile arătau același număr (al DF-ului comun). Backend-ul
+`server/services/trasabilitate.mjs` întoarce AMBELE câmpuri (Q3 ORD curent: `ord_curent_nr_ordonant_pl`
++ `ord_curent_nr_unic_inreg`; Q4 cicluri arhivate: `ord_nr_ordonant_pl` + `ord_nr_unic_inreg`) — DF-ul
+rămâne ca referință. Frontend `public/js/formular/trasabilitate.js` citește `nr_ordonant_pl` /
+`ord_nr_ordonant_pl` fără fallback la numărul DF („(fără număr)" dacă lipsește). Test:
+`server/tests/integration/trasabilitate.test.mjs`.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:

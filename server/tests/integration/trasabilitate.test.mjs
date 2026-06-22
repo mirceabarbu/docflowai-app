@@ -120,7 +120,9 @@ describe('GET /api/trasabilitate/:type/:id', () => {
         plata_confirmed_at: null, plata_nr_ordin: null, plata_suma_efectiva: null,
         created_at: '2026-02-10', completed_at: null, cancelled_at: null,
         cancelled_reason: null,
-        ord_curent_nr_unic_inreg: 'ORD-2026-042', ord_curent_titlu: 'Mobilex SRL',
+        ord_curent_nr_unic_inreg: 'ORD-2026-042',
+        ord_curent_nr_ordonant_pl: 'OP-2026-777',
+        ord_curent_titlu: 'Mobilex SRL',
         ord_curent_status: 'completed', ord_curent_flow_id: 'ord-flow', ord_curent_aprobat: true,
       }]
     });
@@ -135,7 +137,9 @@ describe('GET /api/trasabilitate/:type/:id', () => {
         plata_confirmed_at: '2026-03-15', plata_nr_ordin: 'OP-321',
         plata_data: '2026-03-15', plata_suma_efectiva: '15000.00',
         plata_observatii: null,
-        ord_nr_unic_inreg: 'ORD-2026-001', ord_titlu: 'Mobilex SRL',
+        ord_nr_unic_inreg: 'ORD-2026-001',
+        ord_nr_ordonant_pl: 'OP-2026-111',
+        ord_titlu: 'Mobilex SRL',
         ord_status: 'completed', ord_flow_id: 'ord-arh-flow', ord_aprobat: true,
       }]
     });
@@ -157,8 +161,11 @@ describe('GET /api/trasabilitate/:type/:id', () => {
     expect(r.body.alopuri[0].df_valoare).toBe(60000);     // SUM(valt_actualiz) al DF activ, ca Number
     expect(r.body.alopuri[0].ord_curent).not.toBeNull();
     expect(r.body.alopuri[0].ord_curent.nr_unic_inreg).toBe('ORD-2026-042');
+    // Trasabilitatea expune numărul propriu al ORD (nr_ordonant_pl), distinct de numărul DF
+    expect(r.body.alopuri[0].ord_curent.nr_ordonant_pl).toBe('OP-2026-777');
     expect(r.body.alopuri[0].cicluri_arhivate).toHaveLength(1);
     expect(r.body.alopuri[0].cicluri_arhivate[0].ord_nr_unic_inreg).toBe('ORD-2026-001');
+    expect(r.body.alopuri[0].cicluri_arhivate[0].ord_nr_ordonant_pl).toBe('OP-2026-111');
     expect(r.body.alopuri[0].cicluri_arhivate[0].plata_suma_efectiva).toBe(15000);
   });
 
