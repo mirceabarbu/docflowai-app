@@ -42,7 +42,9 @@ d('POST /api/formulare-*/:id/link-flow — copiere atașamente (fix 7)', () => {
     await seedOrgUser({ role: 'user', email: 'p1@x.ro' }); // user 1, org 1
     app = buildApp();
   });
-  afterAll(() => pool.end());
+  // pool e PARTAJAT (import din db/index.mjs) → o singură închidere per FIȘIER, în afterAll-ul
+  // ULTIMULUI describe (fix 10, mai jos). Aici NU închidem — altfel pool-ul moare înainte de
+  // describe-ul următor și „Called end on pool more than once" în CI.
   const p1 = () => makeAuthCookie({ userId: 1, role: 'user', orgId: 1 });
 
   it('DF: link-flow copiază cele 2 atașamente, răspunsul poartă formAttachmentsCopied, status→transmis_flux', async () => {
