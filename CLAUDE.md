@@ -604,6 +604,18 @@ Teste: `server/tests/db/formular-link-flow-attachments.test.mjs`.
 
 ---
 
+**Copiere atașamente pe AMBELE căi de link (din v3.9.577, fix 8):** copierea atașamentelor formular→flux
+rulează pe 2 căi complementare: (1) `linkFlowFormular` (happy path, post-guards) și (2) `alop.mjs`
+`link-{df,ord}-flow` (calea ALOP, **necondiționat**). Motivul: frontend-ul cheamă AMBELE endpoint-uri la
+lansare; `linkFlowFormular` dă `409` (`document_not_completed` / `already_on_flow`) când docul nu e
+completed sau e deja pe flux → înghite copierea, dar `link-{df,ord}-flow` setează pointerul ALOP
+necondiționat. Deci pe fluxurile ALOP reale, calea ALOP e singura care copiază. Idempotent prin
+`NOT EXISTS(flow_id, filename)` în helper (al doilea apel inserează 0), non-fatal (eroare la copiere NU
+rupe linkarea). NU slăbi guard-urile din `linkFlowFormular` — sunt corecte; copierea ALOP e complementară.
+Teste: `server/tests/db/alop-link-flow-attachments.test.mjs`.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:

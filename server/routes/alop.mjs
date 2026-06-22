@@ -25,6 +25,7 @@ import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { bugetPentruAnul } from '../services/buget-an.mjs';
+import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
@@ -859,6 +860,15 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
 
+    // Copiază atașamentele DF→flux pe calea ALOP (necondiționat). Complementar cu
+    // linkFlowFormular (happy path), care dă 409 când docul nu e completed / e deja pe flux.
+    // Idempotent prin NOT EXISTS(flow_id, filename) în helper; non-fatal.
+    if (alopRows[0].df_id) {
+      try {
+        await copyFormularAttachmentsToFlow(pool, { flowId: flow_id, formType: 'df', formId: alopRows[0].df_id });
+      } catch (e) { logger.warn({ err: e, alopId: req.params.id }, '[ALOP] copiere atașamente DF→flux non-fatal'); }
+    }
+
     // Dacă fluxul e deja completat, tranziționează imediat la lichidare
     try {
       const { rows: flowRows } = await pool.query(
@@ -1046,6 +1056,16 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
     `, [flow_id, req.params.id, actor.orgId, actor.userId]);
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+
+    // Copiază atașamentele ORD→flux pe calea ALOP (necondiționat). Complementar cu
+    // linkFlowFormular (happy path), care dă 409 când docul nu e completed / e deja pe flux.
+    // Idempotent prin NOT EXISTS(flow_id, filename) în helper; non-fatal.
+    if (alopRows[0].ord_id) {
+      try {
+        await copyFormularAttachmentsToFlow(pool, { flowId: flow_id, formType: 'ord', formId: alopRows[0].ord_id });
+      } catch (e) { logger.warn({ err: e, alopId: req.params.id }, '[ALOP] copiere atașamente ORD→flux non-fatal'); }
+    }
+
     res.json({ ok: true, alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop link-ord-flow error');

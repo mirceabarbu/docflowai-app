@@ -17,7 +17,9 @@
  * prin aceeași cale de arhivare (`drive.mjs`) + nullify BYTEA post-arhivare
  * (`admin/maintenance.mjs`) — fără cale nouă, fără bug de umflare DB.
  *
- * Apelată din server/routes/flows/crud.mjs (createFlow), non-fatal (catch + log).
+ * Declanșată din `linkFlowFormular` (formular-shared.mjs, calea fericită — post-guards)
+ * ȘI din `alop.mjs` `link-{df,ord}-flow` (calea ALOP necondiționată, fiindcă linkFlowFormular
+ * dă 409 când docul nu e completed / e deja pe flux). Idempotent + non-fatal (catch + log).
  */
 
 import { logger } from '../middleware/logger.mjs';
