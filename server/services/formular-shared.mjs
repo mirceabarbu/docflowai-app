@@ -503,7 +503,12 @@ export async function linkFlowFormular({ type, id, actor, body }) {
     // are deja un flux de semnare NON-terminal (nici completed, nici cancelled). Altfel
     // {df,ord}_flow_id din ALOP rămâne agățat de fluxul vechi (zombi) → auto-tranziția
     // ALOP nu se mai declanșează.
-    if (doc.flow_id) {
+    // fix 10: EXCLUDE fluxul CURENT (`doc.flow_id === flow_id`). `crud.mjs` pre-setează
+    // `formulare_{df,ord}.flow_id` la creare (din `meta.dfId/ordId`), ÎNAINTE de link-flow.
+    // Fără excluderea asta, guard-ul 409-uia pe PROPRIUL flux tocmai legat → copierea (542)
+    // era cod mort pe ORICE lansare DF/ORD standalone. Guard-ul rămâne activ DOAR pe un flux
+    // DIFERIT activ (zombi real).
+    if (doc.flow_id && doc.flow_id !== flow_id) {
       const { rows: activeFlow } = await pool.query(
         `SELECT 1 FROM flows
           WHERE id = $1

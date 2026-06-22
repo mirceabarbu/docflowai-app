@@ -97,3 +97,74 @@ d('POST /api/formulare-*/:id/link-flow — copiere atașamente (fix 7)', () => {
     expect((await flowAtts(flowId)).length).toBe(0);
   });
 });
+
+/**
+ * fix 10 — cauză rădăcină: `crud.mjs` (POST /flows) pre-setează `formulare_{df,ord}.flow_id`
+ * la CREARE (din meta.dfId/ordId), ÎNAINTE de link-flow. Guard-ul `already_on_flow` din
+ * linkFlowFormular verifica DOAR `doc.flow_id` activ, fără să excludă fluxul CURENT → 409 pe
+ * propriul flux tocmai legat → copierea (542) era cod mort pe ORICE lansare DF/ORD standalone.
+ * Fix: guard-ul 409-uie DOAR pe un flux DIFERIT activ (`doc.flow_id !== flow_id`).
+ *
+ * ⚠️ Pasul critic care reproduce bug-ul: flow_id PRE-SETAT la fluxul curent înainte de link.
+ * Fără el, testul ar trece fals verde (doc.flow_id null → guard sărit oricum).
+ */
+d('POST /api/formulare-*/:id/link-flow — guard already_on_flow exclude fluxul curent (fix 10)', () => {
+  let app;
+  beforeAll(migrate);
+  beforeEach(async () => {
+    await truncateAll();
+    await pool.query('TRUNCATE flow_attachments, formulare_atasamente RESTART IDENTITY');
+    await seedOrgUser({ role: 'user', email: 'p1@x.ro' }); // user 1, org 1
+    app = buildApp();
+  });
+  afterAll(() => pool.end());
+  const p1 = () => makeAuthCookie({ userId: 1, role: 'user', orgId: 1 });
+
+  it('DF: flow_id pre-setat la fluxul curent (mimează crud.mjs) → 200, copiază, NU 409 already_on_flow', async () => {
+    const flowId = await seedFlow({ completed: false });
+    // PASUL CRITIC: crud.mjs setează deja flow_id la creare, înainte de link-flow.
+    const df = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', nrUnic: 'DF-F10-1', flowId });
+    await insertFormAtt({ formId: df, filename: 'Asigurare RCA.pdf', data: 'RCA' });
+
+    const res = await request(app).post(`/api/formulare-df/${df}/link-flow`).set('Cookie', p1()).send({ flow_id: flowId });
+    expect(res.status).toBe(200);
+    expect(res.body.formAttachmentsCopied).toBe(1);
+    expect(await flowAtts(flowId)).toEqual(['Asigurare RCA.pdf']);
+    expect((await getDf(df)).status).toBe('transmis_flux');
+  });
+
+  it('ORD: flow_id pre-setat la fluxul curent → 200, copiază, NU 409 already_on_flow', async () => {
+    const flowId = await seedFlow({ completed: false });
+    const ord = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', nrOrd: 'ORD-F10-1', flowId });
+    await insertFormAtt({ formType: 'ord', formId: ord, filename: 'factura.pdf', data: 'FACT' });
+
+    const res = await request(app).post(`/api/formulare-ord/${ord}/link-flow`).set('Cookie', p1()).send({ flow_id: flowId });
+    expect(res.status).toBe(200);
+    expect(res.body.formAttachmentsCopied).toBe(1);
+    expect(await flowAtts(flowId)).toEqual(['factura.pdf']);
+  });
+
+  it('non-regresie DF: flow_id pre-setat la un flux DIFERIT activ → 409 already_on_flow (guard real intact)', async () => {
+    const otherFlow = await seedFlow({ completed: false }); // flux zombi diferit, activ
+    const df = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', nrUnic: 'DF-F10-2', flowId: otherFlow });
+    await insertFormAtt({ formId: df, filename: 'Asigurare RCA.pdf', data: 'RCA' });
+    const newFlow = await seedFlow({ completed: false });
+
+    const res = await request(app).post(`/api/formulare-df/${df}/link-flow`).set('Cookie', p1()).send({ flow_id: newFlow });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/already_on_active_flow/);
+    expect((await flowAtts(newFlow)).length).toBe(0); // copierea NU a rulat — guard activ
+  });
+
+  it('non-regresie ORD: flow_id pre-setat la un flux DIFERIT activ → 409 already_on_flow', async () => {
+    const otherFlow = await seedFlow({ completed: false });
+    const ord = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', nrOrd: 'ORD-F10-2', flowId: otherFlow });
+    await insertFormAtt({ formType: 'ord', formId: ord, filename: 'factura.pdf', data: 'FACT' });
+    const newFlow = await seedFlow({ completed: false });
+
+    const res = await request(app).post(`/api/formulare-ord/${ord}/link-flow`).set('Cookie', p1()).send({ flow_id: newFlow });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/already_on_active_flow/);
+    expect((await flowAtts(newFlow)).length).toBe(0);
+  });
+});

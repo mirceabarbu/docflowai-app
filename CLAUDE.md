@@ -627,6 +627,15 @@ cicluri — decizie owner separată). Teste: `server/tests/db/alop-cancel-flow-p
 
 ---
 
+**Guard `already_on_flow` exclude fluxul CURENT (din v3.9.579, fix 10 — cauză rădăcină):** guard-ul din
+`linkFlowFormular` (`formular-shared.mjs`) 409-uie DOAR pe un flux DIFERIT activ (`doc.flow_id !== flow_id`).
+`crud.mjs` (POST /flows) pre-setează `formulare_{df,ord}.flow_id` la creare (din `meta.dfId/ordId`),
+ÎNAINTE de link-flow → fără excludere, guard-ul 409-uia pe PROPRIUL flux tocmai legat → copierea
+atașamentelor (fix 7) era cod mort pe ORICE lansare DF/ORD standalone. Test (cu flow_id pre-setat la
+fluxul curent — pasul critic): `server/tests/db/formular-link-flow-attachments.test.mjs`.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:
