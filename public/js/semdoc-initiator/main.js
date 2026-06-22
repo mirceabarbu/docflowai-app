@@ -1974,14 +1974,19 @@ async function signFromFluxuri(flowId) {
           const _prefDocType = _urlParams.get('prefill_doc_type') || sessionStorage.getItem("docflow_prefill_doc_type");
 
           // Auto-asociere document formular (dacă vine din prefill)
+          // fix 7: copierea atașamentelor formular→flux se face la link-flow (punctul durabil),
+          // nu la POST /flows. Citește numărul copiat din răspunsul rutei de link.
+          let _formAttCopiedAtLink = 0;
           if (_prefDocId && _prefDocType && j.flowId) {
             const _pfApi = _prefDocType === "ordnt" ? "/api/formulare-ord" : "/api/formulare-df";
             try {
-              await fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
+              const _rLink = await fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
                 method: "POST", credentials: "include",
                 headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
                 body: JSON.stringify({ flow_id: j.flowId })
               });
+              const _jLink = await _rLink.json().catch(() => ({}));
+              _formAttCopiedAtLink = Number(_jLink?.formAttachmentsCopied || 0);
             } catch(_) {}
             sessionStorage.removeItem("docflow_prefill_doc_id");
           }
@@ -2045,9 +2050,10 @@ async function signFromFluxuri(flowId) {
             ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--df-warning-bd);background:var(--df-warning-bg);border-radius:var(--df-radius-md);color:var(--df-warning);line-height:1.45;font-size:13px;">${PRESIGNED_WARN_TEXT}</div>`
             : ``;
 
-          // fix 3/4: atașamentele formularului (DF/ORD) au fost preluate automat ca
-          // documente suport în flux — utilizatorul NU trebuie să le reîncarce.
-          const _formAttN = Number(j.formAttachmentsCopied || 0);
+          // fix 3/4 + fix 7: atașamentele formularului (DF/ORD) au fost preluate automat ca
+          // documente suport în flux — utilizatorul NU trebuie să le reîncarce. Numărul vine
+          // din răspunsul rutei de link-flow (sursa durabilă), cu fallback la POST /flows.
+          const _formAttN = Number(_formAttCopiedAtLink || j.formAttachmentsCopied || 0);
           const _formAttBanner = _formAttN > 0
             ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--df-info-bd,var(--df-border));background:var(--df-info-bg,var(--df-surface-2));border-radius:var(--df-radius-md);color:var(--df-text);line-height:1.45;font-size:13px;">📎 ${_formAttN} atașament(e) de pe formular au fost preluate automat ca documente suport în flux. Nu este nevoie să le reîncărcați.</div>`
             : ``;

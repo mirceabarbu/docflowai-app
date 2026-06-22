@@ -18,6 +18,7 @@ import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import { computeDocCapabilities } from './formular-capabilities.mjs';
 import { loadActorComp, canEditFormular, canDestroyOnly } from './authz-formular.mjs';
 import { bugetPentruAnul } from './buget-an.mjs';
+import { copyFormularAttachmentsToFlow } from './formular-flow-attachments.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
@@ -531,12 +532,23 @@ export async function linkFlowFormular({ type, id, actor, body }) {
     } catch (e) {
       logger.warn({ err: e }, `alop_instances ${cfg.alopFlowField} update failed`);
     }
+    // fix 7: copierea atașamentelor formular→flux se declanșează AICI — la punctul DURABIL
+    // de linkare (sursa de adevăr DF/ORD), NU din `meta.dfId/ordId` efemer în crud.mjs (care
+    // lipsește pe calea de link dedicat → copierea nu rula niciodată pe ALOP). `type`/`id`/`flow_id`
+    // sunt deja locale → acoperă ȘI DF ȘI ORD dintr-un singur punct. Idempotent (dedup flow_id+
+    // filename). Non-fatal: o eroare la copiere NU rupe linkarea (semnarea e prioritară).
+    let formAttachmentsCopied = 0;
+    try {
+      formAttachmentsCopied = await copyFormularAttachmentsToFlow(pool, { flowId: flow_id, formType: type, formId: id });
+    } catch (e) {
+      logger.warn({ err: e, type, id, flow_id }, 'copiere atașamente formular→flux non-fatal');
+    }
     await recordFormularAudit({ orgId: actor.orgId, formType: type, formId: id,
       actorId: actor.userId, actorEmail: actor.email, eventType: 'transmis_flux',
       fromStatus: doc.status,
       ...(cfg.linkFlowSetsStatus ? { toStatus: cfg.linkFlowSetsStatus } : {}),
       meta: { flow_id } });
-    return { status: 200, body: { ok: true } };
+    return { status: 200, body: { ok: true, formAttachmentsCopied } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} link-flow error`);
     return { status: 500, body: { error: 'server_error' } };

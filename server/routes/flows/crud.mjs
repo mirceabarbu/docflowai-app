@@ -9,7 +9,6 @@ import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { convertToPdf, ACCEPTED_EXTENSIONS } from '../../utils/convertToPdf.mjs';
 import { getActiveSigner } from '../../services/user-leave.mjs';
 import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
-import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-attachments.mjs';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
@@ -401,19 +400,11 @@ const createFlow = async (req, res) => {
         [flowId, body.meta.ordId, orgId]
       ).catch(e => logger.warn({ err: e }, 'formulare_ord link flow_id non-fatal'));
     }
-    // fix 3/4: copiază atașamentele formularului (DF/ORD) în flux ca documente suport,
-    // ca utilizatorul să NU le reîncarce. Idempotent (dedup flow_id+filename), non-fatal.
-    // Rândurile copiate sunt flow_attachments obișnuite → arhivare Drive identică.
-    let _formAttCopied = 0;
-    if (pool && (body.meta?.dfId || body.meta?.ordId)) {
-      try {
-        _formAttCopied = await copyFormularAttachmentsToFlow(pool, {
-          flowId,
-          formType: body.meta?.dfId ? 'df' : 'ord',
-          formId:   body.meta?.dfId || body.meta?.ordId,
-        });
-      } catch (e) { logger.warn({ err: e }, 'copiere atașamente formular→flux non-fatal'); }
-    }
+    // fix 7: copierea atașamentelor formular→flux NU mai trăiește aici — `meta.dfId/ordId`
+    // sunt efemere și lipsesc pe calea de link dedicat (linkFlowFormular / link-{df,ord}-flow),
+    // deci copierea nu rula niciodată pe ALOP. Sursa de adevăr e acum `linkFlowFormular`
+    // (formular-shared.mjs), care rulează pe legătura DURABILĂ `formulare_X.flow_id`. Bannerul
+    // citește `formAttachmentsCopied` din răspunsul rutei de link, nu de aici.
     // PASUL 4: Auto link-df-flow / ord-flow pe alop_instances
     if (body.meta?.dfId && pool) {
       await pool.query(
@@ -475,7 +466,7 @@ const createFlow = async (req, res) => {
         message: `${initName} te-a adăugat ca semnatar pe documentul „${data.docName}". Intră în aplicație pentru a semna.`,
         waParams: { signerName: first.name || first.email, docName: data.docName, signerToken: first.token, initName, initFunctie, institutie: initInstitutie, compartiment: initCompartiment }, urgent: !!(data.urgent) });
     }
-    return res.json({ ok: true, flowId, firstSignerEmail: first?.email || null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null, preSignedUpload: _preSignedUpload, formAttachmentsCopied: _formAttCopied });
+    return res.json({ ok: true, flowId, firstSignerEmail: first?.email || null, initIsSigner: !!initIsSigner, signerToken: initIsSigner ? first.token : null, preSignedUpload: _preSignedUpload });
   } catch(e) { logger.error({ err: e }, 'POST /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 };
 

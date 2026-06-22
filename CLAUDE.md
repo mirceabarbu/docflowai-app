@@ -592,6 +592,18 @@ sesiune.
 
 ---
 
+**Copiere atașamente formular→flux la LINK, nu la creare (din v3.9.576, fix 7):** copierea
+atașamentelor DF/ORD ca documente suport (`copyFormularAttachmentsToFlow`, NEATINS) se declanșează din
+`linkFlowFormular` (`formular-shared.mjs`, după UPDATE-urile de legătură) — **sursa durabilă**, NU din
+`meta.dfId/ordId` efemer în `crud.mjs` (lipsea pe calea de link dedicat → copierea nu rula niciodată pe
+ALOP). Legătura trăiește pe `formulare_X.flow_id` + `alop_instances.{df,ord}_flow_id`; `flows.form_type`
+e `'none'`/mort (`saveFlow` n-o scrie). Răspunsul rutei `/api/formulare-{df,ord}/:id/link-flow` întoarce
+`formAttachmentsCopied` (citit de bannerul din `semdoc-initiator/main.js`, nu din `POST /flows`). Backfill
+istoric idempotent ADD-ONLY: `tools/backfill-formular-flow-attachments.mjs` (maintenance, NU migrare).
+Teste: `server/tests/db/formular-link-flow-attachments.test.mjs`.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:
