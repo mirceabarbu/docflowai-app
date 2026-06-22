@@ -681,6 +681,7 @@ router.get('/api/alop/:id', async (req, res) => {
       try {
         const { rows: fo } = await pool.query(`
           SELECT fo.flow_id,
+            (f.data->>'status' = 'cancelled') AS flow_cancelled,
             CASE WHEN fo.flow_id IS NOT NULL AND (
               f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true
             ) THEN true ELSE false END AS aprobat
@@ -689,7 +690,10 @@ router.get('/api/alop/:id', async (req, res) => {
           WHERE fo.id=$1 AND fo.org_id=$2 AND fo.deleted_at IS NULL
         `, [alop.ord_id, alop.org_id]);
 
-        if (fo[0]?.flow_id) {
+        // NU re-popula ord_flow_id dintr-un flux ANULAT (fix 9): la cancelul fluxului ORD,
+        // lifecycle.mjs eliberează intenționat ord_flow_id pe ALOP, dar formulare_ord.flow_id
+        // rămâne (paritate DF). Fără acest guard, self-heal #2 ar resuscita pointerul mort.
+        if (fo[0]?.flow_id && !fo[0].flow_cancelled) {
           const sets = ['ord_flow_id = $1', 'updated_at = NOW()', 'updated_by = $2'];
           const vals = [fo[0].flow_id, actor.userId];
           const willTransitionToPlata = !!fo[0].aprobat;

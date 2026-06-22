@@ -616,6 +616,17 @@ Teste: `server/tests/db/alop-link-flow-attachments.test.mjs`.
 
 ---
 
+**Cancel flux curăță pointerul ALOP simetric DF↔ORD (din v3.9.578, fix 9):** `POST /flows/:flowId/cancel`
+(`lifecycle.mjs`) curăță pointerul ALOP simetric — DF (`df_flow_id` + revine DF `transmis_flux`→`completed`)
+ȘI ORD (`ord_flow_id`/`ord_completed_at`). ORD **nu** resetează status formular fiindcă nu trece niciodată
+prin `transmis_flux` (link-flow ORD setează doar `flow_id`). `formulare_{df,ord}.flow_id` RĂMÂN setate
+(form-ul se deblochează via `flow_active=false` din statusul fluxului cancelled). 🔒 Self-heal #2 din
+`alop.mjs` (back-fill `ord_flow_id` pe GET) e gardat să NU resusciteze pointerul dintr-un flux `cancelled`
+— altfel cleanup-ul ar fi anulat la următorul GET. `alop_ord_cicluri.ord_flow_id` rămâne NEATINS (istoric
+cicluri — decizie owner separată). Teste: `server/tests/db/alop-cancel-flow-pointer.test.mjs`.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:
