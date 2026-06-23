@@ -52,28 +52,32 @@ d('Linking DF↔ALOP — invariant relink-pe-completed + self-heal', () => {
 
   it('noua-lichidare după revizie cu valoare mărită → ramas pe valoarea reviziei noi, ciclu nou, completed_at=NULL', async () => {
     const flowId = await seedFlowApproved();
-    // FIX B (v3.9.557): `ramas` din noua-lichidare se calculează pe bugetul anului curent
-    // = SUM(rows_plati.plati_estim_ancrt), NU pe angajamentul total SUM(rows_val.valt_actualiz).
-    // Seed coerent: angajament total ≥ buget an curent.
-    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId, nrUnic: 'DF-INV-2', rowsVal: [{ valt_actualiz: '1000' }], rowsPlati: [{ plati_estim_ancrt: '1000' }] });
+    // FIX 12 (v3.9.582): `ramas` din noua-lichidare se calculează pe CREDITELE BUGETARE
+    // col.10 = SUM(rows_ctrl.sum_rezv_crdt_bug_act) al DF-ului legat (revizia activă), MINUS
+    // ordonanțările anterioare — NU pe banda `rows_plati`, NU pe angajamentul total
+    // SUM(rows_val.valt_actualiz). Seed coerent: col.10 inițial 1000, revizia mărește la 1500.
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId, nrUnic: 'DF-INV-2', rowsVal: [{ valt_actualiz: '1000' }], rowsPlati: [{ plati_estim_ancrt: '1000' }], rowsCtrl: [{ sum_rezv_crdt_bug_act: '1000' }] });
     const alopId = await seedAlop({
       orgId: 1, createdBy: 1, status: 'completed', dfId, dfFlowId: flowId,
       dfCompletedAt: new Date(), plataSumaEfectiva: 1000, cicluCurent: 1,
     });
 
-    // Revizuire → ALOP relink la R1; bugetul anului curent al reviziei crește la 1500 (aprobat)
+    // Revizuire → ALOP relink la R1; creditele bugetare col.10 ale reviziei cresc la 1500 (aprobat)
     const rev = await request(app).post(`/api/formulare-df/${dfId}/revizuieste`).set('Cookie', p1()).send({ motiv: 'suplimentare' });
     expect(rev.status).toBe(200);
     const revId = rev.body.df.id;
     const revFlowId = await seedFlowApproved();
     await pool.query(
-      `UPDATE formulare_df SET rows_val=$2::jsonb, rows_plati=$3::jsonb, status='aprobat', flow_id=$4 WHERE id=$1`,
-      [revId, JSON.stringify([{ valt_actualiz: '1500' }]), JSON.stringify([{ plati_estim_ancrt: '1500' }]), revFlowId]
+      `UPDATE formulare_df SET rows_val=$2::jsonb, rows_plati=$3::jsonb, rows_ctrl=$4::jsonb, status='aprobat', flow_id=$5 WHERE id=$1`,
+      [revId, JSON.stringify([{ valt_actualiz: '1500' }]), JSON.stringify([{ plati_estim_ancrt: '1500' }]), JSON.stringify([{ sum_rezv_crdt_bug_act: '1500' }]), revFlowId]
     );
 
     const res = await request(app).post(`/api/alop/${alopId}/noua-lichidare`).set('Cookie', p1()).send({});
     expect(res.status).toBe(200);
-    expect(Number(res.body.ramas)).toBe(500);  // 1500 (buget an curent revizie, plati_estim_ancrt) - 1000 (plătit) — NU 0 pe vechea bază valt_actualiz
+    // FIX 12: ramas = col.10 al reviziei ACTIVE (alop.df_id relegat = 1500) − ordonanțat anterior (0,
+    // fără ORD/cicluri arhivate). Citește col.10 din revizia NOUĂ (1500), NU din DF-ul inițial (1000)
+    // — dovada că relink-ul s-a aplicat. (Vechea bază FIX B scădea „plătit" 1000 → 500.)
+    expect(Number(res.body.ramas)).toBe(1500);
 
     const a = await getAlop(alopId);
     expect(a.status).toBe('lichidare');
