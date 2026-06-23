@@ -53,3 +53,23 @@ export function bugetPentruAnul(rowsPlati, anReferinta, anExercitiu) {
   const rows = Array.isArray(rowsPlati) ? rowsPlati : [];
   return rows.reduce((s, r) => s + num(r && r[banda]), 0);
 }
+
+/**
+ * CREDITE BUGETARE an curent (col.10 „10=8+9", `sum_rezv_crdt_bug_act` din `rows_ctrl` /
+ * Secțiunea B CAB) — SUMĂ peste rânduri. Acesta e PLAFONUL de ordonanțare/plată (fix 12,
+ * v3.9.582): verificarea la ordonanțare ȘI la noua-lichidare se face pe creditele BUGETARE
+ * (col.10), NU pe banda `rows_plati` (care e doar baza CARDULUI), NU pe creditele de
+ * angajament (col.7). Se aplică INDIFERENT de bifa „Stingere" (`ckbx_sting_ang_in_ancrt`):
+ * când Stingere e bifat banda `rows_plati` a anului curent = 0, dar creditele bugetare rămân.
+ *
+ * `num()` tolerează formatul RON („150000,00") — în practică `getNC()` (core.js) salvează deja
+ * număr-string curat (punct zecimal) prin `String(pMR(...))`, deci JS și fragmentul SQL
+ * (`sqlCrediteBugetareCol10` din alop.mjs / `computeOrdBudgetContext`) coincid pe date reale.
+ * Funcție PURĂ — fără I/O.
+ * @param {Array<Object>} rowsCtrl formulare_df.rows_ctrl (Secțiunea B)
+ * @returns {number} SUM(sum_rezv_crdt_bug_act) peste rânduri (0 dacă gol/absent)
+ */
+export function crediteBugetareAnCurent(rowsCtrl) {
+  const rows = Array.isArray(rowsCtrl) ? rowsCtrl : [];
+  return rows.reduce((s, r) => s + num(r && r.sum_rezv_crdt_bug_act), 0);
+}

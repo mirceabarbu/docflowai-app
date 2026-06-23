@@ -598,9 +598,14 @@ function renderAlopDetail(a,container){
             // „estimat"/„DF actual". Aici NU e cifra dominantă → DF legacy/neancorat
             // (an_referinta null) afișează discret „—".
             const _exAn = new Date().getFullYear();
-            const _bugAncorat = a.df_an_referinta != null && a.df_buget_an_curent != null;
+            // fix 12: la „Stingere" bugetul exercițiului = valoarea angajamentului (tabel 1),
+            // independent de an_referinta → afișează chiar dacă an_referinta e null.
+            const _bugAncorat = (a.df_an_referinta != null || a.df_stingere) && a.df_buget_an_curent != null;
+            const _bugTitle = a.df_stingere
+              ? 'Buget exercițiu '+_exAn+' (Stingere — valoarea angajamentului, tabel 1)'
+              : (a.df_an_referinta ? 'Buget exercițiu '+_exAn+' (DF ancorat pe '+a.df_an_referinta+')' : 'DF fără an de referință — exercițiu nedefinit');
             const _bug = a.df_id
-              ? `<span style="color:var(--df-text-2);font-weight:600" title="${a.df_an_referinta ? 'Buget exercițiu '+_exAn+' (DF ancorat pe '+a.df_an_referinta+')' : 'DF fără an de referință — exercițiu nedefinit'}">${_bugAncorat ? fmtRON(parseFloat(a.df_buget_an_curent||0)) : '—'}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">buget ex. ${_exAn}</span></span>`
+              ? `<span style="color:var(--df-text-2);font-weight:600" title="${_bugTitle}">${_bugAncorat ? fmtRON(parseFloat(a.df_buget_an_curent||0)) : '—'}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">buget ex. ${_exAn}</span></span>`
               : '';
             const _sepHtml = '<span style="color:var(--df-text-4);margin:0 8px">·</span>';
             const _parts = [_est, _df, _bug].filter(Boolean);
@@ -638,11 +643,16 @@ function renderAlopDetail(a,container){
           // gate-ul ancorării + tooltip, nu eticheta anului.
           const _exAn = new Date().getFullYear();
           const _vDfTot = parseFloat(a.df_valoare || 0);
-          const _ancorat = a.df_an_referinta != null && a.df_buget_an_curent != null;
+          // fix 12: „Stingere" bifat → buget exercițiu = tabel 1 (valoarea angajamentului),
+          // afișat ca cifră dominantă chiar dacă an_referinta e null (banda rows_plati = 0 la Stingere).
+          const _ancorat = (a.df_an_referinta != null || a.df_stingere) && a.df_buget_an_curent != null;
           if (_ancorat) {
             const _bug = parseFloat(a.df_buget_an_curent || 0);
+            const _cardTitle = a.df_stingere
+              ? 'Stingere bifată — buget exercițiu = valoarea angajamentului (tabel 1)'
+              : 'DF ancorat pe an de referință ' + a.df_an_referinta;
             return `
-        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em" title="DF ancorat pe an de referință ${a.df_an_referinta}">Buget exercițiu ${_exAn}</div>
+        <div style="font-size:.7rem;color:var(--df-text-3);text-transform:uppercase;letter-spacing:.04em" title="${_cardTitle}">Buget exercițiu ${_exAn}</div>
         <div style="font-size:1.05rem;font-weight:700;color:#b0a0ff;margin-top:4px">${fmtRON(_bug)}</div>
         <div style="font-size:.7rem;color:var(--df-text-3);margin-top:2px">Angajament total DF: ${fmtV(_vDfTot)}</div>`;
           }

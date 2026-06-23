@@ -308,8 +308,8 @@ function _checkOrdBuget(){
     document.querySelectorAll('#o-tbody tr').forEach(tr=>tr.classList.add('ord-buget-over'));
     if(warn){
       const dep=cumul-buget;
-      warn.innerHTML='⛔ Suma ordonanțată '+(arhivat>0?`cumulată în anul ${esc(an)} (${esc(fMR(cumul))} lei, din care ${esc(fMR(arhivat))} lei deja plătiți în cicluri anterioare)`:`(${esc(fMR(cumul))} lei)`)+
-        ` depășește bugetul estimat al anului ${esc(an)} (${esc(fMR(buget))} lei) cu ${esc(fMR(dep))} lei. Finalizarea va fi blocată.`;
+      warn.innerHTML='⛔ Suma ordonanțată '+(arhivat>0?`cumulată în anul ${esc(an)} (${esc(fMR(cumul))} lei, din care ${esc(fMR(arhivat))} lei deja ordonanțați în cicluri anterioare)`:`(${esc(fMR(cumul))} lei)`)+
+        ` depășește creditele bugetare ale anului ${esc(an)} (${esc(fMR(buget))} lei) cu ${esc(fMR(dep))} lei. Finalizarea va fi blocată.`;
       warn.style.display='';
     }
   }else if(warn){warn.style.display='none';warn.innerHTML='';}

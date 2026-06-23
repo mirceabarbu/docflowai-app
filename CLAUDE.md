@@ -548,6 +548,40 @@ gate-ul ancorării.
 
 ---
 
+## Bifa „Stingere": verificare pe credite bugetare (col.10), card pe tabel 1 (din v3.9.582, fix 12)
+
+Bifa „Stingere" (`ckbx_sting_ang_in_ancrt`, TEXT '1'/'') dezactivează tabelul 2 (`rows_plati`) →
+banda anului curent = 0. Asta rupea bugetul. Decizia owner (expert ALOP, regulă de domeniu — **NU
+reinterpreta**) separă DOUĂ baze diferite:
+
+**(1) VERIFICAREA ordonanțării/noua-lichidare = CREDITE BUGETARE col.10, minus ORDONANȚĂRILE
+anterioare, INDIFERENT de bifă.** Plafonul = `SUM(formulare_df.rows_ctrl[].sum_rezv_crdt_bug_act)`
+(col.10 „10=8+9", Secțiunea B CAB) al DF-ului legat (revizia activă). **NU** banda `rows_plati`,
+**NU** angajamentul total (`rows_val`), **NU** creditele de angajament col.7. Se scad
+**ordonanțările** anterioare (ce s-a ordonanțat), **NU plățile** (`plata_suma_efectiva`). Ciclurile
+arhivate (`alop_ord_cicluri`) nu stochează direct suma ordonanțată → se ia prin JOIN
+`ord_id → SUM(formulare_ord.rows.suma_ordonantata_plata)`, filtrat pe anul de exercițiu. Helper PUR:
+`server/services/buget-an.mjs` → `crediteBugetareAnCurent(rowsCtrl)`. Trei puncte sincronizate:
+`computeOrdBudgetContext` (plafon ORD, `formular-shared.mjs`), garda `noua-lichidare` (`alop.mjs`),
+și `sqlRamasAnExercitiu`/`sqlCrediteBugetareCol10` (card `ramas_an_curent`, `alop.mjs`). ⚠️
+`sqlRamasAnExercitiu` TREBUIE să oglindească EXACT garda noua-lichidare (col.10 − ordonanțat). ⚠️ În
+`noua-lichidare`, `suma_totala_platita` rămâne suma PLĂTITĂ (audit) — calcul SEPARAT de plafon.
+
+**(2) CARDUL „buget exercițiu" (`df_buget_an_curent`) = DOAR afișare.** La „Stingere" bifat → TABEL 1
+= `SUM(rows_val.valt_actualiz)` (angajamentul total); altfel → banda `rows_plati` a anului de exercițiu
+(regula veche, `bugetPentruAnul`/`bandaPentruOffset` NEATINSE — rămân pentru card). `sqlBugetAnExercitiu`
+(`alop.mjs`) e Stingere-aware via `sqlStingereTruthy`. Backend expune `df_stingere` (boolean) în
+listă+detaliu; frontend `alop.js` afișează cardul chiar dacă `an_referinta` e null când e Stingere.
+
+⚠️ Cardul (regula 2) și verificarea (regula 1) folosesc baze DIFERITE — INTENȚIONAT. `bugetPentruAnul`
+e DOAR pentru card; `crediteBugetareAnCurent` e DOAR pentru plafon. Teste:
+`server/tests/db/12-stingere-buget-ordonantare.test.mjs`, `ord-buget-an-curent-plafon.test.mjs`,
+`ord-buget-p1-submit-plafon.test.mjs`, `alop-noua-lichidare-ciclu.test.mjs`,
+`alop-card-ramas-an-curent.test.mjs`, `buget-multianual-an-referinta.test.mjs` (card),
+`server/tests/unit/buget-an.test.mjs` (`crediteBugetareAnCurent`).
+
+---
+
 ## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)
 
 Logica „ce acțiuni/butoane sunt disponibile pe un document" se calculează **server-side**, ca să nu

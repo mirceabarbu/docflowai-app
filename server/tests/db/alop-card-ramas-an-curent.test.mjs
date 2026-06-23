@@ -1,23 +1,23 @@
 /**
- * Paritate card↔gardă (v3.9.568): cardul ALOP afișează „Rămas de ordonanțat (exercițiu curent)"
- * via NOUL câmp `ramas_an_curent` din detail GET `/api/alop/:id`. Valoarea TREBUIE să fie IDENTICĂ
- * cu cea pe care garda din `noua-lichidare` o aplică, altfel cardul ar induce decizii greșite
- * („cardul zice X, garda respinge la Y").
+ * Paritate card↔gardă (v3.9.568 → fix 12, v3.9.582): cardul ALOP afișează „Rămas de
+ * ordonanțat (exercițiu curent)" via câmpul `ramas_an_curent` din detail GET `/api/alop/:id`.
+ * Valoarea TREBUIE să fie IDENTICĂ cu cea pe care garda din `noua-lichidare` o aplică.
  *
- * Formula gărzii (oglindit aici independent, recalculat din DB + helper-ul PUR bugetPentruAnul):
- *   bugetAnCurent = bugetPentruAnul(df.rows_plati, an_referinta ?? CUR, CUR)
- *   sumaPlata     = SUM(plata_suma_efectiva | cicluri din anul curent) + alop.plata_suma_efectiva
- *   ramas         = bugetAnCurent − sumaPlata
+ * Formula gărzii (oglindită aici independent, recalculată din DB):
+ *   buget       = crediteBugetareAnCurent(df.rows_ctrl)            // col.10 sum_rezv_crdt_bug_act
+ *   ordonantat  = Σ(cicluri arhivate anul curent → ord_id → rows.suma_ordonantata_plata)
+ *                 + (ORD curent alop.ord_id → rows.suma_ordonantata_plata)
+ *   ramas       = buget − ordonantat
  *
- * Acoperă: fără cicluri, cicluri din anul curent, plata live prezentă, legacy an_referinta NULL,
- * fără DF (→ NULL, nu NaN).
+ * Acoperă: fără cicluri/fără ORD curent, cicluri din anul curent, ORD curent prezent,
+ * an_referinta NULL irelevant (col.10), fără DF (→ NULL, nu NaN).
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { hasTestDb, migrate, truncateAll, pool,
-         seedOrgUser, seedUser, seedDf, seedAlop, makeAuthCookie } from '../helpers/db-real.mjs';
+         seedOrgUser, seedUser, seedDf, seedOrd, seedAlop, makeAuthCookie } from '../helpers/db-real.mjs';
 import { buildApp } from './helpers/app.mjs';
-import { bugetPentruAnul } from '../../services/buget-an.mjs';
+import { crediteBugetareAnCurent } from '../../services/buget-an.mjs';
 
 const d = describe.skipIf(!hasTestDb());
 const CUR = new Date().getFullYear();
@@ -43,27 +43,43 @@ d('Card ALOP — ramas_an_curent oglindește garda noua-lichidare', () => {
   // Recalcul INDEPENDENT al formulei gărzii din DB (NU prin endpoint).
   async function guardRamas(alopId) {
     const { rows: [a] } = await pool.query(
-      'SELECT df_id, plata_suma_efectiva FROM alop_instances WHERE id=$1', [alopId]);
+      'SELECT df_id, ord_id FROM alop_instances WHERE id=$1', [alopId]);
+    if (!a.df_id) return null;
     const { rows: [df] } = await pool.query(
-      'SELECT an_referinta, rows_plati FROM formulare_df WHERE id=$1', [a.df_id]);
-    const anRef = df?.an_referinta == null ? CUR : df.an_referinta;
-    const buget = bugetPentruAnul(df?.rows_plati, anRef, CUR) || 0;
-    const { rows: [s] } = await pool.query(
-      `SELECT COALESCE(SUM(plata_suma_efectiva),0) AS total FROM alop_ord_cicluri
-        WHERE alop_id=$1
-          AND COALESCE(an_exercitiu, EXTRACT(YEAR FROM plata_data)::int, EXTRACT(YEAR FROM created_at)::int) = $2`,
+      'SELECT rows_ctrl FROM formulare_df WHERE id=$1', [a.df_id]);
+    const buget = crediteBugetareAnCurent(df?.rows_ctrl) || 0;
+    const { rows: [arh] } = await pool.query(
+      `SELECT COALESCE(SUM(co.s),0) AS total FROM alop_ord_cicluri c
+         CROSS JOIN LATERAL (
+           SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0) AS s
+             FROM formulare_ord fo LEFT JOIN jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r ON true
+            WHERE fo.id = c.ord_id
+         ) co
+        WHERE c.alop_id=$1
+          AND COALESCE(c.an_exercitiu, EXTRACT(YEAR FROM c.plata_data)::int, EXTRACT(YEAR FROM c.created_at)::int) = $2`,
       [alopId, CUR]);
-    const sumaPlata = parseFloat(s.total || 0) + parseFloat(a.plata_suma_efectiva || 0);
-    return buget - sumaPlata;
+    const { rows: [cur] } = await pool.query(
+      `SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0) AS total
+         FROM formulare_ord fo LEFT JOIN jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r ON true
+        WHERE fo.id=$1`, [a.ord_id]);
+    return buget - parseFloat(arh.total || 0) - parseFloat(cur.total || 0);
   }
-  const addCiclu = (alopId, suma, an) => pool.query(
-    `INSERT INTO alop_ord_cicluri (alop_id, org_id, ciclu_nr, plata_suma_efectiva, an_exercitiu, status)
-     VALUES ($1, 1, (SELECT COALESCE(MAX(ciclu_nr),0)+1 FROM alop_ord_cicluri WHERE alop_id=$1), $2, $3, 'completed')`,
-    [alopId, suma, an]);
+  // ORD cu o sumă ordonanțată dată.
+  const seedOrdSum = (dfId, suma, nr) => seedOrd({
+    orgId: 1, createdBy: 1, status: 'completed', dfId, nrOrd: nr,
+    rows: [{ suma_ordonantata_plata: String(suma) }],
+  });
+  // Ciclu arhivat cu suma ORDONANȚATĂ (via ORD propriu), pe anul `an`.
+  const addCiclu = async (alopId, dfId, ordonantat, an, nr) => {
+    const ordId = await seedOrdSum(dfId, ordonantat, `ORD-C-${nr}-${an}`);
+    await pool.query(
+      `INSERT INTO alop_ord_cicluri (alop_id, org_id, ciclu_nr, ord_id, an_exercitiu, status)
+       VALUES ($1, 1, $2, $3, $4, 'completed')`, [alopId, nr, ordId, an]);
+  };
 
-  it('fără cicluri, fără plata live → ramas = bugetul benzii (paritate)', async () => {
+  it('fără cicluri, fără ORD curent → ramas = col.10 (paritate)', async () => {
     const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: 'DF-NC',
-      anReferinta: CUR, rowsPlati: [{ plati_estim_ancrt: '29000', plati_estim_an_np1: '999999' }] });
+      rowsCtrl: [{ sum_rezv_crdt_bug_act: '29000' }] });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId });
     const card = await cardRamas(alopId);
     expect(Number(card)).toBe(29000);
@@ -72,34 +88,35 @@ d('Card ALOP — ramas_an_curent oglindește garda noua-lichidare', () => {
 
   it('cicluri din anul curent → se scad din ramas (paritate)', async () => {
     const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: 'DF-CC',
-      anReferinta: CUR, rowsPlati: [{ plati_estim_ancrt: '29000' }] });
+      rowsCtrl: [{ sum_rezv_crdt_bug_act: '29000' }] });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId, cicluCurent: 2 });
-    await addCiclu(alopId, 5000, CUR);       // an curent → contează
-    await addCiclu(alopId, 7000, CUR - 1);   // an anterior → ignorat
+    await addCiclu(alopId, dfId, 5000, CUR, 1);       // an curent → contează
+    await addCiclu(alopId, dfId, 7000, CUR - 1, 2);   // an anterior → ignorat
     const card = await cardRamas(alopId);
     expect(Number(card)).toBe(24000);        // 29000 − 5000 (ciclul vechi nu se scade)
     expect(Number(card)).toBe(await guardRamas(alopId));
   });
 
-  it('plata live prezentă (a.plata_suma_efectiva) → inclusă în sumaPlata (paritate)', async () => {
+  it('ORD curent (alop.ord_id) → ordonanțatul lui se scade (paritate)', async () => {
     const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: 'DF-PL',
-      anReferinta: CUR, rowsPlati: [{ plati_estim_ancrt: '29000' }] });
+      rowsCtrl: [{ sum_rezv_crdt_bug_act: '29000' }] });
+    const ordCur = await seedOrdSum(dfId, 3000, 'ORD-CUR');
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'completed', dfId,
-      plataSumaEfectiva: 3000, cicluCurent: 2 });
-    await addCiclu(alopId, 5000, CUR);
+      ordId: ordCur, cicluCurent: 2 });
+    await addCiclu(alopId, dfId, 5000, CUR, 1);
     const card = await cardRamas(alopId);
     expect(Number(card)).toBe(21000);        // 29000 − (5000 + 3000)
     expect(Number(card)).toBe(await guardRamas(alopId));
   });
 
-  it('legacy an_referinta NULL → banda ancrt (NU NULL), paritate cu garda', async () => {
+  it('an_referinta NULL irelevant — col.10 e baza (paritate cu garda)', async () => {
     const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: 'DF-LEG',
-      anReferinta: null, rowsPlati: [{ plati_estim_ancrt: '29000', plati_estim_an_np1: '1' }] });
-    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId,
-      plataSumaEfectiva: 4000 });
+      anReferinta: null, rowsCtrl: [{ sum_rezv_crdt_bug_act: '29000' }] });
+    const ordCur = await seedOrdSum(dfId, 4000, 'ORD-LEG');
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId, ordId: ordCur });
     const card = await cardRamas(alopId);
     expect(card).not.toBeNull();
-    expect(Number(card)).toBe(25000);        // ancrt 29000 − plata live 4000
+    expect(Number(card)).toBe(25000);        // col.10 29000 − ordonanțat curent 4000
     expect(Number(card)).toBe(await guardRamas(alopId));
   });
 

@@ -17,7 +17,7 @@ import { logger } from '../middleware/logger.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import { computeDocCapabilities } from './formular-capabilities.mjs';
 import { loadActorComp, canEditFormular, canDestroyOnly } from './authz-formular.mjs';
-import { bugetPentruAnul } from './buget-an.mjs';
+import { crediteBugetareAnCurent } from './buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from './formular-flow-attachments.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
@@ -198,32 +198,30 @@ function validateOrdCol5(rows) {
   return null;
 }
 
-// ── plafon hard: suma ordonanțată cumulată în anul de exercițiu ≤ bugetul acelui an ─
-// (v3.9.557 FIX B → v3.9.558 FEATURE buget multi-anual) Regula de business: ordonanțarea
-// se poate face DOAR în limita bugetului ANULUI DE EXERCIȚIU al DF-ului legat (revizia
-// activă, via ord.df_id), NU în limita angajamentului total multianual (rows_val.valt_actualiz).
+// ── plafon hard: suma ordonanțată cumulată în anul de exercițiu ≤ CREDITELE BUGETARE (col.10) ─
+// (v3.9.557 FIX B → v3.9.558 buget multi-anual → fix 12, v3.9.582) Regula de business
+// (confirmată de owner): ordonanțarea/plata se poate face DOAR în limita CREDITELOR BUGETARE
+// ale anului curent = SUMĂ peste `rows_ctrl` din `sum_rezv_crdt_bug_act` (col.10 „10=8+9",
+// Secțiunea B CAB) al DF-ului legat (revizia activă, via ord.df_id), NU în limita benzii
+// `rows_plati` (aceea rămâne baza CARDULUI), NU a angajamentului total (rows_val.valt_actualiz),
+// NU a creditelor de angajament (col.7). Plafonul col.10 se aplică INDIFERENT de bifa
+// „Stingere" (când Stingere e bifat banda `rows_plati` an curent = 0, dar col.10 rămâne).
 // Depășirea = blocaj hard 422, simetric cu col.5.
 //
-// ANCORARE PE AN ABSOLUT (v3.9.558): banda din `rows_plati` se alege prin `bugetPentruAnul`
-// în funcție de offset = anExercitiu − df.an_referinta (offset 0 → ancrt, 1 → np1, ...).
-//   • `an_referinta` setat → plafon pe banda anului de exercițiu curent.
-//   • `an_referinta` NULL (DF legacy, pre-migrarea 085) → DECIZIA OWNER = block mono-an pe
-//     `ancrt` (identic FIX B): coalescem an_referinta ← anExercitiu ⇒ offset 0 ⇒ banda ancrt.
+// SE SCAD ORDONANȚĂRILE ANTERIOARE, NU PLĂȚILE (distincție critică, owner): cumulul =
+// suma ORD-ului CURENT (data.rows noi — evită dubla numărare) PLUS suma ORDONANȚATĂ a
+// ciclurilor arhivate (alop_ord_cicluri → JOIN ord_id → SUM(formulare_ord.rows.suma_ordonantata_plata),
+// fiindcă ciclul NU stochează direct suma ordonanțată), FILTRATE pe anul de exercițiu.
 //
-// AN DE EXERCIȚIU: `EXTRACT(YEAR FROM NOW())` (fără setting per-org în iterația 1 — documentat).
-//
-// CUMUL PER AN DE EXERCIȚIU: o ordonanțare făcută în 2026 consumă bugetul 2026, nu pe cel
-// din 2027. Suma ORD-ului CURENT (data.rows noi — evită dubla numărare la re-completare)
-// PLUS plățile arhivate ale ciclurilor (alop_ord_cicluri.plata_suma_efectiva) ale ALOP-ului
-// legat de același DF, FILTRATE pe anul de exercițiu: `an_exercitiu` (mig. 086) cu fallback
-// derivat din `plata_data` apoi `created_at` pentru ciclurile istorice fără valoare populată.
+// AN DE EXERCIȚIU: `EXTRACT(YEAR FROM NOW())`. CUMUL PER AN: o ordonanțare făcută în 2026
+// consumă bugetul 2026, nu pe cel din 2027 — `an_exercitiu` (mig. 086) cu fallback derivat
+// din `plata_data` apoi `created_at` pentru ciclurile istorice.
 //
 // ── helper PARITATE (read-only) — context de buget pentru un DF legat ────────────
 // SURSĂ UNICĂ de adevăr pentru plafonul ORD: o folosesc ȘI validateOrdBugetAnCurent
 // (decizia hard la finalizare/submit) ȘI rutele GET care alimentează atenționarea inline
-// din UI (P1 + P2). Astfel verdictul inline reproduce EXACT verdictul backend-ului —
-// frontend-ul nu replică geometria benzilor (`bandaPentruOffset`), primește deja banda
-// rezolvată ca un singur număr `bugetAnCurent` + `cicluriArhivate` per an de exercițiu.
+// din UI (P1 + P2). Frontend-ul primește plafonul rezolvat ca `bugetAnCurent` (col.10) +
+// `cicluriArhivate` (ordonanțat arhivat) per an de exercițiu.
 //
 // Întoarce `{ anExercitiu, bugetAnCurent, cicluriArhivate }`, sau `null` dacă nu există
 // `dfId` ori DF-ul nu există (nimic de plafonat).
@@ -232,12 +230,17 @@ export async function computeOrdBudgetContext({ dfId, orgId }) {
   const anExercitiu = new Date().getFullYear();
   const { rows } = await pool.query(
     `SELECT
-       df.an_referinta,
-       df.rows_plati,
+       df.rows_ctrl,
        COALESCE((
-         SELECT SUM(c.plata_suma_efectiva)
+         SELECT SUM(co.s)
          FROM alop_ord_cicluri c
          JOIN alop_instances a ON a.id = c.alop_id
+         CROSS JOIN LATERAL (
+           SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0) AS s
+           FROM formulare_ord fo
+           LEFT JOIN jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r ON true
+           WHERE fo.id = c.ord_id
+         ) co
          WHERE a.df_id = df.id AND a.org_id = $2 AND a.cancelled_at IS NULL
            AND COALESCE(
                  c.an_exercitiu,
@@ -251,9 +254,7 @@ export async function computeOrdBudgetContext({ dfId, orgId }) {
   );
   if (!rows.length) return null; // DF inexistent — nimic de verificat
 
-  // an_referinta NULL → coalesce la anExercitiu ⇒ offset 0 ⇒ banda `ancrt` (block mono-an, FIX B).
-  const anRef = rows[0].an_referinta == null ? anExercitiu : rows[0].an_referinta;
-  const bugetAnCurent = bugetPentruAnul(rows[0].rows_plati, anRef, anExercitiu) || 0;
+  const bugetAnCurent = crediteBugetareAnCurent(rows[0].rows_ctrl) || 0;
   const cicluriArhivate = parseFloat(rows[0].cicluri_arhivate || 0);
   return { anExercitiu, bugetAnCurent, cicluriArhivate };
 }
@@ -277,7 +278,7 @@ async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
   if (ordonantatCumulat > bugetAnCurent + 0.001) {
     return { status: 422, body: {
       error: 'buget_an_curent_depasit',
-      message: `Suma ordonanțată în anul de exercițiu ${anExercitiu} (${ordonantatCumulat.toFixed(2)} RON) depășește bugetul estimat al anului ${anExercitiu} (${bugetAnCurent.toFixed(2)} RON).`,
+      message: `Suma ordonanțată în anul de exercițiu ${anExercitiu} (${ordonantatCumulat.toFixed(2)} RON) depășește creditele bugetare ale anului ${anExercitiu} (${bugetAnCurent.toFixed(2)} RON).`,
       anExercitiu,
       bugetAnCurent,
       ordonantat: ordonantatCumulat,

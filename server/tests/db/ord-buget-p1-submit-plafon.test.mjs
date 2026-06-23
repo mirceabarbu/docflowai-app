@@ -4,9 +4,8 @@
  * `receptii` (col.2) e completată de P2, deci la P1 receptii=0 ar face c5 fals negativ și ar
  * bloca trimiterea. col.5 rămâne STRICT la P2 (garda din completeFormular, neschimbată).
  *
- * Caracterizare a SCHIMBĂRII intenționate: înainte, P1 submit reușea chiar și peste buget.
- * Acum P1 submit peste buget → 422. Garda P2 NU se schimbă (vezi
- * ord-buget-an-curent-plafon.test.mjs — rămâne verde, col.5 + buget).
+ * Fix 12 (v3.9.582): plafonul = CREDITE BUGETARE col.10 (rows_ctrl.sum_rezv_crdt_bug_act),
+ * minus suma ORDONANȚATĂ a ciclurilor arhivate (JOIN ord_id), per an de exercițiu.
  *
  * Submit folosește rândurile DEJA salvate (doc.rows, autosave), NU body — de aceea seedOrd
  * primește `rows`.
@@ -22,8 +21,9 @@ import { hasTestDb, migrate, truncateAll, pool,
 import { buildApp } from './helpers/app.mjs';
 
 const d = describe.skipIf(!hasTestDb());
+const CUR = new Date().getFullYear();
 
-d('POST /api/formulare-ord/:id/submit — plafon buget an curent la P1 (Varianta A)', () => {
+d('POST /api/formulare-ord/:id/submit — plafon credite bugetare col.10 la P1 (Varianta A)', () => {
   let app;
   beforeAll(migrate);
   // userId 1 = P1 (creator/submitter), userId 2 = P2 (assigned).
@@ -40,11 +40,19 @@ d('POST /api/formulare-ord/:id/submit — plafon buget an curent la P1 (Varianta
     return seedDf({
       orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: 'DF-P1-1',
       rowsVal: [{ valt_actualiz: total }],
-      rowsPlati: [{ plati_estim_ancrt: budget }],
+      rowsPlati: [{ plati_estim_ancrt: '0' }],
+      rowsCtrl: [{ sum_rezv_crdt_bug_act: budget }],
     });
   }
+  async function addCicluOrdonantat(alopId, dfId, ordonantat, an = CUR, nr = 1) {
+    const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', dfId,
+      nrOrd: `ORD-CIC-${nr}`, rows: [{ suma_ordonantata_plata: String(ordonantat) }] });
+    await pool.query(
+      `INSERT INTO alop_ord_cicluri (alop_id, org_id, ciclu_nr, ord_id, an_exercitiu, status)
+       VALUES ($1, 1, $2, $3, $4, 'completed')`, [alopId, nr, ordId, an]);
+  }
 
-  it('suma ordonanțată ≤ buget an curent → 200 pending_p2', async () => {
+  it('suma ordonanțată ≤ col.10 → 200 pending_p2', async () => {
     const dfId = await seedDfBudget('29000', '15000000');
     const rows = [{ receptii: '29000', plati_anterioare: '0', suma_ordonantata_plata: '29000' }]; // = buget
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'draft', dfId, rows });
@@ -53,9 +61,9 @@ d('POST /api/formulare-ord/:id/submit — plafon buget an curent la P1 (Varianta
     expect((await getOrd(ordId)).status).toBe('pending_p2');
   });
 
-  it('suma ordonanțată > buget an curent → 422 buget_an_curent_depasit (status rămâne draft)', async () => {
+  it('suma ordonanțată > col.10 → 422 buget_an_curent_depasit (status rămâne draft)', async () => {
     const dfId = await seedDfBudget('29000', '15000000');
-    // c5 = 100000 - 0 - 30000 = 70000 ≥ 0 (col.5 trece) DAR 30000 > 29000 buget an curent.
+    // c5 = 100000 - 0 - 30000 = 70000 ≥ 0 (col.5 trece) DAR 30000 > 29000 col.10.
     const rows = [{ receptii: '100000', plati_anterioare: '0', suma_ordonantata_plata: '30000' }];
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'draft', dfId, rows });
     const res = await request(app).post(`/api/formulare-ord/${ordId}/submit`).set('Cookie', p1()).send({ assigned_to: 2 });
@@ -67,8 +75,6 @@ d('POST /api/formulare-ord/:id/submit — plafon buget an curent la P1 (Varianta
   });
 
   it('col.5 NU se verifică la P1: c5 negativ dar buget OK → 200 pending_p2', async () => {
-    // Decizie owner: la P1 se validează DOAR plafonul de buget, NU col.5 — `receptii` (col.2)
-    // e completată de P2, deci la P1 receptii=0 ar face c5 fals negativ și ar bloca trimiterea.
     const dfId = await seedDfBudget('29000', '15000000');
     // c5 = 100 - 0 - 200 = -100 (col.5 ar pica la P2) DAR 200 ≤ 29000 buget. La P1 → trece.
     const rows = [{ receptii: '100', plati_anterioare: '0', suma_ordonantata_plata: '200' }];
@@ -79,8 +85,6 @@ d('POST /api/formulare-ord/:id/submit — plafon buget an curent la P1 (Varianta
   });
 
   it('caz realist P1: receptii=0 (le pune P2) + sumă ≤ buget → 200 (col.5 NU blochează)', async () => {
-    // Fără excepția de col.5 la P1, acest caz tipic ar pica fals: c5 = 0 − 0 − 5000 = −5000.
-    // Cu garda doar-buget, 5000 ≤ 29000 → trece, cum trebuie.
     const dfId = await seedDfBudget('29000', '15000000');
     const rows = [{ receptii: '0', plati_anterioare: '0', suma_ordonantata_plata: '5000' }];
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'draft', dfId, rows });
@@ -89,13 +93,10 @@ d('POST /api/formulare-ord/:id/submit — plafon buget an curent la P1 (Varianta
     expect((await getOrd(ordId)).status).toBe('pending_p2');
   });
 
-  it('cumul peste cicluri arhivate (fără dublă numărare) → 422 la P1', async () => {
+  it('cumul peste cicluri arhivate (suma ORDONANȚATĂ) → 422 la P1', async () => {
     const dfId = await seedDfBudget('29000', '15000000');
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId });
-    await pool.query(
-      `INSERT INTO alop_ord_cicluri (alop_id, org_id, ciclu_nr, plata_suma_efectiva, status)
-       VALUES ($1, 1, 1, 20000, 'completed')`, [alopId]
-    );
+    await addCicluOrdonantat(alopId, dfId, 20000);
     // ORD nou de 10000 → cumul 20000 + 10000 = 30000 > 29000 → 422.
     const rows = [{ receptii: '100000', plati_anterioare: '0', suma_ordonantata_plata: '10000' }];
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'draft', dfId, rows });
@@ -114,13 +115,10 @@ d('POST /api/formulare-ord/:id/submit — plafon buget an curent la P1 (Varianta
   });
 
   // ── Paritate inline↔backend: valorile expuse reproduc verdictul gărzii ──────────
-  it('GET /:id expune buget_an_curent + cicluri_arhivate (rezolvate, paritate cu garda)', async () => {
+  it('GET /:id expune buget_an_curent (col.10) + cicluri_arhivate (ordonanțat), paritate cu garda', async () => {
     const dfId = await seedDfBudget('29000', '15000000');
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId });
-    await pool.query(
-      `INSERT INTO alop_ord_cicluri (alop_id, org_id, ciclu_nr, plata_suma_efectiva, status)
-       VALUES ($1, 1, 1, 20000, 'completed')`, [alopId]
-    );
+    await addCicluOrdonantat(alopId, dfId, 20000);
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'draft', dfId, rows: [] });
     const res = await request(app).get(`/api/formulare-ord/${ordId}`).set('Cookie', p1());
     expect(res.status).toBe(200);
