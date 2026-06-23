@@ -657,6 +657,23 @@ router.delete('/flows/:flowId', async (req, res) => {
     await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1', [flowId]).catch(() => {});
     await pool.query('DELETE FROM flow_attachments WHERE flow_id=$1', [flowId]).catch(() => {});
     await pool.query('DELETE FROM notifications WHERE flow_id=$1', [flowId]).catch(() => {});
+    // Fix D: curăță pointerii formular/ALOP simetric cu cancel (fix 9) — fluxul șters nu mai
+    // e activ, deci DF/ORD nu trebuie să rămână blocat „pe flux de semnare". flow_active are
+    // deja garda f.deleted_at IS NULL (display robust), dar igienizăm și datele (pointer mort).
+    // DF: dacă era 'transmis_flux', revine la 'completed' (mirror cancel din lifecycle.mjs) —
+    // userul poate relansa același DF. ORD nu trece prin 'transmis_flux' → fără reset status.
+    await pool.query(
+      `UPDATE formulare_df
+         SET status = CASE WHEN status='transmis_flux' THEN 'completed' ELSE status END,
+             flow_id = NULL, updated_at = NOW()
+       WHERE flow_id=$1`, [flowId]).catch(() => {});
+    await pool.query(`UPDATE formulare_ord SET flow_id=NULL, updated_at=NOW() WHERE flow_id=$1`, [flowId]).catch(() => {});
+    await pool.query(
+      `UPDATE alop_instances SET df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
+       WHERE df_flow_id=$1 AND cancelled_at IS NULL`, [flowId]).catch(() => {});
+    await pool.query(
+      `UPDATE alop_instances SET ord_flow_id=NULL, ord_completed_at=NULL, updated_at=NOW()
+       WHERE ord_flow_id=$1 AND cancelled_at IS NULL`, [flowId]).catch(() => {});
     logger.info(`🗑 Flow ${flowId} marcat ca sters (soft) de ${actor.email}`);
     return res.json({ ok: true, flowId, deletedBy: actor.email, deletedAt: now });
   } catch(e) { logger.error({ err: e }, 'DELETE /flows error:'); return res.status(500).json({ error: 'server_error' }); }

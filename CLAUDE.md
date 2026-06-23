@@ -647,6 +647,15 @@ rămâne ca referință. Frontend `public/js/formular/trasabilitate.js` citește
 
 ---
 
+**Soft-delete flux nu mai blochează DF/ORD „pe flux" (din v3.9.581, fix D):** `flow_active`/`aprobat`
+(`df.mjs` + `ord.mjs`) exclud fluxurile soft-șterse (`f.deleted_at IS NULL`) — un flux șters nu mai e
+nici activ, nici sursă de „aprobat". În plus, `DELETE /flows/:flowId` (`crud.mjs`) curăță pointerii
+simetric cu cancel (fix 9): `formulare_{df,ord}.flow_id=NULL` + `alop_instances.{df,ord}_flow_id=NULL`
+(`cancelled_at IS NULL`); DF `transmis_flux`→`completed` (userul poate relansa), ORD fără reset status
+(nu trece prin `transmis_flux`). Test: `server/tests/db/soft-delete-flow-pointer.test.mjs`.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:

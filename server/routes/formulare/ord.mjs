@@ -131,9 +131,10 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         fd.nr_unic_inreg AS df_nr, fd.rows_ctrl AS df_rows_ctrl,
-        CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+        CASE WHEN fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
              THEN true ELSE false END AS aprobat,
         CASE WHEN fo.flow_id IS NOT NULL
+              AND f.deleted_at IS NULL              -- fluxul șters (soft-delete) nu mai e activ (fix D)
               AND (f.data->>'completed') IS DISTINCT FROM 'true'
               AND (f.data->>'status') IS DISTINCT FROM 'cancelled'
              THEN true ELSE false END AS flow_active,
