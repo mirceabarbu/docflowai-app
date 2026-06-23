@@ -9,6 +9,7 @@ import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { convertToPdf, ACCEPTED_EXTENSIONS } from '../../utils/convertToPdf.mjs';
 import { getActiveSigner } from '../../services/user-leave.mjs';
 import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
+import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-attachments.mjs';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
@@ -388,23 +389,35 @@ const createFlow = async (req, res) => {
     if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
     // PASUL 3: Leagă flow_id de formulare_df / formulare_ord dacă meta.dfId / ordId e prezent
+    // fix 11 (B+): `await` pe pre-setarea flow_id (înainte: fire-and-forget cu .catch).
+    // Cursa: dacă UPDATE-ul nu comitea înainte ca frontend-ul să cheme link-flow,
+    // `linkFlowFormular` citea flow_id-ul VECHI → guard fix 10 vedea un flux DIFERIT activ
+    // → 409 → copierea atașamentelor nu rula. Cu await, flow_id e comis înainte ca POST /flows
+    // să răspundă → linkFlowFormular citește mereu valoarea corectă → guard se sare → copiere rulează.
     if (body.meta?.dfId && pool) {
-      pool.query(
+      await pool.query(
         `UPDATE formulare_df SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
         [flowId, body.meta.dfId, orgId]
       ).catch(e => logger.warn({ err: e }, 'formulare_df link flow_id non-fatal'));
     }
     if (body.meta?.ordId && pool) {
-      pool.query(
+      await pool.query(
         `UPDATE formulare_ord SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
         [flowId, body.meta.ordId, orgId]
       ).catch(e => logger.warn({ err: e }, 'formulare_ord link flow_id non-fatal'));
     }
-    // fix 7: copierea atașamentelor formular→flux NU mai trăiește aici — `meta.dfId/ordId`
-    // sunt efemere și lipsesc pe calea de link dedicat (linkFlowFormular / link-{df,ord}-flow),
-    // deci copierea nu rula niciodată pe ALOP. Sursa de adevăr e acum `linkFlowFormular`
-    // (formular-shared.mjs), care rulează pe legătura DURABILĂ `formulare_X.flow_id`. Bannerul
-    // citește `formAttachmentsCopied` din răspunsul rutei de link, nu de aici.
+    // fix 11 (B+): copiere atașamente formular→flux ca PLASĂ, idempotentă (INSERT...SELECT — DUPLICĂ,
+    // nu mută; NOT EXISTS împiedică dublarea față de linkFlowFormular). Readusă aici fiindcă meta.dfId/
+    // ordId CHIAR ajunge (de-aia s-a setat flow_id mai sus). Sursa formulare_atasamente rămâne neatinsă.
+    // linkFlowFormular (formular-shared.mjs) RĂMÂNE a doua cale, idempotentă (redundanță intenționată).
+    if (body.meta?.dfId && pool) {
+      try { await copyFormularAttachmentsToFlow(pool, { flowId, formType: 'df', formId: body.meta.dfId }); }
+      catch (e) { logger.warn({ err: e }, 'copy df attachments net non-fatal'); }
+    }
+    if (body.meta?.ordId && pool) {
+      try { await copyFormularAttachmentsToFlow(pool, { flowId, formType: 'ord', formId: body.meta.ordId }); }
+      catch (e) { logger.warn({ err: e }, 'copy ord attachments net non-fatal'); }
+    }
     // PASUL 4: Auto link-df-flow / ord-flow pe alop_instances
     if (body.meta?.dfId && pool) {
       await pool.query(

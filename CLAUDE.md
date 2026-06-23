@@ -670,6 +670,18 @@ fluxul curent — pasul critic): `server/tests/db/formular-link-flow-attachments
 
 ---
 
+**`await` pe pre-setarea `flow_id` + copiere atașamente ca PLASĂ în POST /flows (din v3.9.583, fix 11):**
+`crud.mjs` (POST /flows) `await`-uiește pre-setarea `formulare_{df,ord}.flow_id` (înainte: fire-and-forget
+`.catch`) — elimină cursa în care `linkFlowFormular` citea `flow_id`-ul VECHI și 409-uia (`already_on_flow`)
+înainte de copiere. În plus, copierea atașamentelor formular→flux (`copyFormularAttachmentsToFlow`,
+INSERT...SELECT — DUPLICĂ, nu mută; idempotentă prin `NOT EXISTS`) rulează și în POST /flows ca PLASĂ,
+unde `meta.dfId/ordId` CHIAR ajunge (de-aia se setează `flow_id`). `linkFlowFormular` (`formular-shared.mjs`)
+RĂMÂNE a doua cale idempotentă (redundanță intenționată). Sursa `formulare_atasamente` rămâne NEATINSĂ după
+copiere/aprobare/ștergere flux (copierea duplică bytes-ul; nicio cale de flux nu o atinge). Teste:
+`server/tests/db/formular-flow-attachments-source-protection.test.mjs`.
+
+---
+
 **Trasabilitate — cardul ORD afișează numărul propriu al ORD (din v3.9.580):** modalul „Trasabilitate"
 afișează pe fiecare card ORD `nr_ordonant_pl` (numărul propriu al ordonanțării), NU `nr_unic_inreg`
 (numărul DF) — altfel toate ciclurile arătau același număr (al DF-ului comun). Backend-ul
