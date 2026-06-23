@@ -210,6 +210,8 @@
             <div class="col-12">
               <div style="border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 16px;background:rgba(255,255,255,.03);margin-bottom:4px;">
                 <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:8px;display:inline-flex;align-items:center;gap:6px;"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.518#ico-paperclip"/></svg>Documente suport <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional, max 5 fișiere × 10 MB (PDF, ZIP, RAR)</span></div>
+                <!-- E (v3.9.584): atașamentele formularului care VOR FI preluate la lansare (read-only, preview) -->
+                <div id="formAttachPreview" style="display:none;margin-bottom:10px;"></div>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                   <label id="attachPickerLabel" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.35);border-radius:8px;cursor:pointer;font-size:.83rem;color:#b39dff;font-weight:600;">
                     <svg class="df-ico df-ico-sm" viewBox="0 0 24 24" style="margin-right:4px;"><use href="/icons.svg?v=3.9.518#ico-plus"/></svg>Adaugă fișier
@@ -363,7 +365,8 @@
   </div>
 </div>
 
-    <script src="/js/semdoc-initiator/main.js?v=3.9.576" defer></script>
+    <script src="/js/shared/att-preview.js?v=3.9.584" defer></script>
+    <script src="/js/semdoc-initiator/main.js?v=3.9.584" defer></script>
   <script src="/notif-widget.js?v=3.9.518"></script>
 
 <!-- Modal incarcare document revizuit -->

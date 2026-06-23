@@ -1903,6 +1903,73 @@ async function signFromFluxuri(flowId) {
         }
       }
 
+      // ── E (v3.9.584): Preview atașamente formular care VOR FI preluate la lansare ─
+      // Read-only & pur informativ. Copierea reală o face backend-ul la lansare
+      // (fix 11, în POST /flows). Aici DOAR afișăm, separat de widget-ul manual.
+      // Reutilizează GET /api/formulare-atasamente/:type/:id + modalul openAttPreview (fix 5).
+      const _formAttById = {};
+      (async function _renderFormAttachments() {
+        const box = $('formAttachPreview');
+        if (!box) return;
+        const _up = new URLSearchParams(location.search);
+        const _docId = _up.get('prefill_doc_id')   || sessionStorage.getItem('docflow_prefill_doc_id');
+        const _dtype = _up.get('prefill_doc_type') || sessionStorage.getItem('docflow_prefill_doc_type');
+        if (!_docId || !_dtype) return; // fără prefill → no-op
+        const ft = _dtype === 'ordnt' ? 'ord' : (_dtype === 'notafd' ? 'df' : null);
+        if (!ft) return;
+        try {
+          // Copierea la lansare e slot-agnostică → adunăm ambele sloturi (dedupe pe id).
+          const slots = await Promise.all([1, 2].map(async (slot) => {
+            try {
+              const r = await _apiFetch(`/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}?slot=${slot}`, { method: 'GET' });
+              if (!r.ok) return [];
+              const j = await r.json().catch(() => ({}));
+              return Array.isArray(j.atasamente) ? j.atasamente : [];
+            } catch { return []; }
+          }));
+          const seen = new Set();
+          const items = [];
+          for (const arr of slots) for (const a of arr) { if (a && a.id && !seen.has(a.id)) { seen.add(a.id); items.push(a); _formAttById[a.id] = a; } }
+          if (!items.length) { box.style.display = 'none'; return; } // degradare grațioasă
+
+          const _esc = (window.df && window.df.esc) ? window.df.esc : (s => String(s == null ? '' : s));
+          box.innerHTML =
+            '<div style="font-weight:700;font-size:.82rem;color:var(--sub);margin-bottom:6px;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+              '<svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.518#ico-paperclip"/></svg>' +
+              'Vor fi preluate din formular <span style="font-weight:400;color:var(--muted);">— ' + items.length + ' fișier(e), automat la lansare</span>' +
+            '</div>' +
+            '<div style="display:flex;flex-direction:column;gap:4px;">' +
+            items.map(a => {
+              const url = `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(a.id)}`;
+              const kb = a.size_bytes ? `${(a.size_bytes / 1024).toFixed(0)} KB` : '';
+              return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(124,92,255,.07);border:1px solid rgba(124,92,255,.18);border-radius:6px;font-size:.8rem;">
+                <span style="color:#b39dff;">📄</span>
+                <span style="flex:1;min-width:0;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(a.filename)}</span>
+                <span style="color:var(--muted);white-space:nowrap;">${kb}</span>
+                <button type="button" class="df-action-btn sm" data-att-action="preview" data-att-id="${_esc(a.id)}" title="Previzualizează">Previzualizează</button>
+                <a class="df-action-btn sm" href="${url}" target="_blank" rel="noopener" download>Descarcă</a>
+              </div>`;
+            }).join('') +
+            '</div>';
+          box.style.display = 'block';
+
+          // Preview prin delegare (CSP-safe, fără onclick inline cu date utilizator).
+          box.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('[data-att-action="preview"]');
+            if (!btn) return;
+            ev.preventDefault();
+            const att = _formAttById[btn.getAttribute('data-att-id')];
+            if (!att || typeof window.openAttPreview !== 'function') return;
+            const url = `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(att.id)}`;
+            window.openAttPreview(url, att.filename, att.mime_type);
+          });
+        } catch (e) {
+          // Read-only & opțional: nu bloca lansarea, nu arăta eroare intruzivă.
+          if (box) box.style.display = 'none';
+          console.warn('Preview atașamente formular eșuat (non-blocant):', e);
+        }
+      })();
+
       // ── Stampila flux pe ultima pagina PDF ─────────────────────────────────
       // Footer aplicat de server la finalizare, nu la creare flux
 

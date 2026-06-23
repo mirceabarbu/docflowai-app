@@ -682,6 +682,17 @@ copiere/aprobare/ștergere flux (copierea duplică bytes-ul; nicio cale de flux 
 
 ---
 
+**Compose afișează atașamentele formularului care vor fi preluate (din v3.9.584, enhancement E):** la
+compose (`semdoc-initiator`), când există prefill DF/ORD (`prefill_doc_id`+`prefill_doc_type`), secțiunea
+„Documente suport" afișează DEASUPRA widget-ului manual o listă READ-ONLY „📎 Vor fi preluate din formular"
+(`#formAttachPreview` în `public/js/semdoc-initiator/main.js`), prin `GET /api/formulare-atasamente/:type/:id`
+(ambele sloturi, dedupe) + modalul `openAttPreview` (fix 5, `att-preview.js`). PUR informativ: NU se trimite
+în payload-ul POST /flows — copierea reală o face backend-ul la lansare (fix 11). Read-only (doar
+Previzualizează/Descarcă, fără ștergere — sursa `formulare_atasamente` e sacră); fetch eșuat = degradare
+grațioasă (lista dispare, lansarea nu se blochează).
+
+---
+
 **Trasabilitate — cardul ORD afișează numărul propriu al ORD (din v3.9.580):** modalul „Trasabilitate"
 afișează pe fiecare card ORD `nr_ordonant_pl` (numărul propriu al ordonanțării), NU `nr_unic_inreg`
 (numărul DF) — altfel toate ciclurile arătau același număr (al DF-ului comun). Backend-ul
