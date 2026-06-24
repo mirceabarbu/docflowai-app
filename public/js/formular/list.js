@@ -291,8 +291,9 @@ function _updateBackBtn(ft){
     btn.textContent='← Înapoi la ALOP';
     btn.onclick=()=>{window._alopContext=null;sessionStorage.removeItem('_alopContext');showListSection('alop');};
   }else{
+    const _listTab=ft==='notafd'?'df':'ord';
     btn.textContent=ft==='notafd'?'← Înapoi la lista DF':'← Înapoi la lista ORD';
-    btn.onclick=()=>showListSection();
+    btn.onclick=()=>showListSection(_listTab);
   }
 }
 function showFormSection(ft){
