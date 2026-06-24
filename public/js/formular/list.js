@@ -479,7 +479,7 @@ function _renderLstTable(rows,type){
     const istoricBadgeLst=(type==='df'&&row.has_newer_revision===true)
       ?`<span style="vertical-align:middle;margin-left:4px;padding:1px 7px;border-radius:8px;font-size:.65rem;font-weight:600;background:rgba(148,163,184,.15);color:#94a3b8;border:1px solid rgba(148,163,184,.25);text-transform:uppercase;letter-spacing:.04em" title="Există o revizie mai recentă pentru acest DF">istoric</span>`
       :'';
-    return`<tr>
+    return`<tr onclick="openDocFromList('${type}','${safeId}')" style="cursor:pointer">
       <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}</a><button type="button" class="trasab-inline-btn" onclick="event.stopPropagation();openTrasabilitate('${type}','${safeId}');return false" title="Vezi trasabilitate (lanț DF↔ALOP↔ORD)">🔗</button>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>
       <td>${esc(row.initiator||'—')}</td>
@@ -494,8 +494,8 @@ function _renderLstTable(rows,type){
         <div>${_fmtDate(row.updated_at)}</div>
         ${row.updated_by_nume ? `<div style="font-size:.75rem;color:var(--df-text-3);margin-top:2px">${esc(row.updated_by_nume)}</div>` : ''}
       </td>
-      <td style="display:flex;gap:4px;flex-wrap:wrap">
-        <button class="df-action-btn sm" onclick="openDocFromList('${type}','${safeId}')">Deschide</button>
+      <td onclick="event.stopPropagation()" style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="df-action-btn sm" style="display:none" onclick="openDocFromList('${type}','${safeId}')">Deschide</button>
         ${auditBtn}
         ${cancelBtn}
       </td>

@@ -212,7 +212,7 @@ async function loadAlop(){
         </td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${dt}</td>
         <td onclick="event.stopPropagation()">
-          <button class="df-action-btn sm" onclick="openAlop('${esc(a.id)}')">Deschide</button>
+          <button class="df-action-btn sm" style="display:none" onclick="openAlop('${esc(a.id)}')">Deschide</button>
           ${a.has_opme_lines?`<button class="df-action-btn sm" style="margin-left:4px" onclick="openOpmeLinesForAlop('${esc(a.id)}')" title="Vezi OP-uri OPME atașate"><svg class="df-ico"><use href="/icons.svg?v=3.9.475#ico-landmark"/></svg></button>`:''}
           ${canCancel?`<button class="df-action-btn danger sm" style="margin-left:4px" onclick="cancelAlop('${esc(a.id)}')" title="Șterge ALOP">🗑</button>`:''}
         </td>
