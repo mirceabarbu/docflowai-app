@@ -582,6 +582,20 @@ e DOAR pentru card; `crediteBugetareAnCurent` e DOAR pentru plafon. Teste:
 
 ---
 
+## SecB DF — a doua sumă CFP „credite bugetare" persistată (din v3.9.585)
+
+`sum_fara_inreg_ctrl_crd_bug` (credite bugetare) era câmp-fantomă: colectat de frontend, dar fără coloană
+în DB, fără intrare în `DF_P2_FIELDS` → `pick(body, p2Fields)` o arunca, suma se pierdea la ORICE reload
+(vizibil la DF→P1). PDF-ul (`formulare.mjs`) o citea deja ca `sumCb` în fraza CFP combinată, dar primea
+mereu gol → `_______`. Fix: migrarea **087** (`ALTER formulare_df ADD COLUMN sum_fara_inreg_ctrl_crd_bug
+TEXT`) + adăugat în `DF_P2_FIELDS`. Decizie owner — **o singură bifă** (`ckbx_fara_inreg_ctrl_ang`,
+gate-ul pe toată fraza ca în PDF): a doua bifă `ckbx_fara_inreg_ctrl_crd_bug`/`n-ck-fararezvcrbug` a fost
+retrasă din UI și colectare; ambele input-uri de sumă (`n-sumfara` + `n-sumfararezvcrbug`) trăiesc acum
+sub o singură frază identică cu PDF-ul. PDF-ul rămâne NEATINS. Test:
+`server/tests/db/caracterizare-complete-df-ord.test.mjs` (round-trip ambele sume).
+
+---
+
 ## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)
 
 Logica „ce acțiuni/butoane sunt disponibile pe un document" se calculează **server-side**, ca să nu
