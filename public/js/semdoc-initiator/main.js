@@ -1170,12 +1170,24 @@
             const row = document.getElementById(`attRow_${f.flowId}`);
             if (!row || !atts.length) return;
             const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
+            const isPreviewable = t => t === 'application/pdf' || (t || '').indexOf('image/') === 0;
             row.style.display = '';
             row.innerHTML = `<div style="font-size:.78rem;color:var(--muted);font-weight:600;margin-bottom:5px;">📎 Documente suport</div>` +
-              atts.map(a => `<a href="/flows/${encodeURIComponent(f.flowId)}/attachments/${a.id}" download="${a.filename.replace(/"/g,'')}"
-                style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:rgba(124,92,255,.1);border-radius:6px;text-decoration:none;color:#b39dff;font-size:.78rem;margin-right:6px;margin-bottom:4px;border:1px solid rgba(124,92,255,.2);">
-                ${iconByMime(a.mimeType)} ${a.filename} <span style="color:var(--muted)">${(a.sizeBytes/1024).toFixed(0)}KB</span> ⬇</a>`
-              ).join('');
+              atts.map(a => {
+                const dlUrl = `/flows/${encodeURIComponent(f.flowId)}/attachments/${a.id}`;
+                const previewBtn = isPreviewable(a.mimeType)
+                  ? `<button type="button" data-att-action="preview" data-preview-url="${esc(dlUrl)}?preview=1" data-filename="${esc(a.filename)}" data-mime="${esc(a.mimeType)}" style="background:none;border:none;padding:0;color:#b39dff;font-size:.78rem;font-weight:600;text-decoration:underline;cursor:pointer;">Previzualizează</button> ·`
+                  : '';
+                return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(124,92,255,.1);border-radius:6px;font-size:.78rem;margin-right:6px;margin-bottom:4px;border:1px solid rgba(124,92,255,.2);">
+                ${iconByMime(a.mimeType)} ${esc(a.filename)} <span style="color:var(--muted)">${(a.sizeBytes/1024).toFixed(0)}KB</span> ${previewBtn}<a href="${dlUrl}" download="${a.filename.replace(/"/g,'')}" style="color:#b39dff;text-decoration:none;">⬇</a></span>`;
+              }).join('');
+            row.addEventListener('click', (ev) => {
+              const btn = ev.target.closest('[data-att-action="preview"]');
+              if (!btn) return;
+              ev.preventDefault();
+              if (typeof window.openAttPreview !== 'function') return;
+              window.openAttPreview(btn.getAttribute('data-preview-url'), btn.getAttribute('data-filename'), btn.getAttribute('data-mime'));
+            });
           }).catch(() => {});
         });
       }
