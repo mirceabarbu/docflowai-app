@@ -9,6 +9,7 @@ import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { convertToPdf, ACCEPTED_EXTENSIONS } from '../../utils/convertToPdf.mjs';
 import { getActiveSigner } from '../../services/user-leave.mjs';
 import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
+import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-attachments.mjs';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
@@ -388,17 +389,34 @@ const createFlow = async (req, res) => {
     if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
     await saveFlow(flowId, data);
     // PASUL 3: Leagă flow_id de formulare_df / formulare_ord dacă meta.dfId / ordId e prezent
+    // fix 11 (B+): `await` pe pre-setarea flow_id (înainte: fire-and-forget cu .catch).
+    // Cursa: dacă UPDATE-ul nu comitea înainte ca frontend-ul să cheme link-flow,
+    // `linkFlowFormular` citea flow_id-ul VECHI → guard fix 10 vedea un flux DIFERIT activ
+    // → 409 → copierea atașamentelor nu rula. Cu await, flow_id e comis înainte ca POST /flows
+    // să răspundă → linkFlowFormular citește mereu valoarea corectă → guard se sare → copiere rulează.
     if (body.meta?.dfId && pool) {
-      pool.query(
+      await pool.query(
         `UPDATE formulare_df SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
         [flowId, body.meta.dfId, orgId]
       ).catch(e => logger.warn({ err: e }, 'formulare_df link flow_id non-fatal'));
     }
     if (body.meta?.ordId && pool) {
-      pool.query(
+      await pool.query(
         `UPDATE formulare_ord SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
         [flowId, body.meta.ordId, orgId]
       ).catch(e => logger.warn({ err: e }, 'formulare_ord link flow_id non-fatal'));
+    }
+    // fix 11 (B+): copiere atașamente formular→flux ca PLASĂ, idempotentă (INSERT...SELECT — DUPLICĂ,
+    // nu mută; NOT EXISTS împiedică dublarea față de linkFlowFormular). Readusă aici fiindcă meta.dfId/
+    // ordId CHIAR ajunge (de-aia s-a setat flow_id mai sus). Sursa formulare_atasamente rămâne neatinsă.
+    // linkFlowFormular (formular-shared.mjs) RĂMÂNE a doua cale, idempotentă (redundanță intenționată).
+    if (body.meta?.dfId && pool) {
+      try { await copyFormularAttachmentsToFlow(pool, { flowId, formType: 'df', formId: body.meta.dfId }); }
+      catch (e) { logger.warn({ err: e }, 'copy df attachments net non-fatal'); }
+    }
+    if (body.meta?.ordId && pool) {
+      try { await copyFormularAttachmentsToFlow(pool, { flowId, formType: 'ord', formId: body.meta.ordId }); }
+      catch (e) { logger.warn({ err: e }, 'copy ord attachments net non-fatal'); }
     }
     // PASUL 4: Auto link-df-flow / ord-flow pe alop_instances
     if (body.meta?.dfId && pool) {
@@ -652,6 +670,23 @@ router.delete('/flows/:flowId', async (req, res) => {
     await pool.query('DELETE FROM flows_pdfs WHERE flow_id=$1', [flowId]).catch(() => {});
     await pool.query('DELETE FROM flow_attachments WHERE flow_id=$1', [flowId]).catch(() => {});
     await pool.query('DELETE FROM notifications WHERE flow_id=$1', [flowId]).catch(() => {});
+    // Fix D: curăță pointerii formular/ALOP simetric cu cancel (fix 9) — fluxul șters nu mai
+    // e activ, deci DF/ORD nu trebuie să rămână blocat „pe flux de semnare". flow_active are
+    // deja garda f.deleted_at IS NULL (display robust), dar igienizăm și datele (pointer mort).
+    // DF: dacă era 'transmis_flux', revine la 'completed' (mirror cancel din lifecycle.mjs) —
+    // userul poate relansa același DF. ORD nu trece prin 'transmis_flux' → fără reset status.
+    await pool.query(
+      `UPDATE formulare_df
+         SET status = CASE WHEN status='transmis_flux' THEN 'completed' ELSE status END,
+             flow_id = NULL, updated_at = NOW()
+       WHERE flow_id=$1`, [flowId]).catch(() => {});
+    await pool.query(`UPDATE formulare_ord SET flow_id=NULL, updated_at=NOW() WHERE flow_id=$1`, [flowId]).catch(() => {});
+    await pool.query(
+      `UPDATE alop_instances SET df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
+       WHERE df_flow_id=$1 AND cancelled_at IS NULL`, [flowId]).catch(() => {});
+    await pool.query(
+      `UPDATE alop_instances SET ord_flow_id=NULL, ord_completed_at=NULL, updated_at=NOW()
+       WHERE ord_flow_id=$1 AND cancelled_at IS NULL`, [flowId]).catch(() => {});
     logger.info(`🗑 Flow ${flowId} marcat ca sters (soft) de ${actor.email}`);
     return res.json({ ok: true, flowId, deletedBy: actor.email, deletedAt: now });
   } catch(e) { logger.error({ err: e }, 'DELETE /flows error:'); return res.status(500).json({ error: 'server_error' }); }

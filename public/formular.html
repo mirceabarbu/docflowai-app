@@ -7,12 +7,15 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.528">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.528">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.528">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.554">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.571">
   <script src="/js/df-utils.js?v=3.9.528"></script>
   <script src="/js/df-entitlements.js?v=3.9.528"></script>
   <script src="/js/df-shell.js?v=3.9.531"></script>
   <script src="/js/df-user-modals.js?v=3.9.528"></script>
   <script src="/js/df-subtabs.js?v=3.9.528"></script>
+  <!-- v3.9.570: pdf.js — preview inline atașamente DF/ORD (aceeași sursă/versiune ca semdoc-signer.html) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="/js/common/pdfjs-worker.js?v=3.9.518"></script>
   <link rel="stylesheet" href="/mobile.css?v=3.9.528">
 </head>
 <body>
@@ -770,6 +773,9 @@
       </tfoot>
     </table>
     </div>
+    <!-- Atenționare inline buget an exercițiu (P1+P2) — soft, vizuală. Blocajul hard rămâne
+         la finalizare (server). Paritate cu validateOrdBugetAnCurent via valorile din GET. -->
+    <div id="ord-buget-warn" class="secb-buget-warn" style="display:none"></div>
     <div class="cap-lbl">Captură imagine din sistemul de control al angajamentelor bugetare (anexă la ordonanțarea de plată)</div>
     <div class="cap-zone" id="o-czone" ondragover="dov(event,'o-czone')" ondragleave="dlv(event,'o-czone')" ondrop="ddp(event,'o-cimg','o-czone','o-cph')">
       <input type="file" accept="image/*" onchange="fimg(event,'o-cimg','o-cph')"/>
@@ -943,7 +949,7 @@
     <label class="dck" style="margin-top:6px">
       <input type="checkbox" id="n-ck-ramane" onchange="p4toggle('ramane')"/>
       Rămâne în suma de
-      <input id="n-ramana" class="di" type="text" inputmode="decimal" data-money="true" value="0,00" style="width:100px;display:inline;margin:0 4px" disabled/>
+      <input id="n-ramana" class="di" type="text" inputmode="decimal" data-money="true" value="0,00" oninput="upTot()" style="width:100px;display:inline;margin:0 4px" disabled/>
       lei conform fundamentării aprobate într-o revizuire anterioară a prezentului document de fundamentare
     </label>
 
@@ -988,6 +994,10 @@
       </tfoot>
     </table>
     </div>
+
+    <!-- Verificare blocantă (OMF 1140/2025): suma benzilor de plăți (pct.5) trebuie să fie egală
+         cu totalul „Val. totală actualizată" (pct.4). Doar afișare/gate când tabelul e activ. -->
+    <div id="n-p5-check" class="p5-suma-check" aria-live="polite"></div>
 
     <label class="dck" style="margin-top:6px"><input type="checkbox" id="n-ck-anurmatori" onchange="p5toggle()"/>Angajamentele legale se vor emite în contul anului următor</label>
 
@@ -1065,11 +1075,7 @@
       <input type="checkbox" id="n-ck-fararezv"/>
       Nu s-au rezervat în sistemul de control al angajamentelor credite de angajament în cuantum de
       <input id="n-sumfara" class="di" type="text" inputmode="decimal" data-money="true" value="0,00" style="width:160px;display:inline;margin:0 4px;padding:6px 10px;font-size:12px;height:auto"/>
-      lei
-    </label>
-    <label class="dck" style="margin-top:4px">
-      <input type="checkbox" id="n-ck-fararezvcrbug"/>
-      Nu s-au rezervat în sistemul de control al angajamentelor credite bugetare în cuantum de
+      lei, respectiv credite bugetare în cuantum de
       <input id="n-sumfararezvcrbug" class="di" type="text" inputmode="decimal" data-money="true" value="0,00" style="width:160px;display:inline;margin:0 4px;padding:6px 10px;font-size:12px;height:auto"/>
       lei
     </label>
@@ -1300,16 +1306,17 @@
 </div>
 
 <script src="/notif-widget.js?v=3.9.528"></script>
-<script src="/js/formular/core.js?v=3.9.558" defer></script>
+<script src="/js/formular/core.js?v=3.9.585" defer></script>
 <script src="/js/formular/verif.js?v=3.9.528" defer></script>
-<script src="/js/formular/alop.js?v=3.9.558" defer></script>
+<script src="/js/formular/alop.js?v=3.9.582" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.562" defer></script>
 <script src="/js/components/opme-report-drawer.js?v=3.9.562" defer></script>
 <script src="/js/formular/draft.js?v=3.9.528" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.528" defer></script>
-<script src="/js/formular/list.js?v=3.9.554" defer></script>
-<script src="/js/formular/trasabilitate.js?v=3.9.537" defer></script>
-<script src="/js/formular/doc.js?v=3.9.558" defer></script>
+<script src="/js/formular/list.js?v=3.9.569" defer></script>
+<script src="/js/formular/trasabilitate.js?v=3.9.580" defer></script>
+<script src="/js/formular/doc.js?v=3.9.585" defer></script>
+<script src="/js/shared/att-preview.js?v=3.9.574" defer></script>
 <script src="/js/formular/formular.js?v=3.9.528" defer></script>
 <!-- ════════════ TRASABILITATE MODAL ════════════════════════════════════════ -->
 <style>
@@ -1538,6 +1545,26 @@
   </div>
 </div>
 <!-- /TRASABILITATE MODAL -->
+
+<!-- ── Modal Preview atașament (PDF/imagine, read-only, fără descărcare) ──── -->
+<div id="att-preview-modal" class="df-modal-bg">
+  <div class="df-modal" style="max-width:860px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px">
+      <h3 id="att-preview-title" style="margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Previzualizare atașament</h3>
+      <button type="button" class="df-action-btn sm icon-only" onclick="closeAttPreview()" title="Închide">
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.539#ico-x"/></svg>
+      </button>
+    </div>
+    <div id="att-preview-body" style="min-height:160px"></div>
+    <div class="df-modal-footer">
+      <a id="att-preview-download" class="df-action-btn" href="#" target="_blank" download>
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.539#ico-download"/></svg> Descarcă
+      </a>
+      <button type="button" class="df-action-btn primary" onclick="closeAttPreview()">Închide</button>
+    </div>
+  </div>
+</div>
+<!-- /ATT PREVIEW MODAL -->
 
 </body>
 </html>

@@ -1170,12 +1170,24 @@
             const row = document.getElementById(`attRow_${f.flowId}`);
             if (!row || !atts.length) return;
             const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
+            const isPreviewable = t => t === 'application/pdf' || (t || '').indexOf('image/') === 0;
             row.style.display = '';
             row.innerHTML = `<div style="font-size:.78rem;color:var(--muted);font-weight:600;margin-bottom:5px;">📎 Documente suport</div>` +
-              atts.map(a => `<a href="/flows/${encodeURIComponent(f.flowId)}/attachments/${a.id}" download="${a.filename.replace(/"/g,'')}"
-                style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:rgba(124,92,255,.1);border-radius:6px;text-decoration:none;color:#b39dff;font-size:.78rem;margin-right:6px;margin-bottom:4px;border:1px solid rgba(124,92,255,.2);">
-                ${iconByMime(a.mimeType)} ${a.filename} <span style="color:var(--muted)">${(a.sizeBytes/1024).toFixed(0)}KB</span> ⬇</a>`
-              ).join('');
+              atts.map(a => {
+                const dlUrl = `/flows/${encodeURIComponent(f.flowId)}/attachments/${a.id}`;
+                const previewBtn = isPreviewable(a.mimeType)
+                  ? `<button type="button" data-att-action="preview" data-preview-url="${esc(dlUrl)}?preview=1" data-filename="${esc(a.filename)}" data-mime="${esc(a.mimeType)}" style="background:none;border:none;padding:0;color:#b39dff;font-size:.78rem;font-weight:600;text-decoration:underline;cursor:pointer;">Previzualizează</button> ·`
+                  : '';
+                return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(124,92,255,.1);border-radius:6px;font-size:.78rem;margin-right:6px;margin-bottom:4px;border:1px solid rgba(124,92,255,.2);">
+                ${iconByMime(a.mimeType)} ${esc(a.filename)} <span style="color:var(--muted)">${(a.sizeBytes/1024).toFixed(0)}KB</span> ${previewBtn}<a href="${dlUrl}" download="${a.filename.replace(/"/g,'')}" style="color:#b39dff;text-decoration:none;">⬇</a></span>`;
+              }).join('');
+            row.addEventListener('click', (ev) => {
+              const btn = ev.target.closest('[data-att-action="preview"]');
+              if (!btn) return;
+              ev.preventDefault();
+              if (typeof window.openAttPreview !== 'function') return;
+              window.openAttPreview(btn.getAttribute('data-preview-url'), btn.getAttribute('data-filename'), btn.getAttribute('data-mime'));
+            });
           }).catch(() => {});
         });
       }
@@ -1903,6 +1915,73 @@ async function signFromFluxuri(flowId) {
         }
       }
 
+      // ── E (v3.9.584): Preview atașamente formular care VOR FI preluate la lansare ─
+      // Read-only & pur informativ. Copierea reală o face backend-ul la lansare
+      // (fix 11, în POST /flows). Aici DOAR afișăm, separat de widget-ul manual.
+      // Reutilizează GET /api/formulare-atasamente/:type/:id + modalul openAttPreview (fix 5).
+      const _formAttById = {};
+      (async function _renderFormAttachments() {
+        const box = $('formAttachPreview');
+        if (!box) return;
+        const _up = new URLSearchParams(location.search);
+        const _docId = _up.get('prefill_doc_id')   || sessionStorage.getItem('docflow_prefill_doc_id');
+        const _dtype = _up.get('prefill_doc_type') || sessionStorage.getItem('docflow_prefill_doc_type');
+        if (!_docId || !_dtype) return; // fără prefill → no-op
+        const ft = _dtype === 'ordnt' ? 'ord' : (_dtype === 'notafd' ? 'df' : null);
+        if (!ft) return;
+        try {
+          // Copierea la lansare e slot-agnostică → adunăm ambele sloturi (dedupe pe id).
+          const slots = await Promise.all([1, 2].map(async (slot) => {
+            try {
+              const r = await _apiFetch(`/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}?slot=${slot}`, { method: 'GET' });
+              if (!r.ok) return [];
+              const j = await r.json().catch(() => ({}));
+              return Array.isArray(j.atasamente) ? j.atasamente : [];
+            } catch { return []; }
+          }));
+          const seen = new Set();
+          const items = [];
+          for (const arr of slots) for (const a of arr) { if (a && a.id && !seen.has(a.id)) { seen.add(a.id); items.push(a); _formAttById[a.id] = a; } }
+          if (!items.length) { box.style.display = 'none'; return; } // degradare grațioasă
+
+          const _esc = (window.df && window.df.esc) ? window.df.esc : (s => String(s == null ? '' : s));
+          box.innerHTML =
+            '<div style="font-weight:700;font-size:.82rem;color:var(--sub);margin-bottom:6px;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+              '<svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.518#ico-paperclip"/></svg>' +
+              'Vor fi preluate din formular <span style="font-weight:400;color:var(--muted);">— ' + items.length + ' fișier(e), automat la lansare</span>' +
+            '</div>' +
+            '<div style="display:flex;flex-direction:column;gap:4px;">' +
+            items.map(a => {
+              const url = `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(a.id)}`;
+              const kb = a.size_bytes ? `${(a.size_bytes / 1024).toFixed(0)} KB` : '';
+              return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(124,92,255,.07);border:1px solid rgba(124,92,255,.18);border-radius:6px;font-size:.8rem;">
+                <span style="color:#b39dff;">📄</span>
+                <span style="flex:1;min-width:0;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(a.filename)}</span>
+                <span style="color:var(--muted);white-space:nowrap;">${kb}</span>
+                <button type="button" class="df-action-btn sm" data-att-action="preview" data-att-id="${_esc(a.id)}" title="Previzualizează">Previzualizează</button>
+                <a class="df-action-btn sm" href="${url}" target="_blank" rel="noopener" download>Descarcă</a>
+              </div>`;
+            }).join('') +
+            '</div>';
+          box.style.display = 'block';
+
+          // Preview prin delegare (CSP-safe, fără onclick inline cu date utilizator).
+          box.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('[data-att-action="preview"]');
+            if (!btn) return;
+            ev.preventDefault();
+            const att = _formAttById[btn.getAttribute('data-att-id')];
+            if (!att || typeof window.openAttPreview !== 'function') return;
+            const url = `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(att.id)}`;
+            window.openAttPreview(url, att.filename, att.mime_type);
+          });
+        } catch (e) {
+          // Read-only & opțional: nu bloca lansarea, nu arăta eroare intruzivă.
+          if (box) box.style.display = 'none';
+          console.warn('Preview atașamente formular eșuat (non-blocant):', e);
+        }
+      })();
+
       // ── Stampila flux pe ultima pagina PDF ─────────────────────────────────
       // Footer aplicat de server la finalizare, nu la creare flux
 
@@ -1974,14 +2053,19 @@ async function signFromFluxuri(flowId) {
           const _prefDocType = _urlParams.get('prefill_doc_type') || sessionStorage.getItem("docflow_prefill_doc_type");
 
           // Auto-asociere document formular (dacă vine din prefill)
+          // fix 7: copierea atașamentelor formular→flux se face la link-flow (punctul durabil),
+          // nu la POST /flows. Citește numărul copiat din răspunsul rutei de link.
+          let _formAttCopiedAtLink = 0;
           if (_prefDocId && _prefDocType && j.flowId) {
             const _pfApi = _prefDocType === "ordnt" ? "/api/formulare-ord" : "/api/formulare-df";
             try {
-              await fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
+              const _rLink = await fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
                 method: "POST", credentials: "include",
                 headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
                 body: JSON.stringify({ flow_id: j.flowId })
               });
+              const _jLink = await _rLink.json().catch(() => ({}));
+              _formAttCopiedAtLink = Number(_jLink?.formAttachmentsCopied || 0);
             } catch(_) {}
             sessionStorage.removeItem("docflow_prefill_doc_id");
           }
@@ -2045,6 +2129,14 @@ async function signFromFluxuri(flowId) {
             ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--df-warning-bd);background:var(--df-warning-bg);border-radius:var(--df-radius-md);color:var(--df-warning);line-height:1.45;font-size:13px;">${PRESIGNED_WARN_TEXT}</div>`
             : ``;
 
+          // fix 3/4 + fix 7: atașamentele formularului (DF/ORD) au fost preluate automat ca
+          // documente suport în flux — utilizatorul NU trebuie să le reîncarce. Numărul vine
+          // din răspunsul rutei de link-flow (sursa durabilă), cu fallback la POST /flows.
+          const _formAttN = Number(_formAttCopiedAtLink || j.formAttachmentsCopied || 0);
+          const _formAttBanner = _formAttN > 0
+            ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--df-info-bd,var(--df-border));background:var(--df-info-bg,var(--df-surface-2));border-radius:var(--df-radius-md);color:var(--df-text);line-height:1.45;font-size:13px;">📎 ${_formAttN} atașament(e) de pe formular au fost preluate automat ca documente suport în flux. Nu este nevoie să le reîncărcați.</div>`
+            : ``;
+
           // Redirect UX:
           // - dacă inițiatorul este primul semnatar și avem token -> mergi la semnare
           // - altfel -> mergi la pagina dedicată flow (status/timeline)
@@ -2067,9 +2159,10 @@ async function signFromFluxuri(flowId) {
             _btnLabel  = `Am înțeles — continuă la statusul fluxului`;
           }
 
-          if (_preSigned || _alopLinkErr) {
-            // FĂRĂ timer — bannerul (presigned și/sau eroare ALOP) rămâne pe ecran până la click
-            $("createResult").innerHTML = `${_msgManual}${_preSignedBanner}${_alopWarnBanner}
+          if (_preSigned || _alopLinkErr || _formAttN > 0) {
+            // FĂRĂ timer — bannerul (presigned / eroare ALOP / atașamente preluate) rămâne
+            // pe ecran până la click, ca utilizatorul să-l poată citi.
+            $("createResult").innerHTML = `${_msgManual}${_preSignedBanner}${_alopWarnBanner}${_formAttBanner}
               <div style="margin-top:10px;">
                 <button id="btnPreSignedContinue" class="df-action-btn primary" type="button">${_btnLabel}</button>
               </div>`;

@@ -246,7 +246,7 @@
 
   // ── Render — card ORD curent ────────────────────────────────────────────────
   function _renderCurrentOrdCard(ord, cicluNr) {
-    const nr = ord.nr_unic_inreg || '(fără număr)';
+    const nr = ord.nr_ordonant_pl || '(fără număr)';
     const titlu = ord.titlu || '(beneficiar nedefinit)';
     const isRoot = !!ord.is_root_ord;
     const aprobLabel = ord.aprobat ? '✓ Aprobat'
@@ -279,7 +279,7 @@
 
   // ── Render — card ORD arhivat ───────────────────────────────────────────────
   function _renderArchivedCicluCard(ciclu) {
-    const nr = ciclu.ord_nr_unic_inreg || '(fără număr)';
+    const nr = ciclu.ord_nr_ordonant_pl || '(fără număr)';
     const titlu = ciclu.ord_titlu || '(beneficiar nedefinit)';
     const isRoot = !!ciclu.is_root_ord;
     const aprobLabel = ciclu.ord_aprobat ? '✓ Aprobat' : '📝 ' + esc(ciclu.ord_status || '?');

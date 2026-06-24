@@ -120,6 +120,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
             CROSS JOIN LATERAL jsonb_array_elements(COALESCE(fd_v.rows_val,'[]'::jsonb)) r
            WHERE fd_v.id = a.df_id) AS df_valoare,
          foc.nr_unic_inreg AS ord_curent_nr_unic_inreg,
+         foc.nr_ordonant_pl AS ord_curent_nr_ordonant_pl,
          foc.beneficiar    AS ord_curent_titlu,
          foc.status        AS ord_curent_status,
          foc.flow_id       AS ord_curent_flow_id,
@@ -148,6 +149,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
             CROSS JOIN LATERAL jsonb_array_elements(COALESCE(fd_v.rows_val,'[]'::jsonb)) r
            WHERE fd_v.id = a.df_id) AS df_valoare,
          foc.nr_unic_inreg AS ord_curent_nr_unic_inreg,
+         foc.nr_ordonant_pl AS ord_curent_nr_ordonant_pl,
          foc.beneficiar    AS ord_curent_titlu,
          foc.status        AS ord_curent_status,
          foc.flow_id       AS ord_curent_flow_id,
@@ -179,6 +181,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
          c.plata_confirmed_at, c.plata_nr_ordin, c.plata_data,
          c.plata_suma_efectiva, c.plata_observatii,
          fo.nr_unic_inreg AS ord_nr_unic_inreg,
+         fo.nr_ordonant_pl AS ord_nr_ordonant_pl,
          fo.beneficiar    AS ord_titlu,
          fo.status        AS ord_status,
          fo.flow_id       AS ord_flow_id,
@@ -200,6 +203,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
         ciclu_nr:           Number(c.ciclu_nr),
         ord_id:             c.ord_id,
         ord_nr_unic_inreg:  c.ord_nr_unic_inreg,
+        ord_nr_ordonant_pl: c.ord_nr_ordonant_pl,
         ord_titlu:          c.ord_titlu || '',
         ord_status:         c.ord_status,
         ord_aprobat:        c.ord_aprobat,
@@ -242,6 +246,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
     ord_curent: a.ord_id ? {
       id:                  a.ord_id,
       nr_unic_inreg:       a.ord_curent_nr_unic_inreg,
+      nr_ordonant_pl:      a.ord_curent_nr_ordonant_pl,
       titlu:               a.ord_curent_titlu || '',
       status:              a.ord_curent_status,
       aprobat:             !!a.ord_curent_aprobat,

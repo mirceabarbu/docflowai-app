@@ -538,6 +538,62 @@ la revizie; etichetele coloanelor `rows_plati` afișează anii absoluți (`anref
 `server/tests/db/buget-multianual-an-referinta.test.mjs` (offset 0/1/−1, cumul per an, legacy block,
 revizie moștenește, default la creare).
 
+**Cardurile ALOP — buget exercițiu = cifră dominantă (var. B, frontend `alop.js`):** cardul „VALOARE DF"
+afișează `df_buget_an_curent` ca cifră MARE („Buget exercițiu <an curent>"), cu `df_valoare` (angajament
+total) pe linia secundară; header-ul adaugă „buget ex. <an>" lângă „estimat"/„DF actual". Fallback la
+`df_valoare` („Angajament total DF" + „(exercițiu nedefinit)") când `df_an_referinta` e null (DF legacy/
+neancorat). ⚠️ Distinge null de 0: DF ancorat cu buget 0 (plăți doar în N+1) afișează „0,00 RON" via
+`fmtRON` — NU `fmtV`, care întoarce „—" pe 0. Anul afișat = exercițiul curent; `an_referinta` e doar
+gate-ul ancorării.
+
+---
+
+## Bifa „Stingere": verificare pe credite bugetare (col.10), card pe tabel 1 (din v3.9.582, fix 12)
+
+Bifa „Stingere" (`ckbx_sting_ang_in_ancrt`, TEXT '1'/'') dezactivează tabelul 2 (`rows_plati`) →
+banda anului curent = 0. Asta rupea bugetul. Decizia owner (expert ALOP, regulă de domeniu — **NU
+reinterpreta**) separă DOUĂ baze diferite:
+
+**(1) VERIFICAREA ordonanțării/noua-lichidare = CREDITE BUGETARE col.10, minus ORDONANȚĂRILE
+anterioare, INDIFERENT de bifă.** Plafonul = `SUM(formulare_df.rows_ctrl[].sum_rezv_crdt_bug_act)`
+(col.10 „10=8+9", Secțiunea B CAB) al DF-ului legat (revizia activă). **NU** banda `rows_plati`,
+**NU** angajamentul total (`rows_val`), **NU** creditele de angajament col.7. Se scad
+**ordonanțările** anterioare (ce s-a ordonanțat), **NU plățile** (`plata_suma_efectiva`). Ciclurile
+arhivate (`alop_ord_cicluri`) nu stochează direct suma ordonanțată → se ia prin JOIN
+`ord_id → SUM(formulare_ord.rows.suma_ordonantata_plata)`, filtrat pe anul de exercițiu. Helper PUR:
+`server/services/buget-an.mjs` → `crediteBugetareAnCurent(rowsCtrl)`. Trei puncte sincronizate:
+`computeOrdBudgetContext` (plafon ORD, `formular-shared.mjs`), garda `noua-lichidare` (`alop.mjs`),
+și `sqlRamasAnExercitiu`/`sqlCrediteBugetareCol10` (card `ramas_an_curent`, `alop.mjs`). ⚠️
+`sqlRamasAnExercitiu` TREBUIE să oglindească EXACT garda noua-lichidare (col.10 − ordonanțat). ⚠️ În
+`noua-lichidare`, `suma_totala_platita` rămâne suma PLĂTITĂ (audit) — calcul SEPARAT de plafon.
+
+**(2) CARDUL „buget exercițiu" (`df_buget_an_curent`) = DOAR afișare.** La „Stingere" bifat → TABEL 1
+= `SUM(rows_val.valt_actualiz)` (angajamentul total); altfel → banda `rows_plati` a anului de exercițiu
+(regula veche, `bugetPentruAnul`/`bandaPentruOffset` NEATINSE — rămân pentru card). `sqlBugetAnExercitiu`
+(`alop.mjs`) e Stingere-aware via `sqlStingereTruthy`. Backend expune `df_stingere` (boolean) în
+listă+detaliu; frontend `alop.js` afișează cardul chiar dacă `an_referinta` e null când e Stingere.
+
+⚠️ Cardul (regula 2) și verificarea (regula 1) folosesc baze DIFERITE — INTENȚIONAT. `bugetPentruAnul`
+e DOAR pentru card; `crediteBugetareAnCurent` e DOAR pentru plafon. Teste:
+`server/tests/db/12-stingere-buget-ordonantare.test.mjs`, `ord-buget-an-curent-plafon.test.mjs`,
+`ord-buget-p1-submit-plafon.test.mjs`, `alop-noua-lichidare-ciclu.test.mjs`,
+`alop-card-ramas-an-curent.test.mjs`, `buget-multianual-an-referinta.test.mjs` (card),
+`server/tests/unit/buget-an.test.mjs` (`crediteBugetareAnCurent`).
+
+---
+
+## SecB DF — a doua sumă CFP „credite bugetare" persistată (din v3.9.585)
+
+`sum_fara_inreg_ctrl_crd_bug` (credite bugetare) era câmp-fantomă: colectat de frontend, dar fără coloană
+în DB, fără intrare în `DF_P2_FIELDS` → `pick(body, p2Fields)` o arunca, suma se pierdea la ORICE reload
+(vizibil la DF→P1). PDF-ul (`formulare.mjs`) o citea deja ca `sumCb` în fraza CFP combinată, dar primea
+mereu gol → `_______`. Fix: migrarea **087** (`ALTER formulare_df ADD COLUMN sum_fara_inreg_ctrl_crd_bug
+TEXT`) + adăugat în `DF_P2_FIELDS`. Decizie owner — **o singură bifă** (`ckbx_fara_inreg_ctrl_ang`,
+gate-ul pe toată fraza ca în PDF): a doua bifă `ckbx_fara_inreg_ctrl_crd_bug`/`n-ck-fararezvcrbug` a fost
+retrasă din UI și colectare; ambele input-uri de sumă (`n-sumfara` + `n-sumfararezvcrbug`) trăiesc acum
+sub o singură frază identică cu PDF-ul. PDF-ul rămâne NEATINS. Test:
+`server/tests/db/caracterizare-complete-df-ord.test.mjs` (round-trip ambele sume).
+
 ---
 
 ## Capabilities — sursă unică pentru deciziile de UI (din v3.9.522)
@@ -566,6 +622,108 @@ păzite independent pe rutele server (ex. ștergerea fluxurilor e `admin`-only p
 **Prospețime caps:** DF/ORD fac update optimist local în `doc.js` → caps trebuie reîmprospătate din
 `j.document.capabilities` după FIECARE mutație (de aceea caps e atașat și pe răspunsurile de mutație, nu
 doar pe GET). ALOP re-fetch-uiește via `openAlop()` după orice acțiune → caps mereu proaspăt din GET detaliu.
+
+---
+
+**Preview atașamente (din v3.9.574):** modal unic `window.openAttPreview` (self-contained,
+`public/js/shared/att-preview.js`), folosit pe DF/ORD (`formular.html`) ȘI semnare/flux
+(`semdoc-signer.html`) — fără pagină nouă (`window.open`); creează markup-ul modalului dacă pagina
+nu îl are deja static, reutilizând `.df-modal`/`.df-modal-bg` din `public/css/df/components.css`.
+
+---
+
+**Lock atașare/captură SPA (din v3.9.575):** `lockCaptureAndAttachments(ft,false)` trebuie resetat
+explicit în `newDoc`/`loadDoc` (`public/js/formular/doc.js`), oglindind `lockAll(ft,false)` și ÎNAINTE
+de ramurile condiționale care reaplică `lock=true` — altfel `disabled` rămas de la un document
+`completed`/`aprobat` anterior persistă în SPA și blochează atașarea pe documentul următor din aceeași
+sesiune.
+
+---
+
+**Copiere atașamente formular→flux la LINK, nu la creare (din v3.9.576, fix 7):** copierea
+atașamentelor DF/ORD ca documente suport (`copyFormularAttachmentsToFlow`, NEATINS) se declanșează din
+`linkFlowFormular` (`formular-shared.mjs`, după UPDATE-urile de legătură) — **sursa durabilă**, NU din
+`meta.dfId/ordId` efemer în `crud.mjs` (lipsea pe calea de link dedicat → copierea nu rula niciodată pe
+ALOP). Legătura trăiește pe `formulare_X.flow_id` + `alop_instances.{df,ord}_flow_id`; `flows.form_type`
+e `'none'`/mort (`saveFlow` n-o scrie). Răspunsul rutei `/api/formulare-{df,ord}/:id/link-flow` întoarce
+`formAttachmentsCopied` (citit de bannerul din `semdoc-initiator/main.js`, nu din `POST /flows`). Backfill
+istoric idempotent ADD-ONLY: `tools/backfill-formular-flow-attachments.mjs` (maintenance, NU migrare).
+Teste: `server/tests/db/formular-link-flow-attachments.test.mjs`.
+
+---
+
+**Copiere atașamente pe AMBELE căi de link (din v3.9.577, fix 8):** copierea atașamentelor formular→flux
+rulează pe 2 căi complementare: (1) `linkFlowFormular` (happy path, post-guards) și (2) `alop.mjs`
+`link-{df,ord}-flow` (calea ALOP, **necondiționat**). Motivul: frontend-ul cheamă AMBELE endpoint-uri la
+lansare; `linkFlowFormular` dă `409` (`document_not_completed` / `already_on_flow`) când docul nu e
+completed sau e deja pe flux → înghite copierea, dar `link-{df,ord}-flow` setează pointerul ALOP
+necondiționat. Deci pe fluxurile ALOP reale, calea ALOP e singura care copiază. Idempotent prin
+`NOT EXISTS(flow_id, filename)` în helper (al doilea apel inserează 0), non-fatal (eroare la copiere NU
+rupe linkarea). NU slăbi guard-urile din `linkFlowFormular` — sunt corecte; copierea ALOP e complementară.
+Teste: `server/tests/db/alop-link-flow-attachments.test.mjs`.
+
+---
+
+**Cancel flux curăță pointerul ALOP simetric DF↔ORD (din v3.9.578, fix 9):** `POST /flows/:flowId/cancel`
+(`lifecycle.mjs`) curăță pointerul ALOP simetric — DF (`df_flow_id` + revine DF `transmis_flux`→`completed`)
+ȘI ORD (`ord_flow_id`/`ord_completed_at`). ORD **nu** resetează status formular fiindcă nu trece niciodată
+prin `transmis_flux` (link-flow ORD setează doar `flow_id`). `formulare_{df,ord}.flow_id` RĂMÂN setate
+(form-ul se deblochează via `flow_active=false` din statusul fluxului cancelled). 🔒 Self-heal #2 din
+`alop.mjs` (back-fill `ord_flow_id` pe GET) e gardat să NU resusciteze pointerul dintr-un flux `cancelled`
+— altfel cleanup-ul ar fi anulat la următorul GET. `alop_ord_cicluri.ord_flow_id` rămâne NEATINS (istoric
+cicluri — decizie owner separată). Teste: `server/tests/db/alop-cancel-flow-pointer.test.mjs`.
+
+---
+
+**Guard `already_on_flow` exclude fluxul CURENT (din v3.9.579, fix 10 — cauză rădăcină):** guard-ul din
+`linkFlowFormular` (`formular-shared.mjs`) 409-uie DOAR pe un flux DIFERIT activ (`doc.flow_id !== flow_id`).
+`crud.mjs` (POST /flows) pre-setează `formulare_{df,ord}.flow_id` la creare (din `meta.dfId/ordId`),
+ÎNAINTE de link-flow → fără excludere, guard-ul 409-uia pe PROPRIUL flux tocmai legat → copierea
+atașamentelor (fix 7) era cod mort pe ORICE lansare DF/ORD standalone. Test (cu flow_id pre-setat la
+fluxul curent — pasul critic): `server/tests/db/formular-link-flow-attachments.test.mjs`.
+
+---
+
+**`await` pe pre-setarea `flow_id` + copiere atașamente ca PLASĂ în POST /flows (din v3.9.583, fix 11):**
+`crud.mjs` (POST /flows) `await`-uiește pre-setarea `formulare_{df,ord}.flow_id` (înainte: fire-and-forget
+`.catch`) — elimină cursa în care `linkFlowFormular` citea `flow_id`-ul VECHI și 409-uia (`already_on_flow`)
+înainte de copiere. În plus, copierea atașamentelor formular→flux (`copyFormularAttachmentsToFlow`,
+INSERT...SELECT — DUPLICĂ, nu mută; idempotentă prin `NOT EXISTS`) rulează și în POST /flows ca PLASĂ,
+unde `meta.dfId/ordId` CHIAR ajunge (de-aia se setează `flow_id`). `linkFlowFormular` (`formular-shared.mjs`)
+RĂMÂNE a doua cale idempotentă (redundanță intenționată). Sursa `formulare_atasamente` rămâne NEATINSĂ după
+copiere/aprobare/ștergere flux (copierea duplică bytes-ul; nicio cale de flux nu o atinge). Teste:
+`server/tests/db/formular-flow-attachments-source-protection.test.mjs`.
+
+---
+
+**Compose afișează atașamentele formularului care vor fi preluate (din v3.9.584, enhancement E):** la
+compose (`semdoc-initiator`), când există prefill DF/ORD (`prefill_doc_id`+`prefill_doc_type`), secțiunea
+„Documente suport" afișează DEASUPRA widget-ului manual o listă READ-ONLY „📎 Vor fi preluate din formular"
+(`#formAttachPreview` în `public/js/semdoc-initiator/main.js`), prin `GET /api/formulare-atasamente/:type/:id`
+(ambele sloturi, dedupe) + modalul `openAttPreview` (fix 5, `att-preview.js`). PUR informativ: NU se trimite
+în payload-ul POST /flows — copierea reală o face backend-ul la lansare (fix 11). Read-only (doar
+Previzualizează/Descarcă, fără ștergere — sursa `formulare_atasamente` e sacră); fetch eșuat = degradare
+grațioasă (lista dispare, lansarea nu se blochează).
+
+---
+
+**Trasabilitate — cardul ORD afișează numărul propriu al ORD (din v3.9.580):** modalul „Trasabilitate"
+afișează pe fiecare card ORD `nr_ordonant_pl` (numărul propriu al ordonanțării), NU `nr_unic_inreg`
+(numărul DF) — altfel toate ciclurile arătau același număr (al DF-ului comun). Backend-ul
+`server/services/trasabilitate.mjs` întoarce AMBELE câmpuri (Q3 ORD curent: `ord_curent_nr_ordonant_pl`
++ `ord_curent_nr_unic_inreg`; Q4 cicluri arhivate: `ord_nr_ordonant_pl` + `ord_nr_unic_inreg`) — DF-ul
+rămâne ca referință. Frontend `public/js/formular/trasabilitate.js` citește `nr_ordonant_pl` /
+`ord_nr_ordonant_pl` fără fallback la numărul DF („(fără număr)" dacă lipsește). Test:
+`server/tests/integration/trasabilitate.test.mjs`.
+
+---
+
+**Soft-delete flux nu mai blochează DF/ORD „pe flux" (din v3.9.581, fix D):** `flow_active`/`aprobat`
+(`df.mjs` + `ord.mjs`) exclud fluxurile soft-șterse (`f.deleted_at IS NULL`) — un flux șters nu mai e
+nici activ, nici sursă de „aprobat". În plus, `DELETE /flows/:flowId` (`crud.mjs`) curăță pointerii
+simetric cu cancel (fix 9): `formulare_{df,ord}.flow_id=NULL` + `alop_instances.{df,ord}_flow_id=NULL`
+(`cancelled_at IS NULL`); DF `transmis_flux`→`completed` (userul poate relansa), ORD fără reset status
+(nu trece prin `transmis_flux`). Test: `server/tests/db/soft-delete-flow-pointer.test.mjs`.
 
 ---
 

@@ -519,6 +519,29 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
       // Non-fatal: cancel-ul fluxului a reușit oricum (data.status='cancelled' salvat).
       logger.error({ err: alopCancelErr, flowId }, '[ALOP] restore on cancel failed (non-fatal)');
     }
+    // Simetric DF (fix 9): la cancel, curăță pointerul ORD pe ALOP. ORD nu are status
+    // 'transmis_flux' (link-flow ORD setează doar flow_id), deci NU resetăm status formular —
+    // doar eliberăm ord_flow_id/ord_completed_at pe ALOP (fluxul mort nu mai e activ).
+    // formulare_ord.flow_id rămâne (paritate cu DF, care păstrează formulare_df.flow_id);
+    // self-heal #2 din alop.mjs nu re-populează ord_flow_id dintr-un flux 'cancelled' (guard).
+    try {
+      const { rows: ordRows } = await pool.query(
+        `SELECT id FROM formulare_ord WHERE flow_id=$1`,
+        [flowId]
+      );
+      if (ordRows.length) {
+        const ordId = ordRows[0].id;
+        await pool.query(
+          `UPDATE alop_instances
+             SET ord_flow_id=NULL, ord_completed_at=NULL, updated_at=NOW()
+           WHERE ord_id=$1 AND cancelled_at IS NULL`,
+          [ordId]
+        );
+        logger.info({ ordId, flowId }, '[ALOP] flow cancelled → ord_flow_id=NULL (simetric DF)');
+      }
+    } catch (ordCancelErr) {
+      logger.error({ err: ordCancelErr, flowId }, '[ALOP] ORD restore on cancel failed (non-fatal)');
+    }
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_CANCELLED', actorIp: _getIp(req), actorEmail: actor.email, payload: { reason: data.cancelReason } });
     // FEAT-N01: webhook flow.cancelled (fire-and-forget)

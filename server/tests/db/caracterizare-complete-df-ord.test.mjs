@@ -70,6 +70,22 @@ d('POST /api/formulare-*/:id/complete (caracterizare)', () => {
     expect((await getDf(id)).status).toBe('completed');
   });
 
+  // ── SecB DF: a doua sumă CFP „credite bugetare" persistă (v3.9.585, fix câmp-fantomă) ──
+  // ROȘU înainte de migrarea 087 + whitelist (coloana lipsea, pick() o arunca → se pierdea).
+  it('DF: complete persistă AMBELE sume CFP (crdbug pereche 1 + crd_bug credite bugetare)', async () => {
+    const id = await seedDf({ orgId: 1, createdBy: 1, status: 'pending_p2', assignedTo: 2 });
+    const body = {
+      sum_fara_inreg_ctrl_crdbug: '50000',
+      sum_fara_inreg_ctrl_crd_bug: '100000',
+    };
+    const res = await request(app).post(`/api/formulare-df/${id}/complete`).set('Cookie', p2()).send(body);
+    expect(res.status).toBe(200);
+    // round-trip din DB (GET / reload) — ambele sume se păstrează.
+    const doc = await getDf(id);
+    expect(doc.sum_fara_inreg_ctrl_crdbug).toBe('50000');
+    expect(doc.sum_fara_inreg_ctrl_crd_bug).toBe('100000');
+  });
+
   it('ORD: complete cu col.5 (recepții neplătite) negativă → 422 receptii_neplatite_negative, rămâne pending_p2', async () => {
     const id = await seedOrd({ orgId: 1, createdBy: 1, status: 'pending_p2', assignedTo: 2 });
     const rows = [{ receptii: '100', plati_anterioare: '0', suma_ordonantata_plata: '200' }]; // c5 = -100

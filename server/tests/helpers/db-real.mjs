@@ -94,11 +94,13 @@ export async function seedUser({ orgId, email = 'p2@x.ro', role = 'user', compar
 // rowsVal (opțional) → rows_val JSONB; folosit de noua-lichidare pentru a calcula
 // valoarea DF aprobat (SUM valt_actualiz). Nu schimbă semnătura pentru testele curente.
 // anReferinta (opțional) → formulare_df.an_referinta (FEATURE buget multi-anual). NULL = legacy.
-export async function seedDf({ orgId, createdBy, status = 'draft', flowId = null, nrUnic = 'DF-2026-001', revizieNr = 0, parentDfId = null, assignedTo = null, rowsVal = null, rowsPlati = null, anReferinta = null } = {}) {
+// rowsCtrl (opțional) → rows_ctrl JSONB (Secțiunea B); col.10 `sum_rezv_crdt_bug_act` = PLAFONUL
+//   de ordonanțare (fix 12). ckbxSting (opțional) → ckbx_sting_ang_in_ancrt ('1'/''), bifa „Stingere".
+export async function seedDf({ orgId, createdBy, status = 'draft', flowId = null, nrUnic = 'DF-2026-001', revizieNr = 0, parentDfId = null, assignedTo = null, rowsVal = null, rowsPlati = null, anReferinta = null, rowsCtrl = null, ckbxSting = null } = {}) {
   const { rows } = await pool.query(
-    `INSERT INTO formulare_df (org_id, created_by, status, flow_id, nr_unic_inreg, revizie_nr, parent_df_id, este_revizie, assigned_to, rows_val, rows_plati, an_referinta)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10::jsonb,'[]'::jsonb),COALESCE($11::jsonb,'[]'::jsonb),$12) RETURNING id`,
-    [orgId, createdBy, status, flowId, nrUnic, revizieNr, parentDfId, (revizieNr || 0) > 0, assignedTo, rowsVal ? JSON.stringify(rowsVal) : null, rowsPlati ? JSON.stringify(rowsPlati) : null, anReferinta]
+    `INSERT INTO formulare_df (org_id, created_by, status, flow_id, nr_unic_inreg, revizie_nr, parent_df_id, este_revizie, assigned_to, rows_val, rows_plati, an_referinta, rows_ctrl, ckbx_sting_ang_in_ancrt)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10::jsonb,'[]'::jsonb),COALESCE($11::jsonb,'[]'::jsonb),$12,COALESCE($13::jsonb,'[]'::jsonb),$14) RETURNING id`,
+    [orgId, createdBy, status, flowId, nrUnic, revizieNr, parentDfId, (revizieNr || 0) > 0, assignedTo, rowsVal ? JSON.stringify(rowsVal) : null, rowsPlati ? JSON.stringify(rowsPlati) : null, anReferinta, rowsCtrl ? JSON.stringify(rowsCtrl) : null, ckbxSting]
   );
   return rows[0].id;
 }

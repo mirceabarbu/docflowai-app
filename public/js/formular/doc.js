@@ -65,6 +65,7 @@ function collectDfP1Db(){return{
 function collectDfP2Db(){return{
   ckbx_secta_inreg_ctrl_ang:cb('n-ck-seca'),ckbx_fara_inreg_ctrl_ang:cb('n-ck-fararezv'),
   sum_fara_inreg_ctrl_crdbug:g('n-sumfara')||'0',
+  sum_fara_inreg_ctrl_crd_bug:g('n-sumfararezvcrbug')||'0',
   ckbx_interzis_emit_ang:cb('n-ck-interzis'),ckbx_interzis_intrucat:cb('n-ck-intrucat'),
   intrucat:g('n-intrucat'),rows_ctrl:getNC(),
 };}
@@ -81,6 +82,11 @@ async function populateOrd(doc){
   // Restabilește selecția DF legat
   const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value=doc.df_id||'';
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
+  // Context buget an exercițiu pentru atenționarea inline — REZOLVAT de backend pe GET detaliu
+  // (paritate cu garda hard). Setat ÎNAINTE de upTot() ca verificarea live să-l vadă.
+  if(doc.buget_an_curent!=null){
+    _ordBugetCtx={buget_an_curent:doc.buget_an_curent,cicluri_arhivate:doc.cicluri_arhivate,an_exercitiu:doc.an_exercitiu};
+  }else{_ordBugetCtx=null;}
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
   (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});});
   // v3.9.500 (Issue I-2): wrap-ul captura 2 e VIZIBIL mereu, ca P2 să poată
@@ -134,6 +140,7 @@ function populateDf(doc){
   p5toggle();
   sc('n-ck-seca',doc.ckbx_secta_inreg_ctrl_ang);sc('n-ck-fararezv',doc.ckbx_fara_inreg_ctrl_ang);
   sv('n-sumfara',doc.sum_fara_inreg_ctrl_crdbug||'0');
+  sv('n-sumfararezvcrbug',doc.sum_fara_inreg_ctrl_crd_bug||'0');
   sc('n-ck-interzis',doc.ckbx_interzis_emit_ang);sc('n-ck-intrucat',doc.ckbx_interzis_intrucat);
   sv('n-intrucat',doc.intrucat);
   // FEATURE buget multi-anual (v3.9.558): restabilește an_referinta (NULL legacy → anul curent
@@ -258,6 +265,63 @@ window._loadBugetDisponibil = _loadBugetDisponibil;
   });
 })();
 
+// ── Atenționare inline buget an exercițiu ORD (P1 + P2) ───────────────────────
+// PARITATE: verdictul inline reproduce EXACT validateOrdBugetAnCurent (server). Valorile
+// `buget_an_curent` + `cicluri_arhivate` (+ `an_exercitiu`) vin REZOLVATE din backend (GET
+// detaliu ORD sau /api/formulare-ord/buget-context?df_id=), via computeOrdBudgetContext —
+// frontend-ul NU replică geometria benzilor. Soft: marchează vizual, NU blochează tastarea;
+// blocajul hard rămâne la submit/complete (server). `null` = ORD fără df_id → fără plafon.
+let _ordBugetCtx = null;
+
+function _resetOrdBuget(){
+  _ordBugetCtx = null;
+  const warn=document.getElementById('ord-buget-warn');
+  if(warn){warn.style.display='none';warn.innerHTML='';}
+  document.querySelectorAll('#o-tbody tr.ord-buget-over').forEach(tr=>tr.classList.remove('ord-buget-over'));
+}
+
+async function _loadOrdBuget(dfId){
+  if(!dfId){_ordBugetCtx=null;_checkOrdBuget();return;}
+  try{
+    const r=await fetch(`/api/formulare-ord/buget-context?df_id=${encodeURIComponent(dfId)}`,{credentials:'include'});
+    const j=await r.json();
+    _ordBugetCtx=(r.ok&&j.ok&&j.context)?j.context:null;
+  }catch(e){
+    console.warn('[buget-ord] context fetch error',e);
+    _ordBugetCtx=null;
+  }
+  _checkOrdBuget();
+}
+
+function _checkOrdBuget(){
+  const warn=document.getElementById('ord-buget-warn');
+  document.querySelectorAll('#o-tbody tr.ord-buget-over').forEach(tr=>tr.classList.remove('ord-buget-over'));
+  if(!_ordBugetCtx){if(warn){warn.style.display='none';warn.innerHTML='';}return;}
+  const buget=Number(_ordBugetCtx.buget_an_curent)||0;
+  const arhivat=Number(_ordBugetCtx.cicluri_arhivate)||0;
+  const an=_ordBugetCtx.an_exercitiu;
+  // Σ col.4 (suma ordonanțată) peste rândurile curente din UI — același input ca newRows server.
+  const ordNou=[...document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]')]
+    .reduce((s,i)=>s+(pMR(i.value)||0),0);
+  const cumul=ordNou+arhivat;
+  // ACEEAȘI toleranță ca backend (validateOrdBugetAnCurent): cumul > buget + 0.001 → depășire.
+  const over=cumul>buget+0.001;
+  if(over){
+    document.querySelectorAll('#o-tbody tr').forEach(tr=>tr.classList.add('ord-buget-over'));
+    if(warn){
+      const dep=cumul-buget;
+      warn.innerHTML='⛔ Suma ordonanțată '+(arhivat>0?`cumulată în anul ${esc(an)} (${esc(fMR(cumul))} lei, din care ${esc(fMR(arhivat))} lei deja ordonanțați în cicluri anterioare)`:`(${esc(fMR(cumul))} lei)`)+
+        ` depășește creditele bugetare ale anului ${esc(an)} (${esc(fMR(buget))} lei) cu ${esc(fMR(dep))} lei. Finalizarea va fi blocată.`;
+      warn.style.display='';
+    }
+  }else if(warn){warn.style.display='none';warn.innerHTML='';}
+}
+
+// Expus pentru core.js (recalc live la fiecare mutație de rând în upTot) + list.js (la DF-select).
+window._checkOrdBuget = _checkOrdBuget;
+window._loadOrdBuget  = _loadOrdBuget;
+window._resetOrdBuget = _resetOrdBuget;
+
 // ── Lock câmpuri pe secțiuni ──────────────────────────────────────────────────
 function lockAll(ft,lock){
   document.querySelectorAll(`#form-${ft} input:not([type=file]):not([type=hidden]),#form-${ft} textarea,#form-${ft} select,#form-${ft} .badd,#form-${ft} .bdel`).forEach(e=>e.disabled=lock);
@@ -281,7 +345,7 @@ function setModeP2Df(){
    'n-ck-faraplati','n-ck-cuplati','n-ck-anurmatori'].forEach(id=>{const e=document.getElementById(id);if(e)e.disabled=true;});
   document.querySelectorAll('#n-vtbody input,#n-ptbody input,#n-vtbody .bdel,#n-ptbody .bdel,#n-vtbody .badd,#n-ptbody .badd').forEach(e=>e.disabled=true);
   // Sect B deblocată + highlight
-  ['n-ck-seca','n-ck-fararezv','n-sumfara','n-ck-interzis','n-ck-intrucat','n-intrucat'].forEach(id=>{
+  ['n-ck-seca','n-ck-fararezv','n-sumfara','n-sumfararezvcrbug','n-ck-interzis','n-ck-intrucat','n-intrucat'].forEach(id=>{
     const e=document.getElementById(id);if(e){e.disabled=false;}
   });
   document.querySelectorAll('#n-ctbody input').forEach(e=>{e.disabled=false;});
@@ -653,6 +717,7 @@ async function openDoc(ft,id){
 
     // Lock / mode
     lockAll(ft,false);
+    lockCaptureAndAttachments(ft,false);
     const status=doc.status,role=ST.docRole[ft];
     if(ST.docAprobat[ft]){
       lockAll(ft,true);
@@ -771,7 +836,7 @@ function newDoc(ft){
   ST.docRevizieAnUrmator=ST.docRevizieAnUrmator||{};ST.docRevizieAnUrmator[ft]=false;
   ST.docId[ft]=null;ST.docStatus[ft]=null;ST.docRole[ft]='p1';
   ST.docCapabilities=ST.docCapabilities||{};ST.docCapabilities[ft]=null;
-  lockAll(ft,false);setLockedBar(ft,'');
+  lockAll(ft,false);lockCaptureAndAttachments(ft,false);setLockedBar(ft,'');
   if(ft==='notafd'){applyDfRoleState(null,'p1');updateRevizieHeaderBadge('notafd',{revizie_nr:0,este_revizie_an_urmator:false});}
   else if(ft==='ordnt')applyOrdRoleState(null,'p1');
   // Golim câmpurile
@@ -781,6 +846,7 @@ function newDoc(ft){
     document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';
     const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
     const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
+    _resetOrdBuget(); // fără DF selectat → fără context de plafon (se încarcă la DF-select)
     // v3.9.500 (Issue I-1): prefill plati_anterioare la creare ord nou pe ciclu 2+
     // Înainte: prefill rula doar în loadDoc (existing ord) → P1 vedea 0,00, P2 vedea valoarea
     const _ctx=window._alopContext;
@@ -1014,12 +1080,25 @@ function renderAttachments(ft, slot = 1){
     const safe = String(name).replace(/[<>"]/g, '');
     if (item.id && docId) {
       const url = `/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
-      chip.innerHTML = `📎 <a href="${url}" target="_blank" style="color:inherit">${safe}</a> <button onclick="remAttServer(${idx},'${lid}','${did}','${item.id}',this)">✕</button>`;
+      // v3.9.570: nume clickabil → preview inline (pdf.js/imagine); link separat = descărcare fallback
+      chip.innerHTML = `📎 <a href="#" onclick="previewAttFromChip('${ft}',${slot},${idx});return false;" style="color:inherit;cursor:pointer">${safe}</a> <a href="${url}" target="_blank" download title="Descarcă" style="color:inherit;text-decoration:none;opacity:.75">⬇</a> <button onclick="remAttServer(${idx},'${lid}','${did}','${item.id}',this)">✕</button>`;
     } else {
       chip.innerHTML = `📎 ${safe} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
     }
     list.appendChild(chip);
   });
+}
+
+// v3.9.570: rezolvă item-ul din JSON-ul curent (evită escaping de nume fișier în onclick) și deleagă la modalul de preview global
+function previewAttFromChip(ft, slot, idx){
+  const ids = _attIds(ft, slot); if (!ids) return;
+  let cur; try { cur = JSON.parse(document.getElementById(ids.did)?.value || '[]'); } catch (_) { return; }
+  const item = Array.isArray(cur) ? cur[idx] : null;
+  const docId = ST.docId[ft];
+  if (!item || !item.id || !docId) return;
+  const url = `/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
+  const name = item.filename || item.name || 'fișier';
+  window.openAttPreview?.(url, name, item.mime_type || '');
 }
 
 async function remAttServer(idx,lid,did,attId,btn){
@@ -1124,6 +1203,16 @@ function _validateDf(){
       // returnează 4.9 (incorect — separatorul de mii e luat ca punct zecimal).
       const hasVal=rows.some(tr=>[...tr.querySelectorAll('input[data-money="true"]')].some(i=>(pMR(i.value)||0)>0));
       if(!hasVal) errs.push({id:null,label:'Pct. 5: completați cel puțin un rând în tabelul de plăți'});
+    }
+  }
+
+  // Gate blocant: suma benzilor de plăți (pct.5) trebuie să fie egală cu totalul „Val. totală
+  // actualizată" (pct.4). Se aplică DOAR când tabelul de plăți e activ (verificaSumaPlati →
+  // aplicabil); „Stingere" / tabel dezactivat → sărit (N/A), fără blocaj fals.
+  if(typeof verificaSumaPlati==='function'){
+    const vp=verificaSumaPlati();
+    if(vp.aplicabil && !vp.ok){
+      errs.push({id:'n-p5-tabel',label:`Pct. 5: planificarea plăților (${fMR(vp.sumaPlati)} lei) trebuie să fie egală cu totalul angajamentelor actualizat (${fMR(vp.sumaAngajament)} lei) — diferență ${fMR(vp.diferenta)} lei.`});
     }
   }
 
@@ -1288,7 +1377,16 @@ async function confirmP2(){
       body:JSON.stringify({assigned_to:ST.selectedP2Id}),
     });
     const j=await r.json();
-    if(!r.ok||!j.ok){setS(j.error||'Eroare la trimitere','err');return;}
+    if(!r.ok||!j.ok){
+      // Garda buget la P1 (Varianta A): DOAR plafonul de buget e hard la trimitere (col.5 e
+      // strict la P2 — receptii e câmpul lui P2). Mesaj clar pe 422 buget_an_curent_depasit.
+      if(j.error==='buget_an_curent_depasit'){
+        setS('⛔ '+(j.message||'Suma ordonanțată depășește bugetul anului de exercițiu.'),'err');
+      }else{
+        setS(j.error||'Eroare la trimitere','err');
+      }
+      return;
+    }
     ST.docStatus[ft]='pending_p2';
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=j.document?.capabilities||null;
@@ -1552,7 +1650,7 @@ function resetF(ft){
   draftClear(ft);
   document.querySelectorAll(`#form-${ft} input:not([type=file]),#form-${ft} textarea`)
     .forEach(e=>{if(e.type==='checkbox')e.checked=false;else e.value=(e.type==='number'?'0':'');});
-  if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';}
+  if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';_resetOrdBuget();}
   else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   document.getElementById('ff-'+ft).classList.remove('show');
@@ -1599,6 +1697,7 @@ function resetF(ft){
   window.fetchAttachments           = fetchAttachments;
   window.renderAttachments          = renderAttachments;
   window.remAttServer               = remAttServer;
+  window.previewAttFromChip         = previewAttFromChip;
 
   // Validation
   window._validateDf                = _validateDf;

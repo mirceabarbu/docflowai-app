@@ -18,6 +18,7 @@ import {
   pick, buildUpdate,
   ORD_P1_FIELDS, ORD_P2_FIELDS,
   submitFormular, completeFormular, returnFormular, linkFlowFormular, stergeFormular,
+  computeOrdBudgetContext,
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
 
@@ -88,6 +89,35 @@ router.get('/api/formulare-ord', async (req, res) => {
   }
 });
 
+// GET /api/formulare-ord/buget-context?df_id=X — context de buget pentru atenționarea inline.
+// ⚠️ Înregistrat ÎNAINTEA lui /:id (altfel `:id` ar prinde 'buget-context'). Alimentează atât
+// fluxul de CREARE ORD (P1 selectează un DF, încă fără ORD salvat) cât și editarea. Folosește
+// EXACT computeOrdBudgetContext (sursa unică) → paritate cu garda hard din submit/complete.
+router.get('/api/formulare-ord/buget-context', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const dfId = (req.query.df_id || '').trim();
+    if (!isUuid(dfId)) return res.json({ ok: true, context: null });
+    // Org-scope: nu divulga bugetul unui DF din alt org (admin global vede tot).
+    const isGlobalAdmin = actor.role === 'admin' && !actor.orgId;
+    const ownRes = await pool.query(
+      `SELECT 1 FROM formulare_df WHERE id=$1 AND deleted_at IS NULL ${isGlobalAdmin ? '' : 'AND org_id=$2'}`,
+      isGlobalAdmin ? [dfId] : [dfId, actor.orgId]
+    );
+    if (!ownRes.rows.length) return res.json({ ok: true, context: null });
+    const ctx = await computeOrdBudgetContext({ dfId, orgId: actor.orgId });
+    res.json({ ok: true, context: ctx && {
+      an_exercitiu: ctx.anExercitiu,
+      buget_an_curent: ctx.bugetAnCurent,
+      cicluri_arhivate: ctx.cicluriArhivate,
+    } });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-ord buget-context error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // GET /api/formulare-ord/:id — detaliu document
 router.get('/api/formulare-ord/:id', async (req, res) => {
   if (requireDb(res)) return;
@@ -101,9 +131,10 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         fd.nr_unic_inreg AS df_nr, fd.rows_ctrl AS df_rows_ctrl,
-        CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+        CASE WHEN fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
              THEN true ELSE false END AS aprobat,
         CASE WHEN fo.flow_id IS NOT NULL
+              AND f.deleted_at IS NULL              -- fluxul șters (soft-delete) nu mai e activ (fix D)
               AND (f.data->>'completed') IS DISTINCT FROM 'true'
               AND (f.data->>'status') IS DISTINCT FROM 'cancelled'
              THEN true ELSE false END AS flow_active,
@@ -131,6 +162,17 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
     doc.capabilities = computeDocCapabilities(doc, actor, 'ordnt');
+    // Buget an de exercițiu pentru atenționarea inline (P1+P2) — paritate cu garda hard
+    // (acel. helper). Frontend-ul sumează rândurile din UI + cicluri_arhivate și compară cu
+    // buget_an_curent. NULL când ORD-ul nu are df_id (nimic de plafonat).
+    try {
+      const ctx = await computeOrdBudgetContext({ dfId: doc.df_id, orgId: actor.orgId });
+      if (ctx) {
+        doc.an_exercitiu = ctx.anExercitiu;
+        doc.buget_an_curent = ctx.bugetAnCurent;
+        doc.cicluri_arhivate = ctx.cicluriArhivate;
+      }
+    } catch (_) { /* non-fatal: atenționarea inline e best-effort, garda hard rămâne pe server */ }
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord get error');

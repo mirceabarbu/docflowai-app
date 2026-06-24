@@ -291,6 +291,12 @@
     .secb-buget-warn{margin-top:8px;padding:8px 12px;border-radius:6px;font-size:11px;line-height:1.5;background:var(--df-danger-bg,rgba(239,68,68,.14));border:1px solid var(--df-danger-bd,rgba(239,68,68,.30));color:#ffb4b4}
     .secb-buget-badge{display:inline-block;margin-left:5px;padding:0 5px;border-radius:3px;font-size:9.5px;font-weight:700;white-space:nowrap;background:var(--df-danger-bg,rgba(239,68,68,.14));border:1px solid var(--df-danger-bd,rgba(239,68,68,.30));color:#ff9a9a;cursor:help}
     .df-block-body .doc-t tr.secb-buget-over td{background:rgba(239,68,68,.07)}
+    /* Atenționare inline plafon buget an exercițiu ORD (soft) — rândurile peste plafon */
+    .df-block-body .doc-t tr.ord-buget-over td{background:rgba(239,68,68,.07)}
+    /* Verificare blocantă: suma benzilor de plăți (pct.5) == total angajament actualizat (pct.4) */
+    .p5-suma-check{margin-top:8px;padding:8px 12px;border-radius:6px;font-size:11px;line-height:1.5;display:none}
+    .p5-suma-check.ok{display:block;background:rgba(29,200,174,.10);border:1px solid rgba(29,200,174,.30);color:#5dcaa5}
+    .p5-suma-check.bad{display:block;background:var(--df-danger-bg,rgba(239,68,68,.14));border:1px solid var(--df-danger-bd,rgba(239,68,68,.30));color:#ffb4b4}
     /* Override light form elements inside df-block */
     .df-block-body .di,.df-block-body .dt{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--df-text);font-size:12px;padding:6px 10px !important;font-family:inherit}
     .df-block-body select.di{background:#0d1630;color:#e8eeff;-webkit-appearance:none;appearance:none}

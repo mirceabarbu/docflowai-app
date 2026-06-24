@@ -951,10 +951,10 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [completedAlop] })       // SELECT alop
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp
-      // v3.9.558 buget multi-anual: query întoarce an_referinta + rows_plati (helper alege banda).
-      // an_referinta NULL → mono-an pe `ancrt` (= 2000), identic comportament FIX B.
-      .mockResolvedValueOnce({ rows: [{ an_referinta: null, rows_plati: [{ plati_estim_ancrt: '2000' }] }] }) // SELECT df an_referinta + rows_plati
-      .mockResolvedValueOnce({ rows: [{ total: '0' }] })      // SELECT SUM cicluri anul de exercițiu
+      // fix 12: plafonul = CREDITE BUGETARE col.10 (rows_ctrl.sum_rezv_crdt_bug_act = 2000).
+      .mockResolvedValueOnce({ rows: [{ rows_ctrl: [{ sum_rezv_crdt_bug_act: '2000' }] }] }) // SELECT df.rows_ctrl
+      .mockResolvedValueOnce({ rows: [{ arhivat: '0', curent: '1000' }] }) // SELECT suma ORDONANȚATĂ (arhivat + ORD curent)
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] })      // SELECT SUM plata (suma_totala_platita)
       .mockResolvedValueOnce({ rows: [] })                     // INSERT alop_ord_cicluri
       .mockResolvedValueOnce({ rows: [resetAlop] });           // UPDATE alop
 
@@ -968,10 +968,10 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     expect(res.body.alop.status).toBe('lichidare');
     expect(res.body.alop.ciclu_curent).toBe(2);
     expect(res.body.alop.ord_id).toBeNull();
-    expect(res.body.ramas).toBeCloseTo(1000); // 2000 - (0 + 1000) = 1000
+    expect(res.body.ramas).toBeCloseTo(1000); // col.10 2000 − ordonanțat (0 + 1000) = 1000
   });
 
-  it('400 — buget an curent epuizat (plata_suma >= buget) returnează limita_depasita', async () => {
+  it('400 — credite bugetare integral ordonanțate (ordonanțat >= col.10) returnează limita_depasita', async () => {
     const completedAlop = makeAlopRow({
       status:              'completed',
       df_id:               DF_ID,
@@ -981,8 +981,9 @@ describe('POST /api/alop/:id/noua-lichidare', () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [completedAlop] })
       .mockResolvedValueOnce({ rows: [{ compartiment: '' }] }) // loadActorComp
-      .mockResolvedValueOnce({ rows: [{ buget_an_curent: '2000' }] }) // FIX B: bugetul anului curent
-      .mockResolvedValueOnce({ rows: [{ total: '0' }] });
+      .mockResolvedValueOnce({ rows: [{ rows_ctrl: [{ sum_rezv_crdt_bug_act: '2000' }] }] }) // fix 12: col.10 = 2000
+      .mockResolvedValueOnce({ rows: [{ arhivat: '0', curent: '2000' }] }) // ordonanțat curent 2000 → ramas 0
+      .mockResolvedValueOnce({ rows: [{ total: '0' }] });      // SELECT SUM plata
 
     const app = createTestApp();
     const res = await request(app)

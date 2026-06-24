@@ -495,6 +495,20 @@
   }
 
   // F-06: Documente suport
+  const isAttPreviewable = t => t === 'application/pdf' || (t || '').indexOf('image/') === 0;
+  // Listener delegat o singură dată (lista e statică în DOM; loadAttachments() poate
+  // re-rula după cancel/email/etc. — un listener per innerHTML ar duplica handler-ele).
+  (function setupAttachmentsPreviewDelegation() {
+    const list = $('attachmentsList');
+    if (!list) return;
+    list.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-att-action="preview"]');
+      if (!btn) return;
+      ev.preventDefault();
+      if (typeof window.openAttPreview !== 'function') return;
+      window.openAttPreview(btn.getAttribute('data-preview-url'), btn.getAttribute('data-filename'), btn.getAttribute('data-mime'));
+    });
+  })();
   async function loadAttachments() {
     try {
       const params = new URLSearchParams();
@@ -509,15 +523,21 @@
       card.style.display = '';
       const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
       const tokenParam = linkToken ? `?token=${encodeURIComponent(linkToken)}` : '';
-      list.innerHTML = atts.map(a => `
-        <a href="/flows/${encodeURIComponent(flowId)}/attachments/${a.id}${tokenParam}"
-           download="${a.filename.replace(/"/g,'')}"
-           style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(124,92,255,.1);border-radius:8px;text-decoration:none;color:var(--text);font-size:.85rem;border:1px solid rgba(124,92,255,.2);">
+      const tokenAnd = linkToken ? `&token=${encodeURIComponent(linkToken)}` : '';
+      list.innerHTML = atts.map(a => {
+        const dlUrl = `/flows/${encodeURIComponent(flowId)}/attachments/${a.id}${tokenParam}`;
+        const previewBtn = isAttPreviewable(a.mimeType)
+          ? `<button type="button" data-att-action="preview" data-preview-url="/flows/${encodeURIComponent(flowId)}/attachments/${a.id}?preview=1${tokenAnd}" data-filename="${esc(a.filename)}" data-mime="${esc(a.mimeType)}" style="background:none;border:none;padding:0;color:#b39dff;font-weight:700;font-size:.78rem;cursor:pointer;text-decoration:underline;">Previzualizează</button>`
+          : '';
+        return `
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(124,92,255,.1);border-radius:8px;font-size:.85rem;border:1px solid rgba(124,92,255,.2);">
           <span>${iconByMime(a.mimeType)}</span>
           <span style="flex:1;">${a.filename}</span>
           <span style="color:var(--muted);font-size:.78rem;">${(a.sizeBytes/1024).toFixed(0)} KB</span>
-          <span style="color:#b39dff;font-weight:700;font-size:.78rem;">⬇ Descarcă</span>
-        </a>`).join('');
+          ${previewBtn}
+          <a href="${dlUrl}" download="${a.filename.replace(/"/g,'')}" style="color:#b39dff;font-weight:700;font-size:.78rem;text-decoration:none;">⬇ Descarcă</a>
+        </div>`;
+      }).join('');
     } catch(e) { /* non-fatal */ }
   }
 
