@@ -71,7 +71,7 @@ export const DF_P1_FIELDS = [
 
 /** Câmpuri DF sectiunea B (P2) */
 export const DF_P2_FIELDS = [
-  'ckbx_secta_inreg_ctrl_ang','ckbx_fara_inreg_ctrl_ang','sum_fara_inreg_ctrl_crdbug',
+  'ckbx_secta_inreg_ctrl_ang','ckbx_fara_inreg_ctrl_ang','sum_fara_inreg_ctrl_crdbug','sum_fara_inreg_ctrl_crd_bug',
   'ckbx_interzis_emit_ang','ckbx_interzis_intrucat','intrucat','rows_ctrl',
 ];
 

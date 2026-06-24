@@ -1839,6 +1839,15 @@ const MIGRATIONS = [
           ADD COLUMN IF NOT EXISTS an_exercitiu INTEGER;
       END $g$;
     `
+  },
+  {
+    // SecB DF (v3.9.585): a doua sumă CFP — „credite bugetare" (sum_fara_inreg_ctrl_crd_bug).
+    // Era câmp-fantomă (colectat de frontend, fără coloană/whitelist → pierdut la reload).
+    // formulare_df e tabelă inline (mig. 048) → există garantat, fără guard V4.
+    id: '087_formulare_df_sum_crd_bug',
+    sql: `
+      ALTER TABLE formulare_df ADD COLUMN IF NOT EXISTS sum_fara_inreg_ctrl_crd_bug TEXT;
+    `
   }
 ];
 

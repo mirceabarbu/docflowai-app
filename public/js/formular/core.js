@@ -433,7 +433,6 @@ function colN(){return{
   sectiuneaB:{
     ckbx_secta_inreg_ctrl_ang:cb('n-ck-seca'),ckbx_fara_inreg_ctrl_ang:cb('n-ck-fararezv'),
     sum_fara_inreg_ctrl_crdbug:String(pMR(g('n-sumfara'))||0),
-    ckbx_fara_inreg_ctrl_crd_bug:cb('n-ck-fararezvcrbug'),
     sum_fara_inreg_ctrl_crd_bug:String(pMR(g('n-sumfararezvcrbug'))||0),
     ckbx_interzis_emit_ang:cb('n-ck-interzis'),ckbx_interzis_intrucat:cb('n-ck-intrucat'),
     intrucat:g('n-intrucat'),rowT_ang_ctrl_ang:getNC(),

@@ -65,6 +65,7 @@ function collectDfP1Db(){return{
 function collectDfP2Db(){return{
   ckbx_secta_inreg_ctrl_ang:cb('n-ck-seca'),ckbx_fara_inreg_ctrl_ang:cb('n-ck-fararezv'),
   sum_fara_inreg_ctrl_crdbug:g('n-sumfara')||'0',
+  sum_fara_inreg_ctrl_crd_bug:g('n-sumfararezvcrbug')||'0',
   ckbx_interzis_emit_ang:cb('n-ck-interzis'),ckbx_interzis_intrucat:cb('n-ck-intrucat'),
   intrucat:g('n-intrucat'),rows_ctrl:getNC(),
 };}
@@ -139,6 +140,7 @@ function populateDf(doc){
   p5toggle();
   sc('n-ck-seca',doc.ckbx_secta_inreg_ctrl_ang);sc('n-ck-fararezv',doc.ckbx_fara_inreg_ctrl_ang);
   sv('n-sumfara',doc.sum_fara_inreg_ctrl_crdbug||'0');
+  sv('n-sumfararezvcrbug',doc.sum_fara_inreg_ctrl_crd_bug||'0');
   sc('n-ck-interzis',doc.ckbx_interzis_emit_ang);sc('n-ck-intrucat',doc.ckbx_interzis_intrucat);
   sv('n-intrucat',doc.intrucat);
   // FEATURE buget multi-anual (v3.9.558): restabilește an_referinta (NULL legacy → anul curent
@@ -343,7 +345,7 @@ function setModeP2Df(){
    'n-ck-faraplati','n-ck-cuplati','n-ck-anurmatori'].forEach(id=>{const e=document.getElementById(id);if(e)e.disabled=true;});
   document.querySelectorAll('#n-vtbody input,#n-ptbody input,#n-vtbody .bdel,#n-ptbody .bdel,#n-vtbody .badd,#n-ptbody .badd').forEach(e=>e.disabled=true);
   // Sect B deblocată + highlight
-  ['n-ck-seca','n-ck-fararezv','n-sumfara','n-ck-interzis','n-ck-intrucat','n-intrucat'].forEach(id=>{
+  ['n-ck-seca','n-ck-fararezv','n-sumfara','n-sumfararezvcrbug','n-ck-interzis','n-ck-intrucat','n-intrucat'].forEach(id=>{
     const e=document.getElementById(id);if(e){e.disabled=false;}
   });
   document.querySelectorAll('#n-ctbody input').forEach(e=>{e.disabled=false;});
