@@ -578,7 +578,7 @@ router.get('/api/formulare/list', async (req, res) => {
              AND (f.data->>'completed') IS DISTINCT FROM 'true'
              AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
             THEN 'transmis_flux'
-            ELSE fo.status
+            ELSE NULL          -- non-null doar pentru transmis_flux; restul cade pe fallback aprobat/status
           END AS display_status,
           CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
