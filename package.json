@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.9.590",
+  "version": "3.9.591",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -42,13 +42,13 @@
     "qrcode": "^1.5.4",
     "resend": "^6.10.0",
     "web-push": "^3.6.7",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "xmllint-wasm": "^5.2.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.0",
     "pdfjs-dist": "^4.10.38",
     "supertest": "^7.0.0",
-    "vitest": "^4.1.0",
-    "xmllint-wasm": "^5.2.0"
+    "vitest": "^4.1.0"
   }
 }

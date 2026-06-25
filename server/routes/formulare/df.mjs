@@ -23,6 +23,9 @@ import {
   submitFormular, completeFormular, returnFormular, linkFlowFormular, stergeFormular,
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
+import { serializeNotafd } from '../../services/alop-xml/notafd-serializer.mjs';
+import { dfRowToXsd } from '../../services/alop-xml/df-to-xsd.mjs';
+import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -174,6 +177,45 @@ router.get('/api/formulare-df/:id', async (req, res) => {
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df get error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// GET /api/formulare-df/:id/xml — export XML oficial NOTAFD (validat XSD înainte de servire)
+// Authz IDENTIC cu GET /api/formulare-df/:id (canViewFormular). Gate: can_export_xml.
+router.get('/api/formulare-df/:id/xml', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const isGlobalAdmin = actor.role === 'admin' && !actor.orgId;
+    const orgCond = isGlobalAdmin ? '' : 'AND fd.org_id = $2';
+    const params  = isGlobalAdmin ? [req.params.id] : [req.params.id, actor.orgId];
+    const { rows } = await pool.query(`
+      SELECT fd.*,
+        CASE WHEN fd.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+             THEN true ELSE false END AS aprobat
+      FROM formulare_df fd
+      LEFT JOIN flows f ON f.id = fd.flow_id
+      WHERE fd.id = $1 ${orgCond} AND fd.deleted_at IS NULL
+    `, params);
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const doc = rows[0];
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const view = await canViewFormular(pool, actor, doc, actorComp);
+      if (!view.allowed) return res.status(403).json({ error: view.reason });
+    }
+    const caps = computeDocCapabilities(doc, actor, 'notafd');
+    if (!caps.can_export_xml) {
+      return res.status(409).json({ error: 'not_exportable',
+        message: 'Documentul nu este validat (Secțiunea A+B complete) — exportul XML nu este disponibil.' });
+    }
+    await serveFormularXml(res, {
+      mapRow: dfRowToXsd, serialize: serializeNotafd, schema: 'notafd_v0',
+      row: doc, fileBase: 'DocumentFundamentare', dateField: 'data_revizuirii', refField: 'nr_unic_inreg',
+    });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-df xml export error');
     res.status(500).json({ error: 'server_error' });
   }
 });

@@ -29,6 +29,7 @@ function emptyCaps() {
     can_revise: false,
     can_download_signed: false,
     can_download_flux: false,
+    can_export_xml: false,
     // flags informaționale (pentru alegerea bannerelor în frontend — oglindesc doc.js)
     aprobat: false,
     is_neaprobat: false,
@@ -73,6 +74,14 @@ export function computeDocCapabilities(doc, actor, ft) {
   caps.is_on_flow = status === 'transmis_flux';
   caps.is_neaprobat = isNotafd && status === 'neaprobat';
   caps.is_de_revizuit = isNotafd && status === 'de_revizuit';
+
+  // Export XML oficial NOTAFD/ORDNT (v3.9.591): permis când Secțiunea A+B sunt COMPLETE =
+  // documentul a fost finalizat de P2 (status 'completed') ori e dincolo de asta ('transmis_flux'
+  // sau aprobat). Util pentru verificare înainte de semnare ȘI după finalizare. NU pe draft/
+  // pending_p2/returnat/neaprobat/de_revizuit (Secțiunea B incompletă). Set ÎNAINTE de
+  // return-urile pe ramuri (toate întorc același obiect `caps`), deci e role-independent.
+  // Hint de AFIȘARE — endpoint-ul /xml re-verifică gate-ul independent.
+  caps.can_export_xml = aprobat || status === 'completed' || status === 'transmis_flux';
 
   // Ordinea de scurtcircuit identică cu renderActions (primul match câștigă):
   if (isNotafd && status === 'neaprobat') {

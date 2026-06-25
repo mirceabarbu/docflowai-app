@@ -21,6 +21,9 @@ import {
   computeOrdBudgetContext,
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
+import { serializeOrdnt } from '../../services/alop-xml/ordnt-serializer.mjs';
+import { ordRowToXsd } from '../../services/alop-xml/ord-to-xsd.mjs';
+import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -176,6 +179,45 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord get error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// GET /api/formulare-ord/:id/xml — export XML oficial ORDNT (validat XSD înainte de servire)
+// Authz IDENTIC cu GET /api/formulare-ord/:id (canViewFormular). Gate: can_export_xml.
+router.get('/api/formulare-ord/:id/xml', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const isGlobalAdmin = actor.role === 'admin' && !actor.orgId;
+    const orgCond = isGlobalAdmin ? '' : 'AND fo.org_id = $2';
+    const params  = isGlobalAdmin ? [req.params.id] : [req.params.id, actor.orgId];
+    const { rows } = await pool.query(`
+      SELECT fo.*,
+        CASE WHEN fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+             THEN true ELSE false END AS aprobat
+      FROM formulare_ord fo
+      LEFT JOIN flows f ON f.id = fo.flow_id
+      WHERE fo.id = $1 ${orgCond} AND fo.deleted_at IS NULL
+    `, params);
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const doc = rows[0];
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const view = await canViewFormular(pool, actor, doc, actorComp);
+      if (!view.allowed) return res.status(403).json({ error: view.reason });
+    }
+    const caps = computeDocCapabilities(doc, actor, 'ordnt');
+    if (!caps.can_export_xml) {
+      return res.status(409).json({ error: 'not_exportable',
+        message: 'Ordonanțarea nu este validată (Secțiunea A+B complete) — exportul XML nu este disponibil.' });
+    }
+    await serveFormularXml(res, {
+      mapRow: ordRowToXsd, serialize: serializeOrdnt, schema: 'ordnt_v0',
+      row: doc, fileBase: 'OrdonantareDePlata', dateField: 'data_ordont_pl', refField: 'nr_ordonant_pl',
+    });
+  } catch (e) {
+    logger.error({ err: e }, 'formulare-ord xml export error');
     res.status(500).json({ error: 'server_error' });
   }
 });
