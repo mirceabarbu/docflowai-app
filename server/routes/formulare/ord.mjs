@@ -81,7 +81,8 @@ router.get('/api/formulare-ord', async (req, res) => {
           WHEN fo.status = 'completed'
            AND fo.flow_id IS NOT NULL
            AND fl.deleted_at IS NULL
-           AND NOT (fl.data->>'status' = 'completed' OR (fl.data->>'completed')::boolean = true)
+           AND (fl.data->>'completed') IS DISTINCT FROM 'true'
+           AND (fl.data->>'status')    IS DISTINCT FROM 'cancelled'
           THEN 'transmis_flux'
           ELSE fo.status
         END AS display_status
