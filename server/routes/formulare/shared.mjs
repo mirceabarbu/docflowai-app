@@ -476,6 +476,8 @@ router.get('/api/formulare/list', async (req, res) => {
           ) AS has_newer_revision,
           CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
+          CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+               THEN 'aprobat' ELSE fd.status END AS badge_status,
           COALESCE(u1.nume, u1.email) AS initiator,
           u1.compartiment AS initiator_comp,
           COALESCE(u2.nume, u2.email) AS p2,
@@ -571,15 +573,17 @@ router.get('/api/formulare/list', async (req, res) => {
           fo.beneficiar AS titlu,
           fo.created_by,
           fo.flow_id,
-          CASE
-            WHEN fo.status = 'completed'
-             AND fo.flow_id IS NOT NULL
-             AND f.deleted_at IS NULL
-             AND (f.data->>'completed') IS DISTINCT FROM 'true'
-             AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
-            THEN 'transmis_flux'
-            ELSE NULL          -- non-null doar pentru transmis_flux; restul cade pe fallback aprobat/status
-          END AS display_status,
+          COALESCE(
+            CASE WHEN fo.status = 'completed'
+                      AND fo.flow_id IS NOT NULL
+                      AND f.deleted_at IS NULL
+                      AND (f.data->>'completed') IS DISTINCT FROM 'true'
+                      AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
+                 THEN 'transmis_flux' END,
+            CASE WHEN fo.flow_id IS NOT NULL
+                      AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+                 THEN 'aprobat' ELSE fo.status END
+          ) AS badge_status,
           CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,

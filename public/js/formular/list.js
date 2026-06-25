@@ -486,7 +486,7 @@ function _renderLstTable(rows,type){
       <td>${esc(row.initiator||'—')}</td>
       <td>${esc(row.initiator_comp||'—')}</td>
       <td>${esc(row.p2||'—')}</td>
-      <td>${_stBadge(row.display_status || (row.aprobat ? 'aprobat' : row.status))}</td>
+      <td>${_stBadge(row.badge_status)}</td>
       <td>
         <div>${_fmtDate(row.created_at)}</div>
         ${row.initiator ? `<div style="font-size:.75rem;color:var(--df-text-3);margin-top:2px">${esc(row.initiator)}</div>` : ''}
