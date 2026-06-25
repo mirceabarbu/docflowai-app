@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="mfp:anaf:dgti:ordnt:declaratie:v1" targetNamespace="mfp:anaf:dgti:ordnt:declaratie:v1" elementFormDefault="qualified" attributeFormDefault="unqualified" version="1.02" xml:lang="ro">
+	<xs:element name="ORDNT" type="ORDNTType"/>
+	<xs:complexType name="ORDNTType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:sequence>
+					<xs:element name="docFd" type="DocFdType" maxOccurs="unbounded"/>
+				</xs:sequence>
+				<xs:attribute name="Cif" type="CuiSType" use="required"/>
+				<xs:attribute name="DenInstPb" type="Str150" use="required"/>
+				<xs:attribute name="NrOrdonantPl" type="Str20" use="required"/>
+				<xs:attribute name="DataOrdontPl" type="DateSType" use="required"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="DocFdType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:sequence>
+					<xs:element name="rowTfd" type="RowTfdType" maxOccurs="unbounded"/>
+				</xs:sequence>
+				<xs:attribute name="nr_unic_inreg" type="Str20" use="required"/>
+				<xs:attribute name="beneficiar" type="Str150" use="required"/>
+				<xs:attribute name="documente_justificative" type="Str90" use="required"/>
+				<xs:attribute name="iban_beneficiar" type="Str24" use="required"/>
+				<xs:attribute name="cif_beneficiar" type="CuiSType" use="required"/>
+				<xs:attribute name="banca_beneficiar" type="Str100" use="required"/>
+				<xs:attribute name="inf_pv_plata" type="Str70" use="required"/>
+				<xs:attribute name="inf_pv_plata1" type="Str70" use="required"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="RowTfdType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:attribute name="cod_angajament" type="Str11" use="required"/>
+				<xs:attribute name="indicator_angajament" type="Str3" use="required"/>
+				<xs:attribute name="program" type="Str10" use="required"/>
+				<xs:attribute name="cod_SSI" type="Str15" use="required"/>
+				<xs:attribute name="receptii" type="IntPoz12SType"/>
+				<xs:attribute name="plati_anterioare" type="IntPoz12SType"/>
+				<xs:attribute name="suma_ordonantata_plata" type="IntPoz12SType"/>
+				<xs:attribute name="receptii_neplatite" type="IntPoz12SType"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:simpleType name="CuiSType">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="[1-9]\d{1,9}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str150">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="150"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str20">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="20"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DateSType">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="([1-9]|0[1-9]|[12][0-9]|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str90">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="90"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str24">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="24"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str100">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="100"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str70">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="70"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str11">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="11"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str3">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="3"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str10">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="10"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str15">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="15"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntPoz12SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="0"/>
+			<xs:maxInclusive value="999999999999"/>
+		</xs:restriction>
+	</xs:simpleType>
+</xs:schema>

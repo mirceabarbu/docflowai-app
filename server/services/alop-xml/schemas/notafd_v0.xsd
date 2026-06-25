@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="mfp:anaf:dgti:notafd:declaratie:v1" targetNamespace="mfp:anaf:dgti:notafd:declaratie:v1" elementFormDefault="qualified" attributeFormDefault="unqualified" version="1.02" xml:lang="ro">
+	<xs:element name="NOTAFD" type="NOTAFDType"/>
+	<xs:complexType name="NOTAFDType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:sequence>
+					<xs:element name="sectiuneaA" type="SectiuneaAType"/>
+					<xs:element name="sectiuneaB" type="SectiuneaBType"/>
+				</xs:sequence>
+				<xs:attribute name="Cif" type="CuiSType" use="required"/>
+				<xs:attribute name="DenInstPb" type="Str150" use="required"/>
+				<xs:attribute name="SubtitluDF" type="Str150" use="required"/>
+				<xs:attribute name="NrUnicInreg" type="Str20" use="required"/>
+				<xs:attribute name="Revizuirea" type="Str3" use="required"/>
+				<xs:attribute name="DataRevizuirii" type="DateSType" use="required"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="SectiuneaAType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:sequence>
+					<xs:element name="ang_legale_val" type="Ang_legale_valType"/>
+					<xs:element name="ang_legale_plati" type="Ang_legale_platiType"/>
+				</xs:sequence>
+				<xs:attribute name="compartiment_specialitate" type="Str150" use="required"/>
+				<xs:attribute name="obiect_fd_reviz_scurt" type="Str250" use="required"/>
+				<xs:attribute name="obiect_fd_reviz_lung" type="Str500" use="required"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="Ang_legale_valType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:sequence>
+					<xs:element name="rowT_ang_pl_val" type="RowT_ang_pl_valType" maxOccurs="unbounded"/>
+				</xs:sequence>
+				<xs:attribute name="ckbx_stab_tin_cont" type="Str1"/>
+				<xs:attribute name="ckbx_ramane_suma" type="Str1"/>
+				<xs:attribute name="ramane_suma" type="IntPoz12SType"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="RowT_ang_pl_valType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:attribute name="element_fd" type="Str150" use="required"/>
+				<xs:attribute name="program" type="Str10" use="required"/>
+				<xs:attribute name="codSSI" type="Str15" use="required"/>
+				<xs:attribute name="param_fd" type="Str500" use="required"/>
+				<xs:attribute name="valt_rev_prec" type="IntPoz12SType"/>
+				<xs:attribute name="influente" type="IntPoz12SType"/>
+				<xs:attribute name="valt_actualiz" type="IntPoz12SType"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="Ang_legale_platiType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:sequence>
+					<xs:element name="rowT_ang_pl_plati" type="RowT_ang_pl_platiType" minOccurs="0" maxOccurs="unbounded"/>
+				</xs:sequence>
+				<xs:attribute name="ckbx_fara_ang_emis_ancrt" type="Str1"/>
+				<xs:attribute name="ckbx_cu_ang_emis_ancrt" type="Str1"/>
+				<xs:attribute name="ckbx_sting_ang_in_ancrt" type="Str1"/>
+				<xs:attribute name="ckbx_fara_plati_ang_in_ancrt" type="Str1"/>
+				<xs:attribute name="ckbx_cu_plati_ang_in_mmani" type="Str1"/>
+				<xs:attribute name="ckbx_ang_leg_emise_ct_an_urm" type="Str1"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="RowT_ang_pl_platiType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:attribute name="plati_ani_precedenti" type="IntPoz12SType"/>
+				<xs:attribute name="plati_estim_ancrt" type="IntPoz12SType"/>
+				<xs:attribute name="plati_estim_an_np1" type="IntPoz12SType"/>
+				<xs:attribute name="plati_estim_an_np2" type="IntPoz12SType"/>
+				<xs:attribute name="plati_estim_an_np3" type="IntPoz12SType"/>
+				<xs:attribute name="plati_estim_ani_ulter" type="IntPoz12SType"/>
+				<xs:attribute name="program" type="Str10" use="required"/>
+				<xs:attribute name="codSSI" type="Str15" use="required"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="SectiuneaBType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:sequence>
+					<xs:element name="rowT_ang_ctrl_ang" type="RowT_ang_ctrl_angType" minOccurs="0" maxOccurs="unbounded"/>
+				</xs:sequence>
+				<xs:attribute name="ckbx_secta_inreg_ctrl_ang" type="Str1"/>
+				<xs:attribute name="ckbx_fara_inreg_ctrl_ang" type="Str1"/>
+				<xs:attribute name="sum_fara_inreg_ctrl_crdbug" type="IntPoz12SType"/>
+				<xs:attribute name="ckbx_interzis_emit_ang" type="Str1"/>
+				<xs:attribute name="ckbx_interzis_intrucat" type="Str1"/>
+				<xs:attribute name="intrucat" type="Str500"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="RowT_ang_ctrl_angType">
+		<xs:complexContent>
+			<xs:restriction base="xs:anyType">
+				<xs:attribute name="cod_angajament" type="Str11" use="required"/>
+				<xs:attribute name="indicator_angajament" type="Str3" use="required"/>
+				<xs:attribute name="program" type="Str10" use="required"/>
+				<xs:attribute name="cod_SSI" type="Str15" use="required"/>
+				<xs:attribute name="sum_rezv_crdt_ang_af_rvz_prc" type="IntPoz12SType"/>
+				<xs:attribute name="influente_c6" type="IntPoz12SType"/>
+				<xs:attribute name="sum_rezv_crdt_ang_act" type="IntPoz12SType"/>
+				<xs:attribute name="sum_rezv_crdt_bug_af_rvz_prc" type="IntPoz12SType"/>
+				<xs:attribute name="influente_c9" type="IntPoz12SType"/>
+				<xs:attribute name="sum_rezv_crdt_bug_act" type="IntPoz12SType"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:simpleType name="CuiSType">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="[1-9]\d{1,9}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str150">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="150"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str20">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="20"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str3">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="3"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="DateSType">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="([1-9]|0[1-9]|[12][0-9]|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str250">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="250"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str500">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="500"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str1">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="1"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="IntPoz12SType">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="0"/>
+			<xs:maxInclusive value="999999999999"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str10">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="10"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str15">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="15"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="Str11">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="11"/>
+		</xs:restriction>
+	</xs:simpleType>
+</xs:schema>
