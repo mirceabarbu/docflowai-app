@@ -76,21 +76,11 @@ router.get('/api/formulare-ord', async (req, res) => {
         fo.flow_id, fo.df_id,
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
-        fd.nr_unic_inreg AS df_nr,
-        CASE
-          WHEN fo.status = 'completed'
-           AND fo.flow_id IS NOT NULL
-           AND fl.deleted_at IS NULL
-           AND (fl.data->>'completed') IS DISTINCT FROM 'true'
-           AND (fl.data->>'status')    IS DISTINCT FROM 'cancelled'
-          THEN 'transmis_flux'
-          ELSE fo.status
-        END AS display_status
+        fd.nr_unic_inreg AS df_nr
       FROM formulare_ord fo
       JOIN users p1 ON p1.id = fo.created_by
       LEFT JOIN users p2 ON p2.id = fo.assigned_to
       LEFT JOIN formulare_df fd ON fd.id = fo.df_id
-      LEFT JOIN flows fl ON fl.id = fo.flow_id
       WHERE fo.deleted_at IS NULL
         ${orgFilter}
       ORDER BY fo.updated_at DESC

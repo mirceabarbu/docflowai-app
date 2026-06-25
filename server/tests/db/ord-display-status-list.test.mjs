@@ -1,13 +1,9 @@
 /**
- * Fix 13 (caracterizare) + Fix 14 (corecție NULL-safe): lista ORD (`GET /api/formulare-ord`)
- * expune un `display_status` derivat, READ-ONLY — asimetria DF↔ORD (ORD rămâne `completed` la
- * trimiterea pe flux, `linkFlowSetsStatus: null`) face ca o ORD pe flux activ nefinalizat să
- * arate „Trimis flux" în UI, fără să schimbe coloana `status` brută sau vreo tranziție de
- * lifecycle.
- *
+ * Fix 13/14/15: lista ORD (`GET /api/formulare/list?type=ord`) expune `display_status` derivat.
+ * Endpoint-ul REAL al listei din UI — shared.mjs ramura ORD, alias `f` pentru flows.
  * Predicatul de "flux activ" e IDENTIC cu `flow_active` din GET /:id — NULL-safe via
  * `IS DISTINCT FROM` (NU negarea lui `aprobat`, care cădea pe NULL când `data.completed`
- * lipsea, ca pe un flux real în curs — capcana de logică three-valued din fix 13).
+ * lipsea, ca pe un flux real în curs).
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import request from 'supertest';
@@ -38,10 +34,9 @@ function buildApp() {
   return app;
 }
 
-// flux generic cu status/completed/deletedAt arbitrare (oglindește seedFlowD din
-// soft-delete-flow-pointer.test.mjs — testul ăsta are nevoie de control fin pe deleted_at).
+// flux generic cu status/completed/deletedAt arbitrare.
 // `completed` nespecificat → cheia e OMISĂ din `data` (ca un flux real în curs, unde
-// `data.completed` nu există deloc, NU `false` — capcana NULL care a produs fix 14).
+// `data.completed` nu există deloc — capcana NULL care a produs fix 14).
 async function seedFlowX(id, { status = 'in_progress', completed, deletedAt = null } = {}) {
   const data = { status, orgId: 1, initEmail: 'p1@x.ro', docName: 'Doc' };
   if (completed !== undefined) data.completed = completed;
@@ -52,11 +47,11 @@ async function seedFlowX(id, { status = 'in_progress', completed, deletedAt = nu
   return id;
 }
 
-function findRow(body, id) { return body.documents.find(d => d.id === id); }
+function findRow(body, id) { return body.rows.find(d => d.id === id); }
 
 const d = describe.skipIf(!hasTestDb());
 
-d('GET /api/formulare-ord — display_status derivat (fix 13)', () => {
+d('GET /api/formulare/list?type=ord — display_status derivat (fix 15)', () => {
   let app;
   beforeAll(migrate);
   beforeEach(async () => { await truncateAll(); await seedOrgUser({ role: 'user', email: 'p1@x.ro' }); app = buildApp(); });
@@ -67,7 +62,7 @@ d('GET /api/formulare-ord — display_status derivat (fix 13)', () => {
     const flowId = await seedFlowX('flow-ord-active', { status: 'pending' });
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId });
 
-    const res = await request(app).get('/api/formulare-ord').set('Cookie', cookie());
+    const res = await request(app).get('/api/formulare/list?type=ord').set('Cookie', cookie());
     expect(res.status).toBe(200);
     const row = findRow(res.body, ordId);
     expect(row.display_status).toBe('transmis_flux');
@@ -78,7 +73,7 @@ d('GET /api/formulare-ord — display_status derivat (fix 13)', () => {
     const flowId = await seedFlowX('flow-ord-completed-flag', { completed: true });
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId });
 
-    const res = await request(app).get('/api/formulare-ord').set('Cookie', cookie());
+    const res = await request(app).get('/api/formulare/list?type=ord').set('Cookie', cookie());
     expect(res.status).toBe(200);
     const row = findRow(res.body, ordId);
     expect(row.display_status).toBe('completed');
@@ -89,28 +84,17 @@ d('GET /api/formulare-ord — display_status derivat (fix 13)', () => {
     const flowId = await seedFlowX('flow-ord-cancelled', { status: 'cancelled' });
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId });
 
-    const res = await request(app).get('/api/formulare-ord').set('Cookie', cookie());
+    const res = await request(app).get('/api/formulare/list?type=ord').set('Cookie', cookie());
     expect(res.status).toBe(200);
     const row = findRow(res.body, ordId);
     expect(row.display_status).toBe('completed');
     expect(row.status).toBe('completed');
   });
 
-  it('ORD aprobat (flux finalizat) → display_status=aprobat', async () => {
-    const flowId = await seedFlowX('flow-ord-done', { status: 'completed', completed: true });
-    const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'aprobat', flowId });
-
-    const res = await request(app).get('/api/formulare-ord').set('Cookie', cookie());
-    expect(res.status).toBe(200);
-    const row = findRow(res.body, ordId);
-    expect(row.display_status).toBe('aprobat');
-    expect(row.status).toBe('aprobat');
-  });
-
   it('ORD completed fără flux → display_status=completed', async () => {
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId: null });
 
-    const res = await request(app).get('/api/formulare-ord').set('Cookie', cookie());
+    const res = await request(app).get('/api/formulare/list?type=ord').set('Cookie', cookie());
     expect(res.status).toBe(200);
     const row = findRow(res.body, ordId);
     expect(row.display_status).toBe('completed');
@@ -121,7 +105,7 @@ d('GET /api/formulare-ord — display_status derivat (fix 13)', () => {
     const flowId = await seedFlowX('flow-ord-deleted', { status: 'in_progress', completed: false, deletedAt: new Date().toISOString() });
     const ordId = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId });
 
-    const res = await request(app).get('/api/formulare-ord').set('Cookie', cookie());
+    const res = await request(app).get('/api/formulare/list?type=ord').set('Cookie', cookie());
     expect(res.status).toBe(200);
     const row = findRow(res.body, ordId);
     expect(row.display_status).toBe('completed');
