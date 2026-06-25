@@ -1045,7 +1045,7 @@ async function uploadAttachments(ft, slot = 1){
         headers: {
           'Content-Type': mime,
           'X-CSRF-Token': df.getCsrf(),
-          'X-Filename': item.name || 'atasament',
+          'X-Filename': encodeURIComponent(item.name || 'atasament'),
         },
         body: blob,
       });

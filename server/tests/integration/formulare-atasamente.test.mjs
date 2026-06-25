@@ -104,6 +104,32 @@ describe('POST /api/formulare-atasamente/:type/:id', () => {
     expect(insertCall).toBeDefined();
   });
 
+  it('v3.9.592: nume cu diacritice → X-Filename encodat de client, decodat la server', async () => {
+    const NUME = 'Plan de acțiune propus.pdf';
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [{ created_by: 1, assigned_to: 2, status: 'draft' }], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [{ id: ATT_ID, filename: NUME, mime_type: 'application/pdf', size_bytes: 1234, created_at: '2026-05-22' }],
+        rowCount: 1
+      });
+
+    const res = await request(createTestApp())
+      .post(`/api/formulare-atasamente/ord/${ORD_ID}`)
+      .set('Cookie', makeAuthCookie())
+      .set('Content-Type', 'application/pdf')
+      .set('X-Filename', encodeURIComponent(NUME)) // oglindește clientul (doc.js)
+      .send(Buffer.from('PDF-CONTENT-MOCK'));
+
+    expect(res.status).toBe(200);
+
+    // filename-ul stocat (param 4 al INSERT-ului) trebuie să fie decodat, cu diacritice
+    const insertCall = dbModule.pool.query.mock.calls.find(c =>
+      String(c[0]).includes('INSERT INTO formulare_atasamente')
+    );
+    expect(insertCall).toBeDefined();
+    expect(insertCall[1][3]).toBe(NUME);
+  });
+
   it('upload fără permisiune → 403', async () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ created_by: 999, assigned_to: 888, status: 'draft' }], rowCount: 1 });

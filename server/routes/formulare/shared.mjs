@@ -167,7 +167,9 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     if (data.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'fisier_prea_mare' });
 
     const mime_type = req.headers['content-type'] || 'application/octet-stream';
-    const filename = req.headers['x-filename'] || `atasament_${Date.now()}`;
+    let filename = req.headers['x-filename'] || '';
+    try { filename = decodeURIComponent(filename); } catch { /* valoare ne-encodată/legacy — lasă crud */ }
+    if (!filename) filename = `atasament_${Date.now()}`;
 
     const { rows: inserted } = await pool.query(`
       INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot)
