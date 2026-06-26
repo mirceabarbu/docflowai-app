@@ -605,7 +605,7 @@ function renderAlopDetail(a,container){
               ? 'Buget exercițiu '+_exAn+' (Stingere — valoarea angajamentului, tabel 1)'
               : (a.df_an_referinta ? 'Buget exercițiu '+_exAn+' (DF ancorat pe '+a.df_an_referinta+')' : 'DF fără an de referință — exercițiu nedefinit');
             const _bug = a.df_id
-              ? `<span style="color:var(--df-text-2);font-weight:600" title="${_bugTitle}">${_bugAncorat ? fmtRON(parseFloat(a.df_buget_an_curent||0)) : '—'}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">buget ex. ${_exAn}</span></span>`
+              ? `<span style="color:var(--df-text-2);font-weight:600" title="${_bugTitle}">${_bugAncorat ? fmtRON(parseFloat(a.df_buget_an_curent||0)) : '—'}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">buget exercitiu ${_exAn}</span></span>`
               : '';
             const _sepHtml = '<span style="color:var(--df-text-4);margin:0 8px">·</span>';
             const _parts = [_est, _df, _bug].filter(Boolean);
@@ -678,7 +678,7 @@ function renderAlopDetail(a,container){
       <div style="background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:.82rem;margin-top:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div style="display:flex;flex-direction:column;gap:4px">
           <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
-          <span style="font-size:.78rem;color:var(--df-text-2)">📅 Rămas de ordonanțat (exercițiu ${new Date().getFullYear()}): <strong style="color:#b0a0ff">${a.ramas_an_curent==null?'—':fmtRON(a.ramas_an_curent)}</strong>${a.ramas_an_curent==null?'':` din buget exercițiu (${fmtRON(parseFloat(a.df_buget_an_curent||0))})`}</span>
+          <span style="font-size:.78rem;color:var(--df-text-2)">📅 Rămas de ordonanțat (exercițiu ${new Date().getFullYear()}): <strong style="color:#b0a0ff">${a.ramas_an_curent==null?'—':fmtRON(a.ramas_an_curent)}</strong>${a.ramas_an_curent==null?'':` din credite bugetare exercitiu curent (${fmtRON(parseFloat(a.credite_bugetare_an_curent||0))})`}</span>
         </div>
         <button class="df-action-btn primary" onclick="startNouaLichidare('${esc(a.id)}')">🔄 Nouă ordonanțare parțială</button>
       </div>`:''}

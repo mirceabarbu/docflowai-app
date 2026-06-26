@@ -341,6 +341,7 @@ router.get('/api/alop', async (req, res) => {
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
         ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
+        ${sqlCrediteBugetareCol10('df')} AS credite_bugetare_an_curent,
         df.an_referinta AS df_an_referinta,
         ${sqlStingereTruthy('df')} AS df_stingere,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
@@ -548,6 +549,7 @@ router.get('/api/alop/:id', async (req, res) => {
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
         ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
+        ${sqlCrediteBugetareCol10('df')} AS credite_bugetare_an_curent,
         ${sqlRamasAnExercitiu('df','a')} AS ramas_an_curent,
         df.an_referinta AS df_an_referinta,
         ${sqlStingereTruthy('df')} AS df_stingere,
