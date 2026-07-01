@@ -522,6 +522,82 @@
         });
       }
 
+      function renderTransmiteBlock() {
+        const el = document.getElementById('transmiteBlock');
+        if (!el) return;
+        const users = window._dbUsers || [];
+        const comps = [...new Set(
+          users.map(u => (u.compartiment || '').trim()).filter(Boolean)
+        )].sort();
+        const esc = window.df?.esc || (s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'));
+        el.style.display = '';
+        el.innerHTML = `
+          <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+            📨 Transmite automat la finalizare
+            <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional</span>
+          </div>
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px;line-height:1.5;">
+            La finalizarea fluxului, documentul semnat și atașamentele vor fi transmise prin aplicație persoanei/compartimentului ales — chiar dacă nu a fost semnatar.
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+            <div>
+              <label style="font-size:.75rem;color:var(--muted);display:block;margin-bottom:4px;">Destinatar</label>
+              <select id="transmiteTip" style="min-width:180px;">
+                <option value="">— nu transmite —</option>
+                <option value="Utilizator">Utilizator</option>
+                <option value="Compartiment">Compartiment</option>
+              </select>
+            </div>
+            <div id="transmiteUserWrap" style="display:none;">
+              <label style="font-size:.75rem;color:var(--muted);display:block;margin-bottom:4px;">Utilizator</label>
+              <select id="transmiteUser" style="min-width:220px;">
+                <option value="">— alege utilizator —</option>
+                ${users.map(u => `<option value="${esc(String(u.id||''))}" data-email="${esc(u.email||'')}">${esc((u.nume||u.email||'') + (u.functie?' — '+u.functie:''))}</option>`).join('')}
+              </select>
+            </div>
+            <div id="transmiteCompWrap" style="display:none;">
+              <label style="font-size:.75rem;color:var(--muted);display:block;margin-bottom:4px;">Compartiment</label>
+              <select id="transmiteComp" style="min-width:200px;">
+                <option value="">— alege compartiment —</option>
+                ${comps.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div id="transmiteRezWrap" style="display:none;margin-top:10px;">
+            <label style="font-size:.75rem;color:var(--muted);display:block;margin-bottom:4px;">Rezoluție / notă (opțional)</label>
+            <textarea id="transmiteRezolutie" maxlength="2000" rows="2"
+              placeholder="ex. «Spre analiză și propuneri»"
+              style="width:100%;resize:vertical;box-sizing:border-box;"></textarea>
+          </div>
+        `;
+        document.getElementById('transmiteTip').addEventListener('change', function() {
+          const tip = this.value;
+          document.getElementById('transmiteUserWrap').style.display = tip === 'Utilizator' ? '' : 'none';
+          document.getElementById('transmiteCompWrap').style.display = tip === 'Compartiment' ? '' : 'none';
+          document.getElementById('transmiteRezWrap').style.display = tip ? '' : 'none';
+          if (tip !== 'Utilizator') { const s = document.getElementById('transmiteUser'); if (s) s.value = ''; }
+          if (tip !== 'Compartiment') { const s = document.getElementById('transmiteComp'); if (s) s.value = ''; }
+        });
+      }
+
+      function readTransmiteLaFinalizare() {
+        const tip = document.getElementById('transmiteTip')?.value || '';
+        const rez = (document.getElementById('transmiteRezolutie')?.value || '').trim().slice(0, 2000);
+        if (tip === 'Utilizator') {
+          const sel = document.getElementById('transmiteUser');
+          const opt = sel?.options[sel.selectedIndex];
+          const val = sel?.value?.trim();
+          if (!val) return undefined;
+          return [{ type: 'user', value: /^\d+$/.test(val) ? Number(val) : (opt?.dataset?.email || val), rezolutie: rez || undefined }];
+        }
+        if (tip === 'Compartiment') {
+          const val = document.getElementById('transmiteComp')?.value?.trim();
+          if (!val) return undefined;
+          return [{ type: 'comp', value: val, rezolutie: rez || undefined }];
+        }
+        return undefined;
+      }
+
       function signerRowTemplate(s = {}) {
         const tr = document.createElement("tr");
         tr.setAttribute("draggable", "true");
@@ -1440,6 +1516,7 @@ async function signFromFluxuri(flowId) {
             window._dbUsers = await r.json();
             // Repopulează toate dropdown-urile respectând selecțiile existente
             refreshAllDropdowns?.();
+            renderTransmiteBlock?.();
             // Re-sincronizează ÎNTOCMIT după ce dropdown-urile sunt populate
             autoFillFromProfile();
             // ALOP: aplică semnatari pre-configurați dacă există prefill în așteptare
@@ -1464,6 +1541,7 @@ async function signFromFluxuri(flowId) {
           if (r.ok) {
             window._dbUsers = await r.json();
             refreshAllDropdowns?.();
+            renderTransmiteBlock?.();
             autoFillFromProfile();
           }
         } catch(e) { console.warn('_refreshDbUsers failed:', e); }
@@ -2019,6 +2097,7 @@ async function signFromFluxuri(flowId) {
             if (_dtype) m.docType = _dtype;
             return m;
           })(),
+          transmiteLaFinalizare: readTransmiteLaFinalizare(),
         };
 
         if (!_selectedProvider) {
