@@ -85,7 +85,9 @@ beforeEach(() => {
     query: vi.fn().mockResolvedValue({}),
     release: vi.fn(),
   });
-  dbModule.getFlowData.mockResolvedValue({ signers: [] }); // flux există → trece de guard
+  // v3.9.603: authz la nivel de obiect pe GET attachments → adminul trebuie să fie same-org.
+  // orgId=1 = org-ul adminului din makeAdminToken (same-org admin, scenariu real).
+  dbModule.getFlowData.mockResolvedValue({ flowId: 'flow-1', orgId: 1, signers: [] }); // flux există → trece de guard
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

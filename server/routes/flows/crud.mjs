@@ -11,7 +11,8 @@ import { getActiveSigner } from '../../services/user-leave.mjs';
 import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
 import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-attachments.mjs';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
-import { normalizeRecipients, isFlowRecipient } from '../../services/flow-transmit.mjs';
+import { normalizeRecipients } from '../../services/flow-transmit.mjs';
+import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -40,20 +41,9 @@ export function _injectDeps(d) {
   _stripPdfB64 = d.stripPdfB64; _sendSignerEmail = d.sendSignerEmail;
 }
 
-// v3.9.502 (A-3 P0): helper centralizat pentru verificare ACL pe flow read access.
-// Înainte: GET /flows/:flowId permitea citire pentru ORICE user autentificat → leak
-// metadata cross-org (signers, events, institutie). Acum: doar initiator, signer,
-// sau admin/org_admin din aceeași org. Plus signer token (pentru semnatari neînregistrați).
-function canActorReadFlow(actor, data, signerToken) {
-  if (signerToken && (data.signers || []).some(s => s.token === signerToken)) return true;
-  if (!actor) return false;
-  const email = String(actor.email || '').toLowerCase();
-  const isInit = String(data.initEmail || '').toLowerCase() === email;
-  const isSigner = (data.signers || []).some(s => String(s.email || '').toLowerCase() === email);
-  const sameOrg = actor.orgId && data.orgId && String(actor.orgId) === String(data.orgId);
-  const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
-  return isInit || isSigner || (isAdmin && sameOrg);
-}
+// v3.9.502/603 (A-3 P0): canActorReadFlow + isFlowAccessAllowed mutate în
+// server/services/flow-access.mjs — aceeași poartă folosită de GET /flows/:flowId
+// ȘI de endpointurile de conținut (signed-pdf/pdf/attachments), ca să nu mai existe IDOR.
 
 const router = Router();
 
@@ -503,7 +493,10 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
     if (!actor && !signerToken) return res.status(403).json({ error: 'forbidden', message: 'Token de acces obligatoriu.' });
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.603: authz la nivel de obiect — închide IDOR (orice user autentificat servea PDF-ul semnat)
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken))) {
+      return res.status(403).json({ error: 'forbidden', message: 'Acces interzis la acest document.' });
+    }
     const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
     const b64 = data.signedPdfB64;
     if (!b64 || typeof b64 !== 'string') {
@@ -534,7 +527,10 @@ router.get('/flows/:flowId/pdf', _readRateLimit, async (req, res) => {
     if (!actor && !signerToken) return res.status(403).json({ error: 'forbidden', message: 'Token de acces obligatoriu.' });
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.603: authz la nivel de obiect — închide IDOR (orice user autentificat servea PDF-ul)
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken))) {
+      return res.status(403).json({ error: 'forbidden', message: 'Acces interzis la acest document.' });
+    }
     const b64 = data.pdfB64;
     if (!b64 || typeof b64 !== 'string') return res.status(404).json({ error: 'pdf_missing' });
     const raw = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
@@ -587,11 +583,9 @@ const getFlowHandler = async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
     // v3.9.502 (A-3 P0): verificare ACL prin canActorReadFlow — nu mai e "any logged in user"
     if (!actor && !signerToken) return res.status(401).json({ error: 'unauthorized' });
-    if (!canActorReadFlow(actor, data, signerToken)) {
-      // Fallback: destinatarul repartizării (transmitere internă) are drept de vedere,
-      // chiar dacă nu a fost semnatar. Vederea trece prin _stripSensitive (fără tokene).
-      const isRecipient = actor && await isFlowRecipient(pool, req.params.flowId, actor);
-      if (!isRecipient) return res.status(403).json({ error: 'forbidden' });
+    // Poarta unificată: init | semnatar | admin same-org | signer token | destinatar repartizat.
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken))) {
+      return res.status(403).json({ error: 'forbidden' });
     }
 
     // FEAT-06: ETag bazat pe flowId + updatedAt — permite cache client-side
