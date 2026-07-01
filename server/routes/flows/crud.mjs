@@ -494,7 +494,7 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     // v3.9.603: authz la nivel de obiect — închide IDOR (orice user autentificat servea PDF-ul semnat)
-    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken))) {
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken, req.params.flowId))) {
       return res.status(403).json({ error: 'forbidden', message: 'Acces interzis la acest document.' });
     }
     const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
@@ -528,7 +528,7 @@ router.get('/flows/:flowId/pdf', _readRateLimit, async (req, res) => {
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     // v3.9.603: authz la nivel de obiect — închide IDOR (orice user autentificat servea PDF-ul)
-    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken))) {
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken, req.params.flowId))) {
       return res.status(403).json({ error: 'forbidden', message: 'Acces interzis la acest document.' });
     }
     const b64 = data.pdfB64;
@@ -584,7 +584,7 @@ const getFlowHandler = async (req, res) => {
     // v3.9.502 (A-3 P0): verificare ACL prin canActorReadFlow — nu mai e "any logged in user"
     if (!actor && !signerToken) return res.status(401).json({ error: 'unauthorized' });
     // Poarta unificată: init | semnatar | admin same-org | signer token | destinatar repartizat.
-    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken))) {
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken, req.params.flowId))) {
       return res.status(403).json({ error: 'forbidden' });
     }
 

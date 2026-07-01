@@ -29,8 +29,11 @@ export function canActorReadFlow(actor, data, signerToken) {
 
 // Poarta la nivel de obiect pentru vizualizare flux + conținut (signed-pdf/pdf/attachments).
 // Extinde canActorReadFlow cu ramura „destinatar repartizat" (transmitere internă).
-export async function isFlowAccessAllowed(pool, actor, data, signerToken) {
+// flowId explicit (din URL) are prioritate față de data.flowId (JSONB poate lipsi pe fluxuri
+// inserate direct în test sau legacy care nu au persitat flowId în blob).
+export async function isFlowAccessAllowed(pool, actor, data, signerToken, flowId = null) {
   if (canActorReadFlow(actor, data, signerToken)) return true;
-  if (!actor || !data?.flowId) return false;
-  return await isFlowRecipient(pool, data.flowId, actor);
+  const fid = flowId || data?.flowId || null;
+  if (!actor || !fid) return false;
+  return await isFlowRecipient(pool, fid, actor);
 }
