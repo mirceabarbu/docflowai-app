@@ -39,6 +39,7 @@ const router = Router();
 
 import { emailSendExtern } from '../../emailTemplates.mjs';
 import { generateTrustReport } from '../../services/sign-trust-report.mjs';
+import { canActorReadFlow } from '../../services/flow-access.mjs';
 
 
 
@@ -73,6 +74,14 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
     if (!data.completed && data.status !== 'completed')
       return res.status(409).json({ error: 'not_completed', message: 'Documentul nu este finalizat.' });
+
+    // Authz obiect (v3.9.605): trimiterea externă expune PDF-ul semnat + atașamentele +
+    // raportul de conformitate → doar inițiator/semnatar/admin same-org (aliniat cu email-stats).
+    // NU include ramura „destinatar" (canActorReadFlow, nu isFlowAccessAllowed) — trimiterea
+    // externă e o acțiune de inițiator/semnatar/admin. Ruta e cookie/auth-only → signerToken=null.
+    if (!canActorReadFlow(actor, data, null)) {
+      return res.status(403).json({ error: 'forbidden', message: 'Nu ai drept să trimiți acest document.' });
+    }
 
     // Preluăm datele expeditorului din DB (funcție, institutie, compartiment)
     const { rows: senderRows } = await pool.query(
