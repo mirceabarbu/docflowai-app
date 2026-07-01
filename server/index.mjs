@@ -1369,20 +1369,24 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
   const email = (userEmail || '').toLowerCase();
   if (!email) return;
 
-  // Anti-duplicat (Bug-1): tipurile terminale se trimit o singură dată per flux+user
-  // într-o fereastră scurtă. Cauza duplicatelor: COMPLETED emis din mai multe căi de
-  // finalizare (callback STS + polling) în signing/cloud-signing/bulk-signing (NO-TOUCH).
-  const ONCE_PER_FLOW_TYPES = new Set(['COMPLETED', 'REFUSED']);
-  if (flowId && ONCE_PER_FLOW_TYPES.has(type)) {
+  // Anti-duplicat cu ferestre per-tip:
+  //  • COMPLETED/REFUSED (terminale) — 30 min: callback STS + polling emit din mai multe căi
+  //    de finalizare (signing/cloud-signing/bulk-signing, NO-TOUCH).
+  //  • YOUR_TURN — 2 min: absoarbe cursa poll STS + callback (cloud-signing:566, read-modify-write
+  //    ne-atomic pe emailSent), FĂRĂ a bloca reminderele (24/48/72h), rândul altui semnatar
+  //    (email diferit) sau reinițierea (flowId nou).
+  const DEDUP_WINDOW = { COMPLETED: '30 minutes', REFUSED: '30 minutes', YOUR_TURN: '2 minutes' };
+  const dedupWin = DEDUP_WINDOW[type];
+  if (flowId && dedupWin) {
     const { rows: dup } = await pool.query(
       `SELECT 1 FROM notifications
         WHERE user_email=$1 AND flow_id=$2 AND type=$3
-          AND created_at > NOW() - INTERVAL '30 minutes'
+          AND created_at > NOW() - $4::interval
         LIMIT 1`,
-      [email, flowId, type]
+      [email, flowId, type, dedupWin]
     );
     if (dup.length) {
-      logger.info({ email, flowId, type }, 'notify: duplicat suprimat (anti-spam terminal)');
+      logger.info({ email, flowId, type }, 'notify: duplicat suprimat (dedup fereastră)');
       return;
     }
   }
