@@ -641,6 +641,9 @@
       if (btnSendEmail) btnSendEmail.style.display = hasSigned ? "" : "none";
       const btnReport = $("btnTrustReport");
       if (btnReport) btnReport.style.display = (data.completed) ? "block" : "none";
+      // Buton Transmite în aplicație — vizibil doar când documentul e finalizat
+      const btnTransmit = $("btnTransmit");
+      if (btnTransmit) btnTransmit.style.display = (data.completed) ? "" : "none";
 
       const hasPdf = !!(j.hasPdf || data.hasPdf);
       $("btnDownloadOriginal").disabled = !hasPdf;
@@ -891,6 +894,12 @@
   if (_btnSendEmail) _btnSendEmail.addEventListener("click", () => {
     const d = window._flowData || {};
     DFEmailModal.open(flowId, { docName: d.docName || flowId, institutie: d.institutie, compartiment: d.compartiment, onSuccess: () => loadFlow() });
+  });
+
+  const _btnTransmit = $("btnTransmit");
+  if (_btnTransmit) _btnTransmit.addEventListener("click", () => {
+    const d = window._flowData || {};
+    window.DFTransmitModal?.open(flowId, { docName: d.docName || flowId, onSuccess: () => loadFlow() });
   });
 
   $("btnReinitiate").addEventListener("click", async () => {

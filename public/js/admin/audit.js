@@ -18,6 +18,7 @@
     'FLOW_CREATED':                  'Flux inițiat',
     'FLOW_COMPLETED':                'Flux finalizat',
     'FLOW_CANCELLED':                'Flux anulat',
+    'FLOW_TRANSMITTED':              'Document repartizat intern',
     'FLOW_REINITIATED':              'Flux reinițiat după refuz',
     'FLOW_REINITIATED_AFTER_REVIEW': 'Flux reinițiat după revizuire',
     'REINITIATED_AFTER_REVIEW':      'Reinițiere marcată',
