@@ -1848,6 +1848,34 @@ const MIGRATIONS = [
     sql: `
       ALTER TABLE formulare_df ADD COLUMN IF NOT EXISTS sum_fara_inreg_ctrl_crd_bug TEXT;
     `
+  },
+  {
+    // Transmitere internă (repartizare) a documentului finalizat către un utilizator
+    // SAU un compartiment care nu a fost neapărat semnatar. Sursa de adevăr a accesului
+    // „destinatar" pe flux. CHECK garantează EXACT o țintă (user XOR compartiment).
+    id: '088_flow_recipients',
+    sql: `
+      CREATE TABLE IF NOT EXISTS flow_recipients (
+        id                     BIGSERIAL   PRIMARY KEY,
+        flow_id                TEXT        NOT NULL REFERENCES flows(id),
+        org_id                 INTEGER     REFERENCES organizations(id),
+        recipient_user_id      INTEGER     REFERENCES users(id),
+        recipient_compartiment TEXT,
+        rezolutie              TEXT,
+        source                 TEXT        NOT NULL DEFAULT 'auto',
+        transmitted_by         INTEGER     REFERENCES users(id),
+        transmitted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        acknowledged_at        TIMESTAMPTZ,
+        CONSTRAINT flow_recipients_target_chk
+          CHECK ( (recipient_user_id IS NOT NULL)::int + (NULLIF(TRIM(recipient_compartiment),'') IS NOT NULL)::int = 1 )
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_flow_recipient_user
+        ON flow_recipients(flow_id, recipient_user_id) WHERE recipient_user_id IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_flow_recipient_comp
+        ON flow_recipients(flow_id, TRIM(recipient_compartiment)) WHERE NULLIF(TRIM(recipient_compartiment),'') IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_flow_recipient_user ON flow_recipients(recipient_user_id, acknowledged_at);
+      CREATE INDEX IF NOT EXISTS idx_flow_recipient_comp ON flow_recipients(TRIM(recipient_compartiment)) WHERE NULLIF(TRIM(recipient_compartiment),'') IS NOT NULL;
+    `
   }
 ];
 

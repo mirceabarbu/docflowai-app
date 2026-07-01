@@ -516,6 +516,7 @@ import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
 import entitlementsAdminRouter from './routes/admin/entitlements.mjs';
 import { getAllModulesForUser as _getAllModulesForUser } from './services/entitlements.mjs';
+import { transmitFlowTo, resolveRecipientEmails } from './services/flow-transmit.mjs';
 import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
@@ -1383,6 +1384,34 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
     if (dup.length) {
       logger.info({ email, flowId, type }, 'notify: duplicat suprimat (anti-spam terminal)');
       return;
+    }
+  }
+
+  // Auto-transmitere internă (repartizare) la finalizare — o singură dată pe primul
+  // COMPLETED real. Rulează DUPĂ garda anti-dup COMPLETED; idempotent și prin ON CONFLICT
+  // în flow_recipients. Non-fatal: o eroare aici NU trebuie să rupă notificarea COMPLETED.
+  // Recursie sigură: notify(type:'REPARTIZAT') nu reintră în acest bloc.
+  if (type === 'COMPLETED' && flowId) {
+    try {
+      const fdata = await getFlowData(flowId);
+      const cfg = Array.isArray(fdata?.transmiteLaFinalizare) ? fdata.transmiteLaFinalizare : [];
+      if (cfg.length) {
+        const newly = await transmitFlowTo(pool, {
+          flowId, orgId: fdata.orgId || null, recipients: cfg,
+          transmittedBy: null, source: 'auto',
+        });
+        const targets = await resolveRecipientEmails(pool, newly);
+        for (const t of targets) {
+          if (!t.email) continue;
+          await notify({
+            userEmail: t.email, flowId, type: 'REPARTIZAT',
+            title: '📨 Document repartizat',
+            message: `Documentul „${fdata.docName || 'document'}" v-a fost transmis spre luare la cunoștință.`,
+          });
+        }
+      }
+    } catch (e) {
+      logger.warn({ err: e, flowId }, 'auto-transmitere internă eșuată (non-fatală)');
     }
   }
 

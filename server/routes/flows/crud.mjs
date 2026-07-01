@@ -11,6 +11,7 @@ import { getActiveSigner } from '../../services/user-leave.mjs';
 import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
 import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-attachments.mjs';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
+import { normalizeRecipients, isFlowRecipient } from '../../services/flow-transmit.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -384,6 +385,11 @@ const createFlow = async (req, res) => {
         placement: _preSignedPlacement,
       });
     }
+    // Transmitere internă (repartizare) la finalizare — config opt-in (Etapa 1: doar API).
+    // Motorul consumă data.transmiteLaFinalizare în notify()/COMPLETED (server/index.mjs).
+    const _transmiteLaFinalizare = normalizeRecipients(body.transmiteLaFinalizare);
+    if (_transmiteLaFinalizare.length) data.transmiteLaFinalizare = _transmiteLaFinalizare;
+
     const first = data.signers.find(s => s.status === 'current');
     const initIsSigner = first && first.email.toLowerCase() === initEmail.toLowerCase();
     if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
@@ -581,7 +587,12 @@ const getFlowHandler = async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
     // v3.9.502 (A-3 P0): verificare ACL prin canActorReadFlow — nu mai e "any logged in user"
     if (!actor && !signerToken) return res.status(401).json({ error: 'unauthorized' });
-    if (!canActorReadFlow(actor, data, signerToken)) return res.status(403).json({ error: 'forbidden' });
+    if (!canActorReadFlow(actor, data, signerToken)) {
+      // Fallback: destinatarul repartizării (transmitere internă) are drept de vedere,
+      // chiar dacă nu a fost semnatar. Vederea trece prin _stripSensitive (fără tokene).
+      const isRecipient = actor && await isFlowRecipient(pool, req.params.flowId, actor);
+      if (!isRecipient) return res.status(403).json({ error: 'forbidden' });
+    }
 
     // FEAT-06: ETag bazat pe flowId + updatedAt — permite cache client-side
     // Fluxurile completed sunt imuabile — ETag-ul nu se mai schimbă niciodată
