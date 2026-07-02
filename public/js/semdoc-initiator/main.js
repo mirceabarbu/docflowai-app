@@ -1277,6 +1277,7 @@
             `<a href="/flow.html?flow=${f.flowId}" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-search"/></svg>Vezi flow</a>`,
             (!isCancelled ? dlActions : ''),
             (pdfReady) ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success df-kebab-item" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-mail"/></svg>Trimite</button>` : '',
+            (pdfReady) ? `<button onclick="_openTransmitForFlow('${f.flowId}')" class="df-action-btn df-kebab-item" title="Transmite documentul în aplicație"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-send"/></svg>Transmite în aplicație</button>` : '',
             (!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail) ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn warning df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-refresh"/></svg>Reinițiază</button>` : '',
             (!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail) ? `<button onclick="showReviewUploadModal('${f.flowId}')" class="df-action-btn warning df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-upload"/></svg>Doc revizuit</button>` : '',
           ].filter(Boolean).join('');
@@ -1513,6 +1514,17 @@ async function signFromFluxuri(flowId) {
         ].map(normalizeFlowSearch).filter(Boolean);
         return hay.some(v => v.includes(q));
       }
+
+      // Repartizare internă (transmite documentul în aplicație) din kebab-ul „Fluxurile mele" —
+      // simetric cu _openEmailForFlow; refolosește DFTransmitModal inclus în semdoc-initiator.html.
+      window._openTransmitForFlow = function(flowId) {
+        const f = (window._flowsEmailData || {})[flowId] || {};
+        if (!window.DFTransmitModal) { console.warn('DFTransmitModal indisponibil'); return; }
+        window.DFTransmitModal.open(flowId, {
+          docName: f.docName || flowId,
+          onSuccess: () => { if (typeof loadMyFlows === 'function') loadMyFlows(_fluxPage); },
+        });
+      };
 
       async function loadMyFlows(page) {
         page = Math.max(1, parseInt(page) || 1);
