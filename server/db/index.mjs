@@ -137,6 +137,17 @@ export const pool = DATABASE_URL
     })
   : null;
 
+// FIX CRITIC (incident 2026-07-02): fără acest handler, o eroare pe un client inactiv din
+// pool (ex. Postgres restartează, conexiune resetată de rețea) escaladează la
+// process.on('uncaughtException') și doboară TOT procesul — nu doar acea conexiune.
+// pg documentează explicit necesitatea acestui listener pentru erori pe clienți idle.
+// Non-fatal: pool-ul reface automat conexiunea la următoarea cerere.
+if (pool) {
+  pool.on('error', (err) => {
+    logger.error({ err }, 'pool: eroare pe client inactiv (non-fatală — conexiunea se reface automat)');
+  });
+}
+
 export let DB_READY = false;
 export let DB_LAST_ERROR = null;
 
