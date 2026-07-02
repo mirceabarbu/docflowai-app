@@ -254,7 +254,11 @@
         actorHtml: `<span class="tl-actor">${esc(byLabel)}</span>` + (ev.rezolutie ? `<span style="font-size:.72rem;color:rgba(234,240,255,.35);margin-left:6px;">"${esc(ev.rezolutie)}"</span>` : ''),
         ts: ev.at,
         state: 'done',
-        subRows: ackEvs.map(a => ({ done: true, icon: '✅', label: `Confirmat de ${a.byName || resolveName(a.by)}`, ts: a.at })),
+        subRows: ackEvs.map(a => {
+          const extra = [a.byFunctie, a.byCompartiment].filter(Boolean).join(' · ');
+          const byLbl = (a.byName || resolveName(a.by)) + (extra ? ` — ${extra}` : '');
+          return { done: true, icon: '✅', label: `Confirmat de ${byLbl}`, ts: a.at };
+        }),
         extra: null
       });
     }
@@ -457,7 +461,15 @@
     const renderEv = (e, isInherited) => {
       const ts = prettyTs(e.at || e.ts || e.time || e.createdAt);
       const byRaw = e.who || e.actor || e.by || "";
-      const who = nameMap[byRaw] ? esc(nameMap[byRaw]) : esc(byRaw);
+      // Preferă identitatea bogată din eveniment (nume — funcție · compartiment), ca la semnatari;
+      // evenimentele vechi fără byName cad pe nameMap/byRaw (fără regresie).
+      let who;
+      if (e.byName) {
+        const extra = [e.byFunctie, e.byCompartiment].filter(Boolean).join(' · ');
+        who = esc(e.byName) + (extra ? ` — ${esc(extra)}` : '');
+      } else {
+        who = nameMap[byRaw] ? esc(nameMap[byRaw]) : esc(byRaw);
+      }
       const kind = (e.type || e.kind || e.event || "EVENT").toString();
       const EVENT_LABELS = {
         'FLOW_CREATED':'FLUX CREAT','SIGNED':'SEMNAT','SIGNED_PDF_UPLOADED':'PDF SEMNAT ÎNCĂRCAT',

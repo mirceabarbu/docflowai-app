@@ -209,4 +209,39 @@ d('Inbox Primite + acknowledge — GET /api/my-received, POST /flows/:id/acknowl
     expect(ackEvs.every(a => a.recipientKey === 'comp:contabilitate')).toBe(true);
     expect(ackEvs.map(a => a.by).sort()).toEqual(['compa@x.ro', 'compb@x.ro']);
   });
+
+  it('(6) ack NOU → notificare REPARTIZAT_CONFIRMAT către transmitted_by (fix 39)', async () => {
+    const calls = [];
+    transmitMod._injectDeps({ notify: async (p) => { calls.push(p); } });
+    const flowId = await seedFlow('flow-r6', { orgId });
+    await seedRecipient(flowId, orgId, { userId: destId, transmittedBy: initId });
+    const res = await request(app).post(`/flows/${flowId}/acknowledge`).set('Cookie', cookieFor(destId, 'dest@x.ro'));
+    expect(res.status).toBe(200);
+    const notif = calls.find(c => c.type === 'REPARTIZAT_CONFIRMAT');
+    expect(notif).toBeTruthy();
+    expect(notif.userEmail).toBe('init@x.ro');   // transmitted_by = inițiatorul
+    expect(notif.flowId).toBe(flowId);
+    transmitMod._injectDeps({ notify: async () => {} });
+  });
+
+  it('(7) ack REPETAT → nicio notificare nouă (idempotent, fix 39)', async () => {
+    const calls = [];
+    transmitMod._injectDeps({ notify: async (p) => { calls.push(p); } });
+    const flowId = await seedFlow('flow-r7', { orgId });
+    await seedRecipient(flowId, orgId, { userId: destId, transmittedBy: initId });
+    await request(app).post(`/flows/${flowId}/acknowledge`).set('Cookie', cookieFor(destId, 'dest@x.ro'));
+    await request(app).post(`/flows/${flowId}/acknowledge`).set('Cookie', cookieFor(destId, 'dest@x.ro'));
+    expect(calls.filter(c => c.type === 'REPARTIZAT_CONFIRMAT')).toHaveLength(1);
+    transmitMod._injectDeps({ notify: async () => {} });
+  });
+
+  it('(8) FLOW_ACKNOWLEDGED poartă byName/byCompartiment pentru „Evenimente" (fix 39)', async () => {
+    const flowId = await seedFlow('flow-r8', { orgId });
+    await seedRecipient(flowId, orgId, { comp: 'Contabilitate', transmittedBy: initId });
+    await request(app).post(`/flows/${flowId}/acknowledge`).set('Cookie', cookieFor(compAId, 'compa@x.ro'));
+    const { rows } = await pool.query('SELECT data FROM flows WHERE id=$1', [flowId]);
+    const ackEv = (rows[0].data.events || []).find(e => e.type === 'FLOW_ACKNOWLEDGED');
+    expect(ackEv.byName).toBe('P2');
+    expect(ackEv.byCompartiment).toBe('Contabilitate');
+  });
 });

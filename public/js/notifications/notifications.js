@@ -219,7 +219,7 @@ function renderReceivedList() {
           <span class="received-badge ${isAck ? 'ack' : 'unack'}">${isAck ? '✅ Confirmat' : '⏳ Neconfirmat'}</span>
         </div>
         <div class="received-actions">
-          <button type="button" class="df-action-btn received-open-btn">Deschide documentul</button>
+          <button type="button" class="df-action-btn received-open-btn" ${isAck ? '' : 'disabled title="Confirmați mai întâi primirea documentului" style="opacity:.5;cursor:not-allowed"'}>Deschide documentul</button>
           ${isAck ? '' : '<button type="button" class="df-action-btn received-ack-btn">Confirm luare la cunoștință</button>'}
         </div>
       </div>

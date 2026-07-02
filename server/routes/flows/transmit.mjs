@@ -133,25 +133,55 @@ router.post('/flows/:flowId/acknowledge', async (req, res) => {
     const acknowledged_at = await acknowledgeReceipt(pool, flowId, actor.userId || actor.id);
 
     if (!wasAlreadyAcked) {
+      // Identitatea confirmatorului: nume + funcție · compartiment (același format ca semnatarii).
+      const { rows: uRows } = await pool.query(
+        'SELECT nume, functie, compartiment FROM users WHERE id=$1', [actor.userId || actor.id]);
+      const u = uRows[0] || {};
+      // compActorului: refolosit atât la recipientKey (comp) cât și la ținta notificării (B).
+      const compActorului = ((u.compartiment ?? await loadActorComp(pool, actor.userId || actor.id)) || '').trim();
+
       // Corelare exactă cu transmiterea: aceeași recipientKey folosită la FLOW_TRANSMITTED
       // (user direct SAU compartiment) — reutilizează verificarea din isFlowRecipient, dar
       // interoghează explicit ca să aflăm CARE ramură a picat.
       const { rows: directRows } = await pool.query(
         'SELECT 1 FROM flow_recipients WHERE flow_id=$1 AND recipient_user_id=$2', [flowId, actor.userId || actor.id]);
-      let recipientKey;
-      if (directRows.length) {
-        recipientKey = `user:${actor.userId || actor.id}`;
-      } else {
-        const comp = await loadActorComp(pool, actor.userId || actor.id);
-        recipientKey = `comp:${(comp || '').trim().toLowerCase()}`;
-      }
+      const recipientKey = directRows.length
+        ? `user:${actor.userId || actor.id}`
+        : `comp:${compActorului.toLowerCase()}`;
+
       const data = await getFlowData(flowId);
       if (data) {
         data.events = Array.isArray(data.events) ? data.events : [];
-        data.events.push({ at: acknowledged_at, type: 'FLOW_ACKNOWLEDGED', by: actor.email, byName: actor.nume || actor.email, recipientKey });
+        data.events.push({ at: acknowledged_at, type: 'FLOW_ACKNOWLEDGED', by: actor.email,
+          byName: u.nume || actor.nume || actor.email,
+          byFunctie: u.functie || null, byCompartiment: u.compartiment || null,
+          recipientKey });
         data.updatedAt = new Date().toISOString();
         await saveFlow(flowId, data);
         writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_ACKNOWLEDGED', actorEmail: actor.email, payload: { recipientKey } });
+
+        // B. Notifică expeditorul la confirmare NOUĂ: manual → transmitted_by; auto (NULL) → inițiator.
+        // Non-fatal — un eșec de notificare nu rupe confirmarea (200 rămâne 200).
+        try {
+          const { rows: trRows } = await pool.query(
+            `SELECT DISTINCT fr.transmitted_by FROM flow_recipients fr WHERE fr.flow_id=$1
+               AND (fr.recipient_user_id=$2 OR ($3 <> '' AND TRIM(fr.recipient_compartiment)=$3))`,
+            [flowId, actor.userId || actor.id, compActorului]);
+          let targetEmail = null;
+          const tbId = trRows.find(r => r.transmitted_by)?.transmitted_by;
+          if (tbId) {
+            const { rows: tRows } = await pool.query('SELECT email FROM users WHERE id=$1', [tbId]);
+            targetEmail = tRows[0]?.email || null;
+          }
+          if (!targetEmail) targetEmail = data.initEmail || null;   // auto-transmit → inițiator
+          if (targetEmail && targetEmail.toLowerCase() !== actor.email.toLowerCase() && _notify) {
+            await _notify({ userEmail: targetEmail, flowId, type: 'REPARTIZAT_CONFIRMAT',
+              title: '✅ Confirmare primire',
+              message: `${u.nume || actor.email} a confirmat primirea documentului „${data.docName || 'document'}".` });
+          }
+        } catch (notifErr) {
+          logger.warn({ err: notifErr, flowId }, 'notificare REPARTIZAT_CONFIRMAT eșuată (non-fatal)');
+        }
       }
     }
 
