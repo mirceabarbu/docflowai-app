@@ -10,7 +10,7 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.mjs';
 import { pool, requireDb, getFlowData, saveFlow, writeAuditEvent } from '../../db/index.mjs';
 import { canActorReadFlow } from '../../services/flow-access.mjs';
-import { normalizeRecipients, transmitFlowTo, resolveRecipientEmails, isFlowRecipient, listReceivedFor, acknowledgeReceipt } from '../../services/flow-transmit.mjs';
+import { normalizeRecipients, transmitFlowTo, resolveRecipientEmails, isFlowRecipient, listReceivedFor, acknowledgeReceipt, countUnacknowledgedFor } from '../../services/flow-transmit.mjs';
 import { loadActorComp } from '../../services/authz-formular.mjs';
 import { logger } from '../../middleware/logger.mjs';
 
@@ -95,6 +95,21 @@ router.get('/api/my-received', async (req, res) => {
     return res.json(rows);
   } catch (e) {
     logger.error({ err: e }, 'GET /api/my-received error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Bădge sidebar „📥 Primite" — count neconfirmate (query mai ieftin decât lista completă).
+router.get('/api/my-received/count', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const uid = actor.userId || actor.id;
+    const comp = await loadActorComp(pool, uid);
+    const count = await countUnacknowledgedFor(pool, uid, comp);
+    return res.json({ count });
+  } catch (e) {
+    logger.error({ err: e }, 'GET /api/my-received/count error');
     return res.status(500).json({ error: 'server_error' });
   }
 });

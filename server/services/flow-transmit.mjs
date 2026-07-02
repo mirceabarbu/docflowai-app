@@ -178,6 +178,25 @@ export async function listReceivedFor(pool, userId, actorComp) {
 }
 
 /**
+ * Numără fluxurile repartizate (direct SAU prin compartiment) NECONFIRMATE de acest user —
+ * query mai ieftin decât listReceivedFor (doar COUNT), pentru bădge-ul din sidebar.
+ * @returns {Promise<number>}
+ */
+export async function countUnacknowledgedFor(pool, userId, actorComp) {
+  const comp = (actorComp || '').trim();
+  const { rows } = await pool.query(
+    `SELECT count(DISTINCT fr.flow_id) AS count
+       FROM flow_recipients fr
+       JOIN flows f ON f.id = fr.flow_id AND f.deleted_at IS NULL
+       LEFT JOIN flow_recipient_acks ack ON ack.flow_id = fr.flow_id AND ack.user_id = $1
+      WHERE (fr.recipient_user_id = $1 OR ($2 <> '' AND TRIM(fr.recipient_compartiment) = $2))
+        AND ack.acknowledged_at IS NULL`,
+    [userId, comp]
+  );
+  return Number(rows[0]?.count || 0);
+}
+
+/**
  * Confirmă luarea la cunoștință PER-PERSOANĂ (idempotent). Întoarce `acknowledged_at`
  * (nou la prima confirmare, sau valoarea existentă la apeluri repetate).
  * @returns {Promise<string>}
