@@ -1904,6 +1904,25 @@ const MIGRATIONS = [
         PRIMARY KEY (flow_id, user_id)
       );
     `
+  },
+  {
+    // FIX CRIT (2026-07-02): /my-flows a dat statement timeout (57014, seq scan) în ciuda
+    // faptului că AMBELE ramuri ale OR-ului (data->>'initEmail' și data->'signers' @> ...)
+    // au deja index (idx_flows_init_email din mig. ~038, idx_flows_signers_gin din mig.
+    // 039_flows_signers_gin_index). NU lipsea niciun index — re-declararea idx_flows_signers_gin
+    // ar fi fost no-op (CREATE INDEX IF NOT EXISTS pe un nume deja existent nu-l recreează).
+    // Cauza cea mai probabilă: date de test acumulate în masă în această sesiune fără ANALYZE
+    // ulterior — statistici învechite → planner subestimează selectivitatea predicatelor
+    // JSONB și alege seq scan în loc de BitmapOr pe indexurile existente. ANALYZE e sigur în
+    // tranzacție (spre deosebire de VACUUM). idx_flows_org_created e index nou, complementar
+    // lui idx_flows_org_updated — susține ORDER BY created_at DESC filtrat pe org_id, folosit
+    // de /my-flows și alte listinguri.
+    id: '090_flows_analyze_and_org_created_idx',
+    sql: `
+      ANALYZE flows;
+      CREATE INDEX IF NOT EXISTS idx_flows_org_created
+        ON flows(org_id, created_at DESC);
+    `
   }
 ];
 
