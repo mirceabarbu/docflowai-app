@@ -132,6 +132,8 @@ export const pool = DATABASE_URL
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
       statement_timeout: 30000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000, // primul pachet keepalive după 10s de inactivitate
     })
   : null;
 
