@@ -136,6 +136,8 @@ th{ color: var(--sub) !important; }
       border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
       display: flex; flex-direction: column; gap: 2px;
     }
+    /* `hidden` trebuie să învingă `display:flex` de layout de mai sus — altfel meniul e mereu vizibil */
+    .df-kebab-menu[hidden] { display: none !important; }
     .df-kebab-menu .df-kebab-item {
       display: flex; align-items: center; gap: 8px;
       width: 100%; justify-content: flex-start; text-align: left;
