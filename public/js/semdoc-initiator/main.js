@@ -818,6 +818,10 @@
       function lockIntocmitRowIdentity(tr, nameSel) {
         const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
         if (!u.email) return; // profil indisponibil — nu bloca UI-ul (edge case, backend rămâne plasa reală)
+        // FIX v3.9.614: gardă de idempotență — dacă rândul e deja blocat CU valoarea corectă,
+        // nu mai face nimic (evită re-dispatch „change" → refreshAllDropdowns → MutationObserver
+        // → buclă infinită, root cause al „Page Unresponsive" pe Inițiere flux).
+        if (nameSel.dataset.intocmitLocked === "1" && nameSel.value === u.nume) return;
         const finish = () => {
           nameSel.disabled = true;
           nameSel.dataset.intocmitLocked = "1";
