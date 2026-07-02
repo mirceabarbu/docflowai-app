@@ -109,7 +109,7 @@ d('POST /flows — identitate ÎNTOCMIT blocată la actorul autentificat (fix 29
     const resBadEmail = await request(app)
       .post('/flows')
       .set('Cookie', actorCookie())
-      .send({ docName: 'Doc', initName: 'X', initEmail: 'not-an-email', signers: [{ order: 1, rol: 'ÎNTOCMIT', name: 'X', email: 'x@x.ro' }] });
+      .send({ docName: 'Doc', initName: 'Test User', initEmail: 'not-an-email', signers: [{ order: 1, rol: 'ÎNTOCMIT', name: 'X', email: 'x@x.ro' }] });
     expect(resBadEmail.status).toBe(400);
     expect(resBadEmail.body.error).toBe('initEmail_invalid');
 

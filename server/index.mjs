@@ -496,7 +496,7 @@ import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
 
-import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, markDbReady, markDbFailed } from './db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, markDbReady, markDbFailed, writeAuditEvent } from './db/index.mjs';
 import { runMigrations as runMigrationsV4 } from './db/migrate.mjs';
 import { makeHealthRouter } from './routes/health.mjs';
 import supplierVerifyRouter   from './routes/supplier-verify.mjs';
@@ -1412,6 +1412,27 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
             title: '📨 Document repartizat',
             message: `Documentul „${fdata.docName || 'document'}" v-a fost transmis spre luare la cunoștință.`,
           });
+        }
+
+        // Trasabilitate (paritate cu EMAIL_SENT + fix 30 §1): FLOW_TRANSMITTED per rând nou,
+        // în fdata.events[] (Progres flux) ȘI în audit_events (Evenimente), by:null/source:'auto'.
+        if (newly.length) {
+          if (!Array.isArray(fdata.events)) fdata.events = [];
+          const nowIso2 = new Date().toISOString();
+          for (const row of newly) {
+            const recipientKey = row.recipient_user_id ? `user:${row.recipient_user_id}` : `comp:${String(row.recipient_compartiment || '').trim().toLowerCase()}`;
+            let recipientLabel;
+            if (row.recipient_user_id) {
+              const { rows: uRows } = await pool.query('SELECT nume,email FROM users WHERE id=$1', [row.recipient_user_id]);
+              recipientLabel = uRows[0]?.nume || uRows[0]?.email || `user #${row.recipient_user_id}`;
+            } else {
+              recipientLabel = `Compartimentul „${row.recipient_compartiment}"`;
+            }
+            fdata.events.push({ at: nowIso2, type: 'FLOW_TRANSMITTED', by: null, source: 'auto', recipientKey, recipientLabel, rezolutie: null });
+            writeAuditEvent({ flowId, orgId: fdata.orgId, eventType: 'FLOW_TRANSMITTED', payload: { recipientKey, recipientLabel, source: 'auto' } });
+          }
+          fdata.updatedAt = nowIso2;
+          await saveFlow(flowId, fdata);
         }
       }
     } catch (e) {

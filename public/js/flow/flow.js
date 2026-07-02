@@ -129,7 +129,8 @@
       'FLOW_CREATED','SIGNED','SIGNED_PDF_UPLOADED','FLOW_COMPLETED',
       'REFUSED','FLOW_CANCELLED','REVIEW_REQUESTED','DELEGATED',
       'FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW',
-      'EMAIL_SENT','EMAIL_OPENED'
+      'EMAIL_SENT','EMAIL_OPENED',
+      'FLOW_TRANSMITTED','FLOW_ACKNOWLEDGED'
     ]);
 
     // Filtrăm și grupăm evenimentele relevante (ignorăm moștenite din flux-parent)
@@ -239,6 +240,22 @@
         state: 'done',
         subRows: [],
         extra: openedPart
+      });
+    }
+
+    // ── PAȘI TRANSMITERE INTERNĂ (repartizare) ──────────────────────────────
+    const transmitEvs = relevant.filter(e => e.type === 'FLOW_TRANSMITTED');
+    for (const ev of transmitEvs) {
+      const ackEvs = relevant.filter(e => e.type === 'FLOW_ACKNOWLEDGED' && e.recipientKey === ev.recipientKey);
+      const byLabel = ev.by ? resolveName(ev.by) : 'Transmis automat la finalizare';
+      steps.push({
+        icon: '📨',
+        labelHtml: `Transmis către <span style="font-size:.72rem;color:rgba(234,240,255,.45);margin-left:4px;">${esc(ev.recipientLabel||'—')}</span>`,
+        actorHtml: `<span class="tl-actor">${esc(byLabel)}</span>` + (ev.rezolutie ? `<span style="font-size:.72rem;color:rgba(234,240,255,.35);margin-left:6px;">"${esc(ev.rezolutie)}"</span>` : ''),
+        ts: ev.at,
+        state: 'done',
+        subRows: ackEvs.map(a => ({ done: true, icon: '✅', label: `Confirmat de ${resolveName(a.by)}`, ts: a.at })),
+        extra: null
       });
     }
 
@@ -449,6 +466,8 @@
         'FLOW_REINITIATED':'REINIȚIAT','FLOW_REINITIATED_AFTER_REVIEW':'REINIȚIAT DUPĂ REVIZUIRE',
         'EMAIL_SENT':   '📧 EMAIL TRIMIS EXTERN',
         'EMAIL_OPENED': '📬 EMAIL DESCHIS DE DESTINATAR',
+        'FLOW_TRANSMITTED':  '📨 TRANSMIS INTERN',
+        'FLOW_ACKNOWLEDGED': '✅ CONFIRMAT DE DESTINATAR',
         'CERTIFICATE_EXTRACTED':  'CERTIFICAT EXTRAS',
         'TRUST_REPORT_GENERATED': 'RAPORT VALIDARE GENERAT',
         'TOKEN_REGENERATED':      'LINK SEMNARE REÎNNOIT',
@@ -466,6 +485,12 @@
         // who = destinatarul (e.to), sentBy = cel care a trimis
         const sentBy = e.by ? (nameMap[e.by] || e.by) : '';
         extra = `destinatar: ${esc(e.to||'')}${sentBy ? ' · trimis de: ' + esc(sentBy) : ''}`;
+      } else if (kind === 'FLOW_TRANSMITTED') {
+        extra = `către: ${esc(e.recipientLabel||'')}`;
+        if (e.source === 'auto') extra += ' · automat la finalizare';
+        if (e.rezolutie) extra += ` · rezoluție: ${esc(e.rezolutie)}`;
+      } else if (kind === 'FLOW_ACKNOWLEDGED') {
+        extra = 'confirmare luare la cunoștință';
       } else {
         extra = esc(e.msg || e.message || e.detail || e.reason || '');
       }

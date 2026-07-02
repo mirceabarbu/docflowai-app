@@ -167,4 +167,46 @@ d('Inbox Primite + acknowledge — GET /api/my-received, POST /flows/:id/acknowl
     const viewB = await request(app).get('/api/my-received').set('Cookie', cookieFor(compBId, 'compb@x.ro'));
     expect(viewB.body[0].acknowledged_at).toBeNull();
   });
+
+  it('(4) corelare exactă: FLOW_ACKNOWLEDGED are recipientKey identic cu FLOW_TRANSMITTED (user direct, fix 30)', async () => {
+    const flowId = await seedFlow('flow-r4', { orgId });
+    await request(app).post(`/flows/${flowId}/transmit`).set('Cookie', cookieFor(initId, 'init@x.ro'))
+      .send({ recipients: [{ type: 'user', value: destId }] });
+
+    await request(app).post(`/flows/${flowId}/acknowledge`).set('Cookie', cookieFor(destId, 'dest@x.ro'));
+
+    const { rows } = await pool.query('SELECT data FROM flows WHERE id=$1', [flowId]);
+    const events = rows[0].data.events || [];
+    const transmitEv = events.find(e => e.type === 'FLOW_TRANSMITTED');
+    const ackEv = events.find(e => e.type === 'FLOW_ACKNOWLEDGED');
+    expect(transmitEv).toBeTruthy();
+    expect(ackEv).toBeTruthy();
+    expect(ackEv.recipientKey).toBe(transmitEv.recipientKey);
+    expect(ackEv.recipientKey).toBe(`user:${destId}`);
+    expect(ackEv.by).toBe('dest@x.ro');
+
+    const { rows: auditRows } = await pool.query(
+      `SELECT payload FROM audit_log WHERE flow_id=$1 AND event_type='FLOW_ACKNOWLEDGED'`, [flowId]);
+    expect(auditRows.length).toBeGreaterThanOrEqual(1);
+    expect(auditRows[0].payload.recipientKey).toBe(`user:${destId}`);
+  });
+
+  it('(5) compartiment cu 2 confirmatori → 2 evenimente FLOW_ACKNOWLEDGED, ambele corelabile cu ACEEAȘI transmitere (fix 30)', async () => {
+    const flowId = await seedFlow('flow-r5', { orgId });
+    await request(app).post(`/flows/${flowId}/transmit`).set('Cookie', cookieFor(initId, 'init@x.ro'))
+      .send({ recipients: [{ type: 'comp', value: 'Contabilitate' }] });
+
+    await request(app).post(`/flows/${flowId}/acknowledge`).set('Cookie', cookieFor(compAId, 'compa@x.ro'));
+    await request(app).post(`/flows/${flowId}/acknowledge`).set('Cookie', cookieFor(compBId, 'compb@x.ro'));
+
+    const { rows } = await pool.query('SELECT data FROM flows WHERE id=$1', [flowId]);
+    const events = rows[0].data.events || [];
+    const transmitEvs = events.filter(e => e.type === 'FLOW_TRANSMITTED');
+    const ackEvs = events.filter(e => e.type === 'FLOW_ACKNOWLEDGED');
+    expect(transmitEvs).toHaveLength(1);
+    expect(ackEvs).toHaveLength(2);
+    expect(transmitEvs[0].recipientKey).toBe('comp:contabilitate');
+    expect(ackEvs.every(a => a.recipientKey === 'comp:contabilitate')).toBe(true);
+    expect(ackEvs.map(a => a.by).sort()).toEqual(['compa@x.ro', 'compb@x.ro']);
+  });
 });

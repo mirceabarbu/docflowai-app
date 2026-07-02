@@ -153,4 +153,25 @@ d('Transmitere internă manuală — POST /flows/:id/transmit', () => {
       .send({ recipients: [{ type: 'user', value: destId }] });
     expect(res.status).toBe(401);
   });
+
+  it('(5) transmitere manuală scrie FLOW_TRANSMITTED în data.events[] și audit_log (fix 30 — trasabilitate)', async () => {
+    const flowId = await seedFlow('flow-m5', { orgId });
+    const res = await request(app).post(`/flows/${flowId}/transmit`).set('Cookie', initCookie())
+      .send({ recipients: [{ type: 'user', value: destId, rezolutie: 'Verifică te rog' }] });
+    expect(res.status).toBe(200);
+
+    const { rows } = await pool.query('SELECT data FROM flows WHERE id=$1', [flowId]);
+    const ev = (rows[0].data.events || []).find(e => e.type === 'FLOW_TRANSMITTED');
+    expect(ev).toBeTruthy();
+    expect(ev.recipientKey).toBe(`user:${destId}`);
+    expect(ev.recipientLabel).toBeTruthy();
+    expect(ev.source).toBe('manual');
+    expect(ev.by).toBe('init@x.ro');
+    expect(ev.rezolutie).toBe('Verifică te rog');
+
+    const { rows: auditRows } = await pool.query(
+      `SELECT payload FROM audit_log WHERE flow_id=$1 AND event_type='FLOW_TRANSMITTED'`, [flowId]);
+    expect(auditRows.length).toBeGreaterThanOrEqual(1);
+    expect(auditRows[0].payload.recipientKey).toBe(`user:${destId}`);
+  });
 });

@@ -8,7 +8,7 @@
  */
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.mjs';
-import { pool, requireDb, getFlowData, writeAuditEvent } from '../../db/index.mjs';
+import { pool, requireDb, getFlowData, saveFlow, writeAuditEvent } from '../../db/index.mjs';
 import { canActorReadFlow } from '../../services/flow-access.mjs';
 import { normalizeRecipients, transmitFlowTo, resolveRecipientEmails, isFlowRecipient, listReceivedFor, acknowledgeReceipt } from '../../services/flow-transmit.mjs';
 import { loadActorComp } from '../../services/authz-formular.mjs';
@@ -48,8 +48,34 @@ router.post('/flows/:flowId/transmit', async (req, res) => {
         title: '📨 Document repartizat',
         message: `Documentul „${data.docName || 'document'}" v-a fost transmis spre luare la cunoștință.` });
     }
-    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_TRANSMITTED',
-      actorEmail: actor.email, payload: { count: newly.length, source: 'manual' } });
+
+    // Trasabilitate (paritate cu EMAIL_SENT): FLOW_TRANSMITTED per rând nou, în data.events[]
+    // (sursă pentru "Progres flux") ȘI în audit_events (sursă pentru "Evenimente").
+    if (!Array.isArray(data.events)) data.events = [];
+    const nowIso = new Date().toISOString();
+    for (const row of newly) {
+      const recipientKey = row.recipient_user_id
+        ? `user:${row.recipient_user_id}`
+        : `comp:${String(row.recipient_compartiment || '').trim().toLowerCase()}`;
+      let recipientLabel;
+      if (row.recipient_user_id) {
+        const { rows: uRows } = await pool.query('SELECT nume,email FROM users WHERE id=$1', [row.recipient_user_id]);
+        recipientLabel = uRows[0]?.nume || uRows[0]?.email || `user #${row.recipient_user_id}`;
+      } else {
+        recipientLabel = `Compartimentul „${row.recipient_compartiment}"`;
+      }
+      const rez = recipients.find(r =>
+        (r.type === 'user' && row.recipient_user_id && String(r.value) === String(row.recipient_user_id)) ||
+        (r.type === 'comp' && row.recipient_compartiment && r.value === row.recipient_compartiment)
+      )?.rezolutie || null;
+      data.events.push({
+        at: nowIso, type: 'FLOW_TRANSMITTED', by: actor.email,
+        source: 'manual', recipientKey, recipientLabel, rezolutie: rez,
+      });
+      writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_TRANSMITTED',
+        actorEmail: actor.email, payload: { recipientKey, recipientLabel, rezolutie: rez, source: 'manual' } });
+    }
+    if (newly.length) { data.updatedAt = nowIso; await saveFlow(flowId, data); }
 
     return res.json({ ok: true, added: newly.length, alreadyPresent: recipients.length - newly.length });
   } catch (e) {
@@ -81,7 +107,39 @@ router.post('/flows/:flowId/acknowledge', async (req, res) => {
     const { flowId } = req.params;
     if (!(await isFlowRecipient(pool, flowId, actor)))
       return res.status(403).json({ error: 'forbidden' });
+
+    // Ține minte dacă exista deja o confirmare — acknowledgeReceipt e idempotent (ON CONFLICT
+    // DO NOTHING), deci fără acest pre-check am duplica FLOW_ACKNOWLEDGED la fiecare reconfirmare.
+    const { rows: existingAck } = await pool.query(
+      'SELECT 1 FROM flow_recipient_acks WHERE flow_id=$1 AND user_id=$2',
+      [flowId, actor.userId || actor.id]
+    );
+    const wasAlreadyAcked = existingAck.length > 0;
     const acknowledged_at = await acknowledgeReceipt(pool, flowId, actor.userId || actor.id);
+
+    if (!wasAlreadyAcked) {
+      // Corelare exactă cu transmiterea: aceeași recipientKey folosită la FLOW_TRANSMITTED
+      // (user direct SAU compartiment) — reutilizează verificarea din isFlowRecipient, dar
+      // interoghează explicit ca să aflăm CARE ramură a picat.
+      const { rows: directRows } = await pool.query(
+        'SELECT 1 FROM flow_recipients WHERE flow_id=$1 AND recipient_user_id=$2', [flowId, actor.userId || actor.id]);
+      let recipientKey;
+      if (directRows.length) {
+        recipientKey = `user:${actor.userId || actor.id}`;
+      } else {
+        const comp = await loadActorComp(pool, actor.userId || actor.id);
+        recipientKey = `comp:${(comp || '').trim().toLowerCase()}`;
+      }
+      const data = await getFlowData(flowId);
+      if (data) {
+        data.events = Array.isArray(data.events) ? data.events : [];
+        data.events.push({ at: acknowledged_at, type: 'FLOW_ACKNOWLEDGED', by: actor.email, recipientKey });
+        data.updatedAt = new Date().toISOString();
+        await saveFlow(flowId, data);
+        writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_ACKNOWLEDGED', actorEmail: actor.email, payload: { recipientKey } });
+      }
+    }
+
     return res.json({ ok: true, acknowledged_at });
   } catch (e) {
     logger.error({ err: e }, 'POST /flows/:flowId/acknowledge error');
