@@ -798,10 +798,53 @@
             opt.style.display = "";
             opt.disabled = false;
           }
-          if (sel && (sel.value === "ÎNTOCMIT" || (sel.value === "__alt__" && tr.querySelector(".rolCustom") && tr.querySelector(".rolCustom").value.trim().toUpperCase() === "ÎNTOCMIT"))) {
+          const isIntocmitRow = sel && (sel.value === "ÎNTOCMIT" || (sel.value === "__alt__" && tr.querySelector(".rolCustom") && tr.querySelector(".rolCustom").value.trim().toUpperCase() === "ÎNTOCMIT"));
+          if (isIntocmitRow) {
             intocmitUsed = true;
           }
+          // SEC v3.9.609: identitatea ÎNTOCMIT nu poate fi editată manual — se blochează la userul
+          // logat (server-ul e plasa reală; asta previne confuzia și acoperă șablonul partajat).
+          const nameSel = tr.querySelector(".name-select");
+          if (nameSel) {
+            if (isIntocmitRow) {
+              lockIntocmitRowIdentity(tr, nameSel);
+            } else if (nameSel.dataset.intocmitLocked === "1") {
+              unlockIntocmitRowIdentity(nameSel);
+            }
+          }
         });
+      }
+
+      function lockIntocmitRowIdentity(tr, nameSel) {
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        if (!u.email) return; // profil indisponibil — nu bloca UI-ul (edge case, backend rămâne plasa reală)
+        const finish = () => {
+          nameSel.disabled = true;
+          nameSel.dataset.intocmitLocked = "1";
+          nameSel.style.opacity = ".65";
+          nameSel.style.cursor = "not-allowed";
+          nameSel.title = "Nu poți schimba cine întocmește documentul — ești chiar tu.";
+          nameSel.dispatchEvent(new Event("change", { bubbles: true })); // sincronizează email/funcție (handler existent)
+        };
+        if ([...nameSel.options].some(o => o.value === u.nume)) {
+          nameSel.value = u.nume; finish();
+        } else {
+          // Așteaptă popularea dropdown-ului cu userii (pattern identic cu applyTemplate, max 3s)
+          let tries = 0;
+          const iv = setInterval(() => {
+            tries++;
+            if ([...nameSel.options].some(o => o.value === u.nume)) {
+              nameSel.value = u.nume; clearInterval(iv); finish();
+            } else if (tries > 30) clearInterval(iv);
+          }, 100);
+        }
+      }
+      function unlockIntocmitRowIdentity(nameSel) {
+        nameSel.disabled = false;
+        delete nameSel.dataset.intocmitLocked;
+        nameSel.style.opacity = "";
+        nameSel.style.cursor = "";
+        nameSel.title = "";
       }
 
       // Watch for DOM changes in tbody
