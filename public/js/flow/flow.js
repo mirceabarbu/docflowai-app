@@ -254,7 +254,7 @@
         actorHtml: `<span class="tl-actor">${esc(byLabel)}</span>` + (ev.rezolutie ? `<span style="font-size:.72rem;color:rgba(234,240,255,.35);margin-left:6px;">"${esc(ev.rezolutie)}"</span>` : ''),
         ts: ev.at,
         state: 'done',
-        subRows: ackEvs.map(a => ({ done: true, icon: '✅', label: `Confirmat de ${resolveName(a.by)}`, ts: a.at })),
+        subRows: ackEvs.map(a => ({ done: true, icon: '✅', label: `Confirmat de ${a.byName || resolveName(a.by)}`, ts: a.at })),
         extra: null
       });
     }

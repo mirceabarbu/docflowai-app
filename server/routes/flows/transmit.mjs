@@ -133,7 +133,7 @@ router.post('/flows/:flowId/acknowledge', async (req, res) => {
       const data = await getFlowData(flowId);
       if (data) {
         data.events = Array.isArray(data.events) ? data.events : [];
-        data.events.push({ at: acknowledged_at, type: 'FLOW_ACKNOWLEDGED', by: actor.email, recipientKey });
+        data.events.push({ at: acknowledged_at, type: 'FLOW_ACKNOWLEDGED', by: actor.email, byName: actor.nume || actor.email, recipientKey });
         data.updatedAt = new Date().toISOString();
         await saveFlow(flowId, data);
         writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_ACKNOWLEDGED', actorEmail: actor.email, payload: { recipientKey } });

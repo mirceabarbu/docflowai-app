@@ -169,6 +169,13 @@ function renderList() {
               location.href = `/semdoc-signer.html?flow=${encodeURIComponent(n.flow_id)}&token=${encodeURIComponent(d.token)}`;
             } else { location.href = '/'; }
           } catch(e) { location.href = '/'; }
+        } else if (n.type === 'REPARTIZAT') {
+          // Comută pe tabul Primite IN-PAGE (suntem deja pe notifications.html — fără reload complet)
+          document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+          const primiteBtn = document.querySelector('.filter-btn[data-filter="primite"]');
+          if (primiteBtn) primiteBtn.classList.add('active');
+          currentFilter = 'primite';
+          renderList();
         } else {
           location.href = `/flow.html?flow=${encodeURIComponent(n.flow_id)}`;
         }
