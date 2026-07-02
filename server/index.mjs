@@ -585,7 +585,6 @@ app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy-Report-Only', [
     `script-src 'self' 'nonce-${nonce}' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com`,
     `script-src-attr 'none'`,
-    `style-src 'self'`,
     `report-uri /api/csp-report`,
   ].join('; '));
   next();
@@ -1787,6 +1786,26 @@ const _cspReportParser = express.json({
   type: ['application/csp-report', 'application/reports+json'],
   limit: '64kb',
 });
+// Dedup în memorie: aceeași violare (directivă+sursă+linie) repetată de mai mulți useri
+// nu trebuie să umple logurile — logăm o dată per fereastră, restul se ignoră silențios.
+const _cspSeen = new Map(); // key -> lastLoggedAt (ms)
+const CSP_DEDUP_WINDOW_MS = 5 * 60_000; // 5 minute
+function _cspDedupKey(v) {
+  return `${v?.['violated-directive'] || v?.violatedDirective || ''}|${v?.['source-file'] || v?.sourceFile || ''}|${v?.['line-number'] || v?.lineNumber || ''}`;
+}
+function _cspShouldLog(violation) {
+  const key = _cspDedupKey(violation);
+  const now = Date.now();
+  const last = _cspSeen.get(key);
+  if (last && (now - last) < CSP_DEDUP_WINDOW_MS) return false;
+  _cspSeen.set(key, now);
+  return true;
+}
+setInterval(() => {
+  const cutoff = Date.now() - CSP_DEDUP_WINDOW_MS;
+  for (const [k, ts] of _cspSeen) if (ts < cutoff) _cspSeen.delete(k);
+}, 10 * 60_000).unref();
+
 app.post('/api/csp-report', _cspReportLimiter, _cspReportParser, (req, res) => {
   try {
     const body = req.body;
@@ -1794,11 +1813,11 @@ app.post('/api/csp-report', _cspReportLimiter, _cspReportParser, (req, res) => {
     const ct = req.headers['content-type'] || '';
     if (ct.includes('application/reports+json') && Array.isArray(body)) {
       for (const report of body) {
-        logger.info({ cspViolation: report }, 'csp-violation');
+        if (_cspShouldLog(report)) logger.info({ cspViolation: report }, 'csp-violation');
       }
     } else {
       const violation = body['csp-report'] ?? body;
-      logger.info({ cspViolation: violation }, 'csp-violation');
+      if (_cspShouldLog(violation)) logger.info({ cspViolation: violation }, 'csp-violation');
     }
   } catch (_) { /* corp malformat — ignorat */ }
   res.status(204).end();
