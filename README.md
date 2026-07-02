@@ -1,4 +1,4 @@
-# DocFlowAI v3.9.547
+# DocFlowAI v3.9.611
 
 **Platformă SaaS de circulație și semnare electronică calificată pentru administrația publică din România.**
 
@@ -263,6 +263,12 @@ Suport pentru **multi-ORD** per ALOP, **revizii DF R0/R1+** cu pre-populare col.
 ### Bulk Signing
 Semnare în lot pentru fluxuri multiple cu același semnatar — sesiune unică STS Cloud sau upload local repetat.
 
+### Transmitere internă (repartizare)
+Documentul semnat + atașamentele unui flux finalizat pot fi transmise prin aplicație către un
+**utilizator sau un compartiment** care nu a fost semnatar — automat la finalizare (configurabil
+la creare) sau manual, cu rezoluție opțională. Confirmare de luare la cunoștință per-persoană,
+inbox durabil „📥 Primite", trasabilitate completă în timeline-ul fluxului.
+
 ### Verificare furnizor
 - **CUI** — interogare ANAF live
 - **IBAN** — validare structură + cifră de control
@@ -313,6 +319,11 @@ Schelete arhitecturale implementate. Marcate `stub: true` în UI admin (badge vi
 - Soft-delete pe fluxuri (cu deleted_by tracking)
 - Plain password ELIMINAT din toate response-urile
 - Trust Report PDF cu verificare X.509 L1-L6 (lanț CA + revocare)
+- Acces la documentele unui flux (PDF semnat, atașamente) restricționat la nivel de obiect —
+  inițiator/semnatar/admin same-org/destinatar repartizat (închide un IDOR pre-existent, v3.9.603)
+- Trimiterea externă de email (`send-email`) restricționată la aceeași bară de authz (v3.9.605)
+- Identitatea „Întocmit" nu poate fi impersonată — derivată server-side din actorul autentificat,
+  indiferent ce trimite clientul (v3.9.609)
 
 ---
 
