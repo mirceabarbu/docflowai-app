@@ -143,3 +143,57 @@ export async function resolveRecipientEmails(pool, newlyAdded) {
 
   return [...emails].map(email => ({ email }));
 }
+
+/**
+ * Listă durabilă „Primite" pentru un user: toate repartizările (directe SAU prin
+ * compartiment) NE-legate de notificări efemere — sursa e flow_recipients (mig. 088).
+ * Confirmarea (`acknowledged_at`) e per-persoană din flow_recipient_acks (mig. 089).
+ * Exclude fluxurile șterse (`deleted_at`). Dedup pe flow_id dacă apare și direct și pe comp.
+ * @returns {Promise<Array<object>>}
+ */
+export async function listReceivedFor(pool, userId, actorComp) {
+  const comp = (actorComp || '').trim();
+  const { rows } = await pool.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (fr.flow_id)
+              fr.flow_id,
+              f.data->>'docName'   AS doc_name,
+              fr.rezolutie, fr.transmitted_at, fr.source,
+              fr.recipient_compartiment,
+              tb.email AS transmitted_by_email, tb.nume AS transmitted_by_name,
+              ack.acknowledged_at  AS acknowledged_at
+         FROM flow_recipients fr
+         JOIN flows f ON f.id = fr.flow_id AND f.deleted_at IS NULL
+         LEFT JOIN users tb ON tb.id = fr.transmitted_by
+         LEFT JOIN flow_recipient_acks ack ON ack.flow_id = fr.flow_id AND ack.user_id = $1
+        WHERE fr.recipient_user_id = $1
+           OR ($2 <> '' AND TRIM(fr.recipient_compartiment) = $2)
+        ORDER BY fr.flow_id, fr.transmitted_at DESC
+     ) dedup
+     ORDER BY transmitted_at DESC
+     LIMIT 200`,
+    [userId, comp]
+  );
+  return rows;
+}
+
+/**
+ * Confirmă luarea la cunoștință PER-PERSOANĂ (idempotent). Întoarce `acknowledged_at`
+ * (nou la prima confirmare, sau valoarea existentă la apeluri repetate).
+ * @returns {Promise<string>}
+ */
+export async function acknowledgeReceipt(pool, flowId, userId) {
+  const { rows } = await pool.query(
+    `INSERT INTO flow_recipient_acks (flow_id, user_id)
+     VALUES ($1, $2)
+     ON CONFLICT (flow_id, user_id) DO NOTHING
+     RETURNING acknowledged_at`,
+    [flowId, userId]
+  );
+  if (rows[0]) return rows[0].acknowledged_at;
+  const { rows: existing } = await pool.query(
+    `SELECT acknowledged_at FROM flow_recipient_acks WHERE flow_id = $1 AND user_id = $2`,
+    [flowId, userId]
+  );
+  return existing[0]?.acknowledged_at ?? null;
+}

@@ -7,6 +7,7 @@
 const $ = id => document.getElementById(id);
 
 let allNotifs = [];
+let receivedItems = [];
 let currentFilter = 'all';
 
 // Filter buttons
@@ -22,10 +23,14 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 // Load notifications
 async function loadNotifs() {
   try {
-    const r = await _apiFetch('/api/notifications/with-status');
+    const [r, rReceived] = await Promise.all([
+      _apiFetch('/api/notifications/with-status'),
+      _apiFetch('/api/my-received').catch(() => null),
+    ]);
     if (r.status === 401 || r.status === 403) { location.href = '/login'; return; }
     if (!r.ok) throw new Error('fetch_failed');
     allNotifs = await r.json();
+    if (rReceived && rReceived.ok) receivedItems = await rReceived.json();
     renderList();
     updateReadAllBtn();
   } catch(e) {
@@ -86,8 +91,9 @@ function updateTabCounts() {
     COMPLETED: allNotifs.filter(n => n.type === 'COMPLETED').length,
     REFUSED: allNotifs.filter(n => n.type === 'REFUSED').length,
     formulare: allNotifs.filter(n => FORMULARE_TYPES.has(n.type)).length,
+    primite: receivedItems.filter(r => !r.acknowledged_at).length,
   };
-  const labels = { all:'Toate', unread:'Necitite', urgent:'🚨 Urgente', YOUR_TURN:'De semnat', REVIEW_REQUESTED:'De revizuit', COMPLETED:'Finalizate', REFUSED:'Refuzate', formulare:'📄 Formulare' };
+  const labels = { all:'Toate', unread:'Necitite', urgent:'🚨 Urgente', YOUR_TURN:'De semnat', REVIEW_REQUESTED:'De revizuit', COMPLETED:'Finalizate', REFUSED:'Refuzate', formulare:'📄 Formulare', primite:'📥 Primite' };
   document.querySelectorAll('.filter-btn').forEach(btn => {
     const f = btn.dataset.filter;
     const c = counts[f] || 0;
@@ -98,9 +104,13 @@ function updateTabCounts() {
 }
 
 function renderList() {
+  updateTabCounts();
+  if (currentFilter === 'primite') {
+    renderReceivedList();
+    return;
+  }
   const list = filtered();
   const area = $('listArea');
-  updateTabCounts();
   const _bd = $('btnDeleteCat');
   if (_bd) {
     _bd.style.display = list.length ? 'inline-flex' : 'none';
@@ -164,6 +174,72 @@ function renderList() {
         }
       }
     };
+    div.appendChild(card);
+  });
+  area.appendChild(div);
+}
+
+function renderReceivedList() {
+  const list = receivedItems;
+  const area = $('listArea');
+  const _bd = $('btnDeleteCat');
+  if (_bd) _bd.style.display = 'none';
+  if (!list.length) {
+    area.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">📥</div>
+      <div class="empty-title">Niciun document primit</div>
+      <div>Documentele repartizate ție sau compartimentului tău vor apărea aici.</div>
+    </div>`;
+    return;
+  }
+  area.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'notif-list';
+  list.forEach((r, i) => {
+    const card = document.createElement('div');
+    const isAck = !!r.acknowledged_at;
+    card.className = `notif-card received-card ${isAck ? 'ack' : 'unack'}`;
+    card.style.animationDelay = `${i * 40}ms`;
+    const byWho = r.transmitted_by_name || r.transmitted_by_email || '—';
+    card.innerHTML = `
+      <div class="notif-icon">📥</div>
+      <div class="notif-body">
+        <div class="notif-title">${escHtml(r.doc_name || r.flow_id)}</div>
+        <div class="notif-msg">Transmis de ${escHtml(byWho)} · ${timeAgo(r.transmitted_at)}${r.recipient_compartiment ? ` · compartiment ${escHtml(r.recipient_compartiment)}` : ''}</div>
+        ${r.rezolutie ? `<div class="notif-msg">Rezoluție: ${escHtml(r.rezolutie)}</div>` : ''}
+        <div class="notif-meta">
+          <span class="notif-time">${escHtml(r.flow_id)}</span>
+          <span class="received-badge ${isAck ? 'ack' : 'unack'}">${isAck ? '✅ Confirmat' : '⏳ Neconfirmat'}</span>
+        </div>
+        <div class="received-actions">
+          <button type="button" class="df-action-btn received-open-btn">Deschide documentul</button>
+          ${isAck ? '' : '<button type="button" class="df-action-btn received-ack-btn">Confirm luare la cunoștință</button>'}
+        </div>
+      </div>
+    `;
+    card.querySelector('.received-open-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      location.href = `/flow.html?flow=${encodeURIComponent(r.flow_id)}`;
+    });
+    const ackBtn = card.querySelector('.received-ack-btn');
+    if (ackBtn) {
+      ackBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        ackBtn.disabled = true;
+        try {
+          const resp = await _apiFetch(`/flows/${encodeURIComponent(r.flow_id)}/acknowledge`, { method: 'POST' });
+          if (resp.ok) {
+            const d = await resp.json();
+            r.acknowledged_at = d.acknowledged_at || new Date().toISOString();
+            renderList();
+          } else {
+            ackBtn.disabled = false;
+          }
+        } catch (err) {
+          ackBtn.disabled = false;
+        }
+      });
+    }
     div.appendChild(card);
   });
   area.appendChild(div);
@@ -249,7 +325,7 @@ function connectWS() {
 connectWS();
 // Aplica tab din URL daca exista (?tab=sign / done / refused / unread)
 (function applyTabFromUrl() {
-  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', review: 'REVIEW_REQUESTED', urgent: 'urgent', unread: 'unread', all: 'all', formulare: 'formulare' };
+  const tabMap = { sign: 'YOUR_TURN', done: 'COMPLETED', refused: 'REFUSED', review: 'REVIEW_REQUESTED', urgent: 'urgent', unread: 'unread', all: 'all', formulare: 'formulare', primite: 'primite' };
   const urlTab = new URLSearchParams(location.search).get('tab');
   const filter = tabMap[urlTab] || null;
   if (filter && filter !== 'all') {

@@ -10,7 +10,8 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.mjs';
 import { pool, requireDb, getFlowData, writeAuditEvent } from '../../db/index.mjs';
 import { canActorReadFlow } from '../../services/flow-access.mjs';
-import { normalizeRecipients, transmitFlowTo, resolveRecipientEmails } from '../../services/flow-transmit.mjs';
+import { normalizeRecipients, transmitFlowTo, resolveRecipientEmails, isFlowRecipient, listReceivedFor, acknowledgeReceipt } from '../../services/flow-transmit.mjs';
+import { loadActorComp } from '../../services/authz-formular.mjs';
 import { logger } from '../../middleware/logger.mjs';
 
 const router = Router();
@@ -53,6 +54,37 @@ router.post('/flows/:flowId/transmit', async (req, res) => {
     return res.json({ ok: true, added: newly.length, alreadyPresent: recipients.length - newly.length });
   } catch (e) {
     logger.error({ err: e }, 'POST /flows/:flowId/transmit error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Inbox durabil „📥 Primite" — citește flow_recipients direct, independent de notificări.
+router.get('/api/my-received', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const uid = actor.userId || actor.id;
+    const comp = await loadActorComp(pool, uid);
+    const rows = await listReceivedFor(pool, uid, comp);
+    return res.json(rows);
+  } catch (e) {
+    logger.error({ err: e }, 'GET /api/my-received error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Confirmare luare la cunoștință PER-PERSOANĂ pe o repartizare (user sau membru al compartimentului).
+router.post('/flows/:flowId/acknowledge', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { flowId } = req.params;
+    if (!(await isFlowRecipient(pool, flowId, actor)))
+      return res.status(403).json({ error: 'forbidden' });
+    const acknowledged_at = await acknowledgeReceipt(pool, flowId, actor.userId || actor.id);
+    return res.json({ ok: true, acknowledged_at });
+  } catch (e) {
+    logger.error({ err: e }, 'POST /flows/:flowId/acknowledge error');
     return res.status(500).json({ error: 'server_error' });
   }
 });

@@ -1876,6 +1876,21 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_flow_recipient_user ON flow_recipients(recipient_user_id, acknowledged_at);
       CREATE INDEX IF NOT EXISTS idx_flow_recipient_comp ON flow_recipients(TRIM(recipient_compartiment)) WHERE NULLIF(TRIM(recipient_compartiment),'') IS NOT NULL;
     `
+  },
+  {
+    // Confirmare „luare la cunoștință" PER-PERSOANĂ pe repartizare (flow_recipients, mig. 088).
+    // O repartizare către compartiment are un singur rând în flow_recipients, dar fiecare
+    // membru trebuie să confirme individual — de aceea confirmarea trăiește într-un tabel
+    // separat, cheiat pe (flow_id, user_id), nu pe id-ul rândului din flow_recipients.
+    id: '089_flow_recipient_acks',
+    sql: `
+      CREATE TABLE IF NOT EXISTS flow_recipient_acks (
+        flow_id         TEXT        NOT NULL REFERENCES flows(id),
+        user_id         INTEGER     NOT NULL REFERENCES users(id),
+        acknowledged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (flow_id, user_id)
+      );
+    `
   }
 ];
 
