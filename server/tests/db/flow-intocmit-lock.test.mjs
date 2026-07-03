@@ -73,10 +73,37 @@ d('POST /flows — identitate ÎNTOCMIT blocată la actorul autentificat (fix 29
     const intocmitRow = (data.signers || []).find(s => s.rol === 'ÎNTOCMIT');
     expect(intocmitRow.email).toBe('actor@x.ro');
     expect(intocmitRow.email).not.toBe('altcineva@x.ro');
+    // fix 45: numele ÎNTOCMIT e autoritar din DB (seedOrgUser seed-uiește actorul cu nume='Test'),
+    // NU cel din body — JWT-ul de test (makeAuthCookie) nu cară `nume`, deci fallback-ul din
+    // linia 114 ar fi căzut pe body fără fix-ul din DB.
+    expect(intocmitRow.name).toBe('Test');
+    expect(intocmitRow.name).not.toBe('Alt Nume Impersonat');
 
     // VIZAT (nu e ÎNTOCMIT) rămâne complet editabil — fără regresie
     const vizatRow = (data.signers || []).find(s => s.rol === 'VIZAT');
     expect(vizatRow.email).toBe('semnatar2@x.ro');
+  });
+
+  it('numele ÎNTOCMIT vine din DB (users.nume), NU din body.initName fals (fix 45)', async () => {
+    const res = await request(app)
+      .post('/flows')
+      .set('Cookie', actorCookie())
+      .send({
+        docName: 'Document test nume',
+        initName: 'Nume Fals Din Body',
+        initEmail: 'actor@x.ro',
+        signers: [
+          { order: 1, rol: 'ÎNTOCMIT', name: 'Nume Fals Din Body', email: 'actor@x.ro' },
+          { order: 2, rol: 'VIZAT', name: 'Semnatar Doi', email: 'semnatar2@x.ro' },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    const data = await getFlowRow(res.body.flowId);
+    const intocmitRow = (data.signers || []).find(s => s.rol === 'ÎNTOCMIT');
+    // seedOrgUser seed-uiește userul cu nume='Test' în DB — asta trebuie să câștige, nu body-ul
+    expect(intocmitRow.name).toBe('Test');
+    expect(intocmitRow.name).not.toBe('Nume Fals Din Body');
   });
 
   it('rol „INTOCMIT" FĂRĂ diacritic (atribut custom) → identitatea tot forțată la actor (fix diacritice v3.9.623)', async () => {

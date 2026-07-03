@@ -115,8 +115,10 @@ const createFlow = async (req, res) => {
 
     let orgId = null;
     try {
-      const ru = await pool.query('SELECT org_id FROM users WHERE email=$1', [initEmail.trim().toLowerCase()]);
+      const ru = await pool.query('SELECT org_id, nume FROM users WHERE email=$1', [initEmail.trim().toLowerCase()]);
       orgId = ru.rows[0]?.org_id || null;
+      const dbNume = String(ru.rows[0]?.nume || '').trim();
+      if (dbNume) initName = dbNume; // numele din DB e sursa autoritară, ca emailul (nu body-ul clientului)
     } catch(e) {}
     if (!orgId) {
       try { orgId = await getDefaultOrgId(); } catch(e) { orgId = null; }
