@@ -821,13 +821,29 @@
         // FIX v3.9.614: gardă de idempotență — dacă rândul e deja blocat CU valoarea corectă,
         // nu mai face nimic (evită re-dispatch „change" → refreshAllDropdowns → MutationObserver
         // → buclă infinită, root cause al „Page Unresponsive" pe Inițiere flux).
-        if (nameSel.dataset.intocmitLocked === "1" && nameSel.value === u.nume) return;
+        // FIX v3.9.623: garda include acum și lacătul pe atribut — altfel un rând deja blocat pe
+        // nume dar cu atributul încă editabil ar sări din re-lock și ar rămâne spoofabil.
+        if (nameSel.dataset.intocmitLocked === "1" && nameSel.value === u.nume
+            && tr.querySelector(".rol")?.disabled) return;
         const finish = () => {
           nameSel.disabled = true;
           nameSel.dataset.intocmitLocked = "1";
           nameSel.style.opacity = ".65";
           nameSel.style.cursor = "not-allowed";
           nameSel.title = "Nu poți schimba cine întocmește documentul — ești chiar tu.";
+          // v3.9.623: blochează ȘI atributul pe rândul ÎNTOCMIT (oglindă la lacătul de nume) —
+          // schimbarea atributului nu mai poate debloca/edita liber primul rând.
+          const rolSel = tr.querySelector(".rol");
+          if (rolSel) {
+            rolSel.value = "ÎNTOCMIT";
+            rolSel.disabled = true;
+            rolSel.dataset.intocmitLocked = "1";
+            rolSel.style.opacity = ".65";
+            rolSel.style.cursor = "not-allowed";
+            rolSel.title = "Rândul ÎNTOCMIT nu poate schimba atributul — ești chiar tu, autorul.";
+          }
+          const rolCustom = tr.querySelector(".rolCustom");
+          if (rolCustom) rolCustom.style.display = "none";
           nameSel.dispatchEvent(new Event("change", { bubbles: true })); // sincronizează email/funcție (handler existent)
         };
         if ([...nameSel.options].some(o => o.value === u.nume)) {
@@ -849,6 +865,16 @@
         nameSel.style.opacity = "";
         nameSel.style.cursor = "";
         nameSel.title = "";
+        // v3.9.623: dezblochează simetric atributul când rândul nu mai e ÎNTOCMIT.
+        const tr = nameSel.closest("tr");
+        const rolSel = tr?.querySelector(".rol");
+        if (rolSel && rolSel.dataset.intocmitLocked === "1") {
+          rolSel.disabled = false;
+          delete rolSel.dataset.intocmitLocked;
+          rolSel.style.opacity = "";
+          rolSel.style.cursor = "";
+          rolSel.title = "";
+        }
       }
 
       // Watch for DOM changes in tbody

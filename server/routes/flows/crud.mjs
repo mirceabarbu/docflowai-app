@@ -149,7 +149,13 @@ const createFlow = async (req, res) => {
     const normalizedSigners = signers.map((s, idx) => {
       // SEC v3.9.609: rândul ÎNTOCMIT nu poate fi atribuit altcuiva decât actorului autentificat —
       // indiferent ce trimite clientul (previne impersonare directă prin API).
-      const isIntocmitRole = String(s.rol || s.atribut || '').trim().toUpperCase() === 'ÎNTOCMIT';
+      // v3.9.623: detecție robustă la diacritice (Î≡I) — un atribut custom fără diacritic
+      // (INTOCMIT prin „Alt atribut...") trebuie tratat identic cu ÎNTOCMIT, altfel identitatea
+      // autorului nu mai e forțată pe acel rând (spoof vizual al rolului de autor).
+      const _rolNorm = String(s.rol || s.atribut || '')
+        .trim().toUpperCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, ''); // scoate diacriticele (Î→I, Ș→S…)
+      const isIntocmitRole = _rolNorm === 'INTOCMIT';
       return {
       order: Number(s.order || idx + 1),
       rol: String(s.rol || s.atribut || '').trim(),

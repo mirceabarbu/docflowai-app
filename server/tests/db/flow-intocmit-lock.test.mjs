@@ -79,6 +79,28 @@ d('POST /flows — identitate ÎNTOCMIT blocată la actorul autentificat (fix 29
     expect(vizatRow.email).toBe('semnatar2@x.ro');
   });
 
+  it('rol „INTOCMIT" FĂRĂ diacritic (atribut custom) → identitatea tot forțată la actor (fix diacritice v3.9.623)', async () => {
+    const res = await request(app)
+      .post('/flows')
+      .set('Cookie', actorCookie())
+      .send({
+        docName: 'Document test',
+        initName: 'Alt Nume Impersonat',
+        initEmail: 'altcineva@x.ro',
+        signers: [
+          { order: 1, rol: 'INTOCMIT', name: 'Alt Nume Impersonat', email: 'altcineva@x.ro' },
+          { order: 2, rol: 'VIZAT', name: 'Semnatar Doi', email: 'semnatar2@x.ro' },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    const data = await getFlowRow(res.body.flowId);
+    // rândul cu atribut fără diacritic e recunoscut ca ÎNTOCMIT → identitatea = actorul, NU body-ul
+    const intocmitRow = (data.signers || []).find(s => String(s.rol).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '') === 'INTOCMIT');
+    expect(intocmitRow.email).toBe('actor@x.ro');
+    expect(intocmitRow.email).not.toBe('altcineva@x.ro');
+  });
+
   it('flux normal, fără spoofing (body.initEmail === actor) → comportament identic cu azi (non-regresie)', async () => {
     const res = await request(app)
       .post('/flows')
