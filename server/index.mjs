@@ -1399,9 +1399,19 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
       const fdata = await getFlowData(flowId);
       const cfg = Array.isArray(fdata?.transmiteLaFinalizare) ? fdata.transmiteLaFinalizare : [];
       if (cfg.length) {
+        let autoTransmittedBy = null;
+        if (fdata?.initEmail) {
+          try {
+            const { rows: initRows } = await pool.query(
+              'SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1',
+              [String(fdata.initEmail).trim()]
+            );
+            autoTransmittedBy = initRows[0]?.id ?? null;
+          } catch { autoTransmittedBy = null; }
+        }
         const newly = await transmitFlowTo(pool, {
           flowId, orgId: fdata.orgId || null, recipients: cfg,
-          transmittedBy: null, source: 'auto',
+          transmittedBy: autoTransmittedBy, source: 'auto',
         });
         const targets = await resolveRecipientEmails(pool, newly);
         for (const t of targets) {
@@ -1427,7 +1437,7 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
             } else {
               recipientLabel = `Compartimentul „${row.recipient_compartiment}"`;
             }
-            fdata.events.push({ at: nowIso2, type: 'FLOW_TRANSMITTED', by: null, source: 'auto', recipientKey, recipientLabel, rezolutie: null });
+            fdata.events.push({ at: nowIso2, type: 'FLOW_TRANSMITTED', by: fdata.initEmail || null, source: 'auto', recipientKey, recipientLabel, rezolutie: null });
             writeAuditEvent({ flowId, orgId: fdata.orgId, eventType: 'FLOW_TRANSMITTED', payload: { recipientKey, recipientLabel, source: 'auto' } });
           }
           fdata.updatedAt = nowIso2;

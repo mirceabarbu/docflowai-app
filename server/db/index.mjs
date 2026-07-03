@@ -1923,6 +1923,19 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_flows_org_created
         ON flows(org_id, created_at DESC);
     `
+  },
+  {
+    id: '091_flow_recipients_backfill_auto_initiator',
+    sql: `
+      UPDATE flow_recipients fr
+         SET transmitted_by = u.id
+        FROM flows f
+        JOIN users u ON lower(u.email) = lower(f.data->>'initEmail')
+       WHERE fr.flow_id = f.id
+         AND fr.source = 'auto'
+         AND fr.transmitted_by IS NULL
+         AND f.data->>'initEmail' IS NOT NULL;
+    `
   }
 ];
 

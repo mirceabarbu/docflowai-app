@@ -14,6 +14,8 @@
  *  (4) resolveRecipientEmails: user → email; comp → toți userii comp (dedup lowercase).
  *  (5) „Auto la COMPLETED" (motorul folosit de notify()): flow cu data.transmiteLaFinalizare
  *      → transmitFlowTo+resolve produc rând + emailuri; al doilea run nu dublează.
+ *      Include rezolvarea inițiatorului (data.initEmail → users.id) replicată din index.mjs:
+ *      transmitted_by = id-ul inițiatorului când emailul există în users; NULL dacă e extern.
  *  (6) Acces: destinatarul ne-semnatar primește 200 pe GET /flows/:id; străinul rămâne 403.
  */
 import { vi, describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
@@ -141,16 +143,45 @@ d('Transmitere internă (repartizare) — motor + acces', () => {
         transmiteLaFinalizare: [{ type: 'user', value: destId }],
       }), orgId]
     );
-    // Replică motorului din notify()/COMPLETED (server/index.mjs):
+    // Replică motorului din notify()/COMPLETED (server/index.mjs), inclusiv rezolvarea inițiatorului:
     const { rows: fr } = await pool.query('SELECT data FROM flows WHERE id=$1', [flowId]);
     const cfg = normalizeRecipients(fr[0].data.transmiteLaFinalizare);
-    const newly = await transmitFlowTo(pool, { flowId, orgId, recipients: cfg, transmittedBy: null, source: 'auto' });
+    const { rows: initRows } = await pool.query(
+      'SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1', [fr[0].data.initEmail]
+    );
+    const autoTransmittedBy = initRows[0]?.id ?? null;
+    const newly = await transmitFlowTo(pool, { flowId, orgId, recipients: cfg, transmittedBy: autoTransmittedBy, source: 'auto' });
     expect(newly).toHaveLength(1);
     const emails = (await resolveRecipientEmails(pool, newly)).map(e => e.email);
     expect(emails).toEqual(['dest@x.ro']);
+    // transmitted_by = id-ul inițiatorului (NU NULL) — fix „Transmis de —"
+    const { rows: check } = await pool.query('SELECT transmitted_by FROM flow_recipients WHERE flow_id=$1', [flowId]);
+    expect(check[0].transmitted_by).toBe(initId);
     // al doilea COMPLETED → ON CONFLICT → niciun rând nou (fără re-notificare)
-    const again = await transmitFlowTo(pool, { flowId, orgId, recipients: cfg, transmittedBy: null, source: 'auto' });
+    const again = await transmitFlowTo(pool, { flowId, orgId, recipients: cfg, transmittedBy: autoTransmittedBy, source: 'auto' });
     expect(again).toHaveLength(0);
+  });
+
+  it('(5b) motor auto la COMPLETED — inițiator cu email extern (nu în users) → transmitted_by NULL, fără eroare', async () => {
+    const flowId = 'flow-t5b';
+    await pool.query(
+      `INSERT INTO flows (id, data, org_id) VALUES ($1, $2::jsonb, $3)`,
+      [flowId, JSON.stringify({
+        status: 'completed', completed: true, orgId, initEmail: 'extern@nu-exista.ro', docName: 'Contract',
+        transmiteLaFinalizare: [{ type: 'user', value: destId }],
+      }), orgId]
+    );
+    const { rows: fr } = await pool.query('SELECT data FROM flows WHERE id=$1', [flowId]);
+    const cfg = normalizeRecipients(fr[0].data.transmiteLaFinalizare);
+    const { rows: initRows } = await pool.query(
+      'SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1', [fr[0].data.initEmail]
+    );
+    const autoTransmittedBy = initRows[0]?.id ?? null;
+    expect(autoTransmittedBy).toBeNull();
+    const newly = await transmitFlowTo(pool, { flowId, orgId, recipients: cfg, transmittedBy: autoTransmittedBy, source: 'auto' });
+    expect(newly).toHaveLength(1);
+    const { rows: check } = await pool.query('SELECT transmitted_by FROM flow_recipients WHERE flow_id=$1', [flowId]);
+    expect(check[0].transmitted_by).toBeNull();
   });
 
   it('(6) acces GET /flows/:id — destinatar ne-semnatar 200, străin 403', async () => {

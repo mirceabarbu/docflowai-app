@@ -247,7 +247,8 @@
     const transmitEvs = relevant.filter(e => e.type === 'FLOW_TRANSMITTED');
     for (const ev of transmitEvs) {
       const ackEvs = relevant.filter(e => e.type === 'FLOW_ACKNOWLEDGED' && e.recipientKey === ev.recipientKey);
-      const byLabel = ev.by ? resolveName(ev.by) : 'Transmis automat la finalizare';
+      const byLabel = (ev.by ? resolveName(ev.by) : '—')
+        + (ev.source === 'auto' ? ' · automat la finalizare' : '');
       steps.push({
         icon: '📨',
         labelHtml: `Transmis către <span style="font-size:.72rem;color:rgba(234,240,255,.45);margin-left:4px;">${esc(ev.recipientLabel||'—')}</span>`,
