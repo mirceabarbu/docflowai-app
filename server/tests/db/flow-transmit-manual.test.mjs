@@ -41,12 +41,12 @@ function buildApp() {
   return app;
 }
 
-async function seedFlow(id, { orgId, initEmail = 'init@x.ro', completed = true } = {}) {
+async function seedFlow(id, { orgId, initEmail = 'init@x.ro', completed = true, signers = [] } = {}) {
   await pool.query(
     `INSERT INTO flows (id, data, org_id) VALUES ($1, $2::jsonb, $3)`,
     [id, JSON.stringify({
       status: completed ? 'completed' : 'pending', completed, orgId, initEmail,
-      docName: 'Doc Test', signers: [],
+      docName: 'Doc Test', signers,
     }), orgId]
   );
   return id;
@@ -152,6 +152,44 @@ d('Transmitere internă manuală — POST /flows/:id/transmit', () => {
     const res = await request(app).post(`/flows/${flowId}/transmit`)
       .send({ recipients: [{ type: 'user', value: destId }] });
     expect(res.status).toBe(401);
+  });
+
+  it('(6) destinatar = chiar un semnatar → 200 added:0 skippedHasAccess:1, mesaj informativ, ZERO notificări (fix 44)', async () => {
+    const flowId = await seedFlow('flow-m6', { orgId, signers: [{ email: 'dest@x.ro', status: 'signed' }] });
+    const res = await request(app).post(`/flows/${flowId}/transmit`).set('Cookie', initCookie())
+      .send({ recipients: [{ type: 'user', value: destId }] });
+    expect(res.status).toBe(200);
+    expect(res.body.added).toBe(0);
+    expect(res.body.skippedHasAccess).toBe(1);
+    expect(res.body.message).toMatch(/deja acces/);
+    expect(_notified.filter(n => n.type === 'REPARTIZAT')).toHaveLength(0);
+    const { rows } = await pool.query('SELECT COUNT(*)::int n FROM flow_recipients WHERE flow_id=$1', [flowId]);
+    expect(rows[0].n).toBe(0);
+  });
+
+  it('(7) destinatar = compartiment cu semnatar + ne-semnatar → rândul se creează, doar ne-semnatarul e notificat (fix 44)', async () => {
+    const flowId = await seedFlow('flow-m7', { orgId, signers: [{ email: 'compu@x.ro', status: 'signed' }] });
+    const res = await request(app).post(`/flows/${flowId}/transmit`).set('Cookie', initCookie())
+      .send({ recipients: [{ type: 'comp', value: 'Contabilitate' }] });
+    expect(res.status).toBe(200);
+    expect(res.body.added).toBe(1);
+    const emails = _notified.filter(n => n.type === 'REPARTIZAT').map(n => n.userEmail);
+    expect(emails).toEqual(['compu2@x.ro']);
+  });
+
+  it('(8) destinatari user = semnatar + user = ne-semnatar → doar ne-semnatarul primește rând+notificare (fix 44)', async () => {
+    const flowId = await seedFlow('flow-m8', { orgId, signers: [{ email: 'dest@x.ro', status: 'signed' }] });
+    const res = await request(app).post(`/flows/${flowId}/transmit`).set('Cookie', initCookie())
+      .send({ recipients: [{ type: 'user', value: destId }, { type: 'user', value: strangerId }] });
+    expect(res.status).toBe(200);
+    expect(res.body.added).toBe(1);
+    expect(res.body.skippedHasAccess).toBe(1);
+    const { rows } = await pool.query(
+      `SELECT recipient_user_id FROM flow_recipients WHERE flow_id=$1`, [flowId]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].recipient_user_id).toBe(strangerId);
+    const emails = _notified.filter(n => n.type === 'REPARTIZAT').map(n => n.userEmail);
+    expect(emails).toEqual(['stranger@x.ro']);
   });
 
   it('(5) transmitere manuală scrie FLOW_TRANSMITTED în data.events[] și audit_log (fix 30 — trasabilitate)', async () => {

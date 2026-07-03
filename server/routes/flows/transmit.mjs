@@ -10,7 +10,7 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.mjs';
 import { pool, requireDb, getFlowData, saveFlow, writeAuditEvent } from '../../db/index.mjs';
 import { canActorReadFlow } from '../../services/flow-access.mjs';
-import { normalizeRecipients, transmitFlowTo, resolveRecipientEmails, isFlowRecipient, listReceivedFor, acknowledgeReceipt, countUnacknowledgedFor } from '../../services/flow-transmit.mjs';
+import { normalizeRecipients, transmitFlowTo, resolveRecipientEmails, alreadyHasAccessEmails, isFlowRecipient, listReceivedFor, acknowledgeReceipt, countUnacknowledgedFor } from '../../services/flow-transmit.mjs';
 import { loadActorComp } from '../../services/authz-formular.mjs';
 import { logger } from '../../middleware/logger.mjs';
 
@@ -37,13 +37,35 @@ router.post('/flows/:flowId/transmit', async (req, res) => {
     if (!recipients.length)
       return res.status(400).json({ error: 'no_recipients', message: 'Lipsesc destinatari valizi.' });
 
+    // Inițiatorul/semnatarii au deja acces (canActorReadFlow) — repartizarea nu e necesară pentru ei.
+    // Țintă user care e inițiator/semnatar → exclusă complet; țintă compartiment rămâne (ceilalți
+    // membri au nevoie), dar nu-i notificăm pe semnatarii din compartiment.
+    const excludeEmails = alreadyHasAccessEmails(data);
+    let recipientsEff = recipients;
+    if (excludeEmails.size && recipients.some(r => r.type === 'user')) {
+      const uids = recipients.filter(r => r.type === 'user').map(r => Number(r.value)).filter(Boolean);
+      const emailById = new Map();
+      if (uids.length) {
+        const { rows } = await pool.query('SELECT id, lower(email) AS email FROM users WHERE id = ANY($1::int[])', [uids]);
+        for (const r of rows) emailById.set(r.id, r.email);
+      }
+      recipientsEff = recipients.filter(r => r.type !== 'user' || !excludeEmails.has(emailById.get(Number(r.value))));
+    }
+    const skippedHasAccess = recipients.length - recipientsEff.length;
+
+    // dacă TOȚI destinatarii aleși au deja acces → răspuns informativ, nu succes tăcut
+    if (!recipientsEff.length) {
+      return res.json({ ok: true, added: 0, alreadyPresent: 0, skippedHasAccess,
+        message: 'Destinatarii aleși au deja acces la document (inițiator/semnatari) — repartizarea nu e necesară.' });
+    }
+
     const newly = await transmitFlowTo(pool, {
-      flowId, orgId: data.orgId || null, recipients,
+      flowId, orgId: data.orgId || null, recipients: recipientsEff,
       transmittedBy: actor.userId || actor.id || null, source: 'manual',
     });
     const targets = await resolveRecipientEmails(pool, newly);
     for (const t of targets) {
-      if (!t.email) continue;
+      if (!t.email || excludeEmails.has(String(t.email).toLowerCase())) continue;
       await _notify({ userEmail: t.email, flowId, type: 'REPARTIZAT',
         title: '📨 Document repartizat',
         message: `Documentul „${data.docName || 'document'}" v-a fost transmis spre luare la cunoștință.` });
@@ -64,7 +86,7 @@ router.post('/flows/:flowId/transmit', async (req, res) => {
       } else {
         recipientLabel = `Compartimentul „${row.recipient_compartiment}"`;
       }
-      const rez = recipients.find(r =>
+      const rez = recipientsEff.find(r =>
         (r.type === 'user' && row.recipient_user_id && String(r.value) === String(row.recipient_user_id)) ||
         (r.type === 'comp' && row.recipient_compartiment && r.value === row.recipient_compartiment)
       )?.rezolutie || null;
@@ -77,7 +99,7 @@ router.post('/flows/:flowId/transmit', async (req, res) => {
     }
     if (newly.length) { data.updatedAt = nowIso; await saveFlow(flowId, data); }
 
-    return res.json({ ok: true, added: newly.length, alreadyPresent: recipients.length - newly.length });
+    return res.json({ ok: true, added: newly.length, alreadyPresent: recipientsEff.length - newly.length, skippedHasAccess });
   } catch (e) {
     logger.error({ err: e }, 'POST /flows/:flowId/transmit error');
     return res.status(500).json({ error: 'server_error' });

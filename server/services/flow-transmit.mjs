@@ -197,6 +197,19 @@ export async function countUnacknowledgedFor(pool, userId, actorComp) {
 }
 
 /**
+ * Emailurile care au deja acces la flux prin canActorReadFlow (inițiator + semnatari) —
+ * excluse din repartizare (n-are rost să le „transmiți" un document pe care îl pot deschide).
+ * Pură: primește doar flow.data. @returns {Set<string>}
+ */
+export function alreadyHasAccessEmails(flowData) {
+  const out = new Set();
+  const push = (e) => { const v = String(e || '').trim().toLowerCase(); if (v) out.add(v); };
+  push(flowData?.initEmail);
+  for (const s of (Array.isArray(flowData?.signers) ? flowData.signers : [])) push(s?.email);
+  return out;
+}
+
+/**
  * Confirmă luarea la cunoștință PER-PERSOANĂ (idempotent). Întoarce `acknowledged_at`
  * (nou la prima confirmare, sau valoarea existentă la apeluri repetate).
  * @returns {Promise<string>}

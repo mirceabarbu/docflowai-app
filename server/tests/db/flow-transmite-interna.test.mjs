@@ -27,7 +27,7 @@ import {
   seedOrgUser, seedUser, makeAuthCookie,
 } from '../helpers/db-real.mjs';
 import {
-  normalizeRecipients, transmitFlowTo, isFlowRecipient, resolveRecipientEmails,
+  normalizeRecipients, transmitFlowTo, isFlowRecipient, resolveRecipientEmails, alreadyHasAccessEmails,
 } from '../../services/flow-transmit.mjs';
 
 vi.mock('../../middleware/csrf.mjs', () => ({ csrfMiddleware: (_req, _res, next) => next() }));
@@ -182,6 +182,61 @@ d('Transmitere internă (repartizare) — motor + acces', () => {
     expect(newly).toHaveLength(1);
     const { rows: check } = await pool.query('SELECT transmitted_by FROM flow_recipients WHERE flow_id=$1', [flowId]);
     expect(check[0].transmitted_by).toBeNull();
+  });
+
+  it('(7) motor auto — țintă compartiment cu semnatar + ne-semnatar → rândul se creează, doar ne-semnatarul e notificat (fix 44)', async () => {
+    const flowId = 'flow-t7';
+    // compId (compu@x.ro) e semnatar; comp2 (compu2@x.ro) nu e
+    const comp2 = await seedUser({ orgId, email: 'compu2@x.ro', compartiment: 'Contabilitate' });
+    await pool.query(
+      `INSERT INTO flows (id, data, org_id) VALUES ($1, $2::jsonb, $3)`,
+      [flowId, JSON.stringify({
+        status: 'completed', completed: true, orgId, initEmail: 'init@x.ro', docName: 'Contract',
+        signers: [{ email: 'compu@x.ro', status: 'signed' }],
+        transmiteLaFinalizare: [{ type: 'comp', value: 'Contabilitate' }],
+      }), orgId]
+    );
+    const { rows: fr } = await pool.query('SELECT data FROM flows WHERE id=$1', [flowId]);
+    const fdata = fr[0].data;
+    const cfg = normalizeRecipients(fdata.transmiteLaFinalizare);
+    const excludeEmails = alreadyHasAccessEmails(fdata);
+    expect(excludeEmails.has('compu@x.ro')).toBe(true);
+    const newly = await transmitFlowTo(pool, { flowId, orgId, recipients: cfg, transmittedBy: null, source: 'auto' });
+    expect(newly).toHaveLength(1); // rândul de compartiment se creează (comp2 are nevoie de el)
+    const targets = (await resolveRecipientEmails(pool, newly))
+      .filter(t => !excludeEmails.has(t.email));
+    expect(targets.map(t => t.email)).toEqual(['compu2@x.ro']);
+    expect(comp2).toBeGreaterThan(0);
+  });
+
+  it('(8) motor auto — țintă user semnatar exclusă (fără rând); țintă user ne-semnatar creează rând (fix 44)', async () => {
+    const flowId = 'flow-t8';
+    await pool.query(
+      `INSERT INTO flows (id, data, org_id) VALUES ($1, $2::jsonb, $3)`,
+      [flowId, JSON.stringify({
+        status: 'completed', completed: true, orgId, initEmail: 'init@x.ro', docName: 'Contract',
+        signers: [{ email: 'dest@x.ro', status: 'signed' }],
+        transmiteLaFinalizare: [{ type: 'user', value: destId }, { type: 'user', value: strangerId }],
+      }), orgId]
+    );
+    const { rows: fr } = await pool.query('SELECT data FROM flows WHERE id=$1', [flowId]);
+    const fdata = fr[0].data;
+    const cfg = normalizeRecipients(fdata.transmiteLaFinalizare);
+    const excludeEmails = alreadyHasAccessEmails(fdata);
+    // replică filtrarea din notify()/COMPLETED (index.mjs)
+    const userIds = cfg.filter(c => c.type === 'user').map(c => Number(c.value));
+    const { rows: uRows } = await pool.query('SELECT id, lower(email) AS email FROM users WHERE id = ANY($1::int[])', [userIds]);
+    const emailById = new Map(uRows.map(r => [r.id, r.email]));
+    const cfgFiltered = cfg.filter(c => c.type !== 'user' || !excludeEmails.has(emailById.get(Number(c.value))));
+    expect(cfgFiltered).toHaveLength(1);
+    expect(cfgFiltered[0].value).toBe(strangerId);
+    const newly = await transmitFlowTo(pool, { flowId, orgId, recipients: cfgFiltered, transmittedBy: null, source: 'auto' });
+    expect(newly).toHaveLength(1);
+    expect(newly[0].recipient_user_id).toBe(strangerId);
+    // niciun rând pentru semnatar
+    const { rows: check } = await pool.query(
+      'SELECT COUNT(*)::int n FROM flow_recipients WHERE flow_id=$1 AND recipient_user_id=$2', [flowId, destId]);
+    expect(check[0].n).toBe(0);
   });
 
   it('(6) acces GET /flows/:id — destinatar ne-semnatar 200, străin 403', async () => {

@@ -3,7 +3,7 @@
  * Validare/curățare a configurației de destinatari pentru transmiterea internă.
  */
 import { describe, it, expect } from 'vitest';
-import { normalizeRecipients } from '../../services/flow-transmit.mjs';
+import { normalizeRecipients, alreadyHasAccessEmails } from '../../services/flow-transmit.mjs';
 
 describe('normalizeRecipients', () => {
   it('acceptă user (id numeric) și comp (string) valide', () => {
@@ -60,5 +60,26 @@ describe('normalizeRecipients', () => {
     const raw = Array.from({ length: 30 }, (_, i) => ({ type: 'user', value: i + 1 }));
     const out = normalizeRecipients(raw);
     expect(out).toHaveLength(20);
+  });
+});
+
+describe('alreadyHasAccessEmails', () => {
+  it('include initEmail și emailurile semnatarilor, lowercase', () => {
+    const out = alreadyHasAccessEmails({
+      initEmail: 'Init@X.ro',
+      signers: [{ email: 'Semnatar1@X.ro' }, { email: 'semnatar2@x.ro' }],
+    });
+    expect(out).toEqual(new Set(['init@x.ro', 'semnatar1@x.ro', 'semnatar2@x.ro']));
+  });
+
+  it('gol când lipsesc initEmail/signers', () => {
+    expect(alreadyHasAccessEmails({})).toEqual(new Set());
+    expect(alreadyHasAccessEmails(null)).toEqual(new Set());
+    expect(alreadyHasAccessEmails({ signers: 'not-an-array' })).toEqual(new Set());
+  });
+
+  it('ignoră semnatari fără email sau cu email gol', () => {
+    const out = alreadyHasAccessEmails({ signers: [{ email: '' }, { email: null }, {}] });
+    expect(out).toEqual(new Set());
   });
 });

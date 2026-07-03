@@ -516,7 +516,7 @@ import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
 import entitlementsAdminRouter from './routes/admin/entitlements.mjs';
 import { getAllModulesForUser as _getAllModulesForUser } from './services/entitlements.mjs';
-import { transmitFlowTo, resolveRecipientEmails } from './services/flow-transmit.mjs';
+import { transmitFlowTo, resolveRecipientEmails, alreadyHasAccessEmails } from './services/flow-transmit.mjs';
 import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
@@ -1409,13 +1409,29 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
             autoTransmittedBy = initRows[0]?.id ?? null;
           } catch { autoTransmittedBy = null; }
         }
-        const newly = await transmitFlowTo(pool, {
-          flowId, orgId: fdata.orgId || null, recipients: cfg,
+
+        // Inițiatorul/semnatarii au deja acces (canActorReadFlow) — nu-i re-repartiza.
+        // Țintă user care e inițiator/semnatar → exclusă complet (nu creăm rândul);
+        // țintă compartiment rămâne (ceilalți membri au nevoie), dar nu-i notificăm.
+        const excludeEmails = alreadyHasAccessEmails(fdata);
+        let cfgFiltered = cfg;
+        if (excludeEmails.size && cfg.some(c => c?.type === 'user')) {
+          const userIds = cfg.filter(c => c?.type === 'user').map(c => Number(c.value)).filter(Boolean);
+          const emailById = new Map();
+          if (userIds.length) {
+            const { rows } = await pool.query('SELECT id, lower(email) AS email FROM users WHERE id = ANY($1::int[])', [userIds]);
+            for (const r of rows) emailById.set(r.id, r.email);
+          }
+          cfgFiltered = cfg.filter(c => c?.type !== 'user' || !excludeEmails.has(emailById.get(Number(c.value))));
+        }
+
+        const newly = cfgFiltered.length ? await transmitFlowTo(pool, {
+          flowId, orgId: fdata.orgId || null, recipients: cfgFiltered,
           transmittedBy: autoTransmittedBy, source: 'auto',
-        });
+        }) : [];
         const targets = await resolveRecipientEmails(pool, newly);
         for (const t of targets) {
-          if (!t.email) continue;
+          if (!t.email || excludeEmails.has(String(t.email).toLowerCase())) continue;
           await notify({
             userEmail: t.email, flowId, type: 'REPARTIZAT',
             title: '📨 Document repartizat',
