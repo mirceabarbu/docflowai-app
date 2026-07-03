@@ -129,7 +129,8 @@
       'FLOW_CREATED','SIGNED','SIGNED_PDF_UPLOADED','FLOW_COMPLETED',
       'REFUSED','FLOW_CANCELLED','REVIEW_REQUESTED','DELEGATED',
       'FLOW_REINITIATED','FLOW_REINITIATED_AFTER_REVIEW',
-      'EMAIL_SENT','EMAIL_OPENED'
+      'EMAIL_SENT','EMAIL_OPENED',
+      'FLOW_TRANSMITTED','FLOW_ACKNOWLEDGED'
     ]);
 
     // Filtrăm și grupăm evenimentele relevante (ignorăm moștenite din flux-parent)
@@ -239,6 +240,27 @@
         state: 'done',
         subRows: [],
         extra: openedPart
+      });
+    }
+
+    // ── PAȘI TRANSMITERE INTERNĂ (repartizare) ──────────────────────────────
+    const transmitEvs = relevant.filter(e => e.type === 'FLOW_TRANSMITTED');
+    for (const ev of transmitEvs) {
+      const ackEvs = relevant.filter(e => e.type === 'FLOW_ACKNOWLEDGED' && e.recipientKey === ev.recipientKey);
+      const byLabel = (ev.by ? resolveName(ev.by) : '—')
+        + (ev.source === 'auto' ? ' · automat la finalizare' : '');
+      steps.push({
+        icon: '📨',
+        labelHtml: `Transmis către <span style="font-size:.72rem;color:rgba(234,240,255,.45);margin-left:4px;">${esc(ev.recipientLabel||'—')}</span>`,
+        actorHtml: `<span class="tl-actor">${esc(byLabel)}</span>` + (ev.rezolutie ? `<span style="font-size:.72rem;color:rgba(234,240,255,.35);margin-left:6px;">"${esc(ev.rezolutie)}"</span>` : ''),
+        ts: ev.at,
+        state: 'done',
+        subRows: ackEvs.map(a => {
+          const extra = [a.byFunctie, a.byCompartiment].filter(Boolean).join(' · ');
+          const byLbl = (a.byName || resolveName(a.by)) + (extra ? ` — ${extra}` : '');
+          return { done: true, icon: '✅', label: `Confirmat de ${byLbl}`, ts: a.at };
+        }),
+        extra: null
       });
     }
 
@@ -440,7 +462,15 @@
     const renderEv = (e, isInherited) => {
       const ts = prettyTs(e.at || e.ts || e.time || e.createdAt);
       const byRaw = e.who || e.actor || e.by || "";
-      const who = nameMap[byRaw] ? esc(nameMap[byRaw]) : esc(byRaw);
+      // Preferă identitatea bogată din eveniment (nume — funcție · compartiment), ca la semnatari;
+      // evenimentele vechi fără byName cad pe nameMap/byRaw (fără regresie).
+      let who;
+      if (e.byName) {
+        const extra = [e.byFunctie, e.byCompartiment].filter(Boolean).join(' · ');
+        who = esc(e.byName) + (extra ? ` — ${esc(extra)}` : '');
+      } else {
+        who = nameMap[byRaw] ? esc(nameMap[byRaw]) : esc(byRaw);
+      }
       const kind = (e.type || e.kind || e.event || "EVENT").toString();
       const EVENT_LABELS = {
         'FLOW_CREATED':'FLUX CREAT','SIGNED':'SEMNAT','SIGNED_PDF_UPLOADED':'PDF SEMNAT ÎNCĂRCAT',
@@ -449,6 +479,8 @@
         'FLOW_REINITIATED':'REINIȚIAT','FLOW_REINITIATED_AFTER_REVIEW':'REINIȚIAT DUPĂ REVIZUIRE',
         'EMAIL_SENT':   '📧 EMAIL TRIMIS EXTERN',
         'EMAIL_OPENED': '📬 EMAIL DESCHIS DE DESTINATAR',
+        'FLOW_TRANSMITTED':  '📨 TRANSMIS INTERN',
+        'FLOW_ACKNOWLEDGED': '✅ CONFIRMAT DE DESTINATAR',
         'CERTIFICATE_EXTRACTED':  'CERTIFICAT EXTRAS',
         'TRUST_REPORT_GENERATED': 'RAPORT VALIDARE GENERAT',
         'TOKEN_REGENERATED':      'LINK SEMNARE REÎNNOIT',
@@ -466,6 +498,12 @@
         // who = destinatarul (e.to), sentBy = cel care a trimis
         const sentBy = e.by ? (nameMap[e.by] || e.by) : '';
         extra = `destinatar: ${esc(e.to||'')}${sentBy ? ' · trimis de: ' + esc(sentBy) : ''}`;
+      } else if (kind === 'FLOW_TRANSMITTED') {
+        extra = `către: ${esc(e.recipientLabel||'')}`;
+        if (e.source === 'auto') extra += ' · automat la finalizare';
+        if (e.rezolutie) extra += ` · rezoluție: ${esc(e.rezolutie)}`;
+      } else if (kind === 'FLOW_ACKNOWLEDGED') {
+        extra = 'confirmare luare la cunoștință';
       } else {
         extra = esc(e.msg || e.message || e.detail || e.reason || '');
       }
@@ -641,6 +679,9 @@
       if (btnSendEmail) btnSendEmail.style.display = hasSigned ? "" : "none";
       const btnReport = $("btnTrustReport");
       if (btnReport) btnReport.style.display = (data.completed) ? "block" : "none";
+      // Buton Transmite în aplicație — vizibil doar când documentul e finalizat
+      const btnTransmit = $("btnTransmit");
+      if (btnTransmit) btnTransmit.style.display = (data.completed) ? "" : "none";
 
       const hasPdf = !!(j.hasPdf || data.hasPdf);
       $("btnDownloadOriginal").disabled = !hasPdf;
@@ -891,6 +932,12 @@
   if (_btnSendEmail) _btnSendEmail.addEventListener("click", () => {
     const d = window._flowData || {};
     DFEmailModal.open(flowId, { docName: d.docName || flowId, institutie: d.institutie, compartiment: d.compartiment, onSuccess: () => loadFlow() });
+  });
+
+  const _btnTransmit = $("btnTransmit");
+  if (_btnTransmit) _btnTransmit.addEventListener("click", () => {
+    const d = window._flowData || {};
+    window.DFTransmitModal?.open(flowId, { docName: d.docName || flowId, onSuccess: () => loadFlow() });
   });
 
   $("btnReinitiate").addEventListener("click", async () => {

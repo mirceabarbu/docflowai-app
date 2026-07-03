@@ -522,6 +522,82 @@
         });
       }
 
+      function renderTransmiteBlock() {
+        const el = document.getElementById('transmiteBlock');
+        if (!el) return;
+        const users = window._dbUsers || [];
+        const comps = [...new Set(
+          users.map(u => (u.compartiment || '').trim()).filter(Boolean)
+        )].sort();
+        const esc = window.df?.esc || (s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'));
+        el.style.display = '';
+        el.innerHTML = `
+          <div style="font-weight:700;font-size:.85rem;color:var(--sub);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+            📨 Transmite automat la finalizare
+            <span style="font-weight:400;font-size:.78rem;color:var(--muted);">— opțional</span>
+          </div>
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px;line-height:1.5;">
+            La finalizarea fluxului, documentul semnat și atașamentele vor fi transmise prin aplicație persoanei/compartimentului ales — chiar dacă nu a fost semnatar.
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+            <div>
+              <label style="font-size:.75rem;color:var(--muted);display:block;margin-bottom:4px;">Destinatar</label>
+              <select id="transmiteTip" style="min-width:180px;">
+                <option value="">— nu transmite —</option>
+                <option value="Utilizator">Utilizator</option>
+                <option value="Compartiment">Compartiment</option>
+              </select>
+            </div>
+            <div id="transmiteUserWrap" style="display:none;">
+              <label style="font-size:.75rem;color:var(--muted);display:block;margin-bottom:4px;">Utilizator</label>
+              <select id="transmiteUser" style="min-width:220px;">
+                <option value="">— alege utilizator —</option>
+                ${users.map(u => `<option value="${esc(String(u.id||''))}" data-email="${esc(u.email||'')}">${esc((u.nume||u.email||'') + (u.functie?' — '+u.functie:''))}</option>`).join('')}
+              </select>
+            </div>
+            <div id="transmiteCompWrap" style="display:none;">
+              <label style="font-size:.75rem;color:var(--muted);display:block;margin-bottom:4px;">Compartiment</label>
+              <select id="transmiteComp" style="min-width:200px;">
+                <option value="">— alege compartiment —</option>
+                ${comps.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div id="transmiteRezWrap" style="display:none;margin-top:10px;">
+            <label style="font-size:.75rem;color:var(--muted);display:block;margin-bottom:4px;">Rezoluție / notă (opțional)</label>
+            <textarea id="transmiteRezolutie" maxlength="2000" rows="2"
+              placeholder="ex. «Spre analiză și propuneri»"
+              style="width:100%;resize:vertical;box-sizing:border-box;"></textarea>
+          </div>
+        `;
+        document.getElementById('transmiteTip').addEventListener('change', function() {
+          const tip = this.value;
+          document.getElementById('transmiteUserWrap').style.display = tip === 'Utilizator' ? '' : 'none';
+          document.getElementById('transmiteCompWrap').style.display = tip === 'Compartiment' ? '' : 'none';
+          document.getElementById('transmiteRezWrap').style.display = tip ? '' : 'none';
+          if (tip !== 'Utilizator') { const s = document.getElementById('transmiteUser'); if (s) s.value = ''; }
+          if (tip !== 'Compartiment') { const s = document.getElementById('transmiteComp'); if (s) s.value = ''; }
+        });
+      }
+
+      function readTransmiteLaFinalizare() {
+        const tip = document.getElementById('transmiteTip')?.value || '';
+        const rez = (document.getElementById('transmiteRezolutie')?.value || '').trim().slice(0, 2000);
+        if (tip === 'Utilizator') {
+          const sel = document.getElementById('transmiteUser');
+          const opt = sel?.options[sel.selectedIndex];
+          const val = sel?.value?.trim();
+          if (!val) return undefined;
+          return [{ type: 'user', value: /^\d+$/.test(val) ? Number(val) : (opt?.dataset?.email || val), rezolutie: rez || undefined }];
+        }
+        if (tip === 'Compartiment') {
+          const val = document.getElementById('transmiteComp')?.value?.trim();
+          if (!val) return undefined;
+          return [{ type: 'comp', value: val, rezolutie: rez || undefined }];
+        }
+        return undefined;
+      }
+
       function signerRowTemplate(s = {}) {
         const tr = document.createElement("tr");
         tr.setAttribute("draggable", "true");
@@ -722,10 +798,83 @@
             opt.style.display = "";
             opt.disabled = false;
           }
-          if (sel && (sel.value === "ÎNTOCMIT" || (sel.value === "__alt__" && tr.querySelector(".rolCustom") && tr.querySelector(".rolCustom").value.trim().toUpperCase() === "ÎNTOCMIT"))) {
+          const isIntocmitRow = sel && (sel.value === "ÎNTOCMIT" || (sel.value === "__alt__" && tr.querySelector(".rolCustom") && tr.querySelector(".rolCustom").value.trim().toUpperCase() === "ÎNTOCMIT"));
+          if (isIntocmitRow) {
             intocmitUsed = true;
           }
+          // SEC v3.9.609: identitatea ÎNTOCMIT nu poate fi editată manual — se blochează la userul
+          // logat (server-ul e plasa reală; asta previne confuzia și acoperă șablonul partajat).
+          const nameSel = tr.querySelector(".name-select");
+          if (nameSel) {
+            if (isIntocmitRow) {
+              lockIntocmitRowIdentity(tr, nameSel);
+            } else if (nameSel.dataset.intocmitLocked === "1") {
+              unlockIntocmitRowIdentity(nameSel);
+            }
+          }
         });
+      }
+
+      function lockIntocmitRowIdentity(tr, nameSel) {
+        const u = JSON.parse(localStorage.getItem("docflow_user") || "{}");
+        if (!u.email) return; // profil indisponibil — nu bloca UI-ul (edge case, backend rămâne plasa reală)
+        // FIX v3.9.614: gardă de idempotență — dacă rândul e deja blocat CU valoarea corectă,
+        // nu mai face nimic (evită re-dispatch „change" → refreshAllDropdowns → MutationObserver
+        // → buclă infinită, root cause al „Page Unresponsive" pe Inițiere flux).
+        // FIX v3.9.623: garda include acum și lacătul pe atribut — altfel un rând deja blocat pe
+        // nume dar cu atributul încă editabil ar sări din re-lock și ar rămâne spoofabil.
+        if (nameSel.dataset.intocmitLocked === "1" && nameSel.value === u.nume
+            && tr.querySelector(".rol")?.disabled) return;
+        const finish = () => {
+          nameSel.disabled = true;
+          nameSel.dataset.intocmitLocked = "1";
+          nameSel.style.opacity = ".65";
+          nameSel.style.cursor = "not-allowed";
+          nameSel.title = "Nu poți schimba cine întocmește documentul — ești chiar tu.";
+          // v3.9.623: blochează ȘI atributul pe rândul ÎNTOCMIT (oglindă la lacătul de nume) —
+          // schimbarea atributului nu mai poate debloca/edita liber primul rând.
+          const rolSel = tr.querySelector(".rol");
+          if (rolSel) {
+            rolSel.value = "ÎNTOCMIT";
+            rolSel.disabled = true;
+            rolSel.dataset.intocmitLocked = "1";
+            rolSel.style.opacity = ".65";
+            rolSel.style.cursor = "not-allowed";
+            rolSel.title = "Rândul ÎNTOCMIT nu poate schimba atributul — ești chiar tu, autorul.";
+          }
+          const rolCustom = tr.querySelector(".rolCustom");
+          if (rolCustom) rolCustom.style.display = "none";
+          nameSel.dispatchEvent(new Event("change", { bubbles: true })); // sincronizează email/funcție (handler existent)
+        };
+        if ([...nameSel.options].some(o => o.value === u.nume)) {
+          nameSel.value = u.nume; finish();
+        } else {
+          // Așteaptă popularea dropdown-ului cu userii (pattern identic cu applyTemplate, max 3s)
+          let tries = 0;
+          const iv = setInterval(() => {
+            tries++;
+            if ([...nameSel.options].some(o => o.value === u.nume)) {
+              nameSel.value = u.nume; clearInterval(iv); finish();
+            } else if (tries > 30) clearInterval(iv);
+          }, 100);
+        }
+      }
+      function unlockIntocmitRowIdentity(nameSel) {
+        nameSel.disabled = false;
+        delete nameSel.dataset.intocmitLocked;
+        nameSel.style.opacity = "";
+        nameSel.style.cursor = "";
+        nameSel.title = "";
+        // v3.9.623: dezblochează simetric atributul când rândul nu mai e ÎNTOCMIT.
+        const tr = nameSel.closest("tr");
+        const rolSel = tr?.querySelector(".rol");
+        if (rolSel && rolSel.dataset.intocmitLocked === "1") {
+          rolSel.disabled = false;
+          delete rolSel.dataset.intocmitLocked;
+          rolSel.style.opacity = "";
+          rolSel.style.cursor = "";
+          rolSel.title = "";
+        }
       }
 
       // Watch for DOM changes in tbody
@@ -1014,6 +1163,32 @@
         }
         const el = $("fluxuriContent");
         if (!el) return;
+        // Kebab: toggle CSP-safe prin event delegation, atașat O SINGURĂ DATĂ (nu per render)
+        if (!window._kebabDelegationInit) {
+          window._kebabDelegationInit = true;
+          const _closeAllKebabs = () => {
+            document.querySelectorAll('.df-kebab-menu').forEach(m => { m.hidden = true; });
+            document.querySelectorAll('.df-kebab-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
+          };
+          document.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('.df-kebab-btn');
+            if (btn) {
+              const menu = btn.parentElement.querySelector('.df-kebab-menu');
+              const isOpen = !menu.hidden;
+              _closeAllKebabs();
+              if (!isOpen) { menu.hidden = false; btn.setAttribute('aria-expanded', 'true'); }
+              ev.stopPropagation();
+              return;
+            }
+            // click pe un item din meniu → lasă onclick-ul existent să ruleze, apoi închide meniul
+            if (ev.target.closest('.df-kebab-item')) { _closeAllKebabs(); return; }
+            // click în afara oricărui meniu → închide tot
+            if (!ev.target.closest('.df-kebab-menu')) { _closeAllKebabs(); }
+          });
+          document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') { _closeAllKebabs(); }
+          });
+        }
         if (!flows.length) {
           el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
           return;
@@ -1105,9 +1280,14 @@
           const pdfReady = !!(successFinal && (f.hasSignedPdf || f.completed || finalStatuses.includes(String(f.status || "").toLowerCase())));
           // Salvăm datele fluxului pentru modalul de email (stocăm orice flux finalizat)
           if (successFinal || pdfReady) { window._flowsEmailData = window._flowsEmailData || {}; window._flowsEmailData[f.flowId] = f; }
-          const dlBtn = pdfReady
-            ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" class="df-action-btn primary"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-download"/></svg>PDF semnat</a>
-               <button onclick="downloadTrustReportInit('${f.flowId}', this)" class="df-action-btn"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Raport conformitate</button>`
+          // dlActions = butoanele de acțiune (PDF semnat + Raport conformitate) → merg în kebab
+          const dlActions = pdfReady
+            ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" class="df-action-btn primary df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-download"/></svg>PDF semnat</a>
+               <button onclick="downloadTrustReportInit('${f.flowId}', this)" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Raport conformitate</button>`
+            : '';
+          // dlStatus = textul informativ de stare (fără PDF) → rămâne pe card lângă badge-uri
+          const dlStatus = pdfReady
+            ? ''
             : successFinal
             ? `<span style="color:var(--warn);font-size:.8rem;">⏳ Se procesează PDF...</span>`
             : isReviewRequested
@@ -1117,6 +1297,24 @@
             : isCancelled
             ? `<span style="color:#aaaaaa;font-size:.8rem;">🚫 Flux anulat</span>`
             : `<span style="color:var(--muted);font-size:.8rem;">Nesemnat complet</span>`;
+          // ── Kebab: TOATE acțiunile mutate în meniu (markup identic + clasa df-kebab-item) ──
+          const kebabMain = [
+            (!isCancelled && mySignerEntry) ? `<button onclick="signFromFluxuri('${f.flowId}')" class="df-action-btn cta df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-pen-tool"/></svg>Semnează</button>` : '',
+            `<a href="/flow.html?flow=${f.flowId}" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-search"/></svg>Vezi flow</a>`,
+            (!isCancelled ? dlActions : ''),
+            (pdfReady) ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success df-kebab-item" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-mail"/></svg>Trimite</button>` : '',
+            (pdfReady) ? `<button onclick="_openTransmitForFlow('${f.flowId}')" class="df-action-btn df-kebab-item" title="Transmite documentul în aplicație"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-send"/></svg>Transmite în aplicație</button>` : '',
+            (!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail) ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn warning df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-refresh"/></svg>Reinițiază</button>` : '',
+            (!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail) ? `<button onclick="showReviewUploadModal('${f.flowId}')" class="df-action-btn warning df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-upload"/></svg>Doc revizuit</button>` : '',
+          ].filter(Boolean).join('');
+          const kebabDestructive = [
+            (!isCancelled && (!isRefused || canReinitiate) && !f.allSigned && !f.completed && (f.initEmail||'').toLowerCase() === currentUserEmail) ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn df-kebab-item" title="Anulează flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-ban"/></svg>Anulează</button>` : '',
+            (!isCancelled && ((f.initEmail||'').toLowerCase() === currentUserEmail || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'admin' || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'org_admin') && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused')) ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn danger df-kebab-item" title="Șterge flux" aria-label="Șterge flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-trash"/></svg>Șterge</button>` : '',
+          ].filter(Boolean).join('');
+          const kebabMenu = `<div class="df-kebab-wrap">
+            <button type="button" class="df-action-btn icon-only df-kebab-btn" aria-haspopup="true" aria-expanded="false" aria-label="Acțiuni" data-flow="${f.flowId}"><svg class="df-ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></svg></button>
+            <div class="df-kebab-menu" hidden>${kebabMain}${kebabDestructive ? `<div class="df-kebab-divider"></div>${kebabDestructive}` : ''}</div>
+          </div>`;
           return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:12px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
               <div>
@@ -1127,15 +1325,9 @@
                 ${isUrgent ? '<span style="background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>' : ''}
                 ${statusBadge}
                 <span id="emailBadge_${f.flowId}" style="display:none;"></span>
-                ${!isCancelled && mySignerEntry ? `<button onclick="signFromFluxuri('${f.flowId}')" class="df-action-btn cta sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-pen-tool"/></svg>Semnează</button>` : ''}
-                <a href="/flow.html?flow=${f.flowId}" class="df-action-btn"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-search"/></svg>Vezi flow</a>
-                ${!isCancelled ? dlBtn : ''}
-                ${pdfReady ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-mail"/></svg>Trimite</button>` : ''}
-                ${!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-refresh"/></svg>Reinițiază</button>` : ''}
+                ${!isCancelled ? dlStatus : ''}
                 ${refusedByAprobat && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<span style="color:#ffaaaa;font-size:.78rem;font-weight:600;">⛔ Refuzat de APROBATOR — flux nou necesar</span>` : ''}
-                ${!isCancelled && isReviewRequested && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="showReviewUploadModal('${f.flowId}')" class="df-action-btn warning sm"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-upload"/></svg>Doc revizuit</button>` : ''}
-                ${!isCancelled && ((f.initEmail||'').toLowerCase() === currentUserEmail || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'admin' || (JSON.parse(localStorage.getItem('docflow_user')||'{}').role||'') === 'org_admin') && !f.allSigned && !isReviewRequested && !(f.signers||[]).some(s=>s.status==='signed'||s.status==='refused') ? `<button onclick="deleteFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn danger icon-only sm" title="Șterge flux" aria-label="Șterge flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-trash"/></svg></button>` : ''}
-                ${!isCancelled && (!isRefused || canReinitiate) && !f.allSigned && !f.completed && (f.initEmail||'').toLowerCase() === currentUserEmail ? `<button onclick="cancelFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn sm" title="Anulează flux"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-ban"/></svg>Anulează</button>` : ''}
+                ${kebabMenu}
               </div>
             </div>
             <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:10px;margin-top:4px;">
@@ -1349,6 +1541,17 @@ async function signFromFluxuri(flowId) {
         return hay.some(v => v.includes(q));
       }
 
+      // Repartizare internă (transmite documentul în aplicație) din kebab-ul „Fluxurile mele" —
+      // simetric cu _openEmailForFlow; refolosește DFTransmitModal inclus în semdoc-initiator.html.
+      window._openTransmitForFlow = function(flowId) {
+        const f = (window._flowsEmailData || {})[flowId] || {};
+        if (!window.DFTransmitModal) { console.warn('DFTransmitModal indisponibil'); return; }
+        window.DFTransmitModal.open(flowId, {
+          docName: f.docName || flowId,
+          onSuccess: () => { if (typeof loadMyFlows === 'function') loadMyFlows(_fluxPage); },
+        });
+      };
+
       async function loadMyFlows(page) {
         page = Math.max(1, parseInt(page) || 1);
         _fluxPage = page;
@@ -1440,6 +1643,7 @@ async function signFromFluxuri(flowId) {
             window._dbUsers = await r.json();
             // Repopulează toate dropdown-urile respectând selecțiile existente
             refreshAllDropdowns?.();
+            renderTransmiteBlock?.();
             // Re-sincronizează ÎNTOCMIT după ce dropdown-urile sunt populate
             autoFillFromProfile();
             // ALOP: aplică semnatari pre-configurați dacă există prefill în așteptare
@@ -1464,6 +1668,7 @@ async function signFromFluxuri(flowId) {
           if (r.ok) {
             window._dbUsers = await r.json();
             refreshAllDropdowns?.();
+            renderTransmiteBlock?.();
             autoFillFromProfile();
           }
         } catch(e) { console.warn('_refreshDbUsers failed:', e); }
@@ -2019,6 +2224,7 @@ async function signFromFluxuri(flowId) {
             if (_dtype) m.docType = _dtype;
             return m;
           })(),
+          transmiteLaFinalizare: readTransmiteLaFinalizare(),
         };
 
         if (!_selectedProvider) {

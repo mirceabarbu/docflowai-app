@@ -8,13 +8,14 @@
     <link rel="stylesheet" href="/css/df/shell.css?v=3.9.518">
     <link rel="stylesheet" href="/css/df/components.css?v=3.9.518">
     <link rel="stylesheet" href="/css/df/email-modal.css?v=3.9.549">
-    <link rel="stylesheet" href="/css/semdoc-initiator/semdoc-initiator.css?v=3.9.550">
+    <link rel="stylesheet" href="/css/semdoc-initiator/semdoc-initiator.css?v=3.9.620">
     <link rel="stylesheet" href="/mobile.css?v=3.9.518">
     <script src="/js/df-utils.js?v=3.9.518"></script>
     <script src="/js/df-apifetch-shim-full.js?v=3.9.518"></script>
-    <script src="/js/df-shell.js?v=3.9.531"></script>
+    <script src="/js/df-shell.js?v=3.9.616"></script>
     <script src="/js/df-user-modals.js?v=3.9.518" defer></script>
     <script src="/js/df-email-modal.js?v=3.9.567" defer></script>
+    <script src="/js/df-transmit-modal.js?v=3.9.621" defer></script>
 </head>
 <script src="/js/common/pdf-lib-loader.js?v=3.9.518"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -293,6 +294,10 @@
 
 
             <div class="col-12">
+              <div id="transmiteBlock" style="display:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 16px;background:rgba(255,255,255,.03);margin-bottom:8px;"></div>
+            </div>
+
+            <div class="col-12">
               <div class="row">
                 <button id="btnCreate" class="df-action-btn cta" type="button"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.518#ico-rocket"/></svg>Pornește flux</button>
                 <button id="btnRenunta" class="df-action-btn danger" type="button" style="display:none;"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.518#ico-x"/></svg>Renunță la flux</button>
@@ -366,8 +371,8 @@
 </div>
 
     <script src="/js/shared/att-preview.js?v=3.9.584" defer></script>
-    <script src="/js/semdoc-initiator/main.js?v=3.9.586" defer></script>
-  <script src="/notif-widget.js?v=3.9.518"></script>
+    <script src="/js/semdoc-initiator/main.js?v=3.9.623" defer></script>
+  <script src="/notif-widget.js?v=3.9.615"></script>
 
 <!-- Modal incarcare document revizuit -->
 <div id="reviewUploadModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:center;justify-content:center;padding:20px;">

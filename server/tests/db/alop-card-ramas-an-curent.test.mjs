@@ -125,4 +125,47 @@ d('Card ALOP — ramas_an_curent oglindește garda noua-lichidare', () => {
     const card = await cardRamas(alopId);
     expect(card).toBeNull();
   });
+
+  // ── credite_bugetare_an_curent (v3.9.600): valoarea din paranteza „rămas exercițiu" ─────
+  // = col.10 (`sqlCrediteBugetareCol10`) = BAZA reală a lui ramas_an_curent. Blochează
+  //   re-divergența parantezei față de cifra rămas pe care o însoțește.
+  async function cardCredite(alopId) {
+    const res = await request(app).get(`/api/alop/${alopId}`).set('Cookie', cookie());
+    expect(res.status).toBe(200);
+    return res.body.alop.credite_bugetare_an_curent;
+  }
+
+  it('credite_bugetare_an_curent = col.10 (crediteBugetareAnCurent din rows_ctrl)', async () => {
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: 'DF-CB',
+      rowsCtrl: [{ sum_rezv_crdt_bug_act: '29000' }] });
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId });
+    const { rows: [df] } = await pool.query('SELECT rows_ctrl FROM formulare_df WHERE id=$1', [dfId]);
+    const credite = await cardCredite(alopId);
+    expect(Number(credite)).toBe(crediteBugetareAnCurent(df.rows_ctrl)); // = col.10
+    expect(Number(credite)).toBe(29000);
+  });
+
+  it('consistență: credite_bugetare_an_curent === ramas_an_curent + ordonanțat curent', async () => {
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: 'DF-CONS',
+      rowsCtrl: [{ sum_rezv_crdt_bug_act: '29000' }] });
+    const ordCur = await seedOrdSum(dfId, 3000, 'ORD-CONS');
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'completed', dfId,
+      ordId: ordCur, cicluCurent: 2 });
+    await addCiclu(alopId, dfId, 5000, CUR, 1);
+    const credite = Number(await cardCredite(alopId));
+    const ramas = Number(await cardRamas(alopId));
+    const ordonantat = 5000 + 3000; // ciclu an curent + ORD curent
+    // paranteza (credite = bază) = cifra principală (ramas) + ce s-a ordonanțat = invariant
+    expect(credite).toBe(ramas + ordonantat);
+    expect(credite).toBe(29000);
+    expect(ramas).toBe(21000);
+  });
+
+  it('ALOP fără DF → credite_bugetare_an_curent NULL/0 (ca ramas, fără NaN)', async () => {
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'draft' });
+    const credite = await cardCredite(alopId);
+    // fără DF → COALESCE SUM pe rows_ctrl inexistent = 0 (nu NaN); frontend gardează cu ||0
+    expect(credite == null || Number(credite) === 0).toBe(true);
+    expect(Number.isNaN(Number(credite ?? 0))).toBe(false);
+  });
 });

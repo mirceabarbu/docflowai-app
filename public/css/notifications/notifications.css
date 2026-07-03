@@ -72,6 +72,17 @@
     .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: .5; }
     .empty-title { font-size: 1.1rem; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
 
+    /* Cardul „Primite" (inbox durabil) */
+    .notif-card.received-card { cursor: default; }
+    .notif-card.received-card.unack { border-left: 3px solid #fbbf24; }
+    .notif-card.received-card.ack { border-left: 3px solid var(--df-teal); }
+    .received-badge {
+      font-size: .73rem; font-weight: 700; padding: 2px 9px; border-radius: 10px;
+    }
+    .received-badge.ack { background: rgba(45,212,191,.14); color: var(--df-teal); }
+    .received-badge.unack { background: rgba(251,191,36,.14); color: #fbbf24; }
+    .received-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
     .loading { text-align: center; padding: 48px; color: var(--muted); }
     .spin { display: inline-block; width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp .7s linear infinite; }
     @keyframes sp { to { transform: rotate(360deg); } }

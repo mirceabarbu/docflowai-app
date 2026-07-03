@@ -167,7 +167,9 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     if (data.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'fisier_prea_mare' });
 
     const mime_type = req.headers['content-type'] || 'application/octet-stream';
-    const filename = req.headers['x-filename'] || `atasament_${Date.now()}`;
+    let filename = req.headers['x-filename'] || '';
+    try { filename = decodeURIComponent(filename); } catch { /* valoare ne-encodată/legacy — lasă crud */ }
+    if (!filename) filename = `atasament_${Date.now()}`;
 
     const { rows: inserted } = await pool.query(`
       INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot)
@@ -474,6 +476,8 @@ router.get('/api/formulare/list', async (req, res) => {
           ) AS has_newer_revision,
           CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
+          CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+               THEN 'aprobat' ELSE fd.status END AS badge_status,
           COALESCE(u1.nume, u1.email) AS initiator,
           u1.compartiment AS initiator_comp,
           COALESCE(u2.nume, u2.email) AS p2,
@@ -569,6 +573,17 @@ router.get('/api/formulare/list', async (req, res) => {
           fo.beneficiar AS titlu,
           fo.created_by,
           fo.flow_id,
+          COALESCE(
+            CASE WHEN fo.status = 'completed'
+                      AND fo.flow_id IS NOT NULL
+                      AND f.deleted_at IS NULL
+                      AND (f.data->>'completed') IS DISTINCT FROM 'true'
+                      AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
+                 THEN 'transmis_flux' END,
+            CASE WHEN fo.flow_id IS NOT NULL
+                      AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+                 THEN 'aprobat' ELSE fo.status END
+          ) AS badge_status,
           CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(u1.nume, u1.email) AS initiator,

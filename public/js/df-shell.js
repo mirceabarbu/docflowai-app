@@ -111,6 +111,45 @@
     navGroup.appendChild(a);
   });
 
+  // Injectează link „Primite" în sidebar (pattern identic cu Registratură, idempotent), cu
+  // bădge de documente neconfirmate — vezi countUnacknowledgedFor (flow-transmit.mjs).
+  document.addEventListener('DOMContentLoaded', function() {
+    var labels = document.querySelectorAll('.df-nav-label');
+    var navGroup = null;
+    for (var i = 0; i < labels.length; i++) {
+      if (labels[i].textContent.trim() === 'Navigare app') {
+        var sib = labels[i].nextElementSibling;
+        if (sib && sib.classList.contains('df-nav-group')) { navGroup = sib; break; }
+      }
+    }
+    if (!navGroup) return;
+    if (navGroup.querySelector('a[href^="/notifications.html?tab=primite"]')) return; // idempotent
+
+    var a = document.createElement('a');
+    a.href = '/notifications.html?tab=primite';
+    a.className = 'df-nav-item';
+    var path = (location.pathname || '').replace(/\/$/, '');
+    var qs = location.search || '';
+    if ((path === '/notifications' || path === '/notifications.html') && qs.indexOf('tab=primite') !== -1) {
+      a.classList.add('active');
+    }
+    a.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0"><path d="M21 8v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M2 8l10 6 10-6"/><path d="M22 8l-10-6L2 8"/></svg> <span>Primite</span> <span class="df-nav-badge" id="primiteBadgeCount" style="display:none;margin-left:auto;background:rgba(124,92,255,.35);color:#c4b5fd;border-radius:9px;min-width:18px;height:18px;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;padding:0 5px;"></span>';
+    navGroup.appendChild(a);
+
+    // Bădge cu numărul de documente neconfirmate — doar dacă există sesiune activă
+    var hasSession = !!localStorage.getItem('docflow_user') || !!localStorage.getItem('docflow_token');
+    if (hasSession) {
+      fetch('/api/my-received/count', { credentials: 'include' })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+          if (!d || !d.count) return;
+          var badge = document.getElementById('primiteBadgeCount');
+          if (badge) { badge.textContent = String(d.count); badge.style.display = 'inline-flex'; }
+        })
+        .catch(function() {});
+    }
+  });
+
   document.addEventListener('DOMContentLoaded', function() {
     // 1. Populate from localStorage cache immediately (no flash)
     var cached = JSON.parse(localStorage.getItem('docflow_user') || '{}');

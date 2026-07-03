@@ -25,6 +25,7 @@ import emailRouter,       { _injectDeps as _injEmail }        from './email.mjs'
 import acroformRouter,    { _injectDeps as _injAcroform }     from './acroform.mjs';
 import cloudRouter,       { _injectDeps as _injCloud }        from './cloud-signing.mjs';
 import bulkRouter,        { _injectDeps as _injBulk }         from './bulk-signing.mjs';
+import transmitRouter,    { _injectDeps as _injTransmit }     from './transmit.mjs';
 
 const router = Router();
 
@@ -36,6 +37,7 @@ router.use('/', signingRouter);
 router.use('/', lifecycleRouter);
 router.use('/', attachmentsRouter);
 router.use('/', emailRouter);
+router.use('/', transmitRouter); // transmitere internă manuală — /flows/:id/transmit
 router.use('/', acroformRouter);
 
 // ── injectFlowDeps — compatibilitate cu server/index.mjs existent ─────────
@@ -46,6 +48,7 @@ export function injectFlowDeps(deps) {
   _injLifecycle(deps);
   _injAttachments(deps);
   _injEmail(deps);
+  _injTransmit(deps);
   _injAcroform(deps);
   _injCloud(deps);
   _injBulk(deps);

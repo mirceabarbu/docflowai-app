@@ -126,3 +126,24 @@ th{ color: var(--sub) !important; }
     .ms-done .mtl-ts { color:rgba(38,208,124,.50); }
     @keyframes mtl-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(124,92,255,.4);} 50%{box-shadow:0 0 0 5px rgba(124,92,255,0);} }
     .ms-active .mtl-dot { animation:mtl-pulse 2s ease-in-out infinite; }
+
+    /* Kebab („⋮") pe cardurile din „Fluxurile mele" — toate acțiunile într-un dropdown */
+    .df-kebab-wrap { position: relative; }
+    .df-kebab-menu {
+      position: absolute; right: 0; top: calc(100% + 4px); z-index: 50;
+      min-width: 220px; padding: 6px;
+      background: var(--df-card-bg, #141a2c); border: 1px solid rgba(255,255,255,.08);
+      border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    /* `hidden` trebuie să învingă `display:flex` de layout de mai sus — altfel meniul e mereu vizibil */
+    .df-kebab-menu[hidden] { display: none !important; }
+    .df-kebab-menu .df-kebab-item {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; justify-content: flex-start; text-align: left;
+      border: none; background: transparent; border-radius: 7px; padding: 8px 10px;
+    }
+    .df-kebab-menu .df-kebab-item:hover { background: rgba(255,255,255,.06); }
+    .df-kebab-divider { height: 1px; background: rgba(255,255,255,.08); margin: 4px 2px; }
+    /* Mobil/îngust: dacă meniul ar ieși din viewport la dreapta, ancorează-l la stânga */
+    @media (max-width: 560px) { .df-kebab-menu { right: auto; left: 0; } }

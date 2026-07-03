@@ -727,6 +727,75 @@ simetric cu cancel (fix 9): `formulare_{df,ord}.flow_id=NULL` + `alop_instances.
 
 ---
 
+## Transmitere internă (repartizare) — user/compartiment + confirmare (din v3.9.601–3.9.610)
+
+Documentul semnat + atașamentele unui flux pot fi transmise, prin aplicație, unui **utilizator
+SAU unui compartiment întreg** — inclusiv persoane care NU au fost semnatari. Terminologie
+domeniu: „repartizare". Sursa de adevăr a accesului: tabelul `flow_recipients`.
+
+### Arhitectură
+- `server/services/flow-transmit.mjs` — serviciu PUR (fără dependențe de semnare):
+  `normalizeRecipients`, `transmitFlowTo` (insert idempotent ON CONFLICT), `isFlowRecipient`,
+  `resolveRecipientEmails` (expansiune compartiment→useri), `listReceivedFor`, `acknowledgeReceipt`.
+- `server/services/flow-access.mjs` — `canActorReadFlow` (mutat din `crud.mjs`, semantică identică)
+  + `isFlowAccessAllowed` = `canActorReadFlow ∪ isFlowRecipient`. Poartă unică pentru acces la
+  metadata fluxului ȘI la conținut (`signed-pdf`, `pdf`, `attachments`).
+- `server/routes/flows/transmit.mjs` — `POST /flows/:id/transmit` (manual), `POST /flows/:id/acknowledge`,
+  `GET /api/my-received`. Authz pe transmitere = `canActorReadFlow` (NU include destinatari —
+  transmiterea e acțiune de inițiator/semnatar/admin, nu a cuiva care doar a primit documentul).
+- **Auto-transmit la finalizare**: EXCLUSIV în `notify()` din `server/index.mjs`, pe ramura
+  `type==='COMPLETED'`, citind `data.transmiteLaFinalizare` (setat opțional la creare flux, din
+  UI-ul `semdoc-initiator`). Non-fatal (try/catch) — un eșec de transmitere NU rupe notificarea
+  COMPLETED către inițiator. NU există niciun cârlig în fișierele de semnare NO-TOUCH.
+- Migrații: `088_flow_recipients` (user XOR compartiment, CHECK + unicitate parțială),
+  `089_flow_recipient_acks` (confirmare PER-PERSOANĂ — o repartizare pe compartiment are UN
+  rând `flow_recipients`, dar fiecare membru confirmă individual).
+
+### Trasabilitate (din v3.9.610)
+`FLOW_TRANSMITTED`/`FLOW_ACKNOWLEDGED` scrise în `data.events[]` (sursă „Progres flux") ȘI
+`audit_events` (sursă „Evenimente"), oglindind exact pattern-ul `EMAIL_SENT`/`EMAIL_OPENED`.
+Corelare transmitere↔confirmare pe `recipientKey` (`user:<id>` sau `comp:<nume>`), NU pe ordine
+cronologică — esențial când o transmitere pe compartiment are mai mulți confirmatori sau când
+mai multe transmiteri sunt apropiate în timp.
+
+### ⚠️ Lecție: `data.flowId` din JSONB NU e de încredere
+`getFlowData()` întoarce blob-ul JSONB brut; câmpul `flowId` din el există DOAR dacă a fost
+persistat explicit la creare — NU e garantat (fluxuri legacy, fixture-uri de test). Orice funcție
+care are nevoie de id-ul fluxului trebuie să-l primească EXPLICIT (`req.params.flowId`), nu să-l
+deriveze din `data.flowId`. (`isFlowAccessAllowed` a avut inițial exact acest bug — vezi
+semnătura ei, care acceptă `flowId` ca parametru dedicat, cu fallback la `data.flowId` doar
+pentru compatibilitate.)
+
+**Regula:** pentru orice cod nou care lucrează cu un flux, id-ul autoritar e mereu cel din URL/
+apelant, nu unul citit din interiorul blob-ului de date al fluxului.
+
+---
+
+## Identitate ÎNTOCMIT — blocată la actorul autentificat (din v3.9.609)
+
+Cine „întocmește" un document (rolul ÎNTOCMIT) NU poate fi ales liber — e mereu persoana
+autentificată care creează fluxul, indiferent de origine (creare manuală, șablon propriu,
+șablon partajat pe instituție, prefill ALOP/formulare, reinițiere).
+
+- **Backend (plasa de siguranță reală):** în `createFlow` (`server/routes/flows/crud.mjs`),
+  `initName`/`initEmail` se derivă din `actor` (JWT), NU din `body` — indiferent ce trimite
+  clientul. Orice semnatar cu rol normalizat `ÎNTOCMIT` din `signers[]` e forțat la aceeași
+  identitate. Validarea de format pe `body.initName`/`initEmail` (400 pre-auth) rămâne
+  neschimbată — doar valorile REALE folosite după `requireAuth` sunt cele ale actorului.
+- **Frontend (UX):** un singur punct de aplicare — `updateIntocmitVisibility()` în
+  `semdoc-initiator/main.js`, deja apelată din toate căile de creare/modificare rânduri
+  (MutationObserver pe tbody + rol-change handler + finalul `applyTemplate()`). Rândul activ
+  ÎNTOCMIT devine `disabled`, sincronizat cu profilul userului logat (`localStorage.docflow_user`).
+- **Efect colateral util:** cazul șablonului partajat pe instituție (ÎNTOCMIT salvat acolo
+  aparține altcuiva) se rezolvă AUTOMAT prin aceeași regulă — fără cod separat, fără mesaj de
+  eroare. Suprascrierea e silențioasă și sigură.
+
+**Regula:** dacă adaugi o cale nouă de populare a rândurilor de semnatari (alt tip de prefill),
+`updateIntocmitVisibility()` o acoperă automat DACĂ rândurile ajung în `tbody` prin DOM normal
+(MutationObserver le prinde). Nu e nevoie să atingi call-site-ul nou.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:
@@ -1044,6 +1113,8 @@ Schema ALOP este împărțită între un fișier SQL inițial și migrații inli
 | server/db/index.mjs                       | 064_delegation_functie | funcție pentru delegare                         |
 | server/db/index.mjs                       | 085_formulare_df_an_referinta | an absolut ancorare benzi rows_plati     |
 | server/db/index.mjs                       | 086_alop_ord_cicluri_an_exercitiu | an de exercițiu per ciclu arhivat    |
+| server/db/index.mjs                       | 088_flow_recipients    | user XOR compartiment (repartizare), CHECK + unicitate parțială |
+| server/db/index.mjs                       | 089_flow_recipient_acks | confirmare luare la cunoștință PER-PERSOANĂ |
 
 Pentru orice nouă migrație ALOP/formulare, urmează regula stabilită:
 ALTER inline în db/index.mjs cu pattern `id: 'NNN_descriere'` și SQL idempotent.

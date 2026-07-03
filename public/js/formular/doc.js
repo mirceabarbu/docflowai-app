@@ -552,6 +552,10 @@ function renderActions(ft){
   const status=ST.docStatus[ft],role=ST.docRole[ft],docId=ST.docId[ft];
   const caps=ST.docCapabilities?.[ft]||{};
   const B=(cls,txt,fn)=>`<button class="df-action-btn ${cls}" onclick="${fn}">${txt}</button>`;
+  // Export XML oficial (v3.9.591) — randat DOAR când serverul îl permite (caps.can_export_xml:
+  // Secțiunea A+B complete). type endpoint = df|ord (ft = notafd|ordnt).
+  const xmlType=ft==='ordnt'?'ord':'df';
+  const xmlBtn=caps.can_export_xml?B('sm','📑 Export XML',`exportFormularXml('${xmlType}','${docId}')`):'';
   // Banner "an următor" — vizibil doar pentru notafd revizie an următor (prezentare, neschimbat)
   const bannerAnUrm=document.getElementById('banner-an-urmator-notafd');
   if(bannerAnUrm) bannerAnUrm.style.display=(ft==='notafd'&&ST.docRevizieAnUrmator?.[ft])?'':'none';
@@ -593,6 +597,7 @@ function renderActions(ft){
     const istoricMsg=caps.is_historic_revision?`<span style="color:var(--df-text-3);font-size:.82rem;margin-left:8px">🕒 Revizie istorică — revizia curentă este R${latest}.</span>`:'';
     div.innerHTML=revBadge
       +(caps.can_download_signed?B('teal','📄 Descarcă PDF semnat',`viewFlowPdf('${fid}')`):'')
+      +xmlBtn
       +(caps.can_revise?B('','↻ Revizuiește',`dfInitiazaRevizie('${docId}')`):'')
       +istoricMsg;
     return;
@@ -602,18 +607,20 @@ function renderActions(ft){
     return;
   }
   if(caps.is_completed_p2){
-    div.innerHTML=`<span style="color:var(--df-text-3);font-size:.82rem">✅ Secțiunea ta este completată.</span>`;
+    div.innerHTML=`<span style="color:var(--df-text-3);font-size:.82rem">✅ Secțiunea ta este completată.</span>`+xmlBtn;
     return;
   }
   if(caps.is_on_flow){
     div.innerHTML=`<span style="color:var(--df-text-3);font-size:.82rem">🔄 Document pe fluxul de semnare...</span>`
-      +(caps.can_download_flux?B('','📄 Descarcă PDF',`viewFlowPdf('${ST.docFlowId?.[ft]}')`):'');
+      +(caps.can_download_flux?B('','📄 Descarcă PDF',`viewFlowPdf('${ST.docFlowId?.[ft]}')`):'')
+      +xmlBtn;
     return;
   }
   if(caps.can_generate_or_launch){
     const hasPdf=!!(ST[ft]?.pdf);
     div.innerHTML=(hasPdf?B('primary','🔏 Lansează flux semnare',`mkFlow('${ft}')`)
-      :`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`);
+      :`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`)
+      +xmlBtn;
     return;
   }
 
@@ -829,6 +836,34 @@ async function viewFlowPdf(flowId){
   }catch(e){setS('Eroare: '+e.message,'err');}
 }
 
+// ── Export XML oficial NOTAFD/ORDNT (v3.9.591) ─────────────────────────────────
+// type=df|ord. 200 -> descarcă .xml (nume din Content-Disposition). 422/409 -> mesaj clar,
+// fără descărcare (XML neconform / document nevalidat). Validarea XSD rulează pe server.
+async function exportFormularXml(type,id){
+  clrS();setS('Se generează XML-ul...','info');
+  try{
+    const r=await fetch(`/api/formulare-${type}/${encodeURIComponent(id)}/xml`,{credentials:'include'});
+    if(!r.ok){
+      let msg='Export XML eșuat.';
+      try{const j=await r.json();
+        if(j.error==='xml_invalid')msg='Export blocat: XML neconform cu schema oficială.'+(Array.isArray(j.details)&&j.details.length?' ('+j.details.join('; ')+')':'');
+        else if(j.error==='not_exportable')msg='Export blocat: '+(j.message||'documentul nu este validat.');
+        else msg='Export blocat: '+(j.message||j.error||('cod '+r.status));
+      }catch(_){}
+      setS(msg,'err');
+      return;
+    }
+    const blob=await r.blob();
+    const cd=r.headers.get('Content-Disposition')||'';
+    const m=cd.match(/filename="?([^"]+)"?/i);
+    const fname=m?m[1]:`${type}_${id}.xml`;
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();
+    a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    setS('XML exportat: '+fname,'ok');
+  }catch(e){setS('Eroare la export XML: '+e.message,'err');}
+}
+
 // ── Nou document ──────────────────────────────────────────────────────────────
 function newDoc(ft){
   ST.docAprobat=ST.docAprobat||{};ST.docAprobat[ft]=false;
@@ -1010,7 +1045,7 @@ async function uploadAttachments(ft, slot = 1){
         headers: {
           'Content-Type': mime,
           'X-CSRF-Token': df.getCsrf(),
-          'X-Filename': item.name || 'atasament',
+          'X-Filename': encodeURIComponent(item.name || 'atasament'),
         },
         body: blob,
       });
@@ -1690,6 +1725,7 @@ function resetF(ft){
   window.refreshDocs                = refreshDocs;
   window.renderDocsList             = renderDocsList;
   window.viewFlowPdf                = viewFlowPdf;
+  window.exportFormularXml          = exportFormularXml;
   window.newDoc                     = newDoc;
   window.saveDoc                    = saveDoc;
   window.uploadCaptura              = uploadCaptura;

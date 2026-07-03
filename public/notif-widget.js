@@ -310,6 +310,7 @@
       if (token) return `/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(token)}`;
       return `/flow.html?flow=${encodeURIComponent(flowId)}`;
     }
+    if (t === 'REPARTIZAT') return '/notifications.html?tab=primite';
     return `/flow.html?flow=${encodeURIComponent(flowId)}`;
   }
 

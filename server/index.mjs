@@ -496,7 +496,7 @@ import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 let PDFLib = null;
 try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pdf-lib not available - flow stamp disabled'); }
 
-import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, markDbReady, markDbFailed } from './db/index.mjs';
+import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, markDbReady, markDbFailed, writeAuditEvent } from './db/index.mjs';
 import { runMigrations as runMigrationsV4 } from './db/migrate.mjs';
 import { makeHealthRouter } from './routes/health.mjs';
 import supplierVerifyRouter   from './routes/supplier-verify.mjs';
@@ -516,6 +516,7 @@ import reportRouter  from './routes/report.mjs';
 import outreachRouter from './routes/admin/outreach.mjs';
 import entitlementsAdminRouter from './routes/admin/entitlements.mjs';
 import { getAllModulesForUser as _getAllModulesForUser } from './services/entitlements.mjs';
+import { transmitFlowTo, resolveRecipientEmails, alreadyHasAccessEmails } from './services/flow-transmit.mjs';
 import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
@@ -584,7 +585,6 @@ app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy-Report-Only', [
     `script-src 'self' 'nonce-${nonce}' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com`,
     `script-src-attr 'none'`,
-    `style-src 'self'`,
     `report-uri /api/csp-report`,
   ].join('; '));
   next();
@@ -1368,21 +1368,100 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
   const email = (userEmail || '').toLowerCase();
   if (!email) return;
 
-  // Anti-duplicat (Bug-1): tipurile terminale se trimit o singură dată per flux+user
-  // într-o fereastră scurtă. Cauza duplicatelor: COMPLETED emis din mai multe căi de
-  // finalizare (callback STS + polling) în signing/cloud-signing/bulk-signing (NO-TOUCH).
-  const ONCE_PER_FLOW_TYPES = new Set(['COMPLETED', 'REFUSED']);
-  if (flowId && ONCE_PER_FLOW_TYPES.has(type)) {
+  // Anti-duplicat cu ferestre per-tip:
+  //  • COMPLETED/REFUSED (terminale) — 30 min: callback STS + polling emit din mai multe căi
+  //    de finalizare (signing/cloud-signing/bulk-signing, NO-TOUCH).
+  //  • YOUR_TURN — 2 min: absoarbe cursa poll STS + callback (cloud-signing:566, read-modify-write
+  //    ne-atomic pe emailSent), FĂRĂ a bloca reminderele (24/48/72h), rândul altui semnatar
+  //    (email diferit) sau reinițierea (flowId nou).
+  const DEDUP_WINDOW = { COMPLETED: '30 minutes', REFUSED: '30 minutes', YOUR_TURN: '2 minutes' };
+  const dedupWin = DEDUP_WINDOW[type];
+  if (flowId && dedupWin) {
     const { rows: dup } = await pool.query(
       `SELECT 1 FROM notifications
         WHERE user_email=$1 AND flow_id=$2 AND type=$3
-          AND created_at > NOW() - INTERVAL '30 minutes'
+          AND created_at > NOW() - $4::interval
         LIMIT 1`,
-      [email, flowId, type]
+      [email, flowId, type, dedupWin]
     );
     if (dup.length) {
-      logger.info({ email, flowId, type }, 'notify: duplicat suprimat (anti-spam terminal)');
+      logger.info({ email, flowId, type }, 'notify: duplicat suprimat (dedup fereastră)');
       return;
+    }
+  }
+
+  // Auto-transmitere internă (repartizare) la finalizare — o singură dată pe primul
+  // COMPLETED real. Rulează DUPĂ garda anti-dup COMPLETED; idempotent și prin ON CONFLICT
+  // în flow_recipients. Non-fatal: o eroare aici NU trebuie să rupă notificarea COMPLETED.
+  // Recursie sigură: notify(type:'REPARTIZAT') nu reintră în acest bloc.
+  if (type === 'COMPLETED' && flowId) {
+    try {
+      const fdata = await getFlowData(flowId);
+      const cfg = Array.isArray(fdata?.transmiteLaFinalizare) ? fdata.transmiteLaFinalizare : [];
+      if (cfg.length) {
+        let autoTransmittedBy = null;
+        if (fdata?.initEmail) {
+          try {
+            const { rows: initRows } = await pool.query(
+              'SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1',
+              [String(fdata.initEmail).trim()]
+            );
+            autoTransmittedBy = initRows[0]?.id ?? null;
+          } catch { autoTransmittedBy = null; }
+        }
+
+        // Inițiatorul/semnatarii au deja acces (canActorReadFlow) — nu-i re-repartiza.
+        // Țintă user care e inițiator/semnatar → exclusă complet (nu creăm rândul);
+        // țintă compartiment rămâne (ceilalți membri au nevoie), dar nu-i notificăm.
+        const excludeEmails = alreadyHasAccessEmails(fdata);
+        let cfgFiltered = cfg;
+        if (excludeEmails.size && cfg.some(c => c?.type === 'user')) {
+          const userIds = cfg.filter(c => c?.type === 'user').map(c => Number(c.value)).filter(Boolean);
+          const emailById = new Map();
+          if (userIds.length) {
+            const { rows } = await pool.query('SELECT id, lower(email) AS email FROM users WHERE id = ANY($1::int[])', [userIds]);
+            for (const r of rows) emailById.set(r.id, r.email);
+          }
+          cfgFiltered = cfg.filter(c => c?.type !== 'user' || !excludeEmails.has(emailById.get(Number(c.value))));
+        }
+
+        const newly = cfgFiltered.length ? await transmitFlowTo(pool, {
+          flowId, orgId: fdata.orgId || null, recipients: cfgFiltered,
+          transmittedBy: autoTransmittedBy, source: 'auto',
+        }) : [];
+        const targets = await resolveRecipientEmails(pool, newly);
+        for (const t of targets) {
+          if (!t.email || excludeEmails.has(String(t.email).toLowerCase())) continue;
+          await notify({
+            userEmail: t.email, flowId, type: 'REPARTIZAT',
+            title: '📨 Document repartizat',
+            message: `Documentul „${fdata.docName || 'document'}" v-a fost transmis spre luare la cunoștință.`,
+          });
+        }
+
+        // Trasabilitate (paritate cu EMAIL_SENT + fix 30 §1): FLOW_TRANSMITTED per rând nou,
+        // în fdata.events[] (Progres flux) ȘI în audit_events (Evenimente), by:null/source:'auto'.
+        if (newly.length) {
+          if (!Array.isArray(fdata.events)) fdata.events = [];
+          const nowIso2 = new Date().toISOString();
+          for (const row of newly) {
+            const recipientKey = row.recipient_user_id ? `user:${row.recipient_user_id}` : `comp:${String(row.recipient_compartiment || '').trim().toLowerCase()}`;
+            let recipientLabel;
+            if (row.recipient_user_id) {
+              const { rows: uRows } = await pool.query('SELECT nume,email FROM users WHERE id=$1', [row.recipient_user_id]);
+              recipientLabel = uRows[0]?.nume || uRows[0]?.email || `user #${row.recipient_user_id}`;
+            } else {
+              recipientLabel = `Compartimentul „${row.recipient_compartiment}"`;
+            }
+            fdata.events.push({ at: nowIso2, type: 'FLOW_TRANSMITTED', by: fdata.initEmail || null, source: 'auto', recipientKey, recipientLabel, rezolutie: null });
+            writeAuditEvent({ flowId, orgId: fdata.orgId, eventType: 'FLOW_TRANSMITTED', payload: { recipientKey, recipientLabel, source: 'auto' } });
+          }
+          fdata.updatedAt = nowIso2;
+          await saveFlow(flowId, fdata);
+        }
+      }
+    } catch (e) {
+      logger.warn({ err: e, flowId }, 'auto-transmitere internă eșuată (non-fatală)');
     }
   }
 
@@ -1733,6 +1812,26 @@ const _cspReportParser = express.json({
   type: ['application/csp-report', 'application/reports+json'],
   limit: '64kb',
 });
+// Dedup în memorie: aceeași violare (directivă+sursă+linie) repetată de mai mulți useri
+// nu trebuie să umple logurile — logăm o dată per fereastră, restul se ignoră silențios.
+const _cspSeen = new Map(); // key -> lastLoggedAt (ms)
+const CSP_DEDUP_WINDOW_MS = 5 * 60_000; // 5 minute
+function _cspDedupKey(v) {
+  return `${v?.['violated-directive'] || v?.violatedDirective || ''}|${v?.['source-file'] || v?.sourceFile || ''}|${v?.['line-number'] || v?.lineNumber || ''}`;
+}
+function _cspShouldLog(violation) {
+  const key = _cspDedupKey(violation);
+  const now = Date.now();
+  const last = _cspSeen.get(key);
+  if (last && (now - last) < CSP_DEDUP_WINDOW_MS) return false;
+  _cspSeen.set(key, now);
+  return true;
+}
+setInterval(() => {
+  const cutoff = Date.now() - CSP_DEDUP_WINDOW_MS;
+  for (const [k, ts] of _cspSeen) if (ts < cutoff) _cspSeen.delete(k);
+}, 10 * 60_000).unref();
+
 app.post('/api/csp-report', _cspReportLimiter, _cspReportParser, (req, res) => {
   try {
     const body = req.body;
@@ -1740,11 +1839,11 @@ app.post('/api/csp-report', _cspReportLimiter, _cspReportParser, (req, res) => {
     const ct = req.headers['content-type'] || '';
     if (ct.includes('application/reports+json') && Array.isArray(body)) {
       for (const report of body) {
-        logger.info({ cspViolation: report }, 'csp-violation');
+        if (_cspShouldLog(report)) logger.info({ cspViolation: report }, 'csp-violation');
       }
     } else {
       const violation = body['csp-report'] ?? body;
-      logger.info({ cspViolation: violation }, 'csp-violation');
+      if (_cspShouldLog(violation)) logger.info({ cspViolation: violation }, 'csp-violation');
     }
   } catch (_) { /* corp malformat — ignorat */ }
   res.status(204).end();

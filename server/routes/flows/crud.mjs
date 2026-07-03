@@ -11,6 +11,8 @@ import { getActiveSigner } from '../../services/user-leave.mjs';
 import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
 import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-attachments.mjs';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
+import { normalizeRecipients } from '../../services/flow-transmit.mjs';
+import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -39,20 +41,9 @@ export function _injectDeps(d) {
   _stripPdfB64 = d.stripPdfB64; _sendSignerEmail = d.sendSignerEmail;
 }
 
-// v3.9.502 (A-3 P0): helper centralizat pentru verificare ACL pe flow read access.
-// Înainte: GET /flows/:flowId permitea citire pentru ORICE user autentificat → leak
-// metadata cross-org (signers, events, institutie). Acum: doar initiator, signer,
-// sau admin/org_admin din aceeași org. Plus signer token (pentru semnatari neînregistrați).
-function canActorReadFlow(actor, data, signerToken) {
-  if (signerToken && (data.signers || []).some(s => s.token === signerToken)) return true;
-  if (!actor) return false;
-  const email = String(actor.email || '').toLowerCase();
-  const isInit = String(data.initEmail || '').toLowerCase() === email;
-  const isSigner = (data.signers || []).some(s => String(s.email || '').toLowerCase() === email);
-  const sameOrg = actor.orgId && data.orgId && String(actor.orgId) === String(data.orgId);
-  const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
-  return isInit || isSigner || (isAdmin && sameOrg);
-}
+// v3.9.502/603 (A-3 P0): canActorReadFlow + isFlowAccessAllowed mutate în
+// server/services/flow-access.mjs — aceeași poartă folosită de GET /flows/:flowId
+// ȘI de endpointurile de conținut (signed-pdf/pdf/attachments), ca să nu mai existe IDOR.
 
 const router = Router();
 
@@ -69,8 +60,8 @@ const createFlow = async (req, res) => {
     console.log('🔍 FLOW CREATE meta:', JSON.stringify(body.meta));
     console.log('🔍 FLOW CREATE dfId type:', typeof body.meta?.dfId, '=', body.meta?.dfId);
     const docName  = String(body.docName  || '').trim();
-    const initName = String(body.initName || '').trim();
-    const initEmail = String(body.initEmail || '').trim();
+    let initName = String(body.initName || '').trim();
+    let initEmail = String(body.initEmail || '').trim();
     const signers  = Array.isArray(body.signers) ? body.signers : [];
 
     // Validare input de bază — rulează ÎNAINTE de auth (tests 6-7: body gol → 400, nu 401)
@@ -116,10 +107,18 @@ const createFlow = async (req, res) => {
     // Auth — după validarea de bază (endpoint semi-public: validarea rulează independent de auth)
     const actor = requireAuth(req, res); if (!actor) return;
 
+    // SEC v3.9.609: identitatea "Întocmit" NU poate fi impersonată — se derivă din actorul
+    // autentificat, nu din ce trimite clientul. Validarea de format de mai sus (400 pe body
+    // gol/invalid) rămâne neschimbată; de aici încolo, valorile REALE sunt cele ale actorului.
+    initEmail = String(actor.email || '').trim();
+    initName = String(actor.nume || '').trim() || initName; // fallback dacă JWT nu are nume cache-uit
+
     let orgId = null;
     try {
-      const ru = await pool.query('SELECT org_id FROM users WHERE email=$1', [initEmail.trim().toLowerCase()]);
+      const ru = await pool.query('SELECT org_id, nume FROM users WHERE email=$1', [initEmail.trim().toLowerCase()]);
       orgId = ru.rows[0]?.org_id || null;
+      const dbNume = String(ru.rows[0]?.nume || '').trim();
+      if (dbNume) initName = dbNume; // numele din DB e sursa autoritară, ca emailul (nu body-ul clientului)
     } catch(e) {}
     if (!orgId) {
       try { orgId = await getDefaultOrgId(); } catch(e) { orgId = null; }
@@ -149,13 +148,23 @@ const createFlow = async (req, res) => {
       preferredProvider = body.preferredProvider;
     }
 
-    const normalizedSigners = signers.map((s, idx) => ({
+    const normalizedSigners = signers.map((s, idx) => {
+      // SEC v3.9.609: rândul ÎNTOCMIT nu poate fi atribuit altcuiva decât actorului autentificat —
+      // indiferent ce trimite clientul (previne impersonare directă prin API).
+      // v3.9.623: detecție robustă la diacritice (Î≡I) — un atribut custom fără diacritic
+      // (INTOCMIT prin „Alt atribut...") trebuie tratat identic cu ÎNTOCMIT, altfel identitatea
+      // autorului nu mai e forțată pe acel rând (spoof vizual al rolului de autor).
+      const _rolNorm = String(s.rol || s.atribut || '')
+        .trim().toUpperCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, ''); // scoate diacriticele (Î→I, Ș→S…)
+      const isIntocmitRole = _rolNorm === 'INTOCMIT';
+      return {
       order: Number(s.order || idx + 1),
       rol: String(s.rol || s.atribut || '').trim(),
       functie: String(s.functie || '').trim(),
       compartiment: String(s.compartiment || '').trim(),
-      name: String(s.name || '').trim(),
-      email: String(s.email || '').trim(),
+      name: isIntocmitRole ? initName : String(s.name || '').trim(),
+      email: isIntocmitRole ? initEmail.toLowerCase() : String(s.email || '').trim(),
       token: String(s.token || crypto.randomBytes(16).toString('hex')),
       tokenCreatedAt: new Date().toISOString(),
       status: 'pending', signedAt: null, signature: null,
@@ -173,7 +182,8 @@ const createFlow = async (req, res) => {
       delegatedForName: String(s.delegatedForName || '').trim() || null,
       delegatedForEmail: String(s.delegatedForEmail || '').trim() || null,
       delegatedFrom: (s.delegatedFrom && typeof s.delegatedFrom === 'object') ? s.delegatedFrom : undefined,
-    }));
+      };
+    });
     normalizedSigners.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
     normalizedSigners.forEach((s, i) => { s.status = i === 0 ? 'current' : 'pending'; });
 
@@ -384,6 +394,11 @@ const createFlow = async (req, res) => {
         placement: _preSignedPlacement,
       });
     }
+    // Transmitere internă (repartizare) la finalizare — config opt-in (Etapa 1: doar API).
+    // Motorul consumă data.transmiteLaFinalizare în notify()/COMPLETED (server/index.mjs).
+    const _transmiteLaFinalizare = normalizeRecipients(body.transmiteLaFinalizare);
+    if (_transmiteLaFinalizare.length) data.transmiteLaFinalizare = _transmiteLaFinalizare;
+
     const first = data.signers.find(s => s.status === 'current');
     const initIsSigner = first && first.email.toLowerCase() === initEmail.toLowerCase();
     if (first?.email && !initIsSigner) first.notifiedAt = new Date().toISOString();
@@ -497,7 +512,10 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
     if (!actor && !signerToken) return res.status(403).json({ error: 'forbidden', message: 'Token de acces obligatoriu.' });
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.603: authz la nivel de obiect — închide IDOR (orice user autentificat servea PDF-ul semnat)
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken, req.params.flowId))) {
+      return res.status(403).json({ error: 'forbidden', message: 'Acces interzis la acest document.' });
+    }
     const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
     const b64 = data.signedPdfB64;
     if (!b64 || typeof b64 !== 'string') {
@@ -528,7 +546,10 @@ router.get('/flows/:flowId/pdf', _readRateLimit, async (req, res) => {
     if (!actor && !signerToken) return res.status(403).json({ error: 'forbidden', message: 'Token de acces obligatoriu.' });
     const data = await getFlowData(req.params.flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken)) return res.status(403).json({ error: 'forbidden' });
+    // v3.9.603: authz la nivel de obiect — închide IDOR (orice user autentificat servea PDF-ul)
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken, req.params.flowId))) {
+      return res.status(403).json({ error: 'forbidden', message: 'Acces interzis la acest document.' });
+    }
     const b64 = data.pdfB64;
     if (!b64 || typeof b64 !== 'string') return res.status(404).json({ error: 'pdf_missing' });
     const raw = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
@@ -581,7 +602,10 @@ const getFlowHandler = async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
     // v3.9.502 (A-3 P0): verificare ACL prin canActorReadFlow — nu mai e "any logged in user"
     if (!actor && !signerToken) return res.status(401).json({ error: 'unauthorized' });
-    if (!canActorReadFlow(actor, data, signerToken)) return res.status(403).json({ error: 'forbidden' });
+    // Poarta unificată: init | semnatar | admin same-org | signer token | destinatar repartizat.
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken, req.params.flowId))) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
 
     // FEAT-06: ETag bazat pe flowId + updatedAt — permite cache client-side
     // Fluxurile completed sunt imuabile — ETag-ul nu se mai schimbă niciodată

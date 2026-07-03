@@ -132,8 +132,21 @@ export const pool = DATABASE_URL
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
       statement_timeout: 30000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000, // primul pachet keepalive după 10s de inactivitate
     })
   : null;
+
+// FIX CRITIC (incident 2026-07-02): fără acest handler, o eroare pe un client inactiv din
+// pool (ex. Postgres restartează, conexiune resetată de rețea) escaladează la
+// process.on('uncaughtException') și doboară TOT procesul — nu doar acea conexiune.
+// pg documentează explicit necesitatea acestui listener pentru erori pe clienți idle.
+// Non-fatal: pool-ul reface automat conexiunea la următoarea cerere.
+if (pool) {
+  pool.on('error', (err) => {
+    logger.error({ err }, 'pool: eroare pe client inactiv (non-fatală — conexiunea se reface automat)');
+  });
+}
 
 export let DB_READY = false;
 export let DB_LAST_ERROR = null;
@@ -1847,6 +1860,81 @@ const MIGRATIONS = [
     id: '087_formulare_df_sum_crd_bug',
     sql: `
       ALTER TABLE formulare_df ADD COLUMN IF NOT EXISTS sum_fara_inreg_ctrl_crd_bug TEXT;
+    `
+  },
+  {
+    // Transmitere internă (repartizare) a documentului finalizat către un utilizator
+    // SAU un compartiment care nu a fost neapărat semnatar. Sursa de adevăr a accesului
+    // „destinatar" pe flux. CHECK garantează EXACT o țintă (user XOR compartiment).
+    id: '088_flow_recipients',
+    sql: `
+      CREATE TABLE IF NOT EXISTS flow_recipients (
+        id                     BIGSERIAL   PRIMARY KEY,
+        flow_id                TEXT        NOT NULL REFERENCES flows(id),
+        org_id                 INTEGER     REFERENCES organizations(id),
+        recipient_user_id      INTEGER     REFERENCES users(id),
+        recipient_compartiment TEXT,
+        rezolutie              TEXT,
+        source                 TEXT        NOT NULL DEFAULT 'auto',
+        transmitted_by         INTEGER     REFERENCES users(id),
+        transmitted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        acknowledged_at        TIMESTAMPTZ,
+        CONSTRAINT flow_recipients_target_chk
+          CHECK ( (recipient_user_id IS NOT NULL)::int + (NULLIF(TRIM(recipient_compartiment),'') IS NOT NULL)::int = 1 )
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_flow_recipient_user
+        ON flow_recipients(flow_id, recipient_user_id) WHERE recipient_user_id IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_flow_recipient_comp
+        ON flow_recipients(flow_id, TRIM(recipient_compartiment)) WHERE NULLIF(TRIM(recipient_compartiment),'') IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_flow_recipient_user ON flow_recipients(recipient_user_id, acknowledged_at);
+      CREATE INDEX IF NOT EXISTS idx_flow_recipient_comp ON flow_recipients(TRIM(recipient_compartiment)) WHERE NULLIF(TRIM(recipient_compartiment),'') IS NOT NULL;
+    `
+  },
+  {
+    // Confirmare „luare la cunoștință" PER-PERSOANĂ pe repartizare (flow_recipients, mig. 088).
+    // O repartizare către compartiment are un singur rând în flow_recipients, dar fiecare
+    // membru trebuie să confirme individual — de aceea confirmarea trăiește într-un tabel
+    // separat, cheiat pe (flow_id, user_id), nu pe id-ul rândului din flow_recipients.
+    id: '089_flow_recipient_acks',
+    sql: `
+      CREATE TABLE IF NOT EXISTS flow_recipient_acks (
+        flow_id         TEXT        NOT NULL REFERENCES flows(id),
+        user_id         INTEGER     NOT NULL REFERENCES users(id),
+        acknowledged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (flow_id, user_id)
+      );
+    `
+  },
+  {
+    // FIX CRIT (2026-07-02): /my-flows a dat statement timeout (57014, seq scan) în ciuda
+    // faptului că AMBELE ramuri ale OR-ului (data->>'initEmail' și data->'signers' @> ...)
+    // au deja index (idx_flows_init_email din mig. ~038, idx_flows_signers_gin din mig.
+    // 039_flows_signers_gin_index). NU lipsea niciun index — re-declararea idx_flows_signers_gin
+    // ar fi fost no-op (CREATE INDEX IF NOT EXISTS pe un nume deja existent nu-l recreează).
+    // Cauza cea mai probabilă: date de test acumulate în masă în această sesiune fără ANALYZE
+    // ulterior — statistici învechite → planner subestimează selectivitatea predicatelor
+    // JSONB și alege seq scan în loc de BitmapOr pe indexurile existente. ANALYZE e sigur în
+    // tranzacție (spre deosebire de VACUUM). idx_flows_org_created e index nou, complementar
+    // lui idx_flows_org_updated — susține ORDER BY created_at DESC filtrat pe org_id, folosit
+    // de /my-flows și alte listinguri.
+    id: '090_flows_analyze_and_org_created_idx',
+    sql: `
+      ANALYZE flows;
+      CREATE INDEX IF NOT EXISTS idx_flows_org_created
+        ON flows(org_id, created_at DESC);
+    `
+  },
+  {
+    id: '091_flow_recipients_backfill_auto_initiator',
+    sql: `
+      UPDATE flow_recipients fr
+         SET transmitted_by = u.id
+        FROM flows f
+        JOIN users u ON lower(u.email) = lower(f.data->>'initEmail')
+       WHERE fr.flow_id = f.id
+         AND fr.source = 'auto'
+         AND fr.transmitted_by IS NULL
+         AND f.data->>'initEmail' IS NOT NULL;
     `
   }
 ];

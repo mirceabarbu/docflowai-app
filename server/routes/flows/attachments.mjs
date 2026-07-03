@@ -6,6 +6,7 @@ import { Router, json as expressJson } from 'express';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
+import { isFlowAccessAllowed } from '../../services/flow-access.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -99,7 +100,8 @@ router.get('/flows/:flowId/attachments', async (req, res) => {
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken))
+    // v3.9.603: authz la nivel de obiect — închide IDOR (orice user autentificat lista atașamentele)
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken, req.params.flowId)))
       return res.status(403).json({ error: 'forbidden' });
     const { rows } = await pool.query(
       `SELECT id, filename, mime_type, size_bytes, drive_file_id, drive_file_link, uploaded_at
@@ -120,7 +122,8 @@ router.get('/flows/:flowId/attachments/:attId', async (req, res) => {
     const { flowId, attId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    if (!actor && signerToken && !(data.signers || []).some(s => s.token === signerToken))
+    // v3.9.603: authz la nivel de obiect — închide IDOR (orice user autentificat descărca atașamentul)
+    if (!(await isFlowAccessAllowed(pool, actor, data, signerToken, req.params.flowId)))
       return res.status(403).json({ error: 'forbidden' });
     const { rows } = await pool.query(
       'SELECT filename, mime_type, data, drive_file_id FROM flow_attachments WHERE id=$1 AND flow_id=$2',
