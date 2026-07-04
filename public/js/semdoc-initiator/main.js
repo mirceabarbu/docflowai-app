@@ -1188,6 +1188,12 @@
           document.addEventListener('keydown', (ev) => {
             if (ev.key === 'Escape') { _closeAllKebabs(); }
           });
+          document.addEventListener('click', (ev) => {
+            const b = ev.target.closest('[data-signed-action="preview"]');
+            if (!b) return;
+            if (typeof window.openAttPreview !== 'function') { window.location.href = b.getAttribute('data-signed-url'); return; }
+            window.openAttPreview(b.getAttribute('data-signed-url'), b.getAttribute('data-signed-name'), 'application/pdf');
+          });
         }
         if (!flows.length) {
           el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
@@ -1282,7 +1288,7 @@
           if (successFinal || pdfReady) { window._flowsEmailData = window._flowsEmailData || {}; window._flowsEmailData[f.flowId] = f; }
           // dlActions = butoanele de acțiune (PDF semnat + Raport conformitate) → merg în kebab
           const dlActions = pdfReady
-            ? `<a href="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" class="df-action-btn primary df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-download"/></svg>PDF semnat</a>
+            ? `<button type="button" class="df-action-btn primary df-kebab-item" data-signed-action="preview" data-signed-url="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" data-signed-name="${esc((f.docName || ('DocFlowAI_' + f.flowId + '_signed')))}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-download"/></svg>PDF semnat</button>
                <button onclick="downloadTrustReportInit('${f.flowId}', this)" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Raport conformitate</button>`
             : '';
           // dlStatus = textul informativ de stare (fără PDF) → rămâne pe card lângă badge-uri
@@ -1319,7 +1325,7 @@
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
               <div>
                 <div style="font-weight:700;font-size:.95rem;margin-bottom:4px;">${esc(f.docName)}</div>
-                <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; ${f.flowType === 'ancore' ? '<span title="PDF cu ancore existente — fără tabel generat" style="color:#7cf0e0;font-weight:600;">⚓ Ancore</span>' : '<span title="PDF cu tabel generat de DocFlowAI" style="color:#b39dff;font-weight:600;">📋 Tabel</span>'} &nbsp;·&nbsp; ${providerBadge(f)} &nbsp;·&nbsp; Inițiator: ${esc(f.initName || f.initEmail)} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span>${f.parentFlowId ? ` &nbsp;·&nbsp; <a href="/flow.html?flow=${encodeURIComponent(f.parentFlowId)}" style="color:#ffd580;font-size:.76rem;text-decoration:underline;" title="Flux reinițiat după refuz — vezi fluxul anterior">🔁 Reinițiat din ${f.parentFlowId}</a>` : ''}</div>
+                <div style="color:var(--muted);font-size:.78rem;">Creat: ${dt} &nbsp;·&nbsp; Inițiator: ${esc(f.initName || f.initEmail)} &nbsp;·&nbsp; ID: <span style="font-family:monospace;">${f.flowId}</span>${f.parentFlowId ? ` &nbsp;·&nbsp; <a href="/flow.html?flow=${encodeURIComponent(f.parentFlowId)}" style="color:#ffd580;font-size:.76rem;text-decoration:underline;" title="Flux reinițiat după refuz — vezi fluxul anterior">🔁 Reinițiat din ${f.parentFlowId}</a>` : ''}</div>
               </div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 ${isUrgent ? '<span style="background:rgba(255,40,40,.22);color:#ff8888;border:1px solid rgba(255,40,40,.5);padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;animation:pulse-urgent 1.5s ease-in-out infinite;">🚨 URGENT</span>' : ''}

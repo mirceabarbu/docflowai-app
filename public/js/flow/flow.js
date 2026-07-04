@@ -865,13 +865,14 @@
     }
   }
 
-  async function downloadSigned(){
-    try{
-      const blob = await apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/signed-pdf`);
-      downloadBlob(blob, `DocFlowAI_${flowId}_signed.pdf`);
-    }catch(e){
-      setMsg("error", "❌ Nu am putut descărca PDF-ul semnat: " + esc(String(e.message || e)));
-    }
+  function downloadSigned(){
+    const tok = (typeof linkToken !== 'undefined' && linkToken) ? `?token=${encodeURIComponent(linkToken)}` : '';
+    const url = `/flows/${encodeURIComponent(flowId)}/signed-pdf${tok}`;
+    const fname = `DocFlowAI_${flowId}_signed.pdf`;
+    if (typeof window.openAttPreview === 'function') { window.openAttPreview(url, fname, 'application/pdf'); return; }
+    // fallback: download clasic dacă modulul nu e disponibil
+    apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/signed-pdf`).then(b => downloadBlob(b, fname))
+      .catch(e => setMsg("error", "❌ Nu am putut deschide PDF-ul semnat: " + esc(String(e.message || e))));
   }
 
   async function downloadOriginal(){
