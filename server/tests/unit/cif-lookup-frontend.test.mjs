@@ -1,4 +1,5 @@
 /**
+ * v3.9.627 — aserții pe renderBenefStatusBadge (badge stare beneficiar ANAF).
  * v3.9.504 — guard că _lookupByCif e prezent în list.js cu logica corectă:
  * - trigger onblur pe o-cifb (din HTML)
  * - strip RO prefix
@@ -16,6 +17,64 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '../../..');
+
+// ── renderBenefStatusBadge (v3.9.627) ─────────────────────────────────────────
+describe('renderBenefStatusBadge (v3.9.627) — string-match pe sursă', () => {
+  it('funcția e declarată și expusă pe window', () => {
+    const src = readFileSync(path.join(REPO, 'public/js/formular/list.js'), 'utf8');
+    expect(src).toMatch(/function renderBenefStatusBadge\(d\)/);
+    expect(src).toMatch(/window\.renderBenefStatusBadge\s*=\s*renderBenefStatusBadge/);
+  });
+
+  it('ramura radiated → text "RADIAT" și interpolează radiatedDate', () => {
+    const src = readFileSync(path.join(REPO, 'public/js/formular/list.js'), 'utf8');
+    const m = src.match(/function renderBenefStatusBadge\(d\)\{[\s\S]*?\r?\nwindow\.renderBenefStatusBadge/);
+    expect(m, 'corp renderBenefStatusBadge negăsit').toBeTruthy();
+    const body = m[0];
+    expect(body).toMatch(/d\.radiated/);
+    expect(body).toMatch(/RADIAT/);
+    expect(body).toMatch(/d\.radiatedDate/);
+  });
+
+  it('ramura inactive → text "INACTIV" și interpolează inactiveDate + reactivationDate', () => {
+    const src = readFileSync(path.join(REPO, 'public/js/formular/list.js'), 'utf8');
+    const m = src.match(/function renderBenefStatusBadge\(d\)\{[\s\S]*?\r?\nwindow\.renderBenefStatusBadge/);
+    expect(m, 'corp renderBenefStatusBadge negăsit').toBeTruthy();
+    const body = m[0];
+    expect(body).toMatch(/d\.inactive/);
+    expect(body).toMatch(/INACTIV/);
+    expect(body).toMatch(/d\.inactiveDate/);
+    expect(body).toMatch(/d\.reactivationDate/);
+  });
+
+  it('ramura TVA anulat → vat===false && vatEndDate → "TVA anulat"', () => {
+    const src = readFileSync(path.join(REPO, 'public/js/formular/list.js'), 'utf8');
+    const m = src.match(/function renderBenefStatusBadge\(d\)\{[\s\S]*?\r?\nwindow\.renderBenefStatusBadge/);
+    expect(m, 'corp renderBenefStatusBadge negăsit').toBeTruthy();
+    const body = m[0];
+    expect(body).toMatch(/d\.vat===false/);
+    expect(body).toMatch(/d\.vatEndDate/);
+    expect(body).toMatch(/TVA anulat/);
+  });
+
+  it('ramura activ → "În funcțiune" și interpolează stareInregistrareText', () => {
+    const src = readFileSync(path.join(REPO, 'public/js/formular/list.js'), 'utf8');
+    const m = src.match(/function renderBenefStatusBadge\(d\)\{[\s\S]*?\r?\nwindow\.renderBenefStatusBadge/);
+    expect(m, 'corp renderBenefStatusBadge negăsit').toBeTruthy();
+    const body = m[0];
+    expect(body).toMatch(/În funcțiune/);
+    expect(body).toMatch(/d\.stareInregistrareText/);
+  });
+
+  it('null → box.innerHTML=""', () => {
+    const src = readFileSync(path.join(REPO, 'public/js/formular/list.js'), 'utf8');
+    const m = src.match(/function renderBenefStatusBadge\(d\)\{[\s\S]*?\r?\nwindow\.renderBenefStatusBadge/);
+    expect(m, 'corp renderBenefStatusBadge negăsit').toBeTruthy();
+    const body = m[0];
+    expect(body).toMatch(/if\(!d\)\{/);
+    expect(body).toMatch(/box\.innerHTML=''/);
+  });
+});
 
 describe('CIF lookup auto-fill (v3.9.504)', () => {
   it('HTML: o-cifb are onblur=_lookupByCif și spinner span', () => {

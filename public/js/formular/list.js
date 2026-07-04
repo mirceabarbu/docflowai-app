@@ -188,10 +188,32 @@ function selectBenef(id,den,cif,iban,banca){
   const drop=document.getElementById('o-benef-drop');
   if(drop)drop.style.display='none';
 }
+// ── v3.9.627: badge stare beneficiar ANAF (oglindește logica din verif.js) ────
+function renderBenefStatusBadge(d){
+  const box = document.getElementById('o-benef-status');
+  if(!box) return;
+  if(!d){ box.innerHTML=''; return; }
+  const esc = window.esc || (s=>String(s==null?'':s));
+  const red   = 'background:rgba(239,68,68,.15);color:#ff8080;padding:3px 12px;border-radius:10px;font-size:.78rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;';
+  const amber = 'background:rgba(251,191,36,.15);color:#fbbf24;padding:3px 12px;border-radius:10px;font-size:.78rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;';
+  const green = 'color:#5eead4;font-size:.76rem;font-weight:600;';
+  if(d.radiated){
+    box.innerHTML = `<span style="${red}">⛔ Beneficiar RADIAT la ANAF${d.radiatedDate?(' — '+esc(d.radiatedDate)):''} · verifică înainte de plată</span>`;
+  } else if(d.inactive){
+    box.innerHTML = `<span style="${red}">⛔ Beneficiar INACTIV fiscal${d.inactiveDate?(' din '+esc(d.inactiveDate)):''}${d.reactivationDate?(' · reactivat '+esc(d.reactivationDate)):''} · verifică înainte de plată</span>`;
+  } else if(d.vat===false && d.vatEndDate){
+    box.innerHTML = `<span style="${amber}">⚠ TVA anulat la ANAF${d.vatEndDate?(' la '+esc(d.vatEndDate)):''}</span>`;
+  } else {
+    box.innerHTML = `<span style="${green}">✓ În funcțiune la ANAF${d.stareInregistrareText?(' · '+esc(d.stareInregistrareText)):''}</span>`;
+  }
+}
+window.renderBenefStatusBadge = renderBenefStatusBadge;
+
 // ── v3.9.504: CIF lookup → auto-fill beneficiar (local → ANAF fallback) ────────
 async function _lookupByCif(){
   const cifEl=document.getElementById('o-cifb');
   if(!cifEl)return;
+  const _sb=document.getElementById('o-benef-status'); if(_sb) _sb.innerHTML='';
   let cif=(cifEl.value||'').trim().toUpperCase().replace(/^RO\s*/,'');
   cifEl.value=cif;
   if(!/^\d{2,10}$/.test(cif))return;
@@ -216,6 +238,16 @@ async function _lookupByCif(){
         setF('o-banca',match.banca||'');
         _setS('Beneficiar găsit local: '+(match.denumire||cif),'ok');
         resolved=true;
+        // DB nu are starea ANAF — verifică starea separat (non-blocant, fail-open)
+        const _cifSnapshot = cif;
+        fetch('/api/verify/cui?cui='+encodeURIComponent(cif),{credentials:'include'})
+          .then(r=>r.ok?r.json():null)
+          .then(j=>{
+            const cur=document.getElementById('o-cifb');
+            if(!cur || (cur.value||'').trim().toUpperCase().replace(/^RO\s*/,'')!==_cifSnapshot) return;
+            if(j&&j.ok&&j.data) renderBenefStatusBadge(j.data);
+          })
+          .catch(()=>{});
       }
     }
   }catch(_){/* fall through to ANAF */}
@@ -229,6 +261,7 @@ async function _lookupByCif(){
         const j=await r.json();
         if(j.ok&&j.data&&j.data.name){
           setF('o-benef',j.data.name);
+          renderBenefStatusBadge(j.data);
           _setS('Denumire preluată ANAF: '+j.data.name,'ok');
           resolved=true;
         } else {
