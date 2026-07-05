@@ -875,10 +875,17 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         y -= 14;
         page.drawLine({ start:{x:MARGIN, y:y+2}, end:{x:PAGE_W-MARGIN, y:y+2}, thickness:0.3, color:rgb(0.85,0.85,0.85) });
         y -= 8;
+        // Etichete compacte DOAR pentru tabelul ACCESURI (coloana „Eveniment" = 115px).
+        // Dicționarul partajat EVENT_LABELS_RO rămâne descriptiv pentru JURNAL EVENIMENTE.
+        const ACCESS_SHORT_LABELS = {
+          EMAIL_OPENED: 'EMAIL DESCHIS',
+          FLOW_REINITIATED: 'FLUX REINITIAT',
+          FLOW_REINITIATED_AFTER_REVIEW: 'REINITIAT REVIZUIRE',
+        };
         for (const ar of accessRows) {
           ensureSpace(14);
           const ts = fmtDate(ar.created_at);
-          const evType = evLabel(ar.event_type || '');
+          const evType = ACCESS_SHORT_LABELS[ar.event_type] || evLabel(ar.event_type || '');
           // Afișăm Nume Prenume dacă există în userMap, altfel emailul
           const actorUser = userMap[(ar.actor_email || '').toLowerCase()] || {};
           const actor = (actorUser.nume || ar.actor_email || '—').slice(0, 30);
