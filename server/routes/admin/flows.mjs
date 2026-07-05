@@ -535,6 +535,11 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         'DELEGATED': 'DELEGAT', 'PDF_DOWNLOADED': 'PDF DESCARCAT', 'REMINDER': 'REMINDER TRIMIS',
         'YOUR_TURN': 'NOTIFICARE RAND', 'EMAIL_SENT': 'EMAIL EXTERN TRIMIS',
         'EMAIL_OPENED': 'EMAIL DESCHIS DE DESTINATAR',
+        'FLOW_TRANSMITTED': 'TRANSMIS INTERN',
+        'FLOW_ACKNOWLEDGED': 'CONFIRMAT PRIMIRE',
+        'AUTO_DELEGATED_LEAVE': 'DELEGAT AUTOMAT (CONCEDIU)',
+        'PRESIGNED_UPLOAD_DETECTED': 'PDF PRESEMNAT DETECTAT',
+        'TOKEN_REGENERATED': 'TOKEN REGENERAT',
       };
       const evLabel = (type) => EVENT_LABELS_RO[type] || (type||'').replace(/_/g, ' ');
       const pdfDoc = await PDFDocument.create();

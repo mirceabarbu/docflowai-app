@@ -1126,20 +1126,6 @@
 
       let _allFlows = [];
 
-      // b233: map provider → label + icon pentru badge în mini-timeline
-      const _PROVIDER_BADGE = {
-        'local-upload': { icon: '💻', label: 'Upload local', color: 'rgba(157,176,255,.8)',   bg: 'rgba(157,176,255,.12)', border: 'rgba(157,176,255,.3)' },
-        'sts-cloud':    { icon: '🏛️', label: 'STS Cloud',    color: 'rgba(45,212,191,.9)',    bg: 'rgba(45,212,191,.12)',  border: 'rgba(45,212,191,.3)' },
-        'certsign':     { icon: '🔐', label: 'certSIGN',     color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
-        'transsped':    { icon: '🔐', label: 'Trans Sped',   color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
-        'alfatrust':    { icon: '🔐', label: 'AlfaTrust',    color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
-        'namirial':     { icon: '🔐', label: 'Namirial',     color: 'rgba(255,176,32,.9)',    bg: 'rgba(255,176,32,.12)',  border: 'rgba(255,176,32,.3)' },
-      };
-      function _providerBadgeHtml(providerId) {
-        const p = _PROVIDER_BADGE[providerId] || { icon: '🔏', label: providerId || 'Semnătură', color: 'rgba(234,240,255,.5)', bg: 'rgba(255,255,255,.06)', border: 'rgba(255,255,255,.15)' };
-        return `<div style="margin-top:3px;display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:20px;font-size:.68rem;font-weight:600;background:${p.bg};border:1px solid ${p.border};color:${p.color};">${p.icon} ${p.label}</div>`;
-      }
-
       function renderFluxuri(flows) {
         // Helper: badge provider semnare
         function providerBadge(f) {
@@ -1255,9 +1241,6 @@
               : '';
             const refuzTip = st==='refused' && s.refuseReason ? `\nMotiv: ${s.refuseReason}` : '';
             const tipText = `${s.name||''}${rolTip}${delegTip}${refuzTip}`.replace(/"/g,'&quot;');
-            // Provider: dacă a semnat deja → signingProvider real; altfel → default org
-            const _prov = s.signingProvider || (st === 'current' || st === 'pending' ? (f.orgDefaultProvider || 'local-upload') : null);
-            const _provBadge = _prov ? _providerBadgeHtml(_prov) : '';
             const _delegMtlBadge = _fd
               ? `<div style="font-size:.64rem;color:#c4b5fd;margin-top:2px;padding:1px 4px;background:rgba(139,92,246,.1);border-radius:4px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(delegTip.trim())}">🔄 ${esc(_fdReasonClean || 'delegat')}</div>`
               : '';
@@ -1266,7 +1249,6 @@
               <div class="mtl-name">${esc(nameShort)}</div>
               ${_delegMtlBadge}
               ${ts ? `<div class="mtl-ts">${ts}</div>` : ''}
-              ${_provBadge}
             </div>`;
           });
           // Pas final: flux finalizat / stare finală + timestamp
