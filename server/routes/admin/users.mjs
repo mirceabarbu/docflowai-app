@@ -49,16 +49,16 @@ router.get('/users', async (req, res) => {
     let query, params;
     if (institutie) {
       // Filtreaza pe institutie — userii din aceeasi institutie
-      query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE institutie=$1 ORDER BY nume ASC';
+      query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE institutie=$1 AND deleted_at IS NULL ORDER BY nume ASC';
       params = [institutie];
     } else {
       // User fara institutie (ex: admin global) — vede toti userii din org
       const orgId = actor.orgId || null;
       if (orgId) {
-        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 ORDER BY nume ASC';
+        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 AND deleted_at IS NULL ORDER BY nume ASC';
         params = [orgId];
       } else {
-        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users ORDER BY nume ASC';
+        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE deleted_at IS NULL ORDER BY nume ASC';
         params = [];
       }
     }

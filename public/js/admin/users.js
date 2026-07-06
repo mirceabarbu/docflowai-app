@@ -346,7 +346,7 @@
         const uniqueC=[...new Set(users.map(u=>u.compartiment||"").filter(Boolean))].sort();
         dlC.innerHTML=uniqueC.map(c=>`<option value="${esc(c)}">`).join("");
       }
-      renderUsers(users);
+      filterUsers();
     }catch(e){$("tbl").innerHTML=`<div class="empty" style="color:#ffaaaa;">Eroare: ${escH(e.message)}</div>`;}
   }
 
