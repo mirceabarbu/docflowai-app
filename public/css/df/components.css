@@ -49,7 +49,8 @@
 .card input::placeholder,.card select::placeholder{color:var(--df-text-4);}
 
 /* === Th-filter polish === */
-.th-filter{width:100%;margin-top:5px;padding:5px 9px;background:rgba(255,255,255,.04);border:1px solid var(--df-border);border-radius:var(--df-radius-sm);color:var(--df-text);font-size:.73rem;outline:none;box-sizing:border-box;font-family:inherit;transition:border-color .15s;}
+.th-filter{width:100%;margin-top:5px;padding:5px 9px;background:rgba(255,255,255,.04);border:1px solid var(--df-border);border-radius:var(--df-radius-sm);color:var(--df-text);font-size:.73rem;outline:none;box-sizing:border-box;font-family:inherit;transition:border-color .15s;color-scheme:dark;}
+.th-filter option{background:#141d33;color:#eaf0ff;}
 .th-filter:focus{border-color:var(--df-primary);background:rgba(255,255,255,.06);}
 .th-filter::placeholder{color:var(--df-text-4);}
 
