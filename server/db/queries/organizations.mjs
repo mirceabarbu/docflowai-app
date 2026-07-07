@@ -33,7 +33,7 @@ export async function createOrg({ name, slug, cif, status = 'active', plan = 'st
 
 export async function updateOrg(id, fields) {
   const allowed = ['name', 'slug', 'cif', 'status', 'plan', 'settings',
-    'branding', 'compartimente', 'signing_providers_enabled', 'signing_providers_config'];
+    'branding', 'compartimente', 'cab_compartiment', 'signing_providers_enabled', 'signing_providers_config'];
   const sets = [];
   const vals = [];
   let idx = 1;

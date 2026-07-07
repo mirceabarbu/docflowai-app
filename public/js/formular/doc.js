@@ -1352,10 +1352,11 @@ async function showP2Modal(ft){
       if(r.ok&&j.ok){
         ST.orgUsers=j.users||[];
         ST.actorCompartiment=j.actor_compartiment||'';
+        ST.cabCompartiment=j.cab_compartiment||'';
       }
     }catch(_){}
   }
-  if(ST.p2FilterByComp===undefined) ST.p2FilterByComp=!!ST.actorCompartiment;
+  if(ST.p2FilterByComp===undefined) ST.p2FilterByComp=!!(ST.cabCompartiment||ST.actorCompartiment);
   _renderP2FilterToggle();
   filterModalUsers();
 }
@@ -1364,7 +1365,8 @@ function _renderP2FilterToggle(){
   const searchEl=document.getElementById('modal-search');
   if(!searchEl) return;
   let toggleEl=document.getElementById('modal-p2-comp-toggle');
-  if(!ST.actorCompartiment){
+  const filterComp=(ST.cabCompartiment||ST.actorCompartiment||'');
+  if(!filterComp){
     if(toggleEl) toggleEl.style.display='none';
     return;
   }
@@ -1372,23 +1374,24 @@ function _renderP2FilterToggle(){
     toggleEl=document.createElement('label');
     toggleEl.id='modal-p2-comp-toggle';
     toggleEl.style.cssText='display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--df-text-2);margin:8px 0;cursor:pointer;user-select:none';
-    toggleEl.innerHTML=`
-      <input type="checkbox" id="modal-p2-comp-cb" style="cursor:pointer">
-      <span>Doar din <b>${(ST.actorCompartiment||'').replace(/</g,'&lt;')}</b></span>`;
     searchEl.parentNode.insertBefore(toggleEl,searchEl.nextSibling);
-    document.getElementById('modal-p2-comp-cb').addEventListener('change',(e)=>{
-      ST.p2FilterByComp=e.target.checked;
-      filterModalUsers();
-    });
   }
+  toggleEl.innerHTML=`
+    <input type="checkbox" id="modal-p2-comp-cb" style="cursor:pointer">
+    <span>Doar din <b>${filterComp.replace(/</g,'&lt;')}</b></span>`;
+  const cb=document.getElementById('modal-p2-comp-cb');
+  cb.addEventListener('change',(e)=>{
+    ST.p2FilterByComp=e.target.checked;
+    filterModalUsers();
+  });
   toggleEl.style.display='';
-  document.getElementById('modal-p2-comp-cb').checked=!!ST.p2FilterByComp;
+  cb.checked=!!ST.p2FilterByComp;
 }
 function closeModal(){document.getElementById('modal-p2').classList.remove('show');}
 function filterModalUsers(){
   const q=(document.getElementById('modal-search')?.value||'').toLowerCase();
   const listEl=document.getElementById('modal-user-list');
-  const actComp=(ST.actorCompartiment||'').trim();
+  const actComp=(ST.cabCompartiment||ST.actorCompartiment||'').trim();
   let filtered=ST.orgUsers.filter(u=>(u.nume||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q));
   if(ST.p2FilterByComp && actComp){
     filtered=filtered.filter(u=>(u.compartiment||'').trim()===actComp);

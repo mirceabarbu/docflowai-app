@@ -319,7 +319,12 @@ router.get('/api/formulare/utilizatori-org', async (req, res) => {
          COALESCE(nume, email) ASC`,
       [actor.orgId, actor.userId, actorComp]
     );
-    res.json({ ok: true, users: rows, actor_compartiment: actorComp });
+    const { rows: orgRows } = await pool.query(
+      'SELECT cab_compartiment FROM organizations WHERE id=$1',
+      [actor.orgId]
+    );
+    const cabCompartiment = (orgRows[0]?.cab_compartiment || '').trim();
+    res.json({ ok: true, users: rows, actor_compartiment: actorComp, cab_compartiment: cabCompartiment });
   } catch (e) {
     res.status(500).json({ error: 'server_error' });
   }
