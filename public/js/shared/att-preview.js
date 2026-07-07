@@ -48,6 +48,9 @@
           '<a id="att-preview-download" class="df-action-btn" href="#" target="_blank" download>' +
             '<svg class="df-ico"><use href="/icons.svg#ico-download"/></svg> Descarcă' +
           '</a>' +
+          '<button type="button" id="att-preview-print" class="df-action-btn" onclick="printAttPreview()" title="Printează">' +
+            '<svg class="df-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Print' +
+          '</button>' +
           '<button type="button" class="df-action-btn primary" onclick="closeAttPreview()">Închide</button>' +
         '</div>' +
       '</div>';
@@ -135,6 +138,24 @@
     if (body) body.innerHTML = '';
   }
 
+  function printAttPreview() {
+    const dl = $('att-preview-download');
+    const url = dl && dl.getAttribute('href');
+    if (!url || url === '#') return;
+    const old = $('att-preview-print-frame');
+    if (old) old.remove();
+    const frame = document.createElement('iframe');
+    frame.id = 'att-preview-print-frame';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    frame.src = url;
+    frame.onload = () => {
+      try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+      catch (e) { window.open(url, '_blank'); }
+    };
+    document.body.appendChild(frame);
+  }
+
   // Caz DF/ORD: markup-ul există deja static în formular.html la parse time
   // — atașăm handler-ul de close-on-backdrop direct pe el (byte-identic cu
   // comportamentul de azi). Caz signer: markup-ul nu există încă aici —
@@ -150,4 +171,5 @@
 
   window.openAttPreview = openAttPreview;
   window.closeAttPreview = closeAttPreview;
+  window.printAttPreview = printAttPreview;
 })();
