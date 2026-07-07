@@ -18,6 +18,8 @@
   function $(id) { return document.getElementById(id); }
   function esc(s) { return (window.df && window.df.esc) ? window.df.esc(s) : String(s == null ? '' : s); }
 
+  let _lastPreviewBlob = null;
+
   function isPdf(mime, name) {
     if (mime === 'application/pdf') return true;
     return /\.pdf$/i.test(name || '');
@@ -94,6 +96,7 @@
     const dl = $('att-preview-download');
     if (!modal || !body) return;
 
+    _lastPreviewBlob = null;
     title.textContent = filename || 'Previzualizare atașament';
     if (dl) { dl.href = url; dl.setAttribute('download', filename || ''); }
     body.innerHTML = '<p style="color:var(--df-text-3);text-align:center;padding:40px 0">Se încarcă documentul...</p>';
@@ -105,6 +108,7 @@
         const resp = await fetch(url, { credentials: 'include' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const buf = await resp.arrayBuffer();
+        _lastPreviewBlob = new Blob([buf], { type: 'application/pdf' });
         const container = document.createElement('div');
         container.style.cssText = 'max-height:70vh;overflow-y:auto;background:rgba(0,0,0,.15);border:1px solid var(--df-border-2);border-radius:10px;padding:8px;';
         body.innerHTML = '';
@@ -114,6 +118,7 @@
         const resp = await fetch(url, { credentials: 'include' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const blob = await resp.blob();
+        _lastPreviewBlob = blob;
         const objUrl = URL.createObjectURL(blob);
         const img = document.createElement('img');
         img.src = objUrl;
@@ -136,22 +141,30 @@
     document.body.style.overflow = '';
     const body = $('att-preview-body');
     if (body) body.innerHTML = '';
+    _lastPreviewBlob = null;
+    const printFrame = $('att-preview-print-frame');
+    if (printFrame) printFrame.remove();
   }
 
   function printAttPreview() {
-    const dl = $('att-preview-download');
-    const url = dl && dl.getAttribute('href');
-    if (!url || url === '#') return;
+    if (!_lastPreviewBlob) {
+      const dl = $('att-preview-download');
+      const url = dl && dl.getAttribute('href');
+      if (url && url !== '#') window.open(url, '_blank');
+      return;
+    }
+    const blobUrl = URL.createObjectURL(_lastPreviewBlob);
     const old = $('att-preview-print-frame');
     if (old) old.remove();
     const frame = document.createElement('iframe');
     frame.id = 'att-preview-print-frame';
     frame.setAttribute('aria-hidden', 'true');
     frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
-    frame.src = url;
+    frame.src = blobUrl;
     frame.onload = () => {
       try { frame.contentWindow.focus(); frame.contentWindow.print(); }
-      catch (e) { window.open(url, '_blank'); }
+      catch (e) { window.open(blobUrl, '_blank'); }
+      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); frame.remove(); } catch (_) {} }, 60000);
     };
     document.body.appendChild(frame);
   }
