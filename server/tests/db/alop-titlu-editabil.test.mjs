@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { hasTestDb, migrate, truncateAll, pool,
-         seedOrgUser, seedAlop, getAlop, makeAuthCookie } from '../helpers/db-real.mjs';
+         seedOrgUser, seedUser, seedAlop, getAlop, makeAuthCookie } from '../helpers/db-real.mjs';
 import { buildApp } from './helpers/app.mjs';
 
 const d = describe.skipIf(!hasTestDb());
@@ -9,7 +9,11 @@ const d = describe.skipIf(!hasTestDb());
 d('POST /api/alop/:id/titlu (editare titlu ALOP, oricând, fără cascadă)', () => {
   let app;
   beforeAll(migrate);
-  beforeEach(async () => { await truncateAll(); await seedOrgUser({ role: 'user' }); app = buildApp(); });
+  beforeEach(async () => {
+    await truncateAll();
+    await seedOrgUser({ role: 'user', email: 'p1@x.ro' }); // org 1, user 1 (creator)
+    app = buildApp();
+  });
   afterAll(() => pool.end());
   const cookie = () => makeAuthCookie({ userId: 1, role: 'user', orgId: 1 });
 
@@ -32,19 +36,20 @@ d('POST /api/alop/:id/titlu (editare titlu ALOP, oricând, fără cascadă)', ()
   });
 
   it('creator poate edita, alt user fără compartiment → 403', async () => {
-    await seedOrgUser({ email: 'altul@x.ro', role: 'user' });
+    const otherId = await seedUser({ orgId: 1, email: 'other@x.ro', role: 'user', compartiment: '' });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'draft', titlu: 'Vechi' });
     const res = await request(app).post(`/api/alop/${alopId}/titlu`)
-      .set('Cookie', makeAuthCookie({ userId: 2, role: 'user', orgId: 1 }))
+      .set('Cookie', makeAuthCookie({ userId: otherId, role: 'user', orgId: 1 }))
       .send({ titlu: 'Alt titlu' });
     expect(res.status).toBe(403);
     expect((await getAlop(alopId)).titlu).toBe('Vechi');
   });
 
   it('admin poate edita indiferent de creator', async () => {
+    const adminId = await seedUser({ orgId: 1, email: 'admin@x.ro', role: 'admin' });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'draft', titlu: 'Vechi' });
     const res = await request(app).post(`/api/alop/${alopId}/titlu`)
-      .set('Cookie', makeAuthCookie({ userId: 99, role: 'admin', orgId: 1 }))
+      .set('Cookie', makeAuthCookie({ userId: adminId, role: 'admin', orgId: 1 }))
       .send({ titlu: 'Titlu Admin' });
     expect(res.status).toBe(200);
     expect((await getAlop(alopId)).titlu).toBe('Titlu Admin');
