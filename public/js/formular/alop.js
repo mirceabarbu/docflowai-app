@@ -300,6 +300,38 @@ async function alopRefreshCurrent(){
   loadAlop();loadAlopStats();
 }
 
+// ── Editare titlu ALOP inline (oricând, fără cascadă) ───────────────────────
+function alopEditTitlu(id){
+  const disp=document.getElementById('alop-titlu-display');
+  if(!disp)return;
+  const current=window._alopContext?.titlu||'';
+  disp.innerHTML=`
+    <input type="text" id="alop-titlu-input" value="${esc(current)}" maxlength="300"
+      style="font-size:1rem;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid var(--df-border-2);background:var(--df-bg-2);color:var(--df-text-2);min-width:240px">
+    <button type="button" class="df-action-btn sm primary" onclick="alopSaveTitlu('${esc(id)}')">Salvează</button>
+    <button type="button" class="df-action-btn sm" onclick="alopRefreshCurrent()">Anulează</button>
+  `;
+  document.getElementById('alop-titlu-input')?.focus();
+}
+async function alopSaveTitlu(id){
+  const input=document.getElementById('alop-titlu-input');
+  const titlu=(input?.value||'').trim();
+  if(!titlu){setS('Titlul nu poate fi gol.','err');return;}
+  try{
+    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/titlu`,{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+      body:JSON.stringify({titlu}),
+    });
+    const j=await r.json();
+    if(!r.ok){setS(`Eroare la salvarea titlului: ${esc(j.error||('HTTP '+r.status))}`,'err');return;}
+    setS('Titlu actualizat.','ok');
+    await alopRefreshCurrent();
+  }catch(e){
+    setS('Eroare de rețea la salvarea titlului.','err');
+  }
+}
+
 const _alopIcoBtn = (name) =>
   `<svg class="df-ic"><use href="/icons.svg?v=3.9.475#${name}"/></svg>`;
 
@@ -576,7 +608,10 @@ function renderAlopDetail(a,container){
     <div style="background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);border-radius:12px;padding:18px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
         <div>
-          <div style="font-size:1rem;font-weight:700;color:var(--df-text-2)">${esc(a.titlu||'ALOP')}</div>
+          <div id="alop-titlu-display" style="font-size:1rem;font-weight:700;color:var(--df-text-2);display:flex;align-items:center;gap:6px">
+            <span id="alop-titlu-text">${esc(a.titlu||'ALOP')}</span>
+            <button type="button" class="df-action-btn sm" style="padding:2px 6px" onclick="alopEditTitlu('${esc(a.id)}')" title="Editează titlul">✎</button>
+          </div>
           ${a.compartiment?`<div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">${esc(a.compartiment)}</div>`:''}
           ${(() => {
             // v3.9.503: în header arătăm valoarea estimată (la creare) + valoarea
@@ -1106,6 +1141,8 @@ async function alopRevizuiesteDF(alopId,dfId){
   window.openAlop                   = openAlop;
   window.closeAlopDetail            = closeAlopDetail;
   window.alopRefreshCurrent         = alopRefreshCurrent;
+  window.alopEditTitlu              = alopEditTitlu;
+  window.alopSaveTitlu              = alopSaveTitlu;
   window.startNouaLichidare         = startNouaLichidare;
   window.alopDeschideDF             = alopDeschideDF;
   window.alopDeschideORD            = alopDeschideORD;
