@@ -124,8 +124,9 @@ async function selectDfAprobat(){
   const id=sel?.value||'';
   const hiddenId=document.getElementById('o-df-id');
   if(hiddenId)hiddenId.value=id;
-  if(!id){document.getElementById('o-nrUnic').value='';if(typeof window._resetOrdBuget==='function')window._resetOrdBuget();return;}
+  if(!id){document.getElementById('o-nrUnic').value='';if(typeof window._resetOrdBuget==='function')window._resetOrdBuget();if(window.lockDfSelectIfLinked)window.lockDfSelectIfLinked();return;}
   await onDfSelect(id);
+  if(window.lockDfSelectIfLinked)window.lockDfSelectIfLinked(); // ORD acum legat de DF → blochează referința
 }
 
 async function onDfSelect(dfId){

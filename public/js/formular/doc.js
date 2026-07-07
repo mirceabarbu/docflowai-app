@@ -24,6 +24,22 @@
 function ftApi(ft){return ft==='ordnt'?'/api/formulare-ord':'/api/formulare-df';}
 function ftType(ft){return ft==='ordnt'?'ord':'df';}
 
+// ── Referința DF pe ORD — needitabilă când ORD e legat de un DF (ciclu ALOP) ──
+// Select-ul vizibil `o-df-sel` devine disabled când hidden `o-df-id` are valoare
+// (DF legat). ORD nou fără DF rămâne selectabil. Valorile salvate (o-df-id/o-nrUnic)
+// rămân sursa de adevăr — blocarea e pur vizuală.
+function lockDfSelectIfLinked(){
+  const sel=document.getElementById('o-df-sel');
+  const dfId=document.getElementById('o-df-id');
+  if(!sel||!dfId)return;
+  const linked=(dfId.value||'').trim().length>0;
+  sel.disabled=linked;
+  sel.title=linked?'Documentul de Fundamentare este stabilit de ciclul ALOP și nu poate fi schimbat aici.':'';
+  sel.style.opacity=linked?'.7':'';
+  sel.style.cursor=linked?'not-allowed':'';
+}
+window.lockDfSelectIfLinked=lockDfSelectIfLinked;
+
 // ── Status label ─────────────────────────────────────────────────────────────
 function stLabel(s,aprobat){
   if(aprobat)return['aprobat','✔ Aprobat'];
@@ -82,6 +98,7 @@ async function populateOrd(doc){
   // Restabilește selecția DF legat
   const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value=doc.df_id||'';
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
+  lockDfSelectIfLinked(); // ORD legat de DF → referința DF needitabilă (ciclu ALOP)
   // Context buget an exercițiu pentru atenționarea inline — REZOLVAT de backend pe GET detaliu
   // (paritate cu garda hard). Setat ÎNAINTE de upTot() ca verificarea live să-l vadă.
   if(doc.buget_an_curent!=null){
@@ -881,6 +898,7 @@ function newDoc(ft){
     document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';
     const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
     const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
+    lockDfSelectIfLinked(); // ORD nou fără DF → select-ul rămâne selectabil (enabled)
     _resetOrdBuget(); // fără DF selectat → fără context de plafon (se încarcă la DF-select)
     // v3.9.500 (Issue I-1): prefill plati_anterioare la creare ord nou pe ciclu 2+
     // Înainte: prefill rula doar în loadDoc (existing ord) → P1 vedea 0,00, P2 vedea valoarea
