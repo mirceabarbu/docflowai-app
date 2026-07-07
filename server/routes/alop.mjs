@@ -26,6 +26,7 @@ import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-fo
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
+import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
@@ -923,6 +924,35 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
       try {
         await copyFormularAttachmentsToFlow(pool, { flowId: flow_id, formType: 'df', formId: alopRows[0].df_id });
       } catch (e) { logger.warn({ err: e, alopId: req.params.id }, '[ALOP] copiere atașamente DF→flux non-fatal'); }
+    }
+
+    // Persistă starea DF „pe flux" (ASIMETRIE DF: transmis_flux = status REAL, nu derivat).
+    // Mirror al linkFlowFormular, dar pe calea ALOP necondiționată (linkFlowFormular dă 409 aici).
+    // Idempotent: flip DOAR completed→transmis_flux. Gardă anti-deturnare: nu pe un flux DIFERIT.
+    if (alopRows[0].df_id) {
+      try {
+        const { rows: dfFlip } = await pool.query(
+          `UPDATE formulare_df
+             SET flow_id = $1,
+                 status  = 'transmis_flux',
+                 updated_at = NOW(), updated_by = $4
+           WHERE id = $2 AND org_id = $3 AND deleted_at IS NULL
+             AND status = 'completed'
+             AND (flow_id IS NULL OR flow_id = $1)
+           RETURNING id`,
+          [flow_id, alopRows[0].df_id, actor.orgId, actor.userId]
+        );
+        if (dfFlip[0]) {
+          await recordFormularAudit({
+            orgId: actor.orgId, formType: 'df', formId: alopRows[0].df_id,
+            actorId: actor.userId, actorEmail: actor.email,
+            eventType: 'transmis_flux', fromStatus: 'completed', toStatus: 'transmis_flux',
+            meta: { flow_id, via: 'alop_link_df_flow' },
+          });
+        }
+      } catch (e) {
+        logger.warn({ err: e, alopId: req.params.id }, '[ALOP] DF status→transmis_flux non-fatal');
+      }
     }
 
     // Dacă fluxul e deja completat, tranziționează imediat la lichidare
