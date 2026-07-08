@@ -235,51 +235,24 @@ router.post('/api/alop/sablon', _csrf, async (req, res) => {
   }
 });
 
-// ── GET /api/alop/stats — montat ÎNAINTE de /:id ─────────────────────────────
-router.get('/api/alop/stats', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { rows } = await pool.query(`
-      SELECT
-        COUNT(*)::int                                                    AS total,
-        COUNT(*) FILTER (WHERE status='completed')::int                  AS completate,
-        COUNT(*) FILTER (WHERE status IN
-          ('angajare','lichidare','ordonantare','plata'))::int            AS in_progres,
-        COUNT(*) FILTER (WHERE status='draft')::int                      AS draft
-      FROM alop_instances
-      WHERE org_id=$1 AND cancelled_at IS NULL
-    `, [actor.orgId]);
-    res.json(rows[0]);
-  } catch (e) {
-    logger.error({ err: e }, 'alop stats error');
-    res.status(500).json({ error: 'server_error' });
-  }
-});
-
-// ── GET /api/alop — lista ALOP pentru org ────────────────────────────────────
-router.get('/api/alop', async (req, res) => {
-  if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
-  try {
-    const { status, page = 1, limit = 20 } = req.query;
-    const offset = (Number(page) - 1) * Number(limit);
-
-    const params = [actor.orgId];
-    let where = 'a.org_id = $1 AND a.cancelled_at IS NULL';
-    if (actor.role !== 'admin' && actor.role !== 'org_admin') {
-      const actorCompRes = await pool.query(
-        'SELECT compartiment FROM users WHERE id=$1',
-        [actor.userId]
-      );
-      const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
-      params.push(actor.userId);
-      const userIdx = params.length;
-      let compClause = '';
-      if (actorComp !== '') {
-        params.push(actorComp);
-        const compIdx = params.length;
-        compClause = `
+// ── Clauză de vizibilitate ALOP (per-user), goală pentru admin/org_admin ─────
+// Mutează `params` (push) și întoarce fragmentul ` AND (...)`. SQL păstrat 1:1
+// cu blocul inline al listei — folosit de AMBELE endpoint-uri (listă + stats)
+// ca să nu mai poată diverge niciodată. Folosește aliasul `a` pe alop_instances.
+async function buildAlopVisibilityWhere(actor, params) {
+  if (actor.role === 'admin' || actor.role === 'org_admin') return '';
+  const actorCompRes = await pool.query(
+    'SELECT compartiment FROM users WHERE id=$1',
+    [actor.userId]
+  );
+  const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
+  params.push(actor.userId);
+  const userIdx = params.length;
+  let compClause = '';
+  if (actorComp !== '') {
+    params.push(actorComp);
+    const compIdx = params.length;
+    compClause = `
     OR (TRIM(a.compartiment) = $${compIdx} AND TRIM(a.compartiment) <> '')
     OR EXISTS (
       SELECT 1 FROM users uc
@@ -306,8 +279,8 @@ router.get('/api/alop', async (req, res) => {
           )
         )
     )`;
-      }
-      where += ` AND (
+  }
+  return ` AND (
     a.created_by = $${userIdx}
     OR EXISTS (
       SELECT 1 FROM flows fl1
@@ -320,7 +293,44 @@ router.get('/api/alop', async (req, res) => {
         AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
     )${compClause}
   )`;
-    }
+}
+
+// ── GET /api/alop/stats — montat ÎNAINTE de /:id ─────────────────────────────
+router.get('/api/alop/stats', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const params = [actor.orgId];
+    let where = 'a.org_id=$1 AND a.cancelled_at IS NULL';
+    where += await buildAlopVisibilityWhere(actor, params);
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*)::int                                                    AS total,
+        COUNT(*) FILTER (WHERE a.status='completed')::int                AS completate,
+        COUNT(*) FILTER (WHERE a.status IN
+          ('angajare','lichidare','ordonantare','plata'))::int            AS in_progres,
+        COUNT(*) FILTER (WHERE a.status='draft')::int                    AS draft
+      FROM alop_instances a
+      WHERE ${where}
+    `, params);
+    res.json(rows[0]);
+  } catch (e) {
+    logger.error({ err: e }, 'alop stats error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── GET /api/alop — lista ALOP pentru org ────────────────────────────────────
+router.get('/api/alop', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const { status, page = 1, limit = 20 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    const params = [actor.orgId];
+    let where = 'a.org_id = $1 AND a.cancelled_at IS NULL';
+    where += await buildAlopVisibilityWhere(actor, params);
     if (status) {
       params.push(status);
       where += ` AND a.status = $${params.length}`;

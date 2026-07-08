@@ -88,15 +88,23 @@
 
   async function loadDashboard() {
     try {
-      const [sR, fR] = await Promise.all([
+      const [sR, fR, aR] = await Promise.all([
         _apiFetch('/admin/stats'),
         _apiFetch('/admin/flows/stats'),
+        _apiFetch('/admin/alop/stats'),
       ]);
       const s = sR.ok ? await sR.json() : null;
       const f = fR.ok ? await fR.json() : null;
+      const a = aR.ok ? await aR.json() : null;
       const set = (id, val) => {
         const el = document.getElementById(id);
         if (el) el.textContent = (val != null) ? Number(val).toLocaleString('ro-RO') : '—';
+      };
+      const setRon = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = (val != null)
+          ? Number(val).toLocaleString('ro-RO', { style:'currency', currency:'RON' })
+          : '—';
       };
       if (s?.stats) {
         set('dashKpiUsers', s.stats.users);
@@ -105,6 +113,12 @@
       if (f) {
         set('dashKpiActive', f.active);
         set('dashKpiCompleted', f.completed);
+      }
+      if (a) {
+        set('dashKpiAlopActive', a.alop_active);
+        setRon('dashKpiAlopAngajat', a.valoare_angajata_an);
+        setRon('dashKpiAlopPlatit', a.valoare_platita_an);
+        set('dashKpiAlopFinal', a.alop_finalizate_an);
       }
     } catch (e) {
       console.warn('[loadDashboard] failed:', e);

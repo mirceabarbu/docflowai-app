@@ -835,23 +835,32 @@
       if (btnAudit) {
         btnAudit.style.display = isAdmin ? "" : "none";
         btnAudit.removeAttribute("href");
-        btnAudit.onclick = async (e) => {
+        btnAudit.onclick = (e) => {
           e.preventDefault();
-          btnAudit.textContent = "⏳ Se generează...";
-          btnAudit.style.pointerEvents = "none";
-          try {
-            const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`);
-            if (!r.ok) { const er = await r.json().catch(()=>({})); throw new Error(er.error || `HTTP ${r.status}`); }
-            const blob = await r.blob();
-            const url = URL.createObjectURL(blob);
-            window.open(url, '_blank');
-            setTimeout(() => URL.revokeObjectURL(url), 30000);
-          } catch(err) {
-            alert("❌ Eroare export audit: " + err.message);
-          } finally {
-            btnAudit.innerHTML = "📄 Audit PDF";
-            btnAudit.style.pointerEvents = "";
+          const auditUrl = `/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`;
+          const fname = `Audit_${flowId}.pdf`;
+          if (typeof window.openAttPreview === 'function') {
+            window.openAttPreview(auditUrl, fname, 'application/pdf');
+            return;
           }
+          // fallback: comportamentul anterior (fetch blob → tab nou)
+          (async () => {
+            btnAudit.textContent = "⏳ Se generează...";
+            btnAudit.style.pointerEvents = "none";
+            try {
+              const r = await _apiFetch(auditUrl);
+              if (!r.ok) { const er = await r.json().catch(()=>({})); throw new Error(er.error || `HTTP ${r.status}`); }
+              const blob = await r.blob();
+              const url = URL.createObjectURL(blob);
+              window.open(url, '_blank');
+              setTimeout(() => URL.revokeObjectURL(url), 30000);
+            } catch(err) {
+              alert("❌ Eroare export audit: " + err.message);
+            } finally {
+              btnAudit.innerHTML = "📄 Audit PDF";
+              btnAudit.style.pointerEvents = "";
+            }
+          })();
         };
       }
 
@@ -876,11 +885,14 @@
   }
 
   async function downloadOriginal(){
+    const url   = `/flows/${encodeURIComponent(flowId)}/pdf`;
+    const fname = `DocFlowAI_${flowId}.pdf`;
+    if (typeof window.openAttPreview === 'function') { window.openAttPreview(url, fname, 'application/pdf'); return; }
     try{
-      const blob = await apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/pdf`);
-      downloadBlob(blob, `DocFlowAI_${flowId}.pdf`);
+      const blob = await apiFetchBlob(url);
+      downloadBlob(blob, fname);
     }catch(e){
-      setMsg("error", "❌ Nu am putut descărca PDF-ul original: " + esc(String(e.message || e)));
+      setMsg("error", "❌ Nu am putut deschide PDF-ul original: " + esc(String(e.message || e)));
     }
   }
 
@@ -904,22 +916,25 @@
   if (_btnReport) {
     // Vizibilitatea se setează în loadFlow() unde avem datele
     _btnReport.addEventListener("click", async () => {
+      const url   = `/api/flows/${encodeURIComponent(flowId)}/report?force=1`;
+      const fname = `TrustReport_${flowId}.pdf`;
+      if (typeof window.openAttPreview === 'function') { window.openAttPreview(url, fname, 'application/pdf'); return; }
       _btnReport.disabled = true;
       _btnReport.textContent = "⏳ Se generează...";
       try {
         // ?force=1 = ignora cache, regenereaza cu semnatarii actuali
-        const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report?force=1`);
+        const r = await _apiFetch(url);
         if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.message || j.error || "Eroare server"); }
         const blob = await r.blob();
         if (!blob || blob.size < 100) throw new Error('PDF gol returnat de server');
-        const url  = URL.createObjectURL(blob);
+        const objUrl = URL.createObjectURL(blob);
         const a    = document.createElement("a");
-        a.href     = url;
-        a.download = `TrustReport_${flowId}.pdf`;
+        a.href     = objUrl;
+        a.download = fname;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(objUrl);
       } catch(e) {
         alert("❌ Eroare generare raport: " + e.message);
       } finally {
