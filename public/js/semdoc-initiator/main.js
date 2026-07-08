@@ -1476,9 +1476,11 @@ async function signFromFluxuri(flowId) {
 
 
       async function downloadTrustReportInit(flowId, btn) {
+        const reportUrl = `/api/flows/${encodeURIComponent(flowId)}/report?force=1`;
+        if (typeof window.openAttPreview === 'function') { window.openAttPreview(reportUrl, `TrustReport_${flowId}.pdf`, 'application/pdf'); return; }
         if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
         try {
-          const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report?force=1`);
+          const r = await _apiFetch(reportUrl);
           if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j?.message || `Eroare ${r.status}`); }
           const blob = await r.blob();
           const url  = URL.createObjectURL(blob);

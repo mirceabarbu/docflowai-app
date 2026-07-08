@@ -876,11 +876,14 @@
   }
 
   async function downloadOriginal(){
+    const url   = `/flows/${encodeURIComponent(flowId)}/pdf`;
+    const fname = `DocFlowAI_${flowId}.pdf`;
+    if (typeof window.openAttPreview === 'function') { window.openAttPreview(url, fname, 'application/pdf'); return; }
     try{
-      const blob = await apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/pdf`);
-      downloadBlob(blob, `DocFlowAI_${flowId}.pdf`);
+      const blob = await apiFetchBlob(url);
+      downloadBlob(blob, fname);
     }catch(e){
-      setMsg("error", "❌ Nu am putut descărca PDF-ul original: " + esc(String(e.message || e)));
+      setMsg("error", "❌ Nu am putut deschide PDF-ul original: " + esc(String(e.message || e)));
     }
   }
 
@@ -904,22 +907,25 @@
   if (_btnReport) {
     // Vizibilitatea se setează în loadFlow() unde avem datele
     _btnReport.addEventListener("click", async () => {
+      const url   = `/api/flows/${encodeURIComponent(flowId)}/report?force=1`;
+      const fname = `TrustReport_${flowId}.pdf`;
+      if (typeof window.openAttPreview === 'function') { window.openAttPreview(url, fname, 'application/pdf'); return; }
       _btnReport.disabled = true;
       _btnReport.textContent = "⏳ Se generează...";
       try {
         // ?force=1 = ignora cache, regenereaza cu semnatarii actuali
-        const r = await _apiFetch(`/api/flows/${encodeURIComponent(flowId)}/report?force=1`);
+        const r = await _apiFetch(url);
         if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.message || j.error || "Eroare server"); }
         const blob = await r.blob();
         if (!blob || blob.size < 100) throw new Error('PDF gol returnat de server');
-        const url  = URL.createObjectURL(blob);
+        const objUrl = URL.createObjectURL(blob);
         const a    = document.createElement("a");
-        a.href     = url;
-        a.download = `TrustReport_${flowId}.pdf`;
+        a.href     = objUrl;
+        a.download = fname;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(objUrl);
       } catch(e) {
         alert("❌ Eroare generare raport: " + e.message);
       } finally {
