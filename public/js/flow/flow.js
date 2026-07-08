@@ -835,23 +835,32 @@
       if (btnAudit) {
         btnAudit.style.display = isAdmin ? "" : "none";
         btnAudit.removeAttribute("href");
-        btnAudit.onclick = async (e) => {
+        btnAudit.onclick = (e) => {
           e.preventDefault();
-          btnAudit.textContent = "⏳ Se generează...";
-          btnAudit.style.pointerEvents = "none";
-          try {
-            const r = await _apiFetch(`/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`);
-            if (!r.ok) { const er = await r.json().catch(()=>({})); throw new Error(er.error || `HTTP ${r.status}`); }
-            const blob = await r.blob();
-            const url = URL.createObjectURL(blob);
-            window.open(url, '_blank');
-            setTimeout(() => URL.revokeObjectURL(url), 30000);
-          } catch(err) {
-            alert("❌ Eroare export audit: " + err.message);
-          } finally {
-            btnAudit.innerHTML = "📄 Audit PDF";
-            btnAudit.style.pointerEvents = "";
+          const auditUrl = `/admin/flows/${encodeURIComponent(flowId)}/audit?format=pdf`;
+          const fname = `Audit_${flowId}.pdf`;
+          if (typeof window.openAttPreview === 'function') {
+            window.openAttPreview(auditUrl, fname, 'application/pdf');
+            return;
           }
+          // fallback: comportamentul anterior (fetch blob → tab nou)
+          (async () => {
+            btnAudit.textContent = "⏳ Se generează...";
+            btnAudit.style.pointerEvents = "none";
+            try {
+              const r = await _apiFetch(auditUrl);
+              if (!r.ok) { const er = await r.json().catch(()=>({})); throw new Error(er.error || `HTTP ${r.status}`); }
+              const blob = await r.blob();
+              const url = URL.createObjectURL(blob);
+              window.open(url, '_blank');
+              setTimeout(() => URL.revokeObjectURL(url), 30000);
+            } catch(err) {
+              alert("❌ Eroare export audit: " + err.message);
+            } finally {
+              btnAudit.innerHTML = "📄 Audit PDF";
+              btnAudit.style.pointerEvents = "";
+            }
+          })();
         };
       }
 

@@ -1180,6 +1180,12 @@
             if (typeof window.openAttPreview !== 'function') { window.location.href = b.getAttribute('data-signed-url'); return; }
             window.openAttPreview(b.getAttribute('data-signed-url'), b.getAttribute('data-signed-name'), 'application/pdf');
           });
+          document.addEventListener('click', (ev) => {
+            const b = ev.target.closest('[data-audit-action="preview"]');
+            if (!b) return;
+            if (typeof window.openAttPreview !== 'function') { window.open(b.getAttribute('data-audit-url'), '_blank'); return; }
+            window.openAttPreview(b.getAttribute('data-audit-url'), b.getAttribute('data-audit-name'), 'application/pdf');
+          });
         }
         if (!flows.length) {
           el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
@@ -1188,6 +1194,8 @@
         // SEC-01: descărcarea PDF se face cu cookie auth — nu mai punem token în URL
       const dlToken = ""; // unused — cookie trimis automat cu credentials: include
         const currentUserEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
+        const _currentUserRole = (JSON.parse(localStorage.getItem("docflow_user") || "{}").role || "");
+        const isAdminRole = _currentUserRole === 'admin' || _currentUserRole === 'org_admin';
         el.innerHTML = flows.map(f => {
           const dt = new Date(f.createdAt).toLocaleString("ro-RO", {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
           const allSigned = f.allSigned;
@@ -1273,6 +1281,10 @@
             ? `<button type="button" class="df-action-btn primary df-kebab-item" data-signed-action="preview" data-signed-url="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" data-signed-name="${esc((f.docName || ('DocFlowAI_' + f.flowId + '_signed')))}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-download"/></svg>PDF semnat</button>
                <button onclick="downloadTrustReportInit('${f.flowId}', this)" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Raport conformitate</button>`
             : '';
+          // auditAction = "Audit PDF" (doar admin/org_admin), disponibil indiferent de pdfReady
+          const auditAction = isAdminRole
+            ? `<button type="button" class="df-action-btn df-kebab-item" data-audit-action="preview" data-audit-url="/admin/flows/${encodeURIComponent(f.flowId)}/audit?format=pdf" data-audit-name="Audit_${f.flowId}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Audit PDF</button>`
+            : '';
           // dlStatus = textul informativ de stare (fără PDF) → rămâne pe card lângă badge-uri
           const dlStatus = pdfReady
             ? ''
@@ -1290,6 +1302,7 @@
             (!isCancelled && mySignerEntry) ? `<button onclick="signFromFluxuri('${f.flowId}')" class="df-action-btn cta df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-pen-tool"/></svg>Semnează</button>` : '',
             `<a href="/flow.html?flow=${f.flowId}" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-search"/></svg>Vezi flow</a>`,
             (!isCancelled ? dlActions : ''),
+            auditAction,
             (pdfReady) ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success df-kebab-item" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-mail"/></svg>Trimite</button>` : '',
             (pdfReady) ? `<button onclick="_openTransmitForFlow('${f.flowId}')" class="df-action-btn df-kebab-item" title="Transmite documentul în aplicație"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-send"/></svg>Transmite în aplicație</button>` : '',
             (!isCancelled && canReinitiate && (f.initEmail||'').toLowerCase() === currentUserEmail) ? `<button onclick="reinitiateFlow('${f.flowId}','${(f.docName||'').replace(/'/g,"\'")}')" class="df-action-btn warning df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-refresh"/></svg>Reinițiază</button>` : '',
