@@ -1,10 +1,9 @@
 /**
  * Plasă anti-regresie: matrice parametrizată DF+ORD — blochează badge-ul final pe TOATE stările.
  * - badge_status este calculat server-side (câmp unic autoritar) — frontend doar prezintă.
- * - DF: badge_status = 'aprobat' dacă flux completed, altfel status brut (transmis_flux e status real persistat).
- * - ORD: badge_status = COALESCE(transmis_flux derivat, aprobat ? 'aprobat' : status).
+ * - DF și ORD derivă acum IDENTIC badge-ul: COALESCE(transmis_flux derivat din flux activ,
+ *   aprobat ? 'aprobat' : status). transmis_flux persistat coexistă (ramura ELSE îl întoarce).
  * - display_status ELIMINAT din response (curățenie confirmată prin aserție per caz).
- * Asimetria DF↔ORD este INTENȚIONATĂ — NU uniformiza.
  * OGLINDEȘTE public/js/formular/list.js:489 (_stBadge(row.badge_status)).
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
@@ -159,9 +158,10 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
     });
   }
 
-  // ─── DF — 6 cazuri ─────────────────────────────────────────────────────────
-  // Ramura DF: badge_status = 'aprobat' dacă flux completed, altfel status brut.
-  // transmis_flux vine din status REAL persistat (linkFlowFormular îl setează), NU dintr-o derivare.
+  // ─── DF — 7 cazuri ─────────────────────────────────────────────────────────
+  // Ramura DF derivă IDENTIC cu ORD: badge_status = COALESCE(transmis_flux derivat, aprobat ? 'aprobat' : status).
+  // transmis_flux apare DERIVAT din flux activ (completed + flux nici completed, nici cancelled),
+  // dar și persistat pe status (linkFlowFormular îl setează) — ramura ELSE îl întoarce oricum.
   const DF_CASES = [
     {
       name: 'draft, fără flux → draft',
@@ -185,8 +185,23 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
       },
     },
     {
-      // DF: transmis_flux e status REAL persistat (linkFlowFormular îl setează).
-      // badge_status vine din fd.status direct (ELSE fd.status) — flux activ NU e completed → nu e 'aprobat'.
+      // DERIVARE (prompt 61): status='completed' persistat + flux activ (nici completed, nici cancelled)
+      // → badge_status='transmis_flux' derivat, IDENTIC cu ORD. #56 nu acoperă toate căile de lansare,
+      // deci fd.status poate rămâne 'completed' — badge-ul se corectează din flux, nu din status.
+      name: 'completed + flux activ (data.completed absent, flux real în curs) → transmis_flux derivat',
+      seed: async () => {
+        const flowId = await seedFlowX('flow-df-completed-active', { status: 'pending' });
+        return seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId });
+      },
+      expectedBadge: 'transmis_flux',
+      diag: (row) => {
+        expect(row).toHaveProperty('badge_status', 'transmis_flux');
+        expect(row.status).toBe('completed'); // status brut neatins
+        expect(row.aprobat).toBe(false);
+      },
+    },
+    {
+      // transmis_flux persistat (linkFlowFormular îl setează) coexistă: ramura ELSE îl întoarce.
       name: 'transmis_flux (status real) + flux pending → transmis_flux din status brut',
       seed: async () => {
         const flowId = await seedFlowX('flow-df-active', { status: 'pending' });
