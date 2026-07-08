@@ -34,7 +34,9 @@ button,input,select,textarea{font-family:inherit;}
 .df-page main:not(.df-page-body){max-width:unset;margin:0;padding:0;}
 
 /* === KPI cards dashboard — TOP-LEVEL, în afara oricărui @media === */
-.df-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px;}
+.df-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+@media(max-width:1100px){.df-kpi-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.df-kpi-grid{grid-template-columns:1fr;}}
 .df-kpi-card{background:var(--df-surface);border:1px solid var(--df-border);border-radius:var(--df-radius-xl);padding:18px 20px;}
 .df-kpi-label{font-size:.72rem;color:var(--df-text-3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;}
 .df-kpi-value{font-size:1.75rem;font-weight:600;color:var(--df-text);margin-top:10px;letter-spacing:-.02em;}
