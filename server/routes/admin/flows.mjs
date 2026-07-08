@@ -68,6 +68,50 @@ router.get('/admin/flows/stats', async (req, res) => {
   } catch(e) { logger.error({ err: e }, '/admin/flows/stats error'); res.status(500).json({ error: 'server_error' }); }
 });
 
+// ── GET /admin/alop/stats — 4 KPI ALOP pentru Dashboard admin (read-only) ────────
+// Scoping identic cu /admin/flows/stats: org_admin → propriul org; admin → tot sistemul.
+// „An curent" = anul de exercițiu ancorat pe df.an_referinta (NULL → COALESCE anul curent),
+// consecvent cu buget-an.mjs / restul ALOP.
+// `sqlCrediteBugetareCol10Admin` = COPIE VERBATIM a `sqlCrediteBugetareCol10` din
+// routes/alop.mjs (nu importat: alop.mjs e read-only în acest task) — plafon angajare col.10
+// (`sum_rezv_crdt_bug_act` din rows_ctrl). Schimbi formula acolo, schimbi și aici.
+function sqlCrediteBugetareCol10Admin(df) {
+  return `(SELECT COALESCE(SUM((r->>'sum_rezv_crdt_bug_act')::numeric),0)
+           FROM jsonb_array_elements(COALESCE(${df}.rows_ctrl,'[]'::jsonb)) r
+           WHERE (r->>'sum_rezv_crdt_bug_act') ~ '^[0-9.]+$')`;
+}
+router.get('/admin/alop/stats', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const orgFilter = actorOrgFilter(actor);
+    const whereCond = orgFilter ? ' AND a.org_id = $1' : '';  // PERF: org_id coloană indexată
+    const params = orgFilter ? [orgFilter] : [];
+    const curYear  = 'EXTRACT(YEAR FROM NOW())::int';
+    const anCurent = `COALESCE(df.an_referinta, ${curYear}) = ${curYear}`;
+    const col10    = sqlCrediteBugetareCol10Admin('df');
+    const sql =
+      'SELECT ' +
+      "COUNT(*) FILTER (WHERE a.status IN ('angajare','lichidare','ordonantare','plata'))::int AS alop_active, " +
+      `COUNT(*) FILTER (WHERE a.status='completed' AND ${anCurent})::int AS alop_finalizate_an, ` +
+      `COALESCE(SUM(${col10}) FILTER (WHERE ${anCurent}), 0)::float8 AS valoare_angajata_an, ` +
+      'COALESCE(SUM(COALESCE(a.suma_totala_platita,0) + COALESCE(a.plata_suma_efectiva,0)) ' +
+        `FILTER (WHERE ${anCurent}), 0)::float8 AS valoare_platita_an ` +
+      'FROM alop_instances a ' +
+      'LEFT JOIN formulare_df df ON df.id = a.df_id ' +
+      'WHERE a.cancelled_at IS NULL' + whereCond;
+    const { rows } = await pool.query(sql, params);
+    const r = rows[0] || {};
+    res.json({
+      alop_active:          r.alop_active          || 0,
+      valoare_angajata_an:  Number(r.valoare_angajata_an) || 0,
+      valoare_platita_an:   Number(r.valoare_platita_an)  || 0,
+      alop_finalizate_an:   r.alop_finalizate_an   || 0,
+    });
+  } catch(e) { logger.error({ err: e }, '/admin/alop/stats error'); res.status(500).json({ error: 'server_error' }); }
+});
+
 router.get('/admin/flows/clean-preview', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
