@@ -339,6 +339,17 @@ router.get('/api/alop', async (req, res) => {
         df.status        AS df_status,
         fo.nr_ordonant_pl AS ord_nr,
         fo.status        AS ord_status,
+        df.revizie_nr                AS df_revizie_nr,
+        df.este_revizie_an_urmator   AS df_este_revizie_an_urmator,
+        (SELECT CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL
+                      AND fdf.deleted_at IS NULL
+                      AND (fdf.data->>'completed') IS DISTINCT FROM 'true'
+                      AND (fdf.data->>'status')    IS DISTINCT FROM 'cancelled'
+                 THEN true ELSE false END
+         FROM flows fdf WHERE fdf.id::text = COALESCE(df.flow_id, a.df_flow_id)) AS df_flow_active,
+        (SELECT CASE WHEN (fdf.data->>'status')='completed' OR (fdf.data->>'completed')::boolean=true
+                 THEN true ELSE false END
+         FROM flows fdf WHERE fdf.id::text = COALESCE(df.flow_id, a.df_flow_id)) AS df_aprobat,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
         ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
@@ -542,6 +553,11 @@ router.get('/api/alop/:id', async (req, res) => {
         CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL AND (
           f1.data->>'status' = 'completed' OR (f1.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS df_aprobat,
+        CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL
+                  AND f1.deleted_at IS NULL
+                  AND (f1.data->>'completed') IS DISTINCT FROM 'true'
+                  AND (f1.data->>'status')    IS DISTINCT FROM 'cancelled'
+             THEN true ELSE false END AS df_flow_active,
         CASE WHEN COALESCE(fo.flow_id, a.ord_flow_id) IS NOT NULL AND (
           f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS ord_aprobat,

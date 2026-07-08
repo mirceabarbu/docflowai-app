@@ -64,7 +64,7 @@ const ROLE_LABEL = {
   cfp_propriu:       'CFP Propriu',
 };
 
-function _alopStatusBadge(status, dfFlowId){
+function _alopStatusBadge(status, dfFlowId, a){
   const m={
     'draft':       {icon:'ico-edit-pencil',     text:'Draft',           color:'#64748b'},
     'angajare':    {icon:'ico-clock',           text:'DF în lucru',     color:'#f97316'},
@@ -76,6 +76,8 @@ function _alopStatusBadge(status, dfFlowId){
   };
   let s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
   if(status==='angajare'&&dfFlowId) s={icon:'ico-pen-tool',text:'Pe flux — semnare',color:'#6366f1'};
+  if(a && a.df_revizie_nr>0 && a.df_flow_active && !a.df_aprobat)
+    s={icon:'ico-pen-tool', text:'Revizie pe flux', color:'#6366f1'};
   const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.475#${s.icon}"/></svg>`;
   return`<span style="display:inline-flex;align-items:center;background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_ico}${esc(s.text)}</span>`;
 }
@@ -193,7 +195,7 @@ async function loadAlop(){
           ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--df-text-3)">${esc(a.compartiment)}</span>`:''}
         </td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${esc(a.creator_name||a.creator_email||'—')}</td>
-        <td>${_alopStatusBadge(a.status,a.df_flow_id)}</td>
+        <td>${_alopStatusBadge(a.status,a.df_flow_id,a)}</td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${esc(_alopFazaLabel(a.status))}</td>
         <td style="font-size:.82rem">
           <div>${fmtRON(a.valoare_totala)}</div>
@@ -510,6 +512,7 @@ function renderAlopDetail(a,container){
      active:a.status==='angajare',
      sub:(!a.df_id)?'Fără DF'
         :(a.status==='angajare'&&a.df_flow_id)?`🔄 DF pe fluxul de semnare${_dfRevTxt}`
+        :(a.df_revizie_nr>0 && a.df_flow_active && !a.df_aprobat)?`🔄 Revizia ${a.df_revizie_nr} pe flux — în curs · ultima aprobată: Revizia ${a.df_revizie_nr-1}`
         :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?`✅ DF aprobat${_dfRevTxt}`
         :(a.status==='angajare'&&!a.df_flow_id)?`📝 DF în lucru${_dfRevTxt}`
         :`DF: ${a.df_nr||a.df_id.slice(0,8)}${_dfRevTxt}`},
@@ -650,7 +653,7 @@ function renderAlopDetail(a,container){
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          ${_alopStatusBadge(a.status,a.df_flow_id)}
+          ${_alopStatusBadge(a.status,a.df_flow_id,a)}
           ${caps.can_refresh?`<button class="df-action-btn sm" onclick="alopRefreshCurrent()" title="Actualizează status">↻ Actualizează</button>`:''}
         </div>
       </div>
