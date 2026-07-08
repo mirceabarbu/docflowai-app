@@ -560,3 +560,6 @@
   padding:0 13px;
   font-size:.88rem;
 }
+
+/* Dropdown nativ dark pe tot proiectul; excepție: câmpurile-hârtie din documente (.di) rămân light */
+select:not(.di){ color-scheme: dark; }
