@@ -62,7 +62,7 @@ describe('computeAlopCapabilities — df_action (DOAR în angajare, FIX 4)', () 
 
 describe('computeAlopCapabilities — phase_action', () => {
   it('lichidare neconfirmată → confirma_lichidare + revise(df)', () => {
-    const c = C({ status: 'lichidare', df_id: 'd', df_status: 'aprobat', df_flow_id: 'f' });
+    const c = C({ status: 'lichidare', df_id: 'd', df_status: 'aprobat', df_flow_id: 'f', df_aprobat: true });
     expect(c.phase_action).toBe('confirma_lichidare');
     expect(c.can_revise_df).toBe(true);
   });
@@ -78,23 +78,32 @@ describe('computeAlopCapabilities — phase_action', () => {
     expect(C({ status: 'lichidare', df_id: 'd', lichidare_confirmed_at: '2026-01-01' }).phase_action).toBeNull());
 });
 
-describe('computeAlopCapabilities — can_revise_df (FIX 6: permanent post-angajare + ciclu închis)', () => {
-  it('lichidare → true', () =>
-    expect(C({ status: 'lichidare', df_id: 'd' }).can_revise_df).toBe(true));
-  it('ordonantare → true', () =>
-    expect(C({ status: 'ordonantare', df_id: 'd', ord_id: 'o' }).can_revise_df).toBe(true));
-  it('plata → true', () =>
-    expect(C({ status: 'plata', df_id: 'd', ord_id: 'o' }).can_revise_df).toBe(true));
-  it('completed (ciclu închis) → true', () =>
-    expect(C({ status: 'completed', df_id: 'd' }).can_revise_df).toBe(true));
+describe('computeAlopCapabilities — can_revise_df (FIX 6 + prompt 64: gated de df_aprobat & !df_revizie_in_lucru)', () => {
+  it('lichidare (df aprobat, fără revizie în lucru) → true', () =>
+    expect(C({ status: 'lichidare', df_id: 'd', df_aprobat: true }).can_revise_df).toBe(true));
+  it('ordonantare (df aprobat) → true', () =>
+    expect(C({ status: 'ordonantare', df_id: 'd', ord_id: 'o', df_aprobat: true }).can_revise_df).toBe(true));
+  it('plata (df aprobat, fără revizie în lucru) → true', () =>
+    expect(C({ status: 'plata', df_id: 'd', ord_id: 'o', df_aprobat: true }).can_revise_df).toBe(true));
+  it('completed (ciclu închis, df aprobat) → true', () =>
+    expect(C({ status: 'completed', df_id: 'd', df_aprobat: true }).can_revise_df).toBe(true));
   it('angajare → false (acolo accesul e prin df_action)', () =>
-    expect(C({ status: 'angajare', df_id: 'd' }).can_revise_df).toBe(false));
+    expect(C({ status: 'angajare', df_id: 'd', df_aprobat: true }).can_revise_df).toBe(false));
   it('cancelled → false', () =>
-    expect(C({ status: 'cancelled', df_id: 'd' }).can_revise_df).toBe(false));
+    expect(C({ status: 'cancelled', df_id: 'd', df_aprobat: true }).can_revise_df).toBe(false));
   it('fără df_id → false', () =>
-    expect(C({ status: 'plata', df_id: null }).can_revise_df).toBe(false));
+    expect(C({ status: 'plata', df_id: null, df_aprobat: true }).can_revise_df).toBe(false));
   it('non-owner → false', () =>
-    expect(computeAlopCapabilities(A({ created_by: 99, status: 'plata', df_id: 'd' }), ACTOR).can_revise_df).toBe(false));
+    expect(computeAlopCapabilities(A({ created_by: 99, status: 'plata', df_id: 'd', df_aprobat: true }), ACTOR).can_revise_df).toBe(false));
+
+  // prompt 64: DF curent NU e aprobat (ex. revizie draft) → butonul dispare
+  it('df curent neaprobat (revizie draft) → false', () =>
+    expect(C({ status: 'plata', df_id: 'd', ord_id: 'o', df_aprobat: false }).can_revise_df).toBe(false));
+  it('df_aprobat lipsă (undefined) → false', () =>
+    expect(C({ status: 'plata', df_id: 'd', ord_id: 'o' }).can_revise_df).toBe(false));
+  // prompt 64: există deja o revizie în lucru → butonul dispare
+  it('df aprobat dar revizie în lucru → false', () =>
+    expect(C({ status: 'plata', df_id: 'd', ord_id: 'o', df_aprobat: true, df_revizie_in_lucru: true }).can_revise_df).toBe(false));
 });
 
 describe('computeAlopCapabilities — can_delete (detaliu, owner-gated)', () => {

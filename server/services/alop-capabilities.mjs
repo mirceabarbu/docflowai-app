@@ -33,7 +33,10 @@ export function computeAlopCapabilities(alop, actor) {
   // INCLUSIV pentru ALOP completat (ciclu închis). Owner-gated; fals la cancelled
   // și în angajare (acolo accesul la DF e prin df_action). Setat ÎNAINTE de return-ul
   // devreme ca să fie true și pentru ALOP completat (care iese la linia de mai jos).
-  caps.can_revise_df = caps.is_owner && !caps.is_cancelled && !!alop.df_id && !['draft', 'angajare'].includes(status);
+  caps.can_revise_df = caps.is_owner && !caps.is_cancelled && !!alop.df_id
+    && !['draft', 'angajare'].includes(status)
+    && alop.df_aprobat === true          // doar dacă DF-ul curent e APROBAT
+    && !alop.df_revizie_in_lucru;        // și nu există deja o revizie în lucru
 
   if (caps.is_completed || caps.is_cancelled || !caps.is_owner) return caps;
 

@@ -64,7 +64,7 @@ const ROLE_LABEL = {
   cfp_propriu:       'CFP Propriu',
 };
 
-function _alopStatusBadge(status, dfFlowId){
+function _alopStatusBadge(status, dfFlowId, a){
   const m={
     'draft':       {icon:'ico-edit-pencil',     text:'Draft',           color:'#64748b'},
     'angajare':    {icon:'ico-clock',           text:'DF în lucru',     color:'#f97316'},
@@ -76,6 +76,8 @@ function _alopStatusBadge(status, dfFlowId){
   };
   let s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
   if(status==='angajare'&&dfFlowId) s={icon:'ico-pen-tool',text:'Pe flux — semnare',color:'#6366f1'};
+  if(a && a.df_revizie_nr>0 && a.df_flow_active && !a.df_aprobat)
+    s={icon:'ico-pen-tool', text:'Revizie pe flux', color:'#6366f1'};
   const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.475#${s.icon}"/></svg>`;
   return`<span style="display:inline-flex;align-items:center;background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_ico}${esc(s.text)}</span>`;
 }
@@ -193,7 +195,7 @@ async function loadAlop(){
           ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--df-text-3)">${esc(a.compartiment)}</span>`:''}
         </td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${esc(a.creator_name||a.creator_email||'—')}</td>
-        <td>${_alopStatusBadge(a.status,a.df_flow_id)}</td>
+        <td>${_alopStatusBadge(a.status,a.df_flow_id,a)}</td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${esc(_alopFazaLabel(a.status))}</td>
         <td style="font-size:.82rem">
           <div>${fmtRON(a.valoare_totala)}</div>
@@ -298,6 +300,38 @@ async function alopRefreshCurrent(){
   if(!window._currentAlopId)return;
   await openAlop(window._currentAlopId);
   loadAlop();loadAlopStats();
+}
+
+// ── Editare titlu ALOP inline (oricând, fără cascadă) ───────────────────────
+function alopEditTitlu(id){
+  const disp=document.getElementById('alop-titlu-display');
+  if(!disp)return;
+  const current=window._alopContext?.titlu||'';
+  disp.innerHTML=`
+    <input type="text" id="alop-titlu-input" value="${esc(current)}" maxlength="300"
+      style="font-size:1rem;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid var(--df-border-2);background:var(--df-bg-2);color:var(--df-text-2);min-width:240px">
+    <button type="button" class="df-action-btn sm primary" onclick="alopSaveTitlu('${esc(id)}')">Salvează</button>
+    <button type="button" class="df-action-btn sm" onclick="alopRefreshCurrent()">Anulează</button>
+  `;
+  document.getElementById('alop-titlu-input')?.focus();
+}
+async function alopSaveTitlu(id){
+  const input=document.getElementById('alop-titlu-input');
+  const titlu=(input?.value||'').trim();
+  if(!titlu){setS('Titlul nu poate fi gol.','err');return;}
+  try{
+    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/titlu`,{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+      body:JSON.stringify({titlu}),
+    });
+    const j=await r.json();
+    if(!r.ok){setS(`Eroare la salvarea titlului: ${esc(j.error||('HTTP '+r.status))}`,'err');return;}
+    setS('Titlu actualizat.','ok');
+    await alopRefreshCurrent();
+  }catch(e){
+    setS('Eroare de rețea la salvarea titlului.','err');
+  }
 }
 
 const _alopIcoBtn = (name) =>
@@ -478,6 +512,7 @@ function renderAlopDetail(a,container){
      active:a.status==='angajare',
      sub:(!a.df_id)?'Fără DF'
         :(a.status==='angajare'&&a.df_flow_id)?`🔄 DF pe fluxul de semnare${_dfRevTxt}`
+        :(a.df_revizie_nr>0 && a.df_flow_active && !a.df_aprobat)?`🔄 Revizia ${a.df_revizie_nr} pe flux — în curs · ultima aprobată: Revizia ${a.df_revizie_nr-1}`
         :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?`✅ DF aprobat${_dfRevTxt}`
         :(a.status==='angajare'&&!a.df_flow_id)?`📝 DF în lucru${_dfRevTxt}`
         :`DF: ${a.df_nr||a.df_id.slice(0,8)}${_dfRevTxt}`},
@@ -576,7 +611,10 @@ function renderAlopDetail(a,container){
     <div style="background:rgba(255,255,255,.04);border:1px solid var(--df-border-2);border-radius:12px;padding:18px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
         <div>
-          <div style="font-size:1rem;font-weight:700;color:var(--df-text-2)">${esc(a.titlu||'ALOP')}</div>
+          <div id="alop-titlu-display" style="font-size:1rem;font-weight:700;color:var(--df-text-2);display:flex;align-items:center;gap:6px">
+            <span id="alop-titlu-text">${esc(a.titlu||'ALOP')}</span>
+            <button type="button" class="df-action-btn sm" style="padding:2px 6px" onclick="alopEditTitlu('${esc(a.id)}')" title="Editează titlul">✎</button>
+          </div>
           ${a.compartiment?`<div style="font-size:.8rem;color:var(--df-text-3);margin-top:2px">${esc(a.compartiment)}</div>`:''}
           ${(() => {
             // v3.9.503: în header arătăm valoarea estimată (la creare) + valoarea
@@ -615,7 +653,7 @@ function renderAlopDetail(a,container){
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          ${_alopStatusBadge(a.status,a.df_flow_id)}
+          ${_alopStatusBadge(a.status,a.df_flow_id,a)}
           ${caps.can_refresh?`<button class="df-action-btn sm" onclick="alopRefreshCurrent()" title="Actualizează status">↻ Actualizează</button>`:''}
         </div>
       </div>
@@ -1106,6 +1144,8 @@ async function alopRevizuiesteDF(alopId,dfId){
   window.openAlop                   = openAlop;
   window.closeAlopDetail            = closeAlopDetail;
   window.alopRefreshCurrent         = alopRefreshCurrent;
+  window.alopEditTitlu              = alopEditTitlu;
+  window.alopSaveTitlu              = alopSaveTitlu;
   window.startNouaLichidare         = startNouaLichidare;
   window.alopDeschideDF             = alopDeschideDF;
   window.alopDeschideORD            = alopDeschideORD;

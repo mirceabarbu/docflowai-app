@@ -26,6 +26,7 @@ import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-fo
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
+import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
@@ -338,6 +339,17 @@ router.get('/api/alop', async (req, res) => {
         df.status        AS df_status,
         fo.nr_ordonant_pl AS ord_nr,
         fo.status        AS ord_status,
+        df.revizie_nr                AS df_revizie_nr,
+        df.este_revizie_an_urmator   AS df_este_revizie_an_urmator,
+        (SELECT CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL
+                      AND fdf.deleted_at IS NULL
+                      AND (fdf.data->>'completed') IS DISTINCT FROM 'true'
+                      AND (fdf.data->>'status')    IS DISTINCT FROM 'cancelled'
+                 THEN true ELSE false END
+         FROM flows fdf WHERE fdf.id::text = COALESCE(df.flow_id, a.df_flow_id)) AS df_flow_active,
+        (SELECT CASE WHEN (fdf.data->>'status')='completed' OR (fdf.data->>'completed')::boolean=true
+                 THEN true ELSE false END
+         FROM flows fdf WHERE fdf.id::text = COALESCE(df.flow_id, a.df_flow_id)) AS df_aprobat,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
         ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
@@ -541,6 +553,11 @@ router.get('/api/alop/:id', async (req, res) => {
         CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL AND (
           f1.data->>'status' = 'completed' OR (f1.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS df_aprobat,
+        CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL
+                  AND f1.deleted_at IS NULL
+                  AND (f1.data->>'completed') IS DISTINCT FROM 'true'
+                  AND (f1.data->>'status')    IS DISTINCT FROM 'cancelled'
+             THEN true ELSE false END AS df_flow_active,
         CASE WHEN COALESCE(fo.flow_id, a.ord_flow_id) IS NOT NULL AND (
           f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS ord_aprobat,
@@ -832,6 +849,38 @@ router.get('/api/alop/:id', async (req, res) => {
   }
 });
 
+// ── POST /api/alop/:id/titlu — editează titlul ALOP (metadata, oricând) ──────
+router.post('/api/alop/:id/titlu', _csrf, async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const titlu = String(req.body?.titlu || '').trim();
+    if (!titlu) return res.status(400).json({ error: 'titlu_obligatoriu' });
+    if (titlu.length > 300) return res.status(400).json({ error: 'titlu_prea_lung' });
+
+    const { rows: alopRows } = await pool.query(
+      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
+      [req.params.id, actor.orgId]
+    );
+    if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
+    {
+      const actorComp = await loadActorComp(pool, actor.userId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE alop_instances SET titlu=$1, updated_at=NOW(), updated_by=$4
+       WHERE id=$2 AND org_id=$3 RETURNING id, titlu`,
+      [titlu, req.params.id, actor.orgId, actor.userId]
+    );
+    res.json({ ok: true, alop: rows[0] });
+  } catch (e) {
+    logger.error({ err: e }, 'alop titlu update error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // ── POST /api/alop/:id/link-df — leagă DF, status → angajare ─────────────────
 router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
   if (requireDb(res)) return;
@@ -923,6 +972,35 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
       try {
         await copyFormularAttachmentsToFlow(pool, { flowId: flow_id, formType: 'df', formId: alopRows[0].df_id });
       } catch (e) { logger.warn({ err: e, alopId: req.params.id }, '[ALOP] copiere atașamente DF→flux non-fatal'); }
+    }
+
+    // Persistă starea DF „pe flux" (ASIMETRIE DF: transmis_flux = status REAL, nu derivat).
+    // Mirror al linkFlowFormular, dar pe calea ALOP necondiționată (linkFlowFormular dă 409 aici).
+    // Idempotent: flip DOAR completed→transmis_flux. Gardă anti-deturnare: nu pe un flux DIFERIT.
+    if (alopRows[0].df_id) {
+      try {
+        const { rows: dfFlip } = await pool.query(
+          `UPDATE formulare_df
+             SET flow_id = $1,
+                 status  = 'transmis_flux',
+                 updated_at = NOW(), updated_by = $4
+           WHERE id = $2 AND org_id = $3 AND deleted_at IS NULL
+             AND status = 'completed'
+             AND (flow_id IS NULL OR flow_id = $1)
+           RETURNING id`,
+          [flow_id, alopRows[0].df_id, actor.orgId, actor.userId]
+        );
+        if (dfFlip[0]) {
+          await recordFormularAudit({
+            orgId: actor.orgId, formType: 'df', formId: alopRows[0].df_id,
+            actorId: actor.userId, actorEmail: actor.email,
+            eventType: 'transmis_flux', fromStatus: 'completed', toStatus: 'transmis_flux',
+            meta: { flow_id, via: 'alop_link_df_flow' },
+          });
+        }
+      } catch (e) {
+        logger.warn({ err: e, alopId: req.params.id }, '[ALOP] DF status→transmis_flux non-fatal');
+      }
     }
 
     // Dacă fluxul e deja completat, tranziționează imediat la lichidare

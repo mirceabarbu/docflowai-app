@@ -1936,6 +1936,12 @@ const MIGRATIONS = [
          AND fr.transmitted_by IS NULL
          AND f.data->>'initEmail' IS NOT NULL;
     `
+  },
+  {
+    id: '092_org_cab_compartiment',
+    sql: `
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cab_compartiment TEXT;
+    `
   }
 ];
 

@@ -23,7 +23,7 @@ router.get('/admin/organizations', async (req, res) => {
     const includeDeleted = req.query.include_deleted === '1' || req.query.include_deleted === 'true';
     const orgFilter = includeDeleted ? '' : 'WHERE o.deleted_at IS NULL';
     const { rows } = await pool.query(`
-      SELECT o.id, o.name, o.cif, o.compartimente, o.webhook_url, o.webhook_events, o.webhook_enabled,
+      SELECT o.id, o.name, o.cif, o.compartimente, o.cab_compartiment, o.webhook_url, o.webhook_events, o.webhook_enabled,
              o.webhook_secret IS NOT NULL AS webhook_has_secret,
              o.created_at, o.updated_at, o.deleted_at,
              COUNT(DISTINCT u.id) FILTER (WHERE u.deleted_at IS NULL)::int  AS user_count,
@@ -57,7 +57,7 @@ router.get('/admin/organizations/:id', async (req, res) => {
     const signingCols = hasSigning ? ', signing_providers_enabled, signing_providers_config' : '';
 
     const { rows } = await pool.query(`
-      SELECT id, name, cif, compartimente,
+      SELECT id, name, cif, compartimente, cab_compartiment,
              webhook_url, webhook_events, webhook_enabled,
              webhook_secret IS NOT NULL AS webhook_has_secret,
              created_at, updated_at, deleted_at${signingCols}
@@ -141,14 +141,30 @@ router.put('/admin/organizations/:id', csrfMiddleware, async (req, res) => {
   if (!orgId) return res.status(400).json({ error: 'invalid_id' });
   const { name, webhook_url, webhook_secret, webhook_events, webhook_enabled,
           signing_providers_enabled, signing_providers_config,
-          cif, compartimente } = req.body || {};
+          cif, compartimente, cab_compartiment } = req.body || {};
   try {
     const updates = []; const params = [];
     if (name !== undefined) { params.push(String(name).trim()); updates.push(`name=$${params.length}`); }
     if (cif !== undefined) { params.push(cif ? String(cif).replace(/\D/g,'').substring(0,10) : null); updates.push(`cif=$${params.length}`); }
+    let newCompartimente;
     if (compartimente !== undefined && Array.isArray(compartimente)) {
-      params.push(compartimente.map(c => String(c).trim()).filter(Boolean));
+      newCompartimente = compartimente.map(c => String(c).trim()).filter(Boolean);
+      params.push(newCompartimente);
       updates.push(`compartimente=$${params.length}`);
+    }
+    if (cab_compartiment !== undefined) {
+      const trimmedCab = cab_compartiment ? String(cab_compartiment).trim() : '';
+      if (trimmedCab) {
+        const effectiveCompartimente = newCompartimente !== undefined
+          ? newCompartimente
+          : (await pool.query('SELECT compartimente FROM organizations WHERE id=$1', [orgId])).rows[0]?.compartimente || [];
+        if (!effectiveCompartimente.includes(trimmedCab)) {
+          return res.status(400).json({ error: 'cab_compartiment_invalid' });
+        }
+        params.push(trimmedCab); updates.push(`cab_compartiment=$${params.length}`);
+      } else {
+        params.push(null); updates.push(`cab_compartiment=$${params.length}`);
+      }
     }
     if (webhook_url !== undefined) { params.push(webhook_url ? String(webhook_url).trim() : null); updates.push(`webhook_url=$${params.length}`); }
     if (webhook_secret !== undefined && webhook_secret !== '') { params.push(String(webhook_secret).trim()); updates.push(`webhook_secret=$${params.length}`); }
@@ -177,7 +193,7 @@ router.put('/admin/organizations/:id', csrfMiddleware, async (req, res) => {
     updates.push(`updated_at=NOW()`);
     params.push(orgId);
     const { rows } = await pool.query(
-      `UPDATE organizations SET ${updates.join(',')} WHERE id=$${params.length} RETURNING id, name, cif, compartimente, webhook_url, webhook_events, webhook_enabled, updated_at`,
+      `UPDATE organizations SET ${updates.join(',')} WHERE id=$${params.length} RETURNING id, name, cif, compartimente, cab_compartiment, webhook_url, webhook_events, webhook_enabled, updated_at`,
       params
     );
     if (!rows.length) return res.status(404).json({ error: 'org_not_found' });

@@ -6,7 +6,7 @@
   <title>DocFlowAI — Admin</title>
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.518">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.518">
-  <link rel="stylesheet" href="/css/df/components.css?v=3.9.631">
+  <link rel="stylesheet" href="/css/df/components.css?v=3.9.643">
   <link rel="stylesheet" href="/css/df/email-modal.css?v=3.9.549">
   <link rel="stylesheet" href="/css/admin/admin.css?v=3.9.631">
 
@@ -672,6 +672,14 @@
           </div>
         </div>
         <div id="orgCompartimenteList" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:18px;min-height:24px;"></div>
+
+        <div style="margin-bottom:14px;max-width:340px;">
+          <label style="display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;">Compartiment CAB implicit</label>
+          <select id="orgCabCompartiment" class="df-filter-select">
+            <option value="">— niciunul —</option>
+          </select>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">Pre-filtrează selecția Responsabilului CAB pe formulare</div>
+        </div>
 
         <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);padding-top:14px;border-top:1px solid rgba(255,255,255,.06);margin-bottom:14px;">
           <div>📅 Creat: <span id="orgDetailCreatedAt" style="color:rgba(234,240,255,.7);">—</span></div>
@@ -1590,7 +1598,7 @@
 <script src="/js/admin/activity.js?v=3.9.610" defer></script>
 <script src="/js/admin/outreach.js?v=3.9.518" defer></script>
 <script src="/js/admin/primarii.js?v=3.9.518" defer></script>
-<script src="/js/admin/organizations.js?v=3.9.518" defer></script>
+<script src="/js/admin/organizations.js?v=3.9.640" defer></script>
 <script src="/js/admin/analytics.js?v=3.9.518" defer></script>
 <script src="/js/admin/admin.js?v=3.9.531" defer></script>
 <script src="/js/admin/reports.js?v=3.9.518" defer></script>

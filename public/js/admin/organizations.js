@@ -165,6 +165,7 @@
     $('orgDetailActions').innerHTML         = '';
     $('orgCif').value                       = '';
     $('orgCompartimenteInput').value        = '';
+    if ($('orgCabCompartiment')) $('orgCabCompartiment').value = '';
     $('orgWebhookUrl').value                = '';
     $('orgWebhookSecret').value             = '';
     $('orgWebhookEnabled').checked          = false;
@@ -208,6 +209,7 @@
     $('orgCif').value = org.cif || '';
     _orgCompartimente = Array.isArray(org.compartimente) ? [...org.compartimente] : [];
     _renderCompartimente();
+    $('orgCabCompartiment').value = org.cab_compartiment || '';
     $('orgDetailCreatedAt').textContent = org.created_at ? new Date(org.created_at).toLocaleString('ro-RO') : '—';
     $('orgDetailUpdatedAt').textContent = org.updated_at ? new Date(org.updated_at).toLocaleString('ro-RO') : '—';
     // Câmpuri Webhook
@@ -1016,13 +1018,21 @@
 
   function _renderCompartimente() {
     const el = $('orgCompartimenteList');
-    if (!el) return;
-    el.innerHTML = _orgCompartimente.map((c, i) =>
-      `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;background:rgba(124,92,255,.18);border:1px solid rgba(124,92,255,.35);color:#c4b5ff;font-size:.78rem;">
-        ${esc(c)}
-        <button onclick="_removeCompartiment(${i})" style="background:none;border:none;color:#c4b5ff;cursor:pointer;font-size:.82rem;padding:0;line-height:1;">✕</button>
-      </span>`
-    ).join('');
+    if (el) {
+      el.innerHTML = _orgCompartimente.map((c, i) =>
+        `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;background:rgba(124,92,255,.18);border:1px solid rgba(124,92,255,.35);color:#c4b5ff;font-size:.78rem;">
+          ${esc(c)}
+          <button onclick="_removeCompartiment(${i})" style="background:none;border:none;color:#c4b5ff;cursor:pointer;font-size:.82rem;padding:0;line-height:1;">✕</button>
+        </span>`
+      ).join('');
+    }
+    const sel = $('orgCabCompartiment');
+    if (sel) {
+      const prevVal = sel.value;
+      sel.innerHTML = '<option value="">— niciunul —</option>' +
+        _orgCompartimente.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      sel.value = _orgCompartimente.includes(prevVal) ? prevVal : '';
+    }
   }
 
   function orgAddCompartiment() {
@@ -1091,8 +1101,9 @@
     const compInp = $('orgCompartimenteInput');
     if (compInp?.value.trim()) orgAddCompartiment();
     const body = {
-      cif:           $('orgCif').value.trim() || null,
-      compartimente: _orgCompartimente,
+      cif:              $('orgCif').value.trim() || null,
+      compartimente:    _orgCompartimente,
+      cab_compartiment: $('orgCabCompartiment').value.trim() || null,
     };
     if (msg) msg.textContent = '⏳ Se salvează...';
     try {
