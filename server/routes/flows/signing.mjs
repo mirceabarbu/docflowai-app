@@ -7,6 +7,7 @@ import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml,
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { getActiveSigner, getLeaveInfo } from '../../services/user-leave.mjs';
 import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
+import { recordFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
@@ -115,71 +116,73 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
       sent.add(r.email);
       await _notify({ userEmail: r.email, flowId, type: 'REFUSED', title: '⛔ Document refuzat', message: refuseMsg, waParams: { docName: data.docName, refuserName, reason: refuseReason }, urgent: !!(data.urgent) });
     }
-    // FIX state machine: marchează DF ca neaprobat când fluxul e refuzat
-    try {
-      await pool.query(
-        `UPDATE formulare_df SET status='neaprobat', updated_at=NOW()
-         WHERE flow_id=$1 AND status='transmis_flux'`,
-        [flowId]
-      );
-    } catch(_) { /* non-fatal */ }
-
-    // ── Restore ALOP la revizia anterioară aprobată (R1+) sau eliberare (R0) ──
-    // Spec OMF 1140/2025: la refuz, ALOP-ul nu mai trebuie să pointeze la DF neaprobat.
-    // R0 refuzat   → ALOP eliberat (df_id=NULL) → buton "Completează DF" redevine activ
-    // R1+ refuzat  → ALOP relink la parent_df_id (revizia anterioară aprobată)
+    // ── Refuz: DF → neaprobat + ALOP actualizat, ROBUST prin pointerul df_flow_id ──
+    // Acoperă split-path (DF lansat pe calea ALOP: status='completed', fd.flow_id NULL).
     try {
       const { rows: dfRows } = await pool.query(
-        `SELECT id, revizie_nr, parent_df_id FROM formulare_df
-         WHERE flow_id=$1 AND status='neaprobat' LIMIT 1`,
+        `SELECT id, revizie_nr, parent_df_id, status
+           FROM formulare_df
+          WHERE deleted_at IS NULL
+            AND ( flow_id = $1
+                  OR id = (SELECT df_id FROM alop_instances WHERE df_flow_id = $1 AND cancelled_at IS NULL LIMIT 1) )
+          ORDER BY (flow_id = $1) DESC
+          LIMIT 1`,
         [flowId]
       );
       if (dfRows.length) {
         const refDf = dfRows[0];
+        const fromStatus = refDf.status;
+        // DF → neaprobat (doar dintr-o stare pre-aprobare)
+        await pool.query(
+          `UPDATE formulare_df SET status='neaprobat', updated_at=NOW()
+           WHERE id=$1 AND status IN ('transmis_flux','completed')`,
+          [refDf.id]
+        );
+        // Audit (trasabilitate refuz)
+        try {
+          await recordFormularAudit({
+            orgId: data.orgId, formType: 'df', formId: refDf.id,
+            actorEmail: (signers[idx]?.email || null),
+            eventType: 'neaprobat', fromStatus, toStatus: 'neaprobat',
+            meta: { flowId, via: 'flux_refuzat' },
+          });
+        } catch (_) { /* non-fatal */ }
+
         if ((refDf.revizie_nr || 0) === 0 || !refDf.parent_df_id) {
-          // R0 inițial refuzat — niciun parent disponibil
+          // R0 (B2): PĂSTREAZĂ df_id, curăță doar fluxul → ALOP „DF în lucru / neaprobat"
           await pool.query(
-            `UPDATE alop_instances
-             SET df_id=NULL, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
+            `UPDATE alop_instances SET df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
              WHERE df_id=$1 AND cancelled_at IS NULL`,
             [refDf.id]
           );
-          logger.info({ dfId: refDf.id, flowId }, '[ALOP] DF R0 refuzat → ALOP eliberat (df_id=NULL)');
+          logger.info({ dfId: refDf.id, flowId }, '[ALOP] DF R0 refuzat → neaprobat, ALOP „DF în lucru" (df_id păstrat)');
         } else {
-          // R1+ refuzat — verificăm parent-ul (trebuie să fie aprobat)
+          // R1+: restore la parent APROBAT (existent)
           const { rows: parentRows } = await pool.query(
-            `SELECT id, flow_id, status FROM formulare_df
-             WHERE id=$1 AND deleted_at IS NULL LIMIT 1`,
+            `SELECT id, flow_id, status FROM formulare_df WHERE id=$1 AND deleted_at IS NULL LIMIT 1`,
             [refDf.parent_df_id]
           );
           if (parentRows.length && parentRows[0].status === 'aprobat' && parentRows[0].flow_id) {
             const parent = parentRows[0];
             await pool.query(
-              `UPDATE alop_instances
-               SET df_id=$1, df_flow_id=$2, df_completed_at=NOW(), updated_at=NOW()
+              `UPDATE alop_instances SET df_id=$1, df_flow_id=$2, df_completed_at=NOW(), updated_at=NOW()
                WHERE df_id=$3 AND cancelled_at IS NULL`,
               [parent.id, parent.flow_id, refDf.id]
             );
-            logger.info({ refDfId: refDf.id, parentId: parent.id, parentFlowId: parent.flow_id, flowId },
-              `[ALOP] DF R${refDf.revizie_nr} refuzat → restore la parent aprobat`);
+            logger.info({ refDfId: refDf.id, parentId: parent.id, flowId }, `[ALOP] R${refDf.revizie_nr} refuzat → restore la parent aprobat`);
           } else {
-            // Edge case: parent nu e aprobat (de ex. R1 refuzat creată de pe R0 neaprobat)
-            // Safe fallback: eliberăm ALOP — utilizatorul va trebui să creeze DF nou.
+            // Fără parent aprobat: păstrează df_id (neaprobat), curăță fluxul
             await pool.query(
-              `UPDATE alop_instances
-               SET df_id=NULL, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
+              `UPDATE alop_instances SET df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
                WHERE df_id=$1 AND cancelled_at IS NULL`,
               [refDf.id]
             );
-            logger.warn({ refDfId: refDf.id, parentId: refDf.parent_df_id, parentStatus: parentRows[0]?.status, flowId },
-              `[ALOP] DF R${refDf.revizie_nr} refuzat — parent nu e aprobat, ALOP eliberat`);
+            logger.warn({ refDfId: refDf.id, flowId }, `[ALOP] R${refDf.revizie_nr} refuzat, parent neaprobat → neaprobat, ALOP „DF în lucru"`);
           }
         }
       }
-    } catch (alopRestoreErr) {
-      // Non-fatal: refuzul fluxului a reușit oricum (status='neaprobat' setat).
-      // Restore-ul ALOP poate eșua doar în cazuri foarte rare (DB hiccup) — log doar.
-      logger.error({ err: alopRestoreErr, flowId }, '[ALOP] restore parent on refuse failed (non-fatal)');
+    } catch (alopRefuseErr) {
+      logger.error({ err: alopRefuseErr, flowId }, '[ALOP] procesare refuz DF eșuată (non-fatal)');
     }
 
     return res.json({ ok: true, refused: true });

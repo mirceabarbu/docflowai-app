@@ -88,6 +88,7 @@
     transmis_flux:                  'Transmis în flux de semnare',
     revizuit:                       'Revizuit',
     sters:                          'Șters',
+    neaprobat:                      'Neaprobat de semnatar',
   };
 
   const OP_COLORS = {

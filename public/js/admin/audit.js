@@ -84,6 +84,7 @@
     'transmis_flux':                 'Transmis în flux de semnare',
     'revizuit':                      'Revizuit',
     'sters':                         'Șters',
+    'neaprobat':                     'Neaprobat de semnatar',
   };
 
   async function loadDashboard() {
