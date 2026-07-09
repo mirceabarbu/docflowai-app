@@ -2150,24 +2150,18 @@ async function signFromFluxuri(flowId) {
           for (const arr of slots) for (const a of arr) { if (a && a.id && !seen.has(a.id)) { seen.add(a.id); items.push(a); _formAttById[a.id] = a; } }
           if (!items.length) { box.style.display = 'none'; return; } // degradare grațioasă
 
-          const _esc = (window.df && window.df.esc) ? window.df.esc : (s => String(s == null ? '' : s));
           box.innerHTML =
             '<div style="font-weight:700;font-size:.82rem;color:var(--sub);margin-bottom:6px;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
               '<svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.518#ico-paperclip"/></svg>' +
               'Vor fi preluate din formular <span style="font-weight:400;color:var(--muted);">— ' + items.length + ' fișier(e), automat la lansare</span>' +
             '</div>' +
             '<div style="display:flex;flex-direction:column;gap:4px;">' +
-            items.map(a => {
-              const url = `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(a.id)}`;
-              const kb = a.size_bytes ? `${(a.size_bytes / 1024).toFixed(0)} KB` : '';
-              return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(124,92,255,.07);border:1px solid rgba(124,92,255,.18);border-radius:6px;font-size:.8rem;">
-                <span style="color:#b39dff;">📄</span>
-                <span style="flex:1;min-width:0;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(a.filename)}</span>
-                <span style="color:var(--muted);white-space:nowrap;">${kb}</span>
-                <button type="button" class="df-action-btn sm" data-att-action="preview" data-att-id="${_esc(a.id)}" title="Previzualizează">Previzualizează</button>
-                <a class="df-action-btn sm" href="${url}" target="_blank" rel="noopener" download>Descarcă</a>
-              </div>`;
-            }).join('') +
+            items.map(a => window.renderFileItem({
+              filename: a.filename, sizeBytes: a.size_bytes, mimeType: a.mime_type,
+              canPreview: true, previewAttId: a.id,
+              downloadHref: `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(a.id)}`,
+              downloadName: a.filename, canDelete: false,
+            })).join('') +
             '</div>';
           box.style.display = 'block';
 

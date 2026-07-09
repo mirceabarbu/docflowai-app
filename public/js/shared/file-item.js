@@ -10,6 +10,8 @@
       preview = `<button type="button" class="df-file-item__btn" data-att-action="preview" data-preview-url="${esc(o.previewUrl)}" data-filename="${name}" data-mime="${esc(o.mimeType||'')}"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg#ico-search"/></svg>Previzualizează</button>`;
     } else if (o.canPreview && o.previewOnclick) {
       preview = `<a href="#" class="df-file-item__btn" onclick="${o.previewOnclick}"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg#ico-search"/></svg>Previzualizează</a>`;
+    } else if (o.canPreview && o.previewAttId) {
+      preview = `<button type="button" class="df-file-item__btn" data-att-action="preview" data-att-id="${esc(o.previewAttId)}"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg#ico-search"/></svg>Previzualizează</button>`;
     }
     const download = o.downloadHref
       ? `<a class="df-file-item__btn" href="${esc(o.downloadHref)}" download="${esc((o.downloadName||o.filename||'').replace(/"/g,''))}"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg#ico-download"/></svg>Descarcă</a>`
