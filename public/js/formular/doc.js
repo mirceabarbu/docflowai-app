@@ -1104,7 +1104,7 @@ async function fetchAttachments(ft, slot = 1){
       const jErr = await r.json().catch(() => null);
       console.warn('[v3.9.554] fetchAttachments HTTP', r.status, jErr?.error);
       const listEl = document.getElementById(ids.lid);
-      if (listEl) listEl.innerHTML = `<span class="att-chip att-chip-err" title="${df.esc(jErr?.error || ('HTTP ' + r.status))}">⚠ atașamentele nu au putut fi încărcate</span>`;
+      if (listEl) listEl.innerHTML = `<div class="df-file-item df-file-item--err" title="${df.esc(jErr?.error || ('HTTP ' + r.status))}">⚠ atașamentele nu au putut fi încărcate</div>`;
       return;
     }
     const j = await r.json();
@@ -1125,21 +1125,28 @@ function renderAttachments(ft, slot = 1){
   let cur; try { cur = JSON.parse(document.getElementById(did)?.value || '[]'); } catch (_) { return; }
   if (!Array.isArray(cur)) return;
   const docId = ST.docId[ft];
-  cur.forEach((item, idx) => {
-    const chip = document.createElement('span');
-    chip.className = 'att-chip' + (item._err ? ' att-chip-err' : '');
-    if (item._err) chip.title = 'Upload eșuat: ' + item._err + ' — se reîncearcă la următoarea salvare';
+  // v3.9.654 (faza 2b): chip-ul de atașamente randat prin renderFileItem (unificat DF/ORD),
+  // preview/download/ștergere/eroare identice cu înainte — DOAR prezentarea se schimbă.
+  list.innerHTML = cur.map((item, idx) => {
     const name = item.filename || item.name || 'fișier';
-    const safe = String(name).replace(/[<>"]/g, '');
+    const errTitle = item._err ? ('Upload eșuat: ' + item._err + ' — se reîncearcă la următoarea salvare') : '';
     if (item.id && docId) {
       const url = `/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
-      // v3.9.570: nume clickabil → preview inline (pdf.js/imagine); link separat = descărcare fallback
-      chip.innerHTML = `📎 <a href="#" onclick="previewAttFromChip('${ft}',${slot},${idx});return false;" style="color:inherit;cursor:pointer">${safe}</a> <a href="${url}" target="_blank" download title="Descarcă" style="color:inherit;text-decoration:none;opacity:.75">⬇</a> <button onclick="remAttServer(${idx},'${lid}','${did}','${item.id}',this)">✕</button>`;
-    } else {
-      chip.innerHTML = `📎 ${safe} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
+      return renderFileItem({
+        filename: name, sizeBytes: item.size_bytes, mimeType: item.mime_type,
+        canPreview: true, previewOnclick: `previewAttFromChip('${ft}',${slot},${idx});return false;`,
+        downloadHref: url, downloadName: name,
+        canDelete: true, deleteOnclick: `remAttServer(${idx},'${lid}','${did}','${item.id}',this)`,
+        isError: !!item._err, errorTitle: errTitle,
+      });
     }
-    list.appendChild(chip);
-  });
+    return renderFileItem({
+      filename: name, sizeBytes: item.size_bytes,
+      canPreview: false, downloadHref: null,
+      canDelete: true, deleteOnclick: `remAtt(${idx},'${lid}','${did}',this)`,
+      isError: !!item._err, errorTitle: errTitle,
+    });
+  }).join('');
 }
 
 // v3.9.570: rezolvă item-ul din JSON-ul curent (evită escaping de nume fișier în onclick) și deleagă la modalul de preview global

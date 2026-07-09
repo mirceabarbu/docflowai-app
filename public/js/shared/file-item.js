@@ -19,7 +19,9 @@
     const del = (o.canDelete && o.deleteOnclick)
       ? `<button type="button" class="df-file-item__btn df-file-item__btn--danger" onclick="${o.deleteOnclick}"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg#ico-x"/></svg>Șterge</button>`
       : '';
-    return `<div class="df-file-item">
+    const wrapCls = 'df-file-item' + (o.isError ? ' df-file-item--err' : '');
+    const wrapTitle = (o.isError && o.errorTitle) ? ` title="${esc(o.errorTitle)}"` : '';
+    return `<div class="${wrapCls}"${wrapTitle}>
       <svg class="df-file-item__ico df-ic" viewBox="0 0 24 24"><use href="/icons.svg#ico-paperclip"/></svg>
       <span class="df-file-item__name" title="${name}">${name}</span>
       ${kb}
