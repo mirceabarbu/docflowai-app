@@ -2083,13 +2083,11 @@ async function signFromFluxuri(flowId) {
         const list = $('attachList');
         const hint = $('attachHint');
         hint.textContent = _attachFiles.length ? `${_attachFiles.length} fișier(e) selectat(e)` : 'Niciun fișier selectat';
-        list.innerHTML = _attachFiles.map((af, i) => `
-          <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(124,92,255,.1);border-radius:6px;font-size:.8rem;">
-            <span style="color:#b39dff;">📄</span>
-            <span style="flex:1;color:var(--sub);">${af.file.name}</span>
-            <span style="color:var(--muted);">${(af.file.size/1024).toFixed(0)} KB</span>
-            <button onclick="_removeAttach(${i})" class="df-action-btn icon-only sm" title="Elimină" aria-label="Elimină"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-x"/></svg></button>
-          </div>`).join('');
+        list.innerHTML = _attachFiles.map((af, i) => renderFileItem({
+          filename: af.file.name, sizeBytes: af.file.size,
+          canPreview: false, downloadHref: null,
+          canDelete: true, deleteOnclick: `_removeAttach(${i})`,
+        })).join('');
       }
       window._removeAttach = (i) => { _attachFiles.splice(i, 1); _renderAttachList(); };
 

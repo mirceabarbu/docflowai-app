@@ -14,11 +14,14 @@
     const download = o.downloadHref
       ? `<a class="df-file-item__btn" href="${esc(o.downloadHref)}" download="${esc((o.downloadName||o.filename||'').replace(/"/g,''))}"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg#ico-download"/></svg>Descarcă</a>`
       : '';
+    const del = (o.canDelete && o.deleteOnclick)
+      ? `<button type="button" class="df-file-item__btn df-file-item__btn--danger" onclick="${o.deleteOnclick}"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg#ico-x"/></svg>Șterge</button>`
+      : '';
     return `<div class="df-file-item">
       <svg class="df-file-item__ico df-ic" viewBox="0 0 24 24"><use href="/icons.svg#ico-paperclip"/></svg>
       <span class="df-file-item__name" title="${name}">${name}</span>
       ${kb}
-      <span class="df-file-item__actions">${preview}${download}</span>
+      <span class="df-file-item__actions">${preview}${download}${del}</span>
     </div>`;
   };
 })();

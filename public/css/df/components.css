@@ -574,3 +574,5 @@ select:not(.di){ color-scheme: dark; }
 .df-file-item__btn:hover{background:rgba(124,92,255,.14);}
 .df-file-item__btn .df-ic{width:13px;height:13px;}
 .df-file-item + .df-file-item{margin-top:6px;}
+.df-file-item__btn--danger{color:var(--df-danger);}
+.df-file-item__btn--danger:hover{background:var(--df-danger-bg);}
