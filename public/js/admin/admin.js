@@ -35,9 +35,14 @@ fetch('/auth/me', { credentials: 'include' })
     }
   })
   .catch(() => { location.href = '/login?next=/admin'; });
-function logout(){
-  // SEC-01: invalidăm cookie-ul pe server, curățăm localStorage
-  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+async function logout(){
+  // SEC-01: invalidăm cookie-ul pe server ÎNAINTE de redirect (Safari/mobil anulează fetch-ul în zbor)
+  try {
+    await Promise.race([
+      fetch('/auth/logout', { method: 'POST', credentials: 'include' }),
+      new Promise(res => setTimeout(res, 3000)),
+    ]);
+  } catch (_) {}
   localStorage.removeItem('docflow_user');
   localStorage.removeItem('docflow_force_pwd');
   location.href='/login';
