@@ -559,22 +559,16 @@
       const list = $('attachmentsList');
       if (!atts.length || !card || !list) return;
       card.style.display = '';
-      const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
       const tokenParam = linkToken ? `?token=${encodeURIComponent(linkToken)}` : '';
       const tokenAnd = linkToken ? `&token=${encodeURIComponent(linkToken)}` : '';
       list.innerHTML = atts.map(a => {
         const dlUrl = `/flows/${encodeURIComponent(flowId)}/attachments/${a.id}${tokenParam}`;
-        const previewBtn = isAttPreviewable(a.mimeType)
-          ? `<button type="button" data-att-action="preview" data-preview-url="/flows/${encodeURIComponent(flowId)}/attachments/${a.id}?preview=1${tokenAnd}" data-filename="${esc(a.filename)}" data-mime="${esc(a.mimeType)}" style="background:none;border:none;padding:0;color:#b39dff;font-weight:700;font-size:.78rem;cursor:pointer;text-decoration:underline;">Previzualizează</button>`
-          : '';
-        return `
-        <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(124,92,255,.1);border-radius:8px;font-size:.85rem;border:1px solid rgba(124,92,255,.2);">
-          <span>${iconByMime(a.mimeType)}</span>
-          <span style="flex:1;">${a.filename}</span>
-          <span style="color:var(--muted);font-size:.78rem;">${(a.sizeBytes/1024).toFixed(0)} KB</span>
-          ${previewBtn}
-          <a href="${dlUrl}" download="${a.filename.replace(/"/g,'')}" style="color:#b39dff;font-weight:700;font-size:.78rem;text-decoration:none;">⬇ Descarcă</a>
-        </div>`;
+        return renderFileItem({
+          filename: a.filename, sizeBytes: a.sizeBytes, mimeType: a.mimeType,
+          canPreview: isAttPreviewable(a.mimeType),
+          previewUrl: `/flows/${encodeURIComponent(flowId)}/attachments/${a.id}?preview=1${tokenAnd}`,
+          downloadHref: dlUrl, downloadName: a.filename,
+        });
       }).join('');
     } catch(e) { /* non-fatal */ }
   }

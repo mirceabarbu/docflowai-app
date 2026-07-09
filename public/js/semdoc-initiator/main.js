@@ -1362,17 +1362,17 @@
             const atts = j?.attachments || [];
             const row = document.getElementById(`attRow_${f.flowId}`);
             if (!row || !atts.length) return;
-            const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
             const isPreviewable = t => t === 'application/pdf' || (t || '').indexOf('image/') === 0;
             row.style.display = '';
             row.innerHTML = `<div style="font-size:.78rem;color:var(--muted);font-weight:600;margin-bottom:5px;">📎 Documente suport</div>` +
               atts.map(a => {
                 const dlUrl = `/flows/${encodeURIComponent(f.flowId)}/attachments/${a.id}`;
-                const previewBtn = isPreviewable(a.mimeType)
-                  ? `<button type="button" data-att-action="preview" data-preview-url="${esc(dlUrl)}?preview=1" data-filename="${esc(a.filename)}" data-mime="${esc(a.mimeType)}" style="background:none;border:none;padding:0;color:#b39dff;font-size:.78rem;font-weight:600;text-decoration:underline;cursor:pointer;">Previzualizează</button> ·`
-                  : '';
-                return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(124,92,255,.1);border-radius:6px;font-size:.78rem;margin-right:6px;margin-bottom:4px;border:1px solid rgba(124,92,255,.2);">
-                ${iconByMime(a.mimeType)} ${esc(a.filename)} <span style="color:var(--muted)">${(a.sizeBytes/1024).toFixed(0)}KB</span> ${previewBtn}<a href="${dlUrl}" download="${a.filename.replace(/"/g,'')}" style="color:#b39dff;text-decoration:none;">⬇</a></span>`;
+                return renderFileItem({
+                  filename: a.filename, sizeBytes: a.sizeBytes, mimeType: a.mimeType,
+                  canPreview: isPreviewable(a.mimeType),
+                  previewUrl: `${dlUrl}?preview=1`,
+                  downloadHref: dlUrl, downloadName: a.filename,
+                });
               }).join('');
             row.addEventListener('click', (ev) => {
               const btn = ev.target.closest('[data-att-action="preview"]');
