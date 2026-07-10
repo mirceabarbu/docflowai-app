@@ -440,6 +440,17 @@ router.get('/api/formulare/list', async (req, res) => {
           conds.push(`fd.status='completed' AND f.data->>'status'='completed' AND fd.flow_id IS NOT NULL`);
         } else if (status === 'respins') {
           conds.push(`fd.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
+        } else if (status === 'transmis_flux') {
+          conds.push(`(
+            fd.status='transmis_flux'
+            OR (
+              fd.status='completed'
+              AND fd.flow_id IS NOT NULL
+              AND f.deleted_at IS NULL
+              AND (f.data->>'completed') IS DISTINCT FROM 'true'
+              AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
+            )
+          )`);
         } else {
           conds.push(`fd.status=$${params.push(status)}`);
         }
@@ -557,6 +568,17 @@ router.get('/api/formulare/list', async (req, res) => {
           conds.push(`fo.status='completed' AND f.data->>'status'='completed' AND fo.flow_id IS NOT NULL`);
         } else if (status === 'respins') {
           conds.push(`fo.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
+        } else if (status === 'transmis_flux') {
+          conds.push(`(
+            fo.status='transmis_flux'
+            OR (
+              fo.status='completed'
+              AND fo.flow_id IS NOT NULL
+              AND f.deleted_at IS NULL
+              AND (f.data->>'completed') IS DISTINCT FROM 'true'
+              AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
+            )
+          )`);
         } else {
           conds.push(`fo.status=$${params.push(status)}`);
         }
