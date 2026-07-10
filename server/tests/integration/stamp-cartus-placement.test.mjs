@@ -26,7 +26,7 @@ describe('stampFooterOnPdf: placement cartuș pentru PDF-uri dense', () => {
 
   it('formula requiredFreeY pentru 2 semnatari cu PDF dens (minContentY=167) → fitsAtBottom=true', () => {
     const footerY = 14;
-    const cartusTotalH = 78; // 1 row × cellHCheck=78 pentru pH=842
+    const cartusTotalH = 57; // 1 row × cellHCheck=CARTUS_CELL_H=57 (prompt-80)
     const SAFETY_MARGIN = 25; // valoarea așteptată după fix
     const requiredFreeY = (footerY + 32) + cartusTotalH + SAFETY_MARGIN;
     const minContentY = 167; // raspuns_adresa_22_04.docx

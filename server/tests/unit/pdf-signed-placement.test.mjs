@@ -94,7 +94,7 @@ describe('computeSignerRectsReadOnly', () => {
     expect(r.signerRects).toHaveLength(2);
     for (const rect of r.signerRects) {
       expect(rect.page).toBe(3); // ultima pagină, 1-based
-      expect(rect.h).toBe(65);
+      expect(rect.h).toBe(57);
       expect(rect.w).toBeGreaterThan(0);
     }
   });
@@ -137,5 +137,48 @@ describe('computeSignerRectsReadOnly', () => {
     const b64 = buildPdf([SPARSE]).toString('base64');
     const r = await computeSignerRectsReadOnly(b64, signers(1), null);
     expect(r).toEqual({ signerRects: [], placement: 'none' });
+  });
+});
+
+// prompt-80: spațierea verticală între rândurile de cartuș = gap-ul orizontal (1pt).
+// cellH = rect h = CARTUS_CELL_H (57) ⇒ stride vertical = cellH + rowGap = 58,
+// deci gap între rânduri = rowGap = colGap = 1pt (fără gol mare între rânduri).
+describe('computeSignerRectsReadOnly — spațiere verticală minimă (prompt-80)', () => {
+  const CELL_H = 57;
+  const ROW_GAP = 1;
+  const COL_GAP = 1;
+
+  it('1 semnatar (1 rând) → h === 57', async () => {
+    const b64 = buildPdf([SPARSE]).toString('base64');
+    const r = await computeSignerRectsReadOnly(b64, signers(1), PDFLib);
+    expect(r.signerRects).toHaveLength(1);
+    expect(r.signerRects[0].h).toBe(CELL_H);
+  });
+
+  it('5 semnatari (2 rânduri × 3 col) → h===57, stride vertical rând0→rând1 === 58, colGap===1', async () => {
+    const b64 = buildPdf([SPARSE]).toString('base64');
+    const r = await computeSignerRectsReadOnly(b64, signers(5), PDFLib);
+    const rects = r.signerRects;
+    expect(rects).toHaveLength(5);
+    for (const rect of rects) expect(rect.h).toBe(CELL_H);
+    // rând 0 = idx 0..2, rând 1 = idx 3..4 (cols=3 pentru n>4)
+    // stride vertical = cellH + rowGap = 58
+    expect(rects[0].y - rects[3].y).toBe(CELL_H + ROW_GAP);
+    expect(rects[1].y - rects[4].y).toBe(CELL_H + ROW_GAP);
+    // gap orizontal între coloane = colGap (1pt): x[col+1] - (x[col] + w) === colGap
+    expect(rects[1].x - (rects[0].x + rects[0].w)).toBeCloseTo(COL_GAP, 6);
+    expect(rects[2].x - (rects[1].x + rects[1].w)).toBeCloseTo(COL_GAP, 6);
+  });
+
+  it('6 semnatari (2 rânduri × 3 col) → h===57, stride vertical === 58', async () => {
+    const b64 = buildPdf([SPARSE]).toString('base64');
+    const r = await computeSignerRectsReadOnly(b64, signers(6), PDFLib);
+    const rects = r.signerRects;
+    expect(rects).toHaveLength(6);
+    for (const rect of rects) expect(rect.h).toBe(CELL_H);
+    // rând 0 = idx 0..2, rând 1 = idx 3..5
+    for (let c = 0; c < 3; c++) {
+      expect(rects[c].y - rects[c + 3].y).toBe(CELL_H + ROW_GAP);
+    }
   });
 });
