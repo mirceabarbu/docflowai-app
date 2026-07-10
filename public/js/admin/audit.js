@@ -85,6 +85,7 @@
     'revizuit':                      'Revizuit',
     'sters':                         'Șters',
     'neaprobat':                     'Neaprobat de semnatar',
+    'flux_refuzat':                  'Flux refuzat',
   };
 
   async function loadDashboard() {

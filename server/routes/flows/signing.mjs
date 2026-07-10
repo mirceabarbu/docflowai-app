@@ -185,6 +185,35 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
       logger.error({ err: alopRefuseErr, flowId }, '[ALOP] procesare refuz DF eșuată (non-fatal)');
     }
 
+    // ── Refuz ORD: curăță ord_flow_id → ALOP oferă re-lansare + audit ──
+    try {
+      const { rows: ordAlopRows } = await pool.query(
+        `SELECT id, ord_id FROM alop_instances WHERE ord_flow_id=$1 AND cancelled_at IS NULL LIMIT 1`,
+        [flowId]
+      );
+      if (ordAlopRows.length) {
+        const aRow = ordAlopRows[0];
+        await pool.query(
+          `UPDATE alop_instances SET ord_flow_id=NULL, ord_completed_at=NULL, updated_at=NOW()
+           WHERE id=$1 AND cancelled_at IS NULL`,
+          [aRow.id]
+        );
+        if (aRow.ord_id) {
+          try {
+            await recordFormularAudit({
+              orgId: data.orgId, formType: 'ord', formId: aRow.ord_id,
+              actorEmail: (signers[idx]?.email || null),
+              eventType: 'flux_refuzat', toStatus: null,
+              meta: { flowId, via: 'ord_flux_refuzat' },
+            });
+          } catch (_) { /* non-fatal */ }
+        }
+        logger.info({ alopId: aRow.id, flowId }, '[ALOP] flux ORD refuzat → ord_flow_id curățat, re-lansare disponibilă');
+      }
+    } catch (ordRefuseErr) {
+      logger.error({ err: ordRefuseErr, flowId }, '[ALOP] procesare refuz ORD eșuată (non-fatal)');
+    }
+
     return res.json({ ok: true, refused: true });
   } catch(e) { logger.error({ err: e }, 'refuse error:'); return res.status(500).json({ error: 'server_error' }); }
 });
