@@ -435,22 +435,24 @@ router.get('/api/formulare/list', async (req, res) => {
         }
       }
 
+      // Fragmente = EXACT condițiile din badge_status (COALESCE ~495-505) — sursă unică, fără drift.
+      // badge = 'transmis_flux' dacă _dfTransmis; altfel 'aprobat' dacă (_dfAprobat OR status='aprobat');
+      // altfel status brut. Filtrele de mai jos sunt inversa algebrică a acestei derivări (filtru ⟺ badge).
+      const _dfTransmis = `fd.status='completed' AND fd.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled'`;
+      const _dfAprobat  = `fd.flow_id IS NOT NULL AND ((f.data->>'status')='completed' OR (f.data->>'completed')::boolean=true)`;
+
       if (status && status !== 'all') {
-        if (status === 'aprobat') {
-          conds.push(`fd.status='completed' AND f.data->>'status'='completed' AND fd.flow_id IS NOT NULL`);
+        if (status === 'transmis_flux') {
+          // badge='transmis_flux' ⟺ _dfTransmis (derivat), SAU status brut='transmis_flux' fără a fi deja aprobat.
+          conds.push(`((${_dfTransmis}) OR (fd.status='transmis_flux' AND NOT (${_dfAprobat})))`);
+        } else if (status === 'aprobat') {
+          // badge='aprobat' ⟺ NOT _dfTransmis AND (_dfAprobat SAU status brut='aprobat').
+          conds.push(`(NOT (${_dfTransmis}) AND ((${_dfAprobat}) OR fd.status='aprobat'))`);
         } else if (status === 'respins') {
           conds.push(`fd.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
-        } else if (status === 'transmis_flux') {
-          conds.push(`(
-            fd.status='transmis_flux'
-            OR (
-              fd.status='completed'
-              AND fd.flow_id IS NOT NULL
-              AND f.deleted_at IS NULL
-              AND (f.data->>'completed') IS DISTINCT FROM 'true'
-              AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
-            )
-          )`);
+        } else if (status === 'completed') {
+          // badge='completed' ⟺ status='completed' care NU derivă transmis_flux/aprobat.
+          conds.push(`(fd.status='completed' AND NOT (${_dfTransmis}) AND NOT (${_dfAprobat}))`);
         } else {
           conds.push(`fd.status=$${params.push(status)}`);
         }
@@ -563,22 +565,20 @@ router.get('/api/formulare/list', async (req, res) => {
         }
       }
 
+      // Fragmente = EXACT condițiile din badge_status (COALESCE ~612-622) — sursă unică, fără drift.
+      // Inversa algebrică a derivării badge (filtru ⟺ badge), identic cu blocul DF dar cu aliasul `fo`.
+      const _foTransmis = `fo.status='completed' AND fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled'`;
+      const _foAprobat  = `fo.flow_id IS NOT NULL AND ((f.data->>'status')='completed' OR (f.data->>'completed')::boolean=true)`;
+
       if (status && status !== 'all') {
-        if (status === 'aprobat') {
-          conds.push(`fo.status='completed' AND f.data->>'status'='completed' AND fo.flow_id IS NOT NULL`);
+        if (status === 'transmis_flux') {
+          conds.push(`((${_foTransmis}) OR (fo.status='transmis_flux' AND NOT (${_foAprobat})))`);
+        } else if (status === 'aprobat') {
+          conds.push(`(NOT (${_foTransmis}) AND ((${_foAprobat}) OR fo.status='aprobat'))`);
         } else if (status === 'respins') {
           conds.push(`fo.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
-        } else if (status === 'transmis_flux') {
-          conds.push(`(
-            fo.status='transmis_flux'
-            OR (
-              fo.status='completed'
-              AND fo.flow_id IS NOT NULL
-              AND f.deleted_at IS NULL
-              AND (f.data->>'completed') IS DISTINCT FROM 'true'
-              AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
-            )
-          )`);
+        } else if (status === 'completed') {
+          conds.push(`(fo.status='completed' AND NOT (${_foTransmis}) AND NOT (${_foAprobat}))`);
         } else {
           conds.push(`fo.status=$${params.push(status)}`);
         }
