@@ -1186,6 +1186,12 @@
             if (typeof window.openAttPreview !== 'function') { window.open(b.getAttribute('data-audit-url'), '_blank'); return; }
             window.openAttPreview(b.getAttribute('data-audit-url'), b.getAttribute('data-audit-name'), 'application/pdf');
           });
+          document.addEventListener('click', (ev) => {
+            const b = ev.target.closest('[data-orig-action="preview"]');
+            if (!b) return;
+            if (typeof window.openAttPreview !== 'function') { window.open(b.getAttribute('data-orig-url'), '_blank'); return; }
+            window.openAttPreview(b.getAttribute('data-orig-url'), b.getAttribute('data-orig-name'), 'application/pdf');
+          });
         }
         if (!flows.length) {
           el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
@@ -1281,6 +1287,8 @@
             ? `<button type="button" class="df-action-btn primary df-kebab-item" data-signed-action="preview" data-signed-url="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" data-signed-name="${esc((f.docName || ('DocFlowAI_' + f.flowId + '_signed')))}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-download"/></svg>PDF semnat</button>
                <button onclick="downloadTrustReportInit('${f.flowId}', this)" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Raport conformitate</button>`
             : '';
+          // origAction = "PDF original" (disponibil oricând, nu gated pe pdfReady)
+          const origAction = `<button type="button" class="df-action-btn df-kebab-item" data-orig-action="preview" data-orig-url="/flows/${encodeURIComponent(f.flowId)}/pdf" data-orig-name="${esc((f.docName || ('DocFlowAI_' + f.flowId)))}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>PDF original</button>`;
           // auditAction = "Audit PDF" (doar admin/org_admin), disponibil indiferent de pdfReady
           const auditAction = isAdminRole
             ? `<button type="button" class="df-action-btn df-kebab-item" data-audit-action="preview" data-audit-url="/admin/flows/${encodeURIComponent(f.flowId)}/audit?format=pdf" data-audit-name="Audit_${f.flowId}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Audit PDF</button>`
@@ -1302,6 +1310,7 @@
             (!isCancelled && mySignerEntry) ? `<button onclick="signFromFluxuri('${f.flowId}')" class="df-action-btn cta df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-pen-tool"/></svg>Semnează</button>` : '',
             `<a href="/flow.html?flow=${f.flowId}" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-search"/></svg>Vezi flow</a>`,
             (!isCancelled ? dlActions : ''),
+            (!isCancelled ? origAction : ''),
             auditAction,
             (pdfReady) ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success df-kebab-item" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-mail"/></svg>Trimite</button>` : '',
             (pdfReady) ? `<button onclick="_openTransmitForFlow('${f.flowId}')" class="df-action-btn df-kebab-item" title="Transmite documentul în aplicație"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-send"/></svg>Transmite în aplicație</button>` : '',
