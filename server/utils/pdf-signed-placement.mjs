@@ -80,6 +80,8 @@ export async function computeSignerRectsReadOnly(pdfB64, signers, PDFLib, logger
     const sideMargin = 40;
     const colGap = 1;
     const rowGap = 1;
+    const CARTUS_CELL_H = 57; // TREBUIE identic cu stampFooterOnPdf (server/index.mjs):
+                              // = înălțimea chenarului Java (~55pt) + margine; stride = CARTUS_CELL_H + rowGap.
     const footerY = 14;
     const n = list.length;
     let cols = 3;
@@ -92,8 +94,7 @@ export async function computeSignerRectsReadOnly(pdfB64, signers, PDFLib, logger
 
     const totalWidth = width - (sideMargin * 2) - ((cols - 1) * colGap);
     const cellW = totalWidth / cols;
-    const cellH = Math.max(56, Math.min(78,
-      (Math.max(120, height * 0.30) - ((rows - 1) * rowGap)) / rows));
+    const cellH = CARTUS_CELL_H;
     const cartusTotalH = rows * cellH + (rows - 1) * rowGap;
 
     // ── Detectare conținut pe ultima pagină (CTM-aware, v3.9.496) ─────────────
@@ -148,8 +149,8 @@ export async function computeSignerRectsReadOnly(pdfB64, signers, PDFLib, logger
       const col = i % cols;
       const x = sideMargin + col * (cellW + colGap);
       const y = startY - row * (cellH + rowGap);
-      // h=65: identic cu stampFooterOnPdf (7 linii + padding + chenar)
-      signerRects.push({ page: lastPageNum, x, y, w: cellW, h: 65 });
+      // h = CARTUS_CELL_H: identic cu stampFooterOnPdf (rect coincide cu chenarul Java).
+      signerRects.push({ page: lastPageNum, x, y, w: cellW, h: CARTUS_CELL_H });
     }
     return { signerRects, placement };
   } catch (e) {

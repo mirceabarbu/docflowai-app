@@ -1000,6 +1000,8 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
       const sideMargin = 40;
       const colGap = 1;
       const rowGap = 1;
+      const CARTUS_CELL_H = 57; // = înălțimea chenarului desenat de Java (~55pt, y7-based) + margine.
+                                // stride vertical = CARTUS_CELL_H + rowGap ⇒ gap între rânduri = rowGap (1pt), ca la coloane.
       const n = signers.length;
       let cols = 3;
       if (n === 1) cols = 1;
@@ -1016,8 +1018,7 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
       // suprapunea cartușul peste tabelele DF/ORD dense.
       const lastPageExisting = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
       const { width: pWLast, height: hLast } = lastPageExisting.getSize();
-      const cellHCheck = Math.max(56, Math.min(78,
-        (Math.max(120, hLast * 0.30) - ((rows - 1) * rowGap)) / rows));
+      const cellHCheck = CARTUS_CELL_H;
       const cartusTotalH = rows * cellHCheck + (rows - 1) * rowGap;
 
       // ── Detectare conținut + găsire gap optim ──────────────────────────
@@ -1105,8 +1106,7 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
       const { width, height } = cartusPage.getSize();
       const totalWidth = width - (sideMargin * 2) - ((cols - 1) * colGap);
       const cellW      = totalWidth / cols;
-      const cellH      = Math.max(56, Math.min(78,
-        (Math.max(120, height * 0.30) - ((rows - 1) * rowGap)) / rows));
+      const cellH      = CARTUS_CELL_H;
 
       let startY;
       if (needsNewPage) {
@@ -1132,8 +1132,8 @@ async function stampFooterOnPdf(pdfB64, flowData = {}) {
         const col = i % cols;
         const x = sideMargin + col * (cellW + colGap);
         const y = startY - row * (cellH + rowGap);
-        // h=65: 7 linii (6 + linia delegare opțională) + padding + chenar
-        signerRects.push({ page: cartusPageNum, x, y, w: cellW, h: 65 });
+        // h = CARTUS_CELL_H: rect coincide cu chenarul Java (~55pt) + margine.
+        signerRects.push({ page: cartusPageNum, x, y, w: cellW, h: CARTUS_CELL_H });
       }
     }
 

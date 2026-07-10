@@ -164,7 +164,7 @@ describe('POST /flows — PDF pre-semnat la upload', () => {
     for (const s of saved.signers) {
       expect(s.padesRect).toBeTruthy();
       expect(s.padesRect.page).toBe(1); // ultima (singura) pagină
-      expect(s.padesRect.h).toBe(65);
+      expect(s.padesRect.h).toBe(57); // CARTUS_CELL_H (prompt-80)
     }
     const ev = saved.events.find(e => e.type === 'PRESIGNED_UPLOAD_DETECTED');
     expect(ev).toBeTruthy();

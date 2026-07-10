@@ -104,9 +104,9 @@ Q
 
     // Same formula as stampFooterOnPdf for 1-row cartuș on A4
     const footerY = 14;
-    const cartusTotalH = 78;
+    const cartusTotalH = 57; // CARTUS_CELL_H (prompt-80)
     const SAFETY_MARGIN = 25;
-    const requiredFreeY = (footerY + 32) + cartusTotalH + SAFETY_MARGIN; // 149
+    const requiredFreeY = (footerY + 32) + cartusTotalH + SAFETY_MARGIN; // 128
     const fitsAtBottom = (minContentY !== null) && (minContentY >= requiredFreeY);
 
     expect(fitsAtBottom,
