@@ -444,15 +444,15 @@ router.get('/api/formulare/list', async (req, res) => {
       if (status && status !== 'all') {
         if (status === 'transmis_flux') {
           // badge='transmis_flux' ⟺ _dfTransmis (derivat), SAU status brut='transmis_flux' fără a fi deja aprobat.
-          conds.push(`((${_dfTransmis}) OR (fd.status='transmis_flux' AND NOT (${_dfAprobat})))`);
+          conds.push(`((${_dfTransmis}) OR (fd.status='transmis_flux' AND (${_dfAprobat}) IS NOT TRUE))`);
         } else if (status === 'aprobat') {
           // badge='aprobat' ⟺ NOT _dfTransmis AND (_dfAprobat SAU status brut='aprobat').
-          conds.push(`(NOT (${_dfTransmis}) AND ((${_dfAprobat}) OR fd.status='aprobat'))`);
+          conds.push(`((${_dfTransmis}) IS NOT TRUE AND ((${_dfAprobat}) OR fd.status='aprobat'))`);
         } else if (status === 'respins') {
           conds.push(`fd.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
         } else if (status === 'completed') {
           // badge='completed' ⟺ status='completed' care NU derivă transmis_flux/aprobat.
-          conds.push(`(fd.status='completed' AND NOT (${_dfTransmis}) AND NOT (${_dfAprobat}))`);
+          conds.push(`(fd.status='completed' AND (${_dfTransmis}) IS NOT TRUE AND (${_dfAprobat}) IS NOT TRUE)`);
         } else {
           conds.push(`fd.status=$${params.push(status)}`);
         }
@@ -572,13 +572,13 @@ router.get('/api/formulare/list', async (req, res) => {
 
       if (status && status !== 'all') {
         if (status === 'transmis_flux') {
-          conds.push(`((${_foTransmis}) OR (fo.status='transmis_flux' AND NOT (${_foAprobat})))`);
+          conds.push(`((${_foTransmis}) OR (fo.status='transmis_flux' AND (${_foAprobat}) IS NOT TRUE))`);
         } else if (status === 'aprobat') {
-          conds.push(`(NOT (${_foTransmis}) AND ((${_foAprobat}) OR fo.status='aprobat'))`);
+          conds.push(`((${_foTransmis}) IS NOT TRUE AND ((${_foAprobat}) OR fo.status='aprobat'))`);
         } else if (status === 'respins') {
           conds.push(`fo.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
         } else if (status === 'completed') {
-          conds.push(`(fo.status='completed' AND NOT (${_foTransmis}) AND NOT (${_foAprobat}))`);
+          conds.push(`(fo.status='completed' AND (${_foTransmis}) IS NOT TRUE AND (${_foAprobat}) IS NOT TRUE)`);
         } else {
           conds.push(`fo.status=$${params.push(status)}`);
         }
