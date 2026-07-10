@@ -1186,6 +1186,12 @@
             if (typeof window.openAttPreview !== 'function') { window.open(b.getAttribute('data-audit-url'), '_blank'); return; }
             window.openAttPreview(b.getAttribute('data-audit-url'), b.getAttribute('data-audit-name'), 'application/pdf');
           });
+          document.addEventListener('click', (ev) => {
+            const b = ev.target.closest('[data-orig-action="preview"]');
+            if (!b) return;
+            if (typeof window.openAttPreview !== 'function') { window.open(b.getAttribute('data-orig-url'), '_blank'); return; }
+            window.openAttPreview(b.getAttribute('data-orig-url'), b.getAttribute('data-orig-name'), 'application/pdf');
+          });
         }
         if (!flows.length) {
           el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">Niciun flux găsit.</div>';
@@ -1281,6 +1287,8 @@
             ? `<button type="button" class="df-action-btn primary df-kebab-item" data-signed-action="preview" data-signed-url="/flows/${encodeURIComponent(f.flowId)}/signed-pdf" data-signed-name="${esc((f.docName || ('DocFlowAI_' + f.flowId + '_signed')))}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-download"/></svg>PDF semnat</button>
                <button onclick="downloadTrustReportInit('${f.flowId}', this)" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Raport conformitate</button>`
             : '';
+          // origAction = "PDF original" (disponibil oricând, nu gated pe pdfReady)
+          const origAction = `<button type="button" class="df-action-btn df-kebab-item" data-orig-action="preview" data-orig-url="/flows/${encodeURIComponent(f.flowId)}/pdf" data-orig-name="${esc((f.docName || ('DocFlowAI_' + f.flowId)))}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>PDF original</button>`;
           // auditAction = "Audit PDF" (doar admin/org_admin), disponibil indiferent de pdfReady
           const auditAction = isAdminRole
             ? `<button type="button" class="df-action-btn df-kebab-item" data-audit-action="preview" data-audit-url="/admin/flows/${encodeURIComponent(f.flowId)}/audit?format=pdf" data-audit-name="Audit_${f.flowId}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Audit PDF</button>`
@@ -1302,6 +1310,7 @@
             (!isCancelled && mySignerEntry) ? `<button onclick="signFromFluxuri('${f.flowId}')" class="df-action-btn cta df-kebab-item"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-pen-tool"/></svg>Semnează</button>` : '',
             `<a href="/flow.html?flow=${f.flowId}" class="df-action-btn df-kebab-item"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-search"/></svg>Vezi flow</a>`,
             (!isCancelled ? dlActions : ''),
+            (!isCancelled ? origAction : ''),
             auditAction,
             (pdfReady) ? `<button onclick="_openEmailForFlow('${f.flowId}')" class="df-action-btn success df-kebab-item" title="Trimite pe email extern"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-mail"/></svg>Trimite</button>` : '',
             (pdfReady) ? `<button onclick="_openTransmitForFlow('${f.flowId}')" class="df-action-btn df-kebab-item" title="Transmite documentul în aplicație"><svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-send"/></svg>Transmite în aplicație</button>` : '',
@@ -1362,17 +1371,17 @@
             const atts = j?.attachments || [];
             const row = document.getElementById(`attRow_${f.flowId}`);
             if (!row || !atts.length) return;
-            const iconByMime = t => t.includes('pdf') ? '📄' : '🗜️';
             const isPreviewable = t => t === 'application/pdf' || (t || '').indexOf('image/') === 0;
             row.style.display = '';
             row.innerHTML = `<div style="font-size:.78rem;color:var(--muted);font-weight:600;margin-bottom:5px;">📎 Documente suport</div>` +
               atts.map(a => {
                 const dlUrl = `/flows/${encodeURIComponent(f.flowId)}/attachments/${a.id}`;
-                const previewBtn = isPreviewable(a.mimeType)
-                  ? `<button type="button" data-att-action="preview" data-preview-url="${esc(dlUrl)}?preview=1" data-filename="${esc(a.filename)}" data-mime="${esc(a.mimeType)}" style="background:none;border:none;padding:0;color:#b39dff;font-size:.78rem;font-weight:600;text-decoration:underline;cursor:pointer;">Previzualizează</button> ·`
-                  : '';
-                return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(124,92,255,.1);border-radius:6px;font-size:.78rem;margin-right:6px;margin-bottom:4px;border:1px solid rgba(124,92,255,.2);">
-                ${iconByMime(a.mimeType)} ${esc(a.filename)} <span style="color:var(--muted)">${(a.sizeBytes/1024).toFixed(0)}KB</span> ${previewBtn}<a href="${dlUrl}" download="${a.filename.replace(/"/g,'')}" style="color:#b39dff;text-decoration:none;">⬇</a></span>`;
+                return renderFileItem({
+                  filename: a.filename, sizeBytes: a.sizeBytes, mimeType: a.mimeType,
+                  canPreview: isPreviewable(a.mimeType),
+                  previewUrl: `${dlUrl}?preview=1`,
+                  downloadHref: dlUrl, downloadName: a.filename,
+                });
               }).join('');
             row.addEventListener('click', (ev) => {
               const btn = ev.target.closest('[data-att-action="preview"]');
@@ -2083,13 +2092,11 @@ async function signFromFluxuri(flowId) {
         const list = $('attachList');
         const hint = $('attachHint');
         hint.textContent = _attachFiles.length ? `${_attachFiles.length} fișier(e) selectat(e)` : 'Niciun fișier selectat';
-        list.innerHTML = _attachFiles.map((af, i) => `
-          <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(124,92,255,.1);border-radius:6px;font-size:.8rem;">
-            <span style="color:#b39dff;">📄</span>
-            <span style="flex:1;color:var(--sub);">${af.file.name}</span>
-            <span style="color:var(--muted);">${(af.file.size/1024).toFixed(0)} KB</span>
-            <button onclick="_removeAttach(${i})" class="df-action-btn icon-only sm" title="Elimină" aria-label="Elimină"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-x"/></svg></button>
-          </div>`).join('');
+        list.innerHTML = _attachFiles.map((af, i) => renderFileItem({
+          filename: af.file.name, sizeBytes: af.file.size,
+          canPreview: false, downloadHref: null,
+          canDelete: true, deleteOnclick: `_removeAttach(${i})`,
+        })).join('');
       }
       window._removeAttach = (i) => { _attachFiles.splice(i, 1); _renderAttachList(); };
 
@@ -2152,24 +2159,18 @@ async function signFromFluxuri(flowId) {
           for (const arr of slots) for (const a of arr) { if (a && a.id && !seen.has(a.id)) { seen.add(a.id); items.push(a); _formAttById[a.id] = a; } }
           if (!items.length) { box.style.display = 'none'; return; } // degradare grațioasă
 
-          const _esc = (window.df && window.df.esc) ? window.df.esc : (s => String(s == null ? '' : s));
           box.innerHTML =
             '<div style="font-weight:700;font-size:.82rem;color:var(--sub);margin-bottom:6px;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
               '<svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.518#ico-paperclip"/></svg>' +
               'Vor fi preluate din formular <span style="font-weight:400;color:var(--muted);">— ' + items.length + ' fișier(e), automat la lansare</span>' +
             '</div>' +
             '<div style="display:flex;flex-direction:column;gap:4px;">' +
-            items.map(a => {
-              const url = `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(a.id)}`;
-              const kb = a.size_bytes ? `${(a.size_bytes / 1024).toFixed(0)} KB` : '';
-              return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(124,92,255,.07);border:1px solid rgba(124,92,255,.18);border-radius:6px;font-size:.8rem;">
-                <span style="color:#b39dff;">📄</span>
-                <span style="flex:1;min-width:0;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(a.filename)}</span>
-                <span style="color:var(--muted);white-space:nowrap;">${kb}</span>
-                <button type="button" class="df-action-btn sm" data-att-action="preview" data-att-id="${_esc(a.id)}" title="Previzualizează">Previzualizează</button>
-                <a class="df-action-btn sm" href="${url}" target="_blank" rel="noopener" download>Descarcă</a>
-              </div>`;
-            }).join('') +
+            items.map(a => window.renderFileItem({
+              filename: a.filename, sizeBytes: a.size_bytes, mimeType: a.mime_type,
+              canPreview: true, previewAttId: a.id,
+              downloadHref: `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(a.id)}`,
+              downloadName: a.filename, canDelete: false,
+            })).join('') +
             '</div>';
           box.style.display = 'block';
 

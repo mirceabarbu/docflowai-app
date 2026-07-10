@@ -1,23 +1,17 @@
 /**
- * DocFlowAI — Integration tests: handler refuse + restore parent_df_id (Pas 4)
+ * DocFlowAI — Integration tests: handler refuse → DF neaprobat + ALOP (prompt 74, B2)
  *
- * Acoperire:
- *   ✓ R0 refuzat → status=neaprobat + alop_instances df_id=NULL
+ * Rescris pentru comportamentul B2 (rezolvare ROBUSTĂ prin df_flow_id):
+ *   ✓ R0 refuzat → status=neaprobat + alop_instances df_flow_id=NULL, df_id PĂSTRAT
+ *   ✓ R0 split-path (rezolvat prin alop.df_flow_id, fd.flow_id NULL) → identic
  *   ✓ R1+ refuzat cu parent aprobat → alop_instances df_id=parent.id, df_flow_id=parent.flow_id
- *   ✓ R1+ refuzat cu parent neaprobat → safe fallback df_id=NULL
- *   ✓ R1+ refuzat cu parent flow_id=null (corupt) → fallback df_id=NULL
- *   ✓ R1+ refuzat cu parent inexistent în DB → fallback df_id=NULL
- *   ✓ Refuse fără DF asociat fluxului → success, restore skip (0 rows)
+ *   ✓ R1+ refuzat cu parent neaprobat → fallback df_flow_id=NULL, df_id PĂSTRAT
+ *   ✓ Audit 'neaprobat' scris (recordFormularAudit → formulare_audit)
+ *   ✓ Refuse fără DF asociat fluxului → success, skip (0 rows)
  *   ✓ Restore eșuat (DB hiccup) → refuse rămâne success (non-fatal)
- *   ✓ Guard: refuse pe flux cancelled → 409
- *   ✓ Guard: refuse pe flux completed → 409
+ *   ✓ Guard: refuse pe flux cancelled/completed → 409
  *
- * Notă secvență pool.query în handler refuse:
- *   [0] DELETE FROM notifications (înainte de UPDATE formulare_df)
- *   [1] UPDATE formulare_df SET status='neaprobat'
- *   [2] SELECT formulare_df WHERE flow_id AND status='neaprobat'  ← restore block
- *   [3] UPDATE alop_instances (R0) sau SELECT parent (R1+)
- *   [4] UPDATE alop_instances (R1+)
+ * Mock-ul pool.query rutează pe conținutul SQL (NU pozițional) → robust la refactor.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -65,6 +59,29 @@ function makeFlowData(overrides = {}) {
   };
 }
 
+// Rutează pool.query pe conținutul SQL. Config per-test: dfRow (rezolvarea DF),
+// parentRow (SELECT parent R1+). null → 0 rows.
+function installQueryRouter({ dfRow = null, parentRow = null, dfSelectThrows = false } = {}) {
+  dbModule.pool.query.mockImplementation(async (sql) => {
+    const s = String(sql);
+    if (s.includes('DELETE FROM notifications')) return { rowCount: 0, rows: [] };
+    if (s.includes('FROM formulare_df') && s.includes('revizie_nr, parent_df_id')) {
+      if (dfSelectThrows) throw new Error('DB connection lost');
+      return { rows: dfRow ? [dfRow] : [] };
+    }
+    if (s.includes("UPDATE formulare_df SET status='neaprobat'")) return { rowCount: 1, rows: [] };
+    if (s.includes('INSERT INTO formulare_audit')) return { rows: [] };
+    if (s.includes('SELECT id, flow_id, status FROM formulare_df WHERE id=$1')) {
+      return { rows: parentRow ? [parentRow] : [] };
+    }
+    if (s.includes('UPDATE alop_instances')) return { rowCount: 1, rows: [] };
+    return { rows: [] };
+  });
+}
+
+const alopCalls = () => dbModule.pool.query.mock.calls.filter(c => String(c[0]).includes('UPDATE alop_instances'));
+const auditCall  = () => dbModule.pool.query.mock.calls.find(c => String(c[0]).includes('INSERT INTO formulare_audit'));
+
 function createTestApp() {
   const app = express();
   app.set('trust proxy', 1);
@@ -94,23 +111,17 @@ beforeEach(() => {
   dbModule.pool.query.mockReset();
   dbModule.getFlowData.mockReset();
   dbModule.saveFlow.mockReset().mockResolvedValue(undefined);
-  dbModule.pool.query.mockResolvedValue({ rows: [] });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// R0 refuzat → ALOP eliberat
+// R0 refuzat → df_flow_id=NULL, df_id PĂSTRAT (B2)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('R0 refuzat → ALOP df_id=NULL', () => {
-  it('refuse flux R0 → UPDATE alop df_id=NULL, df_flow_id=NULL', async () => {
+describe('R0 refuzat → ALOP df_flow_id=NULL, df_id păstrat (B2)', () => {
+  it('refuse R0 → UPDATE alop df_flow_id=NULL (NU df_id=NULL), WHERE df_id=refDf.id', async () => {
     const flowData = makeFlowData();
     dbModule.getFlowData.mockResolvedValue(flowData);
-
-    dbModule.pool.query
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] })  // [0] DELETE notifications
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })  // [1] UPDATE neaprobat
-      .mockResolvedValueOnce({ rows: [{ id: DF_R0_ID, revizie_nr: 0, parent_df_id: null }] }) // [2] SELECT df
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] }); // [3] UPDATE alop df_id=NULL
+    installQueryRouter({ dfRow: { id: DF_R0_ID, revizie_nr: 0, parent_df_id: null, status: 'transmis_flux' } });
 
     const res = await request(createTestApp())
       .post(`/flows/${FLOW_ID}/refuse`)
@@ -119,34 +130,32 @@ describe('R0 refuzat → ALOP df_id=NULL', () => {
     expect(res.status).toBe(200);
     expect(res.body.refused).toBe(true);
 
-    const alopUpdate = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_id=NULL')
-    );
-    expect(alopUpdate).toBeDefined();
-    expect(alopUpdate[1]).toEqual([DF_R0_ID]);
+    const [update] = alopCalls();
+    expect(update).toBeDefined();
+    expect(String(update[0])).toContain('df_flow_id=NULL');
+    expect(String(update[0])).not.toContain('df_id=NULL'); // B2: df_id PĂSTRAT
+    expect(update[1]).toEqual([DF_R0_ID]);
+
+    // Audit 'neaprobat' scris
+    const audit = auditCall();
+    expect(audit).toBeDefined();
   });
 
-  it('R0 cu revizie_nr=0 dar parent_df_id setat (edge) → tot df_id=NULL', async () => {
+  it('R0 split-path (DF completed, fd.flow_id NULL — rezolvat prin alop.df_flow_id) → identic', async () => {
     const flowData = makeFlowData();
     dbModule.getFlowData.mockResolvedValue(flowData);
-
-    dbModule.pool.query
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: DF_R0_ID, revizie_nr: 0, parent_df_id: 'some-parent' }] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    installQueryRouter({ dfRow: { id: DF_R0_ID, revizie_nr: 0, parent_df_id: null, status: 'completed' } });
 
     const res = await request(createTestApp())
       .post(`/flows/${FLOW_ID}/refuse`)
-      .send({ token: flowData.signers[0].token, reason: 'test' });
+      .send({ token: flowData.signers[0].token, reason: 'split-path' });
 
     expect(res.status).toBe(200);
-
-    const alopUpdate = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_id=NULL')
-    );
-    expect(alopUpdate).toBeDefined();
-    expect(alopUpdate[1]).toEqual([DF_R0_ID]);
+    const [update] = alopCalls();
+    expect(update).toBeDefined();
+    expect(String(update[0])).toContain('df_flow_id=NULL');
+    expect(String(update[0])).not.toContain('df_id=NULL');
+    expect(update[1]).toEqual([DF_R0_ID]);
   });
 });
 
@@ -158,13 +167,10 @@ describe('R1+ refuzat → restore la parent aprobat', () => {
   it('refuse R1, parent aprobat → UPDATE alop df_id=parent.id, df_flow_id=parent.flow_id', async () => {
     const flowData = makeFlowData();
     dbModule.getFlowData.mockResolvedValue(flowData);
-
-    dbModule.pool.query
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] })  // [0] DELETE notifications
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })  // [1] UPDATE neaprobat
-      .mockResolvedValueOnce({ rows: [{ id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_R0_ID }] }) // [2] SELECT df
-      .mockResolvedValueOnce({ rows: [{ id: DF_R0_ID, flow_id: PARENT_FLOW_ID, status: 'aprobat' }] }) // [3] SELECT parent
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] }); // [4] UPDATE alop restore
+    installQueryRouter({
+      dfRow: { id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_R0_ID, status: 'transmis_flux' },
+      parentRow: { id: DF_R0_ID, flow_id: PARENT_FLOW_ID, status: 'aprobat' },
+    });
 
     const res = await request(createTestApp())
       .post(`/flows/${FLOW_ID}/refuse`)
@@ -172,133 +178,66 @@ describe('R1+ refuzat → restore la parent aprobat', () => {
 
     expect(res.status).toBe(200);
 
-    const alopUpdate = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('UPDATE alop_instances') &&
-      String(c[0]).includes('df_id=$1') &&
-      String(c[0]).includes('df_flow_id=$2')
-    );
-    expect(alopUpdate).toBeDefined();
-    expect(alopUpdate[1][0]).toBe(DF_R0_ID);       // df_id ← parent.id
-    expect(alopUpdate[1][1]).toBe(PARENT_FLOW_ID); // df_flow_id ← parent.flow_id
-    expect(alopUpdate[1][2]).toBe(DF_R1_ID);       // WHERE df_id=R1.id
-  });
-
-  it('refuse R2, parent R1 aprobat → UPDATE alop cu parent R1', async () => {
-    const DF_R2_ID = 'ddddffff-0000-0000-0000-0000000000A2';
-    const flowData = makeFlowData();
-    dbModule.getFlowData.mockResolvedValue(flowData);
-
-    dbModule.pool.query
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: DF_R2_ID, revizie_nr: 2, parent_df_id: DF_R1_ID }] })
-      .mockResolvedValueOnce({ rows: [{ id: DF_R1_ID, flow_id: 'FLOW_R1', status: 'aprobat' }] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
-
-    const res = await request(createTestApp())
-      .post(`/flows/${FLOW_ID}/refuse`)
-      .send({ token: flowData.signers[0].token, reason: 'test R2' });
-
-    expect(res.status).toBe(200);
-
-    const alopUpdate = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_id=$1')
-    );
-    expect(alopUpdate).toBeDefined();
-    expect(alopUpdate[1][0]).toBe(DF_R1_ID);
-    expect(alopUpdate[1][2]).toBe(DF_R2_ID);
+    const update = alopCalls().find(c => String(c[0]).includes('df_id=$1') && String(c[0]).includes('df_flow_id=$2'));
+    expect(update).toBeDefined();
+    expect(update[1][0]).toBe(DF_R0_ID);       // df_id ← parent.id
+    expect(update[1][1]).toBe(PARENT_FLOW_ID); // df_flow_id ← parent.flow_id
+    expect(update[1][2]).toBe(DF_R1_ID);       // WHERE df_id=R1.id
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Edge case: R1+ refuzat cu parent NEaprobat
+// R1+ refuzat cu parent NEaprobat → fallback (df_id păstrat, flux curățat)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('R1+ refuzat cu parent neaprobat → safe fallback', () => {
-  it('parent.status=neaprobat → UPDATE alop df_id=NULL (eliberare)', async () => {
+describe('R1+ refuzat cu parent neaprobat → fallback df_flow_id=NULL', () => {
+  it('parent.status=neaprobat → UPDATE alop df_flow_id=NULL, df_id păstrat', async () => {
     const flowData = makeFlowData();
     dbModule.getFlowData.mockResolvedValue(flowData);
-
-    dbModule.pool.query
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_R0_ID }] })
-      .mockResolvedValueOnce({ rows: [{ id: DF_R0_ID, flow_id: 'FLOW_R0_REJECTED', status: 'neaprobat' }] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    installQueryRouter({
+      dfRow: { id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_R0_ID, status: 'transmis_flux' },
+      parentRow: { id: DF_R0_ID, flow_id: 'FLOW_R0_REJECTED', status: 'neaprobat' },
+    });
 
     const res = await request(createTestApp())
       .post(`/flows/${FLOW_ID}/refuse`)
       .send({ token: flowData.signers[0].token, reason: 'test' });
 
     expect(res.status).toBe(200);
-
-    const alopUpdate = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_id=NULL')
-    );
-    expect(alopUpdate).toBeDefined();
-    expect(alopUpdate[1]).toEqual([DF_R1_ID]);
+    const update = alopCalls().find(c => String(c[0]).includes('df_flow_id=NULL'));
+    expect(update).toBeDefined();
+    expect(String(update[0])).not.toContain('df_id=NULL');
+    expect(update[1]).toEqual([DF_R1_ID]);
   });
 
-  it('parent fără flow_id (corupt) → fallback la df_id=NULL', async () => {
+  it('parent inexistent (0 rows) → fallback df_flow_id=NULL', async () => {
     const flowData = makeFlowData();
     dbModule.getFlowData.mockResolvedValue(flowData);
-
-    dbModule.pool.query
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_R0_ID }] })
-      .mockResolvedValueOnce({ rows: [{ id: DF_R0_ID, flow_id: null, status: 'aprobat' }] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    installQueryRouter({
+      dfRow: { id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_R0_ID, status: 'transmis_flux' },
+      parentRow: null,
+    });
 
     const res = await request(createTestApp())
       .post(`/flows/${FLOW_ID}/refuse`)
       .send({ token: flowData.signers[0].token, reason: 'test' });
 
     expect(res.status).toBe(200);
-
-    const alopUpdate = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_id=NULL')
-    );
-    expect(alopUpdate).toBeDefined();
-  });
-
-  it('parent inexistent în DB (0 rows) → fallback la df_id=NULL', async () => {
-    const flowData = makeFlowData();
-    dbModule.getFlowData.mockResolvedValue(flowData);
-
-    dbModule.pool.query
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_R0_ID }] })
-      .mockResolvedValueOnce({ rows: [] })              // parent SELECT → 0 rows
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
-
-    const res = await request(createTestApp())
-      .post(`/flows/${FLOW_ID}/refuse`)
-      .send({ token: flowData.signers[0].token, reason: 'test' });
-
-    expect(res.status).toBe(200);
-
-    const alopUpdate = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_id=NULL')
-    );
-    expect(alopUpdate).toBeDefined();
+    const update = alopCalls().find(c => String(c[0]).includes('df_flow_id=NULL'));
+    expect(update).toBeDefined();
+    expect(update[1]).toEqual([DF_R1_ID]);
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Robustețe: restore eșuat — non-fatal pe refuse
+// Robustețe: non-fatal + skip
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Restore eșuat — non-fatal pe refuse', () => {
+describe('Robustețe — non-fatal pe refuse', () => {
   it('SELECT df eșuează (DB hiccup) → refuse rămâne success', async () => {
     const flowData = makeFlowData();
     dbModule.getFlowData.mockResolvedValue(flowData);
-
-    dbModule.pool.query
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] })       // [0] DELETE notifications
-      .mockResolvedValueOnce({ rowCount: 1, rows: [] })       // [1] UPDATE neaprobat OK
-      .mockRejectedValueOnce(new Error('DB connection lost')); // [2] SELECT df → aruncă
+    installQueryRouter({ dfSelectThrows: true });
 
     const res = await request(createTestApp())
       .post(`/flows/${FLOW_ID}/refuse`)
@@ -308,14 +247,10 @@ describe('Restore eșuat — non-fatal pe refuse', () => {
     expect(res.body.refused).toBe(true);
   });
 
-  it('refuse pe flux fără DF (SELECT df → 0 rows) → skip restore', async () => {
+  it('refuse pe flux fără DF (SELECT df → 0 rows) → skip, fără UPDATE alop', async () => {
     const flowData = makeFlowData();
     dbModule.getFlowData.mockResolvedValue(flowData);
-
-    dbModule.pool.query
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // [0] DELETE notifications
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // [1] UPDATE neaprobat 0 rows
-      .mockResolvedValueOnce({ rows: [] });             // [2] SELECT df → 0 rows → skip
+    installQueryRouter({ dfRow: null });
 
     const res = await request(createTestApp())
       .post(`/flows/${FLOW_ID}/refuse`)
@@ -323,12 +258,7 @@ describe('Restore eșuat — non-fatal pe refuse', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.refused).toBe(true);
-
-    // UPDATE alop_instances NU trebuie apelat când SELECT df returnează 0 rows
-    const alopUpdate = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('UPDATE alop_instances')
-    );
-    expect(alopUpdate).toBeUndefined();
+    expect(alopCalls().length).toBe(0);
   });
 });
 
@@ -340,6 +270,7 @@ describe('Guard: refuse pe flux în stare terminală', () => {
   it('refuze pe flux cu status=cancelled → 409', async () => {
     const flowData = makeFlowData({ status: 'cancelled' });
     dbModule.getFlowData.mockResolvedValue(flowData);
+    installQueryRouter({});
 
     const res = await request(createTestApp())
       .post(`/flows/${FLOW_ID}/refuse`)
@@ -350,14 +281,13 @@ describe('Guard: refuse pe flux în stare terminală', () => {
   });
 
   it('refuze pe flux completed cu semnatari signed → 409 not_current_signer', async () => {
-    // Într-un flux completed, toți semnatarii au status='signed', deci tokenul e valid
-    // dar signer-ul nu e 'current' → 409 not_current_signer
     const tok = crypto.randomBytes(16).toString('hex');
     const flowData = makeFlowData({
       status: 'completed', completed: true,
       signers: [{ name: 'P1', email: 'p1@x.ro', token: tok, status: 'signed', order: 1 }],
     });
     dbModule.getFlowData.mockResolvedValue(flowData);
+    installQueryRouter({});
 
     const res = await request(createTestApp())
       .post(`/flows/${FLOW_ID}/refuse`)

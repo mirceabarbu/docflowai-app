@@ -100,9 +100,10 @@ function addAtt(ev,lid,did){
     rd.onload=e=>{
       const idx=cur.length;cur.push({name:f.name,type:f.type,data:e.target.result});
       document.getElementById(did).value=JSON.stringify(cur);
-      const chip=document.createElement('span');chip.className='att-chip';
-      chip.innerHTML=`📎 ${f.name} <button onclick="remAtt(${idx},'${lid}','${did}',this)">✕</button>`;
-      list.appendChild(chip);
+      // v3.9.654 (faza 2b): chip nesalvat randat prin renderFileItem (unificat DF/ORD)
+      const holder=document.createElement('div');
+      holder.innerHTML=renderFileItem({filename:f.name,canPreview:false,downloadHref:null,canDelete:true,deleteOnclick:`remAtt(${idx},'${lid}','${did}',this)`});
+      list.appendChild(holder.firstElementChild);
       // v3.9.554 (B3): setarea programatică a input-ului ascuns nu emite 'input'/'change',
       // deci autosave-ul nu pornea — fișier atașat + navigare fără alt edit = pierdut.
       // Derivăm ft din did ('o-*' → ordnt, 'n-*' → notafd), consecvent cu remAttServer.
@@ -115,7 +116,7 @@ function addAtt(ev,lid,did){
 function remAtt(idx,lid,did,btn){
   const cur=JSON.parse(document.getElementById(did).value||'[]');
   cur.splice(idx,1);document.getElementById(did).value=JSON.stringify(cur);
-  btn.closest('.att-chip').remove();
+  btn.closest('.df-file-item')?.remove();
 }
 
 /* Dynamic rows */

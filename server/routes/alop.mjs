@@ -355,6 +355,7 @@ router.get('/api/alop', async (req, res) => {
                       AND fdf.deleted_at IS NULL
                       AND (fdf.data->>'completed') IS DISTINCT FROM 'true'
                       AND (fdf.data->>'status')    IS DISTINCT FROM 'cancelled'
+                      AND (fdf.data->>'status')    IS DISTINCT FROM 'refused'
                  THEN true ELSE false END
          FROM flows fdf WHERE fdf.id::text = COALESCE(df.flow_id, a.df_flow_id)) AS df_flow_active,
         (SELECT CASE WHEN (fdf.data->>'status')='completed' OR (fdf.data->>'completed')::boolean=true
@@ -567,6 +568,7 @@ router.get('/api/alop/:id', async (req, res) => {
                   AND f1.deleted_at IS NULL
                   AND (f1.data->>'completed') IS DISTINCT FROM 'true'
                   AND (f1.data->>'status')    IS DISTINCT FROM 'cancelled'
+                  AND (f1.data->>'status')    IS DISTINCT FROM 'refused'
              THEN true ELSE false END AS df_flow_active,
         CASE WHEN COALESCE(fo.flow_id, a.ord_flow_id) IS NOT NULL AND (
           f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true

@@ -251,4 +251,49 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
       diag?.(row);
     });
   }
+
+  // ─── Filtru status=transmis_flux — aliniat cu badge_status derivat (prompt 78) ─────────────
+  d('filtru status=transmis_flux prinde split-path (badge derivat), nu doar status brut', () => {
+    it('DF split-path (fd.status=completed, flux activ, badge=transmis_flux) → apare la filtru', async () => {
+      const flowId = await seedFlowX('flow-df-filter-splitpath', { status: 'pending' });
+      const id = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId });
+      const res = await request(app).get('/api/formulare/list?type=df&status=transmis_flux').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      const row = findRow(res.body, id);
+      expect(row).toBeTruthy();
+      expect(row.badge_status).toBe('transmis_flux');
+    });
+
+    it('DF completed fără flux → NU apare la filtru transmis_flux', async () => {
+      const id = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId: null });
+      const res = await request(app).get('/api/formulare/list?type=df&status=transmis_flux').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(findRow(res.body, id)).toBeFalsy();
+    });
+
+    it('DF status=transmis_flux brut (persistat) → apare la filtru', async () => {
+      const flowId = await seedFlowX('flow-df-filter-raw', { status: 'pending' });
+      const id = await seedDf({ orgId: 1, createdBy: 1, status: 'transmis_flux', flowId });
+      const res = await request(app).get('/api/formulare/list?type=df&status=transmis_flux').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(findRow(res.body, id)).toBeTruthy();
+    });
+
+    it('ORD split-path (fo.status=completed, flux activ, badge=transmis_flux) → apare la filtru', async () => {
+      const flowId = await seedFlowX('flow-ord-filter-splitpath', { status: 'pending' });
+      const id = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId });
+      const res = await request(app).get('/api/formulare/list?type=ord&status=transmis_flux').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      const row = findRow(res.body, id);
+      expect(row).toBeTruthy();
+      expect(row.badge_status).toBe('transmis_flux');
+    });
+
+    it('ORD completed fără flux → NU apare la filtru transmis_flux', async () => {
+      const id = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId: null });
+      const res = await request(app).get('/api/formulare/list?type=ord&status=transmis_flux').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(findRow(res.body, id)).toBeFalsy();
+    });
+  });
 });

@@ -75,7 +75,7 @@ function _alopStatusBadge(status, dfFlowId, a){
     'cancelled':   {icon:'ico-x-circle',        text:'Anulat',          color:'#ef4444'},
   };
   let s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
-  if(status==='angajare'&&dfFlowId) s={icon:'ico-pen-tool',text:'Pe flux — semnare',color:'#6366f1'};
+  if(status==='angajare' && a && a.df_flow_active) s={icon:'ico-pen-tool',text:'Pe flux — semnare',color:'#6366f1'};
   if(a && a.df_revizie_nr>0 && a.df_flow_active && !a.df_aprobat)
     s={icon:'ico-pen-tool', text:'Revizie pe flux', color:'#6366f1'};
   const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.475#${s.icon}"/></svg>`;
@@ -511,10 +511,10 @@ function renderAlopDetail(a,container){
      done:!!a.df_completed_at||isCompleted,
      active:a.status==='angajare',
      sub:(!a.df_id)?'Fără DF'
-        :(a.status==='angajare'&&a.df_flow_id)?`🔄 DF pe fluxul de semnare${_dfRevTxt}`
+        :(a.status==='angajare'&&a.df_flow_active)?`🔄 DF pe fluxul de semnare${_dfRevTxt}`
         :(a.df_revizie_nr>0 && a.df_flow_active && !a.df_aprobat)?`🔄 Revizia ${a.df_revizie_nr} pe flux — în curs · ultima aprobată: Revizia ${a.df_revizie_nr-1}`
         :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?`✅ DF aprobat${_dfRevTxt}`
-        :(a.status==='angajare'&&!a.df_flow_id)?`📝 DF în lucru${_dfRevTxt}`
+        :(a.status==='angajare'&&!a.df_flow_active)?`📝 DF în lucru${_dfRevTxt}`
         :`DF: ${a.df_nr||a.df_id.slice(0,8)}${_dfRevTxt}`},
     {label:'Lichidare',  icon:'✔️',color:'#f59e0b',
      done:(!!a.lichidare_confirmed_at&&a.status!=='lichidare')||isCompleted,

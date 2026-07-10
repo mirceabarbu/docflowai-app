@@ -563,3 +563,17 @@
 
 /* Dropdown nativ dark pe tot proiectul; excepție: câmpurile-hârtie din documente (.di) rămân light */
 select:not(.di){ color-scheme: dark; }
+
+/* file-item — helper partajat renderFileItem (public/js/shared/file-item.js), faza 1 */
+.df-file-item{display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.2);border-radius:8px;font-size:.82rem;}
+.df-file-item__ico{width:15px;height:15px;color:var(--df-text-3);flex:none;}
+.df-file-item__name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--df-text);}
+.df-file-item__size{color:var(--df-text-3);font-size:.76rem;flex:none;}
+.df-file-item__actions{display:inline-flex;align-items:center;gap:6px;flex:none;}
+.df-file-item__btn{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;border:1px solid transparent;background:none;color:#b39dff;font-weight:600;font-size:.76rem;cursor:pointer;text-decoration:none;}
+.df-file-item__btn:hover{background:rgba(124,92,255,.14);}
+.df-file-item__btn .df-ic{width:13px;height:13px;}
+.df-file-item + .df-file-item{margin-top:6px;}
+.df-file-item--err{background:var(--df-danger-bg);border-color:var(--df-danger-bd);}
+.df-file-item__btn--danger{color:var(--df-danger);}
+.df-file-item__btn--danger:hover{background:var(--df-danger-bg);}
