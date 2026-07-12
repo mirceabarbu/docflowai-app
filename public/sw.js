@@ -5,7 +5,10 @@
  * - Offline fallback pentru HTML pages
  */
 
-const CACHE_VERSION = 'docflowai-v283';
+// SEC-P0.1: bump obligatoriu — handler-ul `activate` șterge toate cache-urile
+// `docflowai-*` diferite de CACHE_STATIC curent, deci acest bump purjează automat
+// răspunsurile API autentificate cache-uite de versiunile anterioare.
+const CACHE_VERSION = 'docflowai-v284';
 const CACHE_STATIC = `${CACHE_VERSION}-static`;
 
 // Assets de pre-cacheuit la install
@@ -64,10 +67,12 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;
   if (e.request.method !== 'GET') return;
 
-  // API calls → Network-first (cu fallback la cache dacă offline)
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/') ||
-      url.pathname.startsWith('/flows/') || url.pathname.startsWith('/admin/')) {
-    e.respondWith(networkFirst(e.request));
+  // SEC-P0.1: rutele autentificate NU intră NICIODATĂ în Cache Storage.
+  // Răspunsurile conțin documente DF/ORD și date bugetare — cache-uirea lor le lăsa
+  // accesibile în browser DUPĂ logout (calculatoare partajate în primării).
+  // Strategie: NETWORK-ONLY. Fără caches.match(), fără cache.put(). Offline ⇒ 503.
+  if (isAuthenticatedRoute(url.pathname)) {
+    e.respondWith(networkOnly(e.request));
     return;
   }
 
@@ -115,20 +120,23 @@ async function staleWhileRevalidate(request) {
   return cached || networkFetch;
 }
 
-async function networkFirst(request) {
+// SEC-P0.1: prefixele care servesc date autentificate. Orice rută care se potrivește
+// aici este NETWORK-ONLY — nu se citește și nu se scrie NIMIC în Cache Storage.
+const AUTHENTICATED_PREFIXES = ['/api/', '/auth/', '/flows/', '/admin/'];
+
+function isAuthenticatedRoute(pathname) {
+  return AUTHENTICATED_PREFIXES.some(p => pathname.startsWith(p));
+}
+
+// Network-only: fără caches.match(), fără cache.put(). Offline ⇒ 503 explicit.
+async function networkOnly(request) {
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(CACHE_STATIC);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch(e) {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    return new Response(JSON.stringify({ error: 'offline', message: 'Nu există conexiune la internet.' }), {
-      status: 503, headers: { 'Content-Type': 'application/json' }
-    });
+    return await fetch(request);
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: 'offline', message: 'Nu există conexiune la internet.' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }
 

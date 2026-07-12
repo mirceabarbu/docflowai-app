@@ -491,6 +491,7 @@ import { emailYourTurn, emailGeneric } from './emailTemplates.mjs';
 import { logger, redactUrl } from './middleware/logger.mjs';
 import { detectContentYs as _detectContentYs, findLowestUsableGap } from './utils/pdf-content-detect.mjs';
 import { pdfLooksSigned } from './utils/pdf-signed-placement.mjs';
+import { mountCors, envLeaksLandingOrigin, LANDING_ORIGINS } from './utils/cors-config.mjs';
 import { incCounter, setGauge, renderMetrics } from './middleware/metrics.mjs';
 
 let PDFLib = null;
@@ -596,17 +597,16 @@ app.use((req, res, next) => {
 // FIX Q-01: fallback false în loc de true — blochează origini necunoscute.
 //           Dacă nici CORS_ORIGIN nici PUBLIC_BASE_URL nu sunt setate în producție,
 //           se loghează WARN (nu exit — Railway poate restarta înainte de env inject).
-const corsOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-  : (process.env.PUBLIC_BASE_URL ? [process.env.PUBLIC_BASE_URL.replace(/\/$/, '')] : false);
-// Adaugam intotdeauna docflowai.ro pentru formularul de contact de pe landing
-const corsOriginsWithLanding = Array.isArray(corsOrigins)
-  ? [...new Set([...corsOrigins, 'https://docflowai.ro', 'https://www.docflowai.ro'])]
-  : corsOrigins;
+// SEC-P0.4: CORS credentialed EXCLUSIV pentru originile aplicației. Landing-ul primește
+// CORS dedicat, fără credențiale, doar pe /api/contact (vezi utils/cors-config.mjs).
+if (envLeaksLandingOrigin()) {
+  logger.warn({ landing: LANDING_ORIGINS },
+    'SEC-P0.4: originile landing-ului apar în CORS_ORIGIN/PUBLIC_BASE_URL și au fost ELIMINATE din lista credentialed. Curăță variabila de mediu în Railway.');
+}
+const { appOrigins: corsOrigins } = mountCors(app);
 if (corsOrigins === false) {
   logger.warn('CORS_ORIGIN și PUBLIC_BASE_URL lipsesc — CORS blocat pentru toate originile externe. Setați cel puțin PUBLIC_BASE_URL.');
 }
-app.use(cors({ origin: corsOriginsWithLanding, credentials: true }));
 
 // SEC-02: rawBody capture pentru HMAC real pe /signing-callback
 // Trebuie să ruleze ÎNAINTE de express.json(), altfel body e deja parsat și bytes originali pierduți.

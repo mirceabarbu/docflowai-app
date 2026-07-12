@@ -330,6 +330,9 @@ describe('POST /flows — validare input', () => {
   });
 
   it('200 — creare reușită, răspuns corect', async () => {
+    // SEC-P0.3: createFlow face lookup FAIL-CLOSED după actor.userId (nu email, fără fallback).
+    // Rândul users trebuie să existe și org_id-ul să coincidă cu orgId din JWT (1).
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ id: 1, org_id: 1, nume: 'Ion Popescu' }] });
     const app = createTestApp();
     const res = await request(app).post('/flows')
       .set('Cookie', `auth_token=${makeToken()}`)
@@ -348,6 +351,8 @@ describe('POST /flows — validare input', () => {
   });
 
   it('200 — inițiatorul este și semnatar → signerToken inclus', async () => {
+    // SEC-P0.3: idem — rând users aliniat cu orgId din JWT (1).
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ id: 1, org_id: 1, nume: 'Ion Popescu' }] });
     const app = createTestApp();
     const res = await request(app).post('/flows')
       .set('Cookie', `auth_token=${makeToken()}`)
