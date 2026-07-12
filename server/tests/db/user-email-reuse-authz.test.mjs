@@ -53,12 +53,15 @@ async function seed() {
   const deleted = (await pool.query(
     `INSERT INTO users(email,password_hash,nume,functie,institutie,compartiment,role,org_id,token_version,deleted_at)
      VALUES($1,$2,'Cont Vechi','Inspector vechi','Instituția A','A','org_admin',$3,1,NOW()) RETURNING id`,
-    [SHARED_EMAIL, passwordHash, orgA]
+    [SHARED_EMAIL.toUpperCase(), passwordHash, orgA]
   )).rows[0].id;
+  // Contul ACTIV trebuie sa aiba email-ul stocat exact lowercase — /auth/login (auth.mjs:54)
+  // interogheaza mereu cu email.trim().toLowerCase(), la fel ca orice cale reala de creare cont.
+  // Varianta uppercase ramane pe contul istoric (deleted), pastrand scenariul de reuse case-insensitive.
   const active = (await pool.query(
     `INSERT INTO users(email,password_hash,nume,functie,institutie,compartiment,role,org_id,token_version)
      VALUES($1,$2,'Cont Activ','Șef Serviciu','Instituția B','B','org_admin',$3,1) RETURNING id`,
-    [SHARED_EMAIL.toUpperCase(), passwordHash, orgB]
+    [SHARED_EMAIL, passwordHash, orgB]
   )).rows[0].id;
   const targetA = (await pool.query(
     `INSERT INTO users(email,password_hash,nume,role,org_id,institutie,token_version) VALUES('target-a@example.ro','x','Target A','user',$1,'Instituția A',1) RETURNING id`, [orgA]
