@@ -23,7 +23,14 @@ function hideAlert() { $('alertBox').style.display = 'none'; }
 
 async function _apiFetch(url, opts = {}) {
   const r = await fetch(url, { credentials: 'include', ...opts });
-  if (r.status === 401) { location.href = '/login.html'; throw new Error('401'); }
+  // SEC-88.3: bulk-signer.html nu încarcă notif-widget.js, deci nu beneficiază de handler-ul
+  // global. URL canonic de login în toată aplicația: /login (NU /login.html). Plus ?next=,
+  // ca utilizatorul să se întoarcă exact aici după reautentificare.
+  if (r.status === 401) {
+    try { localStorage.removeItem('docflow_user'); } catch (_) {}
+    location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+    throw new Error('401');
+  }
   return r;
 }
 

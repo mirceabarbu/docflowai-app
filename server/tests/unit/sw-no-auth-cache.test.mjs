@@ -8,8 +8,8 @@ const SW_PATH = resolve(__dirname, '../../../public/sw.js');
 const SW = readFileSync(SW_PATH, 'utf8');
 
 describe('SEC-P0.1 — service worker network-only pe rute autentificate', () => {
-  it('CACHE_VERSION este docflowai-v284', () => {
-    expect(SW).toContain("const CACHE_VERSION = 'docflowai-v284';");
+  it('CACHE_VERSION este docflowai-v285', () => {
+    expect(SW).toContain("const CACHE_VERSION = 'docflowai-v285';");
   });
 
   it('nu mai există funcția networkFirst( (înlocuită cu networkOnly)', () => {

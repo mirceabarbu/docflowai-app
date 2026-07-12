@@ -76,7 +76,13 @@
     try {
       const r = await fetch(`/api/trasabilitate/${type}/${encodeURIComponent(id)}`,
                             { credentials: 'include' });
-      if (r.status === 401) { closeTrasabilitate(); location.href = '/'; return; }
+      // SEC-88.3: URL canonic de login (nu homepage), cu ?next= pentru revenire.
+      if (r.status === 401) {
+        closeTrasabilitate();
+        try { localStorage.removeItem('docflow_user'); } catch (_) {}
+        location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+        return;
+      }
       if (r.status === 404) { _showError('Document negăsit (poate a fost șters între timp).'); return; }
       if (!r.ok)            throw new Error('HTTP ' + r.status);
       const data = await r.json();
