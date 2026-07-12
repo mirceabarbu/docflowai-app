@@ -120,7 +120,32 @@
         set('dashKpiAlopActive', a.alop_active);
         setRon('dashKpiAlopAngajat', a.valoare_angajata_an);
         setRon('dashKpiAlopPlatit', a.valoare_platita_an);
-        set('dashKpiAlopFinal', a.alop_finalizate_an);
+        // Rata de execuție = plătit / angajat (an curent).
+        // FĂRĂ plafonare: o rată >100% înseamnă că datele nu se leagă (plăți peste creditele
+        // bugetare angajate) — e exact genul de anomalie pe care directorul economic TREBUIE
+        // s-o vadă, nu s-o primească ascunsă sub un „100%".
+        // Angajat = 0 ⇒ „—", NU „0%". Sunt lucruri diferite: „n-am plătit nimic" vs „n-am angajat nimic".
+        // NB: `set()` face `Number(val).toLocaleString()` — ar transforma „46,0%" în NaN → „—".
+        // Aici valorile sunt string-uri (procent + subtitlu), deci scriem textContent direct.
+        const _ang = Number(a.valoare_angajata_an) || 0;
+        const _plt = Number(a.valoare_platita_an)  || 0;
+        const _fin = Number(a.alop_finalizate_an)  || 0;
+        const _rataEl = document.getElementById('dashKpiAlopRata');
+        if (_rataEl) {
+          if (_ang > 0) {
+            const _rata = (_plt / _ang) * 100;
+            _rataEl.textContent = _rata.toLocaleString('ro-RO', {
+              minimumFractionDigits: 1, maximumFractionDigits: 1,
+            }) + '%';
+          } else {
+            _rataEl.textContent = '—';
+          }
+        }
+        const _rataSubEl = document.getElementById('dashKpiAlopRataSub');
+        if (_rataSubEl) {
+          _rataSubEl.textContent =
+            'plătit / angajat · ' + _fin + (_fin === 1 ? ' ALOP finalizat' : ' ALOP finalizate');
+        }
       }
     } catch (e) {
       console.warn('[loadDashboard] failed:', e);

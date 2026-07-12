@@ -49,33 +49,35 @@ router.get('/users', async (req, res) => {
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
   const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   try {
-    const institutie = (actor.institutie || '').trim();
-
-    let query, params;
-    if (actor.role !== 'admin') {
-      if (!actor.org_id) {
-        return res.status(409).json({ error: 'user_without_org', message: 'Contul nu este asociat unei organizații.' });
-      }
-      if (institutie) {
-        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 AND institutie=$2 AND deleted_at IS NULL ORDER BY nume ASC';
-        params = [actor.org_id, institutie];
-      } else {
-        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 AND deleted_at IS NULL ORDER BY nume ASC';
-        params = [actor.org_id];
-      }
-    } else if (institutie) {
-      query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE institutie=$1 AND deleted_at IS NULL ORDER BY nume ASC';
-      params = [institutie];
-    } else {
-      if (actor.org_id) {
-        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 AND deleted_at IS NULL ORDER BY nume ASC';
-        params = [actor.org_id];
-      } else {
-        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE deleted_at IS NULL ORDER BY nume ASC';
-        params = [];
-      }
+    // ── SEC-90: izolare de tenant pe org_id, NU pe `institutie` ────────────────────────
+    // Anterior:
+    //   1) `WHERE institutie = $1` (ramura admin) — `institutie` e TEXT LIBER. Două organizații
+    //      care scriu identic acest câmp își vedeau RECIPROC utilizatorii. Cu o singură primărie
+    //      nu se declanșa; la a doua, da.
+    //   2) Fallback fără `institutie` și fără `org_id` ⇒ `SELECT ... FROM users` FĂRĂ NICIUN
+    //      FILTRU — adică TOȚI utilizatorii din ÎNTREAGA bază. Fail-open. Eliminat.
+    //
+    // NU folosim `actorOrgFilter()`: acela e pentru paginile de ADMINISTRARE (unde super-adminul
+    // trebuie să vadă tot). Aici construim lista de SEMNATARI ai unui flux, iar un flux aparține
+    // unei singure primării. Se scopează pe organizație pentru TOATĂ lumea, inclusiv `admin`.
+    const orgId = actor.org_id || null;
+    if (!orgId) {
+      logger.warn({ userId: actor.id }, 'GET /users: actor fără organizație — fail-closed (listă goală)');
+      return res.json([]);   // fail-closed: listă GOALĂ, nu „toți utilizatorii"
     }
-    const { rows } = await pool.query(query, params);
+
+    // Contul de super-admin al platformei (`role='admin'`) NU e un semnatar — nu apare în
+    // dropdown. `admin` e rolul de PLATFORMĂ (vezi allowedRoles mai jos); personalul primăriei
+    // are `org_admin` sau `user` și rămâne în listă.
+    const { rows } = await pool.query(
+      `SELECT id, email, nume, functie, institutie, compartiment, org_id
+         FROM users
+        WHERE org_id = $1
+          AND deleted_at IS NULL
+          AND role <> 'admin'
+        ORDER BY nume ASC`,
+      [orgId]
+    );
 
     // BLOC 4.1: îmbogățește fiecare user cu info concediu/delegare
     const userIds = rows.map(u => u.id).filter(Boolean);
