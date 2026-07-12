@@ -23,7 +23,7 @@ const router = Router();
 router.get('/api/templates', async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   try {
     const orgId = actor.org_id || null;
     // FIX v3.2.3: filtrare pe org_id pentru sabloane partajate (nu doar pe institutie text)
@@ -40,7 +40,7 @@ router.get('/api/templates', async (req, res) => {
 router.post('/api/templates', async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   const { name, signers, shared } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
   if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });

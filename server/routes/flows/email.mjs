@@ -47,7 +47,7 @@ import { resolveActorOr } from '../../services/actor-identity.mjs';
 router.post('/flows/:flowId/send-email', async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   try {
     const { flowId } = req.params;
     let { to, subject, bodyText, extraAttachments = [], includeTrustReport = false } = req.body || {};

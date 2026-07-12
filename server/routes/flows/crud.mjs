@@ -107,7 +107,7 @@ const createFlow = async (req, res) => {
 
     // Auth — după validarea de bază (endpoint semi-public: validarea rulează independent de auth)
     const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-    const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+    const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
 
     // SEC v3.9.609: identitatea "Întocmit" NU poate fi impersonată — se derivă din actorul
     // autentificat, nu din ce trimite clientul. Validarea de format de mai sus (400 pe body

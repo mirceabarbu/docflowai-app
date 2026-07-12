@@ -500,6 +500,7 @@ try { PDFLib = await import('pdf-lib'); } catch(e) { logger.warn({ err: e }, 'pd
 import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, requireDb, markDbReady, markDbFailed, writeAuditEvent } from './db/index.mjs';
 import { runMigrations as runMigrationsV4 } from './db/migrate.mjs';
 import { makeHealthRouter } from './routes/health.mjs';
+import { sessionGuard } from './middleware/session-guard.mjs';
 import supplierVerifyRouter   from './routes/supplier-verify.mjs';
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml, injectTokenVersionChecker } from './middleware/auth.mjs';
 
@@ -795,6 +796,13 @@ app.use(makeHealthRouter({
   getReady: () => DB_READY,
   getLastError: () => DB_LAST_ERROR,
 }));
+
+// SEC-88: revocare globală de sesiune. Montată DUPĂ express.static și healthRouter (assets,
+// /health și /readyz nu trec prin gardă), ÎNAINTE de toate routerele de aplicație — inclusiv
+// rutele inline /admin/reminder-status și /admin/health de mai jos.
+// Păzește /api/, /flows/, /admin/ — NU /auth/ (altfel un utilizator revocat cu cookie stale
+// n-ar mai putea face niciodată login). /metrics nu e în prefixele păzite.
+app.use(sessionGuard());
 
 // ── GET /admin/reminder-status — status job reminder si configuratie ────────
 app.get('/admin/reminder-status', async (req, res) => {

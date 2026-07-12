@@ -26,7 +26,7 @@ function sameNullableId(left, right) {
  *   | { ok:false, status:number, error:string, message:string }
  * >}
  */
-export async function resolveActor(actor) {
+export async function resolveActor(actor, req = null) {
   if (!actor?.userId) {
     logger.warn({ email: actor?.email }, 'resolveActor: JWT fără userId — fail-closed');
     return {
@@ -35,6 +35,13 @@ export async function resolveActor(actor) {
       error: 'session_identity_invalid',
       message: 'Sesiunea nu mai este validă. Reautentifică-te.',
     };
+  }
+
+  // SEC-88: dacă sessionGuard a rulat deja pe această cerere, rândul e validat și proaspăt
+  // (fără cache — a fost citit în acest request). Îl refolosim: zero query suplimentar.
+  // Garda a verificat DEJA deleted_at, token_version, rol și org — nu le reverificăm.
+  if (req?._actorRow && String(req._actorRow.id) === String(actor.userId)) {
+    return { ok: true, user: req._actorRow };
   }
 
   const jwtTv = requiredFiniteNumber(actor.tv);
@@ -134,8 +141,8 @@ export async function resolveActor(actor) {
   return { ok: true, user: row };
 }
 
-export async function resolveActorOr(res, actor) {
-  const result = await resolveActor(actor);
+export async function resolveActorOr(res, actor, req = null) {
+  const result = await resolveActor(actor, req);
   if (!result.ok) {
     res.status(result.status).json({ error: result.error, message: result.message });
     return null;

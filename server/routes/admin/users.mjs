@@ -47,7 +47,7 @@ function sameOrgId(left, right) {
 router.get('/users', async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   try {
     const institutie = (actor.institutie || '').trim();
 
@@ -124,7 +124,7 @@ router.get('/api/org/profile', async (req, res) => {
 router.get('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const user = await resolveActorOr(res, tokenActor); if (!user) return;
+  const user = await resolveActorOr(res, tokenActor, req); if (!user) return;
   if (!isAdminOrOrgAdmin(user)) return res.status(403).json({ error: 'forbidden' });
   try {
     const orgId = user.org_id || null;
@@ -152,7 +152,7 @@ router.get('/admin/users', async (req, res) => {
 router.post('/admin/users', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
 
   const {
@@ -884,7 +884,7 @@ async function _syncDelegationRecord({ targetUserId, leave_start, leave_end, del
 router.put('/api/users/me/leave', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   try {
     const targetUserId = actor.id;
 
@@ -925,7 +925,7 @@ router.put('/api/users/me/leave', csrfMiddleware, async (req, res) => {
 router.delete('/api/users/me/leave', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   try {
     await clearUserLeave(actor.id);
     invalidateOrgUserCache?.();
@@ -946,7 +946,7 @@ router.delete('/api/users/me/leave', csrfMiddleware, async (req, res) => {
 router.put('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   if (actor.role !== 'admin' && actor.role !== 'org_admin') {
     return res.status(403).json({ error: 'admin_only' });
   }
@@ -1005,7 +1005,7 @@ router.put('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
 router.delete('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
   const tokenActor = requireAuth(req, res); if (!tokenActor) return;
-  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   if (actor.role !== 'admin' && actor.role !== 'org_admin') {
     return res.status(403).json({ error: 'admin_only' });
   }
