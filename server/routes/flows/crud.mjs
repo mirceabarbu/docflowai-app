@@ -831,10 +831,21 @@ router.get('/my-flows', async (req, res) => {
 // ── GET /my-flows/:flowId/download ─────────────────────────────────────────
 router.get('/my-flows/:flowId/download', async (req, res) => {
   if (requireDb(res)) return;
-  const qToken = req.query.token;
-  let actor = null;
-  if (qToken) { try { actor = jwt.verify(qToken, JWT_SECRET); } catch(e) {} }
-  if (!actor) actor = requireAuth(req, res);
+  // SEC-88.2: suportul pentru `?token=<JWT de sesiune>` a fost ELIMINAT.
+  //
+  // Era o ocolire completă a autentificării: `sessionGuard` citește doar cookie-ul auth_token
+  // și `Authorization: Bearer` — NU query string-ul. Un cont dezactivat / un admin retrogradat /
+  // o parolă resetată își mutau propriul JWT din cookie în URL și treceau pe lângă TOATE
+  // verificările de revocare (token_version, deleted_at, rol, org) din prompturile 88 și 88.1.
+  //
+  // În plus, un JWT de sesiune într-un query string ajunge în istoricul browserului, în log-urile
+  // de acces ale serverului și ale proxy-ului, în header-ul Referer și — dacă linkul e trimis
+  // prin email — în cutiile poștale ale destinatarilor.
+  //
+  // Verificat: NIMIC din frontend, din template-urile de email sau din server nu construia
+  // vreodată acest link. Era cod mort cu o gaură de securitate în el. Autentificarea se face
+  // exclusiv prin cookie / Bearer, ca pe orice altă rută.
+  const actor = requireAuth(req, res);
   if (!actor) return;
   try {
     // v3.9.502 (A-2 P0): folosim getFlowData() care rehidratează signedPdfB64
