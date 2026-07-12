@@ -28,10 +28,31 @@ import { JWT_SECRET, AUTH_COOKIE } from './auth.mjs';
 import { pool, DB_READY } from '../db/index.mjs';
 import { logger } from './logger.mjs';
 
-// Aceleași prefixe declarate „autentificate" în public/sw.js (promptul 86), MINUS /auth/.
-export const GUARDED_PREFIXES = Object.freeze(['/api/', '/flows/', '/admin/']);
+// Prefixele autentificate. Bază: cele din public/sw.js (promptul 86), MINUS /auth/.
+//
+// SEC-88.1: `/bulk-signing/` și `/my-flows` NU se potriveau cu niciun prefix, deși sunt rute
+// autentificate. Capcana: structura de directoare NU reflectă prefixul din URL —
+// `server/routes/flows/bulk-signing.mjs` e montat prin `router.use('/', bulkRouter)` în
+// `flows/index.mjs:34`, iar `flowsRouter` la rândul lui prin `app.use('/', flowsRouter)`.
+// ⇒ calea finală e `/bulk-signing/initiate`, NU `/flows/bulk-signing/initiate`.
+// `/bulk-signing/*` e o SUPRAFAȚĂ DE SEMNARE — un cont revocat putea porni semnare în masă.
+export const GUARDED_PREFIXES = Object.freeze([
+  '/api/',
+  '/flows/',
+  '/admin/',
+  '/bulk-signing/',
+  '/my-flows',          // acoperă /my-flows ȘI /my-flows/:flowId/download
+]);
+
+// Căi EXACTE (fără slash final) care nu se potrivesc cu niciun prefix de mai sus.
+// `POST /flows` are calea exact `/flows` — `startsWith('/flows/')` NU o prinde.
+export const GUARDED_EXACT = Object.freeze([
+  '/flows',
+  '/users',
+]);
 
 export function isGuardedPath(pathname) {
+  if (GUARDED_EXACT.includes(pathname)) return true;
   return GUARDED_PREFIXES.some(p => pathname.startsWith(p));
 }
 

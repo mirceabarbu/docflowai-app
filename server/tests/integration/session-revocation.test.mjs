@@ -19,7 +19,7 @@ import path from 'path';
 
 // ── Mock DB controlabil (hoisted) ─────────────────────────────────────────────
 const H = vi.hoisted(() => {
-  const self = { usersRow: null, dbReady: true, calls: [] };
+  const self = { usersRow: null, dbReady: true, calls: [], bulkSessionsCreated: 0 };
   self.query = async (sql, params) => {
     self.calls.push({ sql, params });
     if (/FROM\s+users/i.test(sql)) return { rows: self.usersRow ? [self.usersRow] : [] };
@@ -64,6 +64,15 @@ function buildApp() {
   app.post('/flows/:id/upload-signed-pdf', (req, res) => res.json({ ok: true, reached: 'flows' }));
   app.get('/api/alop/:id', (req, res) => res.json({ ok: true, reached: 'alop' }));
   app.post('/flows/:id/initiate-cloud-signing', (req, res) => res.json({ ok: true, reached: 'signing' }));
+  // SEC-88.1: rutele scăpate de startsWith — montate la calea lor FINALĂ reală.
+  // Contorul de „sesiune creată" demonstrează că garda oprește ÎNAINTE de rută.
+  app.post('/bulk-signing/initiate', (req, res) => { H.bulkSessionsCreated++; res.json({ ok: true, reached: 'bulk' }); });
+  app.get('/bulk-signing/:sessionId/status', (req, res) => res.json({ ok: true, reached: 'bulk-status' }));
+  app.get('/bulk-signing/:sessionId/poll', (req, res) => res.json({ ok: true, reached: 'bulk-poll' }));
+  app.get('/my-flows', (req, res) => res.json({ ok: true, reached: 'my-flows', flows: [{ id: 1 }] }));
+  app.get('/my-flows/:flowId/download', (req, res) => res.json({ ok: true, reached: 'download', pdf: 'PDF' }));
+  app.post('/flows', (req, res) => res.json({ ok: true, reached: 'create-flow' }));
+  app.get('/users', (req, res) => res.json({ ok: true, reached: 'users' }));
   app.use(authRouter);
   app.use(templatesRouter);
   return app;
@@ -78,7 +87,7 @@ const activeRow = (o = {}) => ({
 });
 const usersCalls = () => H.calls.filter(c => /FROM\s+users/i.test(c.sql)).length;
 
-beforeEach(() => { H.calls.length = 0; H.dbReady = true; H.usersRow = null; });
+beforeEach(() => { H.calls.length = 0; H.dbReady = true; H.usersRow = null; H.bulkSessionsCreated = 0; });
 
 describe('SEC-88 — cont dezactivat blochează suprafețele necoperite de #87', () => {
   it('POST /flows/:id/upload-signed-pdf (semnare local) → 401 session_revoked', async () => {
@@ -151,6 +160,89 @@ describe('SEC-88 — endpoint-uri nepăzite nu ating users', () => {
     expect(r.status).toBe(200);
     expect(r.text).toBe('hello');
     expect(usersCalls()).toBe(0);
+  });
+});
+
+describe('SEC-88.1 — rute scăpate de startsWith: /bulk-signing/*, /my-flows/*, exacte /flows,/users', () => {
+  it('⭐ POST /bulk-signing/initiate cont revocat → 401 session_revoked, NICIO sesiune de semnare creată', async () => {
+    H.usersRow = null; // deleted_at ⇒ rows:[]
+    const r = await request(app).post('/bulk-signing/initiate').set('Cookie', cookie(activePayload())).send({});
+    expect(r.status).toBe(401);
+    expect(r.body).toMatchObject({ error: 'session_revoked' });
+    expect(H.bulkSessionsCreated).toBe(0); // ruta nu a fost atinsă
+  });
+
+  it('GET /bulk-signing/:id/status cont revocat → 401', async () => {
+    H.usersRow = null;
+    const r = await request(app).get('/bulk-signing/abc/status').set('Cookie', cookie(activePayload()));
+    expect(r.status).toBe(401);
+    expect(r.body).toMatchObject({ error: 'session_revoked' });
+  });
+
+  it('GET /bulk-signing/:id/poll cont revocat → 401', async () => {
+    H.usersRow = null;
+    const r = await request(app).get('/bulk-signing/abc/poll').set('Cookie', cookie(activePayload()));
+    expect(r.status).toBe(401);
+    expect(r.body).toMatchObject({ error: 'session_revoked' });
+  });
+
+  it('GET /my-flows cont revocat → 401, fără listă de fluxuri', async () => {
+    H.usersRow = null;
+    const r = await request(app).get('/my-flows').set('Cookie', cookie(activePayload()));
+    expect(r.status).toBe(401);
+    expect(r.body).toMatchObject({ error: 'session_revoked' });
+    expect(r.body.flows).toBeUndefined();
+  });
+
+  it('GET /my-flows/:flowId/download cont revocat CU cookie → 401, fără PDF', async () => {
+    H.usersRow = null;
+    const r = await request(app).get('/my-flows/42/download').set('Cookie', cookie(activePayload()));
+    expect(r.status).toBe(401);
+    expect(r.body).toMatchObject({ error: 'session_revoked' });
+    expect(r.body.pdf).toBeUndefined();
+  });
+
+  it('POST /flows (cale exactă) cont revocat → 401 via GUARDED_EXACT', async () => {
+    H.usersRow = null;
+    const r = await request(app).post('/flows').set('Cookie', cookie(activePayload())).send({});
+    expect(r.status).toBe(401);
+    expect(r.body).toMatchObject({ error: 'session_revoked' });
+  });
+
+  it('GET /users (cale exactă) cont revocat → 401 via GUARDED_EXACT', async () => {
+    H.usersRow = null;
+    const r = await request(app).get('/users').set('Cookie', cookie(activePayload()));
+    expect(r.status).toBe(401);
+    expect(r.body).toMatchObject({ error: 'session_revoked' });
+  });
+
+  it('utilizator VALID → toate rutele scăpate funcționează normal (fără regresie)', async () => {
+    H.usersRow = activeRow();
+    const c = cookie(activePayload());
+    const bulk = await request(app).post('/bulk-signing/initiate').set('Cookie', c).send({});
+    expect(bulk.status).toBe(200); expect(H.bulkSessionsCreated).toBe(1);
+    const my = await request(app).get('/my-flows').set('Cookie', c);
+    expect(my.status).toBe(200); expect(my.body.reached).toBe('my-flows');
+    const dl = await request(app).get('/my-flows/42/download').set('Cookie', c);
+    expect(dl.status).toBe(200); expect(dl.body.reached).toBe('download');
+    const cf = await request(app).post('/flows').set('Cookie', c).send({});
+    expect(cf.status).toBe(200); expect(cf.body.reached).toBe('create-flow');
+    const us = await request(app).get('/users').set('Cookie', c);
+    expect(us.status).toBe(200); expect(us.body.reached).toBe('users');
+  });
+});
+
+describe('SEC-88.1 — regresie critică: loginul rămâne posibil cu cookie revocat', () => {
+  it('⭐ POST /auth/login cu cookie revocat în cerere → 200', async () => {
+    const hash = await hashPassword('Secret123!');
+    H.usersRow = { ...activeRow(), password_hash: hash, totp_enabled: false };
+    const revokedCookie = cookie(activePayload({ tv: 999 }));
+    const r = await request(app)
+      .post('/auth/login')
+      .set('Cookie', revokedCookie)
+      .send({ email: 'actor@test.ro', password: 'Secret123!' });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true });
   });
 });
 

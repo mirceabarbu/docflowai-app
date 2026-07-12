@@ -12,7 +12,7 @@ vi.mock('../../middleware/logger.mjs', () => ({
   redactUrl: (u) => u,
 }));
 
-import { sessionGuard, isGuardedPath, GUARDED_PREFIXES } from '../../middleware/session-guard.mjs';
+import { sessionGuard, isGuardedPath, GUARDED_PREFIXES, GUARDED_EXACT } from '../../middleware/session-guard.mjs';
 import { JWT_SECRET, AUTH_COOKIE } from '../../middleware/auth.mjs';
 
 const mw = sessionGuard();
@@ -58,12 +58,23 @@ beforeEach(() => {
 });
 
 describe('sessionGuard — prefixe', () => {
-  it('GUARDED_PREFIXES sunt /api/, /flows/, /admin/ — FĂRĂ /auth/', () => {
-    expect([...GUARDED_PREFIXES]).toEqual(['/api/', '/flows/', '/admin/']);
+  it('GUARDED_PREFIXES include /api/, /flows/, /admin/, /bulk-signing/, /my-flows — FĂRĂ /auth/', () => {
+    expect([...GUARDED_PREFIXES]).toEqual(['/api/', '/flows/', '/admin/', '/bulk-signing/', '/my-flows']);
     expect(isGuardedPath('/auth/login')).toBe(false);
     expect(isGuardedPath('/api/foo')).toBe(true);
     expect(isGuardedPath('/flows/1')).toBe(true);
     expect(isGuardedPath('/admin/users')).toBe(true);
+    expect(isGuardedPath('/bulk-signing/initiate')).toBe(true);
+    expect(isGuardedPath('/my-flows')).toBe(true);
+    expect(isGuardedPath('/my-flows/42/download')).toBe(true);
+  });
+
+  it('GUARDED_EXACT prinde /flows și /users (căi exacte, fără slash) — dar NU /auth/', () => {
+    expect([...GUARDED_EXACT]).toEqual(['/flows', '/users']);
+    expect(isGuardedPath('/flows')).toBe(true);   // POST /flows — startsWith('/flows/') NU o prinde
+    expect(isGuardedPath('/users')).toBe(true);
+    // /auth/ rămâne NEPĂZIT chiar dacă seamănă cu o cale exactă
+    expect(isGuardedPath('/auth')).toBe(false);
   });
 });
 
@@ -188,4 +199,53 @@ describe('sessionGuard — happy path & regresie SQL', () => {
     expect(sql).not.toMatch(/AND\s+(?:lower\s*\(\s*)?email/i);
     expect(params).toEqual([7]);
   });
+});
+
+describe('sessionGuard — SEC-88.1: rute scăpate de startsWith', () => {
+  // Cazuri PĂZITE: cu cont valid, garda TREBUIE să interogheze DB (pool.query chemat).
+  for (const [n, path, method] of [
+    [15, '/bulk-signing/initiate', 'POST'],
+    [16, '/bulk-signing/abc/status', 'GET'],
+    [17, '/bulk-signing/abc/poll', 'GET'],
+    [18, '/my-flows', 'GET'],
+    [19, '/my-flows/42/download', 'GET'],
+    [20, '/flows', 'POST'],   // cale exactă via GUARDED_EXACT
+    [21, '/users', 'GET'],    // cale exactă via GUARDED_EXACT
+  ]) {
+    it(`#${n} ${method} ${path} → PĂZITĂ (pool.query chemat, req._actorRow setat)`, async () => {
+      h.queryMock.mockResolvedValueOnce({ rows: [row()] });
+      const { req, res, next } = await run({ path, token: sign(goodPayload()) });
+      expect(isGuardedPath(path)).toBe(true);
+      expect(h.queryMock).toHaveBeenCalledOnce();
+      expect(next).toHaveBeenCalledOnce();
+      expect(res.statusCode).toBeNull();
+      expect(req._actorRow).toEqual(row());
+    });
+
+    it(`#${n} ${method} ${path} → cont revocat = 401, fără next`, async () => {
+      h.queryMock.mockResolvedValueOnce({ rows: [] }); // deleted_at ⇒ rând absent
+      const { res, next } = await run({ path, token: sign(goodPayload()) });
+      expect(res.statusCode).toBe(401);
+      expect(res.body).toMatchObject({ error: 'session_revoked' });
+      expect(next).not.toHaveBeenCalled();
+    });
+  }
+
+  // Cazuri NEPĂZITE: garda NU trebuie să atingă DB (regresie critică pe #22).
+  for (const [n, path, desc] of [
+    [22, '/auth/login', 'login trebuie să rămână posibil cu cookie revocat'],
+    [23, '/health', 'endpoint public de sănătate'],
+    [23, '/readyz', 'endpoint public de readiness'],
+    [24, '/track/abc', 'tracking public de email'],
+    [24, '/unsubscribe/xyz', 'dezabonare publică'],
+  ]) {
+    it(`#${n} ${path} → NEPĂZITĂ (${desc}): pool.query NU chemat`, async () => {
+      // token cu tv învechit (revocat) — dacă ar fi păzită, ar da 401.
+      const { res, next } = await run({ path, token: sign(goodPayload({ tv: 99 })) });
+      expect(isGuardedPath(path)).toBe(false);
+      expect(h.queryMock).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledOnce();
+      expect(res.statusCode).toBeNull();
+    });
+  }
 });
