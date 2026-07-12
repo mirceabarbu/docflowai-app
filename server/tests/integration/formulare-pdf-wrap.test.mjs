@@ -62,6 +62,9 @@ async function extractPdfText(base64) {
   return chunks.join(' ');
 }
 
+// Normalizează spațierea: PDF-ul sparge textul pe rânduri, extragerea le lipește cu spații.
+const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
+
 // ── Helper: extrage item-urile individuale de text (1 item = 1 drawText) ──────
 
 async function extractPdfItems(base64) {
@@ -305,5 +308,110 @@ describe('PDF cell wrap (no truncation)', () => {
     expect(items.filter(s => s === SSI).length).toBe(1);
     expect(items.filter(s => s !== SSI && SSI.startsWith(s) && s.length >= 8)).toHaveLength(0);
     expect(items.join(' ')).not.toContain('…');
+  });
+
+  it('DF — titlul lung (SubtitluDF) apare INTEGRAL în caseta de titlu', async () => {
+    const TITLU = 'Lucrari de igienizare si ecologizare zona Deal, Saticel si zona situata pe malul stang al raului Barsa la iesirea din Cartierul Saticel, in apropierea statie Peco Octano';
+    const data = makeNotafdData({ SubtitluDF: TITLU });
+
+    const res = await request(app)
+      .post('/api/formulare/generate')
+      .set('Cookie', `auth_token=${TOKEN}`)
+      .send({ formType: 'notafd', data });
+
+    expect(res.status).toBe(200);
+    const text = await extractPdfText(res.body.pdfBase64);
+    expect(norm(text)).toContain(norm(TITLU));
+    expect(text).not.toContain('…');
+  });
+
+  it('DF — Secțiunea A pct.2 (obiect scurt, 250 chars) apare INTEGRAL', async () => {
+    const OBIECT = 'Lucrari de igienizare si ecologizare zona Deal, Saticel si zona situata pe malul stang al raului Barsa la iesirea din Cartierul Saticel, in apropierea statiei Peco Octano, conform ofertei nr. 1234 din data de 07.07.2026, cu termen de executie 30 de zile';
+    const data = makeNotafdData({
+      sectiuneaA: {
+        compartiment_specialitate: 'Serviciul Tehnic',
+        obiect_fd_reviz_scurt: OBIECT,
+        ang_legale_val: { ckbx_stab_tin_cont: true, rowT_ang_pl_val: [{ element_fd: 'E', codSSI: '01A', valt_actualiz: 1 }] },
+        ang_legale_plati: {},
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/formulare/generate')
+      .set('Cookie', `auth_token=${TOKEN}`)
+      .send({ formType: 'notafd', data });
+
+    expect(res.status).toBe(200);
+    const text = await extractPdfText(res.body.pdfBase64);
+    expect(norm(text)).toContain(norm(OBIECT));
+    expect(text).not.toContain('…');
+  });
+
+  it('DF — pct.3 „descriere pe larg" de 4000 chars apare INTEGRAL (spargere pe pagini)', async () => {
+    const LUNG = Array.from({ length: 160 }, (_, i) => `paragraf${i} despre starea de fapt si de drept`).join(' ');
+    const data = makeNotafdData({
+      sectiuneaA: {
+        compartiment_specialitate: 'Serviciul Tehnic',
+        obiect_fd_reviz_scurt: 'Obiect',
+        obiect_fd_reviz_lung: LUNG,
+        ang_legale_val: { ckbx_stab_tin_cont: true, rowT_ang_pl_val: [{ element_fd: 'E', codSSI: '01A', valt_actualiz: 1 }] },
+        ang_legale_plati: {},
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/formulare/generate')
+      .set('Cookie', `auth_token=${TOKEN}`)
+      .send({ formType: 'notafd', data });
+
+    expect(res.status).toBe(200);
+    const text = await extractPdfText(res.body.pdfBase64);
+    const n = norm(text);
+    expect(n).toContain('paragraf0 despre');     // începutul
+    expect(n).toContain('paragraf159 despre');   // FINALUL — dovada că nu s-a plafonat la 12 rânduri
+    expect(text).not.toContain('…');
+  });
+
+  it('ORD — beneficiar / documente justificative / banca / info plata apar INTEGRAL', async () => {
+    const BENEF  = 'SOCIETATEA COMERCIALA DE SALUBRIZARE SI ECOLOGIZARE ZONA MONTANA BRASOV SUD-EST SRL';
+    const DOCJ   = 'Factura fiscala seria ZRN nr. 0001234 din 05.07.2026, proces-verbal de receptie nr. 77 din 06.07.2026, situatie de lucrari anexata si oferta tehnico-financiara acceptata';
+    const BANCA  = 'Trezoreria Municipiului Zarnesti, Judetul Brasov, Sucursala Operativa Centrala';
+    const INFO   = Array.from({ length: 60 }, (_, i) => `detaliu${i} privind plata efectuata`).join(' ');
+
+    const res = await request(app)
+      .post('/api/formulare/generate')
+      .set('Cookie', `auth_token=${TOKEN}`)
+      .send({
+        formType: 'ordnt',
+        data: {
+          Cif: '4646897',
+          DenInstPb: 'Primaria Orasului Zarnesti, Judetul Brasov',
+          NrOrdonantPl: '39917',
+          DataOrdontPl: '07.07.2026',
+          docFd: {
+            nr_unic_inreg: '39917',
+            beneficiar: BENEF,
+            documente_justificative: DOCJ,
+            banca_beneficiar: BANCA,
+            iban_beneficiar: 'RO49AAAA1B31007593840000',
+            cif_beneficiar: '1234567',
+            inf_pv_plata: INFO,
+            rowTfd: [
+              { cod_angajament: 'AAB542827M6', cod_SSI: '02A740501200130',
+                receptii: 181500, suma_ordonantata_plata: 181500 },
+            ],
+          },
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const text = await extractPdfText(res.body.pdfBase64);
+    const n = norm(text);
+    expect(n).toContain(norm(BENEF));
+    expect(n).toContain(norm(DOCJ));
+    expect(n).toContain(norm(BANCA));
+    expect(n).toContain('detaliu0 privind');
+    expect(n).toContain('detaliu59 privind');   // finalul — dovada că nu s-a plafonat la 4 rânduri
+    expect(text).not.toContain('…');
   });
 });
