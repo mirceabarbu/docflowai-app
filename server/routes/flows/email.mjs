@@ -40,12 +40,14 @@ const router = Router();
 import { emailSendExtern } from '../../emailTemplates.mjs';
 import { generateTrustReport } from '../../services/sign-trust-report.mjs';
 import { canActorReadFlow } from '../../services/flow-access.mjs';
+import { resolveActorOr } from '../../services/actor-identity.mjs';
 
 
 
 router.post('/flows/:flowId/send-email', async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
   try {
     const { flowId } = req.params;
     let { to, subject, bodyText, extraAttachments = [], includeTrustReport = false } = req.body || {};
@@ -79,18 +81,13 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     // raportul de conformitate → doar inițiator/semnatar/admin same-org (aliniat cu email-stats).
     // NU include ramura „destinatar" (canActorReadFlow, nu isFlowAccessAllowed) — trimiterea
     // externă e o acțiune de inițiator/semnatar/admin. Ruta e cookie/auth-only → signerToken=null.
-    if (!canActorReadFlow(actor, data, null)) {
+    const accessActor = { ...actor, userId: actor.id, orgId: actor.org_id };
+    if (!canActorReadFlow(accessActor, data, null)) {
       return res.status(403).json({ error: 'forbidden', message: 'Nu ai drept să trimiți acest document.' });
     }
 
-    // Preluăm datele expeditorului din DB (funcție, institutie, compartiment)
-    const { rows: senderRows } = await pool.query(
-      'SELECT nume, functie, institutie, compartiment, email FROM users WHERE email=$1',
-      [actor.email.toLowerCase()]
-    );
-    const sender = senderRows[0] || {};
-    const senderName  = sender.nume  || actor.email;
-    const senderTitle = [sender.functie, sender.compartiment, sender.institutie].filter(Boolean).join(' · ');
+    const senderName = actor.nume || actor.email;
+    const senderTitle = [actor.functie, actor.compartiment, actor.institutie].filter(Boolean).join(' · ');
 
     // PDF semnat — din JSONB sau, dacă e arhivat, din Google Drive
     let pdfB64 = data.signedPdfB64 || data.pdfB64 || null;

@@ -55,7 +55,7 @@ import { JWT_SECRET } from '../../middleware/auth.mjs';
 
 function makeToken(overrides = {}) {
   return jwt.sign(
-    { userId: 1, email: 'init@primaria.ro', role: 'user', orgId: 1, nume: 'Ion Popescu', ...overrides },
+    { userId: 1, email: 'init@primaria.ro', role: 'user', orgId: 1, tv: 1, nume: 'Ion Popescu', ...overrides },
     JWT_SECRET, { expiresIn: '2h' }
   );
 }
@@ -78,7 +78,11 @@ let fetchCalls;
 function setupPoolQuery({ trustRows = [] } = {}) {
   dbModule.pool.query.mockImplementation((sql) => {
     if (/FROM users/i.test(sql)) {
-      return Promise.resolve({ rows: [{ nume: 'Ion Popescu', functie: 'Primar', institutie: 'Primăria Test', compartiment: 'Secretariat', email: 'init@primaria.ro' }] });
+      return Promise.resolve({ rows: [{
+        id: 1, email: 'init@primaria.ro', nume: 'Ion Popescu', functie: 'Primar',
+        institutie: 'Primăria Test', compartiment: 'Secretariat', role: 'user',
+        org_id: 1, token_version: 1, force_password_change: false,
+      }] });
     }
     if (/trust_reports/i.test(sql)) return Promise.resolve({ rows: trustRows });
     return Promise.resolve({ rows: [] });

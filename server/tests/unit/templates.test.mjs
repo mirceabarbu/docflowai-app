@@ -50,7 +50,7 @@ const TEST_JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key-for-vitest';
 process.env.JWT_SECRET = TEST_JWT_SECRET;
 
 function makeAuthCookie(email = 'owner@test.ro', role = 'user') {
-  return `auth_token=${jwt.sign({ email, role, orgId: 1 }, TEST_JWT_SECRET, { expiresIn: '1h' })}`;
+  return `auth_token=${jwt.sign({ userId: 1, email, role, orgId: 1, tv: 1 }, TEST_JWT_SECRET, { expiresIn: '1h' })}`;
 }
 
 function createTestApp() {
@@ -66,7 +66,15 @@ function createTestApp() {
 const validSigners = [{ name: 'Ion', email: 'ion@test.ro' }];
 
 function mockUserRow(overrides = {}) {
-  return { institutie: 'Primăria Test', org_id: 1, ...overrides };
+  return {
+    id: 1, email: 'owner@test.ro', nume: 'Owner Test', functie: 'Inspector',
+    compartiment: 'Test', institutie: 'Primăria Test', role: 'user', org_id: 1,
+    token_version: 1, force_password_change: false, ...overrides,
+  };
+}
+
+function mockResolvedActor() {
+  dbModule.pool.query.mockResolvedValueOnce({ rows: [mockUserRow()] });
 }
 
 function mockTemplateRow(overrides = {}) {
@@ -119,6 +127,7 @@ describe('POST /api/templates', () => {
   });
 
   it('400 — name lipsă', async () => {
+    mockResolvedActor();
     const res = await request(createTestApp()).post('/api/templates')
       .set('Cookie', makeAuthCookie())
       .send({ signers: validSigners });
@@ -127,6 +136,7 @@ describe('POST /api/templates', () => {
   });
 
   it('400 — name prea lung', async () => {
+    mockResolvedActor();
     const res = await request(createTestApp()).post('/api/templates')
       .set('Cookie', makeAuthCookie())
       .send({ name: 'X'.repeat(201), signers: validSigners });
@@ -135,6 +145,7 @@ describe('POST /api/templates', () => {
   });
 
   it('400 — signers lipsă', async () => {
+    mockResolvedActor();
     const res = await request(createTestApp()).post('/api/templates')
       .set('Cookie', makeAuthCookie())
       .send({ name: 'Test' });
@@ -143,6 +154,7 @@ describe('POST /api/templates', () => {
   });
 
   it('400 — semnatar cu email invalid', async () => {
+    mockResolvedActor();
     const res = await request(createTestApp()).post('/api/templates')
       .set('Cookie', makeAuthCookie())
       .send({ name: 'Test', signers: [{ name: 'Ion', email: 'invalidemail' }] });

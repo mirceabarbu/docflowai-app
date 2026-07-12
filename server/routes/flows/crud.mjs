@@ -13,6 +13,7 @@ import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-atta
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 import { normalizeRecipients } from '../../services/flow-transmit.mjs';
 import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
+import { resolveActorOr } from '../../services/actor-identity.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -105,82 +106,23 @@ const createFlow = async (req, res) => {
     }
 
     // Auth — după validarea de bază (endpoint semi-public: validarea rulează independent de auth)
-    const actor = requireAuth(req, res); if (!actor) return;
+    const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+    const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
 
     // SEC v3.9.609: identitatea "Întocmit" NU poate fi impersonată — se derivă din actorul
     // autentificat, nu din ce trimite clientul. Validarea de format de mai sus (400 pe body
     // gol/invalid) rămâne neschimbată; de aici încolo, valorile REALE sunt cele ale actorului.
     initEmail = String(actor.email || '').trim();
-    initName = String(actor.nume || '').trim() || initName; // fallback dacă JWT nu are nume cache-uit
+    initName = String(actor.nume || actor.email || '').trim();
 
-    // ── SEC-P0.3: identitate tenant FAIL-CLOSED ────────────────────────────────
-    // (a) Lookup după users.id, NU după email. Migrarea 067_soft_delete_users_orgs a
-    //     eliminat UNIQUE-ul total pe users.email (l-a înlocuit cu unul PARȚIAL, doar pe
-    //     conturile active, ca să permită reutilizarea emailului după soft-delete).
-    //     Deci `WHERE email=$1` poate întoarce MAI MULTE rânduri, iar rows[0] fără
-    //     ORDER BY este nedeterminist — se putea citi org_id-ul unui cont dezactivat.
-    // (b) Zero fallback. Anterior, o eroare de DB sau un org_id lipsă cădea pe
-    //     getDefaultOrgId() = PRIMA organizație din tabel ⇒ flux creat în instituția GREȘITĂ.
-    //     Un flux nu se creează NICIODATĂ fără tenant confirmat.
-    if (!actor.userId) {
-      logger.warn({ email: initEmail }, 'createFlow: JWT fără userId — fail-closed (401)');
-      return res.status(401).json({
-        error: 'session_identity_invalid',
-        message: 'Sesiunea nu mai este validă. Reautentifică-te.',
-      });
-    }
-
-    let userRow = null;
-    try {
-      const ru = await pool.query(
-        `SELECT id, org_id, nume
-           FROM users
-          WHERE id = $1
-            AND deleted_at IS NULL`,
-        [actor.userId]
-      );
-      userRow = ru.rows[0] || null;
-    } catch (e) {
-      logger.error({ err: e, userId: actor.userId }, 'createFlow: lookup organizație eșuat — fail-closed (503)');
-      return res.status(503).json({
-        error: 'org_lookup_failed',
-        message: 'Baza de date este temporar indisponibilă. Reîncearcă în câteva momente.',
-      });
-    }
-
-    if (!userRow) {
-      logger.warn({ userId: actor.userId }, 'createFlow: actor inexistent sau dezactivat — fail-closed (403)');
-      return res.status(403).json({
-        error: 'actor_not_found',
-        message: 'Contul tău nu a fost găsit sau a fost dezactivat. Reautentifică-te.',
-      });
-    }
-
-    const orgId = userRow.org_id || null;
+    const orgId = actor.org_id || null;
     if (!orgId) {
-      logger.warn({ userId: actor.userId }, 'createFlow: utilizator fără organizație — fail-closed (409)');
+      logger.warn({ userId: actor.id }, 'createFlow: utilizator fără organizație — fail-closed (409)');
       return res.status(409).json({
         error: 'user_without_org',
         message: 'Contul tău nu este asociat unei instituții. Contactează administratorul.',
       });
     }
-
-    // Sesiune învechită: JWT-ul poartă alt org decât cel curent din DB (utilizator mutat
-    // între instituții). DB-ul e autoritar, deci fluxul ar merge oricum în org-ul corect —
-    // dar UI-ul clientului (compartimente, semnatari, liste DF) e încărcat din org-ul VECHI.
-    // Forțăm reautentificarea în loc să creăm un flux cu date amestecate.
-    // ⚠️ Comparație pe String, NU pe Number: orgId poate fi non-numeric în fixture-uri/JWT.
-    if (actor.orgId != null && String(actor.orgId) !== String(orgId)) {
-      logger.warn({ userId: actor.userId, tokenOrgId: actor.orgId, dbOrgId: orgId },
-        'createFlow: organizația din JWT diferă de cea curentă — fail-closed (401)');
-      return res.status(401).json({
-        error: 'session_org_stale',
-        message: 'Asocierea contului cu instituția s-a modificat. Reautentifică-te.',
-      });
-    }
-
-    const dbNume = String(userRow.nume || '').trim();
-    if (dbNume) initName = dbNume; // numele din DB e sursa autoritară, ca emailul (nu body-ul clientului)
 
     // preferredProvider — setat la inițiere, lock pentru toți semnatarii
     // Validăm contra providerilor ENABLED ai organizației.
@@ -316,15 +258,9 @@ const createFlow = async (req, res) => {
     }
 
     const createdAt = body.createdAt || new Date().toISOString();
-    let initFunctie = '', initCompartiment = '', initInstitutie = body.institutie || '';
-    try {
-      const uRes = await pool.query('SELECT functie,compartiment,institutie FROM users WHERE email=$1', [initEmail.toLowerCase()]);
-      if (uRes.rows[0]) {
-        initFunctie = uRes.rows[0].functie || '';
-        initCompartiment = uRes.rows[0].compartiment || '';
-        initInstitutie = initInstitutie || uRes.rows[0].institutie || '';
-      }
-    } catch(e) {}
+    const initFunctie = actor.functie || '';
+    const initCompartiment = actor.compartiment || '';
+    const initInstitutie = actor.institutie || '';
 
     const flowId = _newFlowId(initInstitutie);
     let finalPdfB64 = body.pdfB64 ?? null;

@@ -53,7 +53,7 @@ const TEST_JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-vitest-docflo
 
 function makeToken(overrides = {}) {
   return jwt.sign(
-    { userId: 1, email: 'init@primaria.ro', role: 'user', orgId: 7, nume: 'Ion Popescu', ...overrides },
+    { userId: 1, email: 'init@primaria.ro', role: 'user', orgId: 7, tv: 1, nume: 'Ion Popescu', ...overrides },
     TEST_JWT_SECRET,
     { expiresIn: '2h' }
   );
@@ -87,6 +87,14 @@ const VALID_BODY = {
   signers: [{ name: 'Ana Maria', email: 'signer@primaria.ro', rol: 'AVIZAT' }],
 };
 
+function actorRow(overrides = {}) {
+  return {
+    id: 1, email: 'init@primaria.ro', nume: 'Ion Popescu', functie: 'Inspector',
+    compartiment: 'Secretariat', institutie: 'Primăria Test', role: 'user',
+    org_id: 7, token_version: 1, force_password_change: false, ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   dbModule.pool.query.mockReset();
@@ -115,7 +123,7 @@ describe('SEC-P0.3 — POST /flows fail-closed pe identitate tenant', () => {
       .set('Cookie', `auth_token=${makeToken()}`)
       .send(VALID_BODY);
     expect(res.status).toBe(503);
-    expect(res.body.error).toBe('org_lookup_failed');
+    expect(res.body.error).toBe('identity_lookup_failed');
     expect(dbModule.getDefaultOrgId).not.toHaveBeenCalled();
   });
 
@@ -130,10 +138,10 @@ describe('SEC-P0.3 — POST /flows fail-closed pe identitate tenant', () => {
   });
 
   it('4 — utilizator cu org_id null ⇒ 409 user_without_org, fără flux salvat', async () => {
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ id: 1, org_id: null, nume: 'Ion Popescu' }] });
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [actorRow({ org_id: null })] });
     const app = createTestApp();
     const res = await request(app).post('/flows')
-      .set('Cookie', `auth_token=${makeToken()}`)
+      .set('Cookie', `auth_token=${makeToken({ orgId: null })}`)
       .send(VALID_BODY);
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('user_without_org');
@@ -141,7 +149,7 @@ describe('SEC-P0.3 — POST /flows fail-closed pe identitate tenant', () => {
   });
 
   it('5 — JWT orgId 3 vs DB org_id 7 ⇒ 401 session_org_stale, fără flux salvat', async () => {
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ id: 1, org_id: 7, nume: 'Ion Popescu' }] });
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [actorRow()] });
     const app = createTestApp();
     const res = await request(app).post('/flows')
       .set('Cookie', `auth_token=${makeToken({ orgId: 3 })}`)
@@ -152,7 +160,7 @@ describe('SEC-P0.3 — POST /flows fail-closed pe identitate tenant', () => {
   });
 
   it('6 — happy path (JWT orgId 7 == DB org_id 7) ⇒ flux salvat cu orgId 7, fără getDefaultOrgId', async () => {
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ id: 1, org_id: 7, nume: 'Ion Popescu' }] });
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [actorRow()] });
     const app = createTestApp();
     const res = await request(app).post('/flows')
       .set('Cookie', `auth_token=${makeToken({ orgId: 7 })}`)
@@ -164,7 +172,7 @@ describe('SEC-P0.3 — POST /flows fail-closed pe identitate tenant', () => {
   });
 
   it('7 — regresie lookup: interogarea e după id + deleted_at, NU după email', async () => {
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [{ id: 1, org_id: 7, nume: 'Ion Popescu' }] });
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [actorRow()] });
     const app = createTestApp();
     await request(app).post('/flows')
       .set('Cookie', `auth_token=${makeToken({ orgId: 7 })}`)

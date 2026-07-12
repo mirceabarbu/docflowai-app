@@ -32,31 +32,44 @@ import { sendSignerEmail } from '../../mailer.mjs';
 import { gwsIsConfigured, findAvailableEmail, provisionGwsUser, verifyGws, buildLocalPart } from '../../gws.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import { isAdminOrOrgAdmin, getAppUrl } from './_helpers.mjs';
+import { resolveActorOr } from '../../services/actor-identity.mjs';
 
 const router = Router();
+
+function sameOrgId(left, right) {
+  return (left == null && right == null)
+    || (left != null && right != null && String(left) === String(right));
+}
 
 // ── Users ──────────────────────────────────────────────────────────────────
 // GET /users — returneaza useri din aceeasi institutie ca utilizatorul logat
 // Folosit de initiator pentru dropdown semnatari
 router.get('/users', async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
   try {
-    // Citim institutia din DB (nu din JWT care poate fi vechi)
-    const { rows: selfRows } = await pool.query('SELECT institutie FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const institutie = (selfRows[0]?.institutie || actor.institutie || '').trim();
+    const institutie = (actor.institutie || '').trim();
 
     let query, params;
-    if (institutie) {
-      // Filtreaza pe institutie — userii din aceeasi institutie
+    if (actor.role !== 'admin') {
+      if (!actor.org_id) {
+        return res.status(409).json({ error: 'user_without_org', message: 'Contul nu este asociat unei organizații.' });
+      }
+      if (institutie) {
+        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 AND institutie=$2 AND deleted_at IS NULL ORDER BY nume ASC';
+        params = [actor.org_id, institutie];
+      } else {
+        query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 AND deleted_at IS NULL ORDER BY nume ASC';
+        params = [actor.org_id];
+      }
+    } else if (institutie) {
       query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE institutie=$1 AND deleted_at IS NULL ORDER BY nume ASC';
       params = [institutie];
     } else {
-      // User fara institutie (ex: admin global) — vede toti userii din org
-      const orgId = actor.orgId || null;
-      if (orgId) {
+      if (actor.org_id) {
         query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE org_id=$1 AND deleted_at IS NULL ORDER BY nume ASC';
-        params = [orgId];
+        params = [actor.org_id];
       } else {
         query = 'SELECT id,email,nume,functie,institutie,compartiment,org_id FROM users WHERE deleted_at IS NULL ORDER BY nume ASC';
         params = [];
@@ -110,12 +123,11 @@ router.get('/api/org/profile', async (req, res) => {
 
 router.get('/admin/users', async (req, res) => {
   if (requireDb(res)) return;
-  const user = requireAuth(req, res); if (!user) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const user = await resolveActorOr(res, tokenActor); if (!user) return;
   if (!isAdminOrOrgAdmin(user)) return res.status(403).json({ error: 'forbidden' });
   try {
-    // Citim orgId din DB — JWT poate fi vechi
-    const { rows: selfRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [user.email.toLowerCase()]);
-    const orgId = selfRows[0]?.org_id || null;
+    const orgId = user.org_id || null;
     if (user.role === 'org_admin' && !orgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată. Contactați super-administratorul.' });
 
     // ?include_deleted=1 → include și utilizatorii dezactivați (deleted_at NOT NULL)
@@ -139,7 +151,8 @@ router.get('/admin/users', async (req, res) => {
 
 router.post('/admin/users', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
 
   const {
@@ -195,10 +208,8 @@ router.post('/admin/users', csrfMiddleware, async (req, res) => {
   // - org_admin: folosește propriul org_id din DB (nu poate crea în altă org)
   // - admin (super-admin): poate specifica org_name pentru ORICE rol (user, org_admin)
   //   dacă nu specifică, org_id rămâne null (nu e greșit, dar util să fie setat)
-  let insertOrgId = actor.orgId || null;
+  let insertOrgId = actor.org_id || null;
   if (actor.role === 'org_admin') {
-    const { rows: actorOrgRows } = await pool.query('SELECT org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    insertOrgId = actorOrgRows[0]?.org_id || null;
     if (!insertOrgId) return res.status(403).json({ error: 'org_admin_no_org', message: 'Contul de Administrator Instituție nu are o organizație asociată.' });
   } else if (actor.role === 'admin' && (bodyOrgName || '').trim()) {
     // Super-admin a specificat o organizație — upsert și asociem userul indiferent de rol
@@ -522,7 +533,18 @@ router.put('/admin/users/:id', csrfMiddleware, async (req, res) => {
   if (personal_email !== undefined) { updates.push(`personal_email=$${i++}`); vals.push((personal_email || '').trim().toLowerCase() || null); }
   if (role) {
     const allowedRolesUpd = actor.role === 'admin' ? ['admin', 'org_admin', 'user'] : ['user'];
-    if (allowedRolesUpd.includes(role)) { updates.push(`role=$${i++}`); vals.push(role); }
+    if (allowedRolesUpd.includes(role)) {
+      updates.push(`role=$${i++}`); vals.push(role);
+      // SEC-87: retrogradarea/promovarea trebuie să INVALIDEZE sesiunile active. Fără acest bump,
+      // un admin retrogradat păstra `role:'admin'` în JWT până la expirare (JWT_EXPIRES = 8h).
+      // Bump-uim DOAR când rolul chiar se schimbă — altfel am deconecta userul degeaba la orice save.
+      const { rows: curRoleRows } = await pool.query(
+        'SELECT role FROM users WHERE id=$1 AND deleted_at IS NULL', [targetId]);
+      const currentRole = curRoleRows[0]?.role;
+      if (currentRole !== undefined && String(role) !== String(currentRole)) {
+        updates.push('token_version=COALESCE(token_version,1)+1');
+      }
+    }
   }
   if (phone !== undefined) {
     const pv = validatePhone((phone || '').trim());
@@ -861,13 +883,10 @@ async function _syncDelegationRecord({ targetUserId, leave_start, leave_end, del
 // ── PUT /api/users/me/leave — userul își setează singur concediu ────────────
 router.put('/api/users/me/leave', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
   try {
-    const { rows: meRows } = await pool.query(
-      'SELECT id FROM users WHERE email=$1', [actor.email.toLowerCase()]
-    );
-    if (!meRows.length) return res.status(404).json({ error: 'user_not_found' });
-    const targetUserId = meRows[0].id;
+    const targetUserId = actor.id;
 
     const { leave_start, leave_end, delegate_user_id, leave_reason } = req.body || {};
     const input = {
@@ -888,7 +907,7 @@ router.put('/api/users/me/leave', csrfMiddleware, async (req, res) => {
         leave_reason,
       });
       writeAuditEvent({
-        orgId: actor.orgId,
+        orgId: actor.org_id,
         eventType: 'DELEGATION_SET',
         actorEmail: actor.email,
         actorIp: req.ip || req.socket?.remoteAddress || null,
@@ -905,20 +924,17 @@ router.put('/api/users/me/leave', csrfMiddleware, async (req, res) => {
 // ── DELETE /api/users/me/leave — userul își anulează singur concediul ──────
 router.delete('/api/users/me/leave', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
   try {
-    const { rows: meRows } = await pool.query(
-      'SELECT id FROM users WHERE email=$1', [actor.email.toLowerCase()]
-    );
-    if (!meRows.length) return res.status(404).json({ error: 'user_not_found' });
-    await clearUserLeave(meRows[0].id);
+    await clearUserLeave(actor.id);
     invalidateOrgUserCache?.();
     writeAuditEvent({
-      orgId: actor.orgId,
+      orgId: actor.org_id,
       eventType: 'DELEGATION_REMOVED',
       actorEmail: actor.email,
       actorIp: req.ip || req.socket?.remoteAddress || null,
-      payload: { targetUserId: meRows[0].id },
+      payload: { targetUserId: actor.id },
     });
     res.json({ ok: true, leave: null });
   } catch (err) {
@@ -929,7 +945,8 @@ router.delete('/api/users/me/leave', csrfMiddleware, async (req, res) => {
 // ── PUT /admin/users/:id/leave — admin setează concediu pentru oricine ─────
 router.put('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
   if (actor.role !== 'admin' && actor.role !== 'org_admin') {
     return res.status(403).json({ error: 'admin_only' });
   }
@@ -939,15 +956,15 @@ router.put('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'invalid_user_id' });
   }
   try {
-    const { rows: orgRows } = await pool.query(
-      `SELECT u_actor.org_id AS actor_org, u_target.org_id AS target_org
-       FROM users u_actor
-       JOIN users u_target ON u_target.id = $2
-       WHERE u_actor.email = $1`,
-      [actor.email.toLowerCase(), targetUserId]
+    const { rows: targetRows } = await pool.query(
+      `SELECT id, org_id
+         FROM users
+        WHERE id = $1
+          AND deleted_at IS NULL`,
+      [targetUserId]
     );
-    if (!orgRows.length) return res.status(404).json({ error: 'user_not_found' });
-    if (orgRows[0].actor_org !== orgRows[0].target_org) {
+    if (!targetRows.length) return res.status(404).json({ error: 'user_not_found' });
+    if (!sameOrgId(actor.org_id, targetRows[0].org_id)) {
       return res.status(403).json({ error: 'different_org' });
     }
 
@@ -970,7 +987,7 @@ router.put('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
         leave_reason,
       });
       writeAuditEvent({
-        orgId: actor.orgId,
+        orgId: actor.org_id,
         eventType: 'DELEGATION_SET',
         actorEmail: actor.email,
         actorIp: req.ip || req.socket?.remoteAddress || null,
@@ -987,7 +1004,8 @@ router.put('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
 // ── DELETE /admin/users/:id/leave — admin anulează concediu ────────────────
 router.delete('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor); if (!actor) return;
   if (actor.role !== 'admin' && actor.role !== 'org_admin') {
     return res.status(403).json({ error: 'admin_only' });
   }
@@ -997,21 +1015,21 @@ router.delete('/admin/users/:id/leave', csrfMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'invalid_user_id' });
   }
   try {
-    const { rows: orgRows } = await pool.query(
-      `SELECT u_actor.org_id AS actor_org, u_target.org_id AS target_org
-       FROM users u_actor
-       JOIN users u_target ON u_target.id = $2
-       WHERE u_actor.email = $1`,
-      [actor.email.toLowerCase(), targetUserId]
+    const { rows: targetRows } = await pool.query(
+      `SELECT id, org_id
+         FROM users
+        WHERE id = $1
+          AND deleted_at IS NULL`,
+      [targetUserId]
     );
-    if (!orgRows.length) return res.status(404).json({ error: 'user_not_found' });
-    if (orgRows[0].actor_org !== orgRows[0].target_org) {
+    if (!targetRows.length) return res.status(404).json({ error: 'user_not_found' });
+    if (!sameOrgId(actor.org_id, targetRows[0].org_id)) {
       return res.status(403).json({ error: 'different_org' });
     }
     await clearUserLeave(targetUserId);
     invalidateOrgUserCache?.();
     writeAuditEvent({
-      orgId: actor.orgId,
+      orgId: actor.org_id,
       eventType: 'DELEGATION_REMOVED',
       actorEmail: actor.email,
       actorIp: req.ip || req.socket?.remoteAddress || null,
