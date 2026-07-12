@@ -8,7 +8,7 @@ import { hashPassword, JWT_SECRET } from '../../middleware/auth.mjs';
 import { resolveActor } from '../../services/actor-identity.mjs';
 import usersRouter from '../../routes/admin/users.mjs';
 import templatesRouter from '../../routes/templates.mjs';
-import authRouter from '../../routes/auth.mjs';
+import authRouter, { injectRateLimiter } from '../../routes/auth.mjs';
 import totpRouter from '../../routes/totp.mjs';
 import flowsRouter, { injectFlowDeps } from '../../routes/flows.mjs';
 
@@ -16,6 +16,13 @@ const d = describe.skipIf(!hasTestDb());
 const SHARED_EMAIL = 'reused@example.ro';
 
 function createApp() {
+  // Rate-limiterul de login e injectat din index.mjs, care nu ruleaza in harness-ul de test.
+  // Fara injectie, auth.mjs arunca TypeError la _checkLoginRate() si cererea nu raspunde niciodata.
+  injectRateLimiter(
+    async () => ({ blocked: false }),
+    async () => {},
+    async () => {},
+  );
   injectFlowDeps({
     notify: async () => undefined, wsPush: () => undefined, PDFLib: null,
     stampFooterOnPdf: null, isSignerTokenExpired: () => false,
@@ -54,10 +61,10 @@ async function seed() {
     [SHARED_EMAIL.toUpperCase(), passwordHash, orgB]
   )).rows[0].id;
   const targetA = (await pool.query(
-    `INSERT INTO users(email,password_hash,nume,role,org_id,token_version) VALUES('target-a@example.ro','x','Target A','user',$1,1) RETURNING id`, [orgA]
+    `INSERT INTO users(email,password_hash,nume,role,org_id,institutie,token_version) VALUES('target-a@example.ro','x','Target A','user',$1,'Instituția A',1) RETURNING id`, [orgA]
   )).rows[0].id;
   const targetB = (await pool.query(
-    `INSERT INTO users(email,password_hash,nume,role,org_id,token_version) VALUES('target-b@example.ro','x','Target B','user',$1,1) RETURNING id`, [orgB]
+    `INSERT INTO users(email,password_hash,nume,role,org_id,institutie,token_version) VALUES('target-b@example.ro','x','Target B','user',$1,'Instituția B',1) RETURNING id`, [orgB]
   )).rows[0].id;
   await pool.query(
     `INSERT INTO templates(user_email,institutie,name,signers,shared,org_id) VALUES
@@ -98,7 +105,7 @@ d('email reuse authorization on real PostgreSQL', () => {
     expect(result).toMatchObject({ ok: false, status: 403, error: 'actor_not_found' });
   });
 
-  it('/users for B does not return users from A', async () => {
+  it('/users scopes to the actor institution, not to a soft-deleted homonym', async () => {
     const res = await request(createApp()).get('/users').set('Cookie', activeCookie());
     expect(res.status).toBe(200);
     expect(res.body.some((u) => u.id === f.targetA)).toBe(false);
@@ -125,9 +132,13 @@ d('email reuse authorization on real PostgreSQL', () => {
       leave_start: '2026-07-13', leave_end: '2026-07-14', leave_reason: 'Test',
     });
     expect(res.status).toBe(200);
-    const rows = await pool.query('SELECT id,is_on_leave FROM users WHERE id=ANY($1)', [[f.deleted, f.active]]);
-    expect(rows.rows.find((r) => r.id === f.active).is_on_leave).toBe(true);
-    expect(rows.rows.find((r) => r.id === f.deleted).is_on_leave).not.toBe(true);
+    const rows = await pool.query('SELECT id,leave_start,leave_end FROM users WHERE id=ANY($1)', [[f.deleted, f.active]]);
+    const activeRow = rows.rows.find((r) => r.id === f.active);
+    const deletedRow = rows.rows.find((r) => r.id === f.deleted);
+    expect(activeRow.leave_start).not.toBeNull();
+    expect(activeRow.leave_end).not.toBeNull();
+    expect(deletedRow.leave_start).toBeNull();
+    expect(deletedRow.leave_end).toBeNull();
   });
 
   it.each(['admin', 'org_admin'])('%s B cannot administer target A leave', async (role) => {

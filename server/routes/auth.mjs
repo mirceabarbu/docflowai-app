@@ -42,7 +42,16 @@ router.post('/auth/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'email_and_password_required' });
   if (password.length > 200) return res.status(400).json({ error: 'password_too_long', max: 200 });
 
-  const rateCheck = await _checkLoginRate(req, email);
+  // SEC-87.1: rate-limiterul e injectat din index.mjs. Daca injectia nu a rulat (ordine de import
+  // schimbata la refactor), apelul arunca TypeError si TOATE loginurile dadeau 500 — o pana totala
+  // de autentificare. Fail-open pe rate limiting (disponibilitate > fereastra de brute-force), dar
+  // cu logger.error, ca deployment-ul rupt sa fie imediat vizibil.
+  if (typeof _checkLoginRate !== 'function') {
+    logger.error('SEC: rate-limiterul de login NU este injectat — login permis FARA rate limiting. Verifica injectia din index.mjs.');
+  }
+  const rateCheck = typeof _checkLoginRate === 'function'
+    ? await _checkLoginRate(req, email)
+    : { blocked: false };
   if (rateCheck.blocked) {
     return res.status(429).json({
       error: 'too_many_attempts',
