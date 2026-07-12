@@ -348,6 +348,19 @@ async function generatePdfSimple(formType, data) {
           lines = tw(numStr, fR, fs) <= cellPad
             ? [numStr]
             : wrapText(numStr, fR, fs, cellPad);
+        } else if (col.shrink) {
+          // Coloane de cod (Cod SSI, Cod angajament, Program): valoarea trebuie să
+          // rămână pe UN SINGUR RÂND. Micșorăm fontul 7 → 5,5pt înainte de a accepta
+          // wrap-ul. Niciodată trunchiere (fără „…").
+          const codeStr = str(rawVal);
+          if (tw(codeStr, fR, fs) > cellPad) {
+            for (fs = 6.5; fs >= 5.5; fs -= 0.5) {
+              if (tw(codeStr, fR, fs) <= cellPad) break;
+            }
+          }
+          lines = tw(codeStr, fR, fs) <= cellPad
+            ? [codeStr]
+            : wrapText(codeStr, fR, fs, cellPad);
         } else {
           lines = wrapText(str(rawVal), fR, fs, cellPad);
         }
@@ -600,19 +613,19 @@ async function generatePdfSimple(formType, data) {
 
     y -= 2;
     drawTable([
-      { header: 'Element de fundamentare',                  key: 'element_fd',    width: 95,
+      { header: 'Element de fundamentare',                  key: 'element_fd',    width: 92,
         numLabel: '1', totalText: 'TOTAL' },
-      { header: 'Program',                                  key: 'program',       width: 55,
-        numLabel: '2', totalText: 'X' },
-      { header: 'Cod SSI',                                  key: 'codSSI',        width: 70,
-        numLabel: '3', totalText: 'X' },
-      { header: 'Parametrii de fundamentare',               key: 'param_fd',      width: 75,
+      { header: 'Program',                                  key: 'program',       width: 52,
+        numLabel: '2', totalText: 'X', shrink: true },
+      { header: 'Cod SSI',                                  key: 'codSSI',        width: 74,
+        numLabel: '3', totalText: 'X', shrink: true },
+      { header: 'Parametrii de fundamentare',               key: 'param_fd',      width: 72,
         numLabel: '4', totalText: 'X' },
       { header: 'Valoare totală revizie precedentă (lei)',  key: 'valt_rev_prec', width: 65,
         numLabel: '5', numeric: true },
       { header: 'Influențe +/- (lei)',                      key: 'influente',     width: 55,
         numLabel: '6', numeric: true },
-      { header: 'Valoarea totală actualizată (lei)',        key: 'valt_actualiz', width: CW - 95 - 55 - 70 - 75 - 65 - 55,
+      { header: 'Valoarea totală actualizată (lei)',        key: 'valt_actualiz', width: CW - 92 - 52 - 74 - 72 - 65 - 55,
         numLabel: '7=5+6', numeric: true },
     ], Array.isArray(angV.rowT_ang_pl_val) ? angV.rowT_ang_pl_val : [], { totals: true });
 
@@ -652,12 +665,14 @@ async function generatePdfSimple(formType, data) {
     // Tabel pct 5 — 8 coloane numerotate + TOTAL
     const rowsPlati = Array.isArray(angP.rowT_ang_pl_plati) ? angP.rowT_ang_pl_plati : [];
     y -= 2;
-    const wPl = Math.floor((CW - 70) / 7);
+    const wPlProg = 60;                                        // Program
+    const wPlSSI  = 72;                                        // Cod SSI — lățit (cod pe 1 rând)
+    const wPl = Math.floor((CW - wPlProg - wPlSSI) / 6);       // 6 coloane numerice
     drawTable([
-      { header: 'Program',                              key: 'program',                width: 70,
-        numLabel: '1', totalText: 'TOTAL' },
-      { header: 'Cod SSI',                              key: 'codSSI',                 width: wPl,
-        numLabel: '2', totalText: 'X' },
+      { header: 'Program',                              key: 'program',                width: wPlProg,
+        numLabel: '1', totalText: 'TOTAL', shrink: true },
+      { header: 'Cod SSI',                              key: 'codSSI',                 width: wPlSSI,
+        numLabel: '2', totalText: 'X', shrink: true },
       { header: 'Plăți ani precedenți (lei)',           key: 'plati_ani_precedenti',   width: wPl,
         numLabel: '3', numeric: true },
       { header: 'Plăți estimate an curent (lei)',       key: 'plati_estim_ancrt',      width: wPl,
@@ -668,7 +683,7 @@ async function generatePdfSimple(formType, data) {
         numLabel: '6', numeric: true },
       { header: 'Plăți estimate an n+3 (lei)',          key: 'plati_estim_an_np3',     width: wPl,
         numLabel: '7', numeric: true },
-      { header: 'Plăți estimate ani ulteriori (lei)',   key: 'plati_estim_ani_ulter',  width: CW - 70 - wPl * 6,
+      { header: 'Plăți estimate ani ulteriori (lei)',   key: 'plati_estim_ani_ulter',  width: CW - wPlProg - wPlSSI - wPl * 5,
         numLabel: '8', numeric: true },
     ], rowsPlati, { totals: true });
 
@@ -689,16 +704,20 @@ async function generatePdfSimple(formType, data) {
     // Tabel SecB — 10 coloane numerotate cu 7=5+6 și 10=8+9 + TOTAL
     const rowsCtrl = Array.isArray(sB.rowT_ang_ctrl_ang) ? sB.rowT_ang_ctrl_ang : [];
     y -= 2;
-    const wCt = Math.floor((CW - 70 - 50) / 8);
+    const wCtAng  = 54;   // Cod angajament
+    const wCtInd  = 46;   // Indicator angajament
+    const wCtProg = 46;   // Program
+    const wCtSSI  = 72;   // Cod SSI — lățit (cod pe 1 rând)
+    const wCt = Math.floor((CW - wCtAng - wCtInd - wCtProg - wCtSSI) / 6);  // 6 coloane numerice
     drawTable([
-      { header: 'Cod angajament',                                                                              key: 'cod_angajament',               width: 70,
-        numLabel: '1', totalText: 'TOTAL' },
-      { header: 'Indicator angajament',                                                                        key: 'indicator_angajament',         width: 50,
-        numLabel: '2', totalText: 'X' },
-      { header: 'Program',                                                                                     key: 'program',                      width: wCt,
-        numLabel: '3', totalText: 'X' },
-      { header: 'Cod SSI',                                                                                     key: 'cod_SSI',                      width: wCt,
-        numLabel: '4', totalText: 'X' },
+      { header: 'Cod angajament',                                                                              key: 'cod_angajament',               width: wCtAng,
+        numLabel: '1', totalText: 'TOTAL', shrink: true },
+      { header: 'Indicator angajament',                                                                        key: 'indicator_angajament',         width: wCtInd,
+        numLabel: '2', totalText: 'X', shrink: true },
+      { header: 'Program',                                                                                     key: 'program',                      width: wCtProg,
+        numLabel: '3', totalText: 'X', shrink: true },
+      { header: 'Cod SSI',                                                                                     key: 'cod_SSI',                      width: wCtSSI,
+        numLabel: '4', totalText: 'X', shrink: true },
       { header: 'Suma rezervată din credite de angajament pentru anul curent aferentă reviziei precedente (lei)', key: 'sum_rezv_crdt_ang_af_rvz_prc', width: wCt,
         numLabel: '5', numeric: true },
       { header: 'Influențe +/- (lei)',                                                                         key: 'influente_c6',                 width: wCt,
@@ -709,7 +728,7 @@ async function generatePdfSimple(formType, data) {
         numLabel: '8', numeric: true },
       { header: 'Influențe +/- (lei)',                                                                         key: 'influente_c9',                 width: wCt,
         numLabel: '9', numeric: true },
-      { header: 'Suma rezervată din credite bugetare pentru anul curent actualizată (lei)',                    key: 'sum_rezv_crdt_bug_act',        width: CW - 70 - 50 - wCt * 7,
+      { header: 'Suma rezervată din credite bugetare pentru anul curent actualizată (lei)',                    key: 'sum_rezv_crdt_bug_act',        width: CW - wCtAng - wCtInd - wCtProg - wCtSSI - wCt * 5,
         numLabel: '10=8+9', numeric: true },
     ], rowsCtrl, { totals: true });
 
@@ -776,21 +795,21 @@ async function generatePdfSimple(formType, data) {
 
     // ── Tabel detalii plată — 8 coloane cu sub-numerotare (1.1-1.4) și (2-5) ──
     drawTable([
-      { header: 'Cod angajament',                  key: 'cod_angajament',         width: 78,
-        numLabel: '1.1', totalText: 'TOTAL' },
-      { header: 'Indicator angajament',            key: 'indicator_angajament',   width: 60,
-        numLabel: '1.2', totalText: 'X' },
-      { header: 'Program',                         key: 'program',                width: 55,
-        numLabel: '1.3', totalText: 'X' },
-      { header: 'Cod SSI',                         key: 'cod_SSI',                width: 60,
-        numLabel: '1.4', totalText: 'X' },
-      { header: 'Recepții (lei)',                  key: 'receptii',               width: 55,
+      { header: 'Cod angajament',                  key: 'cod_angajament',         width: 66,
+        numLabel: '1.1', totalText: 'TOTAL', shrink: true },
+      { header: 'Indicator angajament',            key: 'indicator_angajament',   width: 46,
+        numLabel: '1.2', totalText: 'X', shrink: true },
+      { header: 'Program',                         key: 'program',                width: 48,
+        numLabel: '1.3', totalText: 'X', shrink: true },
+      { header: 'Cod SSI',                         key: 'cod_SSI',                width: 74,
+        numLabel: '1.4', totalText: 'X', shrink: true },
+      { header: 'Recepții (lei)',                  key: 'receptii',               width: 56,
         numLabel: '2', numeric: true },
-      { header: 'Plăți anterioare (lei)',          key: 'plati_anterioare',       width: 60,
+      { header: 'Plăți anterioare (lei)',          key: 'plati_anterioare',       width: 58,
         numLabel: '3', numeric: true },
-      { header: 'Suma ordonanțată la plată (lei)', key: 'suma_ordonantata_plata', width: 70,
+      { header: 'Suma ordonanțată la plată (lei)', key: 'suma_ordonantata_plata', width: 64,
         numLabel: '4', numeric: true },
-      { header: 'Recepții neplătite (lei)',        key: 'receptii_neplatite',     width: CW - 78 - 60 - 55 - 60 - 55 - 60 - 70,
+      { header: 'Recepții neplătite (lei)',        key: 'receptii_neplatite',     width: CW - 66 - 46 - 48 - 74 - 56 - 58 - 64,
         numLabel: '5 = (col.2)-(col.3)-(col.4)', numeric: true },
     ], Array.isArray(df.rowTfd) ? df.rowTfd : [], { totals: true });
 
@@ -879,18 +898,27 @@ async function generatePdfSimple(formType, data) {
       const bytes = Buffer.from(raw, 'base64');
       imgEmbed = isJpg ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(bytes);
     } catch (_) { return; }  // imagine coruptă — ignorăm, PDF-ul rămâne valid
-    const maxW = CW, maxH = 200;
-    let iw = imgEmbed.width, ih = imgEmbed.height;
-    if (iw > maxW) { ih = Math.round(ih * maxW / iw); iw = maxW; }
-    if (ih > maxH) { iw = Math.round(iw * maxH / ih); ih = maxH; }
-    ensureY(ih + 32);
+    // Zoom „cât ține pagina": captura se scalează la lățimea completă a conținutului
+    // (CW = 515pt), limitată doar de înălțimea utilă a unei pagini A4. O captură mai
+    // mică decât CW este mărită (upscale) — comportament cerut explicit.
+    const CAP_HDR = 32;                                  // titlu + linie separatoare + spațiere
+    const maxW = CW;
+    const maxH = (H - MT - MB) - CAP_HDR - 24;           // ≈ 691pt înălțime utilă
+    const sc   = Math.min(maxW / imgEmbed.width, maxH / imgEmbed.height);
+    const iw   = Math.round(imgEmbed.width  * sc);
+    const ih   = Math.round(imgEmbed.height * sc);
+
+    ensureY(ih + CAP_HDR);
     y -= 10;
     pg.drawText(str(title), { x: ML, y, font: fB, size: 7.5, color: rgb(0.2, 0.2, 0.2) });
     y -= 4;
     pg.drawLine({ start: { x: ML, y }, end: { x: ML + CW, y },
       thickness: 0.3, color: rgb(0.7, 0.7, 0.7) });
-    y -= 2 + ih;
-    pg.drawImage(imgEmbed, { x: ML, y, width: iw, height: ih });
+    y -= 6 + ih;
+    const ix = ML + Math.round((CW - iw) / 2);           // centrat orizontal
+    pg.drawImage(imgEmbed, { x: ix, y, width: iw, height: ih });
+    pg.drawRectangle({ x: ix, y, width: iw, height: ih,
+      borderColor: rgb(0.75, 0.75, 0.75), borderWidth: 0.4 });
     y -= 8;
   }
 
