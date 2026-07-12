@@ -20,8 +20,8 @@ export function hasTestDb() {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-vitest-docflowai-2025';
 
-export function makeAuthCookie({ userId = 1, role = 'user', orgId = 1, email = 'p1@x.ro' } = {}) {
-  const token = jwt.sign({ email, role, orgId, userId }, JWT_SECRET, { expiresIn: '1h' });
+export function makeAuthCookie({ userId = 1, role = 'user', orgId = 1, email = 'p1@x.ro', tv = 1 } = {}) {
+  const token = jwt.sign({ email, role, orgId, userId, tv }, JWT_SECRET, { expiresIn: '1h' });
   return `auth_token=${token}`;
 }
 

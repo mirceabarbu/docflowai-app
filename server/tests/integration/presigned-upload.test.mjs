@@ -118,7 +118,8 @@ function createTestApp() {
 }
 
 function makeAuthCookie() {
-  const payload = { email: 'initiator@primaria.ro', role: 'user', orgId: 1 };
+  // SEC-P0.3: createFlow face lookup după actor.userId (nu după email) + fail-closed.
+  const payload = { userId: 1, email: 'initiator@primaria.ro', role: 'user', orgId: 1, tv: 1 };
   return `auth_token=${jwt.sign(payload, TEST_JWT_SECRET, { expiresIn: '1h' })}`;
 }
 
@@ -140,8 +141,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   stampSpy.mockImplementation(async (pdf) => pdf);
   dbModule.pool.query
-    .mockResolvedValueOnce({ rows: [{ org_id: 1 }] })
-    .mockResolvedValueOnce({ rows: [{ functie: 'Referent', compartiment: '', institutie: 'Primăria Test' }] });
+    // SEC-P0.3: lookup users după id → rândul trebuie să conțină { id, org_id, nume }
+    .mockResolvedValueOnce({ rows: [{
+      id: 1, email: 'initiator@primaria.ro', nume: 'Ion Popescu', functie: 'Referent',
+      compartiment: '', institutie: 'Primăria Test', role: 'user', org_id: 1,
+      token_version: 1, force_password_change: false,
+    }] });
 });
 
 describe('POST /flows — PDF pre-semnat la upload', () => {

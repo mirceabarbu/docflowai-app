@@ -60,7 +60,12 @@
       if (_state.filters.q)            params.set('q', _state.filters.q);
 
       const r = await fetch('/api/clasa8?' + params.toString(), { credentials: 'include' });
-      if (r.status === 401) { location.href = '/'; return; }
+      // SEC-88.3: URL canonic de login (nu homepage), cu ?next= pentru revenire.
+      if (r.status === 401) {
+        try { localStorage.removeItem('docflow_user'); } catch (_) {}
+        location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+        return;
+      }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
       _state.items  = Array.isArray(j.items) ? j.items : [];

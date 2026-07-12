@@ -38,7 +38,7 @@ import usersRouter from '../../routes/admin/users.mjs';
 import { JWT_SECRET } from '../../middleware/auth.mjs';
 
 function makeAuth(email, userId, role, orgId) {
-  return `auth_token=${jwt.sign({ email, userId, role, orgId }, JWT_SECRET, { expiresIn: '1h' })}`;
+  return `auth_token=${jwt.sign({ email, userId, role, orgId, tv: 1 }, JWT_SECRET, { expiresIn: '1h' })}`;
 }
 
 function createTestApp() {
@@ -51,6 +51,14 @@ function createTestApp() {
 const ACTIVE_USER  = { id: 1, email: 'activ@x.ro',    nume: 'Activ Ion',       functie: 'ref', institutie: 'Primaria X', compartiment: 'C1', org_id: 1 };
 const DELETED_USER = { id: 2, email: 'dezactivat@x.ro', nume: 'Igrisan Alexandru', functie: 'ref', institutie: 'Primaria X', compartiment: 'C1', org_id: 1 };
 
+function actorRow(overrides = {}) {
+  return {
+    id: 1, email: 'activ@x.ro', nume: 'Activ Ion', functie: 'ref',
+    compartiment: 'C1', institutie: 'Primaria X', role: 'user', org_id: 1,
+    token_version: 1, force_password_change: false, ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -58,7 +66,7 @@ beforeEach(() => {
 describe('GET /users — exclude utilizatori dezactivați (v3.9.632)', () => {
   it('ramura institutie: query-ul include AND deleted_at IS NULL, întoarce doar activul', async () => {
     dbModule.pool.query
-      .mockResolvedValueOnce({ rows: [{ institutie: 'Primaria X' }] }) // self lookup
+      .mockResolvedValueOnce({ rows: [actorRow()] })
       .mockResolvedValueOnce({ rows: [ACTIVE_USER] });                  // filtrat deja de query (mock simulează backend-ul real)
 
     const res = await request(createTestApp())
@@ -70,12 +78,12 @@ describe('GET /users — exclude utilizatori dezactivați (v3.9.632)', () => {
     expect(res.body.map(u => u.email)).not.toContain('dezactivat@x.ro');
 
     const secondCallSql = dbModule.pool.query.mock.calls[1][0];
-    expect(secondCallSql).toMatch(/WHERE institutie=\$1 AND deleted_at IS NULL/);
+    expect(secondCallSql).toMatch(/WHERE org_id=\$1 AND institutie=\$2 AND deleted_at IS NULL/);
   });
 
   it('ramura org_id (fara institutie): query-ul include AND deleted_at IS NULL', async () => {
     dbModule.pool.query
-      .mockResolvedValueOnce({ rows: [{ institutie: null }] })
+      .mockResolvedValueOnce({ rows: [actorRow({ id: 9, email: 'admin@x.ro', role: 'org_admin', institutie: null })] })
       .mockResolvedValueOnce({ rows: [ACTIVE_USER] });
 
     const res = await request(createTestApp())
@@ -89,7 +97,7 @@ describe('GET /users — exclude utilizatori dezactivați (v3.9.632)', () => {
 
   it('ramura fallback (fara institutie, fara orgId): query-ul include WHERE deleted_at IS NULL', async () => {
     dbModule.pool.query
-      .mockResolvedValueOnce({ rows: [{ institutie: null }] })
+      .mockResolvedValueOnce({ rows: [actorRow({ id: 9, email: 'admin@x.ro', role: 'admin', org_id: null, institutie: null })] })
       .mockResolvedValueOnce({ rows: [ACTIVE_USER] });
 
     const res = await request(createTestApp())
@@ -103,7 +111,7 @@ describe('GET /users — exclude utilizatori dezactivați (v3.9.632)', () => {
 
   it('un user activ apare normal în răspuns', async () => {
     dbModule.pool.query
-      .mockResolvedValueOnce({ rows: [{ institutie: 'Primaria X' }] })
+      .mockResolvedValueOnce({ rows: [actorRow()] })
       .mockResolvedValueOnce({ rows: [ACTIVE_USER] });
 
     const res = await request(createTestApp())

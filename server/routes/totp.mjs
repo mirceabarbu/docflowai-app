@@ -69,6 +69,17 @@ function findBackupCode(inputCode, storedCodes) {
   });
 }
 
+function requiredFiniteNumber(value) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function sameNullableId(left, right) {
+  return (left == null && right == null)
+    || (left != null && right != null && String(left) === String(right));
+}
+
 // ── POST /auth/totp/setup ─────────────────────────────────────────────────────
 router.post('/auth/totp/setup', async (req, res) => {
   if (requireDb(res)) return;
@@ -181,12 +192,36 @@ router.post('/auth/totp/verify', async (req, res) => {
     if (!payload.requires2fa)
       return res.status(400).json({ error: 'not_2fa_token' });
 
+    const pendingTv = requiredFiniteNumber(payload.tv);
+    if (!payload.userId || pendingTv == null) {
+      return res.status(401).json({ error: 'session_identity_invalid', message: 'Tokenul de autentificare nu mai este valid.' });
+    }
+
     const { rows } = await pool.query(
-      'SELECT id,email,role,org_id,totp_secret,totp_enabled,totp_backup_codes,token_version,nume,functie,institutie,compartiment FROM users WHERE id=$1',
+      `SELECT id,email,role,org_id,totp_secret,totp_enabled,totp_backup_codes,
+              token_version,nume,functie,institutie,compartiment
+         FROM users
+        WHERE id=$1
+          AND deleted_at IS NULL`,
       [payload.userId]
     );
     const user = rows[0];
-    if (!user || !user.totp_enabled)
+    if (!user) {
+      return res.status(401).json({ error: 'actor_not_found', message: 'Contul nu mai există sau a fost dezactivat.' });
+    }
+
+    const dbTv = requiredFiniteNumber(user.token_version);
+    const identityMatches = String(payload.userId) === String(user.id)
+      && dbTv != null
+      && pendingTv === dbTv
+      && sameNullableId(payload.orgId ?? null, user.org_id ?? null)
+      && String(payload.role || '') !== ''
+      && String(payload.role) === String(user.role || '');
+    if (!identityMatches) {
+      return res.status(401).json({ error: 'token_revoked', message: 'Sesiunea s-a modificat. Reautentifică-te.' });
+    }
+
+    if (!user.totp_enabled)
       return res.status(400).json({ error: 'totp_not_enabled' });
 
     const codeStr  = String(code).trim().toUpperCase();
@@ -209,7 +244,7 @@ router.post('/auth/totp/verify', async (req, res) => {
     const fullToken = jwt.sign(
       {
         userId: user.id, email: user.email, role: user.role, orgId: user.org_id,
-        tv: user.token_version ?? 1, nume: user.nume, functie: user.functie,
+        tv: dbTv, nume: user.nume, functie: user.functie,
         institutie: user.institutie, compartiment: user.compartiment || '',
       },
       JWT_SECRET, { expiresIn: JWT_EXPIRES }

@@ -4,7 +4,7 @@
  */
 import { Router, json as expressJson } from 'express';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
-import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
+import { pool, DB_READY, requireDb, saveFlow, getFlowData, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { convertToPdf, ACCEPTED_EXTENSIONS } from '../../utils/convertToPdf.mjs';
 import { getActiveSigner } from '../../services/user-leave.mjs';
@@ -13,6 +13,7 @@ import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-atta
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 import { normalizeRecipients } from '../../services/flow-transmit.mjs';
 import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
+import { resolveActorOr } from '../../services/actor-identity.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -105,23 +106,22 @@ const createFlow = async (req, res) => {
     }
 
     // Auth — după validarea de bază (endpoint semi-public: validarea rulează independent de auth)
-    const actor = requireAuth(req, res); if (!actor) return;
+    const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+    const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
 
     // SEC v3.9.609: identitatea "Întocmit" NU poate fi impersonată — se derivă din actorul
     // autentificat, nu din ce trimite clientul. Validarea de format de mai sus (400 pe body
     // gol/invalid) rămâne neschimbată; de aici încolo, valorile REALE sunt cele ale actorului.
     initEmail = String(actor.email || '').trim();
-    initName = String(actor.nume || '').trim() || initName; // fallback dacă JWT nu are nume cache-uit
+    initName = String(actor.nume || actor.email || '').trim();
 
-    let orgId = null;
-    try {
-      const ru = await pool.query('SELECT org_id, nume FROM users WHERE email=$1', [initEmail.trim().toLowerCase()]);
-      orgId = ru.rows[0]?.org_id || null;
-      const dbNume = String(ru.rows[0]?.nume || '').trim();
-      if (dbNume) initName = dbNume; // numele din DB e sursa autoritară, ca emailul (nu body-ul clientului)
-    } catch(e) {}
+    const orgId = actor.org_id || null;
     if (!orgId) {
-      try { orgId = await getDefaultOrgId(); } catch(e) { orgId = null; }
+      logger.warn({ userId: actor.id }, 'createFlow: utilizator fără organizație — fail-closed (409)');
+      return res.status(409).json({
+        error: 'user_without_org',
+        message: 'Contul tău nu este asociat unei instituții. Contactează administratorul.',
+      });
     }
 
     // preferredProvider — setat la inițiere, lock pentru toți semnatarii
@@ -258,15 +258,9 @@ const createFlow = async (req, res) => {
     }
 
     const createdAt = body.createdAt || new Date().toISOString();
-    let initFunctie = '', initCompartiment = '', initInstitutie = body.institutie || '';
-    try {
-      const uRes = await pool.query('SELECT functie,compartiment,institutie FROM users WHERE email=$1', [initEmail.toLowerCase()]);
-      if (uRes.rows[0]) {
-        initFunctie = uRes.rows[0].functie || '';
-        initCompartiment = uRes.rows[0].compartiment || '';
-        initInstitutie = initInstitutie || uRes.rows[0].institutie || '';
-      }
-    } catch(e) {}
+    const initFunctie = actor.functie || '';
+    const initCompartiment = actor.compartiment || '';
+    const initInstitutie = actor.institutie || '';
 
     const flowId = _newFlowId(initInstitutie);
     let finalPdfB64 = body.pdfB64 ?? null;
@@ -837,10 +831,21 @@ router.get('/my-flows', async (req, res) => {
 // ── GET /my-flows/:flowId/download ─────────────────────────────────────────
 router.get('/my-flows/:flowId/download', async (req, res) => {
   if (requireDb(res)) return;
-  const qToken = req.query.token;
-  let actor = null;
-  if (qToken) { try { actor = jwt.verify(qToken, JWT_SECRET); } catch(e) {} }
-  if (!actor) actor = requireAuth(req, res);
+  // SEC-88.2: suportul pentru `?token=<JWT de sesiune>` a fost ELIMINAT.
+  //
+  // Era o ocolire completă a autentificării: `sessionGuard` citește doar cookie-ul auth_token
+  // și `Authorization: Bearer` — NU query string-ul. Un cont dezactivat / un admin retrogradat /
+  // o parolă resetată își mutau propriul JWT din cookie în URL și treceau pe lângă TOATE
+  // verificările de revocare (token_version, deleted_at, rol, org) din prompturile 88 și 88.1.
+  //
+  // În plus, un JWT de sesiune într-un query string ajunge în istoricul browserului, în log-urile
+  // de acces ale serverului și ale proxy-ului, în header-ul Referer și — dacă linkul e trimis
+  // prin email — în cutiile poștale ale destinatarilor.
+  //
+  // Verificat: NIMIC din frontend, din template-urile de email sau din server nu construia
+  // vreodată acest link. Era cod mort cu o gaură de securitate în el. Autentificarea se face
+  // exclusiv prin cookie / Bearer, ca pe orice altă rută.
+  const actor = requireAuth(req, res);
   if (!actor) return;
   try {
     // v3.9.502 (A-2 P0): folosim getFlowData() care rehidratează signedPdfB64

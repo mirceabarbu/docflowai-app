@@ -118,7 +118,7 @@ const TEST_JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-vitest-docflo
 /** Token JWT valid pentru un utilizator */
 function makeToken(overrides = {}) {
   return jwt.sign(
-    { userId: 1, email: 'init@primaria.ro', role: 'user', orgId: 1, nume: 'Ion Popescu', ...overrides },
+    { userId: 1, email: 'init@primaria.ro', role: 'user', orgId: 1, tv: 1, nume: 'Ion Popescu', ...overrides },
     TEST_JWT_SECRET,
     { expiresIn: '2h' }
   );
@@ -330,6 +330,13 @@ describe('POST /flows — validare input', () => {
   });
 
   it('200 — creare reușită, răspuns corect', async () => {
+    // SEC-P0.3: createFlow face lookup FAIL-CLOSED după actor.userId (nu email, fără fallback).
+    // Rândul users trebuie să existe și org_id-ul să coincidă cu orgId din JWT (1).
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{
+      id: 1, email: 'init@primaria.ro', nume: 'Ion Popescu', functie: 'Inspector',
+      compartiment: 'Secretariat', institutie: 'Primăria Test', role: 'user',
+      org_id: 1, token_version: 1, force_password_change: false,
+    }] });
     const app = createTestApp();
     const res = await request(app).post('/flows')
       .set('Cookie', `auth_token=${makeToken()}`)
@@ -345,9 +352,22 @@ describe('POST /flows — validare input', () => {
     expect(res.body.firstSignerEmail).toBe('signer@primaria.ro');
     expect(res.body.initIsSigner).toBe(false);
     expect(dbModule.saveFlow).toHaveBeenCalledOnce();
+    const saved = dbModule.saveFlow.mock.calls[0][1];
+    expect(saved).toMatchObject({
+      initName: 'Ion Popescu', initEmail: 'init@primaria.ro', initFunctie: 'Inspector',
+      compartiment: 'Secretariat', institutie: 'Primăria Test', orgId: 1,
+    });
+    expect(saved.initFunctie).not.toBe('Inspector vechi');
+    expect(dbModule.pool.query.mock.calls[0][0]).not.toMatch(/WHERE\s+(?:LOWER\s*\(\s*)?email/i);
   });
 
   it('200 — inițiatorul este și semnatar → signerToken inclus', async () => {
+    // SEC-P0.3: idem — rând users aliniat cu orgId din JWT (1).
+    dbModule.pool.query.mockResolvedValueOnce({ rows: [{
+      id: 1, email: 'init@primaria.ro', nume: 'Ion Popescu', functie: 'Inspector',
+      compartiment: 'Secretariat', institutie: 'Primăria Test', role: 'user',
+      org_id: 1, token_version: 1, force_password_change: false,
+    }] });
     const app = createTestApp();
     const res = await request(app).post('/flows')
       .set('Cookie', `auth_token=${makeToken()}`)

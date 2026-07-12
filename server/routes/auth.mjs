@@ -7,6 +7,7 @@
 
 import { Router } from 'express';
 import { generateCsrfToken, csrfMiddleware } from '../middleware/csrf.mjs';
+import { resolveActor } from '../services/actor-identity.mjs';
 import jwt from 'jsonwebtoken';
 import {
   JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC,
@@ -41,7 +42,16 @@ router.post('/auth/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'email_and_password_required' });
   if (password.length > 200) return res.status(400).json({ error: 'password_too_long', max: 200 });
 
-  const rateCheck = await _checkLoginRate(req, email);
+  // SEC-87.1: rate-limiterul e injectat din index.mjs. Daca injectia nu a rulat (ordine de import
+  // schimbata la refactor), apelul arunca TypeError si TOATE loginurile dadeau 500 — o pana totala
+  // de autentificare. Fail-open pe rate limiting (disponibilitate > fereastra de brute-force), dar
+  // cu logger.error, ca deployment-ul rupt sa fie imediat vizibil.
+  if (typeof _checkLoginRate !== 'function') {
+    logger.error('SEC: rate-limiterul de login NU este injectat — login permis FARA rate limiting. Verifica injectia din index.mjs.');
+  }
+  const rateCheck = typeof _checkLoginRate === 'function'
+    ? await _checkLoginRate(req, email)
+    : { blocked: false };
   if (rateCheck.blocked) {
     return res.status(429).json({
       error: 'too_many_attempts',
@@ -147,41 +157,25 @@ router.get('/auth/csrf-token', (req, res) => {
 router.get('/auth/me', async (req, res) => {
   const decoded = requireAuth(req, res);
   if (!decoded) return;
-  if (!pool || !DB_READY) return res.json(decoded);
-  try {
-    let row = null;
-    if (decoded.userId) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,force_password_change,token_version FROM users WHERE id=$1 AND deleted_at IS NULL', [decoded.userId]);
-      row = rows[0] || null;
-    }
-    if (!row && decoded.email) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,force_password_change,token_version FROM users WHERE lower(email)=lower($1) AND deleted_at IS NULL', [decoded.email]);
-      row = rows[0] || null;
-      if (row) logger.warn({ userId: decoded.userId, email: decoded.email, dbId: row.id }, '[auth/me] User gasit prin email (id mismatch)');
-    }
-    if (!row) {
-      logger.warn({ email: decoded.email }, '[auth/me] User negasit in DB - returnez JWT payload');
-      return res.json({
-        userId: decoded.userId, email: decoded.email, role: decoded.role,
-        orgId: decoded.orgId, nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie
-      });
-    }
-    // SEC-04: verifică token_version — invalidat la reset parolă
-    const dbTvMe = row.token_version ?? 1;
-    const jwtTvMe = decoded.tv ?? 1;
-    if (jwtTvMe !== dbTvMe) {
+  const identity = await resolveActor(decoded);
+  if (!identity.ok) {
+    if (identity.status !== 503) {
       clearAuthCookie(res);
-      return res.status(401).json({ error: 'token_revoked', message: 'Sesiunea a fost invalidată. Te rugăm să te autentifici din nou.' });
     }
-    res.json({
-      userId: row.id, email: row.email, orgId: row.org_id,
-      nume: row.nume, functie: row.functie, institutie: row.institutie, compartiment: row.compartiment || '', role: row.role,
-      force_password_change: !!row.force_password_change,
+    const status = identity.status === 403 ? 401 : identity.status;
+    return res.status(status).json({
+      error: identity.error,
+      message: identity.message,
     });
-  } catch(e) {
-    logger.warn({ err: e }, '[auth/me] DB error - folosesc JWT payload');
-    res.json(decoded);
   }
+
+  const row = identity.user;
+  return res.json({
+    userId: row.id, email: row.email, orgId: row.org_id,
+    nume: row.nume, functie: row.functie, institutie: row.institutie,
+    compartiment: row.compartiment || '', role: row.role,
+    force_password_change: !!row.force_password_change,
+  });
 });
 
 // ── POST /auth/refresh ────────────────────────────────────────────────────────

@@ -19,6 +19,20 @@
   let bellBtn = null;
   let _refreshPromise = null; // deduplică cererile simultane de refresh
 
+  // SEC-88.3: coduri de eroare pe care sessionGuard (server/middleware/session-guard.mjs)
+  // le întoarce cu 401. TOATE înseamnă același lucru: serverul a decis că sesiunea nu mai e
+  // validă. NU se încearcă refreshToken() pentru ele — /auth/refresh (auth.mjs) validează DOAR
+  // deleted_at și token_version, NU rolul și NU organizația. Un refresh pe `session_org_stale`
+  // ar REUȘI și ar emite tăcut un token pentru org-ul NOU, lăsând UI-ul populat cu datele
+  // org-ului VECHI — exact scurgerea între instituții pe care prompturile 86-88 au închis-o.
+  // Listă SEPARATĂ de cea refreshabilă de mai jos: aici mergem direct la login.
+  const REVOKED_CODES = [
+    'session_revoked',    // cont dezactivat sau inexistent
+    'token_revoked',      // token_version bump-uit (reset parolă / dezactivare / schimbare rol)
+    'session_role_stale', // rolul din JWT nu mai corespunde celui din DB
+    'session_org_stale',  // organizația din JWT nu mai corespunde celei din DB
+  ];
+
   // ── CSS injectat ──────────────────────────────────────────
   const STYLE = `
     #nw-bell-btn {
@@ -195,6 +209,12 @@
       let body = {};
       try { body = await res.clone().json(); } catch(e) {}
       const err = body?.error || '';
+      // SEC-88.3: sesiune revocată de sessionGuard → direct la login, FĂRĂ refresh (ar fi
+      // inutil pentru revoked/token_revoked și NOCIV pentru role/org_stale — vezi REVOKED_CODES).
+      if (REVOKED_CODES.includes(err)) {
+        redirectLogin();
+        return res;
+      }
       if (err === 'token_invalid_or_expired' || err === 'unauthorized' || err === 'token_invalid') {
         const ok = await refreshToken();
         if (ok) res = await fetch(url, { ...options, headers, credentials: 'include' });

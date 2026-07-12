@@ -15,22 +15,22 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.mjs';
 import { pool, requireDb } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
+import { resolveActorOr } from '../services/actor-identity.mjs';
 
 const router = Router();
 
 // ── GET /api/templates ────────────────────────────────────────────────────
 router.get('/api/templates', async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   try {
-    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const institutie = uRows[0]?.institutie || '';
-    const orgId = uRows[0]?.org_id || actor.orgId || null;
+    const orgId = actor.org_id || null;
     // FIX v3.2.3: filtrare pe org_id pentru sabloane partajate (nu doar pe institutie text)
     const { rows } = await pool.query(
-      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND institutie=$2 AND institutie!='' AND ($3::integer IS NULL OR org_id=$3))
+      `SELECT * FROM templates WHERE user_email=$1 OR (shared=TRUE AND org_id=$2)
        ORDER BY user_email=$1 DESC, name ASC`,
-      [actor.email.toLowerCase(), institutie, orgId]
+      [actor.email.toLowerCase(), orgId]
     );
     res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
@@ -39,7 +39,8 @@ router.get('/api/templates', async (req, res) => {
 // ── POST /api/templates ───────────────────────────────────────────────────
 router.post('/api/templates', async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   const { name, signers, shared } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'name_required' });
   if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
@@ -51,10 +52,11 @@ router.post('/api/templates', async (req, res) => {
       return res.status(400).json({ error: 'signer_email_invalid', index: i });
   }
   try {
-    // FIX b76: citim și org_id — FK obligatoriu pe templates în producție
-    const { rows: uRows } = await pool.query('SELECT institutie, org_id FROM users WHERE email=$1', [actor.email.toLowerCase()]);
-    const institutie = uRows[0]?.institutie || '';
-    const orgId = uRows[0]?.org_id || actor.orgId || null;
+    const institutie = actor.institutie || '';
+    const orgId = actor.org_id || null;
+    if (shared && !orgId) {
+      return res.status(409).json({ error: 'user_without_org', message: 'Contul nu este asociat unei organizații.' });
+    }
     const { rows } = await pool.query(
       'INSERT INTO templates (user_email,institutie,name,signers,shared,org_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
       [actor.email.toLowerCase(), institutie, name.trim(), JSON.stringify(signers), !!shared, orgId]

@@ -138,4 +138,28 @@ describe('GET /my-flows/:flowId/download — A-2', () => {
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('no_signed_pdf');
   });
+
+  it('SEC-88.2 — ?token=<JWT valid> FĂRĂ cookie NU mai autentifică (401)', async () => {
+    // Exact vectorul de ocolire: JWT-ul de sesiune mutat din cookie în query string.
+    dbModule.getFlowData.mockResolvedValue(makeFlowData());
+    const jwtValid = jwt.sign({ email: 'init@x.ro', userId: 1, role: 'user', orgId: 1 },
+                              JWT_SECRET, { expiresIn: '1h' });
+
+    const res = await request(createTestApp())
+      .get(`/my-flows/${FLOW_ID}/download?token=${jwtValid}`);
+      // ⚠️ FĂRĂ .set('Cookie', ...) — ăsta e miezul testului
+
+    expect(res.status).toBe(401);
+    expect(res.headers['content-type']).not.toMatch(/pdf/);
+  });
+
+  it('SEC-88.2 — cookie valid + ?token= ignorat ⇒ merge normal (fără regresie)', async () => {
+    dbModule.getFlowData.mockResolvedValue(makeFlowData());
+
+    const res = await request(createTestApp())
+      .get(`/my-flows/${FLOW_ID}/download?token=garbage`)
+      .set('Cookie', makeAuth('init@x.ro'));
+
+    expect(res.status).toBe(200);   // cookie-ul decide; query-ul e ignorat complet
+  });
 });

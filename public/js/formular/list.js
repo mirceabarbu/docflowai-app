@@ -70,6 +70,17 @@ async function _autoSaveDb(ft){
       }
     }
     if(!r||!j||!r.ok){
+      // SEC-88.3: sesiune revocată/expirată mid-editare. Autosave-ul în DB folosește fetch()
+      // brut (fără shim/notif-widget) → un 401 era înghițit tăcut, iar inspectorul continua să
+      // scrie într-un vid, nimic nu se mai salva pe server. NU redirectăm din interiorul unui
+      // debounce (am smulge omul din tastare); în schimb forțăm o salvare SINCRONĂ a draftului
+      // local (draftSave din draft.js) + un banner persistent cu buton de reautentificare.
+      // Doar 401 declanșează bannerul; o eroare de rețea trecătoare rămâne badge-ul '⚠' de mai jos.
+      if(r&&r.status===401){
+        try{ draftSave(ft); }catch(_){}
+        _showSessionExpiredBanner();
+        return;
+      }
       if(r&&r.status===409&&j&&_DUP_ERRORS[j.error]){
         _markDupField(_DUP_ERRORS[j.error], j.message);
         _draftShowBadge(ft,'🔴 '+j.message);
@@ -98,6 +109,24 @@ async function _autoSaveDb(ft){
 function _scheduleAutoSaveDb(ft){
   clearTimeout(_autoSaveTimers[ft]);
   _autoSaveTimers[ft]=setTimeout(()=>_autoSaveDb(ft),800);
+}
+
+// SEC-88.3: banner persistent la sesiune expirată/revocată pe autosave DB. Refolosește #sBar
+// (bara de status a paginii, clasa .status.err din formular.css) — același component pe care
+// draft.js îl folosește pentru banner-ul de restore. NU redirectează automat (decizie de UX):
+// draftul local e deja păstrat sincron; utilizatorul reia lucrul prin butonul de reautentificare.
+let _sessionExpiredShown=false;
+function _showSessionExpiredBanner(){
+  if(_sessionExpiredShown)return; _sessionExpiredShown=true;
+  const bar=document.getElementById('sBar'); if(!bar)return;
+  const next=encodeURIComponent(location.pathname+location.search);
+  bar.className='status err';
+  bar.innerHTML='⚠️ Sesiunea a expirat. Modificările nu se mai salvează pe server. '
+    +'Draftul local a fost păstrat. &nbsp;'
+    +'<button onclick="location.href=\'/login?next='+next+'\'" '
+    +'style="padding:2px 12px;border-radius:6px;border:1px solid rgba(255,80,80,.4);'
+    +'background:rgba(255,80,80,.12);color:#ff9090;cursor:pointer;font-size:.82rem">'
+    +'Reautentifică-te</button>';
 }
 
 // ── DF Aprobate — dropdown pentru ORD ────────────────────────────────────────

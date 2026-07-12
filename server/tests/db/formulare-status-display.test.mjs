@@ -296,4 +296,55 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
       expect(findRow(res.body, id)).toBeFalsy();
     });
   });
+
+  // ─── Filtru ⟺ badge_status: partiție exactă {aprobat, completed, transmis_flux} (prompt 81) ───
+  // Aserția cheie: pentru fiecare V ∈ {aprobat, completed, transmis_flux}, setul returnat de
+  // filtrul status=V = EXACT documentele cu badge_status=V (fără drift filtru↔badge), pe DF ȘI ORD.
+  d('filtru status=V ⟺ badge_status=V (partiție exactă DF+ORD)', () => {
+    // Fiecare fixture: seed → (id, badge așteptat). Acoperă toate stările din matricea de badge.
+    const FILTER_MATRIX = [
+      { key: 'aprobat_brut',        status: 'aprobat',       flow: null,                       badge: 'aprobat' },
+      { key: 'completed_flux_aprb', status: 'completed',     flow: { completed: true },         badge: 'aprobat' },
+      { key: 'completed_fara_flux', status: 'completed',     flow: null,                       badge: 'completed' },
+      { key: 'completed_flux_activ',status: 'completed',     flow: { status: 'pending' },       badge: 'transmis_flux' },
+      { key: 'transmis_brut',       status: 'transmis_flux', flow: { status: 'pending' },       badge: 'transmis_flux' },
+      { key: 'neaprobat',           status: 'draft',         flow: null,                       badge: 'draft' },
+    ];
+
+    for (const type of ['df', 'ord']) {
+      const seedDoc = type === 'df' ? seedDf : seedOrd;
+
+      it(`${type.toUpperCase()}: filtru = badge pentru aprobat / completed / transmis_flux`, async () => {
+        // Seed toate fixture-urile, memorând id → badge așteptat.
+        const idBadge = new Map();
+        for (const fx of FILTER_MATRIX) {
+          let flowId = null;
+          if (fx.flow) flowId = await seedFlowX(`flow-${type}-${fx.key}`, fx.flow);
+          const id = await seedDoc({ orgId: 1, createdBy: 1, status: fx.status, flowId });
+          idBadge.set(id, fx.badge);
+        }
+
+        // Sanity: badge_status derivat = cel așteptat (fără filtru).
+        const all = await request(app).get(`/api/formulare/list?type=${type}`).set('Cookie', cookie());
+        expect(all.status).toBe(200);
+        for (const [id, badge] of idBadge) {
+          expect(findRow(all.body, id)?.badge_status).toBe(badge);
+        }
+
+        // Pentru fiecare V, filtrul returnează EXACT documentele cu badge=V.
+        for (const V of ['aprobat', 'completed', 'transmis_flux']) {
+          const res = await request(app)
+            .get(`/api/formulare/list?type=${type}&status=${V}`).set('Cookie', cookie());
+          expect(res.status).toBe(200);
+          const returned = new Set(res.body.rows.map(r => r.id).filter(id => idBadge.has(id)));
+          const expected = new Set([...idBadge].filter(([, b]) => b === V).map(([id]) => id));
+          expect([...returned].sort()).toEqual([...expected].sort());
+          // dublu-check: fiecare rând întors are chiar badge_status=V
+          for (const r of res.body.rows) {
+            if (idBadge.has(r.id)) expect(r.badge_status).toBe(V);
+          }
+        }
+      });
+    }
+  });
 });
