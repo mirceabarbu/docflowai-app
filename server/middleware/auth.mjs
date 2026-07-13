@@ -49,6 +49,17 @@ export function injectAdminRateLimiter(check, record, clear) {
 const PBKDF2_ITER_V1 = 100_000;
 const PBKDF2_ITER_V2 = 600_000;
 
+// Comparație de hash rezistentă la timing (canal lateral). `timingSafeEqual` ARUNCĂ dacă
+// buffer-ele au lungimi diferite ⇒ verificăm lungimea întâi și întoarcem `false` (nu excepție)
+// pentru orice input malformat/trunchiat — altfel un hash corupt din DB ar produce 500 la login.
+function _safeEq(aHex, bHex) {
+  if (typeof aHex !== 'string' || typeof bHex !== 'string') return false;
+  const a = Buffer.from(aHex, 'hex');
+  const b = Buffer.from(bHex, 'hex');
+  if (a.length !== b.length || a.length === 0) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 export async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = (await _pbkdf2(password, salt, PBKDF2_ITER_V2, 64, 'sha256')).toString('hex');
@@ -68,13 +79,13 @@ export async function verifyPassword(password, stored) {
     if (idx === -1) return { ok: false, needsRehash: false };
     const salt = rest.slice(0, idx), hash = rest.slice(idx + 1);
     const check = (await _pbkdf2(password, salt, PBKDF2_ITER_V2, 64, 'sha256')).toString('hex');
-    return { ok: check === hash, needsRehash: false };
+    return { ok: _safeEq(check, hash), needsRehash: false };
   }
   // hash v1 (legacy) — migrare lazy la v2 la următorul login
   if (!stored.includes(':')) return { ok: false, needsRehash: false };
   const [salt, hash] = stored.split(':');
   const check = (await _pbkdf2(password, salt, PBKDF2_ITER_V1, 64, 'sha256')).toString('hex');
-  const ok = check === hash;
+  const ok = _safeEq(check, hash);
   return { ok, needsRehash: ok };
 }
 

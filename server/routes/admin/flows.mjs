@@ -584,6 +584,7 @@ router.get('/admin/flows/:flowId/audit', async (req, res) => {
         'AUTO_DELEGATED_LEAVE': 'DELEGAT AUTOMAT (CONCEDIU)',
         'PRESIGNED_UPLOAD_DETECTED': 'PDF PRESEMNAT DETECTAT',
         'TOKEN_REGENERATED': 'TOKEN REGENERAT',
+        'PASSWORD_CHANGED': 'PAROLĂ SCHIMBATĂ',
       };
       const evLabel = (type) => EVENT_LABELS_RO[type] || (type||'').replace(/_/g, ' ');
       const pdfDoc = await PDFDocument.create();

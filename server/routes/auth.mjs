@@ -14,7 +14,7 @@ import {
   requireAuth, verifyPassword, hashPassword,
   setAuthCookie, clearAuthCookie, setCsrfCookie,
 } from '../middleware/auth.mjs';
-import { pool, DB_READY, requireDb } from '../db/index.mjs';
+import { pool, DB_READY, requireDb, writeAuditEvent } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 
 const router = Router();
@@ -194,23 +194,33 @@ router.post('/auth/refresh', async (req, res) => {
     } else { return res.status(401).json({ error: 'token_invalid' }); }
   }
   if (!decoded?.userId) return res.status(401).json({ error: 'token_invalid' });
+  // AUTH-01: fail-closed când DB e indisponibil. Fără DB nu putem valida token_version,
+  // deleted_at sau rolul — a semna un token nou (valabil JWT_EXPIRES) din claims vechi ar
+  // prelungi o sesiune posibil revocată exact în fereastra de incident. NU ștergem cookie-ul
+  // (un incident DB scurt nu trebuie să deconecteze toți userii) și NU folosim token_revoked
+  // (frontendul îl tratează ca revocare → redirect la login). `db_unavailable` = eșec temporar,
+  // ignorat de notif-widget (nu e în REVOKED_CODES).
+  if (!pool || !DB_READY) {
+    return res.status(503).json({
+      error: 'db_unavailable',
+      message: 'Serviciul nu poate valida sesiunea momentan. Reîncearcă în câteva momente.',
+    });
+  }
   try {
-    if (pool && DB_READY) {
-      const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,token_version FROM users WHERE id=$1 AND deleted_at IS NULL', [decoded.userId]);
-      if (!rows[0]) { clearAuthCookie(res); return res.status(401).json({ error: 'user_not_found' }); }
-      // SEC-04: verifică token_version — invalidat la reset parolă
-      const dbTv = rows[0].token_version ?? 1;
-      const jwtTv = decoded.tv ?? 1;
-      if (jwtTv !== dbTv) {
-        clearAuthCookie(res);
-        return res.status(401).json({ error: 'token_revoked', message: 'Sesiunea a fost invalidată. Te rugăm să te autentifici din nou.' });
-      }
-      decoded = {
-        userId: rows[0].id, email: rows[0].email, orgId: rows[0].org_id,
-        nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, compartiment: rows[0].compartiment || '', role: rows[0].role,
-        tv: dbTv,
-      };
+    const { rows } = await pool.query('SELECT id,email,nume,functie,institutie,compartiment,role,org_id,token_version FROM users WHERE id=$1 AND deleted_at IS NULL', [decoded.userId]);
+    if (!rows[0]) { clearAuthCookie(res); return res.status(401).json({ error: 'user_not_found' }); }
+    // SEC-04: verifică token_version — invalidat la reset parolă
+    const dbTv = rows[0].token_version ?? 1;
+    const jwtTv = decoded.tv ?? 1;
+    if (jwtTv !== dbTv) {
+      clearAuthCookie(res);
+      return res.status(401).json({ error: 'token_revoked', message: 'Sesiunea a fost invalidată. Te rugăm să te autentifici din nou.' });
     }
+    decoded = {
+      userId: rows[0].id, email: rows[0].email, orgId: rows[0].org_id,
+      nume: rows[0].nume, functie: rows[0].functie, institutie: rows[0].institutie, compartiment: rows[0].compartiment || '', role: rows[0].role,
+      tv: dbTv,
+    };
     const newToken = jwt.sign(
       { userId: decoded.userId, email: decoded.email, role: decoded.role, orgId: decoded.orgId,
         nume: decoded.nume, functie: decoded.functie, institutie: decoded.institutie, compartiment: decoded.compartiment || '',
@@ -245,15 +255,43 @@ router.post('/auth/change-password', csrfMiddleware, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   const { current_password, new_password } = req.body || {};
   if (!current_password || !new_password) return res.status(400).json({ error: 'missing_fields' });
-  if (new_password.length < 6) return res.status(400).json({ error: 'password_too_short', message: 'Parola nouă trebuie să aibă minim 6 caractere.' });
+  // Minim 10 caractere (era 6). 10, nu 12: generatePassword() produce `xxx-xxx-xxx` = 11 caractere;
+  // un minim de 12 ar invalida parolele generate de admin. Fără reguli de compoziție (NIST 800-63B).
+  if (new_password.length < 10) return res.status(400).json({ error: 'password_too_short', message: 'Parola nouă trebuie să aibă minim 10 caractere.' });
   if (new_password.length > 200) return res.status(400).json({ error: 'password_too_long', max: 200 });
   try {
     const { rows } = await pool.query('SELECT password_hash FROM users WHERE id=$1', [actor.userId]);
     if (!rows[0]) return res.status(404).json({ error: 'user_not_found' });
     const verif = await verifyPassword(current_password, rows[0].password_hash);
     if (!verif.ok) return res.status(401).json({ error: 'wrong_password', message: 'Parola curentă este incorectă.' });
-    await pool.query('UPDATE users SET password_hash=$1, force_password_change=FALSE WHERE id=$2', [await hashPassword(new_password), actor.userId]);
-    res.json({ ok: true });
+    // Bump token_version → invalidează TOATE celelalte sesiuni (ex. atacator cu cookie furat).
+    // RETURNING dă noul tv, cu care re-emitem cookie-ul sesiunii CURENTE mai jos — altfel
+    // utilizatorul care tocmai și-a schimbat parola ar fi deconectat instant de propriul
+    // sessionGuard (tokenul lui ar avea tv-ul vechi). Efect: sesiunea curentă supraviețuiește,
+    // toate celelalte mor.
+    const upd = await pool.query(
+      'UPDATE users SET password_hash=$1, force_password_change=FALSE, token_version=COALESCE(token_version,1)+1 WHERE id=$2 RETURNING token_version',
+      [await hashPassword(new_password), actor.userId]
+    );
+    const newTv = upd.rows[0]?.token_version ?? ((actor.tv ?? 1) + 1);
+    const newToken = jwt.sign(
+      { userId: actor.userId, email: actor.email, role: actor.role, orgId: actor.orgId,
+        nume: actor.nume, functie: actor.functie, institutie: actor.institutie,
+        compartiment: actor.compartiment || '', tv: newTv },
+      JWT_SECRET, { expiresIn: JWT_EXPIRES }
+    );
+    setAuthCookie(res, newToken, jwtExpiresMs());
+    // Emitem și un CSRF nou, ca perechea auth/csrf să rămână consistentă (ca la /auth/refresh).
+    const csrfToken = generateCsrfToken();
+    setCsrfCookie(res, csrfToken, 24 * 60 * 60 * 1000);
+    writeAuditEvent({
+      flowId: null, orgId: actor.orgId || null,
+      eventType: 'PASSWORD_CHANGED',
+      actorEmail: actor.email || null,
+      actorIp: req.ip || null,
+      payload: { self: true },
+    }).catch(() => {});
+    res.json({ ok: true, csrfToken });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 

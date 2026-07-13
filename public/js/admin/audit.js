@@ -52,6 +52,7 @@
     'ORGANIZATION_DELETED':          'Organizație ștearsă',
     'ORGANIZATION_REACTIVATED':      'Organizație reactivată',
     'ADMIN_SECRET_ACCESS':           'Acces administrator (secrete)',
+    'PASSWORD_CHANGED':              'Parolă schimbată',
 
     // ─── Drepturi & module ───────────────────────────────────────────
     'entitlement_change':            'Modificare drepturi modul',
