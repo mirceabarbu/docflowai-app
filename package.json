@@ -1,6 +1,6 @@
 {
   "name": "docflowai-app",
-  "version": "3.9.676",
+  "version": "3.9.677",
   "private": true,
   "type": "module",
   "main": "server/index.mjs",
@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.0",
+    "happy-dom": "^20.10.6",
     "pdfjs-dist": "^4.10.38",
     "supertest": "^7.0.0",
     "vitest": "^4.1.0"
