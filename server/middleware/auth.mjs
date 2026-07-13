@@ -15,6 +15,7 @@ import util from 'util';
 const _pbkdf2 = util.promisify(crypto.pbkdf2);
 import jwt from 'jsonwebtoken';
 import { logger, redactUrl } from './logger.mjs';
+import config from '../config.mjs';
 
 if (!process.env.JWT_SECRET) {
   logger.error('FATAL: JWT_SECRET nu este setat!');
@@ -177,10 +178,16 @@ async function _writeAdminSecretAudit(req) {
   } catch(_) { /* fire-and-forget */ }
 }
 
+// ── Cookie helpers — SURSĂ UNICĂ pentru flagurile de cookie ──────────────────
+// SEC (incident 13.07.2026): flagul `Secure` NU se mai condiționează pe
+// `NODE_ENV === 'production'` (lipsa variabilei îl scotea) și nici pe
+// `!== 'test'`. Trece prin `config.isProd`, care e fail-secure: orice mediu care
+// nu e explicit development/test primește cookie-uri `Secure`. NICIUN `res.cookie`
+// direct în routes/ — totul trece prin aceste trei funcții.
 export function setAuthCookie(res, token, maxAgeMs) {
   res.cookie(AUTH_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV !== 'test',
+    secure: config.isProd,
     sameSite: 'lax',   // FIX b233: 'strict' bloca cookie-ul la redirect OAuth (cross-site GET)
                        // 'lax' permite cookie pe GET redirect (OAuth), blochează POST cross-site (CSRF ok)
     path: '/',
@@ -190,8 +197,22 @@ export function setAuthCookie(res, token, maxAgeMs) {
 
 export function clearAuthCookie(res) {
   res.cookie(AUTH_COOKIE, '', {
-    httpOnly: true, secure: process.env.NODE_ENV !== 'test',
+    httpOnly: true, secure: config.isProd,
     sameSite: 'lax', path: '/', maxAge: 0,
+  });
+}
+
+// setCsrfCookie — geamăn cu setAuthCookie pentru cookie-ul `csrf_token`.
+// `httpOnly: false` (frontend îl citește și-l trimite ca header X-CSRF-Token),
+// `sameSite: 'strict'`, `secure: config.isProd`. Înlocuiește cele patru
+// `res.cookie('csrf_token', ...)` care aveau reguli `Secure` divergente.
+export function setCsrfCookie(res, token, maxAgeMs) {
+  res.cookie('csrf_token', token, {
+    httpOnly: false,
+    sameSite: 'strict',
+    secure: config.isProd,
+    path: '/',
+    maxAge: maxAgeMs || (24 * 60 * 60 * 1000),
   });
 }
 

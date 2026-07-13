@@ -14,7 +14,7 @@
 import { Router } from 'express';
 import { generateSecret, generateSync, verifySync } from 'otplib';
 import crypto from 'crypto';
-import { requireAuth, JWT_SECRET, AUTH_COOKIE } from '../middleware/auth.mjs';
+import { requireAuth, JWT_SECRET, setAuthCookie, setCsrfCookie } from '../middleware/auth.mjs';
 import { pool, requireDb } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import jwt from 'jsonwebtoken';
@@ -251,17 +251,13 @@ router.post('/auth/totp/verify', async (req, res) => {
     );
 
     const maxAgeMs = 8 * 60 * 60 * 1000;
-    res.cookie(AUTH_COOKIE, fullToken, {
-      httpOnly: true, sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: maxAgeMs, path: '/',
-    });
+    // SEC: unificat pe helperele din middleware/auth.mjs — auth_token păstrează
+    // `sameSite: 'lax'` (calea TOTP folosea 'strict', care ar sparge redirectul
+    // OAuth STS); `secure` trece prin config.isProd (fail-secure), nu prin
+    // NODE_ENV === 'production' care lipsea la incident.
+    setAuthCookie(res, fullToken, maxAgeMs);
     const csrfToken = crypto.randomBytes(32).toString('hex');
-    res.cookie('csrf_token', csrfToken, {
-      httpOnly: false, sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: maxAgeMs, path: '/',
-    });
+    setCsrfCookie(res, csrfToken, maxAgeMs);
 
     logger.info({ userId: user.id, via: totpOk ? 'totp' : 'backup' }, '2FA: login verificat');
     res.json({ ok: true, email: user.email, role: user.role });

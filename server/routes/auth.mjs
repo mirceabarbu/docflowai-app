@@ -12,7 +12,7 @@ import jwt from 'jsonwebtoken';
 import {
   JWT_SECRET, JWT_EXPIRES, JWT_REFRESH_GRACE_SEC,
   requireAuth, verifyPassword, hashPassword,
-  setAuthCookie, clearAuthCookie,
+  setAuthCookie, clearAuthCookie, setCsrfCookie,
 } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
@@ -114,13 +114,7 @@ router.post('/auth/login', async (req, res) => {
     setAuthCookie(res, token, jwtExpiresMs());
     // CSRF: cookie non-HttpOnly citit de frontend si trimis ca header x-csrf-token
     const csrfToken = generateCsrfToken();
-    res.cookie('csrf_token', csrfToken, {
-      httpOnly: false,
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 24 * 60 * 60 * 1000, // 24h — nu mai expira in timpul unei zile de lucru
-      path: '/',
-    });
+    setCsrfCookie(res, csrfToken, 24 * 60 * 60 * 1000); // 24h — nu mai expira in timpul unei zile de lucru
 
     logger.info({ userId: user.id, email: user.email, role: user.role }, 'Login reusit');
 
@@ -144,11 +138,7 @@ router.get('/auth/csrf-token', (req, res) => {
   const existing = req.cookies?.csrf_token;
   const token = existing || generateCsrfToken();
   if (!existing) {
-    res.cookie('csrf_token', token, {
-      httpOnly: false, sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 24 * 60 * 60 * 1000, path: '/',
-    });
+    setCsrfCookie(res, token, 24 * 60 * 60 * 1000);
   }
   res.json({ csrfToken: token });
 });
@@ -230,12 +220,7 @@ router.post('/auth/refresh', async (req, res) => {
     // SEC-01: noul token în cookie HttpOnly
     setAuthCookie(res, newToken, jwtExpiresMs());
     const csrfTokenRefresh = generateCsrfToken();
-    res.cookie('csrf_token', csrfTokenRefresh, {
-      httpOnly: false, sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 24 * 60 * 60 * 1000, // 24h
-      path: '/',
-    });
+    setCsrfCookie(res, csrfTokenRefresh, 24 * 60 * 60 * 1000); // 24h
     return res.json({
       ok: true,
       csrfToken: csrfTokenRefresh,  // returnat în body — frontend îl citește direct, fără să aștepte cookie
@@ -271,130 +256,6 @@ router.post('/auth/change-password', csrfMiddleware, async (req, res) => {
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
-
-// ── Endpoint-uri debug/recovery — DEZACTIVATE în producție ────────────────────
-// Disponibile doar în development (NODE_ENV !== 'production')
-if (process.env.NODE_ENV !== 'production') {
-
-// ── GET /auth/debug — diagnostic endpoint (ADMIN ONLY) ───────────────────────
-router.get('/auth/debug', async (req, res) => {
-  let token = req.cookies?.auth_token || null;
-  if (!token) {
-    const auth = req.get('authorization') || '';
-    token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
-  }
-  if (!token) return res.status(400).json({ error: 'no_token' });
-
-  let decoded = null;
-  let jwtError = null;
-  try {
-    decoded = jwt.verify(token, JWT_SECRET);
-  } catch(e) {
-    jwtError = e.message;
-    try { decoded = jwt.decode(token); } catch(e2) {}
-  }
-
-  if (!decoded || decoded.role !== 'admin') {
-    return res.status(403).json({ error: 'forbidden', message: 'Endpoint disponibil doar pentru administratori.' });
-  }
-
-  let dbUser = null, dbError = null, dbUserByEmail = null;
-  if (decoded?.userId && pool && DB_READY) {
-    try {
-      const { rows } = await pool.query('SELECT id,email,nume,role,org_id,institutie FROM users WHERE id=$1 AND deleted_at IS NULL', [decoded.userId]);
-      dbUser = rows[0] || null;
-    } catch(e) { dbError = e.message; }
-  }
-  if (decoded?.email && pool && DB_READY) {
-    try {
-      const { rows } = await pool.query('SELECT id,email,nume,role,org_id,institutie FROM users WHERE lower(email)=lower($1)', [decoded.email]);
-      dbUserByEmail = rows[0] || null;
-    } catch(e) {}
-  }
-
-  res.json({
-    jwt: { valid: !jwtError, error: jwtError, payload: decoded },
-    db: { byId: dbUser, byEmail: dbUserByEmail, error: dbError },
-    conclusion: {
-      jwtRole: decoded?.role,
-      dbRole: dbUser?.role || dbUserByEmail?.role,
-      willPassAdminCheck: (dbUser?.role || dbUserByEmail?.role || decoded?.role) === 'admin',
-    }
-  });
-});
-
-// ── POST /auth/fix-admin-role ─────────────────────────────────────────────────
-router.post('/auth/fix-admin-role', async (req, res) => {
-  const { ADMIN_SECRET } = await import('../middleware/auth.mjs');
-  const provided = req.get('x-admin-secret') || req.body?.adminSecret;
-  if (!ADMIN_SECRET || !provided || provided !== ADMIN_SECRET) {
-    return res.status(403).json({ error: 'forbidden', hint: 'Setează ADMIN_SECRET în Railway și trimite header X-Admin-Secret' });
-  }
-  const { email } = req.body || {};
-  const targetEmail = (email || 'admin@docflowai.ro').trim().toLowerCase();
-  if (!pool || !DB_READY) return res.status(503).json({ error: 'db_not_ready' });
-  try {
-    const { rows } = await pool.query(
-      "UPDATE users SET role='admin' WHERE lower(email)=$1 RETURNING id,email,role,nume",
-      [targetEmail]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'user_not_found', email: targetEmail });
-    res.json({ ok: true, fixed: rows[0], message: `✅ ${rows[0].email} are acum role='admin'` });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
-});
-
-// ── GET /auth/fix-admin?secret=XXX ───────────────────────────────────────────
-router.get('/auth/fix-admin', async (req, res) => {
-  const { ADMIN_SECRET } = await import('../middleware/auth.mjs');
-  const provided = req.query.secret || req.get('x-admin-secret');
-  if (!ADMIN_SECRET) {
-    return res.status(403).send('<h2>❌ ADMIN_SECRET nu este configurat.</h2>');
-  }
-  if (!provided || provided !== ADMIN_SECRET) {
-    return res.status(403).send('<h2>❌ Secret incorect.</h2>');
-  }
-  if (!pool || !DB_READY) {
-    return res.status(503).send('<h2>❌ Baza de date nu este disponibilă.</h2>');
-  }
-  try {
-    const { rows: allUsers } = await pool.query('SELECT id, email, nume, role FROM users ORDER BY id');
-    const { rows: fixed } = await pool.query(
-      "UPDATE users SET role='admin' WHERE lower(email)='admin@docflowai.ro' RETURNING id, email, role, nume"
-    );
-    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>DocFlowAI — Fix Admin</title>
-    <style>body{font-family:sans-serif;background:#0b1020;color:#eaf0ff;padding:32px;max-width:700px;margin:0 auto;}
-    h1{color:#7c5cff;} table{width:100%;border-collapse:collapse;margin:16px 0;}
-    th,td{padding:8px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,.1);}
-    th{color:#9db0ff;font-size:.8rem;} .ok{color:#2dd4bf;} .bad{color:#ff5050;}
-    .box{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:16px;margin:16px 0;}
-    </style></head><body><h1>🔧 DocFlowAI — Fix Admin Role</h1>`;
-    if (fixed.length > 0) {
-      html += `<div class="box"><p class="ok">✅ admin@docflowai.ro → role='admin' CORECTAT.</p>
-      <p>Acum te poți <a href="/login" style="color:#7c5cff;">loga</a>.</p></div>`;
-    } else {
-      const adminUser = allUsers.find(u => u.email.toLowerCase() === 'admin@docflowai.ro');
-      if (adminUser) {
-        html += `<div class="box"><p class="ok">✅ admin@docflowai.ro există deja cu role='${adminUser.role}'.</p></div>`;
-      } else {
-        html += `<div class="box"><p class="bad">❌ admin@docflowai.ro nu există în baza de date!</p></div>`;
-      }
-    }
-    html += `<h2>Toți utilizatorii (${allUsers.length})</h2><table>
-    <tr><th>ID</th><th>Email</th><th>Nume</th><th>Rol</th></tr>`;
-    allUsers.forEach(u => {
-      // SEC-05: escaping manual pentru output HTML
-      const escV = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      html += `<tr><td>${u.id}</td><td>${escV(u.email)}</td><td>${escV(u.nume||'—')}</td>
-      <td class="${u.role==='admin'?'ok':'bad'}">${escV(u.role)}</td></tr>`;
-    });
-    html += `</table></body></html>`;
-    res.send(html);
-  } catch(e) {
-    res.status(500).send(`<h2>❌ Eroare.</h2>`);
-  }
-});
-
-} // end development-only routes
 
 // ── GET /auth/verify-email/:token ─────────────────────────────────────────────
 router.get('/auth/verify-email/:token', async (req, res) => {

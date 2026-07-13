@@ -463,6 +463,10 @@
  *  FIX PERF-04: Pool DB max: 10 → 20, idleTimeoutMillis: 30000
  */
 
+// SEC: importat PRIMUL — validează NODE_ENV la boot (fail-fast) înainte de orice
+// altceva. Un NODE_ENV lipsă/invalid oprește procesul aici, nu-l lasă să pornească
+// cu o configurație de securitate degradată. Vezi server/config.mjs.
+import config from './config.mjs';
 import express from 'express';
 import compression from 'compression';
 import { readFileSync } from 'fs';
