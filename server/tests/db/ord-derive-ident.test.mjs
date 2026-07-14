@@ -79,7 +79,7 @@ d('SEC-100.2 — ORD identity cols derivate din DF', () => {
   // #10 — df_id spre alt org: nu se derivă, nu se scurge nimic din DF-ul străin (org_id=$2).
   it('#10 PUT cu df_id din alt org ⇒ nu se derivă, DF-ul străin nu se scurge', async () => {
     // al doilea org + DF cu coduri „secrete".
-    const { orgId: org2, userId: user2 } = await seedOrgUser({ role: 'user', email: 'other@y.ro' });
+    const { orgId: org2, userId: user2 } = await seedOrgUser({ orgName: 'Org 2', role: 'user', email: 'other@y.ro' });
     const foreignDf = await seedDf({ orgId: org2, createdBy: user2, status: 'aprobat', nrUnic: 'DF-FOREIGN',
       rowsCtrl: [{ cod_angajament: 'SECRET', indicator_angajament: 'SECRET', program: 'SECRET', cod_SSI: '77.77.77' }] });
 
