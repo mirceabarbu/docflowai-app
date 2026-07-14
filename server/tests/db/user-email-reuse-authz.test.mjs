@@ -15,6 +15,10 @@ import flowsRouter, { injectFlowDeps } from '../../routes/flows.mjs';
 const d = describe.skipIf(!hasTestDb());
 const SHARED_EMAIL = 'reused@example.ro';
 
+// Datele de concediu TREBUIE să fie relative la ziua rulării — user-leave.mjs:135
+// respinge `leave_start < today` (leave_start_in_past). Datele fixe expiră.
+const _isoIn = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+
 function createApp() {
   // Rate-limiterul de login e injectat din index.mjs, care nu ruleaza in harness-ul de test.
   // Fara injectie, auth.mjs arunca TypeError la _checkLoginRate() si cererea nu raspunde niciodata.
@@ -132,7 +136,7 @@ d('email reuse authorization on real PostgreSQL', () => {
 
   it('self leave updates only the active reused-email account', async () => {
     const res = await csrf(request(createApp()).put('/api/users/me/leave'), activeCookie()).send({
-      leave_start: '2026-07-13', leave_end: '2026-07-14', leave_reason: 'Test',
+      leave_start: _isoIn(1), leave_end: _isoIn(2), leave_reason: 'Test',
     });
     expect(res.status).toBe(200);
     const rows = await pool.query('SELECT id,leave_start,leave_end FROM users WHERE id=ANY($1)', [[f.deleted, f.active]]);
@@ -147,7 +151,7 @@ d('email reuse authorization on real PostgreSQL', () => {
   it.each(['admin', 'org_admin'])('%s B cannot administer target A leave', async (role) => {
     await pool.query('UPDATE users SET role=$1 WHERE id=$2', [role, f.active]);
     const res = await csrf(request(createApp()).put(`/admin/users/${f.targetA}/leave`), activeCookie({ role })).send({
-      leave_start: '2026-07-13', leave_end: '2026-07-14', leave_reason: 'Test',
+      leave_start: _isoIn(1), leave_end: _isoIn(2), leave_reason: 'Test',
     });
     expect(res.status).toBe(403);
   });
