@@ -21,6 +21,7 @@ import {
   computeOrdBudgetContext,
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
+import { normalizeAngajamentRows } from '../../services/angajament-normalize.mjs';
 import { serializeOrdnt } from '../../services/alop-xml/ordnt-serializer.mjs';
 import { ordRowToXsd } from '../../services/alop-xml/ord-to-xsd.mjs';
 import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
@@ -229,6 +230,9 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
   try {
     const body = req.body || {};
     const data = pick(body, ORD_P1_FIELDS);
+    // ORD.rows e câmpul pe care OPME îl potrivește efectiv (opme-matcher.mjs:127) — coduri
+    // canonice cu MAJUSCULE la scriere (angajament-normalize.mjs). Serverul e poarta.
+    if ('rows' in data) data.rows = normalizeAngajamentRows(data.rows);
     if (data.nr_ordonant_pl) {
       const { rows: dup } = await pool.query(
         `SELECT id FROM formulare_ord
@@ -301,6 +305,7 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
 
     const allowedFields = isP2 && !isP1 && !isAdmin ? ORD_P2_FIELDS : [...ORD_P1_FIELDS];
     const data = pick(req.body || {}, allowedFields);
+    if ('rows' in data) data.rows = normalizeAngajamentRows(data.rows);   // coduri canonice (OPME)
     if (data.nr_ordonant_pl && data.nr_ordonant_pl !== doc.nr_ordonant_pl) {
       const { rows: dup } = await pool.query(
         `SELECT id FROM formulare_ord

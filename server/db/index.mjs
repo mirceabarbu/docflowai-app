@@ -2135,6 +2135,80 @@ export const MIGRATIONS = [
         RAISE WARNING '095_df_dedup: indexul unic df_source_alop_revizie_uniq NU s-a putut crea (duplicate ramase, probabil grup cu >=2 pe flux). Boot continua.';
       END $idx$;
     `
+  },
+  {
+    // Coduri de angajament CANONICE cu MAJUSCULE — repară potrivirea OPME (opme-matcher.mjs,
+    // egalitate strictă case-sensitive). LANȚ REAL: matcher-ul citește ORD `rows`
+    // (opme-matcher.mjs:127), iar codurile ajung acolo prin prefill DF→ORD din DF `rows_ctrl`
+    // (list.js:180). Deci backfill pe AMBELE: sursa (formulare_df.rows_ctrl) ȘI câmpul efectiv
+    // potrivit (formulare_ord.rows).
+    // Ridică la majuscule DOAR cod_angajament + indicator_angajament, pe rândurile care au deja
+    // cheia (NU adaugă chei pe rândurile goale — `e ? 'cheia'`). Restul câmpurilor (program,
+    // cod_SSI, sume, receptii) neatinse.
+    // ⚠️ WITH ORDINALITY + ORDER BY ord OBLIGATORII: jsonb_agg fără ordonare poate reordona
+    // rândurile, iar ordinea are semnificație contabilă.
+    // Selectivă (WHERE EXISTS) + idempotentă (UPPER e idempotent → a doua rulare = no-op).
+    // 📌 Owner a acceptat explicit că modifică date din DF/ORD deja semnate; PDF-ul semnat cu
+    // QES rămâne înghețat în semnătură (poate diverge vizual de UI). Decizie asumată.
+    id: '096_uppercase_angajament_codes',
+    sql: `
+      UPDATE formulare_df fd
+         SET rows_ctrl = (
+           SELECT jsonb_agg(
+             CASE WHEN jsonb_typeof(elem) = 'object' THEN
+                  CASE WHEN elem ? 'cod_angajament'
+                       THEN elem || jsonb_build_object('cod_angajament',
+                              UPPER(TRIM(COALESCE(elem->>'cod_angajament', ''))))
+                       ELSE elem END
+                  ||
+                  CASE WHEN elem ? 'indicator_angajament'
+                       THEN jsonb_build_object('indicator_angajament',
+                              UPPER(TRIM(COALESCE(elem->>'indicator_angajament', ''))))
+                       ELSE '{}'::jsonb END
+             ELSE elem END
+             ORDER BY ord
+           )
+           FROM jsonb_array_elements(fd.rows_ctrl) WITH ORDINALITY AS t(elem, ord)
+         )
+       WHERE jsonb_typeof(fd.rows_ctrl) = 'array'
+         AND jsonb_array_length(fd.rows_ctrl) > 0
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(fd.rows_ctrl) e
+            WHERE (e ? 'cod_angajament'
+                   AND e->>'cod_angajament' IS DISTINCT FROM UPPER(TRIM(COALESCE(e->>'cod_angajament',''))))
+               OR (e ? 'indicator_angajament'
+                   AND e->>'indicator_angajament' IS DISTINCT FROM UPPER(TRIM(COALESCE(e->>'indicator_angajament',''))))
+         );
+
+      -- ORD rows — campul pe care OPME il potriveste efectiv. Aceeasi logica, aceleasi garantii.
+      UPDATE formulare_ord fo
+         SET rows = (
+           SELECT jsonb_agg(
+             CASE WHEN jsonb_typeof(elem) = 'object' THEN
+                  CASE WHEN elem ? 'cod_angajament'
+                       THEN elem || jsonb_build_object('cod_angajament',
+                              UPPER(TRIM(COALESCE(elem->>'cod_angajament', ''))))
+                       ELSE elem END
+                  ||
+                  CASE WHEN elem ? 'indicator_angajament'
+                       THEN jsonb_build_object('indicator_angajament',
+                              UPPER(TRIM(COALESCE(elem->>'indicator_angajament', ''))))
+                       ELSE '{}'::jsonb END
+             ELSE elem END
+             ORDER BY ord
+           )
+           FROM jsonb_array_elements(fo.rows) WITH ORDINALITY AS t(elem, ord)
+         )
+       WHERE jsonb_typeof(fo.rows) = 'array'
+         AND jsonb_array_length(fo.rows) > 0
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(fo.rows) e
+            WHERE (e ? 'cod_angajament'
+                   AND e->>'cod_angajament' IS DISTINCT FROM UPPER(TRIM(COALESCE(e->>'cod_angajament',''))))
+               OR (e ? 'indicator_angajament'
+                   AND e->>'indicator_angajament' IS DISTINCT FROM UPPER(TRIM(COALESCE(e->>'indicator_angajament',''))))
+         );
+    `
   }
 ];
 

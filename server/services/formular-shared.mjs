@@ -20,6 +20,7 @@ import { loadActorComp, canEditFormular, canDestroyOnly } from './authz-formular
 import { crediteBugetareAnCurent } from './buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from './formular-flow-attachments.mjs';
 import { codSsiBlockResponse } from './cod-ssi-validate.mjs';
+import { normalizeAngajamentRows } from './angajament-normalize.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
@@ -392,6 +393,12 @@ export async function completeFormular({ type, id, actor, body }) {
       return { status: 409, body: { error: 'status_invalid', status: doc.status } };
 
     const data = pick(body || {}, cfg.p2Fields);
+
+    // Coduri de angajament canonice cu MAJUSCULE (repară potrivirea OPME —
+    // services/angajament-normalize.mjs). DF scrie `rows_ctrl` (P2), ORD scrie `rows` (P2);
+    // ORD.rows e câmpul efectiv potrivit de opme-matcher.mjs:127.
+    if ('rows_ctrl' in data) data.rows_ctrl = normalizeAngajamentRows(data.rows_ctrl);
+    if ('rows'      in data) data.rows      = normalizeAngajamentRows(data.rows);
 
     // GARDĂ Cod SSI (DF): finalizarea P2 e RESPINSĂ dacă rămâne un cod inexistent în Clasa 8.
     // Validăm starea EFECTIVĂ: rows_ctrl din body (editarea P2) + rows_val/rows_plati persistate

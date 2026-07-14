@@ -129,6 +129,10 @@ function addOR(){const i=window.oI++;const tr=document.createElement('tr');tr.id
   tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="receptii" oninput="calcORRow(this)"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_anterioare" oninput="calcORRow(this)"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="suma_ordonantata_plata" oninput="calcORRow(this)"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="receptii_neplatite" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="5=(col.2)-(col.3)-(col.4) — calculat automat"/></td><td><button class="bdel" onclick="delR('or-${i}');upTot()">✕</button></td>`;
   document.getElementById('o-tbody').appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));
+  // Coduri de angajament canonice cu MAJUSCULE la blur — ORD.rows e câmpul potrivit de OPME.
+  const oang=tr.querySelector('[data-f="cod_angajament"]');
+  const oind=tr.querySelector('[data-f="indicator_angajament"]');
+  [oang,oind].forEach(el=>{if(el)el.addEventListener('blur',()=>_upperAng(el));});
   // Col.4 (suma ordonanțată) editabilă pentru P1 DOAR în pending_p2 (anticipare).
   // În draft/returnat P1 are deja lockAll(false) global. În completed/aprobat: blocat.
   if(ST.docRole?.ordnt==='p1'&&ST.docStatus?.ordnt==='pending_p2'){
@@ -162,6 +166,15 @@ function addNP(){const i=window.nPI++;const tr=document.createElement('tr');tr.i
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));}
 function getNP(){return[...document.querySelectorAll('#n-ptbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
 
+// Coduri de angajament CANONICE cu MAJUSCULE (col.1/2 din Sec.B rows_ctrl). La BLUR (nu la
+// input — ar muta cursorul la fiecare tastă). Serverul e poarta reală (angajament-normalize.mjs);
+// asta e doar UX. Dacă valoarea era deja canonică, NU dispecerizăm 'change' → fără autosave degeaba.
+function _upperAng(el){
+  const v=el.value.trim().toUpperCase();
+  if(v===el.value)return;
+  el.value=v;
+  el.dispatchEvent(new Event('change',{bubbles:true}));  // persistă valoarea canonică (autosave)
+}
 function addNC(){const i=window.nCI++;const tr=document.createElement('tr');tr.id='nc-'+i;
   tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI" list="ssi-codes-list"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_ang_af_rvz_prc"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente_c6"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_ang_act" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="7=5+6 — calculat automat"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_bug_af_rvz_prc"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente_c9"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="sum_rezv_crdt_bug_act" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="10=8+9 — calculat automat"/></td><td><button class="bdel" onclick="delR('nc-${i}');upTot()">✕</button></td>`;
   document.getElementById('n-ctbody').appendChild(tr);
@@ -174,6 +187,9 @@ function addNC(){const i=window.nCI++;const tr=document.createElement('tr');tr.i
   if(c6)c6.addEventListener('input',()=>calcNCRow(c6));
   if(c8)c8.addEventListener('input',()=>calcNCRow(c8));
   if(c9)c9.addEventListener('input',()=>calcNCRow(c9));
+  const cang=tr.querySelector('[data-f="cod_angajament"]');
+  const cind=tr.querySelector('[data-f="indicator_angajament"]');
+  [cang,cind].forEach(el=>{if(el)el.addEventListener('blur',()=>_upperAng(el));});
 }
 function getNC(){return[...document.querySelectorAll('#n-ctbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
 

@@ -24,6 +24,7 @@ import {
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
 import { codSsiBlockResponse } from '../../services/cod-ssi-validate.mjs';
+import { normalizeRowsCtrl } from '../../services/angajament-normalize.mjs';
 import { serializeNotafd } from '../../services/alop-xml/notafd-serializer.mjs';
 import { dfRowToXsd } from '../../services/alop-xml/df-to-xsd.mjs';
 import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
@@ -352,6 +353,10 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
     const allowedFields = isP2 && !isP1 ? DF_P2_FIELDS : [...DF_P1_FIELDS, ...DF_P2_FIELDS];
     const data = pick(req.body || {}, allowedFields);
 
+    // Coduri de angajament canonice cu MAJUSCULE (repară potrivirea OPME — vezi
+    // services/angajament-normalize.mjs). Serverul e poarta: frontendul se poate ocoli.
+    if ('rows_ctrl' in data) data.rows_ctrl = normalizeRowsCtrl(data.rows_ctrl);
+
     // Validare Cod SSI (incident 13.07.2026): salvarea e RESPINSĂ cât timp există un cod
     // inexistent în bugetul Clasa 8 — chiar și în draft. Validăm DOAR câmpurile scrise acum
     // (rows_val/rows_plati pentru P1, rows_ctrl pentru P2); rândurile cu cod gol trec.
@@ -519,7 +524,9 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
       ? df.rows_ctrl
       : JSON.parse(df.rows_ctrl || '[]');
 
-    const rowsCtrlNoi = rowsCtrlOrig.map(r => ({
+    // Normalizează codurile la MAJUSCULE și pe calea de revizie — altfel o revizie a unui DF
+    // vechi ar reintroduce minusculele invizibile pentru OPME (angajament-normalize.mjs).
+    const rowsCtrlNoi = normalizeRowsCtrl(rowsCtrlOrig.map(r => ({
       ...r,
       sum_rezv_crdt_ang_af_rvz_prc: r.sum_rezv_crdt_ang_act || 0,
       influente_c6: 0,
@@ -527,7 +534,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
       sum_rezv_crdt_bug_af_rvz_prc: r.sum_rezv_crdt_bug_act || 0,
       influente_c9: 0,
       sum_rezv_crdt_bug_act: r.sum_rezv_crdt_bug_act || 0,
-    }));
+    })));
 
     // FIX 1: Detectează dacă revizia e pentru "an următor" (checkbox ckbx_ang_leg_emise_ct_an_urm)
     const isAnUrmator = df.ckbx_ang_leg_emise_ct_an_urm === '1';
