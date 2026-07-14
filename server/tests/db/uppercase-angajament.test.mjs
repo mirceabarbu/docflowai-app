@@ -155,6 +155,14 @@ d('coduri de angajament canonice cu MAJUSCULE', () => {
     await pool.query(MIG_096.sql);
     expect((await getOrd(ordId)).rows[0].cod_angajament).toBe('CODA');
 
+    // rep1 a marcat linia 'unmatched'; matchImport procesează DOAR liniile 'pending'
+    // (opme-matcher.mjs step 2). Ruta reală /rematch re-deschide 'unmatched'→'pending'
+    // ÎNAINTE de a re-rula matcher-ul (opme.mjs) — oglindim exact acel pas aici.
+    await pool.query(
+      `UPDATE opme_lines SET match_status='pending', match_notes=NULL
+        WHERE opme_import_id=$1 AND match_status IN ('unmatched','ambiguous','partial')`,
+      [importId]);
+
     // ── DUPĂ normalizare: 'CODA' = 'CODA' ⇒ SE potrivește + auto-confirm ──
     const rep2 = await matchImport(importId);
     expect(rep2.matched).toBe(1);
@@ -172,7 +180,8 @@ d('coduri de angajament canonice cu MAJUSCULE', () => {
     const r = await request(app).post(`/api/formulare-df/${dfId}/revizuieste`).set('Cookie', cookie)
       .send({ motiv: 'test' });
     expect(r.status).toBe(200);
-    const r1 = await getDf(r.body.document.id);
+    // ruta /revizuieste returnează { ok, df, mesaj } — NU { document } (df.mjs).
+    const r1 = await getDf(r.body.df.id);
     expect(r1.rows_ctrl[0].cod_angajament).toBe('REV');
     expect(r1.rows_ctrl[0].indicator_angajament).toBe('IR');
   });
