@@ -505,6 +505,7 @@ import { pool, DB_READY, DB_LAST_ERROR, initDbWithRetry, saveFlow, getFlowData, 
 import { runMigrations as runMigrationsV4 } from './db/migrate.mjs';
 import { makeHealthRouter } from './routes/health.mjs';
 import { sessionGuard } from './middleware/session-guard.mjs';
+import { authenticateWsToken, isWsOriginAllowed } from './ws/auth.mjs';
 import supplierVerifyRouter   from './routes/supplier-verify.mjs';
 import { JWT_SECRET, JWT_EXPIRES, requireAuth, requireAdmin, hashPassword, verifyPassword, generatePassword, sha256Hex, escHtml, injectTokenVersionChecker } from './middleware/auth.mjs';
 
@@ -1863,7 +1864,9 @@ app.post('/api/csp-report', _cspReportLimiter, _cspReportParser, (req, res) => {
 
 // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 const httpServer = http.createServer(app);
-const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+// SEC-100: G3 — clientul trimite doar {type:'auth'} / {type:'ping'}. 64 KB e generos.
+const WS_MAX_PAYLOAD = 64 * 1024;
+const wss = new WebSocketServer({ server: httpServer, path: '/ws', maxPayload: WS_MAX_PAYLOAD });
 
 // FIX v3.2.2: heartbeat pentru detecție conexiuni zombie + timeout auth
 const WS_AUTH_TIMEOUT_MS = 15_000;  // 15s să trimită auth
@@ -1878,6 +1881,28 @@ const wsHeartbeat = setInterval(() => {
 }, WS_PING_INTERVAL_MS);
 wss.on('close', () => clearInterval(wsHeartbeat));
 
+// SEC-100: G1 — revocarea trebuie să ajungă și la socketurile DEJA deschise, nu doar la reconectare.
+const WS_REVALIDATE_MS = 5 * 60 * 1000;
+const wsRevalidate = setInterval(async () => {
+  if (!pool || !DB_READY) return;                  // fără DB nu tăiem conexiuni pe orb
+  for (const ws of wss.clients) {
+    const uid = ws._wsUserId;
+    if (!uid) continue;                            // socket neautentificat — timeout-ul îl prinde
+    try {
+      const { rows } = await pool.query(
+        'SELECT 1 FROM users WHERE id=$1 AND deleted_at IS NULL AND COALESCE(token_version,1)=$2',
+        [uid, ws._wsTv ?? 1]
+      );
+      if (!rows.length) {
+        logger.warn({ userId: uid }, 'WS: sesiune revocată — închidem socketul');
+        ws.send(JSON.stringify({ event: 'session_revoked' }));
+        ws.close(4401, 'session_revoked');
+      }
+    } catch (e) { logger.error({ err: e, userId: uid }, 'WS: revalidare eșuată'); }
+  }
+}, WS_REVALIDATE_MS);
+wss.on('close', () => clearInterval(wsRevalidate));
+
 // SEC-01: helper — parsează cookie auth_token din header-ul de upgrade WS
 function getWsCookieToken(req) {
   const cookieHeader = req.headers.cookie || '';
@@ -1885,66 +1910,87 @@ function getWsCookieToken(req) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-wss.on('connection', (ws, req) => {
-  let clientEmail = null;
-  ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true; });
+wss.on('connection', async (ws, req) => {
+  // SEC-100: handler async — o excepție nefiltrată devine unhandledRejection,
+  // iar handler-ul global face process.exit(1). Tot corpul e sub try/catch.
+  try {
+    // SEC-100: G4 — origine necunoscută ⇒ conexiunea nu începe.
+    const _origin = req.headers.origin || '';
+    if (!isWsOriginAllowed(_origin, corsOrigins)) {
+      logger.warn({ origin: _origin }, 'WS: origine respinsă');
+      ws.close(4403, 'forbidden_origin');
+      return;
+    }
 
-  // SEC-01: încearcă auto-auth din cookie-ul HttpOnly trimis la upgrade
-  const cookieToken = getWsCookieToken(req);
-  if (cookieToken) {
-    try {
-      const decoded = jwt.verify(cookieToken, JWT_SECRET);
-      clientEmail = decoded.email.toLowerCase();
+    let clientEmail = null;
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
+
+    // SEC-100: helper comun — înregistrează sesiunea autentificată (cookie sau manual).
+    function acceptAuth(ident) {
+      clientEmail = ident.email;
       wsRegister(clientEmail, ws);
+      ws._wsUserId = ident.userId;   // SEC-100: necesar pentru revalidarea periodică
+      ws._wsTv     = ident.tv;
       ws.send(JSON.stringify({ event: 'auth_ok', email: clientEmail }));
       if (pool && DB_READY) {
         pool.query('SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE', [clientEmail])
           .then(r => ws.send(JSON.stringify({ event: 'unread_count', count: parseInt(r.rows[0].count) })))
           .catch(() => {});
       }
-      logger.info({ email: clientEmail }, 'WS auto-auth (cookie)');
-    } catch(e) {
-      // Cookie invalid/expirat — continuăm, clientul poate trimite auth manual
-      logger.warn({ err: e }, 'WS cookie invalid');
     }
-  }
 
-  // Timeout dacă clientul nu a reușit auto-auth și nu trimite auth manual în 15s
-  const authTimeout = setTimeout(() => {
-    if (!clientEmail) {
-      ws.send(JSON.stringify({ event: 'auth_timeout', message: 'Autentificare obligatorie în 15s.' }));
-      ws.terminate();
-    }
-  }, WS_AUTH_TIMEOUT_MS);
-
-  // Dacă auto-auth a reușit, anulăm timeout-ul
-  if (clientEmail) clearTimeout(authTimeout);
-
-  ws.on('message', (raw) => {
-    try {
-      const msg = JSON.parse(raw.toString());
-      // Fallback: auth manual cu token (compatibilitate tranziție)
-      if (msg.type === 'auth' && msg.token) {
-        try {
-          const decoded = jwt.verify(msg.token, JWT_SECRET);
-          clientEmail = decoded.email.toLowerCase();
-          clearTimeout(authTimeout);
-          wsRegister(clientEmail, ws);
-          ws.send(JSON.stringify({ event: 'auth_ok', email: clientEmail }));
-          if (pool && DB_READY) {
-            pool.query('SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE', [clientEmail])
-              .then(r => ws.send(JSON.stringify({ event: 'unread_count', count: parseInt(r.rows[0].count) })))
-              .catch(() => {});
-          }
-          logger.info({ email: clientEmail }, 'WS auth (token)');
-        } catch(e) { ws.send(JSON.stringify({ event: 'auth_error', message: 'invalid_token' })); }
+    // SEC-01 + SEC-100: încearcă auto-auth din cookie-ul HttpOnly trimis la upgrade.
+    // Trece prin ACELEAȘI verificări ca sessionGuard (deleted_at + token_version + refuz 2FA).
+    const cookieToken = getWsCookieToken(req);
+    if (cookieToken) {
+      const ident = await authenticateWsToken(cookieToken);
+      if (ident) {
+        acceptAuth(ident);
+        logger.info({ email: clientEmail }, 'WS auto-auth (cookie)');
+      } else {
+        logger.warn('WS: cookie respins (invalid / revocat / 2FA neterminat)');
+        // NU terminăm: clientul poate încerca auth manual. Timeout-ul de 15s îl prinde oricum.
       }
-      if (msg.type === 'ping') ws.send(JSON.stringify({ event: 'pong' }));
-    } catch(e) {}
-  });
-  ws.on('close', () => { clearTimeout(authTimeout); if (clientEmail) { wsUnregister(clientEmail, ws); logger.info({ email: clientEmail }, 'WS connection closed'); } });
-  ws.on('error', (e) => logger.error({ err: e }, 'WS error'));
+    }
+
+    // Timeout dacă clientul nu a reușit auto-auth și nu trimite auth manual în 15s
+    const authTimeout = setTimeout(() => {
+      if (!clientEmail) {
+        ws.send(JSON.stringify({ event: 'auth_timeout', message: 'Autentificare obligatorie în 15s.' }));
+        ws.terminate();
+      }
+    }, WS_AUTH_TIMEOUT_MS);
+
+    // Dacă auto-auth a reușit, anulăm timeout-ul
+    if (clientEmail) clearTimeout(authTimeout);
+
+    ws.on('message', async (raw) => {
+      // SEC-100: handler async — la fel, tot corpul sub try/catch (unhandledRejection → exit).
+      try {
+        const msg = JSON.parse(raw.toString());
+        // Fallback: auth manual cu token (compatibilitate tranziție)
+        if (msg.type === 'auth' && msg.token) {
+          const ident = await authenticateWsToken(msg.token);
+          if (ident) {
+            clearTimeout(authTimeout);
+            acceptAuth(ident);
+            logger.info({ email: clientEmail }, 'WS auth (token)');
+          } else {
+            // Spre deosebire de cookie, aici clientul a cerut EXPLICIT auth — un refuz e final.
+            ws.send(JSON.stringify({ event: 'auth_error', message: 'invalid_or_revoked' }));
+            ws.terminate();
+          }
+        }
+        if (msg.type === 'ping') ws.send(JSON.stringify({ event: 'pong' }));
+      } catch(e) {}
+    });
+    ws.on('close', () => { clearTimeout(authTimeout); if (clientEmail) { wsUnregister(clientEmail, ws); logger.info({ email: clientEmail }, 'WS connection closed'); } });
+    ws.on('error', (e) => logger.error({ err: e }, 'WS error'));
+  } catch (e) {
+    logger.error({ err: e }, 'WS connection handler error');
+    try { ws.terminate(); } catch(_) {}
+  }
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────
@@ -1956,6 +2002,7 @@ function shutdown(signal) {
   clearInterval(_reminderInterval);
   clearInterval(_archiveJobInterval);
   clearInterval(wsHeartbeat);
+  clearInterval(wsRevalidate);
   // FIX b80: închidem pool-ul DB înainte de process.exit —
   // previne "Connection reset by peer" în logurile Postgres la fiecare deploy Railway.
   httpServer.close(async () => {
