@@ -10,6 +10,7 @@ import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
+import { classifySignerEmail } from '../../services/signer-identity.mjs';
 
 const _largePdf = expressJson({ limit: '50mb' });
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
@@ -383,6 +384,18 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
     // FIX v3.3.3: nu poți delega către tine însuți — comparăm cu actorul logat dacă există, altfel cu semnatarul curent din token.
     if (toEmail.trim().toLowerCase() === ((actor?.email || currentSignerEmail).toLowerCase())) {
       return res.status(400).json({ error: 'self_delegation_not_allowed', message: 'Nu poți delega semnătura către tine însuți.' });
+    }
+
+    // SEC-103: nu poți delega către un utilizator intern dezactivat. `unknown` (DB căzut) TRECE —
+    // delegarea din UI cere sesiune (sessionGuard a fail-closed deja); `external` (fără cont) TRECE.
+    {
+      const { cls } = await classifySignerEmail(toEmail);
+      if (cls === 'deactivated') {
+        return res.status(400).json({
+          error: 'delegate_deactivated',
+          message: 'Utilizatorul către care delegi este dezactivat.'
+        });
+      }
     }
 
     const originalName = signers[idx].name;

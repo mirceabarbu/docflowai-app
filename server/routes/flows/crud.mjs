@@ -14,6 +14,7 @@ import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-sign
 import { normalizeRecipients } from '../../services/flow-transmit.mjs';
 import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
 import { resolveActorOr } from '../../services/actor-identity.mjs';
+import { classifySignerEmail } from '../../services/signer-identity.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -204,6 +205,29 @@ const createFlow = async (req, res) => {
             by:      'delegation',
           };
         } catch (_e4) { /* non-fatal */ }
+      }
+    }
+
+    // SEC-103: niciun semnatar nu poate fi un utilizator intern dezactivat.
+    // Verificăm TOȚI semnatarii (nu doar primul), înainte de orice scriere. `unknown` (DB
+    // căzut) TRECE aici: crearea cere deja sesiune, deci sessionGuard a fail-closed înaintea
+    // noastră — un al doilea refuz ar pierde munca utilizatorului fără să adauge siguranță.
+    {
+      const _deactivated = [];
+      for (const s of normalizedSigners) {
+        if (!s?.email) continue;
+        const { cls } = await classifySignerEmail(s.email);
+        if (cls === 'deactivated') _deactivated.push(s.email);
+        else if (cls === 'unknown') logger.warn({ email: s.email }, 'SEC-103: clasificare indisponibilă la creare — trec (sesiune deja validată)');
+      }
+      if (_deactivated.length) {
+        return res.status(400).json({
+          error: 'signer_deactivated',
+          emails: _deactivated,
+          message: _deactivated.length === 1
+            ? `Utilizatorul ${_deactivated[0]} este dezactivat și nu poate fi semnatar.`
+            : `Acești utilizatori sunt dezactivați și nu pot fi semnatari: ${_deactivated.join(', ')}.`
+        });
       }
     }
 

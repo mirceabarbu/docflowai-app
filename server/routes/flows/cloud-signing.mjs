@@ -7,6 +7,7 @@ import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml,
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
+import { classifySignerEmail } from '../../services/signer-identity.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -649,6 +650,21 @@ router.post('/flows/:flowId/initiate-cloud-signing', async (req, res) => {
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
     if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer' });
+
+    // SEC-103: calea STS reală. Semnarea cloud e tot pe token opac — un utilizator intern
+    // dezactivat NU mai poate iniția semnarea. `unknown` (DB căzut) = fail-closed 503;
+    // `external` (fără cont) TRECE. Dacă sari asta, garda din /sign e decorativă.
+    {
+      const { cls } = await classifySignerEmail(signers[idx].email);
+      if (cls === 'deactivated') {
+        logger.warn({ flowId, email: signers[idx].email }, 'SEC-103: initiate-cloud-signing refuzat — cont dezactivat');
+        return res.status(403).json({
+          error: 'signer_deactivated',
+          message: 'Contul tău a fost dezactivat. Nu mai poți semna. Contactează inițiatorul documentului.'
+        });
+      }
+      if (cls === 'unknown') return res.status(503).json({ error: 'identity_check_unavailable' });
+    }
 
     // Verificăm că providerul ales e activ în org
     let org = null;

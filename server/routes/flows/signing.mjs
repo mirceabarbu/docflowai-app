@@ -10,6 +10,7 @@ import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
 import { recordFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
+import { classifySignerEmail } from '../../services/signer-identity.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -54,6 +55,20 @@ const signFlow = async (req, res) => {
     if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
     if (_isSignerTokenExpired(signers[idx])) return res.status(403).json({ error: 'token_expired', message: 'Link-ul de semnare a expirat (90 zile). Contactează inițiatorul pentru un nou link.' });
     if (signers[idx].status !== 'current') return res.status(409).json({ error: 'not_current_signer' });
+    // SEC-103: semnarea nu are sesiune (token opac) ⇒ sessionGuard nu vede calea asta.
+    // Un utilizator intern dezactivat NU mai poate semna. `unknown` (DB căzut) = fail-closed
+    // 503 (nu putem verifica cine ești). `external` (fără cont) TRECE — semnatar legitim.
+    {
+      const { cls } = await classifySignerEmail(signers[idx].email);
+      if (cls === 'deactivated') {
+        logger.warn({ flowId, email: signers[idx].email }, 'SEC-103: semnare refuzată — cont dezactivat');
+        return res.status(403).json({
+          error: 'signer_deactivated',
+          message: 'Contul tău a fost dezactivat. Nu mai poți semna. Contactează inițiatorul documentului.'
+        });
+      }
+      if (cls === 'unknown') return res.status(503).json({ error: 'identity_check_unavailable' });
+    }
     signers[idx].status = 'signed'; signers[idx].signedAt = new Date().toISOString();
     signers[idx].signature = sig; signers[idx].pdfUploaded = false;
     data.signers = signers; data.updatedAt = new Date().toISOString();
