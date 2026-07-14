@@ -2526,35 +2526,43 @@ export async function writeAuditEvent({ flowId, orgId, eventType, actorEmail, ac
 }
 
 /**
- * Construieste un map de useri filtrat pe org_id (anti-leak multi-tenant).
- * Daca orgId e null/0, returneaza toti userii (backward compat pentru admini fara org).
+ * Map de useri (email → {functie, compartiment, institutie}), STRICT pe org.
+ *
+ * SEC-101 (TENANT-01): fail-CLOSED. Fără org ⇒ hartă GOALĂ, nu întreaga tabelă `users`.
+ * Vechiul fallback („backward compat pentru admini fără org") returna toți utilizatorii din
+ * toate organizațiile și îi cacheța 60s sub cheia 'all'.
+ *
+ * SEC-101 (email-reuse): `deleted_at IS NULL`. Migrația 067 a înlocuit UNIQUE(email) cu un index
+ * parțial pe utilizatorii activi ⇒ un email poate exista de mai multe ori în tabelă. Fără filtru,
+ * harta putea prelua rândul utilizatorului ȘTERS.
  */
 // ARCH-04: Cache per org_id cu TTL 60s.
 // getUserMapForOrg e apelat la fiecare GET /flows/:id și GET /my-flows —
 // fără cache, face un SELECT pe users la fiecare request.
-// Map<orgId|'all', { map, cachedAt }>
+// Map<orgId, { map, cachedAt }>  (cheia 'all' a fost eliminată la SEC-101)
 const _userMapCache = new Map();
 const USER_MAP_CACHE_TTL = 60_000; // 60 secunde
 
 export async function getUserMapForOrg(orgId) {
-  const cacheKey = (orgId && orgId > 0) ? String(orgId) : 'all';
-  const cached = _userMapCache.get(cacheKey);
-  if (cached && (Date.now() - cached.cachedAt) < USER_MAP_CACHE_TTL) {
-    return cached.map;
+  const oid = Number(orgId);
+  if (!oid || oid <= 0) {
+    logger.warn('getUserMapForOrg fără org_id — hartă goală (fail-closed, SEC-101)');
+    return {};                                  // NU se cachează: e o condiție de eroare, nu o valoare
   }
 
-  let query, params;
-  if (orgId && orgId > 0) {
-    query = 'SELECT email,functie,compartiment,institutie FROM users WHERE org_id=$1';
-    params = [orgId];
-  } else {
-    query = 'SELECT email,functie,compartiment,institutie FROM users';
-    params = [];
-  }
-  const { rows } = await pool.query(query, params);
+  const cacheKey = String(oid);
+  const cached = _userMapCache.get(cacheKey);
+  if (cached && (Date.now() - cached.cachedAt) < USER_MAP_CACHE_TTL) return cached.map;
+
+  const { rows } = await pool.query(
+    `SELECT email, functie, compartiment, institutie
+       FROM users
+      WHERE org_id = $1
+        AND deleted_at IS NULL`,
+    [oid]
+  );
   const map = {};
   rows.forEach(u => { map[(u.email || '').toLowerCase()] = u; });
-
   _userMapCache.set(cacheKey, { map, cachedAt: Date.now() });
   return map;
 }

@@ -145,7 +145,10 @@ router.get('/admin/flows/clean-preview', async (req, res) => {
     const filterDept = (req.query.compartiment || '').trim();
     const all = req.query.all === 'true';
 
-    const { rows: userRows } = await pool.query('SELECT email,institutie,compartiment FROM users');
+    // SEC-101 (TENANT-01): scope pe org_id + deleted_at; fără org ⇒ hartă goală (fail-closed).
+    const { rows: userRows } = actor.orgId
+      ? await pool.query('SELECT email,institutie,compartiment FROM users WHERE org_id=$1 AND deleted_at IS NULL', [actor.orgId])
+      : { rows: [] };
     const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
 
     let rows;
@@ -217,7 +220,10 @@ router.post('/admin/flows/clean', csrfMiddleware, async (req, res) => {
       const { rows: idRows } = await pool.query(selectQ, selectParams);
       idsToDelete = idRows.map(r => r.id);
     } else {
-      const { rows: userRows } = await pool.query('SELECT email,institutie,compartiment FROM users');
+      // SEC-101 (TENANT-01): scope pe org_id + deleted_at; fără org ⇒ hartă goală (fail-closed).
+      const { rows: userRows } = actor.orgId
+        ? await pool.query('SELECT email,institutie,compartiment FROM users WHERE org_id=$1 AND deleted_at IS NULL', [actor.orgId])
+        : { rows: [] };
       const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
       const { rows } = await pool.query(
         all
@@ -266,9 +272,10 @@ router.get('/admin/flows/archive-preview', async (req, res) => {
     const { rows } = apOrgId
       ? await pool.query('SELECT id,data,created_at FROM flows WHERE created_at < $1 AND org_id=$2 AND deleted_at IS NULL ORDER BY created_at ASC', [cutoff, apOrgId])
       : await pool.query('SELECT id,data,created_at FROM flows WHERE created_at < $1 AND deleted_at IS NULL ORDER BY created_at ASC', [cutoff]);
+    // SEC-101 (TENANT-01): scope pe org_id + deleted_at; fără org ⇒ hartă goală (fail-closed).
     const { rows: userRows } = apOrgId
-      ? await pool.query('SELECT email,institutie,compartiment FROM users WHERE org_id=$1', [apOrgId])
-      : await pool.query('SELECT email,institutie,compartiment FROM users');
+      ? await pool.query('SELECT email,institutie,compartiment FROM users WHERE org_id=$1 AND deleted_at IS NULL', [apOrgId])
+      : { rows: [] };
     const userMap = {}; userRows.forEach(u => { userMap[u.email.toLowerCase()] = u; });
     const eligible = rows.filter(r => {
       const d = r.data; if (!d) return false;
