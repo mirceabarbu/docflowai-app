@@ -286,15 +286,10 @@ router.get('/admin/user-activity', async (req, res) => {
     const orgId = actor.orgId || null;
     // org_admin fără org_id → acces refuzat
     if (actor.role === 'org_admin' && !orgId) return res.status(403).json({ error: 'org_admin_no_org' });
-    let userQuery, userParams;
-    if (orgId) {
-      userQuery = 'SELECT email, nume, functie, institutie, compartiment, role FROM users WHERE org_id=$1 ORDER BY nume';
-      userParams = [orgId];
-    } else {
-      userQuery = 'SELECT email, nume, functie, institutie, compartiment, role FROM users ORDER BY nume';
-      userParams = [];
-    }
-    const { rows: userRows } = await pool.query(userQuery, userParams);
+    // SEC-101 (TENANT-01): scope pe org_id + deleted_at; fără org ⇒ rezultat gol (fail-closed).
+    const { rows: userRows } = orgId
+      ? await pool.query('SELECT email, nume, functie, institutie, compartiment, role FROM users WHERE org_id=$1 AND deleted_at IS NULL ORDER BY nume', [orgId])
+      : { rows: [] };
 
     // FIX v3.2.2: filtrare pe org_id — admin nu vede fluxuri din alte organizații
     const { rows: flowRows } = await pool.query(

@@ -20,6 +20,7 @@ import { loadActorComp, canEditFormular, canDestroyOnly } from './authz-formular
 import { crediteBugetareAnCurent } from './buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from './formular-flow-attachments.mjs';
 import { codSsiBlockResponse } from './cod-ssi-validate.mjs';
+import { normalizeAngajamentRows } from './angajament-normalize.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
@@ -51,6 +52,33 @@ export function buildUpdate(data, fields, startIdx = 1) {
     sets.push(`${f}=$${startIdx + vals.length - 1}`);
   }
   return { sets, vals };
+}
+
+// SEC-100.2: cele 4 coloane de identitate ale ORD-ului sunt DERIVATE din DF, nu introduse.
+// #100.1 le-a blocat în UI (readOnly) — dar un readOnly în DOM nu e un control de securitate.
+// Aici serverul nu mai crede clientul: dacă ORD-ul are df_id, valorile vin din rows_ctrl.
+// NU e validare: nu refuzăm nimic, nu ne uităm în clasa8_buget. Doar suprascriem.
+export const ORD_IDENT_COLS = ['cod_angajament', 'indicator_angajament', 'program', 'cod_SSI'];
+
+/**
+ * @param {Array}  clientRows  rândurile din body (deja trecute prin normalizeAngajamentRows)
+ * @param {Array}  ctrlRows    rows_ctrl al DF-ului legat
+ * @returns {Array}            rândurile cu cele 4 coloane suprascrise din DF
+ *
+ * Corelare POZIȚIONALĂ — identică cu prefill-ul din onDfSelect (list.js:176).
+ * Rândurile din ORD peste lungimea rows_ctrl (dacă apar) rămân NEATINSE: nu inventăm coduri.
+ */
+export function deriveOrdIdentityCols(clientRows, ctrlRows) {
+  if (!Array.isArray(clientRows)) return clientRows;
+  if (!Array.isArray(ctrlRows) || !ctrlRows.length) return clientRows;   // fără sursă ⇒ nu atingem
+  return clientRows.map((row, i) => {
+    const src = ctrlRows[i];
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+    if (!src || typeof src !== 'object') return row;
+    const out = { ...row };
+    for (const k of ORD_IDENT_COLS) out[k] = src[k] ?? null;
+    return out;
+  });
 }
 
 // ── definiții de câmpuri (schema P1/P2 per tip) ──────────────────────────────────
@@ -392,6 +420,12 @@ export async function completeFormular({ type, id, actor, body }) {
       return { status: 409, body: { error: 'status_invalid', status: doc.status } };
 
     const data = pick(body || {}, cfg.p2Fields);
+
+    // Coduri de angajament canonice cu MAJUSCULE (repară potrivirea OPME —
+    // services/angajament-normalize.mjs). DF scrie `rows_ctrl` (P2), ORD scrie `rows` (P2);
+    // ORD.rows e câmpul efectiv potrivit de opme-matcher.mjs:127.
+    if ('rows_ctrl' in data) data.rows_ctrl = normalizeAngajamentRows(data.rows_ctrl);
+    if ('rows'      in data) data.rows      = normalizeAngajamentRows(data.rows);
 
     // GARDĂ Cod SSI (DF): finalizarea P2 e RESPINSĂ dacă rămâne un cod inexistent în Clasa 8.
     // Validăm starea EFECTIVĂ: rows_ctrl din body (editarea P2) + rows_val/rows_plati persistate

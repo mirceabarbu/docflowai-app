@@ -2135,6 +2135,80 @@ export const MIGRATIONS = [
         RAISE WARNING '095_df_dedup: indexul unic df_source_alop_revizie_uniq NU s-a putut crea (duplicate ramase, probabil grup cu >=2 pe flux). Boot continua.';
       END $idx$;
     `
+  },
+  {
+    // Coduri de angajament CANONICE cu MAJUSCULE — repară potrivirea OPME (opme-matcher.mjs,
+    // egalitate strictă case-sensitive). LANȚ REAL: matcher-ul citește ORD `rows`
+    // (opme-matcher.mjs:127), iar codurile ajung acolo prin prefill DF→ORD din DF `rows_ctrl`
+    // (list.js:180). Deci backfill pe AMBELE: sursa (formulare_df.rows_ctrl) ȘI câmpul efectiv
+    // potrivit (formulare_ord.rows).
+    // Ridică la majuscule DOAR cod_angajament + indicator_angajament, pe rândurile care au deja
+    // cheia (NU adaugă chei pe rândurile goale — `e ? 'cheia'`). Restul câmpurilor (program,
+    // cod_SSI, sume, receptii) neatinse.
+    // ⚠️ WITH ORDINALITY + ORDER BY ord OBLIGATORII: jsonb_agg fără ordonare poate reordona
+    // rândurile, iar ordinea are semnificație contabilă.
+    // Selectivă (WHERE EXISTS) + idempotentă (UPPER e idempotent → a doua rulare = no-op).
+    // 📌 Owner a acceptat explicit că modifică date din DF/ORD deja semnate; PDF-ul semnat cu
+    // QES rămâne înghețat în semnătură (poate diverge vizual de UI). Decizie asumată.
+    id: '096_uppercase_angajament_codes',
+    sql: `
+      UPDATE formulare_df fd
+         SET rows_ctrl = (
+           SELECT jsonb_agg(
+             CASE WHEN jsonb_typeof(elem) = 'object' THEN
+                  CASE WHEN elem ? 'cod_angajament'
+                       THEN elem || jsonb_build_object('cod_angajament',
+                              UPPER(TRIM(COALESCE(elem->>'cod_angajament', ''))))
+                       ELSE elem END
+                  ||
+                  CASE WHEN elem ? 'indicator_angajament'
+                       THEN jsonb_build_object('indicator_angajament',
+                              UPPER(TRIM(COALESCE(elem->>'indicator_angajament', ''))))
+                       ELSE '{}'::jsonb END
+             ELSE elem END
+             ORDER BY ord
+           )
+           FROM jsonb_array_elements(fd.rows_ctrl) WITH ORDINALITY AS t(elem, ord)
+         )
+       WHERE jsonb_typeof(fd.rows_ctrl) = 'array'
+         AND jsonb_array_length(fd.rows_ctrl) > 0
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(fd.rows_ctrl) e
+            WHERE (e ? 'cod_angajament'
+                   AND e->>'cod_angajament' IS DISTINCT FROM UPPER(TRIM(COALESCE(e->>'cod_angajament',''))))
+               OR (e ? 'indicator_angajament'
+                   AND e->>'indicator_angajament' IS DISTINCT FROM UPPER(TRIM(COALESCE(e->>'indicator_angajament',''))))
+         );
+
+      -- ORD rows — campul pe care OPME il potriveste efectiv. Aceeasi logica, aceleasi garantii.
+      UPDATE formulare_ord fo
+         SET rows = (
+           SELECT jsonb_agg(
+             CASE WHEN jsonb_typeof(elem) = 'object' THEN
+                  CASE WHEN elem ? 'cod_angajament'
+                       THEN elem || jsonb_build_object('cod_angajament',
+                              UPPER(TRIM(COALESCE(elem->>'cod_angajament', ''))))
+                       ELSE elem END
+                  ||
+                  CASE WHEN elem ? 'indicator_angajament'
+                       THEN jsonb_build_object('indicator_angajament',
+                              UPPER(TRIM(COALESCE(elem->>'indicator_angajament', ''))))
+                       ELSE '{}'::jsonb END
+             ELSE elem END
+             ORDER BY ord
+           )
+           FROM jsonb_array_elements(fo.rows) WITH ORDINALITY AS t(elem, ord)
+         )
+       WHERE jsonb_typeof(fo.rows) = 'array'
+         AND jsonb_array_length(fo.rows) > 0
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(fo.rows) e
+            WHERE (e ? 'cod_angajament'
+                   AND e->>'cod_angajament' IS DISTINCT FROM UPPER(TRIM(COALESCE(e->>'cod_angajament',''))))
+               OR (e ? 'indicator_angajament'
+                   AND e->>'indicator_angajament' IS DISTINCT FROM UPPER(TRIM(COALESCE(e->>'indicator_angajament',''))))
+         );
+    `
   }
 ];
 
@@ -2452,35 +2526,43 @@ export async function writeAuditEvent({ flowId, orgId, eventType, actorEmail, ac
 }
 
 /**
- * Construieste un map de useri filtrat pe org_id (anti-leak multi-tenant).
- * Daca orgId e null/0, returneaza toti userii (backward compat pentru admini fara org).
+ * Map de useri (email → {functie, compartiment, institutie}), STRICT pe org.
+ *
+ * SEC-101 (TENANT-01): fail-CLOSED. Fără org ⇒ hartă GOALĂ, nu întreaga tabelă `users`.
+ * Vechiul fallback („backward compat pentru admini fără org") returna toți utilizatorii din
+ * toate organizațiile și îi cacheța 60s sub cheia 'all'.
+ *
+ * SEC-101 (email-reuse): `deleted_at IS NULL`. Migrația 067 a înlocuit UNIQUE(email) cu un index
+ * parțial pe utilizatorii activi ⇒ un email poate exista de mai multe ori în tabelă. Fără filtru,
+ * harta putea prelua rândul utilizatorului ȘTERS.
  */
 // ARCH-04: Cache per org_id cu TTL 60s.
 // getUserMapForOrg e apelat la fiecare GET /flows/:id și GET /my-flows —
 // fără cache, face un SELECT pe users la fiecare request.
-// Map<orgId|'all', { map, cachedAt }>
+// Map<orgId, { map, cachedAt }>  (cheia 'all' a fost eliminată la SEC-101)
 const _userMapCache = new Map();
 const USER_MAP_CACHE_TTL = 60_000; // 60 secunde
 
 export async function getUserMapForOrg(orgId) {
-  const cacheKey = (orgId && orgId > 0) ? String(orgId) : 'all';
-  const cached = _userMapCache.get(cacheKey);
-  if (cached && (Date.now() - cached.cachedAt) < USER_MAP_CACHE_TTL) {
-    return cached.map;
+  const oid = Number(orgId);
+  if (!oid || oid <= 0) {
+    logger.warn('getUserMapForOrg fără org_id — hartă goală (fail-closed, SEC-101)');
+    return {};                                  // NU se cachează: e o condiție de eroare, nu o valoare
   }
 
-  let query, params;
-  if (orgId && orgId > 0) {
-    query = 'SELECT email,functie,compartiment,institutie FROM users WHERE org_id=$1';
-    params = [orgId];
-  } else {
-    query = 'SELECT email,functie,compartiment,institutie FROM users';
-    params = [];
-  }
-  const { rows } = await pool.query(query, params);
+  const cacheKey = String(oid);
+  const cached = _userMapCache.get(cacheKey);
+  if (cached && (Date.now() - cached.cachedAt) < USER_MAP_CACHE_TTL) return cached.map;
+
+  const { rows } = await pool.query(
+    `SELECT email, functie, compartiment, institutie
+       FROM users
+      WHERE org_id = $1
+        AND deleted_at IS NULL`,
+    [oid]
+  );
   const map = {};
   rows.forEach(u => { map[(u.email || '').toLowerCase()] = u; });
-
   _userMapCache.set(cacheKey, { map, cachedAt: Date.now() });
   return map;
 }

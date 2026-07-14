@@ -10,6 +10,7 @@ import { logger } from '../../middleware/logger.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
+import { classifySignerEmail } from '../../services/signer-identity.mjs';
 
 const _largePdf = expressJson({ limit: '50mb' });
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
@@ -385,21 +386,37 @@ router.post('/flows/:flowId/delegate', async (req, res) => {
       return res.status(400).json({ error: 'self_delegation_not_allowed', message: 'Nu poți delega semnătura către tine însuți.' });
     }
 
+    // SEC-103: nu poți delega către un utilizator intern dezactivat. `unknown` (DB căzut) TRECE —
+    // delegarea din UI cere sesiune (sessionGuard a fail-closed deja); `external` (fără cont) TRECE.
+    {
+      const { cls } = await classifySignerEmail(toEmail);
+      if (cls === 'deactivated') {
+        return res.status(400).json({
+          error: 'delegate_deactivated',
+          message: 'Utilizatorul către care delegi este dezactivat.'
+        });
+      }
+    }
+
     const originalName = signers[idx].name;
     const originalEmail = signers[idx].email;
 
     let _origFunctie = '';
     try {
+      // SEC-102: migrația 067 permite REUTILIZAREA emailului după soft-delete ⇒ fără deleted_at,
+      // rows[0] poate fi utilizatorul ȘTERS. lower(email) se aliniază cu users_email_active_uniq.
       const { rows: _ofR } = await pool.query(
-        'SELECT functie FROM users WHERE email=$1 LIMIT 1',
+        'SELECT functie FROM users WHERE lower(email)=$1 AND deleted_at IS NULL LIMIT 1',
         [originalEmail.toLowerCase()]
       );
       _origFunctie = _ofR[0]?.functie || '';
     } catch (_) { /* non-fatal */ }
 
     // Cautam datele delegatului in DB
+    // SEC-102: migrația 067 permite REUTILIZAREA emailului după soft-delete ⇒ fără deleted_at,
+    // rows[0] poate fi utilizatorul ȘTERS. lower(email) se aliniază cu users_email_active_uniq.
     const { rows: delegatDbRows } = await pool.query(
-      'SELECT nume, functie, compartiment, institutie FROM users WHERE email=$1',
+      'SELECT nume, functie, compartiment, institutie FROM users WHERE lower(email)=$1 AND deleted_at IS NULL',
       [toEmail.trim().toLowerCase()]
     );
     const delegatDb = delegatDbRows[0] || {};

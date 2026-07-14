@@ -172,7 +172,7 @@ async function onDfSelect(dfId){
     const rows=Array.isArray(doc.rows_ctrl)?doc.rows_ctrl:JSON.parse(doc.rows_ctrl||'[]');
     const tbody=document.getElementById('o-tbody');
     tbody.innerHTML='';oI=0;
-    if(!rows.length){addOR();return;}
+    if(!rows.length){addOR();if(typeof window.lockOrdIdentityCols==='function')window.lockOrdIdentityCols();return;}
     rows.forEach(row=>{
       addOR();
       const tr=tbody.querySelector('tr:last-child');
@@ -183,6 +183,7 @@ async function onDfSelect(dfId){
       });
     });
     upTot();
+    if(typeof window.lockOrdIdentityCols==='function')window.lockOrdIdentityCols(); // ORD legat de DF → coloanele de identitate needitabile
     // Încarcă contextul de buget al DF-ului selectat → atenționare inline ORD (paritate server).
     if(typeof window._loadOrdBuget==='function')window._loadOrdBuget(dfId);
   }catch(_){}

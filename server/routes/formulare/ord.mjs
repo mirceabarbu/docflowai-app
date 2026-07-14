@@ -18,9 +18,10 @@ import {
   pick, buildUpdate,
   ORD_P1_FIELDS, ORD_P2_FIELDS,
   submitFormular, completeFormular, returnFormular, linkFlowFormular, stergeFormular,
-  computeOrdBudgetContext,
+  computeOrdBudgetContext, deriveOrdIdentityCols,
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
+import { normalizeAngajamentRows } from '../../services/angajament-normalize.mjs';
 import { serializeOrdnt } from '../../services/alop-xml/ordnt-serializer.mjs';
 import { ordRowToXsd } from '../../services/alop-xml/ord-to-xsd.mjs';
 import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
@@ -229,6 +230,23 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
   try {
     const body = req.body || {};
     const data = pick(body, ORD_P1_FIELDS);
+    // ORD.rows e câmpul pe care OPME îl potrivește efectiv (opme-matcher.mjs:127) — coduri
+    // canonice cu MAJUSCULE la scriere (angajament-normalize.mjs). Serverul e poarta.
+    if ('rows' in data) data.rows = normalizeAngajamentRows(data.rows);
+    // SEC-100.2: dacă ORD-ul se creează deja legat de un DF, derivă cele 4 coloane de
+    // identitate din rows_ctrl-ul DF-ului (org-scoped) — clientul nu e crezut pe ele.
+    if ('rows' in data && body.df_id) {
+      const { rows: dfRows } = await pool.query(
+        'SELECT rows_ctrl FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
+        [body.df_id, actor.orgId]
+      );
+      if (dfRows.length) {
+        const ctrl = Array.isArray(dfRows[0].rows_ctrl)
+          ? dfRows[0].rows_ctrl
+          : JSON.parse(dfRows[0].rows_ctrl || '[]');
+        data.rows = deriveOrdIdentityCols(data.rows, ctrl);
+      }
+    }
     if (data.nr_ordonant_pl) {
       const { rows: dup } = await pool.query(
         `SELECT id FROM formulare_ord
@@ -301,6 +319,23 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
 
     const allowedFields = isP2 && !isP1 && !isAdmin ? ORD_P2_FIELDS : [...ORD_P1_FIELDS];
     const data = pick(req.body || {}, allowedFields);
+    if ('rows' in data) data.rows = normalizeAngajamentRows(data.rows);   // coduri canonice (OPME)
+    // SEC-100.2: df_id-ul EFECTIV după acest PUT (body-ul îl poate schimba sau șterge).
+    const _effDfId = ('df_id' in (req.body || {})) ? (req.body.df_id || null) : doc.df_id;
+    if ('rows' in data && _effDfId) {
+      const { rows: dfRows } = await pool.query(
+        'SELECT rows_ctrl FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
+        [_effDfId, actor.orgId]
+      );
+      if (dfRows.length) {
+        const ctrl = Array.isArray(dfRows[0].rows_ctrl)
+          ? dfRows[0].rows_ctrl
+          : JSON.parse(dfRows[0].rows_ctrl || '[]');
+        data.rows = deriveOrdIdentityCols(data.rows, ctrl);
+      }
+      // DF inexistent / alt org / șters ⇒ NU derivăm și NU blocăm. `df_id` e oricum
+      // scris de FK-ul de mai jos; un ORD legat de un DF invalid e altă problemă, nu asta.
+    }
     if (data.nr_ordonant_pl && data.nr_ordonant_pl !== doc.nr_ordonant_pl) {
       const { rows: dup } = await pool.query(
         `SELECT id FROM formulare_ord

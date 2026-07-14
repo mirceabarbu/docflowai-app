@@ -14,6 +14,7 @@ import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-sign
 import { normalizeRecipients } from '../../services/flow-transmit.mjs';
 import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
 import { resolveActorOr } from '../../services/actor-identity.mjs';
+import { classifySignerEmail } from '../../services/signer-identity.mjs';
 
 // Helper: denumire consistenta pentru PDF descarcat
 function safeDocName(docName, flowId) {
@@ -207,13 +208,38 @@ const createFlow = async (req, res) => {
       }
     }
 
+    // SEC-103: niciun semnatar nu poate fi un utilizator intern dezactivat.
+    // Verificăm TOȚI semnatarii (nu doar primul), înainte de orice scriere. `unknown` (DB
+    // căzut) TRECE aici: crearea cere deja sesiune, deci sessionGuard a fail-closed înaintea
+    // noastră — un al doilea refuz ar pierde munca utilizatorului fără să adauge siguranță.
+    {
+      const _deactivated = [];
+      for (const s of normalizedSigners) {
+        if (!s?.email) continue;
+        const { cls } = await classifySignerEmail(s.email);
+        if (cls === 'deactivated') _deactivated.push(s.email);
+        else if (cls === 'unknown') logger.warn({ email: s.email }, 'SEC-103: clasificare indisponibilă la creare — trec (sesiune deja validată)');
+      }
+      if (_deactivated.length) {
+        return res.status(400).json({
+          error: 'signer_deactivated',
+          emails: _deactivated,
+          message: _deactivated.length === 1
+            ? `Utilizatorul ${_deactivated[0]} este dezactivat și nu poate fi semnatar.`
+            : `Acești utilizatori sunt dezactivați și nu pot fi semnatari: ${_deactivated.join(', ')}.`
+        });
+      }
+    }
+
     // BLOC 4.3: auto-redirect dacă primul semnatar e în concediu cu delegat
     // (fallback pentru clienți API care n-au substituit în UI)
     try {
       const first = normalizedSigners[0];
       if (first && first.email && !first.delegatedForUserId) {
+        // SEC-102: migrația 067 permite REUTILIZAREA emailului după soft-delete ⇒ fără deleted_at,
+        // rows[0] poate fi utilizatorul ȘTERS. lower(email) se aliniază cu users_email_active_uniq.
         const { rows: uRows } = await pool.query(
-          'SELECT id, functie, leave_reason FROM users WHERE email=$1',
+          'SELECT id, functie, leave_reason FROM users WHERE lower(email)=$1 AND deleted_at IS NULL',
           [first.email.toLowerCase()]
         );
         if (uRows.length) {

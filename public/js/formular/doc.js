@@ -40,6 +40,30 @@ function lockDfSelectIfLinked(){
 }
 window.lockDfSelectIfLinked=lockDfSelectIfLinked;
 
+// ── Coloane de identitate ORD — needitabile când ORD e legat de un DF aprobat ──
+// cod_angajament/indicator_angajament/program/cod_SSI sunt DERIVATE din DF-ul aprobat
+// (rows_ctrl), nu introduse de utilizator. Odată ce ORD-ul e legat de un DF (`#o-df-id`
+// are valoare), ele se citesc, nu se scriu. readOnly, NU disabled — valorile tot ajung
+// în payload la salvare (collectOrdDb → getOR() citește .value, nu depinde de disabled).
+const ORD_IDENT_COLS=['cod_angajament','indicator_angajament','program','cod_SSI'];
+function lockOrdIdentityCols(){
+  const linked=!!(document.getElementById('o-df-id')?.value||'').trim();
+  document.querySelectorAll('#o-tbody tr').forEach(tr=>{
+    ORD_IDENT_COLS.forEach(f=>{
+      const inp=tr.querySelector(`[data-f="${f}"]`);
+      if(!inp)return;
+      inp.readOnly=linked;
+      inp.tabIndex=linked?-1:0;
+      inp.title=linked?'Preluat din DF-ul aprobat — nu poate fi modificat':'';
+    });
+  });
+  // Rândurile ORD oglindesc rows_ctrl-ul DF-ului ⇒ cât timp e legat, nu se adaugă rânduri manual.
+  const badd=document.querySelector('#form-ordnt .badd');
+  if(badd)badd.disabled=linked;
+}
+window.lockOrdIdentityCols=lockOrdIdentityCols;
+window.lockDfSelectIfLinked=lockDfSelectIfLinked;
+
 // ── Status label ─────────────────────────────────────────────────────────────
 function stLabel(s,aprobat){
   if(aprobat)return['aprobat','✔ Aprobat'];
@@ -106,6 +130,7 @@ async function populateOrd(doc){
   }else{_ordBugetCtx=null;}
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
   (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});});
+  lockOrdIdentityCols(); // ORD legat de DF → coloanele de identitate needitabile
   // v3.9.500 (Issue I-2): wrap-ul captura 2 e VIZIBIL mereu, ca P2 să poată
   // încărca chiar și când DB nu are nimic în slot=2 yet. IMG-ul intern
   // (o-cimg2) afișează data doar când există; placeholder (o-cph2) altfel.
@@ -371,6 +396,7 @@ function setModeP2Df(){
 }
 function setModeP2Ord(){
   lockAll('ordnt',true);
+  lockOrdIdentityCols();
   // Deblochez receptii + plati_anterioare în tabel
   document.querySelectorAll('#o-tbody input[data-f="receptii"],#o-tbody input[data-f="plati_anterioare"]').forEach(e=>{e.disabled=false;});
   // v3.9.500 (Issue I-2): pointer-events pe AMBELE zone de captură pentru P2
@@ -525,6 +551,7 @@ function applyOrdRoleState(status,role){
     _dfUpdateProgress('ordnt','p2');
   }else if(status==='completed'){
     lockAll('ordnt',true);
+    lockOrdIdentityCols();
     if(p2Body)p2Body.classList.add('locked');
     if(p1Lock){p1Lock.style.display='flex';p1Lock.className='df-lock-bar df-lock-ok';p1Lock.textContent='✓ Date CAB completate — lansați fluxul de semnare.';}
     if(p2Lock){p2Lock.style.display='flex';p2Lock.className='df-lock-bar df-lock-ok';p2Lock.textContent='✓ Date CAB completate.';}
@@ -741,10 +768,12 @@ async function openDoc(ft,id){
 
     // Lock / mode
     lockAll(ft,false);
+    if(ft==='ordnt')lockOrdIdentityCols();
     lockCaptureAndAttachments(ft,false);
     const status=doc.status,role=ST.docRole[ft];
     if(ST.docAprobat[ft]){
       lockAll(ft,true);
+      if(ft==='ordnt')lockOrdIdentityCols();
       lockCaptureAndAttachments(ft,true);
       // p2-field eliminat (uniformizare vizuală) — nu mai e nimic de curățat
       setLockedBar(ft,'✔ Document aprobat — fluxul de semnare a fost finalizat.','info');
@@ -760,10 +789,11 @@ async function openDoc(ft,id){
       setLockedBar(ft,'Completați câmpurile dvs. (marcate) și apăsați Finalizez.','info');
     }else if(status==='pending_p2'&&role==='p1'){
       lockAll(ft,true);
-      if(ft==='ordnt')document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;});
+      if(ft==='ordnt'){lockOrdIdentityCols();document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;});}
       setLockedBar(ft,'Document trimis la Responsabil CAB. Așteptați completarea.','warn');
     }else if(status==='returnat'&&role==='p1'){
       lockAll(ft,false);
+      if(ft==='ordnt')lockOrdIdentityCols();
       setLockedBar(ft,'↩ Document returnat de Responsabil CAB — verificați deficiențele și retrimiteți.','warn');
       const mb=document.getElementById('motiv-bar-'+ft);
       if(mb&&doc.motiv_returnare){
@@ -772,6 +802,7 @@ async function openDoc(ft,id){
       }
     }else if(status==='completed'){
       lockAll(ft,true);
+      if(ft==='ordnt')lockOrdIdentityCols();
       lockCaptureAndAttachments(ft,true);
       // p2-field eliminat (uniformizare vizuală) — nu mai e nimic de curățat
       const _revNr=doc.revizie_nr>0?` · Revizia ${doc.revizie_nr}`:'';
@@ -899,6 +930,7 @@ function newDoc(ft){
     const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
     const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
     lockDfSelectIfLinked(); // ORD nou fără DF → select-ul rămâne selectabil (enabled)
+    lockOrdIdentityCols(); // ORD nou fără DF → coloanele de identitate editabile
     _resetOrdBuget(); // fără DF selectat → fără context de plafon (se încarcă la DF-select)
     // v3.9.500 (Issue I-1): prefill plati_anterioare la creare ord nou pe ciclu 2+
     // Înainte: prefill rula doar în loadDoc (existing ord) → P1 vedea 0,00, P2 vedea valoarea
@@ -1584,6 +1616,7 @@ async function completeAsP2(ft){
     ST.docCapabilities[ft]=j.document?.capabilities||null;
     _alopLinkDoc(ft,ST.docId[ft]); // FIX: re-leagă la ALOP după completare (idempotent)
     lockAll(ft,true);
+    if(ft==='ordnt')lockOrdIdentityCols();
     setLockedBar(ft,'Secțiunea dvs. a fost finalizată și trimisă înapoi la P1.','info');
     renderActions(ft);refreshDocs(ft);
     setS('Finalizat cu succes! Redirecționare...','ok');
@@ -1608,7 +1641,9 @@ async function resetDocToP1(ft){
     ST.docStatus[ft]='draft';
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=j.document?.capabilities||null;
-    lockAll(ft,false);setLockedBar(ft,'');renderActions(ft);refreshDocs(ft);
+    lockAll(ft,false);
+    if(ft==='ordnt')lockOrdIdentityCols();
+    setLockedBar(ft,'');renderActions(ft);refreshDocs(ft);
     setS('Document redeschis pentru modificare.','ok');
   }catch(e){setS('Eroare: '+e.message,'err');}
 }
@@ -1641,6 +1676,7 @@ async function confirmReturn(){
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=j.document?.capabilities||null;
     lockAll(ft,true);
+    if(ft==='ordnt')lockOrdIdentityCols();
     setLockedBar(ft,'Document returnat ca neconform. Inițiatorul va fi notificat.','warn');
     renderActions(ft);refreshDocs(ft);
     setS('Document returnat.','ok');
