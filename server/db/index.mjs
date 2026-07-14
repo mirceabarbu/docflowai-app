@@ -151,7 +151,7 @@ if (pool) {
 export let DB_READY = false;
 export let DB_LAST_ERROR = null;
 
-const MIGRATIONS = [
+export const MIGRATIONS = [
   {
     id: '001_initial_schema',
     sql: `
@@ -2049,6 +2049,91 @@ const MIGRATIONS = [
           BEFORE UPDATE ON alop_instances
           FOR EACH ROW EXECUTE FUNCTION alop_status_guard();
       END $g$;
+    `
+  },
+  {
+    // v3.9.681 (#97): prevenire DF duplicat din context ALOP (incident 13.07.2026 — dublu-click
+    // pe „Completează DF" ⇒ două formulare_df goale, revizie_nr=0, același source_alop_id; ALOP
+    // legat la cel gol). Migrarea face DOUĂ lucruri, în ordine: (2a) curăță duplicatele existente,
+    // (2b) creează indexul unic parțial ca poartă durabilă. ⛔ ORDINEA E OBLIGATORIE — indexul nu
+    // se poate crea cât timp există duplicate. formulare_df: id UUID, source_alop_id UUID,
+    // revizie_nr INTEGER, flow_id TEXT, status TEXT — verificate, nu presupuse.
+    //
+    // ⛔ NU șterge NICIODATĂ un DF cu flow_id (e pe flux de semnare). Un grup cu ≥2 DF-uri pe
+    // flux = caz intratabil: NEATINS + WARNING (rezolvare manuală). Mai bine indexul lipsește
+    // decât să ștergem un document semnat. 2b e înfășurat în EXCEPTION → boot-ul supraviețuiește
+    // dacă indexul nu se poate crea (evită un 19-aprilie: 503 db_not_ready pe tot).
+    id: '095_df_dedup_and_unique',
+    sql: `
+      -- 2a. CURĂȚARE — soft-delete duplicatele goale (NICIODATĂ DELETE, NICIODATĂ un DF pe flux).
+      DO $dedup$
+      DECLARE
+        r RECORD;
+      BEGIN
+        -- Cazul intratabil: grup (source_alop_id, revizie_nr) cu ≥2 DF-uri active AMBELE pe flux.
+        -- NU-l atinge — doar avertizează. Indexul 2b va eșua controlat pe el (prins de EXCEPTION).
+        FOR r IN
+          SELECT source_alop_id, revizie_nr
+          FROM formulare_df
+          WHERE source_alop_id IS NOT NULL AND deleted_at IS NULL AND flow_id IS NOT NULL
+          GROUP BY source_alop_id, revizie_nr
+          HAVING COUNT(*) > 1
+        LOOP
+          RAISE WARNING '095_df_dedup: grup ALOP % rev % cu >=2 DF-uri pe flux — NEATINS (rezolvare manuala).',
+            r.source_alop_id, r.revizie_nr;
+        END LOOP;
+
+        -- Curățare grupuri dedup-abile: >1 rând activ ȘI cel mult UN rând cu flow_id.
+        -- Păstrează UNUL (flow_id > status avansat > cel mai vechi), soft-delete restul.
+        WITH grupuri_sigure AS (
+          SELECT source_alop_id, revizie_nr
+          FROM formulare_df
+          WHERE source_alop_id IS NOT NULL AND deleted_at IS NULL
+          GROUP BY source_alop_id, revizie_nr
+          HAVING COUNT(*) > 1
+             AND COUNT(*) FILTER (WHERE flow_id IS NOT NULL) <= 1
+        ),
+        ranked AS (
+          SELECT fd.id,
+            ROW_NUMBER() OVER (
+              PARTITION BY fd.source_alop_id, fd.revizie_nr
+              ORDER BY
+                (fd.flow_id IS NOT NULL) DESC,          -- 1. pe flux = sacru (rank keeper)
+                CASE fd.status                          -- 2. statusul cel mai avansat
+                  WHEN 'aprobat'       THEN 6
+                  WHEN 'transmis_flux' THEN 5
+                  WHEN 'completed'     THEN 4
+                  WHEN 'pending_p2'    THEN 3
+                  WHEN 'returnat'      THEN 2
+                  WHEN 'draft'         THEN 1
+                  ELSE 0
+                END DESC,
+                fd.created_at ASC                       -- 3. cel mai vechi (primul legat la ALOP)
+            ) AS rn
+          FROM formulare_df fd
+          JOIN grupuri_sigure g
+            ON g.source_alop_id = fd.source_alop_id AND g.revizie_nr = fd.revizie_nr
+          WHERE fd.deleted_at IS NULL
+        )
+        UPDATE formulare_df fd
+           SET deleted_at = NOW()
+          FROM ranked r2
+         WHERE fd.id = r2.id
+           AND r2.rn > 1
+           AND fd.flow_id IS NULL;                      -- dublă siguranță: nicicând un DF pe flux
+      END $dedup$;
+
+      -- 2b. INDEX UNIC PARȚIAL — poarta durabilă. Înfășurat în EXCEPTION: dacă rămân duplicate
+      -- (cazul intratabil), RAISE WARNING și boot-ul continuă. Un index lipsă e o problemă;
+      -- o aplicație care nu pornește e un incident.
+      DO $idx$
+      BEGIN
+        CREATE UNIQUE INDEX IF NOT EXISTS df_source_alop_revizie_uniq
+          ON formulare_df (source_alop_id, revizie_nr)
+          WHERE source_alop_id IS NOT NULL AND deleted_at IS NULL;
+      EXCEPTION WHEN unique_violation THEN
+        RAISE WARNING '095_df_dedup: indexul unic df_source_alop_revizie_uniq NU s-a putut crea (duplicate ramase, probabil grup cu >=2 pe flux). Boot continua.';
+      END $idx$;
     `
   }
 ];
