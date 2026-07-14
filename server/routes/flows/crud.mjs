@@ -212,8 +212,10 @@ const createFlow = async (req, res) => {
     try {
       const first = normalizedSigners[0];
       if (first && first.email && !first.delegatedForUserId) {
+        // SEC-102: migrația 067 permite REUTILIZAREA emailului după soft-delete ⇒ fără deleted_at,
+        // rows[0] poate fi utilizatorul ȘTERS. lower(email) se aliniază cu users_email_active_uniq.
         const { rows: uRows } = await pool.query(
-          'SELECT id, functie, leave_reason FROM users WHERE email=$1',
+          'SELECT id, functie, leave_reason FROM users WHERE lower(email)=$1 AND deleted_at IS NULL',
           [first.email.toLowerCase()]
         );
         if (uRows.length) {

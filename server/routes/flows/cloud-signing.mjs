@@ -608,8 +608,10 @@ router.get('/flows/:flowId/signing-providers', async (req, res) => {
     const signer = (data.signers || []).find(s => s.token === signerToken);
     let preferredProvider = null;
     if (signer?.email) {
+      // SEC-102: migrația 067 permite REUTILIZAREA emailului după soft-delete ⇒ fără deleted_at,
+      // rows[0] poate fi utilizatorul ȘTERS. lower(email) se aliniază cu users_email_active_uniq.
       const { rows: uRows } = await pool.query(
-        'SELECT preferred_signing_provider FROM users WHERE email=$1',
+        'SELECT preferred_signing_provider FROM users WHERE lower(email)=$1 AND deleted_at IS NULL',
         [signer.email.toLowerCase()]
       );
       preferredProvider = uRows[0]?.preferred_signing_provider || null;
@@ -877,8 +879,10 @@ router.get('/api/me/signing-providers', async (req, res) => {
     // Preferința user-ului (dacă există)
     let preferred = null;
     try {
+      // SEC-102: migrația 067 permite REUTILIZAREA emailului după soft-delete ⇒ fără deleted_at,
+      // rows[0] poate fi utilizatorul ȘTERS. lower(email) se aliniază cu users_email_active_uniq.
       const { rows: uRows } = await pool.query(
-        'SELECT preferred_signing_provider FROM users WHERE email=$1',
+        'SELECT preferred_signing_provider FROM users WHERE lower(email)=$1 AND deleted_at IS NULL',
         [actor.email.toLowerCase()]
       );
       preferred = uRows[0]?.preferred_signing_provider || null;

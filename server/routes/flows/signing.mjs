@@ -525,8 +525,10 @@ async function _autoRedirectIfOnLeave(flowId, data, signers) {
     const cur = signers[currentIdx];
 
     // Lookup user după email
+    // SEC-102: migrația 067 permite REUTILIZAREA emailului după soft-delete ⇒ fără deleted_at,
+    // rows[0] poate fi utilizatorul ȘTERS. lower(email) se aliniază cu users_email_active_uniq.
     const { rows: uRows } = await pool.query(
-      'SELECT id FROM users WHERE email=$1',
+      'SELECT id FROM users WHERE lower(email)=$1 AND deleted_at IS NULL',
       [(cur.email || '').toLowerCase()]
     );
     if (!uRows.length) return false;
@@ -552,8 +554,10 @@ async function _autoRedirectIfOnLeave(flowId, data, signers) {
     let origFunctie = '';
     let origLeaveReason = 'auto: utilizator în concediu';
     try {
+      // SEC-102: migrația 067 permite REUTILIZAREA emailului după soft-delete ⇒ fără deleted_at,
+      // rows[0] poate fi utilizatorul ȘTERS. lower(email) se aliniază cu users_email_active_uniq.
       const { rows: oRows } = await pool.query(
-        'SELECT functie, leave_reason FROM users WHERE email=$1',
+        'SELECT functie, leave_reason FROM users WHERE lower(email)=$1 AND deleted_at IS NULL',
         [originalEmail.toLowerCase()]
       );
       if (oRows[0]) {
