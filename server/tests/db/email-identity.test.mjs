@@ -85,7 +85,9 @@ d('SEC-102 — email = identitate (deleted_at IS NULL + lower(email))', () => {
     expect(s0.email).toBe('delegat@y.ro');                // substituit cu delegatul
   });
 
-  it('email doar pe rând ȘTERS → lookup gol, fluxul se creează fără delegare, fără crash', async () => {
+  // Contract schimbat la SEC-103: un utilizator intern dezactivat nu mai poate fi semnatar.
+  // Înainte de #103 acest caz întorcea 200 (flux creat, fără delegare).
+  it('email doar pe rând ȘTERS → 400 signer_deactivated (SEC-103), nu 500', async () => {
     const orgId = await insertOrg('Org DeletedOnly');
     const creatorId = await insertUser({ orgId, email: 'p1@x.ro', nume: 'Creator' });
     await insertUser({ orgId, email: 'ghost@y.ro', nume: 'Fantoma', functie: 'Primar', deleted: true });
@@ -94,13 +96,15 @@ d('SEC-102 — email = identitate (deleted_at IS NULL + lower(email))', () => {
       docName: 'Doc ghost', initName: 'ignorat', initEmail: 'p1@x.ro',
       signers: [{ name: 'Ghost', email: 'ghost@y.ro', rol: 'AVIZAT', order: 1 }],
     });
-    expect(res.status).toBe(200);
+    // Intenția originală se păstrează: lookup-ul gol NU crapă (nu 500), ci întoarce un 400 structurat.
+    expect(res.status).not.toBe(500);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('signer_deactivated');
+    expect(res.body.emails).toContain('ghost@y.ro');
 
-    const { rows } = await pool.query('SELECT data FROM flows WHERE id=$1', [res.body.flowId]);
-    const s0 = rows[0].data.signers[0];
-    expect(s0.delegatedForUserId).toBeNull();     // negăsit ⇒ nicio delegare
-    expect(s0.delegatedFrom).toBeUndefined();
-    expect(s0.email).toBe('ghost@y.ro');          // slotul rămâne neschimbat
+    // Fluxul NU se salvează.
+    const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM flows');
+    expect(rows[0].n).toBe(0);
   });
 
   it('email ne-lowercase (Mircea@Y.ro) → găsit prin lower(email); funcția rezolvată = Secretar', async () => {
