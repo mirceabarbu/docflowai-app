@@ -54,6 +54,33 @@ export function buildUpdate(data, fields, startIdx = 1) {
   return { sets, vals };
 }
 
+// SEC-100.2: cele 4 coloane de identitate ale ORD-ului sunt DERIVATE din DF, nu introduse.
+// #100.1 le-a blocat în UI (readOnly) — dar un readOnly în DOM nu e un control de securitate.
+// Aici serverul nu mai crede clientul: dacă ORD-ul are df_id, valorile vin din rows_ctrl.
+// NU e validare: nu refuzăm nimic, nu ne uităm în clasa8_buget. Doar suprascriem.
+export const ORD_IDENT_COLS = ['cod_angajament', 'indicator_angajament', 'program', 'cod_SSI'];
+
+/**
+ * @param {Array}  clientRows  rândurile din body (deja trecute prin normalizeAngajamentRows)
+ * @param {Array}  ctrlRows    rows_ctrl al DF-ului legat
+ * @returns {Array}            rândurile cu cele 4 coloane suprascrise din DF
+ *
+ * Corelare POZIȚIONALĂ — identică cu prefill-ul din onDfSelect (list.js:176).
+ * Rândurile din ORD peste lungimea rows_ctrl (dacă apar) rămân NEATINSE: nu inventăm coduri.
+ */
+export function deriveOrdIdentityCols(clientRows, ctrlRows) {
+  if (!Array.isArray(clientRows)) return clientRows;
+  if (!Array.isArray(ctrlRows) || !ctrlRows.length) return clientRows;   // fără sursă ⇒ nu atingem
+  return clientRows.map((row, i) => {
+    const src = ctrlRows[i];
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+    if (!src || typeof src !== 'object') return row;
+    const out = { ...row };
+    for (const k of ORD_IDENT_COLS) out[k] = src[k] ?? null;
+    return out;
+  });
+}
+
 // ── definiții de câmpuri (schema P1/P2 per tip) ──────────────────────────────────
 
 /** Câmpuri DF sectiunea A (P1) */
