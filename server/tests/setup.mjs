@@ -24,5 +24,12 @@ if (process.env.TEST_DATABASE_URL) {
   process.env.DB_DISABLE_SSL = '1';
 }
 
+// config.mjs cere DATABASE_URL la import (via `required`). Pentru testele mock
+// (fără TEST_DATABASE_URL) punem un placeholder — pool-ul pg e lazy (nu se
+// conectează la import) și db/index.mjs e oricum mock-uit în testele mock.
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgres://test:test@127.0.0.1:5432/docflowai_test';
+}
+
 // ── Cleanup după toate testele ────────────────────────────────────────────────
 // (nimic de cleanup global deocamdată — fiecare test suite face cleanup propriu)

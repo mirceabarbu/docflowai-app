@@ -339,7 +339,17 @@
     if (!area) return;
     const t = document.createElement('div');
     t.className = `nw-toast nw-toast-type-${notif.type||''}`;
-    t.innerHTML = `<div class="nw-toast-title">${notif.title||'Notificare'}</div><div class="nw-toast-msg">${notif.message||''}</div>`;
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'nw-toast-title';
+    titleEl.textContent = notif.title || 'Notificare';
+
+    const msgEl = document.createElement('div');
+    msgEl.className = 'nw-toast-msg';
+    msgEl.textContent = notif.message || '';
+
+    t.replaceChildren(titleEl, msgEl);
+
     t.onclick = () => { window.location.href = buildActionUrl(notif); };
     area.appendChild(t);
     setTimeout(() => {
@@ -485,6 +495,7 @@
   window.docflow = window.docflow || {};
   window.docflow.apiFetch = apiFetch;
   window.docflow.refreshToken = refreshToken;
+  window.docflow.showToast = showToast;   // expus pentru testul de regresie XSS (notif-toast-xss.test.mjs)
 
   // Compatibilitate debugging
   window._nwWidget = { getUnread: () => unreadCount, ws: () => ws };

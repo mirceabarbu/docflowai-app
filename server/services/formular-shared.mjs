@@ -19,6 +19,7 @@ import { computeDocCapabilities } from './formular-capabilities.mjs';
 import { loadActorComp, canEditFormular, canDestroyOnly } from './authz-formular.mjs';
 import { crediteBugetareAnCurent } from './buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from './formular-flow-attachments.mjs';
+import { codSsiBlockResponse } from './cod-ssi-validate.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
@@ -97,6 +98,10 @@ export const FORMULAR_TYPES = {
     p2Fields: DF_P2_FIELDS,
     submitStatuses: ['draft', 'returnat', 'de_revizuit'],
     budgetCheck: 'none',              // DF: buget = soft-warning DOAR în frontend (by design)
+    // ASIMETRIE (incident 13.07.2026): DF validează HARD codurile SSI din rows_val/rows_plati/
+    // rows_ctrl împotriva bugetului Clasa 8 (blocare la submit/complete/link-flow, 400). ORD are
+    // cod SSI în `rows`, dar validarea NU s-a extins la ORD în această iterație (scope owner).
+    codSsiValidate: true,
     alopOnComplete: 'df_angajare',    // DF complete → alop_instances draft→angajare + legat_alop
     alopMatchCol: 'df_id',            // coloana ALOP de match pe acest tip
     alopFlowField: 'df_flow_id',      // coloana ALOP de flux sincronizată la link-flow
@@ -135,6 +140,8 @@ export const FORMULAR_TYPES = {
     p2Fields: ORD_P2_FIELDS,
     submitStatuses: ['draft', 'returnat'],   // ASIMETRIE: fără 'de_revizuit'
     budgetCheck: 'hard_col5',                // ORD: validare hard col.5 ≥ 0 → 422
+    codSsiValidate: false,                   // ASIMETRIE: validarea Cod SSI vs Clasa 8 nu s-a extins la ORD
+
     alopOnComplete: null,                    // ORD complete NU atinge ALOP
     alopMatchCol: 'ord_id',
     alopFlowField: 'ord_flow_id',
@@ -312,6 +319,13 @@ export async function submitFormular({ type, id, actor, body }) {
     if (!cfg.submitStatuses.includes(doc.status))
       return { status: 409, body: { error: 'document_not_draft', status: doc.status } };
 
+    // GARDĂ Cod SSI (DF): nu trimite la P2 un DF cu cod inexistent în Clasa 8 (validăm
+    // rândurile DEJA salvate, doc.*). Gated de cfg.codSsiValidate (DF=true, ORD=false).
+    if (cfg.codSsiValidate) {
+      const block = await codSsiBlockResponse(pool, actor.orgId, doc);
+      if (block) return block;
+    }
+
     // GARDĂ BUGET LA P1 (Varianta A, owner): depășirea plafonului de buget blochează HARD
     // trimiterea la P2. Rulează ÎNAINTE de UPDATE-ul de status, pe rândurile DEJA salvate
     // (autosave): `doc.rows`, NU body. Gated de cfg.budgetCheck (DF='none' → sare; ORD='hard_col5').
@@ -378,6 +392,19 @@ export async function completeFormular({ type, id, actor, body }) {
       return { status: 409, body: { error: 'status_invalid', status: doc.status } };
 
     const data = pick(body || {}, cfg.p2Fields);
+
+    // GARDĂ Cod SSI (DF): finalizarea P2 e RESPINSĂ dacă rămâne un cod inexistent în Clasa 8.
+    // Validăm starea EFECTIVĂ: rows_ctrl din body (editarea P2) + rows_val/rows_plati persistate
+    // (P1). Gated de cfg.codSsiValidate. Escape pentru docul „cărămidă": P2 poate returna la P1.
+    if (cfg.codSsiValidate) {
+      const eff = {
+        rows_val:   doc.rows_val,
+        rows_plati: doc.rows_plati,
+        rows_ctrl:  ('rows_ctrl' in data) ? data.rows_ctrl : doc.rows_ctrl,
+      };
+      const block = await codSsiBlockResponse(pool, actor.orgId, eff);
+      if (block) return block;
+    }
 
     // ASIMETRIE buget: ORD validează hard col.5 (422); DF nu (soft-warning e DOAR frontend).
     // Ordinea verificărilor (documentată): col.5 ≥ 0 ÎNTÂI (per rând), apoi plafonul
@@ -499,6 +526,13 @@ export async function linkFlowFormular({ type, id, actor, body }) {
     }
     if (doc.status !== 'completed')
       return { status: 409, body: { error: 'document_not_completed' } };
+
+    // GARDĂ Cod SSI (DF): trimiterea pe flux e RESPINSĂ dacă DF-ul poartă un cod inexistent
+    // în Clasa 8 (rândurile persistate — DF link-flow SELECT-ează '*'). Gated de cfg.codSsiValidate.
+    if (cfg.codSsiValidate) {
+      const block = await codSsiBlockResponse(pool, actor.orgId, doc);
+      if (block) return block;
+    }
 
     // Guard cauză-rădăcină: nu permite relansarea pe un AL DOILEA flux cât timp documentul
     // are deja un flux de semnare NON-terminal (nici completed, nici cancelled). Altfel

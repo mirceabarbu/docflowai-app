@@ -151,7 +151,7 @@ if (pool) {
 export let DB_READY = false;
 export let DB_LAST_ERROR = null;
 
-const MIGRATIONS = [
+export const MIGRATIONS = [
   {
     id: '001_initial_schema',
     sql: `
@@ -1941,6 +1941,199 @@ const MIGRATIONS = [
     id: '092_org_cab_compartiment',
     sql: `
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cab_compartiment TEXT;
+    `
+  },
+  {
+    // v3.9.679 (#95): poartă de stări ALOP în Postgres — FAZA 1 (OBSERVARE).
+    // Trei obiecte: CHECK pe status, tabelă audit append-only, trigger de audit AFTER UPDATE.
+    //
+    // GARDĂ V4: alop_instances vine din V4 (014_alop.sql) care rulează DUPĂ inline. ALTER-ul +
+    // trigger-ul pe alop_instances sunt gardate (fresh prod boot: guard sare, ZERO crash — vezi
+    // incidentul 2026-04-19). Tokenul `alop_instances` din SQL forțează deferral-ul în
+    // migrateForTests (V4_ONLY regex) ca migrarea să se re-ruleze DUPĂ ce 014_alop.sql creează
+    // tabela pe DB fresh de test → constraint+trigger CHIAR se creează în teste.
+    //
+    // Tipuri (verificate în migrații, NU presupuse): alop_instances.id = UUID; org_id = INTEGER;
+    // updated_by → users.id = INTEGER (SERIAL). alop_status_log NU are FK spre alop_instances —
+    // auditul TREBUIE să supraviețuiască ștergerii ALOP-ului.
+    //
+    // DUBLĂ ÎNREGISTRARE (împreună cu 094): o violare produce DOUĂ rânduri în alop_status_log —
+    // unul de la audit (violation=FALSE, AFTER) și unul de la guard (violation=TRUE, BEFORE).
+    // Intenționat și util; NU se deduplică (ar cere comunicare între triggere).
+    id: '093_alop_state_gate',
+    sql: `
+      CREATE TABLE IF NOT EXISTS alop_status_log (
+        id           BIGSERIAL PRIMARY KEY,
+        alop_id      UUID        NOT NULL,
+        org_id       INTEGER,
+        from_status  TEXT,
+        to_status    TEXT        NOT NULL,
+        changed_by   INTEGER,
+        violation    BOOLEAN     NOT NULL DEFAULT FALSE,
+        changed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_alop_status_log_alop ON alop_status_log(alop_id, changed_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_alop_status_log_viol ON alop_status_log(violation) WHERE violation = TRUE;
+
+      CREATE OR REPLACE FUNCTION alop_status_audit() RETURNS TRIGGER AS $fn$
+      BEGIN
+        IF NEW.status IS DISTINCT FROM OLD.status THEN
+          INSERT INTO alop_status_log (alop_id, org_id, from_status, to_status, changed_by)
+          VALUES (NEW.id, NEW.org_id, OLD.status, NEW.status, NEW.updated_by);
+        END IF;
+        RETURN NEW;
+      END $fn$ LANGUAGE plpgsql;
+
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'alop_status_valid') THEN
+          ALTER TABLE alop_instances ADD CONSTRAINT alop_status_valid
+            CHECK (status IN ('draft','angajare','lichidare','ordonantare','plata','completed','cancelled'));
+        END IF;
+
+        DROP TRIGGER IF EXISTS trg_alop_status_audit ON alop_instances;
+        CREATE TRIGGER trg_alop_status_audit
+          AFTER UPDATE ON alop_instances
+          FOR EACH ROW EXECUTE FUNCTION alop_status_audit();
+      END $g$;
+    `
+  },
+  {
+    // v3.9.679 (#95): poartă de stări ALOP — FAZA 1 trigger de validare, MOD OBSERVARE.
+    // ⛔ NU BLOCHEAZĂ NIMIC: la tranziție invalidă → RAISE WARNING + INSERT violation=TRUE, apoi
+    // RETURN NEW (permite ORICE). Flipul spre RAISE EXCEPTION/RETURN NULL e o migrare SEPARATĂ,
+    // ABIA după 7 zile cu zero violări pe producție (vezi secțiunea ⏳ din CLAUDE.md).
+    // Matricea = docs/audits/ALOP-STATE-MATRIX.md (codul e specificația). NU o „corecta":
+    // completed→lichidare (noua-lichidare), draft→lichidare (salt) și angajare→plata (repair) sunt CORECTE.
+    // Gardat V4 + token `alop_instances` la fel ca 093. INSERT-ul folosește alop_status_log (creat de 093).
+    id: '094_alop_state_guard',
+    sql: `
+      CREATE OR REPLACE FUNCTION alop_status_guard() RETURNS TRIGGER AS $fn$
+      DECLARE
+        allowed TEXT[];
+      BEGIN
+        IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+          RETURN NEW;
+        END IF;
+
+        allowed := CASE OLD.status
+          WHEN 'draft'       THEN ARRAY['angajare','lichidare','cancelled']
+          WHEN 'angajare'    THEN ARRAY['lichidare','plata','cancelled']
+          WHEN 'lichidare'   THEN ARRAY['ordonantare','cancelled']
+          WHEN 'ordonantare' THEN ARRAY['plata','cancelled']
+          WHEN 'plata'       THEN ARRAY['completed','cancelled']
+          WHEN 'completed'   THEN ARRAY['lichidare']
+          WHEN 'cancelled'   THEN ARRAY[]::TEXT[]
+          ELSE ARRAY[]::TEXT[]
+        END;
+
+        IF NOT (NEW.status = ANY(allowed)) THEN
+          RAISE WARNING 'ALOP transition violation: % -> % (alop_id=%)', OLD.status, NEW.status, NEW.id;
+          INSERT INTO alop_status_log (alop_id, org_id, from_status, to_status, changed_by, violation)
+          VALUES (NEW.id, NEW.org_id, OLD.status, NEW.status, NEW.updated_by, TRUE);
+        END IF;
+
+        RETURN NEW;
+      END $fn$ LANGUAGE plpgsql;
+
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+
+        DROP TRIGGER IF EXISTS trg_alop_status_guard ON alop_instances;
+        CREATE TRIGGER trg_alop_status_guard
+          BEFORE UPDATE ON alop_instances
+          FOR EACH ROW EXECUTE FUNCTION alop_status_guard();
+      END $g$;
+    `
+  },
+  {
+    // v3.9.681 (#97): prevenire DF duplicat din context ALOP (incident 13.07.2026 — dublu-click
+    // pe „Completează DF" ⇒ două formulare_df goale, revizie_nr=0, același source_alop_id; ALOP
+    // legat la cel gol). Migrarea face DOUĂ lucruri, în ordine: (2a) curăță duplicatele existente,
+    // (2b) creează indexul unic parțial ca poartă durabilă. ⛔ ORDINEA E OBLIGATORIE — indexul nu
+    // se poate crea cât timp există duplicate. formulare_df: id UUID, source_alop_id UUID,
+    // revizie_nr INTEGER, flow_id TEXT, status TEXT — verificate, nu presupuse.
+    //
+    // ⛔ NU șterge NICIODATĂ un DF cu flow_id (e pe flux de semnare). Un grup cu ≥2 DF-uri pe
+    // flux = caz intratabil: NEATINS + WARNING (rezolvare manuală). Mai bine indexul lipsește
+    // decât să ștergem un document semnat. 2b e înfășurat în EXCEPTION → boot-ul supraviețuiește
+    // dacă indexul nu se poate crea (evită un 19-aprilie: 503 db_not_ready pe tot).
+    id: '095_df_dedup_and_unique',
+    sql: `
+      -- 2a. CURĂȚARE — soft-delete duplicatele goale (NICIODATĂ DELETE, NICIODATĂ un DF pe flux).
+      DO $dedup$
+      DECLARE
+        r RECORD;
+      BEGIN
+        -- Cazul intratabil: grup (source_alop_id, revizie_nr) cu ≥2 DF-uri active AMBELE pe flux.
+        -- NU-l atinge — doar avertizează. Indexul 2b va eșua controlat pe el (prins de EXCEPTION).
+        FOR r IN
+          SELECT source_alop_id, revizie_nr
+          FROM formulare_df
+          WHERE source_alop_id IS NOT NULL AND deleted_at IS NULL AND flow_id IS NOT NULL
+          GROUP BY source_alop_id, revizie_nr
+          HAVING COUNT(*) > 1
+        LOOP
+          RAISE WARNING '095_df_dedup: grup ALOP % rev % cu >=2 DF-uri pe flux — NEATINS (rezolvare manuala).',
+            r.source_alop_id, r.revizie_nr;
+        END LOOP;
+
+        -- Curățare grupuri dedup-abile: >1 rând activ ȘI cel mult UN rând cu flow_id.
+        -- Păstrează UNUL (flow_id > status avansat > cel mai vechi), soft-delete restul.
+        WITH grupuri_sigure AS (
+          SELECT source_alop_id, revizie_nr
+          FROM formulare_df
+          WHERE source_alop_id IS NOT NULL AND deleted_at IS NULL
+          GROUP BY source_alop_id, revizie_nr
+          HAVING COUNT(*) > 1
+             AND COUNT(*) FILTER (WHERE flow_id IS NOT NULL) <= 1
+        ),
+        ranked AS (
+          SELECT fd.id,
+            ROW_NUMBER() OVER (
+              PARTITION BY fd.source_alop_id, fd.revizie_nr
+              ORDER BY
+                (fd.flow_id IS NOT NULL) DESC,          -- 1. pe flux = sacru (rank keeper)
+                CASE fd.status                          -- 2. statusul cel mai avansat
+                  WHEN 'aprobat'       THEN 6
+                  WHEN 'transmis_flux' THEN 5
+                  WHEN 'completed'     THEN 4
+                  WHEN 'pending_p2'    THEN 3
+                  WHEN 'returnat'      THEN 2
+                  WHEN 'draft'         THEN 1
+                  ELSE 0
+                END DESC,
+                fd.created_at ASC                       -- 3. cel mai vechi (primul legat la ALOP)
+            ) AS rn
+          FROM formulare_df fd
+          JOIN grupuri_sigure g
+            ON g.source_alop_id = fd.source_alop_id AND g.revizie_nr = fd.revizie_nr
+          WHERE fd.deleted_at IS NULL
+        )
+        UPDATE formulare_df fd
+           SET deleted_at = NOW()
+          FROM ranked r2
+         WHERE fd.id = r2.id
+           AND r2.rn > 1
+           AND fd.flow_id IS NULL;                      -- dublă siguranță: nicicând un DF pe flux
+      END $dedup$;
+
+      -- 2b. INDEX UNIC PARȚIAL — poarta durabilă. Înfășurat în EXCEPTION: dacă rămân duplicate
+      -- (cazul intratabil), RAISE WARNING și boot-ul continuă. Un index lipsă e o problemă;
+      -- o aplicație care nu pornește e un incident.
+      DO $idx$
+      BEGIN
+        CREATE UNIQUE INDEX IF NOT EXISTS df_source_alop_revizie_uniq
+          ON formulare_df (source_alop_id, revizie_nr)
+          WHERE source_alop_id IS NOT NULL AND deleted_at IS NULL;
+      EXCEPTION WHEN unique_violation THEN
+        RAISE WARNING '095_df_dedup: indexul unic df_source_alop_revizie_uniq NU s-a putut crea (duplicate ramase, probabil grup cu >=2 pe flux). Boot continua.';
+      END $idx$;
     `
   }
 ];

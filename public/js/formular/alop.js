@@ -17,6 +17,11 @@
   let _plataOrdValoare = 0;
   let _revizieTargetId = null;
   let _revizieAlopId = null;
+  // Gardă de re-intrare (v3.9.681, incident 13.07.2026): dublu-click pe „Completează DF/ORD"
+  // deschidea două formulare goale în paralel ⇒ două POST ⇒ document duplicat. Ține cheia
+  // operației în curs (`df:<alopId>` / `ord:<alopId>`); al doilea apel pentru aceeași cheie
+  // iese imediat. Confort UI — poarta reală e serverul (idempotență) + indexul unic (mig. 095).
+  let _dfOpenInFlight = null;
 
   // -- Cross-module: leaga document la ALOP ---------------------------------
 // ── Helper: leagă document la ALOP imediat (idempotent, async cu logging) ──────
@@ -553,16 +558,16 @@ function renderAlopDetail(a,container){
         actionsHtml+=`<button class="df-action-btn" disabled title="Există deja o revizie DF în lucru — finalizați revizia curentă">${_alopIcoBtn('ico-file-text')}Revizie DF în lucru...</button>`;
         break;
       case 'completeaza':
-        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Completează Document de Fundamentare</button>`;
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}',this)">${_alopIcoBtn('ico-file-text')}Completează Document de Fundamentare</button>`;
         break;
       case 'revizuieste_neaprobat':
-        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF (neaprobat)</button>`;
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}',this)">${_alopIcoBtn('ico-rotate-ccw')}Revizuiește DF (neaprobat)</button>`;
         break;
       case 'flow_waiting':
         actionsHtml+=`<span style="color:var(--df-text-3);font-size:.85rem"><svg class="df-ic" style="vertical-align:-3px;margin-right:4px;"><use href="/icons.svg?v=3.9.475#ico-clock"/></svg>DF pe fluxul de semnare — în așteptare</span>`;
         break;
       case 'deschide':
-        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}')">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideDF('${id}',this)">${_alopIcoBtn('ico-file-text')}Deschide DF</button>`;
         break;
     }
     // Phase action — enum din caps decide butonul primar.
@@ -571,10 +576,10 @@ function renderAlopDetail(a,container){
         actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmLichidare('${id}')">${_alopIcoBtn('ico-check-square')}Confirmă Lichidarea</button>`;
         break;
       case 'completeaza_ord':
-        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-file-signature')}Completează Ordonanțare de Plată</button>`;
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}',this)">${_alopIcoBtn('ico-file-signature')}Completează Ordonanțare de Plată</button>`;
         break;
       case 'genereaza_lanseaza_ord':
-        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}')">${_alopIcoBtn('ico-rocket')}Generează PDF + Lansează flux ORD</button>`;
+        actionsHtml+=`<button class="df-action-btn primary" onclick="alopDeschideORD('${id}',this)">${_alopIcoBtn('ico-rocket')}Generează PDF + Lansează flux ORD</button>`;
         break;
       case 'marcheaza_ord_semnat':
         actionsHtml+=`<button class="df-action-btn primary" onclick="alopOrdCompleted('${id}')">${_alopIcoBtn('ico-check-circle')}Marchează ORD semnat complet</button>`;
@@ -765,7 +770,10 @@ async function startNouaLichidare(alopId){
 }
 
 // ── Navigare la formulare ─────────────────────────────────────────────────────
-async function alopDeschideDF(alopId){
+async function alopDeschideDF(alopId,btn){
+  if(_dfOpenInFlight===`df:${alopId}`)return;
+  _dfOpenInFlight=`df:${alopId}`;
+  if(btn)btn.disabled=true;   // 4b: dezactivează butonul cât timp deschiderea e în curs
   try{
     // HOTFIX v3.9.484: ALOP-ul căruia îi aparținea DF-ul din sesiune,
     // capturat ÎNAINTE ca _alopContext să fie suprascris mai jos.
@@ -822,8 +830,12 @@ async function alopDeschideDF(alopId){
       newDocFromList();
     }
   }catch(e){console.error('alopDeschideDF',e);}
+  finally{_dfOpenInFlight=null;if(btn)btn.disabled=false;}
 }
-async function alopDeschideORD(alopId){
+async function alopDeschideORD(alopId,btn){
+  if(_dfOpenInFlight===`ord:${alopId}`)return;
+  _dfOpenInFlight=`ord:${alopId}`;
+  if(btn)btn.disabled=true;   // 4b: dezactivează butonul cât timp deschiderea e în curs
   try{
     // Citim starea curentă din server — singura sursă de adevăr pentru ord_id
     const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
@@ -856,6 +868,7 @@ async function alopDeschideORD(alopId){
       },400);
     }
   }catch(e){console.error('alopDeschideORD',e);}
+  finally{_dfOpenInFlight=null;if(btn)btn.disabled=false;}
 }
 // Fallback sync (folosit intern de alopLaunchDfFlow/OrdFlow când nu există doc)
 function alopGoToDF(alopId){

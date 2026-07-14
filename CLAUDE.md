@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⏳ ÎN AȘTEPTARE — activarea porții ALOP
+
+Trigger-ul `alop_status_guard` rulează în **mod observare** (RAISE WARNING) din 13.07.2026.
+Nu blochează nimic — doar înregistrează în `alop_status_log`. (Migrațiile inline 093/094 din
+`server/db/index.mjs`.)
+
+**De verificat după 21.07.2026** (sau când cardul „Poartă ALOP" din dashboard-ul admin
+devine VERDE):
+
+    SELECT COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE violation) AS violari,
+           MIN(changed_at)::date AS din
+    FROM alop_status_log;
+
+- `violari = 0` și fereastră > 7 zile ⇒ **flip**: migrare nouă, `RAISE WARNING` →
+  `RAISE EXCEPTION` + `RETURN NULL` în `alop_status_guard()`.
+- `violari > 0` ⇒ **NU flipa.** Analizează tranziția, adaug-o în matrice dacă e legitimă
+  (recon-ul #91 a ratat-o), repornește fereastra.
+
+⛔ NU șterge această secțiune până nu e făcut flipul.
+
 ## Project Overview
 
 **DocFlowAI** (v3.9.x) is a multi-tenant SaaS platform for managing qualified electronic signatures (QES) on PDF documents, targeting Romanian public administration. Compliant with eIDAS, Law 455/2001, Law 214/2024, OUG 38/2020, HG 1259/2001.

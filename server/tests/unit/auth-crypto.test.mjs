@@ -107,6 +107,24 @@ describe('verifyPassword', () => {
     expect(result.ok).toBe(false);
   });
 
+  // AUTH-03: comparație prin timingSafeEqual — buffere de lungimi diferite ARUNCĂ dacă e chemat
+  // direct. Un hash TRUNCHIAT din DB (v2 sau v1) trebuie să dea ok:false, NU o excepție (500 la
+  // login). Dacă verifyPassword ar arunca, `await` de mai jos ar propaga excepția și testul ar pica.
+  it('hash v2 TRUNCHIAT (lungime diferită) ⇒ ok:false FĂRĂ excepție', async () => {
+    const full = await hashPassword('parolaCorecta');           // v2:salt:hash (hash = 128 hex)
+    const truncated = full.slice(0, full.length - 20);          // hash-ul stocat e mai scurt
+    const result = await verifyPassword('parolaCorecta', truncated);
+    expect(result.ok).toBe(false);
+  });
+
+  it('hash v1 legacy TRUNCHIAT (lungime diferită) ⇒ ok:false FĂRĂ excepție', async () => {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hVal = crypto.pbkdf2Sync('parola_v1', salt, 100_000, 64, 'sha256').toString('hex');
+    const truncated = `${salt}:${hVal.slice(0, 40)}`;           // hash v1 trunchiat
+    const result = await verifyPassword('parola_v1', truncated);
+    expect(result.ok).toBe(false);
+  });
+
   it('round-trip hash → verify consistent pe multiple parole', async () => {
     // 5 parole x 3 operatii PBKDF2 (600k iteratii) = ops lente pe masini slabe.
     // Timeout ridicat la 60s pentru a evita flakiness pe Railway/CI.

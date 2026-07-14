@@ -87,7 +87,10 @@ describe('actor identity before users authorization', () => {
     const res = await request(app(usersRouter)).get('/users').set('Cookie', cookie());
     expect(res.status).toBe(200);
     expect(db.pool.query.mock.calls[0][0]).toMatch(/WHERE id = \$1[\s\S]*deleted_at IS NULL/i);
-    expect(db.pool.query.mock.calls[1][0]).toMatch(/org_id=\$1/i);
+    // SEC-90: scoping pe org_id + exclude super-adminul de platformă, FĂRĂ filtru pe `institutie`
+    expect(db.pool.query.mock.calls[1][0]).toMatch(/org_id\s*=\s*\$1/i);
+    expect(db.pool.query.mock.calls[1][0]).toMatch(/role\s*<>\s*'admin'/i);
+    expect(db.pool.query.mock.calls[1][0]).not.toMatch(/institutie\s*=/i);
     expect(db.pool.query.mock.calls[1][1][0]).toBe(200);
   });
 
@@ -95,9 +98,36 @@ describe('actor identity before users authorization', () => {
     db.pool.query.mockResolvedValueOnce({ rows: [actor({ org_id: null })] });
     const res = await request(app(usersRouter)).get('/users')
       .set('Cookie', cookie({ orgId: null }));
-    expect(res.status).toBe(409);
-    expect(res.body.error).toBe('user_without_org');
+    // SEC-90: fail-closed = listă GOALĂ (nu 409, nu „toți utilizatorii din sistem")
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+    // singurul query e lookup-ul de identitate; NU se face nicio listare
     expect(db.pool.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('/users scopes even a platform admin to their org, never the whole system', async () => {
+    db.pool.query
+      .mockResolvedValueOnce({ rows: [actor({ role: 'admin', org_id: 200 })] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(app(usersRouter)).get('/users')
+      .set('Cookie', cookie({ role: 'admin' }));
+    expect(res.status).toBe(200);
+    // admin de platformă NU capătă vizibilitate globală pe dropdown-ul de semnatari
+    expect(db.pool.query.mock.calls[1][0]).toMatch(/org_id\s*=\s*\$1/i);
+    expect(db.pool.query.mock.calls[1][1][0]).toBe(200);
+  });
+
+  it('/users business listing never selects users without an org filter', async () => {
+    db.pool.query
+      .mockResolvedValueOnce({ rows: [actor()] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(app(usersRouter)).get('/users').set('Cookie', cookie());
+    expect(res.status).toBe(200);
+    const listSql = db.pool.query.mock.calls[1][0];
+    expect(listSql).toMatch(/FROM users/i);
+    // nu există ramura „toți utilizatorii": listarea are MEREU org_id = $1 în WHERE
+    expect(listSql).toMatch(/WHERE[\s\S]*org_id\s*=\s*\$1/i);
+    expect(listSql).not.toMatch(/FROM users\s+WHERE\s+deleted_at IS NULL\s+ORDER/i);
   });
 
   it('/users stale tv stops before the business query', async () => {

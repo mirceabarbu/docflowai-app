@@ -37,13 +37,23 @@ const PRETTY_COLORS = {
   reset: '\x1b[0m',
 };
 
+// LOG_STACK — decuplat de NODE_ENV (SEC, incident 13.07.2026): aceeași variabilă
+// nu mai controlează și expunerea rutelor de admin, și verbozitatea logurilor.
+// Default fail-secure: stack trace-uri DOAR în development/test (echivalent
+// config.isProd === false). Forțabil cu LOG_STACK=1 în ORICE mediu — astfel
+// staging poate rula NODE_ENV=production (securitate identică cu prod) + LOG_STACK=1
+// (diagnostic complet).
+const LOG_STACK = process.env.LOG_STACK != null
+  ? process.env.LOG_STACK === '1'
+  : (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test');
+
 function serializeError(err) {
   if (!err || typeof err !== 'object') return err;
   return {
     message: err.message,
     type: err.constructor?.name || 'Error',
     code: err.code,
-    stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
+    stack: LOG_STACK ? err.stack : undefined,
   };
 }
 

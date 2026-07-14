@@ -15,6 +15,7 @@ import util from 'util';
 const _pbkdf2 = util.promisify(crypto.pbkdf2);
 import jwt from 'jsonwebtoken';
 import { logger, redactUrl } from './logger.mjs';
+import config from '../config.mjs';
 
 if (!process.env.JWT_SECRET) {
   logger.error('FATAL: JWT_SECRET nu este setat!');
@@ -48,6 +49,17 @@ export function injectAdminRateLimiter(check, record, clear) {
 const PBKDF2_ITER_V1 = 100_000;
 const PBKDF2_ITER_V2 = 600_000;
 
+// Comparație de hash rezistentă la timing (canal lateral). `timingSafeEqual` ARUNCĂ dacă
+// buffer-ele au lungimi diferite ⇒ verificăm lungimea întâi și întoarcem `false` (nu excepție)
+// pentru orice input malformat/trunchiat — altfel un hash corupt din DB ar produce 500 la login.
+function _safeEq(aHex, bHex) {
+  if (typeof aHex !== 'string' || typeof bHex !== 'string') return false;
+  const a = Buffer.from(aHex, 'hex');
+  const b = Buffer.from(bHex, 'hex');
+  if (a.length !== b.length || a.length === 0) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 export async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = (await _pbkdf2(password, salt, PBKDF2_ITER_V2, 64, 'sha256')).toString('hex');
@@ -67,13 +79,13 @@ export async function verifyPassword(password, stored) {
     if (idx === -1) return { ok: false, needsRehash: false };
     const salt = rest.slice(0, idx), hash = rest.slice(idx + 1);
     const check = (await _pbkdf2(password, salt, PBKDF2_ITER_V2, 64, 'sha256')).toString('hex');
-    return { ok: check === hash, needsRehash: false };
+    return { ok: _safeEq(check, hash), needsRehash: false };
   }
   // hash v1 (legacy) — migrare lazy la v2 la următorul login
   if (!stored.includes(':')) return { ok: false, needsRehash: false };
   const [salt, hash] = stored.split(':');
   const check = (await _pbkdf2(password, salt, PBKDF2_ITER_V1, 64, 'sha256')).toString('hex');
-  const ok = check === hash;
+  const ok = _safeEq(check, hash);
   return { ok, needsRehash: ok };
 }
 
@@ -177,10 +189,16 @@ async function _writeAdminSecretAudit(req) {
   } catch(_) { /* fire-and-forget */ }
 }
 
+// ── Cookie helpers — SURSĂ UNICĂ pentru flagurile de cookie ──────────────────
+// SEC (incident 13.07.2026): flagul `Secure` NU se mai condiționează pe
+// `NODE_ENV === 'production'` (lipsa variabilei îl scotea) și nici pe
+// `!== 'test'`. Trece prin `config.isProd`, care e fail-secure: orice mediu care
+// nu e explicit development/test primește cookie-uri `Secure`. NICIUN `res.cookie`
+// direct în routes/ — totul trece prin aceste trei funcții.
 export function setAuthCookie(res, token, maxAgeMs) {
   res.cookie(AUTH_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV !== 'test',
+    secure: config.isProd,
     sameSite: 'lax',   // FIX b233: 'strict' bloca cookie-ul la redirect OAuth (cross-site GET)
                        // 'lax' permite cookie pe GET redirect (OAuth), blochează POST cross-site (CSRF ok)
     path: '/',
@@ -190,8 +208,22 @@ export function setAuthCookie(res, token, maxAgeMs) {
 
 export function clearAuthCookie(res) {
   res.cookie(AUTH_COOKIE, '', {
-    httpOnly: true, secure: process.env.NODE_ENV !== 'test',
+    httpOnly: true, secure: config.isProd,
     sameSite: 'lax', path: '/', maxAge: 0,
+  });
+}
+
+// setCsrfCookie — geamăn cu setAuthCookie pentru cookie-ul `csrf_token`.
+// `httpOnly: false` (frontend îl citește și-l trimite ca header X-CSRF-Token),
+// `sameSite: 'strict'`, `secure: config.isProd`. Înlocuiește cele patru
+// `res.cookie('csrf_token', ...)` care aveau reguli `Secure` divergente.
+export function setCsrfCookie(res, token, maxAgeMs) {
+  res.cookie('csrf_token', token, {
+    httpOnly: false,
+    sameSite: 'strict',
+    secure: config.isProd,
+    path: '/',
+    maxAge: maxAgeMs || (24 * 60 * 60 * 1000),
   });
 }
 

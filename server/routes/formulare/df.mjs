@@ -23,6 +23,7 @@ import {
   submitFormular, completeFormular, returnFormular, linkFlowFormular, stergeFormular,
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
+import { codSsiBlockResponse } from '../../services/cod-ssi-validate.mjs';
 import { serializeNotafd } from '../../services/alop-xml/notafd-serializer.mjs';
 import { dfRowToXsd } from '../../services/alop-xml/df-to-xsd.mjs';
 import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
@@ -248,15 +249,35 @@ router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df
       const y = parseInt(data.an_referinta, 10);
       data.an_referinta = Number.isNaN(y) ? new Date().getFullYear() : y;
     }
+    // Idempotență ALOP (v3.9.681, incident 13.07.2026): al doilea POST din același context
+    // ALOP (dublu-click pe „Completează DF") NU creează un al doilea DF — returnează
+    // documentul existent, tăcut (200, nu 409). Ancoră: source_alop_id (prezent din prima
+    // milisecundă, spre deosebire de nr_unic_inreg care vine mai târziu prin PUT) +
+    // revizie_nr=0 (la creare defaultează la 0; reviziile trec prin /revizuieste, nu aici).
+    // Poarta durabilă e indexul unic df_source_alop_revizie_uniq (migrarea 095); acest
+    // SELECT prinde cazul secvențial, iar catch-ul pe 23505 de mai jos prinde cursa paralelă.
+    const srcAlopId = isUuid(req.body?.source_alop_id) ? req.body.source_alop_id : null;
+    if (srcAlopId) {
+      const { rows: dup } = await pool.query(
+        `SELECT * FROM formulare_df
+         WHERE source_alop_id = $1 AND org_id = $2 AND revizie_nr = 0 AND deleted_at IS NULL
+         ORDER BY created_at ASC LIMIT 1`,
+        [srcAlopId, actor.orgId]
+      );
+      if (dup.length) {
+        dup[0].capabilities = computeDocCapabilities(dup[0], actor, 'notafd');
+        return res.json({ ok: true, document: dup[0] });
+      }
+    }
     const { sets, vals } = buildUpdate(data, DF_P1_FIELDS, 3);
     const cols = ['org_id', 'created_by', ...Object.keys(data)];
     const allVals = [actor.orgId, actor.userId, ...vals];
     // v3.9.554: proveniență ALOP — frontend-ul trimite source_alop_id când DF-ul e creat
     // din context ALOP. Persistat la INSERT (nu e în DF_P1_FIELDS — nu se schimbă la PUT);
     // folosit pentru self-heal relink la aprobarea fluxului (alop-link.mjs).
-    if (isUuid(req.body?.source_alop_id)) {
+    if (srcAlopId) {
       cols.push('source_alop_id');
-      allVals.push(req.body.source_alop_id);
+      allVals.push(srcAlopId);
     }
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
 
@@ -265,7 +286,27 @@ router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df
       VALUES (${placeholders})
       RETURNING *
     `;
-    const { rows } = await pool.query(q, allVals);
+    let rows;
+    try {
+      ({ rows } = await pool.query(q, allVals));
+    } catch (e) {
+      // Cursa de concurență: două POST-uri paralele din același context ALOP. Indexul unic
+      // df_source_alop_revizie_uniq (migrarea 095) a respins al doilea INSERT → returnează
+      // documentul câștigător (200), nu 500. Vezi PAS 3/PAS 5 din incidentul 13.07.2026.
+      if (e.code === '23505' && srcAlopId) {
+        const { rows: won } = await pool.query(
+          `SELECT * FROM formulare_df
+           WHERE source_alop_id = $1 AND org_id = $2 AND revizie_nr = 0 AND deleted_at IS NULL
+           ORDER BY created_at ASC LIMIT 1`,
+          [srcAlopId, actor.orgId]
+        );
+        if (won.length) {
+          won[0].capabilities = computeDocCapabilities(won[0], actor, 'notafd');
+          return res.json({ ok: true, document: won[0] });
+        }
+      }
+      throw e;
+    }
     logger.info({ id: rows[0].id, actor: actor.email }, 'formulare-df creat');
     await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: rows[0].id,
       actorId: actor.userId, actorEmail: actor.email, eventType: 'creat', toStatus: 'draft' });
@@ -310,6 +351,16 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
 
     const allowedFields = isP2 && !isP1 ? DF_P2_FIELDS : [...DF_P1_FIELDS, ...DF_P2_FIELDS];
     const data = pick(req.body || {}, allowedFields);
+
+    // Validare Cod SSI (incident 13.07.2026): salvarea e RESPINSĂ cât timp există un cod
+    // inexistent în bugetul Clasa 8 — chiar și în draft. Validăm DOAR câmpurile scrise acum
+    // (rows_val/rows_plati pentru P1, rows_ctrl pentru P2); rândurile cu cod gol trec.
+    // Documentul rămâne editabil (poți deschide și repara) — se blochează scrierea, nu accesul.
+    {
+      const block = await codSsiBlockResponse(pool, actor.orgId, data);
+      if (block) return res.status(block.status).json(block.body);
+    }
+
     const { sets, vals } = buildUpdate(data, allowedFields, 1);
 
     // Asamblare query

@@ -545,6 +545,49 @@ function mkFlow(ft){
   window.loadBugetCodes = loadBugetCodes;
   loadBugetCodes();
 
+  // ── Avertisment Cod SSI la părăsirea câmpului (semnalizează, NU blochează) ───
+  // Compară valoarea cu opțiunile deja încărcate de loadBugetCodes() (fără fetch la
+  // fiecare blur). Cod gol → curăță; cod în listă → curăță; cod inexistent → bordură
+  // roșie + mesaj discret. textContent + DOM API (fără innerHTML); token --df-danger.
+  function _ssiValidSet() {
+    const dl = document.getElementById('ssi-codes-list');
+    if (!dl) return null;
+    return new Set([...dl.querySelectorAll('option')].map(o => (o.value || '').trim()));
+  }
+  function _clearSsiMark(inp) {
+    inp.style.borderColor = '';
+    const msg = inp.parentElement && inp.parentElement.querySelector('.ssi-warn');
+    if (msg) msg.remove();
+  }
+  function _markSsiInvalid(inp) {
+    inp.style.borderColor = 'var(--df-danger)';
+    const cell = inp.parentElement;
+    if (!cell) return;
+    if (cell.querySelector('.ssi-warn')) return;
+    const msg = document.createElement('div');
+    msg.className = 'ssi-warn';
+    msg.style.color = 'var(--df-danger)';
+    msg.style.fontSize = '11px';
+    msg.style.marginTop = '2px';
+    msg.textContent = 'Cod inexistent în Clasa 8';
+    cell.appendChild(msg);
+  }
+  document.addEventListener('focusout', (e) => {
+    const inp = e.target;
+    if (!inp || !inp.matches || !inp.matches('input[list="ssi-codes-list"]')) return;
+    const val = (inp.value || '').trim();
+    if (!val) { _clearSsiMark(inp); return; }
+    const valid = _ssiValidSet();
+    // Lista neîncărcată (buget neimportat / fetch eșuat) → nu marca (evită fals-pozitive).
+    if (!valid || valid.size === 0) { _clearSsiMark(inp); return; }
+    if (valid.has(val)) _clearSsiMark(inp); else _markSsiInvalid(inp);
+  });
+  // Curăță marcajul de îndată ce userul reeditează (mirror _handleDup409).
+  document.addEventListener('input', (e) => {
+    const inp = e.target;
+    if (inp && inp.matches && inp.matches('input[list="ssi-codes-list"]')) _clearSsiMark(inp);
+  });
+
   // ── Exports onclick + cross-module ──────────────────────────────────────
   window._applyAutoFill     = _applyAutoFill;
 

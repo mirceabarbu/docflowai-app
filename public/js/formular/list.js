@@ -468,6 +468,31 @@ function switchListTab(type){
     loadList();
   }
 }
+// Acordul numeralului în română: numeralele ≥ 20 cer „de", cu excepția celor ale căror
+// ultime două cifre sunt între 1 și 19.
+//   0  → „0 documente"      1   → „1 document"       19 → „19 documente"
+//   20 → „20 de documente"  83  → „83 de documente"  100 → „100 de documente"
+//   101 → „101 documente"   112 → „112 documente"    120 → „120 de documente"
+function _lstCountLabel(n){
+  if(n === 1) return ' document';
+  const lastTwo = n % 100;
+  const needsDe = n >= 20 && !(lastTwo >= 1 && lastTwo <= 19);
+  return needsDe ? ' de documente' : ' documente';
+}
+
+// Afișează/ascunde contorul din antetul listei. `total` vine de la server (nu rows.length —
+// acela e doar pagina curentă) și reflectă automat filtrele active.
+function _setLstCount(total){
+  const box = document.getElementById('lst-count');
+  const nEl = document.getElementById('lst-count-n');
+  const wEl = document.getElementById('lst-count-w');
+  if(!box || !nEl || !wEl) return;
+  if(total === null || total === undefined){ box.hidden = true; return; }
+  const n = Number(total) || 0;
+  nEl.textContent = String(n);
+  wEl.textContent = _lstCountLabel(n);
+  box.hidden = false;
+}
 async function loadList(){
   const tb=document.getElementById('lst-tbody');
   const em=document.getElementById('lst-empty');
@@ -477,6 +502,7 @@ async function loadList(){
   if(em)em.style.display='none';
   if(ld)ld.style.display='';
   if(pg)pg.style.display='none';
+  _setLstCount(null);   // ascuns cât se încarcă — nu lăsăm o cifră veche peste o listă nouă
   const p=[];
   const status=(document.getElementById('flt-status')?.value)||'all';
   const from=(document.getElementById('flt-from')?.value)||'';
@@ -498,13 +524,14 @@ async function loadList(){
   try{
     const r=await fetch('/api/formulare/list?'+p.join('&'),{credentials:'include'});
     if(ld)ld.style.display='none';
-    if(!r.ok){if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}return;}
+    if(!r.ok){if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}_setLstCount(null);return;}
     const j=await r.json();
     const rows=j.rows||[];
     const total=j.total||0;
+    _setLstCount(total);   // și pe ramura goală: „0 documente" e exact confirmarea de care are nevoie
     if(!rows.length){if(em)em.style.display='';}
     else{_renderLstTable(rows,_lstState.type);_renderLstPagin(total,_lstState.page,_lstState.limit);}
-  }catch(e){if(ld)ld.style.display='none';if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}}
+  }catch(e){if(ld)ld.style.display='none';if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}_setLstCount(null);}
 }
 function _stBadge(status){
   const map={draft:'📝 Draft',pending_p2:'📤 La Responsabil CAB',completed:'✅ Completat',
