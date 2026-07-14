@@ -155,20 +155,6 @@ const ORD_DEFAULT_SEMNATARI = [
   { order: 4, role: 'ordonator_credite',  user_id: null, name: '' },
 ];
 
-// ── State machine ─────────────────────────────────────────────────────────────
-const VALID_TRANSITIONS = {
-  draft:       ['angajare', 'cancelled'],
-  angajare:    ['lichidare', 'cancelled'],
-  lichidare:   ['ordonantare', 'cancelled'],
-  ordonantare: ['plata', 'cancelled'],
-  plata:       ['completed', 'cancelled'],
-  completed:   [],
-  cancelled:   [],
-};
-function canTransition(from, to) {
-  return (VALID_TRANSITIONS[from] || []).includes(to);
-}
-
 // ── GET /api/alop/sablon — montat ÎNAINTE de /:id ────────────────────────────
 router.get('/api/alop/sablon', async (req, res) => {
   if (requireDb(res)) return;

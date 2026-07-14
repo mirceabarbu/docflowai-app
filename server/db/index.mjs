@@ -1942,6 +1942,114 @@ const MIGRATIONS = [
     sql: `
       ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cab_compartiment TEXT;
     `
+  },
+  {
+    // v3.9.679 (#95): poartă de stări ALOP în Postgres — FAZA 1 (OBSERVARE).
+    // Trei obiecte: CHECK pe status, tabelă audit append-only, trigger de audit AFTER UPDATE.
+    //
+    // GARDĂ V4: alop_instances vine din V4 (014_alop.sql) care rulează DUPĂ inline. ALTER-ul +
+    // trigger-ul pe alop_instances sunt gardate (fresh prod boot: guard sare, ZERO crash — vezi
+    // incidentul 2026-04-19). Tokenul `alop_instances` din SQL forțează deferral-ul în
+    // migrateForTests (V4_ONLY regex) ca migrarea să se re-ruleze DUPĂ ce 014_alop.sql creează
+    // tabela pe DB fresh de test → constraint+trigger CHIAR se creează în teste.
+    //
+    // Tipuri (verificate în migrații, NU presupuse): alop_instances.id = UUID; org_id = INTEGER;
+    // updated_by → users.id = INTEGER (SERIAL). alop_status_log NU are FK spre alop_instances —
+    // auditul TREBUIE să supraviețuiască ștergerii ALOP-ului.
+    //
+    // DUBLĂ ÎNREGISTRARE (împreună cu 094): o violare produce DOUĂ rânduri în alop_status_log —
+    // unul de la audit (violation=FALSE, AFTER) și unul de la guard (violation=TRUE, BEFORE).
+    // Intenționat și util; NU se deduplică (ar cere comunicare între triggere).
+    id: '093_alop_state_gate',
+    sql: `
+      CREATE TABLE IF NOT EXISTS alop_status_log (
+        id           BIGSERIAL PRIMARY KEY,
+        alop_id      UUID        NOT NULL,
+        org_id       INTEGER,
+        from_status  TEXT,
+        to_status    TEXT        NOT NULL,
+        changed_by   INTEGER,
+        violation    BOOLEAN     NOT NULL DEFAULT FALSE,
+        changed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_alop_status_log_alop ON alop_status_log(alop_id, changed_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_alop_status_log_viol ON alop_status_log(violation) WHERE violation = TRUE;
+
+      CREATE OR REPLACE FUNCTION alop_status_audit() RETURNS TRIGGER AS $fn$
+      BEGIN
+        IF NEW.status IS DISTINCT FROM OLD.status THEN
+          INSERT INTO alop_status_log (alop_id, org_id, from_status, to_status, changed_by)
+          VALUES (NEW.id, NEW.org_id, OLD.status, NEW.status, NEW.updated_by);
+        END IF;
+        RETURN NEW;
+      END $fn$ LANGUAGE plpgsql;
+
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'alop_status_valid') THEN
+          ALTER TABLE alop_instances ADD CONSTRAINT alop_status_valid
+            CHECK (status IN ('draft','angajare','lichidare','ordonantare','plata','completed','cancelled'));
+        END IF;
+
+        DROP TRIGGER IF EXISTS trg_alop_status_audit ON alop_instances;
+        CREATE TRIGGER trg_alop_status_audit
+          AFTER UPDATE ON alop_instances
+          FOR EACH ROW EXECUTE FUNCTION alop_status_audit();
+      END $g$;
+    `
+  },
+  {
+    // v3.9.679 (#95): poartă de stări ALOP — FAZA 1 trigger de validare, MOD OBSERVARE.
+    // ⛔ NU BLOCHEAZĂ NIMIC: la tranziție invalidă → RAISE WARNING + INSERT violation=TRUE, apoi
+    // RETURN NEW (permite ORICE). Flipul spre RAISE EXCEPTION/RETURN NULL e o migrare SEPARATĂ,
+    // ABIA după 7 zile cu zero violări pe producție (vezi secțiunea ⏳ din CLAUDE.md).
+    // Matricea = docs/audits/ALOP-STATE-MATRIX.md (codul e specificația). NU o „corecta":
+    // completed→lichidare (noua-lichidare), draft→lichidare (salt) și angajare→plata (repair) sunt CORECTE.
+    // Gardat V4 + token `alop_instances` la fel ca 093. INSERT-ul folosește alop_status_log (creat de 093).
+    id: '094_alop_state_guard',
+    sql: `
+      CREATE OR REPLACE FUNCTION alop_status_guard() RETURNS TRIGGER AS $fn$
+      DECLARE
+        allowed TEXT[];
+      BEGIN
+        IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+          RETURN NEW;
+        END IF;
+
+        allowed := CASE OLD.status
+          WHEN 'draft'       THEN ARRAY['angajare','lichidare','cancelled']
+          WHEN 'angajare'    THEN ARRAY['lichidare','plata','cancelled']
+          WHEN 'lichidare'   THEN ARRAY['ordonantare','cancelled']
+          WHEN 'ordonantare' THEN ARRAY['plata','cancelled']
+          WHEN 'plata'       THEN ARRAY['completed','cancelled']
+          WHEN 'completed'   THEN ARRAY['lichidare']
+          WHEN 'cancelled'   THEN ARRAY[]::TEXT[]
+          ELSE ARRAY[]::TEXT[]
+        END;
+
+        IF NOT (NEW.status = ANY(allowed)) THEN
+          RAISE WARNING 'ALOP transition violation: % -> % (alop_id=%)', OLD.status, NEW.status, NEW.id;
+          INSERT INTO alop_status_log (alop_id, org_id, from_status, to_status, changed_by, violation)
+          VALUES (NEW.id, NEW.org_id, OLD.status, NEW.status, NEW.updated_by, TRUE);
+        END IF;
+
+        RETURN NEW;
+      END $fn$ LANGUAGE plpgsql;
+
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+
+        DROP TRIGGER IF EXISTS trg_alop_status_guard ON alop_instances;
+        CREATE TRIGGER trg_alop_status_guard
+          BEFORE UPDATE ON alop_instances
+          FOR EACH ROW EXECUTE FUNCTION alop_status_guard();
+      END $g$;
+    `
   }
 ];
 

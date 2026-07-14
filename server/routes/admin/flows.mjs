@@ -103,12 +103,35 @@ router.get('/admin/alop/stats', async (req, res) => {
       'WHERE a.cancelled_at IS NULL' + whereCond;
     const { rows } = await pool.query(sql, params);
     const r = rows[0] || {};
-    res.json({
+    const payload = {
       alop_active:          r.alop_active          || 0,
       valoare_angajata_an:  Number(r.valoare_angajata_an) || 0,
       valoare_platita_an:   Number(r.valoare_platita_an)  || 0,
       alop_finalizate_an:   r.alop_finalizate_an   || 0,
-    });
+    };
+    // #95 — poarta de stări ALOP (mod observare). `gate` = metrică de SĂNĂTATE A PLATFORMEI
+    // (nu date de tenant): agregă violările din alop_status_log peste TOATE org-urile pentru a
+    // decide flipul spre blocare. Expus DOAR pentru role='admin' — un org_admin n-ar trebui să
+    // vadă contorul cross-org și nici nu ia decizia de flip. Fără scope pe org (intenționat).
+    if (actor.role === 'admin') {
+      try {
+        const { rows: gr } = await pool.query(
+          `SELECT COUNT(*)::int AS total_transitions,
+                  COUNT(*) FILTER (WHERE violation)::int AS violations,
+                  MIN(changed_at) AS observing_since,
+                  FLOOR(EXTRACT(EPOCH FROM (NOW() - MIN(changed_at))) / 86400)::int AS days_observed
+             FROM alop_status_log`
+        );
+        const g = gr[0] || {};
+        payload.gate = {
+          total_transitions: g.total_transitions || 0,
+          violations:        g.violations || 0,
+          observing_since:   g.observing_since || null,
+          days_observed:     g.observing_since ? (g.days_observed || 0) : null,
+        };
+      } catch(e) { logger.warn({ err: e }, '/admin/alop/stats gate query failed (non-fatal)'); }
+    }
+    res.json(payload);
   } catch(e) { logger.error({ err: e }, '/admin/alop/stats error'); res.status(500).json({ error: 'server_error' }); }
 });
 

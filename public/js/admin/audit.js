@@ -147,6 +147,43 @@
           _rataSubEl.textContent =
             'plătit / angajat · ' + _fin + (_fin === 1 ? ' ALOP finalizat' : ' ALOP finalizate');
         }
+        // #95 — cardul „Poartă ALOP" (mecanism anti-uitare pentru flipul spre blocare).
+        // `gate` vine DOAR pentru role='admin' (backend) → cardul rămâne ascuns altfel.
+        // Randare cu textContent/DOM API — NICIODATĂ innerHTML cu interpolare (XSS reparat la #93).
+        const _gateCard = document.getElementById('dashKpiAlopGateCard');
+        const _gateVal  = document.getElementById('dashKpiAlopGate');
+        const _gateSub  = document.getElementById('dashKpiAlopGateSub');
+        if (_gateCard && _gateVal && _gateSub) {
+          if (a.gate) {
+            const _viol = Number(a.gate.violations) || 0;
+            const _tot  = Number(a.gate.total_transitions) || 0;
+            const _days = (a.gate.days_observed == null) ? null : Number(a.gate.days_observed);
+            let _color, _valTxt, _subTxt;
+            if (_viol > 0) {
+              _color  = 'var(--df-danger)';
+              _valTxt = '⚠️ ' + _viol.toLocaleString('ro-RO');
+              _subTxt = (_viol === 1 ? '1 violare' : _viol.toLocaleString('ro-RO') + ' violări') + ' — NU activa poarta';
+            } else if (_tot === 0) {
+              _color  = 'var(--df-text-3)';
+              _valTxt = '⚪';
+              _subTxt = 'Mod observare · nicio tranziție încă';
+            } else if (_days != null && _days >= 7) {
+              _color  = 'var(--df-success)';
+              _valTxt = '✅';
+              _subTxt = 'GATA DE ACTIVARE — flipează trigger-ul';
+            } else {
+              _color  = 'var(--df-warning)';
+              _valTxt = '🟡';
+              _subTxt = 'Mod observare · 0 violări · ziua ' + (_days == null ? 0 : _days) + '/7';
+            }
+            _gateVal.style.color = _color;
+            _gateVal.textContent = _valTxt;
+            _gateSub.textContent = _subTxt;
+            _gateCard.style.display = '';
+          } else {
+            _gateCard.style.display = 'none';
+          }
+        }
       }
     } catch (e) {
       console.warn('[loadDashboard] failed:', e);
