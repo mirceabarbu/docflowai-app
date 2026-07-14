@@ -947,6 +947,35 @@ function _handleDup409(j) {
   }
   return true;
 }
+// Validare Cod SSI (incident 13.07.2026): backend întoarce 400 cu error='cod_ssi_invalid'
+// (+ invalid[]) sau 'clasa8_neimportat'. Refolosește tiparul _handleDup409 (bordură roșie,
+// focus, curățare la input) și evidențiază rândul din invalid[].
+const _SSI_TBL = {
+  rows_val:   { tb: 'n-vtbody', f: 'codSSI'  },
+  rows_plati: { tb: 'n-ptbody', f: 'codSSI'  },
+  rows_ctrl:  { tb: 'n-ctbody', f: 'cod_SSI' },
+};
+function _handleCodSsi400(j) {
+  if (j.error === 'clasa8_neimportat') {
+    setS(j.message || 'Bugetul Clasa 8 nu este importat. Importă bugetul înainte de a completa DF-uri.', 'err');
+    return true;
+  }
+  if (j.error !== 'cod_ssi_invalid') return false;
+  setS(j.message || 'Cod SSI inexistent în bugetul Clasa 8.', 'err');
+  const first = (j.invalid && j.invalid[0]) || null;
+  if (first) {
+    const m = _SSI_TBL[first.tabel];
+    const tr = m && document.getElementById(m.tb)?.querySelectorAll('tr')[first.index];
+    const inp = tr && tr.querySelector(`[data-f="${m.f}"]`);
+    if (inp) {
+      inp.style.borderColor = '#dc3545';
+      inp.focus();
+      function _clear() { inp.style.borderColor = ''; inp.removeEventListener('input', _clear); }
+      inp.addEventListener('input', _clear);
+    }
+  }
+  return true;
+}
 async function saveDoc(ft){
   if(ST.docAprobat?.[ft])return;
   const docId=ST.docId[ft];
@@ -976,7 +1005,10 @@ async function saveDoc(ft){
         _alopLinkDoc(ft,docId);
       }
     }
-    if(!r.ok||!j.ok){setS(j.error||'Eroare la salvare','err');return;}
+    if(!r.ok||!j.ok){
+      if(r.status===400&&_handleCodSsi400(j))return;
+      setS(j.error||'Eroare la salvare','err');return;
+    }
 
     // v3.9.499: upload ambele sloturi (slot 1 pentru DF/ORD, slot 2 doar ORD)
     if(ST.docId[ft]){

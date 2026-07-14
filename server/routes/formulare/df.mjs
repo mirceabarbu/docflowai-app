@@ -23,6 +23,7 @@ import {
   submitFormular, completeFormular, returnFormular, linkFlowFormular, stergeFormular,
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
+import { codSsiBlockResponse } from '../../services/cod-ssi-validate.mjs';
 import { serializeNotafd } from '../../services/alop-xml/notafd-serializer.mjs';
 import { dfRowToXsd } from '../../services/alop-xml/df-to-xsd.mjs';
 import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
@@ -350,6 +351,16 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
 
     const allowedFields = isP2 && !isP1 ? DF_P2_FIELDS : [...DF_P1_FIELDS, ...DF_P2_FIELDS];
     const data = pick(req.body || {}, allowedFields);
+
+    // Validare Cod SSI (incident 13.07.2026): salvarea e RESPINSĂ cât timp există un cod
+    // inexistent în bugetul Clasa 8 — chiar și în draft. Validăm DOAR câmpurile scrise acum
+    // (rows_val/rows_plati pentru P1, rows_ctrl pentru P2); rândurile cu cod gol trec.
+    // Documentul rămâne editabil (poți deschide și repara) — se blochează scrierea, nu accesul.
+    {
+      const block = await codSsiBlockResponse(pool, actor.orgId, data);
+      if (block) return res.status(block.status).json(block.body);
+    }
+
     const { sets, vals } = buildUpdate(data, allowedFields, 1);
 
     // Asamblare query
