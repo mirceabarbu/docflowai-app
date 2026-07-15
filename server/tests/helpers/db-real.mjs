@@ -159,10 +159,20 @@ export async function getAlopCicluri(alopId) {
 // Flux generic. completed=false → flux în lucru (NU declanșează auto-tranziția din link-*-flow).
 // orgId (opțional) → scrie coloana org_id (izolare multi-tenant); initEmail (opțional) → data.initEmail
 // (folosit de /my-flows pentru a găsi fluxul pe email). Backward-compatible: fără orgId, org_id rămâne NULL.
-export async function seedFlow({ id = `flow-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, completed = false, orgId = null, initEmail = null, docName = null } = {}) {
-  const data = completed ? { status: 'completed', completed: true } : { status: 'pending' };
-  if (initEmail) data.initEmail = String(initEmail).toLowerCase();
-  if (docName) data.docName = docName;
+//
+// ⚠️ `data` reproduce forma unui flux REAL: în plus de status/completed, are OBLIGATORIU `signers`
+// ca ARRAY JSONB (chiar gol). Ruta /my-flows (crud.mjs) filtrează pe `data->'signers' @> jsonb_build_array(...)`
+// și mapează `d.signers.map(...)` — un `data` fără cheia `signers` producea 500 (fix #104). Cheile
+// status/completed rămân IDENTICE cu forma veche → apelanții existenți (alop link/lazy-resync) neafectați.
+export async function seedFlow({ id = `flow-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, completed = false, orgId = null, initEmail = null, docName = null, signers = [] } = {}) {
+  const data = {
+    flowId: id,
+    docName: docName || 'Document test',
+    initName: 'Inițiator',
+    initEmail: initEmail ? String(initEmail).toLowerCase() : 'init@x.ro',
+    signers: Array.isArray(signers) ? signers : [],
+    ...(completed ? { status: 'completed', completed: true } : { status: 'pending' }),
+  };
   await pool.query(
     `INSERT INTO flows (id, data, org_id) VALUES ($1, $2::jsonb, $3)`,
     [id, JSON.stringify(data), orgId]
