@@ -29,6 +29,17 @@ let _migrated = false;
 export async function migrate() {
   if (_migrated) return;
   await migrateForTests();
+  // Reconciliază un GOL de fresh-provision cunoscut (vezi CLAUDE.md „GOL TĂCUT de schemă pe fresh DB"):
+  // `organizations.signing_providers_enabled` e adăugat DOAR de V4 `001_organizations.sql`
+  // (CREATE TABLE cu coloana), dar inline creează `organizations` primul FĂRĂ coloană → CREATE TABLE
+  // IF NOT EXISTS din V4 sare, iar `migrateForTests` aplică din V4 doar 014/015, niciodată 001.
+  // Prod are coloana din creștere incrementală; testul o pierde tăcut → `/my-flows` (crud.mjs:814
+  // `SELECT signing_providers_enabled FROM organizations`) dădea 500. ALTER idempotent, mirror pe 001.
+  await pool.query(`
+    ALTER TABLE organizations
+      ADD COLUMN IF NOT EXISTS signing_providers_enabled TEXT[] NOT NULL DEFAULT ARRAY['local-upload']::TEXT[],
+      ADD COLUMN IF NOT EXISTS signing_providers_config  JSONB  NOT NULL DEFAULT '{}';
+  `);
   _migrated = true;
 }
 
