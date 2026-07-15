@@ -11,7 +11,7 @@ import { csrfMiddleware } from '../../middleware/csrf.mjs';
 import { requireModule } from '../../middleware/require-module.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import { pool } from '../../db/index.mjs';
-import { loadActorComp, canEditFormular, canViewFormular, canDestroyOnly } from '../../services/authz-formular.mjs';
+import { loadActorCompAndCab, canEditFormular, canViewFormular, canDestroyOnly } from '../../services/authz-formular.mjs';
 import { computeDocCapabilities } from '../../services/formular-capabilities.mjs';
 import { recordFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import {
@@ -161,8 +161,8 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const view = await canViewFormular(pool, actor, doc, actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
     doc.capabilities = computeDocCapabilities(doc, actor, 'ordnt');
@@ -204,8 +204,8 @@ router.get('/api/formulare-ord/:id/xml', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const view = await canViewFormular(pool, actor, doc, actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
     const caps = computeDocCapabilities(doc, actor, 'ordnt');
@@ -301,8 +301,8 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
 
-    const actorComp = await loadActorComp(pool, actor.userId);
-    const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true, cabComp });
     if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     const isP1 = doc.created_by === actor.userId || authz.role === 'comp' || authz.role === 'admin';
     const isP2 = doc.assigned_to === actor.userId || authz.role === 'p2_comp';

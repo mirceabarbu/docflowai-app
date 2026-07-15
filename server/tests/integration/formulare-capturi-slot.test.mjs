@@ -46,6 +46,8 @@ vi.mock('../../services/authz-formular.mjs', () => ({
   // v3.9.554 (B1): listă/download folosesc canViewFormular (authz centralizat)
   canViewFormular: vi.fn().mockReturnValue({ allowed: true, mode: 'edit' }),
   loadActorComp:   vi.fn().mockResolvedValue(''),
+  loadActorCompAndCab: vi.fn().mockResolvedValue({ actorComp: '', cabComp: '' }),
+  isCabDept:       vi.fn(() => false),
 }));
 
 import * as dbModule from '../../db/index.mjs';

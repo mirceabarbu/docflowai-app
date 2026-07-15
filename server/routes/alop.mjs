@@ -22,7 +22,7 @@ import { requireModule } from '../middleware/require-module.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
-import { loadActorComp, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
+import { loadActorCompAndCab, isCabDept, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
@@ -227,11 +227,11 @@ router.post('/api/alop/sablon', _csrf, async (req, res) => {
 // ca să nu mai poată diverge niciodată. Folosește aliasul `a` pe alop_instances.
 async function buildAlopVisibilityWhere(actor, params) {
   if (actor.role === 'admin' || actor.role === 'org_admin') return '';
-  const actorCompRes = await pool.query(
-    'SELECT compartiment FROM users WHERE id=$1',
-    [actor.userId]
-  );
-  const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
+  // FEAT ALOP-CAB: membrul CAB al org-ului vede tot ALOP-ul org-ului. `return ''` e sigur fiindcă
+  // apelantul are deja `a.org_id=$1` în WHERE-ul principal (liniile 290/318/1589) — restricția
+  // cade DOAR în interiorul org-ului. Fail-safe: cab_compartiment gol ⇒ isCabDept false ⇒ nicio relaxare.
+  const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+  if (isCabDept(actorComp, cabComp)) return '';
   params.push(actor.userId);
   const userIdx = params.length;
   let compClause = '';
@@ -862,8 +862,8 @@ router.post('/api/alop/:id/titlu', _csrf, async (req, res) => {
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
@@ -893,8 +893,8 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
@@ -949,8 +949,8 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
@@ -1045,8 +1045,8 @@ router.post('/api/alop/:id/df-completed', _csrf, async (req, res) => {
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
@@ -1085,8 +1085,8 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
       const { rows: alopRow } = await pool.query(
         'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1', [req.params.id]
       );
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alopRow[0], actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const authz = await canEditAlop(pool, actor, alopRow[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
     }
     logger.info({ alopId: req.params.id, currentStatus: cur[0].status }, 'confirma-lichidare attempt');
@@ -1134,8 +1134,8 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
@@ -1175,8 +1175,8 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
@@ -1216,8 +1216,8 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
@@ -1308,8 +1308,8 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
-      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp);
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 
@@ -1405,8 +1405,8 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
       );
       if (!alop) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not_found' }); }
       {
-        const actorComp = await loadActorComp(client, actor.userId);
-        const authz = await canEditAlop(client, actor, alop, actorComp);
+        const { actorComp, cabComp } = await loadActorCompAndCab(client, actor.userId, actor.orgId);
+        const authz = await canEditAlop(client, actor, alop, actorComp, { cabComp });
         if (!authz.allowed) { await client.query('ROLLBACK'); return res.status(403).json({ error: authz.reason }); }
       }
       if (alop.status !== 'completed') {
