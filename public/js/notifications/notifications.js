@@ -73,6 +73,7 @@ function filtered() {
   }
   if (currentFilter === 'REVIEW_REQUESTED') return allNotifs.filter(n => n.type === 'REVIEW_REQUESTED');
   if (currentFilter === 'formulare') return allNotifs.filter(n => FORMULARE_TYPES.has(n.type));
+  if (currentFilter === 'facturi') return allNotifs.filter(n => n.type === 'alop_factura_lichidata');
   return allNotifs.filter(n => n.type === currentFilter);
 }
 
@@ -91,9 +92,10 @@ function updateTabCounts() {
     COMPLETED: allNotifs.filter(n => n.type === 'COMPLETED').length,
     REFUSED: allNotifs.filter(n => n.type === 'REFUSED').length,
     formulare: allNotifs.filter(n => FORMULARE_TYPES.has(n.type)).length,
+    facturi: allNotifs.filter(n => n.type === 'alop_factura_lichidata').length,
     primite: receivedItems.filter(r => !r.acknowledged_at).length,
   };
-  const labels = { all:'Toate', unread:'Necitite', urgent:'🚨 Urgente', YOUR_TURN:'De semnat', REVIEW_REQUESTED:'De revizuit', COMPLETED:'Finalizate', REFUSED:'Refuzate', formulare:'📄 Formulare', primite:'📥 Primite' };
+  const labels = { all:'Toate', unread:'Necitite', urgent:'🚨 Urgente', YOUR_TURN:'De semnat', REVIEW_REQUESTED:'De revizuit', COMPLETED:'Finalizate', REFUSED:'Refuzate', formulare:'📄 Formulare', facturi:'🧾 Facturi', primite:'📥 Primite' };
   document.querySelectorAll('.filter-btn').forEach(btn => {
     const f = btn.dataset.filter;
     const c = counts[f] || 0;
@@ -152,7 +154,7 @@ function renderList() {
       markRead(n.id);
 
       // Notificări formulare → deschide formular.html cu documentul auto-loaded
-      if (FORMULARE_TYPES.has(n.type) && n.data) {
+      if ((FORMULARE_TYPES.has(n.type) || n.type === 'alop_factura_lichidata') && n.data) {
         const d = typeof n.data === 'string' ? JSON.parse(n.data) : n.data;
         if (d.form_type && d.form_id) {
           location.href = `/formular.html?form_type=${encodeURIComponent(d.form_type)}&form_id=${encodeURIComponent(d.form_id)}`;
