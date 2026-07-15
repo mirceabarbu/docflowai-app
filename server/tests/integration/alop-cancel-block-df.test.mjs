@@ -41,6 +41,10 @@ vi.mock('../../services/authz-formular.mjs', () => ({
     return { allowed: false, reason: 'forbidden_destroy_creator_only' };
   }),
   canEditFormular: vi.fn().mockResolvedValue({ allowed: true }),
+  canEditAlop: vi.fn().mockResolvedValue({ allowed: true }),
+  loadActorComp: vi.fn().mockResolvedValue(''),
+  loadActorCompAndCab: vi.fn().mockResolvedValue({ actorComp: '', cabComp: '' }),
+  isCabDept: vi.fn(() => false),
 }));
 
 vi.mock('../../middleware/csrf.mjs', () => ({

@@ -48,6 +48,8 @@ vi.mock('../../services/entitlements.mjs', () => ({
 
 vi.mock('../../services/authz-formular.mjs', () => ({
   loadActorComp: vi.fn().mockResolvedValue('Compartiment Test'),
+  loadActorCompAndCab: vi.fn().mockResolvedValue({ actorComp: 'Compartiment Test', cabComp: '' }),
+  isCabDept:       vi.fn(() => false),
   canEditFormular: vi.fn().mockResolvedValue({ allowed: true, role: 'comp' }),
   canEditAlop:     vi.fn().mockResolvedValue({ allowed: true, role: 'creator' }),
   canDestroyOnly:  vi.fn().mockResolvedValue({ allowed: true }),

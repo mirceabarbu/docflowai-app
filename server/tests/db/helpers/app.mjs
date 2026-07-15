@@ -19,6 +19,8 @@ vi.mock('../../../middleware/logger.mjs', () => ({
 
 const { formulareDbRouter } = await import('../../../routes/formulare/index.mjs');
 const alopRouter = (await import('../../../routes/alop.mjs')).default;
+const flowsCrudRouter = (await import('../../../routes/flows/crud.mjs')).default;
+const registraturaRouter = (await import('../../../routes/registratura.mjs')).default;
 
 export function buildApp() {
   const app = express();
@@ -27,5 +29,7 @@ export function buildApp() {
   app.use(cookieParser());
   app.use('/', formulareDbRouter);
   app.use('/', alopRouter);
+  app.use('/', flowsCrudRouter);
+  app.use('/', registraturaRouter);
   return app;
 }

@@ -39,6 +39,8 @@ vi.mock('../../middleware/require-module.mjs', () => ({
 
 vi.mock('../../services/authz-formular.mjs', () => ({
   loadActorComp: vi.fn().mockResolvedValue('Compartiment Test'),
+  loadActorCompAndCab: vi.fn().mockResolvedValue({ actorComp: 'Compartiment Test', cabComp: '' }),
+  isCabDept: vi.fn(() => false),
   canEditFormular: vi.fn().mockResolvedValue({ allowed: true, role: 'comp' }),
   canDestroyOnly: vi.fn().mockResolvedValue({ allowed: true }),
 }));

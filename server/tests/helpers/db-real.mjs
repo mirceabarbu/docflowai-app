@@ -29,11 +29,17 @@ let _migrated = false;
 export async function migrate() {
   if (_migrated) return;
   await migrateForTests();
+  // GOLUL de fresh-provision în `organizations` (coloanele V4 lipsă pe o bază creată din bootstrap-ul
+  // inline cu 3 coloane) e acum reconciliat CANONIC de migrația inline 097_reconcile_organizations_columns,
+  // care rulează în `migrateForTests` (runMigrations iterează toate migrațiile inline; 097 nu e V4-only).
+  // Peticul ad-hoc de aici (ALTER pentru signing_providers_enabled/config, adăugat la #104) e redundant
+  // și a fost scos — o singură sursă pentru aceleași coloane.
   _migrated = true;
 }
 
 // Curăță tabelele relevante între teste (RESTART IDENTITY ca id-urile SERIAL să fie deterministe).
 const TRUNCATE_TABLES = [
+  'registru_intrari',
   'alop_instances',
   'formulare_ord',
   'formulare_df',
@@ -156,12 +162,40 @@ export async function getAlopCicluri(alopId) {
 }
 
 // Flux generic. completed=false → flux în lucru (NU declanșează auto-tranziția din link-*-flow).
-export async function seedFlow({ id = `flow-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, completed = false } = {}) {
+// orgId (opțional) → scrie coloana org_id (izolare multi-tenant); initEmail (opțional) → data.initEmail
+// (folosit de /my-flows pentru a găsi fluxul pe email). Backward-compatible: fără orgId, org_id rămâne NULL.
+//
+// ⚠️ `data` reproduce forma unui flux REAL: în plus de status/completed, are OBLIGATORIU `signers`
+// ca ARRAY JSONB (chiar gol). Ruta /my-flows (crud.mjs) filtrează pe `data->'signers' @> jsonb_build_array(...)`
+// și mapează `d.signers.map(...)` — un `data` fără cheia `signers` producea 500 (fix #104). Cheile
+// status/completed rămân IDENTICE cu forma veche → apelanții existenți (alop link/lazy-resync) neafectați.
+export async function seedFlow({ id = `flow-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, completed = false, orgId = null, initEmail = null, docName = null, signers = [] } = {}) {
+  const data = {
+    flowId: id,
+    docName: docName || 'Document test',
+    initName: 'Inițiator',
+    initEmail: initEmail ? String(initEmail).toLowerCase() : 'init@x.ro',
+    signers: Array.isArray(signers) ? signers : [],
+    ...(completed ? { status: 'completed', completed: true } : { status: 'pending' }),
+  };
   await pool.query(
-    `INSERT INTO flows (id, data) VALUES ($1, $2::jsonb)`,
-    [id, JSON.stringify(completed ? { status: 'completed', completed: true } : { status: 'pending' })]
+    `INSERT INTO flows (id, data, org_id) VALUES ($1, $2::jsonb, $3)`,
+    [id, JSON.stringify(data), orgId]
   );
   return id;
+}
+
+// Intrare în registru (Registratură). Minimal: doar câmpurile NOT NULL + obiect pentru izolarea org.
+// sursaId random ⇒ nu lovește indexul unic uq_registru_sursa(org_id, registru, sursa_tip, sursa_id).
+export async function seedRegistru({ orgId, an = 2026, numar = 1, obiect = 'Cerere test', directie = 'intrare', sursaTip = 'manual', sursaId = null } = {}) {
+  const sid = sursaId || `reg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const numarFormat = `${numar}/${an}`;
+  const { rows } = await pool.query(
+    `INSERT INTO registru_intrari (org_id, an, numar, numar_format, directie, sursa_tip, sursa_id, obiect)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, numar_format`,
+    [orgId, an, numar, numarFormat, directie, sursaTip, sid, obiect]
+  );
+  return { id: rows[0].id, numarFormat: rows[0].numar_format, obiect };
 }
 
 export async function getAlop(id) {

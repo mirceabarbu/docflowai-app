@@ -18,7 +18,7 @@ import { logger } from '../../middleware/logger.mjs';
 import { pool } from '../../db/index.mjs';
 import { listFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import { isAdminOrOrgAdmin } from '../admin/_helpers.mjs';
-import { loadActorComp, canEditFormular, canViewFormular } from '../../services/authz-formular.mjs';
+import { loadActorCompAndCab, isCabDept, canEditFormular, canViewFormular } from '../../services/authz-formular.mjs';
 import { requireDb } from './_helpers.mjs';
 
 let PDFLibFormular = null;
@@ -49,8 +49,8 @@ router.post('/api/formulare-capturi/:type/:id', _csrf, async (req, res) => {
     const doc = existing[0];
     // v3.9.554 (B1): authz centralizat — include drepturile prin compartiment (comp/p2_comp),
     // pe care verificarea veche creator/assigned/admin le refuza cu 403.
-    const actorComp = await loadActorComp(pool, actor.userId);
-    const authz = await canEditFormular(pool, actor, doc, actorComp);
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp, { cabComp });
     if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
 
     // Citim body raw (imagine)
@@ -105,8 +105,8 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
     if (!docRows.length) return res.status(404).json({ error: 'not_found' });
     const doc = docRows[0];
     // v3.9.554 (B1): authz centralizat — view include comp/p2_comp + semnatari în flux
-    const actorComp = await loadActorComp(pool, actor.userId);
-    const view = await canViewFormular(pool, actor, doc, actorComp);
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+    const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
     if (!view.allowed) return res.status(403).json({ error: 'forbidden' });
 
     // v3.9.499: filtrare pe slot (default 1 backward compat pentru DF + clienti vechi)
@@ -148,8 +148,8 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
     const doc = existing[0];
     // v3.9.554 (B1): authz centralizat — include drepturile prin compartiment (comp/p2_comp)
-    const actorComp = await loadActorComp(pool, actor.userId);
-    const authz = await canEditFormular(pool, actor, doc, actorComp);
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp, { cabComp });
     if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
 
     // v3.9.501: slot pentru a permite multiple seturi per formular (DF n-fdad vs n-adata)
@@ -201,8 +201,8 @@ router.get('/api/formulare-atasamente/:type/:id', async (req, res) => {
     if (!docRows.length) return res.status(404).json({ error: 'not_found' });
     const doc = docRows[0];
     // v3.9.554 (B1): authz centralizat — view include comp/p2_comp + semnatari în flux
-    const actorComp = await loadActorComp(pool, actor.userId);
-    const view = await canViewFormular(pool, actor, doc, actorComp);
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+    const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
     if (!view.allowed) return res.status(403).json({ error: 'forbidden' });
 
     // v3.9.501: filtrare per slot (default 1 backward compat)
@@ -239,8 +239,8 @@ router.get('/api/formulare-atasamente/:type/:id/:attId', async (req, res) => {
     if (!docRows.length) return res.status(404).json({ error: 'not_found' });
     const doc = docRows[0];
     // v3.9.554 (B1): authz centralizat — view include comp/p2_comp + semnatari în flux
-    const actorComp = await loadActorComp(pool, actor.userId);
-    const view = await canViewFormular(pool, actor, doc, actorComp);
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+    const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
     if (!view.allowed) return res.status(403).json({ error: 'forbidden' });
 
     const { rows } = await pool.query(
@@ -275,8 +275,8 @@ router.delete('/api/formulare-atasamente/:type/:id/:attId', _csrf, async (req, r
     if (!docRows.length) return res.status(404).json({ error: 'not_found' });
     const doc = docRows[0];
     // v3.9.554 (B1): authz centralizat — include drepturile prin compartiment (comp/p2_comp)
-    const actorComp = await loadActorComp(pool, actor.userId);
-    const authz = await canEditFormular(pool, actor, doc, actorComp);
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+    const authz = await canEditFormular(pool, actor, doc, actorComp, { cabComp });
     if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
     if (['completed','aprobat'].includes(doc.status) && !['admin','org_admin'].includes(actor.role)) {
       return res.status(409).json({ error: 'document_locked', status: doc.status });
@@ -410,27 +410,27 @@ router.get('/api/formulare/list', async (req, res) => {
       if (!isAdmin) {
         conds.push(`fd.org_id=$${params.push(actor.orgId)}`);
         if (!isOrgAdmin) {
-          const actorCompRes = await pool.query(
-            'SELECT compartiment FROM users WHERE id=$1',
-            [actor.userId]
-          );
-          const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
-          const u1 = params.push(actor.userId);
-          const u2 = params.push(actor.userId);
-          if (actorComp === '') {
-            conds.push(`(fd.created_by=$${u1} OR fd.assigned_to=$${u2})`);
-          } else {
-            const c1 = params.push(actorComp);
-            conds.push(`(
-              fd.created_by=$${u1}
-              OR fd.assigned_to=$${u2}
-              OR EXISTS (
-                SELECT 1 FROM users uc
-                WHERE uc.id = fd.created_by
-                  AND TRIM(uc.compartiment) = $${c1}
-                  AND TRIM(uc.compartiment) <> ''
-              )
-            )`);
+          // FEAT ALOP-CAB: membrul CAB al org-ului vede TOT org-ul (doar scoparea fd.org_id de mai
+          // sus, fără filtru de compartiment/inițiator). isAdmin rămâne NEATINS (inconsistența #105).
+          const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+          if (!isCabDept(actorComp, cabComp)) {
+            const u1 = params.push(actor.userId);
+            const u2 = params.push(actor.userId);
+            if (actorComp === '') {
+              conds.push(`(fd.created_by=$${u1} OR fd.assigned_to=$${u2})`);
+            } else {
+              const c1 = params.push(actorComp);
+              conds.push(`(
+                fd.created_by=$${u1}
+                OR fd.assigned_to=$${u2}
+                OR EXISTS (
+                  SELECT 1 FROM users uc
+                  WHERE uc.id = fd.created_by
+                    AND TRIM(uc.compartiment) = $${c1}
+                    AND TRIM(uc.compartiment) <> ''
+                )
+              )`);
+            }
           }
         }
       }
@@ -540,27 +540,27 @@ router.get('/api/formulare/list', async (req, res) => {
       if (!isAdmin) {
         conds.push(`fo.org_id=$${params.push(actor.orgId)}`);
         if (!isOrgAdmin) {
-          const actorCompRes = await pool.query(
-            'SELECT compartiment FROM users WHERE id=$1',
-            [actor.userId]
-          );
-          const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
-          const u1 = params.push(actor.userId);
-          const u2 = params.push(actor.userId);
-          if (actorComp === '') {
-            conds.push(`(fo.created_by=$${u1} OR fo.assigned_to=$${u2})`);
-          } else {
-            const c1 = params.push(actorComp);
-            conds.push(`(
-              fo.created_by=$${u1}
-              OR fo.assigned_to=$${u2}
-              OR EXISTS (
-                SELECT 1 FROM users uc
-                WHERE uc.id = fo.created_by
-                  AND TRIM(uc.compartiment) = $${c1}
-                  AND TRIM(uc.compartiment) <> ''
-              )
-            )`);
+          // FEAT ALOP-CAB: membrul CAB al org-ului vede TOT org-ul (doar scoparea fo.org_id de mai
+          // sus, fără filtru de compartiment/inițiator). isAdmin rămâne NEATINS (inconsistența #105).
+          const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+          if (!isCabDept(actorComp, cabComp)) {
+            const u1 = params.push(actor.userId);
+            const u2 = params.push(actor.userId);
+            if (actorComp === '') {
+              conds.push(`(fo.created_by=$${u1} OR fo.assigned_to=$${u2})`);
+            } else {
+              const c1 = params.push(actorComp);
+              conds.push(`(
+                fo.created_by=$${u1}
+                OR fo.assigned_to=$${u2}
+                OR EXISTS (
+                  SELECT 1 FROM users uc
+                  WHERE uc.id = fo.created_by
+                    AND TRIM(uc.compartiment) = $${c1}
+                    AND TRIM(uc.compartiment) <> ''
+                )
+              )`);
+            }
           }
         }
       }
