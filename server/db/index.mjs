@@ -2244,6 +2244,16 @@ export const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_org_status ON organizations(status);
       CREATE INDEX IF NOT EXISTS idx_org_signing_providers ON organizations USING GIN (signing_providers_enabled);
     `
+  },
+  {
+    id: '098_module_facturi',
+    sql: `
+      INSERT INTO module_catalog
+        (module_key, display_name, category, default_enabled, display_order)
+      VALUES
+        ('facturi', 'Facturi (centralizator lichidări)', 'alop', TRUE, 65)
+      ON CONFLICT (module_key) DO NOTHING;
+    `
   }
 ];
 
