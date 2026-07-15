@@ -29,17 +29,11 @@ let _migrated = false;
 export async function migrate() {
   if (_migrated) return;
   await migrateForTests();
-  // Reconciliază un GOL de fresh-provision cunoscut (vezi CLAUDE.md „GOL TĂCUT de schemă pe fresh DB"):
-  // `organizations.signing_providers_enabled` e adăugat DOAR de V4 `001_organizations.sql`
-  // (CREATE TABLE cu coloana), dar inline creează `organizations` primul FĂRĂ coloană → CREATE TABLE
-  // IF NOT EXISTS din V4 sare, iar `migrateForTests` aplică din V4 doar 014/015, niciodată 001.
-  // Prod are coloana din creștere incrementală; testul o pierde tăcut → `/my-flows` (crud.mjs:814
-  // `SELECT signing_providers_enabled FROM organizations`) dădea 500. ALTER idempotent, mirror pe 001.
-  await pool.query(`
-    ALTER TABLE organizations
-      ADD COLUMN IF NOT EXISTS signing_providers_enabled TEXT[] NOT NULL DEFAULT ARRAY['local-upload']::TEXT[],
-      ADD COLUMN IF NOT EXISTS signing_providers_config  JSONB  NOT NULL DEFAULT '{}';
-  `);
+  // GOLUL de fresh-provision în `organizations` (coloanele V4 lipsă pe o bază creată din bootstrap-ul
+  // inline cu 3 coloane) e acum reconciliat CANONIC de migrația inline 097_reconcile_organizations_columns,
+  // care rulează în `migrateForTests` (runMigrations iterează toate migrațiile inline; 097 nu e V4-only).
+  // Peticul ad-hoc de aici (ALTER pentru signing_providers_enabled/config, adăugat la #104) e redundant
+  // și a fost scos — o singură sursă pentru aceleași coloane.
   _migrated = true;
 }
 

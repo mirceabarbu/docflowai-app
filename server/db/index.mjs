@@ -2209,6 +2209,41 @@ export const MIGRATIONS = [
                    AND e->>'indicator_angajament' IS DISTINCT FROM UPPER(TRIM(COALESCE(e->>'indicator_angajament',''))))
          );
     `
+  },
+  {
+    id: '097_reconcile_organizations_columns',
+    sql: `
+      -- SEC/PROVISION: bootstrap-ul inline creează organizations cu 3 coloane; V4 001 are 18.
+      -- Pe o bază unde tabela există deja din bootstrap, CREATE TABLE IF NOT EXISTS din V4 e sărit,
+      -- deci coloanele lipsesc pe fresh-provision. Aliniem la V4. ADD-ONLY, idempotent, fără DROP.
+      -- Tipuri și defaults COPIATE EXACT din server/db/migrations/001_organizations.sql.
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS slug                      TEXT;
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS cif                       TEXT;
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS status                    TEXT        NOT NULL DEFAULT 'active';
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan                      TEXT        NOT NULL DEFAULT 'starter';
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS signing_providers_enabled TEXT[]      NOT NULL DEFAULT ARRAY['local-upload'];
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS signing_providers_config  JSONB       NOT NULL DEFAULT '{}';
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS settings                  JSONB       NOT NULL DEFAULT '{}';
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS branding                  JSONB       NOT NULL DEFAULT '{}';
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS compartimente             TEXT[]      NOT NULL DEFAULT ARRAY[]::TEXT[];
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS webhook_url               TEXT;
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS webhook_secret            TEXT;
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS webhook_events            TEXT[]      NOT NULL DEFAULT '{flow.completed}';
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS webhook_enabled           BOOLEAN     NOT NULL DEFAULT FALSE;
+      ALTER TABLE organizations ADD COLUMN IF NOT EXISTS updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+      -- slug UNIQUE NOT NULL în V4 — dar pe date existente slug poate fi NULL. NU forțăm NOT NULL aici
+      -- (ar pica pe rânduri existente). Populăm slug lipsă din numele org-ului, apoi indexul unic.
+      -- Slug-ul derivat include id ca să fie garantat unic (nu există convenție de slug în cod —
+      -- createOrg primește slug de la apelant; vezi server/db/queries/organizations.mjs).
+      UPDATE organizations
+         SET slug = lower(regexp_replace(COALESCE(name,'org'), '[^a-zA-Z0-9]+', '-', 'g')) || '-' || id
+       WHERE slug IS NULL OR slug = '';
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_org_slug_uniq ON organizations(slug) WHERE slug IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_org_status ON organizations(status);
+      CREATE INDEX IF NOT EXISTS idx_org_signing_providers ON organizations USING GIN (signing_providers_enabled);
+    `
   }
 ];
 
