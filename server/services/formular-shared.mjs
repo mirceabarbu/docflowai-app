@@ -29,12 +29,14 @@ export async function sendNotif(userId, type, title, message, data) {
   try {
     const { rows } = await pool.query('SELECT email FROM users WHERE id=$1', [userId]);
     if (!rows.length) return;
-    await pool.query(
+    const ins = await pool.query(
       `INSERT INTO notifications (user_email, type, title, message, data)
-       VALUES ($1, $2, $3, $4, $5)`,
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, created_at`,
       [rows[0].email.toLowerCase(), type, title, message, JSON.stringify(data)]
     );
-  } catch (_) { /* non-fatal */ }
+    return { id: ins.rows[0]?.id ?? null, created_at: ins.rows[0]?.created_at ?? null, email: rows[0].email.toLowerCase() };
+  } catch (_) { /* non-fatal */ return null; }
 }
 
 export function pick(obj, fields) {

@@ -22,7 +22,8 @@ import { requireModule } from '../middleware/require-module.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
-import { loadActorCompAndCab, isCabDept, canEditAlop, canDestroyOnly } from '../services/authz-formular.mjs';
+import { loadActorCompAndCab, isCabDept, canEditAlop, canDestroyOnly, loadOrgCabComp } from '../services/authz-formular.mjs';
+import { sendNotif } from '../services/formular-shared.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
@@ -32,6 +33,10 @@ import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
 
 const router = Router();
+
+// WS push injectat la montare (pentru notificări live — ex. factură lichidată)
+let _wsPush;
+export function injectWsPush(fn) { _wsPush = fn; }
 const _csrf  = csrfMiddleware;
 
 // FEATURE buget multi-anual (v3.9.558): fragment SQL care sumează banda `rows_plati`
@@ -462,6 +467,84 @@ router.post('/api/alop', _csrf, requireModule('alop'), async (req, res) => {
     res.status(201).json({ alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop create error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── GET /api/alop/facturi — centralizator read-only al facturilor din lichidări ──
+// UNION: facturi CURENTE (alop_instances) + facturi ARHIVATE (alop_ord_cicluri).
+// Vizibilitate: admin/org_admin/CAB văd tot org-ul; restul doar compartimentul lor
+// (via buildAlopVisibilityWhere pe CTE-ul visible_alop, alias `a`).
+// NB: definită ÎNAINTEA lui `/api/alop/:id` — altfel Express ar prinde 'facturi' ca :id.
+router.get('/api/alop/facturi', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const params = [actor.orgId];
+    // CTE cu ALOP-urile vizibile actorului (aceeași regulă ca lista ALOP)
+    const visWhere = await buildAlopVisibilityWhere(actor, params); // '' sau ' AND (...)'
+    const sql = `
+      WITH visible_alop AS (
+        SELECT a.id
+          FROM alop_instances a
+         WHERE a.org_id = $1 AND a.cancelled_at IS NULL${visWhere}
+      )
+      SELECT * FROM (
+        -- Facturi CURENTE (ciclul în lucru)
+        SELECT
+          a.id                     AS alop_id,
+          a.titlu                  AS alop_titlu,
+          a.df_id                  AS df_id,
+          a.ord_id                 AS ord_id,
+          a.lichidare_nr_factura   AS nr_factura,
+          a.lichidare_data_factura AS data_factura,
+          a.lichidare_valoare_factura AS valoare,
+          a.lichidare_nr_pv        AS nr_pv,
+          a.lichidare_data_pv      AS data_pv,
+          a.lichidare_notes        AS notes,
+          a.lichidare_confirmed_at AS confirmed_at,
+          ul.nume                  AS confirmed_by_name,
+          COALESCE(a.ciclu_curent,1) AS ciclu_nr,
+          'curent'                 AS sursa
+        FROM alop_instances a
+        JOIN visible_alop v ON v.id = a.id
+        LEFT JOIN users ul ON ul.id = a.lichidare_confirmed_by
+        WHERE a.lichidare_nr_factura IS NOT NULL
+          AND TRIM(a.lichidare_nr_factura) <> ''
+
+        UNION ALL
+
+        -- Facturi ARHIVATE (cicluri închise) — DF din ALOP-ul părinte
+        SELECT
+          a.id                     AS alop_id,
+          a.titlu                  AS alop_titlu,
+          a.df_id                  AS df_id,
+          c.ord_id                 AS ord_id,
+          c.lichidare_nr_factura   AS nr_factura,
+          c.lichidare_data_factura AS data_factura,
+          c.lichidare_valoare_factura AS valoare,
+          c.lichidare_nr_pv        AS nr_pv,
+          c.lichidare_data_pv      AS data_pv,
+          c.lichidare_notes        AS notes,
+          c.lichidare_confirmed_at AS confirmed_at,
+          ul.nume                  AS confirmed_by_name,
+          c.ciclu_nr               AS ciclu_nr,
+          'ciclu'                  AS sursa
+        FROM alop_ord_cicluri c
+        JOIN visible_alop v ON v.id = c.alop_id
+        JOIN alop_instances a ON a.id = c.alop_id
+        LEFT JOIN users ul ON ul.id = c.lichidare_confirmed_by
+        WHERE c.org_id = $1
+          AND c.lichidare_nr_factura IS NOT NULL
+          AND TRIM(c.lichidare_nr_factura) <> ''
+      ) t
+      ORDER BY t.data_factura DESC NULLS LAST, t.confirmed_at DESC NULLS LAST
+    `;
+    const { rows } = await pool.query(sql, params);
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, facturi: rows, total: rows.length });
+  } catch (e) {
+    logger.error({ err: e }, 'alop facturi centralizator error');
     res.status(500).json({ error: 'server_error' });
   }
 });
@@ -1091,7 +1174,7 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
     }
     logger.info({ alopId: req.params.id, currentStatus: cur[0].status }, 'confirma-lichidare attempt');
 
-    const { notes, observatii, nr_factura, data_factura, nr_pv, data_pv } = req.body;
+    const { notes, observatii, nr_factura, data_factura, nr_pv, data_pv, valoare_factura } = req.body;
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
@@ -1102,17 +1185,91 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
           lichidare_data_factura=$4,
           lichidare_nr_pv=$5,
           lichidare_data_pv=$6,
+          lichidare_valoare_factura=$9,
           status='ordonantare',
           updated_at=NOW(),
           updated_by=$1
       WHERE id=$7 AND org_id=$8 AND status IN ('lichidare','ordonantare')
       RETURNING *
-    `, [actor.userId, observatii || notes || '', nr_factura || null, data_factura || null, nr_pv || null, data_pv || null, req.params.id, actor.orgId]);
+    `, [actor.userId, observatii || notes || '', nr_factura || null, data_factura || null, nr_pv || null, data_pv || null, req.params.id, actor.orgId, (valoare_factura != null && Number.isFinite(Number(valoare_factura))) ? Number(valoare_factura) : null]);
 
     if (!rows[0]) {
       logger.warn({ alopId: req.params.id, currentStatus: cur[0].status }, 'confirma-lichidare status_invalid — no row updated');
       return res.status(400).json({ error: 'status_invalid' });
     }
+
+    // FEAT Facturi: notifică Serviciul Buget (compartimentul CAB al org-ului) la PRIMA
+    // confirmare de lichidare cu factură. Gardă anti-dublare: doar când statusul anterior
+    // era 'lichidare' (o re-salvare din 'ordonantare' nu re-notifică). Non-fatal.
+    try {
+      const firstConfirm = cur[0].status === 'lichidare';
+      const nrFact = (nr_factura || '').toString().trim();
+      if (firstConfirm && nrFact) {
+        const cabComp = await loadOrgCabComp(pool, actor.orgId);
+        if (cabComp) {
+          const { rows: cabUsers } = await pool.query(
+            `SELECT id, email FROM users
+              WHERE org_id=$1 AND deleted_at IS NULL
+                AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''
+                AND id <> $3`,
+            [actor.orgId, cabComp, actor.userId]
+          );
+          const dfId = rows[0].df_id || null;
+          const titlu = rows[0].titlu || 'ALOP';
+          const dataFactTxt = data_factura
+            ? ' din ' + new Date(data_factura).toLocaleDateString('ro-RO')
+            : '';
+          const valFact = (valoare_factura != null && Number.isFinite(Number(valoare_factura))) ? Number(valoare_factura) : null;
+          const valTxt = valFact != null
+            ? ', valoare ' + new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(valFact) + ' RON'
+            : '';
+          const notifData = {
+            form_type: 'df',            // click-through → deschide DF-ul legat
+            form_id: dfId,
+            alop_id: req.params.id,
+            nr_factura: nrFact,
+            data_factura: data_factura || null,
+            valoare_factura: valFact,
+          };
+          const msgText = `Factura nr. ${nrFact}${dataFactTxt}${valTxt} a fost lichidată — ALOP „${titlu}".`;
+          for (const u of cabUsers) {
+            const ins = await sendNotif(
+              u.id,
+              'alop_factura_lichidata',
+              '🧾 Factură lichidată',
+              msgText,
+              notifData
+            );
+            try {
+              const email = (u.email || (ins && ins.email) || '').toLowerCase();
+              if (email && _wsPush) {
+                _wsPush(email, {
+                  event: 'notification',
+                  data: {
+                    id: ins?.id ?? null,
+                    type: 'alop_factura_lichidata',
+                    title: '🧾 Factură lichidată',
+                    message: msgText,
+                    data: notifData,
+                    created_at: ins?.created_at ?? new Date().toISOString(),
+                  },
+                });
+                const { rows: cnt } = await pool.query(
+                  'SELECT COUNT(*)::int AS c FROM notifications WHERE user_email=$1 AND read=FALSE',
+                  [email]
+                );
+                _wsPush(email, { event: 'unread_count', count: cnt[0]?.c ?? 0 });
+              }
+            } catch (wsErr) {
+              logger.warn({ err: wsErr, alopId: req.params.id }, '[Facturi] wsPush live non-fatal');
+            }
+          }
+        }
+      }
+    } catch (notifErr) {
+      logger.warn({ err: notifErr, alopId: req.params.id }, '[Facturi] notificare CAB lichidare non-fatal');
+    }
+
     res.json({ alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-lichidare error');
@@ -1486,8 +1643,9 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
           plata_nr_ordin, plata_data, plata_suma_efectiva, plata_observatii,
           plata_source,
           an_exercitiu,
+          lichidare_valoare_factura,
           status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'completed')
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'completed')
         RETURNING id
       `, [
         req.params.id, actor.orgId, cicluNr,
@@ -1501,6 +1659,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
         alop.plata_source || 'manual',
         // an de exercițiu al ciclului arhivat = anul plății efective (fallback: anul curent)
         alop.plata_data ? new Date(alop.plata_data).getFullYear() : anExercitiu,
+        alop.lichidare_valoare_factura,
       ]);
       newCicluId = cicluRows[0]?.id;
 
@@ -1512,6 +1671,7 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
           lichidare_confirmed_by = NULL, lichidare_confirmed_at = NULL,
           lichidare_nr_factura = NULL, lichidare_data_factura = NULL,
           lichidare_nr_pv = NULL, lichidare_data_pv = NULL, lichidare_notes = NULL,
+          lichidare_valoare_factura = NULL,
           plata_confirmed_by = NULL, plata_confirmed_at = NULL,
           plata_nr_ordin = NULL, plata_data = NULL,
           plata_suma_efectiva = NULL, plata_observatii = NULL,

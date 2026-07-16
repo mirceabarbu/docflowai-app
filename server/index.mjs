@@ -529,7 +529,7 @@ import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din 
 
 import { formulareRouter } from './routes/formulare.mjs';
 import { formulareDbRouter } from './routes/formulare/index.mjs';
-import alopRouter from './routes/alop.mjs';
+import alopRouter, { injectWsPush as injectAlopWsPush } from './routes/alop.mjs';
 import convertRouter from './routes/convert.mjs';
 import opmeRouter from './routes/opme.mjs';
 import registraturaRouter from './routes/registratura.mjs';
@@ -1556,6 +1556,7 @@ injectTokenVersionChecker(async (userId) => {
   return rows[0]?.token_version ?? null;
 });
 injectWsPush(wsPush);
+injectAlopWsPush(wsPush);
 injectWsSize(() => wsClients.size);
 injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail, fireWebhook });
 // FEAT-N01: webhook — injectăm pool-ul și URL-ul de bază

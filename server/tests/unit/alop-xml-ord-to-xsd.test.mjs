@@ -49,8 +49,8 @@ describe('ordRowToXsd — echivalență cu forma colO() + lanț valid XSD', () =
     const { valid, errors } = await validateXml(xml, 'ordnt_v0');
     if (!valid) throw new Error('XML invalid:\n' + JSON.stringify(errors, null, 2) + '\n' + xml);
     expect(valid).toBe(true);
-    // IBAN normalizat de serializer (fără spații).
-    expect(xml).toContain('iban_beneficiar="RO51RNCB0080002971510001"');
+    // IBAN normalizat de serializer (fără spații), delimitat cu apostrof (parser XFA MF).
+    expect(xml).toContain("iban_beneficiar='RO51RNCB0080002971510001'");
   });
 
   it('aruncă pe input non-obiect', () => {

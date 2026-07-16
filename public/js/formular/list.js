@@ -398,6 +398,8 @@ function switchListTab(type){
   if(ltabNfi)ltabNfi.classList.toggle('active',type==='nfi');
   const ltabClasa8=document.getElementById('ltab-clasa8');
   if(ltabClasa8)ltabClasa8.classList.toggle('active',type==='clasa8');
+  const ltabFacturi=document.getElementById('ltab-facturi');
+  if(ltabFacturi)ltabFacturi.classList.toggle('active',type==='facturi');
   // Bannere informative pentru DF/ORD
   const bannerDf=document.getElementById('lst-banner-df');
   const bannerOrd=document.getElementById('lst-banner-ord');
@@ -410,6 +412,7 @@ function switchListTab(type){
   const rfnSection=document.getElementById('rfn-section');
   const nfiSection=document.getElementById('nfi-section');
   const clasa8Section=document.getElementById('clasa8-section');
+  const facturiSection=document.getElementById('facturi-section');
   if(type==='alop'){
     if(lstWrap)lstWrap.style.display='none';
     if(alopSection)alopSection.style.display='';
@@ -417,6 +420,7 @@ function switchListTab(type){
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
     if(clasa8Section)clasa8Section.style.display='none';
+    if(facturiSection)facturiSection.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
     loadAlop();loadAlopStats();
     // Re-fetch detaliu dacă era deschis — statusul poate fi schimbat după semnare
@@ -431,6 +435,7 @@ function switchListTab(type){
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
     if(clasa8Section)clasa8Section.style.display='none';
+    if(facturiSection)facturiSection.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
   }else if(type==='clasa8'){
     if(lstWrap)lstWrap.style.display='none';
@@ -439,8 +444,19 @@ function switchListTab(type){
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
     if(clasa8Section)clasa8Section.style.display='';
+    if(facturiSection)facturiSection.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
     if(typeof openClasa8==='function')openClasa8();
+  }else if(type==='facturi'){
+    if(lstWrap)lstWrap.style.display='none';
+    if(alopSection)alopSection.style.display='none';
+    if(verifySection)verifySection.style.display='none';
+    if(rfnSection)rfnSection.style.display='none';
+    if(nfiSection)nfiSection.style.display='none';
+    if(clasa8Section)clasa8Section.style.display='none';
+    if(facturiSection)facturiSection.style.display='';
+    const _foF=document.getElementById('foList');if(_foF)_foF.style.display='none';
+    if(typeof openFacturi==='function')openFacturi();
   }else if(type==='rfn'){
     if(lstWrap)lstWrap.style.display='none';
     if(alopSection)alopSection.style.display='none';
@@ -448,6 +464,7 @@ function switchListTab(type){
     if(rfnSection)rfnSection.style.display='';
     if(nfiSection)nfiSection.style.display='none';
     if(clasa8Section)clasa8Section.style.display='none';
+    if(facturiSection)facturiSection.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
   }else if(type==='nfi'){
     if(lstWrap)lstWrap.style.display='none';
@@ -456,6 +473,7 @@ function switchListTab(type){
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='';
     if(clasa8Section)clasa8Section.style.display='none';
+    if(facturiSection)facturiSection.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
   }else{
     if(lstWrap)lstWrap.style.display='';
@@ -464,6 +482,7 @@ function switchListTab(type){
     if(rfnSection)rfnSection.style.display='none';
     if(nfiSection)nfiSection.style.display='none';
     if(clasa8Section)clasa8Section.style.display='none';
+    if(facturiSection)facturiSection.style.display='none';
     const _foL=document.getElementById('foList');if(_foL)_foL.style.display='none';
     if(typeof _populateCompartimente==='function')_populateCompartimente();
     loadList();

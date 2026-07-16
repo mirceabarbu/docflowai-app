@@ -3,7 +3,8 @@
 //
 // Obiectele DF de mai jos sunt XSD-shaped (root + sectiuneaA + sectiuneaB), identice cu
 // `data` JSONB-ul pe care îl consumă generatorul PDF. Sumele sunt în LEI (decimal) — exact
-// formatul stocat real; serializer-ul le convertește la bani (lei×100) pentru IntPoz12SType.
+// formatul stocat real; serializer-ul le emite ca lei ÎNTREGI (rotunjire în sus) pentru
+// IntPoz12SType, care e xs:integer în schema oficială MF.
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFile } from 'node:fs/promises';
@@ -11,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { validateXML } from 'xmllint-wasm';
 import { serializeNotafd } from '../../services/alop-xml/notafd-serializer.mjs';
-import { ronToBani, dateRo, ckbx, cif, xmlEscape, strClamp } from '../../services/alop-xml/format.mjs';
+import { ronToLeiXml, dateRo, ckbx, cif, xmlEscape, strClamp } from '../../services/alop-xml/format.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const XSD_PATH = resolve(__dirname, '../../services/alop-xml/schemas/notafd_v0.xsd');
@@ -26,34 +27,43 @@ async function expectValid(df) {
     throw new Error('XML invalid contra XSD:\n' + JSON.stringify(res.errors, null, 2) + '\n\n' + xml);
   }
   expect(res.valid).toBe(true);
+  // Format cerut de parserul XFA al formularului MF (vezi serializer): niciun element
+  // auto-închis (`__Load_*` caută tag-ul de închidere) — verificat pe FIECARE exemplu.
+  expect(xml).not.toMatch(/\/>/);
   return xml;
 }
 
 // ── Helpers de conversie (puri) ─────────────────────────────────────────────
 describe('format.mjs — conversii pure', () => {
-  it('ronToBani: format românesc cu mii "." și zecimal ","', () => {
-    expect(ronToBani('11.523.668,69')).toBe('1152366869');
+  it('ronToLeiXml: format românesc cu mii "." și zecimal "," -> leu întreg (ceiling)', () => {
+    expect(ronToLeiXml('11.523.668,69')).toBe('11523669');
   });
-  it('ronToBani: decimal JS (formatul stocat real)', () => {
-    expect(ronToBani(11523668.69)).toBe('1152366869');
-    expect(ronToBani('11523668.69')).toBe('1152366869');
+  it('ronToLeiXml: decimal JS (formatul stocat real) -> leu întreg (ceiling)', () => {
+    expect(ronToLeiXml(11523668.69)).toBe('11523669');
+    expect(ronToLeiXml('11523668.69')).toBe('11523669');
   });
-  it('ronToBani: întregi și grupare cu mai multe puncte', () => {
-    expect(ronToBani(560)).toBe('56000');
-    expect(ronToBani('301.000.000')).toBe('30100000000');
-    expect(ronToBani('27.650.000')).toBe('2765000000');
+  it('ronToLeiXml: bani -> rotunjire în SUS la leu', () => {
+    expect(ronToLeiXml(2964.5)).toBe('2965');
+    expect(ronToLeiXml('2964,50')).toBe('2965');
+    expect(ronToLeiXml(2964.01)).toBe('2965');
+    expect(ronToLeiXml(2964)).toBe('2964'); // fără fracție -> neschimbat
   });
-  it('ronToBani: empty/null -> null (atribut omis); 0 completat -> "0"', () => {
-    expect(ronToBani('')).toBeNull();
-    expect(ronToBani(null)).toBeNull();
-    expect(ronToBani(undefined)).toBeNull();
-    expect(ronToBani(0)).toBe('0');
+  it('ronToLeiXml: întregi și grupare cu mai multe puncte -> lei întregi', () => {
+    expect(ronToLeiXml(560)).toBe('560');
+    expect(ronToLeiXml('301.000.000')).toBe('301000000');
+    expect(ronToLeiXml('27.650.000')).toBe('27650000');
   });
-  it('ronToBani: păstrează semnul (NU clampază negativele)', () => {
-    expect(ronToBani(-10)).toBe('-1000');
+  it('ronToLeiXml: empty/null -> null (atribut omis); 0 completat -> "0"', () => {
+    expect(ronToLeiXml('')).toBeNull();
+    expect(ronToLeiXml(null)).toBeNull();
+    expect(ronToLeiXml(undefined)).toBeNull();
+    expect(ronToLeiXml(0)).toBe('0');
   });
-  it('ronToBani: depășirea IntPoz12 aruncă', () => {
-    expect(() => ronToBani(9999999999999)).toThrow();
+  it('ronToLeiXml: păstrează semnul (NU clampază negativele)', () => {
+    expect(ronToLeiXml(-10)).toBe('-10');
+  });
+  it('ronToLeiXml: depășirea IntPoz12 aruncă', () => {
+    expect(() => ronToLeiXml(9999999999999)).toThrow();
   });
   it('ckbx: bifat -> "1", nebifat -> ""', () => {
     expect(ckbx('1')).toBe('1');
@@ -124,10 +134,15 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    // Conversia bani: 11.523.668,69 lei -> 1152366869 bani.
-    expect(xml).toContain('1152366869');
-    expect(xml).toContain('influente_c6="0"');
-    expect(xml).toContain('influente_c9="1152366869"');
+    // Lei întregi, ceiling: 11.523.668,69 lei -> "11523669".
+    expect(xml).toContain('11523669');
+    expect(xml).toContain("influente_c6='0'");
+    expect(xml).toContain("influente_c9='11523669'");
+    // Delimitator apostrof + rânduri cu tag de închidere (parserul XFA al formularului MF).
+    expect(xml).toContain("influente='11523669'");
+    expect(xml).toContain('</rowT_ang_pl_val>');
+    expect(xml).toContain('</rowT_ang_pl_plati>');
+    expect(xml).toContain('</rowT_ang_ctrl_ang>');
   });
 
   // Ex.2 rev.0 — Achiziție licență IT, 560 lei.
@@ -167,7 +182,7 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('"56000"'); // 560 lei -> 56000 bani
+    expect(xml).toContain("'560'"); // 560 lei -> întreg, fără zecimale
   });
 
   // Ex.3 — drepturi de personal, două rânduri 301.000.000 + 27.650.000.
@@ -212,8 +227,8 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('"30100000000"'); // 301.000.000 lei -> bani
-    expect(xml).toContain('"2765000000"');  // 27.650.000 lei -> bani
+    expect(xml).toContain("'301000000'"); // 301.000.000 lei -> lei întregi
+    expect(xml).toContain("'27650000'");  // 27.650.000 lei -> lei întregi
   });
 
   // Ex.4 rev.0 — angajamente legale emise în contul anului următor.
@@ -254,8 +269,8 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('ckbx_ang_leg_emise_ct_an_urm="1"');
-    expect(xml).toContain('plati_estim_an_np1="12000000"');
+    expect(xml).toContain("ckbx_ang_leg_emise_ct_an_urm='1'");
+    expect(xml).toContain("plati_estim_an_np1='120000'");
   });
 
   // Ex.5 — terț / obligație legală, buget insuficient: SecB fără rânduri de control,
@@ -296,14 +311,49 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('ckbx_fara_inreg_ctrl_ang="1"');
-    expect(xml).toContain('sum_fara_inreg_ctrl_crdbug="7500000"');
-    expect(xml).toContain('ckbx_interzis_emit_ang="1"');
-    // SecB fără rânduri de control -> element self-closing, fără rowT_ang_ctrl_ang
+    expect(xml).toContain("ckbx_fara_inreg_ctrl_ang='1'");
+    expect(xml).toContain("sum_fara_inreg_ctrl_crdbug='75000'");
+    expect(xml).toContain("ckbx_interzis_emit_ang='1'");
+    // SecB fără rânduri de control -> element gol dar cu tag de închidere (parserul XFA
+    // al formularului MF nu recunoaște forma auto-închisă), fără rowT_ang_ctrl_ang.
+    expect(xml).toContain('></sectiuneaB>');
     expect(xml).not.toContain('<rowT_ang_ctrl_ang');
+    // ang_legale_plati are rânduri aici, deci verificăm ramura goală separat mai jos.
     // Pereche 2 NU se emite în XML (câmp intern afișaj/PDF).
     expect(xml).not.toContain('sum_fara_inreg_ctrl_crd_bug');
-    expect(xml).not.toContain('"9999900"');
+    expect(xml).not.toContain("'99999'");
+  });
+
+  // Format parser XFA: ramurile FĂRĂ rânduri emiteau containere auto-închise; parserul
+  // formularului MF le cere pereche. Aici ang_legale_plati n-are rânduri.
+  it("ang_legale_plati fără rânduri -> tag pereche, nu auto-închis; apostrofii din valori -> &apos;", async () => {
+    const df = {
+      Cif: '4221306',
+      DenInstPb: "Primăria Comunei D'Exemplu",
+      SubtitluDF: 'Fără plăți estimate',
+      NrUnicInreg: 'DF-2026-0006',
+      Revizuirea: '0',
+      DataRevizuirii: '30.01.2026',
+      sectiuneaA: {
+        compartiment_specialitate: 'Direcția Economică',
+        obiect_fd_reviz_scurt: 'Angajament fără plăți în anul curent',
+        obiect_fd_reviz_lung: 'Angajament legal fără plăți estimate în anul curent.',
+        ang_legale_val: {
+          ckbx_stab_tin_cont: '1',
+          rowT_ang_pl_val: [
+            { element_fd: 'Element', program: '5102', codSSI: '71.01.01', param_fd: '-',
+              valt_rev_prec: 0, influente: 1000, valt_actualiz: 1000 },
+          ],
+        },
+        ang_legale_plati: { ckbx_fara_plati_ang_in_ancrt: '1' },
+      },
+      sectiuneaB: { ckbx_secta_inreg_ctrl_ang: '1' },
+    };
+    const xml = await expectValid(df);
+    expect(xml).toContain('></ang_legale_plati>');
+    expect(xml).not.toContain('<rowT_ang_pl_plati');
+    // Apostroful din valoare e escapat -> nu rupe delimitatorul de atribut.
+    expect(xml).toContain("DenInstPb='Primăria Comunei D&apos;Exemplu'");
   });
 });
 

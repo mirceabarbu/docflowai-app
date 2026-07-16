@@ -88,7 +88,7 @@ function collectDfP1Db(){return{
   nr_unic_inreg:g('n-nrUnic'),revizuirea:g('n-rev'),data_revizuirii:g('n-data'),
   compartiment_specialitate:g('n-comp'),obiect_fd_reviz_scurt:g('n-scurt'),obiect_fd_reviz_lung:g('n-lung'),
   ckbx_oblig_tert:cb('n-ck-oblig'),
-  ckbx_stab_tin_cont:cb('n-ck-stab'),ckbx_ramane_suma:cb('n-ck-ramane'),ramane_suma:g('n-ramana')||'0',
+  ckbx_stab_tin_cont:cb('n-ck-stab'),ckbx_ramane_suma:cb('n-ck-ramane'),ramane_suma:String(pMR(g('n-ramana'))||0),
   rows_val_unchanged:!!document.getElementById('n-ck-ramane')?.checked,
   rows_val:getNV(),
   ckbx_fara_ang_emis_ancrt:cb('n-ck-faraang'),ckbx_cu_ang_emis_ancrt:cb('n-ck-cuang'),
@@ -104,8 +104,8 @@ function collectDfP1Db(){return{
 };}
 function collectDfP2Db(){return{
   ckbx_secta_inreg_ctrl_ang:cb('n-ck-seca'),ckbx_fara_inreg_ctrl_ang:cb('n-ck-fararezv'),
-  sum_fara_inreg_ctrl_crdbug:g('n-sumfara')||'0',
-  sum_fara_inreg_ctrl_crd_bug:g('n-sumfararezvcrbug')||'0',
+  sum_fara_inreg_ctrl_crdbug:String(pMR(g('n-sumfara'))||0),
+  sum_fara_inreg_ctrl_crd_bug:String(pMR(g('n-sumfararezvcrbug'))||0),
   ckbx_interzis_emit_ang:cb('n-ck-interzis'),ckbx_interzis_intrucat:cb('n-ck-intrucat'),
   intrucat:g('n-intrucat'),rows_ctrl:getNC(),
 };}
