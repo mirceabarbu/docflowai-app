@@ -963,7 +963,8 @@ function openAlopConfirmLichidare(id){
   if(!id||id==='null')return;
   _lichidareAlopId=id;
   ['lich-nr-factura','lich-data-factura','lich-data-factura-display',
-   'lich-nr-pv','lich-data-pv','lich-data-pv-display','lich-observatii']
+   'lich-nr-pv','lich-data-pv','lich-data-pv-display','lich-observatii',
+   'lich-valoare-factura']
     .forEach(eid=>{const el=document.getElementById(eid);if(el)el.value='';});
   document.getElementById('modal-lichidare').style.display='flex';
   setTimeout(()=>{document.getElementById('lich-nr-factura')?.focus();},50);
@@ -974,6 +975,16 @@ function closeLichidareModal(){
   _lichidareAlopId=null;
 }
 
+function _parseValoareFactura(raw){
+  const s = (raw||'').toString().trim();
+  if(!s) return null;
+  let t = s.replace(/\s/g,'');
+  if(t.includes(',') && t.includes('.')) t = t.replace(/\./g,'').replace(',','.'); // RO: 1.234,56
+  else t = t.replace(',', '.');                                                    // 1234,56 / 1234.56
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : null;
+}
+
 async function confirmLichidare(){
   if(!_lichidareAlopId)return;
   const body={
@@ -982,6 +993,7 @@ async function confirmLichidare(){
     nr_pv:        (document.getElementById('lich-nr-pv')?.value||'').trim(),
     data_pv:      document.getElementById('lich-data-pv')?.value||null,
     observatii:   (document.getElementById('lich-observatii')?.value||'').trim(),
+    valoare_factura: _parseValoareFactura(document.getElementById('lich-valoare-factura')?.value),
   };
   try{
     const r=await fetch(`/api/alop/${encodeURIComponent(_lichidareAlopId)}/confirma-lichidare`,{

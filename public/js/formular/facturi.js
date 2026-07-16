@@ -11,6 +11,13 @@
     try { return new Date(d).toLocaleDateString('ro-RO'); } catch(_) { return esc(d); }
   }
 
+  function fmtRON(v){
+    if(v==null||v==='') return '';
+    const n = parseFloat(v);
+    if(!Number.isFinite(n)) return '';
+    return new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)+' RON';
+  }
+
   async function openFacturi(){
     const tbody = document.getElementById('facturi-tbody');
     const errEl = document.getElementById('facturi-error');
@@ -20,7 +27,9 @@
     if(!tbody) return;
     if(errEl) errEl.style.display='none';
     if(emptyEl) emptyEl.style.display='none';
-    tbody.innerHTML = '<tr><td colspan="10" style="padding:20px;text-align:center;color:var(--df-text-3)">Se încarcă…</td></tr>';
+    const tfoot = document.getElementById('facturi-tfoot');
+    if(tfoot) tfoot.style.display='none';
+    tbody.innerHTML = '<tr><td colspan="11" style="padding:20px;text-align:center;color:var(--df-text-3)">Se încarcă…</td></tr>';
     try {
       const r = await fetch('/api/alop/facturi', { credentials:'include' });
       const j = await r.json();
@@ -29,14 +38,27 @@
       if(counter) counter.textContent = `${facturi.length} ${facturi.length===1?'factură':'facturi'}`;
       if(!facturi.length){
         tbody.innerHTML='';
+        if(tfoot) tfoot.style.display='none';
         if(wrap) wrap.style.display='none';
         if(emptyEl) emptyEl.style.display='';
         return;
       }
       if(wrap) wrap.style.display='';
       tbody.innerHTML = facturi.map(renderRow).join('');
+      // TOTAL pe valorile afișate
+      const totalEl = document.getElementById('facturi-total');
+      if(totalEl && tfoot){
+        const sum = facturi.reduce((acc,f)=>{
+          const n = parseFloat(f.valoare);
+          return acc + (Number.isFinite(n) ? n : 0);
+        }, 0);
+        totalEl.textContent = fmtRON(sum) || '0,00 RON';
+        tfoot.style.display='';
+      }
     } catch(e){
       tbody.innerHTML='';
+      const tf = document.getElementById('facturi-tfoot');
+      if(tf) tf.style.display='none';
       if(counter) counter.textContent='— facturi';
       if(errEl){ errEl.textContent = 'Nu s-au putut încărca facturile: '+e.message; errEl.style.display=''; }
     }
@@ -56,6 +78,7 @@
     return `<tr>
       <td><strong>${esc(f.nr_factura||'')}</strong></td>
       <td>${fmtDate(f.data_factura)}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums;">${fmtRON(f.valoare)||'<span class="fact-muted">—</span>'}</td>
       <td>${esc(f.nr_pv||'')||'<span class="fact-muted">—</span>'}</td>
       <td>${fmtDate(f.data_pv)||'<span class="fact-muted">—</span>'}</td>
       <td>${alopCell}</td>

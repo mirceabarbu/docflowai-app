@@ -2254,6 +2254,13 @@ export const MIGRATIONS = [
         ('facturi', 'Facturi (centralizator lichidări)', 'alop', TRUE, 65)
       ON CONFLICT (module_key) DO NOTHING;
     `
+  },
+  {
+    id: '099_lichidare_valoare_factura',
+    sql: `
+      ALTER TABLE alop_instances   ADD COLUMN IF NOT EXISTS lichidare_valoare_factura NUMERIC(18,2);
+      ALTER TABLE alop_ord_cicluri ADD COLUMN IF NOT EXISTS lichidare_valoare_factura NUMERIC(18,2);
+    `
   }
 ];
 

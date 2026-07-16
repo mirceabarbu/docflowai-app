@@ -494,6 +494,7 @@
         <tr style="text-align:left;color:var(--df-text-3);font-size:.78rem;text-transform:uppercase;">
           <th style="padding:10px 12px;">Nr. factură</th>
           <th style="padding:10px 12px;">Data factură</th>
+          <th style="padding:10px 12px;text-align:right;">Valoare</th>
           <th style="padding:10px 12px;">Nr. PV</th>
           <th style="padding:10px 12px;">Data PV</th>
           <th style="padding:10px 12px;">ALOP</th>
@@ -505,6 +506,13 @@
         </tr>
       </thead>
       <tbody id="facturi-tbody"></tbody>
+      <tfoot id="facturi-tfoot" style="display:none;">
+        <tr style="border-top:2px solid var(--df-border-2);font-weight:600;">
+          <td style="padding:10px 12px;" colspan="2">TOTAL</td>
+          <td id="facturi-total" style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;"></td>
+          <td colspan="8"></td>
+        </tr>
+      </tfoot>
     </table>
   </div>
   <style>
@@ -1279,6 +1287,11 @@
           </div>
         </div>
       </div>
+      <div>
+        <label class="alop-lbl">Valoare factură (RON)</label>
+        <input id="lich-valoare-factura" type="text" inputmode="decimal" autocomplete="off"
+          placeholder="Ex: 1234,56"/>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
           <label class="alop-lbl">Nr. proces verbal recepție</label>
@@ -1357,12 +1370,12 @@
 <script src="/notif-widget.js?v=3.9.693"></script>
 <script src="/js/formular/core.js?v=3.9.693" defer></script>
 <script src="/js/formular/verif.js?v=3.9.693" defer></script>
-<script src="/js/formular/alop.js?v=3.9.693" defer></script>
+<script src="/js/formular/alop.js?v=3.9.694" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.693" defer></script>
 <script src="/js/components/opme-report-drawer.js?v=3.9.693" defer></script>
 <script src="/js/formular/draft.js?v=3.9.693" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.693" defer></script>
-<script src="/js/formular/facturi.js?v=3.9.693" defer></script>
+<script src="/js/formular/facturi.js?v=3.9.694" defer></script>
 <script src="/js/formular/list.js?v=3.9.693" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
 <script src="/js/formular/doc.js?v=3.9.693" defer></script>
