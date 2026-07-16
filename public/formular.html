@@ -481,6 +481,52 @@
     (curente și arhivate). Read-only. Coloanele <strong>ALOP</strong> și <strong>DF</strong> sunt clicabile;
     <strong>ORD</strong> devine clicabilă după întocmire.
   </div>
+  <div class="lst-filters">
+    <div class="lst-filter-row">
+      <div class="flt-grp" style="flex:1.6 1 220px;">
+        <label class="flt-lbl">Căutare</label>
+        <input type="text" id="fact-q" class="flt-inp" placeholder="Nr. factură / PV / ALOP / observații" autocomplete="off" oninput="_renderFacturi()"/>
+      </div>
+      <div class="flt-grp" style="flex:1.1 1 130px;">
+        <label class="flt-lbl">Dată factură — de la</label>
+        <div style="position:relative;width:100%;">
+          <input type="text" id="fact-from-display" class="flt-inp" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+            style="width:100%;padding-right:32px;letter-spacing:.5px;box-sizing:border-box;"
+            oninput="onDateTextInput(this,'fact-from');_renderFacturi()"/>
+          <input type="date" id="fact-from" data-ro-date="1" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;" onchange="onDatePickerChange(this,'fact-from-display'); _renderFacturi()"/>
+          <span style="position:absolute;right:9px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:13px;">📅</span>
+        </div>
+      </div>
+      <div class="flt-grp" style="flex:1.1 1 130px;">
+        <label class="flt-lbl">până la</label>
+        <div style="position:relative;width:100%;">
+          <input type="text" id="fact-to-display" class="flt-inp" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+            style="width:100%;padding-right:32px;letter-spacing:.5px;box-sizing:border-box;"
+            oninput="onDateTextInput(this,'fact-to');_renderFacturi()"/>
+          <input type="date" id="fact-to" data-ro-date="1" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;" onchange="onDatePickerChange(this,'fact-to-display'); _renderFacturi()"/>
+          <span style="position:absolute;right:9px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:13px;">📅</span>
+        </div>
+      </div>
+      <div class="flt-grp" style="flex:0.9 1 130px;">
+        <label class="flt-lbl">Status ORD</label>
+        <select id="fact-ord-status" class="flt-sel" onchange="_renderFacturi()">
+          <option value="all">Toate</option>
+          <option value="cu">Cu ORD</option>
+          <option value="fara">Fără ORD</option>
+        </select>
+      </div>
+      <div class="flt-grp" style="flex:1 1 150px;">
+        <label class="flt-lbl">Confirmat de</label>
+        <select id="fact-conf-by" class="flt-sel" onchange="_renderFacturi()">
+          <option value="">Toți</option>
+        </select>
+      </div>
+      <button class="df-action-btn sm" style="align-self:flex-end" onclick="_resetFacturiFilters()" title="Resetează filtrele">↺</button>
+      <button class="df-action-btn primary sm" style="align-self:flex-end" type="button" onclick="_exportFacturiCsv()">
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.695#ico-download"/></svg> Export CSV
+      </button>
+    </div>
+  </div>
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
     <span id="facturi-counter" style="margin-left:auto;font-size:.83rem;color:var(--df-text-3);">— facturi</span>
   </div>
@@ -492,16 +538,16 @@
     <table id="facturi-table" style="width:100%;border-collapse:collapse;font-size:.88rem;">
       <thead>
         <tr style="text-align:left;color:var(--df-text-3);font-size:.78rem;text-transform:uppercase;">
-          <th style="padding:10px 12px;">Nr. factură</th>
-          <th style="padding:10px 12px;">Data factură</th>
-          <th style="padding:10px 12px;text-align:right;">Valoare</th>
+          <th style="padding:10px 12px;cursor:pointer;" data-sort="nr_factura">Nr. factură <span class="fact-sort-ind"></span></th>
+          <th style="padding:10px 12px;cursor:pointer;" data-sort="data_factura">Data factură <span class="fact-sort-ind"></span></th>
+          <th style="padding:10px 12px;text-align:right;cursor:pointer;" data-sort="valoare">Valoare <span class="fact-sort-ind"></span></th>
           <th style="padding:10px 12px;">Nr. PV</th>
           <th style="padding:10px 12px;">Data PV</th>
-          <th style="padding:10px 12px;">ALOP</th>
+          <th style="padding:10px 12px;cursor:pointer;" data-sort="alop_titlu">ALOP <span class="fact-sort-ind"></span></th>
           <th style="padding:10px 12px;">DF</th>
           <th style="padding:10px 12px;">ORD</th>
           <th style="padding:10px 12px;">Confirmat de</th>
-          <th style="padding:10px 12px;">Data confirmare</th>
+          <th style="padding:10px 12px;cursor:pointer;" data-sort="confirmed_at">Data confirmare <span class="fact-sort-ind"></span></th>
           <th style="padding:10px 12px;">Observații</th>
         </tr>
       </thead>
@@ -522,6 +568,7 @@
     #facturi-table .fact-link { color: var(--df-accent, #a78bfa); cursor:pointer; text-decoration:none; }
     #facturi-table .fact-link:hover { text-decoration:underline; }
     #facturi-table .fact-muted { color: var(--df-text-3); }
+    #facturi-table .fact-sort-ind { display:inline-block; margin-left:4px; font-size:.7rem; color: var(--df-text-3); }
   </style>
 </div><!-- /facturi-section -->
 
@@ -1375,7 +1422,7 @@
 <script src="/js/components/opme-report-drawer.js?v=3.9.693" defer></script>
 <script src="/js/formular/draft.js?v=3.9.693" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.693" defer></script>
-<script src="/js/formular/facturi.js?v=3.9.694" defer></script>
+<script src="/js/formular/facturi.js?v=3.9.695" defer></script>
 <script src="/js/formular/list.js?v=3.9.693" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
 <script src="/js/formular/doc.js?v=3.9.693" defer></script>
