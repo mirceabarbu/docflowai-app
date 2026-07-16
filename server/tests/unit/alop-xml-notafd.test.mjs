@@ -27,6 +27,9 @@ async function expectValid(df) {
     throw new Error('XML invalid contra XSD:\n' + JSON.stringify(res.errors, null, 2) + '\n\n' + xml);
   }
   expect(res.valid).toBe(true);
+  // Format cerut de parserul XFA al formularului MF (vezi serializer): niciun element
+  // auto-închis (`__Load_*` caută tag-ul de închidere) — verificat pe FIECARE exemplu.
+  expect(xml).not.toMatch(/\/>/);
   return xml;
 }
 
@@ -133,8 +136,13 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
     const xml = await expectValid(df);
     // Lei întregi, ceiling: 11.523.668,69 lei -> "11523669".
     expect(xml).toContain('11523669');
-    expect(xml).toContain('influente_c6="0"');
-    expect(xml).toContain('influente_c9="11523669"');
+    expect(xml).toContain("influente_c6='0'");
+    expect(xml).toContain("influente_c9='11523669'");
+    // Delimitator apostrof + rânduri cu tag de închidere (parserul XFA al formularului MF).
+    expect(xml).toContain("influente='11523669'");
+    expect(xml).toContain('</rowT_ang_pl_val>');
+    expect(xml).toContain('</rowT_ang_pl_plati>');
+    expect(xml).toContain('</rowT_ang_ctrl_ang>');
   });
 
   // Ex.2 rev.0 — Achiziție licență IT, 560 lei.
@@ -174,7 +182,7 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('"560"'); // 560 lei -> întreg, fără zecimale
+    expect(xml).toContain("'560'"); // 560 lei -> întreg, fără zecimale
   });
 
   // Ex.3 — drepturi de personal, două rânduri 301.000.000 + 27.650.000.
@@ -219,8 +227,8 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('"301000000"'); // 301.000.000 lei -> lei întregi
-    expect(xml).toContain('"27650000"');  // 27.650.000 lei -> lei întregi
+    expect(xml).toContain("'301000000'"); // 301.000.000 lei -> lei întregi
+    expect(xml).toContain("'27650000'");  // 27.650.000 lei -> lei întregi
   });
 
   // Ex.4 rev.0 — angajamente legale emise în contul anului următor.
@@ -261,8 +269,8 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('ckbx_ang_leg_emise_ct_an_urm="1"');
-    expect(xml).toContain('plati_estim_an_np1="120000"');
+    expect(xml).toContain("ckbx_ang_leg_emise_ct_an_urm='1'");
+    expect(xml).toContain("plati_estim_an_np1='120000'");
   });
 
   // Ex.5 — terț / obligație legală, buget insuficient: SecB fără rânduri de control,
@@ -303,14 +311,49 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('ckbx_fara_inreg_ctrl_ang="1"');
-    expect(xml).toContain('sum_fara_inreg_ctrl_crdbug="75000"');
-    expect(xml).toContain('ckbx_interzis_emit_ang="1"');
-    // SecB fără rânduri de control -> element self-closing, fără rowT_ang_ctrl_ang
+    expect(xml).toContain("ckbx_fara_inreg_ctrl_ang='1'");
+    expect(xml).toContain("sum_fara_inreg_ctrl_crdbug='75000'");
+    expect(xml).toContain("ckbx_interzis_emit_ang='1'");
+    // SecB fără rânduri de control -> element gol dar cu tag de închidere (parserul XFA
+    // al formularului MF nu recunoaște forma auto-închisă), fără rowT_ang_ctrl_ang.
+    expect(xml).toContain('></sectiuneaB>');
     expect(xml).not.toContain('<rowT_ang_ctrl_ang');
+    // ang_legale_plati are rânduri aici, deci verificăm ramura goală separat mai jos.
     // Pereche 2 NU se emite în XML (câmp intern afișaj/PDF).
     expect(xml).not.toContain('sum_fara_inreg_ctrl_crd_bug');
-    expect(xml).not.toContain('"99999"');
+    expect(xml).not.toContain("'99999'");
+  });
+
+  // Format parser XFA: ramurile FĂRĂ rânduri emiteau containere auto-închise; parserul
+  // formularului MF le cere pereche. Aici ang_legale_plati n-are rânduri.
+  it("ang_legale_plati fără rânduri -> tag pereche, nu auto-închis; apostrofii din valori -> &apos;", async () => {
+    const df = {
+      Cif: '4221306',
+      DenInstPb: "Primăria Comunei D'Exemplu",
+      SubtitluDF: 'Fără plăți estimate',
+      NrUnicInreg: 'DF-2026-0006',
+      Revizuirea: '0',
+      DataRevizuirii: '30.01.2026',
+      sectiuneaA: {
+        compartiment_specialitate: 'Direcția Economică',
+        obiect_fd_reviz_scurt: 'Angajament fără plăți în anul curent',
+        obiect_fd_reviz_lung: 'Angajament legal fără plăți estimate în anul curent.',
+        ang_legale_val: {
+          ckbx_stab_tin_cont: '1',
+          rowT_ang_pl_val: [
+            { element_fd: 'Element', program: '5102', codSSI: '71.01.01', param_fd: '-',
+              valt_rev_prec: 0, influente: 1000, valt_actualiz: 1000 },
+          ],
+        },
+        ang_legale_plati: { ckbx_fara_plati_ang_in_ancrt: '1' },
+      },
+      sectiuneaB: { ckbx_secta_inreg_ctrl_ang: '1' },
+    };
+    const xml = await expectValid(df);
+    expect(xml).toContain('></ang_legale_plati>');
+    expect(xml).not.toContain('<rowT_ang_pl_plati');
+    // Apostroful din valoare e escapat -> nu rupe delimitatorul de atribut.
+    expect(xml).toContain("DenInstPb='Primăria Comunei D&apos;Exemplu'");
   });
 });
 

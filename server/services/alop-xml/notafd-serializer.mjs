@@ -14,23 +14,27 @@ import { ronToLeiXml, dateRo, ckbx, cif, xmlEscape, strClamp } from './format.mj
 const NS = 'mfp:anaf:dgti:notafd:declaratie:v1';
 
 // ── Emitere atribute ────────────────────────────────────────────────────────
+// ⚠️ Delimitator APOSTROF, nu ghilimele: parserul XFA al formularului oficial MF caută
+// literalmente `nume + "='"` (__GetAttributeValue) — cu `"` nu citește valoarea. Apostroful
+// e XML valid, deci output-ul rămâne valid contra XSD. `xmlEscape` transformă `'` → `&apos;`.
+//
 // String required / mereu emis (escape + verificare lungime). Empty permis ("").
 function aStr(name, val, max) {
-  return ` ${name}="${xmlEscape(strClamp(val ?? '', max, name))}"`;
+  return ` ${name}='${xmlEscape(strClamp(val ?? '', max, name))}'`;
 }
 // Bifă (Str1): mereu emisă ca "1" / "" — semantica "nebifat = ''" din XSD.
 function aCkbx(name, val) {
-  return ` ${name}="${ckbx(val)}"`;
+  return ` ${name}='${ckbx(val)}'`;
 }
 // String opțional: OMIS când lipsește/empty.
 function aStrOpt(name, val, max) {
   if (val === null || val === undefined || String(val).trim() === '') return '';
-  return ` ${name}="${xmlEscape(strClamp(String(val), max, name))}"`;
+  return ` ${name}='${xmlEscape(strClamp(String(val), max, name))}'`;
 }
 // Sumă opțională (IntPoz12, lei cu 2 zecimale): OMISĂ când lipsește; "0.00" dacă a fost completată.
 function aSum(name, val) {
   const suma = ronToLeiXml(val);
-  return suma === null ? '' : ` ${name}="${suma}"`;
+  return suma === null ? '' : ` ${name}='${suma}'`;
 }
 
 function rowAngPlVal(r) {
@@ -42,7 +46,7 @@ function rowAngPlVal(r) {
     + aSum('valt_rev_prec', r.valt_rev_prec)
     + aSum('influente', r.influente)
     + aSum('valt_actualiz', r.valt_actualiz)
-    + '/>';
+    + '></rowT_ang_pl_val>';
 }
 
 function rowAngPlPlati(r) {
@@ -55,7 +59,7 @@ function rowAngPlPlati(r) {
     + aSum('plati_estim_ani_ulter', r.plati_estim_ani_ulter)
     + aStr('program', r.program, 10)
     + aStr('codSSI', r.codSSI, 15)
-    + '/>';
+    + '></rowT_ang_pl_plati>';
 }
 
 function rowAngCtrl(r) {
@@ -70,7 +74,7 @@ function rowAngCtrl(r) {
     + aSum('sum_rezv_crdt_bug_af_rvz_prc', r.sum_rezv_crdt_bug_af_rvz_prc)
     + aSum('influente_c9', r.influente_c9)
     + aSum('sum_rezv_crdt_bug_act', r.sum_rezv_crdt_bug_act)
-    + '/>';
+    + '></rowT_ang_ctrl_ang>';
 }
 
 /**
@@ -128,7 +132,7 @@ export function serializeNotafd(df) {
     for (const r of rowsPlati) out.push(rowAngPlPlati(r));
     out.push('    </ang_legale_plati>');
   } else {
-    out.push('    <ang_legale_plati' + platiAttrs + '/>');
+    out.push('    <ang_legale_plati' + platiAttrs + '></ang_legale_plati>');
   }
   out.push('  </sectiuneaA>');
 
@@ -146,7 +150,7 @@ export function serializeNotafd(df) {
     for (const r of rowsCtrl) out.push(rowAngCtrl(r));
     out.push('  </sectiuneaB>');
   } else {
-    out.push('  <sectiuneaB' + bAttrs + '/>');
+    out.push('  <sectiuneaB' + bAttrs + '></sectiuneaB>');
   }
 
   out.push('</NOTAFD>');

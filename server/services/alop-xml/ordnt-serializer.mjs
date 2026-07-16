@@ -14,14 +14,18 @@ import { ronToLeiXml, dateRo, cif, xmlEscape, strClamp } from './format.mjs';
 const NS = 'mfp:anaf:dgti:ordnt:declaratie:v1';
 
 // ── Emitere atribute ────────────────────────────────────────────────────────
+// ⚠️ Delimitator APOSTROF, nu ghilimele: parserul XFA al formularului oficial MF caută
+// literalmente `nume + "='"` (__GetAttributeValue) — cu `"` nu citește valoarea. Apostroful
+// e XML valid, deci output-ul rămâne valid contra XSD. `xmlEscape` transformă `'` → `&apos;`.
+//
 // String required / mereu emis (escape + verificare lungime). Empty permis ("").
 function aStr(name, val, max) {
-  return ` ${name}="${xmlEscape(strClamp(val ?? '', max, name))}"`;
+  return ` ${name}='${xmlEscape(strClamp(val ?? '', max, name))}'`;
 }
 // Sumă opțională (IntPoz12, lei cu 2 zecimale): OMISĂ când lipsește; "0.00" dacă a fost completată.
 function aSum(name, val) {
   const suma = ronToLeiXml(val);
-  return suma === null ? '' : ` ${name}="${suma}"`;
+  return suma === null ? '' : ` ${name}='${suma}'`;
 }
 
 // IBAN (Str24): scoate spațiile (ghidul îl arată grupat) înainte de verificarea lungimii.
@@ -30,6 +34,8 @@ function normIban(val, fieldName) {
   return strClamp(s, 24, fieldName);
 }
 
+// ⚠️ Tag de închidere obligatoriu: `__Load_rowTfd` din formularul MF delimitează rândul
+// între `<rowTfd` și `</rowTfd>`; un rând auto-închis lasă tabelul gol la import.
 function rowTfd(r) {
   return '    <rowTfd'
     + aStr('cod_angajament', r.cod_angajament, 11)
@@ -40,7 +46,7 @@ function rowTfd(r) {
     + aSum('plati_anterioare', r.plati_anterioare)
     + aSum('suma_ordonantata_plata', r.suma_ordonantata_plata)
     + aSum('receptii_neplatite', r.receptii_neplatite)
-    + '/>';
+    + '></rowTfd>';
 }
 
 function docFdBlock(df) {
@@ -52,7 +58,7 @@ function docFdBlock(df) {
     // documente_justificative / banca_beneficiar / inf_pv_plata / inf_pv_plata1 sunt
     // required în XSD, dar ghidul le marchează "doar dacă e cazul" -> emise mereu, "" când lipsesc.
     + aStr('documente_justificative', df.documente_justificative, 90)
-    + ` iban_beneficiar="${xmlEscape(normIban(df.iban_beneficiar, 'iban_beneficiar'))}"`
+    + ` iban_beneficiar='${xmlEscape(normIban(df.iban_beneficiar, 'iban_beneficiar'))}'`
     + aStr('cif_beneficiar', cif(df.cif_beneficiar), 10)
     + aStr('banca_beneficiar', df.banca_beneficiar, 100)
     + aStr('inf_pv_plata', df.inf_pv_plata, 70)

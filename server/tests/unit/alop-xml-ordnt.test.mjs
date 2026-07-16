@@ -27,6 +27,10 @@ async function expectValid(ord) {
     throw new Error('XML invalid contra XSD:\n' + JSON.stringify(res.errors, null, 2) + '\n\n' + xml);
   }
   expect(res.valid).toBe(true);
+  // Format cerut de parserul XFA al formularului MF (vezi serializer): niciun element
+  // auto-închis — `__Load_rowTfd` delimitează rândul până la `</rowTfd>`, iar un rând
+  // auto-închis lasă tabelul gol la import. Verificat pe FIECARE exemplu.
+  expect(xml).not.toMatch(/\/>/);
   return xml;
 }
 
@@ -63,16 +67,19 @@ function ordGhid(docFd) {
 describe('serializeOrdnt — exemplu MF (Cap.IV) validat contra ordnt_v0.xsd', () => {
   it('Cap.IV — Telekom România, IBAN normalizat, lei întregi (50 -> 50)', async () => {
     const xml = await expectValid(ordGhid());
-    expect(xml).toContain('NrOrdonantPl="121"');
-    expect(xml).toContain('DataOrdontPl="05.02.2026"');
+    expect(xml).toContain("NrOrdonantPl='121'");
+    expect(xml).toContain("DataOrdontPl='05.02.2026'");
     // IBAN fără spații, ≤24 caractere.
-    expect(xml).toContain('iban_beneficiar="RO51RNCB0080002971510001"');
+    expect(xml).toContain("iban_beneficiar='RO51RNCB0080002971510001'");
     expect(xml).not.toContain('RO51 RNCB');
     // receptii 50 lei -> "50" (fără zecimale).
-    expect(xml).toContain('receptii="50"');
-    expect(xml).toContain('suma_ordonantata_plata="50"');
-    expect(xml).toContain('receptii_neplatite="0"');
-    expect(xml).toContain('cif_beneficiar="427320"');
+    expect(xml).toContain("receptii='50'");
+    expect(xml).toContain("suma_ordonantata_plata='50'");
+    expect(xml).toContain("receptii_neplatite='0'");
+    expect(xml).toContain("cif_beneficiar='427320'");
+    // Rândul are tag de închidere -> `__Load_rowTfd` îl citește (altfel tabelul rămâne gol).
+    expect(xml).toContain('</rowTfd>');
+    expect(xml).toContain('</docFd>');
   });
 
   it('sume cu bani -> lei întregi rotunjiți în SUS (2964,50 -> 2965)', async () => {
@@ -84,8 +91,8 @@ describe('serializeOrdnt — exemplu MF (Cap.IV) validat contra ordnt_v0.xsd', (
       ],
     }));
     const xml = await expectValid(ord);
-    expect(xml).toContain('receptii="2965"');
-    expect(xml).toContain('suma_ordonantata_plata="2965"');
+    expect(xml).toContain("receptii='2965'");
+    expect(xml).toContain("suma_ordonantata_plata='2965'");
   });
 
   it('docFd ca array de 2 -> două blocuri <docFd> (forward-compat multi-DF)', async () => {
@@ -96,16 +103,16 @@ describe('serializeOrdnt — exemplu MF (Cap.IV) validat contra ordnt_v0.xsd', (
     const xml = await expectValid(ord);
     const count = (xml.match(/<docFd /g) || []).length;
     expect(count).toBe(2);
-    expect(xml).toContain('nr_unic_inreg="111"');
-    expect(xml).toContain('nr_unic_inreg="222"');
-    expect(xml).toContain('beneficiar="Furnizor Secund SRL"');
+    expect(xml).toContain("nr_unic_inreg='111'");
+    expect(xml).toContain("nr_unic_inreg='222'");
+    expect(xml).toContain("beneficiar='Furnizor Secund SRL'");
   });
 
   it('câmpuri opționale goale (documente_justificative="") -> atribut prezent, gol, valid XSD', async () => {
     const ord = ordGhid(docFdGhid({ documente_justificative: '', banca_beneficiar: '', inf_pv_plata: '' }));
     const xml = await expectValid(ord);
-    expect(xml).toContain('documente_justificative=""');
-    expect(xml).toContain('banca_beneficiar=""');
-    expect(xml).toContain('inf_pv_plata=""');
+    expect(xml).toContain("documente_justificative=''");
+    expect(xml).toContain("banca_beneficiar=''");
+    expect(xml).toContain("inf_pv_plata=''");
   });
 });
