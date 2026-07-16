@@ -1493,7 +1493,7 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
       'INSERT INTO notifications (user_email,flow_id,type,title,message,urgent) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
       [email, flowId || null, type, displayTitle, message, !!urgent]
     );
-    wsPush(email, { event: 'new_notification', notification: { id: r.rows[0]?.id, flow_id: flowId, type, title: displayTitle, message, read: false, created_at: new Date().toISOString(), urgent: !!urgent } });
+    wsPush(email, { event: 'notification', data: { id: r.rows[0]?.id, flow_id: flowId || null, flowId: flowId || null, type, title: displayTitle, message, read: false, created_at: new Date().toISOString(), urgent: !!urgent } });
     const { rows: cntRows } = await pool.query('SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE', [email]);
     wsPush(email, { event: 'unread_count', count: parseInt(cntRows[0].count) });
   }
