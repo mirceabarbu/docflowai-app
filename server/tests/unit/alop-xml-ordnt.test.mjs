@@ -3,8 +3,9 @@
 //
 // Obiectul ORD de mai jos este XSD-shaped (root + docFd), identic cu `data` JSONB-ul pe care
 // îl consumă generatorul PDF. Sumele sunt în LEI (decimal) — exact formatul stocat real;
-// serializer-ul le emite ca lei cu 2 zecimale pentru IntPoz12SType. ORD n-are influențe
-// negative, deci toate exemplele validează (fără it.todo).
+// serializer-ul le emite ca lei ÎNTREGI (rotunjire în sus) pentru IntPoz12SType, care e
+// xs:integer în schema oficială MF. ORD n-are influențe negative, deci toate exemplele
+// validează (fără it.todo).
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFile } from 'node:fs/promises';
@@ -60,18 +61,31 @@ function ordGhid(docFd) {
 }
 
 describe('serializeOrdnt — exemplu MF (Cap.IV) validat contra ordnt_v0.xsd', () => {
-  it('Cap.IV — Telekom România, IBAN normalizat, lei cu 2 zecimale (50 -> 50.00)', async () => {
+  it('Cap.IV — Telekom România, IBAN normalizat, lei întregi (50 -> 50)', async () => {
     const xml = await expectValid(ordGhid());
     expect(xml).toContain('NrOrdonantPl="121"');
     expect(xml).toContain('DataOrdontPl="05.02.2026"');
     // IBAN fără spații, ≤24 caractere.
     expect(xml).toContain('iban_beneficiar="RO51RNCB0080002971510001"');
     expect(xml).not.toContain('RO51 RNCB');
-    // receptii 50 lei -> 50.00.
-    expect(xml).toContain('receptii="50.00"');
-    expect(xml).toContain('suma_ordonantata_plata="50.00"');
-    expect(xml).toContain('receptii_neplatite="0.00"');
+    // receptii 50 lei -> "50" (fără zecimale).
+    expect(xml).toContain('receptii="50"');
+    expect(xml).toContain('suma_ordonantata_plata="50"');
+    expect(xml).toContain('receptii_neplatite="0"');
     expect(xml).toContain('cif_beneficiar="427320"');
+  });
+
+  it('sume cu bani -> lei întregi rotunjiți în SUS (2964,50 -> 2965)', async () => {
+    const ord = ordGhid(docFdGhid({
+      rowTfd: [
+        { cod_angajament: 'AABBD7P9XP6', indicator_angajament: 'AAB', program: '0000000541',
+          cod_SSI: '01A510103200108', receptii: 2964.5, plati_anterioare: 0,
+          suma_ordonantata_plata: 2964.5, receptii_neplatite: 0 },
+      ],
+    }));
+    const xml = await expectValid(ord);
+    expect(xml).toContain('receptii="2965"');
+    expect(xml).toContain('suma_ordonantata_plata="2965"');
   });
 
   it('docFd ca array de 2 -> două blocuri <docFd> (forward-compat multi-DF)', async () => {

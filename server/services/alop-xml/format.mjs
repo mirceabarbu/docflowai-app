@@ -2,10 +2,11 @@
 // Regulile sunt derivate din tipurile simple din `schemas/notafd_v0.xsd` (autoritative).
 // Fără efecte secundare, fără I/O — doar transformări valoare → string conform XSD.
 //
-// IntPoz12SType (xs:decimal 0…999999999999.99, 2 zecimale) = sume în LEI (NU bani; fără ×100).
+// IntPoz12SType (xs:integer 0…999999999999) = sume în LEI ÎNTREGI (NU bani; fără ×100;
+// fără zecimale), rotunjire în sus.
 // DateSType (dd.mm.yyyy), Str1 (bife "1"/""), CuiSType (CIF fără "RO"), StrN (maxLength).
 
-const MAX_LEI_CENTS = 99999999999999n; // 999999999999.99 lei, în bani-cents (IntPoz12SType maxInclusive)
+const MAX_LEI = 999999999999n; // IntPoz12SType maxInclusive (lei întregi)
 
 /**
  * Parsează un număr scris fie ca decimal JS ("11523668.69" / 11523668.69 — formatul
@@ -28,18 +29,17 @@ function parseAmount(s) {
 }
 
 /**
- * Convertește o sumă RON la string-ul canonic xs:decimal în LEI, cu exact 2 zecimale
- * (separator "."), potrivit pentru IntPoz12SType. NU mai înmulțește cu 100 — formularul
- * MF interpretează numărul ca lei.
- *   ronToLeiXml(11523668.69)        -> "11523668.69"
- *   ronToLeiXml("11.523.668,69")    -> "11523668.69"
- *   ronToLeiXml(2964.5)             -> "2964.50"
- *   ronToLeiXml("") | null | undef  -> null  (apelantul OMITE atributul)
- *   ronToLeiXml(0)                  -> "0.00" (valoare completată = 0)
- * Aritmetică pe bani-cents (întregi) ca să nu apară artefacte de float (ex. "2964.5000001").
- * Păstrează semnul — influențele negative din revizii NU se clampază/abs (ar corupe
- * datele financiare); schema le respinge la validare (minInclusive 0).
- * Aruncă pe input nenumeric sau magnitudine > 999999999999.99 lei.
+ * Convertește o sumă RON la string-ul canonic xs:integer în LEI ÎNTREGI, potrivit pentru
+ * IntPoz12SType (schema oficială MF e xs:integer — FĂRĂ zecimale). Rotunjire în SUS (ceiling):
+ * orice fracție de leu urcă la leul următor (decizie Mircea).
+ *   ronToLeiXml(5000)            -> "5000"
+ *   ronToLeiXml(2964.5)          -> "2965"   (ceiling)
+ *   ronToLeiXml("11.523.668,69") -> "11523669"
+ *   ronToLeiXml("") | null|undef -> null     (apelantul OMITE atributul)
+ *   ronToLeiXml(0)               -> "0"
+ * Rotunjim la bani-cents întâi (Math.round(n*100)) ca să evităm artefacte de float ÎNAINTE de
+ * ceiling (ex. 2964.00 să nu devină 2965 dintr-un 2964.0000001). Semnul e păstrat; schema
+ * respinge negativele la validare (minInclusive 0). Aruncă pe input nenumeric sau > MAX_LEI.
  */
 export function ronToLeiXml(val) {
   if (val === null || val === undefined) return null;
@@ -52,15 +52,12 @@ export function ronToLeiXml(val) {
     if (s === '') return null;
     n = parseAmount(s);
   }
-  let cents = Math.round(n * 100);
-  if (Object.is(cents, -0)) cents = 0;
-  if (BigInt(Math.abs(cents)) > MAX_LEI_CENTS)
-    throw new Error(`ronToLeiXml: depășește intervalul IntPoz12 (max 999999999999.99 lei): ${val}`);
-  const sign = cents < 0 ? '-' : '';
-  const abs = Math.abs(cents);
-  const lei = Math.floor(abs / 100);
-  const bani = abs % 100;
-  return `${sign}${lei}.${String(bani).padStart(2, '0')}`;
+  const cents = Math.round(n * 100);       // exact la ban, fără artefacte float
+  let lei = Math.ceil(cents / 100);        // rotunjire în SUS la leu
+  if (Object.is(lei, -0)) lei = 0;
+  if (BigInt(Math.abs(lei)) > MAX_LEI)
+    throw new Error(`ronToLeiXml: depășește intervalul IntPoz12 (max ${MAX_LEI} lei): ${val}`);
+  return String(lei);
 }
 
 /**

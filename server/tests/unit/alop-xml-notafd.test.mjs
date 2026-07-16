@@ -3,7 +3,8 @@
 //
 // Obiectele DF de mai jos sunt XSD-shaped (root + sectiuneaA + sectiuneaB), identice cu
 // `data` JSONB-ul pe care îl consumă generatorul PDF. Sumele sunt în LEI (decimal) — exact
-// formatul stocat real; serializer-ul le emite ca lei cu 2 zecimale pentru IntPoz12SType.
+// formatul stocat real; serializer-ul le emite ca lei ÎNTREGI (rotunjire în sus) pentru
+// IntPoz12SType, care e xs:integer în schema oficială MF.
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFile } from 'node:fs/promises';
@@ -31,26 +32,32 @@ async function expectValid(df) {
 
 // ── Helpers de conversie (puri) ─────────────────────────────────────────────
 describe('format.mjs — conversii pure', () => {
-  it('ronToLeiXml: format românesc cu mii "." și zecimal ","', () => {
-    expect(ronToLeiXml('11.523.668,69')).toBe('11523668.69');
+  it('ronToLeiXml: format românesc cu mii "." și zecimal "," -> leu întreg (ceiling)', () => {
+    expect(ronToLeiXml('11.523.668,69')).toBe('11523669');
   });
-  it('ronToLeiXml: decimal JS (formatul stocat real)', () => {
-    expect(ronToLeiXml(11523668.69)).toBe('11523668.69');
-    expect(ronToLeiXml('11523668.69')).toBe('11523668.69');
+  it('ronToLeiXml: decimal JS (formatul stocat real) -> leu întreg (ceiling)', () => {
+    expect(ronToLeiXml(11523668.69)).toBe('11523669');
+    expect(ronToLeiXml('11523668.69')).toBe('11523669');
   });
-  it('ronToLeiXml: întregi și grupare cu mai multe puncte -> lei cu 2 zecimale', () => {
-    expect(ronToLeiXml(560)).toBe('560.00');
-    expect(ronToLeiXml('301.000.000')).toBe('301000000.00');
-    expect(ronToLeiXml('27.650.000')).toBe('27650000.00');
+  it('ronToLeiXml: bani -> rotunjire în SUS la leu', () => {
+    expect(ronToLeiXml(2964.5)).toBe('2965');
+    expect(ronToLeiXml('2964,50')).toBe('2965');
+    expect(ronToLeiXml(2964.01)).toBe('2965');
+    expect(ronToLeiXml(2964)).toBe('2964'); // fără fracție -> neschimbat
   });
-  it('ronToLeiXml: empty/null -> null (atribut omis); 0 completat -> "0.00"', () => {
+  it('ronToLeiXml: întregi și grupare cu mai multe puncte -> lei întregi', () => {
+    expect(ronToLeiXml(560)).toBe('560');
+    expect(ronToLeiXml('301.000.000')).toBe('301000000');
+    expect(ronToLeiXml('27.650.000')).toBe('27650000');
+  });
+  it('ronToLeiXml: empty/null -> null (atribut omis); 0 completat -> "0"', () => {
     expect(ronToLeiXml('')).toBeNull();
     expect(ronToLeiXml(null)).toBeNull();
     expect(ronToLeiXml(undefined)).toBeNull();
-    expect(ronToLeiXml(0)).toBe('0.00');
+    expect(ronToLeiXml(0)).toBe('0');
   });
   it('ronToLeiXml: păstrează semnul (NU clampază negativele)', () => {
-    expect(ronToLeiXml(-10)).toBe('-10.00');
+    expect(ronToLeiXml(-10)).toBe('-10');
   });
   it('ronToLeiXml: depășirea IntPoz12 aruncă', () => {
     expect(() => ronToLeiXml(9999999999999)).toThrow();
@@ -124,10 +131,10 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    // Lei cu 2 zecimale: 11.523.668,69 lei -> "11523668.69".
-    expect(xml).toContain('11523668.69');
-    expect(xml).toContain('influente_c6="0.00"');
-    expect(xml).toContain('influente_c9="11523668.69"');
+    // Lei întregi, ceiling: 11.523.668,69 lei -> "11523669".
+    expect(xml).toContain('11523669');
+    expect(xml).toContain('influente_c6="0"');
+    expect(xml).toContain('influente_c9="11523669"');
   });
 
   // Ex.2 rev.0 — Achiziție licență IT, 560 lei.
@@ -167,7 +174,7 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('"560.00"'); // 560 lei -> 560.00
+    expect(xml).toContain('"560"'); // 560 lei -> întreg, fără zecimale
   });
 
   // Ex.3 — drepturi de personal, două rânduri 301.000.000 + 27.650.000.
@@ -212,8 +219,8 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('"301000000.00"'); // 301.000.000 lei -> lei cu 2 zecimale
-    expect(xml).toContain('"27650000.00"');  // 27.650.000 lei -> lei cu 2 zecimale
+    expect(xml).toContain('"301000000"'); // 301.000.000 lei -> lei întregi
+    expect(xml).toContain('"27650000"');  // 27.650.000 lei -> lei întregi
   });
 
   // Ex.4 rev.0 — angajamente legale emise în contul anului următor.
@@ -255,7 +262,7 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
     };
     const xml = await expectValid(df);
     expect(xml).toContain('ckbx_ang_leg_emise_ct_an_urm="1"');
-    expect(xml).toContain('plati_estim_an_np1="120000.00"');
+    expect(xml).toContain('plati_estim_an_np1="120000"');
   });
 
   // Ex.5 — terț / obligație legală, buget insuficient: SecB fără rânduri de control,
@@ -297,13 +304,13 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
     };
     const xml = await expectValid(df);
     expect(xml).toContain('ckbx_fara_inreg_ctrl_ang="1"');
-    expect(xml).toContain('sum_fara_inreg_ctrl_crdbug="75000.00"');
+    expect(xml).toContain('sum_fara_inreg_ctrl_crdbug="75000"');
     expect(xml).toContain('ckbx_interzis_emit_ang="1"');
     // SecB fără rânduri de control -> element self-closing, fără rowT_ang_ctrl_ang
     expect(xml).not.toContain('<rowT_ang_ctrl_ang');
     // Pereche 2 NU se emite în XML (câmp intern afișaj/PDF).
     expect(xml).not.toContain('sum_fara_inreg_ctrl_crd_bug');
-    expect(xml).not.toContain('"99999.00"');
+    expect(xml).not.toContain('"99999"');
   });
 });
 

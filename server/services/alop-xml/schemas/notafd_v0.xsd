@@ -156,10 +156,9 @@
 		</xs:restriction>
 	</xs:simpleType>
 	<xs:simpleType name="IntPoz12SType">
-		<xs:restriction base="xs:decimal">
+		<xs:restriction base="xs:integer">
 			<xs:minInclusive value="0"/>
-			<xs:maxInclusive value="999999999999.99"/>
-			<xs:fractionDigits value="2"/>
+			<xs:maxInclusive value="999999999999"/>
 		</xs:restriction>
 	</xs:simpleType>
 	<xs:simpleType name="Str10">
