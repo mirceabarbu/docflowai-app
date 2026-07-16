@@ -489,7 +489,18 @@ router.get('/api/alop/facturi', async (req, res) => {
           FROM alop_instances a
          WHERE a.org_id = $1 AND a.cancelled_at IS NULL${visWhere}
       )
-      SELECT * FROM (
+      SELECT
+        t.*,
+        (
+          SELECT r->>'cod_angajament'
+            FROM formulare_df fd
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(fd.rows_ctrl,'[]'::jsonb)) r
+           WHERE fd.id = t.df_id
+             AND fd.deleted_at IS NULL
+             AND COALESCE(r->>'cod_angajament','') <> ''
+           LIMIT 1
+        ) AS cod_angajament
+      FROM (
         -- Facturi CURENTE (ciclul în lucru)
         SELECT
           a.id                     AS alop_id,

@@ -74,7 +74,7 @@
     const confBy = document.getElementById('fact-conf-by')?.value||'';
     return _allFacturi.filter(f=>{
       if(q){
-        const hay = [f.nr_factura,f.nr_pv,f.alop_titlu,f.notes].map(x=>(x||'').toString().toLowerCase()).join(' ');
+        const hay = [f.nr_factura,f.nr_pv,f.alop_titlu,f.cod_angajament].map(x=>(x||'').toString().toLowerCase()).join(' ');
         if(!hay.includes(q)) return false;
       }
       const dataFact = f.data_factura ? String(f.data_factura).slice(0,10) : '';
@@ -161,7 +161,7 @@
 
   function _exportFacturiCsv(){
     const rows = _facturiSortate(_facturiFiltrate());
-    const head = ['Nr. factura','Data factura','Valoare','Nr. PV','Data PV','ALOP','DF legat','ORD legata','Confirmat de','Data confirmare','Observatii'];
+    const head = ['Nr. factura','Data factura','Valoare','Nr. PV','Data PV','ALOP','DF legat','Cod angajament','ORD legata','Confirmat de','Data confirmare'];
     const escCsv = v => { const s=(v==null?'':String(v)); return /[";\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
     const fmtD = d => d ? new Date(d).toLocaleDateString('ro-RO') : '';
     const body = rows.map(f => [
@@ -170,8 +170,9 @@
       f.nr_pv, fmtD(f.data_pv),
       f.alop_titlu,
       f.df_id ? 'DA' : '',
+      f.cod_angajament,
       f.ord_id ? 'DA' : '',
-      f.confirmed_by_name, fmtD(f.confirmed_at), f.notes
+      f.confirmed_by_name, fmtD(f.confirmed_at)
     ].map(escCsv).join(';'));
     const csv = '﻿' + head.join(';') + '\n' + body.join('\n');
     const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
@@ -202,10 +203,10 @@
       <td>${fmtDate(f.data_pv)||'<span class="fact-muted">—</span>'}</td>
       <td>${alopCell}</td>
       <td>${dfCell}</td>
+      <td style="font-variant-numeric:tabular-nums;">${esc(f.cod_angajament||'')||'<span class="fact-muted">—</span>'}</td>
       <td>${ordCell}</td>
       <td>${esc(f.confirmed_by_name||'')||'<span class="fact-muted">—</span>'}</td>
       <td>${fmtDate(f.confirmed_at)}</td>
-      <td style="max-width:220px;white-space:pre-wrap;">${esc(f.notes||'')||'<span class="fact-muted">—</span>'}</td>
     </tr>`;
   }
 
