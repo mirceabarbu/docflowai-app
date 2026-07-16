@@ -9,7 +9,7 @@
 // elementFormDefault="qualified"  -> elementele moștenesc namespace-ul default de pe root.
 // attributeFormDefault="unqualified" -> atributele NU au prefix.
 
-import { ronToBani, dateRo, cif, xmlEscape, strClamp } from './format.mjs';
+import { ronToLeiXml, dateRo, cif, xmlEscape, strClamp } from './format.mjs';
 
 const NS = 'mfp:anaf:dgti:ordnt:declaratie:v1';
 
@@ -18,10 +18,10 @@ const NS = 'mfp:anaf:dgti:ordnt:declaratie:v1';
 function aStr(name, val, max) {
   return ` ${name}="${xmlEscape(strClamp(val ?? '', max, name))}"`;
 }
-// Sumă opțională (IntPoz12, bani): OMISĂ când lipsește; "0" emis dacă a fost completată.
+// Sumă opțională (IntPoz12, lei cu 2 zecimale): OMISĂ când lipsește; "0.00" dacă a fost completată.
 function aSum(name, val) {
-  const bani = ronToBani(val);
-  return bani === null ? '' : ` ${name}="${bani}"`;
+  const suma = ronToLeiXml(val);
+  return suma === null ? '' : ` ${name}="${suma}"`;
 }
 
 // IBAN (Str24): scoate spațiile (ghidul îl arată grupat) înainte de verificarea lungimii.

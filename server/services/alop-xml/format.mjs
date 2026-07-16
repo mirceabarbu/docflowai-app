@@ -2,10 +2,10 @@
 // Regulile sunt derivate din tipurile simple din `schemas/notafd_v0.xsd` (autoritative).
 // Fără efecte secundare, fără I/O — doar transformări valoare → string conform XSD.
 //
-// IntPoz12SType (xs:integer 0…999999999999) = sume în BANI (lei × 100).
+// IntPoz12SType (xs:decimal 0…999999999999.99, 2 zecimale) = sume în LEI (NU bani; fără ×100).
 // DateSType (dd.mm.yyyy), Str1 (bife "1"/""), CuiSType (CIF fără "RO"), StrN (maxLength).
 
-const MAX_BANI = 999999999999n; // IntPoz12SType maxInclusive (magnitudine)
+const MAX_LEI_CENTS = 99999999999999n; // 999999999999.99 lei, în bani-cents (IntPoz12SType maxInclusive)
 
 /**
  * Parsează un număr scris fie ca decimal JS ("11523668.69" / 11523668.69 — formatul
@@ -23,37 +23,44 @@ function parseAmount(s) {
     if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, '');
   }
   const n = Number(s);
-  if (!Number.isFinite(n)) throw new Error(`ronToBani: valoare nenumerică: "${s}"`);
+  if (!Number.isFinite(n)) throw new Error(`ronToLeiXml: valoare nenumerică: "${s}"`);
   return n;
 }
 
 /**
- * Convertește o sumă RON la "bani" (lei × 100), întreg fără zecimale, ca string
- * potrivit pentru IntPoz12SType.
- *   ronToBani(11523668.69)        -> "1152366869"
- *   ronToBani("11.523.668,69")    -> "1152366869"
- *   ronToBani("") | null | undef  -> null  (apelantul OMITE atributul)
- *   ronToBani(0)                  -> "0"    (valoare completată = 0)
+ * Convertește o sumă RON la string-ul canonic xs:decimal în LEI, cu exact 2 zecimale
+ * (separator "."), potrivit pentru IntPoz12SType. NU mai înmulțește cu 100 — formularul
+ * MF interpretează numărul ca lei.
+ *   ronToLeiXml(11523668.69)        -> "11523668.69"
+ *   ronToLeiXml("11.523.668,69")    -> "11523668.69"
+ *   ronToLeiXml(2964.5)             -> "2964.50"
+ *   ronToLeiXml("") | null | undef  -> null  (apelantul OMITE atributul)
+ *   ronToLeiXml(0)                  -> "0.00" (valoare completată = 0)
+ * Aritmetică pe bani-cents (întregi) ca să nu apară artefacte de float (ex. "2964.5000001").
  * Păstrează semnul — influențele negative din revizii NU se clampază/abs (ar corupe
- * datele financiare); schema v0 le va respinge la validare (vezi it.todo în teste).
- * Aruncă pe input nenumeric sau magnitudine > 999999999999 bani.
+ * datele financiare); schema le respinge la validare (minInclusive 0).
+ * Aruncă pe input nenumeric sau magnitudine > 999999999999.99 lei.
  */
-export function ronToBani(val) {
+export function ronToLeiXml(val) {
   if (val === null || val === undefined) return null;
   let n;
   if (typeof val === 'number') {
-    if (!Number.isFinite(val)) throw new Error(`ronToBani: valoare nefinită: ${val}`);
+    if (!Number.isFinite(val)) throw new Error(`ronToLeiXml: valoare nefinită: ${val}`);
     n = val;
   } else {
     const s = String(val).trim();
     if (s === '') return null;
     n = parseAmount(s);
   }
-  let bani = Math.round(n * 100);
-  if (Object.is(bani, -0)) bani = 0;
-  if (BigInt(Math.abs(bani)) > MAX_BANI)
-    throw new Error(`ronToBani: depășește intervalul IntPoz12 (max ${MAX_BANI} bani): ${val}`);
-  return String(bani);
+  let cents = Math.round(n * 100);
+  if (Object.is(cents, -0)) cents = 0;
+  if (BigInt(Math.abs(cents)) > MAX_LEI_CENTS)
+    throw new Error(`ronToLeiXml: depășește intervalul IntPoz12 (max 999999999999.99 lei): ${val}`);
+  const sign = cents < 0 ? '-' : '';
+  const abs = Math.abs(cents);
+  const lei = Math.floor(abs / 100);
+  const bani = abs % 100;
+  return `${sign}${lei}.${String(bani).padStart(2, '0')}`;
 }
 
 /**

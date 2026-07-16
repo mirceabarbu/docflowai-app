@@ -3,7 +3,7 @@
 //
 // Obiectele DF de mai jos sunt XSD-shaped (root + sectiuneaA + sectiuneaB), identice cu
 // `data` JSONB-ul pe care îl consumă generatorul PDF. Sumele sunt în LEI (decimal) — exact
-// formatul stocat real; serializer-ul le convertește la bani (lei×100) pentru IntPoz12SType.
+// formatul stocat real; serializer-ul le emite ca lei cu 2 zecimale pentru IntPoz12SType.
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFile } from 'node:fs/promises';
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { validateXML } from 'xmllint-wasm';
 import { serializeNotafd } from '../../services/alop-xml/notafd-serializer.mjs';
-import { ronToBani, dateRo, ckbx, cif, xmlEscape, strClamp } from '../../services/alop-xml/format.mjs';
+import { ronToLeiXml, dateRo, ckbx, cif, xmlEscape, strClamp } from '../../services/alop-xml/format.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const XSD_PATH = resolve(__dirname, '../../services/alop-xml/schemas/notafd_v0.xsd');
@@ -31,29 +31,29 @@ async function expectValid(df) {
 
 // ── Helpers de conversie (puri) ─────────────────────────────────────────────
 describe('format.mjs — conversii pure', () => {
-  it('ronToBani: format românesc cu mii "." și zecimal ","', () => {
-    expect(ronToBani('11.523.668,69')).toBe('1152366869');
+  it('ronToLeiXml: format românesc cu mii "." și zecimal ","', () => {
+    expect(ronToLeiXml('11.523.668,69')).toBe('11523668.69');
   });
-  it('ronToBani: decimal JS (formatul stocat real)', () => {
-    expect(ronToBani(11523668.69)).toBe('1152366869');
-    expect(ronToBani('11523668.69')).toBe('1152366869');
+  it('ronToLeiXml: decimal JS (formatul stocat real)', () => {
+    expect(ronToLeiXml(11523668.69)).toBe('11523668.69');
+    expect(ronToLeiXml('11523668.69')).toBe('11523668.69');
   });
-  it('ronToBani: întregi și grupare cu mai multe puncte', () => {
-    expect(ronToBani(560)).toBe('56000');
-    expect(ronToBani('301.000.000')).toBe('30100000000');
-    expect(ronToBani('27.650.000')).toBe('2765000000');
+  it('ronToLeiXml: întregi și grupare cu mai multe puncte -> lei cu 2 zecimale', () => {
+    expect(ronToLeiXml(560)).toBe('560.00');
+    expect(ronToLeiXml('301.000.000')).toBe('301000000.00');
+    expect(ronToLeiXml('27.650.000')).toBe('27650000.00');
   });
-  it('ronToBani: empty/null -> null (atribut omis); 0 completat -> "0"', () => {
-    expect(ronToBani('')).toBeNull();
-    expect(ronToBani(null)).toBeNull();
-    expect(ronToBani(undefined)).toBeNull();
-    expect(ronToBani(0)).toBe('0');
+  it('ronToLeiXml: empty/null -> null (atribut omis); 0 completat -> "0.00"', () => {
+    expect(ronToLeiXml('')).toBeNull();
+    expect(ronToLeiXml(null)).toBeNull();
+    expect(ronToLeiXml(undefined)).toBeNull();
+    expect(ronToLeiXml(0)).toBe('0.00');
   });
-  it('ronToBani: păstrează semnul (NU clampază negativele)', () => {
-    expect(ronToBani(-10)).toBe('-1000');
+  it('ronToLeiXml: păstrează semnul (NU clampază negativele)', () => {
+    expect(ronToLeiXml(-10)).toBe('-10.00');
   });
-  it('ronToBani: depășirea IntPoz12 aruncă', () => {
-    expect(() => ronToBani(9999999999999)).toThrow();
+  it('ronToLeiXml: depășirea IntPoz12 aruncă', () => {
+    expect(() => ronToLeiXml(9999999999999)).toThrow();
   });
   it('ckbx: bifat -> "1", nebifat -> ""', () => {
     expect(ckbx('1')).toBe('1');
@@ -124,10 +124,10 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    // Conversia bani: 11.523.668,69 lei -> 1152366869 bani.
-    expect(xml).toContain('1152366869');
-    expect(xml).toContain('influente_c6="0"');
-    expect(xml).toContain('influente_c9="1152366869"');
+    // Lei cu 2 zecimale: 11.523.668,69 lei -> "11523668.69".
+    expect(xml).toContain('11523668.69');
+    expect(xml).toContain('influente_c6="0.00"');
+    expect(xml).toContain('influente_c9="11523668.69"');
   });
 
   // Ex.2 rev.0 — Achiziție licență IT, 560 lei.
@@ -167,7 +167,7 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('"56000"'); // 560 lei -> 56000 bani
+    expect(xml).toContain('"560.00"'); // 560 lei -> 560.00
   });
 
   // Ex.3 — drepturi de personal, două rânduri 301.000.000 + 27.650.000.
@@ -212,8 +212,8 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
       },
     };
     const xml = await expectValid(df);
-    expect(xml).toContain('"30100000000"'); // 301.000.000 lei -> bani
-    expect(xml).toContain('"2765000000"');  // 27.650.000 lei -> bani
+    expect(xml).toContain('"301000000.00"'); // 301.000.000 lei -> lei cu 2 zecimale
+    expect(xml).toContain('"27650000.00"');  // 27.650.000 lei -> lei cu 2 zecimale
   });
 
   // Ex.4 rev.0 — angajamente legale emise în contul anului următor.
@@ -255,7 +255,7 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
     };
     const xml = await expectValid(df);
     expect(xml).toContain('ckbx_ang_leg_emise_ct_an_urm="1"');
-    expect(xml).toContain('plati_estim_an_np1="12000000"');
+    expect(xml).toContain('plati_estim_an_np1="120000.00"');
   });
 
   // Ex.5 — terț / obligație legală, buget insuficient: SecB fără rânduri de control,
@@ -297,13 +297,13 @@ describe('serializeNotafd — exemple MF validate contra notafd_v0.xsd', () => {
     };
     const xml = await expectValid(df);
     expect(xml).toContain('ckbx_fara_inreg_ctrl_ang="1"');
-    expect(xml).toContain('sum_fara_inreg_ctrl_crdbug="7500000"');
+    expect(xml).toContain('sum_fara_inreg_ctrl_crdbug="75000.00"');
     expect(xml).toContain('ckbx_interzis_emit_ang="1"');
     // SecB fără rânduri de control -> element self-closing, fără rowT_ang_ctrl_ang
     expect(xml).not.toContain('<rowT_ang_ctrl_ang');
     // Pereche 2 NU se emite în XML (câmp intern afișaj/PDF).
     expect(xml).not.toContain('sum_fara_inreg_ctrl_crd_bug');
-    expect(xml).not.toContain('"9999900"');
+    expect(xml).not.toContain('"99999.00"');
   });
 });
 

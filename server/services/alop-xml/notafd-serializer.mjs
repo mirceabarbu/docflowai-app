@@ -9,7 +9,7 @@
 // elementFormDefault="qualified"  -> elementele moștenesc namespace-ul default de pe root.
 // attributeFormDefault="unqualified" -> atributele NU au prefix.
 
-import { ronToBani, dateRo, ckbx, cif, xmlEscape, strClamp } from './format.mjs';
+import { ronToLeiXml, dateRo, ckbx, cif, xmlEscape, strClamp } from './format.mjs';
 
 const NS = 'mfp:anaf:dgti:notafd:declaratie:v1';
 
@@ -27,10 +27,10 @@ function aStrOpt(name, val, max) {
   if (val === null || val === undefined || String(val).trim() === '') return '';
   return ` ${name}="${xmlEscape(strClamp(String(val), max, name))}"`;
 }
-// Sumă opțională (IntPoz12, bani): OMISĂ când lipsește; "0" emis dacă a fost completată.
+// Sumă opțională (IntPoz12, lei cu 2 zecimale): OMISĂ când lipsește; "0.00" dacă a fost completată.
 function aSum(name, val) {
-  const bani = ronToBani(val);
-  return bani === null ? '' : ` ${name}="${bani}"`;
+  const suma = ronToLeiXml(val);
+  return suma === null ? '' : ` ${name}="${suma}"`;
 }
 
 function rowAngPlVal(r) {
