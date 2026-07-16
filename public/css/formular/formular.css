@@ -189,6 +189,9 @@
     .lst-count{display:flex;align-items:baseline;gap:5px;font-size:13px;color:var(--df-text-3)}
     .lst-count[hidden]{display:none}
     .lst-count-n{color:var(--df-text);font-weight:600}
+    .df-count-row{display:flex;justify-content:flex-end;align-items:center;margin-bottom:12px}
+    .df-count{font-size:13px;color:var(--df-text-3)}
+    .df-count b,.df-count strong{color:var(--df-text);font-weight:600}
     /* .lst-tabs / .lst-tab removed — înlocuite de .df-subtabs/.df-subtab din components.css */
     .lst-filters{background:rgba(255,255,255,.03);border:1px solid var(--df-border-2);border-radius:10px;padding:12px 14px;margin-bottom:12px}
     .lst-filter-row{display:flex;flex-wrap:nowrap;gap:10px;align-items:flex-end}
@@ -364,7 +367,7 @@
     .df-row{display:grid;gap:14px;margin-bottom:14px}
     .df-revizie-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(255,170,30,.15);color:#ffcc44;margin-left:8px;vertical-align:middle}
     /* DF/ORD info banner */
-    .df-info-banner{background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:#b0a0ff;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .df-info-banner{background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:#b0a0ff;margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     /* Modal dark fields */
     #alop-modal input:not([type=checkbox]):not([type=radio]),#alop-modal textarea,#alop-modal select,
     #modal-lichidare input:not([type=checkbox]):not([type=radio]),#modal-lichidare textarea,#modal-plata input:not([type=checkbox]):not([type=radio]),#modal-plata textarea{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#e8eeff;font-size:14px;padding:11px 14px;width:100%;box-sizing:border-box;font-family:inherit}

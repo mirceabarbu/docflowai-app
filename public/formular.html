@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.693">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.693">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.693">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.693">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.697">
   <script src="/js/df-utils.js?v=3.9.693"></script>
   <script src="/js/df-entitlements.js?v=3.9.693"></script>
   <script src="/js/df-shell.js?v=3.9.693"></script>
@@ -335,7 +335,7 @@
 
 <div id="clasa8-section" style="display:none;">
 
-  <div class="df-info-banner" style="margin-bottom:18px;">
+  <div class="df-info-banner">
     🏛️ <strong>Centralizator Clasa 8</strong> — agregare per <strong>Cod SSI</strong> a angajamentelor bugetare (din DF Sec.B finalizate),
     ordonanțărilor (din ORD finalizate) și plăților (din ALOP cicluri finalizate, alocate proporțional pe rând).
     Importați bugetul aprobat cu butonul <strong>Import buget</strong> pentru a vedea coloana <em>Rămâne din buget</em>.
@@ -354,25 +354,26 @@
   </div>
 
   <!-- ── Filter bar ────────────────────────────────────────────────────────── -->
-  <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
-    <div style="flex:1;min-width:260px;max-width:420px;">
-      <label style="font-size:.77rem;color:var(--df-text-3);display:block;margin-bottom:4px;">
-        🔎 Filtrare după Cod SSI
-      </label>
-      <input id="clasa8-filter-ssi" type="text" autocomplete="off"
-             placeholder="ex: 510, 0001, A52... (caută în orice poziție)"
-             style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid var(--df-border-2);border-radius:8px;color:var(--df-text);font-size:.9rem;box-sizing:border-box;">
+  <div class="lst-filters">
+    <div class="lst-filter-row">
+      <div class="flt-grp" style="flex:1.6 1 240px;">
+        <label class="flt-lbl">🔎 Filtrare Cod SSI</label>
+        <input id="clasa8-filter-ssi" class="flt-inp" type="text" autocomplete="off"
+               placeholder="ex: 510, 0001, A52... (caută în orice poziție)">
+      </div>
+      <button id="clasa8-btn-reset" type="button" class="df-action-btn sm" style="align-self:flex-end" title="Curăță toate filtrele">
+        <svg class="df-ic"><use href="/icons.svg?v=3.9.693#ico-refresh"/></svg> Reset
+      </button>
+      <button id="clasa8-btn-import" type="button" class="df-action-btn" style="align-self:flex-end" data-df-module="clasa8">
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.693#ico-upload-cloud"/></svg> Import buget
+      </button>
+      <button id="clasa8-btn-export" type="button" class="df-action-btn primary" style="align-self:flex-end">
+        <svg class="df-ico"><use href="/icons.svg?v=3.9.693#ico-download"/></svg> Export Excel
+      </button>
     </div>
-    <button id="clasa8-btn-reset" type="button" class="df-action-btn sm" title="Curăță toate filtrele">
-      <svg class="df-ic"><use href="/icons.svg?v=3.9.693#ico-refresh"/></svg> Reset
-    </button>
-    <span id="clasa8-counter" style="margin-left:auto;font-size:.83rem;color:var(--df-text-3);">— înregistrări</span>
-    <button id="clasa8-btn-import" type="button" class="df-action-btn" data-df-module="clasa8">
-      <svg class="df-ico"><use href="/icons.svg?v=3.9.693#ico-upload-cloud"/></svg> Import buget
-    </button>
-    <button id="clasa8-btn-export" type="button" class="df-action-btn primary">
-      <svg class="df-ico"><use href="/icons.svg?v=3.9.693#ico-download"/></svg> Export Excel
-    </button>
+  </div>
+  <div class="df-count-row">
+    <span id="clasa8-counter" class="df-count">— înregistrări</span>
   </div>
 
   <!-- ── Mesaj eroare ─────────────────────────────────────────────────────── -->
@@ -476,7 +477,7 @@
 
 <!-- ════════════ FACTURI (centralizator lichidări, read-only) ═════════════════ -->
 <div id="facturi-section" style="display:none;">
-  <div style="padding:10px 14px;margin-bottom:14px;background:var(--df-teal-bg);border:1px solid var(--df-teal-bd);border-radius:var(--df-radius-md);font-size:.85rem;color:var(--df-text-2);">
+  <div class="df-info-banner">
     🧾 <strong>Centralizator facturi</strong> — toate facturile completate în lichidarea ciclurilor ALOP
     (curente și arhivate). Read-only. Coloanele <strong>ALOP</strong> și <strong>DF</strong> sunt clicabile;
     <strong>ORD</strong> devine clicabilă după întocmire.
@@ -521,14 +522,16 @@
           <option value="">Toți</option>
         </select>
       </div>
-      <button class="df-action-btn sm" style="align-self:flex-end" onclick="_resetFacturiFilters()" title="Resetează filtrele">↺</button>
+      <button class="df-action-btn sm" style="align-self:flex-end" onclick="_resetFacturiFilters()" title="Resetează filtrele">
+        <svg class="df-ic"><use href="/icons.svg?v=3.9.695#ico-refresh"/></svg> Reset
+      </button>
       <button class="df-action-btn primary sm" style="align-self:flex-end" type="button" onclick="_exportFacturiCsv()">
         <svg class="df-ico"><use href="/icons.svg?v=3.9.695#ico-download"/></svg> Export CSV
       </button>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-    <span id="facturi-counter" style="margin-left:auto;font-size:.83rem;color:var(--df-text-3);">— facturi</span>
+  <div class="df-count-row">
+    <span id="facturi-counter" class="df-count">— facturi</span>
   </div>
   <div id="facturi-error" style="display:none;background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 14px;font-size:.9rem;margin-bottom:12px;"></div>
   <div id="facturi-empty" style="display:none;padding:32px 20px;text-align:center;background:var(--df-surface);border:1px dashed var(--df-border-2);border-radius:12px;color:var(--df-text-3);">
@@ -577,7 +580,7 @@
 
   <!-- df-subtabs eliminat — bandă unică sus (HOTFIX 3.2.1) -->
 
-  <div class="df-info-banner" style="margin-bottom:18px;">
+  <div class="df-info-banner">
     ℹ️ Modul de verificare furnizor — tool independent. Introdu CUI-ul, IBAN-ul sau ambele pentru a valida datele înainte de a le introduce în ALOP/DF/ORD.
     Datele sunt verificate prin <strong>ANAF</strong> (Agenția Națională de Administrare Fiscală — gratuit, oficial) și validări offline pentru IBAN. Cache 15 min.
   </div>
