@@ -33,6 +33,10 @@ import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
 
 const router = Router();
+
+// WS push injectat la montare (pentru notificări live — ex. factură lichidată)
+let _wsPush;
+export function injectWsPush(fn) { _wsPush = fn; }
 const _csrf  = csrfMiddleware;
 
 // FEATURE buget multi-anual (v3.9.558): fragment SQL care sumează banda `rows_plati`
@@ -1204,7 +1208,7 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
         const cabComp = await loadOrgCabComp(pool, actor.orgId);
         if (cabComp) {
           const { rows: cabUsers } = await pool.query(
-            `SELECT id FROM users
+            `SELECT id, email FROM users
               WHERE org_id=$1 AND deleted_at IS NULL
                 AND TRIM(compartiment) = $2 AND TRIM(compartiment) <> ''
                 AND id <> $3`,
@@ -1227,14 +1231,38 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
             data_factura: data_factura || null,
             valoare_factura: valFact,
           };
+          const msgText = `Factura nr. ${nrFact}${dataFactTxt}${valTxt} a fost lichidată — ALOP „${titlu}".`;
           for (const u of cabUsers) {
-            await sendNotif(
+            const ins = await sendNotif(
               u.id,
               'alop_factura_lichidata',
               '🧾 Factură lichidată',
-              `Factura nr. ${nrFact}${dataFactTxt}${valTxt} a fost lichidată — ALOP „${titlu}".`,
+              msgText,
               notifData
             );
+            try {
+              const email = (u.email || (ins && ins.email) || '').toLowerCase();
+              if (email && _wsPush) {
+                _wsPush(email, {
+                  event: 'notification',
+                  data: {
+                    id: ins?.id ?? null,
+                    type: 'alop_factura_lichidata',
+                    title: '🧾 Factură lichidată',
+                    message: msgText,
+                    data: notifData,
+                    created_at: ins?.created_at ?? new Date().toISOString(),
+                  },
+                });
+                const { rows: cnt } = await pool.query(
+                  'SELECT COUNT(*)::int AS c FROM notifications WHERE user_email=$1 AND read=FALSE',
+                  [email]
+                );
+                _wsPush(email, { event: 'unread_count', count: cnt[0]?.c ?? 0 });
+              }
+            } catch (wsErr) {
+              logger.warn({ err: wsErr, alopId: req.params.id }, '[Facturi] wsPush live non-fatal');
+            }
           }
         }
       }
