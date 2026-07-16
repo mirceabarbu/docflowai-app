@@ -1328,23 +1328,28 @@ export const MIGRATIONS = [
   {
     id: '068_formular_attachments',
     sql: `
-      CREATE TABLE IF NOT EXISTS formular_attachments (
-        id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        formular_id   UUID        NOT NULL REFERENCES formulare_oficiale(id) ON DELETE CASCADE,
-        category      TEXT        NOT NULL CHECK (category IN ('caiet_sarcini','estimare_valoare','altele')),
-        uploaded_by   INTEGER     NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-        filename      TEXT        NOT NULL,
-        mime_type     TEXT        NOT NULL DEFAULT 'application/octet-stream',
-        size_bytes    INTEGER     NOT NULL DEFAULT 0,
-        data          BYTEA       NOT NULL,
-        notes         TEXT,
-        uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        deleted_at    TIMESTAMPTZ
-      );
-      CREATE INDEX IF NOT EXISTS idx_formular_att_formular
-        ON formular_attachments(formular_id, deleted_at);
-      CREATE INDEX IF NOT EXISTS idx_formular_att_category
-        ON formular_attachments(formular_id, category, deleted_at);
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='formulare_oficiale'
+        ) THEN RETURN; END IF;
+        CREATE TABLE IF NOT EXISTS formular_attachments (
+          id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+          formular_id   UUID        NOT NULL REFERENCES formulare_oficiale(id) ON DELETE CASCADE,
+          category      TEXT        NOT NULL CHECK (category IN ('caiet_sarcini','estimare_valoare','altele')),
+          uploaded_by   INTEGER     NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+          filename      TEXT        NOT NULL,
+          mime_type     TEXT        NOT NULL DEFAULT 'application/octet-stream',
+          size_bytes    INTEGER     NOT NULL DEFAULT 0,
+          data          BYTEA       NOT NULL,
+          notes         TEXT,
+          uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          deleted_at    TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS idx_formular_att_formular
+          ON formular_attachments(formular_id, deleted_at);
+        CREATE INDEX IF NOT EXISTS idx_formular_att_category
+          ON formular_attachments(formular_id, category, deleted_at);
+      END $g$;
     `
   },
   {
@@ -2258,8 +2263,18 @@ export const MIGRATIONS = [
   {
     id: '099_lichidare_valoare_factura',
     sql: `
-      ALTER TABLE alop_instances   ADD COLUMN IF NOT EXISTS lichidare_valoare_factura NUMERIC(18,2);
-      ALTER TABLE alop_ord_cicluri ADD COLUMN IF NOT EXISTS lichidare_valoare_factura NUMERIC(18,2);
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances'
+        ) THEN RETURN; END IF;
+        ALTER TABLE alop_instances ADD COLUMN IF NOT EXISTS lichidare_valoare_factura NUMERIC(18,2);
+      END $g$;
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_ord_cicluri'
+        ) THEN RETURN; END IF;
+        ALTER TABLE alop_ord_cicluri ADD COLUMN IF NOT EXISTS lichidare_valoare_factura NUMERIC(18,2);
+      END $g$;
     `
   }
 ];

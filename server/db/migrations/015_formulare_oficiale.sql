@@ -30,6 +30,28 @@ CREATE INDEX IF NOT EXISTS idx_formulare_oficiale_status
 CREATE INDEX IF NOT EXISTS idx_formulare_oficiale_created_by
   ON formulare_oficiale (created_by);
 
+-- formular_attachments (mutat aici din inline 068_formular_attachments): FK direct pe
+-- formulare_oficiale(id) — pe fresh prod inline rulează ÎNAINTEA acestui fișier V4, deci
+-- garda inline (IF NOT EXISTS formulare_oficiale) sare; tabela trebuie creată aici, garantat
+-- DUPĂ CREATE TABLE formulare_oficiale de mai sus.
+CREATE TABLE IF NOT EXISTS formular_attachments (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  formular_id   UUID        NOT NULL REFERENCES formulare_oficiale(id) ON DELETE CASCADE,
+  category      TEXT        NOT NULL CHECK (category IN ('caiet_sarcini','estimare_valoare','altele')),
+  uploaded_by   INTEGER     NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  filename      TEXT        NOT NULL,
+  mime_type     TEXT        NOT NULL DEFAULT 'application/octet-stream',
+  size_bytes    INTEGER     NOT NULL DEFAULT 0,
+  data          BYTEA       NOT NULL,
+  notes         TEXT,
+  uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_formular_att_formular
+  ON formular_attachments(formular_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_formular_att_category
+  ON formular_attachments(formular_id, category, deleted_at);
+
 -- Trigger updated_at (condiționat — funcția poate lipsi pe DB-uri fresh)
 DO $$
 BEGIN

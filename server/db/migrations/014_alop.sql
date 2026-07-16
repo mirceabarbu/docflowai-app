@@ -48,6 +48,8 @@ ALTER TABLE alop_instances ADD COLUMN IF NOT EXISTS
   plata_confirmed_at TIMESTAMPTZ;
 ALTER TABLE alop_instances ADD COLUMN IF NOT EXISTS
   plata_notes TEXT;
+ALTER TABLE alop_instances ADD COLUMN IF NOT EXISTS
+  lichidare_valoare_factura NUMERIC(18,2);
 
 CREATE TABLE IF NOT EXISTS alop_sabloane (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
