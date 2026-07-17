@@ -2276,6 +2276,61 @@ export const MIGRATIONS = [
         ALTER TABLE alop_ord_cicluri ADD COLUMN IF NOT EXISTS lichidare_valoare_factura NUMERIC(18,2);
       END $g$;
     `
+  },
+  {
+    // Chat Etapa 1 — mesagerie. FK doar spre users/organizations (create INLINE mai sus)
+    // → fresh-safe, fără gardă IF EXISTS (nu e clasa de mină a tabelelor V4-only).
+    id: '100_chat',
+    sql: `
+      CREATE TABLE IF NOT EXISTS conversations (
+        id          BIGSERIAL   PRIMARY KEY,
+        org_id      INTEGER     REFERENCES organizations(id) ON DELETE CASCADE,
+        kind        TEXT        NOT NULL DEFAULT 'internal'
+                                CHECK (kind IN ('internal','platform_support')),
+        is_group    BOOLEAN     NOT NULL DEFAULT FALSE,
+        title       TEXT,
+        created_by  INTEGER     NOT NULL REFERENCES users(id),
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS conversation_participants (
+        id            BIGSERIAL   PRIMARY KEY,
+        conv_id       BIGINT      NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        user_id       INTEGER     NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role          TEXT        NOT NULL DEFAULT 'member',
+        last_read_at  TIMESTAMPTZ,
+        left_at       TIMESTAMPTZ,
+        joined_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (conv_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_conv_part_active
+        ON conversation_participants (user_id) WHERE left_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_conv_part_conv
+        ON conversation_participants (conv_id);
+
+      CREATE TABLE IF NOT EXISTS messages (
+        id          BIGSERIAL   PRIMARY KEY,
+        conv_id     BIGINT      NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        from_user   INTEGER     NOT NULL REFERENCES users(id),
+        body        TEXT        NOT NULL,
+        deleted_at  TIMESTAMPTZ,
+        meta        JSONB       NOT NULL DEFAULT '{}'::jsonb,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_messages_conv
+        ON messages (conv_id, created_at);
+    `
+  },
+  {
+    id: '101_module_chat',
+    sql: `
+      INSERT INTO module_catalog
+        (module_key, display_name, category, default_enabled, display_order)
+      VALUES
+        ('chat', 'Chat (mesagerie internă)', 'comunicare', TRUE, 80)
+      ON CONFLICT (module_key) DO NOTHING;
+    `
   }
 ];
 

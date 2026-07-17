@@ -535,6 +535,7 @@ import opmeRouter from './routes/opme.mjs';
 import registraturaRouter from './routes/registratura.mjs';
 import formulareOficialeRouter from './routes/formulare-oficiale.mjs';
 import clasa8Router            from './routes/clasa8.mjs';
+import chatRouter             from './routes/chat.mjs';
 import trasabilitateRouter     from './routes/trasabilitate.mjs';
 
 const app = express();
@@ -1814,6 +1815,7 @@ app.use('/', opmeRouter);             // OPME F1129 import (pachet A — fără 
 app.use('/', registraturaRouter);     // Registratură Faza 1: numerotare documente emise
 app.use('/api/formulare-oficiale', formulareOficialeRouter); // Formulare Oficiale CRUD (NF Invest, Referat)
 app.use('/api/clasa8',             clasa8Router);             // Centralizator Clasa 8 (read-only)
+app.use('/api/chat',               chatRouter);               // Chat Etapa 1: mesagerie
 app.use('/api/trasabilitate',      trasabilitateRouter);      // Arbore trasabilitate DF↔ALOP↔ORD
 
 app.use('/api/verify',       supplierVerifyRouter);
