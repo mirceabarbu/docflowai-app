@@ -15,7 +15,8 @@
  * `platform_support` traversează intenționat org-urile. Gate-ul răspunde 404
  * (nu 403) pe non-participant — nu divulgăm existența conversației.
  *
- * Etapa 1 = DOAR mesagerie: niciun push WS, nicio notificare (vezi TODO P2).
+ * Livrare (P2): participant conectat ⇒ push WS `chat_message`; deconectat ⇒
+ * notificare in-app persistentă. Ambele NON-FATALE — vezi `deliverMessage`.
  */
 
 import { Router } from 'express';
@@ -25,6 +26,7 @@ import { requireModule } from '../middleware/require-module.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { isConversationParticipant, assertSameOrgParticipants } from '../services/chat-access.mjs';
+import { sendNotif } from '../services/formular-shared.mjs';
 
 const router = Router();
 const _chat = requireModule('chat');
@@ -53,9 +55,75 @@ function checkSendRate(userId) {
 // id-urile SERIAL) → fără reset, testele ar moșteni cota userului cu același id.
 export function __resetSendRateForTests() { _sendWindows.clear(); }
 
-// Wire pentru P2 (push WS la mesaj nou). În P1 rămâne neapelat — INSERT-ul e mut.
+// ── Livrare live (P2) ────────────────────────────────────────────────────────
+// Starea WS trăiește în index.mjs; aici primim DOAR două funcții injectate, ca
+// routerul să rămână testabil fără server WS pornit.
 let _wsPush = null;
 export function injectWsPush(fn) { _wsPush = fn; }
+
+let _isOnline = () => false;
+export function injectPresence(fn) { _isOnline = fn; }
+function wsClientsHas(email) {
+  try { return !!_isOnline(email); } catch (_) { return false; }
+}
+// Test-only: reset la starea implicită (offline, fără push).
+export function __resetDeliveryForTests() { _wsPush = null; _isOnline = () => false; }
+
+/** Corpul notificării: o singură linie, ~80 caractere (titlul e fix). */
+function preview(body) {
+  const one = String(body || '').replace(/\s+/g, ' ').trim();
+  return one.length > 80 ? one.slice(0, 79) + '…' : one;
+}
+
+/**
+ * Livrează mesajul participanților ACTIVI, mai puțin expeditorul.
+ * Conectat ⇒ push WS `chat_message` (event NOU — nu refolosim `notification`,
+ * ca să nu amestecăm cu toast-urile de flux). Deconectat ⇒ notificare in-app.
+ *
+ * ⚠️ NON-FATAL în întregime: apelantul a răspuns deja 200 conceptual — o eroare
+ * de livrare NU trebuie să transforme un mesaj salvat într-un 500.
+ */
+async function deliverMessage(convId, actor, msg) {
+  try {
+    const { rows: recips } = await pool.query(
+      `SELECT p.user_id, u.email
+         FROM conversation_participants p
+         JOIN users u ON u.id = p.user_id
+        WHERE p.conv_id = $1 AND p.left_at IS NULL AND p.user_id <> $2`,
+      [convId, actor.userId]
+    );
+
+    const payload = {
+      event: 'chat_message',
+      data: {
+        conv_id: Number(convId),
+        message: {
+          id: Number(msg.id),
+          conv_id: Number(convId),
+          from_user: actor.userId,
+          from_nume: actor.nume || '',
+          body: msg.body,
+          created_at: msg.created_at,
+        },
+      },
+    };
+
+    for (const r of recips) {
+      const email = String(r.email || '').toLowerCase();
+      if (_wsPush && email && wsClientsHas(email)) {
+        try { _wsPush(email, payload); }
+        catch (e) { logger.warn({ err: e, convId }, '[chat] wsPush non-fatal'); }
+      } else {
+        try {
+          await sendNotif(r.user_id, 'chat_message', '💬 Mesaj nou',
+            preview(msg.body), { conv_id: Number(convId) });
+        } catch (e) { logger.warn({ err: e, convId }, '[chat] sendNotif non-fatal'); }
+      }
+    }
+  } catch (e) {
+    logger.warn({ err: e, convId }, '[chat] livrare mesaj eșuată (non-fatal)');
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /conversations — conversațiile ACTIVE ale actorului, desc după updated_at
@@ -199,6 +267,27 @@ router.post('/conversations', requireAuth, csrfMiddleware, _chat, async (req, re
     }
     await client.query('COMMIT');
 
+    // Alertă „cerere de suport nouă" către platformă. Se ajunge aici DOAR pe
+    // conversație nou creată — ramura idempotentă de mai sus a returnat deja
+    // (și oricum privește doar `internal`). Push-ul live către un admin conectat
+    // vine din deliverMessage la primul mesaj; alerta de aici marchează
+    // evenimentul „s-a deschis o conversație de suport". Non-fatală.
+    if (kind === 'platform_support') {
+      try {
+        const { rows: admins } = await pool.query(
+          `SELECT id FROM users WHERE role='admin' AND deleted_at IS NULL AND id <> $1`,
+          [actor.userId]
+        );
+        for (const a of admins) {
+          await sendNotif(a.id, 'chat_support_new', '🆘 Cerere de suport nouă',
+            `${actor.nume || actor.email} a deschis o conversație de suport.`,
+            { conv_id: Number(convId) });
+        }
+      } catch (e) {
+        logger.warn({ err: e, convId }, '[chat] alertă suport non-fatală');
+      }
+    }
+
     _noStore(res);
     res.json({ ok: true, conversation: {
       id: Number(conv[0].id), kind: conv[0].kind, is_group: conv[0].is_group,
@@ -302,7 +391,9 @@ router.post('/conversations/:id/messages', requireAuth, csrfMiddleware, _chat, a
     );
     await pool.query('UPDATE conversations SET updated_at = NOW() WHERE id = $1', [convId]);
 
-    // P2: wsPush + sendNotif participanților activi (mai puțin expeditorul)
+    // Livrare live / notificare — non-fatală prin construcție (deliverMessage
+    // își înghite propriile erori) ⇒ răspunsul 200 de mai jos e garantat.
+    await deliverMessage(convId, actor, rows[0]);
 
     _noStore(res);
     res.json({ ok: true, message: {

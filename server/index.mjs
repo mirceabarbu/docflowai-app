@@ -535,7 +535,8 @@ import opmeRouter from './routes/opme.mjs';
 import registraturaRouter from './routes/registratura.mjs';
 import formulareOficialeRouter from './routes/formulare-oficiale.mjs';
 import clasa8Router            from './routes/clasa8.mjs';
-import chatRouter             from './routes/chat.mjs';
+import chatRouter, { injectWsPush as injectChatWsPush,
+                     injectPresence as injectChatPresence } from './routes/chat.mjs';
 import trasabilitateRouter     from './routes/trasabilitate.mjs';
 
 const app = express();
@@ -1558,6 +1559,9 @@ injectTokenVersionChecker(async (userId) => {
 });
 injectWsPush(wsPush);
 injectAlopWsPush(wsPush);
+injectChatWsPush(wsPush);
+// Prezență: chat.mjs NU importă `wsClients` (rămâne testabil) — primește predicatul.
+injectChatPresence((email) => wsClients.has(String(email || '').toLowerCase()));
 injectWsSize(() => wsClients.size);
 injectFlowDeps({ notify, wsPush, PDFLib, stampFooterOnPdf, isSignerTokenExpired, newFlowId, buildSignerLink, stripSensitive, stripPdfB64, sendSignerEmail, fireWebhook });
 // FEAT-N01: webhook — injectăm pool-ul și URL-ul de bază
