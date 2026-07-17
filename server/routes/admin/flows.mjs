@@ -11,6 +11,7 @@ import { pool, requireDb, saveFlow, getFlowData } from '../../db/index.mjs';
 import { archiveFlow } from '../../drive.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import { isAdminOrOrgAdmin, actorOrgFilter } from './_helpers.mjs';
+import { isFlowAccessAllowed } from '../../services/flow-access.mjs';
 
 let PDFLibAdmin = null;
 try { PDFLibAdmin = await import('pdf-lib'); } catch(e) { logger.warn('⚠️ pdf-lib not available for audit PDF export'); }
@@ -524,11 +525,14 @@ router.get('/admin/flows/list', async (req, res) => {
 router.get('/admin/flows/:flowId/audit', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   try {
     const { flowId } = req.params;
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
+    // AUTZ la nivel de OBIECT: init | semnatar | admin same-org | destinatar repartizat.
+    // (Înlocuiește vechiul gate admin-only; NU deschide IDOR pe auditul altui flux.)
+    const allowed = await isFlowAccessAllowed(pool, actor, data, null, flowId);
+    if (!allowed) return res.status(403).json({ error: 'forbidden' });
     const format = (req.query.format || 'json').toLowerCase();
     const audit = {
       flowId: data.flowId, docName: data.docName,

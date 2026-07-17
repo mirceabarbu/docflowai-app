@@ -1200,8 +1200,6 @@
         // SEC-01: descărcarea PDF se face cu cookie auth — nu mai punem token în URL
       const dlToken = ""; // unused — cookie trimis automat cu credentials: include
         const currentUserEmail = (JSON.parse(localStorage.getItem("docflow_user") || "{}").email || "").toLowerCase();
-        const _currentUserRole = (JSON.parse(localStorage.getItem("docflow_user") || "{}").role || "");
-        const isAdminRole = _currentUserRole === 'admin' || _currentUserRole === 'org_admin';
         el.innerHTML = flows.map(f => {
           const dt = new Date(f.createdAt).toLocaleString("ro-RO", {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
           const allSigned = f.allSigned;
@@ -1289,10 +1287,8 @@
             : '';
           // origAction = "PDF original" (disponibil oricând, nu gated pe pdfReady)
           const origAction = `<button type="button" class="df-action-btn df-kebab-item" data-orig-action="preview" data-orig-url="/flows/${encodeURIComponent(f.flowId)}/pdf" data-orig-name="${esc((f.docName || ('DocFlowAI_' + f.flowId)))}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>PDF original</button>`;
-          // auditAction = "Audit PDF" (doar admin/org_admin), disponibil indiferent de pdfReady
-          const auditAction = isAdminRole
-            ? `<button type="button" class="df-action-btn df-kebab-item" data-audit-action="preview" data-audit-url="/admin/flows/${encodeURIComponent(f.flowId)}/audit?format=pdf" data-audit-name="Audit_${f.flowId}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Audit PDF</button>`
-            : '';
+          // auditAction = "Audit PDF" — AUTZ pe server (isFlowAccessAllowed), disponibil indiferent de pdfReady
+          const auditAction = `<button type="button" class="df-action-btn df-kebab-item" data-audit-action="preview" data-audit-url="/admin/flows/${encodeURIComponent(f.flowId)}/audit?format=pdf" data-audit-name="Audit_${f.flowId}.pdf"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-file-text"/></svg>Audit PDF</button>`;
           // dlStatus = textul informativ de stare (fără PDF) → rămâne pe card lângă badge-uri
           const dlStatus = pdfReady
             ? ''
