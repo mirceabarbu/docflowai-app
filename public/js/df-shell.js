@@ -156,6 +156,65 @@
     }
   });
 
+  // Injectează link „Chat" în sidebar, în grupul „Comunicare", ÎNAINTEA linkului
+  // Notificări (idempotent, pattern identic cu Registratură/Primite).
+  //
+  // ⚠️ SELF-GATING — intenționat, NU redundanță: df-entitlements.js (care aplică
+  // `data-df-module`) e încărcat pe DOAR 5 din cele 12 pagini cu grupul „Comunicare".
+  // Pe celelalte 7 atributul e inert, deci linkul ar fi VIZIBIL cu modulul off. Aici:
+  //   • dacă df-entitlements.js e prezent → ne bazăm pe el (+ re-aplicăm la refresh);
+  //   • dacă NU → fetch local /api/entitlements/me, fail-closed (ascuns la 401/eroare).
+  // Linkul pornește ASCUNS și se arată doar la confirmare explicită „chat = on".
+  // Poarta reală rămâne pe server (requireModule('chat') pe /api/chat/*); asta e UI.
+  document.addEventListener('DOMContentLoaded', function() {
+    var labels = document.querySelectorAll('.df-nav-label');
+    var navGroup = null;
+    for (var i = 0; i < labels.length; i++) {
+      if (labels[i].textContent.trim() === 'Comunicare') {
+        var sib = labels[i].nextElementSibling;
+        if (sib && sib.classList.contains('df-nav-group')) { navGroup = sib; break; }
+      }
+    }
+    if (!navGroup) return;                                    // pagină fără grupul „Comunicare"
+    if (navGroup.querySelector('a[href="/chat.html"]')) return; // idempotent (ex. chat.html static)
+
+    var a = document.createElement('a');
+    a.href = '/chat.html';
+    a.className = 'df-nav-item';
+    a.setAttribute('data-df-module', 'chat');
+    var path = (location.pathname || '').replace(/\/$/, '');
+    if (path === '/chat' || path === '/chat.html') a.classList.add('active');
+    a.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex-shrink:0"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Chat';
+    a.style.display = 'none';                                 // fail-closed până la confirmare
+
+    var notif = navGroup.querySelector('a[href="/notifications"], a[href="/notifications.html"]');
+    if (notif) navGroup.insertBefore(a, notif); else navGroup.appendChild(a);
+
+    function applyChatGate(on) { a.style.display = on ? '' : 'none'; }
+
+    if (window.df && window.df._entitlementsLoaded && window.df.entitlementsReady) {
+      // Promise, nu doar evenimentul: `df:entitlements-ready` poate fi deja emis
+      // înainte de DOMContentLoaded (fetch-ul pornește la load-ul scriptului).
+      window.df.entitlementsReady.then(function() {
+        applyChatGate(window.df.canUseModule('chat'));
+      }).catch(function() { applyChatGate(false); });
+      // Re-aplică după refreshEntitlements() (superadmin schimbă modulele din UI).
+      document.addEventListener('df:entitlements-ready', function() {
+        applyChatGate(window.df.canUseModule('chat'));
+      });
+      return;
+    }
+
+    // Fallback (paginile fără df-entitlements.js). Gardă de sesiune ca la badge-ul
+    // „Primite" — fără sesiune nu interogăm (ar da 401 zgomotos pe pagini publice).
+    var hasSession = !!localStorage.getItem('docflow_user') || !!localStorage.getItem('docflow_token');
+    if (!hasSession) return;                                  // rămâne ascuns
+    fetch('/api/entitlements/me', { credentials: 'include' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) { applyChatGate(!!(d && d.modules && d.modules.chat === true)); })
+      .catch(function() { applyChatGate(false); });
+  });
+
   document.addEventListener('DOMContentLoaded', function() {
     // 1. Populate from localStorage cache immediately (no flash)
     var cached = JSON.parse(localStorage.getItem('docflow_user') || '{}');
