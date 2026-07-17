@@ -153,6 +153,13 @@ function renderList() {
       if (e.target.classList.contains('notif-del')) return;
       markRead(n.id);
 
+      // Notificare de chat → deschide conversația
+      if (n.type === 'chat_message' || n.type === 'chat_support_new' || (n.data && (typeof n.data === 'string' ? n.data.includes('conv_id') : n.data.conv_id != null))) {
+        const dd = n.data ? (typeof n.data === 'string' ? JSON.parse(n.data) : n.data) : {};
+        if (dd && dd.conv_id != null) { location.href = `/chat.html?conv=${encodeURIComponent(dd.conv_id)}`; return; }
+        location.href = '/chat.html'; return;
+      }
+
       // Notificări formulare → deschide formular.html cu documentul auto-loaded
       if ((FORMULARE_TYPES.has(n.type) || n.type === 'alop_factura_lichidata') && n.data) {
         const d = typeof n.data === 'string' ? JSON.parse(n.data) : n.data;

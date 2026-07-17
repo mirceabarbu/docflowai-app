@@ -508,7 +508,12 @@
 
     // Deep-link din notificare: /chat.html?conv=<id>
     const conv = new URLSearchParams(location.search).get('conv');
-    if (conv && _convs.some(c => Number(c.id) === Number(conv))) openConversation(conv);
+    if (conv) {
+      // Conversație nouă (ex. suport) poate lipsi din lista abia încărcată — refetch o dată.
+      if (!_convs.some(c => Number(c.id) === Number(conv))) await loadConversations();
+      openConversation(Number(conv));
+      history.replaceState(null, '', location.pathname);
+    }
   }
 
   if (document.readyState === 'loading') {
