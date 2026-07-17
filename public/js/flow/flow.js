@@ -827,7 +827,7 @@
       // Buton Audit PDF — vizibil pentru admin
       const btnAudit = $("btnAuditPdf");
       if (btnAudit) {
-        btnAudit.style.display = isAdmin ? "" : "none";
+        btnAudit.style.display = "";   // AUTZ pe server (isFlowAccessAllowed); vizibil oricui are pagina flux
         btnAudit.removeAttribute("href");
         btnAudit.onclick = (e) => {
           e.preventDefault();
