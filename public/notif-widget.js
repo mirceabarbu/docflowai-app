@@ -322,6 +322,10 @@
 
   function buildActionUrl(notif) {
     if (notif && notif.actionUrl) return notif.actionUrl;
+    // Chat: notificare de mesaj/suport → deschide conversația (nu are flowId)
+    const convId = notif && (notif.conv_id || (notif.data && notif.data.conv_id));
+    const isChat = notif && ((notif.type === 'chat_message' || notif.type === 'chat_support_new') || convId);
+    if (isChat) return convId ? `/chat.html?conv=${encodeURIComponent(convId)}` : '/chat.html';
     const flowId = notif && (notif.flowId || notif.flow || (notif.data && (notif.data.flowId || notif.data.flow)));
     const token = notif && (notif.token || (notif.data && notif.data.token));
     if (!flowId) return '/notifications';
