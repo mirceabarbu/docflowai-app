@@ -22,6 +22,8 @@
   // operației în curs (`df:<alopId>` / `ord:<alopId>`); al doilea apel pentru aceeași cheie
   // iese imediat. Confort UI — poarta reală e serverul (idempotență) + indexul unic (mig. 095).
   let _dfOpenInFlight = null;
+  // Paginare listă ALOP — mirror _lstState din list.js (v3.9.711)
+  let _alopState = { page: 1, limit: 20 };
 
   // -- Cross-module: leaga document la ALOP ---------------------------------
 // ── Helper: leagă document la ALOP imediat (idempotent, async cu logging) ──────
@@ -179,10 +181,15 @@ async function loadAlop(){
   _updateAlopSablonBtnVisibility();
   _updateOpmeBtnVisibility();
   const tb=document.getElementById('alop-tbody');
+  const pg=document.getElementById('alop-pagination');
   if(!tb)return;
+  if(pg)pg.style.display='none';
   tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--df-text-3)">Se încarcă...</td></tr>';
   try{
-    const r=await fetch('/api/alop',{credentials:'include'});
+    const qs=new URLSearchParams();
+    qs.set('page',_alopState.page);
+    qs.set('limit',_alopState.limit);
+    const r=await fetch(`/api/alop?${qs.toString()}`,{credentials:'include'});
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
     const rows=data.alop||[];
@@ -225,9 +232,27 @@ async function loadAlop(){
         </td>
       </tr>`;
     }).join('');
+    _renderAlopPagin(data.total||0,_alopState.page,_alopState.limit);
   }catch(e){
     if(tb)tb.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:20px;color:#f87171">Eroare: ${esc(e.message)}</td></tr>`;
   }
+}
+function _renderAlopPagin(total,page,limit){
+  const pg=document.getElementById('alop-pagination');
+  const info=document.getElementById('alop-page-info');
+  const prev=document.getElementById('alop-prev');
+  const next=document.getElementById('alop-next');
+  if(!pg)return;
+  const totalPages=Math.ceil(total/limit)||1;
+  if(totalPages<=1){pg.style.display='none';return;}
+  pg.style.display='flex';
+  if(info)info.textContent=`Pagina ${page} din ${totalPages} (${total} total)`;
+  if(prev)prev.disabled=page<=1;
+  if(next)next.disabled=page>=totalPages;
+}
+function changeAlopPage(dir){
+  _alopState.page=Math.max(1,_alopState.page+dir);
+  loadAlop();
 }
 
 // ── Wizard modal ──────────────────────────────────────────────────────────────
@@ -1163,6 +1188,7 @@ async function alopRevizuiesteDF(alopId,dfId){
   // -- Export onclick global + cross-module ---------------------------------
   window.loadAlopStats              = loadAlopStats;
   window.loadAlop                   = loadAlop;
+  window.changeAlopPage             = changeAlopPage;
   window.openAlopModal              = openAlopModal;
   window.closeAlopModal             = closeAlopModal;
   window.createAlop                 = createAlop;
