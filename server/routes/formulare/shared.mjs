@@ -787,17 +787,32 @@ router.get('/api/formulare-audit/:type/:id', async (req, res) => {
       const EVENT_FONT_SIZE = 8;
       const COL_TS = MARGIN, COL_TYPE = MARGIN + 120, COL_DETAIL = MARGIN + 120 + 175;
       const DETAIL_MAX_W = PAGE_W - COL_DETAIL - MARGIN;
+      // Estimează câte linii ocupă un text la lățimea max și fontul dat (mirror admin/flows.mjs)
+      const estimateLines = (text, maxW, font, size) => {
+        if (!text) return 0;
+        const words = text.split(' ');
+        let lines = 1, lineW = 0;
+        for (const w of words) {
+          const wW = font.widthOfTextAtSize(w + ' ', size);
+          if (lineW + wW > maxW && lineW > 0) { lines++; lineW = wW; }
+          else { lineW += wW; }
+        }
+        return lines;
+      };
+      const EVENT_LINE_H = 12;   // spațiere per linie (≈ FONT_SIZE 8 + aer)
       for (const e of sorted) {
-        ensureSpace(16);
         const transition = (e.from_status || e.to_status)
           ? `${e.from_status || '—'} -> ${e.to_status || '—'}` : '';
         const metaStr = e.meta && Object.keys(e.meta).length
           ? Object.entries(e.meta).map(([k, v]) => `${k}:${v}`).join(' ') : '';
         const detail = [e.actor_name ? `de:${e.actor_name}` : '', transition, metaStr].filter(Boolean).join('  ');
+        const detailLines = detail ? estimateLines(ro(detail), DETAIL_MAX_W, fontR, EVENT_FONT_SIZE) : 1;
+        const rowH = Math.max(1, detailLines) * EVENT_LINE_H + 2;   // rândul crește cu nr. de linii
+        ensureSpace(rowH + 2);
         page.drawText(ro(`[${fmtDate(e.created_at)}]`), { x:COL_TS, y, size:EVENT_FONT_SIZE, font:fontR, color:rgb(0.5,0.5,0.5) });
         page.drawText(ro(evLabel(e.event_type)), { x:COL_TYPE, y, size:EVENT_FONT_SIZE, font:fontB, color:rgb(0.2,0.2,0.5) });
-        if (detail) page.drawText(ro(detail), { x:COL_DETAIL, y, size:EVENT_FONT_SIZE, font:fontR, color:rgb(0.4,0.4,0.4), maxWidth:DETAIL_MAX_W });
-        y -= 14;
+        if (detail) page.drawText(ro(detail), { x:COL_DETAIL, y, size:EVENT_FONT_SIZE, font:fontR, color:rgb(0.4,0.4,0.4), maxWidth:DETAIL_MAX_W, lineHeight:EVENT_LINE_H });
+        y -= rowH;
       }
       if (!sorted.length) drawText('(niciun eveniment inregistrat)', MARGIN, 8, fontR, rgb(0.5,0.5,0.5));
 
