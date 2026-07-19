@@ -404,7 +404,10 @@ Campanii email către ~2.950 municipalități românești. Tabele: `outreach_ins
 - `server/tests/db/**` (config separat `vitest.config.db.mjs`, `fileParallelism:false`).
 - Rulează routerele REALE peste un Postgres efemer; `db/index.mjs` NU e mock-uit.
 - Verifică **rezultatul** (status code + starea din DB), nu ordinea apelurilor → sigur la refactor.
-- Local: `npm run db:test:up` (Docker) → exportă `TEST_DATABASE_URL` afișat → `npm run test:db` → `npm run db:test:down`.
+- Local, varianta PREFERATĂ — Postgres 17 nativ (instalat pe stația de lucru din iulie 2026,  serviciu Windows, port 5432, baza `docflow_test`). O singură variabilă, fără Docker:  `TEST_DATABASE_URL=postgres://postgres:test@localhost:5432/docflow_test` → `npm run test:db`.  Nu e persistată în `.env` — se setează în sesiunea curentă.
+- Local, alternativ: `npm run db:test:up` (Docker) → exportă `TEST_DATABASE_URL` afișat → `npm run test:db` → `npm run db:test:down`.
+- ⛔ **Docker absent NU e motiv de skip.** Încearcă întâi Postgres-ul local de mai sus. Raportează
+  „skipped" doar dacă AMBELE căi sunt indisponibile, și spune explicit că nu e o dovadă.
 - Fără `TEST_DATABASE_URL` se auto-skip (exit 0) — de aceea `npm test` rămâne verde și fără DB.
 - ⚠️ **Skipped ≠ passed.** Un raport local „test:db verde" cu teste *sărite* (fără Docker) NU e dovadă —
   doar testele *passed* contează. Lecție din practică (mai 2026): un test scris greșit a trecut „verde"

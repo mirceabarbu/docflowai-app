@@ -16,10 +16,19 @@ import { pool }                          from '../db/index.mjs';
 import fs                               from 'fs';
 import path                             from 'path';
 import { fileURLToPath }               from 'url';
+import { createRateLimiter }           from '../middleware/rateLimiter.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router    = Router();
 const _json5m   = expressJson({ limit: '15mb' });
+
+// #107 — generare PDF DF/ORD in-process. 20/min acoperă lejer uzul normal
+// (previzualizare + retrimitere), dar taie buclele accidentale.
+const _genFormRateLimit = createRateLimiter({
+  windowMs: 60_000,
+  max: 20,
+  message: 'Prea multe generări. Încearcă în 1 minut.',
+});
 const FONTS_DIR = path.resolve(__dirname, '../formulare/fonts');
 
 // ── Transliterare fallback (folosit doar dacă NotoSans nu e disponibil) ───────
@@ -951,7 +960,7 @@ async function generatePdfSimple(formType, data) {
 
 // ── POST /api/formulare/generate ─────────────────────────────────────────────
 
-router.post('/api/formulare/generate', _json5m, async (req, res) => {
+router.post('/api/formulare/generate', _genFormRateLimit, _json5m, async (req, res) => {
   try {
     const actor = requireAuth(req, res); if (!actor) return;
 
