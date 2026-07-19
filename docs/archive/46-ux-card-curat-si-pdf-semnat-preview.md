@@ -1,0 +1,91 @@
+---
+fix: (1) Curăță cardurile din „Fluxurile mele" — scoate din meta pill-ul tip flux (Tabel/Ancore) + badge-ul metodă semnare (STS Cloud QES), păstrează Creat/Inițiator/ID + status/kebab. (2) Acțiunea „PDF semnat" (în „Fluxurile mele" și în flow) deschide PREVIZUALIZAREA (modulul openAttPreview de la atașamente) în loc de download direct; descărcarea se face din preview. Textul butonului/kebab-ului NU se schimbă, doar acțiunea.
+target_branch: develop
+model_suggested: Sonnet 5 (UX izolat, pur frontend; zero authz/financiar/semnare/backend)
+risk: MIC (pur frontend; modulul de preview e deja încărcat și folosit pe ambele pagini)
+version: 3.9.625 → 3.9.626
+---
+
+# ⚠️ BRANCH `develop` EXCLUSIV — NU atinge `main`
+TOATE comenzile pe `develop`. NU `checkout` / `merge` / `push` pe `main`. `main` = producție, gestionată manual de owner. La final: `git push origin develop` și **STOP**.
+
+# De ce e pur frontend (fără backend)
+Modulul `public/js/shared/att-preview.js` → `window.openAttPreview(url, filename, mime)` face `fetch(url, {credentials:'include'})` și randează bytes-ii cu pdf.js. `Content-Disposition` (attachment vs inline) e IGNORAT de `fetch` — contează doar la navigare directă. Deci previzualizarea PDF-ului semnat merge chiar dacă ruta `/flows/:id/signed-pdf` trimite `attachment`, iar butonul de download din modal (atribut `download`) forțează descărcarea oricum. **NU atinge `server/routes/flows/crud.mjs` și nicio rută.**
+
+# Etapa 0 — caracterizare
+```bash
+cd $(git rev-parse --show-toplevel); git branch --show-current   # develop
+echo "=== #1 meta card (linia ~1296) ==="; grep -n "Creat: \${dt}\|providerBadge(f)\|flowType === 'ancore'" public/js/semdoc-initiator/main.js
+echo "=== #2 actiunea PDF semnat (kebab My Flows, ~1259) ==="; grep -n "signed-pdf\|PDF semnat\|data-att-action=\"preview\"\|openAttPreview" public/js/semdoc-initiator/main.js | head
+echo "=== #2 download semnat in flow detail ==="; grep -n "downloadSigned\|btnDownloadSigned\|signed-pdf\|linkToken\|openAttPreview" public/js/flow/flow.js | head
+echo "=== modulul de preview e incarcat pe ambele pagini? ==="; grep -n "att-preview.js" public/semdoc-initiator.html public/flow.html
+```
+
+# PARTEA 1 — Card mai curat („Fluxurile mele")
+
+`public/js/semdoc-initiator/main.js`, linia meta a cardului (~1296). Din construcția `Creat: ${dt} &nbsp;·&nbsp; [pill flowType] &nbsp;·&nbsp; ${providerBadge(f)} &nbsp;·&nbsp; Inițiator: … &nbsp;·&nbsp; ID: … [link reinit]` scoate DOUĂ segmente:
+1. pill-ul tip flux — întreg ternarul `${f.flowType === 'ancore' ? '<span … ⚓ Ancore …>' : '<span … 📋 Tabel …>'}` împreună cu `&nbsp;·&nbsp;` care îl precede/urmează.
+2. `&nbsp;·&nbsp; ${providerBadge(f)}` — badge-ul metodă semnare (STS Cloud QES). Odată scos, dispare și tooltip-ul „Metodă semnare: …" (confirmat de owner — informația e în fluxul detaliat).
+
+Rezultatul meta trebuie să fie exact: `Creat: ${dt} &nbsp;·&nbsp; Inițiator: ${esc(f.initName || f.initEmail)} &nbsp;·&nbsp; ID: <span monospace>${f.flowId}</span>` + link-ul `🔁 Reinițiat din …` PĂSTRAT la coadă (nu e tip/metodă — rămâne).
+
+> PĂSTREAZĂ tot ce e în dreapta cardului (status badge + kebab). NU atinge timeline-ul semnatarilor de sub meta (acolo „STS Cloud" per semnatar rămâne — e altă informație). Funcția `providerBadge` poate rămâne definită (devine neapelată — inofensiv) SAU o ștergi dacă nu mai e folosită nicăieri; verifică cu `grep -n "providerBadge(" main.js`.
+
+# PARTEA 2 — „PDF semnat" → previzualizare (nu download direct)
+
+## 2a. „Fluxurile mele" (kebab) — `public/js/semdoc-initiator/main.js` (~1259)
+Acțiunea e acum un `<a href="/flows/${flowId}/signed-pdf" class="df-action-btn primary df-kebab-item">…PDF semnat</a>`. Transform-o în buton care declanșează preview, PĂSTRÂND clasa (`df-kebab-item` → kebab-ul se închide ca înainte), iconița și textul „PDF semnat":
+```js
+`<button type="button" class="df-action-btn primary df-kebab-item" data-signed-action="preview"
+   data-signed-url="/flows/${encodeURIComponent(f.flowId)}/signed-pdf"
+   data-signed-name="${esc((f.docName || ('DocFlowAI_' + f.flowId + '_signed')))}.pdf">
+   <svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-download"/></svg>PDF semnat</button>`
+```
+Adaugă un handler delegat (lângă cel existent pentru `data-att-action="preview"`, ~1351), care nu blochează închiderea kebab-ului:
+```js
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-signed-action="preview"]');
+  if (!b) return;
+  if (typeof window.openAttPreview !== 'function') { window.location.href = b.getAttribute('data-signed-url'); return; }
+  window.openAttPreview(b.getAttribute('data-signed-url'), b.getAttribute('data-signed-name'), 'application/pdf');
+});
+```
+> Pagina „Fluxurile mele" e mereu pentru user logat (cookie de sesiune) — fără token în URL. `openAttPreview` face fetch cu `credentials:'include'`. Fallback: dacă modulul lipsește, navighează la URL (download clasic).
+
+## 2b. Flow detail — `public/js/flow/flow.js`, `downloadSigned()` (~867)
+Înlocuiește corpul care face `apiFetchBlob('/…/signed-pdf')` + `downloadBlob(...)` cu deschiderea preview-ului. Aici userul poate fi semnatar prin token → token-ul MERGE în URL (ca la atașamente, `linkToken`/`tokenParam`), fiindcă `openAttPreview` nu adaugă header-e:
+```js
+function downloadSigned(){
+  const tok = (typeof linkToken !== 'undefined' && linkToken) ? `?token=${encodeURIComponent(linkToken)}` : '';
+  const url = `/flows/${encodeURIComponent(flowId)}/signed-pdf${tok}`;
+  const fname = `DocFlowAI_${flowId}_signed.pdf`;
+  if (typeof window.openAttPreview === 'function') { window.openAttPreview(url, fname, 'application/pdf'); return; }
+  // fallback: download clasic dacă modulul nu e disponibil
+  apiFetchBlob(`/flows/${encodeURIComponent(flowId)}/signed-pdf`).then(b => downloadBlob(b, fname))
+    .catch(e => setMsg("error", "❌ Nu am putut deschide PDF-ul semnat: " + esc(String(e.message || e))));
+}
+```
+P�STREAZĂ binding-ul `$("btnDownloadSigned").addEventListener("click", downloadSigned)` și eticheta butonului. Tooltip-ul „Descarcă PDF semnat" (linia 674) — poți lăsa neschimbat sau, mai exact, „Previzualizează / descarcă PDF semnat"; owner-ul a cerut să NU schimbăm denumirea butonului, deci tooltip-ul e opțional. NU atinge `downloadOriginal()`.
+
+# Verificare manuală (owner)
+1. „Fluxurile mele" → cardurile arată doar `Creat · Inițiator · ID` (+ status/kebab dreapta); fără „Tabel"/„STS Cloud QES", fără tooltip metodă. Timeline-ul de sub rămâne cu „STS Cloud" per semnatar.
+2. Kebab → „PDF semnat" → se deschide modalul de previzualizare cu PDF-ul semnat randat; kebab-ul se închide. Butonul de download din modal descarcă fișierul.
+3. Flow detail → butonul „PDF semnat" → același modal de preview; download din modal funcționează. Ca semnatar prin link cu token → tot merge (token în URL).
+4. Documentul refuzat/în curs fără PDF semnat → butonul rămâne dezactivat ca înainte (nu se schimbă gating-ul).
+
+# Guardrails diff
+EXCLUSIV: `public/js/semdoc-initiator/main.js`, `public/js/flow/flow.js`, `public/*.html` (bump `?v=`), `public/sw.js`, `package.json`.
+```bash
+git diff --name-only | grep -E "server/|\.mjs$|crud\.mjs|signed-pdf|att-preview\.js|cloud-signing|pades|STSCloud" && echo "⛔ STOP: backend/preview-module/semnare atinse — trebuie DOAR frontend consumator!" || echo "✅ pur frontend, zero backend, modulul de preview neatins"
+```
+
+# Cache busting + versiune
+`package.json` 3.9.625 → 3.9.626. `CACHE_VERSION` în `public/sw.js` (v259→v260). `?v=3.9.626` pe `semdoc-initiator/main.js` și `flow/flow.js` în HTML-urile care le încarcă.
+
+# La final
+```bash
+git add -A -- public/js/semdoc-initiator/main.js public/js/flow/flow.js public/*.html public/sw.js package.json
+git commit -m "ux(flows): carduri curate (fără tip/metodă) + PDF semnat deschide preview (download din modal), fără schimbare de text (v3.9.626)"
+git push origin develop
+```
+**STOP. NU merge/push pe `main`.** Raportează: (1) meta cardului = Creat/Inițiator/ID + reinit; tip flux + metodă scoase, timeline per-semnatar intact; (2) „PDF semnat" deschide `openAttPreview` în ambele locuri, text neschimbat, download din modal OK, token în URL pentru semnatar; (3) zero backend/rute/modul-preview atinse; (4) `npm test verde, fără regresii`, `npm run check` OK, v3.9.626.
