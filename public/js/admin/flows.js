@@ -173,36 +173,26 @@
             </tr>`;
           }).join("")}
           </tbody>
-        </table></div>
-        <div style="margin-top:8px;font-size:.76rem;color:var(--muted);">Pagina ${page} din ${pages} · ${total} flux${total!==1?"uri":""} total</div>`;
+        </table></div>`;
 
-      // Paginare fluxuri — același stil cu paginarea utilizatorilor
+      // Paginare fluxuri — componenta partajată DFPagin (PAGIN-2).
+      // `limit` vine din răspunsul serverului (/admin/flows/list îl echoează);
+      // fallback la cele 10 trimise în cerere, NU la o valoare inventată.
       const pg = document.getElementById("flowsListPagination");
       if (pg) {
-        pg.style.display = pages > 1 ? "" : "none";
-        pg.innerHTML = "";
-        if (pages > 1) {
-          pg.className = "pagination";
-          const info = document.createElement("span"); info.className = "pg-info";
-          const from = (page - 1) * (resp.limit || 50) + 1;
-          const to = Math.min(page * (resp.limit || 50), total);
-          info.textContent = `${from}–${to} din ${total}`;
-          const prev = document.createElement("button"); prev.className = "pg-btn"; prev.textContent = "◀";
-          prev.disabled = page <= 1; prev.onclick = () => loadFlowsList(false, page - 1);
-          pg.appendChild(prev); pg.appendChild(info);
-          const maxPages = pages;
-          for (let p = 1; p <= maxPages; p++) {
-            if (maxPages > 7 && Math.abs(p - page) > 2 && p !== 1 && p !== maxPages) {
-              if (p === 2 || p === maxPages - 1) { const d = document.createElement("span"); d.className = "pg-info"; d.textContent = "…"; pg.appendChild(d); }
-              continue;
-            }
-            const b = document.createElement("button"); b.className = "pg-btn" + (p === page ? " active" : "");
-            b.textContent = p; b.onclick = (pp => () => loadFlowsList(false, pp))(p);
-            pg.appendChild(b);
-          }
-          const next = document.createElement("button"); next.className = "pg-btn"; next.textContent = "▶";
-          next.disabled = page >= pages; next.onclick = () => loadFlowsList(false, page + 1);
-          pg.appendChild(next);
+        if (window.DFPagin && typeof window.DFPagin.render === "function") {
+          window.DFPagin.render({
+            container: pg,
+            total,
+            page,
+            limit: resp.limit || 10,
+            mode: "numbered",
+            onChange: (p) => loadFlowsList(false, p),
+          });
+        } else {
+          // Fail-safe: componenta nu s-a încărcat — ascunde bara în loc să crape lista.
+          console.error("DFPagin indisponibil — paginarea fluxurilor e ascunsă");
+          pg.style.display = "none";
         }
       }
     } catch(e) { area.innerHTML = `<span style="color:#ffaaaa;">❌ ${escH(e.message)}</span>`; }
