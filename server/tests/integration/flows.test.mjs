@@ -105,6 +105,14 @@ vi.mock('../../emailTemplates.mjs', () => ({
   emailVerifyGws:     vi.fn(() => ({ subject: 'Test gws', html: '<p>test</p>' })),
 }));
 
+// #107 — _uploadRateLimit (5/min) montat acum pe POST /flows. Fișierul ăsta
+// face zeci de POST /flows pe același IP/path în același modul (store în
+// memorie, cache-uit per fișier de test) — l-am dezactiva aici ca să nu
+// testeze rate-limiting-ul (netestat de acest fișier), nu comportamentul rutei.
+vi.mock('../../middleware/rateLimiter.mjs', () => ({
+  createRateLimiter: () => (req, res, next) => next(),
+}));
+
 // ── Imports după mock-uri ─────────────────────────────────────────────────────
 
 import * as dbModule from '../../db/index.mjs';

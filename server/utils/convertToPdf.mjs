@@ -6,8 +6,23 @@ import { join, extname, basename } from 'path';
 import { PDFDocument, PDFArray, PDFRawStream } from 'pdf-lib';
 import zlib from 'zlib';
 import crypto from 'crypto';
+import { createConcurrencyGate } from './concurrency-gate.mjs';
 
 const exec = promisify(execFile);
+
+// #107 — LibreOffice e singura resursă din pipeline care lansează subprocese
+// grele (câteva sute de MB RSS fiecare). Fără plafon, N conversii simultane
+// scot procesul Node prin OOM. Configurabil prin env pentru tuning fără deploy.
+const LO_MAX          = Math.max(1, parseInt(process.env.LO_MAX_CONCURRENCY || '2', 10) || 2);
+const LO_MAX_QUEUE    = Math.max(0, parseInt(process.env.LO_MAX_QUEUE       || '8', 10) || 8);
+const LO_QUEUE_WAIT_MS = Math.max(1000, parseInt(process.env.LO_QUEUE_WAIT_MS || '45000', 10) || 45000);
+
+export const loGate = createConcurrencyGate({
+  max: LO_MAX,
+  maxQueue: LO_MAX_QUEUE,
+  queueTimeoutMs: LO_QUEUE_WAIT_MS,
+  name: 'libreoffice',
+});
 
 // v3.9.494: LibreOffice produce uneori pagini trailing goale când conversia
 // DOCX→PDF interpretează layout-ul diferit de Word (paginare diferită).
@@ -106,7 +121,9 @@ export async function convertToPdf(buffer, originalName) {
 
     try {
       await writeFile(inPath, buffer);
-      await exec('libreoffice', [
+      // #107 — un singur slot de semafor per conversie. Timpul petrecut în
+      // coadă NU consumă din timeout-ul de 90s al procesului LibreOffice.
+      await loGate.run(() => exec('libreoffice', [
         '--headless',
         '--norestore',
         '--nofirststartwizard',
@@ -117,7 +134,7 @@ export async function convertToPdf(buffer, originalName) {
       ], {
         timeout: 90_000,
         env: { ...process.env, HOME: '/tmp' },
-      });
+      }));
 
       // Verificare explicită: dacă LibreOffice a eșuat silențios
       await access(outPath);

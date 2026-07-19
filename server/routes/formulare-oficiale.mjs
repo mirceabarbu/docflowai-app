@@ -12,6 +12,7 @@ import { pool }                         from '../db/index.mjs';
 import { logger }                       from '../middleware/logger.mjs';
 import { generateNfInvestPdf }          from '../services/formulare-oficiale/nf-invest-pdf.mjs';
 import { generateRefnecPdf }            from '../services/formulare-oficiale/refnec-pdf.mjs';
+import { createRateLimiter }            from '../middleware/rateLimiter.mjs';
 
 const router = Router();
 const _json  = expressJson({ limit: '2mb' });
@@ -173,8 +174,15 @@ router.delete('/:id', requireAuth, csrfMiddleware, async (req, res) => {
   }
 });
 
+// #107 — generare PDF in-process (pdf-lib): CPU-heavy, fără subprocess.
+const _genPdfRateLimit = createRateLimiter({
+  windowMs: 60_000,
+  max: 20,
+  message: 'Prea multe generări PDF. Încearcă în 1 minut.',
+});
+
 // ── POST /api/formulare-oficiale/:id/generate-pdf ────────────────────────────
-router.post('/:id/generate-pdf', requireAuth, csrfMiddleware, async (req, res) => {
+router.post('/:id/generate-pdf', _genPdfRateLimit, requireAuth, csrfMiddleware, async (req, res) => {
   try {
     const { orgId } = req.actor;
     const { id }    = req.params;
