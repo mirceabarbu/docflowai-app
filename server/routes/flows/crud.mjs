@@ -29,6 +29,11 @@ const _getIp = req => req.ip || req.socket?.remoteAddress || null;
 const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message: 'Prea multe cereri de semnare. Încearcă în 1 minut.' });
 const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
 const _readRateLimit   = createRateLimiter({ windowMs: 60_000, max: 60, message: 'Prea multe cereri. Încearcă în 1 minut.' });
+// #107.1 — plafon pe INSTITUȚIE, nu pe utilizator: limiterul cheiază pe `ip:path`,
+// iar toți utilizatorii unei primării ies prin același IP public (NAT). 30/min
+// acoperă lejer o zi de vârf pentru zeci de oameni, dar taie buclele accidentale.
+// Protecția reală a memoriei e semaforul LibreOffice (max=2), nu acest plafon.
+const _flowCreateRateLimit = createRateLimiter({ windowMs: 60_000, max: 30, message: 'Prea multe fluxuri create. Încearcă în 1 minut.' });
 
 
 // Deps injectate din flows/index.mjs
@@ -530,8 +535,8 @@ const createFlow = async (req, res) => {
   } catch(e) { logger.error({ err: e }, 'POST /flows error:'); return res.status(500).json({ error: 'server_error' }); }
 };
 
-router.post('/flows', _uploadRateLimit, _largePdf, createFlow);
-router.post('/api/flows', _uploadRateLimit, _largePdf, createFlow);
+router.post('/flows', _flowCreateRateLimit, _largePdf, createFlow);
+router.post('/api/flows', _flowCreateRateLimit, _largePdf, createFlow);
 
 // ── GET /flows/:flowId/signed-pdf ──────────────────────────────────────────
 // Q-05: rate limit citire — previne enumerare token via timing attacks

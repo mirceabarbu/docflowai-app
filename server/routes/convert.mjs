@@ -6,11 +6,12 @@ import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 
 const router = Router();
 
-// #107 — aceeași convenție ca _uploadRateLimit din flows/*: 5 conversii/minut.
-// Rulează ÎNAINTE de Busboy, deci refuzul nu consumă banda de upload.
+// #107.1 — plafon pe INSTITUȚIE (NAT), nu pe utilizator. Frontendul apelează
+// această rută înaintea FIECĂREI creări de flux cu document Office, deci
+// pragul trebuie să acopere mai mulți oameni care lucrează simultan.
 const _convertRateLimit = createRateLimiter({
   windowMs: 60_000,
-  max: 5,
+  max: 20,
   message: 'Prea multe conversii. Încearcă în 1 minut.',
 });
 
