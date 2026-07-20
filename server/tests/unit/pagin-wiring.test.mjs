@@ -45,6 +45,14 @@ const CONSUMERS = [
     mustContain: ['DFPagin.render(', 'window.DFPagin &&', 'AUDIT_PAGE_SIZE', 'onChange: (p) => loadAuditEvents(p)'],
     mustNotContain: ['onclick="loadAuditEvents(', '‹ Anterior', 'Următor ›', 'limit: 50'],
   },
+  {
+    label: 'PAGIN-6 — admin/primarii.js',
+    jsPath: 'js/admin/primarii.js',
+    htmlPath: 'admin.html',
+    htmlSrc: adminHtmlSrc,
+    mustContain: ['DFPagin.render(', 'window.DFPagin &&', 'PR_PAGE_SIZE', 'onChange: (p) => prLoad(p)'],
+    mustNotContain: ['btnStyle', 'onclick="prLoad(', '‹ Precedent', 'pagini</span>', 'pr-info'],
+  },
 ];
 
 describe.each(CONSUMERS)('$label', (consumer) => {
@@ -117,5 +125,15 @@ describe('PAGIN-4 — users.js paginare CLIENT-SIDE (aserțiune specifică)', ()
 describe('PAGIN-5 — admin.html container #audit-pagination fără style inline', () => {
   it('conține <div id="audit-pagination"></div>, fără atribut style', () => {
     expect(adminHtmlSrc).toContain('<div id="audit-pagination"></div>');
+  });
+});
+
+describe('PAGIN-6 — admin.html container #pr-pager fără style inline + fără #pr-info', () => {
+  it('conține <div id="pr-pager"></div>, fără atribut style', () => {
+    expect(adminHtmlSrc).toContain('<div id="pr-pager"></div>');
+  });
+
+  it('nu mai conține id="pr-info"', () => {
+    expect(adminHtmlSrc).not.toContain('id="pr-info"');
   });
 });
