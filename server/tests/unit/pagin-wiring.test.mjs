@@ -37,6 +37,14 @@ const CONSUMERS = [
     mustContain: ['DFPagin.render(', 'window.DFPagin &&', 'onChange', '_currentPage = p'],
     mustNotContain: ['pg-btn', 'Math.abs(p-current)', 'prev.onclick'],
   },
+  {
+    label: 'PAGIN-5 — admin/audit.js',
+    jsPath: 'js/admin/audit.js',
+    htmlPath: 'admin.html',
+    htmlSrc: adminHtmlSrc,
+    mustContain: ['DFPagin.render(', 'window.DFPagin &&', 'AUDIT_PAGE_SIZE', 'onChange: (p) => loadAuditEvents(p)'],
+    mustNotContain: ['onclick="loadAuditEvents(', '‹ Anterior', 'Următor ›', 'limit: 50'],
+  },
 ];
 
 describe.each(CONSUMERS)('$label', (consumer) => {
@@ -103,5 +111,11 @@ describe('PAGIN-4 — users.js paginare CLIENT-SIDE (aserțiune specifică)', ()
 
   it('onChange setează starea locală și re-randează, fără fetch', () => {
     expect(usersJsSrc).toContain('onChange: (p)=>{ _currentPage = p; renderPage(); }');
+  });
+});
+
+describe('PAGIN-5 — admin.html container #audit-pagination fără style inline', () => {
+  it('conține <div id="audit-pagination"></div>, fără atribut style', () => {
+    expect(adminHtmlSrc).toContain('<div id="audit-pagination"></div>');
   });
 });

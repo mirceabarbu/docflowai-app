@@ -4,6 +4,7 @@
   const esc = window.df.esc;
 
   let _auditCurrentPage = 1;
+  const AUDIT_PAGE_SIZE = 50;   // PAGIN-5 — sursă unică: cererea ȘI randarea paginării
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Dicționar traduceri event-uri audit_log
@@ -197,7 +198,7 @@
     const from      = $('audit-from')?.value       || '';
     const to        = $('audit-to')?.value         || '';
 
-    const params = new URLSearchParams({ page, limit: 50 });
+    const params = new URLSearchParams({ page, limit: AUDIT_PAGE_SIZE });
     if (eventType) params.set('event_type', eventType);
     if (flowId)    params.set('flow_id', flowId);
     if (from)      params.set('from', from);
@@ -251,13 +252,26 @@
   }
 
   function renderAuditPagination(page, pages, total) {
+    // PAGIN-5 — componenta partajată DFPagin (paginare pe SERVER: onChange refetch-uiește).
+    // `pages` rămâne în semnătură pentru compatibilitate cu apelantul; DFPagin îl
+    // recalculează din total/limit. Zero innerHTML, zero onclick inline (regula casei).
     const el = $('audit-pagination');
     if (!el) return;
-    el.innerHTML = `
-      <button class="df-action-btn sm" onclick="loadAuditEvents(${page - 1})" ${page <= 1 ? 'disabled' : ''}>‹ Anterior</button>
-      <span style="color:var(--muted);">Pagina <strong style="color:#eaf0ff;">${page}</strong> din <strong style="color:#eaf0ff;">${pages}</strong> &nbsp;·&nbsp; ${total} înregistrări</span>
-      <button class="df-action-btn sm" onclick="loadAuditEvents(${page + 1})" ${page >= pages ? 'disabled' : ''}>Următor ›</button>
-    `;
+    if (window.DFPagin && typeof window.DFPagin.render === 'function') {
+      window.DFPagin.render({
+        container: el,
+        total,
+        page,
+        limit: AUDIT_PAGE_SIZE,
+        mode: 'numbered',
+        onChange: (p) => loadAuditEvents(p),
+      });
+    } else {
+      // Fail-safe: componenta nu s-a încărcat — ascunde bara, nu rupe tabelul.
+      console.error('DFPagin indisponibil — paginarea auditului e ascunsă');
+      el.replaceChildren();
+      el.style.display = 'none';
+    }
   }
 
   async function loadAuditEventTypes() {
