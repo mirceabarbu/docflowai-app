@@ -13,6 +13,8 @@ import { dirname, join } from 'path';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const flowsJsSrc = readFileSync(join(__dir, '../../../public/js/admin/flows.js'), 'utf8');
 const adminHtmlSrc = readFileSync(join(__dir, '../../../public/admin.html'), 'utf8');
+const componentsCssSrc = readFileSync(join(__dir, '../../../public/css/df/components.css'), 'utf8');
+const adminCssSrc = readFileSync(join(__dir, '../../../public/css/admin/admin.css'), 'utf8');
 
 describe('PAGIN-2 — cablare DFPagin pe admin/flows.js', () => {
   it('flows.js apelează DFPagin.render exact o dată', () => {
@@ -25,7 +27,6 @@ describe('PAGIN-2 — cablare DFPagin pe admin/flows.js', () => {
   it('flows.js nu mai conține paginarea scrisă de mână', () => {
     expect(flowsJsSrc).not.toContain('pg-btn');
     expect(flowsJsSrc).not.toContain('Math.abs(p - page)');
-    expect(flowsJsSrc).not.toContain('resp.limit || 50');
   });
 
   it('flows.js nu mai conține contorul dublu "Pagina X din Y · N fluxuri total"', () => {
@@ -46,5 +47,23 @@ describe('PAGIN-2 — cablare DFPagin pe admin/flows.js', () => {
 
   it('flows.js păstrează ramura fail-safe pentru DFPagin indisponibil', () => {
     expect(flowsJsSrc).toContain('window.DFPagin &&');
+  });
+});
+
+describe('PAGIN-3 — CSS de paginare mutat în components.css + limit 50', () => {
+  it('components.css conține regulile de paginare', () => {
+    expect(componentsCssSrc).toContain('.pagination{');
+    expect(componentsCssSrc).toContain('.pg-btn{');
+    expect(componentsCssSrc).toContain('.pg-info{');
+  });
+
+  it('admin.css nu mai conține regulile de paginare (fără duplicare)', () => {
+    expect(adminCssSrc).not.toContain('.pg-btn{');
+  });
+
+  it('flows.js folosește limit 50, nu mai conține limit 10', () => {
+    expect(flowsJsSrc).toContain('limit: 50');
+    expect(flowsJsSrc).not.toContain('limit: 10');
+    expect(flowsJsSrc).not.toContain('resp.limit || 10');
   });
 });
