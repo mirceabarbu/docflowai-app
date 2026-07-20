@@ -404,10 +404,27 @@ Campanii email către ~2.950 municipalități românești. Tabele: `outreach_ins
 - `server/tests/db/**` (config separat `vitest.config.db.mjs`, `fileParallelism:false`).
 - Rulează routerele REALE peste un Postgres efemer; `db/index.mjs` NU e mock-uit.
 - Verifică **rezultatul** (status code + starea din DB), nu ordinea apelurilor → sigur la refactor.
-- Local, varianta PREFERATĂ — Postgres 17 nativ (instalat pe stația de lucru din iulie 2026,  serviciu Windows, port 5432, baza `docflow_test`). O singură variabilă, fără Docker:  `TEST_DATABASE_URL=postgres://postgres:test@localhost:5432/docflow_test` → `npm run test:db`.  Nu e persistată în `.env` — se setează în sesiunea curentă.
-- Local, alternativ: `npm run db:test:up` (Docker) → exportă `TEST_DATABASE_URL` afișat → `npm run test:db` → `npm run db:test:down`.
-- ⛔ **Docker absent NU e motiv de skip.** Încearcă întâi Postgres-ul local de mai sus. Raportează
-  „skipped" doar dacă AMBELE căi sunt indisponibile, și spune explicit că nu e o dovadă.
+- Local, varianta PREFERATĂ — instanță Postgres 17 EFEMERĂ, în Git Bash.
+  Nu depinde de nicio parolă a serviciului Windows și nu lasă stare în urmă:
+
+      PGBIN="/c/Program Files/PostgreSQL/17/bin"
+      PGDATA="$TEMP/claude/pgdata"
+      PWFILE="$TEMP/claude/pgpwfile"
+      echo "postgres" > "$PWFILE"
+      "$PGBIN/initdb" -D "$PGDATA" -U postgres --pwfile="$PWFILE" -A md5 -E UTF8
+      "$PGBIN/pg_ctl" -D "$PGDATA" -o "-p 55432 -c listen_addresses=127.0.0.1" \
+        -l "$TEMP/claude/pglog.txt" start
+      PGPASSWORD=postgres "$PGBIN/createdb" -h 127.0.0.1 -p 55432 -U postgres docflow_test
+      export TEST_DATABASE_URL="postgres://postgres:postgres@127.0.0.1:55432/docflow_test"
+      npx vitest run --config vitest.config.db.mjs
+      # curățare:
+      "$PGBIN/pg_ctl" -D "$PGDATA" stop -m fast
+      rm -rf "$PGDATA" "$PWFILE" "$TEMP/claude/pglog.txt"
+
+  Portul 55432 evită conflictul cu serviciul Windows de pe 5432.
+- Local, alternativ: `npm run db:test:up` (Docker) → exportă `TEST_DATABASE_URL` → `npm run test:db` → `npm run db:test:down`.
+- ⛔ Docker absent NU e motiv de skip. Folosește rețeta efemeră de mai sus.
+  Raportează „skipped" doar dacă și ea eșuează, și spune explicit că nu e o dovadă.
 - Fără `TEST_DATABASE_URL` se auto-skip (exit 0) — de aceea `npm test` rămâne verde și fără DB.
 - ⚠️ **Skipped ≠ passed.** Un raport local „test:db verde" cu teste *sărite* (fără Docker) NU e dovadă —
   doar testele *passed* contează. Lecție din practică (mai 2026): un test scris greșit a trecut „verde"

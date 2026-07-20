@@ -14,12 +14,7 @@
     /* .grid*, .frow, label, input/select, .msg → df/components.css (BLOC 5) */
     .actions{margin-top:16px;display:flex;align-items:center;gap:10px;}
     .tbl-wrap{overflow-x:auto; padding-bottom:8px; margin-bottom:0;}
-    .pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;flex-wrap:wrap;}
-    .pg-btn{padding:5px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--sub);font-size:.82rem;cursor:pointer;}
-    .pg-btn:hover{background:var(--df-primary-bg);border-color:var(--df-primary-bd);}
-    .pg-btn.active{background:var(--df-primary);color:#fff;border-color:var(--df-primary);font-weight:600;}
-    .pg-btn:disabled{opacity:.35;cursor:default;}
-    .pg-info{font-size:.8rem;color:var(--muted);margin:0 6px;}
+    /* .pagination, .pg-btn, .pg-info → df/components.css (PAGIN-3, helper DFPagin) */
     table{width:100%;border-collapse:collapse;font-size:.82rem;}
     th{text-align:left;font-size:.70rem;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     td{padding:8px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}

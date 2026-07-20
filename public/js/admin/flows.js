@@ -103,7 +103,7 @@
     const statusMap = { active: "pending", done: "completed", refused: "refused", cancelled: "cancelled", archived: "all", "": "all" };
     const statusParam = statusMap[statusF] || "all";
 
-    const params = new URLSearchParams({ page, limit: 10, status: statusParam });
+    const params = new URLSearchParams({ page, limit: 50, status: statusParam });
     if (statusF === "archived") params.set("storage", "drive");
     if (search) params.set("search", search);
     if (instF) params.set("institutie", instF);
@@ -185,7 +185,7 @@
             container: pg,
             total,
             page,
-            limit: resp.limit || 10,
+            limit: resp.limit || 50,
             mode: "numbered",
             onChange: (p) => loadFlowsList(false, p),
           });

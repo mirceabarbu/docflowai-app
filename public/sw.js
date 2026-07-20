@@ -8,7 +8,7 @@
 // SEC-P0.1: bump obligatoriu — handler-ul `activate` șterge toate cache-urile
 // `docflowai-*` diferite de CACHE_STATIC curent, deci acest bump purjează automat
 // răspunsurile API autentificate cache-uite de versiunile anterioare.
-const CACHE_VERSION = 'docflowai-v293';
+const CACHE_VERSION = 'docflowai-v297';
 const CACHE_STATIC = `${CACHE_VERSION}-static`;
 
 // Assets de pre-cacheuit la install

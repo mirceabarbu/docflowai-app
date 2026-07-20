@@ -577,3 +577,14 @@ select:not(.di){ color-scheme: dark; }
 .df-file-item--err{background:var(--df-danger-bg);border-color:var(--df-danger-bd);}
 .df-file-item__btn--danger{color:var(--df-danger);}
 .df-file-item__btn--danger:hover{background:var(--df-danger-bg);}
+
+/* ── Paginare partajată — helper window.DFPagin (public/js/shared/pagin.js) ──
+   Mutate din admin/admin.css (PAGIN-3): componenta e folosită și de paginile
+   care NU încarcă admin.css (formular.html, registratura.html). Aspectul
+   rămâne bit-identic cu cel din admin — doar locul definiției se schimbă. */
+.pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;flex-wrap:wrap;}
+.pg-btn{padding:5px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--sub);font-size:.82rem;cursor:pointer;}
+.pg-btn:hover{background:var(--df-primary-bg);border-color:var(--df-primary-bd);}
+.pg-btn.active{background:var(--df-primary);color:#fff;border-color:var(--df-primary);font-weight:600;}
+.pg-btn:disabled{opacity:.35;cursor:default;}
+.pg-info{font-size:.8rem;color:var(--muted);margin:0 6px;}

@@ -20,6 +20,7 @@
   let _prPage     = 1;
   let _prSelected = new Set();
   let _prDebounce = null;
+  const PR_PAGE_SIZE = 50;   // PAGIN-6 — sursă unică: cererea ȘI randarea paginării
 
   // ── Functions ─────────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@
     _prSelected.clear();
     const judet = $('pr-judet')?.value || '';
     const q     = $('pr-q')?.value || '';
-    const url   = `/admin/outreach/primarii?judet=${encodeURIComponent(judet)}&q=${encodeURIComponent(q)}&page=${_prPage}&limit=50`;
+    const url   = `/admin/outreach/primarii?judet=${encodeURIComponent(judet)}&q=${encodeURIComponent(q)}&page=${_prPage}&limit=${PR_PAGE_SIZE}`;
     try {
       const r = await fetch(url, { credentials: 'include' });
       if (!r.ok) return;
@@ -51,7 +52,6 @@
       }
 
       $('pr-badge').textContent = `${d.total.toLocaleString('ro-RO')} instituții`;
-      $('pr-info').textContent  = `Pagina ${d.page} din ${d.pages} · ${d.total} rezultate`;
 
       const tbody = $('pr-tbody');
       tbody.innerHTML = d.items.length ? d.items.map(p => `
@@ -74,18 +74,26 @@
         </tr>`).join('') :
         '<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--muted);">Niciun rezultat.</td></tr>';
 
-      // Paginare
+      // Paginare — componenta partajată DFPagin (PAGIN-6). Server-paginat:
+      // onChange refetch-uiește prin prLoad, care resetează și selecția curentă.
       const pager = $('pr-pager');
-      if (d.pages <= 1) { pager.innerHTML = ''; return; }
-      const btnStyle = (active) =>
-        `padding:5px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.8rem;font-weight:${active?700:400};background:${active?'rgba(124,92,255,.3)':'rgba(255,255,255,.04)'};color:${active?'#c4b5ff':'var(--muted)'};`;
-      let btns = '';
-      if (d.page > 1)     btns += `<button onclick="prLoad(${d.page-1})" style="${btnStyle(false)}">‹ Precedent</button>`;
-      const start = Math.max(1, d.page-2), end = Math.min(d.pages, d.page+2);
-      for (let i = start; i <= end; i++) btns += `<button onclick="prLoad(${i})" style="${btnStyle(i===d.page)}">${i}</button>`;
-      if (d.page < d.pages) btns += `<button onclick="prLoad(${d.page+1})" style="${btnStyle(false)}">Următor ›</button>`;
-      btns += `<span style="color:var(--muted);font-size:.76rem;align-self:center;">${d.pages} pagini</span>`;
-      pager.innerHTML = btns;
+      if (pager) {
+        if (window.DFPagin && typeof window.DFPagin.render === 'function') {
+          window.DFPagin.render({
+            container: pager,
+            total: d.total,
+            page: d.page,
+            limit: PR_PAGE_SIZE,
+            mode: 'numbered',
+            onChange: (p) => prLoad(p),
+          });
+        } else {
+          // Fail-safe: componenta nu s-a încărcat — ascunde bara, nu rupe tabelul.
+          console.error('DFPagin indisponibil — paginarea primăriilor e ascunsă');
+          pager.replaceChildren();
+          pager.style.display = 'none';
+        }
+      }
 
     } catch(e) { /* silent */ }
   }
