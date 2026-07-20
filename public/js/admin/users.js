@@ -103,28 +103,28 @@
   }
 
   function renderPagination(total, current, totalPages){
+    // PAGIN-4 — componenta partajată DFPagin. Paginare CLIENT-SIDE: onChange
+    // setează starea locală și re-randează, fără fetch (spre deosebire de
+    // admin/flows.js, care paginează pe server).
     let pg = $('pgBar');
     if(!pg){ pg=document.createElement('div'); pg.id='pgBar'; pg.className='pagination';
       const wrap=$('pgBarWrapper') || $('tbl'); if(wrap) wrap.appendChild(pg); }
-    pg.innerHTML='';
-    if(totalPages<=1 && total<=PAGE_SIZE){return;}
-    const info=document.createElement('span'); info.className='pg-info';
-    info.textContent=`${Math.min((current-1)*PAGE_SIZE+1,total)}–${Math.min(current*PAGE_SIZE,total)} din ${total}`;
-    const prev=document.createElement('button'); prev.className='pg-btn'; prev.textContent='◀';
-    prev.disabled=current<=1; prev.onclick=()=>{_currentPage--;renderPage();};
-    pg.appendChild(prev); pg.appendChild(info);
-    for(let p=1;p<=totalPages;p++){
-      if(totalPages>7&&Math.abs(p-current)>2&&p!==1&&p!==totalPages){
-        if(p===2||p===totalPages-1){const d=document.createElement('span');d.className='pg-info';d.textContent='…';pg.appendChild(d);}
-        continue;
-      }
-      const b=document.createElement('button'); b.className='pg-btn'+(p===current?' active':'');
-      b.textContent=p; b.onclick=(pp=>()=>{_currentPage=pp;renderPage();})(p);
-      pg.appendChild(b);
+    if(!pg) return;
+    if(window.DFPagin && typeof window.DFPagin.render === 'function'){
+      window.DFPagin.render({
+        container: pg,
+        total,
+        page: current,
+        limit: PAGE_SIZE,
+        mode: 'numbered',
+        onChange: (p)=>{ _currentPage = p; renderPage(); },
+      });
+    } else {
+      // Fail-safe: componenta nu s-a încărcat — ascunde bara, nu rupe tabelul.
+      console.error('DFPagin indisponibil — paginarea utilizatorilor e ascunsă');
+      pg.innerHTML='';
+      pg.style.display='none';
     }
-    const next=document.createElement('button'); next.className='pg-btn'; next.textContent='▶';
-    next.disabled=current>=totalPages; next.onclick=()=>{_currentPage++;renderPage();};
-    pg.appendChild(next);
   }
 
   // ── org_admin: blochează toate filtrele de instituție ─────────────────────
