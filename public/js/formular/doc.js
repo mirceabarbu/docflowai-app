@@ -744,15 +744,19 @@ async function openDoc(ft,id){
       }
     }
 
-    // Captură
+    // Captură — resetare default ÎNAINTE de fetch. Altfel captura documentului
+    // anterior persistă la openDoc→openDoc fără finalizare: leak vizual ȘI, dacă
+    // userul salvează noul document, colN/colO citesc imgs['n-cimg']/['o-cimg'] →
+    // saveDoc (uploadCaptura) ar urca captura străină pe documentul greșit.
+    const _capIid=ft==='ordnt'?'o-cimg':'n-cimg',_capPh=ft==='ordnt'?'o-cph':'n-cph';
+    clrImg(_capIid,_capPh);
     try{
       const capR=await fetch(`/api/formulare-capturi/${ftType(ft)}/${id}`,{credentials:'include'});
       if(capR.ok&&capR.headers.get('content-type')?.startsWith('image')){
         const blob=await capR.blob();
         const reader=new FileReader();
         reader.onload=e=>{
-          const iid=ft==='ordnt'?'o-cimg':'n-cimg',phid=ft==='ordnt'?'o-cph':'n-cph';
-          showImg(iid,phid,e.target.result);
+          showImg(_capIid,_capPh,e.target.result);
         };
         reader.readAsDataURL(blob);
       }
