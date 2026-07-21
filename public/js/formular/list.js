@@ -4,7 +4,7 @@
 // Cross-module exports (window):
 //   - switchListTab : apelată din HTML onclick + alte module
 //   - showListSection, showFormSection, newDocFromList
-//   - loadList, openDocFromList, stergeDoc, changeLstPage, debouncedLoadList, resetFilters
+//   - loadList, openDocFromList, stergeDoc, debouncedLoadList, resetFilters
 //   - loadDfAprobate, selectDfAprobat, onDfSelect (apelate din DOC BLOC 2.5)
 //   - debouncedBenefSearch, selectBenef, _saveBeneficiarIfNew
 //   - _autoSaveDb, _scheduleAutoSaveDb
@@ -614,21 +614,23 @@ function _renderLstTable(rows,type){
   }).join('');
 }
 function _renderLstPagin(total,page,limit){
+  // PAGIN-8 — componentă partajată DFPagin (paginare pe SERVER: onChange refetch).
   const pg=document.getElementById('lst-pagination');
-  const info=document.getElementById('lst-page-info');
-  const prev=document.getElementById('lst-prev');
-  const next=document.getElementById('lst-next');
   if(!pg)return;
-  const totalPages=Math.ceil(total/limit)||1;
-  if(totalPages<=1){pg.style.display='none';return;}
-  pg.style.display='flex';
-  if(info)info.textContent=`Pagina ${page} din ${totalPages} (${total} total)`;
-  if(prev)prev.disabled=page<=1;
-  if(next)next.disabled=page>=totalPages;
-}
-function changeLstPage(dir){
-  _lstState.page=Math.max(1,_lstState.page+dir);
-  loadList();
+  if(window.DFPagin && typeof window.DFPagin.render==='function'){
+    window.DFPagin.render({
+      container:pg,
+      total,
+      page,
+      limit,
+      mode: 'numbered',
+      onChange:(p)=>{_lstState.page=p;loadList();},
+    });
+  }else{
+    console.error('DFPagin indisponibil — paginarea listei DF/ORD e ascunsă');
+    pg.replaceChildren();
+    pg.style.display='none';
+  }
 }
 function openDocFromList(type,id){
   const ft=type==='ord'?'ordnt':'notafd';
@@ -688,7 +690,6 @@ function _populateCompartimente(){
   window.loadList               = loadList;
   window.openDocFromList        = openDocFromList;
   window.stergeDoc              = stergeDoc;
-  window.changeLstPage          = changeLstPage;
   window.debouncedLoadList      = debouncedLoadList;
   window.resetFilters           = resetFilters;
 

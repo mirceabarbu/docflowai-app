@@ -20,6 +20,7 @@ const adminHtmlSrc = readPublic('admin.html');
 const componentsCssSrc = readPublic('css/df/components.css');
 const adminCssSrc = readPublic('css/admin/admin.css');
 const registraturaHtmlSrc = readPublic('registratura.html');
+const formularHtmlSrc = readPublic('formular.html');
 
 const CONSUMERS = [
   {
@@ -61,6 +62,14 @@ const CONSUMERS = [
     htmlSrc: registraturaHtmlSrc,
     mustContain: ['DFPagin.render(', 'window.DFPagin &&', "mode: 'numbered'", 'renderPag('],
     mustNotContain: ["$('reg-prev')", "$('reg-next')", "$('regin-prev')", "$('regin-next')", 'Pagina ${stateOut.page}', 'Pagina ${stateIn.page}'],
+  },
+  {
+    label: 'PAGIN-8 — formular/list.js',
+    jsPath: 'js/formular/list.js',
+    htmlPath: 'formular.html',
+    htmlSrc: formularHtmlSrc,
+    mustContain: ['DFPagin.render(', 'window.DFPagin &&', "mode: 'numbered'"],
+    mustNotContain: ['lst-page-info', 'lst-prev', 'lst-next', 'changeLstPage'],
   },
 ];
 
@@ -156,5 +165,22 @@ describe('PAGIN-7 — registratura.html containere fără prev/next static', () 
   it('nu mai conține butoanele statice reg-prev/regin-prev', () => {
     expect(registraturaHtmlSrc).not.toContain('id="reg-prev"');
     expect(registraturaHtmlSrc).not.toContain('id="regin-prev"');
+  });
+});
+
+describe('PAGIN-8 — formular.html #lst-pagination fără prev/next static', () => {
+  it('conține <div id="lst-pagination"></div>', () => {
+    expect(formularHtmlSrc).toContain('<div id="lst-pagination"></div>');
+  });
+  it('nu mai conține butoanele statice lst-prev/lst-next + onclick changeLstPage', () => {
+    expect(formularHtmlSrc).not.toContain('id="lst-prev"');
+    expect(formularHtmlSrc).not.toContain('id="lst-next"');
+    expect(formularHtmlSrc).not.toContain('onclick="changeLstPage(');
+  });
+  it('NU atinge #alop-pagination (rămâne pentru PAGIN-9)', () => {
+    expect(formularHtmlSrc).toContain('id="alop-pagination"');
+  });
+  it('NU atinge contorul #lst-count (feature #90)', () => {
+    expect(formularHtmlSrc).toContain('id="lst-count"');
   });
 });
